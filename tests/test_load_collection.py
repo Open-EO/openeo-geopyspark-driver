@@ -1,5 +1,6 @@
 import mock
 import pytest
+import rasterio
 from mock import MagicMock, ANY
 
 from openeo_driver.backend import LoadParameters
@@ -474,3 +475,35 @@ def test_data_cube_params(catalog):
         == "DataCubeParameters(128, {}, ZoomedLayoutScheme, ByDay, 6, None, Average, 0.0, 0.0)"
     )
     assert "Average" == str(cube_params.resampleMethod())
+
+
+def test_load_stac_collection_with_property_filters(catalog, tmp_path, requests_mock):
+    requests_mock.get("https://stac.openeo.vito.be/", text=get_test_data_file("stac/issue640-api-layer-property-filter/stac.openeo.vito.be.json").read_text())
+    requests_mock.get("https://stac.openeo.vito.be/search", [
+        {'text': get_test_data_file("stac/issue640-api-layer-property-filter/copernicus_r_utm-wgs84_10_m_hrvpp-vpp_p_2017-now_v01_features.json")
+                      .read_text()
+                      .replace("$SPROD_TIF",
+                               "/home/bossie/PycharmProjects/openeo/openeo-geopyspark-driver/tests/data/binary/load_stac/copernicus_r_utm-wgs84_10_m_hrvpp-vpp_p_2017-now_v01/VPP_2018_S2_T31UFS-010m_V101_s1_SPROD_small.tif")
+                      .replace("$TPROD_TIF",
+                               "/home/bossie/PycharmProjects/openeo/openeo-geopyspark-driver/tests/data/binary/load_stac/copernicus_r_utm-wgs84_10_m_hrvpp-vpp_p_2017-now_v01/VPP_2018_S2_T31UFS-010m_V101_s1_TPROD_small.tif")},  # TODO: use placeholders as hrefs and replace
+        {'text': get_test_data_file("stac/issue640-api-layer-property-filter/copernicus_r_utm-wgs84_10_m_hrvpp-vpp_p_2017-now_v01_no_features.json")
+                      .read_text()}
+    ])
+
+    load_params = LoadParameters(spatial_extent={"west": 5.00, "south": 51.20, "east": 5.01, "north": 51.21},
+                                 temporal_extent=["2017-07-01T00:00Z", "2018-07-31T00:00Z"],
+                                 bands=["SPROD", "TPROD"])  # TODO: remove other bands from layercatalog.json, then drop this bands argument
+
+    env = EvalEnv({'pyramid_levels': 'highest', 'user': None})
+
+    data_cube = catalog.load_collection("COPERNICUS_VEGETATION_PHENOLOGY_PRODUCTIVITY_S1_10M",
+                                        load_params, env)
+
+    output_file = tmp_path / "vpp_s1.tiff"
+    data_cube.save_result(output_file, format="GTiff")
+
+    with rasterio.open(output_file) as ds:
+        expected_band_count = 2
+        assert ds.count == expected_band_count
+        assert ds.tags(1)["DESCRIPTION"] == "SPROD"
+        assert ds.tags(2)["DESCRIPTION"] == "TPROD"
