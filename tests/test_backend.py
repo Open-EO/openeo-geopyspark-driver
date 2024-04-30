@@ -196,6 +196,23 @@ def test_extra_validation_layer_too_large_copernicus_30(backend_implementation):
     errors = list(processing.extra_validation({}, env, None, env_source_constraints))
     assert errors == []
 
+def test_extra_validation_without_extent(backend_implementation):
+    processing = GpsProcessing()
+    source_id1 = "load_collection", ("ESA_WORLDCOVER_10M_2021_V2", None)
+    env_source_constraints = [
+        (source_id1, {
+            "temporal_extent": None,
+            "spatial_extent": {"east": 1941516.7822, "south": -637292.4712999999, "crs": "EPSG:32637",
+                               "north": 2493707.5287, "west": -1285483.2178},
+            "bands": ["MAP"],
+        })
+    ]
+    env = EvalEnv(
+        values={ENV_SOURCE_CONSTRAINTS: env_source_constraints, "backend_implementation": backend_implementation,
+                "version": "1.0.0"})
+    errors = list(processing.extra_validation({}, env, None, env_source_constraints))
+    assert errors == []
+
 
 def test_extra_validation_layer_too_large_area(backend_implementation):
     processing = GpsProcessing()
