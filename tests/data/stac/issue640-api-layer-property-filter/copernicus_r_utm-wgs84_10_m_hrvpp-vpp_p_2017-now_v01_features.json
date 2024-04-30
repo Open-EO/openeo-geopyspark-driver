@@ -1,0 +1,870 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              4.4087151,
+              50.4262937
+            ],
+            [
+              4.4087151,
+              51.4423523
+            ],
+            [
+              6.017025,
+              51.4423523
+            ],
+            [
+              6.017025,
+              50.4262937
+            ],
+            [
+              4.4087151,
+              50.4262937
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "datetime": "2018-01-01T00:00:00+00:00",
+        "season": "s2"
+      },
+      "id": "VPP_2018_S2_T31UFS-010m_V101_s2",
+      "bbox": [
+        4.4087151,
+        50.4262937,
+        6.017025,
+        51.4423523
+      ],
+      "stac_version": "1.0.0",
+      "assets": {
+        "SOSD": {
+          "title": "SOSD",
+          "description": "SOSD",
+          "href": "s3://HRVPP/CLMS/Pan-European/Biophysical/VPP/v01/2018/s2/VPP_2018_S2_T31UFS-010m_V101_s2_SOSD.tif",
+          "type": "image/tiff",
+          "roles": [
+            "data"
+          ],
+          "eo:bands": [
+            {
+              "name": "SOSD"
+            }
+          ],
+          "file:size": 56507886,
+          "raster:bands": [
+            {
+              "name": "SOSD",
+              "data_type": "uint8",
+              "sampling": "area",
+              "bits_per_sample": 8,
+              "spatial_resolution": 10
+            }
+          ]
+        },
+        "EOSD": {
+          "title": "EOSD",
+          "description": "EOSD",
+          "href": "s3://HRVPP/CLMS/Pan-European/Biophysical/VPP/v01/2018/s2/VPP_2018_S2_T31UFS-010m_V101_s2_EOSD.tif",
+          "type": "image/tiff",
+          "roles": [
+            "data"
+          ],
+          "eo:bands": [
+            {
+              "name": "EOSD"
+            }
+          ],
+          "file:size": 62175902,
+          "raster:bands": [
+            {
+              "name": "EOSD",
+              "data_type": "uint8",
+              "sampling": "area",
+              "bits_per_sample": 8,
+              "spatial_resolution": 10
+            }
+          ]
+        },
+        "SOSV": {
+          "title": "SOSV",
+          "description": "SOSV",
+          "href": "s3://HRVPP/CLMS/Pan-European/Biophysical/VPP/v01/2018/s2/VPP_2018_S2_T31UFS-010m_V101_s2_SOSV.tif",
+          "type": "image/tiff",
+          "roles": [
+            "data"
+          ],
+          "eo:bands": [
+            {
+              "name": "SOSV"
+            }
+          ],
+          "file:size": 98382140,
+          "raster:bands": [
+            {
+              "name": "SOSV",
+              "data_type": "uint16",
+              "sampling": "area",
+              "bits_per_sample": 16,
+              "spatial_resolution": 10,
+              "scale": 0.0001,
+              "offset": 0
+            }
+          ]
+        },
+        "MAXD": {
+          "title": "MAXD",
+          "description": "MAXD",
+          "href": "s3://HRVPP/CLMS/Pan-European/Biophysical/VPP/v01/2018/s2/VPP_2018_S2_T31UFS-010m_V101_s2_MAXD.tif",
+          "type": "image/tiff",
+          "roles": [
+            "data"
+          ],
+          "eo:bands": [
+            {
+              "name": "MAXD"
+            }
+          ],
+          "file:size": 58138087,
+          "raster:bands": [
+            {
+              "name": "MAXD",
+              "data_type": "uint8",
+              "sampling": "area",
+              "bits_per_sample": 8,
+              "spatial_resolution": 10
+            }
+          ]
+        },
+        "EOSV": {
+          "title": "EOSV",
+          "description": "EOSV",
+          "href": "s3://HRVPP/CLMS/Pan-European/Biophysical/VPP/v01/2018/s2/VPP_2018_S2_T31UFS-010m_V101_s2_EOSV.tif",
+          "type": "image/tiff",
+          "roles": [
+            "data"
+          ],
+          "eo:bands": [
+            {
+              "name": "EOSV"
+            }
+          ],
+          "file:size": 95631969,
+          "raster:bands": [
+            {
+              "name": "EOSV",
+              "data_type": "uint16",
+              "sampling": "area",
+              "bits_per_sample": 16,
+              "spatial_resolution": 10,
+              "scale": 0.0001,
+              "offset": 0
+            }
+          ]
+        },
+        "MINV": {
+          "title": "MINV",
+          "description": "MINV",
+          "href": "s3://HRVPP/CLMS/Pan-European/Biophysical/VPP/v01/2018/s2/VPP_2018_S2_T31UFS-010m_V101_s2_MINV.tif",
+          "type": "image/tiff",
+          "roles": [
+            "data"
+          ],
+          "eo:bands": [
+            {
+              "name": "MINV"
+            }
+          ],
+          "file:size": 93157876,
+          "raster:bands": [
+            {
+              "name": "MINV",
+              "data_type": "uint16",
+              "sampling": "area",
+              "bits_per_sample": 16,
+              "spatial_resolution": 10,
+              "scale": 0.0001,
+              "offset": 0
+            }
+          ]
+        },
+        "MAXV": {
+          "title": "MAXV",
+          "description": "MAXV",
+          "href": "s3://HRVPP/CLMS/Pan-European/Biophysical/VPP/v01/2018/s2/VPP_2018_S2_T31UFS-010m_V101_s2_MAXV.tif",
+          "type": "image/tiff",
+          "roles": [
+            "data"
+          ],
+          "eo:bands": [
+            {
+              "name": "MAXV"
+            }
+          ],
+          "file:size": 103915844,
+          "raster:bands": [
+            {
+              "name": "MAXV",
+              "data_type": "uint16",
+              "sampling": "area",
+              "bits_per_sample": 16,
+              "spatial_resolution": 10,
+              "scale": 0.0001,
+              "offset": 0
+            }
+          ]
+        },
+        "AMPL": {
+          "title": "AMPL",
+          "description": "AMPL",
+          "href": "s3://HRVPP/CLMS/Pan-European/Biophysical/VPP/v01/2018/s2/VPP_2018_S2_T31UFS-010m_V101_s2_AMPL.tif",
+          "type": "image/tiff",
+          "roles": [
+            "data"
+          ],
+          "eo:bands": [
+            {
+              "name": "AMPL"
+            }
+          ],
+          "file:size": 103137538,
+          "raster:bands": [
+            {
+              "name": "AMPL",
+              "data_type": "uint16",
+              "sampling": "area",
+              "bits_per_sample": 16,
+              "spatial_resolution": 10,
+              "scale": 0.0001,
+              "offset": 0
+            }
+          ]
+        },
+        "LENGTH": {
+          "title": "LENGTH",
+          "description": "LENGTH",
+          "href": "s3://HRVPP/CLMS/Pan-European/Biophysical/VPP/v01/2018/s2/VPP_2018_S2_T31UFS-010m_V101_s2_LENGTH.tif",
+          "type": "image/tiff",
+          "roles": [
+            "data"
+          ],
+          "eo:bands": [
+            {
+              "name": "LENGTH"
+            }
+          ],
+          "file:size": 62587064,
+          "raster:bands": [
+            {
+              "name": "LENGTH",
+              "data_type": "uint16",
+              "sampling": "area",
+              "bits_per_sample": 16,
+              "spatial_resolution": 10
+            }
+          ]
+        },
+        "LSLOPE": {
+          "title": "LSLOPE",
+          "description": "LSLOPE",
+          "href": "s3://HRVPP/CLMS/Pan-European/Biophysical/VPP/v01/2018/s2/VPP_2018_S2_T31UFS-010m_V101_s2_LSLOPE.tif",
+          "type": "image/tiff",
+          "roles": [
+            "data"
+          ],
+          "eo:bands": [
+            {
+              "name": "LSLOPE"
+            }
+          ],
+          "file:size": 78497419,
+          "raster:bands": [
+            {
+              "name": "LSLOPE",
+              "data_type": "uint16",
+              "sampling": "area",
+              "bits_per_sample": 16,
+              "spatial_resolution": 10,
+              "scale": 0.0001,
+              "offset": 0
+            }
+          ]
+        },
+        "RSLOPE": {
+          "title": "RSLOPE",
+          "description": "RSLOPE",
+          "href": "s3://HRVPP/CLMS/Pan-European/Biophysical/VPP/v01/2018/s2/VPP_2018_S2_T31UFS-010m_V101_s2_RSLOPE.tif",
+          "type": "image/tiff",
+          "roles": [
+            "data"
+          ],
+          "eo:bands": [
+            {
+              "name": "RSLOPE"
+            }
+          ],
+          "file:size": 77619678,
+          "raster:bands": [
+            {
+              "name": "RSLOPE",
+              "data_type": "uint16",
+              "sampling": "area",
+              "bits_per_sample": 16,
+              "spatial_resolution": 10,
+              "scale": 0.0001,
+              "offset": 0
+            }
+          ]
+        },
+        "SPROD": {
+          "title": "SPROD",
+          "description": "SPROD",
+          "href": "s3://HRVPP/CLMS/Pan-European/Biophysical/VPP/v01/2018/s2/VPP_2018_S2_T31UFS-010m_V101_s2_SPROD.tif",
+          "type": "image/tiff",
+          "roles": [
+            "data"
+          ],
+          "eo:bands": [
+            {
+              "name": "SPROD"
+            }
+          ],
+          "file:size": 85819662,
+          "raster:bands": [
+            {
+              "name": "SPROD",
+              "data_type": "uint16",
+              "sampling": "area",
+              "bits_per_sample": 16,
+              "spatial_resolution": 10,
+              "scale": 0.02,
+              "offset": 0
+            }
+          ]
+        },
+        "QFLAG": {
+          "title": "QFLAG",
+          "description": "QFLAG",
+          "href": "s3://HRVPP/CLMS/Pan-European/Biophysical/VPP/v01/2018/s2/VPP_2018_S2_T31UFS-010m_V101_s2_QFLAG.tif",
+          "type": "image/tiff",
+          "roles": [
+            "data"
+          ],
+          "eo:bands": [
+            {
+              "name": "QFLAG"
+            }
+          ],
+          "file:size": 23556795,
+          "raster:bands": [
+            {
+              "name": "QFLAG",
+              "data_type": "uint8",
+              "sampling": "area",
+              "bits_per_sample": 8,
+              "spatial_resolution": 10
+            }
+          ]
+        },
+        "TPROD": {
+          "title": "TPROD",
+          "description": "TPROD",
+          "href": "s3://HRVPP/CLMS/Pan-European/Biophysical/VPP/v01/2018/s2/VPP_2018_S2_T31UFS-010m_V101_s2_TPROD.tif",
+          "type": "image/tiff",
+          "roles": [
+            "data"
+          ],
+          "eo:bands": [
+            {
+              "name": "TPROD"
+            }
+          ],
+          "file:size": 87386708,
+          "raster:bands": [
+            {
+              "name": "TPROD",
+              "data_type": "uint16",
+              "sampling": "area",
+              "bits_per_sample": 16,
+              "spatial_resolution": 10,
+              "scale": 0.02,
+              "offset": 0
+            }
+          ]
+        }
+      },
+      "links": [
+        {
+          "href": "https://stac.openeo.vito.be/collections/copernicus_r_utm-wgs84_10_m_hrvpp-vpp_p_2017-now_v01/items/VPP_2018_S2_T31UFS-010m_V101_s2",
+          "rel": "self",
+          "type": "application/geo+json"
+        },
+        {
+          "href": "https://stac.openeo.vito.be/collections/copernicus_r_utm-wgs84_10_m_hrvpp-vpp_p_2017-now_v01",
+          "rel": "parent",
+          "type": "application/json"
+        },
+        {
+          "href": "https://stac.openeo.vito.be/collections/copernicus_r_utm-wgs84_10_m_hrvpp-vpp_p_2017-now_v01",
+          "rel": "collection",
+          "type": "application/json"
+        },
+        {
+          "href": "https://stac.openeo.vito.be/",
+          "rel": "root",
+          "type": "application/json"
+        }
+      ],
+      "collection": "copernicus_r_utm-wgs84_10_m_hrvpp-vpp_p_2017-now_v01"
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              4.4087151,
+              50.4262937
+            ],
+            [
+              4.4087151,
+              51.4423523
+            ],
+            [
+              6.017025,
+              51.4423523
+            ],
+            [
+              6.017025,
+              50.4262937
+            ],
+            [
+              4.4087151,
+              50.4262937
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "datetime": "2018-01-01T00:00:00+00:00",
+        "season": "s1"
+      },
+      "id": "VPP_2018_S2_T31UFS-010m_V101_s1",
+      "bbox": [
+        4.4087151,
+        50.4262937,
+        6.017025,
+        51.4423523
+      ],
+      "stac_version": "1.0.0",
+      "assets": {
+        "SOSD": {
+          "title": "SOSD",
+          "description": "SOSD",
+          "href": "s3://HRVPP/CLMS/Pan-European/Biophysical/VPP/v01/2018/s1/VPP_2018_S2_T31UFS-010m_V101_s1_SOSD.tif",
+          "type": "image/tiff",
+          "roles": [
+            "data"
+          ],
+          "eo:bands": [
+            {
+              "name": "SOSD"
+            }
+          ],
+          "file:size": 127647458,
+          "raster:bands": [
+            {
+              "name": "SOSD",
+              "data_type": "uint8",
+              "sampling": "area",
+              "bits_per_sample": 8,
+              "spatial_resolution": 10
+            }
+          ]
+        },
+        "EOSD": {
+          "title": "EOSD",
+          "description": "EOSD",
+          "href": "s3://HRVPP/CLMS/Pan-European/Biophysical/VPP/v01/2018/s1/VPP_2018_S2_T31UFS-010m_V101_s1_EOSD.tif",
+          "type": "image/tiff",
+          "roles": [
+            "data"
+          ],
+          "eo:bands": [
+            {
+              "name": "EOSD"
+            }
+          ],
+          "file:size": 141768047,
+          "raster:bands": [
+            {
+              "name": "EOSD",
+              "data_type": "uint8",
+              "sampling": "area",
+              "bits_per_sample": 8,
+              "spatial_resolution": 10
+            }
+          ]
+        },
+        "SOSV": {
+          "title": "SOSV",
+          "description": "SOSV",
+          "href": "s3://HRVPP/CLMS/Pan-European/Biophysical/VPP/v01/2018/s1/VPP_2018_S2_T31UFS-010m_V101_s1_SOSV.tif",
+          "type": "image/tiff",
+          "roles": [
+            "data"
+          ],
+          "eo:bands": [
+            {
+              "name": "SOSV"
+            }
+          ],
+          "file:size": 229870759,
+          "raster:bands": [
+            {
+              "name": "SOSV",
+              "data_type": "uint16",
+              "sampling": "area",
+              "bits_per_sample": 16,
+              "spatial_resolution": 10,
+              "scale": 0.0001,
+              "offset": 0
+            }
+          ]
+        },
+        "MAXD": {
+          "title": "MAXD",
+          "description": "MAXD",
+          "href": "s3://HRVPP/CLMS/Pan-European/Biophysical/VPP/v01/2018/s1/VPP_2018_S2_T31UFS-010m_V101_s1_MAXD.tif",
+          "type": "image/tiff",
+          "roles": [
+            "data"
+          ],
+          "eo:bands": [
+            {
+              "name": "MAXD"
+            }
+          ],
+          "file:size": 127193058,
+          "raster:bands": [
+            {
+              "name": "MAXD",
+              "data_type": "uint8",
+              "sampling": "area",
+              "bits_per_sample": 8,
+              "spatial_resolution": 10
+            }
+          ]
+        },
+        "EOSV": {
+          "title": "EOSV",
+          "description": "EOSV",
+          "href": "s3://HRVPP/CLMS/Pan-European/Biophysical/VPP/v01/2018/s1/VPP_2018_S2_T31UFS-010m_V101_s1_EOSV.tif",
+          "type": "image/tiff",
+          "roles": [
+            "data"
+          ],
+          "eo:bands": [
+            {
+              "name": "EOSV"
+            }
+          ],
+          "file:size": 225009126,
+          "raster:bands": [
+            {
+              "name": "EOSV",
+              "data_type": "uint16",
+              "sampling": "area",
+              "bits_per_sample": 16,
+              "spatial_resolution": 10,
+              "scale": 0.0001,
+              "offset": 0
+            }
+          ]
+        },
+        "MINV": {
+          "title": "MINV",
+          "description": "MINV",
+          "href": "s3://HRVPP/CLMS/Pan-European/Biophysical/VPP/v01/2018/s1/VPP_2018_S2_T31UFS-010m_V101_s1_MINV.tif",
+          "type": "image/tiff",
+          "roles": [
+            "data"
+          ],
+          "eo:bands": [
+            {
+              "name": "MINV"
+            }
+          ],
+          "file:size": 202887415,
+          "raster:bands": [
+            {
+              "name": "MINV",
+              "data_type": "uint16",
+              "sampling": "area",
+              "bits_per_sample": 16,
+              "spatial_resolution": 10,
+              "scale": 0.0001,
+              "offset": 0
+            }
+          ]
+        },
+        "MAXV": {
+          "title": "MAXV",
+          "description": "MAXV",
+          "href": "s3://HRVPP/CLMS/Pan-European/Biophysical/VPP/v01/2018/s1/VPP_2018_S2_T31UFS-010m_V101_s1_MAXV.tif",
+          "type": "image/tiff",
+          "roles": [
+            "data"
+          ],
+          "eo:bands": [
+            {
+              "name": "MAXV"
+            }
+          ],
+          "file:size": 246541657,
+          "raster:bands": [
+            {
+              "name": "MAXV",
+              "data_type": "uint16",
+              "sampling": "area",
+              "bits_per_sample": 16,
+              "spatial_resolution": 10,
+              "scale": 0.0001,
+              "offset": 0
+            }
+          ]
+        },
+        "AMPL": {
+          "title": "AMPL",
+          "description": "AMPL",
+          "href": "s3://HRVPP/CLMS/Pan-European/Biophysical/VPP/v01/2018/s1/VPP_2018_S2_T31UFS-010m_V101_s1_AMPL.tif",
+          "type": "image/tiff",
+          "roles": [
+            "data"
+          ],
+          "eo:bands": [
+            {
+              "name": "AMPL"
+            }
+          ],
+          "file:size": 246632943,
+          "raster:bands": [
+            {
+              "name": "AMPL",
+              "data_type": "uint16",
+              "sampling": "area",
+              "bits_per_sample": 16,
+              "spatial_resolution": 10,
+              "scale": 0.0001,
+              "offset": 0
+            }
+          ]
+        },
+        "LENGTH": {
+          "title": "LENGTH",
+          "description": "LENGTH",
+          "href": "s3://HRVPP/CLMS/Pan-European/Biophysical/VPP/v01/2018/s1/VPP_2018_S2_T31UFS-010m_V101_s1_LENGTH.tif",
+          "type": "image/tiff",
+          "roles": [
+            "data"
+          ],
+          "eo:bands": [
+            {
+              "name": "LENGTH"
+            }
+          ],
+          "file:size": 147619852,
+          "raster:bands": [
+            {
+              "name": "LENGTH",
+              "data_type": "uint16",
+              "sampling": "area",
+              "bits_per_sample": 16,
+              "spatial_resolution": 10
+            }
+          ]
+        },
+        "LSLOPE": {
+          "title": "LSLOPE",
+          "description": "LSLOPE",
+          "href": "s3://HRVPP/CLMS/Pan-European/Biophysical/VPP/v01/2018/s1/VPP_2018_S2_T31UFS-010m_V101_s1_LSLOPE.tif",
+          "type": "image/tiff",
+          "roles": [
+            "data"
+          ],
+          "eo:bands": [
+            {
+              "name": "LSLOPE"
+            }
+          ],
+          "file:size": 178438971,
+          "raster:bands": [
+            {
+              "name": "LSLOPE",
+              "data_type": "uint16",
+              "sampling": "area",
+              "bits_per_sample": 16,
+              "spatial_resolution": 10,
+              "scale": 0.0001,
+              "offset": 0
+            }
+          ]
+        },
+        "RSLOPE": {
+          "title": "RSLOPE",
+          "description": "RSLOPE",
+          "href": "s3://HRVPP/CLMS/Pan-European/Biophysical/VPP/v01/2018/s1/VPP_2018_S2_T31UFS-010m_V101_s1_RSLOPE.tif",
+          "type": "image/tiff",
+          "roles": [
+            "data"
+          ],
+          "eo:bands": [
+            {
+              "name": "RSLOPE"
+            }
+          ],
+          "file:size": 170715247,
+          "raster:bands": [
+            {
+              "name": "RSLOPE",
+              "data_type": "uint16",
+              "sampling": "area",
+              "bits_per_sample": 16,
+              "spatial_resolution": 10,
+              "scale": 0.0001,
+              "offset": 0
+            }
+          ]
+        },
+        "SPROD": {
+          "title": "SPROD",
+          "description": "SPROD",
+          "href": "$SPROD_TIF",
+          "type": "image/tiff",
+          "roles": [
+            "data"
+          ],
+          "eo:bands": [
+            {
+              "name": "SPROD"
+            }
+          ],
+          "file:size": 206445266,
+          "raster:bands": [
+            {
+              "name": "SPROD",
+              "data_type": "uint16",
+              "sampling": "area",
+              "bits_per_sample": 16,
+              "spatial_resolution": 10,
+              "scale": 0.02,
+              "offset": 0
+            }
+          ]
+        },
+        "QFLAG": {
+          "title": "QFLAG",
+          "description": "QFLAG",
+          "href": "s3://HRVPP/CLMS/Pan-European/Biophysical/VPP/v01/2018/s1/VPP_2018_S2_T31UFS-010m_V101_s1_QFLAG.tif",
+          "type": "image/tiff",
+          "roles": [
+            "data"
+          ],
+          "eo:bands": [
+            {
+              "name": "QFLAG"
+            }
+          ],
+          "file:size": 20953053,
+          "raster:bands": [
+            {
+              "name": "QFLAG",
+              "data_type": "uint8",
+              "sampling": "area",
+              "bits_per_sample": 8,
+              "spatial_resolution": 10
+            }
+          ]
+        },
+        "TPROD": {
+          "title": "TPROD",
+          "description": "TPROD",
+          "href": "$TPROD_TIF",
+          "type": "image/tiff",
+          "roles": [
+            "data"
+          ],
+          "eo:bands": [
+            {
+              "name": "TPROD"
+            }
+          ],
+          "file:size": 208940920,
+          "raster:bands": [
+            {
+              "name": "TPROD",
+              "data_type": "uint16",
+              "sampling": "area",
+              "bits_per_sample": 16,
+              "spatial_resolution": 10,
+              "scale": 0.02,
+              "offset": 0
+            }
+          ]
+        }
+      },
+      "links": [
+        {
+          "href": "https://stac.openeo.vito.be/collections/copernicus_r_utm-wgs84_10_m_hrvpp-vpp_p_2017-now_v01/items/VPP_2018_S2_T31UFS-010m_V101_s1",
+          "rel": "self",
+          "type": "application/geo+json"
+        },
+        {
+          "href": "https://stac.openeo.vito.be/collections/copernicus_r_utm-wgs84_10_m_hrvpp-vpp_p_2017-now_v01",
+          "rel": "parent",
+          "type": "application/json"
+        },
+        {
+          "href": "https://stac.openeo.vito.be/collections/copernicus_r_utm-wgs84_10_m_hrvpp-vpp_p_2017-now_v01",
+          "rel": "collection",
+          "type": "application/json"
+        },
+        {
+          "href": "https://stac.openeo.vito.be/",
+          "rel": "root",
+          "type": "application/json"
+        }
+      ],
+      "collection": "copernicus_r_utm-wgs84_10_m_hrvpp-vpp_p_2017-now_v01"
+    }
+  ],
+  "links": [
+    {
+      "rel": "next",
+      "type": "application/json",
+      "method": "GET",
+      "href": "https://stac.openeo.vito.be/search?limit=20&bbox=5.0,51.2,5.01,51.21&datetime=2017-07-01T00:00:00Z/2018-07-30T23:59:59.999000Z&collections=copernicus_r_utm-wgs84_10_m_hrvpp-vpp_p_2017-now_v01&fields=+properties.season&token=MTUxNDc2NDgwMDAwMCxWUFBfMjAxOF9TMl9UMzFVRlMtMDEwbV9WMTAxX3MxLGNvcGVybmljdXNfcl91dG0td2dzODRfMTBfbV9ocnZwcC12cHBfcF8yMDE3LW5vd192MDE="
+    },
+    {
+      "rel": "root",
+      "type": "application/json",
+      "href": "https://stac.openeo.vito.be/"
+    },
+    {
+      "rel": "self",
+      "type": "application/json",
+      "href": "https://stac.openeo.vito.be/search?limit=20&bbox=5.0%2C51.2%2C5.01%2C51.21&datetime=2017-07-01T00%3A00%3A00Z%2F2018-07-30T23%3A59%3A59.999000Z&collections=copernicus_r_utm-wgs84_10_m_hrvpp-vpp_p_2017-now_v01&fields=%2Bproperties.season"
+    }
+  ],
+  "context": {
+    "returned": 2,
+    "limit": 20,
+    "matched": 2
+  }
+}
