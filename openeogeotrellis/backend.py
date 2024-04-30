@@ -1167,17 +1167,18 @@ class GpsProcessing(ConcreteProcessing):
 
         catalog_temporal_extent = metadata.get("extent", "temporal", "interval", default=None)
         outer_bounds = [None, None]
-        for extent in catalog_temporal_extent:
-            if extent[0]:
-                if outer_bounds[0] is None:
-                    outer_bounds[0] = extent[0]
-                else:
-                    outer_bounds[0] = min(outer_bounds[0], extent[0])
-            if extent[1]:
-                if outer_bounds[1] is None:
-                    outer_bounds[1] = extent[1]
-                else:
-                    outer_bounds[1] = max(outer_bounds[1], extent[1])
+        if catalog_temporal_extent:
+            for extent in catalog_temporal_extent:
+                if extent[0]:
+                    if outer_bounds[0] is None:
+                        outer_bounds[0] = extent[0]
+                    else:
+                        outer_bounds[0] = min(outer_bounds[0], extent[0])
+                if extent[1]:
+                    if outer_bounds[1] is None:
+                        outer_bounds[1] = extent[1]
+                    else:
+                        outer_bounds[1] = max(outer_bounds[1], extent[1])
         if temporal_extent_constraints is None:
             temporal_extent = outer_bounds
         else:
@@ -1232,11 +1233,11 @@ class GpsProcessing(ConcreteProcessing):
             if from_date is None:
                 days = 1
                 logger.warning(
-                    f"is_layer_too_large got open temporal extent: {repr(temporal_extent)}. Assuming {days} day."
+                    f"Got open temporal extent: {repr(temporal_extent)}. Assuming {days} day."
                 )
             else:
                 logger.warning(
-                    f"is_layer_too_large got half open temporal extent: {repr(temporal_extent)}. Assuming it goes till today."
+                    f"Got half open temporal extent: {repr(temporal_extent)}. Assuming it goes till today."
                 )
                 from_date_parsed = dateutil.parser.parse(from_date).replace(tzinfo=None)
                 to_date_now = datetime.datetime.now().replace(tzinfo=None)
