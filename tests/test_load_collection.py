@@ -483,9 +483,9 @@ def test_load_stac_collection_with_property_filters(catalog, tmp_path, requests_
         {'text': get_test_data_file("stac/issue640-api-layer-property-filter/copernicus_r_utm-wgs84_10_m_hrvpp-vpp_p_2017-now_v01_features.json")
                       .read_text()
                       .replace("$SPROD_TIF",
-                               "/home/bossie/PycharmProjects/openeo/openeo-geopyspark-driver/tests/data/binary/load_stac/copernicus_r_utm-wgs84_10_m_hrvpp-vpp_p_2017-now_v01/VPP_2018_S2_T31UFS-010m_V101_s1_SPROD_small.tif")
+                               str(get_test_data_file("binary/load_stac/copernicus_r_utm-wgs84_10_m_hrvpp-vpp_p_2017-now_v01/VPP_2018_S2_T31UFS-010m_V101_s1_SPROD_small.tif").absolute()))
                       .replace("$TPROD_TIF",
-                               "/home/bossie/PycharmProjects/openeo/openeo-geopyspark-driver/tests/data/binary/load_stac/copernicus_r_utm-wgs84_10_m_hrvpp-vpp_p_2017-now_v01/VPP_2018_S2_T31UFS-010m_V101_s1_TPROD_small.tif")},  # TODO: use placeholders as hrefs and replace
+                               str(get_test_data_file("binary/load_stac/copernicus_r_utm-wgs84_10_m_hrvpp-vpp_p_2017-now_v01/VPP_2018_S2_T31UFS-010m_V101_s1_TPROD_small.tif").absolute()))},
         {'text': get_test_data_file("stac/issue640-api-layer-property-filter/copernicus_r_utm-wgs84_10_m_hrvpp-vpp_p_2017-now_v01_no_features.json")
                       .read_text()}
     ])
