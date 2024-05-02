@@ -695,7 +695,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         elif layer_source_type == 'stac':
             cube = load_stac(layer_source_info["url"], load_params, env,
                              layer_properties=metadata.get("_vito", "properties", default={}),
-                             batch_jobs=None)
+                             batch_jobs=None, override_band_names=metadata.band_names)
             pyramid = cube.pyramid.levels
             metadata = cube.metadata
         elif layer_source_type == 'accumulo':

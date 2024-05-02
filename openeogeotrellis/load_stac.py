@@ -29,7 +29,10 @@ logger = logging.getLogger(__name__)
 
 
 def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_properties: Dict[str, object],
-              batch_jobs: Optional[backend.BatchJobs]) -> GeopysparkDataCube:
+              batch_jobs: Optional[backend.BatchJobs], override_band_names: List[str] = None) -> GeopysparkDataCube:
+    if override_band_names is None:
+        override_band_names = []
+
     logger.info("load_stac from url {u!r} with load params {p!r}".format(u=url, p=load_params))
 
     no_data_available_exception = OpenEOApiException(message="There is no data available for the given extents.",
@@ -368,7 +371,7 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
         # TODO: detect actual dimensions instead of this simple default?
         SpatialDimension(name="x", extent=[]), SpatialDimension(name="y", extent=[]),
         TemporalDimension(name='t', extent=[]),
-        BandDimension(name="bands", bands=[Band(band_name) for band_name in band_names])
+        BandDimension(name="bands", bands=[Band(band_name) for band_name in (override_band_names or band_names)])
     ])
 
     if load_params.bands:

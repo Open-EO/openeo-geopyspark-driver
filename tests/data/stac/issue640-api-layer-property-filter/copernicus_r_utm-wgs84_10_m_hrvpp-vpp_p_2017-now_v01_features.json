@@ -771,7 +771,7 @@
         "QFLAG": {
           "title": "QFLAG",
           "description": "QFLAG",
-          "href": "s3://HRVPP/CLMS/Pan-European/Biophysical/VPP/v01/2018/s1/VPP_2018_S2_T31UFS-010m_V101_s1_QFLAG.tif",
+          "href": "$QFLAG_TIF",
           "type": "image/tiff",
           "roles": [
             "data"

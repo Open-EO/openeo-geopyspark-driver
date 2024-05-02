@@ -1427,17 +1427,6 @@
       "bands": {
         "type": "bands",
         "values": [
-          "SOSD",
-          "EOSD",
-          "MAXD",
-          "SOSV",
-          "EOSV",
-          "MINV",
-          "MAXV",
-          "AMPL",
-          "LENGTH",
-          "LSLOPE",
-          "RSLOPE",
           "SPROD",
           "TPROD",
           "QFLAG"
@@ -1454,39 +1443,6 @@
     },
     "summaries": {
       "eo:bands": [
-        {
-          "name": "SOSD"
-        },
-        {
-          "name": "EOSD"
-        },
-        {
-          "name": "MAXD"
-        },
-        {
-          "name": "SOSV"
-        },
-        {
-          "name": "EOSV"
-        },
-        {
-          "name": "MINV"
-        },
-        {
-          "name": "MAXV"
-        },
-        {
-          "name": "AMPL"
-        },
-        {
-          "name": "LENGTH"
-        },
-        {
-          "name": "LSLOPE"
-        },
-        {
-          "name": "RSLOPE"
-        },
         {
           "name": "SPROD"
         },
