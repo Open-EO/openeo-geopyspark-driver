@@ -14,6 +14,7 @@ from pyspark import SparkContext, find_spark_home
 from scipy.spatial import cKDTree  # used for tuning the griddata interpolation settings
 import xarray as xr
 
+from openeo_driver.errors import OpenEOApiException, InternalException
 from openeogeotrellis.utils import get_jvm, ensure_executor_logging, set_max_memory
 
 OLCI_PRODUCT_TYPE = "OL_1_EFR___"
@@ -204,13 +205,21 @@ def read_product(product, product_type, band_names, tile_size, limit_python_memo
 
             digital_numbers = product_type == OLCI_PRODUCT_TYPE
 
-            orfeo_bands = create_s3_toa(product_type, creo_path, band_names,
-                                        [layout_extent['xmin'], layout_extent['ymin'], layout_extent['xmax'],
-                                         layout_extent['ymax']], digital_numbers=digital_numbers)
+            try:
+                orfeo_bands = create_s3_toa(product_type, creo_path, band_names,
+                                            [layout_extent['xmin'], layout_extent['ymin'], layout_extent['xmax'],
+                                             layout_extent['ymax']], digital_numbers=digital_numbers)
+                if orfeo_bands is None:
+                    continue
+            except Exception as e:
+                ex_type, ex_value, ex_traceback = sys.exc_info()
+                msg = f"Failed to read Sentinel-3 {product_type} {band_names} for {creo_path} and extent {layout_extent}. Error: {ex_value}"
+                logger.error(msg)
+                raise InternalException(msg)
 
             debug_mode = True
 
-            # Split orfeo output in tiles
+            # Split output in tiles
             logger.info(f"{log_prefix} Split {orfeo_bands.shape} in tiles of {tile_size}")
             if not digital_numbers:
                 nodata = np.nan
@@ -273,6 +282,8 @@ def create_s3_toa(product_type, creo_path, band_names, bbox_tile, digital_number
     geofile = os.path.join(creo_path, geofile)
 
     bbox_original, source_coordinates, data_mask = _read_latlonfile(bbox_tile, geofile, lat_band, lon_band)
+    if source_coordinates is None:
+        return None
     logger.info(f"{bbox_original=} {source_coordinates=}")
 
     if product_type == SLSTR_PRODUCT_TYPE:
@@ -390,7 +401,7 @@ def do_reproject(product_type, final_grid_resolution, creo_path, band_names,
                 return band_name
             raise ValueError(band_name)
 
-        if product_type == SLSTR_PRODUCT_TYPE and band_name in ["solar_azimuth_tn", "solar_zenith_tn",]:
+        if product_type == SLSTR_PRODUCT_TYPE and band_name in ["solar_azimuth_tn", "solar_zenith_tn", "sat_azimuth_tn", "sat_zenith_tn",]:
             band_data, band_settings = read_band(in_file, in_band=variable_name(band_name), data_mask=angle_data_mask)
             reprojected_data = apply_LUT_on_band(band_data, LUT_angles, band_settings.get('_FillValue', None))  # result is an numpy array with reprojected data
             interpolated = _linearNDinterpolate(reprojected_data)
@@ -486,6 +497,10 @@ def _read_latlonfile(bbox, latlon_file, lat_band="latitude", lon_band="longitude
     lat_orig = lat_lon_ds[lat_band].where(data_mask,drop=True).values
     lon_orig = lat_lon_ds[lon_band].where(data_mask,drop=True).values
     lat_lon_ds.close()
+
+    if lat_orig.size == 0 or lon_orig.size == 0:
+        logger.warning("No valid data found in lat/lon file")
+        return None, None, None
 
     extreme_right_lon = lon_orig[0,-1] # negative degrees (-170)
     extreme_left_lon = lon_orig[-1,0]  # possitive degrees (169)
@@ -635,9 +650,13 @@ def apply_LUT_on_band(in_data, LUT, nodata=None):
             # nodata = np.finfo(in_data.dtype).max
 
     data_flat = np.append(data_flat, nodata)
-    grid_values = data_flat[LUT]
+    #TODO: this avoids getting IndexOutOfBounds, but may hide the actual issue because array sizes don't match
+    LUT_invalid_index = LUT >= len(data_flat)
+    LUT[LUT_invalid_index] = 0
+    grid_values = data_flat[ LUT ]
     #ncols = self.target_shape[1]
     #grid_values.shape = (grid_values.size // ncols, ncols)  # convert flattend array to 2D
+    grid_values[LUT_invalid_index] = nodata
     return grid_values
 
 

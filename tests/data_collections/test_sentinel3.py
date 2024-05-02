@@ -41,3 +41,26 @@ def test_read_single():
     # new_dataset.write(arr)
     # new_dataset.close()
 
+
+
+def test_read_single_edge():
+
+    tiles = [
+        {
+            "key":{
+                "col":10,
+                "row":10,
+                "instant":100,
+
+            },
+            "key_extent":{
+                "xmin":15.86,"xmax":18.10,"ymin":47.096,"ymax":47.597
+            },
+            "key_epsg":4326
+        }
+    ]
+    product_dir = Path(
+        __file__).parent.parent / "data/binary/Sentinel-3/S3A_SL_2_LST____20240129T100540_20240129T100840_20240129T121848_0179_108_236_2160_PS1_O_NR_004.SEN3"
+    result = read_product((product_dir, tiles), SLSTR_PRODUCT_TYPE, ["LST_in:LST", "geometry_tn:solar_zenith_tn"], 1024, True)
+
+    assert len(result) == 0

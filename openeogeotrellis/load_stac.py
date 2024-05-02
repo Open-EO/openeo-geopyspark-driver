@@ -12,7 +12,8 @@ from openeo.metadata import SpatialDimension, TemporalDimension, BandDimension, 
 from openeo.util import rfc3339
 from openeo_driver import filter_properties, backend
 from openeo_driver.backend import LoadParameters, BatchJobMetadata
-from openeo_driver.errors import OpenEOApiException, ProcessParameterUnsupportedException, JobNotFoundException
+from openeo_driver.errors import OpenEOApiException, ProcessParameterUnsupportedException, JobNotFoundException, \
+    ProcessParameterInvalidException
 from openeo_driver.users import User
 from openeo_driver.util.geometry import BoundingBox, GeometryBufferer
 from openeo_driver.util.utm import utm_zone_from_epsg
@@ -26,12 +27,15 @@ from openeogeotrellis.utils import normalize_temporal_extent, get_jvm, to_projec
 logger = logging.getLogger(__name__)
 
 
-def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, batch_jobs: backend.BatchJobs) -> GeopysparkDataCube:
+def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_properties: Dict[str, object],
+              batch_jobs: Optional[backend.BatchJobs]) -> GeopysparkDataCube:
     logger.info("load_stac from url {u!r} with load params {p!r}".format(u=url, p=load_params))
 
     no_data_available_exception = OpenEOApiException(message="There is no data available for the given extents.",
                                                      code="NoDataAvailable", status_code=400)
     properties_unsupported_exception = ProcessParameterUnsupportedException("load_stac", "properties")
+
+    all_properties = {**layer_properties, **load_params.properties}
 
     user: Union[User, None] = env["user"]
 
@@ -97,7 +101,7 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, batch_jobs: b
 
     def matches_metadata_properties(itm: pystac.Item) -> bool:
         literal_matches = {property_name: filter_properties.extract_literal_match(condition)
-                           for property_name, condition in load_params.properties.items()}
+                           for property_name, condition in all_properties.items()}
 
         def operator_value(criterion: Dict[str, object]) -> (str, object):
             if len(criterion) != 1:
@@ -122,9 +126,12 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, batch_jobs: b
 
         return True
 
-    # TODO: `user` might be None
-    dependency_job_info = extract_own_job_info(url, user_id=user.user_id, batch_jobs=batch_jobs)
     collection = None
+
+    # TODO: `user` might be None
+    dependency_job_info = (extract_own_job_info(url, user_id=user.user_id, batch_jobs=batch_jobs) if batch_jobs
+                           else None)
+
     if dependency_job_info:
         intersecting_items = []
 
@@ -173,13 +180,22 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, batch_jobs: b
             band_names = [b["name"] for b in collection.summaries.lists.get("eo:bands", [])]
 
             client = pystac_client.Client.open(root_catalog.get_self_href())
+
+            if root_catalog.get_self_href().startswith("https://tamn.snapplanet.io"):
+                # by default, returns all properties and "none" if fields is specified
+                fields = None
+            else:
+                # standard behavior seems to be to include only a minimal subset e.g. https://stac.openeo.vito.be/
+                fields = [f"properties.{property_name}" for property_name in all_properties.keys()]
+
             search_request = client.search(
                 method="GET",
                 collections=collection_id,
                 bbox=requested_bbox.reproject("EPSG:4326").as_wsen_tuple() if requested_bbox else None,
                 limit=20,
-                datetime=f"{from_date.isoformat().replace('+00:00', 'Z')}/{to_date.isoformat().replace('+00:00', 'Z')}",
-                # inclusive
+                datetime=f"{from_date.isoformat().replace('+00:00', 'Z')}/"
+                         f"{to_date.isoformat().replace('+00:00', 'Z')}",  # end is inclusive
+                fields=fields,
             )
 
             logger.info(f"STAC API request: GET {search_request.url_with_parameters()}")
@@ -273,8 +289,8 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, batch_jobs: b
 
         builder = jvm.org.openeo.opensearch.OpenSearchResponses.featureBuilder()
 
-        builder = builder.withId(itm.id).withBBox(itm.bbox[0], itm.bbox[1], itm.bbox[2], itm.bbox[3]) \
-            .withNominalDate(itm.properties.get("datetime") or itm.properties["start_datetime"])
+        builder = (builder.withId(itm.id).withNominalDate(itm.properties.get("datetime") or itm.properties["start_datetime"]))
+
 
         for asset_id, asset in band_assets.items():
             asset_band_names = get_band_names(itm, asset)
@@ -295,12 +311,18 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, batch_jobs: b
             cell_width, cell_height = _compute_cellsize(proj_bbox, proj_shape)
             builder = builder.withResolution(cell_width)
 
+        latlon_bbox = BoundingBox.from_wsen_tuple(itm.bbox,4326) if itm.bbox else None
+        item_bbox = latlon_bbox
+        if proj_bbox is not None and proj_epsg is not None:
+            item_bbox = BoundingBox.from_wsen_tuple(proj_bbox, crs=proj_epsg)
+            latlon_bbox = item_bbox.reproject(4326)
+
+        if latlon_bbox is not None:
+            builder = builder.withBBox(latlon_bbox.as_wsen_tuple()[0], latlon_bbox.as_wsen_tuple()[1], latlon_bbox.as_wsen_tuple()[2], latlon_bbox.as_wsen_tuple()[3])
+
         f = builder.build()
         opensearch_client.addFeature(f)
 
-        item_bbox = BoundingBox.from_wsen_tuple(
-            itm.bbox, crs="EPSG:4326"
-        )
 
         stac_bbox = (item_bbox if stac_bbox is None
                      else BoundingBox.from_wsen_tuple(item_bbox.as_polygon().union(stac_bbox.as_polygon()).bounds,
@@ -318,6 +340,14 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, batch_jobs: b
 
     target_bbox = requested_bbox or stac_bbox
 
+    if not target_bbox:
+        raise ProcessParameterInvalidException(
+            process='load_stac',
+            parameter='spatial_extent',
+            reason=f'Unable to derive a spatial extent from provided STAC metadata: {url}, '
+                   f'please provide a spatial extent.'
+            )
+
     if proj_epsg and proj_bbox and proj_shape:  # exact resolution
         target_epsg = proj_epsg
         cell_width, cell_height = _compute_cellsize(proj_bbox, proj_shape)
@@ -327,9 +357,9 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, batch_jobs: b
             utm_zone_from_epsg(proj_epsg)
             cell_width = cell_height = 10.0
         except ValueError:
+            target_bbox_center = target_bbox.as_polygon().centroid
             cell_width = cell_height = GeometryBufferer.transform_meter_to_crs(
-                10.0, f"EPSG:{proj_epsg}", loi=((target_bbox.east - target_bbox.west) / 2,
-                                                (target_bbox.north - target_bbox.south / 2)))
+                10.0, f"EPSG:{proj_epsg}", loi=(target_bbox_center.x, target_bbox_center.y))
     else:  # 10m UTM
         target_epsg = target_bbox.best_utm()
         cell_width = cell_height = 10.0

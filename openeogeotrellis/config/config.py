@@ -174,9 +174,9 @@ class GpsBackendConfig(OpenEoBackendConfig):
     """
     default_max_executors: int = 100
 
-    default_driver_memory: str = "2G"
+    default_driver_memory: str = "8G"
 
-    default_driver_memoryOverhead: str = "3G"
+    default_driver_memoryOverhead: str = "2G"
 
     default_executor_memory: str = "2G"
 

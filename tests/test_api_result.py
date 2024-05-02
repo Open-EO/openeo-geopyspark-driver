@@ -3472,7 +3472,7 @@ class TestLoadStac:
             extent=Extent(spatial=SpatialExtent([[-180, -90, 180, 90]]), temporal=TemporalExtent([[None, None]])),
         )
 
-        root_catalog = Catalog(id="somestacapi", description="somestacapi")
+        root_catalog = Catalog(id="somestacapi", href="https://somestacapi", description="somestacapi")
         root_catalog.extra_fields["conformsTo"] = ["https://api.stacspec.org/v1.0.0-rc.1/item-search"]
         collection.set_root(root_catalog)
 
@@ -3860,14 +3860,14 @@ class TestLoadStac:
 
         ds = xarray.load_dataset(res_path)
 
-        assert ds.dims["x"] == 13010
-        assert ds.dims["y"] == 773
+        assert ds.dims["x"] == 12987
+        assert ds.dims["y"] == 767
         # TODO: there's a "t" dimension that corresponds to the start_datetime of the two items; is this right?
         assert list(ds.data_vars.keys())[1:] == ["B04", "B03", "B02"]
-        assert ds.coords["x"].values.min() == pytest.approx(572400.000, abs=10)
-        assert ds.coords["y"].values.min() == pytest.approx(5618660.000, abs=10)
-        assert ds.coords["x"].values.max() == pytest.approx(702500.000, abs=10)
-        assert ds.coords["y"].values.max() == pytest.approx(5626390.000, abs=10)
+        assert ds.coords["x"].values.min() == pytest.approx(572465.000, abs=10)
+        assert ds.coords["y"].values.min() == pytest.approx(5618675.000, abs=10)
+        assert ds.coords["x"].values.max() == pytest.approx(702325.000, abs=10)
+        assert ds.coords["y"].values.max() == pytest.approx(5626335.000, abs=10)
 
     def test_load_stac_from_spatiotemporal_netcdf_job_results(self, api110, urllib_mock, tmp_path):
 

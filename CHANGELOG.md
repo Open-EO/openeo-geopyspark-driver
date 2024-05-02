@@ -12,6 +12,21 @@ without compromising stable operations.
 
 ## Unreleased
 
+- vector_to_raster now returns a valid raster cube ([#273](https://github.com/Open-EO/openeo-python-driver/issues/273))
+- aggregate_spatial can now be used as input for vector_to_raster ([#663](https://github.com/Open-EO/openeo-geopyspark-driver/issues/663))
+- raster_to_vector now returns a valid vector cube ([openeo-python-driver#276](https://github.com/Open-EO/openeo-python-driver/issues/276))
+- raster_to_vector now includes the pixel values of the output polygons ([#578](https://github.com/Open-EO/openeo-geopyspark-driver/issues/578))
+- raster_to_vector now adds an id to each polygon including band name, date, and index ([#578](https://github.com/Open-EO/openeo-geopyspark-driver/issues/578))
+- resample_spatial now has better performance when resampling to a high resolution ([#265](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/265))
+- support property filters for STAC based collections ([#460](https://github.com/Open-EO/openeo-geopyspark-driver/issues/460))
+- performance improvement when reading from object storage [#740](https://github.com/Open-EO/openeo-geopyspark-driver/issues/740)
+
+## 0.30.2
+
+- load_stac: fix filtering by Item properties
+- Fix common cause of 'TopologyException' errors in vector processing
+- sample_by_feature will now use the 'feature_id_property' setting for naming generated assets. [#722](https://github.com/Open-EO/openeo-geopyspark-driver/issues/722)
+
 ## 0.30.1
 
 - Reinstate `ejr_credentials_vault_path` config option.

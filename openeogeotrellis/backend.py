@@ -760,33 +760,34 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         return cube
 
     def load_stac(self, url: str, load_params: LoadParameters, env: EvalEnv) -> GeopysparkDataCube:
-        return load_stac.load_stac(url, load_params, env, self.batch_jobs)
+        return load_stac.load_stac(url, load_params, env, layer_properties={}, batch_jobs=self.batch_jobs)
 
     def load_ml_model(self, model_id: str) -> 'JavaObject':
 
         # Trick to make sure IDE infers right type of `self.batch_jobs` and can resolve `get_job_output_dir`
         gps_batch_jobs: GpsBatchJobs = self.batch_jobs
 
-        def _create_model_dir():
+        def _create_model_dir(use_s3=False):
+            if use_s3:
+                # s3a://
+                return f"openeo-ml-models-dev/{generate_unique_id(prefix='model')}"
+
             def _set_permissions(job_dir: Path):
-                if not ConfigParams().is_kube_deploy:
-                    try:
-                        shutil.chown(job_dir, user = None, group = 'eodata')
-                    except LookupError as e:
-                        logger.warning(f"Could not change group of {job_dir} to eodata.")
+                try:
+                    shutil.chown(job_dir, user = None, group = 'eodata')
+                except LookupError as e:
+                    logger.warning(f"Could not change group of {job_dir} to eodata.")
                 add_permissions(job_dir, stat.S_ISGID | stat.S_IWGRP)  # make children inherit this group
-            ml_models_path = gps_batch_jobs.get_job_output_dir("ml_models")
-            if not os.path.exists(ml_models_path):
-                logger.info("Creating directory: {}".format(ml_models_path))
-                os.makedirs(ml_models_path)
-                _set_permissions(ml_models_path)
-            # Use a random id to avoid collisions.
-            model_dir_path = ml_models_path / generate_unique_id(prefix="model")
-            if not os.path.exists(model_dir_path):
-                logger.info("Creating directory: {}".format(model_dir_path))
-                os.makedirs(model_dir_path)
-                _set_permissions(model_dir_path)
-            return str(model_dir_path)
+
+            result_dir = gps_batch_jobs.get_job_output_dir("ml_models")
+            result_path = result_dir / generate_unique_id(prefix="model")
+            result_dir_exists = os.path.exists(result_dir)
+            logger.info("Creating directory: {}".format(result_path))
+            os.makedirs(result_path)
+            if not result_dir_exists:
+                _set_permissions(result_dir)
+            _set_permissions(result_path)
+            return str(result_path)
 
         if model_id.startswith('http'):
             # Load the model using its STAC metadata file.
@@ -816,8 +817,32 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             model_url = checkpoints[0]["href"]
             architecture = metadata["properties"]["ml-model:architecture"]
             # Download the model to the ml_models folder and load it as a java object.
-            model_dir_path = _create_model_dir()
+            use_s3 = ConfigParams().is_kube_deploy
+            model_dir_path = _create_model_dir(use_s3)
             if architecture == "random-forest":
+                if use_s3:
+                    with tempfile.TemporaryDirectory() as tmp_dir:
+                        # Download to tmp_dir and unpack it there.
+                        tmp_path = Path(tmp_dir + "/randomforest.model.tar.gz")
+                        logger.info(f"Downloading ml_model from {model_url} to {tmp_path}")
+                        with open(tmp_path, 'wb') as f:
+                            f.write(requests.get(model_url).content)
+                        shutil.unpack_archive(tmp_path, extract_dir = tmp_dir, format = 'gztar')
+                        # Upload the unpacked model to s3.
+                        unpacked_model_path = str(tmp_path).replace(".tar.gz", "")
+                        logger.info(f"Uploading ml_model to {model_dir_path}")
+                        path_split = model_dir_path.split("/")
+                        bucket, key = path_split[0], path_split[1]
+                        s3 = s3_client()
+                        for root, dirs, files in os.walk(unpacked_model_path):
+                            for file in files:
+                                relative_filepath = os.path.relpath(os.path.join(root, file), tmp_dir)
+                                s3.upload_file(os.path.join(root, file), bucket, key + "/" + relative_filepath)
+                        # Load the spark model using the new s3 path.
+                        s3_path = f"s3a://{model_dir_path}/randomforest.model/"
+                        logger.info("Loading ml_model using filename: {}".format(s3_path))
+                        model: JavaObject = RandomForestModel._load_java(sc = gps.get_spark_context(), path = s3_path)
+                        return model
                 dest_path = Path(model_dir_path + "/randomforest.model.tar.gz")
                 with open(dest_path, 'wb') as f:
                     f.write(requests.get(model_url).content)
@@ -825,7 +850,18 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 unpacked_model_path = str(dest_path).replace(".tar.gz", "")
                 logger.info("Loading ml_model using filename: {}".format(unpacked_model_path))
                 model: JavaObject = RandomForestModel._load_java(sc=gps.get_spark_context(), path="file:" + unpacked_model_path)
+                return model
             elif architecture == "catboost":
+                if use_s3:
+                    # TODO: Verify that local files work. If it does, we can remove the model_dir_path implementation.
+                    # Download the model to the tmp directory and load it as a java object.
+                    with tempfile.TemporaryDirectory() as tmp_dir:
+                        tmp_path = Path(tmp_dir + "/catboost_model.cbm")
+                        logger.info(f"Downloading ml_model from {model_url} to {tmp_path}")
+                        with open(tmp_path, 'wb') as f:
+                            f.write(requests.get(model_url).content)
+                        model: JavaObject = CatBoostClassificationModel.load_native_model(tmp_path)
+                        return model
                 filename = Path(model_dir_path + "/catboost_model.cbm")
                 with open(filename, 'wb') as f:
                     f.write(requests.get(model_url).content)
@@ -1020,7 +1056,14 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 elif root_cause_message:
                     udf_stacktrace = GeoPySparkBackendImplementation.extract_udf_stacktrace(root_cause_message)
                     if udf_stacktrace:
-                        summary = f"UDF Exception during Spark execution: {udf_stacktrace}"
+                        if len(udf_stacktrace) > width - 150:
+                            udf_stacktrace_list = udf_stacktrace.split("\n")
+                            udf_stacktrace_new = "\n".join(
+                                udf_stacktrace_list[:5] + ["... skipped stack frames ..."] + udf_stacktrace_list[-5:]
+                            )
+                            if len(udf_stacktrace_new) < width - 150:
+                                udf_stacktrace = udf_stacktrace_new
+                        summary = f"UDF exception while evaluating processing graph. Please check your user defined functions. {udf_stacktrace}"
                     else:
                         summary = f"Exception during Spark execution: {root_cause_class_name}: {root_cause_message}"
                 else:
@@ -1900,19 +1943,19 @@ class GpsBatchJobs(backend.BatchJobs):
                                      status_code=400)
 
         isKube = ConfigParams().is_kube_deploy
-        driver_memory = job_options.get("driver-memory", "3G" if isKube else "8G" )
-        driver_memory_overhead = job_options.get("driver-memoryOverhead", "2G" if isKube else "2G")
-        executor_memory = job_options.get("executor-memory", "2G")
-        executor_memory_overhead = job_options.get("executor-memoryOverhead", "2500m" if isKube else "3G")
+        driver_memory = job_options.get("driver-memory", get_backend_config().default_driver_memory )
+        driver_memory_overhead = job_options.get("driver-memoryOverhead", get_backend_config().default_driver_memoryOverhead)
+        executor_memory = job_options.get("executor-memory", get_backend_config().default_executor_memory)
+        executor_memory_overhead = job_options.get("executor-memoryOverhead", get_backend_config().default_executor_memoryOverhead )
         driver_cores = str(job_options.get("driver-cores", 1 if isKube else 5))
         executor_cores = str(job_options.get("executor-cores", 1 if isKube else 2))
         executor_corerequest = job_options.get("executor-request-cores", "NONE")
         if executor_corerequest == "NONE":
             executor_corerequest = str(int(executor_cores)/2*1000)+"m"
-        max_executors = str(job_options.get("max-executors", 20 if isKube else 100))
-        executor_threads_jvm = str(job_options.get("executor-threads-jvm", 8 if isKube else 10))
-        gdal_dataset_cache_size = str(job_options.get("gdal-dataset-cache-size", 26))
-        gdal_cachemax = str(job_options.get("gdal-cachemax", 150))
+        max_executors = str(job_options.get("max-executors", get_backend_config().default_max_executors))
+        executor_threads_jvm = str(job_options.get("executor-threads-jvm", get_backend_config().default_executor_threads_jvm))
+        gdal_dataset_cache_size = str(job_options.get("gdal-dataset-cache-size", get_backend_config().default_gdal_dataset_cache_size))
+        gdal_cachemax = str(job_options.get("gdal-cachemax", get_backend_config().default_gdal_cachemax ))
         queue = job_options.get("queue", "default")
         profile = as_boolean_arg("profile", default_value="false")
         max_soft_errors_ratio = as_max_soft_errors_ratio_arg()
