@@ -1428,7 +1428,8 @@
         "type": "bands",
         "values": [
           "SPROD",
-          "TPROD"
+          "TPROD",
+          "QFLAG"
         ]
       }
     },
@@ -1447,6 +1448,9 @@
         },
         {
           "name": "TPROD"
+        },
+        {
+          "name": "QFLAG"
         }
       ]
     }

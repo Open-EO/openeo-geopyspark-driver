@@ -478,8 +478,8 @@ def test_data_cube_params(catalog):
 
 
 @pytest.mark.parametrize(["bands", "expected_bands"], [
-    ([], ["SPROD", "TPROD"]),  # ordered as specified in layercatalog.json
-    (["TPROD", "SPROD"], ["TPROD", "SPROD"])  # override order
+    ([], ["SPROD", "TPROD", "QFLAG"]),  # ordered as specified in layercatalog.json
+    (["TPROD", "QFLAG", "SPROD"], ["TPROD", "QFLAG", "SPROD"])  # override order
 ])
 def test_load_stac_collection_with_property_filters(catalog, tmp_path, requests_mock, bands, expected_bands):
     requests_mock.get("https://stac.openeo.vito.be/", text=get_test_data_file("stac/issue640-api-layer-property-filter/stac.openeo.vito.be.json").read_text())
@@ -489,7 +489,9 @@ def test_load_stac_collection_with_property_filters(catalog, tmp_path, requests_
                       .replace("$SPROD_TIF",
                                str(get_test_data_file("binary/load_stac/copernicus_r_utm-wgs84_10_m_hrvpp-vpp_p_2017-now_v01/VPP_2018_S2_T31UFS-010m_V101_s1_SPROD_small.tif").absolute()))
                       .replace("$TPROD_TIF",
-                               str(get_test_data_file("binary/load_stac/copernicus_r_utm-wgs84_10_m_hrvpp-vpp_p_2017-now_v01/VPP_2018_S2_T31UFS-010m_V101_s1_TPROD_small.tif").absolute()))},
+                               str(get_test_data_file("binary/load_stac/copernicus_r_utm-wgs84_10_m_hrvpp-vpp_p_2017-now_v01/VPP_2018_S2_T31UFS-010m_V101_s1_TPROD_small.tif").absolute()))
+                      .replace("$QFLAG_TIF",
+                               str(get_test_data_file("binary/load_stac/copernicus_r_utm-wgs84_10_m_hrvpp-vpp_p_2017-now_v01/VPP_2018_S2_T31UFS-010m_V101_s1_QFLAG_small.tif").absolute()))},
         {'text': get_test_data_file("stac/issue640-api-layer-property-filter/copernicus_r_utm-wgs84_10_m_hrvpp-vpp_p_2017-now_v01_no_features.json")
                       .read_text()}
     ])
@@ -509,4 +511,5 @@ def test_load_stac_collection_with_property_filters(catalog, tmp_path, requests_
     with rasterio.open(output_file) as ds:
         assert ds.count == len(expected_bands)
         for band_index, band_name in enumerate(expected_bands):
+            # ds.tags(0) has global metadata, band metadata starts from 1
             assert ds.tags(band_index + 1)["DESCRIPTION"] == expected_bands[band_index]
