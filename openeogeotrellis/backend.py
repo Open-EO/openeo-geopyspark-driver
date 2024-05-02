@@ -1,4 +1,3 @@
-import datetime
 import datetime as dt
 import io
 import json
@@ -11,7 +10,6 @@ import socket
 import stat
 import subprocess
 
-import dateutil
 import sys
 import tempfile
 import time
@@ -115,7 +113,7 @@ from openeogeotrellis.utils import (
     single_value,
     to_projected_polygons,
     zk_client,
-    reproject_cellsize, parse_approximate_isoduration,
+    reproject_cellsize,
 )
 from openeogeotrellis.vault import Vault
 
