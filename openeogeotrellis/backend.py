@@ -1135,7 +1135,14 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
     def set_terrascope_access_token_getter(self, get_terrascope_access_token: Callable[[User, str], str]):
         self.batch_jobs.set_terrascope_access_token_getter(get_terrascope_access_token)
 
-    def request_costs(self, *, user: User, request_id: str, success: bool) -> Optional[float]:
+    def request_costs(
+        self,
+        *,
+        user: User,
+        job_options: Union[dict, None] = None,
+        request_id: str,
+        success: bool,
+    ) -> Optional[float]:
         """Get resource usage cost associated with (current) synchronous processing request."""
 
         user_id = user.user_id
@@ -1158,6 +1165,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
             etl_api = get_etl_api(
                 user=user,
+                job_options=job_options,
                 allow_dynamic_etl_api=bool(
                     # TODO #531 this is temporary feature flag, to removed when done
                     backend_config.etl_dynamic_api_flag

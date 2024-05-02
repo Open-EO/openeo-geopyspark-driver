@@ -12,6 +12,11 @@ without compromising stable operations.
 
 ## Unreleased
 
+## 0.31.1
+
+- Initial support for `job_options` handling in `OpenEoBackendImplementation.request_costs()`
+  ([#531](https://github.com/Open-EO/openeo-geopyspark-driver/issues/531), eu-cdse/openeo-cdse-infra#114)
+
 ## 0.31.0
 
 - vector_to_raster now returns a valid raster cube ([#273](https://github.com/Open-EO/openeo-python-driver/issues/273))
