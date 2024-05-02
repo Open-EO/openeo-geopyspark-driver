@@ -475,7 +475,7 @@ def test_request_costs(mock_get_etl_api_credentials_from_env, backend_implementa
 
         mock_etl_api.log_resource_usage.assert_called_once_with(
             batch_job_id='r-abc123',
-            title=None,
+            title="Synchronous processing request 'r-abc123'",
             execution_id='r-abc123',
             user_id=user_id,
             started_ms=None,

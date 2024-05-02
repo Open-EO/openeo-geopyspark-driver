@@ -1178,7 +1178,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
             costs = etl_api.log_resource_usage(
                 batch_job_id=request_id,
-                title="Synchronous processing request {request_id}",
+                title=f"Synchronous processing request {request_id!r}",
                 execution_id=request_id,
                 user_id=user_id,
                 started_ms=None,
