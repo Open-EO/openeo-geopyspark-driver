@@ -19,9 +19,9 @@ without compromising stable operations.
 
 ## 0.31.0
 
-- vector_to_raster now returns a valid raster cube ([#273](https://github.com/Open-EO/openeo-python-driver/issues/273))
+- vector_to_raster now returns a valid raster cube ([Open-EO/openeo-python-driver#273](https://github.com/Open-EO/openeo-python-driver/issues/273))
 - aggregate_spatial can now be used as input for vector_to_raster ([#663](https://github.com/Open-EO/openeo-geopyspark-driver/issues/663))
-- raster_to_vector now returns a valid vector cube ([openeo-python-driver#276](https://github.com/Open-EO/openeo-python-driver/issues/276))
+- raster_to_vector now returns a valid vector cube ([Open-EO/openeo-python-driver#276](https://github.com/Open-EO/openeo-python-driver/issues/276))
 - raster_to_vector now includes the pixel values of the output polygons ([#578](https://github.com/Open-EO/openeo-geopyspark-driver/issues/578))
 - raster_to_vector now adds an id to each polygon including band name, date, and index ([#578](https://github.com/Open-EO/openeo-geopyspark-driver/issues/578))
 - resample_spatial now has better performance when resampling to a high resolution ([#265](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/265))
@@ -350,7 +350,7 @@ Build `20230117-966`
 - The 'if' process will no longer evaluate the branch that is not accepted https://github.com/Open-EO/openeo-python-driver/issues/109
 
 ## 2023-01-20 (0.6.7a1)
-- Changed: Getting a job's logs now leaves out log lines that have no loglevel or a level that is not supported. [openeo-python-driver/#160](https://github.com/Open-EO/openeo-python-driver/issues/160)
+- Changed: Getting a job's logs now leaves out log lines that have no loglevel or a level that is not supported. [Open-EO/openeo-python-driver#160](https://github.com/Open-EO/openeo-python-driver/issues/160)
 
 ## 2022-11-28 (0.6.3a1)
 - Added an experimental job option 'udf-dependency-archives' to pass on archives of UDF dependencies
