@@ -1199,98 +1199,6 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
 
 class GpsProcessing(ConcreteProcessing):
-
-    @staticmethod
-    def derive_temporal_extent(collection_id: str, constraints: dict, env: EvalEnv) -> List[Optional[str]]:
-        catalog = env.backend_implementation.catalog
-        metadata_json = catalog.get_collection_metadata(collection_id=collection_id)
-        metadata = GeopysparkCubeMetadata(metadata_json)
-
-        temporal_extent_constraints = constraints.get("temporal_extent")
-
-        catalog_temporal_extent = metadata.get("extent", "temporal", "interval", default=None)
-        outer_bounds = [None, None]
-        if catalog_temporal_extent:
-            for extent in catalog_temporal_extent:
-                if extent[0]:
-                    if outer_bounds[0] is None:
-                        outer_bounds[0] = extent[0]
-                    else:
-                        outer_bounds[0] = min(outer_bounds[0], extent[0])
-                if extent[1]:
-                    if outer_bounds[1] is None:
-                        outer_bounds[1] = extent[1]
-                    else:
-                        outer_bounds[1] = max(outer_bounds[1], extent[1])
-        if temporal_extent_constraints is None:
-            temporal_extent = outer_bounds
-        else:
-            # take the intersection of outer_bounds and temporal_extent
-            beginnings = []
-            if outer_bounds[0]:
-                beginnings.append(outer_bounds[0])
-            if temporal_extent_constraints[0]:
-                beginnings.append(temporal_extent_constraints[0])
-            if not beginnings:
-                beginnings.append(None)
-
-            ends = []
-            if outer_bounds[1]:
-                ends.append(outer_bounds[1])
-            if temporal_extent_constraints[1]:
-                ends.append(temporal_extent_constraints[1])
-            if not ends:
-                ends.append(None)
-
-            temporal_extent = (
-                max(beginnings),  # ISO date is sortable like a string
-                min(ends),
-            )
-        return temporal_extent
-
-    @staticmethod
-    def estimate_number_of_temporal_observations(collection_id: str,
-                                                 constraints: dict,
-                                                 env: EvalEnv,
-                                                 ) -> int:
-        catalog = env.backend_implementation.catalog
-        temporal_extent = GpsProcessing.derive_temporal_extent(collection_id, constraints, env)
-
-        metadata_json = catalog.get_collection_metadata(collection_id=collection_id)
-        metadata = GeopysparkCubeMetadata(metadata_json)
-
-        consider_as_singular_time_step = deep_get(metadata_json, "_vito", "data_source",
-                                                  "consider_as_singular_time_step", default=False)
-        if consider_as_singular_time_step:
-            return 1
-
-        # step could be explicitly 'None', so we use 'or' to specify the default
-        temporal_step = metadata.get("cube:dimensions", "t", "step", default=None) or "P10D"
-
-        # https://github.com/stac-extensions/datacube?tab=readme-ov-file#temporal-dimension-object
-        temporal_step = parse_approximate_isoduration(temporal_step)
-        estimate_days_per_sample = temporal_step.days
-
-        from_date, to_date = temporal_extent
-        if to_date is None:
-            if from_date is None:
-                days = 1
-                logger.warning(
-                    f"Got open temporal extent: {repr(temporal_extent)}. Assuming {days} day."
-                )
-            else:
-                logger.warning(
-                    f"Got half open temporal extent: {repr(temporal_extent)}. Assuming it goes till today."
-                )
-                from_date_parsed = dateutil.parser.parse(from_date).replace(tzinfo=None)
-                to_date_now = datetime.datetime.now().replace(tzinfo=None)
-                days = (to_date_now - from_date_parsed).days / estimate_days_per_sample
-        else:
-            days = (dateutil.parser.parse(to_date) - dateutil.parser.parse(
-                from_date)).days / estimate_days_per_sample
-        days = max(int(days), 1)
-        return days
-
     def extra_validation(
             self, process_graph: dict, env: EvalEnv, result, source_constraints: List[SourceConstraint]
     ) -> Iterable[dict]:
@@ -1341,7 +1249,11 @@ class GpsProcessing(ConcreteProcessing):
                                                                   f"collection {collection_id!r}"}
                     continue
 
-                number_of_temporal_observations = self.estimate_number_of_temporal_observations(collection_id, constraints, env)
+                catalog = env.backend_implementation.catalog
+                number_of_temporal_observations = catalog.estimate_number_of_temporal_observations(
+                    collection_id,
+                    constraints,
+                )
 
                 if spatial_extent and temporal_extent:
                     band_names = constraints.get("bands")
