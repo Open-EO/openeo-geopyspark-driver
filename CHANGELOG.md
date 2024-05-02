@@ -12,6 +12,8 @@ without compromising stable operations.
 
 ## Unreleased
 
+## 0.31.0
+
 - vector_to_raster now returns a valid raster cube ([#273](https://github.com/Open-EO/openeo-python-driver/issues/273))
 - aggregate_spatial can now be used as input for vector_to_raster ([#663](https://github.com/Open-EO/openeo-geopyspark-driver/issues/663))
 - raster_to_vector now returns a valid vector cube ([openeo-python-driver#276](https://github.com/Open-EO/openeo-python-driver/issues/276))
@@ -20,6 +22,7 @@ without compromising stable operations.
 - resample_spatial now has better performance when resampling to a high resolution ([#265](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/265))
 - support property filters for STAC based collections ([#460](https://github.com/Open-EO/openeo-geopyspark-driver/issues/460))
 - performance improvement when reading from object storage [#740](https://github.com/Open-EO/openeo-geopyspark-driver/issues/740)
+- support Microsoft Planetary Computer in load_stac [#760](https://github.com/Open-EO/openeo-geopyspark-driver/issues/760)
 
 ## 0.30.2
 

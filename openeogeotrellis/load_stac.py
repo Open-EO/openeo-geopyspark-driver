@@ -5,6 +5,7 @@ from urllib.parse import urlparse
 
 import dateutil
 import geopyspark as gps
+import planetary_computer
 import pystac
 import pystac_client
 from geopyspark import LayerType, TiledRasterLayer
@@ -179,7 +180,9 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
 
             band_names = [b["name"] for b in collection.summaries.lists.get("eo:bands", [])]
 
-            client = pystac_client.Client.open(root_catalog.get_self_href())
+            modifier = (planetary_computer.sign_inplace if root_catalog.get_self_href().startswith(
+                "https://planetarycomputer.microsoft.com/api/stac/v1") else None)
+            client = pystac_client.Client.open(root_catalog.get_self_href(), modifier=modifier)
 
             if root_catalog.get_self_href().startswith("https://tamn.snapplanet.io"):
                 # by default, returns all properties and "none" if fields is specified
@@ -287,10 +290,9 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
         band_assets = {asset_id: asset for asset_id, asset
                        in dict(sorted(itm.get_assets().items())).items() if is_band_asset(asset)}
 
-        builder = jvm.org.openeo.opensearch.OpenSearchResponses.featureBuilder()
-
-        builder = (builder.withId(itm.id).withNominalDate(itm.properties.get("datetime") or itm.properties["start_datetime"]))
-
+        builder = (jvm.org.openeo.opensearch.OpenSearchResponses.featureBuilder()
+                   .withId(itm.id)
+                   .withNominalDate(itm.properties.get("datetime") or itm.properties["start_datetime"]))
 
         for asset_id, asset in band_assets.items():
             asset_band_names = get_band_names(itm, asset)
@@ -318,11 +320,9 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
             latlon_bbox = item_bbox.reproject(4326)
 
         if latlon_bbox is not None:
-            builder = builder.withBBox(latlon_bbox.as_wsen_tuple()[0], latlon_bbox.as_wsen_tuple()[1], latlon_bbox.as_wsen_tuple()[2], latlon_bbox.as_wsen_tuple()[3])
+            builder = builder.withBBox(*latlon_bbox.as_wsen_tuple())
 
-        f = builder.build()
-        opensearch_client.addFeature(f)
-
+        opensearch_client.addFeature(builder.build())
 
         stac_bbox = (item_bbox if stac_bbox is None
                      else BoundingBox.from_wsen_tuple(item_bbox.as_polygon().union(stac_bbox.as_polygon()).bounds,
