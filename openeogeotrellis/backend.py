@@ -1178,7 +1178,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
             costs = etl_api.log_resource_usage(
                 batch_job_id=request_id,
-                title=None,
+                title="Synchronous processing request {request_id}",
                 execution_id=request_id,
                 user_id=user_id,
                 started_ms=None,
@@ -1194,8 +1194,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             )
 
             logger.info(
-                f"{'successful' if success else 'failed'} request required {cpu_seconds} CPU-seconds, "
-                f"{mb_seconds} MB-seconds and {sentinel_hub_processing_units} PU(s); this cost {costs} credit(s)"
+                f"request_costs sync processing {request_id=} {success=} {cpu_seconds=} {mb_seconds=} {sentinel_hub_processing_units=} -> {costs=}"
             )
 
             return costs

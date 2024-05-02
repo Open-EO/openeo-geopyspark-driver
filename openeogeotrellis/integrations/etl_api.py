@@ -100,6 +100,8 @@ class EtlApi:
 
         :return: costs (in credits)
         """
+        # TODO: the given `batch_job_id` argument is not always a real batch job id
+        #       (e.g. request id for sync processing), while this logger adapter seems to assume that
         log = logging.LoggerAdapter(_log, extra={"job_id": batch_job_id, "user_id": user_id})
 
         metrics = {}
@@ -132,21 +134,24 @@ class EtlApi:
             'metrics': metrics
         }
 
-        log.debug(f"logging resource usage {data} at {self._endpoint}")
+        log.debug(f"EtlApi.log_resource_usage: POST {data=} at {self._endpoint!r}")
 
         access_token = self._access_token_helper.get_access_token()
         with self._session.post(f"{self._endpoint}/resources", headers={'Authorization': f"Bearer {access_token}"},
                                 json=data, timeout=REQUESTS_TIMEOUT_SECONDS) as resp:
             if not resp.ok:
-                log.warning(
-                    f"{resp.request.method} {resp.request.url} {data} returned {resp.status_code}: {resp.text}")
-
-            resp.raise_for_status()
-
-            # TODO: is cost guaranteed to be in credits?
-            #       Or, vice versa, is it unnecessary to assume anything about the cost unit here?
-            total_credits = sum(resource['cost'] for resource in resp.json())
-            return total_credits
+                # TODO: doing both `resp.ok` and `resp.raise_for_status` is redundant?
+                log.error(
+                    f"EtlApi.log_resource_usage {resp.request.method} {resp.request.url} {data} failed with {resp.status_code}: {resp.text}"
+                )
+                resp.raise_for_status()
+            else:
+                # TODO: is cost guaranteed to be in credits?
+                #       Or, vice versa, is it unnecessary to assume anything about the cost unit here?
+                resources = resp.json()
+                total_credits = sum(resource["cost"] for resource in resources)
+                log.debug(f"EtlApi.log_resource_usage: got {total_credits=} from {resources=}")
+                return total_credits
 
     def log_added_value(self, batch_job_id: str, title: Optional[str], execution_id: str, user_id: str,
                         started_ms: Optional[float], finished_ms: Optional[float], process_id: str,
@@ -182,6 +187,7 @@ class EtlApi:
         access_token = self._access_token_helper.get_access_token()
         with self._session.post(f"{self._endpoint}/addedvalue", headers={'Authorization': f"Bearer {access_token}"},
                                 json=data, timeout=REQUESTS_TIMEOUT_SECONDS) as resp:
+            # TODO: doing both `resp.ok` and `resp.raise_for_status` is redundant?
             if not resp.ok:
                 log.warning(
                     f"{resp.request.method} {resp.request.url} {data} returned {resp.status_code}: {resp.text}")
