@@ -879,7 +879,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                     f"Got half open temporal extent: {repr(temporal_extent)}. Assuming it goes till today."
                 )
                 from_date_parsed = dateutil.parser.parse(from_date).replace(tzinfo=None)
-                to_date_now = datetime.datetime.now().replace(tzinfo=None)
+                to_date_now = datetime.now().replace(tzinfo=None)
                 days = (to_date_now - from_date_parsed).days / estimate_days_per_sample
         else:
             days = (dateutil.parser.parse(to_date) - dateutil.parser.parse(
