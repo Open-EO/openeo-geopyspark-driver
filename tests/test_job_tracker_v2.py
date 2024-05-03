@@ -1690,3 +1690,27 @@ class TestCliApp:
             log = json.loads(log)
             assert {"levelname", "name", "message", "run_id"}.issubset(log.keys())
             assert log["run_id"] == "run Forrest run"
+
+    @pytest.mark.parametrize("run_id", [None, "run Forrest run"])
+    def test_run_id(self, pytester, run_id):
+        command = [
+            sys.executable,
+            "-m",
+            "openeogeotrellis.job_tracker_v2",
+            "--app-cluster",
+            "broken-dummy",
+        ]
+
+        if run_id:
+            command.extend([
+                "--run-id",
+                "run Forrest run",
+            ])
+
+        run_result = pytester.run(*command)
+        assert run_result.ret == 1
+
+        logs = run_result.errlines
+        for log in logs:
+            log = json.loads(log)
+            assert log.get("run_id") == run_id
