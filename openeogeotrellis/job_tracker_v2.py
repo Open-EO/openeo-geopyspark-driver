@@ -33,7 +33,8 @@ from openeo_driver.util.logging import (
     setup_logging,
     LOG_HANDLER_STDERR_BASIC,
     LOG_HANDLER_STDERR_JSON,
-    ExtraLoggingFilter,
+    BatchJobLoggingFilter as GlobalExtraLoggingFilter,
+    LOGGING_CONTEXT_BATCH_JOB as LOGGING_CONTEXT_GLOBAL,
 )
 import openeo_driver.utils
 
@@ -605,77 +606,77 @@ class CliApp:
 
         args = self.parse_cli_args(args=args)
 
-        run_id = args.run_id or str(time.time())
+        if args.run_id:
+            GlobalExtraLoggingFilter.set("run_id", args.run_id)
 
-        with ExtraLoggingFilter.with_extra_logging(run_id=run_id):
-            rotating_log = args.rotating_log
+        rotating_log = args.rotating_log
 
-            if not rotating_log and not ConfigParams().is_kube_deploy and Path("logs").is_dir():
-                # TODO: eliminate this temporary fallback
-                rotating_log = f"logs/job_tracker_python.log"
+        if not rotating_log and not ConfigParams().is_kube_deploy and Path("logs").is_dir():
+            # TODO: eliminate this temporary fallback
+            rotating_log = f"logs/job_tracker_python.log"
 
-            self.setup_logging(
-                basic_logging=args.basic_logging,
-                rotating_file=rotating_log,
-            )
+        self.setup_logging(
+            basic_logging=args.basic_logging,
+            rotating_file=rotating_log,
+        )
 
-            _log.info(f"job_tracker_v2 cli {args=}")
-            _log.info(f"job_tracker_v2 cli {ConfigParams()=!s}")
-            package_versions = openeo_driver.utils.get_package_versions(
-                ["openeo", "openeo_driver", "openeo-geopyspark", "kubernetes"]
-            )
-            _log.info(f"job_tracker_v2 cli {package_versions=}")
+        _log.info(f"job_tracker_v2 cli {args=}")
+        _log.info(f"job_tracker_v2 cli {ConfigParams()=!s}")
+        package_versions = openeo_driver.utils.get_package_versions(
+            ["openeo", "openeo_driver", "openeo-geopyspark", "kubernetes"]
+        )
+        _log.info(f"job_tracker_v2 cli {package_versions=}")
 
-            with TimingLogger(logger=_log.info, title=f"job_tracker_v2 cli"):
-                try:
-                    config = get_backend_config()
+        with TimingLogger(logger=_log.info, title=f"job_tracker_v2 cli"):
+            try:
+                config = get_backend_config()
 
-                    # ZooKeeper Job Registry
-                    if config.use_zk_job_registry:
-                        zk_root_path = args.zk_job_registry_root_path
-                        _log.info(f"Using {zk_root_path=}")
-                        zk_job_registry = ZkJobRegistry(root_path=zk_root_path)
-                    else:
-                        zk_job_registry = None
+                # ZooKeeper Job Registry
+                if config.use_zk_job_registry:
+                    zk_root_path = args.zk_job_registry_root_path
+                    _log.info(f"Using {zk_root_path=}")
+                    zk_job_registry = ZkJobRegistry(root_path=zk_root_path)
+                else:
+                    zk_job_registry = None
 
-                    requests_session = requests_with_retry(total=3, backoff_factor=2)
+                requests_session = requests_with_retry(total=3, backoff_factor=2)
 
-                    # Elastic Job Registry (EJR)
-                    elastic_job_registry = get_elastic_job_registry(requests_session) if config.ejr_api else None
+                # Elastic Job Registry (EJR)
+                elastic_job_registry = get_elastic_job_registry(requests_session) if config.ejr_api else None
 
-                    # YARN or Kubernetes?
-                    app_cluster = args.app_cluster
-                    if app_cluster == "auto":
-                        # TODO: eliminate (need for) auto-detection.
-                        app_cluster = "k8s" if ConfigParams().is_kube_deploy else "yarn"
-                    if app_cluster == "yarn":
-                        app_state_getter = YarnStatusGetter(
-                            yarn_api_base_url=ConfigParams().yarn_rest_api_base_url,
-                            auth=requests_gssapi.HTTPSPNEGOAuth(
-                                mutual_authentication=requests_gssapi.REQUIRED
-                            ),
-                        )
-                    elif app_cluster == "k8s":
-                        app_state_getter = K8sStatusGetter(kube_client("CustomObject"), Prometheus(config.prometheus_api))
-                    elif app_cluster == "broken-dummy":
-                        raise RuntimeError("Broken dummy")
-                    else:
-                        raise ValueError(app_cluster)
-
-                    job_costs_calculator: JobCostsCalculator = DynamicEtlApiJobCostCalculator()
-
-                    job_tracker = JobTracker(
-                        app_state_getter=app_state_getter,
-                        zk_job_registry=zk_job_registry,
-                        principal=args.principal,
-                        keytab=args.keytab,
-                        elastic_job_registry=elastic_job_registry,
-                        job_costs_calculator=job_costs_calculator
+                # YARN or Kubernetes?
+                app_cluster = args.app_cluster
+                if app_cluster == "auto":
+                    # TODO: eliminate (need for) auto-detection.
+                    app_cluster = "k8s" if ConfigParams().is_kube_deploy else "yarn"
+                if app_cluster == "yarn":
+                    app_state_getter = YarnStatusGetter(
+                        yarn_api_base_url=ConfigParams().yarn_rest_api_base_url,
+                        auth=requests_gssapi.HTTPSPNEGOAuth(
+                            mutual_authentication=requests_gssapi.REQUIRED
+                        ),
                     )
-                    job_tracker.update_statuses(fail_fast=args.fail_fast)
-                except Exception as e:
-                    _log.exception(f"Failed job tracker run: {type(e).__name__}: {e}")
-                    raise
+                elif app_cluster == "k8s":
+                    app_state_getter = K8sStatusGetter(kube_client("CustomObject"), Prometheus(config.prometheus_api))
+                elif app_cluster == "broken-dummy":
+                    raise RuntimeError("Broken dummy")
+                else:
+                    raise ValueError(app_cluster)
+
+                job_costs_calculator: JobCostsCalculator = DynamicEtlApiJobCostCalculator()
+
+                job_tracker = JobTracker(
+                    app_state_getter=app_state_getter,
+                    zk_job_registry=zk_job_registry,
+                    principal=args.principal,
+                    keytab=args.keytab,
+                    elastic_job_registry=elastic_job_registry,
+                    job_costs_calculator=job_costs_calculator
+                )
+                job_tracker.update_statuses(fail_fast=args.fail_fast)
+            except Exception as e:
+                _log.exception(f"Failed job tracker run: {type(e).__name__}: {e}")
+                raise
 
     def parse_cli_args(self, args: Optional[List[str]] = None) -> argparse.Namespace:
         parser = argparse.ArgumentParser(
@@ -729,7 +730,7 @@ class CliApp:
         parser.add_argument(
             "--run-id",
             default=None,
-            help='Correlation ID to track logs of a particular run; added to log entries as "run_id".'
+            help='Correlation ID to track logs of a particular run. This appears as "run_id" in log entries.'
         )
         # TODO: also allow setting zk_root_path through "env" setting (prod, dev, integration tests, ...)?
 
@@ -749,7 +750,7 @@ class CliApp:
                 "openeogeotrellis": {"level": "DEBUG"},
                 _log.name: {"level": "DEBUG"},
             },
-            context="job_tracker"
+            context=LOGGING_CONTEXT_GLOBAL,
         )
 
         if rotating_file:

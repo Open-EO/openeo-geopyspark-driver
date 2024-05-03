@@ -1677,6 +1677,8 @@ class TestCliApp:
             "broken-dummy",
             "--rotating-log",
             str(rotating_log),
+            "--run-id",
+            "run Forrest run",
         ]
         run_result = pytester.run(*command)
         assert run_result.ret == 1
@@ -1687,3 +1689,4 @@ class TestCliApp:
         for log in logs:
             log = json.loads(log)
             assert {"levelname", "name", "message", "run_id"}.issubset(log.keys())
+            assert log["run_id"] == "run Forrest run"
