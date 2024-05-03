@@ -116,7 +116,7 @@ class GpsBackendConfig(OpenEoBackendConfig):
     etl_api: Optional[str] = os.environ.get("OPENEO_ETL_API", "https://etl.terrascope.be")
     etl_source_id: str = "TerraScope/MEP"
     use_etl_api_on_sync_processing: bool = False
-    etl_dynamic_api_flag: Optional[str] = None  # TODO #531 eliminate this temporary feature flag?
+    etl_dynamic_api_flag: Optional[str] = None  # TODO #531 eliminate this temporary feature flag? Unused now
 
     # TODO #531 this config is meant to replace `etl_api` from above
     etl_api_config: Optional[EtlApiConfig] = None
@@ -141,10 +141,10 @@ class GpsBackendConfig(OpenEoBackendConfig):
     Reading strategy for load_collection and load_stac processes:
     load_by_target_partition: first apply a partitioner, then simply read data for each partition
     This avoids moving data around after reading, allowing the reading step to be followed immediately by next processes.
-    load_per_product: group by source product filename, then perform reads, then regroup data according to optimal partitioner for subsequent processes. 
-    This strategy is faster when there is a high overhead/latency of opening products, for instance observed when reading jpeg2000 on S3. It does require 
+    load_per_product: group by source product filename, then perform reads, then regroup data according to optimal partitioner for subsequent processes.
+    This strategy is faster when there is a high overhead/latency of opening products, for instance observed when reading jpeg2000 on S3. It does require
     the data to be moved around in the cluster for subsequent processing.
-    
+
     The default can be overridden by feature_flags.
     """
     default_reading_strategy: str = "load_by_target_partition"
@@ -152,7 +152,7 @@ class GpsBackendConfig(OpenEoBackendConfig):
     """
     Controls the default number of threads for the batch job executors Java Virtual Machine.
     These threads are used for additional parallelism, for instance when reading data, but may cause threading issues if
-    used in combination with not thread-safe libraries. 
+    used in combination with not thread-safe libraries.
     When reading with GDAL, a lower number of threads may be beneficial, as GDAL also performs its own threading.
     """
     default_executor_threads_jvm: int = 10
@@ -169,17 +169,17 @@ class GpsBackendConfig(OpenEoBackendConfig):
 
     """
     The default maximum number of executors for batch jobs. A high number of executors can cause high costs, as allocated
-    executors may be idle for a relatively high amount of time. 
+    executors may be idle for a relatively high amount of time.
     We set this to 20 in kubernetes environments.
     """
     default_max_executors: int = 100
 
-    default_driver_memory: str = "2G"
+    default_driver_memory: str = "8G"
 
-    default_driver_memoryOverhead: str = "3G"
+    default_driver_memoryOverhead: str = "2G"
 
     default_executor_memory: str = "2G"
 
     default_executor_memoryOverhead: str = "3G"
 
-    default_executor_cores:int = 2
+    default_executor_cores: int = 2

@@ -125,7 +125,7 @@ spec:
   driver:
 {%- block driver_options %}
     cores: {{ driver_cores }}
-    javaOptions: "-Dscala.concurrent.context.maxThreads=2 -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/data/projects/OpenEO/{{ current_time }}.hprof -Dlog4j2.configurationFile=file:/opt/batch_job_log4j2.xml -Dpixels.treshold=1000000 -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService -Dopeneo.logging.threshold={{ logging_threshold }} -Dhttp.credentials.file=/opt/http_credentials/http_credentials.json -Dsun.net.client.defaultReadTimeout=60000"
+    javaOptions: "-Dscala.concurrent.context.maxThreads=2 -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/data/projects/OpenEO/{{ current_time }}.hprof -Dlog4j2.configurationFile=file:/opt/batch_job_log4j2.xml -Dpixels.treshold=1000000 -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.apache.ApacheSdkHttpService -Dopeneo.logging.threshold={{ logging_threshold }} -Dhttp.credentials.file=/opt/http_credentials/http_credentials.json -Dsun.net.client.defaultReadTimeout=60000"
     memory: "{{ driver_memory }}"
     memoryOverhead: "{{ driver_memory_overhead }}"
     serviceAccount: batch-jobs
@@ -254,7 +254,7 @@ spec:
     coreRequest: {{ executor_corerequest }}
     memory: "{{ executor_memory }}"
     memoryOverhead: "{{ executor_memory_overhead }}"
-    javaOptions: "-Dlog4j2.configurationFile=file:/opt/batch_job_log4j2.xml -Dscala.concurrent.context.numThreads={{ executor_threads_jvm }} -Dscala.concurrent.context.maxThreads={{ executor_threads_jvm }} -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService -Dopeneo.logging.threshold={{ logging_threshold }} -Dhttp.credentials.file=/opt/http_credentials/http_credentials.json -Dsun.net.client.defaultReadTimeout=60000"
+    javaOptions: "-Dlog4j2.configurationFile=file:/opt/batch_job_log4j2.xml -Dscala.concurrent.context.numThreads={{ executor_threads_jvm }} -Dscala.concurrent.context.maxThreads={{ executor_threads_jvm }} -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.apache.ApacheSdkHttpService -Dopeneo.logging.threshold={{ logging_threshold }} -Dhttp.credentials.file=/opt/http_credentials/http_credentials.json -Dsun.net.client.defaultReadTimeout=60000"
 {%- endblock %}
 {%- if mount_tmp %}
     initContainers:
@@ -369,6 +369,10 @@ spec:
 {%- if mount_tmp %}
       - name: "spark-local-dir-1"
         mountPath: "/spark_tmp"
+{%- endif %}
+{%- if fuse_mount_batchjob_s3_bucket is sameas true %}
+      - name: "batch-job-results"
+        mountPath: /batch_jobs/{{ job_id_full }}
 {%- endif %}
 {%- endblock %}
   deps:

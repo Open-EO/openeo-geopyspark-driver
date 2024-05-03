@@ -53,12 +53,12 @@
   "links": [
     {
       "rel": "collection",
-      "href": "https://stac.test/collections/collection"
+      "href": "$CATALOG_URL/collections/collection"
     }
   ],
   "assets": {
     "asset1": {
-      "href": "asset01.tiff",
+      "href": "should not be considered!",
       "type": "image/tiff; application=geotiff",
       "eo:bands": [
         {

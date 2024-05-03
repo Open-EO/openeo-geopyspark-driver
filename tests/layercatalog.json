@@ -1391,5 +1391,68 @@
       "spatial": {"bbox": [[-26.15, -48, 60.42, 39]]},
       "temporal": {"interval": [["2018-01-01", null]]}
     }
+  },
+  {
+    "id": "COPERNICUS_VEGETATION_PHENOLOGY_PRODUCTIVITY_S1_10M",
+    "description": "[EXPERIMENTAL] Copernicus High Resolution Land Vegetation Phenology and Productivity parameters at 10m on yearly basis from 2017 onwards for EU countries.",
+    "experimental": true,
+    "_vito": {
+      "data_source": {
+        "type": "stac",
+        "url": "https://stac.openeo.vito.be/collections/copernicus_r_utm-wgs84_10_m_hrvpp-vpp_p_2017-now_v01"
+      },
+      "properties": {
+        "season": {
+          "process_graph": {
+            "eq1": {
+              "process_id": "eq",
+              "arguments": {
+                "x": {
+                  "from_parameter": "value"
+                },
+                "y": "s1"
+              },
+              "result": true
+            }
+          }
+        }
+      }
+    },
+    "cube:dimensions": {
+      "x": {"type": "spatial", "axis": "x", "reference_system": {"$schema":"https://proj.org/schemas/v0.2/projjson.schema.json","type":"GeodeticCRS","name":"AUTO 42001 (Universal Transverse Mercator)","datum":{"type":"GeodeticReferenceFrame","name":"World Geodetic System 1984","ellipsoid":{"name":"WGS 84","semi_major_axis":6378137,"inverse_flattening":298.257223563}},"coordinate_system":{"subtype":"ellipsoidal","axis":[{"name":"Geodetic latitude","abbreviation":"Lat","direction":"north","unit":"degree"},{"name":"Geodetic longitude","abbreviation":"Lon","direction":"east","unit":"degree"}]},"area":"World","bbox":{"south_latitude":-90,"west_longitude":-180,"north_latitude":90,"east_longitude":180},"id":{"authority":"OGC","version":"1.3","code":"Auto42001"}}, "step": 10},
+      "y": {"type": "spatial", "axis": "y", "reference_system": {"$schema":"https://proj.org/schemas/v0.2/projjson.schema.json","type":"GeodeticCRS","name":"AUTO 42001 (Universal Transverse Mercator)","datum":{"type":"GeodeticReferenceFrame","name":"World Geodetic System 1984","ellipsoid":{"name":"WGS 84","semi_major_axis":6378137,"inverse_flattening":298.257223563}},"coordinate_system":{"subtype":"ellipsoidal","axis":[{"name":"Geodetic latitude","abbreviation":"Lat","direction":"north","unit":"degree"},{"name":"Geodetic longitude","abbreviation":"Lon","direction":"east","unit":"degree"}]},"area":"World","bbox":{"south_latitude":-90,"west_longitude":-180,"north_latitude":90,"east_longitude":180},"id":{"authority":"OGC","version":"1.3","code":"Auto42001"}}, "step": 10},
+      "t": {
+        "type": "temporal"
+      },
+      "bands": {
+        "type": "bands",
+        "values": [
+          "SPROD",
+          "TPROD",
+          "QFLAG"
+        ]
+      }
+    },
+    "extent": {
+      "spatial": {
+        "bbox": [[-180, -90, 180, 90]]
+      },
+      "temporal": {
+        "interval": [["2023-05-01T08:24:05.522470Z", "2024-04-29T08:24:05.522470Z"]]
+      }
+    },
+    "summaries": {
+      "eo:bands": [
+        {
+          "name": "SPROD"
+        },
+        {
+          "name": "TPROD"
+        },
+        {
+          "name": "QFLAG"
+        }
+      ]
+    }
   }
 ]

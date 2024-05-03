@@ -27,7 +27,7 @@
   "links": [
     {
       "rel": "root",
-      "href": "https://stac.test"
+      "href": "$CATALOG_URL"
     }
   ],
   "summaries": {
