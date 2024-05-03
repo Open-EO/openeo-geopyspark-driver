@@ -34,4 +34,4 @@ export PYARROW_IGNORE_TIMEZONE=1
   --zk-job-registry-root-path="$batch_jobs_zookeeper_root_path" \
   --keytab "$keytab" \
   --rotating-log logs/job_tracker_python_"$deploy_env".log \
-  "$run_id_arg"
+  $run_id_arg
