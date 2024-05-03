@@ -4175,7 +4175,6 @@ class TestEtlApiReporting:
 
         alice = DummyUser(user_id="alice2000")
         bob = DummyUser(user_id="bob7")
-        etl_dynamic_api_flag = "dynamic_etl"
 
         def get_etl_api_requests_mock_call_counts() -> List[int]:
             return [
@@ -4189,7 +4188,6 @@ class TestEtlApiReporting:
 
         with gps_config_overrides(
             use_etl_api_on_sync_processing=True,
-            etl_dynamic_api_flag=etl_dynamic_api_flag,
             etl_api_config=CustomEtlConfig(),
         ):
             # First request by Alice
@@ -4198,7 +4196,7 @@ class TestEtlApiReporting:
 
             res = api100.check_result(
                 {"add": {"process_id": "add", "arguments": {"x": 3, "y": 5}, "result": True}},
-                path=f"/result?{etl_dynamic_api_flag}=yes",
+                path=f"/result",
             )
             assert res.json == 8
             assert res.headers["OpenEO-Costs-experimental"] == "88"
@@ -4210,21 +4208,12 @@ class TestEtlApiReporting:
             etl_api_requests["https://etl.planb.test/resources"]["expected_data"].update(userId=bob.user_id)
             res = api100.check_result(
                 {"add": {"process_id": "add", "arguments": {"x": 3, "y": 5}, "result": True}},
-                path=f"/result?{etl_dynamic_api_flag}=yes",
+                path=f"/result",
             )
             assert res.json == 8
             assert res.headers["OpenEO-Costs-experimental"] == "88"
             assert get_etl_api_requests_mock_call_counts() == [0, 1, 1]
 
-            # Another request, but without etl_dynamic_api_flag (which currently should use default ETL API)
-            api100.set_auth_bearer_token(alice.bearer_token)
-            etl_api_requests["https://etl-api.test/resources"]["expected_data"].update(userId=alice.user_id)
-            res = api100.check_result(
-                {"add": {"process_id": "add", "arguments": {"x": 3, "y": 5}, "result": True}},
-            )
-            assert res.json == 8
-            assert res.headers["OpenEO-Costs-experimental"] == "88"
-            assert get_etl_api_requests_mock_call_counts() == [1, 1, 1]
 
 
 def test_spatiotemporal_vector_cube_to_geoparquet(api110, tmp_path):
