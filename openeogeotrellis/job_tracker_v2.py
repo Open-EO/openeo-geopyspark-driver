@@ -11,7 +11,6 @@ import logging
 from decimal import Decimal
 from math import isfinite
 from pathlib import Path
-import time
 from typing import Any, List, NamedTuple, Optional, Union
 
 import requests
@@ -25,7 +24,7 @@ try:
 except ImportError:
     requests_gssapi = None
 
-from openeo.util import TimingLogger, repr_truncate, Rfc3339, rfc3339, url_join, deep_get
+from openeo.util import TimingLogger, repr_truncate, Rfc3339, url_join, deep_get
 from openeo_driver.jobregistry import JOB_STATUS, ElasticJobRegistry
 from openeo_driver.util.http import requests_with_retry
 from openeo_driver.util.logging import (
@@ -52,7 +51,6 @@ from openeogeotrellis.job_costs_calculator import (
     JobCostsCalculator,
     noJobCostsCalculator,
     CostsDetails,
-    EtlApiJobCostsCalculator,
     DynamicEtlApiJobCostCalculator,
 )
 from openeogeotrellis.job_registry import DoubleJobRegistry, ZkJobRegistry, get_deletable_dependency_sources
