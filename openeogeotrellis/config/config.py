@@ -116,7 +116,7 @@ class GpsBackendConfig(OpenEoBackendConfig):
     etl_api: Optional[str] = os.environ.get("OPENEO_ETL_API", "https://etl.terrascope.be")
     etl_source_id: str = "TerraScope/MEP"
     use_etl_api_on_sync_processing: bool = False
-    etl_dynamic_api_flag: Optional[str] = None  # TODO #531 eliminate this temporary feature flag?
+    etl_dynamic_api_flag: Optional[str] = None  # TODO #531 eliminate this temporary feature flag? Unused now
 
     # TODO #531 this config is meant to replace `etl_api` from above
     etl_api_config: Optional[EtlApiConfig] = None

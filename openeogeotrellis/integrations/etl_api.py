@@ -335,7 +335,7 @@ def get_etl_api(
     user: Optional[User] = None,
     job_options: Optional[dict] = None,
     requests_session: Optional[requests.Session] = None,
-    # TODO #531 remove this temporary feature flag/toggle for dynamic ETL selection.
+    # TODO #531 remove this temporary feature flag/toggle for dynamic ETL selection. (True from all call locations now)
     allow_dynamic_etl_api: bool = False,
     etl_api_cache: Optional[TtlCache] = None,
 ) -> EtlApi:

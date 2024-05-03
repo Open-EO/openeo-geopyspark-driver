@@ -1166,11 +1166,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             etl_api = get_etl_api(
                 user=user,
                 job_options=job_options,
-                allow_dynamic_etl_api=bool(
-                    # TODO #531 this is temporary feature flag, to removed when done
-                    backend_config.etl_dynamic_api_flag
-                    and flask.request.args.get(backend_config.etl_dynamic_api_flag)
-                ),
+                allow_dynamic_etl_api=True,
                 requests_session=requests_session,
                 # TODO #531 provide a TtlCache here
                 etl_api_cache=None,

@@ -12,6 +12,11 @@ without compromising stable operations.
 
 ## Unreleased
 
+## 0.32.0
+
+- Always enable `allow_dynamic_etl_api` from synchronous processing (drop feature flag)
+  ([#531](https://github.com/Open-EO/openeo-geopyspark-driver/issues/531), eu-cdse/openeo-cdse-infra#114)
+
 ## 0.31.1
 
 - Initial support for `job_options` handling in `OpenEoBackendImplementation.request_costs()`
