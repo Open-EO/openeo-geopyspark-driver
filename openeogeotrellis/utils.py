@@ -29,7 +29,7 @@ from openeo_driver.util.logging import (
     LOG_HANDLER_FILE_JSON,
     LOG_HANDLER_STDERR_JSON,
     LOGGING_CONTEXT_BATCH_JOB,
-    BatchJobLoggingFilter,
+    GlobalExtraLoggingFilter,
     FlaskRequestCorrelationIdLogging,
     FlaskUserIdLogging,
     get_logging_config,
@@ -446,14 +446,14 @@ def ensure_executor_logging(f) -> Callable:
         if in_batch_job_context:
             user_id = os.environ["OPENEO_USER_ID"]
 
-            BatchJobLoggingFilter.set("user_id", user_id)
-            BatchJobLoggingFilter.set("job_id", job_id)
+            GlobalExtraLoggingFilter.set("user_id", user_id)
+            GlobalExtraLoggingFilter.set("job_id", job_id)
         else:  # executors started from Flask, CLI ...
-            # TODO: takes advantage of "global state" BatchJobLoggingFilter/LOGGING_CONTEXT_BATCH_JOB but introducing
-            #  e.g. LOGGING_CONTEXT_EXECUTOR in openeo-python-driver is not right because it is not aware of
-            #  implementation details like Spark executors.
-            BatchJobLoggingFilter.set("user_id", user_id)
-            BatchJobLoggingFilter.set("req_id", request_id)
+            # TODO: This code path probably violates the GlobalExtraLoggingFilter constraint of
+            #       only using it for global/immutable context data, and might start failing
+            #       if GlobalExtraLoggingFilter starts being more picky about that constraint.
+            GlobalExtraLoggingFilter.set("user_id", user_id)
+            GlobalExtraLoggingFilter.set("req_id", request_id)
 
         logging_config = get_logging_config(
             root_handlers=[LOG_HANDLER_STDERR_JSON if ConfigParams().is_kube_deploy else LOG_HANDLER_FILE_JSON],

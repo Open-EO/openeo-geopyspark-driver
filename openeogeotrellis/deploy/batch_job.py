@@ -39,7 +39,7 @@ from openeo_driver.save_result import (
 from openeo_driver.users import User
 from openeo_driver.util.geometry import spatial_extent_union, reproject_bounding_box
 from openeo_driver.util.logging import (
-    BatchJobLoggingFilter,
+    GlobalExtraLoggingFilter,
     get_logging_config,
     setup_logging,
     LOGGING_CONTEXT_BATCH_JOB,
@@ -70,8 +70,7 @@ logger = logging.getLogger('openeogeotrellis.deploy.batch_job')
 
 OPENEO_LOGGING_THRESHOLD = os.environ.get("OPENEO_LOGGING_THRESHOLD", "INFO")
 OPENEO_BATCH_JOB_ID = os.environ.get("OPENEO_BATCH_JOB_ID", "unknown-job")
-# TODO: also trim batch_job id a bit before logging?
-BatchJobLoggingFilter.set("job_id", OPENEO_BATCH_JOB_ID)
+GlobalExtraLoggingFilter.set("job_id", OPENEO_BATCH_JOB_ID)
 
 
 def _create_job_dir(job_dir: Path):
@@ -967,7 +966,7 @@ def main(argv: List[str]) -> None:
     api_version = argv[5]
     dependencies = _deserialize_dependencies(argv[6])
     user_id = argv[7]
-    BatchJobLoggingFilter.set("user_id", user_id)
+    GlobalExtraLoggingFilter.set("user_id", user_id)
     max_soft_errors_ratio = float(argv[8])
     sentinel_hub_client_alias = argv[9] if len(argv) >= 10 else None
 

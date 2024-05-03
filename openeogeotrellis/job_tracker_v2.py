@@ -32,8 +32,7 @@ from openeo_driver.util.logging import (
     setup_logging,
     LOG_HANDLER_STDERR_BASIC,
     LOG_HANDLER_STDERR_JSON,
-    BatchJobLoggingFilter as GlobalExtraLoggingFilter,
-    LOGGING_CONTEXT_BATCH_JOB as LOGGING_CONTEXT_GLOBAL,
+    GlobalExtraLoggingFilter,
 )
 import openeo_driver.utils
 
@@ -748,7 +747,7 @@ class CliApp:
                 "openeogeotrellis": {"level": "DEBUG"},
                 _log.name: {"level": "DEBUG"},
             },
-            context=LOGGING_CONTEXT_GLOBAL,
+            enable_global_extra_logging=True,
         )
 
         if rotating_file:
