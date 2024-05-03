@@ -24,7 +24,7 @@ try:
 except ImportError:
     requests_gssapi = None
 
-from openeo.util import TimingLogger, repr_truncate, Rfc3339, rfc3339, url_join, deep_get
+from openeo.util import TimingLogger, repr_truncate, Rfc3339, url_join, deep_get
 from openeo_driver.jobregistry import JOB_STATUS, ElasticJobRegistry
 from openeo_driver.util.http import requests_with_retry
 from openeo_driver.util.logging import (
@@ -32,6 +32,8 @@ from openeo_driver.util.logging import (
     setup_logging,
     LOG_HANDLER_STDERR_BASIC,
     LOG_HANDLER_STDERR_JSON,
+    BatchJobLoggingFilter as GlobalExtraLoggingFilter,
+    LOGGING_CONTEXT_BATCH_JOB as LOGGING_CONTEXT_GLOBAL,
 )
 import openeo_driver.utils
 
@@ -49,7 +51,6 @@ from openeogeotrellis.job_costs_calculator import (
     JobCostsCalculator,
     noJobCostsCalculator,
     CostsDetails,
-    EtlApiJobCostsCalculator,
     DynamicEtlApiJobCostCalculator,
 )
 from openeogeotrellis.job_registry import DoubleJobRegistry, ZkJobRegistry, get_deletable_dependency_sources
@@ -603,6 +604,9 @@ class CliApp:
 
         args = self.parse_cli_args(args=args)
 
+        if args.run_id:
+            GlobalExtraLoggingFilter.set("run_id", args.run_id)
+
         rotating_log = args.rotating_log
 
         if not rotating_log and not ConfigParams().is_kube_deploy and Path("logs").is_dir():
@@ -721,6 +725,11 @@ class CliApp:
             default=ConfigParams().batch_jobs_zookeeper_root_path,
             help="ZooKeeper root path for the job registry",
         )
+        parser.add_argument(
+            "--run-id",
+            default=None,
+            help='Correlation ID to track logs of a particular run. This appears as "run_id" in log entries.'
+        )
         # TODO: also allow setting zk_root_path through "env" setting (prod, dev, integration tests, ...)?
 
         return parser.parse_args(args=args)
@@ -739,7 +748,7 @@ class CliApp:
                 "openeogeotrellis": {"level": "DEBUG"},
                 _log.name: {"level": "DEBUG"},
             },
-            context="job_tracker"
+            context=LOGGING_CONTEXT_GLOBAL,
         )
 
         if rotating_file:

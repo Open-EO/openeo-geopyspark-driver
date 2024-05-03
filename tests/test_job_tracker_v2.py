@@ -1656,6 +1656,7 @@ class TestCliApp:
         assert run_result.ret == 0
         assert "JobTracker" in run_result.stdout.str()
         assert "--app-cluster" in run_result.stdout.str()
+        assert "--run-id" in run_result.stdout.str()
         assert run_result.errlines == []
 
     def test_run_basic_fail(self, pytester):
@@ -1676,6 +1677,8 @@ class TestCliApp:
             "broken-dummy",
             "--rotating-log",
             str(rotating_log),
+            "--run-id",
+            "run Forrest run",
         ]
         run_result = pytester.run(*command)
         assert run_result.ret == 1
@@ -1685,4 +1688,29 @@ class TestCliApp:
         assert len(logs) > 5
         for log in logs:
             log = json.loads(log)
-            assert {"levelname", "name", "message"}.issubset(log.keys())
+            assert {"levelname", "name", "message", "run_id"}.issubset(log.keys())
+            assert log["run_id"] == "run Forrest run"
+
+    @pytest.mark.parametrize("run_id", [None, "run Forrest run"])
+    def test_run_id(self, pytester, run_id):
+        command = [
+            sys.executable,
+            "-m",
+            "openeogeotrellis.job_tracker_v2",
+            "--app-cluster",
+            "broken-dummy",
+        ]
+
+        if run_id:
+            command.extend([
+                "--run-id",
+                "run Forrest run",
+            ])
+
+        run_result = pytester.run(*command)
+        assert run_result.ret == 1
+
+        logs = run_result.errlines
+        for log in logs:
+            log = json.loads(log)
+            assert log.get("run_id") == run_id
