@@ -876,11 +876,11 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             if from_date is None:
                 days = 1
                 logger.warning(
-                    f"Got open temporal extent: {temporal_extent=}. Assuming {days} day."
+                    f"Got open: {temporal_extent=}. Assuming {days=}."
                 )
             else:
                 logger.warning(
-                    f"Got half open temporal extent: {temporal_extent=}. Assuming it goes till today."
+                    f"Got half open: {temporal_extent=}. Assuming it goes till today."
                 )
                 from_date_parsed = dateutil.parser.parse(from_date).replace(tzinfo=None)
                 to_date_now = datetime.now().replace(tzinfo=None)
