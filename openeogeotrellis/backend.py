@@ -9,7 +9,6 @@ import shutil
 import socket
 import stat
 import subprocess
-
 import sys
 import tempfile
 import time
@@ -1248,7 +1247,7 @@ class GpsProcessing(ConcreteProcessing):
                     continue
 
                 catalog = env.backend_implementation.catalog
-                number_of_temporal_observations = catalog.estimate_number_of_temporal_observations(
+                number_of_temporal_observations: int = catalog.estimate_number_of_temporal_observations(
                     collection_id,
                     constraints,
                 )

@@ -3,6 +3,7 @@ import datetime as dt
 import functools
 import json
 import logging
+import math
 import sys
 from copy import deepcopy
 from datetime import datetime
@@ -806,6 +807,9 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
         temporal_extent_constraints = constraints.get("temporal_extent")
 
+        # The first temporal interval should encompass the other temporal intervals.
+        # The outer bounds are still calculated just in case.
+        # https://github.com/radiantearth/stac-spec/blob/master/collection-spec/collection-spec.md#temporal-extent-object
         catalog_temporal_extent = metadata.get("extent", "temporal", "interval", default=None)
         outer_bounds = [None, None]
         if catalog_temporal_extent:
@@ -872,11 +876,11 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             if from_date is None:
                 days = 1
                 logger.warning(
-                    f"Got open temporal extent: {repr(temporal_extent)}. Assuming {days} day."
+                    f"Got open temporal extent: {temporal_extent=}. Assuming {days} day."
                 )
             else:
                 logger.warning(
-                    f"Got half open temporal extent: {repr(temporal_extent)}. Assuming it goes till today."
+                    f"Got half open temporal extent: {temporal_extent=}. Assuming it goes till today."
                 )
                 from_date_parsed = dateutil.parser.parse(from_date).replace(tzinfo=None)
                 to_date_now = datetime.now().replace(tzinfo=None)
@@ -884,7 +888,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         else:
             days = (dateutil.parser.parse(to_date) - dateutil.parser.parse(
                 from_date)).days / estimate_days_per_sample
-        days = max(int(days), 1)
+        days = max(math.floor(days), 1)
         return days
 
 
@@ -1221,7 +1225,7 @@ def check_missing_products(
 def is_layer_too_large(
         spatial_extent: dict,
         geometries: Union[DriverVectorCube, DelayedVector, BaseGeometry],
-        number_of_temporal_observations: float,
+        number_of_temporal_observations: int,
         nr_bands: int,
         cell_width: float,
         cell_height: float,
