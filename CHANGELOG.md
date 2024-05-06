@@ -10,7 +10,11 @@ https://openeo.org/documentation/1.0/developers/api/reference.html#operation/con
 If needed, feature flags are used to allow testing unstable features in development/production,
 without compromising stable operations.
 
-## Unreleased
+## 0.30.4
+
+- array_create bugfix to support mixed data types ([#287](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/287))
+
+## 0.30.3
 
 ## 0.33.0
 
