@@ -1,0 +1,100 @@
+{
+  "assets": {
+    "openEO_2017-11-21Z_N51E003.tif": {
+      "eo:bands": [
+        {
+          "name": "NDVI"
+        }
+      ],
+      "file:size": 87956,
+      "href": "openEO_2017-11-21Z_N51E003.tif",
+      "proj:bbox": [
+        2.9992625,
+        51.0012761,
+        3.9990183,
+        52.0010318
+      ],
+      "proj:epsg": 4326,
+      "proj:shape": [
+        728,
+        364
+      ],
+      "raster:bands": [
+        {
+          "name": "1",
+          "statistics": {
+            "maximum": 235,
+            "mean": 73.684465835593,
+            "minimum": 0,
+            "stddev": 77.997131093531,
+            "valid_percent": 99.65
+          }
+        }
+      ],
+      "roles": [
+        "data"
+      ],
+      "title": "openEO_2017-11-21Z_N51E003.tif",
+      "type": "image/tiff; application=geotiff"
+    }
+  },
+  "bbox": [
+    3,
+    51,
+    4,
+    52
+  ],
+  "collection": "j-2405078f40904a0b85cf8dc5dd55b07e",
+  "epsg": 4326,
+  "geometry": {
+    "coordinates": [
+      [
+        [
+          3,
+          51
+        ],
+        [
+          3,
+          52
+        ],
+        [
+          4,
+          52
+        ],
+        [
+          4,
+          51
+        ],
+        [
+          3,
+          51
+        ]
+      ]
+    ],
+    "type": "Polygon"
+  },
+  "id": "openEO_2017-11-21Z_N51E003.tif",
+  "links": [
+    {
+      "href": "https://openeo-dev.vito.be/openeo/1.1/jobs/j-2405078f40904a0b85cf8dc5dd55b07e/results/items/openEO_2017-11-21Z_N51E003.tif",
+      "rel": "self",
+      "type": "application/geo+json"
+    },
+    {
+      "href": "https://openeo-dev.vito.be/openeo/1.1/jobs/j-2405078f40904a0b85cf8dc5dd55b07e/results",
+      "rel": "collection",
+      "type": "application/json"
+    }
+  ],
+  "properties": {
+    "datetime": "2017-11-21T00:00:00Z",
+    "proj:epsg": 4326
+  },
+  "stac_extensions": [
+    "https://stac-extensions.github.io/eo/v1.1.0/schema.json",
+    "https://stac-extensions.github.io/file/v2.1.0/schema.json",
+    "https://stac-extensions.github.io/projection/v1.1.0/schema.json"
+  ],
+  "stac_version": "1.0.0",
+  "type": "Feature"
+}
