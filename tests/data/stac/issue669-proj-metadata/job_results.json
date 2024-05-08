@@ -7,7 +7,7 @@
                 }
             ],
             "file:size": 87956,
-            "href": "https://openeo-dev.vito.be/openeo/1.1/jobs/j-2405078f40904a0b85cf8dc5dd55b07e/results/assets/N2Q1MjMzODEzNzRiNjJlNmYyYWFkMWYyZjlmYjZlZGRmNjI0ZDM4MmE4ZjcxZGI2ZGNmNTc4OGUzYWFlMGFmM0BlZ2kuZXU=/e144113eee320988467cfe4fe137fdf9/openEO_2017-11-21Z_N51E003.tif?expires=1715681290",
+            "href": "https://openeo.test/openeo/1.1/jobs/j-2405078f40904a0b85cf8dc5dd55b07e/results/assets/N2Q1MjMzODEzNzRiNjJlNmYyYWFkMWYyZjlmYjZlZGRmNjI0ZDM4MmE4ZjcxZGI2ZGNmNTc4OGUzYWFlMGFmM0BlZ2kuZXU=/e144113eee320988467cfe4fe137fdf9/openEO_2017-11-21Z_N51E003.tif?expires=1715681290",
             "proj:bbox": [
                 2.9992625,
                 51.0012761,
@@ -123,12 +123,12 @@
             "type": "application/json"
         },
         {
-            "href": "https://openeo-dev.vito.be/openeo/1.1/jobs/j-2405078f40904a0b85cf8dc5dd55b07e/results",
+            "href": "https://openeo.test/openeo/1.1/jobs/j-2405078f40904a0b85cf8dc5dd55b07e/results",
             "rel": "self",
             "type": "application/json"
         },
         {
-            "href": "https://openeo-dev.vito.be/openeo/1.1/jobs/j-2405078f40904a0b85cf8dc5dd55b07e/results/N2Q1MjMzODEzNzRiNjJlNmYyYWFkMWYyZjlmYjZlZGRmNjI0ZDM4MmE4ZjcxZGI2ZGNmNTc4OGUzYWFlMGFmM0BlZ2kuZXU=/b6f9d28be2c96b32e366bd6c812bb10e?expires=1715681290",
+            "href": "https://openeo.test/openeo/1.1/jobs/j-2405078f40904a0b85cf8dc5dd55b07e/results/N2Q1MjMzODEzNzRiNjJlNmYyYWFkMWYyZjlmYjZlZGRmNjI0ZDM4MmE4ZjcxZGI2ZGNmNTc4OGUzYWFlMGFmM0BlZ2kuZXU=/b6f9d28be2c96b32e366bd6c812bb10e?expires=1715681290",
             "rel": "canonical",
             "type": "application/json"
         },
@@ -138,7 +138,7 @@
             "type": "application/pdf"
         },
         {
-            "href": "https://openeo-dev.vito.be/openeo/1.1/jobs/j-2405078f40904a0b85cf8dc5dd55b07e/results/items/openEO_2017-11-21Z_N51E003.tif",
+            "href": "https://openeo.test/openeo/1.1/jobs/j-2405078f40904a0b85cf8dc5dd55b07e/results/items/openEO_2017-11-21Z_N51E003.tif",
             "rel": "item",
             "type": "application/geo+json"
         }
