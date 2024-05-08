@@ -4005,6 +4005,49 @@ class TestLoadStac:
 
         api110.result(process_graph).assert_status_code(200)
 
+    def test_load_stac_from_unsigned_job_results_respects_proj_metadata(self, api110, urllib_mock, tmp_path,
+                                                                        batch_job_output_root, zk_job_registry):
+        # get results from own batch job rather than crawl signed STAC URLs
+        results_dir = _setup_existing_job(
+            job_id="j-2405078f40904a0b85cf8dc5dd55b07e",
+            api=api110,
+            batch_job_output_root=batch_job_output_root,
+            zk_job_registry=zk_job_registry
+        )
+
+        process_graph = {
+            "loadstac1": {
+                "process_id": "load_stac",
+                "arguments": {
+                    "url": "https://openeo.test/openeo/1.1/jobs/j-2405078f40904a0b85cf8dc5dd55b07e/results"
+                }
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "loadstac1"}, "format": "GTiff"},
+                "result": True
+            },
+        }
+
+        res = api110.result(process_graph).assert_status_code(200)
+
+        res_path = tmp_path / "res.tif"
+        res_path.write_bytes(res.data)
+
+        # output asset should match input asset
+        with open(results_dir / JOB_METADATA_FILENAME) as f:
+            job_metadata = json.load(f)
+            assert len(job_metadata["assets"]) == 1
+            asset_metadata = job_metadata["assets"]["openEO_2017-11-21Z_N51E003.tif"]
+            expected_epsg = asset_metadata["proj:epsg"]
+            expected_shape = asset_metadata["proj:shape"]
+            expected_bbox = asset_metadata["proj:bbox"]
+
+        with rasterio.open(res_path) as ds:
+            assert ds.crs.to_epsg() == expected_epsg
+            assert ds.shape == tuple(expected_shape)
+            assert tuple(ds.bounds) == tuple(map(pytest.approx, expected_bbox))
+
 
 class TestEtlApiReporting:
     @pytest.fixture(autouse=True)

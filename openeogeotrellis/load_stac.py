@@ -10,7 +10,7 @@ import pystac
 import pystac_client
 from geopyspark import LayerType, TiledRasterLayer
 from openeo.metadata import SpatialDimension, TemporalDimension, BandDimension, Band
-from openeo.util import rfc3339
+from openeo.util import dict_no_none, rfc3339
 from openeo_driver import filter_properties, backend
 from openeo_driver.backend import LoadParameters, BatchJobMetadata
 from openeo_driver.errors import OpenEOApiException, ProcessParameterUnsupportedException, JobNotFoundException, \
@@ -143,7 +143,12 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
                                                             user_id=user.user_id).items():
             pystac_item = pystac.Item(id=asset_id, geometry=asset["geometry"], bbox=asset["bbox"],
                                       datetime=rfc3339.parse_datetime(asset["datetime"], with_timezone=True),
-                                      properties={"datetime": asset["datetime"]})
+                                      properties=dict_no_none({
+                                          "datetime": asset["datetime"],
+                                          "proj:epsg": asset.get("proj:epsg"),
+                                          "proj:bbox": asset.get("proj:bbox"),
+                                          "proj:shape": asset.get("proj:shape"),
+                                      }))
 
             if intersects_spatiotemporally(pystac_item) and "data" in asset.get("roles", []):
                 eo_bands = [{"name": b.name} for b in asset["bands"]]

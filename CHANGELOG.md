@@ -10,6 +10,10 @@ https://openeo.org/documentation/1.0/developers/api/reference.html#operation/con
 If needed, feature flags are used to allow testing unstable features in development/production,
 without compromising stable operations.
 
+## Unreleased
+
+- load_stac from unsigned job results URL: fix CRS and resolution of output assets ([#669](https://github.com/Open-EO/openeo-geopyspark-driver/issues/669))
+
 ## 0.33.1
 
 - array_create bugfix to support mixed data types ([#287](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/287))
