@@ -277,6 +277,10 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
         projected_polygons_native_crs = (getattr(getattr(jvm.org.openeo.geotrellis, "ProjectedPolygons$"), "MODULE$")
                                          .reproject(projected_polygons, target_epsg_code))
+        print(projected_polygons_native_crs)
+        print(projected_polygons_native_crs.geometries())
+        print(projected_polygons_native_crs.extent())
+        print(projected_polygons_native_crs.polygons()[0].toString())
 
         datacubeParams, single_level = self.create_datacube_parameters(load_params, env)
         opensearch_endpoint = layer_source_info.get(
@@ -862,6 +866,14 @@ def _get_layer_catalog(
                     ).get_metadata(collection_id=os_cid)
                 except Exception as e:
                     logger.warning(f"Failed to enrich collection metadata of {cid}: {e}", exc_info=True)
+            elif data_source.get("type") == "stac":
+                url = data_source.get("url")
+                logger.info(f"Getting collection metadata from {url}")
+                import requests
+                resp = requests.get(url=url)
+                resp.raise_for_status()
+                metadata = resp.json()
+
             elif data_source.get("type") == "sentinel-hub":
                 sh_stac_endpoint = "https://collections.eurodatacube.com/stac/index.json"
 
