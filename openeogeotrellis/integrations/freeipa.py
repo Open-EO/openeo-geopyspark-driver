@@ -33,7 +33,8 @@ import sys
 from openeo_driver.utils import generate_unique_id, smart_bool
 
 try:
-    # Import of optional requests_gssapi package
+    # Import of optional gssapi packages
+    import gssapi
     import requests_gssapi
 except ImportError:
     requests_gssapi = None
@@ -65,13 +66,26 @@ class FreeIpaRpcResponse:
 
 
 class FreeIpaClient:
-    def __init__(self, ipa_server: str, verify_tls: Union[bool, str, Path] = True, api_version: str = "2.231"):
+    def __init__(
+        self,
+        ipa_server: str,
+        verify_tls: Union[bool, str, Path] = True,
+        api_version: str = "2.231",
+        gssapi_creds: Optional["gssapi.Credentials"] = None,
+    ):
         """
         :param ipa_server: ipa server (hostname)
         :param verify_tls: whether/how to verify TLS certificates:
             as a boolean to enable (default) or disable it;
             or as a path to a CA certificate file to verify against (e.g. `/etc/ipa/ca.crt`).
         :param api_version:
+        :param gssapi_creds: Optional GSSAPI credentials to use for authentication
+            By default (given None), GSSAPI automatically works with the currently active credentials cache,
+            which should be associated with a simple user with limited permissions.
+            When using `FreeIpaClient` with elevated privileges (e.g. to create users),
+            we want to avoid using leaking elevated privileges outside a constrained context.
+            See `acquire_gssapi_creds` to get non-default GSSAPI credentials based on a keytab file
+            and an in-memory credentials cache.
         """
         # TODO: support for HA setup (multiple servers)?
         if not isinstance(ipa_server, str):
@@ -85,8 +99,8 @@ class FreeIpaClient:
         self._api_version = api_version
 
         if requests_gssapi:
-            _log.debug("Setting up FreeIpaClient with GSSAPI/Kerberos auth")
-            self._auth = requests_gssapi.HTTPSPNEGOAuth()
+            _log.debug(f"Setting up FreeIpaClient with GSSAPI/Kerberos auth with {gssapi_creds=}")
+            self._auth = requests_gssapi.HTTPSPNEGOAuth(creds=gssapi_creds)
         else:
             _log.warning("Setting up FreeIpaClient without (GSSAPI/Kerberos) auth")
             self._auth = None
@@ -169,6 +183,10 @@ class FreeIpaClient:
         )
         return ipa_resp.result["result"]
 
+    def who_am_i(self) -> dict:
+        ipa_resp = self._do_request("whoami")
+        return ipa_resp.result
+
 
 def get_freeipa_server_from_env(
     *, env_var: str = "OPENEO_FREEIPA_SERVER", conf: Union[str, Path] = "/etc/ipa/default.conf"
@@ -186,6 +204,30 @@ def get_freeipa_server_from_env(
             except Exception as e:
                 _log.warning(f"Failed to get FreeIPA server from {conf}: {e}")
     return None
+
+
+def acquire_gssapi_creds(
+    principal: str, keytab_path: Union[str, Path], ccache: str = "MEMORY:"
+) -> "gssapi.Credentials":
+    """
+    Helper to acquire initial GSSAPI credentials based on a keytab file.
+
+    Additionally by using a "MEMORY:" credential cache,
+    we avoid leaking (elevated) credentials into existing credential caches on disk.
+
+    :param principal: Kerberos principal (e.g. "openeo@EXAMPLE.COM")
+    :param keytab_path: path to keytab file
+    :param ccache: credential cache name (default: "MEMORY" to not leak into existing credential caches)
+    :return:
+    """
+    return gssapi.Credentials(
+        usage="initiate",
+        name=gssapi.Name(principal),
+        store={
+            "client_keytab": f"FILE:{str(keytab_path)}",
+            "ccache": ccache,
+        },
+    )
 
 
 def get_verify_tls_from_env(*, env_var: str = "OPENEO_FREEIPA_VERIFY_TLS") -> Union[bool, str]:
