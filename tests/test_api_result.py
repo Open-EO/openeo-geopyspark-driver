@@ -4015,9 +4015,6 @@ class TestLoadStac:
             zk_job_registry=zk_job_registry
         )
 
-        urllib_mock.get("https://openeo.test/openeo/1.1/jobs/j-2405078f40904a0b85cf8dc5dd55b07e/results",
-                        data=get_test_data_file("stac/issue669-proj-metadata/job_results.json").read_text())
-
         process_graph = {
             "loadstac1": {
                 "process_id": "load_stac",
