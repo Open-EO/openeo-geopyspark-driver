@@ -454,7 +454,7 @@ class S1BackscatterOrfeo:
 
             prod_id = re.sub(r"[^A-Z0-9]", "", creo_path.upper())[-10:]
             log_prefix = f"p{os.getpid()}-prod{prod_id}"
-            print(f"{log_prefix} creo path {creo_path}")
+            logger.info(f"{log_prefix} creo path {creo_path}")
             logger.info(f"{log_prefix} sar_backscatter_arguments: {sar_backscatter_arguments!r}")
 
             layout_extent = get_total_extent(features)

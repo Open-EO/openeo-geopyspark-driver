@@ -51,5 +51,4 @@ def composite(func, tiles: Iterable[gps.Tile]):
     cells = [tile.cells for tile in tiles]
     first_tile = next(iter(tiles))
     reduced = reduce(func, cells)
-    print(reduced)
     return gps.Tile(cells=reduced, cell_type=first_tile.cell_type, no_data_value=first_tile.no_data_value)

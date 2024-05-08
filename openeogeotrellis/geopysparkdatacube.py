@@ -1406,7 +1406,7 @@ class GeopysparkDataCube(DriverDataCube):
                 #empty timeseries
                 pass
             else:
-                print("unexpected value: "+str(v))
+                _log.error("unexpected value {v}")
 
         return result
 
@@ -1873,7 +1873,7 @@ class GeopysparkDataCube(DriverDataCube):
                 projected_polygons = to_projected_polygons(get_jvm(), geometries)
                 labels = self.get_labels(geometries,feature_id_property)
                 if(max_level.layer_type != gps.LayerType.SPATIAL):
-                    print(f"projected_polygons carries {len(projected_polygons.polygons())} polygons")
+                    _log.debug(f"projected_polygons carries {len(projected_polygons.polygons())} polygons")
                     asset_paths = get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.saveSamples(
                         max_level.srdd.rdd(),
                         save_directory,

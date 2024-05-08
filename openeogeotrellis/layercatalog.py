@@ -277,10 +277,10 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
         projected_polygons_native_crs = (getattr(getattr(jvm.org.openeo.geotrellis, "ProjectedPolygons$"), "MODULE$")
                                          .reproject(projected_polygons, target_epsg_code))
-        print(projected_polygons_native_crs)
-        print(projected_polygons_native_crs.geometries())
-        print(projected_polygons_native_crs.extent())
-        print(projected_polygons_native_crs.polygons()[0].toString())
+        logger.debug(projected_polygons_native_crs)
+        logger.debug(projected_polygons_native_crs.geometries())
+        logger.debug(projected_polygons_native_crs.extent())
+        logger.debug(projected_polygons_native_crs.polygons()[0].toString())
 
         datacubeParams, single_level = self.create_datacube_parameters(load_params, env)
         opensearch_endpoint = layer_source_info.get(
