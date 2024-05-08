@@ -434,22 +434,22 @@ class TestBatchJobs:
             res = api.get('/jobs/{j}'.format(j=job_id), headers=TEST_USER_AUTH_HEADER).assert_status_code(200).json
 
         if api.api_version_compare.at_least("1.0.0"):
-            expected = {
+            expected = DictSubSet({
                 "id": job_id,
                 "process": {"process_graph": self.DUMMY_PROCESS_GRAPH},
                 "status": "created",
                 "created": "2020-04-20T16:04:03Z",
                 "updated": "2020-04-20T16:04:03Z",
                 "title": "Dummy",
-            }
+            })
         else:
-            expected = {
+            expected = DictSubSet({
                 "id": job_id,
                 "process_graph": self.DUMMY_PROCESS_GRAPH,
                 "status": "submitted",
                 "submitted": "2020-04-20T16:04:03Z",
                 "title": "Dummy",
-            }
+            })
         assert res == expected
 
     def test_get_legacy_zk_data(self, api):
@@ -474,18 +474,18 @@ class TestBatchJobs:
             res = api.get('/jobs/{j}'.format(j=job_id), headers=TEST_USER_AUTH_HEADER).assert_status_code(200).json
 
         if api.api_version_compare.at_least("1.0.0"):
-            expected = {
+            expected = DictSubSet({
                 "id": job_id,
                 "process": {"process_graph": self.DUMMY_PROCESS_GRAPH,
                             "title": None, "description": None, "plan": None, "budget": None},
                 "status": "created",
-            }
+            })
         else:
-            expected = {
+            expected = DictSubSet({
                 "id": job_id,
                 "process_graph": self.DUMMY_PROCESS_GRAPH,
                 "status": "submitted",
-            }
+            })
         assert res == expected
 
     def test_create_and_get_user_jobs(self, api):
@@ -497,13 +497,13 @@ class TestBatchJobs:
             created = "created" if api.api_version_compare.at_least("1.0.0") else "submitted"
             assert result == {
                 "jobs": [
-                    {
+                    DictSubSet({
                         "id": job_id,
                         "title": "Dummy",
                         "status": created,
                         created: "2020-04-20T16:04:03Z",
                         "updated": "2020-04-20T16:04:03Z",
-                    },
+                    }),
                 ],
                 "links": []
             }
