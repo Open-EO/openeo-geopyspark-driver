@@ -872,7 +872,7 @@ def _get_layer_catalog(
                 import requests
                 resp = requests.get(url=url)
                 resp.raise_for_status()
-                metadata = resp.json()
+                opensearch_metadata[cid] = resp.json()
 
             elif data_source.get("type") == "sentinel-hub":
                 sh_stac_endpoint = "https://collections.eurodatacube.com/stac/index.json"

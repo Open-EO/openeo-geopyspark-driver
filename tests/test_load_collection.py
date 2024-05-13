@@ -409,7 +409,7 @@ def test_load_disk_collection_pyramid(
     cube = backend_implementation.load_disk_data(
         format="GTiff",
         glob_pattern=str(tmp_path / "openEO_*.tif"),
-        options=dict(date_regex=r".*\/openEO_(\d{4})-(\d{2})-(\d{2})Z.tif"),
+        options=dict(date_regex=r".*\/openEO_(\d{4})(\d{2})(\d{2})T.*Z.tif"),
         load_params=LoadParameters(),
         env=EvalEnv(),
     )
@@ -430,7 +430,7 @@ def test_load_disk_collection_batch(imagecollection_with_two_bands_and_three_dat
     cube = backend_implementation.load_disk_data(
         format="GTiff",
         glob_pattern=str(tmp_path / "openEO_*.tif"),
-        options=dict(date_regex=r".*\/openEO_(\d{4})-(\d{2})-(\d{2})Z.tif"),
+        options=dict(date_regex=r".*\/openEO_(\d{4})(\d{2})(\d{2})T.*Z.tif"),
         load_params=load_params,
         env=env,
     )
