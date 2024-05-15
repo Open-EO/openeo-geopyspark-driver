@@ -72,6 +72,7 @@ class FreeIpaClient:
         verify_tls: Union[bool, str, Path] = True,
         api_version: str = "2.231",
         gssapi_creds: Optional["gssapi.Credentials"] = None,
+        opportunistic_auth: bool = True,
     ):
         """
         :param ipa_server: ipa server (hostname)
@@ -99,8 +100,11 @@ class FreeIpaClient:
         self._api_version = api_version
 
         if requests_gssapi:
-            _log.debug(f"Setting up FreeIpaClient with GSSAPI/Kerberos auth with {gssapi_creds=}")
-            self._auth = requests_gssapi.HTTPSPNEGOAuth(creds=gssapi_creds)
+            _log.debug(f"Setting up FreeIpaClient with GSSAPI/Kerberos auth with {gssapi_creds.name=}")
+            self._auth = requests_gssapi.HTTPSPNEGOAuth(
+                opportunistic_auth=opportunistic_auth,
+                creds=gssapi_creds,
+            )
         else:
             _log.warning("Setting up FreeIpaClient without (GSSAPI/Kerberos) auth")
             self._auth = None
@@ -220,6 +224,7 @@ def acquire_gssapi_creds(
     :param ccache: credential cache name (default: "MEMORY" to not leak into existing credential caches)
     :return:
     """
+    _log.debug(f"Acquiring GSSAPI credentials for {principal=} with {keytab_path=}")
     return gssapi.Credentials(
         usage="initiate",
         name=gssapi.Name(principal),
