@@ -886,12 +886,12 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                     message=f"No random forest model found for job {model_id}",status_code=400)
             return model
 
-    def vector_to_raster(self, input_vector_cube: DriverVectorCube, target_raster_cube: DriverDataCube) -> DriverDataCube:
+    def vector_to_raster(self, input_vector_cube: DriverVectorCube, target: DriverDataCube) -> DriverDataCube:
         """
         Rasterize all bands of the input vector cube into a DriverDataCube.
 
         :param input_vector_cube: DriverVectorCube that contains at least one band.
-        :param target_raster_cube: Reference DriverDataCube used to determine the layout definition, resolution and CRS of the output raster cube.
+        :param target: Reference DriverDataCube used to determine the layout definition, resolution and CRS of the output raster cube.
         :return: DriverDataCube with the rasterized bands.
         """
         if not isinstance(input_vector_cube, DriverVectorCube):
@@ -903,17 +903,17 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                     reason=f"Invalid vector cube {type(input_vector_cube)}."
                 )
 
-        if not isinstance(target_raster_cube, GeopysparkDataCube):
+        if not isinstance(target, GeopysparkDataCube):
             raise ProcessParameterInvalidException(
                 parameter='target', process='vector_to_raster',
-                reason=f"Invalid target cube {type(target_raster_cube)}."
+                reason=f"Invalid target cube {type(target)}."
             )
-        if len(target_raster_cube.pyramid.levels) == 0:
+        if len(target.pyramid.levels) == 0:
             raise ProcessParameterInvalidException(
                 parameter='target', process='vector_to_raster',
-                reason=f"Target cube {type(target_raster_cube)} does not contain any data."
+                reason=f"Target cube {type(target)} does not contain any data."
             )
-        top_layer = target_raster_cube.pyramid.levels[0].srdd.rdd()
+        top_layer = target.pyramid.levels[0].srdd.rdd()
         cube: DataArray = input_vector_cube.get_cube()
         if cube is None:
             raise ProcessParameterInvalidException(
