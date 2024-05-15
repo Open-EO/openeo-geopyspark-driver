@@ -3,6 +3,7 @@ import datetime as dt
 import functools
 import json
 import logging
+import math
 import sys
 from copy import deepcopy
 from datetime import datetime
@@ -804,6 +805,96 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
         return "UTM"  # LANDSAT7_ETM_L2 doesn't have any, for example
 
+    def derive_temporal_extent(self, collection_id: str, constraints: dict) -> List[Optional[str]]:
+        metadata_json = self.get_collection_metadata(collection_id=collection_id)
+        metadata = GeopysparkCubeMetadata(metadata_json)
+
+        temporal_extent_constraints = constraints.get("temporal_extent")
+
+        # The first temporal interval should encompass the other temporal intervals.
+        # The outer bounds are still calculated just in case.
+        # https://github.com/radiantearth/stac-spec/blob/master/collection-spec/collection-spec.md#temporal-extent-object
+        catalog_temporal_extent = metadata.get("extent", "temporal", "interval", default=None)
+        outer_bounds = [None, None]
+        if catalog_temporal_extent:
+            for extent in catalog_temporal_extent:
+                if extent[0]:
+                    if outer_bounds[0] is None:
+                        outer_bounds[0] = extent[0]
+                    else:
+                        outer_bounds[0] = min(outer_bounds[0], extent[0])
+                if extent[1]:
+                    if outer_bounds[1] is None:
+                        outer_bounds[1] = extent[1]
+                    else:
+                        outer_bounds[1] = max(outer_bounds[1], extent[1])
+        if temporal_extent_constraints is None:
+            temporal_extent = outer_bounds
+        else:
+            # take the intersection of outer_bounds and temporal_extent
+            beginnings = []
+            if outer_bounds[0]:
+                beginnings.append(outer_bounds[0])
+            if temporal_extent_constraints[0]:
+                beginnings.append(temporal_extent_constraints[0])
+            if not beginnings:
+                beginnings.append(None)
+
+            ends = []
+            if outer_bounds[1]:
+                ends.append(outer_bounds[1])
+            if temporal_extent_constraints[1]:
+                ends.append(temporal_extent_constraints[1])
+            if not ends:
+                ends.append(None)
+
+            temporal_extent = (
+                max(beginnings),  # ISO date is sortable like a string
+                min(ends),
+            )
+        return temporal_extent
+
+    def estimate_number_of_temporal_observations(self,
+                                                 collection_id: str,
+                                                 constraints: dict,
+                                                 ) -> int:
+        temporal_extent = self.derive_temporal_extent(collection_id, constraints)
+
+        metadata_json = self.get_collection_metadata(collection_id=collection_id)
+        metadata = GeopysparkCubeMetadata(metadata_json)
+
+        consider_as_singular_time_step = deep_get(metadata_json, "_vito", "data_source",
+                                                  "consider_as_singular_time_step", default=False)
+        if consider_as_singular_time_step:
+            return 1
+
+        # step could be explicitly 'None', so we use 'or' to specify the default
+        temporal_step = metadata.get("cube:dimensions", "t", "step", default=None) or "P10D"
+
+        # https://github.com/stac-extensions/datacube?tab=readme-ov-file#temporal-dimension-object
+        temporal_step = parse_approximate_isoduration(temporal_step)
+        temporal_step = temporal_step.total_seconds()
+
+        from_date, to_date = temporal_extent
+        if to_date is None:
+            if from_date is None:
+                number_of_temporal_observations = 1
+                logger.warning(
+                    f"Got open: {temporal_extent=}. Assuming {number_of_temporal_observations=}."
+                )
+            else:
+                logger.warning(
+                    f"Got half open: {temporal_extent=}. Assuming it goes till today."
+                )
+                from_date_parsed = dateutil.parser.parse(from_date).replace(tzinfo=None)
+                to_date_now = datetime.now().replace(tzinfo=None)
+                number_of_temporal_observations = (to_date_now - from_date_parsed).total_seconds() / temporal_step
+        else:
+            number_of_temporal_observations = (dateutil.parser.parse(to_date) - dateutil.parser.parse(
+                from_date)).total_seconds() / temporal_step
+        number_of_temporal_observations = max(math.floor(number_of_temporal_observations), 1)
+        return number_of_temporal_observations
+
 
 # Type annotation aliases to make things more self-documenting
 CollectionId = str
@@ -1146,8 +1237,7 @@ def check_missing_products(
 def is_layer_too_large(
         spatial_extent: dict,
         geometries: Union[DriverVectorCube, DelayedVector, BaseGeometry],
-        temporal_extent: Tuple[str, str],
-        temporal_step:str,
+        number_of_temporal_observations: int,
         nr_bands: int,
         cell_width: float,
         cell_height: float,
@@ -1162,8 +1252,7 @@ def is_layer_too_large(
 
     :param spatial_extent: Requested spatial extent.
     :param geometries: Requested geometries (if any). From e.g. filter_spatial or aggregate_spatial.
-    :param temporal_extent: Requested temporal extent (in isoformat).
-    :param temporal_step: Requested temporal step size (in isoformat).
+    :param number_of_temporal_observations: Requested number of temporal observations.
     :param nr_bands: Requested number of bands.
     :param cell_width: Width of the cells/pixels.
     :param cell_height: Height of the cells/pixels.
@@ -1175,32 +1264,6 @@ def is_layer_too_large(
     :return: A message if the layer exceeds the threshold in pixels. None otherwise.
              Also returns the estimated number of pixels and the threshold.
     """
-    if temporal_step is None:
-        # Raw estimate.
-        # TODO: DEM has only one time sample and no step defined.
-        temporal_step = "P10D"
-
-    # https://github.com/stac-extensions/datacube?tab=readme-ov-file#temporal-dimension-object
-    temporal_step = parse_approximate_isoduration(temporal_step)
-    estimate_days_per_sample = temporal_step.days
-
-    from_date, to_date = temporal_extent
-    if to_date is None:
-        if from_date is None:
-            days = 1
-            logger.warning(
-                f"is_layer_too_large got open temporal extent: {repr(temporal_extent)}. Assuming {days} day."
-            )
-        else:
-            logger.warning(
-                f"is_layer_too_large got half open temporal extent: {repr(temporal_extent)}. Assuming it goes till today."
-            )
-            from_date_parsed = dateutil.parser.parse(from_date).replace(tzinfo=None)
-            to_date_now = datetime.now().replace(tzinfo=None)
-            days = (to_date_now - from_date_parsed).days / estimate_days_per_sample
-    else:
-        days = (dateutil.parser.parse(to_date) - dateutil.parser.parse(from_date)).days / estimate_days_per_sample
-    days = max(int(days), 1)
     srs = spatial_extent.get("crs", 'EPSG:4326')
     if isinstance(srs, int):
         srs = 'EPSG:%s' % str(srs)
@@ -1239,9 +1302,9 @@ def is_layer_too_large(
     if sync_job and (pixels_width > 20000 or pixels_height > 20000) and not geometries:
         return f"Requested spatial extent is too large for a sync job {pixels_width:.0f}x{pixels_height:.0f} pixels. Max size: (20000x20000)."
 
-    estimated_pixels = (bbox_width * bbox_height) / (cell_width * cell_height) * days * nr_bands
+    estimated_pixels = (bbox_width * bbox_height) / (cell_width * cell_height) * number_of_temporal_observations * nr_bands
     logger.debug(
-        f"is_layer_too_large {estimated_pixels=} {threshold_pixels=} ({bbox_width=} {bbox_height=} {cell_width=} {cell_height=} {days=} {nr_bands=})"
+        f"is_layer_too_large {estimated_pixels=} {threshold_pixels=} ({bbox_width=} {bbox_height=} {cell_width=} {cell_height=} {number_of_temporal_observations=} {nr_bands=})"
     )
     if estimated_pixels > threshold_pixels:
         if geometries and not isinstance(geometries, dict):
@@ -1262,9 +1325,9 @@ def is_layer_too_large(
                 cell_width = abs(cell_bbox["east"] - cell_bbox["west"])
                 cell_height = abs(cell_bbox["north"] - cell_bbox["south"])
             surface_area_pixels = geometries_area / (cell_width * cell_height)
-            estimated_pixels = surface_area_pixels * days * nr_bands
+            estimated_pixels = surface_area_pixels * number_of_temporal_observations * nr_bands
             logger.debug(
-                f"is_layer_too_large {estimated_pixels=} {threshold_pixels=} ({geometries_area=} {cell_width=} {cell_height=} {days=} {nr_bands=})"
+                f"is_layer_too_large {estimated_pixels=} {threshold_pixels=} ({geometries_area=} {cell_width=} {cell_height=} {number_of_temporal_observations=} {nr_bands=})"
             )
             if estimated_pixels <= threshold_pixels:
                 return None

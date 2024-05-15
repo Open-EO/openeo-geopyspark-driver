@@ -178,6 +178,42 @@ def test_extra_validation_layer_too_large_open_time_interval(backend_implementat
     assert len(errors) == 1
     assert errors[0]['code'] == "ExtentTooLarge"
 
+def test_extra_validation_layer_too_large_copernicus_30(backend_implementation):
+    processing = GpsProcessing()
+    source_id1 = "load_collection", ("COPERNICUS_30", None)
+    env_source_constraints = [
+        (source_id1, {
+            # taken from user example in 'process_graph_list_mep.jsonl'
+            # Specifying a temporal extent is unneeded here, and caused the old extra_validation to fail.
+            "temporal_extent": ["2010-01-01", "2030-12-31"],
+            "spatial_extent": {"east": 1941516.7822, "south": -637292.4712999999, "crs": "EPSG:32637",
+                               "north": 2493707.5287, "west": -1285483.2178},
+            "bands": ["DEM"],
+        })
+    ]
+    env = EvalEnv(
+        values={ENV_SOURCE_CONSTRAINTS: env_source_constraints, "backend_implementation": backend_implementation,
+                "version": "1.0.0"})
+    errors = list(processing.extra_validation({}, env, None, env_source_constraints))
+    assert errors == []
+
+def test_extra_validation_without_extent(backend_implementation):
+    processing = GpsProcessing()
+    source_id1 = "load_collection", ("ESA_WORLDCOVER_10M_2021_V2", None)
+    env_source_constraints = [
+        (source_id1, {
+            "temporal_extent": None,
+            "spatial_extent": {"east": 1941516.7822, "south": -637292.4712999999, "crs": "EPSG:32637",
+                               "north": 2493707.5287, "west": -1285483.2178},
+            "bands": ["MAP"],
+        })
+    ]
+    env = EvalEnv(
+        values={ENV_SOURCE_CONSTRAINTS: env_source_constraints, "backend_implementation": backend_implementation,
+                "version": "1.0.0"})
+    errors = list(processing.extra_validation({}, env, None, env_source_constraints))
+    assert errors == []
+
 
 def test_extra_validation_layer_too_large_area(backend_implementation):
     processing = GpsProcessing()
@@ -274,6 +310,24 @@ def test_extra_validation_layer_too_large_custom_crs(backend_implementation):
         }),
     ]
     env = EvalEnv(values={ENV_SOURCE_CONSTRAINTS: env_source_constraints, "backend_implementation": backend_implementation, "version": "1.0.0"})
+    errors = list(processing.extra_validation({}, env, None, env_source_constraints))
+    assert len(errors) == 0
+
+
+def test_extra_validation_layer_too_large_custom_crs_hourly(backend_implementation):
+    processing = GpsProcessing()
+    source_id1 = "load_collection", ("AGERA5_HOURLY", None)
+    env_source_constraints = [
+        (source_id1, {
+            "temporal_extent": ["2019-01-01", "2019-01-02"],
+            "spatial_extent": {"south": 5000000.0, "west": 420000.0, "north": 5110000.0, "east": 430000.0,
+                               "crs": "EPSG:3035"},
+            "bands": ["wind-speed"],
+        }),
+    ]
+    env = EvalEnv(
+        values={ENV_SOURCE_CONSTRAINTS: env_source_constraints, "backend_implementation": backend_implementation,
+                "version": "1.0.0"})
     errors = list(processing.extra_validation({}, env, None, env_source_constraints))
     assert len(errors) == 0
 

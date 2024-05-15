@@ -1210,7 +1210,8 @@ class GpsProcessing(ConcreteProcessing):
             source_id_proc, source_id_args = source_id
             if source_id_proc == "load_collection":
                 collection_id = source_id_args[0]
-                metadata = GeopysparkCubeMetadata(catalog.get_collection_metadata(collection_id=collection_id))
+                metadata_json = catalog.get_collection_metadata(collection_id=collection_id)
+                metadata = GeopysparkCubeMetadata(metadata_json)
                 temporal_extent = constraints.get("temporal_extent")
                 spatial_extent = constraints.get("spatial_extent")
 
@@ -1246,30 +1247,11 @@ class GpsProcessing(ConcreteProcessing):
                                                                   f"collection {collection_id!r}"}
                     continue
 
-                # Get temporal extent out of metadata if not found in constraints:
-                # TODO: Could do this for spatial extent as well.
-                if temporal_extent is None or temporal_extent[0] is None or temporal_extent[1] is None:
-                    extents = metadata.get("extent", "temporal", "interval", default=None)
-                    begin = None
-                    end = None
-                    for extent in extents:
-                        if extent[0]:
-                            if begin is None:
-                                begin = extent[0]
-                            else:
-                                begin = min(begin, extent[0])
-                        if extent[1]:
-                            if end is None:
-                                end = extent[1]
-                            else:
-                                end = max(end, extent[1])
-                    if temporal_extent is None:
-                        temporal_extent = [begin, end]
-                    else:
-                        temporal_extent = [
-                            temporal_extent[0] or begin,
-                            temporal_extent[1] or end,
-                        ]
+                catalog = env.backend_implementation.catalog
+                number_of_temporal_observations: int = catalog.estimate_number_of_temporal_observations(
+                    collection_id,
+                    constraints,
+                )
 
                 if spatial_extent and temporal_extent:
                     band_names = constraints.get("bands")
@@ -1281,7 +1263,6 @@ class GpsProcessing(ConcreteProcessing):
                                                   default=["_at_least_assume_one_band_"])
                     nr_bands = len(band_names)
 
-                    temporal_step = metadata.get("cube:dimensions", "t", "step", default=None)
 
                     if collection_id == 'TestCollection-LonLat4x4':
                         # This layer is always 4x4 pixels, adapt resolution accordingly
@@ -1323,8 +1304,7 @@ class GpsProcessing(ConcreteProcessing):
                     message = is_layer_too_large(
                         spatial_extent=spatial_extent,
                         geometries=geometries,
-                        temporal_extent=temporal_extent,
-                        temporal_step=temporal_step,
+                        number_of_temporal_observations=number_of_temporal_observations,
                         nr_bands=nr_bands,
                         cell_width=cell_width,
                         cell_height=cell_height,

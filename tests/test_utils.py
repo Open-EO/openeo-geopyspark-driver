@@ -340,6 +340,8 @@ def test_reproject_cellsize(spatial_extent: dict, input_resolution: tuple, input
         ("P5DT4M", "5 days, 0:04:00"),
         ("P2WT3H", "14 days, 3:00:00"),
         ("P16D", "16 days, 0:00:00"),
+        ("PT1H", "1:00:00"),
+        ("P1DT1S", "1 day, 0:00:01"),
         ("P1D", "1 day, 0:00:00"),
         ("P1M", "30 days, 9:36:00"),
         ("P1Y", "365 days, 0:00:00"),

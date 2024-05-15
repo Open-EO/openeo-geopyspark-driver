@@ -765,6 +765,87 @@
     }
   },
   {
+  "id": "AGERA5_HOURLY",
+  "name": "AGERA5_HOURLY",
+  "title": "AGERA5_HOURLY",
+  "description": "Fake layer. Same as AGERA5, but just with summaries.t.step == PT1H",
+  "extent": {
+    "spatial": {"bbox": [[-180, -90, 179.9499939, 90]]},
+    "temporal": {"interval": [["2015-01-01", null]]}
+  },
+  "links": [
+      {
+        "rel": "alternate",
+        "href": "https://cds.climate.copernicus.eu/cdsapp#!/dataset/sis-agrometeorological-indicators",
+        "title": "Product web page."
+      }
+    ],
+  "summaries": {
+      "eo:bands": [
+        {
+          "name": "dewpoint-temperature",
+          "description": "Mean dewpoint temperature at a height of 2 metres above the surface over the period 00h-24h local time. The dew point is the temperature to which air must be cooled to become saturated with water vapor. In combination with the air temperature it is used to assess relative humidity.",
+          "unit": "K"
+        },
+        {
+          "name": "precipitation-flux",
+          "description": "Total volume of liquid water (mm3) precipitated over the period 00h-24h local time per unit of area (mm2), per day.",
+          "unit": "mm/day"
+        },
+        {
+          "name": "solar-radiation-flux",
+          "description": "Total amount of energy provided by solar radiation at the surface over the period 00-24h local time per unit area and time.",
+          "unit": "j/m²day"
+        },
+        { "name": "temperature-max",
+          "description": "Maximum air temperature at 2m height (daily maximum)",
+          "unit": "K"
+         },
+        { "name": "temperature-mean",
+          "description": "Mean air temperature at 2m height (daily mean)",
+          "unit": "K"
+         },
+        { "name": "temperature-min",
+          "description": "Minimum air temperature at 2m height (daily minimum)",
+          "unit": "K"
+         },
+        { "name": "vapour-pressure",
+          "description": "Contribution to the total atmospheric pressure provided by the water vapour over the period 00-24h local time per unit of time.",
+          "unit": "hPa"
+         },
+        { "name": "wind-speed",
+          "description": "Mean wind speed at a height of 10 metres above the surface over the period 00h-24h local time.",
+          "unit": "m/s"
+         }
+      ]
+    },
+    "cube:dimensions": {
+      "x": {"type": "spatial", "axis": "x", "step": 0.1},
+      "y": {"type": "spatial", "axis": "y", "step": 0.1},
+      "t": {"type": "temporal", "step": "PT1H"},
+      "bands": {
+        "type": "bands",
+        "values": [
+          "dewpoint-temperature",
+          "precipitation-flux",
+          "solar-radiation-flux",
+          "temperature-max",
+          "temperature-mean",
+          "temperature-min",
+          "vapour-pressure",
+          "wind-speed"
+        ]
+      }
+    },
+    "_vito": {
+      "data_source": {
+        "type": "file-agera5",
+        "data_glob": "/data/MEP/ECMWF/AgERA5/*/*/AgERA5_dewpoint-temperature_*.tif",
+        "date_regex": ".+_(\\d{4})(\\d{2})(\\d{2})\\.tif"
+      }
+    }
+  },
+  {
     "id": "COPERNICUS_30",
     "name": "COPERNICUS_30",
     "title": "Copernicus Global 30 meter Digital Elevation Model dataset.",
@@ -811,7 +892,8 @@
       "data_source": {
         "type": "file-oscars",
         "opensearch_collection_id": "urn:eop:VITO:COP_DEM_GLO_30M_COG",
-        "root_path": "/data/MTDA/DEM/COP_DEM_30M_COG"
+        "root_path": "/data/MTDA/DEM/COP_DEM_30M_COG",
+        "consider_as_singular_time_step": true
       }
     }
   },
@@ -869,6 +951,120 @@
           [
             "2000-01-01",
             null
+          ]
+        ]
+      }
+    }
+  },
+  {
+    "id": "ESA_WORLDCOVER_10M_2021_V2",
+    "license": "https://creativecommons.org/licenses/by/4.0/",
+    "providers": [
+      {
+        "name": "VITO",
+        "roles": [
+          "producer"
+        ],
+        "url": "https://remotesensing.vito.be/"
+      }
+    ],
+    "cube:dimensions": {
+      "x": {
+        "type": "spatial",
+        "axis": "x",
+        "extent": [
+          -180,
+          180
+        ],
+        "step": 0.000083333333333,
+        "reference_system": 4326
+      },
+      "y": {
+        "type": "spatial",
+        "axis": "y",
+        "extent": [
+          -60,
+          83
+        ],
+        "step": 0.000083333333333,
+        "reference_system": 4326
+      },
+      "t": {
+        "type": "temporal"
+      },
+      "bands": {
+        "type": "bands",
+        "values": [
+          "MAP",
+          "INPUTQUALITY"
+        ]
+      }
+    },
+    "summaries": {
+      "eo:bands": [
+        {
+          "name": "MAP",
+          "aliases": [
+            "ESA_WORLDCOVER_10M_MAP"
+          ],
+          "gsd": 10,
+          "type": "uint8"
+        },
+        {
+          "name": "INPUTQUALITY",
+          "aliases": [
+            "ESA_WORLDCOVER_10M_INPUTQUALITY"
+          ],
+          "gsd": 10,
+          "type": "uint8"
+        }
+      ]
+    },
+    "links": [
+      {
+        "rel": "license",
+        "href": "https://creativecommons.org/licenses/by/4.0/"
+      },
+      {
+        "rel": "alternate",
+        "title": "EO OpenSearch catalog",
+        "href": "https://services.terrascope.be/catalogue/description?collection=urn:eop:VITO:ESA_WorldCover_10m_2021_V2"
+      },
+      {
+        "rel": "alternate",
+        "title": "Product Viewer",
+        "href": "https://viewer.esa-worldcover.org/worldcover"
+      },
+      {
+        "href": "https://services.terrascope.be/wmts/v2",
+        "rel": "wmts",
+        "wmts:layer": "WORLDCOVER_2021_MAP"
+      }
+    ],
+    "_vito": {
+      "data_source": {
+        "type": "file-oscars",
+        "opensearch_collection_id": "urn:eop:VITO:ESA_WorldCover_10m_2021_V2",
+        "root_path": "/data/MTDA/WORLDCOVER/ESA_WORLDCOVER_10M_2021_V200/MAP",
+        "realign": true
+      }
+    },
+    "extent": {
+      "spatial": {
+        "bbox": [
+          [
+            -180,
+            -90,
+            180,
+            90
+          ]
+        ]
+      },
+      "temporal": {
+        "interval": [
+          [
+            "2021-01-01T00:00:00Z",
+            "2021-12-31T00:00:00Z"
           ]
         ]
       }
