@@ -869,14 +869,14 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
         # https://github.com/stac-extensions/datacube?tab=readme-ov-file#temporal-dimension-object
         temporal_step = parse_approximate_isoduration(temporal_step)
-        estimate_days_per_sample = temporal_step.days
+        temporal_step = temporal_step.total_seconds()
 
         from_date, to_date = temporal_extent
         if to_date is None:
             if from_date is None:
-                days = 1
+                number_of_temporal_observations = 1
                 logger.warning(
-                    f"Got open: {temporal_extent=}. Assuming {days=}."
+                    f"Got open: {temporal_extent=}. Assuming {number_of_temporal_observations=}."
                 )
             else:
                 logger.warning(
@@ -884,12 +884,12 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 )
                 from_date_parsed = dateutil.parser.parse(from_date).replace(tzinfo=None)
                 to_date_now = datetime.now().replace(tzinfo=None)
-                days = (to_date_now - from_date_parsed).days / estimate_days_per_sample
+                number_of_temporal_observations = (to_date_now - from_date_parsed).total_seconds() / temporal_step
         else:
-            days = (dateutil.parser.parse(to_date) - dateutil.parser.parse(
-                from_date)).days / estimate_days_per_sample
-        days = max(math.floor(days), 1)
-        return days
+            number_of_temporal_observations = (dateutil.parser.parse(to_date) - dateutil.parser.parse(
+                from_date)).total_seconds() / temporal_step
+        number_of_temporal_observations = max(math.floor(number_of_temporal_observations), 1)
+        return number_of_temporal_observations
 
 
 # Type annotation aliases to make things more self-documenting

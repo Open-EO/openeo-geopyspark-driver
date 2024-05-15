@@ -313,6 +313,24 @@ def test_extra_validation_layer_too_large_custom_crs(backend_implementation):
     assert len(errors) == 0
 
 
+def test_extra_validation_layer_too_large_custom_crs_hourly(backend_implementation):
+    processing = GpsProcessing()
+    source_id1 = "load_collection", ("AGERA5_HOURLY", None)
+    env_source_constraints = [
+        (source_id1, {
+            "temporal_extent": ["2019-01-01", "2019-01-02"],
+            "spatial_extent": {"south": 5000000.0, "west": 420000.0, "north": 5110000.0, "east": 430000.0,
+                               "crs": "EPSG:3035"},
+            "bands": ["wind-speed"],
+        }),
+    ]
+    env = EvalEnv(
+        values={ENV_SOURCE_CONSTRAINTS: env_source_constraints, "backend_implementation": backend_implementation,
+                "version": "1.0.0"})
+    errors = list(processing.extra_validation({}, env, None, env_source_constraints))
+    assert len(errors) == 0
+
+
 def test_extra_validation_missing_gsd(backend_implementation):
     # Layers with missing GSD should not crash
     processing = GpsProcessing()

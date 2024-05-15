@@ -765,6 +765,87 @@
     }
   },
   {
+  "id": "AGERA5_HOURLY",
+  "name": "AGERA5_HOURLY",
+  "title": "AGERA5_HOURLY",
+  "description": "Fake layer. Same as AGERA5, but just with summaries.t.step == PT1H",
+  "extent": {
+    "spatial": {"bbox": [[-180, -90, 179.9499939, 90]]},
+    "temporal": {"interval": [["2015-01-01", null]]}
+  },
+  "links": [
+      {
+        "rel": "alternate",
+        "href": "https://cds.climate.copernicus.eu/cdsapp#!/dataset/sis-agrometeorological-indicators",
+        "title": "Product web page."
+      }
+    ],
+  "summaries": {
+      "eo:bands": [
+        {
+          "name": "dewpoint-temperature",
+          "description": "Mean dewpoint temperature at a height of 2 metres above the surface over the period 00h-24h local time. The dew point is the temperature to which air must be cooled to become saturated with water vapor. In combination with the air temperature it is used to assess relative humidity.",
+          "unit": "K"
+        },
+        {
+          "name": "precipitation-flux",
+          "description": "Total volume of liquid water (mm3) precipitated over the period 00h-24h local time per unit of area (mm2), per day.",
+          "unit": "mm/day"
+        },
+        {
+          "name": "solar-radiation-flux",
+          "description": "Total amount of energy provided by solar radiation at the surface over the period 00-24h local time per unit area and time.",
+          "unit": "j/m²day"
+        },
+        { "name": "temperature-max",
+          "description": "Maximum air temperature at 2m height (daily maximum)",
+          "unit": "K"
+         },
+        { "name": "temperature-mean",
+          "description": "Mean air temperature at 2m height (daily mean)",
+          "unit": "K"
+         },
+        { "name": "temperature-min",
+          "description": "Minimum air temperature at 2m height (daily minimum)",
+          "unit": "K"
+         },
+        { "name": "vapour-pressure",
+          "description": "Contribution to the total atmospheric pressure provided by the water vapour over the period 00-24h local time per unit of time.",
+          "unit": "hPa"
+         },
+        { "name": "wind-speed",
+          "description": "Mean wind speed at a height of 10 metres above the surface over the period 00h-24h local time.",
+          "unit": "m/s"
+         }
+      ]
+    },
+    "cube:dimensions": {
+      "x": {"type": "spatial", "axis": "x", "step": 0.1},
+      "y": {"type": "spatial", "axis": "y", "step": 0.1},
+      "t": {"type": "temporal", "step": "PT1H"},
+      "bands": {
+        "type": "bands",
+        "values": [
+          "dewpoint-temperature",
+          "precipitation-flux",
+          "solar-radiation-flux",
+          "temperature-max",
+          "temperature-mean",
+          "temperature-min",
+          "vapour-pressure",
+          "wind-speed"
+        ]
+      }
+    },
+    "_vito": {
+      "data_source": {
+        "type": "file-agera5",
+        "data_glob": "/data/MEP/ECMWF/AgERA5/*/*/AgERA5_dewpoint-temperature_*.tif",
+        "date_regex": ".+_(\\d{4})(\\d{2})(\\d{2})\\.tif"
+      }
+    }
+  },
+  {
     "id": "COPERNICUS_30",
     "name": "COPERNICUS_30",
     "title": "Copernicus Global 30 meter Digital Elevation Model dataset.",
