@@ -98,6 +98,7 @@ setup(
             "PyYAML",
         ],
         "yarn": [
+            "gssapi>=1.8.0",
             "requests-gssapi>=1.2.3",  # For Kerberos authentication
         ],
     },
