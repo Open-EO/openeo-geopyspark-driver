@@ -158,6 +158,7 @@ def main():
                         help='Classpath used to launch the Java Gateway')
     parser.add_argument("--py4j-maximum-heap-size", default="1G",
                         help='Maximum heap size for the Java Gateway JVM')
+    # TODO: eliminate hardcoded (VITO) defaults? Open-EO/openeo-python-driver#275
     parser.add_argument("--principal", default="openeo@VGT.VITO.BE", help="Principal to be used to login to KDC")
     parser.add_argument("--keytab", default="openeo-deploy/mep/openeo.keytab",
                         help="Path to the file that contains the keytab for the principal")

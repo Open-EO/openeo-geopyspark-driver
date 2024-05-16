@@ -682,6 +682,7 @@ class CliApp:
         )
         parser.add_argument(
             "--principal",
+            # TODO: eliminate hardcoded (VITO) defaults? Open-EO/openeo-python-driver#275
             default="openeo@VGT.VITO.BE",
             help="Principal to be used to login to KDC",
         )

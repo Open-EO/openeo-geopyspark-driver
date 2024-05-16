@@ -58,7 +58,7 @@ class Vault:
     @retry(exceptions=VaultLoginError, tries=4, delay=2, backoff=4, logger=_log)
     def login_kerberos(
         self,
-        # TODO: eliminate hardcoded defaults?
+        # TODO: eliminate hardcoded (VITO) defaults? Open-EO/openeo-python-driver#275
         principal: str = "openeo@VGT.VITO.BE",
         keytab: str = "/opt/openeo.keytab",
     ) -> str:
