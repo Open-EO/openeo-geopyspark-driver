@@ -1460,11 +1460,6 @@ class GeopysparkDataCube(DriverDataCube):
         if isinstance(regions, (Polygon, MultiPolygon)):
             # TODO: GeometryCollection usage is deprecated
             regions = GeometryCollection([regions])
-        elif isinstance(regions, (str, pathlib.Path)):
-            with open(regions) as f:
-                geojson = json.load(f)
-            regions = DriverVectorCube.from_geojson(geojson)
-
         projected_polygons = to_projected_polygons(get_jvm(), regions, none_for_points=True)
 
         def regions_to_wkt(regions: Union[BaseGeometry, DriverVectorCube]) -> List[str]:
