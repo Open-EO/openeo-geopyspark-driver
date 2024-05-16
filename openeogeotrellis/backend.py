@@ -971,7 +971,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         pyramid: Pyramid = Pyramid({0: raster_layer})
 
         # Create metadata.
-        dimensions: List[Dimension] = target_raster_cube.metadata.spatial_dimensions
+        dimensions: List[Dimension] = target.metadata.spatial_dimensions
         if bands_dim:
             dimensions.append(bands_dim)
         if time_dim:
@@ -980,7 +980,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         metadata: GeopysparkCubeMetadata = GeopysparkCubeMetadata(
             metadata={},
             dimensions=dimensions,
-            spatial_extent=target_raster_cube.metadata.spatial_extent,
+            spatial_extent=target.metadata.spatial_extent,
             temporal_extent=time_dim.extent if time_dim else None,
         )
         return GeopysparkDataCube(pyramid, metadata)

@@ -64,7 +64,7 @@ def test_filter_bands():
 def test_vector_to_raster(imagecollection_with_two_bands_and_one_date):
     with open(get_test_data_file("geometries/FeatureCollection02.json")) as f:
         geojson = json.load(f)
-    target_raster_cube = imagecollection_with_two_bands_and_one_date
+    target = imagecollection_with_two_bands_and_one_date
 
     input_vector_cube = DriverVectorCube.from_geojson(geojson, columns_for_cube = DriverVectorCube.COLUMN_SELECTION_NUMERICAL)
     # input_vector_cube = input_vector_cube.filter_bands(bands=["pop"]) TODO: filter_bands does not change dtype.
@@ -74,11 +74,11 @@ def test_vector_to_raster(imagecollection_with_two_bands_and_one_date):
     assert(input_cube.properties.values.tolist() == ['pop'])
     output_cube: GeopysparkDataCube = GeoPySparkBackendImplementation(use_job_registry=False).vector_to_raster(
         input_vector_cube = input_vector_cube,
-        target_raster_cube = target_raster_cube
+        target = target
     )
 
     metadata: geopyspark.geotrellis.Metadata = output_cube.pyramid.levels[0].layer_metadata
-    target_metadata: geopyspark.geotrellis.Metadata = target_raster_cube.pyramid.levels[0].layer_metadata
+    target_metadata: geopyspark.geotrellis.Metadata = target.pyramid.levels[0].layer_metadata
     target_bounds: Bounds = target_metadata.bounds
     min_spatial_key = geopyspark.SpatialKey(col = target_bounds.minKey.col, row = target_bounds.minKey.row)
     max_spatial_key = geopyspark.SpatialKey(col = target_bounds.maxKey.col, row = target_bounds.maxKey.row)
@@ -104,12 +104,12 @@ def test_vector_to_raster(imagecollection_with_two_bands_and_one_date):
 def test_vector_to_raster_no_numeric_bands(imagecollection_with_two_bands_and_one_date):
     with open(get_test_data_file("geometries/FeatureCollection02.json")) as f:
         geojson = json.load(f)
-    target_raster_cube = imagecollection_with_two_bands_and_one_date
+    target = imagecollection_with_two_bands_and_one_date
     input_vector_cube = DriverVectorCube.from_geojson(geojson, columns_for_cube = ['id'])
     with pytest.raises(OpenEOApiException):
         GeoPySparkBackendImplementation(use_job_registry=False).vector_to_raster(
             input_vector_cube = input_vector_cube,
-            target_raster_cube = target_raster_cube
+            target = target
         )
 
 
@@ -202,7 +202,7 @@ def test_aggregatespatialresultcsv_to_vectorcube(imagecollection_with_two_bands_
 def test_aggregatespatialresultcsv_vector_to_raster(imagecollection_with_two_bands_and_three_dates):
     with open(get_test_data_file("geometries/FeatureCollection02.json")) as f:
         geojson = json.load(f)
-    target_raster_cube = imagecollection_with_two_bands_and_three_dates
+    target = imagecollection_with_two_bands_and_three_dates
     input_vector_cube: DriverVectorCube = DriverVectorCube.from_geojson(geojson, columns_for_cube = DriverVectorCube.COLUMN_SELECTION_ALL)
     aggregate_result: AggregateSpatialResultCSV = imagecollection_with_two_bands_and_three_dates.aggregate_spatial(
         input_vector_cube,
@@ -221,7 +221,7 @@ def test_aggregatespatialresultcsv_vector_to_raster(imagecollection_with_two_ban
     assert isinstance(aggregate_result, AggregateSpatialResultCSV)
     output_cube: DriverDataCube = GeoPySparkBackendImplementation(use_job_registry=False).vector_to_raster(
         input_vector_cube = aggregate_result,
-        target_raster_cube = target_raster_cube
+        target = target
     )
     assert len(output_cube.metadata.band_dimension.bands) == 2
     assert output_cube.metadata.temporal_dimension.extent == ('2017-09-25T11:37:00Z', '2017-10-25T11:37:00Z')
