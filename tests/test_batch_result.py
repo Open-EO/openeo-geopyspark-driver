@@ -341,7 +341,7 @@ def test_aggregate_spatial_area_result(tmp_path):
                     "geometries": {
                         "crs": {
                             "properties": {
-                                "name": "urn:ogc:def:crs:OGC:1.3:CRS84"
+                                "name": "EPSG:4326"
                             },
                             "type": "name"
                         },
