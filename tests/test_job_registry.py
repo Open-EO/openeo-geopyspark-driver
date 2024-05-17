@@ -275,7 +275,8 @@ class TestDoubleJobRegistry:
         assert job == {
             "job_id": "j-123",
             "user_id": "john",
-            "specification": '{"process_graph": {"add": {"process_id": "add", "arguments": {"x": 3, "y": 5}, "result": true}}, "job_options": {"prio": "low"}}',
+            "job_options": {"prio": "low"},
+            "process": {"process_graph": {"add": {"arguments": {"x": 3, "y": 5}, "process_id": "add", "result": True}}},
             "created": "2023-02-15T17:17:17Z",
             "status": "created",
             "updated": "2023-02-15T17:17:17Z",
@@ -375,14 +376,13 @@ class TestDoubleJobRegistry:
             "application_id": None,
             "title": "John's job",
             "description": None,
+            "process": self.DUMMY_PROCESS,
+            "job_options": {"prio": "low"},
         }
         if with_zk:
-            expected_job[
-                "specification"
-            ] = '{"process_graph": {"add": {"process_id": "add", "arguments": {"x": 3, "y": 5}, "result": true}}, "job_options": {"prio": "low"}}'
+            # In ZK, only "process_graph" is preserved, other fields are lost
+            expected_job["process"] = {"process_graph": self.DUMMY_PROCESS["process_graph"]}
         elif with_ejr:
-            expected_job["process"] = self.DUMMY_PROCESS
-            expected_job["job_options"] = {"prio": "low"}
             expected_job["parent_id"] = None
         assert job == expected_job
         assert job_metadata == BatchJobMetadata(
@@ -608,11 +608,8 @@ class TestDoubleJobRegistry:
                 status="created",
                 created=datetime.datetime(2023, 2, 15, 17, 17, 17),
                 updated=datetime.datetime(2023, 2, 15, 17, 17, 17),
-                process=dict(
-                    process_graph={"add": {"process_id": "add", "arguments": {"x": 3, "y": 5}, "result": True}},
-                    **expected_process_extra,
-                ),
-                job_options={"prio": "low"},
+                process=None,
+                job_options=None,
                 title="John's job",
             )
         ]

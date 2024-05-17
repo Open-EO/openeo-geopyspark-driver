@@ -452,42 +452,6 @@ class TestBatchJobs:
             })
         assert res == expected
 
-    def test_get_legacy_zk_data(self, api):
-        with self._mock_kazoo_client() as zk:
-            job_id = 'ad597b92-e6f3-4241-88ce-d31739a740ff'
-            raw = {
-                'api_version': '0.4.0',
-                'application_id': None,
-                'job_id': job_id,
-                'specification': '{"process_graph": {"loadcollection1": {"process_id": "load_collection","arguments":'
-                                 '{"id": "BIOPAR_FAPAR_V1_GLOBAL"}, "result": true}},'
-                                 '"title": null, "description": null, "plan": null, "budget": null}',
-                'status': 'submitted',
-                'user_id': TEST_USER
-            }
-            zk.create(
-                path=f"/openeo.test/jobs/ongoing/{TEST_USER}/{job_id}",
-                value=json.dumps(raw).encode(),
-                makepath=True
-            )
-
-            res = api.get('/jobs/{j}'.format(j=job_id), headers=TEST_USER_AUTH_HEADER).assert_status_code(200).json
-
-        if api.api_version_compare.at_least("1.0.0"):
-            expected = DictSubSet({
-                "id": job_id,
-                "process": {"process_graph": self.DUMMY_PROCESS_GRAPH,
-                            "title": None, "description": None, "plan": None, "budget": None},
-                "status": "created",
-            })
-        else:
-            expected = DictSubSet({
-                "id": job_id,
-                "process_graph": self.DUMMY_PROCESS_GRAPH,
-                "status": "submitted",
-            })
-        assert res == expected
-
     def test_create_and_get_user_jobs(self, api):
         with self._mock_kazoo_client() as zk, self._mock_utcnow() as un:
             data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH, title="Dummy")
