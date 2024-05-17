@@ -7,7 +7,7 @@ import hvac
 import requests
 
 from openeo_driver.util.auth import ClientCredentials
-from retry import retry
+from reretry import retry
 
 from openeogeotrellis.config import get_backend_config
 

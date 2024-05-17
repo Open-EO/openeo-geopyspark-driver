@@ -90,6 +90,7 @@ setup(
         "pyarrow>=1.0.0",  # For pyspark.pandas
         "attrs>=22.1.0",
         "planetary-computer~=1.0.0",
+        "reretry~=0.11.8",
     ],
     extras_require={
         "dev": tests_require,
