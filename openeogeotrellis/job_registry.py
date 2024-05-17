@@ -215,9 +215,22 @@ class ZkJobRegistry:
                 else:
                     stats["user_id without jobs"] += 1
 
-    def get_job(self, job_id: str, user_id: str, parse_specification: bool = False) -> dict:
+    def get_job(
+        self,
+        job_id: str,
+        user_id: str,
+        *,
+        parse_specification: bool = False,
+        omit_raw_specification: bool = False,
+    ) -> dict:
         """Returns details of a job."""
-        job_info, _ = self._read(job_id, user_id, include_done=True, parse_specification=parse_specification)
+        job_info, _ = self._read(
+            job_id=job_id,
+            user_id=user_id,
+            include_done=True,
+            parse_specification=parse_specification,
+            omit_raw_specification=omit_raw_specification,
+        )
         return job_info
 
     def get_user_jobs(self, user_id: str) -> List[Dict]:
@@ -227,13 +240,19 @@ class ZkJobRegistry:
 
         try:
             done_job_ids = self._zk.get_children(self._done(user_id))
-            jobs.extend([self.get_job(job_id, user_id) for job_id in done_job_ids])
+            jobs.extend(
+                self.get_job(job_id=job_id, user_id=user_id, parse_specification=False, omit_raw_specification=True)
+                for job_id in done_job_ids
+            )
         except NoNodeError:
             pass
 
         try:
             ongoing_job_ids = self._zk.get_children(self._ongoing(user_id))
-            jobs.extend([self.get_job(job_id, user_id) for job_id in ongoing_job_ids])
+            jobs.extend(
+                self.get_job(job_id=job_id, user_id=user_id, parse_specification=False, omit_raw_specification=True)
+                for job_id in ongoing_job_ids
+            )
         except NoNodeError:
             pass
 
@@ -336,11 +355,18 @@ class ZkJobRegistry:
         self._zk.create(path, data, makepath=True)
 
     def _read(
-        self, job_id: str, user_id: str, include_done: bool = False, parse_specification: bool = False
+        self,
+        job_id: str,
+        user_id: str,
+        *,
+        include_done: bool = False,
+        parse_specification: bool = False,
+        omit_raw_specification: bool = False,
     ) -> Tuple[Dict, int]:
         """
         :param parse_specification: parse the (JSON encoded) "specification" field
             and inject the process_graph (as `"process": {"process_graph": ...}`) and job_options as additional fields
+        :param omit_raw_specification: remove the original (raw) "specification" field from the result
         """
         assert job_id, "Shouldn't be empty: job_id"
         assert user_id, "Shouldn't be empty: user_id"
@@ -369,6 +395,9 @@ class ZkJobRegistry:
                 job_info["process"] = {"process_graph": process_graph}
             if "job_options" not in job_info:
                 job_info["job_options"] = job_options
+
+        if omit_raw_specification:
+            del job_info["specification"]
 
         return job_info, stat.version
 
@@ -491,10 +520,6 @@ def zk_job_info_to_metadata(job_info: dict) -> BatchJobMetadata:
     if status == "submitted":
         # TODO: is conversion of "submitted" still necessary?
         status = JOB_STATUS.CREATED
-    specification = job_info["specification"]
-    if isinstance(specification, str):
-        specification = json.loads(specification)
-    job_options = specification.pop("job_options", None)
 
     def map_safe(prop: str, f):
         value = job_info.get(prop)
@@ -502,13 +527,13 @@ def zk_job_info_to_metadata(job_info: dict) -> BatchJobMetadata:
 
     return BatchJobMetadata(
         id=job_info["job_id"],
-        process=specification,
+        process=job_info.get("process"),
         title=job_info.get("title"),
         description=job_info.get("description"),
         status=status,
         created=map_safe("created", rfc3339.parse_datetime),
         updated=map_safe("updated", rfc3339.parse_datetime),
-        job_options=job_options,
+        job_options=job_info.get("job_options"),
         started=map_safe("started", rfc3339.parse_datetime),
         finished=map_safe("finished", rfc3339.parse_datetime),
         memory_time_megabyte=map_safe(
@@ -531,7 +556,7 @@ def zk_job_info_to_metadata(job_info: dict) -> BatchJobMetadata:
     )
 
 
-def ejr_job_info_to_metadata(job_info: JobDict) -> BatchJobMetadata:
+def ejr_job_info_to_metadata(job_info: JobDict, full: bool = True) -> BatchJobMetadata:
     """Convert job info dict (from JobRegistryInterface) to BatchJobMetadata"""
     # TODO: eliminate zk_job_info_to_metadata/ejr_job_info_to_metadata duplication?
 
@@ -550,8 +575,8 @@ def ejr_job_info_to_metadata(job_info: JobDict) -> BatchJobMetadata:
         id=job_info["job_id"],
         status=job_info["status"],
         created=map_safe("created", rfc3339.parse_datetime),
-        process=job_info.get("process"),
-        job_options=job_info.get("job_options"),
+        process=job_info.get("process") if full else None,
+        job_options=job_info.get("job_options") if full else None,
         title=job_info.get("title"),
         description=job_info.get("description"),
         updated=map_safe("updated", rfc3339.parse_datetime),
@@ -803,7 +828,9 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
         if self.zk_job_registry:
             with TimingLogger(f"self.zk_job_registry.get_job({job_id=}, {user_id=})", logger=_log.debug):
                 with contextlib.suppress(JobNotFoundException):
-                    zk_job_info = self.zk_job_registry.get_job(job_id=job_id, user_id=user_id)
+                    zk_job_info = self.zk_job_registry.get_job(
+                        job_id=job_id, user_id=user_id, parse_specification=True, omit_raw_specification=True
+                    )
         if self.elastic_job_registry:
             with TimingLogger(f"self.elastic_job_registry.get_job({job_id=})", logger=_log.debug):
                 with contextlib.suppress(JobNotFoundException):
@@ -912,7 +939,7 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
             zk_jobs = [zk_job_info_to_metadata(j) for j in self.zk_job_registry.get_user_jobs(user_id)]
         if self.elastic_job_registry:
             ejr_jobs = [
-                ejr_job_info_to_metadata(j)
+                ejr_job_info_to_metadata(j, full=False)
                 for j in self.elastic_job_registry.list_user_jobs(user_id=user_id, fields=fields)
             ]
 
@@ -948,6 +975,7 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
 
     def get_active_jobs(self) -> Iterator[Dict]:
         if self.zk_job_registry:
+            # Note: `parse_specification` is enabled here because the jobtracker needs job_options (e.g. to determine target ETL)
             yield from self.zk_job_registry.get_running_jobs(parse_specification=True)
         elif self.elastic_job_registry:
             yield from self.elastic_job_registry.list_trackable_jobs(fields=[

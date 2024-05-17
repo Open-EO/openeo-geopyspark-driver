@@ -608,11 +608,8 @@ class TestDoubleJobRegistry:
                 status="created",
                 created=datetime.datetime(2023, 2, 15, 17, 17, 17),
                 updated=datetime.datetime(2023, 2, 15, 17, 17, 17),
-                process=dict(
-                    process_graph={"add": {"process_id": "add", "arguments": {"x": 3, "y": 5}, "result": True}},
-                    **expected_process_extra,
-                ),
-                job_options={"prio": "low"},
+                process=None,
+                job_options=None,
                 title="John's job",
             )
         ]

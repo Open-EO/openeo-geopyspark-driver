@@ -12,7 +12,11 @@ without compromising stable operations.
 
 ## Unreleased
 
+## 0.34.0
+
 - load_stac from unsigned job results URL: fix CRS and resolution of output assets ([#669](https://github.com/Open-EO/openeo-geopyspark-driver/issues/669))
+- Align job registry implementations to omit "process" and "job_options" in user job listings
+  (related to [#498](https://github.com/Open-EO/openeo-geopyspark-driver/issues/498), eu-cdse/openeo-cdse-infra#141)
 
 ## 0.33.1
 
