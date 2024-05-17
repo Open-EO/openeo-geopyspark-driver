@@ -106,6 +106,7 @@ class GpsBackendConfig(OpenEoBackendConfig):
 
     # TODO #236/#498/#632 long term goal is to fully disable ZK job registry, but for now it's configurable.
     use_zk_job_registry: bool = True
+    zk_job_registry_max_specification_size: Optional[int] = None
 
     ejr_api: Optional[str] = os.environ.get("OPENEO_EJR_API")
     ejr_backend_id: str = "unknown"

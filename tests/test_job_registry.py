@@ -9,8 +9,21 @@ from openeo_driver.backend import BatchJobMetadata
 from openeo_driver.errors import JobNotFoundException
 from openeo_driver.jobregistry import JOB_STATUS
 from openeo_driver.testing import DictSubSet
-from openeogeotrellis.job_registry import ZkJobRegistry, InMemoryJobRegistry, DoubleJobRegistry, get_deletable_dependency_sources
-from openeogeotrellis.testing import KazooClientMock
+from openeogeotrellis.config import get_backend_config
+from openeogeotrellis.job_registry import (
+    ZkJobRegistry,
+    InMemoryJobRegistry,
+    DoubleJobRegistry,
+    get_deletable_dependency_sources,
+    ZkStrippedSpecification,
+)
+from openeogeotrellis.testing import KazooClientMock, gps_config_overrides
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _prime_get_backend_config():
+    """Prime get_backend_config so that logging emitted from that doesn't ruin caplog usage"""
+    get_backend_config()
 
 
 class TestZkJobRegistry:
@@ -29,8 +42,30 @@ class TestZkJobRegistry:
         )
 
         data = zk_client.get_json_decoded("/openeo.test/jobs/ongoing/u456/j123")
-        assert data == DictSubSet(
-            user_id="u456", job_id="j123", specification='{"foo": "bar"}', status="created"
+        assert data == DictSubSet(user_id="u456", job_id="j123", specification='{"foo": "bar"}', status="created")
+
+    def test_get_job(self, zk_client):
+        zjr = ZkJobRegistry(zk_client=zk_client)
+        zjr.register(
+            job_id="j123",
+            user_id="u456",
+            api_version="1.2.3",
+            specification=zjr.build_specification_dict(process_graph={"foo": "bar"}),
+        )
+        assert zjr.get_job(job_id="j123", user_id="u456") == DictSubSet(
+            user_id="u456",
+            job_id="j123",
+            specification='{"process_graph": {"foo": "bar"}}',
+            status="created",
+        )
+        assert zjr.get_job(
+            job_id="j123", user_id="u456", parse_specification=True, omit_raw_specification=True
+        ) == DictSubSet(
+            user_id="u456",
+            job_id="j123",
+            status="created",
+            process={"process_graph": {"foo": "bar"}},
+            job_options=None,
         )
 
     def test_set_status(self, zk_client, time_machine):
@@ -118,6 +153,39 @@ class TestZkJobRegistry:
         )
 
         assert zk_client.get_json_decoded(path) == DictSubSet(user_id="u456", job_id="j123")
+
+    @pytest.mark.parametrize(
+        ["max_specification_size", "expected_specification", "fail_parse"],
+        [
+            (None, '{"process_graph": {"e": {"process_id": "e", "result": true}}}', False),
+            (1000, '{"process_graph": {"e": {"process_id": "e", "result": true}}}', False),
+            (8, "<ZkStrippedSpecification> specification_size=61 > max_specification_size=8", True),
+        ],
+    )
+    def test_max_specification_size(self, zk_client, max_specification_size, expected_specification, fail_parse):
+        zjr = ZkJobRegistry(zk_client=zk_client)
+
+        with gps_config_overrides(zk_job_registry_max_specification_size=max_specification_size):
+            specification_dict = zjr.build_specification_dict(process_graph={"e": {"process_id": "e", "result": True}})
+            zjr.register(job_id="j123", user_id="u456", api_version="1.2.3", specification=specification_dict)
+
+        assert zk_client.get_json_decoded("/openeo.test/jobs/ongoing/u456/j123") == DictSubSet(
+            job_id="j123",
+            specification=expected_specification,
+        )
+        assert zjr.get_job(job_id="j123", user_id="u456") == DictSubSet(
+            job_id="j123",
+            specification=expected_specification,
+        )
+
+        if fail_parse:
+            with pytest.raises(ZkStrippedSpecification):
+                zjr.get_job(job_id="j123", user_id="u456", parse_specification=True)
+        else:
+            assert zjr.get_job(job_id="j123", user_id="u456", parse_specification=True) == DictSubSet(
+                job_id="j123",
+                process={"process_graph": {"e": {"process_id": "e", "result": True}}},
+            )
 
 
 class TestInMemoryJobRegistry:
@@ -448,6 +516,80 @@ class TestDoubleJobRegistry:
 
         assert caplog.messages == []
 
+    @pytest.mark.parametrize(
+        ["zk_job_registry_max_specification_size", "expect_zk_stripping"],
+        [
+            (None, False),
+            (1000, False),
+            (8, True),
+        ],
+    )
+    def test_get_job_with_zk_max_specification_size(
+        self, double_jr, zk_client, caplog, zk_job_registry_max_specification_size, expect_zk_stripping
+    ):
+        with double_jr, gps_config_overrides(
+            zk_job_registry_max_specification_size=zk_job_registry_max_specification_size
+        ):
+            double_jr.create_job(
+                job_id="j-123",
+                user_id="john",
+                process=self.DUMMY_PROCESS,
+                job_options={"prio": "low"},
+                title="John's job",
+            )
+
+        job = double_jr.get_job("j-123", user_id="john")
+        job_metadata = double_jr.get_job_metadata("j-123", user_id="john")
+
+        # Possibly stripped from ZK?
+        zk_data = zk_client.get_json_decoded("/openeo.test/jobs/ongoing/john/j-123")
+        assert zk_data["specification"] == (
+            "<ZkStrippedSpecification> specification_size=128 > max_specification_size=8"
+            if expect_zk_stripping
+            else '{"process_graph": {"add": {"process_id": "add", "arguments": {"x": 3, "y": 5}, "result": true}}, "job_options": {"prio": "low"}}'
+        )
+
+        # But still correctly returned from Double Job Registry
+        assert job == {
+            "job_id": "j-123",
+            "user_id": "john",
+            "job_options": {"prio": "low"},
+            "parent_id": None,
+            "process": {
+                "description": "dummy",
+                "process_graph": {"add": {"arguments": {"x": 3, "y": 5}, "process_id": "add", "result": True}},
+            },
+            "created": "2023-02-15T17:17:17Z",
+            "status": "created",
+            "updated": "2023-02-15T17:17:17Z",
+            "api_version": None,
+            "application_id": None,
+            "title": "John's job",
+            "description": None,
+        }
+        assert job_metadata == BatchJobMetadata(
+            id="j-123",
+            status="created",
+            created=datetime.datetime(2023, 2, 15, 17, 17, 17),
+            process={
+                "description": "dummy",
+                "process_graph": {"add": {"process_id": "add", "arguments": {"x": 3, "y": 5}, "result": True}},
+            },
+            job_options={"prio": "low"},
+            title="John's job",
+            description=None,
+            updated=datetime.datetime(2023, 2, 15, 17, 17, 17),
+            started=None,
+            finished=None,
+        )
+        assert caplog.messages == (
+            [
+                "Stripping 'specification' from ZK payload for job_id='j-123': specification_size=128 > max_specification_size=8"
+            ]
+            if expect_zk_stripping
+            else []
+        )
+
     def test_set_status(self, double_jr, zk_client, memory_jr, time_machine):
         with double_jr:
             double_jr.create_job(job_id="j-123", user_id="john", process=self.DUMMY_PROCESS)
@@ -627,6 +769,26 @@ class TestDoubleJobRegistry:
         assert caplog.messages == [
             "Failed to enter ZkJobRegistry: KazooTimeoutError('Connection time-out')",
             "DoubleJobRegistry.get_user_jobs(user_id='john') zk_jobs=None ejr_jobs=1",
+        ]
+
+    def test_get_user_jobs_with_zk_max_specification_size(self, double_jr, caplog):
+        with gps_config_overrides(zk_job_registry_max_specification_size=10), double_jr:
+            double_jr.create_job(job_id="j-123", user_id="john", process=self.DUMMY_PROCESS)
+            double_jr.create_job(job_id="j-456", user_id="john", process=self.DUMMY_PROCESS)
+            jobs = double_jr.get_user_jobs(user_id="john")
+            alice_jobs = double_jr.get_user_jobs(user_id="alice")
+
+        assert alice_jobs == []
+        assert len(jobs) == 2
+        assert jobs[0].id == "j-123"
+        assert jobs[0].process is None
+        assert jobs[1].id == "j-456"
+        assert jobs[1].process is None
+        assert caplog.messages == [
+            "Stripping 'specification' from ZK payload for job_id='j-123': specification_size=96 > max_specification_size=10",
+            "Stripping 'specification' from ZK payload for job_id='j-456': specification_size=96 > max_specification_size=10",
+            "DoubleJobRegistry.get_user_jobs(user_id='john') zk_jobs=2 ejr_jobs=2",
+            "DoubleJobRegistry.get_user_jobs(user_id='alice') zk_jobs=[] ejr_jobs=[]",
         ]
 
     def test_set_results_metadata(self, double_jr, zk_client, memory_jr, time_machine):

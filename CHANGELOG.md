@@ -12,6 +12,16 @@ without compromising stable operations.
 
 ## Unreleased
 
+## 0.35.0
+
+- Add config `zk_job_registry_max_specification_size` to set a limit on the size of the process graph items
+  when registering a new batch job with `ZkJobRegistry`. Jobs with a process graph that is too large
+  will be partially stored in the registry: most metadata will be available, but use cases that try
+  to get the process graph itself will fail with a JobNotFound-like error.
+  This is intended to be combined with `ElasticJobRegistry` through `DoubleJobRegistry` to allow `ElasticJobRegistry`
+  to act as fallback for jobs that are too large for `ZkJobRegistry`.
+  (related to [#498](https://github.com/Open-EO/openeo-geopyspark-driver/issues/498), eu-cdse/openeo-cdse-infra#141)
+
 ## 0.34.0
 
 - load_stac from unsigned job results URL: fix CRS and resolution of output assets ([#669](https://github.com/Open-EO/openeo-geopyspark-driver/issues/669))
