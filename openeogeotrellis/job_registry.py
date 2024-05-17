@@ -814,7 +814,9 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
         zk_job = ejr_job = None
         if self.zk_job_registry:
             with contextlib.suppress(JobNotFoundException):
-                zk_job = self.zk_job_registry.get_job(job_id=job_id, user_id=user_id)
+                zk_job = self.zk_job_registry.get_job(
+                    job_id=job_id, user_id=user_id, parse_specification=True, omit_raw_specification=True
+                )
         if self.elastic_job_registry:
             with contextlib.suppress(JobNotFoundException):
                 ejr_job = self.elastic_job_registry.get_job(job_id=job_id, user_id=user_id)
