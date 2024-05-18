@@ -24,6 +24,7 @@ from openeo_driver.jobregistry import (
     JobDict,
 )
 from openeogeotrellis import sentinel_hub
+from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.testing import KazooClientMock
 from openeogeotrellis.utils import StatsReporter
@@ -72,6 +73,20 @@ class ZkJobRegistry:
             title: str = None, description: str = None
     ) -> dict:
         """Registers a to-be-run batch job."""
+        # TODO: why json-encoding `specification` when the whole job_info dict will be json-encoded anyway?
+        # TODO: use more efficient JSON separators (e.g. `separators=(',', ':')`)?
+        specification_blob = json.dumps(specification)
+        specification_size = len(specification_blob)
+        _log.debug(f"ZkJobRegistry.register: {specification_size=}")
+        max_specification_size = get_backend_config().zk_job_registry_max_specification_size
+        if max_specification_size is not None and specification_size > max_specification_size:
+            _log.warning(
+                f"Stripping 'specification' from ZK payload for {job_id=}: {specification_size=} > {max_specification_size=}"
+            )
+            # Note this is intentionally invalid JSON to cause failure when naively attempting to decode it
+            specification_blob = (
+                f"{ZkStrippedSpecification.PAYLOAD_MARKER} {specification_size=} > {max_specification_size=}"
+            )
         # TODO: use `BatchJobMetadata` instead of free form dict here?
         job_info = {
             "job_id": job_id,
@@ -79,8 +94,7 @@ class ZkJobRegistry:
             "status": JOB_STATUS.CREATED,
             # TODO: move api_Version into specification?
             'api_version': api_version,
-            # TODO: why json-encoding `specification` when the whole job_info dict will be json-encoded anyway?
-            "specification": json.dumps(specification),
+            "specification": specification_blob,
             "application_id": None,
             "created": rfc3339.utcnow(),
             "updated": rfc3339.utcnow(),
@@ -504,9 +518,15 @@ def get_deletable_dependency_sources(job_info: dict) -> List[str]:
     return [source for dependency in (job_info.get("dependencies") or []) for source in sources(dependency)]
 
 
+class ZkStrippedSpecification(Exception):
+    PAYLOAD_MARKER = "<ZkStrippedSpecification>"
+
+
 def parse_zk_job_specification(job_info: dict, default_job_options=None) -> Tuple[dict, Union[dict, None]]:
     """Parse the JSON-encoded 'specification' field from ZK job info dict"""
     specification_json = job_info["specification"]
+    if specification_json.startswith(ZkStrippedSpecification.PAYLOAD_MARKER):
+        raise ZkStrippedSpecification()
     specification = json.loads(specification_json)
     process_graph = specification["process_graph"]
     job_options = specification.get("job_options", default_job_options)
@@ -813,7 +833,7 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
         # TODO: eliminate get_job/get_job_metadata duplication?
         zk_job = ejr_job = None
         if self.zk_job_registry:
-            with contextlib.suppress(JobNotFoundException):
+            with contextlib.suppress(JobNotFoundException, ZkStrippedSpecification):
                 zk_job = self.zk_job_registry.get_job(
                     job_id=job_id, user_id=user_id, parse_specification=True, omit_raw_specification=True
                 )
@@ -829,7 +849,7 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
         zk_job_info = ejr_job_info = None
         if self.zk_job_registry:
             with TimingLogger(f"self.zk_job_registry.get_job({job_id=}, {user_id=})", logger=_log.debug):
-                with contextlib.suppress(JobNotFoundException):
+                with contextlib.suppress(JobNotFoundException, ZkStrippedSpecification):
                     zk_job_info = self.zk_job_registry.get_job(
                         job_id=job_id, user_id=user_id, parse_specification=True, omit_raw_specification=True
                     )
