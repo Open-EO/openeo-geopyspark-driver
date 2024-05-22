@@ -961,9 +961,12 @@ def _get_layer_catalog(
                 url = data_source.get("url")
                 logger.info(f"Getting collection metadata from {url}")
                 import requests
-                resp = requests.get(url=url)
-                resp.raise_for_status()
-                opensearch_metadata[cid] = resp.json()
+                try:
+                    resp = requests.get(url=url)
+                    resp.raise_for_status()
+                    opensearch_metadata[cid] = resp.json()
+                except Exception as e:
+                    logger.warning(f"Failed to enrich collection metadata of {cid}: {e}", exc_info=True)
 
             elif data_source.get("type") == "sentinel-hub":
                 sh_stac_endpoint = "https://collections.eurodatacube.com/stac/index.json"
