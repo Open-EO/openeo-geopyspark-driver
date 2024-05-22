@@ -12,6 +12,13 @@ without compromising stable operations.
 
 ## Unreleased
 
+
+## 0.36.0
+
+- Job tracker: skip jobs where application id can't be found (instead of giving status "error") to be
+  less destructive in distributed contexts with partial replication
+  (related to eu-cdse/openeo-cdse-infra#141)
+
 ## 0.35.0
 
 - Add config `zk_job_registry_max_specification_size` to set a limit on the size of the process graph items

@@ -483,13 +483,11 @@ class JobTracker:
             )
             stats["new metadata"] += 1
         except AppNotFound:
-            log.warning(f"App not found: {job_id=} {application_id=}", exc_info=True)
-            # TODO: handle status setting generically with logic below (e.g. dummy job_metadata)?
-            # TODO: also set started/finished, exception/error info ...
-            double_job_registry.set_status(
-                job_id=job_id, user_id=user_id, status=JOB_STATUS.ERROR
-            )
-            stats["app not found"] += 1
+            log.error(f"App not found: {job_id=} {application_id=}", exc_info=True)
+            # TODO: originally, we set the job status here to "error", but that is potentially
+            #       destructive in distributed context with partial replication.
+            #       So we just don't touch anything and skip it instead for now.
+            stats["skip: app not found"] += 1
             return
 
         if previous_status != job_metadata.status:
