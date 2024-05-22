@@ -608,26 +608,20 @@ class TestYarnJobTracker:
         # Let job tracker do status updates
         job_tracker.update_statuses()
 
-        assert zk_job_registry.get_job(job_id="job-1", user_id="user1") == DictSubSet(
-            {"status": "running"}
-        )
-        assert zk_job_registry.get_job(job_id="job-2", user_id="user2") == DictSubSet(
-            {"status": "error"}
-        )
-        assert zk_job_registry.get_job(job_id="job-3", user_id="user3") == DictSubSet(
-            {"status": "running"}
-        )
+        assert zk_job_registry.get_job(job_id="job-1", user_id="user1") == DictSubSet({"status": "running"})
+        assert zk_job_registry.get_job(job_id="job-2", user_id="user2") == DictSubSet({"status": "created"})
+        assert zk_job_registry.get_job(job_id="job-3", user_id="user3") == DictSubSet({"status": "running"})
 
         assert elastic_job_registry.db == {
             "job-1": DictSubSet(status="running"),
-            "job-2": DictSubSet(status="error"),
+            "job-2": DictSubSet(status="created"),
             "job-3": DictSubSet(status="running"),
         }
 
         assert caplog.record_tuples == [
             (
                 "openeogeotrellis.job_tracker_v2",
-                logging.WARNING,
+                logging.ERROR,
                 "App not found: job_id='job-2' application_id='app-2'",
             )
         ]
@@ -827,7 +821,7 @@ class TestYarnJobTracker:
         assert stats == {
             "collected jobs": 3,
             "job with previous_status='created'": 3,
-            "app not found": 1,
+            "skip: app not found": 1,
             "get metadata attempt": 3,
             "new metadata": 2,
             "status change": 2,
@@ -839,9 +833,11 @@ class TestYarnJobTracker:
         job_tracker.update_statuses()
         [stats] = _extract_update_statuses_stats(caplog)
         assert stats == {
-            "collected jobs": 2,
+            "collected jobs": 3,
+            "job with previous_status='created'": 1,
             "job with previous_status='running'": 2,
-            "get metadata attempt": 2,
+            "skip: app not found": 1,
+            "get metadata attempt": 3,
             "new metadata": 2,
             "status same": 2,
             "status same 'running'": 2,
@@ -1322,26 +1318,20 @@ class TestK8sJobTracker:
         # Let job tracker do status updates
         job_tracker.update_statuses()
 
-        assert zk_job_registry.get_job(job_id="job-1", user_id="user1") == DictSubSet(
-            {"status": "running"}
-        )
-        assert zk_job_registry.get_job(job_id="job-2", user_id="user2") == DictSubSet(
-            {"status": "error"}
-        )
-        assert zk_job_registry.get_job(job_id="job-3", user_id="user3") == DictSubSet(
-            {"status": "running"}
-        )
+        assert zk_job_registry.get_job(job_id="job-1", user_id="user1") == DictSubSet({"status": "running"})
+        assert zk_job_registry.get_job(job_id="job-2", user_id="user2") == DictSubSet({"status": "created"})
+        assert zk_job_registry.get_job(job_id="job-3", user_id="user3") == DictSubSet({"status": "running"})
 
         assert elastic_job_registry.db == {
             "job-1": DictSubSet(status="running"),
-            "job-2": DictSubSet(status="error"),
+            "job-2": DictSubSet(status="created"),
             "job-3": DictSubSet(status="running"),
         }
 
         assert caplog.record_tuples == [
             (
                 "openeogeotrellis.job_tracker_v2",
-                logging.WARNING,
+                logging.ERROR,
                 f"App not found: job_id='job-2' application_id='{app_ids[2]}'",
             )
         ]
