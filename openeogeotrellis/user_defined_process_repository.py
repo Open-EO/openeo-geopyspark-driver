@@ -1,10 +1,12 @@
 import contextlib
 import json
+import logging
 from typing import List, Dict
 from typing import Union
 
 from kazoo.client import KazooClient
 from kazoo.exceptions import NodeExistsError, NoNodeError
+from kazoo.handlers.threading import KazooTimeoutError
 
 from openeo_driver.backend import UserDefinedProcessMetadata, UserDefinedProcesses
 from openeo_driver.errors import ProcessGraphNotFoundException
@@ -14,6 +16,8 @@ from openeogeotrellis.configparams import ConfigParams
 class ZooKeeperUserDefinedProcessRepository(UserDefinedProcesses):
     # TODO: encode user id before using in zookeeper path (it could contain characters that don't play nice)
     # TODO: include version number in payload to allow schema updates?
+
+    _log = logging.getLogger(__name__)
 
     def __init__(self, hosts: List[str], root: str = "/openeo/udps"):
         self._hosts = ','.join(hosts)
@@ -48,6 +52,9 @@ class ZooKeeperUserDefinedProcessRepository(UserDefinedProcesses):
                 return UserDefinedProcessMetadata.from_dict(self._deserialize(data)['specification'])
             except NoNodeError:
                 return None
+            except KazooTimeoutError:
+                self._log.error(f"Timeout while checking for user defined process {process_id} for user {user_id}")
+                return None
 
     def get_for_user(self, user_id: str) -> List[UserDefinedProcessMetadata]:
         with self._zk_client() as zk:
@@ -58,6 +65,9 @@ class ZooKeeperUserDefinedProcessRepository(UserDefinedProcesses):
                 udps = (self.get(user_id, process_graph_id) for process_graph_id in process_graph_ids)
                 return sorted(udps, key=lambda udp: udp.id.lower())
             except NoNodeError:
+                return []
+            except KazooTimeoutError:
+                self._log.error(f"Timeout while looking up user defined processes for user {user_id}")
                 return []
 
     def delete(self, user_id: str, process_id: str) -> None:
