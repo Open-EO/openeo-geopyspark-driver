@@ -85,7 +85,7 @@ setup(
         'deprecated>=1.2.12',
         'elasticsearch==7.16.3',
         'pystac_client~=0.7.2',
-        'boto3==1.16.25',
+        'boto3>=1.16.25,<2.0',
         "hvac>=1.0.2",
         "pyarrow>=1.0.0",  # For pyspark.pandas
         "attrs>=22.1.0",
