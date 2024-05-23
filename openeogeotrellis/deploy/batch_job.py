@@ -146,10 +146,11 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
             geometry = mapping(Polygon.from_bounds(*bbox))
             area = DriverVectorCube.from_fiona([agg_geometry.path]).get_area()
         elif isinstance(agg_geometry, DriverVectorCube):
-            bbox = agg_geometry.get_bounding_box()
-            bbox_crs = agg_geometry.get_crs()
-            geometry = agg_geometry.get_bounding_box_geojson()
-            area = agg_geometry.get_area()
+            if agg_geometry.geometry_count() != 0:
+                bbox = agg_geometry.get_bounding_box()
+                bbox_crs = agg_geometry.get_crs()
+                geometry = agg_geometry.get_bounding_box_geojson()
+                area = agg_geometry.get_area()
         else:
             logger.warning(f"Result metadata: no bbox/area support for {type(agg_geometry)}")
 
