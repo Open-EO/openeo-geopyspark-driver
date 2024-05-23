@@ -290,27 +290,6 @@ def s3_client():
     return s3_client
 
 
-def download_s3_dir(bucketName, directory):
-    # TODO: move this to openeogeotrellis.integrations.s3?
-    import boto3
-
-    # TODO: Get these credentials/secrets from VITO TAP vault instead of os.environ
-    aws_access_key_id = os.environ.get("SWIFT_ACCESS_KEY_ID", os.environ.get("AWS_ACCESS_KEY_ID"))
-    aws_secret_access_key = os.environ.get("SWIFT_SECRET_ACCESS_KEY", os.environ.get("AWS_SECRET_ACCESS_KEY"))
-    swift_url = os.environ.get("SWIFT_URL")
-
-    s3_resource = boto3.resource("s3",
-        aws_access_key_id=aws_access_key_id,
-        aws_secret_access_key=aws_secret_access_key,
-        endpoint_url=swift_url)
-    bucket = s3_resource.Bucket(bucketName)
-
-    for obj in bucket.objects.filter(Prefix = directory):
-        if not os.path.exists("/" + os.path.dirname(obj.key)):
-            os.makedirs("/" + os.path.dirname(obj.key))
-        bucket.download_file(obj.key, "/{obj}".format(obj=obj.key))
-
-
 def get_s3_file_contents(filename: Union[os.PathLike,str]) -> str:
     """Get contents of a text file from the S3 bucket.
 
