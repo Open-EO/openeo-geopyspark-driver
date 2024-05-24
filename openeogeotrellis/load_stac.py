@@ -12,6 +12,7 @@ from geopyspark import LayerType, TiledRasterLayer
 from openeo.metadata import SpatialDimension, TemporalDimension, BandDimension, Band
 from openeo.util import dict_no_none, rfc3339
 from openeo_driver import filter_properties, backend
+from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.backend import LoadParameters, BatchJobMetadata
 from openeo_driver.errors import OpenEOApiException, ProcessParameterUnsupportedException, JobNotFoundException, \
     ProcessParameterInvalidException
@@ -400,6 +401,8 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
     extent_crs = target_bbox.crs
 
     geometries = load_params.aggregate_spatial_geometries
+    if isinstance(geometries, DriverVectorCube) and geometries.geometry_count() == 0:
+        geometries = None
 
     if not geometries:
         projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.fromExtent(extent, extent_crs)
