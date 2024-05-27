@@ -77,7 +77,66 @@ class TestFreeIpaClient:
         user_data = client.user_find(uid="john")
         assert user_data == {"givenname": "John", "sn": "Doe"}
 
-    # TODO test user_add
+    def test_user_add(self, requests_mock):
+        requests_mock.post(
+            "https://ipa.test/ipa/json",
+            json=self._get_ipa_handler(
+                expected_method="user_add",
+                expected_arguments=["john"],
+                expected_options={"givenname": "John", "sn": "Doe", "mail": "john@example.com"},
+                result={
+                    "result": {
+                        "uid": ["john"],
+                        "uidnumber": ["631722026"],
+                        "givenname": ["John"],
+                        "cn": ["John Doe"],
+                        "displayname": ["John Doe"],
+                        "initials": ["JD"],
+                        "sn": ["Doe"],
+                        "mail": ["john@example.com"],
+                    },
+                    "value": "john",
+                },
+            ),
+        )
+        client = FreeIpaClient(ipa_server="ipa.test", verify_tls=False)
+        user_data = client.user_add(uid="john", first_name="John", last_name="Doe", email="john@example.com")
+        assert user_data == dirty_equals.IsPartialDict(givenname=["John"], sn=["Doe"], mail=["john@example.com"])
+
+    def test_user_add_with_additional_options(self, requests_mock):
+        requests_mock.post(
+            "https://ipa.test/ipa/json",
+            json=self._get_ipa_handler(
+                expected_method="user_add",
+                expected_arguments=["john"],
+                expected_options={"givenname": "John", "sn": "Doe", "mail": "john@example.com", "userorigin": "mars"},
+                result={
+                    "result": {
+                        "uid": ["john"],
+                        "uidnumber": ["631722026"],
+                        "givenname": ["John"],
+                        "cn": ["John Doe"],
+                        "displayname": ["John Doe"],
+                        "initials": ["JD"],
+                        "userorigin": ["mars"],
+                        "sn": ["Doe"],
+                        "mail": ["john@example.com"],
+                    },
+                    "value": "john",
+                },
+            ),
+        )
+        client = FreeIpaClient(ipa_server="ipa.test", verify_tls=False)
+        user_data = client.user_add(
+            uid="john",
+            first_name="John",
+            last_name="Doe",
+            email="john@example.com",
+            additional_options={"userorigin": "mars"},
+        )
+        assert user_data == dirty_equals.IsPartialDict(
+            givenname=["John"], sn=["Doe"], mail=["john@example.com"], userorigin=["mars"]
+        )
 
 
 def test_guess_freeipa_server(tmp_path, monkeypatch):

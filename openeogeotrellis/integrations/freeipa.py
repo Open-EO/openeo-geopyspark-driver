@@ -173,7 +173,9 @@ class FreeIpaClient:
             _log.error(f"Multiple users found for {uid=}: {users=}")
             raise FreeIpaException(f"Multiple users found for {uid=}")
 
-    def user_add(self, uid: str, first_name: str, last_name: str, email: str) -> dict:
+    def user_add(
+        self, uid: str, first_name: str, last_name: str, email: str, additional_options: Optional[dict] = None
+    ) -> dict:
         # TODO: work in progress here
         # TODO: support group related options?
         ipa_resp = self._do_request(
@@ -183,6 +185,7 @@ class FreeIpaClient:
                 "givenname": first_name or "",
                 "sn": last_name or "",
                 "mail": email,
+                **(additional_options or {}),
             },
         )
         return ipa_resp.result["result"]

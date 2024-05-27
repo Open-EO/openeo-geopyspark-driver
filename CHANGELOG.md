@@ -13,6 +13,10 @@ without compromising stable operations.
 ## Unreleased
 
 
+## 0.37.0
+
+- Support additional options in `FreeIpaClient.user_add()` (eu-cdse/openeo-cdse-infra#56)
+
 ## 0.36.0
 
 - Job tracker: skip jobs where application id can't be found (instead of giving status "error") to be
