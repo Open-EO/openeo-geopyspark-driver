@@ -99,7 +99,7 @@ class FreeIpaClient:
         self._verify_tls = verify_tls
         self._api_version = api_version
 
-        if requests_gssapi:
+        if gssapi_creds and requests_gssapi:
             _log.debug(f"Setting up FreeIpaClient with GSSAPI/Kerberos auth with {gssapi_creds.name=}")
             self._auth = requests_gssapi.HTTPSPNEGOAuth(
                 opportunistic_auth=opportunistic_auth,
