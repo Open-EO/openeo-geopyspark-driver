@@ -198,7 +198,8 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
                 fields = None
             else:
                 # standard behavior seems to be to include only a minimal subset e.g. https://stac.openeo.vito.be/
-                fields = [f"properties.{property_name}" for property_name in all_properties.keys()]
+                fields = [f"properties.{property_name}" for property_name in
+                          {"proj:epsg", "proj:bbox", "proj:shape"}.union(all_properties.keys())]
 
             search_request = client.search(
                 method="GET",

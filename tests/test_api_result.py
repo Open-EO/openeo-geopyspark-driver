@@ -3934,12 +3934,15 @@ class TestLoadStac:
         "https://stac.test",
         "https://tamn.snapplanet.io",
     ])
-    def test_stac_api_property_filter(self, api110, urllib_mock, requests_mock, catalog_url):
+    def test_stac_api_property_filter(self, api110, urllib_mock, requests_mock, catalog_url, tmp_path):
         def feature_collection(request, _) -> dict:
             if catalog_url == "https://tamn.snapplanet.io":
                 assert "fields" not in request.qs
             else:
-                assert request.qs["fields"] == ["+properties.season"]
+                # a GET request has a single "fields" param with values separated by commas
+                assert set(request.qs["fields"][0].split(",")) == {"+properties.proj:epsg", "+properties.proj:bbox",
+                                                                   "+properties.proj:shape", "+properties.season",
+                                                                   }
 
             def item(path) -> dict:
                 return json.loads(
@@ -4003,7 +4006,16 @@ class TestLoadStac:
                           .replace("$CATALOG_URL", catalog_url))
         requests_mock.get(f"{catalog_url}/search", json=feature_collection)
 
-        api110.result(process_graph).assert_status_code(200)
+        res = api110.result(process_graph).assert_status_code(200)
+
+        res_path = tmp_path / "res.tif"
+        res_path.write_bytes(res.data)
+
+        # output asset should match input asset
+        with rasterio.open(res_path) as ds:
+            assert ds.crs.to_epsg() == 4326
+            assert ds.shape == (10, 10)
+            assert tuple(ds.bounds) == (5.0, 50.0, 6.0, 51.0)
 
     def test_load_stac_from_unsigned_job_results_respects_proj_metadata(self, api110, urllib_mock, tmp_path,
                                                                         batch_job_output_root, zk_job_registry):
