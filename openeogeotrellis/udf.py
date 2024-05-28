@@ -1,13 +1,17 @@
 import collections
-
+import logging
+import pyspark
+import subprocess
+import sys
 import textwrap
-from typing import Union, Iterator, Tuple, Dict
+from pathlib import Path
+from typing import Union, Iterator, Tuple, Dict, Iterable, Optional
 
 import openeo.udf
-import pyspark
-
 from openeo.udf.run_code import extract_udf_dependencies
+from openeo.util import TimingLogger
 
+_log = logging.getLogger(__name__)
 
 def run_udf_code(code: str, data: openeo.udf.UdfData, require_executor_context: bool = True) -> openeo.udf.UdfData:
     """
@@ -61,3 +65,59 @@ def collect_python_udf_dependencies(process_graph: dict) -> Dict[Tuple[str, str]
             dependencies[(runtime, version)].update(extract_udf_dependencies(udf) or [])
 
     return dict(dependencies)
+
+
+def install_python_udf_dependencies(
+    dependencies: Iterable[str],
+    target: Union[str, Path],
+    *,
+    retries: int = 2,
+    timeout: float = 5,
+    index: Optional[str] = None,
+):
+    """
+    Install Python UDF dependencies in a target directory
+
+    :param dependencies: Iterable of dependency package names
+    :param target: Directory where to install dependencies
+    """
+    command = [
+        sys.executable,
+        "-m",
+        "pip",
+        "install",
+        "--target",
+        str(target),
+        "--progress-bar",
+        "off",
+        "--disable-pip-version-check",
+        "--no-input",
+        "--retries",
+        str(retries),
+        "--timeout",
+        str(timeout),
+    ]
+    if index:
+        command.extend(["--index", index])
+    # TODO: --cache-dir
+    command.extend(sorted(set(dependencies)))
+
+    with TimingLogger(title=f"Installing Python UDF dependencies with {command}", logger=_log.info):
+        # TODO: by piping stdout and stderr to same pipe, we simplify the work necessary to avoid deadlocks.
+        #       However, this means that we lose the ability to distinguish between stdout and stderr.
+        process = subprocess.Popen(
+            args=command,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            encoding="utf-8",
+        )
+        process.stdin.close()
+        with process.stdout:
+            for line in iter(process.stdout.readline, ""):
+                _log.info(f"pip install output: {line.rstrip()}")
+        exit_code = process.wait()
+
+    _log.info(f"pip install finished with exit code {exit_code}")
+    if exit_code != 0:
+        raise RuntimeError(f"pip install failed with {exit_code=}")

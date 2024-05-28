@@ -1,9 +1,18 @@
+import shutil
 import textwrap
 
 import pyspark
 import pytest
 from openeo.udf import UdfData, StructuredData
-from openeogeotrellis.udf import assert_running_in_executor, run_udf_code, collect_python_udf_dependencies
+from openeo_driver.testing import ephemeral_fileserver
+
+from openeogeotrellis.udf import (
+    assert_running_in_executor,
+    run_udf_code,
+    collect_python_udf_dependencies,
+    install_python_udf_dependencies,
+)
+from .data import get_test_data_file
 
 
 def test_assert_running_in_executor_in_driver():
@@ -250,3 +259,58 @@ class TestUdfCollection:
             },
         }
         assert collect_python_udf_dependencies(pg) == {("Python", None): {"numpy", "pandas", "scipy"}}
+
+
+class TestInstallPythonUdfDependencies:
+    @pytest.fixture
+    def dummy_pypi(self, tmp_path):
+        """
+        Fixture for fake PyPI index for testing package installation (without using real PyPI).
+
+        Based on 'PEP 503 – Simple Repository API'
+        """
+        root = tmp_path / ".package-index"
+        root.mkdir(parents=True)
+        (root / "index.html").write_text(
+            """
+            <!DOCTYPE html><html><body>
+                <a href="/mehh/">mehh</a>
+            </body></html>
+            """
+        )
+        mehh_folder = root / "mehh"
+        mehh_folder.mkdir(parents=True)
+        shutil.copy(src=get_test_data_file("pip/mehh/dist/mehh-1.2.3-py3-none-any.whl"), dst=mehh_folder)
+        (mehh_folder / "index.html").write_text(
+            """
+            <!DOCTYPE html><html><body>
+                <a href="/mehh/mehh-1.2.3-py3-none-any.whl#md5=33c211631375b944c7cb9452074ee3e1">meh-1.2.3-py3-none-any.whl</a>
+            </body></html>
+            """
+        )
+        with ephemeral_fileserver(root) as pypi_url:
+            yield pypi_url
+
+    def test_install_python_udf_dependencies_basic(self, tmp_path, dummy_pypi, caplog):
+        install_target = tmp_path / "target"
+        assert not install_target.exists()
+        install_python_udf_dependencies(["mehh"], target=install_target, index=dummy_pypi)
+        assert (install_target / "mehh.py").exists()
+        assert "pip install output: Successfully installed mehh-1.2.3" in caplog.text
+
+    @pytest.mark.parametrize("dependency", ["mehh==1.2.3", "mehh>=1.2.3"])
+    def test_install_python_udf_dependencies_with_version(self, tmp_path, dummy_pypi, caplog, dependency):
+        install_target = tmp_path / "target"
+        assert not install_target.exists()
+        install_python_udf_dependencies([dependency], target=install_target, index=dummy_pypi)
+        assert (install_target / "mehh.py").exists()
+        assert "pip install output: Successfully installed mehh-1.2.3" in caplog.text
+
+    def test_install_python_udf_dependencies_fail(self, tmp_path, dummy_pypi, caplog):
+        install_target = tmp_path / "target"
+        with pytest.raises(RuntimeError, match="pip install failed with exit_code=1"):
+            install_python_udf_dependencies(["nope-nope"], target=install_target, index=dummy_pypi)
+        assert (
+            "pip install output: ERROR: Could not find a version that satisfies the requirement nope-nope"
+            in caplog.text
+        )
