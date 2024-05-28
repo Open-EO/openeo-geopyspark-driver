@@ -20,7 +20,7 @@ from openeo_driver.users import User
 from openeo_driver.util.geometry import BoundingBox, GeometryBufferer
 from openeo_driver.util.utm import utm_zone_from_epsg
 from openeo_driver.utils import EvalEnv
-from shapely.geometry import Polygon
+from shapely.geometry import Polygon, shape
 
 from openeogeotrellis.geopysparkcubemetadata import GeopysparkCubeMetadata
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
@@ -331,6 +331,9 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
 
         if latlon_bbox is not None:
             builder = builder.withBBox(*latlon_bbox.as_wsen_tuple())
+
+        if itm.geometry is not None:
+            builder = builder.withGeometryFromWkt(str(shape(itm.geometry)))
 
         opensearch_client.addFeature(builder.build())
 
