@@ -3,7 +3,7 @@ import textwrap
 import pyspark
 import pytest
 from openeo.udf import UdfData, StructuredData
-from openeogeotrellis.udf import assert_running_in_executor, run_udf_code
+from openeogeotrellis.udf import assert_running_in_executor, run_udf_code, collect_python_udf_dependencies
 
 
 def test_assert_running_in_executor_in_driver():
@@ -59,3 +59,194 @@ def test_run_udf_code_in_executor_single_udf_data(spark_context):
     result = rdd.map(lambda x: run_udf_code(code=UDF_SQUARES, data=x)).collect()
     result = [[l.data for l in r.get_structured_data_list()] for r in result]
     assert result == [[[1, 4, 9, 16, 25]]]
+
+
+class TestUdfCollection:
+    def test_collect_python_udf_dependencies_no_udfs(self):
+        pg = {
+            "loadcollection1": {
+                "process_id": "load_collection",
+                "arguments": {"id": "SENTINEL123"},
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "loadcollection1"}, "format": "GTiff", "options": {}},
+                "result": True,
+            },
+        }
+        assert collect_python_udf_dependencies(pg) == {}
+
+    def test_collect_python_udf_dependencies_no_deps(self):
+        udf = textwrap.dedent(
+            """
+            def foo(x):
+            return x + 1
+            """
+        )
+        pg = {
+            "loadcollection1": {
+                "process_id": "load_collection",
+                "arguments": {"id": "SENTINEL123"},
+            },
+            "apply1": {
+                "process_id": "apply",
+                "arguments": {
+                    "data": {"from_node": "loadcollection1"},
+                    "process": {
+                        "process_graph": {
+                            "runudf1": {
+                                "process_id": "run_udf",
+                                "arguments": {
+                                    "data": {"from_parameter": "x"},
+                                    "runtime": "Python",
+                                    "udf": udf,
+                                },
+                                "result": True,
+                            }
+                        }
+                    },
+                },
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "apply1"}, "format": "GTiff", "options": {}},
+                "result": True,
+            },
+        }
+        assert collect_python_udf_dependencies(pg) == {("Python", None): set()}
+
+    @pytest.mark.parametrize(
+        ["run_udf_args", "expected"],
+        [
+            (
+                {
+                    "udf": textwrap.dedent(
+                        """
+                        # /// script
+                        # dependencies = [
+                        #     "numpy",
+                        #     'pandas',
+                        # ]
+                        # ///
+                        def foo(x):
+                            return x + 1
+                        """
+                    ),
+                    "runtime": "Python",
+                },
+                {("Python", None): {"numpy", "pandas"}},
+            ),
+            (
+                {
+                    "udf": textwrap.dedent(
+                        """
+                        # /// script
+                        # dependencies = ["numpy", 'pandas>=1.2.3']
+                        # ///
+                        def foo(x):
+                            return x + 1
+                        """
+                    ),
+                    "runtime": "Python3",
+                    "version": "3.1415",
+                },
+                {("Python3", "3.1415"): {"numpy", "pandas>=1.2.3"}},
+            ),
+        ],
+    )
+    def test_collect_python_udf_dependencies_basic(self, run_udf_args, expected):
+        pg = {
+            "loadcollection1": {
+                "process_id": "load_collection",
+                "arguments": {"id": "SENTINEL123"},
+            },
+            "apply1": {
+                "process_id": "apply",
+                "arguments": {
+                    "data": {"from_node": "loadcollection1"},
+                    "process": {
+                        "process_graph": {
+                            "runudf1": {
+                                "process_id": "run_udf",
+                                "arguments": {"data": {"from_parameter": "x"}, **run_udf_args},
+                                "result": True,
+                            }
+                        }
+                    },
+                },
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "apply1"}, "format": "GTiff", "options": {}},
+                "result": True,
+            },
+        }
+        assert collect_python_udf_dependencies(pg) == expected
+
+    def test_collect_python_udf_dependencies_multiple_udfs(self):
+        udf1 = textwrap.dedent(
+            """
+            # /// script
+            # dependencies = [
+            #     "numpy",
+            #     'pandas',
+            # ]
+            # ///
+            def foo(x):
+                return x + 1
+            """
+        )
+        udf2 = textwrap.dedent(
+            """
+            # /// script
+            # dependencies = [
+            #     "scipy",
+            #     'pandas',
+            # ]
+            # ///
+            def foo(x):
+                return x + 1
+            """
+        )
+        pg = {
+            "loadcollection1": {
+                "process_id": "load_collection",
+                "arguments": {"id": "SENTINEL123"},
+            },
+            "apply1": {
+                "process_id": "apply",
+                "arguments": {
+                    "data": {"from_node": "loadcollection1"},
+                    "process": {
+                        "process_graph": {
+                            "runudf1": {
+                                "process_id": "run_udf",
+                                "arguments": {"data": {"from_parameter": "x"}, "udf": udf1, "runtime": "Python"},
+                                "result": True,
+                            }
+                        }
+                    },
+                },
+            },
+            "apply2": {
+                "process_id": "apply",
+                "arguments": {
+                    "data": {"from_node": "apply1"},
+                    "process": {
+                        "process_graph": {
+                            "runudf1": {
+                                "process_id": "run_udf",
+                                "arguments": {"data": {"from_parameter": "x"}, "udf": udf2, "runtime": "Python"},
+                                "result": True,
+                            }
+                        }
+                    },
+                },
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "apply2"}, "format": "GTiff", "options": {}},
+                "result": True,
+            },
+        }
+        assert collect_python_udf_dependencies(pg) == {("Python", None): {"numpy", "pandas", "scipy"}}
