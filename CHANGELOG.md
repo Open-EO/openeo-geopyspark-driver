@@ -12,6 +12,9 @@ without compromising stable operations.
 
 ## Unreleased
 
+## 0.37.1
+
+- load_stac from STAC API: fix CRS and resolution of output assets ([#781](https://github.com/Open-EO/openeo-geopyspark-driver/issues/781))
 
 ## 0.37.0
 
