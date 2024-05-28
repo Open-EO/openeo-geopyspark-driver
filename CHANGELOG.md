@@ -12,6 +12,11 @@ without compromising stable operations.
 
 ## Unreleased
 
+
+## 0.38.0
+
+- Initial, experimental support for automatic installing declared UDF dependencies ([#237](https://github.com/Open-EO/openeo-geopyspark-driver/issues/237))
+
 ## 0.37.2
 
 - load_stac: incorporate STAC Item geometry ([#778](https://github.com/Open-EO/openeo-geopyspark-driver/issues/778))

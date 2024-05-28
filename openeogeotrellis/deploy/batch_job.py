@@ -56,6 +56,7 @@ from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.deploy import load_custom_processes, build_gps_backend_deploy_metadata
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.integrations.hadoop import setup_kerberos_auth
+from openeogeotrellis.udf import collect_python_udf_dependencies, install_python_udf_dependencies
 from openeogeotrellis.utils import (
     describe_path,
     log_memory,
@@ -1069,6 +1070,11 @@ def run_job(
         process_graph = job_specification['process_graph']
         job_options = job_specification.get("job_options", {})
 
+        try:
+            _extract_and_install_udf_dependencies(process_graph=process_graph, job_dir=job_dir)
+        except Exception as e:
+            logger.exception(f"Failed extracting and installing UDF dependencies: {e}")
+
         backend_implementation = GeoPySparkBackendImplementation(
             use_job_registry=False,
         )
@@ -1358,6 +1364,17 @@ def _transform_stac_metadata(job_dir: Path):
 
         with open(stac_metadata_file, 'wt', encoding='utf-8') as f:
             json.dump(transformed, f, indent=2)
+
+
+def _extract_and_install_udf_dependencies(process_graph: dict, job_dir: Path):
+    udf_dep_map = collect_python_udf_dependencies(process_graph)
+    logger.debug(f"Extracted {udf_dep_map=}")
+    if len(udf_dep_map) > 1:
+        logger.warning("Merging dependencies from multiple UDF runtimes/versions")
+    udf_deps = set(d for ds in udf_dep_map.values() for d in ds)
+    if udf_deps:
+        # TODO: add "udf_deps" folder to python path where appropriate
+        install_python_udf_dependencies(dependencies=udf_deps, target=job_dir / "udf_deps")
 
 
 if __name__ == "__main__":

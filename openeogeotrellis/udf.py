@@ -13,6 +13,7 @@ from openeo.util import TimingLogger
 
 _log = logging.getLogger(__name__)
 
+
 def run_udf_code(code: str, data: openeo.udf.UdfData, require_executor_context: bool = True) -> openeo.udf.UdfData:
     """
     Wrapper around `openeo.udf.run_udf_code` for some additional guardrails and checks
