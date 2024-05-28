@@ -12,6 +12,10 @@ without compromising stable operations.
 
 ## Unreleased
 
+## 0.37.2
+
+- load_stac: incorporate STAC Item geometry ([#778](https://github.com/Open-EO/openeo-geopyspark-driver/issues/778))
+
 ## 0.37.1
 
 - load_stac from STAC API: fix CRS and resolution of output assets ([#781](https://github.com/Open-EO/openeo-geopyspark-driver/issues/781))
