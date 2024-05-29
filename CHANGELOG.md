@@ -15,6 +15,7 @@ without compromising stable operations.
 ## 0.38.2
 
 - Automatically include declared/installed UDF dependencies in `PYTHONPATH` on K8s deploys ([#237](https://github.com/Open-EO/openeo-geopyspark-driver/issues/237))
+- Less pixels will become nodata in special cases ([Open-EO/openeo-geotrellis-extensions#280](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/280))
 
 ## 0.38.1
 
