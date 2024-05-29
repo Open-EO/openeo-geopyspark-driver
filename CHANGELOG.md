@@ -12,6 +12,9 @@ without compromising stable operations.
 
 ## Unreleased
 
+## 0.38.1
+
+- fix load_stac from MS Planetary Computer STAC API ([#784](https://github.com/Open-EO/openeo-geopyspark-driver/issues/784))
 
 ## 0.38.0
 

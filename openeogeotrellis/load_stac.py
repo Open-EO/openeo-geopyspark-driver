@@ -189,17 +189,21 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
 
             band_names = [b["name"] for b in collection.summaries.lists.get("eo:bands", [])]
 
-            modifier = (planetary_computer.sign_inplace if root_catalog.get_self_href().startswith(
-                "https://planetarycomputer.microsoft.com/api/stac/v1") else None)
-            client = pystac_client.Client.open(root_catalog.get_self_href(), modifier=modifier)
-
-            if root_catalog.get_self_href().startswith("https://tamn.snapplanet.io"):
-                # by default, returns all properties and "none" if fields is specified
+            if root_catalog.get_self_href().startswith("https://planetarycomputer.microsoft.com/api/stac/v1"):
+                modifier = planetary_computer.sign_inplace
+                # by default, returns all properties and an invalid STAC Item if fields are specified
+                fields = None
+            elif root_catalog.get_self_href().startswith("https://tamn.snapplanet.io"):
+                modifier = None
+                # by default, returns all properties and "none" if fields are specified
                 fields = None
             else:
+                modifier = None
                 # standard behavior seems to be to include only a minimal subset e.g. https://stac.openeo.vito.be/
                 fields = [f"properties.{property_name}" for property_name in
                           {"proj:epsg", "proj:bbox", "proj:shape"}.union(all_properties.keys())]
+
+            client = pystac_client.Client.open(root_catalog.get_self_href(), modifier=modifier)
 
             search_request = client.search(
                 method="GET",

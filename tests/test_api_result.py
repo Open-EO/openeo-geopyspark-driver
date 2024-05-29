@@ -3933,10 +3933,11 @@ class TestLoadStac:
     @pytest.mark.parametrize("catalog_url", [
         "https://stac.test",
         "https://tamn.snapplanet.io",
+        "https://planetarycomputer.microsoft.com/api/stac/v1",
     ])
     def test_stac_api_property_filter(self, api110, urllib_mock, requests_mock, catalog_url, tmp_path):
         def feature_collection(request, _) -> dict:
-            if catalog_url == "https://tamn.snapplanet.io":
+            if catalog_url in ["https://tamn.snapplanet.io", "https://planetarycomputer.microsoft.com/api/stac/v1"]:
                 assert "fields" not in request.qs
             else:
                 # a GET request has a single "fields" param with values separated by commas
