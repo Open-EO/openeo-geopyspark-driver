@@ -95,7 +95,7 @@ from openeogeotrellis.service_registry import (
     ServiceEntity,
     ZooKeeperServiceRegistry,
 )
-from openeogeotrellis.udf import run_udf_code
+from openeogeotrellis.udf import run_udf_code, UDF_PYTHON_DEPENDENCIES_FOLDER_NAME
 from openeogeotrellis.user_defined_process_repository import (
     InMemoryUserDefinedProcessRepository,
     ZooKeeperUserDefinedProcessRepository,
@@ -2044,6 +2044,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 use_pvc=use_pvc,
                 access_token=user.internal_auth_data["access_token"],
                 fuse_mount_batchjob_s3_bucket=get_backend_config().fuse_mount_batchjob_s3_bucket,
+                UDF_PYTHON_DEPENDENCIES_FOLDER_NAME=UDF_PYTHON_DEPENDENCIES_FOLDER_NAME,
             )
 
             if get_backend_config().fuse_mount_batchjob_s3_bucket:

@@ -12,6 +12,10 @@ without compromising stable operations.
 
 ## Unreleased
 
+## 0.38.2
+
+- Automatically include declared/installed UDF dependencies in `PYTHONPATH` on K8s deploys ([#237](https://github.com/Open-EO/openeo-geopyspark-driver/issues/237))
+
 ## 0.38.1
 
 - fix load_stac from MS Planetary Computer STAC API ([#784](https://github.com/Open-EO/openeo-geopyspark-driver/issues/784))

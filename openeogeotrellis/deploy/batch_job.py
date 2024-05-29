@@ -56,7 +56,11 @@ from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.deploy import load_custom_processes, build_gps_backend_deploy_metadata
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.integrations.hadoop import setup_kerberos_auth
-from openeogeotrellis.udf import collect_python_udf_dependencies, install_python_udf_dependencies
+from openeogeotrellis.udf import (
+    collect_python_udf_dependencies,
+    install_python_udf_dependencies,
+    UDF_PYTHON_DEPENDENCIES_FOLDER_NAME,
+)
 from openeogeotrellis.utils import (
     describe_path,
     log_memory,
@@ -1373,7 +1377,7 @@ def _extract_and_install_udf_dependencies(process_graph: dict, job_dir: Path):
     udf_deps = set(d for ds in udf_dep_map.values() for d in ds)
     if udf_deps:
         # TODO: add "udf_deps" folder to python path where appropriate
-        install_python_udf_dependencies(dependencies=udf_deps, target=job_dir / "udf_deps")
+        install_python_udf_dependencies(dependencies=udf_deps, target=job_dir / UDF_PYTHON_DEPENDENCIES_FOLDER_NAME)
 
 
 if __name__ == "__main__":

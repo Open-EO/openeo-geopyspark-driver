@@ -13,6 +13,9 @@ from openeo.util import TimingLogger
 
 _log = logging.getLogger(__name__)
 
+# Reusable constant to streamline discoverability and grep-ability of this folder name.
+UDF_PYTHON_DEPENDENCIES_FOLDER_NAME = "udf-py-deps"
+
 
 def run_udf_code(code: str, data: openeo.udf.UdfData, require_executor_context: bool = True) -> openeo.udf.UdfData:
     """
