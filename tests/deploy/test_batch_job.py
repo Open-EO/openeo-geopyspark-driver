@@ -336,6 +336,7 @@ def test_run_job(evaluate, tmp_path):
     t.add(PIXEL_COUNTER, 3670016)
 
     job_dir = tmp_path / "job-338"
+    job_dir.mkdir(parents=True, exist_ok=True)
     run_job(
         job_specification={"process_graph": {"nop": {"process_id": "discard_result", "result": True}}},
         output_file=job_dir / "out",
@@ -347,7 +348,7 @@ def test_run_job(evaluate, tmp_path):
     )
 
     cube_mock.write_assets.assert_called_once()
-    metadata_result = read_json(tmp_path / "metadata.json")
+    metadata_result = read_json(job_dir / "metadata.json")
     assert metadata_result == {
         "assets": asset_meta,
         "bbox": None,
