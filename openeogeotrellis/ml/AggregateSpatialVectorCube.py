@@ -1,3 +1,4 @@
+import logging
 from typing import List, Optional, Union
 
 import geopyspark as gps
@@ -7,6 +8,9 @@ from pyspark.mllib.tree import RandomForest
 from openeo_driver.errors import ProcessParameterInvalidException
 from openeo_driver.save_result import AggregatePolygonSpatialResult
 from openeogeotrellis.ml.GeopySparkRandomForestModel import GeopySparkRandomForestModel
+
+
+logger = logging.getLogger(__name__)
 
 
 class AggregateSpatialVectorCube(AggregatePolygonSpatialResult):
@@ -50,6 +54,8 @@ class AggregateSpatialVectorCube(AggregatePolygonSpatialResult):
         # TODO: Implement max_variables parameter
         features: List[List[float]] = self.prepare_for_json()
         labels: List[int] = [feature["properties"]["target"] for feature in target["features"]]
+        logger.info(f"fit_class_random_forest features: {features}")
+        logger.info(f"fit_class_random_forest labels: {labels}")
 
         # 1. Check if input is correct.
         if len(labels) != len(features):
@@ -69,6 +75,7 @@ class AggregateSpatialVectorCube(AggregatePolygonSpatialResult):
 
         # 2. Create labeled data.
         labeled_data = [LabeledPoint(label, feature) for label, feature in zip(labels, features)]
+        logger.info(f"fit random forest labeled data: {labeled_data} seed: {seed} num_trees: {num_trees} max_variables: {max_variables}")
 
         # 3. Train the model.
         num_classes = max(labels) + 1
