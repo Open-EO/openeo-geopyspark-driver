@@ -335,10 +335,15 @@ def test_run_job(evaluate, tmp_path):
     t.add(PU_COUNTER, 0.4)
     t.add(PIXEL_COUNTER, 3670016)
 
+    job_dir = tmp_path / "job-338"
     run_job(
-        job_specification={'process_graph': {'nop': {'process_id': 'discard_result', 'result': True}}},
-        output_file=tmp_path /"out", metadata_file=tmp_path / "metadata.json", api_version="1.0.0", job_dir="./",
-        dependencies={}, user_id="jenkins"
+        job_specification={"process_graph": {"nop": {"process_id": "discard_result", "result": True}}},
+        output_file=job_dir / "out",
+        metadata_file=job_dir / "metadata.json",
+        api_version="1.0.0",
+        job_dir=job_dir,
+        dependencies={},
+        user_id="jenkins",
     )
 
     cube_mock.write_assets.assert_called_once()
@@ -394,7 +399,7 @@ def test_run_job(evaluate, tmp_path):
 def test_run_job_get_projection_extension_metadata(evaluate, tmp_path):
     cube_mock = MagicMock()
 
-    job_dir = tmp_path / "job-test-proj-metadata"
+    job_dir = tmp_path / "job-402"
     job_dir.mkdir()
     output_file = job_dir / "out"
     metadata_file = job_dir / "metadata.json"
@@ -525,7 +530,7 @@ def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox
     """
     cube_mock = MagicMock()
 
-    job_dir = tmp_path / "job-test-proj-metadata-same_epsg_and_bbox"
+    job_dir = tmp_path / "job-533"
     job_dir.mkdir()
     output_file = job_dir / "out"
     metadata_file = job_dir / "metadata.json"
@@ -579,7 +584,7 @@ def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox
         output_file=output_file,
         metadata_file=metadata_file,
         api_version="1.0.0",
-        job_dir="./",
+        job_dir=job_dir,
         dependencies={},
         user_id="jenkins",
     )
@@ -698,7 +703,7 @@ def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox
     """
     cube_mock = MagicMock()
 
-    job_dir = tmp_path / "job-test-proj-metadata-same_epsg_and_bbox_but_not_epsg4326"
+    job_dir = tmp_path / "job-706"
     job_dir.mkdir()
     output_file = job_dir / "out"
     metadata_file = job_dir / "metadata.json"
@@ -742,7 +747,7 @@ def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox
         output_file=output_file,
         metadata_file=metadata_file,
         api_version="1.0.0",
-        job_dir="./",
+        job_dir=job_dir,
         dependencies={},
         user_id="jenkins",
     )
@@ -803,7 +808,7 @@ def test_run_job_get_projection_extension_metadata_assets_with_different_epsg(
     """
     cube_mock = MagicMock()
 
-    job_dir = tmp_path / "job-test-proj-metadata-different_epsg"
+    job_dir = tmp_path / "job-811"
     job_dir.mkdir()
     output_file = job_dir / "out"
     metadata_file = job_dir / "metadata.json"
@@ -863,7 +868,7 @@ def test_run_job_get_projection_extension_metadata_assets_with_different_epsg(
         output_file=output_file,
         metadata_file=metadata_file,
         api_version="1.0.0",
-        job_dir="./",
+        job_dir=job_dir,
         dependencies={},
         user_id="jenkins",
     )
@@ -1107,7 +1112,7 @@ def test_run_job_get_projection_extension_metadata_assets_in_s3(
     cube_mock = MagicMock()
 
     job_id = "j-123546"
-    job_dir = tmp_path / "job-test-proj-metadata"
+    job_dir = tmp_path / "job-1115"
     job_dir.mkdir()
     output_file = job_dir / "out"
     metadata_file = job_dir / "metadata.json"
@@ -1140,7 +1145,7 @@ def test_run_job_get_projection_extension_metadata_assets_in_s3(
         output_file=output_file,
         metadata_file=metadata_file,
         api_version="1.0.0",
-        job_dir="./",
+        job_dir=job_dir,
         dependencies={},
         user_id="jenkins",
     )
@@ -1191,8 +1196,8 @@ def test_run_job_get_projection_extension_metadata_assets_in_s3_multiple_assets(
     mock_config_use_object_storage.return_value = True
     cube_mock = MagicMock()
 
-    job_id = "j-123546"
-    job_dir = tmp_path / "job-test-proj-metadata"
+    job_id = "j-1199"
+    job_dir = tmp_path / job_id
     job_dir.mkdir()
     output_file = job_dir / "out"
     metadata_file = job_dir / "metadata.json"
@@ -1244,7 +1249,7 @@ def test_run_job_get_projection_extension_metadata_assets_in_s3_multiple_assets(
         output_file=output_file,
         metadata_file=metadata_file,
         api_version="1.0.0",
-        job_dir="./",
+        job_dir=job_dir,
         dependencies={},
         user_id="jenkins",
     )
