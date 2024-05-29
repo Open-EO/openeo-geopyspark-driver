@@ -518,9 +518,8 @@ def _extract_asset_raster_metadata(
     def error_handler(e):
         logger.warning(f"Error while looking up result metadata, may be incomplete. {str(e)}")
 
-    pool = multiprocessing.Pool(10)
+    pool = multiprocessing.get_context("spawn").Pool(10)
     job = [pool.apply_async(_get_metadata_callback, (asset_path, asset_md,job_dir,), error_callback=error_handler) for asset_path, asset_md in asset_metadata.items()]
-
     pool.close()
     pool.join()
 
