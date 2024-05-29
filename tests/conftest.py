@@ -298,7 +298,7 @@ def mock_s3_bucket(mock_s3_resource):
 
 
 @pytest.fixture
-def moto_server() -> str:
+def moto_server(monkeypatch) -> str:
     """
     Fixture to run Moto in server mode,
     so that subprocesses also can access mocked services
@@ -310,6 +310,6 @@ def moto_server() -> str:
     )
     server.start()
     endpoint_url = f"http://{server._server.server_address[0]}:{server._server.server_port}"
-    os.environ["SWIFT_URL"] = endpoint_url
+    monkeypatch.setenv("SWIFT_URL", endpoint_url)
     yield endpoint_url
     server.stop()
