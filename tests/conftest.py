@@ -8,6 +8,7 @@ import boto3
 import flask
 import pytest
 import moto
+import moto.server
 from _pytest.terminal import TerminalReporter
 
 from openeo_driver.backend import OpenEoBackendImplementation, UserDefinedProcesses
@@ -294,3 +295,21 @@ def mock_s3_bucket(mock_s3_resource):
         bucket = mock_s3_resource.Bucket(bucket_name)
         bucket.create(CreateBucketConfiguration={"LocationConstraint": TEST_AWS_REGION_NAME})
         yield bucket
+
+
+@pytest.fixture
+def moto_server() -> str:
+    """
+    Fixture to run Moto in server mode,
+    so that subprocesses also can access mocked services
+    (when pointed to the correct endpoint URL).
+    """
+    server = moto.server.ThreadedMotoServer(
+        # Automatically find an open port
+        port=0,
+    )
+    server.start()
+    endpoint_url = f"http://{server._server.server_address[0]}:{server._server.server_port}"
+    os.environ["SWIFT_URL"] = endpoint_url
+    yield endpoint_url
+    server.stop()

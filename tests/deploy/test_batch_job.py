@@ -1101,7 +1101,7 @@ def test_run_job_get_projection_extension_metadata_job_dir_is_relative_path(eval
 )
 @mock.patch("openeo_driver.ProcessGraphDeserializer.evaluate")
 def test_run_job_get_projection_extension_metadata_assets_in_s3(
-    evaluate, mock_config_use_object_storage, tmp_path, mock_s3_bucket
+    evaluate, mock_config_use_object_storage, tmp_path, mock_s3_bucket, moto_server
 ):
     mock_config_use_object_storage.return_value = True
     cube_mock = MagicMock()
@@ -1186,7 +1186,7 @@ def test_run_job_get_projection_extension_metadata_assets_in_s3(
 )
 @mock.patch("openeo_driver.ProcessGraphDeserializer.evaluate")
 def test_run_job_get_projection_extension_metadata_assets_in_s3_multiple_assets(
-    evaluate, mock_config_use_object_storage, tmp_path, mock_s3_bucket
+    evaluate, mock_config_use_object_storage, tmp_path, mock_s3_bucket, moto_server
 ):
     mock_config_use_object_storage.return_value = True
     cube_mock = MagicMock()
