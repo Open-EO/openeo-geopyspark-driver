@@ -207,10 +207,13 @@ def to_projected_polygons(
         #    raise RuntimeError(f"Unexpected crs: {provided_crs!r} != {expected_crs!r}")
         # TODO: reverse this: make DriverVectorCube handling the reference implementation
         #       and GeometryCollection the legacy/deprecated way
+        epsg_code: Optional[int] = geometry.get_crs().to_epsg()
+        if epsg_code is None:
+            raise ValueError(f"CRS of {geometry} cannot be converted to EPSG code. {geometry.get_crs()}")
         return to_projected_polygons(
             jvm,
             GeometryCollection(list(geometry.get_geometries())),
-            crs=f"EPSG:{geometry.get_crs().to_epsg()}",
+            crs=f"EPSG:{epsg_code}",
             buffer_points=buffer_points,
             none_for_points=none_for_points,
         )
