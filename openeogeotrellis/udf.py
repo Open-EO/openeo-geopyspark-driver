@@ -119,9 +119,9 @@ def install_python_udf_dependencies(
         process.stdin.close()
         with process.stdout:
             for line in iter(process.stdout.readline, ""):
-                _log.info(f"pip install output: {line.rstrip()}")
+                _log.debug(f"pip install output: {line.rstrip()}")
         exit_code = process.wait()
+        _log.info(f"pip install exited with exit code {exit_code}")
 
-    _log.info(f"pip install finished with exit code {exit_code}")
-    if exit_code != 0:
-        raise RuntimeError(f"pip install failed with {exit_code=}")
+        if exit_code != 0:
+            raise RuntimeError(f"pip install of UDF dependencies failed with {exit_code=}")
