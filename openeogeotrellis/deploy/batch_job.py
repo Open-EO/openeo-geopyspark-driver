@@ -1377,7 +1377,9 @@ def _extract_and_install_udf_dependencies(process_graph: dict, job_dir: Path):
     udf_deps = set(d for ds in udf_dep_map.values() for d in ds)
     if udf_deps:
         # TODO: add "udf_deps" folder to python path where appropriate
-        install_python_udf_dependencies(dependencies=udf_deps, target=job_dir / UDF_PYTHON_DEPENDENCIES_FOLDER_NAME)
+        install_python_udf_dependencies(
+            dependencies=udf_deps, target=job_dir / UDF_PYTHON_DEPENDENCIES_FOLDER_NAME, timeout=20
+        )
 
 
 if __name__ == "__main__":
