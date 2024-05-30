@@ -209,8 +209,8 @@ def to_projected_polygons(
         #       and GeometryCollection the legacy/deprecated way
         epsg_code: Optional[int] = geometry.get_crs().to_epsg()
         if epsg_code is None:
-            logger.error(f"CRS cannot be converted to EPSG code. CRS:\n{geometry.get_crs()!r}\ngeometry:\n{geometry!r}")
-            raise ValueError(f"CRS {geometry.get_crs()!r} can not be converted to an EPSG code.")
+            logger.error(f"CRS cannot be converted to EPSG code. Falling back to epsg:4326. CRS:\n{geometry.get_crs()!r}\ngeometry:\n{geometry!r}.")
+            epsg_code = 4326
         return to_projected_polygons(
             jvm,
             GeometryCollection(list(geometry.get_geometries())),
