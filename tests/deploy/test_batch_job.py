@@ -1315,7 +1315,7 @@ def test_get_projection_extension_metadata(json_file, expected_metadata):
     assert proj_metadata == expected_metadata
 
 
-@mock.patch("openeogeotrellis.deploy.batch_job.read_gdal_info")
+@mock.patch("openeogeotrellis.integrations.gdal.read_gdal_info")
 def test_parse_gdal_raster_metadata(mock_read_gdal_info):
     json_dir = get_test_data_file("gdalinfo-output/SENTINEL2_L1C_SENTINELHUB_E5_05_N51_21-E5_10_N51_23")
     netcdf_path = json_dir / "SENTINEL2_L1C_SENTINELHUB_E5_05_N51_21-E5_10_N51_23.nc"
