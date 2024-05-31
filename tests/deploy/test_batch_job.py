@@ -2,30 +2,27 @@ import json
 import logging
 import shutil
 import tempfile
-from mock import MagicMock
 from pathlib import Path
 from unittest import mock
 
 import pytest
-from pytest import approx
-from openeo_driver.save_result import ImageCollectionResult
-from shapely.geometry import box, mapping, shape
+from mock import MagicMock
 from osgeo import gdal
+from pytest import approx
+from shapely.geometry import box, mapping, shape
 
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import DryRunDataTracer
+from openeo_driver.save_result import ImageCollectionResult
 from openeo_driver.testing import DictSubSet
 from openeo_driver.utils import read_json
-from openeogeotrellis.deploy.batch_job import (
-    run_job,
-    _convert_job_metadatafile_outputs_to_s3_urls,
-)
+from openeogeotrellis._version import __version__
+from openeogeotrellis.deploy.batch_job import run_job
 from openeogeotrellis.deploy.batch_job_metadata import extract_result_metadata, _convert_asset_outputs_to_s3_urls, \
-    _get_tracker
+    _get_tracker, _convert_job_metadatafile_outputs_to_s3_urls
 from openeogeotrellis.integrations.gdal import _get_projection_extension_metadata, AssetRasterMetadata, \
     parse_gdal_raster_metadata, read_gdal_raster_metadata, BandStatistics
 from openeogeotrellis.utils import get_jvm, to_s3_url
-from openeogeotrellis._version import __version__
 
 EXPECTED_GRAPH = [{"expression": {"nop": {"process_id": "discard_result",
                                                "result": True}},
