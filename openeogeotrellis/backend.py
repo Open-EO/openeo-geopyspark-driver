@@ -333,25 +333,6 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             logger.warning("No elastic_job_registry given to GeoPySparkBackendImplementation, creating one")
             elastic_job_registry = get_elastic_job_registry(requests_session=requests_session)
 
-        # Start persistent workers if configured.
-        config_params = ConfigParams()
-        persistent_worker_count = config_params.persistent_worker_count
-        if persistent_worker_count != 0 and not config_params.is_kube_deploy:
-            shutdown_file = config_params.persistent_worker_dir / "shutdown"
-            if shutdown_file.exists():
-                shutdown_file.unlink()
-            persistent_script_path = pkg_resources.resource_filename('openeogeotrellis.deploy', "submit_persistent_worker.sh")
-            for i in range(persistent_worker_count):
-                args = [
-                    persistent_script_path, str(i),
-                    principal, key_tab,
-                    GpsBatchJobs.get_submit_py_files(),
-                    "INFO"
-                ]
-                logger.info(f"Submitting persistent worker {i} with args: {args!r}")
-                output_string = subprocess.check_output(args, stderr = subprocess.STDOUT, universal_newlines = True)
-                logger.info(f"Submitted persistent worker {i}, output was: {output_string}")
-
         super().__init__(
             catalog=catalog,
             batch_jobs=GpsBatchJobs(
@@ -2168,33 +2149,13 @@ class GpsBatchJobs(backend.BatchJobs):
                 args.append(os.environ.get(ConfigGetter.OPENEO_BACKEND_CONFIG, ""))
                 # TODO: this positional `args` handling is getting out of hand, leverage _write_sensitive_values?
 
-                persistent_worker_count = ConfigParams().persistent_worker_count
-                if persistent_worker_count != 0:
-                    # Write args to persistent_worker_dir as job_<job_id>.json
-                    # Also write process graph to pg_<job_id>.json
-                    persistent_worker_dir = ConfigParams().persistent_worker_dir
-                    if not os.path.exists(persistent_worker_dir):
-                        os.makedirs(persistent_worker_dir)
-                    pg_file_path = persistent_worker_dir / f"pg_{job_id}.json"
-                    persistent_args = [
-                        str(pg_file_path), str(self.get_job_output_dir(job_id)), "out", "log", JOB_METADATA_FILENAME,
-                        args[10], serialize_dependencies(), user_id, max_soft_errors_ratio, sentinel_hub_client_alias
-                    ]
-                    with open(os.path.join(persistent_worker_dir, f"job_{job_id}.json"), "w") as f:
-                        f.write(json.dumps(persistent_args))
-                    with open(os.path.join(persistent_worker_dir, pg_file_path), "w") as f:
-                        f.write(job_specification_json)
-                    # Generate our own random application id.
-                    application_id = f"{random.randint(1000000000000, 9999999999999)}_{random.randint(1000000, 9999999)}"
-                    script_output = f"Application report for application_{application_id} (state: running)"
-                else:
-                    try:
-                        log.info(f"Submitting job with command {args!r}")
-                        script_output = subprocess.check_output(args, stderr=subprocess.STDOUT, universal_newlines=True)
-                        log.info(f"Submitted job, output was: {script_output}")
-                    except CalledProcessError as e:
-                        log.error(f"Submitting job failed, output was: {e.stdout}", exc_info=True)
-                        raise InternalException(message=f"Failed to start batch job (YARN submit failure).")
+                try:
+                    log.info(f"Submitting job with command {args!r}")
+                    script_output = subprocess.check_output(args, stderr=subprocess.STDOUT, universal_newlines=True)
+                    log.info(f"Submitted job, output was: {script_output}")
+                except CalledProcessError as e:
+                    log.error(f"Submitting job failed, output was: {e.stdout}", exc_info=True)
+                    raise InternalException(message=f"Failed to start batch job (YARN submit failure).")
 
             try:
                 application_id = self._extract_application_id(script_output)
