@@ -1743,11 +1743,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
         log.debug("job_options: {o!r}".format(o=job_options))
 
-        async_tasks_supported = not ConfigParams().is_kube_deploy
-
-        if (
-            async_tasks_supported
-            and dependencies is None
+        if (dependencies is None
             and job_info.get("dependency_status")
             not in [
                 DEPENDENCY_STATUS.AWAITING,
@@ -1756,6 +1752,7 @@ class GpsBatchJobs(backend.BatchJobs):
             ]
         ):
             job_dependencies = self._schedule_and_get_dependencies(
+                supports_async_tasks=not ConfigParams().is_kube_deploy,
                 process_graph=job_process_graph,
                 api_version=api_version,
                 user_id=user_id,
@@ -2189,6 +2186,7 @@ class GpsBatchJobs(backend.BatchJobs):
     # TODO: encapsulate this SHub stuff in a dedicated class?
     def _schedule_and_get_dependencies(  # some we schedule ourselves, some already exist
         self,
+        supports_async_tasks: bool,
         process_graph: dict,
         api_version: Union[str, None],
         user_id: str,
@@ -2321,9 +2319,12 @@ class GpsBatchJobs(backend.BatchJobs):
                     if not supports_batch_processes:  # always sync approach
                         logger_adapter.info("endpoint {e} does not support batch processing".format(e=endpoint))
                         continue
+                    elif not supports_async_tasks:  # always sync approach
+                        logger_adapter.info("this backend does not support polling for batch processes")
+                        continue
                     elif card4l:  # always batch approach
                         logger_adapter.info("deemed collection {c} request CARD4L compliant ({s})"
-                                    .format(c=collection_id, s=sar_backscatter_arguments))
+                                            .format(c=collection_id, s=sar_backscatter_arguments))
                     elif shub_input_approach == 'sync':
                         logger_adapter.info("forcing sync input processing for collection {c}".format(c=collection_id))
                         continue
@@ -2591,6 +2592,12 @@ class GpsBatchJobs(backend.BatchJobs):
                             logger_adapter.debug(f'load_stac({url}): "openeo:status" is "{partial_job_status}"')
 
                     if partial_job_status == PARTIAL_JOB_STATUS.RUNNING:
+                        if not supports_async_tasks:
+                            raise OpenEOApiException(
+                                message=f"this backend does not support loading unfinished results from {url}"
+                                        f" with load_stac",
+                                status_code=501)
+
                         job_dependencies.append({
                             'partial_job_results_url': url,
                         })
