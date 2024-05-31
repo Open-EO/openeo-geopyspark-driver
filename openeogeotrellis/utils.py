@@ -15,7 +15,7 @@ import stat
 import tempfile
 from functools import partial
 from pathlib import Path
-from typing import Callable, Iterable, Optional, Tuple, Union
+from typing import Callable, Iterable, Optional, Tuple, Union, Dict, Any
 
 import dateutil.parser
 import pyproj
@@ -646,3 +646,17 @@ def parse_approximate_isoduration(s):
     dt = datetime.timedelta(days=n_yr + n_mo + n_wk + s_dy, hours=s_hr, minutes=s_mi,
                             seconds=s_sc)
     return dt
+
+
+def _make_set_for_key(
+    data: Dict[str, Dict[str, Any]],
+    key: str,
+    func: callable = lambda x: x,
+) -> set:
+    """
+    Create a set containing only the values for `key` from the dicts in data.values().
+
+    Optionally apply func() to that value, for example to allow converting lists,
+    which are not hashable and cannot be a set element, to tuples.
+    """
+    return {func(val.get(key)) for val in data.values() if key in val}
