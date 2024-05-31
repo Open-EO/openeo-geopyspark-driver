@@ -179,29 +179,25 @@ def _extract_gdal_asset_raster_metadata(
     return raster_metadata, is_some_raster_md_missing
 
 
-def _get_metadata_callback(asset_path, asset_md,job_dir):
+def _get_metadata_callback(asset_path: str, asset_md: Dict[str, str], job_dir: Path):
 
-    mime_type = asset_md.get("type")
+    mime_type: str = asset_md.get("type", "")
     logger.debug(
         f"_export_result_metadata: {asset_path=}, "
         + f"file's MIME type: {mime_type}, "
         + f"job dir (based on output file): {job_dir=}"
     )
-    # logger.debug(f"{asset_path=}, {asset_md=}")
 
     # Skip assets that are clearly not images.
-    # This is only to avoid cluttering the error logs with errors that are
-    # not useful. So when in doubt we just try to read the file.
     if asset_path.endswith(".json"):
         logger.info(f"_export_result_metadata: Asset file is not an image but JSON, {asset_path=}")
         return None
 
-    # Won't assume the asset path is relative to the current working directory.
-    # It should be relative to the job directory.
-    abs_asset_path = get_abs_path_of_asset(asset_path, job_dir)
+    # The asset path should be relative to the job directory.
+    abs_asset_path: Path = get_abs_path_of_asset(asset_path, job_dir)
     logger.debug(f"{asset_path=} maps to absolute path: {abs_asset_path=} , " + f"{abs_asset_path.exists()=}")
 
-    asset_href = asset_md.get("href", "")
+    asset_href: str = asset_md.get("href", "")
     if not abs_asset_path.exists() and asset_href.startswith("s3://"):
         try:
             abs_asset_path.write_bytes(get_s3_binary_file_contents(asset_href))
@@ -211,8 +207,7 @@ def _get_metadata_callback(asset_path, asset_md,job_dir):
                 + f"asset={asset_path}, href={asset_href!r}, exception: {exc!r}"
             )
 
-    asset_gdal_metadata = read_gdal_raster_metadata(abs_asset_path)
-    # logger.debug(f"{asset_path=}, {asset_gdal_metadata=}")
+    asset_gdal_metadata: AssetRasterMetadata = read_gdal_raster_metadata(abs_asset_path)
     # If gdal could not extract the projection metadata from the file
     # (The file is corrupt perhaps?).
     if asset_gdal_metadata.could_not_read_file:
