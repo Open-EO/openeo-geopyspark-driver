@@ -1,12 +1,13 @@
 import json
 import logging
 import os
+from itertools import chain
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Union
 from urllib.parse import urlparse
 
 import pyproj
-from openeo.util import Rfc3339
+from openeo.util import Rfc3339, dict_no_none
 from shapely.geometry import mapping, Polygon
 from shapely.geometry.base import BaseGeometry
 
@@ -344,3 +345,41 @@ def _transform_stac_metadata(job_dir: Path):
 
         with open(stac_metadata_file, 'wt', encoding='utf-8') as f:
             json.dump(transformed, f, indent=2)
+
+
+def _get_tracker(tracker_id=""):
+    return get_jvm().org.openeo.geotrelliscommon.BatchJobMetadataTracker.tracker(tracker_id)
+
+
+def _get_tracker_metadata(tracker_id="") -> dict:
+    tracker = _get_tracker(tracker_id)
+
+    if tracker is not None:
+        tracker_results = tracker.asDict()
+
+        usage = {}
+        pu = tracker_results.get("Sentinelhub_Processing_Units", None)
+        if pu is not None:
+            usage["sentinelhub"] = {"value": pu, "unit": "sentinelhub_processing_unit"}
+
+        pixels = tracker_results.get("InputPixels", None)
+        if pixels is not None:
+            usage["input_pixel"] = {"value": pixels / (1024 * 1024), "unit": "mega-pixel"}
+
+        links = tracker_results.get("links", None)
+        all_links = None
+        if links is not None:
+            all_links = list(chain(*links.values()))
+            # TODO: when in the future these links point to STAC objects we will need to update the type.
+            #   https://github.com/openEOPlatform/architecture-docs/issues/327
+            all_links = [
+                {
+                    "href": link.getSelfUrl(),
+                    "rel": "derived_from",
+                    "title": f"Derived from {link.getId()}",
+                    "type": "application/json",
+                }
+                for link in all_links
+            ]
+
+        return dict_no_none(usage=usage if usage != {} else None, links=all_links)

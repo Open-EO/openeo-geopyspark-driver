@@ -19,7 +19,8 @@ from openeo_driver.ProcessGraphDeserializer import ENV_DRY_RUN_TRACER, evaluate
 from openeo_driver.dry_run import DryRunDataTracer
 from openeo_driver.testing import ephemeral_fileserver
 from openeo_driver.utils import EvalEnv
-from openeogeotrellis.deploy.batch_job import run_job, extract_result_metadata
+from openeogeotrellis.deploy.batch_job import run_job
+from openeogeotrellis.deploy.batch_job_metadata import extract_result_metadata
 from .data import TEST_DATA_ROOT
 
 

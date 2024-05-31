@@ -17,17 +17,14 @@ from openeo_driver.dry_run import DryRunDataTracer
 from openeo_driver.testing import DictSubSet
 from openeo_driver.utils import read_json
 from openeogeotrellis.deploy.batch_job import (
-    extract_result_metadata,
-    run_job, _convert_asset_outputs_to_s3_urls,
+    run_job,
     _convert_job_metadatafile_outputs_to_s3_urls,
-    _get_projection_extension_metadata,
-    read_gdal_raster_metadata,
-    parse_gdal_raster_metadata,
-    AssetRasterMetadata,
-    BandStatistics,
 )
+from openeogeotrellis.deploy.batch_job_metadata import extract_result_metadata, _convert_asset_outputs_to_s3_urls, \
+    _get_tracker
+from openeogeotrellis.integrations.gdal import _get_projection_extension_metadata, AssetRasterMetadata, \
+    parse_gdal_raster_metadata, read_gdal_raster_metadata, BandStatistics
 from openeogeotrellis.utils import get_jvm, to_s3_url
-from openeogeotrellis.deploy.batch_job import _get_tracker
 from openeogeotrellis._version import __version__
 
 EXPECTED_GRAPH = [{"expression": {"nop": {"process_id": "discard_result",

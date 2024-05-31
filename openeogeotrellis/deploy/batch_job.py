@@ -68,44 +68,6 @@ def _parse(job_specification_file: str) -> Dict:
     return job_specification
 
 
-def _get_tracker(tracker_id=""):
-    return get_jvm().org.openeo.geotrelliscommon.BatchJobMetadataTracker.tracker(tracker_id)
-
-
-def _get_tracker_metadata(tracker_id="") -> dict:
-    tracker = _get_tracker(tracker_id)
-
-    if tracker is not None:
-        tracker_results = tracker.asDict()
-
-        usage = {}
-        pu = tracker_results.get("Sentinelhub_Processing_Units", None)
-        if pu is not None:
-            usage["sentinelhub"] = {"value": pu, "unit": "sentinelhub_processing_unit"}
-
-        pixels = tracker_results.get("InputPixels", None)
-        if pixels is not None:
-            usage["input_pixel"] = {"value": pixels / (1024 * 1024), "unit": "mega-pixel"}
-
-        links = tracker_results.get("links", None)
-        all_links = None
-        if links is not None:
-            all_links = list(chain(*links.values()))
-            # TODO: when in the future these links point to STAC objects we will need to update the type.
-            #   https://github.com/openEOPlatform/architecture-docs/issues/327
-            all_links = [
-                {
-                    "href": link.getSelfUrl(),
-                    "rel": "derived_from",
-                    "title": f"Derived from {link.getId()}",
-                    "type": "application/json",
-                }
-                for link in all_links
-            ]
-
-        return dict_no_none(usage=usage if usage != {} else None, links=all_links)
-
-
 def _deserialize_dependencies(arg: str) -> List[dict]:
     return json.loads(arg)
 
