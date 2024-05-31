@@ -90,39 +90,6 @@ class AssetRasterMetadata:
         return result
 
 
-def read_gdal_raster_metadata(asset_path: Union[str, Path]) -> AssetRasterMetadata:
-    """Get the projection metadata for the file in asset_path.
-
-    :param asset_path: path to the asset file to read.
-
-    :return:
-        ProjectionMetadata, which is a dictionary containing the info for the
-        STAC extension for projections.
-
-        This dictionary contains the following fields, as described in stac-extensions,
-        see: https://github.com/stac-extensions/projection
-
-        - "proj:epsg"  The EPSG code of the CRS.
-        - "proj:shape" The pixel size of the asset.
-        - "proj:bbox"  The bounding box expressed in the asset CRS.
-
-        When a field can not be found in the metadata that gdal.Info extracted,
-        we leave out that field.
-
-        Note that these dictionary keys in the return value *do* include the colon to be
-        in line with the names in stac-extensions.
-
-    TODO: upgrade GDAL to 3.6 and use the STAC dictionary that GDAL 3.6+ returns,
-        instead of extracting it from the other output of ``gdal.Info()``.
-
-    In a future version of the GeoPySpark driver we can upgrade to GDAL v3.6
-    and in that version the gdal.Info function include these properties directly
-    in the key "stac" of the dictionary it returns.
-    """
-    logger.debug(f"{__name__}.read_projection_extension_metadata: {asset_path=}")
-    return parse_gdal_raster_metadata(read_gdal_info(str(asset_path)))
-
-
 def _extract_gdal_asset_raster_metadata(
     asset_metadata: Dict[str, Any],
     job_dir: Path,
@@ -223,6 +190,39 @@ def _get_metadata_callback(asset_path: str, asset_md: Dict[str, str], job_dir: P
         # raster_metadata[asset_path] = asset_gdal_metadata
 
 
+def read_gdal_raster_metadata(asset_path: Union[str, Path]) -> AssetRasterMetadata:
+    """Get the projection metadata for the file in asset_path.
+
+    :param asset_path: path to the asset file to read.
+
+    :return:
+        ProjectionMetadata, which is a dictionary containing the info for the
+        STAC extension for projections.
+
+        This dictionary contains the following fields, as described in stac-extensions,
+        see: https://github.com/stac-extensions/projection
+
+        - "proj:epsg"  The EPSG code of the CRS.
+        - "proj:shape" The pixel size of the asset.
+        - "proj:bbox"  The bounding box expressed in the asset CRS.
+
+        When a field can not be found in the metadata that gdal.Info extracted,
+        we leave out that field.
+
+        Note that these dictionary keys in the return value *do* include the colon to be
+        in line with the names in stac-extensions.
+
+    TODO: upgrade GDAL to 3.6 and use the STAC dictionary that GDAL 3.6+ returns,
+        instead of extracting it from the other output of ``gdal.Info()``.
+
+    In a future version of the GeoPySpark driver we can upgrade to GDAL v3.6
+    and in that version the gdal.Info function include these properties directly
+    in the key "stac" of the dictionary it returns.
+    """
+    logger.debug(f"{__name__}.read_projection_extension_metadata: {asset_path=}")
+    return parse_gdal_raster_metadata(read_gdal_info(str(asset_path)))
+
+
 def parse_gdal_raster_metadata(gdal_info: GDALInfo) -> AssetRasterMetadata:
     """Parse the JSON output from gdal.Info.
 
@@ -246,6 +246,100 @@ def parse_gdal_raster_metadata(gdal_info: GDALInfo) -> AssetRasterMetadata:
             statistics=_get_raster_statistics(gdal_info),
             gdal_info=gdal_info,
         )
+
+
+def _process_gdalinfo_for_netcdf_subdatasets(
+    gdal_info: GDALInfo,
+) -> Optional[AssetRasterMetadata]:
+    """Read and process the gdal.Info for each subdataset, if subdatasets are present.
+
+    This function only supports subdatasets in netCDF files.
+    For other formats that may have subdatasets, such as HDF5, the subdatasets
+    will not be processed.
+
+    :param gdal_info: Dictionary that contains the output from gdal.Info.
+
+    :return:
+        ProjectionMetadata, which is a dictionary containing the info for the
+        STAC extension for projections, the same type and information as what
+        `_get_projection_extension_metadata` returns.
+
+        Specifically:
+        - "proj:epsg"  The EPSG code of the CRS.
+        - "proj:shape" The pixel size of the asset.
+        - "proj:bbox"  The bounding box expressed in the asset CRS.
+
+        At present, when it is a netCDF file that does have subdatasets
+        (bands, basically), then we only return the aforementioned fields from
+        the subdatasets when all the subdatasets have the same value for that
+        field. If the metadata differs between bands, then the field is left out.
+
+        Storing the info of each individual band would be possible in the STAC
+        standard, but we have not implemented at the moment in this function.
+    """
+
+    # TODO: might be better to separate out this check whether we need to process it.
+    #   That would give cleaner logic, and no need to return None here.
+
+    # NetCDF files list their bands under SUBDATASETS and more info can be
+    # retrieved with a second gdal.Info() query.
+    # This function only supports subdatasets in netCDF.
+    # For other formats that have subdatasets, such as HDF5, the subdatasets
+    # will not be processed.
+    if gdal_info.get("driverShortName") != "netCDF":
+        return None
+    if "SUBDATASETS" not in gdal_info.get("metadata", {}):
+        return None
+
+    sub_datasets_proj = {}
+    sub_datasets_stats = {}
+    for key, sub_ds_uri in gdal_info["metadata"]["SUBDATASETS"].items():
+        if key.endswith("_NAME"):
+            sub_ds_gdal_info = read_gdal_info(sub_ds_uri)
+            band_name = sub_ds_uri.split(":")[-1]
+            sub_ds_md = _get_projection_extension_metadata(sub_ds_gdal_info)
+            sub_datasets_proj[sub_ds_uri] = sub_ds_md
+
+            stats_info = _get_raster_statistics(sub_ds_gdal_info, band_name)
+            logger.info(f"_process_gdalinfo_for_netcdf_subdatasets:: {stats_info=}")
+            sub_datasets_stats[sub_ds_uri] = stats_info
+
+    proj_info = {}
+    shapes = _make_set_for_key(sub_datasets_proj, "proj:shape", tuple)
+    if len(shapes) == 1:
+        proj_info["proj:shape"] = list(shapes.pop())
+
+    bboxes = _make_set_for_key(sub_datasets_proj, "proj:bbox", tuple)
+    if len(bboxes) == 1:
+        proj_info["proj:bbox"] = list(bboxes.pop())
+
+    epsg_codes = _make_set_for_key(sub_datasets_proj, "proj:epsg")
+    if len(epsg_codes) == 1:
+        proj_info["proj:epsg"] = epsg_codes.pop()
+
+    ds_band_names = [band for bands in sub_datasets_stats.values() for band in bands.keys()]
+    logger.debug(f"{ds_band_names=}")
+
+    all_raster_stats = {}
+
+    # We can only copy each band's stats if there are no duplicate bands across
+    # the subdatasets. If we find duplicate bands there is likely a bug.
+    # Besides it is not obvious how we would need to merge statistics across
+    # subdatasets, if the bands occur multiple times.
+    if sorted(set(ds_band_names)) != sorted(ds_band_names):
+        logger.warning(f"There are duplicate bands in {ds_band_names=}, Can not merge the bands' statistics.")
+    else:
+        logger.info(f"There are no duplicate bands in {ds_band_names=}, Will use all bands' statistics in result.")
+        for bands in sub_datasets_stats.values():
+            for band_name, stats in bands.items():
+                all_raster_stats[band_name] = stats
+
+    logger.debug(f"{all_raster_stats=}")
+
+    result = AssetRasterMetadata(gdal_info=gdal_info, projection=proj_info, statistics=all_raster_stats)
+    logger.debug(f"_process_gdalinfo_for_netcdf_subdatasets:: returning {result=}")
+
+    return AssetRasterMetadata(gdal_info=gdal_info, projection=proj_info, statistics=all_raster_stats)
 
 
 def _get_projection_extension_metadata(gdal_info: GDALInfo) -> ProjectionMetadata:
@@ -419,97 +513,3 @@ def _get_raster_statistics(gdal_info: GDALInfo, band_name: Optional[str] = None)
         raster_stats[band_name_out] = band_stats
 
     return raster_stats
-
-
-def _process_gdalinfo_for_netcdf_subdatasets(
-    gdal_info: GDALInfo,
-) -> Optional[AssetRasterMetadata]:
-    """Read and process the gdal.Info for each subdataset, if subdatasets are present.
-
-    This function only supports subdatasets in netCDF files.
-    For other formats that may have subdatasets, such as HDF5, the subdatasets
-    will not be processed.
-
-    :param gdal_info: Dictionary that contains the output from gdal.Info.
-
-    :return:
-        ProjectionMetadata, which is a dictionary containing the info for the
-        STAC extension for projections, the same type and information as what
-        `_get_projection_extension_metadata` returns.
-
-        Specifically:
-        - "proj:epsg"  The EPSG code of the CRS.
-        - "proj:shape" The pixel size of the asset.
-        - "proj:bbox"  The bounding box expressed in the asset CRS.
-
-        At present, when it is a netCDF file that does have subdatasets
-        (bands, basically), then we only return the aforementioned fields from
-        the subdatasets when all the subdatasets have the same value for that
-        field. If the metadata differs between bands, then the field is left out.
-
-        Storing the info of each individual band would be possible in the STAC
-        standard, but we have not implemented at the moment in this function.
-    """
-
-    # TODO: might be better to separate out this check whether we need to process it.
-    #   That would give cleaner logic, and no need to return None here.
-
-    # NetCDF files list their bands under SUBDATASETS and more info can be
-    # retrieved with a second gdal.Info() query.
-    # This function only supports subdatasets in netCDF.
-    # For other formats that have subdatasets, such as HDF5, the subdatasets
-    # will not be processed.
-    if gdal_info.get("driverShortName") != "netCDF":
-        return None
-    if "SUBDATASETS" not in gdal_info.get("metadata", {}):
-        return None
-
-    sub_datasets_proj = {}
-    sub_datasets_stats = {}
-    for key, sub_ds_uri in gdal_info["metadata"]["SUBDATASETS"].items():
-        if key.endswith("_NAME"):
-            sub_ds_gdal_info = read_gdal_info(sub_ds_uri)
-            band_name = sub_ds_uri.split(":")[-1]
-            sub_ds_md = _get_projection_extension_metadata(sub_ds_gdal_info)
-            sub_datasets_proj[sub_ds_uri] = sub_ds_md
-
-            stats_info = _get_raster_statistics(sub_ds_gdal_info, band_name)
-            logger.info(f"_process_gdalinfo_for_netcdf_subdatasets:: {stats_info=}")
-            sub_datasets_stats[sub_ds_uri] = stats_info
-
-    proj_info = {}
-    shapes = _make_set_for_key(sub_datasets_proj, "proj:shape", tuple)
-    if len(shapes) == 1:
-        proj_info["proj:shape"] = list(shapes.pop())
-
-    bboxes = _make_set_for_key(sub_datasets_proj, "proj:bbox", tuple)
-    if len(bboxes) == 1:
-        proj_info["proj:bbox"] = list(bboxes.pop())
-
-    epsg_codes = _make_set_for_key(sub_datasets_proj, "proj:epsg")
-    if len(epsg_codes) == 1:
-        proj_info["proj:epsg"] = epsg_codes.pop()
-
-    ds_band_names = [band for bands in sub_datasets_stats.values() for band in bands.keys()]
-    logger.debug(f"{ds_band_names=}")
-
-    all_raster_stats = {}
-
-    # We can only copy each band's stats if there are no duplicate bands across
-    # the subdatasets. If we find duplicate bands there is likely a bug.
-    # Besides it is not obvious how we would need to merge statistics across
-    # subdatasets, if the bands occur multiple times.
-    if sorted(set(ds_band_names)) != sorted(ds_band_names):
-        logger.warning(f"There are duplicate bands in {ds_band_names=}, Can not merge the bands' statistics.")
-    else:
-        logger.info(f"There are no duplicate bands in {ds_band_names=}, Will use all bands' statistics in result.")
-        for bands in sub_datasets_stats.values():
-            for band_name, stats in bands.items():
-                all_raster_stats[band_name] = stats
-
-    logger.debug(f"{all_raster_stats=}")
-
-    result = AssetRasterMetadata(gdal_info=gdal_info, projection=proj_info, statistics=all_raster_stats)
-    logger.debug(f"_process_gdalinfo_for_netcdf_subdatasets:: returning {result=}")
-
-    return AssetRasterMetadata(gdal_info=gdal_info, projection=proj_info, statistics=all_raster_stats)
