@@ -33,7 +33,7 @@ from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.deploy import load_custom_processes
 from openeogeotrellis.deploy.batch_job_metadata import _assemble_result_metadata, _transform_stac_metadata, \
-    _convert_job_metadatafile_outputs_to_s3_urls
+    _convert_job_metadatafile_outputs_to_s3_urls, _get_tracker_metadata
 from openeogeotrellis.integrations.hadoop import setup_kerberos_auth
 from openeogeotrellis.udf import (collect_python_udf_dependencies, install_python_udf_dependencies,
                                   UDF_PYTHON_DEPENDENCIES_FOLDER_NAME, )
