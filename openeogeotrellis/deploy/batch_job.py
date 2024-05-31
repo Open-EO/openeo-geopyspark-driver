@@ -32,7 +32,8 @@ from openeogeotrellis.collect_unique_process_ids_visitor import CollectUniquePro
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.deploy import load_custom_processes
-from openeogeotrellis.deploy.batch_job_metadata import _assemble_result_metadata
+from openeogeotrellis.deploy.batch_job_metadata import _assemble_result_metadata, _transform_stac_metadata, \
+    _convert_job_metadatafile_outputs_to_s3_urls
 from openeogeotrellis.integrations.hadoop import setup_kerberos_auth
 from openeogeotrellis.udf import (collect_python_udf_dependencies, install_python_udf_dependencies,
                                   UDF_PYTHON_DEPENDENCIES_FOLDER_NAME, )
@@ -495,51 +496,6 @@ def _write_exported_stac_collection(job_dir: Path, result_metadata: dict) -> Lis
         json.dump(stac_collection, fc)
 
     return item_files + [collection_file]
-
-
-def _convert_job_metadatafile_outputs_to_s3_urls(metadata_file: Path):
-    """Convert each asset's output_dir value to a URL on S3, in the job metadata file."""
-    with open(metadata_file, "rt") as mdf:
-        metadata_to_update = json.load(mdf)
-    with open(metadata_file, "wt") as mdf:
-        _convert_asset_outputs_to_s3_urls(metadata_to_update)
-        json.dump(metadata_to_update, mdf)
-
-
-def _convert_asset_outputs_to_s3_urls(job_metadata: dict):
-    """Convert each asset's output_dir value to a URL on S3 in the metadata dictionary."""
-    out_assets = job_metadata.get("assets", {})
-    for asset in out_assets.values():
-        if "href" in asset and not asset["href"].startswith("s3://"):
-            asset["href"] = to_s3_url(asset["href"])
-
-
-def _transform_stac_metadata(job_dir: Path):
-    def relativize(assets: dict) -> dict:
-        def relativize_href(asset: dict) -> dict:
-            absolute_href = asset['href']
-            relative_path = urlparse(absolute_href).path.split("/")[-1]
-            return dict(asset, href=relative_path)
-
-        return {asset_name: relativize_href(asset) for asset_name, asset in assets.items()}
-
-    def drop_links(metadata: dict) -> dict:
-        result = metadata.copy()
-        result.pop('links', None)
-        return result
-
-    stac_metadata_files = [job_dir / file_name for file_name in os.listdir(job_dir) if
-                           file_name.endswith("_metadata.json") and file_name != JOB_METADATA_FILENAME]
-
-    for stac_metadata_file in stac_metadata_files:
-        with open(stac_metadata_file, 'rt', encoding='utf-8') as f:
-            stac_metadata = json.load(f)
-
-        relative_assets = relativize(stac_metadata.get('assets', {}))
-        transformed = dict(drop_links(stac_metadata), assets=relative_assets)
-
-        with open(stac_metadata_file, 'wt', encoding='utf-8') as f:
-            json.dump(transformed, f, indent=2)
 
 
 def _extract_and_install_udf_dependencies(process_graph: dict, job_dir: Path):

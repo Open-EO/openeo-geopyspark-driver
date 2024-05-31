@@ -1,6 +1,9 @@
+import json
 import logging
+import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Union
+from urllib.parse import urlparse
 
 import pyproj
 from openeo.util import Rfc3339
@@ -15,41 +18,12 @@ from openeo_driver.util.geometry import spatial_extent_union, reproject_bounding
 from openeo_driver.util.utm import area_in_square_meters
 from openeo_driver.utils import temporal_extent_union
 from openeogeotrellis._version import __version__
-from openeogeotrellis.backend import GeoPySparkBackendImplementation
+from openeogeotrellis.backend import GeoPySparkBackendImplementation, JOB_METADATA_FILENAME
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.integrations.gdal import _extract_gdal_asset_raster_metadata
-from openeogeotrellis.utils import (get_jvm, _make_set_for_key, )
+from openeogeotrellis.utils import (get_jvm, _make_set_for_key, to_s3_url, )
 
 logger = logging.getLogger(__name__)
-
-
-def convert_bbox_to_lat_long(bbox: List[int], bbox_crs: Optional[Union[str, int, pyproj.CRS]] = None) -> List[int]:
-    """Convert bounding box to lat-long, i.e. EPSG:4326, if it was not EPSG:4326 already.
-
-    :param bbox: the bounding box
-    :param bbox_crs: in which CRS bbox is currently expressed.
-    :return: the bounding box expressed in EPSG:4326
-    """
-    # Convert bbox to lat-long, EPSG:4326 if it was any other CRS.
-    if bbox and bbox_crs not in [4326, "EPSG:4326", "epsg:4326"]:
-        # Note that if the bbox comes from the aggregate_spatial_geometries, then we may
-        # get a pyproy CRS object instead of an EPSG code. In that case it is OK to
-        # just do the reprojection, even if it is already EPSG:4326. That's just a no-op.
-        # In constrast, handling all possible variants of pyproj CRS objects that are actually
-        # all the exact same EPSG:4326 CRS, is complex and unnecessary.
-        latlon_spatial_extent = {
-            "west": bbox[0],
-            "south": bbox[1],
-            "east": bbox[2],
-            "north": bbox[3],
-            "crs": bbox_crs,
-        }
-        latlon_spatial_extent = reproject_bounding_box(
-            latlon_spatial_extent, from_crs=None, to_crs="EPSG:4326"
-        )
-        return [latlon_spatial_extent[b] for b in ["west", "south", "east", "north"]]
-
-    return bbox
 
 
 def _assemble_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output_file: Path,
@@ -296,3 +270,77 @@ def _extract_asset_metadata(
             )
 
     job_result_metadata["assets"] = asset_metadata
+
+
+def convert_bbox_to_lat_long(bbox: List[int], bbox_crs: Optional[Union[str, int, pyproj.CRS]] = None) -> List[int]:
+    """Convert bounding box to lat-long, i.e. EPSG:4326, if it was not EPSG:4326 already.
+
+    :param bbox: the bounding box
+    :param bbox_crs: in which CRS bbox is currently expressed.
+    :return: the bounding box expressed in EPSG:4326
+    """
+    # Convert bbox to lat-long, EPSG:4326 if it was any other CRS.
+    if bbox and bbox_crs not in [4326, "EPSG:4326", "epsg:4326"]:
+        # Note that if the bbox comes from the aggregate_spatial_geometries, then we may
+        # get a pyproy CRS object instead of an EPSG code. In that case it is OK to
+        # just do the reprojection, even if it is already EPSG:4326. That's just a no-op.
+        # In constrast, handling all possible variants of pyproj CRS objects that are actually
+        # all the exact same EPSG:4326 CRS, is complex and unnecessary.
+        latlon_spatial_extent = {
+            "west": bbox[0],
+            "south": bbox[1],
+            "east": bbox[2],
+            "north": bbox[3],
+            "crs": bbox_crs,
+        }
+        latlon_spatial_extent = reproject_bounding_box(
+            latlon_spatial_extent, from_crs=None, to_crs="EPSG:4326"
+        )
+        return [latlon_spatial_extent[b] for b in ["west", "south", "east", "north"]]
+
+    return bbox
+
+
+def _convert_job_metadatafile_outputs_to_s3_urls(metadata_file: Path):
+    """Convert each asset's output_dir value to a URL on S3, in the job metadata file."""
+    with open(metadata_file, "rt") as mdf:
+        metadata_to_update = json.load(mdf)
+    with open(metadata_file, "wt") as mdf:
+        _convert_asset_outputs_to_s3_urls(metadata_to_update)
+        json.dump(metadata_to_update, mdf)
+
+
+def _convert_asset_outputs_to_s3_urls(job_metadata: dict):
+    """Convert each asset's output_dir value to a URL on S3 in the metadata dictionary."""
+    out_assets = job_metadata.get("assets", {})
+    for asset in out_assets.values():
+        if "href" in asset and not asset["href"].startswith("s3://"):
+            asset["href"] = to_s3_url(asset["href"])
+
+
+def _transform_stac_metadata(job_dir: Path):
+    def relativize(assets: dict) -> dict:
+        def relativize_href(asset: dict) -> dict:
+            absolute_href = asset['href']
+            relative_path = urlparse(absolute_href).path.split("/")[-1]
+            return dict(asset, href=relative_path)
+
+        return {asset_name: relativize_href(asset) for asset_name, asset in assets.items()}
+
+    def drop_links(metadata: dict) -> dict:
+        result = metadata.copy()
+        result.pop('links', None)
+        return result
+
+    stac_metadata_files = [job_dir / file_name for file_name in os.listdir(job_dir) if
+                           file_name.endswith("_metadata.json") and file_name != JOB_METADATA_FILENAME]
+
+    for stac_metadata_file in stac_metadata_files:
+        with open(stac_metadata_file, 'rt', encoding='utf-8') as f:
+            stac_metadata = json.load(f)
+
+        relative_assets = relativize(stac_metadata.get('assets', {}))
+        transformed = dict(drop_links(stac_metadata), assets=relative_assets)
+
+        with open(stac_metadata_file, 'wt', encoding='utf-8') as f:
+            json.dump(transformed, f, indent=2)
