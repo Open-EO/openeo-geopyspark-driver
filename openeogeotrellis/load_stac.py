@@ -193,7 +193,7 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
                 modifier = planetary_computer.sign_inplace
                 # by default, returns all properties and an invalid STAC Item if fields are specified
                 fields = None
-            elif root_catalog.get_self_href().startswith("https://tamn.snapplanet.io"):
+            elif root_catalog.get_self_href().startswith("https://tamn.snapplanet.io") or root_catalog.get_self_href().startswith("https://stac.eurac.edu"):
                 modifier = None
                 # by default, returns all properties and "none" if fields are specified
                 fields = None
