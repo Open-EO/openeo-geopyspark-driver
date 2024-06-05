@@ -288,6 +288,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             "opensearch_endpoint", get_backend_config().default_opensearch_endpoint
         )
         max_soft_errors_ratio = env.get(MAX_SOFT_ERRORS_RATIO, 0.0)
+        no_data_value = float(metadata.get("_vito", "data_source", "nodata", default=255))
         if feature_flags.get("no_resample_on_read", False):
             logger.info("Setting NoResampleOnRead to true")
             datacubeParams.setNoResampleOnRead(True)
@@ -538,7 +539,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                                                         sar_backscatter_arguments) if sar_backscatter_arguments else {},
                         sample_type,
                         cell_size,
-                        max_soft_errors_ratio
+                        max_soft_errors_ratio,
+                        no_data_value,
                     )
                 else:
                     sentinel_hub_client_alias = env.get(SENTINEL_HUB_CLIENT_ALIAS, 'default')
@@ -567,7 +569,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                                                         sar_backscatter_arguments) if sar_backscatter_arguments else {},
                         sample_type,
                         cell_size,
-                        max_soft_errors_ratio
+                        max_soft_errors_ratio,
+                        no_data_value,
                     )
 
                 unflattened_metadata_properties = metadata_properties(flatten_eqs=False)
