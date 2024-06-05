@@ -69,7 +69,11 @@ def main():
 
     logger.info(f"Listing of {jar_dir}:")
     for f in jar_dir.iterdir():
-        logger.info(f"{f.stat().st_size:16d} {f}")
+        if f.is_symlink():
+            # When developing it can be handy to symlink the generated jar.
+            logger.info(f"Symlink: {f}")
+        else:
+            logger.info(f"{f.stat().st_size:16d} {f}")
 
 
 if __name__ == '__main__':
