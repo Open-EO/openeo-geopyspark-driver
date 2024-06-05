@@ -138,6 +138,7 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
                            else None)
 
     if dependency_job_info:
+        logger.info(f"load_stac of results of own job {dependency_job_info.id}")
         intersecting_items = []
 
         for asset_id, asset in batch_jobs.get_result_assets(job_id=dependency_job_info.id,
@@ -159,6 +160,7 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
 
         band_names = []
     else:
+        logger.info(f"load_stac of arbitrary URL {url}")
         stac_object = pystac.read_file(href=url)
 
         if isinstance(stac_object, pystac.Item):
@@ -497,4 +499,5 @@ def extract_own_job_info(url: str, user_id: str, batch_jobs: backend.BatchJobs) 
     try:
         return batch_jobs.get_job_info(job_id=job_id, user_id=user_id)
     except JobNotFoundException:
+        logger.debug(f"job {job_id} does not belong to current user {user_id}", exc_info=True)
         return None
