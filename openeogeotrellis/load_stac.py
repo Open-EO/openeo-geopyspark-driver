@@ -10,7 +10,7 @@ import pystac
 import pystac_client
 from geopyspark import LayerType, TiledRasterLayer
 from openeo.metadata import SpatialDimension, TemporalDimension, BandDimension, Band
-from openeo.util import dict_no_none, rfc3339
+from openeo.util import dict_no_none, Rfc3339
 from openeo_driver import filter_properties, backend
 from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.backend import LoadParameters, BatchJobMetadata
@@ -143,10 +143,26 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
 
         for asset_id, asset in batch_jobs.get_result_assets(job_id=dependency_job_info.id,
                                                             user_id=user.user_id).items():
-            pystac_item = pystac.Item(id=asset_id, geometry=asset["geometry"], bbox=asset["bbox"],
-                                      datetime=rfc3339.parse_datetime(asset["datetime"], with_timezone=True),
+            item_geometry = asset.get("geometry", dependency_job_info.geometry)
+            item_bbox = asset.get("bbox", dependency_job_info.bbox)
+            item_datetime = Rfc3339(propagate_none=True).parse_datetime(asset.get("datetime"), with_timezone=True)
+
+            if not item_datetime:
+                item_start_datetime = Rfc3339(propagate_none=True).parse_datetime(asset.get("start_datetime")) or dependency_job_info.start_datetime
+                item_end_datetime = Rfc3339(propagate_none=True).parse_datetime(asset.get("end_datetime")) or dependency_job_info.end_datetime
+
+                if item_start_datetime == item_end_datetime:
+                    item_datetime = item_start_datetime
+            else:
+                item_start_datetime = None
+                item_end_datetime = None
+
+            pystac_item = pystac.Item(id=asset_id, geometry=item_geometry, bbox=item_bbox,
+                                      datetime=item_datetime,
                                       properties=dict_no_none({
-                                          "datetime": asset["datetime"],
+                                          "datetime": Rfc3339(propagate_none=True).datetime(item_datetime),
+                                          "start_datetime": Rfc3339(propagate_none=True).datetime(item_start_datetime),
+                                          "end_datetime": Rfc3339(propagate_none=True).datetime(item_end_datetime),
                                           "proj:epsg": asset.get("proj:epsg"),
                                           "proj:bbox": asset.get("proj:bbox"),
                                           "proj:shape": asset.get("proj:shape"),
@@ -336,7 +352,7 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
             latlon_bbox = item_bbox.reproject(4326)
 
         if latlon_bbox is not None:
-            builder = builder.withBBox(*latlon_bbox.as_wsen_tuple())
+            builder = builder.withBBox(*map(float, latlon_bbox.as_wsen_tuple()))
 
         if itm.geometry is not None:
             builder = builder.withGeometryFromWkt(str(shape(itm.geometry)))
