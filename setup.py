@@ -27,6 +27,7 @@ tests_require = [
     "kubernetes",
     "re-assert",
     "dirty-equals>=0.6",
+    "typing-extensions<4.12.1",  # Workaround for https://github.com/eu-cdse/openeo-cdse-infra/issues/161
 ]
 
 setup(
