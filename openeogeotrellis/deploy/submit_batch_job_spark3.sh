@@ -64,7 +64,9 @@ export SPARK_SUBMIT_OPTS="-Dlog4j2.configurationFile=file:${sparkSubmitLog4jConf
 export LD_LIBRARY_PATH="/opt/venv/lib64"
 
 export PYTHONPATH="/opt/venv/lib64/python3.8/site-packages:/opt/venv/lib/python3.8/site-packages:/opt/tensorflow/python38/2.8.0:/usr/lib/python3.8/site-packages:/usr/lib64/python3.8/site-packages"
-export PYTHONPATH="$PYTHONPATH:$udf_python_deps_folder"
+if [ -n "$udf_python_deps_folder" ]; then
+  export PYTHONPATH="$PYTHONPATH:$udf_python_deps_folder"
+fi
 
 extensions="geotrellis-extensions-static.jar"
 backend_assembly="geotrellis-backend-assembly-static.jar"
