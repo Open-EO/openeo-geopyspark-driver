@@ -1,4 +1,5 @@
 import datetime as dt
+from functools import partial
 import logging
 from typing import Union, Optional, Tuple, Dict, List, Iterable
 from urllib.parse import urlparse
@@ -143,26 +144,27 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
 
         for asset_id, asset in batch_jobs.get_result_assets(job_id=dependency_job_info.id,
                                                             user_id=user.user_id).items():
+            rfc3339 = Rfc3339(propagate_none=True)
+            parse_datetime = partial(rfc3339.parse_datetime, with_timezone=True)
+
             item_geometry = asset.get("geometry", dependency_job_info.geometry)
             item_bbox = asset.get("bbox", dependency_job_info.bbox)
-            item_datetime = Rfc3339(propagate_none=True).parse_datetime(asset.get("datetime"), with_timezone=True)
+            item_datetime = parse_datetime(asset.get("datetime"))
+            item_start_datetime = None
+            item_end_datetime = None
 
             if not item_datetime:
-                item_start_datetime = Rfc3339(propagate_none=True).parse_datetime(asset.get("start_datetime")) or dependency_job_info.start_datetime
-                item_end_datetime = Rfc3339(propagate_none=True).parse_datetime(asset.get("end_datetime")) or dependency_job_info.end_datetime
+                item_start_datetime = parse_datetime(asset.get("start_datetime")) or dependency_job_info.start_datetime
+                item_end_datetime = parse_datetime(asset.get("end_datetime")) or dependency_job_info.end_datetime
 
                 if item_start_datetime == item_end_datetime:
                     item_datetime = item_start_datetime
-            else:
-                item_start_datetime = None
-                item_end_datetime = None
 
-            pystac_item = pystac.Item(id=asset_id, geometry=item_geometry, bbox=item_bbox,
-                                      datetime=item_datetime,
+            pystac_item = pystac.Item(id=asset_id, geometry=item_geometry, bbox=item_bbox, datetime=item_datetime,
                                       properties=dict_no_none({
-                                          "datetime": Rfc3339(propagate_none=True).datetime(item_datetime),
-                                          "start_datetime": Rfc3339(propagate_none=True).datetime(item_start_datetime),
-                                          "end_datetime": Rfc3339(propagate_none=True).datetime(item_end_datetime),
+                                          "datetime": rfc3339.datetime(item_datetime),
+                                          "start_datetime": rfc3339.datetime(item_start_datetime),
+                                          "end_datetime": rfc3339.datetime(item_end_datetime),
                                           "proj:epsg": asset.get("proj:epsg"),
                                           "proj:bbox": asset.get("proj:bbox"),
                                           "proj:shape": asset.get("proj:shape"),
