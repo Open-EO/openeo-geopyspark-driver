@@ -12,6 +12,11 @@ without compromising stable operations.
 
 ## Unreleased
 
+
+## 0.38.3
+
+- Automatically include declared/installed UDF dependencies in `PYTHONPATH` on YARN deploys ([#237](https://github.com/Open-EO/openeo-geopyspark-driver/issues/237))
+
 ## 0.38.2
 
 - Automatically include declared/installed UDF dependencies in `PYTHONPATH` on K8s deploys ([#237](https://github.com/Open-EO/openeo-geopyspark-driver/issues/237))
