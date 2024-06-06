@@ -99,6 +99,22 @@ class GeopysparkCubeMetadata(CollectionMetadata):
             "sentinelhub": 5,
         }.get(self.provider_backend(), 0)
 
+    def get_nodata_value(self, requested_bands, default_value) -> float:
+        bands_metadata = self.get("summaries", "eo:bands",
+                                  default=self.get("summaries", "raster:bands", default=[]))
+        no_data_value = "undefined"
+        for band_metadata in bands_metadata:
+            if requested_bands is not None and band_metadata["name"] not in requested_bands:
+                continue
+            nodata = band_metadata["nodata"]
+            if no_data_value == "undefined":
+                no_data_value = nodata
+            if no_data_value != nodata:
+                # TODO: Support different nodata values per band in a layer.
+                raise Exception("Requested bands have different nodata values: " + no_data_value + " and " + nodata)
+        if no_data_value == "undefined":
+            no_data_value = default_value
+        return float(no_data_value)
 
     def get_GSD_in_meters(self) -> Union[tuple, dict, None]:
         bands_metadata = self.get("summaries", "eo:bands",

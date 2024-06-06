@@ -288,7 +288,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             "opensearch_endpoint", get_backend_config().default_opensearch_endpoint
         )
         max_soft_errors_ratio = env.get(MAX_SOFT_ERRORS_RATIO, 0.0)
-        no_data_value = float(metadata.get("_vito", "data_source", "nodata", default=0))
+        no_data_value = metadata.get_nodata_value(load_params.bands, 0.0)
         if feature_flags.get("no_resample_on_read", False):
             logger.info("Setting NoResampleOnRead to true")
             datacubeParams.setNoResampleOnRead(True)
