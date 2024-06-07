@@ -106,6 +106,8 @@ class GeopysparkCubeMetadata(CollectionMetadata):
         for band_metadata in bands_metadata:
             if requested_bands is not None and band_metadata["name"] not in requested_bands:
                 continue
+            if "nodata" not in band_metadata:
+                continue
             nodata = band_metadata["nodata"]
             if no_data_value == "undefined":
                 no_data_value = nodata
