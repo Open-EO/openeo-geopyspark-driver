@@ -2023,6 +2023,9 @@ class GpsBatchJobs(backend.BatchJobs):
                 access_token=user.internal_auth_data["access_token"],
                 fuse_mount_batchjob_s3_bucket=get_backend_config().fuse_mount_batchjob_s3_bucket,
                 UDF_PYTHON_DEPENDENCIES_FOLDER_NAME=UDF_PYTHON_DEPENDENCIES_FOLDER_NAME,
+                openeo_ejr_api=get_backend_config().ejr_api,
+                openeo_ejr_backend_id=get_backend_config().ejr_backend_id,
+                openeo_ejr_oidc_client_credentials=os.environ.get("OPENEO_EJR_OIDC_CLIENT_CREDENTIALS"),
             )
 
             if get_backend_config().fuse_mount_batchjob_s3_bucket:
