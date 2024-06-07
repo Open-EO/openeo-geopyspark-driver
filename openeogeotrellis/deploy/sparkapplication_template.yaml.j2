@@ -215,6 +215,12 @@ spec:
         value: "TRUE"
       - name: FUSE_MOUNT_BATCHJOB_S3_BUCKET
         value: "{{fuse_mount_batchjob_s3_bucket}}"
+      - name: OPENEO_EJR_API
+        value: {{ openeo_ejr_api }}
+      - name: OPENEO_EJR_BACKEND_ID
+        value: {{ openeo_ejr_backend_id }}
+      - name: OPENEO_EJR_OIDC_CLIENT_CREDENTIALS
+        value: {{ openeo_ejr_oidc_client_credentials }}
 {%- endblock %}
     labels:
 {%- block driver_labels %}

@@ -215,7 +215,7 @@ def run_job(
             logger.exception(f"Failed extracting and installing UDF dependencies: {e}")
 
         backend_implementation = GeoPySparkBackendImplementation(
-            use_job_registry=False,
+            use_job_registry=bool(get_backend_config().ejr_api),
         )
 
         if default_sentinel_hub_credentials is not None:
