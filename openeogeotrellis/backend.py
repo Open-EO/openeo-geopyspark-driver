@@ -2144,6 +2144,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 args.append(archives)
                 args.append(logging_threshold)
                 args.append(os.environ.get(ConfigGetter.OPENEO_BACKEND_CONFIG, ""))
+                args.append(self.get_job_output_dir(job_id) / UDF_PYTHON_DEPENDENCIES_FOLDER_NAME)
                 # TODO: this positional `args` handling is getting out of hand, leverage _write_sensitive_values?
 
                 try:

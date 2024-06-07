@@ -4271,7 +4271,6 @@ class TestEtlApiReporting:
             assert get_etl_api_requests_mock_call_counts() == [0, 1, 1]
 
 
-
 def test_spatiotemporal_vector_cube_to_geoparquet(api110, tmp_path):
     response = api110.check_result({
         "loadcollection1": {
@@ -4345,7 +4344,7 @@ def test_spatiotemporal_vector_cube_to_geoparquet(api110, tmp_path):
         'date': ['2021-01-05T00:00:00Z', '2021-01-05T00:00:00Z', '2021-01-15T00:00:00Z', '2021-01-15T00:00:00Z', '2021-01-25T00:00:00Z', '2021-01-25T00:00:00Z'],
         'geometry': [Point(4.834132470464912, 51.14651864980539), Point(4.826795583109673, 51.154775560357045), Point(4.834132470464912, 51.14651864980539), Point(4.826795583109673, 51.154775560357045), Point(4.834132470464912, 51.14651864980539), Point(4.826795583109673, 51.154775560357045)],
         'feature_index': [0, 1, 0, 1, 0, 1],
-        'band_0': [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
-        'band_1': [2.0, 2.0, 2.0, 2.0, 2.0, 2.0],
+        'Flat:1': [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+        'Flat:2': [2.0, 2.0, 2.0, 2.0, 2.0, 2.0],
         'name': ['maize', 'maize', 'maize', 'maize', 'maize', 'maize']
     }
