@@ -52,6 +52,9 @@ archives=${27}
 logging_threshold=${28}
 openeo_backend_config=${29}
 udf_python_deps_folder=${30}
+ejr_api=${31}
+ejr_backend_id=${32}
+ejr_oidc_client_credentials=${33}
 
 pysparkPython="/opt/venv/bin/python"
 
@@ -151,6 +154,9 @@ spark-submit \
  --conf spark.yarn.appMasterEnv.OPENEO_BATCH_JOB_ID=${batchJobId} \
  --conf spark.yarn.appMasterEnv.OPENEO_LOGGING_THRESHOLD=${logging_threshold} \
  --conf spark.yarn.appMasterEnv.GDAL_HTTP_MAX_RETRY=10 \
+ --conf spark.yarn.appMasterEnv.OPENEO_EJR_API=${ejr_api} \
+ --conf spark.yarn.appMasterEnv.OPENEO_EJR_BACKEND_ID=${ejr_backend_id} \
+ --conf spark.yarn.appMasterEnv.OPENEO_EJR_OIDC_CLIENT_CREDENTIALS=${ejr_oidc_client_credentials} \
  --conf spark.executorEnv.AWS_REGION=${AWS_REGION} --conf spark.yarn.appMasterEnv.AWS_REGION=${AWS_REGION} \
  --conf spark.executorEnv.AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} --conf spark.yarn.appMasterEnv.AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} \
  --conf spark.executorEnv.AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} --conf spark.yarn.appMasterEnv.AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} \
