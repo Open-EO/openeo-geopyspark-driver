@@ -747,7 +747,6 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
         def _create_model_dir(use_s3=False):
             if use_s3:
-                # s3a://
                 return f"openeo-ml-models-dev/{generate_unique_id(prefix='model')}"
 
             def _set_permissions(job_dir: Path):
