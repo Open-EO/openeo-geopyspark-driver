@@ -12,7 +12,7 @@ without compromising stable operations.
 
 ## Unreleased
 
-- Fix batch jobs on YARN because of dependency on EJR ([#792](https://github.com/Open-EO/openeo-geopyspark-driver/issues/792))
+- Fix EJR configuration in batch jobs on YARN ([#792](https://github.com/Open-EO/openeo-geopyspark-driver/issues/792))
 
 ## 0.38.4
 
