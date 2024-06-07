@@ -12,6 +12,8 @@ without compromising stable operations.
 
 ## Unreleased
 
+- Fix batch jobs on YARN because of dependency on EJR ([#792](https://github.com/Open-EO/openeo-geopyspark-driver/issues/792))
+
 ## 0.38.4
 
 - Fix load_stac from unsigned job results URL in batch jobs ([#792](https://github.com/Open-EO/openeo-geopyspark-driver/issues/792))
