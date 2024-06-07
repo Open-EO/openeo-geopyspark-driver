@@ -428,8 +428,8 @@ class GeopysparkDataCube(DriverDataCube):
                 raise OpenEOApiException(
                     status_code=400,
                     message="""In run_udf, the data has {b} bands, while the 'bands' dimension has {len_dim} labels.
-                These labels were set on the dimension: {labels}. Please investigate if dimensions and labels are correct.""".format(
-                        b=band_count, len_dim=len(band_coordinates), labels=str(band_coordinates)
+                These labels were set on the dimension: {labels}. Please investigate if dimensions and labels are correct. The mismatch occured for {extent} and {time}.""".format(
+                        b=band_count, len_dim=len(band_coordinates), labels=str(band_coordinates), extent = str(extent), time = time_coordinates
                     ),
                 )
 
