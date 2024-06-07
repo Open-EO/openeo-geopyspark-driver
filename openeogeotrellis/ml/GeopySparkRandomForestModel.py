@@ -12,6 +12,8 @@ import geopyspark as gps
 from pyspark.mllib.util import JavaSaveable
 
 from openeo_driver.utils import generate_unique_id
+from openeogeotrellis.configparams import ConfigParams
+from openeogeotrellis.utils import to_s3_url
 
 logger = logging.getLogger(__name__)
 
@@ -95,16 +97,23 @@ class GeopySparkRandomForestModel(DriverMlModel):
 
         :return: STAC assets dictionary: https://github.com/radiantearth/stac-spec/blob/master/item-spec/item-spec.md#assets
         """
-        logging.info(f"write_assets({directory=})")  # For debugging S3 paths
         directory = Path(directory)
         if not directory.is_dir():
             directory = Path(directory).parent
         model_path = Path(directory) / "randomforest.model"
-        self._model.save(gps.get_spark_context(), "file:" + str(model_path))
+
+        use_s3 = ConfigParams().is_kube_deploy
+        spark_path = "file:" + str(model_path)
+        if use_s3:
+            spark_path = to_s3_url(model_path).replace("s3://", 's3a:')
+        logging.info(f"Saving GeopySparkRandomForestModel to {spark_path}")
+        self._model.save(gps.get_spark_context(), spark_path)
+        logging.info(f"Archiving {model_path} to {model_path}.tar.gz")
         shutil.make_archive(base_name=str(model_path), format='gztar', root_dir=directory)
+        logging.info(f"Removing original {model_path}")
         shutil.rmtree(model_path)
         model_path = Path(str(model_path) + '.tar.gz')
-        logging.info(f"{model_path=}")  # For debugging S3 paths
+        logging.info(f"GeopySparkRandomForestModel stored as {model_path=}")
         return {model_path.name: {"href": str(model_path)}}
 
     def get_model(self):
