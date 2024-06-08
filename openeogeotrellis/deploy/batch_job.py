@@ -5,6 +5,7 @@ import shutil
 import stat
 from copy import deepcopy
 from pathlib import Path
+from traceback_with_variables import Format, format_exc
 from typing import Dict, List, Optional, Tuple, Union
 from urllib.parse import urlparse
 
@@ -488,5 +489,9 @@ if __name__ == "__main__":
             main(sys.argv)
     except Exception as e:
         error_summary = GeoPySparkBackendImplementation.summarize_exception_static(e)
-        logger.exception("OpenEO batch job failed: " + error_summary.summary)
+        most_recent_exception = sys.exc_info()[1]
+        fmt = Format(max_value_str_len=1000)
+        logger.exception("OpenEO batch job failed: " + error_summary.summary, extra = {
+            "exc_info_with_locals": format_exc(most_recent_exception, fmt = fmt)
+        })
         raise

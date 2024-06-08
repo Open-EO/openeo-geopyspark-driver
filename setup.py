@@ -92,6 +92,7 @@ setup(
         "attrs>=22.1.0",
         "planetary-computer~=1.0.0",
         "reretry~=0.11.8",
+        "traceback-with-variables==2.0.4",
     ],
     extras_require={
         "dev": tests_require,
