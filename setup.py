@@ -55,7 +55,7 @@ setup(
     tests_require=tests_require,
     install_requires=[
         "openeo>=0.30.0.a2.dev",
-        "openeo_driver>=0.100.0.dev",
+        "openeo_driver>=0.103.1.dev",
         'pyspark==3.4.2; python_version>="3.8"',
         'pyspark>=2.3.1,<2.4.0; python_version<"3.8"',
         'geopyspark==0.4.7+openeo',

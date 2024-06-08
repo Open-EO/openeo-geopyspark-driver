@@ -10,6 +10,8 @@ https://openeo.org/documentation/1.0/developers/api/reference.html#operation/con
 If needed, feature flags are used to allow testing unstable features in development/production,
 without compromising stable operations.
 
+<!-- start-of-changelog -->
+
 ## Unreleased
 
 - Fix EJR configuration in batch jobs on YARN ([#792](https://github.com/Open-EO/openeo-geopyspark-driver/issues/792))
@@ -547,3 +549,5 @@ Copernicus projections stored in UTM are now also processed and returned in UTM,
 This affects processing parameters that depend on a specific projection, like the size of pixels in map units.
 
 This change also improves memory usage and performance for a number of layers.
+
+<!-- end-of-changelog -->

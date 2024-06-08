@@ -14,6 +14,7 @@ import tempfile
 import time
 import traceback
 import uuid
+import importlib.metadata
 from decimal import Decimal
 from functools import lru_cache, partial, reduce
 from pathlib import Path
@@ -31,6 +32,8 @@ import requests
 import shapely.geometry.base
 from deprecated import deprecated
 from geopyspark import LayerType, Pyramid, TiledRasterLayer
+
+import openeo_driver.util.changelog
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 from openeo.metadata import Band, BandDimension, Dimension, SpatialDimension, TemporalDimension
 from openeo.util import TimingLogger, deep_get, dict_no_none, repr_truncate, rfc3339, str_truncate
@@ -63,6 +66,7 @@ from urllib3 import Retry
 from xarray import DataArray
 import numpy as np
 
+import openeogeotrellis
 from openeogeotrellis import sentinel_hub, load_stac
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
@@ -1070,18 +1074,30 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             return match.group(1).rstrip()
         return None
 
-    def changelog(self) -> Union[str, Path]:
-        roots = []
-        if Path(__file__).parent.parent.name == "openeo-geopyspark-driver":
-            # Local dev path
-            roots.append(Path(__file__).parent.parent)
-        # Installed package/wheel location
-        roots.append(Path(sys.prefix) / "openeo-geopyspark-driver")
-        for root in roots:
-            if (root / "CHANGELOG.md").exists():
-                return root / "CHANGELOG.md"
-
-        return super().changelog()
+    def changelog(self) -> Union[str, Path, flask.Response]:
+        html = openeo_driver.util.changelog.multi_project_changelog(
+            [
+                {
+                    "name": "openeo-geopyspark-driver",
+                    "version": importlib.metadata.version(distribution_name="openeo-geopyspark"),
+                    "changelog_path": openeo_driver.util.changelog.get_changelog_path(
+                        data_files_dir="openeo-geopyspark-driver",
+                        src_root=Path(openeogeotrellis.__file__).parent.parent,
+                        filename="CHANGELOG.md",
+                    ),
+                },
+                {
+                    "name": "openeo-python-driver",
+                    "version": importlib.metadata.version(distribution_name="openeo_driver"),
+                    "changelog_path": openeo_driver.util.changelog.get_changelog_path(
+                        data_files_dir="openeo-python-driver-data",
+                        src_root=Path(openeo_driver.__file__).parent.parent,
+                        filename="CHANGELOG.md",
+                    ),
+                },
+            ]
+        )
+        return flask.make_response(html, {"Content-Type": "text/html"})
 
     def set_request_id(self, request_id: str):
         sc = SparkContext.getOrCreate()
