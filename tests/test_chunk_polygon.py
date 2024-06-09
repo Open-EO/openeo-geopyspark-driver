@@ -6,6 +6,7 @@ import numpy as np
 from shapely.geometry import Polygon, MultiPolygon
 
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
+from openeo_driver.datacube import DriverVectorCube
 from .data import get_test_data_file, TEST_DATA_ROOT
 
 
@@ -14,7 +15,7 @@ from .data import get_test_data_file, TEST_DATA_ROOT
 #
 # Note: In order to run these tests you need to set several environment variables.
 # If you use the virtual environment venv (with JEP and Numpy installed):
-# 1. LD_LIBRARY_PATH = .../venv/lib/python3.6/site-packages/jep
+# 1. LD_LIBRARY_PATH = .../venv/lib/python3.8/site-packages/jep
 #   This will look for the shared library 'jep.so'. This is the compiled C code that binds Java and Python objects.
 
 def test_chunk_polygon(imagecollection_with_two_bands_and_three_dates):
@@ -36,7 +37,7 @@ def test_chunk_polygon(imagecollection_with_two_bands_and_three_dates):
     env = EvalEnv()
 
     polygon1 = Extent(0.0, 0.0, 4.0, 4.0).to_polygon
-    chunks = MultiPolygon([polygon1])
+    chunks = DriverVectorCube.from_geometry(polygon1)
     cube: GeopysparkDataCube = imagecollection_with_two_bands_and_three_dates
     result_cube: GeopysparkDataCube = cube.chunk_polygon(udf_add_to_bands, chunks=chunks, mask_value=None, env=env)
     result_layer: TiledRasterLayer = result_cube.pyramid.levels[0]
