@@ -491,7 +491,9 @@ if __name__ == "__main__":
         error_summary = GeoPySparkBackendImplementation.summarize_exception_static(e)
         most_recent_exception = sys.exc_info()[1]
         fmt = Format(max_value_str_len=1000)
-        logger.exception("OpenEO batch job failed: " + error_summary.summary, extra = {
-            "exc_info_with_locals": format_exc(most_recent_exception, fmt = fmt)
-        })
+        logger.exception("OpenEO batch job failed: " + error_summary.summary)
+        logger.error(
+            "Batch job error stack trace with locals", 
+            extra={"exc_info_with_locals": format_exc(e, fmt = fmt)}
+        )
         raise
