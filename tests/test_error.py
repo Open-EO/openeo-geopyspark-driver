@@ -1,11 +1,11 @@
 from geopyspark import TiledRasterLayer, Extent
 from openeo_driver.utils import EvalEnv
 from py4j.protocol import Py4JJavaError
-from shapely.geometry import MultiPolygon
 
 from openeogeotrellis.backend import GeoPySparkBackendImplementation
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.utils import get_jvm
+from openeo_driver.datacube import DriverVectorCube
 
 
 # Note: Ensure that the python environment has all the required modules installed.
@@ -44,7 +44,7 @@ def apply_datacube(cube: XarrayDataCube, context: dict) -> XarrayDataCube:
     env = EvalEnv()
 
     polygon1 = Extent(0.0, 0.0, 4.0, 4.0).to_polygon
-    chunks = MultiPolygon([polygon1])
+    chunks = DriverVectorCube.from_geometry(polygon1)
     cube: GeopysparkDataCube = imagecollection_with_two_bands_and_three_dates
     try:
         result_cube: GeopysparkDataCube = cube.chunk_polygon(udf_add_to_bands, chunks=chunks, mask_value=None, env=env)

@@ -572,9 +572,7 @@ class GeopysparkDataCube(DriverDataCube):
     def chunk_polygon(
         self,
         reducer: Union[ProcessGraphVisitor, Dict],
-        # TODO: it's wrong to use MultiPolygon as a collection of polygons. MultiPolygons should be handled as single, atomic "features"
-        #       also see https://github.com/Open-EO/openeo-python-driver/issues/288
-        chunks: MultiPolygon,
+        chunks: DriverVectorCube,
         mask_value: float,
         env: EvalEnv,
         context: Optional[dict] = None,
@@ -584,19 +582,13 @@ class GeopysparkDataCube(DriverDataCube):
 
         if isinstance(reducer, dict):
             reducer = GeoPySparkBackendImplementation.accept_process_graph(reducer)
-        chunks: List[Polygon] = chunks.geoms
         jvm = get_jvm()
 
         result_collection = None
         if isinstance(reducer, SingleNodeUDFProcessGraphVisitor):
             udf, udf_context = self._extract_udf_code_and_context(process=reducer, context=context, env=env)
-            # Polygons should use the same projection as the rdd.
-            # TODO Usage of GeometryCollection should be avoided. It's abused here like a FeatureCollection,
-            #       but a GeometryCollections is conceptually just single "feature".
-            #       What you want here is proper support for FeatureCollections or at least a list of individual geometries.
-            #       also see https://github.com/Open-EO/openeo-python-driver/issues/71, https://github.com/Open-EO/openeo-python-driver/issues/288
             reprojected_polygons: jvm.org.openeo.geotrellis.ProjectedPolygons \
-                = to_projected_polygons(jvm, GeometryCollection(chunks))
+                = to_projected_polygons(jvm, chunks)
             band_names = self.metadata.band_dimension.band_names
 
             def rdd_function(rdd, _zoom):
@@ -604,7 +596,6 @@ class GeopysparkDataCube(DriverDataCube):
                     udf, rdd, reprojected_polygons, band_names, udf_context, mask_value
                 )
 
-            # All JEP implementation work with float cell types.
             float_cube = self.apply_to_levels(lambda layer: self._convert_celltype(layer, "float32"))
             result_collection = float_cube._apply_to_levels_geotrellis_rdd(
                 rdd_function, self.metadata, gps.LayerType.SPACETIME
