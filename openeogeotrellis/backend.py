@@ -2632,6 +2632,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
         return job_dependencies
 
+    @lru_cache(maxsize=20)
     def get_result_assets(self, job_id: str, user_id: str) -> Dict[str, dict]:
         """
         Reads the metadata json file from the job directory
