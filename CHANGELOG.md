@@ -14,7 +14,15 @@ without compromising stable operations.
 
 ## Unreleased
 
+
+## 0.38.5
+
 - Fix EJR configuration in batch jobs on YARN ([#792](https://github.com/Open-EO/openeo-geopyspark-driver/issues/792))
+- Improvements to DriverVectorCube support in `apply_polygon`
+  ([Open-EO/openeo-python-driver#287](https://github.com/Open-EO/openeo-python-driver/issues/287),
+  [Open-EO/openeo-python-driver#288](https://github.com/Open-EO/openeo-python-driver/issues/288),
+  [Open-EO/openeo-python-driver#291](https://github.com/Open-EO/openeo-python-driver/pull/291),
+  [#801](https://github.com/Open-EO/openeo-geopyspark-driver/pull/801))
 
 ## 0.38.4
 
