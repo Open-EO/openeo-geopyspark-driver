@@ -584,7 +584,14 @@ class GeopysparkDataCube(DriverDataCube):
 
         if isinstance(reducer, dict):
             reducer = GeoPySparkBackendImplementation.accept_process_graph(reducer)
-        chunks: List[Polygon] = chunks.geoms
+
+        if isinstance(chunks, Polygon):
+            chunks = [chunks]
+        elif isinstance(chunks, MultiPolygon):
+            chunks: List[Polygon] = chunks.geoms
+        else:
+            raise ValueError(f"Invalid type for `chunks`: {type(chunks)}")
+
         jvm = get_jvm()
 
         result_collection = None
