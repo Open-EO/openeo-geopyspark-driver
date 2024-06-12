@@ -238,7 +238,7 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
             logger.info(f"STAC API request: GET {search_request.url_with_parameters()}")
 
             # TODO: use server-side filtering as well (at least STAC API Filter Extension)
-            intersecting_items = filter(lambda itm: matches_metadata_properties(itm), search_request.items())
+            intersecting_items = filter(matches_metadata_properties, search_request.items())
         else:
             assert isinstance(stac_object, pystac.Catalog)  # static Catalog + Collection
             catalog = stac_object

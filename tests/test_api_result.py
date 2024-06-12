@@ -3934,10 +3934,12 @@ class TestLoadStac:
         "https://stac.test",
         "https://tamn.snapplanet.io",
         "https://planetarycomputer.microsoft.com/api/stac/v1",
+        "https://stac.eurac.edu",
     ])
     def test_stac_api_property_filter(self, api110, urllib_mock, requests_mock, catalog_url, tmp_path):
         def feature_collection(request, _) -> dict:
-            if catalog_url in ["https://tamn.snapplanet.io", "https://planetarycomputer.microsoft.com/api/stac/v1"]:
+            if catalog_url in ["https://tamn.snapplanet.io", "https://planetarycomputer.microsoft.com/api/stac/v1",
+                               "https://stac.eurac.edu"]:
                 assert "fields" not in request.qs
             else:
                 # a GET request has a single "fields" param with values separated by commas
