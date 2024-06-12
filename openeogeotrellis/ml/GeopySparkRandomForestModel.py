@@ -105,7 +105,7 @@ class GeopySparkRandomForestModel(DriverMlModel):
         use_s3 = ConfigParams().is_kube_deploy
         spark_path = "file:" + str(model_path)
         if use_s3:
-            spark_path = to_s3_url(model_path).replace("s3://", 's3a:')
+            spark_path = to_s3_url(model_path).replace("s3:", 's3a:')
         logging.info(f"Saving GeopySparkRandomForestModel to {spark_path}")
         self._model.save(gps.get_spark_context(), spark_path)
         logging.info(f"Archiving {model_path} to {model_path}.tar.gz")
