@@ -2041,6 +2041,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 openeo_ejr_api=get_backend_config().ejr_api,
                 openeo_ejr_backend_id=get_backend_config().ejr_backend_id,
                 openeo_ejr_oidc_client_credentials=os.environ.get("OPENEO_EJR_OIDC_CLIENT_CREDENTIALS"),
+                profile=profile
             )
 
             if get_backend_config().fuse_mount_batchjob_s3_bucket:

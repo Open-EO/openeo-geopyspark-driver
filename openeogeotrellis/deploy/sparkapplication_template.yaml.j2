@@ -58,6 +58,7 @@ spec:
     "spark.storage.decommission.shuffleBlocks.enabled": "true"
     "spark.kubernetes.decommission.script": "/opt/decom.sh"
     "spark.executor.processTreeMetrics.enabled": "true"
+    "spark.python.profile": "{{ profile }}"
     "spark.eventLog.dir": "s3a://spark-history/history_prod"
     "spark.hadoop.fs.s3a.endpoint": {{ swift_url }}
     "spark.hadoop.fs.s3a.path.style.access": "true"
