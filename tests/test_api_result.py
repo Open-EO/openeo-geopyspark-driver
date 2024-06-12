@@ -2797,9 +2797,9 @@ class TestVectorCubeRunUdf:
             columns=[
                 "feature_index",
                 "date",
-                "max(band_0)",
-                "max(band_1)",
-                "max(band_2)",
+                "max(band_Day)",
+                "max(band_Longitude)",
+                "max(band_Latitude)",
             ],
             data=IgnoreOrder(
                 [
@@ -2831,9 +2831,9 @@ class TestVectorCubeRunUdf:
         assert result == DictSubSet(
             columns=[
                 "feature_index",
-                "max(band_0)",
-                "max(band_1)",
-                "max(band_2)",
+                "max(band_Day)",
+                "max(band_Longitude)",
+                "max(band_Latitude)",
             ],
             data=IgnoreOrder(
                 [
