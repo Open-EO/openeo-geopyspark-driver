@@ -4168,8 +4168,8 @@ class TestEtlApiReporting:
                 "expected_data": {
                     "userId": TEST_USER,
                     "metrics": {
-                        "cpu": {"unit": "cpu-seconds", "value": 3600},
-                        "memory": {"unit": "mb-seconds", "value": 7372800.0},
+                        "cpu": {"unit": "cpu-seconds", "value": 5400.0},
+                        "memory": {"unit": "mb-seconds", "value": 11059200.0},
                     },
                     "orchestrator": "openeo",
                     "sourceId": "openeo-gps-tests",

@@ -536,8 +536,8 @@ def test_request_costs(mock_get_etl_api_credentials_from_env, backend_implementa
             finished_ms=None,
             state=state,
             status=status,
-            cpu_seconds=3600,
-            mb_seconds=7372800,
+            cpu_seconds=5400,
+            mb_seconds=11059200,
             duration_ms=None,
             sentinel_hub_processing_units=shpu if shpu else None
         )
