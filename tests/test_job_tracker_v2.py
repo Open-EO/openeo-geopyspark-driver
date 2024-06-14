@@ -1635,8 +1635,8 @@ class TestK8sStatusGetter:
                    f"cpu_seconds=None and byte_seconds=0.0",
                ) in caplog.record_tuples
 
-        assert job_metadata.usage.cpu_seconds == 1 * 3600
-        assert job_metadata.usage.mb_seconds == 2 * 3600 * 1024
+        assert job_metadata.usage.cpu_seconds == 1.5 * 3600
+        assert job_metadata.usage.mb_seconds == 3 * 3600 * 1024
 
 
 class TestCliApp:
