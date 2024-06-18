@@ -27,7 +27,6 @@ tests_require = [
     "kubernetes",
     "re-assert",
     "dirty-equals>=0.6",
-    "typing-extensions<4.12.1; python_version<'3.9'",  # Workaround for weird dirty_equals-xarray conflict on Python 3.8 https://github.com/samuelcolvin/dirty-equals/issues/99
 ]
 
 setup(
