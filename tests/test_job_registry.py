@@ -204,13 +204,13 @@ class TestZkJobRegistry:
 
         zk_client_get = zk_client.get
 
-        def side_effect(path):
+        def possibly_raise_no_node_error(path):
             if job_deleted_while_collecting:
                 raise kazoo.exceptions.NoNodeError
 
             return zk_client_get(path)
 
-        with mock.patch.object(zk_client, "get", side_effect=side_effect):
+        with mock.patch.object(zk_client, "get", side_effect=possibly_raise_no_node_error):
             jobs_to_track = zjr.get_running_jobs()
             assert [job['job_id'] for job in jobs_to_track] == expected_job_ids
 
