@@ -195,7 +195,6 @@ class TestZkJobRegistry:
         ],
     )
     def test_get_running_jobs(self, zk_client, caplog, job_deleted_while_collecting, expected_job_ids):
-        # TODO: make zk_client.get_job() throw a NoNodeError for /openeo/jobs/ongoing/j123
         zjr = ZkJobRegistry(zk_client=zk_client)
 
         zjr.register(
@@ -215,8 +214,9 @@ class TestZkJobRegistry:
             jobs_to_track = zjr.get_running_jobs()
             assert [job['job_id'] for job in jobs_to_track] == expected_job_ids
 
-        print(caplog.messages)
-        # TODO: capture logs and check for WARNING
+        assert not job_deleted_while_collecting or (
+                    "Job j123 of user u456 disappeared from the list of running jobs; this can happen if it was deleted"
+                    " in the meanwhile." in caplog.messages)
 
 
 class TestInMemoryJobRegistry:
