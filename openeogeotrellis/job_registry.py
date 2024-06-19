@@ -199,7 +199,7 @@ class ZkJobRegistry:
         self._zk.delete(source, version)
 
     def get_running_jobs(self, *, user_limit: Optional[int] = 1000, parse_specification: bool = True) -> Iterator[Dict]:
-        """Returns an interator job info dicts that are currently not finished (should still be tracked)."""
+        """Returns an iterator of job info dicts that are currently not finished (should still be tracked)."""
 
         with StatsReporter(name="get_running_jobs", report=_log) as stats, TimingLogger(
             title="get_running_jobs", logger=_log
@@ -222,10 +222,15 @@ class ZkJobRegistry:
                 if job_ids:
                     stats["user_id with jobs"] += 1
                     for job_id in job_ids:
-                        job_info = self.get_job(job_id, user_id, parse_specification=parse_specification)
-                        if job_info.get("application_id"):
-                            yield job_info
-                            stats["job_ids"] += 1
+                        try:
+                            job_info = self.get_job(job_id, user_id, parse_specification=parse_specification)
+                            if job_info.get("application_id"):
+                                yield job_info
+                                stats["job_ids"] += 1
+                        except JobNotFoundException:
+                            _log.warning(f"Job {job_id} of user {user_id} disappeared from the list of running"
+                                         f" jobs; this can happen if it was deleted in the meanwhile.", exc_info=True)
+
                 else:
                     stats["user_id without jobs"] += 1
 

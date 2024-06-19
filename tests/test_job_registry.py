@@ -187,6 +187,37 @@ class TestZkJobRegistry:
                 process={"process_graph": {"e": {"process_id": "e", "result": True}}},
             )
 
+    @pytest.mark.parametrize(
+        ["job_deleted_while_collecting", "expected_job_ids"],
+        [
+            (False, ["j123"]),  # regular case
+            (True, [])  # deleted in the meanwhile, just skip the job
+        ],
+    )
+    def test_get_running_jobs(self, zk_client, caplog, job_deleted_while_collecting, expected_job_ids):
+        zjr = ZkJobRegistry(zk_client=zk_client)
+
+        zjr.register(
+            job_id="j123", user_id="u456", api_version="1.2.3", specification={"process_graph": {"foo": "bar"}}
+        )
+        zjr.set_application_id(job_id="j123", user_id="u456", application_id="application_1718705245374_0056")
+
+        zk_client_get = zk_client.get
+
+        def possibly_raise_no_node_error(path):
+            if job_deleted_while_collecting:
+                raise kazoo.exceptions.NoNodeError
+
+            return zk_client_get(path)
+
+        with mock.patch.object(zk_client, "get", side_effect=possibly_raise_no_node_error):
+            jobs_to_track = zjr.get_running_jobs()
+            assert [job['job_id'] for job in jobs_to_track] == expected_job_ids
+
+        assert not job_deleted_while_collecting or (
+                    "Job j123 of user u456 disappeared from the list of running jobs; this can happen if it was deleted"
+                    " in the meanwhile." in caplog.messages)
+
 
 class TestInMemoryJobRegistry:
     @pytest.fixture(autouse=True)
