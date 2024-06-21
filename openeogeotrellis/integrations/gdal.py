@@ -111,7 +111,9 @@ def _extract_gdal_asset_raster_metadata(
         #logger.warning(f"Error while looking up result metadata, may be incomplete. {str(e)}")
         pass
 
-    pool = multiprocessing.Pool(10)
+    pool_size = min(10,max(1,int(len(asset_metadata)//3)))
+
+    pool = multiprocessing.Pool(pool_size)
     job = [pool.apply_async(_get_metadata_callback, (asset_path, asset_md,job_dir,), error_callback=error_handler) for asset_path, asset_md in asset_metadata.items()]
     pool.close()
     pool.join()
