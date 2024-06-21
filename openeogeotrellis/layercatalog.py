@@ -109,7 +109,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         datacubeParams.setPartitionerIndexReduction(indexReduction)
         datacubeParams.setPartitionerTemporalResolution(temporalResolution)
 
-        datacubeParams.setAllowEmptyCube(feature_flags.get("allow_empty_cube",False))
+        datacubeParams.setAllowEmptyCube(feature_flags.get("allow_empty_cube", env.get("allow_empty_cubes", False)))
 
         globalbounds = feature_flags.get("global_bounds", True)
         if globalbounds and load_params.global_extent is not None and len(load_params.global_extent) > 0:

@@ -240,7 +240,8 @@ def run_job(
         }
         job_option_whitelist = [
             "data_mask_optimization",
-            "node_caching"
+            "node_caching",
+            "allow_empty_cubes",
         ]
         env_values.update({k: job_options[k] for k in job_option_whitelist if k in job_options})
         env = EvalEnv(env_values)
