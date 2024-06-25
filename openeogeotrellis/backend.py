@@ -49,7 +49,7 @@ from openeo_driver.errors import (InternalException, JobNotFinishedException, Op
                                   ProcessParameterInvalidException, ProcessGraphComplexityException, )
 from openeo_driver.jobregistry import (DEPENDENCY_STATUS, JOB_STATUS, ElasticJobRegistry, PARTIAL_JOB_STATUS,
                                        get_ejr_credentials_from_env)
-from openeo_driver.ProcessGraphDeserializer import ENV_SAVE_RESULT, ConcreteProcessing
+from openeo_driver.ProcessGraphDeserializer import ENV_SAVE_RESULT, ConcreteProcessing, _extract_load_parameters
 from openeo_driver.save_result import ImageCollectionResult
 from openeo_driver.users import User
 from openeo_driver.util.geometry import BoundingBox
@@ -1228,15 +1228,15 @@ class GpsProcessing(ConcreteProcessing):
         sync_job = smart_bool(env.get("sync_job", False))
         large_layer_threshold_in_pixels = int(float(env.get("large_layer_threshold_in_pixels", LARGE_LAYER_THRESHOLD_IN_PIXELS)))
 
-        for source_id, constraints in source_constraints:
+        for source_id, constraints in source_constraints.copy():  # copy because _extract_load_parameters is stateful
             source_id_proc, source_id_args = source_id
             if source_id_proc == "load_collection":
+                load_params = _extract_load_parameters(env, source_id=source_id)
                 collection_id = source_id_args[0]
                 metadata_json = catalog.get_collection_metadata(collection_id=collection_id)
                 metadata = GeopysparkCubeMetadata(metadata_json)
-                temporal_extent = constraints.get("temporal_extent")
-                spatial_extent = constraints.get("spatial_extent")
-
+                temporal_extent = load_params.temporal_extent
+                spatial_extent = load_params.spatial_extent
                 if allow_check_missing_products and metadata.get("_vito", "data_source", "check_missing_products", default=None):
                     properties = constraints.get("properties", {})
                     if temporal_extent is None:
@@ -1276,7 +1276,7 @@ class GpsProcessing(ConcreteProcessing):
                 )
 
                 if spatial_extent and temporal_extent:
-                    band_names = constraints.get("bands")
+                    band_names = load_params.bands
                     if band_names:
                         # Will convert aliases:
                         band_names = metadata.filter_bands(band_names).band_names
@@ -1320,12 +1320,9 @@ class GpsProcessing(ConcreteProcessing):
                         # Auto42001 is in meter
                         cell_width, cell_height = reproject_cellsize(spatial_extent, res, "Auto42001", native_crs)
 
-                    geometries = constraints.get("aggregate_spatial", {}).get("geometries")
-                    if geometries is None:
-                        geometries = constraints.get("filter_spatial", {}).get("geometries")
                     message = is_layer_too_large(
                         spatial_extent=spatial_extent,
-                        geometries=geometries,
+                        geometries=load_params.aggregate_spatial_geometries,
                         number_of_temporal_observations=number_of_temporal_observations,
                         nr_bands=nr_bands,
                         cell_width=cell_width,
@@ -1344,6 +1341,7 @@ class GpsProcessing(ConcreteProcessing):
     def verify_for_synchronous_processing(self, process_graph: dict, env: EvalEnv = None) -> Iterable[str]:
         env_validate = env.push({
             "allow_check_missing_products": False,
+            "sync_job": True,
         })
         errors = self.validate(process_graph=process_graph, env=env_validate)
 
