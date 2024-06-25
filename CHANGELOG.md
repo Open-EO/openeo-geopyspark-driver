@@ -16,7 +16,12 @@ without compromising stable operations.
 
 - Correctly apply the method parameter in resample_spatial and resample_cube_spatial, when downsampling to lower resolution, and the sampling is not applied at load time. ([Open-EO/openeo-geotrellis-extensions#303](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/303)) 
 - Use band names as column name in GeoParquet output ([#723](https://github.com/Open-EO/openeo-geopyspark-driver/issues/723))
+- Prevent nightly cleaner from failing a job tracker run ([eu-cdse/openeo-cdse-infra#166](https://github.com/eu-cdse/openeo-cdse-infra/issues/166))
 - Sentinelhub collections handle non zero nodata better ([openeo-geotrellis-extensions#300](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/300))
+
+## 0.38.6
+
+- Increase default resource usage configs for sync processing (eu-cdse/openeo-cdse-infra#158)
 
 ## 0.38.5
 

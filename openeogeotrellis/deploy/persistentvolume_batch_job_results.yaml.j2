@@ -26,5 +26,5 @@ spec:
     volumeAttributes:
       capacity: 50Gi
       mounter: s3fs
-      options: "-o uid=18585 -o gid=18585 -o compat_dir"
+      options: "-o uid=18585 -o gid=18585 -o compat_dir -o dbglevel=debug"
     volumeHandle: {{ swift_bucket }}{{output_dir}}

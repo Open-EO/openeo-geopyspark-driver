@@ -126,8 +126,10 @@ class GpsBackendConfig(OpenEoBackendConfig):
 
     max_executor_or_driver_memory: str = "64G"  # Executors and drivers have the same amount of memory
 
-    default_usage_cpu_seconds: float = 1 * 3600
-    default_usage_byte_seconds: float = 2 * 1024 * 1024 * 1024 * 3600
+    # TODO #734: these "usage" defaults are a hack in absence of more accurate credit attribution
+    #   for synchronous processing. Can they be eliminated?
+    default_usage_cpu_seconds: float = 1.5 * 3600
+    default_usage_byte_seconds: float = 3 * 1024 * 1024 * 1024 * 3600
     report_usage_sentinelhub_pus: bool = True
 
     default_soft_errors: float = 0.1

@@ -2797,9 +2797,9 @@ class TestVectorCubeRunUdf:
             columns=[
                 "feature_index",
                 "date",
-                "max(band_Day)",
-                "max(band_Longitude)",
-                "max(band_Latitude)",
+                "Day",
+                "Longitude",
+                "Latitude",
             ],
             data=IgnoreOrder(
                 [
@@ -2831,9 +2831,9 @@ class TestVectorCubeRunUdf:
         assert result == DictSubSet(
             columns=[
                 "feature_index",
-                "max(band_Day)",
-                "max(band_Longitude)",
-                "max(band_Latitude)",
+                "Day",
+                "Longitude",
+                "Latitude",
             ],
             data=IgnoreOrder(
                 [
@@ -4168,8 +4168,8 @@ class TestEtlApiReporting:
                 "expected_data": {
                     "userId": TEST_USER,
                     "metrics": {
-                        "cpu": {"unit": "cpu-seconds", "value": 3600},
-                        "memory": {"unit": "mb-seconds", "value": 7372800.0},
+                        "cpu": {"unit": "cpu-seconds", "value": 5400.0},
+                        "memory": {"unit": "mb-seconds", "value": 11059200.0},
                     },
                     "orchestrator": "openeo",
                     "sourceId": "openeo-gps-tests",
