@@ -15,6 +15,8 @@ import geopyspark
 import py4j.protocol
 import pyproj
 import pyspark.sql.utils
+import pytz
+
 from openeo.metadata import Band
 from openeo.util import TimingLogger, deep_get, str_truncate
 from openeo_driver import filter_properties
@@ -891,12 +893,13 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 logger.warning(
                     f"Got half open: {temporal_extent=}. Assuming it goes till today."
                 )
-                from_date_parsed = dateutil.parser.parse(from_date).replace(tzinfo=None)
-                to_date_now = datetime.now().replace(tzinfo=None)
+                from_date_parsed = dateutil.parser.parse(from_date).replace(tzinfo=pytz.UTC)
+                to_date_now = datetime.now().replace(tzinfo=pytz.UTC)
                 number_of_temporal_observations = (to_date_now - from_date_parsed).total_seconds() / temporal_step
         else:
-            number_of_temporal_observations = (dateutil.parser.parse(to_date) - dateutil.parser.parse(
-                from_date)).total_seconds() / temporal_step
+            to_date_parsed = dateutil.parser.parse(to_date).replace(tzinfo=pytz.UTC)
+            from_date_parsed = dateutil.parser.parse(from_date).replace(tzinfo=pytz.UTC)
+            number_of_temporal_observations = (to_date_parsed - from_date_parsed).total_seconds() / temporal_step
         number_of_temporal_observations = max(math.floor(number_of_temporal_observations), 1)
         return number_of_temporal_observations
 
