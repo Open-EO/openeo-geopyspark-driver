@@ -43,3 +43,14 @@ It accepts the log levels as defined in the OpenEO API: "debug", "info", "warnin
 
 Note: logs originating from ```openeo.udf.debug.inspect``` are unaffected by this threshold; regardless of their log
 level, be it "debug", "info", "warning" or "error", they will always be written to the logs.
+
+### Allow empty data cubes
+
+Setting the "allow_empty_cubes" flag (defaults to: `false`) enables working with empty data cubes
+where this otherwise would raise an error. It is applied to all collections within this job.
+
+```python
+job_options={
+    "allow_empty_cubes": True
+}
+```
