@@ -21,6 +21,7 @@ from openeo_driver.util.http import requests_with_retry
 from openeo_driver.util.logging import JSON_LOGGER_DEFAULT_FORMAT
 from openeogeotrellis import sentinel_hub
 from openeogeotrellis.backend import GpsBatchJobs
+from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.layercatalog import get_layer_catalog
 from openeogeotrellis.vault import Vault
@@ -33,9 +34,6 @@ ARG_USER_ID = 'user_id'
 
 # TODO: include job_id in log statements not issued by our own code e.g. Py4J  # 141
 _log = logging.getLogger(__name__)
-
-DEPENDENCIES_POLL_INTERVAL_S = 60  # poll every x seconds
-DEPENDENCIES_MAX_POLL_DELAY_S = 60 * 60 * 24 * 7  # for a maximum delay of y seconds
 
 TASK_DELETE_BATCH_PROCESS_DEPENDENCY_SOURCES = 'delete_batch_process_dependency_sources'
 TASK_POLL_SENTINELHUB_BATCH_PROCESSES = 'poll_sentinelhub_batch_processes'  # TODO: deprecated, remove this eventually
@@ -237,10 +235,12 @@ def main():
                 requests_session = requests_with_retry()
 
                 log = logging.LoggerAdapter(_log, extra={'job_id': batch_job_id, 'user_id': user_id})
-                max_poll_time = time.time() + DEPENDENCIES_MAX_POLL_DELAY_S
+
+                backend_config = get_backend_config()
+                max_poll_time = time.time() + backend_config.job_dependencies_max_poll_delay_seconds
 
                 while True:
-                    time.sleep(DEPENDENCIES_POLL_INTERVAL_S)
+                    time.sleep(backend_config.job_dependencies_poll_interval_seconds)
 
                     # TODO #236/#498/#632 phase out ZkJobRegistry (or at least abstract it away)
                     with ZkJobRegistry() as registry:
@@ -266,8 +266,9 @@ def main():
                             raise  # TODO: this will get caught by the exception handler below which will just log it again  # 141
 
                     if time.time() >= max_poll_time:
-                        max_poll_delay_reached_error = f"job dependencies were not satisfied after" \
-                                                       f" {DEPENDENCIES_MAX_POLL_DELAY_S} s, aborting"
+                        max_poll_delay_reached_error = (f"job dependencies were not satisfied after"
+                                                        f" {backend_config.job_dependencies_max_poll_delay_seconds} s,"
+                                                        f" aborting")
                         log.error(max_poll_delay_reached_error)
 
                         # TODO #236/#498/#632 phase out ZkJobRegistry (or at least abstract it away)
