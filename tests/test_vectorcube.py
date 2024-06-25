@@ -139,7 +139,7 @@ def test_aggregatespatialvectorcube_to_vectorcube(imagecollection_with_two_bands
     input_data: gpd.GeoDataFrame = aggregate_result._get_geodataframe()
     num_geometries = input_data.shape[0]
     assert input_data.shape == (num_geometries, 3)
-    assert input_data.columns.tolist() == ['geometry', 'avg(band_0)', 'avg(band_1)']
+    assert input_data.columns.tolist() == ['geometry', 'red', 'nir']
 
     # Check geometries.
     input_regions: gpd.GeoSeries = input_data.geometry
@@ -152,8 +152,8 @@ def test_aggregatespatialvectorcube_to_vectorcube(imagecollection_with_two_bands
     cube: xarray.DataArray = output_vector_cube.get_cube()
     assert cube.dims == ('geometry', 'bands')
     assert cube.shape == (num_geometries, 2)
-    assert cube['bands'].values.tolist() == ['avg(band_0)', 'avg(band_1)']  # Only numeric bands, ids are strings.
-    assert cube.isel(geometry=0).values.tolist() == input_data.values[0,1:].tolist()
+    assert cube['bands'].values.tolist() == ['red', 'nir']
+    assert cube.isel(geometry=0).values.tolist() == input_data.values[0, 1:].tolist()
 
 
 def test_aggregatespatialresultcsv_to_vectorcube(imagecollection_with_two_bands_and_one_date):

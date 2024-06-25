@@ -60,6 +60,7 @@ PYRAMID_LEVELS = 'pyramid_levels'
 REQUIRE_BOUNDS = 'require_bounds'
 CORRELATION_ID = 'correlation_id'
 USER = 'user'
+ALLOW_EMPTY_CUBES = "allow_empty_cubes"
 WHITELIST = [
     VAULT_TOKEN,
     SENTINEL_HUB_CLIENT_ALIAS,
@@ -69,6 +70,7 @@ WHITELIST = [
     REQUIRE_BOUNDS,
     CORRELATION_ID,
     USER,
+    ALLOW_EMPTY_CUBES,
 ]
 LARGE_LAYER_THRESHOLD_IN_PIXELS = pow(10, 11)
 
@@ -109,7 +111,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         datacubeParams.setPartitionerIndexReduction(indexReduction)
         datacubeParams.setPartitionerTemporalResolution(temporalResolution)
 
-        datacubeParams.setAllowEmptyCube(feature_flags.get("allow_empty_cube",False))
+        datacubeParams.setAllowEmptyCube(feature_flags.get("allow_empty_cube", env.get(ALLOW_EMPTY_CUBES, False)))
 
         globalbounds = feature_flags.get("global_bounds", True)
         if globalbounds and load_params.global_extent is not None and len(load_params.global_extent) > 0:
