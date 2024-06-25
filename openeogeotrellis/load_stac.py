@@ -142,6 +142,7 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
                            else None)
 
     if dependency_job_info:
+        # TODO: handle polling own job results as well (~ GpsBatchJobs.poll_job_dependencies)
         logger.info(f"load_stac of results of own job {dependency_job_info.id}")
         intersecting_items = []
 
