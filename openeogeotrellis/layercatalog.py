@@ -1383,6 +1383,7 @@ def is_layer_too_large(
     :return: A message if the layer exceeds the threshold in pixels. None otherwise.
              Also returns the estimated number of pixels and the threshold.
     """
+    geometries = load_params.aggregate_spatial_geometries
     spatial_extent = load_params.spatial_extent
     srs = spatial_extent.get("crs", 'EPSG:4326')
     if isinstance(srs, int):
@@ -1427,7 +1428,6 @@ def is_layer_too_large(
         f"is_layer_too_large {estimated_pixels=} {threshold_pixels=} ({bbox_width=} {bbox_height=} {cell_width=} {cell_height=} {number_of_temporal_observations=} {nr_bands=})"
     )
     if estimated_pixels > threshold_pixels:
-        geometries = load_params.aggregate_spatial_geometries
         if geometries and not isinstance(geometries, dict):
             # Threshold is exceeded, but only the pixels in the geometries will be loaded if they are provided.
             # For performance, we estimate the area using a simple bounding box around each polygon.
@@ -1441,7 +1441,7 @@ def is_layer_too_large(
                 raise TypeError(f'Unsupported geometry type: {type(geometries)}')
             if native_crs != 'EPSG:4326':
                 # Geojson is always in 4326. Reproject the cell bbox from native to 4326 so we can calculate the area.
-                cell_bbox = { "west": 0, "east": cell_width, "south": 0, "north": cell_height, "crs": native_crs }
+                cell_bbox = {"west": 0, "east": cell_width, "south": 0, "north": cell_height, "crs": native_crs}
                 cell_bbox = reproject_bounding_box(cell_bbox, from_crs=native_crs, to_crs='EPSG:4326')
                 cell_width = abs(cell_bbox["east"] - cell_bbox["west"])
                 cell_height = abs(cell_bbox["north"] - cell_bbox["south"])

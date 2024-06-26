@@ -1203,7 +1203,7 @@ class GpsProcessing(ConcreteProcessing):
                     load_params = _extract_load_parameters(env, source_id=source_id)
                     yield from extra_validation_load_collection(collection_id, load_params, env)
         except Exception as e:
-            return [{"code": "Internal", "message": str(e)}]
+            yield {"code": "Internal", "message": str(e)}
 
     def run_udf(self, udf: str, data: openeo.udf.UdfData) -> openeo.udf.UdfData:
         if get_backend_config().allow_run_udf_in_driver:
