@@ -4121,9 +4121,53 @@ class TestLoadStac:
                 " https://openeo.test/openeo/jobs/j-2402094545c945c09e1307503aa58a3a/results?partial=true: finished"
                 in caplog.messages)
 
-    def test_load_stac_from_unsigned_partial_job_results(self):
+    @gps_config_overrides(job_dependencies_poll_interval_seconds=0)
+    def test_load_stac_from_unsigned_partial_job_results_basic(self, api110, batch_job_output_root, zk_job_registry,
+                                                               backend_implementation, caplog):
         """load_stac from partial job results Collection (unsigned case)"""
-        raise NotImplementedError("TODO")
+
+        caplog.set_level("DEBUG")
+
+        # get results from own batch job rather than crawl signed STAC URLs
+        _setup_existing_job(
+            job_id="j-2405078f40904a0b85cf8dc5dd55b07e",
+            api=api110,
+            batch_job_output_root=batch_job_output_root,
+            zk_job_registry=zk_job_registry
+        )
+
+        process_graph = {
+            "loadstac1": {
+                "process_id": "load_stac",
+                "arguments": {
+                    "url": "https://openeo.test/openeo/jobs/j-2405078f40904a0b85cf8dc5dd55b07e/results?partial=true"
+                }
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "loadstac1"}, "format": "GTiff"},
+                "result": True
+            },
+        }
+
+        from openeogeotrellis.load_stac import extract_own_job_info
+
+        finished_job_info = extract_own_job_info(
+            "https://openeo.test/openeo/jobs/j-2405078f40904a0b85cf8dc5dd55b07e/results?partial=true",
+            TEST_USER,
+            backend_implementation.batch_jobs
+        )
+
+        ongoing_job_info = finished_job_info._replace(status='queued')
+
+        with mock.patch("openeogeotrellis.load_stac.extract_own_job_info",
+                        side_effect=[ongoing_job_info, finished_job_info]):
+            api110.result(process_graph).assert_status_code(200)
+
+        assert ("OpenEO batch job results status of own job j-2405078f40904a0b85cf8dc5dd55b07e: running"
+                in caplog.messages)
+        assert ("OpenEO batch job results status of own job j-2405078f40904a0b85cf8dc5dd55b07e: finished"
+                in caplog.messages)
 
 
 class TestEtlApiReporting:
