@@ -4114,10 +4114,10 @@ class TestLoadStac:
 
         api110.result(process_graph).assert_status_code(200)
 
-        assert ("OpenEO batch job results status for"
+        assert ("OpenEO batch job results status of"
                 " https://openeo.test/openeo/jobs/j-2402094545c945c09e1307503aa58a3a/results?partial=true: running"
                 in caplog.messages)
-        assert ("OpenEO batch job results status for"
+        assert ("OpenEO batch job results status of"
                 " https://openeo.test/openeo/jobs/j-2402094545c945c09e1307503aa58a3a/results?partial=true: finished"
                 in caplog.messages)
 
