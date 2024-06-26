@@ -4063,7 +4063,7 @@ class TestLoadStac:
             assert ds.shape == tuple(expected_shape)
             assert tuple(ds.bounds) == tuple(map(pytest.approx, expected_bbox))
 
-    @gps_config_overrides(job_dependencies_poll_interval_seconds=0)
+    @gps_config_overrides(job_dependencies_poll_interval_seconds=0, job_dependencies_max_poll_delay_seconds=60)
     def test_load_stac_from_partial_job_results_basic(self, api110, urllib_mock, tmp_path, caplog):
         """load_stac from partial job results Collection (signed case)"""
 
@@ -4121,7 +4121,7 @@ class TestLoadStac:
                 " https://openeo.test/openeo/jobs/j-2402094545c945c09e1307503aa58a3a/results?partial=true: finished"
                 in caplog.messages)
 
-    @gps_config_overrides(job_dependencies_poll_interval_seconds=0)
+    @gps_config_overrides(job_dependencies_poll_interval_seconds=0, job_dependencies_max_poll_delay_seconds=60)
     def test_load_stac_from_unsigned_partial_job_results_basic(self, api110, batch_job_output_root, zk_job_registry,
                                                                backend_implementation, caplog):
         """load_stac from partial job results Collection (unsigned case)"""
