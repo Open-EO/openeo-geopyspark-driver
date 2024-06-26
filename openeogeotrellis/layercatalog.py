@@ -8,7 +8,7 @@ import sys
 from copy import deepcopy
 from datetime import datetime
 from functools import lru_cache
-from typing import List, Dict, Optional, Tuple, Union
+from typing import List, Dict, Iterable, Optional, Tuple, Union
 
 import dateutil.parser
 import geopyspark
@@ -24,12 +24,12 @@ from openeo_driver.backend import CollectionCatalog, LoadParameters
 from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.datastructs import SarBackscatterArgs
-from openeo_driver.errors import OpenEOApiException, InternalException
+from openeo_driver.errors import OpenEOApiException, InternalException, ProcessGraphComplexityException
 from openeo_driver.filter_properties import extract_literal_match
 from openeo_driver.util.geometry import reproject_bounding_box
 from openeo_driver.util.utm import auto_utm_epsg_for_geometry
 from openeo_driver.util.http import requests_with_retry
-from openeo_driver.utils import read_json, EvalEnv, WhiteListEvalEnv
+from openeo_driver.utils import read_json, EvalEnv, WhiteListEvalEnv, smart_bool
 from shapely.geometry import box
 from shapely.geometry.base import BaseGeometry
 
@@ -51,6 +51,7 @@ from openeogeotrellis.utils import (
     normalize_temporal_extent,
     calculate_rough_area,
     parse_approximate_isoduration,
+    reproject_cellsize,
 )
 from openeogeotrellis.vault import Vault
 
@@ -150,6 +151,23 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
     @lru_cache(maxsize=20)
     def _load_collection_cached(self, collection_id: str, load_params: LoadParameters, env: EvalEnv) -> GeopysparkDataCube:
         logger.info("Creating layer for {c} with load params {p}".format(c=collection_id, p=load_params))
+
+        if smart_bool((env.get('job_options') or {}).get("extent_size_check", True)):
+            env_validate = env.push({
+                "allow_check_missing_products": False,
+            })
+            issues = extra_validation_load_collection(collection_id, load_params, env_validate)
+            # Only care for certain errors and make list of strings:
+            issues = [e["message"] for e in issues if e["code"] == "ExtentTooLarge"]
+            if issues:
+                if env.get("sync_job", False):
+                    raise ProcessGraphComplexityException(
+                        ProcessGraphComplexityException.message + f" Reasons: {' '.join(issues)}"
+                    )
+                else:
+                    raise ProcessGraphComplexityException(
+                        "Found errors in process graph. Disable this check with 'extent_size_check': " +
+                        " ".join(issues))
 
         from_date, to_date = temporal_extent = normalize_temporal_extent(load_params.temporal_extent)
         spatial_extent = load_params.spatial_extent
@@ -812,11 +830,11 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
         return "UTM"  # LANDSAT7_ETM_L2 doesn't have any, for example
 
-    def derive_temporal_extent(self, collection_id: str, constraints: dict) -> List[Optional[str]]:
+    def derive_temporal_extent(self, collection_id: str, load_params: LoadParameters) -> List[Optional[str]]:
         metadata_json = self.get_collection_metadata(collection_id=collection_id)
         metadata = GeopysparkCubeMetadata(metadata_json)
 
-        temporal_extent_constraints = constraints.get("temporal_extent")
+        temporal_extent_constraints = load_params.temporal_extent
 
         # The first temporal interval should encompass the other temporal intervals.
         # The outer bounds are still calculated just in case.
@@ -863,9 +881,9 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
     def estimate_number_of_temporal_observations(self,
                                                  collection_id: str,
-                                                 constraints: dict,
+                                                 load_params: LoadParameters,
                                                  ) -> int:
-        temporal_extent = self.derive_temporal_extent(collection_id, constraints)
+        temporal_extent = self.derive_temporal_extent(collection_id, load_params)
 
         metadata_json = self.get_collection_metadata(collection_id=collection_id)
         metadata = GeopysparkCubeMetadata(metadata_json)
@@ -882,24 +900,10 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         temporal_step = parse_approximate_isoduration(temporal_step)
         temporal_step = temporal_step.total_seconds()
 
-        from_date, to_date = temporal_extent
-        if to_date is None:
-            if from_date is None:
-                number_of_temporal_observations = 1
-                logger.warning(
-                    f"Got open: {temporal_extent=}. Assuming {number_of_temporal_observations=}."
-                )
-            else:
-                logger.warning(
-                    f"Got half open: {temporal_extent=}. Assuming it goes till today."
-                )
-                from_date_parsed = dateutil.parser.parse(from_date).replace(tzinfo=pytz.UTC)
-                to_date_now = datetime.now().replace(tzinfo=pytz.UTC)
-                number_of_temporal_observations = (to_date_now - from_date_parsed).total_seconds() / temporal_step
-        else:
-            to_date_parsed = dateutil.parser.parse(to_date).replace(tzinfo=pytz.UTC)
-            from_date_parsed = dateutil.parser.parse(from_date).replace(tzinfo=pytz.UTC)
-            number_of_temporal_observations = (to_date_parsed - from_date_parsed).total_seconds() / temporal_step
+        from_date, to_date = normalize_temporal_extent((temporal_extent[0], temporal_extent[1]))
+        to_date_parsed = dateutil.parser.parse(to_date).replace(tzinfo=pytz.UTC)
+        from_date_parsed = dateutil.parser.parse(from_date).replace(tzinfo=pytz.UTC)
+        number_of_temporal_observations = (to_date_parsed - from_date_parsed).total_seconds() / temporal_step
         number_of_temporal_observations = max(math.floor(number_of_temporal_observations), 1)
         return number_of_temporal_observations
 
@@ -1244,16 +1248,122 @@ def check_missing_products(
         return missing
 
 
+def extra_validation_load_collection(collection_id: str, load_params: LoadParameters, env: EvalEnv) -> Iterable[dict]:
+    catalog = env.backend_implementation.catalog
+    allow_check_missing_products = smart_bool(env.get("allow_check_missing_products", True))
+    sync_job = smart_bool(env.get("sync_job", False))
+    large_layer_threshold_in_pixels = int(
+        float(env.get("large_layer_threshold_in_pixels", LARGE_LAYER_THRESHOLD_IN_PIXELS)))
+    metadata_json = catalog.get_collection_metadata(collection_id=collection_id)
+    metadata = GeopysparkCubeMetadata(metadata_json)
+    temporal_extent = load_params.temporal_extent
+    spatial_extent = load_params.spatial_extent
+    if allow_check_missing_products and metadata.get("_vito", "data_source", "check_missing_products", default=None):
+        properties = load_params.properties
+        if temporal_extent is None:
+            yield {"code": "UnlimitedExtent", "message": "No temporal extent given."}
+        if spatial_extent is None:
+            yield {"code": "UnlimitedExtent", "message": "No spatial extent given."}
+        if temporal_extent is None or spatial_extent is None:
+            return
+
+        products = check_missing_products(
+            collection_metadata=metadata,
+            temporal_extent=temporal_extent,
+            spatial_extent=spatial_extent,
+            properties=properties,
+        )
+        if products:
+            for p in products:
+                yield {
+                    "code": "MissingProduct",
+                    "message": f"Tile {p!r} in collection {collection_id!r} is not available."
+                }
+
+    native_crs = metadata.get("cube:dimensions", "x", "reference_system", default="EPSG:4326")
+    if isinstance(native_crs, dict):
+        native_crs = native_crs.get("id", {}).get("code", None)
+    if isinstance(native_crs, int):
+        native_crs = f"EPSG:{native_crs}"
+    if not isinstance(native_crs, str):
+        yield {"code": "InvalidNativeCRS", "message": f"Invalid native CRS {native_crs!r} for "
+                                                      f"collection {collection_id!r}"}
+        return
+
+    catalog = env.backend_implementation.catalog
+    number_of_temporal_observations: int = catalog.estimate_number_of_temporal_observations(
+        collection_id,
+        load_params,
+    )
+
+    if spatial_extent and temporal_extent:
+        band_names = load_params.bands
+        if band_names:
+            # Will convert aliases:
+            band_names = metadata.filter_bands(band_names).band_names
+        else:
+            band_names = metadata.get("cube:dimensions", "bands", "values",
+                                      default=["_at_least_assume_one_band_"])
+        nr_bands = len(band_names)
+
+        if collection_id == 'TestCollection-LonLat4x4':
+            # This layer is always 4x4 pixels, adapt resolution accordingly
+            bbox_width = abs(spatial_extent["east"] - spatial_extent["west"])
+            bbox_height = abs(spatial_extent["north"] - spatial_extent["south"])
+            cell_width_latlon = bbox_width / 4
+            cell_height_latlon = bbox_height / 4
+            cell_width, cell_height = reproject_cellsize(spatial_extent,
+                                                         (cell_width_latlon, cell_height_latlon),
+                                                         "EPSG:4326",
+                                                         "Auto42001",
+                                                         )
+        else:
+            # The largest GSD I encountered was 25km. Double it as very permissive guess:
+            default_gsd = (50000, 50000)
+            gsd_object = metadata.get_GSD_in_meters()
+            if isinstance(gsd_object, dict):
+                gsd_in_meter_list = list(map(lambda x: gsd_object.get(x), band_names))
+                gsd_in_meter_list = list(filter(lambda x: x is not None, gsd_in_meter_list))
+                if not gsd_in_meter_list:
+                    gsd_in_meter_list = [default_gsd] * nr_bands
+            elif isinstance(gsd_object, tuple):
+                gsd_in_meter_list = [gsd_object] * nr_bands
+            else:
+                gsd_in_meter_list = [default_gsd] * nr_bands
+
+            # We need to convert GSD to resolution in order to take an average:
+            px_per_m2_average_band = sum(map(lambda x: 1 / (x[0] * x[1]), gsd_in_meter_list)) / len(gsd_in_meter_list)
+            px_per_m_average_band = pow(px_per_m2_average_band, 0.5)
+            m_per_px_average_band = 1 / px_per_m_average_band
+
+            res = (m_per_px_average_band, m_per_px_average_band)
+            # Auto42001 is in meter
+            cell_width, cell_height = reproject_cellsize(spatial_extent, res, "Auto42001", native_crs)
+
+        message = is_layer_too_large(
+            load_params=load_params,
+            number_of_temporal_observations=number_of_temporal_observations,
+            nr_bands=nr_bands,
+            cell_width=cell_width,
+            cell_height=cell_height,
+            native_crs=native_crs,
+            threshold_pixels=large_layer_threshold_in_pixels,
+            sync_job=sync_job,
+        )
+        if message:
+            yield {
+                "code": "ExtentTooLarge",
+                "message": f"collection_id {collection_id!r}: {message}"
+            }
+
 
 def is_layer_too_large(
-        spatial_extent: dict,
-        geometries: Union[DriverVectorCube, DelayedVector, BaseGeometry],
+        load_params: LoadParameters,
         number_of_temporal_observations: int,
         nr_bands: int,
         cell_width: float,
         cell_height: float,
         native_crs: str,
-        resample_params: dict,
         threshold_pixels: int = LARGE_LAYER_THRESHOLD_IN_PIXELS,
         sync_job: bool = False,
 ):
@@ -1261,20 +1371,19 @@ def is_layer_too_large(
     Estimates the number of pixels that will be required to load this layer
     and returns True if it exceeds the threshold.
 
-    :param spatial_extent: Requested spatial extent.
-    :param geometries: Requested geometries (if any). From e.g. filter_spatial or aggregate_spatial.
+    :param load_params: Requested load parameters.
     :param number_of_temporal_observations: Requested number of temporal observations.
     :param nr_bands: Requested number of bands.
     :param cell_width: Width of the cells/pixels.
     :param cell_height: Height of the cells/pixels.
     :param native_crs: Native CRS of the layer.
-    :param resample_params: Resampling parameters.
     :param threshold_pixels: Threshold in pixels.
     :param sync_job: Is sync job.
 
     :return: A message if the layer exceeds the threshold in pixels. None otherwise.
              Also returns the estimated number of pixels and the threshold.
     """
+    spatial_extent = load_params.spatial_extent
     srs = spatial_extent.get("crs", 'EPSG:4326')
     if isinstance(srs, int):
         srs = 'EPSG:%s' % str(srs)
@@ -1283,10 +1392,10 @@ def is_layer_too_large(
             srs = 'Auto42001'
 
     # Resampling process overwrites native_crs and resolution from metadata.
-    resample_target_crs = resample_params.get("target_crs", None)
+    resample_target_crs = load_params.target_crs
     if resample_target_crs:
         native_crs = resample_target_crs
-    resample_target_resolution = resample_params.get("resolution", None)
+    resample_target_resolution = load_params.target_resolution
     if resample_target_resolution:
         resample_width, resample_height = resample_target_resolution
         if resample_width != 0 and resample_height != 0:
@@ -1318,6 +1427,7 @@ def is_layer_too_large(
         f"is_layer_too_large {estimated_pixels=} {threshold_pixels=} ({bbox_width=} {bbox_height=} {cell_width=} {cell_height=} {number_of_temporal_observations=} {nr_bands=})"
     )
     if estimated_pixels > threshold_pixels:
+        geometries = load_params.aggregate_spatial_geometries
         if geometries and not isinstance(geometries, dict):
             # Threshold is exceeded, but only the pixels in the geometries will be loaded if they are provided.
             # For performance, we estimate the area using a simple bounding box around each polygon.

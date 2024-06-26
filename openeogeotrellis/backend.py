@@ -83,10 +83,8 @@ from openeogeotrellis.job_registry import (
 )
 from openeogeotrellis.layercatalog import (
     GeoPySparkLayerCatalog,
-    check_missing_products,
     get_layer_catalog,
-    is_layer_too_large,
-    LARGE_LAYER_THRESHOLD_IN_PIXELS,
+    extra_validation_load_collection,
 )
 from openeogeotrellis.logs import elasticsearch_logs
 from openeogeotrellis.ml.GeopySparkCatBoostModel import CatBoostClassificationModel
@@ -1193,161 +1191,19 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
 
 class GpsProcessing(ConcreteProcessing):
-    def evaluate(self, process_graph: dict, env: EvalEnv = None):
-        if smart_bool((env.get('job_options') or {}).get("extent_size_check", True)):
-            env_validate = env.push({
-                "allow_check_missing_products": False,
-            })
-            issues = self.validate(process_graph=process_graph, env=env_validate)
-            # Only care for certain errors and make list of strings:
-            issues = [e["message"] for e in issues if e["code"] == "ExtentTooLarge"]
-            if issues:
-                if env.get("sync_job", False):
-                    raise ProcessGraphComplexityException(
-                        ProcessGraphComplexityException.message + f" Reasons: {' '.join(issues)}"
-                    )
-                else:
-                    raise ProcessGraphComplexityException(
-                        "Found errors in process graph. Disable this check with 'extent_size_check': " +
-                        " ".join(issues))
-
-        return super().evaluate(process_graph, env)
-
     def extra_validation(
             self, process_graph: dict, env: EvalEnv, result, source_constraints: List[SourceConstraint]
     ) -> Iterable[dict]:
         try:
-            return self.extra_validation_impl(env, source_constraints)
+            for source_constraint in source_constraints.copy():  # copy because _extract_load_parameters is stateful
+                source_id, constraints = source_constraint
+                source_id_proc, source_id_args = source_id
+                collection_id = source_id_args[0]
+                if source_id_proc == "load_collection":
+                    load_params = _extract_load_parameters(env, source_id=source_id)
+                    yield from extra_validation_load_collection(collection_id, load_params, env)
         except Exception as e:
             return [{"code": "Internal", "message": str(e)}]
-
-    @staticmethod
-    def extra_validation_impl(env: EvalEnv, source_constraints: List[SourceConstraint]) -> Iterable[dict]:
-        catalog = env.backend_implementation.catalog
-        allow_check_missing_products = smart_bool(env.get("allow_check_missing_products", True))
-        sync_job = smart_bool(env.get("sync_job", False))
-        large_layer_threshold_in_pixels = int(float(env.get("large_layer_threshold_in_pixels", LARGE_LAYER_THRESHOLD_IN_PIXELS)))
-
-        for source_id, constraints in source_constraints.copy():  # copy because _extract_load_parameters is stateful
-            source_id_proc, source_id_args = source_id
-            if source_id_proc == "load_collection":
-                load_params = _extract_load_parameters(env, source_id=source_id)
-                collection_id = source_id_args[0]
-                metadata_json = catalog.get_collection_metadata(collection_id=collection_id)
-                metadata = GeopysparkCubeMetadata(metadata_json)
-                temporal_extent = load_params.temporal_extent
-                spatial_extent = load_params.spatial_extent
-                if allow_check_missing_products and metadata.get("_vito", "data_source", "check_missing_products", default=None):
-                    properties = constraints.get("properties", {})
-                    if temporal_extent is None:
-                        yield {"code": "UnlimitedExtent", "message": "No temporal extent given."}
-                    if spatial_extent is None:
-                        yield {"code": "UnlimitedExtent", "message": "No spatial extent given."}
-                    if temporal_extent is None or spatial_extent is None:
-                        return
-
-                    products = check_missing_products(
-                        collection_metadata=metadata,
-                        temporal_extent=temporal_extent,
-                        spatial_extent=spatial_extent,
-                        properties=properties,
-                    )
-                    if products:
-                        for p in products:
-                            yield {
-                                "code": "MissingProduct",
-                                "message": f"Tile {p!r} in collection {collection_id!r} is not available."
-                            }
-
-                native_crs = metadata.get("cube:dimensions", "x", "reference_system", default="EPSG:4326")
-                if isinstance(native_crs, dict):
-                    native_crs = native_crs.get("id", {}).get("code", None)
-                if isinstance(native_crs, int):
-                    native_crs = f"EPSG:{native_crs}"
-                if not isinstance(native_crs, str):
-                    yield {"code": "InvalidNativeCRS", "message": f"Invalid native CRS {native_crs!r} for "
-                                                                  f"collection {collection_id!r}"}
-                    continue
-
-                catalog = env.backend_implementation.catalog
-                number_of_temporal_observations: int = catalog.estimate_number_of_temporal_observations(
-                    collection_id,
-                    constraints,
-                )
-
-                if spatial_extent and temporal_extent:
-                    band_names = load_params.bands
-                    if band_names:
-                        # Will convert aliases:
-                        band_names = metadata.filter_bands(band_names).band_names
-                    else:
-                        band_names = metadata.get("cube:dimensions", "bands", "values",
-                                                  default=["_at_least_assume_one_band_"])
-                    nr_bands = len(band_names)
-
-
-                    if collection_id == 'TestCollection-LonLat4x4':
-                        # This layer is always 4x4 pixels, adapt resolution accordingly
-                        bbox_width = abs(spatial_extent["east"] - spatial_extent["west"])
-                        bbox_height = abs(spatial_extent["north"] - spatial_extent["south"])
-                        cell_width_latlon = bbox_width / 4
-                        cell_height_latlon = bbox_height / 4
-                        cell_width, cell_height = reproject_cellsize(spatial_extent,
-                                                                     (cell_width_latlon, cell_height_latlon),
-                                                                     "EPSG:4326",
-                                                                     "Auto42001",
-                                                                     )
-                    else:
-                        # The largest GSD I encountered was 25km. Double it as very permissive guess:
-                        default_gsd = (50000, 50000)
-                        gsd_object = metadata.get_GSD_in_meters()
-                        if isinstance(gsd_object, dict):
-                            gsd_in_meter_list = list(map(lambda x: gsd_object.get(x), band_names))
-                            gsd_in_meter_list = list(filter(lambda x: x is not None, gsd_in_meter_list))
-                            if not gsd_in_meter_list:
-                                gsd_in_meter_list = [default_gsd] * nr_bands
-                        elif isinstance(gsd_object, tuple):
-                            gsd_in_meter_list = [gsd_object] * nr_bands
-                        else:
-                            gsd_in_meter_list = [default_gsd] * nr_bands
-
-                        # We need to convert GSD to resolution in order to take an average:
-                        px_per_m2_average_band = sum(map(lambda x: 1 / (x[0] * x[1]), gsd_in_meter_list)) / len(gsd_in_meter_list)
-                        px_per_m_average_band = pow(px_per_m2_average_band, 0.5)
-                        m_per_px_average_band = 1 / px_per_m_average_band
-
-                        res = (m_per_px_average_band, m_per_px_average_band)
-                        # Auto42001 is in meter
-                        cell_width, cell_height = reproject_cellsize(spatial_extent, res, "Auto42001", native_crs)
-
-                    message = is_layer_too_large(
-                        spatial_extent=spatial_extent,
-                        geometries=load_params.aggregate_spatial_geometries,
-                        number_of_temporal_observations=number_of_temporal_observations,
-                        nr_bands=nr_bands,
-                        cell_width=cell_width,
-                        cell_height=cell_height,
-                        native_crs=native_crs,
-                        resample_params=constraints.get("resample", {}),
-                        threshold_pixels=large_layer_threshold_in_pixels,
-                        sync_job=sync_job,
-                    )
-                    if message:
-                        yield {
-                            "code": "ExtentTooLarge",
-                            "message": f"collection_id {collection_id!r}: {message}"
-                        }
-
-    def verify_for_synchronous_processing(self, process_graph: dict, env: EvalEnv = None) -> Iterable[str]:
-        env_validate = env.push({
-            "allow_check_missing_products": False,
-            "sync_job": True,
-        })
-        errors = self.validate(process_graph=process_graph, env=env_validate)
-
-        # Only care for certain errors and make list of strings:
-        errors = [e["message"] for e in errors if e["code"] == "ExtentTooLarge"]
-        return errors
 
     def run_udf(self, udf: str, data: openeo.udf.UdfData) -> openeo.udf.UdfData:
         if get_backend_config().allow_run_udf_in_driver:
