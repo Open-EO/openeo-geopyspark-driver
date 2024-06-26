@@ -146,13 +146,9 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
     @TimingLogger(title="load_collection", logger=logger)
     def load_collection(self, collection_id: str, load_params: LoadParameters, env: EvalEnv) -> GeopysparkDataCube:
-        return self._load_collection_cached(collection_id, load_params, WhiteListEvalEnv(env, WHITELIST))
+        feature_flags = load_params.get("featureflags", {})
 
-    @lru_cache(maxsize=20)
-    def _load_collection_cached(self, collection_id: str, load_params: LoadParameters, env: EvalEnv) -> GeopysparkDataCube:
-        logger.info("Creating layer for {c} with load params {p}".format(c=collection_id, p=load_params))
-
-        if smart_bool((env.get('job_options') or {}).get("extent_size_check", True)):
+        if feature_flags.get("do_extent_check", True):
             env_validate = env.push({
                 "allow_check_missing_products": False,
             })
@@ -166,8 +162,14 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                     )
                 else:
                     raise ProcessGraphComplexityException(
-                        "Found errors in process graph. Disable this check with 'extent_size_check': " +
+                        "Found errors in process graph. Disable this check with 'featureflags.do_extent_check': " +
                         " ".join(issues))
+
+        return self._load_collection_cached(collection_id, load_params, WhiteListEvalEnv(env, WHITELIST))
+
+    @lru_cache(maxsize=20)
+    def _load_collection_cached(self, collection_id: str, load_params: LoadParameters, env: EvalEnv) -> GeopysparkDataCube:
+        logger.info("Creating layer for {c} with load params {p}".format(c=collection_id, p=load_params))
 
         from_date, to_date = temporal_extent = normalize_temporal_extent(load_params.temporal_extent)
         spatial_extent = load_params.spatial_extent
@@ -1249,7 +1251,10 @@ def check_missing_products(
 
 
 def extra_validation_load_collection(collection_id: str, load_params: LoadParameters, env: EvalEnv) -> Iterable[dict]:
-    catalog = env.backend_implementation.catalog
+    if "backend_implementation" not in env:
+        yield {"code": "NoBackendImplementation", "message": "It seems like you are running in a test environment"}
+        return
+    catalog: GeoPySparkLayerCatalog = env.backend_implementation.catalog
     allow_check_missing_products = smart_bool(env.get("allow_check_missing_products", True))
     sync_job = smart_bool(env.get("sync_job", False))
     large_layer_threshold_in_pixels = int(
@@ -1290,7 +1295,6 @@ def extra_validation_load_collection(collection_id: str, load_params: LoadParame
                                                       f"collection {collection_id!r}"}
         return
 
-    catalog = env.backend_implementation.catalog
     number_of_temporal_observations: int = catalog.estimate_number_of_temporal_observations(
         collection_id,
         load_params,
