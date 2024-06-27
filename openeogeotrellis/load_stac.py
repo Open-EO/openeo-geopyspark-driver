@@ -23,6 +23,7 @@ from openeo_driver.users import User
 from openeo_driver.util.geometry import BoundingBox, GeometryBufferer
 from openeo_driver.util.utm import utm_zone_from_epsg
 from openeo_driver.utils import EvalEnv
+from pystac import STACObject
 from shapely.geometry import Polygon, shape
 
 from openeogeotrellis.config import get_backend_config
@@ -138,40 +139,15 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
     collection = None
 
     backend_config = get_backend_config()
-    max_poll_time = time.time() + backend_config.job_dependencies_max_poll_delay_seconds
+    poll_interval_seconds = backend_config.job_dependencies_poll_interval_seconds
+    max_poll_delay_seconds = backend_config.job_dependencies_max_poll_delay_seconds
+    max_poll_time = time.time() + max_poll_delay_seconds
 
-    def get_dependency_job_info() -> Optional[BatchJobMetadata]:
-        # TODO: `user` might be None
-        return (extract_own_job_info(url, user_id=user.user_id, batch_jobs=batch_jobs) if batch_jobs
-                else None)
-
-    dependency_job_info = get_dependency_job_info()
+    # TODO: `user` might be None
+    dependency_job_info = _await_dependency_job(url, user.user_id, batch_jobs, poll_interval_seconds,
+                                                max_poll_delay_seconds, max_poll_time)
 
     if dependency_job_info:
-        logger.info(f"load_stac of results of own job {dependency_job_info.id}")
-
-        while True:
-            partial_job_status = PARTIAL_JOB_STATUS.for_job_status(dependency_job_info.status)
-
-            logger.debug(f"OpenEO batch job results status of own job {dependency_job_info.id}: {partial_job_status}")
-
-            if partial_job_status in [PARTIAL_JOB_STATUS.ERROR, PARTIAL_JOB_STATUS.CANCELED]:
-                logger.error(f"Failing because own OpenEO batch job {dependency_job_info.id} failed")
-            elif partial_job_status in [None, PARTIAL_JOB_STATUS.FINISHED]:
-                break  # not a partial job result or success: proceed
-
-            # still running: continue polling
-            if time.time() >= max_poll_time:
-                max_poll_delay_reached_error = (f"OpenEO batch job results dependency of"
-                                                f"own job {dependency_job_info.id} was not satisfied after"
-                                                f" {backend_config.job_dependencies_max_poll_delay_seconds} s, aborting")
-
-                raise Exception(max_poll_delay_reached_error)
-
-            time.sleep(backend_config.job_dependencies_poll_interval_seconds)
-
-            dependency_job_info = get_dependency_job_info()
-
         intersecting_items = []
 
         for asset_id, asset in batch_jobs.get_result_assets(job_id=dependency_job_info.id,
@@ -212,30 +188,7 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
     else:
         logger.info(f"load_stac of arbitrary URL {url}")
 
-        # TODO: move this polling logic to a dedicated method
-        while True:
-            # TODO: add retry
-            stac_object = pystac.read_file(href=url)  # TODO: does this have a timeout set?
-
-            partial_job_status = (stac_object
-                                  .to_dict(include_self_link=False, transform_hrefs=False)
-                                  .get('openeo:status'))
-
-            logger.debug(f"OpenEO batch job results status of {url}: {partial_job_status}")
-
-            if partial_job_status in [PARTIAL_JOB_STATUS.ERROR, PARTIAL_JOB_STATUS.CANCELED]:
-                logger.error(f"Failing because OpenEO batch job with results at {url} failed")
-            elif partial_job_status in [None, PARTIAL_JOB_STATUS.FINISHED]:
-                break  # not a partial job result or success: proceed
-
-            # still running: continue polling
-            if time.time() >= max_poll_time:
-                max_poll_delay_reached_error = (f"OpenEO batch job results dependency at {url} was not satisfied after"
-                                                f" {backend_config.job_dependencies_max_poll_delay_seconds} s, aborting")
-
-                raise Exception(max_poll_delay_reached_error)
-
-            time.sleep(backend_config.job_dependencies_poll_interval_seconds)
+        stac_object = _await_stac_object(url, poll_interval_seconds, max_poll_delay_seconds, max_poll_time)
 
         if isinstance(stac_object, pystac.Item):
             if load_params.properties:
@@ -575,3 +528,68 @@ def extract_own_job_info(url: str, user_id: str, batch_jobs: backend.BatchJobs) 
     except JobNotFoundException:
         logger.debug(f"job {job_id} does not belong to current user {user_id}", exc_info=True)
         return None
+
+
+def _await_dependency_job(url, user_id, batch_jobs, poll_interval_seconds, max_poll_delay_seconds,
+                          max_poll_time) -> Optional[BatchJobMetadata]:
+    def get_dependency_job_info() -> Optional[BatchJobMetadata]:
+        return (extract_own_job_info(url, user_id, batch_jobs) if batch_jobs
+                else None)
+
+    dependency_job_info = get_dependency_job_info()
+    if not dependency_job_info:
+        return None
+
+    logger.info(f"load_stac of results of own job {dependency_job_info.id}")
+
+    while True:
+        partial_job_status = PARTIAL_JOB_STATUS.for_job_status(dependency_job_info.status)
+
+        logger.debug(f"OpenEO batch job results status of own job {dependency_job_info.id}: {partial_job_status}")
+
+        if partial_job_status in [PARTIAL_JOB_STATUS.ERROR, PARTIAL_JOB_STATUS.CANCELED]:
+            logger.error(f"Failing because own OpenEO batch job {dependency_job_info.id} failed")
+        elif partial_job_status in [None, PARTIAL_JOB_STATUS.FINISHED]:
+            break  # not a partial job result or success: proceed
+
+        # still running: continue polling
+        if time.time() >= max_poll_time:
+            max_poll_delay_reached_error = (f"OpenEO batch job results dependency of"
+                                            f"own job {dependency_job_info.id} was not satisfied after"
+                                            f" {max_poll_delay_seconds} s, aborting")
+
+            raise Exception(max_poll_delay_reached_error)
+
+        time.sleep(poll_interval_seconds)
+
+        dependency_job_info = get_dependency_job_info()
+
+    return dependency_job_info
+
+
+def _await_stac_object(url, poll_interval_seconds, max_poll_delay_seconds, max_poll_time) -> STACObject:
+    while True:
+        # TODO: add retry
+        stac_object = pystac.read_file(href=url)  # TODO: does this have a timeout set?
+
+        partial_job_status = (stac_object
+                              .to_dict(include_self_link=False, transform_hrefs=False)
+                              .get('openeo:status'))
+
+        logger.debug(f"OpenEO batch job results status of {url}: {partial_job_status}")
+
+        if partial_job_status in [PARTIAL_JOB_STATUS.ERROR, PARTIAL_JOB_STATUS.CANCELED]:
+            logger.error(f"Failing because OpenEO batch job with results at {url} failed")
+        elif partial_job_status in [None, PARTIAL_JOB_STATUS.FINISHED]:
+            break  # not a partial job result or success: proceed
+
+        # still running: continue polling
+        if time.time() >= max_poll_time:
+            max_poll_delay_reached_error = (f"OpenEO batch job results dependency at {url} was not satisfied after"
+                                            f" {max_poll_delay_seconds} s, aborting")
+
+            raise Exception(max_poll_delay_reached_error)
+
+        time.sleep(poll_interval_seconds)
+
+    return stac_object
