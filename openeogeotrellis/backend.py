@@ -2614,13 +2614,7 @@ class GpsBatchJobs(backend.BatchJobs):
                             partial_job_status = stac_object.get('openeo:status')
                             logger_adapter.debug(f'load_stac({url}): "openeo:status" is "{partial_job_status}"')
 
-                    if partial_job_status == PARTIAL_JOB_STATUS.RUNNING:
-                        if not supports_async_tasks:
-                            raise OpenEOApiException(
-                                message=f"this backend does not support loading unfinished results from {url}"
-                                        f" with load_stac",
-                                status_code=501)
-
+                    if supports_async_tasks and partial_job_status == PARTIAL_JOB_STATUS.RUNNING:
                         job_dependencies.append({
                             'partial_job_results_url': url,
                         })

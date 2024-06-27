@@ -4063,6 +4063,112 @@ class TestLoadStac:
             assert ds.shape == tuple(expected_shape)
             assert tuple(ds.bounds) == tuple(map(pytest.approx, expected_bbox))
 
+    @gps_config_overrides(job_dependencies_poll_interval_seconds=0, job_dependencies_max_poll_delay_seconds=60)
+    def test_load_stac_from_partial_job_results_basic(self, api110, urllib_mock, tmp_path, caplog):
+        """load_stac from partial job results Collection (signed case)"""
+
+        caplog.set_level("DEBUG")
+
+        def collection_json(path):
+            # stateful response callback to allow different responses for the same URL: first 'running', then 'finished'
+            dependency_finished = False
+
+            def collection_json_with_openeo_status(_: urllib.request.Request):
+                nonlocal dependency_finished
+
+                openeo_status = 'finished' if dependency_finished else 'running'
+                dependency_finished = True
+                return UrllibMocker.Response(
+                    data=get_test_data_file(path).read_text().replace("$openeo_status", openeo_status))
+
+            return collection_json_with_openeo_status
+
+        def item_json(path):
+            return (
+                get_test_data_file(path).read_text()
+                .replace(
+                    "asset01.tiff",
+                    f"file://{get_test_data_file('binary/load_stac/collection01/asset01.tif').absolute()}"
+                )
+            )
+
+        urllib_mock.register("GET",
+                             "https://openeo.test/openeo/jobs/j-2402094545c945c09e1307503aa58a3a/results?partial=true",
+                             response=collection_json("stac/issue786_partial_job_results/collection.json"))
+        urllib_mock.get("https://openeo.test/openeo/jobs/j-2402094545c945c09e1307503aa58a3a/results/items/item01.json",
+                        data=item_json("stac/issue786_partial_job_results/item01.json"))
+
+        process_graph = {
+            "loadstac1": {
+                "process_id": "load_stac",
+                "arguments": {
+                    "url": "https://openeo.test/openeo/jobs/j-2402094545c945c09e1307503aa58a3a/results?partial=true"
+                }
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "loadstac1"}, "format": "GTiff"},
+                "result": True
+            },
+        }
+
+        api110.result(process_graph).assert_status_code(200)
+
+        assert ("OpenEO batch job results status of"
+                " https://openeo.test/openeo/jobs/j-2402094545c945c09e1307503aa58a3a/results?partial=true: running"
+                in caplog.messages)
+        assert ("OpenEO batch job results status of"
+                " https://openeo.test/openeo/jobs/j-2402094545c945c09e1307503aa58a3a/results?partial=true: finished"
+                in caplog.messages)
+
+    @gps_config_overrides(job_dependencies_poll_interval_seconds=0, job_dependencies_max_poll_delay_seconds=60)
+    def test_load_stac_from_unsigned_partial_job_results_basic(self, api110, batch_job_output_root, zk_job_registry,
+                                                               backend_implementation, caplog):
+        """load_stac from partial job results Collection (unsigned case)"""
+
+        caplog.set_level("DEBUG")
+
+        # get results from own batch job rather than crawl signed STAC URLs
+        _setup_existing_job(
+            job_id="j-2405078f40904a0b85cf8dc5dd55b07e",
+            api=api110,
+            batch_job_output_root=batch_job_output_root,
+            zk_job_registry=zk_job_registry
+        )
+
+        process_graph = {
+            "loadstac1": {
+                "process_id": "load_stac",
+                "arguments": {
+                    "url": "https://openeo.test/openeo/jobs/j-2405078f40904a0b85cf8dc5dd55b07e/results?partial=true"
+                }
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "loadstac1"}, "format": "GTiff"},
+                "result": True
+            },
+        }
+
+        from openeogeotrellis.load_stac import extract_own_job_info
+
+        finished_job_info = extract_own_job_info(
+            "https://openeo.test/openeo/jobs/j-2405078f40904a0b85cf8dc5dd55b07e/results?partial=true",
+            TEST_USER,
+            backend_implementation.batch_jobs
+        )
+
+        ongoing_job_info = finished_job_info._replace(status='queued')
+
+        with mock.patch("openeogeotrellis.load_stac.extract_own_job_info",
+                        side_effect=[ongoing_job_info, finished_job_info]):
+            api110.result(process_graph).assert_status_code(200)
+
+        assert ("OpenEO batch job results status of own job j-2405078f40904a0b85cf8dc5dd55b07e: running"
+                in caplog.messages)
+        assert ("OpenEO batch job results status of own job j-2405078f40904a0b85cf8dc5dd55b07e: finished"
+                in caplog.messages)
+
 
 class TestEtlApiReporting:
     @pytest.fixture(autouse=True)

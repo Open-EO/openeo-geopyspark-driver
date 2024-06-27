@@ -19,6 +19,7 @@ without compromising stable operations.
 - Prevent nightly cleaner from failing a job tracker run ([eu-cdse/openeo-cdse-infra#166](https://github.com/eu-cdse/openeo-cdse-infra/issues/166))
 - Sentinelhub collections handle non zero nodata better ([openeo-geotrellis-extensions#300](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/300))
 - Support `allow_empty_cubes` job option ([#649](https://github.com/Open-EO/openeo-geopyspark-driver/issues/649))
+- Cross-backend jobs: support running main job on backends that lack `async_task` infrastructure. ([#786](https://github.com/Open-EO/openeo-geopyspark-driver/issues/786))
 
 ## 0.38.6
 

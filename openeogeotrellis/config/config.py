@@ -186,3 +186,6 @@ class GpsBackendConfig(OpenEoBackendConfig):
     default_executor_memoryOverhead: str = "3G"
 
     default_executor_cores: int = 2
+
+    job_dependencies_poll_interval_seconds: float = 60  # poll every x seconds
+    job_dependencies_max_poll_delay_seconds: float = 60 * 60 * 24 * 7  # for a maximum delay of y seconds
