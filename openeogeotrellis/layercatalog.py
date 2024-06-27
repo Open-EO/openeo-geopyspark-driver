@@ -64,6 +64,7 @@ REQUIRE_BOUNDS = 'require_bounds'
 CORRELATION_ID = 'correlation_id'
 USER = 'user'
 ALLOW_EMPTY_CUBES = "allow_empty_cubes"
+DO_EXTENT_CHECK = "do_extent_check"
 WHITELIST = [
     VAULT_TOKEN,
     SENTINEL_HUB_CLIENT_ALIAS,
@@ -74,6 +75,7 @@ WHITELIST = [
     CORRELATION_ID,
     USER,
     ALLOW_EMPTY_CUBES,
+    DO_EXTENT_CHECK,
 ]
 LARGE_LAYER_THRESHOLD_IN_PIXELS = pow(10, 11)
 
@@ -146,9 +148,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
     @TimingLogger(title="load_collection", logger=logger)
     def load_collection(self, collection_id: str, load_params: LoadParameters, env: EvalEnv) -> GeopysparkDataCube:
-        feature_flags = load_params.get("featureflags", {})
 
-        if feature_flags.get("do_extent_check", True):
+        if smart_bool(env.get(DO_EXTENT_CHECK, True)):
             env_validate = env.push({
                 "allow_check_missing_products": False,
             })
@@ -162,7 +163,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                     )
                 else:
                     raise ProcessGraphComplexityException(
-                        "Found errors in process graph. Disable this check with 'featureflags.do_extent_check': " +
+                        "Found errors in process graph. Disable this check with 'job_options.do_extent_check': " +
                         " ".join(issues))
 
         return self._load_collection_cached(collection_id, load_params, WhiteListEvalEnv(env, WHITELIST))

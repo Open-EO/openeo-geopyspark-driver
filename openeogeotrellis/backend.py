@@ -1632,7 +1632,6 @@ class GpsBatchJobs(backend.BatchJobs):
             job_options = job_info.get("job_options") or {}  # can be None
             job_specification_json = json.dumps({"process_graph": job_process_graph, "job_options": job_options})
 
-        # Could also validate here
 
         job_title = job_info.get('title', '')
         sentinel_hub_client_alias = deep_get(job_options, 'sentinel-hub', 'client-alias', default="default")
