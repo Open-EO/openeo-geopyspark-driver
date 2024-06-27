@@ -144,7 +144,7 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
     max_poll_time = time.time() + max_poll_delay_seconds
 
     # TODO: `user` might be None
-    dependency_job_info = _await_dependency_job(url, user.user_id, batch_jobs, poll_interval_seconds,
+    dependency_job_info = _await_dependency_job(url, user, batch_jobs, poll_interval_seconds,
                                                 max_poll_delay_seconds, max_poll_time)
 
     if dependency_job_info:
@@ -530,10 +530,10 @@ def extract_own_job_info(url: str, user_id: str, batch_jobs: backend.BatchJobs) 
         return None
 
 
-def _await_dependency_job(url, user_id, batch_jobs, poll_interval_seconds, max_poll_delay_seconds,
+def _await_dependency_job(url, user, batch_jobs, poll_interval_seconds, max_poll_delay_seconds,
                           max_poll_time) -> Optional[BatchJobMetadata]:
     def get_dependency_job_info() -> Optional[BatchJobMetadata]:
-        return (extract_own_job_info(url, user_id, batch_jobs) if batch_jobs
+        return (extract_own_job_info(url, user.user_id, batch_jobs) if batch_jobs
                 else None)
 
     dependency_job_info = get_dependency_job_info()
@@ -569,8 +569,7 @@ def _await_dependency_job(url, user_id, batch_jobs, poll_interval_seconds, max_p
 
 def _await_stac_object(url, poll_interval_seconds, max_poll_delay_seconds, max_poll_time) -> STACObject:
     while True:
-        # TODO: add retry
-        stac_object = pystac.read_file(href=url)  # TODO: does this have a timeout set?
+        stac_object = pystac.read_file(href=url)  # TODO: add retries and set timeout
 
         partial_job_status = (stac_object
                               .to_dict(include_self_link=False, transform_hrefs=False)
