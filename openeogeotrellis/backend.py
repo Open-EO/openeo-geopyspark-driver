@@ -2049,6 +2049,8 @@ class GpsBatchJobs(backend.BatchJobs):
                     "persistentvolume_batch_job_results.yaml.j2",
                     job_name=spark_app_id,
                     job_namespace=pod_namespace,
+                    mounter=get_backend_config().fuse_mount_batchjob_s3_mounter,
+                    mount_options=get_backend_config().fuse_mount_batchjob_s3_mount_options,
                     output_dir=output_dir,
                     swift_bucket=bucket,
                 )
