@@ -4,7 +4,7 @@ kind: PersistentVolume
 metadata:
   name: {{ job_name }}
 spec:
-  storageClassName: csi-s3
+  storageClassName: {{ storage_class }}
   capacity:
     storage: 50Gi
   accessModes:
