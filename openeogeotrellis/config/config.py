@@ -141,7 +141,7 @@ class GpsBackendConfig(OpenEoBackendConfig):
     fuse_mount_batchjob_s3_bucket: bool = smart_bool(os.environ.get("FUSE_MOUNT_BATCHJOB_S3_BUCKET", False))
     fuse_mount_batchjob_s3_mounter: str = os.environ.get("FUSE_MOUNT_BATCHJOB_S3_MOUNTER", "s3fs")
     fuse_mount_batchjob_s3_mount_options: str = os.environ.get("FUSE_MOUNT_BATCHJOB_S3_MOUNT_OPTIONS", "-o uid=18585 -o gid=18585 -o compat_dir")
-    fuse_mount_batchjob_s3_mounter: str = os.environ.get("FUSE_MOUNT_BATCHJOB_S3_STORAGE_CLASS", "csi-s3")
+    fuse_mount_batchjob_s3_storage_class: str = os.environ.get("FUSE_MOUNT_BATCHJOB_S3_STORAGE_CLASS", "csi-s3")
 
     """
     Reading strategy for load_collection and load_stac processes:
