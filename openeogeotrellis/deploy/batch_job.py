@@ -59,7 +59,8 @@ def _create_job_dir(job_dir: Path):
         except PermissionError as e:
             logger.warning(f"Could not change group of {job_dir} to eodata, no permissions.")
 
-    add_permissions(job_dir, stat.S_ISGID | stat.S_IWGRP)  # make children inherit this group
+    if not get_backend_config().fuse_mount_batchjob_s3_bucket:
+        add_permissions(job_dir, stat.S_ISGID | stat.S_IWGRP)  # make children inherit this group
 
 
 def _parse(job_specification_file: str) -> Dict:
