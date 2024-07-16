@@ -938,7 +938,8 @@ def test_multiple_top_level_side_effects(tmp_path, caplog):
             "process_id": "save_result",
             "arguments": {
                 "data": {"from_node": "loadcollection1"},
-                "format": "GTiff"
+                "format": "GTiff",
+                "options": {"filename_prefix": "intermediate"},
             }
         },
         "mergecubes1": {
@@ -953,7 +954,8 @@ def test_multiple_top_level_side_effects(tmp_path, caplog):
             "process_id": "save_result",
             "arguments": {
                 "data": {"from_node": "mergecubes1"},
-                "format": "netCDF"
+                "format": "GTiff",
+                "options": {"filename_prefix": "final"},
             }
         },
     }
@@ -971,8 +973,8 @@ def test_multiple_top_level_side_effects(tmp_path, caplog):
 
     assert "intermediate result" in caplog.messages
 
-    with rasterio.open(tmp_path / "openEO_2024-07-15Z.tif") as f:
-        assert f.driver == "GTiff"
+    with rasterio.open(tmp_path / "intermediate_2024-07-15Z.tif") as dataset:
+        assert dataset.count == 1
 
-    with rasterio.open(tmp_path / "openEO.nc") as f:
-        assert f.driver == "netCDF"
+    with rasterio.open(tmp_path / "final_2024-07-15Z.tif") as dataset:
+        assert dataset.count == 2
