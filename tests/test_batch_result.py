@@ -903,3 +903,73 @@ def test_discard_result(tmp_path):
 
     # runs to completion without output assets
     assert set(os.listdir(tmp_path)) == {"job_metadata.json", "collection.json"}
+
+
+def test_multiple_top_level_side_effects(tmp_path, caplog):
+    process_graph = {
+        "loadcollection1": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "TestCollection-LonLat4x4",
+                "spatial_extent": {"west": 5, "south": 50, "east": 5.1, "north": 50.1},
+                "temporal_extent": ["2024-07-11", "2024-07-21"],
+                "bands": ["Flat:1"]
+            }
+        },
+        "loadcollection2": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "TestCollection-LonLat4x4",
+                "spatial_extent": {"west": 5, "south": 50, "east": 5.1, "north": 50.1},
+                "temporal_extent": ["2024-07-11", "2024-07-21"],
+                "bands": ["Flat:2"]
+            }
+        },
+        "inspect1": {
+            "process_id": "inspect",
+            "arguments": {
+                "data": {"from_node": "loadcollection1"},
+                "message": "intermediate result",
+                "level": "warning"
+            }
+        },
+        "saveresult1": {
+            "process_id": "save_result",
+            "arguments": {
+                "data": {"from_node": "loadcollection1"},
+                "format": "GTiff"
+            }
+        },
+        "mergecubes1": {
+            "process_id": "merge_cubes",
+            "arguments": {
+                "cube1": {"from_node": "loadcollection1"},
+                "cube2": {"from_node": "loadcollection2"},
+            },
+            "result": True
+        },
+        "saveresult2": {
+            "process_id": "save_result",
+            "arguments": {
+                "data": {"from_node": "mergecubes1"},
+                "format": "netCDF"
+            }
+        },
+    }
+
+    process = {"process_graph": process_graph}
+
+    run_job(
+        process,
+        output_file=tmp_path / "out",
+        metadata_file=tmp_path / "job_metadata.json",
+        api_version="2.0.0",
+        job_dir=tmp_path,
+        dependencies=[],
+    )
+
+    output_files = os.listdir(tmp_path)
+
+    assert "openEO_2024-07-15Z.tif" in output_files
+    assert "openEO.nc" in output_files
+    assert "intermediate result" in caplog.messages
