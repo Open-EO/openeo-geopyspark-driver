@@ -7,6 +7,7 @@ from pathlib import Path
 import geopandas as gpd
 import pystac
 import pytest
+import rasterio
 
 from openeo.util import ensure_dir
 from openeo_driver.testing import DictSubSet
@@ -968,8 +969,10 @@ def test_multiple_top_level_side_effects(tmp_path, caplog):
         dependencies=[],
     )
 
-    output_files = os.listdir(tmp_path)
-
-    assert "openEO_2024-07-15Z.tif" in output_files
-    assert "openEO.nc" in output_files
     assert "intermediate result" in caplog.messages
+
+    with rasterio.open(tmp_path / "openEO_2024-07-15Z.tif") as f:
+        assert f.driver == "GTiff"
+
+    with rasterio.open(tmp_path / "openEO.nc") as f:
+        assert f.driver == "netCDF"
