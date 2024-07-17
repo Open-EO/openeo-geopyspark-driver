@@ -22,7 +22,7 @@ from openeo_driver.testing import ephemeral_fileserver
 from openeo_driver.utils import EvalEnv
 from openeogeotrellis.deploy.batch_job import run_job
 from openeogeotrellis.deploy.batch_job_metadata import extract_result_metadata
-from .data import TEST_DATA_ROOT
+from .data import get_test_data_file, TEST_DATA_ROOT
 
 
 def test_png_export(tmp_path):
@@ -978,3 +978,23 @@ def test_multiple_top_level_side_effects(tmp_path, caplog):
 
     with rasterio.open(tmp_path / "final_2024-07-15Z.tif") as dataset:
         assert dataset.count == 2
+
+
+def test_multiple_save_results(tmp_path):
+    with open(get_test_data_file("multiple_save_results/pg01.json")) as f:
+        process = json.load(f)
+
+    run_job(
+        process,
+        output_file=tmp_path / "out",
+        metadata_file=tmp_path / "job_metadata.json",
+        api_version="2.0.0",
+        job_dir=tmp_path,
+        dependencies=[],
+    )
+
+    with rasterio.open(tmp_path / "intermediate.tif") as dataset:
+        assert dataset.res == (10, 10)
+
+    with rasterio.open(tmp_path / "final.tif") as dataset:
+        assert dataset.res == (80, 80)
