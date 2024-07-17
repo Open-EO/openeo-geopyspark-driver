@@ -980,8 +980,18 @@ def test_multiple_top_level_side_effects(tmp_path, caplog):
         assert dataset.count == 2
 
 
-def test_multiple_save_results(tmp_path):
-    with open(get_test_data_file("multiple_save_results/pg01.json")) as f:
+@pytest.mark.parametrize(["process_graph_file", "output_file_predicates"], [
+    ("pg01.json", {
+        "intermediate.tif": lambda dataset: dataset.res == (10, 10),
+        "final.tif": lambda dataset: dataset.res == (80, 80)
+    }),
+    ("pg02.json", {
+        "B04.tif": lambda dataset: dataset.tags(1)["DESCRIPTION"] == "B04",
+        "B11.tif": lambda dataset: dataset.tags(1)["DESCRIPTION"] == "B11",
+    }),
+])
+def test_multiple_save_results(tmp_path, process_graph_file, output_file_predicates):
+    with open(get_test_data_file(f"multiple_save_results/{process_graph_file}")) as f:
         process = json.load(f)
 
     run_job(
@@ -993,8 +1003,6 @@ def test_multiple_save_results(tmp_path):
         dependencies=[],
     )
 
-    with rasterio.open(tmp_path / "intermediate.tif") as dataset:
-        assert dataset.res == (10, 10)
-
-    with rasterio.open(tmp_path / "final.tif") as dataset:
-        assert dataset.res == (80, 80)
+    for output_file, predicate in output_file_predicates.items():
+        with rasterio.open(tmp_path / output_file) as dataset:
+            assert predicate(dataset)
