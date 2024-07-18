@@ -1,0 +1,94 @@
+{
+  "process_graph": {
+    "load1": {
+      "process_id": "load_collection",
+      "arguments": {
+        "id": "SENTINEL2_L2A",
+        "spatial_extent": {
+          "west": 4.263175403316556,
+          "east": 4.479026560149383,
+          "south": 51.22350412508027,
+          "north": 51.27928537435557
+        },
+        "temporal_extent": [
+          "2024-07-01T00:00:00Z",
+          "2024-07-17T00:00:00Z"
+        ],
+        "bands": [
+          "B04",
+          "B11"
+        ]
+      }
+    },
+    "reduce2": {
+      "process_id": "reduce_dimension",
+      "arguments": {
+        "data": {
+          "from_node": "load1"
+        },
+        "reducer": {
+          "process_graph": {
+            "last1": {
+              "process_id": "last",
+              "arguments": {
+                "data": {
+                  "from_parameter": "data"
+                }
+              },
+              "result": true
+            }
+          }
+        },
+        "dimension": "t"
+      }
+    },
+    "filter3": {
+      "process_id": "filter_bands",
+      "arguments": {
+        "data": {
+          "from_node": "reduce2"
+        },
+        "bands": [
+          "B04"
+        ]
+      }
+    },
+    "filter4": {
+      "process_id": "filter_bands",
+      "arguments": {
+        "data": {
+          "from_node": "reduce2"
+        },
+        "bands": [
+          "B11"
+        ]
+      }
+    },
+    "save5": {
+      "process_id": "save_result",
+      "arguments": {
+        "data": {
+          "from_node": "filter3"
+        },
+        "format": "GTIFF",
+        "options": {
+          "filename_prefix": "B04"
+        }
+      },
+      "result": true
+    },
+    "save6": {
+      "process_id": "save_result",
+      "arguments": {
+        "data": {
+          "from_node": "filter4"
+        },
+        "format": "GTIFF",
+        "options": {
+          "filename_prefix": "B11"
+        }
+      }
+    }
+  },
+  "parameters": []
+}

@@ -49,7 +49,7 @@ from openeo_driver.errors import (InternalException, JobNotFinishedException, Op
                                   ProcessParameterInvalidException, )
 from openeo_driver.jobregistry import (DEPENDENCY_STATUS, JOB_STATUS, ElasticJobRegistry, PARTIAL_JOB_STATUS,
                                        get_ejr_credentials_from_env)
-from openeo_driver.ProcessGraphDeserializer import ENV_SAVE_RESULT, ConcreteProcessing
+from openeo_driver.ProcessGraphDeserializer import ENV_FINAL_RESULT, ENV_SAVE_RESULT, ConcreteProcessing
 from openeo_driver.save_result import ImageCollectionResult
 from openeo_driver.users import User
 from openeo_driver.util.geometry import BoundingBox
@@ -2244,7 +2244,12 @@ class GpsBatchJobs(backend.BatchJobs):
         result_node = process_graph[top_level_node]
 
         dry_run_tracer = DryRunDataTracer()
-        convert_node(result_node, env=env.push({ENV_DRY_RUN_TRACER: dry_run_tracer, ENV_SAVE_RESULT:[],"node_caching":False}))
+        convert_node(result_node, env=env.push({
+            ENV_DRY_RUN_TRACER: dry_run_tracer,
+            ENV_SAVE_RESULT: [],
+            ENV_FINAL_RESULT: [None],
+            "node_caching": False
+        }))
 
         source_constraints = dry_run_tracer.get_source_constraints()
         logger_adapter.info("Dry run extracted these source constraints: {s}".format(s=source_constraints))

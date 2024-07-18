@@ -1504,6 +1504,7 @@ class TestBatchJobs:
                     }
                 ]
 
+
 class TestSentinelHubBatchJobs:
     """Tests for batch jobs involving SentinelHub collections and batch processes"""
 
