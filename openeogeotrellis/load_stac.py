@@ -23,6 +23,7 @@ from openeo_driver.users import User
 from openeo_driver.util.geometry import BoundingBox, GeometryBufferer
 from openeo_driver.util.utm import utm_zone_from_epsg
 from openeo_driver.utils import EvalEnv
+from pathlib import Path
 from pystac import STACObject
 from shapely.geometry import Polygon, shape
 
@@ -345,7 +346,7 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
 
             proj_epsg, proj_bbox, proj_shape = get_proj_metadata(itm, asset)
 
-            builder = builder.addLink(asset.get_absolute_href() or asset.href, asset_id, asset_band_names)
+            builder = builder.addLink(get_best_url(asset), asset_id, asset_band_names)
 
         if proj_epsg:
             builder = builder.withCRS(f"EPSG:{proj_epsg}")
@@ -503,6 +504,21 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
               range(0, pyramid.size())}
 
     return GeopysparkDataCube(pyramid=gps.Pyramid(levels), metadata=metadata)
+
+
+def get_best_url(asset):
+    """
+    Relevant doc: https://github.com/stac-extensions/alternate-assets
+    """
+    alternate = asset.extra_fields.get("alternate")
+    if alternate:
+        for key, alternate_local in alternate.items():
+            if key != "local":
+                continue
+            href = alternate_local.get("href")
+            if Path(urlparse(href).path).exists():
+                return href
+    return asset.get_absolute_href() or asset.href
 
 
 def _compute_cellsize(proj_bbox, proj_shape):
