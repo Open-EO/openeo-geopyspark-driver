@@ -516,6 +516,10 @@ def get_best_url(asset):
             if key != "local":
                 continue
             href = alternate_local.get("href")
+            # Checking if file exists takes around 10ms on /data/MTDA mounted on laptop
+            # Checking if URL exists takes around 100ms on https://services.terrascope.be
+            # Checking if URL exists depends also on what Datasource is used in the scala code.
+            # That would be hacky to predict here.
             if Path(urlparse(href).path).exists():
                 return href
     return asset.get_absolute_href() or asset.href
