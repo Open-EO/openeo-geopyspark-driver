@@ -1983,7 +1983,12 @@ class GpsBatchJobs(backend.BatchJobs):
 
             memOverheadBytes = as_bytes(executor_memory_overhead)
             jvmOverheadBytes = as_bytes("128m")
-            python_max = memOverheadBytes - jvmOverheadBytes
+
+            python_max = job_options.get("python-memory", None)
+            if python_max is not None:
+                python_max = as_bytes(python_max)
+            else:
+                python_max = memOverheadBytes - jvmOverheadBytes
 
             eodata_mount = "/eodata2" if use_goofys else "/eodata"
 
