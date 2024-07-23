@@ -519,7 +519,7 @@ def get_best_url(asset: pystac.Asset):
     alternate = asset.extra_fields.get("alternate")
     if alternate:
         for key, alternate_local in alternate.items():
-            if key != "local" and key != "s3":
+            if key not in {"local", "s3"}:
                 continue
             href = alternate_local.get("href")
             # Checking if file exists takes around 10ms on /data/MTDA mounted on laptop
