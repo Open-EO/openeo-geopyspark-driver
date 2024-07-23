@@ -223,15 +223,21 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
                 modifier = planetary_computer.sign_inplace
                 # by default, returns all properties and an invalid STAC Item if fields are specified
                 fields = None
-            elif root_catalog.get_self_href().startswith("https://tamn.snapplanet.io") or root_catalog.get_self_href().startswith("https://stac.eurac.edu"):
+            elif (
+                root_catalog.get_self_href().startswith("https://tamn.snapplanet.io")
+                or root_catalog.get_self_href().startswith("https://stac.eurac.edu")
+                or root_catalog.get_self_href().startswith("https://catalogue.dataspace.copernicus.eu/")
+            ):
                 modifier = None
                 # by default, returns all properties and "none" if fields are specified
                 fields = None
             else:
                 modifier = None
                 # standard behavior seems to be to include only a minimal subset e.g. https://stac.openeo.vito.be/
-                fields = list(sorted([f"properties.{property_name}" for property_name in
-                          {"proj:epsg", "proj:bbox", "proj:shape"}.union(all_properties.keys())]))
+                fields = sorted(
+                    f"properties.{property_name}"
+                    for property_name in {"proj:epsg", "proj:bbox", "proj:shape"}.union(all_properties.keys())
+                )
 
             client = pystac_client.Client.open(root_catalog.get_self_href(), modifier=modifier)
 
@@ -513,7 +519,7 @@ def get_best_url(asset: pystac.Asset):
     alternate = asset.extra_fields.get("alternate")
     if alternate:
         for key, alternate_local in alternate.items():
-            if key != "local":
+            if key != "local" and key != "s3":
                 continue
             href = alternate_local.get("href")
             # Checking if file exists takes around 10ms on /data/MTDA mounted on laptop

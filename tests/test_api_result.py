@@ -3761,6 +3761,54 @@ class TestLoadStac:
         assert ds.dims["x"] == 13
         assert ds.dims["y"] == 10
 
+    def test_load_stac_issue830_alternate_url_s3(self, api110, urllib_mock, tmp_path):
+        def item_json(path):
+            text = get_test_data_file(path).read_text()
+            path = get_test_data_file("stac/issue830_alternate_url_s3/TAP_flat_color.jp2")
+            text = re.sub(r'"href":\s*"/eodata([^"]*)"', f'"href": "{path}"', text)
+            return text
+
+        urllib_mock.get(
+            "https://catalogue.dataspace.copernicus.eu/stac/collections/GLOBAL-MOSAICS",
+            data=get_test_data_file(
+                "stac/issue830_alternate_url_s3/catalogue.dataspace.copernicus.eu/stac/collections/GLOBAL-MOSAICS.json"
+            ).read_text(),
+        )
+        urllib_mock.get(
+            "https://catalogue.dataspace.copernicus.eu/stac",
+            data=get_test_data_file(
+                "stac/issue830_alternate_url_s3/catalogue.dataspace.copernicus.eu/stac/index.json"
+            ).read_text(),
+        )
+        urllib_mock.get(
+            "https://catalogue.dataspace.copernicus.eu/stac/search?limit=20&bbox=5.07%2C51.215%2C5.08%2C51.22&datetime=2023-06-01T00%3A00%3A00Z%2F2023-06-30T23%3A59%3A59.999000Z&collections=GLOBAL-MOSAICS",
+            data=item_json(
+                "stac/issue830_alternate_url_s3/catalogue.dataspace.copernicus.eu/stac/search?limit=20&bbox=5.07,51.215,5.08,51.22&datetime=2023-06-01T00:00:00Z%2F2023-06-30T23:59:59.999000Z&collections=GLOBAL-MOSAICS.json"
+            ),
+        )
+
+        process_graph = {
+            "process_graph": {
+                "loadstac1": {
+                    "process_id": "load_stac",
+                    "arguments": {
+                        "spatial_extent": {"east": 5.08, "north": 51.22, "south": 51.215, "west": 5.07},
+                        "temporal_extent": ["2023-06-01", "2023-07-01"],
+                        "url": "https://catalogue.dataspace.copernicus.eu/stac/collections/GLOBAL-MOSAICS",
+                    },
+                    "result": True,
+                }
+            }
+        }
+
+        res = api110.result(process_graph).assert_status_code(200)
+        res_path = tmp_path / "res.tiff"
+        res_path.write_bytes(res.data)
+        ds = xarray.load_dataset(res_path)
+        # if the process graph did not throw an error, this test is already fine.
+        assert ds.dims["x"] == 73
+        assert ds.dims["y"] == 58
+
     @pytest.mark.parametrize(
         "lower_temporal_bound, upper_temporal_bound, expected_timestamps",
         [
