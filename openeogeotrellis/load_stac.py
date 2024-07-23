@@ -230,8 +230,8 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
             else:
                 modifier = None
                 # standard behavior seems to be to include only a minimal subset e.g. https://stac.openeo.vito.be/
-                fields = [f"properties.{property_name}" for property_name in
-                          {"proj:epsg", "proj:bbox", "proj:shape"}.union(all_properties.keys())]
+                fields = list(sorted([f"properties.{property_name}" for property_name in
+                          {"proj:epsg", "proj:bbox", "proj:shape"}.union(all_properties.keys())]))
 
             client = pystac_client.Client.open(root_catalog.get_self_href(), modifier=modifier)
 
@@ -506,7 +506,7 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
     return GeopysparkDataCube(pyramid=gps.Pyramid(levels), metadata=metadata)
 
 
-def get_best_url(asset):
+def get_best_url(asset: pystac.Asset):
     """
     Relevant doc: https://github.com/stac-extensions/alternate-assets
     """
