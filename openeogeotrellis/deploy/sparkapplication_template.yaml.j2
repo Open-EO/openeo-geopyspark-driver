@@ -38,6 +38,7 @@ spec:
 {%- endblock %}
   sparkConf:
 {%- block sparkConf %}
+    "spark.executor.pyspark.memory": "{{ python_max_memory }}b"
     "spark.network.timeout": "300s"
     "spark.rpc.message.maxSize": "200"
     "spark.rdd.compress": "true"
