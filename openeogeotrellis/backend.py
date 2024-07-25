@@ -1022,6 +1022,8 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
             missing_sentinel1_band = get_missing_sentinel1_band()
 
+            kubernetes_exception = [e for e in exception_chain if "KubernetesClientException" in e.getClass().getName()]
+
             is_client_error = (root_cause_class_name == 'java.lang.IllegalArgumentException' or no_data_found or
                                missing_sentinel1_band)
 
@@ -1034,6 +1036,11 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                     summary = (f"Requested band '{missing_sentinel1_band}' is not present in Sentinel 1 tile;"
                                f' try specifying a "polarization" property filter according to the table at'
                                f' https://docs.sentinel-hub.com/api/latest/data/sentinel-1-grd/#polarization.')
+                elif len(kubernetes_exception) > 0:
+                    if error.java_exception.getMessage().contains("External scheduler cannot be instantiated") :
+                        summary = (f"Batch job failed to initialize, try running again, or contact support if the problem persists. Detailed cause: {kubernetes_exception[0].getMessage()} - {root_cause_message}")
+                    else:
+                        summary = (f"Batch job failed due to Kubernetes error, try running again, or contact support if the problem persists. Detailed cause: {kubernetes_exception[0].getMessage()} - {root_cause_message}")
                 elif root_cause_message:
                     udf_stacktrace = GeoPySparkBackendImplementation.extract_udf_stacktrace(root_cause_message)
                     if udf_stacktrace:
