@@ -1994,6 +1994,9 @@ class GpsBatchJobs(backend.BatchJobs):
             python_max = job_options.get("python-memory", None)
             if python_max is not None:
                 python_max = as_bytes(python_max)
+                if python_max > memOverheadBytes or  "executor-memoryOverhead" not in job_options:
+                    memOverheadBytes = python_max + jvmOverheadBytes
+                    executor_memory_overhead = f"{memOverheadBytes//(1024**2)}m"
             else:
                 python_max = memOverheadBytes - jvmOverheadBytes
 
