@@ -14,11 +14,11 @@ pythonPipeline {
   hadoop = true
   pre_test_script = 'pre_test.sh'
   extra_env_variables = [
-    'JAVA_HOME=/usr/lib/jvm/java-11-openjdk-11.0.14.0.9-2.el8_5.x86_64',
+    'JAVA_HOME=/usr/lib/jvm/java-11-openjdk-11.0.22.0.7-2.el9.x86_64',
     /* Set pytest `basetemp` inside Jenkins workspace. (Note: this is intentionally Jenkins specific, instead of a global pytest.ini thing.) */
     "PYTEST_DEBUG_TEMPROOT=pytest-tmp",
   ]
-  python_version = ["3.8"]
+  python_version = ["3.11"]
   docker_registry = 'vito-docker-private.artifactory.vgt.vito.be'
   downstream_job = 'openEO/openeo-integrationtests'
   wheel_repo = 'python-openeo'
@@ -28,7 +28,7 @@ pythonPipeline {
   upload_dev_wheels = false
   pep440 = true
   venv_rpm_deps = ['gcc-c++', 'kstart', 'krb5-devel']
-  custom_test_image = 'vito-docker.artifactory.vgt.vito.be/almalinux8.5-spark-py-openeo:3.4.0'
+  custom_test_image = 'vito-docker.artifactory.vgt.vito.be/almalinux9-spark-py-openeo:3.5.0'
   extra_container_volumes = [
     '/data/MTDA:/data/MTDA:ro'
   ]
