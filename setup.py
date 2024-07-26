@@ -60,7 +60,7 @@ setup(
         'geopyspark==0.4.7+openeo',
         # rasterio is an undeclared but required dependency for geopyspark
         # (see https://github.com/locationtech-labs/geopyspark/issues/683 https://github.com/locationtech-labs/geopyspark/pull/706)
-        'rasterio~=1.2.0',
+        'rasterio~=1.3.10',
         'py4j',
         'numpy==1.22.4',
         'pandas>=1.4.0,<2.0.0',
