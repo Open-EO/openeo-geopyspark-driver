@@ -104,18 +104,13 @@ class GeopySparkCatBoostModel(DriverMlModel):
             directory = Path(directory).parent
         model_path = Path(directory) / "catboost_model.cbm"
 
-        # Save model to disk or s3 using spark.
-        # use_s3 = ConfigParams().is_kube_deploy
+        # Save model to disk.
+        # TODO: We might require s3 support here.
         spark_path = "file:" + str(model_path)
-        # if use_s3:
-        #     spark_path = to_s3_url(model_path).replace("s3:", 's3a:')
         logging.info(f"Saving GeopySparkCatboostModel to {spark_path}")
         self._model.save(spark_path)
 
         # Archive the saved model.
-        # if use_s3 and not model_path.exists():
-        #     logging.info(f"{model_path} does not exist, downloading it from s3 first.")
-        #     download_s3_directory(to_s3_url(model_path), "/")
         logging.info(f"Archiving {model_path} to {model_path}.tar.gz")
         shutil.make_archive(base_name=str(model_path), format='gztar', root_dir=directory)
         logging.info(f"Removing original {model_path}")
