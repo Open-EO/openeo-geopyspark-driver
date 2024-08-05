@@ -89,7 +89,7 @@ from openeogeotrellis.layercatalog import (
     LARGE_LAYER_THRESHOLD_IN_PIXELS,
 )
 from openeogeotrellis.logs import elasticsearch_logs
-from openeogeotrellis.ml.GeopySparkCatBoostModel import CatBoostClassificationModel
+from openeogeotrellis.ml.catboost_spark import CatBoostClassificationModel
 from openeogeotrellis.processgraphvisiting import GeotrellisTileProcessGraphVisitor, SingleNodeUDFProcessGraphVisitor
 from openeogeotrellis.sentinel_hub.batchprocessing import SentinelHubBatchProcessing
 from openeogeotrellis.service_registry import (
