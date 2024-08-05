@@ -4,7 +4,7 @@ kind: PersistentVolume
 metadata:
   name: {{ job_name }}
 spec:
-  storageClassName: csi-s3
+  storageClassName: {{ storage_class }}
   capacity:
     storage: 50Gi
   accessModes:
@@ -25,6 +25,6 @@ spec:
       namespace: csi-s3
     volumeAttributes:
       capacity: 50Gi
-      mounter: s3fs
-      options: "-o uid=18585 -o gid=18585 -o compat_dir -o dbglevel=debug"
+      mounter: {{ mounter }}
+      options: "{{ mount_options }}"
     volumeHandle: {{ swift_bucket }}{{output_dir}}

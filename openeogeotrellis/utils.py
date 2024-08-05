@@ -319,12 +319,41 @@ def get_s3_binary_file_contents(s3_url: str) -> bytes:
         raise ValueError(f"s3_url must be a URL that starts with 's3://' Value is: {s3_url=}")
 
     bucket, file_name = s3_url[5:].split("/", 1)
-    logger.debug("Downloading contents from S3 object storage: {bucket=}, key={file_name}")
+    logger.debug(f"Downloading contents from S3 object storage: {bucket=}, key={file_name}")
 
     s3_instance = s3_client()
     s3_file_object = s3_instance.get_object(Bucket=bucket, Key=file_name)
     body = s3_file_object["Body"]
     return body.read()
+
+
+def download_s3_directory(s3_url: str, output_dir: str):
+    """
+    Downloads a directory from S3 object storage to the specified output directory.
+
+    Args:
+        s3_url (str): The URL of the S3 directory to download. Must start with 's3://'.
+        output_dir (str): The local directory where the S3 directory will be downloaded to.
+
+    Raises:
+        ValueError: If the s3_url does not start with 's3://'.
+
+    """
+    if not s3_url.startswith("s3://"):
+        raise ValueError(f"s3_url must be a URL that starts with 's3://' Value is: {s3_url=}")
+
+    bucket, input_dir = s3_url[5:].split("/", 1)
+    logger.debug(f"Downloading directory from S3 object storage: {bucket=}, key={input_dir}")
+
+    s3_instance = s3_client()
+    bucket_keys = s3_instance.list_objects_v2(Bucket=bucket, MaxKeys=1000, Prefix=input_dir)
+    for obj in bucket_keys["Contents"]:
+        key = obj["Key"]
+        output_dir_path = os.path.join(output_dir, os.path.dirname(key))
+        os.makedirs(output_dir_path, exist_ok=True)
+        if not key.endswith("/"):
+            output_file_path = os.path.join(output_dir, key)
+            s3_instance.download_file(Bucket=bucket, Key=key, Filename=output_file_path)
 
 
 def to_s3_url(file_or_dir_name: Union[os.PathLike,str], bucketname: str = None) -> str:

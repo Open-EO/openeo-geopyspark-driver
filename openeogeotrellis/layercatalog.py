@@ -136,6 +136,10 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         elif(get_backend_config().default_reading_strategy == "load_per_product"):
             datacubeParams.setLoadPerProduct(True)
 
+        if (get_backend_config().default_tile_size is not None):
+            if "tilesize" not in feature_flags:
+                getattr(datacubeParams, "tileSize_$eq")(get_backend_config().default_tile_size)
+
 
         datacubeParams.setResampleMethod(GeopysparkDataCube._get_resample_method(load_params.resample_method))
 

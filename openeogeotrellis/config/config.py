@@ -139,6 +139,9 @@ class GpsBackendConfig(OpenEoBackendConfig):
     s3_bucket_name: str = os.environ.get("SWIFT_BUCKET", "OpenEO-data")
 
     fuse_mount_batchjob_s3_bucket: bool = smart_bool(os.environ.get("FUSE_MOUNT_BATCHJOB_S3_BUCKET", False))
+    fuse_mount_batchjob_s3_mounter: str = os.environ.get("FUSE_MOUNT_BATCHJOB_S3_MOUNTER", "s3fs")
+    fuse_mount_batchjob_s3_mount_options: str = os.environ.get("FUSE_MOUNT_BATCHJOB_S3_MOUNT_OPTIONS", "-o uid=18585 -o gid=18585 -o compat_dir")
+    fuse_mount_batchjob_s3_storage_class: str = os.environ.get("FUSE_MOUNT_BATCHJOB_S3_STORAGE_CLASS", "csi-s3")
 
     """
     Reading strategy for load_collection and load_stac processes:
@@ -186,3 +189,12 @@ class GpsBackendConfig(OpenEoBackendConfig):
     default_executor_memoryOverhead: str = "3G"
 
     default_executor_cores: int = 2
+
+    """
+    The default tile size to use for processing. By default, it is not set and the backend tries to determine a value.
+    To minimize memory use, a small default size like 128 can be set. For cases with more memory per cpu, larger sizes are relevant.
+    """
+    default_tile_size:Optional[int] = None
+
+    job_dependencies_poll_interval_seconds: float = 60  # poll every x seconds
+    job_dependencies_max_poll_delay_seconds: float = 60 * 60 * 24 * 7  # for a maximum delay of y seconds

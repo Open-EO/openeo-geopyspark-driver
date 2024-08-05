@@ -7,6 +7,7 @@ from pathlib import Path
 import geopandas as gpd
 import pystac
 import pytest
+import rasterio
 
 from openeo.util import ensure_dir
 from openeo_driver.testing import DictSubSet
@@ -21,7 +22,7 @@ from openeo_driver.testing import ephemeral_fileserver
 from openeo_driver.utils import EvalEnv
 from openeogeotrellis.deploy.batch_job import run_job
 from openeogeotrellis.deploy.batch_job_metadata import extract_result_metadata
-from .data import TEST_DATA_ROOT
+from .data import get_test_data_file, TEST_DATA_ROOT
 
 
 def test_png_export(tmp_path):
@@ -903,3 +904,105 @@ def test_discard_result(tmp_path):
 
     # runs to completion without output assets
     assert set(os.listdir(tmp_path)) == {"job_metadata.json", "collection.json"}
+
+
+def test_multiple_top_level_side_effects(tmp_path, caplog):
+    process_graph = {
+        "loadcollection1": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "TestCollection-LonLat4x4",
+                "spatial_extent": {"west": 5, "south": 50, "east": 5.1, "north": 50.1},
+                "temporal_extent": ["2024-07-11", "2024-07-21"],
+                "bands": ["Flat:1"]
+            }
+        },
+        "loadcollection2": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "TestCollection-LonLat4x4",
+                "spatial_extent": {"west": 5, "south": 50, "east": 5.1, "north": 50.1},
+                "temporal_extent": ["2024-07-11", "2024-07-21"],
+                "bands": ["Flat:2"]
+            }
+        },
+        "inspect1": {
+            "process_id": "inspect",
+            "arguments": {
+                "data": {"from_node": "loadcollection1"},
+                "message": "intermediate result",
+                "level": "warning"
+            }
+        },
+        "saveresult1": {
+            "process_id": "save_result",
+            "arguments": {
+                "data": {"from_node": "loadcollection1"},
+                "format": "GTiff",
+                "options": {"filename_prefix": "intermediate"},
+            }
+        },
+        "mergecubes1": {
+            "process_id": "merge_cubes",
+            "arguments": {
+                "cube1": {"from_node": "loadcollection1"},
+                "cube2": {"from_node": "loadcollection2"},
+            },
+            "result": True
+        },
+        "saveresult2": {
+            "process_id": "save_result",
+            "arguments": {
+                "data": {"from_node": "mergecubes1"},
+                "format": "GTiff",
+                "options": {"filename_prefix": "final"},
+            }
+        },
+    }
+
+    process = {"process_graph": process_graph}
+
+    run_job(
+        process,
+        output_file=tmp_path / "out",
+        metadata_file=tmp_path / "job_metadata.json",
+        api_version="2.0.0",
+        job_dir=tmp_path,
+        dependencies=[],
+    )
+
+    assert "intermediate result" in caplog.messages
+
+    with rasterio.open(tmp_path / "intermediate_2024-07-15Z.tif") as dataset:
+        assert dataset.count == 1
+
+    with rasterio.open(tmp_path / "final_2024-07-15Z.tif") as dataset:
+        assert dataset.count == 2
+
+
+@pytest.mark.parametrize(["process_graph_file", "output_file_predicates"], [
+    ("pg01.json", {
+        "intermediate.tif": lambda dataset: dataset.res == (10, 10),
+        "final.tif": lambda dataset: dataset.res == (80, 80)
+    }),
+    ("pg02.json", {
+        "B04.tif": lambda dataset: dataset.tags(1)["DESCRIPTION"] == "B04",
+        "B11.tif": lambda dataset: dataset.tags(1)["DESCRIPTION"] == "B11",
+    }),
+])
+def test_multiple_save_results(tmp_path, process_graph_file, output_file_predicates):
+    with open(get_test_data_file(f"multiple_save_results/{process_graph_file}")) as f:
+        process = json.load(f)
+
+    run_job(
+        process,
+        output_file=tmp_path / "out",
+        metadata_file=tmp_path / "job_metadata.json",
+        api_version="2.0.0",
+        job_dir=tmp_path,
+        dependencies=[],
+    )
+
+    for output_file, predicate in output_file_predicates.items():
+        with rasterio.open(tmp_path / output_file) as dataset:
+            assert predicate(dataset)

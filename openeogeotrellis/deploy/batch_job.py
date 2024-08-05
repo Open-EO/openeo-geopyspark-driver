@@ -59,7 +59,8 @@ def _create_job_dir(job_dir: Path):
         except PermissionError as e:
             logger.warning(f"Could not change group of {job_dir} to eodata, no permissions.")
 
-    add_permissions(job_dir, stat.S_ISGID | stat.S_IWGRP)  # make children inherit this group
+    if not get_backend_config().fuse_mount_batchjob_s3_bucket:
+        add_permissions(job_dir, stat.S_ISGID | stat.S_IWGRP)  # make children inherit this group
 
 
 def _parse(job_specification_file: str) -> Dict:
@@ -137,7 +138,19 @@ def main(argv: List[str]) -> None:
             .set(key='spark.kryo.registrator', value='geotrellis.spark.store.kryo.KryoRegistrator')
             .set("spark.kryo.classesToRegister", "org.openeo.geotrellisaccumulo.SerializableConfiguration,ar.com.hjg.pngj.ImageInfo,ar.com.hjg.pngj.ImageLineInt,geotrellis.raster.RasterRegion$GridBoundsRasterRegion"))
 
-    with SparkContext(conf=conf) as sc:
+    def context_with_retry(conf):
+        retry_counter = 0
+        while retry_counter < 5:
+            retry_counter += 1
+            try:
+                return SparkContext(conf=conf)
+            except Py4JJavaError as e:
+                if retry_counter == 5:
+                    raise
+                else:
+                    logger.info(f"Failed to create SparkContext, retrying {retry_counter} ... {repr(GeoPySparkBackendImplementation.summarize_exception_static(e))}")
+
+    with context_with_retry(conf) as sc:
         principal = sc.getConf().get("spark.yarn.principal")
         key_tab = sc.getConf().get("spark.yarn.keytab")
 

@@ -49,7 +49,7 @@ from openeo_driver.errors import (InternalException, JobNotFinishedException, Op
                                   ProcessParameterInvalidException, ProcessGraphComplexityException, )
 from openeo_driver.jobregistry import (DEPENDENCY_STATUS, JOB_STATUS, ElasticJobRegistry, PARTIAL_JOB_STATUS,
                                        get_ejr_credentials_from_env)
-from openeo_driver.ProcessGraphDeserializer import ENV_SAVE_RESULT, ConcreteProcessing, _extract_load_parameters
+from openeo_driver.ProcessGraphDeserializer import ENV_FINAL_RESULT, ENV_SAVE_RESULT, ConcreteProcessing, _extract_load_parameters
 from openeo_driver.save_result import ImageCollectionResult
 from openeo_driver.users import User
 from openeo_driver.util.geometry import BoundingBox
@@ -1020,6 +1020,8 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
             missing_sentinel1_band = get_missing_sentinel1_band()
 
+            kubernetes_exception = [e for e in exception_chain if "KubernetesClientException" in e.getClass().getName()]
+
             is_client_error = (root_cause_class_name == 'java.lang.IllegalArgumentException' or no_data_found or
                                missing_sentinel1_band)
 
@@ -1032,6 +1034,11 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                     summary = (f"Requested band '{missing_sentinel1_band}' is not present in Sentinel 1 tile;"
                                f' try specifying a "polarization" property filter according to the table at'
                                f' https://docs.sentinel-hub.com/api/latest/data/sentinel-1-grd/#polarization.')
+                elif len(kubernetes_exception) > 0:
+                    if error.java_exception.getMessage().contains("External scheduler cannot be instantiated") :
+                        summary = (f"Batch job failed to initialize, try running again, or contact support if the problem persists. Detailed cause: {kubernetes_exception[0].getMessage()} - {root_cause_message}")
+                    else:
+                        summary = (f"Batch job failed due to Kubernetes error, try running again, or contact support if the problem persists. Detailed cause: {kubernetes_exception[0].getMessage()} - {root_cause_message}")
                 elif root_cause_message:
                     udf_stacktrace = GeoPySparkBackendImplementation.extract_udf_stacktrace(root_cause_message)
                     if udf_stacktrace:
@@ -1863,7 +1870,15 @@ class GpsBatchJobs(backend.BatchJobs):
 
             memOverheadBytes = as_bytes(executor_memory_overhead)
             jvmOverheadBytes = as_bytes("128m")
-            python_max = memOverheadBytes - jvmOverheadBytes
+
+            python_max = job_options.get("python-memory", None)
+            if python_max is not None:
+                python_max = as_bytes(python_max)
+                if python_max > memOverheadBytes or  "executor-memoryOverhead" not in job_options:
+                    memOverheadBytes = python_max + jvmOverheadBytes
+                    executor_memory_overhead = f"{memOverheadBytes//(1024**2)}m"
+            else:
+                python_max = memOverheadBytes - jvmOverheadBytes
 
             eodata_mount = "/eodata2" if use_goofys else "/eodata"
 
@@ -1929,6 +1944,9 @@ class GpsBatchJobs(backend.BatchJobs):
                     "persistentvolume_batch_job_results.yaml.j2",
                     job_name=spark_app_id,
                     job_namespace=pod_namespace,
+                    mounter=get_backend_config().fuse_mount_batchjob_s3_mounter,
+                    mount_options=get_backend_config().fuse_mount_batchjob_s3_mount_options,
+                    storage_class=get_backend_config().fuse_mount_batchjob_s3_storage_class,
                     output_dir=output_dir,
                     swift_bucket=bucket,
                 )
@@ -2121,7 +2139,12 @@ class GpsBatchJobs(backend.BatchJobs):
         result_node = process_graph[top_level_node]
 
         dry_run_tracer = DryRunDataTracer()
-        convert_node(result_node, env=env.push({ENV_DRY_RUN_TRACER: dry_run_tracer, ENV_SAVE_RESULT:[],"node_caching":False}))
+        convert_node(result_node, env=env.push({
+            ENV_DRY_RUN_TRACER: dry_run_tracer,
+            ENV_SAVE_RESULT: [],
+            ENV_FINAL_RESULT: [None],
+            "node_caching": False
+        }))
 
         source_constraints = dry_run_tracer.get_source_constraints()
         logger_adapter.info("Dry run extracted these source constraints: {s}".format(s=source_constraints))
@@ -2494,13 +2517,7 @@ class GpsBatchJobs(backend.BatchJobs):
                             partial_job_status = stac_object.get('openeo:status')
                             logger_adapter.debug(f'load_stac({url}): "openeo:status" is "{partial_job_status}"')
 
-                    if partial_job_status == PARTIAL_JOB_STATUS.RUNNING:
-                        if not supports_async_tasks:
-                            raise OpenEOApiException(
-                                message=f"this backend does not support loading unfinished results from {url}"
-                                        f" with load_stac",
-                                status_code=501)
-
+                    if supports_async_tasks and partial_job_status == PARTIAL_JOB_STATUS.RUNNING:
                         job_dependencies.append({
                             'partial_job_results_url': url,
                         })
