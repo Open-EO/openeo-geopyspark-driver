@@ -1999,7 +1999,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     executor_memory_overhead = f"{memOverheadBytes//(1024**2)}m"
             else:
                 python_max = memOverheadBytes - jvmOverheadBytes
-                executor_memory_overhead = f"{memOverheadBytes//(1024**2)}m"
+                executor_memory_overhead = f"{jvmOverheadBytes//(1024**2)}m"
 
             eodata_mount = "/eodata2" if use_goofys else "/eodata"
 
