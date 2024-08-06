@@ -512,7 +512,9 @@ def temp_csv_dir(message: str = "n/a") -> str:
         if Path(candidate).exists():
             parent_dir = candidate
             break
-    temp_dir = tempfile.mkdtemp(prefix="timeseries_", suffix="_csv", dir=parent_dir)
+    from datetime import datetime
+    timestamp = datetime.today().strftime('%Y%m%d_%H%M')
+    temp_dir = tempfile.mkdtemp(prefix=f"{timestamp}_timeseries_", suffix="_csv", dir=parent_dir)
     try:
         os.chmod(temp_dir, 0o777)
     except PermissionError as e:
