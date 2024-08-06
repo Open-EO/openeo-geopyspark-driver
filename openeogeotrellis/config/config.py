@@ -190,5 +190,11 @@ class GpsBackendConfig(OpenEoBackendConfig):
 
     default_executor_cores: int = 2
 
+    """
+    The default tile size to use for processing. By default, it is not set and the backend tries to determine a value.
+    To minimize memory use, a small default size like 128 can be set. For cases with more memory per cpu, larger sizes are relevant.
+    """
+    default_tile_size:Optional[int] = None
+
     job_dependencies_poll_interval_seconds: float = 60  # poll every x seconds
     job_dependencies_max_poll_delay_seconds: float = 60 * 60 * 24 * 7  # for a maximum delay of y seconds
