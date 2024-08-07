@@ -3768,13 +3768,18 @@ class TestLoadStac:
                         ],
                         "url": "https://stac.terrascope.be/collections/sentinel-2-l2a"
                     },
-                    "result": True
+                    "result": False,
+                },
+                "saveresult1": {
+                    "process_id": "save_result",
+                    "arguments": {"data": {"from_node": "loadstac1"}, "format": "NetCDF"},
+                    "result": True,
                 }
             }
         }
 
         res = api110.result(process_graph).assert_status_code(200)
-        res_path = tmp_path / "res.tiff"
+        res_path = tmp_path / "res.nc"
         res_path.write_bytes(res.data)
         ds = xarray.load_dataset(res_path)
         # if the process graph did not throw an error, this test is already fine.
@@ -3817,13 +3822,18 @@ class TestLoadStac:
                         "temporal_extent": ["2023-06-01", "2023-07-01"],
                         "url": "https://catalogue.dataspace.copernicus.eu/stac/collections/GLOBAL-MOSAICS",
                     },
+                    "result": False,
+                },
+                "saveresult1": {
+                    "process_id": "save_result",
+                    "arguments": {"data": {"from_node": "loadstac1"}, "format": "NetCDF"},
                     "result": True,
                 }
             }
         }
 
         res = api110.result(process_graph).assert_status_code(200)
-        res_path = tmp_path / "res.tiff"
+        res_path = tmp_path / "res.nc"
         res_path.write_bytes(res.data)
         ds = xarray.load_dataset(res_path)
         # if the process graph did not throw an error, this test is already fine.
