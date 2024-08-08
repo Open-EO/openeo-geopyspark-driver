@@ -129,7 +129,7 @@ class S1BackscatterOrfeo:
     def _build_feature_rdd(
             self,
             collection_id, projected_polygons, from_date: str, to_date: str, extra_properties: dict,
-            tile_size: int, zoom: int, correlation_id: str, datacubeParams=None
+            tile_size: int, zoom: int, correlation_id: str, datacubeParams=None, resolution = (10.0,10.0)
     ):
         """Build RDD of file metadata from Creodias catalog query."""
         # TODO openSearchLinkTitles?
@@ -153,7 +153,7 @@ class S1BackscatterOrfeo:
             "https://catalogue.dataspace.copernicus.eu/resto", False, "", [], ""
         )
         file_rdd_factory = self.jvm.org.openeo.geotrellis.file.FileRDDFactory(
-            opensearch_client, collection_id, [], attributeValues, correlation_id
+            opensearch_client, collection_id, [], attributeValues, correlation_id,self.jvm.geotrellis.raster.CellSize(resolution[0], resolution[1])
         )
         feature_pyrdd, layer_metadata_sc = self._load_feature_rdd(
             file_rdd_factory, projected_polygons=projected_polygons, from_date=from_date, to_date=to_date,
@@ -308,7 +308,8 @@ class S1BackscatterOrfeo:
             log_prefix: str = "",
             orfeo_memory:int = 512,
             trackers=None,
-            max_soft_errors_ratio = 0.0
+            max_soft_errors_ratio = 0.0,
+            target_resolution = (10.0,10.0)
     ):
         logger.info(f"{log_prefix} Input tiff {input_tiff}")
         logger.info(f"{log_prefix} extent {extent} EPSG {extent_epsg})")
@@ -328,7 +329,7 @@ class S1BackscatterOrfeo:
             error_counter = multiprocessing.Value('i', 0, lock=False)
             ortho_rect = S1BackscatterOrfeo.configure_pipeline(dem_dir, elev_default, elev_geoid, input_tiff,
                                                                log_prefix, noise_removal, orfeo_memory,
-                                                               sar_calibration_lut, epsg=extent_epsg)
+                                                               sar_calibration_lut, epsg=extent_epsg, target_resolution=target_resolution)
 
             def run():
                 ortho_rect.SetParameterInt("outputs.sizex", extent_width_px)
@@ -385,7 +386,7 @@ class S1BackscatterOrfeo:
     @staticmethod
     @functools.lru_cache(10,False)
     def configure_pipeline(dem_dir, elev_default, elev_geoid, input_tiff, log_prefix, noise_removal, orfeo_memory,
-                           sar_calibration_lut, epsg:int):
+                           sar_calibration_lut, epsg:int, target_resolution = (10.0,10.0)):
         otb = _import_orfeo_toolbox()
 
         def otb_param_dump(app):
@@ -415,8 +416,8 @@ class S1BackscatterOrfeo:
         ortho_rect.SetParameterString("map", "epsg")
         ortho_rect.SetParameterInt("map.epsg.code", epsg)
 
-        ortho_rect.SetParameterDouble("outputs.spacingx", 10.0)
-        ortho_rect.SetParameterDouble("outputs.spacingy", -10.0)
+        ortho_rect.SetParameterDouble("outputs.spacingx", target_resolution[0])
+        ortho_rect.SetParameterDouble("outputs.spacingy", -1.0 * target_resolution[1])
         ortho_rect.SetParameterString("interpolator", "linear")
         ortho_rect.SetParameterDouble("opt.gridspacing", 40.0)
 
@@ -843,11 +844,12 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
         debug_mode = smart_bool(sar_backscatter_arguments.options.get("debug"))
 
         # an RDD of Python objects (basically SpaceTimeKey + feature) with gps.Metadata
+        target_resolution = sar_backscatter_arguments.options.get("resolution", (10.0, 10.0))
         feature_pyrdd, layer_metadata_py = self._build_feature_rdd(
             collection_id=collection_id, projected_polygons=projected_polygons,
             from_date=from_date, to_date=to_date, extra_properties=extra_properties,
             tile_size=tile_size, zoom=zoom, correlation_id=
-            correlation_id, datacubeParams=datacubeParams
+            correlation_id, datacubeParams=datacubeParams,resolution=target_resolution
         )
         if debug_mode:
             self._debug_show_rdd_info(feature_pyrdd)
@@ -976,7 +978,8 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
                                     log_prefix=f"{log_prefix}-{band}",
                                     orfeo_memory=orfeo_memory,
                                     trackers=trackers,
-                                    max_soft_errors_ratio = max_soft_errors_ratio
+                                    max_soft_errors_ratio = max_soft_errors_ratio,
+                                    target_resolution = target_resolution
                                 )
                                 orfeo_bands.append(data)
 

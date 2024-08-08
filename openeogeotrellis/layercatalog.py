@@ -686,6 +686,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             pyramid = file_s2_pyramid()
         elif layer_source_type == 'creodias-s1-backscatter':
             sar_backscatter_arguments = load_params.sar_backscatter or SarBackscatterArgs()
+            sar_backscatter_arguments.options["resolution"] = (cell_width, cell_height)
             s1_backscatter_orfeo = get_s1_backscatter_orfeo(
                 version=sar_backscatter_arguments.options.get("implementation_version", "2"),
                 jvm=jvm
