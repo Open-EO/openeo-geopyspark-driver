@@ -488,7 +488,7 @@ def _extract_and_install_udf_dependencies(process_graph: dict, job_dir: Path):
         )
 
 
-if __name__ == "__main__":
+def start_main():
     setup_logging(
         get_logging_config(
             root_handlers=[LOG_HANDLER_STDERR_JSON if ConfigParams().is_kube_deploy else LOG_HANDLER_FILE_JSON],
@@ -511,3 +511,6 @@ if __name__ == "__main__":
             extra={"exc_info_with_locals": format_exc(e, fmt = fmt)}
         )
         raise
+
+if __name__ == "__main__":
+    start_main()

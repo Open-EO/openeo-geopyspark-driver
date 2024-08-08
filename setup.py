@@ -106,4 +106,10 @@ setup(
             "requests-gssapi>=1.2.3",  # For Kerberos authentication
         ],
     },
+    entry_points={
+        'console_scripts': [
+            'openeo_kube = openeogeotrellis.deploy.kube:main',
+            'openeo_batch = openeogeotrellis.deploy.batch_job:start_main'
+        ]
+    }
 )
