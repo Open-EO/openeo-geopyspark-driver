@@ -1443,7 +1443,8 @@ class GeopysparkDataCube(DriverDataCube):
                                                                      AggregateSpatialVectorCube]:
 
         if isinstance(reducer, dict):
-            if len(reducer) == 1:
+            if len(reducer) == 1 and len(reducer.get('arguments',{})) > 1:
+                #TODO: the else branch below seems a much safer option for this. Verify if this code can be removed.
                 single_process = next(iter(reducer.values())).get('process_id')
                 return self.zonal_statistics(geometries, single_process)
             else:
