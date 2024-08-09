@@ -1433,7 +1433,7 @@ class GeopysparkDataCube(DriverDataCube):
         with tempfile.NamedTemporaryFile(suffix=".json.tmp",delete=False) as temp_file:
             gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses().vectorize(max_level.srdd.rdd(),temp_file.name)
             #postpone turning into an actual collection upon usage
-            return DelayedVector(temp_file.name)
+            return DelayedVector(temp_file.name).to_driver_vector_cube()
 
     def get_max_level(self) -> TiledRasterLayer:
         return self.pyramid.levels[self.pyramid.max_zoom]
