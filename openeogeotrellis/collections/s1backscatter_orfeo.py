@@ -153,7 +153,7 @@ class S1BackscatterOrfeo:
             "https://catalogue.dataspace.copernicus.eu/resto", False, "", [], ""
         )
         file_rdd_factory = self.jvm.org.openeo.geotrellis.file.FileRDDFactory(
-            opensearch_client, collection_id, [], attributeValues, correlation_id,self.jvm.geotrellis.raster.CellSize(resolution[0], resolution[1])
+            opensearch_client, collection_id, attributeValues, correlation_id,self.jvm.geotrellis.raster.CellSize(resolution[0], resolution[1])
         )
         feature_pyrdd, layer_metadata_sc = self._load_feature_rdd(
             file_rdd_factory, projected_polygons=projected_polygons, from_date=from_date, to_date=to_date,
