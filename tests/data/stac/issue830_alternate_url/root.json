@@ -1,0 +1,215 @@
+{
+  "type": "Catalog",
+  "id": "terra-stac-api",
+  "title": "Terrascope",
+  "description": "Terrascope STAC API",
+  "stac_version": "1.0.0",
+  "conformsTo": [
+    "http://www.opengis.net/spec/ogcapi-features-3/1.0/conf/filter",
+    "http://www.opengis.net/spec/ogcapi-features-1/1.0/conf/core",
+    "https://api.stacspec.org/v1.0.0-rc.2/item-search#context",
+    "https://api.stacspec.org/v1.0.0/item-search#sort",
+    "http://www.opengis.net/spec/ogcapi-features-1/1.0/conf/oas30",
+    "https://api.stacspec.org/v1.0.0/ogcapi-features",
+    "https://api.stacspec.org/v1.0.0/collections",
+    "http://www.opengis.net/spec/cql2/1.0/conf/basic-cql2",
+    "http://www.opengis.net/spec/ogcapi-features-1/1.0/conf/geojson",
+    "http://www.opengis.net/spec/cql2/1.0/conf/cql2-json",
+    "https://api.stacspec.org/v1.0.0-rc.2/item-search#filter",
+    "http://www.opengis.net/spec/cql2/1.0/conf/cql2-text",
+    "https://api.stacspec.org/v1.0.0/core",
+    "https://api.stacspec.org/v1.0.0/item-search#fields",
+    "http://www.opengis.net/spec/ogcapi-features-3/1.0/conf/features-filter",
+    "https://api.stacspec.org/v1.0.0/item-search#query",
+    "https://api.stacspec.org/v1.0.0-rc.3/ogcapi-features/extensions/transaction",
+    "https://api.stacspec.org/v1.0.0/item-search"
+  ],
+  "links": [
+    {
+      "rel": "self",
+      "type": "application/json",
+      "href": "https://stac.terrascope.be/"
+    },
+    {
+      "rel": "root",
+      "type": "application/json",
+      "href": "https://stac.terrascope.be/"
+    },
+    {
+      "rel": "data",
+      "type": "application/json",
+      "href": "https://stac.terrascope.be/collections"
+    },
+    {
+      "rel": "conformance",
+      "type": "application/json",
+      "title": "STAC/WFS3 conformance classes implemented by this server",
+      "href": "https://stac.terrascope.be/conformance"
+    },
+    {
+      "rel": "search",
+      "type": "application/geo+json",
+      "title": "STAC search",
+      "href": "https://stac.terrascope.be/search",
+      "method": "GET"
+    },
+    {
+      "rel": "search",
+      "type": "application/geo+json",
+      "title": "STAC search",
+      "href": "https://stac.terrascope.be/search",
+      "method": "POST"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-2 Normalized Difference Vegetation Index (NDVI) (tiles) - V2",
+      "href": "https://stac.terrascope.be/collections/terrascope-s2-ndvi-v2"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-1 Level-1 Single Look Complex (SLC) products.",
+      "href": "https://stac.terrascope.be/collections/sentinel-1-slc"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-1 Level-1 Ground Range Detected (GRD) products",
+      "href": "https://stac.terrascope.be/collections/sentinel-1-grd"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-2 Water-Leaving Reflectance (RHOW) Products (tiles) - V1",
+      "href": "https://stac.terrascope.be/collections/terrascope-s2-rhow-v1"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-2 Leaf Area index (LAI) (tiles) - V2",
+      "href": "https://stac.terrascope.be/collections/terrascope-s2-lai-v2"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-2 Fraction Absorbed Photosynthetically Radiation (FAPAR) (tiles) - V2",
+      "href": "https://stac.terrascope.be/collections/terrascope-s2-fapar-v2"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-2 Fraction of Vegetation Cover (FCOVER) (tiles) - V2",
+      "href": "https://stac.terrascope.be/collections/terrascope-s2-fcover-v2"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-2 Suspended Particulate Matter (SPM) (tiles) - V1",
+      "href": "https://stac.terrascope.be/collections/terrascope-s2-spm-v1"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-2 Turbidity (TUR) (tiles) - V1",
+      "href": "https://stac.terrascope.be/collections/terrascope-s2-tur-v1"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-2 Chlorophyll Canopy Content Index (CCC) (tiles) - V2",
+      "href": "https://stac.terrascope.be/collections/terrascope-s2-ccc-v2"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-2 Chlorophyll Water Content Index (CWC) (tiles) - V2",
+      "href": "https://stac.terrascope.be/collections/terrascope-s2-cwc-v2"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-1 Level-1 Single Look Complex (SLC) Coherence products.",
+      "href": "https://stac.terrascope.be/collections/terrascope-s1-slc-coherence-v1"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-2 Top of Canopy (TOC) Products (tiles) - V2",
+      "href": "https://stac.terrascope.be/collections/terrascope-s2-toc-v2"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-2 Level-2A",
+      "href": "https://stac.terrascope.be/collections/sentinel-2-l2a"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-2 Level-1C",
+      "href": "https://stac.terrascope.be/collections/sentinel-2-l1c"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-1 Level-1 Ground Range Detected (GRD) SIGMA0 products",
+      "href": "https://stac.terrascope.be/collections/terrascope-s1-grd-sigma0-v1"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-2 Chlorophyll-a (CHL) (tiles) - V1",
+      "href": "https://stac.terrascope.be/collections/terrascope-s2-chl-v1"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "geoinformed-bwk-sba",
+      "href": "https://stac.terrascope.be/collections/geoinformed-bwk-sba"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "geoinformed-vanggewassen",
+      "href": "https://stac.terrascope.be/collections/geoinformed-vanggewassen"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "geoinformed-watervlakken-jaar",
+      "href": "https://stac.terrascope.be/collections/geoinformed-watervlakken-jaar"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "geoinformed-bwk",
+      "href": "https://stac.terrascope.be/collections/geoinformed-bwk"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "geoinformed-watervlakken-maand",
+      "href": "https://stac.terrascope.be/collections/geoinformed-watervlakken-maand"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "geoinformed-bosmonitoring",
+      "href": "https://stac.terrascope.be/collections/geoinformed-bosmonitoring"
+    },
+    {
+      "rel": "service-desc",
+      "type": "application/vnd.oai.openapi+json;version=3.0",
+      "title": "OpenAPI service description",
+      "href": "https://stac.terrascope.be/api"
+    },
+    {
+      "rel": "service-doc",
+      "type": "text/html",
+      "title": "OpenAPI service documentation",
+      "href": "https://stac.terrascope.be/api.html"
+    }
+  ],
+  "stac_extensions": []
+}

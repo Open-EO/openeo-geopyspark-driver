@@ -1,0 +1,107 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "stac_version": "1.0.0",
+      "stac_extensions": [
+        "https://stac-extensions.github.io/alternate-assets/v1.1.0/schema.json",
+        "https://stac-extensions.github.io/storage/v1.0.0/schema.json"
+      ],
+      "id": "Sentinel-1_IW_mosaic_2023_M06_31UFS_0_0",
+      "collection": "GLOBAL-MOSAICS",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              4.41131729968802,
+              50.5426603154442
+            ],
+            [
+              4.43887679439123,
+              51.4423523152648
+            ],
+            [
+              5.87744073008491,
+              51.4158553656374
+            ],
+            [
+              5.82239523352081,
+              50.5169948194959
+            ],
+            [
+              4.41131729968802,
+              50.5426603154442
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "processingCenter": "Sinergise Solutions",
+        "platformShortName": "SENTINEL-1",
+        "datetime": "2023-06-01T00:00:00.000Z",
+        "end_datetime": "2023-06-30T23:59:59.000Z",
+        "start_datetime": "2023-06-01T00:00:00.000Z",
+        "productType": "S1SAR_L3_IW_MCM"
+      },
+      "bbox": [
+        4.41131729968802,
+        50.5169948194959,
+        5.87744073008491,
+        51.4423523152648
+      ],
+      "links": [
+        {
+          "rel": "root",
+          "type": "application/json",
+          "href": "https://catalogue.dataspace.copernicus.eu/stac"
+        },
+        {
+          "rel": "self",
+          "type": "application/json",
+          "href": "https://catalogue.dataspace.copernicus.eu/stac/collections/GLOBAL-MOSAICS/items/Sentinel-1_IW_mosaic_2023_M06_31UFS_0_0"
+        },
+        {
+          "rel": "collection",
+          "type": "application/json",
+          "href": "https://catalogue.dataspace.copernicus.eu/stac/collections/GLOBAL-MOSAICS"
+        }
+      ],
+      "assets": {
+        "PRODUCT": {
+          "href": "https://catalogue.dataspace.copernicus.eu/odata/v1/Products(f8039bf2-dc86-4dc2-a21a-b1a58c42fcdd)/$value",
+          "title": "Product",
+          "type": "application/octet-stream",
+          "alternate": {
+            "s3": {
+              "href": "/eodata/Global-Mosaics/Sentinel-1/S1SAR_L3_IW_MCM/2023/06/01/Sentinel-1_IW_mosaic_2023_M06_31UFS_0_0",
+              "storage:platform": "CLOUDFERRO",
+              "storage:region": "waw",
+              "storage:requester_pays": false,
+              "storage:tier": "Online"
+            }
+          },
+          "eo:bands": [
+            {
+              "message": "eo:bands was manually added here to be supported.",
+              "name": "B02"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "links": [
+    {
+      "rel": "self",
+      "href": "https://catalogue.dataspace.copernicus.eu/stac/search?limit=20&bbox=5.07,51.215,5.08,51.22&datetime=2023-06-01T00:00:00Z/2023-06-30T23:59:59.999000Z&collections=GLOBAL-MOSAICS",
+      "type": "application/json"
+    },
+    {
+      "rel": "root",
+      "href": "https://catalogue.dataspace.copernicus.eu/stac",
+      "type": "application/json"
+    }
+  ]
+}
