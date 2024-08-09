@@ -108,8 +108,8 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'openeo_kube = openeogeotrellis.deploy.kube:main',
-            'openeo_batch = openeogeotrellis.deploy.batch_job:start_main'
+            'openeo_kube.py = openeogeotrellis.deploy.kube:main',
+            'openeo_batch.py = openeogeotrellis.deploy.batch_job:start_main'
         ]
     }
 )
