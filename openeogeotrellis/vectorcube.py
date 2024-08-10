@@ -4,7 +4,6 @@ from typing import Optional, Callable
 
 import pandas
 import pandas as pd
-import pyspark.pandas
 
 import openeo.udf
 import openeo.udf.run_code
@@ -58,6 +57,7 @@ class AggregateSpatialResultCSV(AggregatePolygonResultCSV, SupportsRunUdf):
         _log.info(
             f"{type(self).__name__} run_udf with {self._csv_dir=} ({len(csv_paths)=})"
         )
+        import pyspark.pandas
         csv_df = pyspark.pandas.read_csv([f"file://{p}" for p in csv_paths])
 
         processed_df = csv_df.groupby("feature_index").apply(callback).reset_index()
