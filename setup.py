@@ -20,7 +20,6 @@ tests_require = [
     'mock',
     'moto[s3]>=5.0.0',
     'schema',
-    'scipy>=1.3.0',
     'requests-mock>=1.8.0',
     'openeo_udf>=1.0.0rc3',
     "time_machine>=2.8.0",
@@ -98,6 +97,7 @@ setup(
         "planetary-computer~=1.0.0",
         "reretry~=0.11.8",
         "traceback-with-variables==2.0.4",
+        'scipy>=1.8' # used by sentinel-3 reader
     ],
     extras_require={
         "dev": tests_require,
