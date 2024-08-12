@@ -61,6 +61,7 @@ spec:
     "spark.kubernetes.decommission.script": "/opt/decom.sh"
     "spark.stage.ignoreDecommissionFetchFailure": "true"
     "spark.executor.processTreeMetrics.enabled": "true"
+    "spark.eventLog.logStageExecutorMetrics": "true"
     "spark.python.profile": "{{ profile }}"
     "spark.eventLog.dir": "s3a://spark-history/history_prod"
     "spark.hadoop.fs.s3a.endpoint": {{ swift_url }}
