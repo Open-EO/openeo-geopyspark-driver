@@ -242,6 +242,11 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         feature_flags = load_params.get("featureflags", {})
         experimental = feature_flags.get("experimental", False)
 
+        pysc = geopyspark.get_spark_context()
+        description = f"load_collection_{collection_id}"
+        if bands:
+            description += f"_{'-'.join(bands)}"
+        pysc.setJobDescription(description)
 
         jvm = get_jvm()
 
@@ -762,6 +767,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             # TODO: avoid this `still_needs_band_filter` ugliness.
             #       Also see https://github.com/Open-EO/openeo-geopyspark-driver/issues/29
             image_collection = image_collection.filter_bands(band_indices)
+
+        pysc.setJobDescription("")
 
         return image_collection
 
