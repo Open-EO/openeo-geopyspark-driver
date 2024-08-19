@@ -11,7 +11,7 @@ from urllib.parse import urlparse
 
 import sys
 from itertools import chain
-from openeo.util import ensure_dir, TimingLogger, dict_no_none
+from openeo.util import ensure_dir, TimingLogger, dict_no_none, json_default
 from py4j.protocol import Py4JError, Py4JJavaError
 from pyspark import SparkContext, SparkConf
 from pyspark.profiler import BasicProfiler
@@ -377,7 +377,7 @@ def run_job(
         metadata = {**result_metadata, **_get_tracker_metadata("")}
 
         with open(metadata_file, 'w') as f:
-            json.dump(metadata, f)
+            json.dump(metadata, f, default=json_default)
 
         add_permissions(metadata_file, stat.S_IWGRP)
 
