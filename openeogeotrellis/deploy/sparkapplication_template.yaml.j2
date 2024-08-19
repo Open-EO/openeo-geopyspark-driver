@@ -16,7 +16,7 @@ spec:
   image: {{ image_name }}
   imagePullPolicy: Always
   timeToLiveSeconds: 172800
-  mainApplicationFile: local:///opt/openeo/lib64/python3.8/site-packages/openeogeotrellis/deploy/batch_job.py
+  mainApplicationFile: local:///opt/openeo/bin/openeo_batch.py
 {%- endblock %}
   arguments:
 {%- block arguments %}
@@ -61,6 +61,7 @@ spec:
     "spark.kubernetes.decommission.script": "/opt/decom.sh"
     "spark.stage.ignoreDecommissionFetchFailure": "true"
     "spark.executor.processTreeMetrics.enabled": "true"
+    "spark.eventLog.logStageExecutorMetrics": "true"
     "spark.python.profile": "{{ profile }}"
     "spark.eventLog.dir": "s3a://spark-history/history_prod"
     "spark.hadoop.fs.s3a.endpoint": {{ swift_url }}

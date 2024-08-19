@@ -43,7 +43,7 @@ from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkcubemetadata import GeopysparkCubeMetadata
 from openeogeotrellis.processgraphvisiting import GeotrellisTileProcessGraphVisitor, SingleNodeUDFProcessGraphVisitor
-from openeogeotrellis.ml.AggregateSpatialVectorCube import AggregateSpatialVectorCube
+from openeogeotrellis.ml.aggregatespatialvectorcube import AggregateSpatialVectorCube
 from openeogeotrellis.utils import (
     to_projected_polygons,
     log_memory,
@@ -1097,7 +1097,8 @@ class GeopysparkDataCube(DriverDataCube):
 
         process = GeoPySparkBackendImplementation.accept_process_graph(process)
         temporal_size = temporal_overlap = None
-        if self.metadata.has_temporal_dimension():
+        has_time_dim = self.metadata.has_temporal_dimension()
+        if has_time_dim:
             temporal_size = size_dict.get(self.metadata.temporal_dimension.name,None)
             temporal_overlap = overlap_dict.get(self.metadata.temporal_dimension.name, None)
 
@@ -1113,14 +1114,11 @@ class GeopysparkDataCube(DriverDataCube):
                     reason=f"window sizes smaller then 32 are not yet supported for UDFs (got {size!r}).",
                 )
 
-            if temporal_size is None or temporal_size.get('value',None) is None:
+            if has_time_dim and (temporal_size is None or temporal_size.get('value',None) is None):
                 #full time dimension has to be provided
-                if not self.metadata.has_temporal_dimension():
-                    raise OpenEOApiException(
-                        message = "apply_neighborhood: datacubes without a time dimension are not yet supported for this case")
                 result_collection = retiled_collection.apply_tiles_spatiotemporal(udf_code = udf,
                     udf_context = udf_context, runtime = runtime, overlap_x = overlap_x, overlap_y = overlap_y)
-            elif temporal_size.get('value',None) == 'P1D' and temporal_overlap is None:
+            elif not has_time_dim or (temporal_size.get('value',None) == 'P1D' and temporal_overlap is None):
                 result_collection = retiled_collection.apply_tiles(udf_code = udf, context = udf_context,
                     runtime = runtime, overlap_x = overlap_x, overlap_y = overlap_y)
             else:
@@ -1433,7 +1431,7 @@ class GeopysparkDataCube(DriverDataCube):
         with tempfile.NamedTemporaryFile(suffix=".json.tmp",delete=False) as temp_file:
             gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses().vectorize(max_level.srdd.rdd(),temp_file.name)
             #postpone turning into an actual collection upon usage
-            return DelayedVector(temp_file.name)
+            return DelayedVector(temp_file.name).to_driver_vector_cube()
 
     def get_max_level(self) -> TiledRasterLayer:
         return self.pyramid.levels[self.pyramid.max_zoom]
@@ -1443,7 +1441,8 @@ class GeopysparkDataCube(DriverDataCube):
                                                                      AggregateSpatialVectorCube]:
 
         if isinstance(reducer, dict):
-            if len(reducer) == 1:
+            if len(reducer) == 1 and len(reducer.get('arguments',{})) > 1:
+                #TODO: the else branch below seems a much safer option for this. Verify if this code can be removed.
                 single_process = next(iter(reducer.values())).get('process_id')
                 return self.zonal_statistics(geometries, single_process)
             else:

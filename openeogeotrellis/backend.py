@@ -89,7 +89,7 @@ from openeogeotrellis.layercatalog import (
     LARGE_LAYER_THRESHOLD_IN_PIXELS,
 )
 from openeogeotrellis.logs import elasticsearch_logs
-from openeogeotrellis.ml.GeopySparkCatBoostModel import CatBoostClassificationModel
+from openeogeotrellis.ml.catboost_spark import CatBoostClassificationModel
 from openeogeotrellis.processgraphvisiting import GeotrellisTileProcessGraphVisitor, SingleNodeUDFProcessGraphVisitor
 from openeogeotrellis.sentinel_hub.batchprocessing import SentinelHubBatchProcessing
 from openeogeotrellis.service_registry import (
@@ -1994,15 +1994,19 @@ class GpsBatchJobs(backend.BatchJobs):
             python_max = job_options.get("python-memory", None)
             if python_max is not None:
                 python_max = as_bytes(python_max)
-                if python_max > memOverheadBytes or  "executor-memoryOverhead" not in job_options:
-                    memOverheadBytes = python_max + jvmOverheadBytes
+                if "executor-memoryOverhead" not in job_options:
+                    memOverheadBytes = jvmOverheadBytes
                     executor_memory_overhead = f"{memOverheadBytes//(1024**2)}m"
             else:
                 python_max = memOverheadBytes - jvmOverheadBytes
+                executor_memory_overhead = f"{jvmOverheadBytes//(1024**2)}m"
 
             eodata_mount = "/eodata2" if use_goofys else "/eodata"
 
             spark_app_id = k8s_job_name()
+
+            # allow to override the image name via job options, other option would be to deduce it from the udf runtimes being used
+            image_name = job_options.get("image-name",os.environ.get("IMAGE_NAME"))
 
             sparkapplication_dict = k8s_render_manifest_template(
                 "sparkapplication.yaml.j2",
@@ -2040,7 +2044,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 aws_endpoint=os.environ.get("AWS_S3_ENDPOINT","data.cloudferro.com"),
                 aws_region=os.environ.get("AWS_REGION","RegionOne"),
                 swift_url=os.environ.get("SWIFT_URL"),
-                image_name=os.environ.get("IMAGE_NAME"),
+                image_name=image_name,
                 openeo_backend_config=os.environ.get("OPENEO_BACKEND_CONFIG"),
                 swift_bucket=bucket,
                 zookeeper_nodes=os.environ.get("ZOOKEEPERNODES"),

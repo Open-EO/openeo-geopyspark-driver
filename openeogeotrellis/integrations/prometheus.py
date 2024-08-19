@@ -54,7 +54,7 @@ class Prometheus:
         """Returns memory usage in byte-seconds."""
 
         # Prometheus doesn't expose this as a counter: do integration over time ourselves
-        query = f'max(max_over_time(container_memory_usage_bytes{{pod=~"{application_id}-.+exec.+",image=""}}[5d]))/(1024*1024*1024) '
+        query = f'max(max_over_time(container_memory_working_set_bytes{{pod=~"{application_id}-.+exec.+",image=""}}[5d]))/(1024*1024*1024) '
         return self._query_for_float(query, at)
 
 

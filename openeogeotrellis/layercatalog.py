@@ -131,6 +131,10 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         elif(get_backend_config().default_reading_strategy == "load_per_product"):
             datacubeParams.setLoadPerProduct(True)
 
+        if (get_backend_config().default_tile_size is not None):
+            if "tilesize" not in feature_flags:
+                getattr(datacubeParams, "tileSize_$eq")(get_backend_config().default_tile_size)
+
 
         datacubeParams.setResampleMethod(GeopysparkDataCube._get_resample_method(load_params.resample_method))
 
@@ -238,6 +242,11 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         feature_flags = load_params.get("featureflags", {})
         experimental = feature_flags.get("experimental", False)
 
+        pysc = geopyspark.get_spark_context()
+        description = f"load_collection_{collection_id}"
+        if bands:
+            description += f"_{'-'.join(bands)}"
+        pysc.setJobDescription(description)
 
         jvm = get_jvm()
 
@@ -682,6 +691,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             pyramid = file_s2_pyramid()
         elif layer_source_type == 'creodias-s1-backscatter':
             sar_backscatter_arguments = load_params.sar_backscatter or SarBackscatterArgs()
+            sar_backscatter_arguments.options["resolution"] = (cell_width, cell_height)
             s1_backscatter_orfeo = get_s1_backscatter_orfeo(
                 version=sar_backscatter_arguments.options.get("implementation_version", "2"),
                 jvm=jvm
@@ -757,6 +767,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             # TODO: avoid this `still_needs_band_filter` ugliness.
             #       Also see https://github.com/Open-EO/openeo-geopyspark-driver/issues/29
             image_collection = image_collection.filter_bands(band_indices)
+
+        pysc.setJobDescription("")
 
         return image_collection
 

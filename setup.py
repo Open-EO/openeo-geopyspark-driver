@@ -20,7 +20,6 @@ tests_require = [
     'mock',
     'moto[s3]>=5.0.0',
     'schema',
-    'scipy>=1.3.0',
     'requests-mock>=1.8.0',
     'openeo_udf>=1.0.0rc3',
     "time_machine>=2.8.0",
@@ -60,26 +59,31 @@ setup(
         'geopyspark==0.4.7+openeo',
         # rasterio is an undeclared but required dependency for geopyspark
         # (see https://github.com/locationtech-labs/geopyspark/issues/683 https://github.com/locationtech-labs/geopyspark/pull/706)
-        'rasterio~=1.3.10',
+        'rasterio~=1.2.0; python_version<"3.9"',
+        'rasterio~=1.3.10; python_version>="3.9"',
         'py4j',
-        'numpy==1.22.4',
-        'pandas>=1.4.0,<2.0.0',
+        'numpy==1.22.4; python_version<"3.9"',
+        'numpy; python_version>="3.9"',
+        'pandas>=1.4.0,<2.0.0; python_version<"3.9"',
+        'pandas; python_version>="3.9"',
         'pyproj==3.4.1',
         'protobuf~=3.9.2',
         'kazoo~=2.8.0',
-        'h5py==2.10.0; python_version<="3.8"',
+        'h5py==2.10.0; python_version<"3.9"',
         'h5py~=3.11.0; python_version>="3.9"',
         'h5netcdf',
         'requests>=2.26.0,<3.0',
         'python_dateutil',
         'pytz',
         'affine',
-        'xarray~=0.16.2',
+        'xarray~=0.16.2; python_version<"3.9"',
+        'xarray~=2024.7.0; python_version>="3.9"',
         "netcdf4",
         'Shapely<2.0',
         'epsel~=1.0.0',
         'numbagg==0.1',
-        "Bottleneck~=1.3.2",
+        'Bottleneck~=1.3.2; python_version<"3.9"',
+        'Bottleneck~=1.4.0; python_version>="3.9"',
         'python-json-logger',
         'jep==4.1.1',
         'kafka-python==1.4.6',
@@ -93,6 +97,7 @@ setup(
         "planetary-computer~=1.0.0",
         "reretry~=0.11.8",
         "traceback-with-variables==2.0.4",
+        'scipy>=1.8' # used by sentinel-3 reader
     ],
     extras_require={
         "dev": tests_require,
@@ -105,4 +110,10 @@ setup(
             "requests-gssapi>=1.2.3",  # For Kerberos authentication
         ],
     },
+    entry_points={
+        'console_scripts': [
+            'openeo_kube.py = openeogeotrellis.deploy.kube:main',
+            'openeo_batch.py = openeogeotrellis.deploy.batch_job:start_main'
+        ]
+    }
 )
