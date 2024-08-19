@@ -11,7 +11,7 @@ from urllib.parse import urlparse
 
 import sys
 from itertools import chain
-from openeo.util import ensure_dir, TimingLogger, dict_no_none, json_default
+from openeo.util import ensure_dir, TimingLogger, dict_no_none
 from py4j.protocol import Py4JError, Py4JJavaError
 from pyspark import SparkContext, SparkConf
 from pyspark.profiler import BasicProfiler
@@ -38,7 +38,7 @@ from openeogeotrellis.deploy.batch_job_metadata import _assemble_result_metadata
 from openeogeotrellis.integrations.hadoop import setup_kerberos_auth
 from openeogeotrellis.udf import (collect_python_udf_dependencies, install_python_udf_dependencies,
                                   UDF_PYTHON_DEPENDENCIES_FOLDER_NAME, )
-from openeogeotrellis.utils import (describe_path, log_memory, get_jvm, add_permissions, to_s3_url, )
+from openeogeotrellis.utils import (describe_path, log_memory, get_jvm, add_permissions, json_default, )
 
 logger = logging.getLogger('openeogeotrellis.deploy.batch_job')
 

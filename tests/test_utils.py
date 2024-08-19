@@ -1,7 +1,9 @@
 import collections
 import datetime
 import getpass
+import json
 import logging
+import pathlib
 from pathlib import Path
 
 import pytest
@@ -20,6 +22,7 @@ from openeogeotrellis.utils import (
     StatsReporter,
     get_s3_binary_file_contents,
     to_s3_url, parse_approximate_isoduration, reproject_cellsize,
+    json_default,
 )
 
 
@@ -187,6 +190,20 @@ def test_single_value():
         pass
 
     assert single_value({'a': ['VH'], 'b': ['VH']}.values()) == ['VH']
+
+
+@pytest.mark.parametrize(
+    ["value", "expected"],
+    [
+        (3.1415, 3.1415),
+        (pathlib.Path("tmp"), "tmp"),
+        # PosixPath is not available on Windows, but is a subclass of Path, so the previous test is enough
+        # (pathlib.PosixPath("tmp"), "tmp"),
+    ],
+)
+def test_json_default(value, expected):
+    out = json.loads(json.dumps(value, default=json_default))
+    assert out == expected
 
 
 class TestStatsReporter:
