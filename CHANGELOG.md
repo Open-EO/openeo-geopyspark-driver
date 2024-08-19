@@ -19,6 +19,7 @@ without compromising stable operations.
 - aggregate_spatial: trying to use the probabilities argument in a _single_ 'quantiles' reduces was throwing an error. ([#821](https://github.com/Open-EO/openeo-geopyspark-driver/issues/821))
 - sar_backscatter: when a target resolution is provided via resample_spatial, it is now immediately taken into account for computing backscatter, reducing memory usage.
 - the temporary folder which is created for aggregate_spatial now contains a timestamp to aid cleanup scripts. 
+- apply_neighborhood: support applying UDF on cubes without a time dimension
 
 ## 0.39.0
 

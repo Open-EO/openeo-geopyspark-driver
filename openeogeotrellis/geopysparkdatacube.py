@@ -1097,7 +1097,8 @@ class GeopysparkDataCube(DriverDataCube):
 
         process = GeoPySparkBackendImplementation.accept_process_graph(process)
         temporal_size = temporal_overlap = None
-        if self.metadata.has_temporal_dimension():
+        has_time_dim = self.metadata.has_temporal_dimension()
+        if has_time_dim:
             temporal_size = size_dict.get(self.metadata.temporal_dimension.name,None)
             temporal_overlap = overlap_dict.get(self.metadata.temporal_dimension.name, None)
 
@@ -1113,14 +1114,11 @@ class GeopysparkDataCube(DriverDataCube):
                     reason=f"window sizes smaller then 32 are not yet supported for UDFs (got {size!r}).",
                 )
 
-            if temporal_size is None or temporal_size.get('value',None) is None:
+            if has_time_dim and (temporal_size is None or temporal_size.get('value',None) is None):
                 #full time dimension has to be provided
-                if not self.metadata.has_temporal_dimension():
-                    raise OpenEOApiException(
-                        message = "apply_neighborhood: datacubes without a time dimension are not yet supported for this case")
                 result_collection = retiled_collection.apply_tiles_spatiotemporal(udf_code = udf,
                     udf_context = udf_context, runtime = runtime, overlap_x = overlap_x, overlap_y = overlap_y)
-            elif temporal_size.get('value',None) == 'P1D' and temporal_overlap is None:
+            elif not has_time_dim or (temporal_size.get('value',None) == 'P1D' and temporal_overlap is None):
                 result_collection = retiled_collection.apply_tiles(udf_code = udf, context = udf_context,
                     runtime = runtime, overlap_x = overlap_x, overlap_y = overlap_y)
             else:
