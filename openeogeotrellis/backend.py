@@ -2005,6 +2005,9 @@ class GpsBatchJobs(backend.BatchJobs):
 
             spark_app_id = k8s_job_name()
 
+            # allow to override the image name via job options, other option would be to deduce it from the udf runtimes being used
+            image_name = job_options.get("image-name",os.environ.get("IMAGE_NAME"))
+
             sparkapplication_dict = k8s_render_manifest_template(
                 "sparkapplication.yaml.j2",
                 job_name=spark_app_id,
@@ -2041,7 +2044,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 aws_endpoint=os.environ.get("AWS_S3_ENDPOINT","data.cloudferro.com"),
                 aws_region=os.environ.get("AWS_REGION","RegionOne"),
                 swift_url=os.environ.get("SWIFT_URL"),
-                image_name=os.environ.get("IMAGE_NAME"),
+                image_name=image_name,
                 openeo_backend_config=os.environ.get("OPENEO_BACKEND_CONFIG"),
                 swift_bucket=bucket,
                 zookeeper_nodes=os.environ.get("ZOOKEEPERNODES"),
