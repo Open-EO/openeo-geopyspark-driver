@@ -432,13 +432,16 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
     if netcdf_with_time_dimension:
         pyramid_factory = jvm.org.openeo.geotrellis.layers.NetCDFCollection
     else:
+        max_soft_errors_ratio = env.get("max_soft_errors_ratio", 0.0)
+
         pyramid_factory = jvm.org.openeo.geotrellis.file.PyramidFactory(
             opensearch_client,
             url,  # openSearchCollectionId, not important
             band_names,  # openSearchLinkTitles
             None,  # rootPath, not important
             jvm.geotrellis.raster.CellSize(cell_width, cell_height),
-            False  # experimental
+            False,  # experimental
+            max_soft_errors_ratio,
         )
 
     extent = jvm.geotrellis.vector.Extent(*map(float, target_bbox.as_wsen_tuple()))
