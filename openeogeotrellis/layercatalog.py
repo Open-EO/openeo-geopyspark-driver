@@ -628,6 +628,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 "",
                 jvm.geotrellis.raster.CellSize(cell_width, cell_height),
                 False,
+                max_soft_errors_ratio,
             )
             return create_pyramid(factory)
 
@@ -647,6 +648,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 "",
                 jvm.geotrellis.raster.CellSize(cell_width, cell_height),
                 False,
+                max_soft_errors_ratio,
             )
             return create_pyramid(factory)
 
@@ -666,6 +668,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 "",
                 jvm.geotrellis.raster.CellSize(cell_width, cell_height),
                 False,
+                max_soft_errors_ratio,
             )
             return create_pyramid(factory)
 
