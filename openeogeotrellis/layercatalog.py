@@ -837,7 +837,9 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
         return "UTM"  # LANDSAT7_ETM_L2 doesn't have any, for example
 
-    def derive_temporal_extent(self, collection_id: str, load_params: LoadParameters) -> List[Optional[str]]:
+    def derive_temporal_extent(
+        self, collection_id: str, load_params: LoadParameters
+    ) -> Tuple[Optional[str], Optional[str]]:
         metadata_json = self.get_collection_metadata(collection_id=collection_id)
         metadata = GeopysparkCubeMetadata(metadata_json)
 
@@ -1256,6 +1258,9 @@ def check_missing_products(
 
 
 def extra_validation_load_collection(collection_id: str, load_params: LoadParameters, env: EvalEnv) -> Iterable[dict]:
+    if collection_id == "TestCollection-LonLat4x4":
+        # No need to check on artificial debug layer
+        return
     if "backend_implementation" not in env:
         yield {"code": "NoBackendImplementation", "message": "It seems like you are running in a test environment"}
         return
@@ -1266,16 +1271,101 @@ def extra_validation_load_collection(collection_id: str, load_params: LoadParame
         float(env.get("large_layer_threshold_in_pixels", LARGE_LAYER_THRESHOLD_IN_PIXELS)))
     metadata_json = catalog.get_collection_metadata(collection_id=collection_id)
     metadata = GeopysparkCubeMetadata(metadata_json)
+    load_params = deepcopy(load_params)
+    load_params.temporal_extent = normalize_temporal_extent(catalog.derive_temporal_extent(collection_id, load_params))
     temporal_extent = load_params.temporal_extent
+
     spatial_extent = load_params.spatial_extent
-    if allow_check_missing_products and metadata.get("_vito", "data_source", "check_missing_products", default=None):
+    if spatial_extent is None or len(spatial_extent) == 0:
+        spatial_extent = load_params.global_extent
+    if spatial_extent is None or len(spatial_extent) == 0:
+        spatial_extent = {"srs": "EPSG:4326", "west": -180.0, "south": -90, "east": 180, "north": 90}
+    load_params.spatial_extent = spatial_extent
+
+    native_crs = metadata.get("cube:dimensions", "x", "reference_system", default="EPSG:4326")
+    if isinstance(native_crs, dict):
+        native_crs = native_crs.get("id", {}).get("code", None)
+    if isinstance(native_crs, int):
+        native_crs = f"EPSG:{native_crs}"
+    if not isinstance(native_crs, str):
+        yield {
+            "code": "InvalidNativeCRS",
+            "message": f"Invalid native CRS {native_crs!r} for " f"collection {collection_id!r}",
+        }
+        return
+
+    is_utm = native_crs == "Auto42001" or native_crs.startswith("EPSG:326")
+    if is_utm and abs(spatial_extent["east"] - spatial_extent["west"]) > 12:
+        # One UTM zone is 6 degrees wide
+        yield {
+            "code": "ExtentTooLarge",
+            "message": "Cannot handle extents overlapping multiple UTM zones for this layer.",
+        }
+        return
+
+    number_of_temporal_observations: int = catalog.estimate_number_of_temporal_observations(
+        collection_id,
+        load_params,
+    )
+
+    band_names = load_params.bands
+    if band_names:
+        # Will convert aliases:
+        band_names = metadata.filter_bands(band_names).band_names
+    else:
+        band_names = metadata.get("cube:dimensions", "bands", "values", default=["_at_least_assume_one_band_"])
+    nr_bands = len(band_names)
+
+    if collection_id == "TestCollection-LonLat4x4":
+        # This layer is always 4x4 pixels, adapt resolution accordingly
+        bbox_width = abs(spatial_extent["east"] - spatial_extent["west"])
+        bbox_height = abs(spatial_extent["north"] - spatial_extent["south"])
+        cell_width_latlon = bbox_width / 4
+        cell_height_latlon = bbox_height / 4
+        cell_width, cell_height = reproject_cellsize(
+            spatial_extent,
+            (cell_width_latlon, cell_height_latlon),
+            "EPSG:4326",
+            "Auto42001",
+        )
+    else:
+        # The largest GSD I encountered was 25km. Double it as very permissive guess:
+        default_gsd = (50000, 50000)
+        gsd_object = metadata.get_GSD_in_meters()
+        if isinstance(gsd_object, dict):
+            gsd_in_meter_list = list(map(lambda x: gsd_object.get(x), band_names))
+            gsd_in_meter_list = list(filter(lambda x: x is not None, gsd_in_meter_list))
+            if not gsd_in_meter_list:
+                gsd_in_meter_list = [default_gsd] * nr_bands
+        elif isinstance(gsd_object, tuple):
+            gsd_in_meter_list = [gsd_object] * nr_bands
+        else:
+            gsd_in_meter_list = [default_gsd] * nr_bands
+
+        # We need to convert GSD to resolution in order to take an average:
+        px_per_m2_average_band = sum(map(lambda x: 1 / (x[0] * x[1]), gsd_in_meter_list)) / len(gsd_in_meter_list)
+        px_per_m_average_band = pow(px_per_m2_average_band, 0.5)
+        m_per_px_average_band = 1 / px_per_m_average_band
+
+        res = (m_per_px_average_band, m_per_px_average_band)
+        # Auto42001 is in meter
+        cell_width, cell_height = reproject_cellsize(spatial_extent, res, "Auto42001", native_crs)
+
+    is_layer_too_large_message = is_layer_too_large(
+        load_params=load_params,
+        number_of_temporal_observations=number_of_temporal_observations,
+        nr_bands=nr_bands,
+        cell_width=cell_width,
+        cell_height=cell_height,
+        native_crs=native_crs,
+        threshold_pixels=large_layer_threshold_in_pixels,
+        sync_job=sync_job,
+    )
+    if is_layer_too_large_message:
+        yield {"code": "ExtentTooLarge", "message": f"collection_id {collection_id!r}: {is_layer_too_large_message}"}
+    elif allow_check_missing_products and metadata.get("_vito", "data_source", "check_missing_products", default=None):
+        # Only check missing products when extent is not too large
         properties = load_params.properties
-        if temporal_extent is None:
-            yield {"code": "UnlimitedExtent", "message": "No temporal extent given."}
-        if spatial_extent is None:
-            yield {"code": "UnlimitedExtent", "message": "No spatial extent given."}
-        if temporal_extent is None or spatial_extent is None:
-            return
 
         products = check_missing_products(
             collection_metadata=metadata,
@@ -1289,82 +1379,6 @@ def extra_validation_load_collection(collection_id: str, load_params: LoadParame
                     "code": "MissingProduct",
                     "message": f"Tile {p!r} in collection {collection_id!r} is not available."
                 }
-
-    native_crs = metadata.get("cube:dimensions", "x", "reference_system", default="EPSG:4326")
-    if isinstance(native_crs, dict):
-        native_crs = native_crs.get("id", {}).get("code", None)
-    if isinstance(native_crs, int):
-        native_crs = f"EPSG:{native_crs}"
-    if not isinstance(native_crs, str):
-        yield {"code": "InvalidNativeCRS", "message": f"Invalid native CRS {native_crs!r} for "
-                                                      f"collection {collection_id!r}"}
-        return
-
-    number_of_temporal_observations: int = catalog.estimate_number_of_temporal_observations(
-        collection_id,
-        load_params,
-    )
-
-    if spatial_extent and temporal_extent:
-        band_names = load_params.bands
-        if band_names:
-            # Will convert aliases:
-            band_names = metadata.filter_bands(band_names).band_names
-        else:
-            band_names = metadata.get("cube:dimensions", "bands", "values",
-                                      default=["_at_least_assume_one_band_"])
-        nr_bands = len(band_names)
-
-        if collection_id == 'TestCollection-LonLat4x4':
-            # This layer is always 4x4 pixels, adapt resolution accordingly
-            bbox_width = abs(spatial_extent["east"] - spatial_extent["west"])
-            bbox_height = abs(spatial_extent["north"] - spatial_extent["south"])
-            cell_width_latlon = bbox_width / 4
-            cell_height_latlon = bbox_height / 4
-            cell_width, cell_height = reproject_cellsize(spatial_extent,
-                                                         (cell_width_latlon, cell_height_latlon),
-                                                         "EPSG:4326",
-                                                         "Auto42001",
-                                                         )
-        else:
-            # The largest GSD I encountered was 25km. Double it as very permissive guess:
-            default_gsd = (50000, 50000)
-            gsd_object = metadata.get_GSD_in_meters()
-            if isinstance(gsd_object, dict):
-                gsd_in_meter_list = list(map(lambda x: gsd_object.get(x), band_names))
-                gsd_in_meter_list = list(filter(lambda x: x is not None, gsd_in_meter_list))
-                if not gsd_in_meter_list:
-                    gsd_in_meter_list = [default_gsd] * nr_bands
-            elif isinstance(gsd_object, tuple):
-                gsd_in_meter_list = [gsd_object] * nr_bands
-            else:
-                gsd_in_meter_list = [default_gsd] * nr_bands
-
-            # We need to convert GSD to resolution in order to take an average:
-            px_per_m2_average_band = sum(map(lambda x: 1 / (x[0] * x[1]), gsd_in_meter_list)) / len(gsd_in_meter_list)
-            px_per_m_average_band = pow(px_per_m2_average_band, 0.5)
-            m_per_px_average_band = 1 / px_per_m_average_band
-
-            res = (m_per_px_average_band, m_per_px_average_band)
-            # Auto42001 is in meter
-            cell_width, cell_height = reproject_cellsize(spatial_extent, res, "Auto42001", native_crs)
-
-        message = is_layer_too_large(
-            load_params=load_params,
-            number_of_temporal_observations=number_of_temporal_observations,
-            nr_bands=nr_bands,
-            cell_width=cell_width,
-            cell_height=cell_height,
-            native_crs=native_crs,
-            threshold_pixels=large_layer_threshold_in_pixels,
-            sync_job=sync_job,
-        )
-        if message:
-            yield {
-                "code": "ExtentTooLarge",
-                "message": f"collection_id {collection_id!r}: {message}"
-            }
-
 
 def is_layer_too_large(
         load_params: LoadParameters,

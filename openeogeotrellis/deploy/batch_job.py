@@ -36,6 +36,7 @@ from openeogeotrellis.deploy import load_custom_processes
 from openeogeotrellis.deploy.batch_job_metadata import _assemble_result_metadata, _transform_stac_metadata, \
     _convert_job_metadatafile_outputs_to_s3_urls, _get_tracker_metadata
 from openeogeotrellis.integrations.hadoop import setup_kerberos_auth
+from openeogeotrellis.layercatalog import DO_EXTENT_CHECK
 from openeogeotrellis.udf import (collect_python_udf_dependencies, install_python_udf_dependencies,
                                   UDF_PYTHON_DEPENDENCIES_FOLDER_NAME, )
 from openeogeotrellis.utils import (describe_path, log_memory, get_jvm, add_permissions, to_s3_url, )
@@ -255,7 +256,7 @@ def run_job(
             "data_mask_optimization",
             "node_caching",
             "allow_empty_cubes",
-            "do_extent_check",
+            DO_EXTENT_CHECK,
         ]
         env_values.update({k: job_options[k] for k in job_option_whitelist if k in job_options})
         env = EvalEnv(env_values)
