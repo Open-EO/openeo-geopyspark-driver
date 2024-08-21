@@ -97,10 +97,7 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
                                  else itm.get_collection().summaries.to_dict())
             return get_band_name(eo_bands_location["eo:bands"][eo_band_index])
 
-        if "eo:bands" in asset.extra_fields:
-            return [get_band_name(eo_band) for eo_band in asst.extra_fields["eo:bands"]]
-
-        return []
+        return [get_band_name(eo_band) for eo_band in asst.extra_fields.get("eo:bands", [])]
 
     def get_proj_metadata(itm: pystac.Item, asst: pystac.Asset) -> (Optional[int],
                                                                     Optional[Tuple[float, float, float, float]],
