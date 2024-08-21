@@ -322,8 +322,13 @@ def test_separate_asset_per_band(tmp_path, from_node, expected_names):
     assert metadata["start_datetime"] == "2023-06-01T00:00:00Z"
     assets = metadata["assets"]
     # get file names as set:
-    asset_names = set([os.path.basename(asset["href"]) for asset in assets.values()])
+    asset_names = set(assets.keys())
     assert asset_names == expected_names
+
+    for asset_key in assets:
+        asset = assets[asset_key]
+        assert len(asset["bands"]) == 1
+        assert len(asset["raster:bands"]) == 1
 
 
 def test_sample_by_feature_filter_spatial_vector_cube_from_load_url(tmp_path):

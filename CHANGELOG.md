@@ -20,6 +20,7 @@ without compromising stable operations.
 - sar_backscatter: when a target resolution is provided via resample_spatial, it is now immediately taken into account for computing backscatter, reducing memory usage.
 - the temporary folder which is created for aggregate_spatial now contains a timestamp to aid cleanup scripts. 
 - apply_neighborhood: support applying UDF on cubes without a time dimension
+- Add "separate_asset_per_band" to format_options. Currently, for TIFF only.
 
 ## 0.39.0
 

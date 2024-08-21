@@ -1829,15 +1829,19 @@ class GeopysparkDataCube(DriverDataCube):
                                              for timestamped_path in timestamped_paths]
 
                         for path, timestamp, bbox in timestamped_paths:
+                            tmp_bands = bands
+                            if separate_asset_per_band.isDefined():
+                                # TODO: Avoid checking in filename
+                                tmp_bands = [b for b in bands if b["name"] in pathlib.Path(path).name]
                             assets[str(pathlib.Path(path).name)] = {
                                 "href": str(path),
                                 "type": "image/tiff; application=geotiff",
                                 "roles": ["data"],
-                                'bands': bands,
-                                'nodata': nodata,
-                                'datetime': timestamp,
-                                'bbox': to_latlng_bbox(bbox),
-                                'geometry': mapping(Polygon.from_bounds(*to_latlng_bbox(bbox)))
+                                "bands": tmp_bands,
+                                "nodata": nodata,
+                                "datetime": timestamp,
+                                "bbox": to_latlng_bbox(bbox),
+                                "geometry": mapping(Polygon.from_bounds(*to_latlng_bbox(bbox))),
                             }
                         return assets
                     else:
@@ -1861,14 +1865,22 @@ class GeopysparkDataCube(DriverDataCube):
                                 zlevel,
                                 get_jvm().scala.Option.apply(crop_extent),
                                 gtiff_options)
-                            return {str(pathlib.Path(resultfile).name): {
-                                "href": str(resultfile),
-                                "type": "image/tiff; application=geotiff",
-                                "roles": ["data"],
-                                'bands': bands,
-                                'nodata': nodata,
-                                'datetime': None
-                            } for resultfile in outputPaths}
+
+                            assets = {}
+                            for path in outputPaths:
+                                file_name = pathlib.Path(path).name
+                                tmp_bands = bands
+                                if separate_asset_per_band.isDefined():
+                                    # TODO: Avoid checking in filename
+                                    tmp_bands = [b for b in bands if b["name"] in file_name]
+                                assets[file_name] = {
+                                    "href": str(path),
+                                    "type": "image/tiff; application=geotiff",
+                                    "roles": ["data"],
+                                    "bands": tmp_bands,
+                                    "nodata": nodata,
+                                }
+                            return assets
 
             else:
                 if not save_filename.endswith(".png"):
