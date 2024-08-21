@@ -81,7 +81,7 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
         return any(conformance_class.endswith("/item-search") for conformance_class in conforms_to)
 
     def is_band_asset(asset: pystac.Asset) -> bool:
-        return "eo:bands" in asset.extra_fields
+        return asset.has_role("data")
 
     def get_band_names(itm: pystac.Item, asst: pystac.Asset) -> List[str]:
         def get_band_name(eo_band) -> str:
@@ -97,7 +97,10 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
                                  else itm.get_collection().summaries.to_dict())
             return get_band_name(eo_bands_location["eo:bands"][eo_band_index])
 
-        return [get_band_name(eo_band) for eo_band in asst.extra_fields["eo:bands"]]
+        if "eo:bands" in asset.extra_fields:
+            return [get_band_name(eo_band) for eo_band in asst.extra_fields["eo:bands"]]
+
+        return []
 
     def get_proj_metadata(itm: pystac.Item, asst: pystac.Asset) -> (Optional[int],
                                                                     Optional[Tuple[float, float, float, float]],
@@ -345,7 +348,7 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
                    .withNominalDate(itm.properties.get("datetime") or itm.properties["start_datetime"]))
 
         for asset_id, asset in band_assets.items():
-            asset_band_names = get_band_names(itm, asset)
+            asset_band_names = get_band_names(itm, asset) or [asset_id]
             for asset_band_name in asset_band_names:
                 if asset_band_name not in band_names:
                     band_names.append(asset_band_name)
@@ -385,11 +388,6 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
 
     if not items_found:
         raise no_data_available_exception
-
-    if not band_names:
-        raise OpenEOApiException(
-            message=f'No band assets found in items; a band asset requires an "eo:bands" property with a "name".',
-            status_code=400)
 
     target_bbox = requested_bbox or stac_bbox
 
