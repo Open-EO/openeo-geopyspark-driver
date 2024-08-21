@@ -1,100 +1,34 @@
+import logging
+import shutil
 import typing
 import uuid
-import geopyspark as gps
 from enum import Enum
 from pathlib import Path
 from typing import Dict, Union
 
+import geopyspark as gps
 import pyspark
-from pyspark.ml.classification import _JavaProbabilisticClassificationModel
-from pyspark.ml.util import MLReadable, JavaMLWritable, JavaMLReader
-
 from openeo_driver.datacube import DriverMlModel
 from openeo_driver.datastructs import StacAsset
-from pyspark.mllib.util import JavaSaveable
-
 from openeo_driver.utils import generate_unique_id
-
-
-class EModelType(Enum):
-    CatboostBinary = 0
-    AppleCoreML = 1
-    Cpp = 2
-    Python = 3
-    Json = 4
-    Onnx = 5
-    Pmml = 6
-    CPUSnapshot = 7
-
-
-_standard_py2java = pyspark.ml.common._py2java
-_standard_java2py = pyspark.ml.common._java2py
-
-
-def _py2java(sc, obj):
-    """ Convert Python object into Java """
-    if isinstance(obj, Enum):
-        return getattr(
-            getattr(
-                sc._jvm.ru.yandex.catboost.spark.catboost4j_spark.core.src.native_impl,
-                obj.__class__.__name__
-            ),
-            'swigToEnum'
-        )(obj.value)
-    return _standard_py2java(sc, obj)
-
-
-class CatBoostMLReader(JavaMLReader):
-    """
-    (Private) Specialization of :py:class:`JavaMLReader` for CatBoost types
-    """
-
-    @classmethod
-    def _java_loader_class(cls, clazz):
-        """
-        Returns the full class name of the Java ML instance.
-        """
-        return "ai.catboost.spark.CatBoostClassificationModel"
-
-
-class CatBoostClassificationModel(_JavaProbabilisticClassificationModel, MLReadable, JavaMLWritable):
-    """
-    Simple wrapper around the java CatBoostClassificationModel implementation.
-    """
-    def __init__(self, java_model=None):
-        super(CatBoostClassificationModel, self).__init__(java_model)
-
-    @classmethod
-    def read(cls):
-        """Returns an MLReader instance for this class."""
-        return CatBoostMLReader(cls)
-
-    @staticmethod
-    def _from_java(java_model):
-        return CatBoostClassificationModel(java_model)
-
-    @staticmethod
-    def load_native_model(filename, file_format=EModelType.CatboostBinary):
-        """
-        Load the model from a local file.
-        See https://catboost.ai/docs/concepts/python-reference_catboostclassifier_load_model.html
-        for detailed parameters description
-        """
-        sc = gps.get_spark_context()
-        java_model = sc._jvm.ai.catboost.spark.CatBoostClassificationModel.loadNativeModel(filename, _py2java(sc, file_format))
-        return java_model
+from openeogeotrellis.configparams import ConfigParams
+from openeogeotrellis.ml.catboost_spark import CatBoostClassificationModel
+from openeogeotrellis.utils import download_s3_directory, to_s3_url
+from pyspark.ml.classification import _JavaProbabilisticClassificationModel
+from pyspark.ml.util import JavaMLReader, JavaMLWritable, MLReadable
+from pyspark.mllib.util import JavaSaveable
 
 
 class GeopySparkCatBoostModel(DriverMlModel):
 
-    def __init__(self, model: JavaSaveable):
+    def __init__(self, model: CatBoostClassificationModel):
         self._model = model
 
     def get_model_metadata(self, directory: Union[str, Path]) -> Dict[str, typing.Any]:
         # This metadata will be written to job_metadata.json.
         # It will then be used to dynamically generate ml_model_metadata.json.
         directory = Path(directory).parent
-        model_path = str(directory / "catboost_model.cbm")
+        model_path = str(directory / "catboost_model.cbm.tar.gz")
         metadata = {
             "stac_version": "1.0.0",
             "stac_extensions": [
@@ -165,7 +99,25 @@ class GeopySparkCatBoostModel(DriverMlModel):
 
         :return: STAC assets dictionary: https://github.com/radiantearth/stac-spec/blob/master/item-spec/item-spec.md#assets
         """
-        raise NotImplementedError
+        directory = Path(directory)
+        if not directory.is_dir():
+            directory = Path(directory).parent
+        model_path = Path(directory) / "catboost_model.cbm"
 
-    def get_model(self):
-        raise NotImplementedError
+        # Save model to disk.
+        # TODO: We might require s3 support here.
+        spark_path = "file:" + str(model_path)
+        logging.info(f"Saving GeopySparkCatboostModel to {spark_path}")
+        self._model.save(spark_path)
+
+        # Archive the saved model.
+        logging.info(f"Archiving {model_path} to {model_path}.tar.gz")
+        shutil.make_archive(base_name=str(model_path), format='gztar', root_dir=directory)
+        logging.info(f"Removing original {model_path}")
+        shutil.rmtree(model_path)
+        model_path = Path(str(model_path) + '.tar.gz')
+        logging.info(f"GeopySparkCatboostModel stored as {model_path=}")
+        return {model_path.name: {"href": str(model_path)}}
+
+    def get_model(self) -> CatBoostClassificationModel:
+        return self._model

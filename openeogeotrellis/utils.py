@@ -512,7 +512,9 @@ def temp_csv_dir(message: str = "n/a") -> str:
         if Path(candidate).exists():
             parent_dir = candidate
             break
-    temp_dir = tempfile.mkdtemp(prefix="timeseries_", suffix="_csv", dir=parent_dir)
+    from datetime import datetime
+    timestamp = datetime.today().strftime('%Y%m%d_%H%M')
+    temp_dir = tempfile.mkdtemp(prefix=f"{timestamp}_timeseries_", suffix="_csv", dir=parent_dir)
     try:
         os.chmod(temp_dir, 0o777)
     except PermissionError as e:
@@ -536,6 +538,17 @@ def json_write(
     with path.open(mode="w", encoding="utf-8") as f:
         json.dump(data, f, indent=indent)
     return path
+
+
+def json_default(obj: Any) -> Any:
+    """default function for packing objects in JSON."""
+    # This function could cover more cases like jupyter's implementation does:
+    # https://github.com/jupyter/jupyter_client/blob/main/jupyter_client/jsonutil.py#L108
+
+    if isinstance(obj, Path):
+        return str(obj)
+
+    raise TypeError("%r is not JSON serializable" % obj)
 
 
 def calculate_rough_area(geoms: Iterable[BaseGeometry]):

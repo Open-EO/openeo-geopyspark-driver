@@ -23,6 +23,7 @@ from openeo_driver.users import User
 from openeo_driver.util.geometry import BoundingBox, GeometryBufferer
 from openeo_driver.util.utm import utm_zone_from_epsg
 from openeo_driver.utils import EvalEnv
+from pathlib import Path
 from pystac import STACObject
 from shapely.geometry import Polygon, shape
 
@@ -222,15 +223,21 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
                 modifier = planetary_computer.sign_inplace
                 # by default, returns all properties and an invalid STAC Item if fields are specified
                 fields = None
-            elif root_catalog.get_self_href().startswith("https://tamn.snapplanet.io") or root_catalog.get_self_href().startswith("https://stac.eurac.edu"):
+            elif (
+                root_catalog.get_self_href().startswith("https://tamn.snapplanet.io")
+                or root_catalog.get_self_href().startswith("https://stac.eurac.edu")
+                or root_catalog.get_self_href().startswith("https://catalogue.dataspace.copernicus.eu/")
+            ):
                 modifier = None
                 # by default, returns all properties and "none" if fields are specified
                 fields = None
             else:
                 modifier = None
                 # standard behavior seems to be to include only a minimal subset e.g. https://stac.openeo.vito.be/
-                fields = [f"properties.{property_name}" for property_name in
-                          {"proj:epsg", "proj:bbox", "proj:shape"}.union(all_properties.keys())]
+                fields = sorted(
+                    f"properties.{property_name}"
+                    for property_name in {"proj:epsg", "proj:bbox", "proj:shape"}.union(all_properties.keys())
+                )
 
             client = pystac_client.Client.open(root_catalog.get_self_href(), modifier=modifier)
 
@@ -345,7 +352,7 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
 
             proj_epsg, proj_bbox, proj_shape = get_proj_metadata(itm, asset)
 
-            builder = builder.addLink(asset.get_absolute_href() or asset.href, asset_id, asset_band_names)
+            builder = builder.addLink(get_best_url(asset), asset_id, asset_band_names)
 
         if proj_epsg:
             builder = builder.withCRS(f"EPSG:{proj_epsg}")
@@ -425,13 +432,16 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
     if netcdf_with_time_dimension:
         pyramid_factory = jvm.org.openeo.geotrellis.layers.NetCDFCollection
     else:
+        max_soft_errors_ratio = env.get("max_soft_errors_ratio", 0.0)
+
         pyramid_factory = jvm.org.openeo.geotrellis.file.PyramidFactory(
             opensearch_client,
             url,  # openSearchCollectionId, not important
             band_names,  # openSearchLinkTitles
             None,  # rootPath, not important
             jvm.geotrellis.raster.CellSize(cell_width, cell_height),
-            False  # experimental
+            False,  # experimental
+            max_soft_errors_ratio,
         )
 
     extent = jvm.geotrellis.vector.Extent(*map(float, target_bbox.as_wsen_tuple()))
@@ -503,6 +513,30 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
               range(0, pyramid.size())}
 
     return GeopysparkDataCube(pyramid=gps.Pyramid(levels), metadata=metadata)
+
+
+def get_best_url(asset: pystac.Asset):
+    """
+    Relevant doc: https://github.com/stac-extensions/alternate-assets
+    """
+    alternate = asset.extra_fields.get("alternate")
+    if alternate:
+        for key, alternate_local in alternate.items():
+            if key not in {"local", "s3"}:
+                continue
+            href = alternate_local.get("href")
+            # Checking if file exists takes around 10ms on /data/MTDA mounted on laptop
+            # Checking if URL exists takes around 100ms on https://services.terrascope.be
+            # Checking if URL exists depends also on what Datasource is used in the scala code.
+            # That would be hacky to predict here.
+            tmp = urlparse(href)
+            # Support paths like "file:///data/MTDA", but also "//data/MTDA" just in case.
+            if tmp.scheme == "file" or tmp.scheme == "":
+                if Path(tmp.path).exists():
+                    return href
+            else:
+                logger.warning("Only support file paths as local alternate urls, but found: " + href)
+    return asset.get_absolute_href() or asset.href
 
 
 def _compute_cellsize(proj_bbox, proj_shape):

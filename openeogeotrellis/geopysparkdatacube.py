@@ -43,7 +43,7 @@ from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkcubemetadata import GeopysparkCubeMetadata
 from openeogeotrellis.processgraphvisiting import GeotrellisTileProcessGraphVisitor, SingleNodeUDFProcessGraphVisitor
-from openeogeotrellis.ml.AggregateSpatialVectorCube import AggregateSpatialVectorCube
+from openeogeotrellis.ml.aggregatespatialvectorcube import AggregateSpatialVectorCube
 from openeogeotrellis.utils import (
     to_projected_polygons,
     log_memory,
@@ -1097,7 +1097,8 @@ class GeopysparkDataCube(DriverDataCube):
 
         process = GeoPySparkBackendImplementation.accept_process_graph(process)
         temporal_size = temporal_overlap = None
-        if self.metadata.has_temporal_dimension():
+        has_time_dim = self.metadata.has_temporal_dimension()
+        if has_time_dim:
             temporal_size = size_dict.get(self.metadata.temporal_dimension.name,None)
             temporal_overlap = overlap_dict.get(self.metadata.temporal_dimension.name, None)
 
@@ -1113,14 +1114,11 @@ class GeopysparkDataCube(DriverDataCube):
                     reason=f"window sizes smaller then 32 are not yet supported for UDFs (got {size!r}).",
                 )
 
-            if temporal_size is None or temporal_size.get('value',None) is None:
+            if has_time_dim and (temporal_size is None or temporal_size.get('value',None) is None):
                 #full time dimension has to be provided
-                if not self.metadata.has_temporal_dimension():
-                    raise OpenEOApiException(
-                        message = "apply_neighborhood: datacubes without a time dimension are not yet supported for this case")
                 result_collection = retiled_collection.apply_tiles_spatiotemporal(udf_code = udf,
                     udf_context = udf_context, runtime = runtime, overlap_x = overlap_x, overlap_y = overlap_y)
-            elif temporal_size.get('value',None) == 'P1D' and temporal_overlap is None:
+            elif not has_time_dim or (temporal_size.get('value',None) == 'P1D' and temporal_overlap is None):
                 result_collection = retiled_collection.apply_tiles(udf_code = udf, context = udf_context,
                     runtime = runtime, overlap_x = overlap_x, overlap_y = overlap_y)
             else:
@@ -1433,7 +1431,7 @@ class GeopysparkDataCube(DriverDataCube):
         with tempfile.NamedTemporaryFile(suffix=".json.tmp",delete=False) as temp_file:
             gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses().vectorize(max_level.srdd.rdd(),temp_file.name)
             #postpone turning into an actual collection upon usage
-            return DelayedVector(temp_file.name)
+            return DelayedVector(temp_file.name).to_driver_vector_cube()
 
     def get_max_level(self) -> TiledRasterLayer:
         return self.pyramid.levels[self.pyramid.max_zoom]
@@ -1443,7 +1441,8 @@ class GeopysparkDataCube(DriverDataCube):
                                                                      AggregateSpatialVectorCube]:
 
         if isinstance(reducer, dict):
-            if len(reducer) == 1:
+            if len(reducer) == 1 and len(reducer.get('arguments',{})) > 1:
+                #TODO: the else branch below seems a much safer option for this. Verify if this code can be removed.
                 single_process = next(iter(reducer.values())).get('process_id')
                 return self.zonal_statistics(geometries, single_process)
             else:
@@ -1695,6 +1694,7 @@ class GeopysparkDataCube(DriverDataCube):
         colormap = format_options.get("colormap", None)
         description = format_options.get("file_metadata",{}).get("description","")
         filename_prefix = get_jvm().scala.Option.apply(format_options.get("filename_prefix", None))
+        separate_asset_per_band = get_jvm().scala.Option.apply(format_options.get("separate_asset_per_band", None))
 
         save_filename = s3_filename if batch_mode and ConfigParams().is_kube_deploy and not get_backend_config().fuse_mount_batchjob_s3_bucket else filename
         save_directory = s3_directory if batch_mode and ConfigParams().is_kube_deploy and not get_backend_config().fuse_mount_batchjob_s3_bucket else directory
@@ -1757,6 +1757,8 @@ class GeopysparkDataCube(DriverDataCube):
                     gtiff_options = get_jvm().org.openeo.geotrellis.geotiff.GTiffOptions()
                     if filename_prefix.isDefined():
                         gtiff_options.setFilenamePrefix(filename_prefix.get())
+                    if separate_asset_per_band.isDefined():
+                        gtiff_options.setSeparateAssetPerBand(separate_asset_per_band.get())
                     gtiff_options.addHeadTag("PROCESSING_SOFTWARE",softwareversion)
                     if description != "":
                         gtiff_options.addHeadTag("ImageDescription", description)
@@ -1776,6 +1778,17 @@ class GeopysparkDataCube(DriverDataCube):
                         bands = [b._asdict() for b in self.metadata.bands]
                     nodata = max_level.layer_metadata.no_data_value
 
+                    max_level_rdd = max_level.srdd.rdd()
+
+                    if separate_asset_per_band.isDefined() and self.metadata.has_band_dimension():
+                        band_names = self.metadata.band_names
+                        max_level_rdd = get_jvm().org.openeo.geotrellis.OpenEOProcesses().wrapCube(max_level_rdd)
+                        max_level_rdd.openEOMetadata().setBandNames(band_names)
+
+                    if tile_grid:
+                        if separate_asset_per_band.isDefined():
+                            raise OpenEOApiException(message="separate_asset_per_band is not supported with tile_grid")
+
                     if batch_mode and max_level.layer_type != gps.LayerType.SPATIAL:
                         compression = get_jvm().geotrellis.raster.io.geotiff.compression.DeflateCompression(
                             zlevel)
@@ -1783,9 +1796,13 @@ class GeopysparkDataCube(DriverDataCube):
                         if tile_grid:
                             timestamped_paths = (get_jvm()
                                 .org.openeo.geotrellis.geotiff.package.saveStitchedTileGridTemporal(
-                                max_level.srdd.rdd(), save_directory, tile_grid, compression, filename_prefix))
+                                max_level_rdd, save_directory, tile_grid, compression, filename_prefix))
                         elif sample_by_feature:
-                            #EP-3874 user requests to output data by polygon
+                            if separate_asset_per_band.isDefined():
+                                raise OpenEOApiException(
+                                    message="separate_asset_per_band is not supported with sample_by_feature"
+                                )
+                            # EP-3874 user requests to output data by polygon
                             _log.info("Output one tiff file per feature and timestamp.")
                             geometries = format_options['geometries']
                             if isinstance(geometries, MultiPolygon):
@@ -1793,12 +1810,16 @@ class GeopysparkDataCube(DriverDataCube):
                             projected_polygons = to_projected_polygons(get_jvm(), geometries)
                             labels = self.get_labels(geometries,feature_id_property)
                             timestamped_paths = get_jvm().org.openeo.geotrellis.geotiff.package.saveSamples(
-                                max_level.srdd.rdd(), save_directory, projected_polygons, labels, compression,
+                                max_level_rdd, save_directory, projected_polygons, labels, compression,
                                 filename_prefix)
                         else:
                             timestamped_paths = get_jvm().org.openeo.geotrellis.geotiff.package.saveRDDTemporal(
-                                max_level.srdd.rdd(), save_directory, zlevel, get_jvm().scala.Option.apply(crop_extent),
-                                gtiff_options)
+                                max_level_rdd,
+                                save_directory,
+                                zlevel,
+                                get_jvm().scala.Option.apply(crop_extent),
+                                gtiff_options,
+                            )
 
                         assets = {}
 
@@ -1833,7 +1854,13 @@ class GeopysparkDataCube(DriverDataCube):
                                 "roles": ["data"]
                             } for tile in tiles}
                         else:
-                            outputPaths = get_jvm().org.openeo.geotrellis.geotiff.package.saveRDD(max_level.srdd.rdd(),band_count,str(save_filename),zlevel,get_jvm().scala.Option.apply(crop_extent),gtiff_options)
+                            outputPaths = get_jvm().org.openeo.geotrellis.geotiff.package.saveRDD(
+                                max_level_rdd,
+                                band_count,
+                                str(save_filename),
+                                zlevel,
+                                get_jvm().scala.Option.apply(crop_extent),
+                                gtiff_options)
                             return {str(pathlib.Path(resultfile).name): {
                                 "href": str(resultfile),
                                 "type": "image/tiff; application=geotiff",

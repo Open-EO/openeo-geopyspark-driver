@@ -6,7 +6,7 @@ import geopyspark.geotrellis
 import json
 import xarray
 from geopyspark import TiledRasterLayer, LayerType, Bounds
-from openeogeotrellis.ml.AggregateSpatialVectorCube import AggregateSpatialVectorCube
+from openeogeotrellis.ml.aggregatespatialvectorcube import AggregateSpatialVectorCube
 from openeo_driver.errors import OpenEOApiException
 
 from unittest.mock import MagicMock

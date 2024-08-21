@@ -87,7 +87,7 @@ from openeogeotrellis.layercatalog import (
     extra_validation_load_collection,
 )
 from openeogeotrellis.logs import elasticsearch_logs
-from openeogeotrellis.ml.GeopySparkCatBoostModel import CatBoostClassificationModel
+from openeogeotrellis.ml.catboost_spark import CatBoostClassificationModel
 from openeogeotrellis.processgraphvisiting import GeotrellisTileProcessGraphVisitor, SingleNodeUDFProcessGraphVisitor
 from openeogeotrellis.sentinel_hub.batchprocessing import SentinelHubBatchProcessing
 from openeogeotrellis.service_registry import (
@@ -1874,15 +1874,19 @@ class GpsBatchJobs(backend.BatchJobs):
             python_max = job_options.get("python-memory", None)
             if python_max is not None:
                 python_max = as_bytes(python_max)
-                if python_max > memOverheadBytes or  "executor-memoryOverhead" not in job_options:
-                    memOverheadBytes = python_max + jvmOverheadBytes
+                if "executor-memoryOverhead" not in job_options:
+                    memOverheadBytes = jvmOverheadBytes
                     executor_memory_overhead = f"{memOverheadBytes//(1024**2)}m"
             else:
                 python_max = memOverheadBytes - jvmOverheadBytes
+                executor_memory_overhead = f"{jvmOverheadBytes//(1024**2)}m"
 
             eodata_mount = "/eodata2" if use_goofys else "/eodata"
 
             spark_app_id = k8s_job_name()
+
+            # allow to override the image name via job options, other option would be to deduce it from the udf runtimes being used
+            image_name = job_options.get("image-name",os.environ.get("IMAGE_NAME"))
 
             sparkapplication_dict = k8s_render_manifest_template(
                 "sparkapplication.yaml.j2",
@@ -1920,7 +1924,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 aws_endpoint=os.environ.get("AWS_S3_ENDPOINT","data.cloudferro.com"),
                 aws_region=os.environ.get("AWS_REGION","RegionOne"),
                 swift_url=os.environ.get("SWIFT_URL"),
-                image_name=os.environ.get("IMAGE_NAME"),
+                image_name=image_name,
                 openeo_backend_config=os.environ.get("OPENEO_BACKEND_CONFIG"),
                 swift_bucket=bucket,
                 zookeeper_nodes=os.environ.get("ZOOKEEPERNODES"),
@@ -2683,6 +2687,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
         if application_id:  # can be empty if awaiting SHub dependencies (OpenEO status 'queued')
             if ConfigParams().is_kube_deploy:
+                import kubernetes.client.exceptions
                 api_instance_custom_object = kube_client("CustomObject")
                 api_instance_core = kube_client("Core")
                 group = "sparkoperator.k8s.io"
@@ -2691,23 +2696,39 @@ class GpsBatchJobs(backend.BatchJobs):
                 plural = "sparkapplications"
                 name = application_id
                 logger.debug(f"Sending API call to kubernetes to delete job: {name}")
-                delete_response_sparkapplication = api_instance_custom_object.delete_namespaced_custom_object(group, version, namespace, plural, name)
-                logger.debug(
-                    f"Killed corresponding Spark job {application_id} with kubernetes API call "
-                    f"DELETE /apis/{group}/{version}/namespaces/{namespace}/{plural}/{name}",
-                    extra = {'job_id': job_id, 'API response': delete_response_sparkapplication}
-                )
+                try:
+                    delete_response_sparkapplication = api_instance_custom_object.delete_namespaced_custom_object(group, version, namespace, plural, name)
+                    logger.debug(
+                        f"Killed corresponding Spark job {application_id} with kubernetes API call "
+                        f"DELETE /apis/{group}/{version}/namespaces/{namespace}/{plural}/{name}",
+                        extra = {'job_id': job_id, 'API response': delete_response_sparkapplication}
+                    )
+                except kubernetes.client.exceptions.ApiException as e:
+                    if e.status == 404:
+                        # TODO: more precise checking that it was indeed the app that was not found (instead of k8s api itself).
+                        logger.info(
+                            f"Sparkapplication {application_id} could not be found."
+                        )
+
                 if get_backend_config().fuse_mount_batchjob_s3_bucket:
-                    delete_response_pv = api_instance_core.delete_persistent_volume(application_id, pretty=True)
-                    logger.debug(
-                        f"Removed PV {application_id} with kubernetes API call",
-                        extra = {'job_id': job_id, 'API response': delete_response_pv}
-                    )
-                    delete_response_pvc = api_instance_core.delete_namespaced_persistent_volume_claim(application_id, namespace, pretty=True)
-                    logger.debug(
-                        f"Removed PVC {application_id} with kubernetes API call",
-                        extra = {'job_id': job_id, 'API response': delete_response_pvc}
-                    )
+                    try:
+                        delete_response_pv = api_instance_core.delete_persistent_volume(application_id, pretty=True)
+                        logger.debug(
+                            f"Removed PV {application_id} with kubernetes API call",
+                            extra = {'job_id': job_id, 'API response': delete_response_pv}
+                        )
+                        delete_response_pvc = api_instance_core.delete_namespaced_persistent_volume_claim(application_id, namespace, pretty=True)
+                        logger.debug(
+                            f"Removed PVC {application_id} with kubernetes API call",
+                            extra = {'job_id': job_id, 'API response': delete_response_pvc}
+                        )
+                    except kubernetes.client.exceptions.ApiException as e:
+                        if e.status == 404:
+                            # TODO: more precise checking that it was indeed the app that was not found (instead of k8s api itself).
+                            logger.info(
+                                f"The storage resources for {application_id} could not be found."
+                            )
+
                 with self._double_job_registry:
                     registry.set_status(job_id, user_id, JOB_STATUS.CANCELED)
             else:

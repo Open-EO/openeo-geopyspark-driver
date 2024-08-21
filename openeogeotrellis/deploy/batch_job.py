@@ -39,7 +39,7 @@ from openeogeotrellis.integrations.hadoop import setup_kerberos_auth
 from openeogeotrellis.layercatalog import DO_EXTENT_CHECK
 from openeogeotrellis.udf import (collect_python_udf_dependencies, install_python_udf_dependencies,
                                   UDF_PYTHON_DEPENDENCIES_FOLDER_NAME, )
-from openeogeotrellis.utils import (describe_path, log_memory, get_jvm, add_permissions, to_s3_url, )
+from openeogeotrellis.utils import (describe_path, log_memory, get_jvm, add_permissions, json_default, )
 
 logger = logging.getLogger('openeogeotrellis.deploy.batch_job')
 
@@ -379,7 +379,7 @@ def run_job(
         metadata = {**result_metadata, **_get_tracker_metadata("")}
 
         with open(metadata_file, 'w') as f:
-            json.dump(metadata, f)
+            json.dump(metadata, f, default=json_default)
 
         add_permissions(metadata_file, stat.S_IWGRP)
 
@@ -490,7 +490,7 @@ def _extract_and_install_udf_dependencies(process_graph: dict, job_dir: Path):
         )
 
 
-if __name__ == "__main__":
+def start_main():
     setup_logging(
         get_logging_config(
             root_handlers=[LOG_HANDLER_STDERR_JSON if ConfigParams().is_kube_deploy else LOG_HANDLER_FILE_JSON],
@@ -513,3 +513,6 @@ if __name__ == "__main__":
             extra={"exc_info_with_locals": format_exc(e, fmt = fmt)}
         )
         raise
+
+if __name__ == "__main__":
+    start_main()

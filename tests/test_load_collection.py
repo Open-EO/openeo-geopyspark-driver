@@ -174,6 +174,7 @@ def test_load_file_oscars_resample(jvm_mock, catalog):
         "/data/MTDA/DEM/COP_DEM_30M_COG",
         cellsize_mock,
         True,
+        0.0,
     )
     factory_mock.return_value.datacube_seq.assert_called_once_with(
         ANY,
@@ -268,6 +269,7 @@ def test_load_collection_bands_with_required_extent(jvm_mock, catalog):
         "/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2",
         cellsize_call_mock.return_value,
         False,
+        0.0,
     )
     factory_mock.return_value.pyramid_seq.assert_called_once_with(
         extent_mock,
@@ -326,9 +328,7 @@ def test_load_collection_data_cube_params(jvm_mock, catalog):
     jvm_mock.geotrellis.vector.Extent.assert_called_once_with(4.0, 51.9999, 4.001, 52.0)
 
     reproject.assert_called_once_with(projected_polys, 32631)
-    factory_mock.assert_called_once_with(
-        opensearchclient_mock, "", band_names, "", cellsize_mock, False
-    )
+    factory_mock.assert_called_once_with(opensearchclient_mock, "", band_names, "", cellsize_mock, False, 0.0)
     factory_mock.return_value.datacube_seq.assert_called_once_with(
         projected_polys_native,
         "2019-01-01T00:00:00+00:00",

@@ -14,6 +14,13 @@ without compromising stable operations.
 
 ## Unreleased
 
+- a new 'python-memory' option allows to more explicitly limit memory usage for UDF's, sar_backscatter and Sentinel3 data loading. The executor-memoryOverhead option can be reduced or removed when using the new python-memory option.
+- The default processing chunk size can now be configured for backends. If not set, the default may be determined automatically. We observe that a lower default, like 128 pixels, allows running jobs with less memory. ([Open-EO/openeo-geotrellis-extensions#311](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/311))
+- aggregate_spatial: trying to use the probabilities argument in a _single_ 'quantiles' reduces was throwing an error. ([#821](https://github.com/Open-EO/openeo-geopyspark-driver/issues/821))
+- sar_backscatter: when a target resolution is provided via resample_spatial, it is now immediately taken into account for computing backscatter, reducing memory usage.
+- the temporary folder which is created for aggregate_spatial now contains a timestamp to aid cleanup scripts. 
+- apply_neighborhood: support applying UDF on cubes without a time dimension
+
 ## 0.39.0
 
 - Correctly apply the method parameter in resample_spatial and resample_cube_spatial, when downsampling to lower resolution, and the sampling is not applied at load time. ([Open-EO/openeo-geotrellis-extensions#303](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/303)) 
