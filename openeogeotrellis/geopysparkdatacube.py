@@ -1780,11 +1780,6 @@ class GeopysparkDataCube(DriverDataCube):
 
                     max_level_rdd = max_level.srdd.rdd()
 
-                    if separate_asset_per_band.isDefined() and self.metadata.has_band_dimension():
-                        band_names = self.metadata.band_names
-                        max_level_rdd = get_jvm().org.openeo.geotrellis.OpenEOProcesses().wrapCube(max_level_rdd)
-                        max_level_rdd.openEOMetadata().setBandNames(band_names)
-
                     if tile_grid:
                         if separate_asset_per_band.isDefined():
                             raise OpenEOApiException(message="separate_asset_per_band is not supported with tile_grid")
@@ -1793,6 +1788,7 @@ class GeopysparkDataCube(DriverDataCube):
                         compression = get_jvm().geotrellis.raster.io.geotiff.compression.DeflateCompression(
                             zlevel)
 
+                        band_indices_per_file = None
                         if tile_grid:
                             timestamped_paths = (get_jvm()
                                 .org.openeo.geotrellis.geotiff.package.saveStitchedTileGridTemporal(
@@ -1813,13 +1809,16 @@ class GeopysparkDataCube(DriverDataCube):
                                 max_level_rdd, save_directory, projected_polygons, labels, compression,
                                 filename_prefix)
                         else:
-                            timestamped_paths = get_jvm().org.openeo.geotrellis.geotiff.package.saveRDDTemporal(
-                                max_level_rdd,
-                                save_directory,
-                                zlevel,
-                                get_jvm().scala.Option.apply(crop_extent),
-                                gtiff_options,
+                            timestamped_paths = (
+                                get_jvm().org.openeo.geotrellis.geotiff.package.saveRDDTemporalAllowAssetPerBand(
+                                    max_level_rdd,
+                                    save_directory,
+                                    zlevel,
+                                    get_jvm().scala.Option.apply(crop_extent),
+                                    gtiff_options,
+                                )
                             )
+                            band_indices_per_file = [tup._4() for tup in timestamped_paths]
 
                         assets = {}
 
@@ -1827,12 +1826,12 @@ class GeopysparkDataCube(DriverDataCube):
                         # TODO: contains a bbox so rename
                         timestamped_paths = [(timestamped_path._1(), timestamped_path._2(), timestamped_path._3())
                                              for timestamped_path in timestamped_paths]
-
-                        for path, timestamp, bbox in timestamped_paths:
+                        for index, tup in enumerate(timestamped_paths):
+                            path, timestamp, bbox = tup
                             tmp_bands = bands
-                            if separate_asset_per_band.isDefined():
-                                # TODO: Avoid checking in filename
-                                tmp_bands = [b for b in bands if b["name"] in pathlib.Path(path).name]
+                            if band_indices_per_file:
+                                band_indices = band_indices_per_file[index]
+                                tmp_bands = [b for i, b in enumerate(bands) if i in band_indices]
                             assets[str(pathlib.Path(path).name)] = {
                                 "href": str(path),
                                 "type": "image/tiff; application=geotiff",
@@ -1858,7 +1857,7 @@ class GeopysparkDataCube(DriverDataCube):
                                 "roles": ["data"]
                             } for tile in tiles}
                         else:
-                            outputPaths = get_jvm().org.openeo.geotrellis.geotiff.package.saveRDD(
+                            paths_tuples = get_jvm().org.openeo.geotrellis.geotiff.package.saveRDDAllowAssetPerBand(
                                 max_level_rdd,
                                 band_count,
                                 str(save_filename),
@@ -1866,13 +1865,13 @@ class GeopysparkDataCube(DriverDataCube):
                                 get_jvm().scala.Option.apply(crop_extent),
                                 gtiff_options)
 
+                            paths_tuples = [
+                                (timestamped_path._1(), timestamped_path._2()) for timestamped_path in paths_tuples
+                            ]
                             assets = {}
-                            for path in outputPaths:
+                            for path, band_indices in paths_tuples:
                                 file_name = pathlib.Path(path).name
-                                tmp_bands = bands
-                                if separate_asset_per_band.isDefined():
-                                    # TODO: Avoid checking in filename
-                                    tmp_bands = [b for b in bands if b["name"] in file_name]
+                                tmp_bands = [b for i, b in enumerate(bands) if i in band_indices]
                                 assets[file_name] = {
                                     "href": str(path),
                                     "type": "image/tiff; application=geotiff",

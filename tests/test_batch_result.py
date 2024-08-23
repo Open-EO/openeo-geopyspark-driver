@@ -329,6 +329,7 @@ def test_separate_asset_per_band(tmp_path, from_node, expected_names):
         asset = assets[asset_key]
         assert len(asset["bands"]) == 1
         assert len(asset["raster:bands"]) == 1
+        assert asset["bands"][0]["name"] == asset["raster:bands"][0]["name"]
 
 
 def test_sample_by_feature_filter_spatial_vector_cube_from_load_url(tmp_path):
