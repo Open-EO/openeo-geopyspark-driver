@@ -58,6 +58,10 @@ class AggregateSpatialResultCSV(AggregatePolygonResultCSV, SupportsRunUdf):
             f"{type(self).__name__} run_udf with {self._csv_dir=} ({len(csv_paths)=})"
         )
         import pyspark.pandas
+        pyspark.pandas.set_option('compute.default_index_type', 'distributed')
+        pyspark.pandas.set_option('compute.shortcut_limit', 1)
+        pyspark.pandas.set_option('compute.max_rows', None)
+
         csv_df = pyspark.pandas.read_csv([f"file://{p}" for p in csv_paths])
 
         processed_df = csv_df.groupby("feature_index").apply(callback).reset_index()
