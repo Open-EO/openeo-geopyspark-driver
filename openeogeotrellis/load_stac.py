@@ -81,7 +81,7 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
         return any(conformance_class.endswith("/item-search") for conformance_class in conforms_to)
 
     def is_band_asset(asset: pystac.Asset) -> bool:
-        return asset.has_role("data")
+        return asset.has_role("data") or "eo:bands" in asset.extra_fields
 
     def get_band_names(itm: pystac.Item, asst: pystac.Asset) -> List[str]:
         def get_band_name(eo_band) -> str:
