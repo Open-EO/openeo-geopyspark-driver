@@ -38,7 +38,7 @@ from openeogeotrellis.deploy.batch_job_metadata import _assemble_result_metadata
 from openeogeotrellis.integrations.hadoop import setup_kerberos_auth
 from openeogeotrellis.udf import (collect_python_udf_dependencies, install_python_udf_dependencies,
                                   UDF_PYTHON_DEPENDENCIES_FOLDER_NAME, )
-from openeogeotrellis.utils import (describe_path, log_memory, get_jvm, add_permissions, to_s3_url, )
+from openeogeotrellis.utils import (describe_path, log_memory, get_jvm, add_permissions, json_default, )
 
 logger = logging.getLogger('openeogeotrellis.deploy.batch_job')
 
@@ -377,7 +377,7 @@ def run_job(
         metadata = {**result_metadata, **_get_tracker_metadata("")}
 
         with open(metadata_file, 'w') as f:
-            json.dump(metadata, f)
+            json.dump(metadata, f, default=json_default)
 
         add_permissions(metadata_file, stat.S_IWGRP)
 

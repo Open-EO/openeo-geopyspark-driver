@@ -452,6 +452,11 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                             "description": "Specifies the filename prefix when outputting multiple files. By default, depending on the context, 'OpenEO' or a part of the input filename will be used as prefix.",
                             "default": None,
                         },
+                        "separate_asset_per_band": {
+                            "type": "string",
+                            "description": "Set to true to write one output tiff per band. If there is a time dimention, the files will be split on time as well.",
+                            "default": None,
+                        },
                     },
                 },
                 "PNG": {
@@ -2807,6 +2812,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
         if application_id:  # can be empty if awaiting SHub dependencies (OpenEO status 'queued')
             if ConfigParams().is_kube_deploy:
+                import kubernetes.client.exceptions
                 api_instance_custom_object = kube_client("CustomObject")
                 api_instance_core = kube_client("Core")
                 group = "sparkoperator.k8s.io"
@@ -2815,23 +2821,39 @@ class GpsBatchJobs(backend.BatchJobs):
                 plural = "sparkapplications"
                 name = application_id
                 logger.debug(f"Sending API call to kubernetes to delete job: {name}")
-                delete_response_sparkapplication = api_instance_custom_object.delete_namespaced_custom_object(group, version, namespace, plural, name)
-                logger.debug(
-                    f"Killed corresponding Spark job {application_id} with kubernetes API call "
-                    f"DELETE /apis/{group}/{version}/namespaces/{namespace}/{plural}/{name}",
-                    extra = {'job_id': job_id, 'API response': delete_response_sparkapplication}
-                )
+                try:
+                    delete_response_sparkapplication = api_instance_custom_object.delete_namespaced_custom_object(group, version, namespace, plural, name)
+                    logger.debug(
+                        f"Killed corresponding Spark job {application_id} with kubernetes API call "
+                        f"DELETE /apis/{group}/{version}/namespaces/{namespace}/{plural}/{name}",
+                        extra = {'job_id': job_id, 'API response': delete_response_sparkapplication}
+                    )
+                except kubernetes.client.exceptions.ApiException as e:
+                    if e.status == 404:
+                        # TODO: more precise checking that it was indeed the app that was not found (instead of k8s api itself).
+                        logger.info(
+                            f"Sparkapplication {application_id} could not be found."
+                        )
+
                 if get_backend_config().fuse_mount_batchjob_s3_bucket:
-                    delete_response_pv = api_instance_core.delete_persistent_volume(application_id, pretty=True)
-                    logger.debug(
-                        f"Removed PV {application_id} with kubernetes API call",
-                        extra = {'job_id': job_id, 'API response': delete_response_pv}
-                    )
-                    delete_response_pvc = api_instance_core.delete_namespaced_persistent_volume_claim(application_id, namespace, pretty=True)
-                    logger.debug(
-                        f"Removed PVC {application_id} with kubernetes API call",
-                        extra = {'job_id': job_id, 'API response': delete_response_pvc}
-                    )
+                    try:
+                        delete_response_pv = api_instance_core.delete_persistent_volume(application_id, pretty=True)
+                        logger.debug(
+                            f"Removed PV {application_id} with kubernetes API call",
+                            extra = {'job_id': job_id, 'API response': delete_response_pv}
+                        )
+                        delete_response_pvc = api_instance_core.delete_namespaced_persistent_volume_claim(application_id, namespace, pretty=True)
+                        logger.debug(
+                            f"Removed PVC {application_id} with kubernetes API call",
+                            extra = {'job_id': job_id, 'API response': delete_response_pvc}
+                        )
+                    except kubernetes.client.exceptions.ApiException as e:
+                        if e.status == 404:
+                            # TODO: more precise checking that it was indeed the app that was not found (instead of k8s api itself).
+                            logger.info(
+                                f"The storage resources for {application_id} could not be found."
+                            )
+
                 with self._double_job_registry:
                     registry.set_status(job_id, user_id, JOB_STATUS.CANCELED)
             else:

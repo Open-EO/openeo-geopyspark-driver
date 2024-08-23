@@ -251,6 +251,86 @@ def test_ep3874_sample_by_feature_filter_spatial_inline_geojson(prefix, tmp_path
         print(da['Flat:2'])
 
 
+@pytest.mark.parametrize(
+    ["from_node", "expected_names"],
+    [
+        (
+            "loadcollection_sentinel2",
+            {
+                "openEO_2023-06-01Z_B02.tif",
+                "openEO_2023-06-01Z_SCL.tif",
+                "openEO_2023-06-04Z_B02.tif",
+                "openEO_2023-06-04Z_SCL.tif",
+            },
+        ),
+        ("reducedimension_temporal", {"openEO_B02.tif", "openEO_SCL.tif"}),
+    ],
+)
+def test_separate_asset_per_band(tmp_path, from_node, expected_names):
+    job_spec = {
+        "process_graph": {
+            "loadcollection_sentinel2": {
+                "process_id": "load_collection",
+                "arguments": {
+                    "bands": ["B02", "SCL"],
+                    "id": "SENTINEL2_L2A",
+                    "properties": {},
+                    "spatial_extent": {"east": 5.08, "north": 51.22, "south": 51.215, "west": 5.07},
+                    "temporal_extent": ["2023-06-01", "2023-06-06"],
+                },
+            },
+            "reducedimension_temporal": {
+                "process_id": "reduce_dimension",
+                "arguments": {
+                    "data": {"from_node": "loadcollection_sentinel2"},
+                    "dimension": "t",
+                    "reducer": {
+                        "process_graph": {
+                            "min1": {
+                                "process_id": "min",
+                                "arguments": {"data": {"from_parameter": "data"}},
+                                "result": True,
+                            }
+                        }
+                    },
+                },
+            },
+            "save1": {
+                "process_id": "save_result",
+                "arguments": {
+                    "data": {"from_node": from_node},
+                    "format": "GTIFF",
+                    "options": {"separate_asset_per_band": True},
+                },
+                "result": True,
+            },
+        },
+        "parameters": [],
+    }
+    metadata_file = tmp_path / "metadata.json"
+    run_job(
+        job_spec,
+        output_file=tmp_path / "out",
+        metadata_file=metadata_file,
+        api_version="1.0.0",
+        job_dir=ensure_dir(tmp_path / "job_dir"),
+        dependencies=[],
+        user_id="jenkins",
+    )
+    with metadata_file.open() as f:
+        metadata = json.load(f)
+    assert metadata["start_datetime"] == "2023-06-01T00:00:00Z"
+    assets = metadata["assets"]
+    # get file names as set:
+    asset_names = set(assets.keys())
+    assert asset_names == expected_names
+
+    for asset_key in assets:
+        asset = assets[asset_key]
+        assert len(asset["bands"]) == 1
+        assert len(asset["raster:bands"]) == 1
+
+
 def test_sample_by_feature_filter_spatial_vector_cube_from_load_url(tmp_path):
     """
     sample_by_feature with vector cube loaded through load_url

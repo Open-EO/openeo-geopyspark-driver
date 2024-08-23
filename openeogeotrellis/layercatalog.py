@@ -351,6 +351,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 opensearch_client = jvm.org.openeo.opensearch.OpenSearchClient.apply(
                     opensearch_endpoint, is_utm, "", metadata.band_names, catalog_type, metadata.parallel_query()
                 )
+
                 return jvm.org.openeo.geotrellis.file.PyramidFactory(
                     opensearch_client,
                     opensearch_collection_id,
@@ -358,6 +359,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                     root_path,
                     jvm.geotrellis.raster.CellSize(cell_width, cell_height),
                     experimental,
+                    max_soft_errors_ratio,
                 )
 
             return file_pyramid(pyramid_factory)
@@ -626,6 +628,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 "",
                 jvm.geotrellis.raster.CellSize(cell_width, cell_height),
                 False,
+                max_soft_errors_ratio,
             )
             return create_pyramid(factory)
 
@@ -645,6 +648,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 "",
                 jvm.geotrellis.raster.CellSize(cell_width, cell_height),
                 False,
+                max_soft_errors_ratio,
             )
             return create_pyramid(factory)
 
@@ -664,6 +668,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 "",
                 jvm.geotrellis.raster.CellSize(cell_width, cell_height),
                 False,
+                max_soft_errors_ratio,
             )
             return create_pyramid(factory)
 
