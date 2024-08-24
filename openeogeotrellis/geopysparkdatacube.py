@@ -236,7 +236,7 @@ class GeopysparkDataCube(DriverDataCube):
             if self.metadata.has_temporal_dimension() and dimension == self.metadata.temporal_dimension.name:
                 context = convert_node(context, env=env)
                 pysc = gps.get_spark_context()
-                if target_dimension == self.metadata.band_dimension.name:
+                if self.metadata.has_band_dimension() and target_dimension == self.metadata.band_dimension.name:
                     #reduce the time dimension into the bands dimension
                     result_collection = self._apply_to_levels_geotrellis_rdd(
                         lambda rdd, level: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().applyTimeDimensionTargetBands(rdd,
