@@ -370,34 +370,19 @@ def run_job(
         result_metadata = _assemble_result_metadata(tracer=tracer, result=result, output_file=output_file,
                                                     unique_process_ids=unique_process_ids,
                                                     asset_metadata=assets_metadata,
-                                                    ml_model_metadata=ml_model_metadata)
+                                                    ml_model_metadata=ml_model_metadata,skip_gdal=True)
+
+        write_metadata({**result_metadata, **_get_tracker_metadata("")}, metadata_file, job_dir)
+        logger.info("Starting GDAL-based retrieval of asset metadata")
+        result_metadata = _assemble_result_metadata(tracer=tracer, result=result, output_file=output_file,
+                                                    unique_process_ids=unique_process_ids,
+                                                    asset_metadata=assets_metadata,
+                                                    ml_model_metadata=ml_model_metadata,skip_gdal=False)
 
         _export_workspace(result, result_metadata, stac_metadata_dir=job_dir)
     finally:
-        metadata = {**result_metadata, **_get_tracker_metadata("")}
 
-        with open(metadata_file, 'w') as f:
-            json.dump(metadata, f, default=json_default)
-
-        add_permissions(metadata_file, stat.S_IWGRP)
-
-        logger.info("wrote metadata to %s" % metadata_file)
-
-        if ConfigParams().is_kube_deploy:
-            if not get_backend_config().fuse_mount_batchjob_s3_bucket:
-                from openeogeotrellis.utils import s3_client
-
-                _convert_job_metadatafile_outputs_to_s3_urls(metadata_file)
-
-                bucket = os.environ.get('SWIFT_BUCKET')
-                s3_instance = s3_client()
-
-                logger.info("Writing results to object storage")
-                for file in os.listdir(job_dir):
-                    full_path = str(job_dir) + "/" + file
-                    s3_instance.upload_file(full_path, bucket, full_path.strip("/"))
-            else:
-                _convert_job_metadatafile_outputs_to_s3_urls(metadata_file)
+        write_metadata({**result_metadata, **_get_tracker_metadata("")}, metadata_file, job_dir)
 
         try:
             get_jvm().com.azavea.gdal.GDALWarp.deinit()
@@ -406,6 +391,28 @@ def run_job(
                 logger.debug(f"intentionally swallowing exception {e}", exc_info=True)
             else:
                 raise
+
+
+def write_metadata(metadata, metadata_file, job_dir):
+    with open(metadata_file, 'w') as f:
+        json.dump(metadata, f, default=json_default)
+    add_permissions(metadata_file, stat.S_IWGRP)
+    logger.info("wrote metadata to %s" % metadata_file)
+    if ConfigParams().is_kube_deploy:
+        if not get_backend_config().fuse_mount_batchjob_s3_bucket:
+            from openeogeotrellis.utils import s3_client
+
+            _convert_job_metadatafile_outputs_to_s3_urls(metadata_file)
+
+            bucket = os.environ.get('SWIFT_BUCKET')
+            s3_instance = s3_client()
+
+            logger.info("Writing results to object storage")
+            for file in os.listdir(job_dir):
+                full_path = str(job_dir) + "/" + file
+                s3_instance.upload_file(full_path, bucket, full_path.strip("/"))
+        else:
+            _convert_job_metadatafile_outputs_to_s3_urls(metadata_file)
 
 
 def _export_workspace(result: SaveResult, result_metadata: dict, stac_metadata_dir: Path):

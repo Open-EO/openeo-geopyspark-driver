@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 def _assemble_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output_file: Path,
                               unique_process_ids: Set[str], asset_metadata: Dict = None,
-                              ml_model_metadata: Dict = None) -> dict:
+                              ml_model_metadata: Dict = None, skip_gdal=False) -> dict:
     metadata = extract_result_metadata(tracer)
 
     def epsg_code(gps_crs) -> Optional[int]:
@@ -69,13 +69,16 @@ def _assemble_result_metadata(tracer: DryRunDataTracer, result: SaveResult, outp
             }
         else:
             # New approach: SaveResult has generated metadata already for us
-            try:
-                _extract_asset_metadata(
-                    job_result_metadata=metadata, asset_metadata=asset_metadata, job_dir=output_file.parent, epsg=epsg
-                )
-            except Exception as e:
-                error_summary = GeoPySparkBackendImplementation.summarize_exception_static(e)
-                logger.exception("Error while creating asset metadata: " + error_summary.summary)
+            if skip_gdal:
+                metadata['assets'] = asset_metadata
+            else:
+                try:
+                    _extract_asset_metadata(
+                        job_result_metadata=metadata, asset_metadata=asset_metadata, job_dir=output_file.parent, epsg=epsg
+                    )
+                except Exception as e:
+                    error_summary = GeoPySparkBackendImplementation.summarize_exception_static(e)
+                    logger.exception("Error while creating asset metadata: " + error_summary.summary)
 
 
     # _extract_asset_metadata may already fill in metadata["epsg"], but only
