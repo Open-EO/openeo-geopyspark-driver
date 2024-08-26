@@ -290,6 +290,15 @@ def run_job(
         assets_metadata = {}
         ml_model_metadata = None
 
+        unique_process_ids = CollectUniqueProcessIdsVisitor().accept_process_graph(process_graph).process_ids
+
+        result_metadata = _assemble_result_metadata(tracer=tracer, result=result, output_file=output_file,
+                                                    unique_process_ids=unique_process_ids,
+                                                    asset_metadata={},
+                                                    ml_model_metadata=ml_model_metadata,skip_gdal=True)
+        #perform a first metadata write _before_ actually computing the result. This provides a bit more info, even if the job fails.
+        write_metadata({**result_metadata, **_get_tracker_metadata("")}, metadata_file, job_dir)
+
         for result in results:
             result.options["batch_mode"] = True
             result.options["file_metadata"] = global_metadata_attributes
@@ -345,7 +354,6 @@ def run_job(
 
             _transform_stac_metadata(job_dir)
 
-        unique_process_ids = CollectUniqueProcessIdsVisitor().accept_process_graph(process_graph).process_ids
 
         # this is subtle: result now points to the last of possibly several results (#295); it corresponds to
         # the terminal save_result node of the process graph
