@@ -226,7 +226,7 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
             elif (
                 root_catalog.get_self_href().startswith("https://tamn.snapplanet.io")
                 or root_catalog.get_self_href().startswith("https://stac.eurac.edu")
-                or root_catalog.get_self_href().startswith("https://catalogue.dataspace.copernicus.eu/")
+                or root_catalog.get_self_href().startswith("https://catalogue.dataspace.copernicus.eu/stac")
                 or root_catalog.get_self_href().startswith("https://pgstac.demo.cloudferro.com")
             ):
                 modifier = None
