@@ -21,7 +21,7 @@ without compromising stable operations.
 - the temporary folder which is created for aggregate_spatial now contains a timestamp to aid cleanup scripts.
 - apply_neighborhood: support applying UDF on cubes without a time dimension
 - Add "separate_asset_per_band" to save_result options. Currently, for TIFF only.
-- `load_stac`: `eo:bands` is no longer a hard dependency; band name defaults to asset key [#762](https://github.com/Open-EO/openeo-geopyspark-driver/issues/762).
+- `load_stac`: presence of `eo:bands` is no longer a hard requirement; band name defaults to asset key [#762](https://github.com/Open-EO/openeo-geopyspark-driver/issues/762).
 
 ## 0.39.0
 
