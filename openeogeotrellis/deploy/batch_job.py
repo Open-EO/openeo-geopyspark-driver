@@ -292,7 +292,7 @@ def run_job(
 
         unique_process_ids = CollectUniqueProcessIdsVisitor().accept_process_graph(process_graph).process_ids
 
-        result_metadata = _assemble_result_metadata(tracer=tracer, result=result, output_file=output_file,
+        result_metadata = _assemble_result_metadata(tracer=tracer, result=results[0], output_file=output_file,
                                                     unique_process_ids=unique_process_ids,
                                                     asset_metadata={},
                                                     ml_model_metadata=ml_model_metadata,skip_gdal=True)

@@ -92,7 +92,8 @@ def _assemble_result_metadata(tracer: DryRunDataTracer, result: SaveResult, outp
     metadata["processing:facility"] = "VITO - SPARK"  # TODO make configurable
     metadata["processing:software"] = "openeo-geotrellis-" + __version__
     metadata["unique_process_ids"] = list(unique_process_ids)
-    global_metadata = result.options.get("file_metadata",{})
+    if isinstance(result,SaveResult):
+        global_metadata = result.options.get("file_metadata",{})
     metadata["providers"] = global_metadata.get("providers",[])
 
     if ml_model_metadata is not None:
