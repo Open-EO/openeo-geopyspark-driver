@@ -452,6 +452,11 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                             "description": "Specifies the filename prefix when outputting multiple files. By default, depending on the context, 'OpenEO' or a part of the input filename will be used as prefix.",
                             "default": None,
                         },
+                        "separate_asset_per_band": {
+                            "type": "string",
+                            "description": "Set to true to write one output tiff per band. If there is a time dimention, the files will be split on time as well.",
+                            "default": None,
+                        },
                     },
                 },
                 "PNG": {
