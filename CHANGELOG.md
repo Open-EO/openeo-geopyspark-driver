@@ -18,13 +18,14 @@ without compromising stable operations.
 - The default processing chunk size can now be configured for backends. If not set, the default may be determined automatically. We observe that a lower default, like 128 pixels, allows running jobs with less memory. ([Open-EO/openeo-geotrellis-extensions#311](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/311))
 - aggregate_spatial: trying to use the probabilities argument in a _single_ 'quantiles' reduces was throwing an error. ([#821](https://github.com/Open-EO/openeo-geopyspark-driver/issues/821))
 - sar_backscatter: when a target resolution is provided via resample_spatial, it is now immediately taken into account for computing backscatter, reducing memory usage.
-- the temporary folder which is created for aggregate_spatial now contains a timestamp to aid cleanup scripts. 
+- the temporary folder which is created for aggregate_spatial now contains a timestamp to aid cleanup scripts.
 - apply_neighborhood: support applying UDF on cubes without a time dimension
 - Add "separate_asset_per_band" to save_result options. Currently, for TIFF only.
+- `load_stac`: `eo:bands` is no longer a hard dependency; band name defaults to asset key [#762](https://github.com/Open-EO/openeo-geopyspark-driver/issues/762).
 
 ## 0.39.0
 
-- Correctly apply the method parameter in resample_spatial and resample_cube_spatial, when downsampling to lower resolution, and the sampling is not applied at load time. ([Open-EO/openeo-geotrellis-extensions#303](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/303)) 
+- Correctly apply the method parameter in resample_spatial and resample_cube_spatial, when downsampling to lower resolution, and the sampling is not applied at load time. ([Open-EO/openeo-geotrellis-extensions#303](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/303))
 - Use band names as column name in GeoParquet output ([#723](https://github.com/Open-EO/openeo-geopyspark-driver/issues/723))
 - Prevent nightly cleaner from failing a job tracker run ([eu-cdse/openeo-cdse-infra#166](https://github.com/eu-cdse/openeo-cdse-infra/issues/166))
 - Sentinelhub collections handle non zero nodata better ([openeo-geotrellis-extensions#300](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/300))

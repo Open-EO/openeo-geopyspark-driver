@@ -73,6 +73,7 @@
           "href": "https://catalogue.dataspace.copernicus.eu/odata/v1/Products(f8039bf2-dc86-4dc2-a21a-b1a58c42fcdd)/$value",
           "title": "Product",
           "type": "application/octet-stream",
+          "roles": ["data", "role was manually added here to be supported."],
           "alternate": {
             "s3": {
               "href": "/eodata/Global-Mosaics/Sentinel-1/S1SAR_L3_IW_MCM/2023/06/01/Sentinel-1_IW_mosaic_2023_M06_31UFS_0_0",
@@ -81,13 +82,7 @@
               "storage:requester_pays": false,
               "storage:tier": "Online"
             }
-          },
-          "eo:bands": [
-            {
-              "message": "eo:bands was manually added here to be supported.",
-              "name": "B02"
-            }
-          ]
+          }
         }
       }
     }
