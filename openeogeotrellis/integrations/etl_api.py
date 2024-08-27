@@ -157,7 +157,7 @@ class EtlApi:
                     log.debug(f"EtlApi.log_resource_usage: got {total_metrics_credits_cost=} from {resources=}")
                     return total_metrics_credits_cost
 
-        total_credits_cost = 0.0
+        total_credits_cost = 0
 
         non_credits_metrics = {}
         if cpu_seconds is not None:
@@ -170,8 +170,8 @@ class EtlApi:
             non_credits_metrics["processing"] = {"value": sentinel_hub_processing_units, "unit": "shpu"}
 
         # TODO: only send two requests if both sentinel_hub_processing_units and additional_credits_cost
-        if non_credits_metrics:
-            total_credits_cost += _log_metrics(non_credits_metrics)
+        total_credits_cost += _log_metrics(non_credits_metrics)
+
         if additional_credits_cost is not None:
             total_credits_cost += _log_metrics({"processing": {"value": additional_credits_cost, "unit": "credits"}})
 
