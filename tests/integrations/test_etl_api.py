@@ -269,6 +269,80 @@ class TestEtlApi:
 
         assert credits_cost == 9.87
 
+    def test_log_resource_usage_with_additional_credits_cost(self, requests_mock, etl_credentials):
+        mock_endpoint = "https://etl-api.test"
+        etl_api = EtlApi(mock_endpoint, credentials=etl_credentials, source_id="test")
+
+        usage_credits_cost = 9.87
+        additional_credits_cost = 1.23
+
+        def verify_request(is_additional_credits_cost_request):
+            def verify_request(request, context):
+                expected_request_json = dict(
+                    jobId="j-abc123",
+                    jobName="a test",
+                    executionId="application_1704961751000_456",
+                    userId="johndoe",
+                    sourceId="test",
+                    orchestrator="openeo",
+                    jobStart=1704961751000,
+                    jobFinish=1704961804000,
+                    idempotencyKey="application_1704961751000_456",
+                    state="FINISHED",
+                    status="SUCCEEDED",
+                )
+
+                if is_additional_credits_cost_request:
+                    expected_request_json["metrics"] = {
+                        "processing": {"value": additional_credits_cost, "unit": "credits"},
+                    }
+                else:
+                    expected_request_json["metrics"] = {
+                        "cpu": {"value": 53, "unit": "cpu-seconds"},
+                        "memory": {"value": 6784, "unit": "mb-seconds"},
+                        "time": {"value": 53000, "unit": "milliseconds"},
+                        "processing": {"value": 4.0, "unit": "shpu"},
+                    }
+
+                assert request.json() == expected_request_json
+
+                context.status_code = 201
+                return [
+                    {
+                        "jobId": "j-abc123",
+                        "cost": additional_credits_cost if is_additional_credits_cost_request else usage_credits_cost,
+                    }
+                ]
+
+            return verify_request
+
+        mock = requests_mock.post(
+            f"{mock_endpoint}/resources",
+            [
+                {"json": verify_request(is_additional_credits_cost_request=False)},
+                {"json": verify_request(is_additional_credits_cost_request=True)},
+            ],
+        )
+
+        credits_cost = etl_api.log_resource_usage(
+            batch_job_id="j-abc123",
+            title="a test",
+            execution_id="application_1704961751000_456",
+            user_id="johndoe",
+            started_ms=1704961751000,
+            finished_ms=1704961804000,
+            state="FINISHED",
+            status="SUCCEEDED",
+            cpu_seconds=53,
+            mb_seconds=6784,
+            duration_ms=53000,
+            sentinel_hub_processing_units=4.0,
+            additional_credits_cost=additional_credits_cost,
+        )
+
+        assert mock.call_count == 2
+        assert credits_cost == usage_credits_cost + additional_credits_cost
+
     def test_log_added_value(self, requests_mock, etl_credentials):
         mock_endpoint = "https://etl-api.test"
         etl_api = EtlApi(mock_endpoint, credentials=etl_credentials, source_id="test")

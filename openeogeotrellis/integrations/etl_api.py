@@ -169,6 +169,7 @@ class EtlApi:
         if sentinel_hub_processing_units is not None:
             non_credits_metrics["processing"] = {"value": sentinel_hub_processing_units, "unit": "shpu"}
 
+        # TODO: only send two requests if both sentinel_hub_processing_units and additional_credits_cost
         if non_credits_metrics:
             total_credits_cost += _log_metrics(non_credits_metrics)
         if additional_credits_cost is not None:
