@@ -265,7 +265,7 @@ class S1BackscatterOrfeo:
         #         bbox=(extent["xmin"], extent["ymin"], extent["xmax"], extent["ymax"]), bbox_epsg=epsg,
         #         srtm_root="/eodata/auxdata/SRTMGL1/dem",
         #     )
-        elif elevation_model in ["geotiff", "mapzen"]:
+        if elevation_model in ["geotiff", "mapzen"]:
             dem_dir_context = S1BackscatterOrfeo._creodias_dem_subset_geotiff(
                 bbox=(extent["xmin"], extent["ymin"], extent["xmax"], extent["ymax"]), bbox_epsg=epsg,
                 zoom=sar_backscatter_arguments.options.get("dem_zoom_level", 10),
