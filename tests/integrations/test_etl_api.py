@@ -319,8 +319,8 @@ class TestEtlApi:
         mock = requests_mock.post(
             f"{mock_endpoint}/resources",
             [
-                {"json": verify_request(is_additional_credits_cost_request=False)},
                 {"json": verify_request(is_additional_credits_cost_request=True)},
+                {"json": verify_request(is_additional_credits_cost_request=False)},
             ],
         )
 

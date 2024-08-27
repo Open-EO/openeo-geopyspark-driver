@@ -159,21 +159,24 @@ class EtlApi:
 
         total_credits_cost = 0
 
-        non_credits_metrics = {}
+        base_metrics = {}
         if cpu_seconds is not None:
-            non_credits_metrics["cpu"] = {"value": cpu_seconds, "unit": "cpu-seconds"}
+            base_metrics["cpu"] = {"value": cpu_seconds, "unit": "cpu-seconds"}
         if mb_seconds is not None:
-            non_credits_metrics["memory"] = {"value": mb_seconds, "unit": "mb-seconds"}
+            base_metrics["memory"] = {"value": mb_seconds, "unit": "mb-seconds"}
         if duration_ms is not None:
-            non_credits_metrics["time"] = {"value": duration_ms, "unit": "milliseconds"}
-        if sentinel_hub_processing_units is not None:
-            non_credits_metrics["processing"] = {"value": sentinel_hub_processing_units, "unit": "shpu"}
+            base_metrics["time"] = {"value": duration_ms, "unit": "milliseconds"}
 
-        # TODO: only send two requests if both sentinel_hub_processing_units and additional_credits_cost
-        total_credits_cost += _log_metrics(non_credits_metrics)
-
-        if additional_credits_cost is not None:
+        # ETL API doesn't allow reporting both PUs and credits in the same request
+        if sentinel_hub_processing_units is not None and additional_credits_cost is not None:
+            base_metrics["processing"] = {"value": sentinel_hub_processing_units, "unit": "shpu"}
             total_credits_cost += _log_metrics({"processing": {"value": additional_credits_cost, "unit": "credits"}})
+        elif sentinel_hub_processing_units is not None:
+            base_metrics["processing"] = {"value": sentinel_hub_processing_units, "unit": "shpu"}
+        elif additional_credits_cost is not None:
+            base_metrics["processing"] = {"value": additional_credits_cost, "unit": "credits"}
+
+        total_credits_cost += _log_metrics(base_metrics)
 
         return total_credits_cost
 
