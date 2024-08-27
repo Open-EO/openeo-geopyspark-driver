@@ -42,6 +42,7 @@ from pyproj import CRS
 from shapely.geometry import GeometryCollection, MultiPolygon, Point, Polygon, box
 from shapely.geometry.base import BaseGeometry
 
+from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
 
 logger = logging.getLogger(__name__)
@@ -298,8 +299,6 @@ def get_s3_file_contents(filename: Union[os.PathLike,str]) -> str:
 
         The bucket is set in ConfigParams().s3_bucket_name
     """
-    from openeogeotrellis.config import get_backend_config
-
     # TODO: move this to openeogeotrellis.integrations.s3?
     s3_instance = s3_client()
     s3_file_object = s3_instance.get_object(
@@ -360,7 +359,6 @@ def download_s3_directory(s3_url: str, output_dir: str):
 def to_s3_url(file_or_dir_name: Union[os.PathLike,str], bucketname: str = None) -> str:
     """Get a URL for S3 to the file or directory, in the correct format."""
     # TODO: move this to openeogeotrellis.integrations.s3?
-    from openeogeotrellis.config import get_backend_config
 
     bucketname = bucketname or get_backend_config().s3_bucket_name
 

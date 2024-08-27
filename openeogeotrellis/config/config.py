@@ -13,7 +13,6 @@ from openeo_driver.utils import smart_bool
 
 from openeogeotrellis import get_backend_version
 from openeogeotrellis.deploy import build_gps_backend_deploy_metadata, find_geotrellis_jars
-from openeogeotrellis.utils import map_optional
 
 
 def _default_capabilities_deploy_metadata() -> dict:
@@ -132,9 +131,7 @@ class GpsBackendConfig(OpenEoBackendConfig):
     default_usage_cpu_seconds: float = 1.5 * 3600
     default_usage_byte_seconds: float = 3 * 1024 * 1024 * 1024 * 3600
     report_usage_sentinelhub_pus: bool = True
-    batch_job_administration_cost_credits: Optional[float] = map_optional(
-        float, os.environ.get("OPENEO_BATCH_JOB_ADMINISTRATION_COST_CREDITS")
-    )
+    batch_job_administration_cost_credits: Optional[float] = None
 
     default_soft_errors: float = 0.1
 
