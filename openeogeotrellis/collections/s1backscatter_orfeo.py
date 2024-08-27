@@ -259,11 +259,12 @@ class S1BackscatterOrfeo:
         elevation_model = sar_backscatter_arguments.elevation_model
         if elevation_model:
             elevation_model = elevation_model.lower()
-        if elevation_model in [None, "srtmgl1"]:
-            dem_dir_context = S1BackscatterOrfeo._creodias_dem_subset_srtm_hgt_unzip(
-                bbox=(extent["xmin"], extent["ymin"], extent["xmax"], extent["ymax"]), bbox_epsg=epsg,
-                srtm_root="/eodata/auxdata/SRTMGL1/dem",
-            )
+        # TODO: Temporarily disabled because /eodata/auxdata/SRTMGL1 is not available.
+        # if elevation_model in [None, "srtmgl1"]:
+        #     dem_dir_context = S1BackscatterOrfeo._creodias_dem_subset_srtm_hgt_unzip(
+        #         bbox=(extent["xmin"], extent["ymin"], extent["xmax"], extent["ymax"]), bbox_epsg=epsg,
+        #         srtm_root="/eodata/auxdata/SRTMGL1/dem",
+        #     )
         elif elevation_model in ["geotiff", "mapzen"]:
             dem_dir_context = S1BackscatterOrfeo._creodias_dem_subset_geotiff(
                 bbox=(extent["xmin"], extent["ymin"], extent["xmax"], extent["ymax"]), bbox_epsg=epsg,
@@ -271,7 +272,8 @@ class S1BackscatterOrfeo:
                 dem_tile_size=512,
                 dem_path_tpl="/eodata/auxdata/Elevation-Tiles/geotiff/{z}/{x}/{y}.tif"
             )
-        elif elevation_model in ["copernicus_30"]:
+        # TODO: Temporarily added 'None' here while SRTMGL1 is disabled.
+        elif elevation_model in [None, "copernicus_30"]:
             dem_dir_context = (
                 S1BackscatterOrfeo._creodias_dem_subset_copernicus30_geotiff(
                     bbox=(
