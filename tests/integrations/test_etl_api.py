@@ -251,12 +251,21 @@ class TestEtlApi:
 
         requests_mock.post(f"{mock_endpoint}/resources", json=verify_request)
 
-        credits_cost = etl_api.log_resource_usage(batch_job_id="j-abc123", title="a test",
-                                                  execution_id="application_1704961751000_456", user_id="johndoe",
-                                                  started_ms=1704961751000, finished_ms=1704961804000,
-                                                  state="FINISHED", status="SUCCEEDED",
-                                                  cpu_seconds=53, mb_seconds=6784, duration_ms=53000,
-                                                  sentinel_hub_processing_units=4.0)
+        credits_cost = etl_api.log_resource_usage(
+            batch_job_id="j-abc123",
+            title="a test",
+            execution_id="application_1704961751000_456",
+            user_id="johndoe",
+            started_ms=1704961751000,
+            finished_ms=1704961804000,
+            state="FINISHED",
+            status="SUCCEEDED",
+            cpu_seconds=53,
+            mb_seconds=6784,
+            duration_ms=53000,
+            sentinel_hub_processing_units=4.0,
+            additional_credits_cost=None,
+        )
 
         assert credits_cost == 9.87
 

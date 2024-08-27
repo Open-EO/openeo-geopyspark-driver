@@ -550,6 +550,7 @@ class JobTracker:
                 cpu_seconds=job_metadata.usage.cpu_seconds,
                 mb_seconds=job_metadata.usage.mb_seconds,
                 sentinelhub_processing_units=sentinelhub_processing_units_to_report,
+                additional_credits_cost=get_backend_config().batch_job_administration_cost_credits,
                 unique_process_ids=result_metadata.get("unique_process_ids", []),
                 job_options=job_info.get("job_options"),
             )
