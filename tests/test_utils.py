@@ -15,6 +15,7 @@ from openeogeotrellis.utils import (
     dict_merge_recursive,
     describe_path,
     lonlat_to_mercator_tile_indices,
+    map_optional,
     nullcontext,
     utcnow,
     UtcNowClock,
@@ -375,3 +376,10 @@ def test_parse_approximate_isoduration(duration_str, expected):
     duration = parse_approximate_isoduration(duration_str)
     print(f"duration={duration}")
     assert str(duration) == expected
+
+
+def test_map_optional():
+    to_upper = str.upper
+
+    assert map_optional(to_upper, None) is None
+    assert map_optional(to_upper, "hello") == "HELLO"

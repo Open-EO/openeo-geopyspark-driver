@@ -567,6 +567,7 @@ class TestYarnJobTracker:
             sentinelhub_processing_units=None,
             unique_process_ids=[],
             job_options=job_options,
+            additional_credits_cost=None,
         )
 
         assert caplog.record_tuples == []

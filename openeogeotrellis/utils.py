@@ -15,7 +15,7 @@ import stat
 import tempfile
 from functools import partial
 from pathlib import Path
-from typing import Callable, Iterable, Optional, Tuple, Union, Dict, Any
+from typing import Callable, Iterable, Optional, Tuple, Union, Dict, Any, TypeVar
 
 import dateutil.parser
 import pyproj
@@ -42,7 +42,6 @@ from pyproj import CRS
 from shapely.geometry import GeometryCollection, MultiPolygon, Point, Polygon, box
 from shapely.geometry.base import BaseGeometry
 
-from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
 
 logger = logging.getLogger(__name__)
@@ -299,6 +298,8 @@ def get_s3_file_contents(filename: Union[os.PathLike,str]) -> str:
 
         The bucket is set in ConfigParams().s3_bucket_name
     """
+    from openeogeotrellis.config import get_backend_config
+
     # TODO: move this to openeogeotrellis.integrations.s3?
     s3_instance = s3_client()
     s3_file_object = s3_instance.get_object(
@@ -359,6 +360,7 @@ def download_s3_directory(s3_url: str, output_dir: str):
 def to_s3_url(file_or_dir_name: Union[os.PathLike,str], bucketname: str = None) -> str:
     """Get a URL for S3 to the file or directory, in the correct format."""
     # TODO: move this to openeogeotrellis.integrations.s3?
+    from openeogeotrellis.config import get_backend_config
 
     bucketname = bucketname or get_backend_config().s3_bucket_name
 
@@ -702,3 +704,11 @@ def _make_set_for_key(
     which are not hashable and cannot be a set element, to tuples.
     """
     return {func(val.get(key)) for val in data.values() if key in val}
+
+
+T = TypeVar("T")
+U = TypeVar("U")
+
+
+def map_optional(f: Callable[[T], U], optional: Optional[T]) -> Optional[U]:
+    return None if optional is None else f(optional)
