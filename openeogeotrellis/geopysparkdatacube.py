@@ -1696,6 +1696,9 @@ class GeopysparkDataCube(DriverDataCube):
         filename_prefix = get_jvm().scala.Option.apply(format_options.get("filename_prefix", None))
         separate_asset_per_band = get_jvm().scala.Option.apply(format_options.get("separate_asset_per_band", None))
 
+        if separate_asset_per_band.isDefined() and format != "GTIFF":
+            raise OpenEOApiException("separate_asset_per_band is only supported with format GTIFF")
+
         save_filename = s3_filename if batch_mode and ConfigParams().is_kube_deploy and not get_backend_config().fuse_mount_batchjob_s3_bucket else filename
         save_directory = s3_directory if batch_mode and ConfigParams().is_kube_deploy and not get_backend_config().fuse_mount_batchjob_s3_bucket else directory
 

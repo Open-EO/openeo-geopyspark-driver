@@ -10,6 +10,7 @@ import pytest
 import rasterio
 
 from openeo.util import ensure_dir
+from openeo_driver.errors import OpenEOApiException
 from openeo_driver.testing import DictSubSet
 from shapely.geometry import Point, Polygon, mapping, shape
 import xarray
@@ -257,13 +258,13 @@ def test_ep3874_sample_by_feature_filter_spatial_inline_geojson(prefix, tmp_path
         (
             "loadcollection_sentinel2",
             {
-                "openEO_2023-06-01Z_B02.tif",
-                "openEO_2023-06-01Z_SCL.tif",
-                "openEO_2023-06-04Z_B02.tif",
-                "openEO_2023-06-04Z_SCL.tif",
+                "openEO_2021-06-05Z_TileRow.tif",
+                "openEO_2021-06-05Z_TileCol.tif",
+                "openEO_2021-06-15Z_TileRow.tif",
+                "openEO_2021-06-15Z_TileCol.tif",
             },
         ),
-        ("reducedimension_temporal", {"openEO_B02.tif", "openEO_SCL.tif"}),
+        ("reducedimension_temporal", {"openEO_TileRow.tif", "openEO_TileCol.tif"}),
     ],
 )
 def test_separate_asset_per_band(tmp_path, from_node, expected_names):
@@ -272,11 +273,11 @@ def test_separate_asset_per_band(tmp_path, from_node, expected_names):
             "loadcollection_sentinel2": {
                 "process_id": "load_collection",
                 "arguments": {
-                    "bands": ["B02", "SCL"],
-                    "id": "SENTINEL2_L2A",
+                    "bands": ["TileRow", "TileCol"],
+                    "id": "TestCollection-LonLat4x4",
                     "properties": {},
-                    "spatial_extent": {"east": 5.08, "north": 51.22, "south": 51.215, "west": 5.07},
-                    "temporal_extent": ["2023-06-01", "2023-06-06"],
+                    "spatial_extent": {"west": 0.0, "south": 50.0, "east": 5.0, "north": 55.0},
+                    "temporal_extent": ["2021-06-01", "2021-06-16"],
                 },
             },
             "reducedimension_temporal": {
@@ -319,7 +320,7 @@ def test_separate_asset_per_band(tmp_path, from_node, expected_names):
     )
     with metadata_file.open() as f:
         metadata = json.load(f)
-    assert metadata["start_datetime"] == "2023-06-01T00:00:00Z"
+    assert metadata["start_datetime"] == "2021-06-01T00:00:00Z"
     assets = metadata["assets"]
     # get file names as set:
     asset_names = set(assets.keys())
@@ -330,6 +331,44 @@ def test_separate_asset_per_band(tmp_path, from_node, expected_names):
         assert len(asset["bands"]) == 1
         assert len(asset["raster:bands"]) == 1
         assert asset["bands"][0]["name"] == asset["raster:bands"][0]["name"]
+
+
+def test_separate_asset_per_band_throw(tmp_path):
+    job_spec = {
+        "process_graph": {
+            "loadcollection_sentinel2": {
+                "process_id": "load_collection",
+                "arguments": {
+                    "bands": ["Longitude", "Day"],
+                    "id": "TestCollection-LonLat4x4",
+                    "properties": {},
+                    "spatial_extent": {"east": 5.08, "north": 51.22, "south": 51.215, "west": 5.07},
+                    "temporal_extent": ["2023-06-01", "2023-06-06"],
+                },
+            },
+            "save1": {
+                "process_id": "save_result",
+                "arguments": {
+                    "data": {"from_node": "loadcollection_sentinel2"},
+                    "format": "NETCDF",
+                    "options": {"separate_asset_per_band": True},
+                },
+                "result": True,
+            },
+        },
+        "parameters": [],
+    }
+    metadata_file = tmp_path / "metadata.json"
+    with pytest.raises(OpenEOApiException):
+        run_job(
+            job_spec,
+            output_file=tmp_path / "out",
+            metadata_file=metadata_file,
+            api_version="1.0.0",
+            job_dir=ensure_dir(tmp_path / "job_dir"),
+            dependencies=[],
+            user_id="jenkins",
+        )
 
 
 def test_sample_by_feature_filter_spatial_vector_cube_from_load_url(tmp_path):

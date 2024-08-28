@@ -454,7 +454,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                         },
                         "separate_asset_per_band": {
                             "type": "string",
-                            "description": "Set to true to write one output tiff per band. If there is a time dimention, the files will be split on time as well.",
+                            "description": "Set to true to write one output tiff per band. If there is a time dimension, the files will be split on time as well.",
                             "default": None,
                         },
                     },
