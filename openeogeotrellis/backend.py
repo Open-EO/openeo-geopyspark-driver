@@ -1933,6 +1933,28 @@ class GpsBatchJobs(backend.BatchJobs):
             # TODO: eliminate these local imports
             from kubernetes.client.rest import ApiException
 
+
+            memOverheadBytes = as_bytes(executor_memory_overhead)
+            jvmOverheadBytes = as_bytes("128m")
+
+            python_max = job_options.get("python-memory", None)
+            if python_max is not None:
+                python_max = as_bytes(python_max)
+                if "executor-memoryOverhead" not in job_options:
+                    memOverheadBytes = jvmOverheadBytes + python_max
+                    executor_memory_overhead = f"{memOverheadBytes//(1024**2)}m"
+            else:
+                python_max = memOverheadBytes - jvmOverheadBytes
+                executor_memory_overhead = f"{jvmOverheadBytes//(1024**2)}m"
+
+            if as_bytes(executor_memory) + as_bytes(executor_memory_overhead) > as_bytes(
+                get_backend_config().max_executor_or_driver_memory
+            ):
+                raise OpenEOApiException(
+                    message=f"Requested too much executor memory: {executor_memory} + {executor_memory_overhead}, the max for this instance is: {get_backend_config().max_executor_or_driver_memory}",
+                    status_code=400,
+                )
+
             api_instance_custom_object = kube_client("CustomObject")
             api_instance_core = kube_client("Core")
             pod_namespace = ConfigParams().pod_namespace
@@ -1993,19 +2015,6 @@ class GpsBatchJobs(backend.BatchJobs):
                 api_version = api_version
             else:
                 api_version = '0.4.0'
-
-            memOverheadBytes = as_bytes(executor_memory_overhead)
-            jvmOverheadBytes = as_bytes("128m")
-
-            python_max = job_options.get("python-memory", None)
-            if python_max is not None:
-                python_max = as_bytes(python_max)
-                if "executor-memoryOverhead" not in job_options:
-                    memOverheadBytes = jvmOverheadBytes
-                    executor_memory_overhead = f"{memOverheadBytes//(1024**2)}m"
-            else:
-                python_max = memOverheadBytes - jvmOverheadBytes
-                executor_memory_overhead = f"{jvmOverheadBytes//(1024**2)}m"
 
             eodata_mount = "/eodata2" if use_goofys else "/eodata"
 
