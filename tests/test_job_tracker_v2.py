@@ -567,6 +567,7 @@ class TestYarnJobTracker:
             sentinelhub_processing_units=None,
             unique_process_ids=[],
             job_options=job_options,
+            additional_credits_cost=None,
         )
 
         assert caplog.record_tuples == []
@@ -1415,6 +1416,7 @@ class TestK8sJobTracker:
         ],
     )
     @pytest.mark.parametrize("report_usage_sentinelhub_pus", [True, False], ids=["include_shpu", "exclude_shpu"])
+    @pytest.mark.parametrize("batch_job_base_fee_credits", [None, 1.23])
     def test_k8s_zookeeper_job_cost(
         self,
         zk_job_registry,
@@ -1429,8 +1431,12 @@ class TestK8sJobTracker:
         expected_etl_state,
         expected_job_status,
         report_usage_sentinelhub_pus,
+        batch_job_base_fee_credits,
     ):
-        with gps_config_overrides(report_usage_sentinelhub_pus=report_usage_sentinelhub_pus):
+        with gps_config_overrides(
+            report_usage_sentinelhub_pus=report_usage_sentinelhub_pus,
+            batch_job_base_fee_credits=batch_job_base_fee_credits,
+        ):
             caplog.set_level(logging.WARNING)
             time_machine.move_to("2022-12-14T12:00:00Z", tick=False)
 
@@ -1487,6 +1493,7 @@ class TestK8sJobTracker:
                 cpu_seconds=pytest.approx(2.34 * 3600, rel=0.001),
                 mb_seconds=pytest.approx(5.678 * 3600, rel=0.001),
                 sentinelhub_processing_units=1.25 if report_usage_sentinelhub_pus else None,
+                additional_credits_cost=batch_job_base_fee_credits,
                 unique_process_ids=[],
                 job_options=job_options,
             )

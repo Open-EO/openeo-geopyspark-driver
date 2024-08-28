@@ -1195,6 +1195,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 sentinel_hub_processing_units=(sentinel_hub_processing_units
                                                if sentinel_hub_processing_units and
                                                   backend_config.report_usage_sentinelhub_pus else None),
+                additional_credits_cost=None,
             )
 
             logger.info(
