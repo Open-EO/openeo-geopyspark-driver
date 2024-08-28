@@ -287,7 +287,11 @@ class TestEtlApi:
                     orchestrator="openeo",
                     jobStart=1704961751000,
                     jobFinish=1704961804000,
-                    idempotencyKey="application_1704961751000_456",
+                    idempotencyKey=(
+                        "application_1704961751000_456"
+                        if is_additional_credits_cost_request
+                        else "application_1704961751000_456_1"
+                    ),
                     state="FINISHED",
                     status="SUCCEEDED",
                 )

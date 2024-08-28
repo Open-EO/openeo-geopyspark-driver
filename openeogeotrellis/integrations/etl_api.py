@@ -118,6 +118,10 @@ class EtlApi:
 
         access_token = self._access_token_helper.get_access_token()
 
+        # both /resource requests to the ETL API need an idempotency key [to allow safe retries] but it needs to be
+        # a different one as to not interfere with each other
+        generate_idempotency_key = self._idempotency_key_generator(idempotency_key_base=execution_id)
+
         def _log_metrics(metrics: dict) -> float:
             data = {
                 "jobId": batch_job_id,
@@ -128,7 +132,7 @@ class EtlApi:
                 "orchestrator": ORCHESTRATOR,
                 "jobStart": started_ms,
                 "jobFinish": finished_ms,
-                "idempotencyKey": execution_id,
+                "idempotencyKey": generate_idempotency_key(),
                 # TODO #610 simplify this state/status stuff to single openEO-style job status?
                 "state": state,
                 "status": status,
@@ -223,6 +227,19 @@ class EtlApi:
 
             total_credits = sum(resource['cost'] for resource in resp.json())
             return total_credits
+
+    @staticmethod
+    def _idempotency_key_generator(idempotency_key_base: str) -> Callable[[], str]:
+        idempotency_key_counter = 0
+
+        def idempotency_key():
+            nonlocal idempotency_key_counter
+            suffix = "" if idempotency_key_counter == 0 else f"_{idempotency_key_counter}"
+            result = f"{idempotency_key_base}{suffix}"
+            idempotency_key_counter += 1
+            return result
+
+        return idempotency_key
 
 
 def get_etl_api_credentials_from_env() -> ClientCredentials:
