@@ -261,10 +261,14 @@ class S1BackscatterOrfeo:
             elevation_model = elevation_model.lower()
 
         if elevation_model in [None, "srtmgl1"]:
-            dem_dir_context = S1BackscatterOrfeo._creodias_dem_subset_srtm_hgt_unzip(
-                bbox=(extent["xmin"], extent["ymin"], extent["xmax"], extent["ymax"]), bbox_epsg=epsg,
-                srtm_root="/eodata/auxdata/SRTMGL1/dem",
-            )
+            # TODO: SRTMGL1 is currently disabled (issue #849).
+            error_msg = """
+            The default layer for SENTINEL1_GRD/sar_backscatter 'SRTMGL1' is currently disabled. 
+            Please explicitly use the sar_backscatter process with an 'elevation_model' other than 'SRTMGL1'.
+            For example: sentinel1_cube.sar_backscatter(elevation_model="COPERNICUS_30")
+            You can find more info about this issue here: https://github.com/Open-EO/openeo-geopyspark-driver/issues/849
+            """
+            raise OpenEOApiException(error_msg)
         elif elevation_model in ["geotiff", "mapzen"]:
             dem_dir_context = S1BackscatterOrfeo._creodias_dem_subset_geotiff(
                 bbox=(extent["xmin"], extent["ymin"], extent["xmax"], extent["ymax"]), bbox_epsg=epsg,
