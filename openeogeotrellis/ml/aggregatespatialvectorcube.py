@@ -9,7 +9,7 @@ from openeo_driver.errors import ProcessParameterInvalidException
 from openeo_driver.save_result import AggregatePolygonSpatialResult
 from openeogeotrellis.ml.geopysparkrandomforestmodel import GeopySparkRandomForestModel
 from openeogeotrellis.ml.geopysparkcatboostmodel import GeopySparkCatBoostModel
-import openeogeotrellis.ml.catboost_spark as catboost_spark 
+from openeogeotrellis.ml.catboost_spark import Pool, CatBoostClassifier
 
 from pyspark.sql import Row,SparkSession
 from pyspark.ml.linalg import Vectors, VectorUDT
@@ -124,11 +124,11 @@ class AggregateSpatialVectorCube(AggregatePolygonSpatialResult):
         ]
         trainData = [Row(Vectors.dense(feature), str(label)) for feature, label in zip(features, labels)]
         trainDf = spark.createDataFrame(sc.parallelize(trainData), StructType(srcDataSchema))
-        trainPool = catboost_spark.Pool(trainDf)
+        trainPool = Pool(trainDf)
 
         # 3. Train the model.
         num_classes = max(labels) + 1
-        classifier = catboost_spark.CatBoostClassifier(
+        classifier = CatBoostClassifier(
             classesCount=num_classes,
             iterations=iterations,
             depth=depth,

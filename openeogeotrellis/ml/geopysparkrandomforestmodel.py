@@ -9,7 +9,7 @@ from typing import Dict, Union
 from openeo_driver.datacube import DriverMlModel
 from openeo_driver.datastructs import StacAsset
 import geopyspark as gps
-from pyspark.mllib.util import JavaSaveable
+from pyspark.mllib.tree import RandomForestModel
 
 from openeo_driver.utils import generate_unique_id
 from openeogeotrellis.configparams import ConfigParams
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 class GeopySparkRandomForestModel(DriverMlModel):
 
-    def __init__(self, model: JavaSaveable):
+    def __init__(self, model: RandomForestModel):
         self._model = model
 
     def get_model_metadata(self, directory: Union[str, Path]) -> Dict[str, typing.Any]:
@@ -122,5 +122,8 @@ class GeopySparkRandomForestModel(DriverMlModel):
         logging.info(f"GeopySparkRandomForestModel stored as {model_path=}")
         return {model_path.name: {"href": str(model_path)}}
 
-    def get_model(self):
+    def get_model(self) -> RandomForestModel:
         return self._model
+    
+    def load_native_model(self, spark_context, path) -> "GeopySparkRandomForestModel":
+        return GeopySparkRandomForestModel(RandomForestModel._load_java(sc=spark_context, path=path))

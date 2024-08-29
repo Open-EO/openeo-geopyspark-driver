@@ -119,3 +119,6 @@ class GeopySparkCatBoostModel(DriverMlModel):
 
     def get_model(self) -> CatBoostClassificationModel:
         return self._model
+
+    def load_native_model(self, path) -> "GeopySparkCatBoostModel":
+        return GeopySparkCatBoostModel(CatBoostClassificationModel.loadNativeModel(path))
