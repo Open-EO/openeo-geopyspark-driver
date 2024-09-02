@@ -15,6 +15,7 @@ import time
 import traceback
 import uuid
 import importlib.metadata
+from copy import deepcopy
 from decimal import Decimal
 from functools import lru_cache, partial, reduce
 from pathlib import Path
@@ -1202,7 +1203,9 @@ class GpsProcessing(ConcreteProcessing):
             self, process_graph: dict, env: EvalEnv, result, source_constraints: List[SourceConstraint]
     ) -> Iterable[dict]:
         try:
-            for source_constraint in source_constraints.copy():  # copy because _extract_load_parameters is stateful
+            # copy because _extract_load_parameters is stateful
+            source_constraints_copy = deepcopy(source_constraints)
+            for source_constraint in source_constraints_copy:
                 source_id, constraints = source_constraint
                 source_id_proc, source_id_args = source_id
                 collection_id = source_id_args[0]

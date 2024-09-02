@@ -168,7 +168,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                     )
                 else:
                     raise ProcessGraphComplexityException(
-                        "Found errors in process graph. Disable this check with 'job_options.do_extent_check': " +
+                        "Process graph contains nodes with a too large spatiotemporal extent and will likely time out. Disable this check with 'job_options.do_extent_check': " +
                         " ".join(issues))
 
         return self._load_collection_cached(collection_id, load_params, WhiteListEvalEnv(env, WHITELIST))
