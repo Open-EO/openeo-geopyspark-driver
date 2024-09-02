@@ -651,6 +651,48 @@ def reproject_cellsize(
     return cell_width_reprojected, cell_height_reprojected
 
 
+def health_check_extent(extent):
+    crs = extent.get("crs", "EPSG:4326")
+    is_utm = crs == "Auto42001" or crs.startswith("EPSG:326")
+
+    if extent["west"] > extent["east"] or extent["south"] > extent["north"]:
+        logger.warning(f"health_check_extent extent with surface<0: {extent}")
+        return False
+
+    if is_utm:
+        # This is an extent that has the highest sensible values for northern and/or southern hemisphere UTM zones
+        utm_bounds = {
+            "west": 166021.44,
+            "south": -10000000,
+            "east": 833978.56,
+            "north": 10000000,
+        }
+        width = utm_bounds["east"] - utm_bounds["west"]
+        horizontal_tolerance = 5  # UTM zone has quite some horizontal tolerance
+        utm_bounds["west"] = utm_bounds["west"] - width * horizontal_tolerance
+        utm_bounds["east"] = utm_bounds["east"] + width * horizontal_tolerance
+        if (
+            extent["west"] < utm_bounds["west"]
+            or extent["east"] > utm_bounds["east"]
+            or extent["south"] < utm_bounds["south"]
+            or extent["north"] > utm_bounds["north"]
+        ):
+            logger.warning(f"health_check_extent dangerous extent: {extent}")
+            return False
+    elif crs == "EPSG:4326":
+        horizontal_tolerance = 1.1
+        if (
+            extent["west"] < -180 * horizontal_tolerance
+            or extent["east"] > 180 * horizontal_tolerance
+            or extent["south"] < -90
+            or extent["north"] > 90
+        ):
+            logger.warning(f"health_check_extent dangerous extent: {extent}")
+            return False
+
+    return True
+
+
 def parse_approximate_isoduration(s):
     """
     Parse the ISO8601 duration as years,months,weeks,days, hours,minutes,seconds.

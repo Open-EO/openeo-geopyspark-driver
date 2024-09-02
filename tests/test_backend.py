@@ -222,7 +222,7 @@ def test_extra_validation_without_extent(backend_implementation):
         (source_id1, {
             "temporal_extent": None,
             "spatial_extent": {"east": 1941516.7822, "south": -637292.4712999999, "crs": "EPSG:32637",
-                               "north": 2493707.5287, "west": -1285483.2178},
+                               "north": 2493707.5287, "west": 0},
             "bands": ["MAP"],
         })
     ]
@@ -250,8 +250,8 @@ def test_extra_validation_layer_too_large_area(backend_implementation):
                 "version": "1.0.0"})
     errors = list(processing.extra_validation({}, env, None, env_source_constraints))
     assert len(errors) == 1
-    assert errors[0]['code'] == "ExtentTooLarge"
-    assert "spatial extent" in errors[0]['message']
+    assert errors[0]["code"] == "ExtentTooLarge"
+    assert "spatial extent" in errors[0]["message"].lower()
 
 
 def test_extra_validation_layer_timezone(backend_implementation):
@@ -271,8 +271,8 @@ def test_extra_validation_layer_timezone(backend_implementation):
                 "version": "1.0.0"})
     errors = list(processing.extra_validation({}, env, None, env_source_constraints))
     assert len(errors) == 1
-    assert errors[0]['code'] == "ExtentTooLarge"
-    assert "spatial extent" in errors[0]['message']
+    assert errors[0]["code"] == "ExtentTooLarge"
+    assert "spatial extent" in errors[0]["message"].lower()
 
 
 def test_extra_validation_layer_too_large_delayedvector(backend_implementation):

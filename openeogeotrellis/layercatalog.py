@@ -52,6 +52,7 @@ from openeogeotrellis.utils import (
     calculate_rough_area,
     parse_approximate_isoduration,
     reproject_cellsize,
+    health_check_extent,
 )
 from openeogeotrellis.vault import Vault
 
@@ -1292,7 +1293,7 @@ def extra_validation_load_collection(collection_id: str, load_params: LoadParame
     if spatial_extent is None or len(spatial_extent) == 0:
         spatial_extent = load_params.global_extent
     if spatial_extent is None or len(spatial_extent) == 0:
-        spatial_extent = {"srs": "EPSG:4326", "west": -180.0, "south": -90, "east": 180, "north": 90}
+        spatial_extent = metadata.get_overall_spatial_extent()
     load_params.spatial_extent = spatial_extent
 
     native_crs = metadata.get("cube:dimensions", "x", "reference_system", default="EPSG:4326")
@@ -1304,15 +1305,6 @@ def extra_validation_load_collection(collection_id: str, load_params: LoadParame
         yield {
             "code": "InvalidNativeCRS",
             "message": f"Invalid native CRS {native_crs!r} for " f"collection {collection_id!r}",
-        }
-        return
-
-    is_utm = native_crs == "Auto42001" or native_crs.startswith("EPSG:326")
-    if is_utm and abs(spatial_extent["east"] - spatial_extent["west"]) > 12:
-        # One UTM zone is 6 degrees wide
-        yield {
-            "code": "ExtentTooLarge",
-            "message": "Cannot handle extents overlapping multiple UTM zones for this layer.",
         }
         return
 
@@ -1428,6 +1420,10 @@ def is_layer_too_large(
         if srs["name"] == 'AUTO 42001 (Universal Transverse Mercator)':
             srs = 'Auto42001'
 
+    spatial_extent["crs"] = srs
+    if not health_check_extent(spatial_extent):
+        return f"Unsupported spatial extent: {spatial_extent}"
+
     # Resampling process overwrites native_crs and resolution from metadata.
     resample_target_crs = load_params.target_crs
     if resample_target_crs:
@@ -1447,7 +1443,7 @@ def is_layer_too_large(
     if native_crs == "Auto42001":
         west, south = spatial_extent["west"], spatial_extent["south"]
         east, north = spatial_extent["east"], spatial_extent["north"]
-        native_crs = auto_utm_epsg_for_geometry(box(west, south, east, north), srs)
+        native_crs = "EPSG:%s" % str(auto_utm_epsg_for_geometry(box(west, south, east, north), srs))
     if srs != native_crs:
         spatial_extent = reproject_bounding_box(spatial_extent, from_crs=srs, to_crs=native_crs)
 
