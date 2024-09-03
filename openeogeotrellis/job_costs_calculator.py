@@ -29,6 +29,7 @@ class CostsDetails(NamedTuple):  # for lack of a better name
     cpu_seconds: Optional[float] = None
     mb_seconds: Optional[float] = None
     sentinelhub_processing_units: Optional[float] = None
+    additional_credits_cost: Optional[float] = None
     unique_process_ids: List[str] = []
     job_options: Optional[dict] = None
 
@@ -75,6 +76,7 @@ class EtlApiJobCostsCalculator(JobCostsCalculator):
             mb_seconds=details.mb_seconds,
             duration_ms=duration_ms,
             sentinel_hub_processing_units=details.sentinelhub_processing_units,
+            additional_credits_cost=details.additional_credits_cost,
         )
 
         if details.area_square_meters is None:

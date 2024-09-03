@@ -91,10 +91,22 @@ class EtlApi:
             _log.debug(resp.text)
             resp.raise_for_status()
 
-    def log_resource_usage(self, batch_job_id: str, title: Optional[str], execution_id: str, user_id: str,
-                           started_ms: Optional[float], finished_ms: Optional[float], state: str, status: str,
-                           cpu_seconds: Optional[float], mb_seconds: Optional[float], duration_ms: Optional[float],
-                           sentinel_hub_processing_units: Optional[float]) -> float:
+    def log_resource_usage(
+        self,
+        batch_job_id: str,
+        title: Optional[str],
+        execution_id: str,
+        user_id: str,
+        started_ms: Optional[float],
+        finished_ms: Optional[float],
+        state: str,
+        status: str,
+        cpu_seconds: Optional[float],
+        mb_seconds: Optional[float],
+        duration_ms: Optional[float],
+        sentinel_hub_processing_units: Optional[float],
+        additional_credits_cost: Optional[float],
+    ) -> float:
         """
         :param user_id: user identifier expected by ETL API: must be "sub" field from (verified) access token
 
@@ -104,54 +116,73 @@ class EtlApi:
         #       (e.g. request id for sync processing), while this logger adapter seems to assume that
         log = logging.LoggerAdapter(_log, extra={"job_id": batch_job_id, "user_id": user_id})
 
-        metrics = {}
-
-        if cpu_seconds is not None:
-            metrics['cpu'] = {'value': cpu_seconds, 'unit': 'cpu-seconds'}
-
-        if mb_seconds is not None:
-            metrics['memory'] = {'value': mb_seconds, 'unit': 'mb-seconds'}
-
-        if duration_ms is not None:
-            metrics['time'] = {'value': duration_ms, 'unit': 'milliseconds'}
-
-        if sentinel_hub_processing_units is not None:
-            metrics['processing'] = {'value': sentinel_hub_processing_units, 'unit': 'shpu'}
-
-        data = {
-            'jobId': batch_job_id,
-            'jobName': title,
-            'executionId': execution_id,
-            'userId': user_id,
-            'sourceId': self._source_id,
-            'orchestrator': ORCHESTRATOR,
-            'jobStart': started_ms,
-            'jobFinish': finished_ms,
-            'idempotencyKey': execution_id,
-            # TODO #610 simplify this state/status stuff to single openEO-style job status?
-            'state': state,
-            'status': status,
-            'metrics': metrics
-        }
-
-        log.debug(f"EtlApi.log_resource_usage: POST {data=} at {self._endpoint!r}")
-
         access_token = self._access_token_helper.get_access_token()
-        with self._session.post(f"{self._endpoint}/resources", headers={'Authorization': f"Bearer {access_token}"},
-                                json=data, timeout=REQUESTS_TIMEOUT_SECONDS) as resp:
-            if not resp.ok:
-                # TODO: doing both `resp.ok` and `resp.raise_for_status` is redundant?
-                log.error(
-                    f"EtlApi.log_resource_usage {resp.request.method} {resp.request.url} {data} failed with {resp.status_code}: {resp.text}"
-                )
-                resp.raise_for_status()
-            else:
-                # TODO: is cost guaranteed to be in credits?
-                #       Or, vice versa, is it unnecessary to assume anything about the cost unit here?
-                resources = resp.json()
-                total_credits = sum(resource["cost"] for resource in resources)
-                log.debug(f"EtlApi.log_resource_usage: got {total_credits=} from {resources=}")
-                return total_credits
+
+        # both /resource requests to the ETL API need an idempotency key [to allow safe retries] but it needs to be
+        # a different one as to not interfere with each other
+        generate_idempotency_key = self._idempotency_key_generator(idempotency_key_base=execution_id)
+
+        def _log_metrics(metrics: dict) -> float:
+            data = {
+                "jobId": batch_job_id,
+                "jobName": title,
+                "executionId": execution_id,
+                "userId": user_id,
+                "sourceId": self._source_id,
+                "orchestrator": ORCHESTRATOR,
+                "jobStart": started_ms,
+                "jobFinish": finished_ms,
+                "idempotencyKey": generate_idempotency_key(),
+                # TODO #610 simplify this state/status stuff to single openEO-style job status?
+                "state": state,
+                "status": status,
+                "metrics": metrics,
+            }
+
+            log.debug(f"EtlApi.log_resource_usage: POST {data=} at {self._endpoint!r}")
+
+            with self._session.post(
+                f"{self._endpoint}/resources",
+                headers={"Authorization": f"Bearer {access_token}"},
+                json=data,
+                timeout=REQUESTS_TIMEOUT_SECONDS,
+            ) as resp:
+                if not resp.ok:
+                    # TODO: doing both `resp.ok` and `resp.raise_for_status` is redundant?
+                    log.error(
+                        f"EtlApi.log_resource_usage {resp.request.method} {resp.request.url} {data} failed with {resp.status_code}: {resp.text}"
+                    )
+                    resp.raise_for_status()
+                else:
+                    # TODO: is cost guaranteed to be in credits?
+                    #       Or, vice versa, is it unnecessary to assume anything about the cost unit here?
+                    resources = resp.json()
+                    total_metrics_credits_cost = sum(resource["cost"] for resource in resources)
+                    log.debug(f"EtlApi.log_resource_usage: got {total_metrics_credits_cost=} from {resources=}")
+                    return total_metrics_credits_cost
+
+        total_credits_cost = 0
+
+        base_metrics = {}
+        if cpu_seconds is not None:
+            base_metrics["cpu"] = {"value": cpu_seconds, "unit": "cpu-seconds"}
+        if mb_seconds is not None:
+            base_metrics["memory"] = {"value": mb_seconds, "unit": "mb-seconds"}
+        if duration_ms is not None:
+            base_metrics["time"] = {"value": duration_ms, "unit": "milliseconds"}
+
+        # ETL API doesn't allow reporting both PUs and credits in the same request
+        if sentinel_hub_processing_units is not None and additional_credits_cost is not None:
+            base_metrics["processing"] = {"value": sentinel_hub_processing_units, "unit": "shpu"}
+            total_credits_cost += _log_metrics({"processing": {"value": additional_credits_cost, "unit": "credits"}})
+        elif sentinel_hub_processing_units is not None:
+            base_metrics["processing"] = {"value": sentinel_hub_processing_units, "unit": "shpu"}
+        elif additional_credits_cost is not None:
+            base_metrics["processing"] = {"value": additional_credits_cost, "unit": "credits"}
+
+        total_credits_cost += _log_metrics(base_metrics)
+
+        return total_credits_cost
 
     def log_added_value(self, batch_job_id: str, title: Optional[str], execution_id: str, user_id: str,
                         started_ms: Optional[float], finished_ms: Optional[float], process_id: str,
@@ -196,6 +227,19 @@ class EtlApi:
 
             total_credits = sum(resource['cost'] for resource in resp.json())
             return total_credits
+
+    @staticmethod
+    def _idempotency_key_generator(idempotency_key_base: str) -> Callable[[], str]:
+        idempotency_key_counter = 0
+
+        def idempotency_key():
+            nonlocal idempotency_key_counter
+            suffix = "" if idempotency_key_counter == 0 else f"_{idempotency_key_counter}"
+            result = f"{idempotency_key_base}{suffix}"
+            idempotency_key_counter += 1
+            return result
+
+        return idempotency_key
 
 
 def get_etl_api_credentials_from_env() -> ClientCredentials:

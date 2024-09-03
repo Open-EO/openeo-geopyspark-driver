@@ -81,7 +81,7 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
         return any(conformance_class.endswith("/item-search") for conformance_class in conforms_to)
 
     def is_band_asset(asset: pystac.Asset) -> bool:
-        return "eo:bands" in asset.extra_fields
+        return asset.has_role("data") or "eo:bands" in asset.extra_fields
 
     def get_band_names(itm: pystac.Item, asst: pystac.Asset) -> List[str]:
         def get_band_name(eo_band) -> str:
@@ -97,7 +97,7 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
                                  else itm.get_collection().summaries.to_dict())
             return get_band_name(eo_bands_location["eo:bands"][eo_band_index])
 
-        return [get_band_name(eo_band) for eo_band in asst.extra_fields["eo:bands"]]
+        return [get_band_name(eo_band) for eo_band in asst.extra_fields.get("eo:bands", [])]
 
     def get_proj_metadata(itm: pystac.Item, asst: pystac.Asset) -> (Optional[int],
                                                                     Optional[Tuple[float, float, float, float]],
@@ -226,7 +226,8 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
             elif (
                 root_catalog.get_self_href().startswith("https://tamn.snapplanet.io")
                 or root_catalog.get_self_href().startswith("https://stac.eurac.edu")
-                or root_catalog.get_self_href().startswith("https://catalogue.dataspace.copernicus.eu/")
+                or root_catalog.get_self_href().startswith("https://catalogue.dataspace.copernicus.eu/stac")
+                or root_catalog.get_self_href().startswith("https://pgstac.demo.cloudferro.com")
             ):
                 modifier = None
                 # by default, returns all properties and "none" if fields are specified
@@ -345,7 +346,7 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
                    .withNominalDate(itm.properties.get("datetime") or itm.properties["start_datetime"]))
 
         for asset_id, asset in band_assets.items():
-            asset_band_names = get_band_names(itm, asset)
+            asset_band_names = get_band_names(itm, asset) or [asset_id]
             for asset_band_name in asset_band_names:
                 if asset_band_name not in band_names:
                     band_names.append(asset_band_name)
@@ -385,11 +386,6 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
 
     if not items_found:
         raise no_data_available_exception
-
-    if not band_names:
-        raise OpenEOApiException(
-            message=f'No band assets found in items; a band asset requires an "eo:bands" property with a "name".',
-            status_code=400)
 
     target_bbox = requested_bbox or stac_bbox
 
@@ -519,23 +515,28 @@ def get_best_url(asset: pystac.Asset):
     """
     Relevant doc: https://github.com/stac-extensions/alternate-assets
     """
-    alternate = asset.extra_fields.get("alternate")
-    if alternate:
-        for key, alternate_local in alternate.items():
-            if key not in {"local", "s3"}:
-                continue
-            href = alternate_local.get("href")
+    for key, alternate_asset in asset.extra_fields.get("alternate", {}).items():
+        if key in {"local", "s3"}:
+            href = alternate_asset["href"]
             # Checking if file exists takes around 10ms on /data/MTDA mounted on laptop
             # Checking if URL exists takes around 100ms on https://services.terrascope.be
             # Checking if URL exists depends also on what Datasource is used in the scala code.
             # That would be hacky to predict here.
-            tmp = urlparse(href)
+            url = urlparse(href)
             # Support paths like "file:///data/MTDA", but also "//data/MTDA" just in case.
-            if tmp.scheme == "file" or tmp.scheme == "":
-                if Path(tmp.path).exists():
-                    return href
+
+            file_path = None
+            if url.scheme in ["", "file"]:
+                file_path = url.path
+            elif url.scheme == "s3":
+                file_path = f"/{url.netloc}{url.path}"
+
+            if file_path and Path(file_path).exists():
+                logger.debug(f"Using local alternate file path {file_path}")
+                return file_path
             else:
-                logger.warning("Only support file paths as local alternate urls, but found: " + href)
+                logger.warning(f"Only support file paths as local alternate urls, but found {href}")
+
     return asset.get_absolute_href() or asset.href
 
 

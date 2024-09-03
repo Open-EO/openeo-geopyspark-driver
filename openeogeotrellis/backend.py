@@ -61,7 +61,6 @@ from pandas import Timedelta
 from py4j.java_gateway import JavaObject, JVMView
 from py4j.protocol import Py4JJavaError
 from pyspark import SparkContext
-from pyspark.mllib.tree import RandomForestModel
 from shapely.geometry import Polygon
 from urllib3 import Retry
 from xarray import DataArray
@@ -88,7 +87,8 @@ from openeogeotrellis.layercatalog import (
     extra_validation_load_collection,
 )
 from openeogeotrellis.logs import elasticsearch_logs
-from openeogeotrellis.ml.catboost_spark import CatBoostClassificationModel
+from openeogeotrellis.ml.geopysparkcatboostmodel import GeopySparkCatBoostModel
+from openeogeotrellis.ml.geopysparkrandomforestmodel import GeopySparkRandomForestModel
 from openeogeotrellis.processgraphvisiting import GeotrellisTileProcessGraphVisitor, SingleNodeUDFProcessGraphVisitor
 from openeogeotrellis.sentinel_hub.batchprocessing import SentinelHubBatchProcessing
 from openeogeotrellis.service_registry import (
@@ -449,6 +449,11 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                         "filename_prefix": {
                             "type": "string",
                             "description": "Specifies the filename prefix when outputting multiple files. By default, depending on the context, 'OpenEO' or a part of the input filename will be used as prefix.",
+                            "default": None,
+                        },
+                        "separate_asset_per_band": {
+                            "type": "string",
+                            "description": "Set to true to write one output tiff per band. If there is a time dimension, the files will be split on time as well.",
                             "default": None,
                         },
                     },
@@ -821,7 +826,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                         # Load the spark model using the new s3 path.
                         s3_path = f"s3a://{model_dir_path}/randomforest.model/"
                         logger.info("Loading ml_model using filename: {}".format(s3_path))
-                        model: JavaObject = RandomForestModel._load_java(sc = gps.get_spark_context(), path = s3_path)
+                        model: JavaObject = GeopySparkRandomForestModel.load_native_model(sc = gps.get_spark_context(), path = s3_path).get_model()
                         return model
                 dest_path = Path(model_dir_path + "/randomforest.model.tar.gz")
                 with open(dest_path, 'wb') as f:
@@ -829,7 +834,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 shutil.unpack_archive(dest_path, extract_dir=model_dir_path, format='gztar')
                 unpacked_model_path = str(dest_path).replace(".tar.gz", "")
                 logger.info("Loading ml_model using filename: {}".format(unpacked_model_path))
-                model: JavaObject = RandomForestModel._load_java(sc=gps.get_spark_context(), path="file:" + unpacked_model_path)
+                model: JavaObject = GeopySparkRandomForestModel.load_native_model(sc=gps.get_spark_context(), path="file:" + unpacked_model_path).get_model()
                 return model
             elif architecture == "catboost":
                 if use_s3:
@@ -840,30 +845,30 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                         logger.info(f"Downloading ml_model from {model_url} to {tmp_path}")
                         with open(tmp_path, 'wb') as f:
                             f.write(requests.get(model_url).content)
-                        model: JavaObject = CatBoostClassificationModel.load_native_model(tmp_path)
+                        model: JavaObject = GeopySparkCatBoostModel.load_native_model(tmp_path).get_model()
                         return model
                 filename = Path(model_dir_path + "/catboost_model.cbm")
                 with open(filename, 'wb') as f:
                     f.write(requests.get(model_url).content)
                 logger.info("Loading ml_model using filename: {}".format(filename))
-                model: JavaObject = CatBoostClassificationModel.load_native_model(str(filename))
+                model: JavaObject = GeopySparkCatBoostModel.load_native_model(str(filename)).get_model()
             else:
                 raise NotImplementedError("The ml-model architecture is not supported by the backend: " + architecture)
             return model
         else:
+            # TODO: Should we still support this, or should only signed urls work?
             # Load the model using a batch job id.
             directory = gps_batch_jobs.get_job_output_dir(model_id)
-            # TODO: This also needs to support Catboost model
             # TODO: This can be done by first reading ml_model_metadata.json in the batch job directory.
             model_path = str(Path(directory) / "randomforest.model")
             if Path(model_path).exists():
                 logger.info("Loading ml_model using filename: {}".format(model_path))
-                model: JavaObject = RandomForestModel._load_java(sc=gps.get_spark_context(), path="file:" + model_path)
+                model: JavaObject = GeopySparkRandomForestModel.load_native_model(sc=gps.get_spark_context(), path="file:" + model_path).get_model()
             elif Path(model_path+".tar.gz").exists():
                 packed_model_path = model_path+".tar.gz"
                 shutil.unpack_archive(packed_model_path, extract_dir=directory, format='gztar')
                 unpacked_model_path = str(packed_model_path).replace(".tar.gz", "")
-                model: JavaObject = RandomForestModel._load_java(sc=gps.get_spark_context(), path="file:" + unpacked_model_path)
+                model: JavaObject = GeopySparkRandomForestModel.load_native_model(sc=gps.get_spark_context(), path="file:" + unpacked_model_path).get_model()
             else:
                 raise OpenEOApiException(
                     message=f"No random forest model found for job {model_id}",status_code=400)
@@ -1189,6 +1194,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 sentinel_hub_processing_units=(sentinel_hub_processing_units
                                                if sentinel_hub_processing_units and
                                                   backend_config.report_usage_sentinelhub_pus else None),
+                additional_credits_cost=None,
             )
 
             logger.info(

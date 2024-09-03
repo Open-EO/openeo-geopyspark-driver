@@ -1,0 +1,82 @@
+{
+  "stac_version": "1.0.0",
+  "stac_extensions": [],
+  "type": "Feature",
+  "id": "item01",
+  "bbox": [
+    5.0,
+    50.0,
+    6.0,
+    51.0
+  ],
+  "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+      [
+        [
+          5.0,
+          50.0
+        ],
+        [
+          5.0,
+          51.0
+        ],
+        [
+          6.0,
+          51.0
+        ],
+        [
+          6.0,
+          50.0
+        ],
+        [
+          5.0,
+          50.0
+        ]
+      ]
+    ]
+  },
+  "properties": {
+    "datetime": "2021-02-03T00:00:00Z",
+    "proj:epsg": 4326,
+    "proj:bbox": [
+      5.0,
+      50.0,
+      6.0,
+      51.0
+    ],
+    "proj:shape": [
+      10,
+      10
+    ]
+  },
+  "links": [
+    {
+      "rel": "collection",
+      "href": "https://stac.test/collections/collection"
+    }
+  ],
+  "assets": {
+    "asset1": {
+      "href": "asset01.tiff",
+      "type": "image/tiff; application=geotiff",
+      "roles": ["data"],
+      "eo:bands": [
+        {
+          "name": "band1"
+        },
+        {
+          "name": "band2"
+        },
+        {
+          "name": "band3"
+        }
+      ]
+    },
+    "band4": {
+      "href": "asset02.tiff",
+      "type": "image/tiff; application=geotiff",
+      "roles": ["data"]
+    }
+  }
+}

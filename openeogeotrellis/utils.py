@@ -15,7 +15,7 @@ import stat
 import tempfile
 from functools import partial
 from pathlib import Path
-from typing import Callable, Iterable, Optional, Tuple, Union, Dict, Any
+from typing import Callable, Iterable, Optional, Tuple, Union, Dict, Any, TypeVar
 
 import dateutil.parser
 import pyproj
@@ -744,3 +744,11 @@ def _make_set_for_key(
     which are not hashable and cannot be a set element, to tuples.
     """
     return {func(val.get(key)) for val in data.values() if key in val}
+
+
+T = TypeVar("T")
+U = TypeVar("U")
+
+
+def map_optional(f: Callable[[T], U], optional: Optional[T]) -> Optional[U]:
+    return None if optional is None else f(optional)

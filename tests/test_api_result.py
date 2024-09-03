@@ -4297,6 +4297,86 @@ class TestLoadStac:
         assert ("OpenEO batch job results status of own job j-2405078f40904a0b85cf8dc5dd55b07e: finished"
                 in caplog.messages)
 
+    def test_load_stac_loads_assets_without_eo_bands(self, api110, urllib_mock, requests_mock, tmp_path):
+        """load_stac from a STAC API with one item and two assets, one of which does not carry eo:bands"""
+
+        def feature_collection(request, _) -> dict:
+            # upper is needed because requests_mock converts to lowercase, this may change in future release
+            # replace of Z is needed on python3.8, from 3.11 onwards should no longer be needed
+            datetime_from, datetime_to = map(
+                dt.datetime.fromisoformat, request.qs["datetime"][0].upper().replace("Z", "+00:00").split("/")
+            )
+
+            def item(path) -> dict:
+                return json.loads(
+                    get_test_data_file(path)
+                    .read_text()
+                    .replace(
+                        "asset01.tiff",
+                        f"file://{get_test_data_file('binary/load_stac/collection01/asset01.tif').absolute()}",
+                    )
+                    .replace(
+                        "asset02.tiff",
+                        f"file://{get_test_data_file('binary/load_stac/collection01/asset02.tif').absolute()}",
+                    )
+                )
+
+            items = [
+                item(path)
+                for path in [
+                    "stac/issue762-api-no-eo-bands/item01.json",
+                ]
+            ]
+
+            intersecting_items = [
+                item
+                for item in items
+                if datetime_from <= dateutil.parser.parse(item["properties"]["datetime"]) <= datetime_to
+            ]
+
+            return {
+                "type": "FeatureCollection",
+                "features": intersecting_items,
+            }
+
+        urllib_mock.get(
+            "https://stac.test/collections/collection",
+            data=get_test_data_file("stac/issue762-api-no-eo-bands/collection.json").read_text(),
+        )
+        urllib_mock.get(
+            "https://stac.test",  # for pystac
+            data=get_test_data_file("stac/issue762-api-no-eo-bands/catalog.json").read_text(),
+        )
+        requests_mock.get(
+            "https://stac.test",  # for pystac_client
+            text=get_test_data_file("stac/issue762-api-no-eo-bands/catalog.json").read_text(),
+        )
+        requests_mock.get("https://stac.test/search", json=feature_collection)
+
+        process_graph = {
+            "loadstac1": {
+                "process_id": "load_stac",
+                "arguments": {"url": "https://stac.test/collections/collection"},
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "loadstac1"}, "format": "NetCDF"},
+                "result": True,
+            },
+        }
+
+        res = api110.result(process_graph).assert_status_code(200)
+        res_path = tmp_path / "res.nc"
+        res_path.write_bytes(res.data)
+        ds = xarray.load_dataset(res_path)
+        assert ds.dims == {"t": 1, "x": 10, "y": 10}
+        assert numpy.datetime_as_string(ds.coords["t"].values, unit="D").tolist() == ["2021-02-03"]
+        assert list(ds.data_vars.keys())[1:] == ["band1", "band2", "band3", "band4"]
+        assert (ds["band1"] == 1).all()
+        assert (ds["band2"] == 2).all()
+        assert (ds["band3"] == 3).all()
+        assert (ds["band4"] == 4).all()
+
 
 class TestEtlApiReporting:
     @pytest.fixture(autouse=True)
