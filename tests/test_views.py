@@ -977,6 +977,7 @@ class TestBatchJobs:
         [("executor-cores", "99")],
         [("driver-memoryOverhead", "99999G")],
         [("executor-memoryOverhead", "99999G")],
+        [("python-memory", "99999G")],
     ])
     def test_create_and_start_job_options_too_large(self, api, boost, monkeypatch):
         monkeypatch.setenv("KUBE", "TRUE")
@@ -1008,6 +1009,25 @@ class TestBatchJobs:
         }
         print(boost)
         job_options[boost[0]] = boost[1]
+
+        data["job_options"] = job_options
+        res = api.post("/jobs", json=data, headers=TEST_USER_AUTH_HEADER).assert_status_code(201)
+        job_id = res.headers["OpenEO-Identifier"]
+        # Trigger job start
+        api.post(f"/jobs/{job_id}/results", json={}, headers=TEST_USER_AUTH_HEADER).assert_status_code(400)
+
+    def test_create_and_start_job_options_too_large_python(self, api, monkeypatch):
+        monkeypatch.setenv("KUBE", "TRUE")
+        nonsense_process_graph = {
+            "process_graph": {"add1": {"process_id": "add", "arguments": {"x": 1, "y": 2}, "result": True}},
+            "parameters": [],
+        }
+        # Create job
+        data = api.get_process_graph_dict(nonsense_process_graph, title="nonsense_process_graph")
+        job_options = {
+            "executor-memory": "33g",
+            "python-memory": "33g",
+        }
 
         data["job_options"] = job_options
         res = api.post('/jobs', json=data, headers=TEST_USER_AUTH_HEADER).assert_status_code(201)
