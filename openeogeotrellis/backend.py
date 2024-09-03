@@ -1946,6 +1946,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     memOverheadBytes = jvmOverheadBytes
                     executor_memory_overhead = f"{memOverheadBytes//(1024**2)}m"
             else:
+                # If python-memory is not set, we convert most of the overhead memory to python memory
                 python_max = memOverheadBytes - jvmOverheadBytes
                 executor_memory_overhead = f"{jvmOverheadBytes//(1024**2)}m"
 
