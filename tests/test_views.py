@@ -977,6 +977,7 @@ class TestBatchJobs:
         [("executor-cores", "99")],
         [("driver-memoryOverhead", "99999G")],
         [("executor-memoryOverhead", "99999G")],
+        [("python-memory", "99999G")],
     ])
     def test_create_and_start_job_options_too_large(self, api, boost, monkeypatch):
         monkeypatch.setenv("KUBE", "TRUE")
