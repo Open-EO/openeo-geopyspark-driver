@@ -1440,7 +1440,7 @@ class GeopysparkDataCube(DriverDataCube):
                           target_dimension: str = "result") -> Union[AggregatePolygonResult,
                                                                      AggregateSpatialVectorCube]:
 
-        if isinstance(reducer, dict) and len(reducer) > 1:
+        if isinstance(reducer, dict) and len(reducer) > 0:
             single_process = next(iter(reducer.values())).get('process_id')
             if len(reducer) == 1 and  single_process == 'histogram':
                 #TODO: can be removed when histogram is deprecated?
