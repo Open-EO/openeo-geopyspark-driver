@@ -118,7 +118,7 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
     # Therefore, keep track of the bbox's CRS to convert it to EPSG:4326 at the end, if needed.
     bbox_crs = None
     bbox = None
-    geometry = None
+    lonlat_geometry = None
     area = None
     if len(extents) > 0:
         spatial_extent = spatial_extent_union(*extents)
@@ -128,7 +128,7 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
             bbox = temp_bbox  # Only set bbox once we are sure we have all the info
             polygon = Polygon.from_bounds(*bbox)
             area = area_in_square_meters(polygon, bbox_crs)
-            geometry = mapping(_reproject_polygon(polygon, bbox_crs, "EPSG:4326"))
+            lonlat_geometry = mapping(_reproject_polygon(polygon, bbox_crs, "EPSG:4326"))
 
     start_date, end_date = [rfc3339.datetime(d) for d in temporal_extent]
 
@@ -145,19 +145,19 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
             # See also: https://shapely.readthedocs.io/en/stable/manual.html#coordinate-systems
             bbox_crs = "EPSG:4326"
             bbox = agg_geometry.bounds
-            geometry = mapping(agg_geometry)
+            lonlat_geometry = mapping(agg_geometry)
             area = area_in_square_meters(agg_geometry, bbox_crs)
         elif isinstance(agg_geometry, DelayedVector):
             bbox = agg_geometry.bounds
             bbox_crs = agg_geometry.crs
             # Intentionally don't return the complete vector file. https://github.com/Open-EO/openeo-api/issues/339
-            geometry = mapping(Polygon.from_bounds(*bbox))
+            lonlat_geometry = mapping(_reproject_polygon(Polygon.from_bounds(*bbox), bbox_crs, "EPSG:4326"))
             area = DriverVectorCube.from_fiona([agg_geometry.path]).get_area()
         elif isinstance(agg_geometry, DriverVectorCube):
             if agg_geometry.geometry_count() != 0:
                 bbox = agg_geometry.get_bounding_box()
                 bbox_crs = agg_geometry.get_crs()
-                geometry = agg_geometry.get_bounding_box_geojson()
+                lonlat_geometry = agg_geometry.get_bounding_box_geojson()
                 area = agg_geometry.get_area()
         else:
             logger.warning(f"Result metadata: no bbox/area support for {type(agg_geometry)}")
@@ -170,14 +170,11 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
     links = tracer.get_metadata_links()
     links = [link for k, v in links.items() for link in v]
 
-    # Convert bbox to lat-long, EPSG:4326 if it was any other CRS.
-    bbox = convert_bbox_to_lat_long(bbox, bbox_crs)
-
     # TODO: dedicated type?
     # TODO: match STAC format?
     return {
-        "geometry": geometry,
-        "bbox": bbox,
+        "geometry": lonlat_geometry,
+        "bbox": convert_bbox_to_lat_long(bbox, bbox_crs),
         "area": {"value": area, "unit": "square meter"} if area else None,
         "start_datetime": start_date,
         "end_datetime": end_date,
