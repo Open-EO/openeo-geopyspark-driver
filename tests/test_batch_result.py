@@ -1129,11 +1129,33 @@ def test_multiple_save_results(tmp_path, process_graph_file, output_file_predica
             assert predicate(dataset)
 
 
-def test_debug_gtiff_item_with_invalid_geojson(tmp_path):
-    # tmp_path = Path("/tmp/test_debug_gtiff_item_with_wrong_geometry")
-
-    with open(get_test_data_file("job_metadata/j-240902a1f7054c21950f4e96a0d8d7a8_process_graph_smaller.json")) as f:
-        process = json.load(f)
+def test_results_geometry_from_load_collection_with_crs_not_wgs84(tmp_path):
+    process = {
+        "process_graph": {
+            "loadcollection1": {
+                "process_id": "load_collection",
+                "arguments": {
+                    "id": "TERRASCOPE_S2_TOC_V2",
+                    "spatial_extent": {
+                        "west": 3962799.4509550678,
+                        "south": 2999475.969536712,
+                        "east": 3966745.556060158,
+                        "north": 3005269.06681928,
+                        "crs": 3035,
+                    },
+                    "temporal_extent": ["2021-01-04", "2021-01-06"],
+                },
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {
+                    "data": {"from_node": "loadcollection1"},
+                    "format": "GTiff",
+                },
+                "result": True,
+            },
+        }
+    }
 
     run_job(
         process,
@@ -1145,6 +1167,6 @@ def test_debug_gtiff_item_with_invalid_geojson(tmp_path):
     )
 
     with open(tmp_path / "job_metadata.json") as f:
-        geojson = json.load(f)["geometry"]
+        results_geometry = json.load(f)["geometry"]
 
-    validate_geojson_coordinates(geojson)
+    validate_geojson_coordinates(results_geometry)
