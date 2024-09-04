@@ -1440,10 +1440,10 @@ class GeopysparkDataCube(DriverDataCube):
                           target_dimension: str = "result") -> Union[AggregatePolygonResult,
                                                                      AggregateSpatialVectorCube]:
 
-        if isinstance(reducer, dict):
-            if len(reducer) == 1 and len(reducer.get('arguments',{})) > 1:
-                #TODO: the else branch below seems a much safer option for this. Verify if this code can be removed.
-                single_process = next(iter(reducer.values())).get('process_id')
+        if isinstance(reducer, dict) and len(reducer) > 1:
+            single_process = next(iter(reducer.values())).get('process_id')
+            if len(reducer) == 1 and  single_process == 'histogram':
+                #TODO: can be removed when histogram is deprecated?
                 return self.zonal_statistics(geometries, single_process)
             else:
                 visitor = GeotrellisTileProcessGraphVisitor(_builder=get_jvm().org.openeo.geotrellis.aggregate_polygon.SparkAggregateScriptBuilder()).accept_process_graph(reducer)
