@@ -126,9 +126,8 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
         temp_bbox = [spatial_extent[b] for b in ["west", "south", "east", "north"]]
         if all(b is not None for b in temp_bbox):
             bbox = temp_bbox  # Only set bbox once we are sure we have all the info
-            polygon = Polygon.from_bounds(*bbox)
-            area = area_in_square_meters(polygon, bbox_crs)
-            lonlat_geometry = mapping(_reproject_polygon(polygon, bbox_crs, "EPSG:4326"))
+            area = area_in_square_meters(Polygon.from_bounds(*bbox), bbox_crs)
+            lonlat_geometry = mapping(Polygon.from_bounds(*convert_bbox_to_lat_long(bbox, bbox_crs)))
 
     start_date, end_date = [rfc3339.datetime(d) for d in temporal_extent]
 
@@ -151,7 +150,7 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
             bbox = agg_geometry.bounds
             bbox_crs = agg_geometry.crs
             # Intentionally don't return the complete vector file. https://github.com/Open-EO/openeo-api/issues/339
-            lonlat_geometry = mapping(_reproject_polygon(Polygon.from_bounds(*bbox), bbox_crs, "EPSG:4326"))
+            lonlat_geometry = mapping(Polygon.from_bounds(*convert_bbox_to_lat_long(bbox, bbox_crs)))
             area = DriverVectorCube.from_fiona([agg_geometry.path]).get_area()
         elif isinstance(agg_geometry, DriverVectorCube):
             if agg_geometry.geometry_count() != 0:
@@ -301,13 +300,6 @@ def convert_bbox_to_lat_long(bbox: List[int], bbox_crs: Optional[Union[str, int,
         return [latlon_spatial_extent[b] for b in ["west", "south", "east", "north"]]
 
     return bbox
-
-
-def _reproject_polygon(geom, src_srs, dst_srs):
-    from shapely.ops import transform
-    from pyproj import Transformer
-
-    return transform(Transformer.from_crs(src_srs, dst_srs, always_xy=True).transform, geom)
 
 
 def _convert_job_metadatafile_outputs_to_s3_urls(metadata_file: Path):
