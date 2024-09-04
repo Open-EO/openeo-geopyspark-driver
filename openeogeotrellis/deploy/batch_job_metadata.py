@@ -120,15 +120,15 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
     bbox = None
     geometry = None
     area = None
-    if(len(extents) > 0):
+    if len(extents) > 0:
         spatial_extent = spatial_extent_union(*extents)
         bbox_crs = spatial_extent["crs"]
         temp_bbox = [spatial_extent[b] for b in ["west", "south", "east", "north"]]
         if all(b is not None for b in temp_bbox):
             bbox = temp_bbox  # Only set bbox once we are sure we have all the info
             polygon = Polygon.from_bounds(*bbox)
-            geometry = mapping(polygon)
             area = area_in_square_meters(polygon, bbox_crs)
+            geometry = mapping(_reproject_polygon(polygon, bbox_crs, "EPSG:4326"))
 
     start_date, end_date = [rfc3339.datetime(d) for d in temporal_extent]
 
@@ -304,6 +304,13 @@ def convert_bbox_to_lat_long(bbox: List[int], bbox_crs: Optional[Union[str, int,
         return [latlon_spatial_extent[b] for b in ["west", "south", "east", "north"]]
 
     return bbox
+
+
+def _reproject_polygon(geom, src_srs, dst_srs):
+    from shapely.ops import transform
+    from pyproj import Transformer
+
+    return transform(Transformer.from_crs(src_srs, dst_srs, always_xy=True).transform, geom)
 
 
 def _convert_job_metadatafile_outputs_to_s3_urls(metadata_file: Path):
