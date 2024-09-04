@@ -20,6 +20,7 @@ from openeo.metadata import Band
 from openeo_driver.ProcessGraphDeserializer import ENV_DRY_RUN_TRACER, evaluate
 from openeo_driver.dry_run import DryRunDataTracer
 from openeo_driver.testing import ephemeral_fileserver
+from openeo_driver.util.geometry import validate_geojson_coordinates
 from openeo_driver.utils import EvalEnv
 from openeogeotrellis.deploy.batch_job import run_job
 from openeogeotrellis.deploy.batch_job_metadata import extract_result_metadata
@@ -1126,3 +1127,24 @@ def test_multiple_save_results(tmp_path, process_graph_file, output_file_predica
     for output_file, predicate in output_file_predicates.items():
         with rasterio.open(tmp_path / output_file) as dataset:
             assert predicate(dataset)
+
+
+def test_debug_gtiff_item_with_invalid_geojson(tmp_path):
+    # tmp_path = Path("/tmp/test_debug_gtiff_item_with_wrong_geometry")
+
+    with open(get_test_data_file("job_metadata/j-240902a1f7054c21950f4e96a0d8d7a8_process_graph_smaller.json")) as f:
+        process = json.load(f)
+
+    run_job(
+        process,
+        output_file=tmp_path / "out",
+        metadata_file=tmp_path / "job_metadata.json",
+        api_version="2.0.0",
+        job_dir=tmp_path,
+        dependencies=[],
+    )
+
+    with open(tmp_path / "job_metadata.json") as f:
+        geojson = json.load(f)["geometry"]
+
+    validate_geojson_coordinates(geojson)
