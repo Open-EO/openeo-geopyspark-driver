@@ -1,5 +1,7 @@
 import collections
 import logging
+import time
+
 import pyspark
 import subprocess
 import sys
@@ -10,6 +12,7 @@ from typing import Union, Iterator, Tuple, Dict, Iterable, Optional
 import openeo.udf
 from openeo.udf.run_code import extract_udf_dependencies
 from openeo.util import TimingLogger
+from openeogeotrellis.config import get_backend_config
 
 _log = logging.getLogger(__name__)
 
@@ -122,6 +125,11 @@ def install_python_udf_dependencies(
                 _log.debug(f"pip install output: {line.rstrip()}")
         exit_code = process.wait()
         _log.info(f"pip install exited with exit code {exit_code}")
+
+        sleep_after_install = get_backend_config().udf_dependencies_sleep_after_install
+        if sleep_after_install:
+            _log.info(f"Sleeping after pip install ({sleep_after_install}s)")
+            time.sleep(sleep_after_install)
 
         if exit_code != 0:
             raise RuntimeError(f"pip install of UDF dependencies failed with {exit_code=}")
