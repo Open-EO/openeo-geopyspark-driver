@@ -14,6 +14,8 @@ without compromising stable operations.
 
 ## Unreleased
 
+## 0.40.0
+
 - a new 'python-memory' option allows to more explicitly limit memory usage for UDF's, sar_backscatter and Sentinel3 data loading. The executor-memoryOverhead option can be reduced or removed when using the new python-memory option.
 - The default processing chunk size can now be configured for backends. If not set, the default may be determined automatically. We observe that a lower default, like 128 pixels, allows running jobs with less memory. ([Open-EO/openeo-geotrellis-extensions#311](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/311))
 - aggregate_spatial: trying to use the probabilities argument in a _single_ 'quantiles' reduces was throwing an error. ([#821](https://github.com/Open-EO/openeo-geopyspark-driver/issues/821))
@@ -22,6 +24,7 @@ without compromising stable operations.
 - apply_neighborhood: support applying UDF on cubes without a time dimension
 - Add "separate_asset_per_band" to save_result options. Currently, for TIFF only.
 - `load_stac`: presence of `eo:bands` is no longer a hard requirement; band name defaults to asset key [#762](https://github.com/Open-EO/openeo-geopyspark-driver/issues/762).
+- Fix `load_stac` of GeoTiff batch job results by returning compliant GeoJSON in `"geometry"` of STAC Items. [#854](https://github.com/Open-EO/openeo-geopyspark-driver/issues/854)
 
 ## 0.39.0
 
