@@ -199,3 +199,5 @@ class GpsBackendConfig(OpenEoBackendConfig):
 
     job_dependencies_poll_interval_seconds: float = 60  # poll every x seconds
     job_dependencies_max_poll_delay_seconds: float = 60 * 60 * 24 * 7  # for a maximum delay of y seconds
+
+    udf_dependencies_sleep_after_install: Optional[float] = None

@@ -14,6 +14,10 @@ without compromising stable operations.
 
 ## Unreleased
 
+## 0.40.1
+
+- Fix `load_stac` of GeoTiff batch job results by returning compliant GeoJSON in `"geometry"` of STAC Items. [#854](https://github.com/Open-EO/openeo-geopyspark-driver/issues/854)
+
 ## 0.40.0
 
 - a new 'python-memory' option allows to more explicitly limit memory usage for UDF's, sar_backscatter and Sentinel3 data loading. The executor-memoryOverhead option can be reduced or removed when using the new python-memory option.
@@ -24,7 +28,7 @@ without compromising stable operations.
 - apply_neighborhood: support applying UDF on cubes without a time dimension
 - Add "separate_asset_per_band" to save_result options. Currently, for TIFF only.
 - `load_stac`: presence of `eo:bands` is no longer a hard requirement; band name defaults to asset key [#762](https://github.com/Open-EO/openeo-geopyspark-driver/issues/762).
-- Fix `load_stac` of GeoTiff batch job results by returning compliant GeoJSON in `"geometry"` of STAC Items. [#854](https://github.com/Open-EO/openeo-geopyspark-driver/issues/854)
+- Optionally sleep after automatic UDF dependency install (config `udf_dependencies_sleep_after_install`) (eu-cdse/openeo-cdse-infra#112)
 
 ## 0.39.0
 

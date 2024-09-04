@@ -1033,9 +1033,9 @@ class TestBatchJobs:
         res = api.post('/jobs', json=data, headers=TEST_USER_AUTH_HEADER).assert_status_code(201)
         job_id = res.headers['OpenEO-Identifier']
         # Trigger job start
-        api.post(
-            f"/jobs/{job_id}/results", json={}, headers=TEST_USER_AUTH_HEADER
-        ).assert_status_code(400)
+        res2 = api.post(f"/jobs/{job_id}/results", json={}, headers=TEST_USER_AUTH_HEADER)
+        print(res2.text)
+        res2.assert_status_code(400)
 
     def test_cancel_job(self, api, job_registry):
         with self._mock_kazoo_client() as zk:

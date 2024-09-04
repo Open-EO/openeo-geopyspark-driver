@@ -1955,7 +1955,7 @@ class GpsBatchJobs(backend.BatchJobs):
             ):
                 raise OpenEOApiException(
                     message=f"Requested too much executor memory: "
-                    + f"{executor_memory} + {executor_memory_overhead} + {python_max}, "
+                    + f"{executor_memory} + {executor_memory_overhead} + {python_max//(1024**2)}m, "
                     + f"the max for this instance is: {get_backend_config().max_executor_or_driver_memory}",
                     status_code=400,
                 )
