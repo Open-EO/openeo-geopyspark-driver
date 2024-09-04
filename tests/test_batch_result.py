@@ -20,6 +20,7 @@ from openeo.metadata import Band
 from openeo_driver.ProcessGraphDeserializer import ENV_DRY_RUN_TRACER, evaluate
 from openeo_driver.dry_run import DryRunDataTracer
 from openeo_driver.testing import ephemeral_fileserver
+from openeo_driver.util.geometry import validate_geojson_coordinates
 from openeo_driver.utils import EvalEnv
 from openeogeotrellis.deploy.batch_job import run_job
 from openeogeotrellis.deploy.batch_job_metadata import extract_result_metadata
@@ -1126,3 +1127,46 @@ def test_multiple_save_results(tmp_path, process_graph_file, output_file_predica
     for output_file, predicate in output_file_predicates.items():
         with rasterio.open(tmp_path / output_file) as dataset:
             assert predicate(dataset)
+
+
+def test_results_geometry_from_load_collection_with_crs_not_wgs84(tmp_path):
+    process = {
+        "process_graph": {
+            "loadcollection1": {
+                "process_id": "load_collection",
+                "arguments": {
+                    "id": "TERRASCOPE_S2_TOC_V2",
+                    "spatial_extent": {
+                        "west": 3962799.4509550678,
+                        "south": 2999475.969536712,
+                        "east": 3966745.556060158,
+                        "north": 3005269.06681928,
+                        "crs": 3035,
+                    },
+                    "temporal_extent": ["2021-01-04", "2021-01-06"],
+                },
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {
+                    "data": {"from_node": "loadcollection1"},
+                    "format": "GTiff",
+                },
+                "result": True,
+            },
+        }
+    }
+
+    run_job(
+        process,
+        output_file=tmp_path / "out",
+        metadata_file=tmp_path / "job_metadata.json",
+        api_version="2.0.0",
+        job_dir=tmp_path,
+        dependencies=[],
+    )
+
+    with open(tmp_path / "job_metadata.json") as f:
+        results_geometry = json.load(f)["geometry"]
+
+    validate_geojson_coordinates(results_geometry)
