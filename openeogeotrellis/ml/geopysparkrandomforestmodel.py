@@ -125,5 +125,5 @@ class GeopySparkRandomForestModel(DriverMlModel):
     def get_model(self) -> RandomForestModel:
         return self._model
     
-    def load_native_model(self, spark_context, path) -> "GeopySparkRandomForestModel":
-        return GeopySparkRandomForestModel(RandomForestModel._load_java(sc=spark_context, path=path))
+    def load_native_model(self, sc, path) -> "GeopySparkRandomForestModel":
+        return GeopySparkRandomForestModel(RandomForestModel._load_java(sc=sc, path=path))
