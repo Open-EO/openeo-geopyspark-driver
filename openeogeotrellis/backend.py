@@ -827,7 +827,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                         # Load the spark model using the new s3 path.
                         s3_path = f"s3a://{model_dir_path}/randomforest.model/"
                         logger.info("Loading ml_model using filename: {}".format(s3_path))
-                        model: JavaObject = GeopySparkRandomForestModel.load_native_model(sc=gps.get_spark_context(), path =s3_path).get_model()
+                        model: JavaObject = GeopySparkRandomForestModel.load_native_model(sc=gps.get_spark_context(), path =s3_path).get_java_model()
                         return model
                 dest_path = Path(model_dir_path + "/randomforest.model.tar.gz")
                 with open(dest_path, 'wb') as f:
@@ -835,7 +835,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 shutil.unpack_archive(dest_path, extract_dir=model_dir_path, format='gztar')
                 unpacked_model_path = str(dest_path).replace(".tar.gz", "")
                 logger.info("Loading ml_model using filename: {}".format(unpacked_model_path))
-                model: JavaObject = GeopySparkRandomForestModel.load_native_model(sc=gps.get_spark_context(), path="file:" + unpacked_model_path).get_model()
+                model: JavaObject = GeopySparkRandomForestModel.load_native_model(sc=gps.get_spark_context(), path="file:" + unpacked_model_path).get_java_model()
                 return model
             elif architecture == "catboost":
                 if use_s3:
@@ -846,13 +846,13 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                         logger.info(f"Downloading ml_model from {model_url} to {tmp_path}")
                         with open(tmp_path, 'wb') as f:
                             f.write(requests.get(model_url).content)
-                        model: JavaObject = GeopySparkCatBoostModel.load_native_model(tmp_path).get_model()
+                        model: JavaObject = GeopySparkCatBoostModel.load_native_model(tmp_path).get_java_model()
                         return model
                 filename = Path(model_dir_path + "/catboost_model.cbm")
                 with open(filename, 'wb') as f:
                     f.write(requests.get(model_url).content)
                 logger.info("Loading ml_model using filename: {}".format(filename))
-                model: JavaObject = GeopySparkCatBoostModel.load_native_model(str(filename)).get_model()
+                model: JavaObject = GeopySparkCatBoostModel.load_native_model(str(filename)).get_java_model()
             else:
                 raise NotImplementedError("The ml-model architecture is not supported by the backend: " + architecture)
             return model
@@ -864,12 +864,12 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             model_path = str(Path(directory) / "randomforest.model")
             if Path(model_path).exists():
                 logger.info("Loading ml_model using filename: {}".format(model_path))
-                model: JavaObject = GeopySparkRandomForestModel.load_native_model(sc=gps.get_spark_context(), path="file:" + model_path).get_model()
+                model: JavaObject = GeopySparkRandomForestModel.load_native_model(sc=gps.get_spark_context(), path="file:" + model_path).get_java_model()
             elif Path(model_path+".tar.gz").exists():
                 packed_model_path = model_path+".tar.gz"
                 shutil.unpack_archive(packed_model_path, extract_dir=directory, format='gztar')
                 unpacked_model_path = str(packed_model_path).replace(".tar.gz", "")
-                model: JavaObject = GeopySparkRandomForestModel.load_native_model(sc=gps.get_spark_context(), path="file:" + unpacked_model_path).get_model()
+                model: JavaObject = GeopySparkRandomForestModel.load_native_model(sc=gps.get_spark_context(), path="file:" + unpacked_model_path).get_java_model()
             else:
                 raise OpenEOApiException(
                     message=f"No random forest model found for job {model_id}",status_code=400)

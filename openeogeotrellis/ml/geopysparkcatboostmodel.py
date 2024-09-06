@@ -3,6 +3,7 @@ import shutil
 import typing
 from pathlib import Path
 from typing import Dict, Union
+from py4j.java_gateway import JavaObject
 
 from openeo_driver.datacube import DriverMlModel
 from openeo_driver.datastructs import StacAsset
@@ -120,5 +121,9 @@ class GeopySparkCatBoostModel(DriverMlModel):
     def get_model(self) -> CatBoostClassificationModel:
         return self._model
 
-    def load_native_model(self, path) -> "GeopySparkCatBoostModel":
+    def get_java_model(self) -> JavaObject:
+        return self.get_model()._java_obj
+
+    @staticmethod
+    def load_native_model(path) -> "GeopySparkCatBoostModel":
         return GeopySparkCatBoostModel(CatBoostClassificationModel.loadNativeModel(path))

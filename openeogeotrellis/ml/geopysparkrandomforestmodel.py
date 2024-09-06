@@ -9,6 +9,7 @@ from typing import Dict, Union
 from openeo_driver.datacube import DriverMlModel
 from openeo_driver.datastructs import StacAsset
 import geopyspark as gps
+from py4j.java_gateway import JavaObject
 from pyspark.mllib.tree import RandomForestModel
 
 from openeo_driver.utils import generate_unique_id
@@ -125,6 +126,10 @@ class GeopySparkRandomForestModel(DriverMlModel):
     def get_model(self) -> RandomForestModel:
         return self._model
     
+    def get_java_model(self) -> JavaObject:
+        return self.get_model()._java_model
+    
+    @staticmethod
     def load_native_model(sc, path) -> "GeopySparkRandomForestModel":
         model = RandomForestModel(RandomForestModel._load_java(sc=sc, path=path))
         return GeopySparkRandomForestModel(model)
