@@ -77,6 +77,15 @@ class MockResponse:
         pass
 
 
+def test_load_native_model():
+    sc = geopyspark.get_spark_context()
+    model_path = str(TEST_DATA_ROOT / "mlmodel" / "randomforest.model")
+    model: RandomForestModel = GeopySparkRandomForestModel.load_native_model(sc=sc, path=model_path).get_model()
+    assert model.numTrees() == 3
+    assert model.predict([0.0, 1.0]) == 980.0
+    assert model.predict([122.5, 150.3]) == 752.0
+    assert model.predict([565.5, 400.3]) == 182.0
+
 def train_simple_random_forest_model(num_trees=3, seedValue=42, nrGeometries=1000) -> GeopySparkRandomForestModel:
     # 1. Generate features and targets.
     seed(seedValue)

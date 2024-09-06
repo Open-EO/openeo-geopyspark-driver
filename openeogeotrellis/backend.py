@@ -827,7 +827,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                         # Load the spark model using the new s3 path.
                         s3_path = f"s3a://{model_dir_path}/randomforest.model/"
                         logger.info("Loading ml_model using filename: {}".format(s3_path))
-                        model: JavaObject = GeopySparkRandomForestModel.load_native_model(sc = gps.get_spark_context(), path = s3_path).get_model()
+                        model: JavaObject = GeopySparkRandomForestModel.load_native_model(sc=gps.get_spark_context(), path =s3_path).get_model()
                         return model
                 dest_path = Path(model_dir_path + "/randomforest.model.tar.gz")
                 with open(dest_path, 'wb') as f:
