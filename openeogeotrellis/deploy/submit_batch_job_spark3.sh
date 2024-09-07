@@ -189,7 +189,7 @@ spark-submit \
  --conf spark.history.store.path=/var/lib/spark2/shs_db \
  --conf spark.yarn.historyServer.address=epod-ha.vgt.vito.be:18481 \
  --conf spark.archives=${archives} \
- --conf spark.extraListeners=org.openeo.sparklisteners.LogErrorSparkListener \
+ --conf spark.extraListeners=org.openeo.sparklisteners.LogErrorSparkListener,org.openeo.sparklisteners.BatchJobProgressListener \
  --files "${files}" \
  --py-files "${pyfiles}" \
  --conf spark.hadoop.security.authentication=kerberos --conf spark.yarn.maxAppAttempts=1 \
