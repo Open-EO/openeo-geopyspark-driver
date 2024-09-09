@@ -60,6 +60,20 @@ _log = logging.getLogger(__name__)
 
 SpatialExtent = collections.namedtuple("SpatialExtent", ["top", "bottom", "right", "left", "height", "width"])
 
+def callsite(func):
+
+    def run(*args, **kwargs):
+        name = func.__name__
+        name += ','.join(map(str,args))
+        name += ','.join(map(str, kwargs.values()))
+        gps.get_spark_context().setLocalProperty("callSite.short",name)
+        try:
+            return func(*args, **kwargs)
+        finally:
+            gps.get_spark_context().setLocalProperty("callSite.short", None)
+
+    return run
+
 
 class GeopysparkDataCube(DriverDataCube):
 
@@ -126,6 +140,7 @@ class GeopysparkDataCube(DriverDataCube):
     ) -> 'GeopysparkDataCube':
         return self.apply_to_levels(lambda rdd: rdd.filter_by_times([pd.to_datetime(start_date),pd.to_datetime(end_date)]))
 
+    @callsite
     def filter_temporal(self, start: str, end: str) -> 'GeopysparkDataCube':
         # TODO: is this necessary? Temporal range is handled already at load_collection time
         return self.apply_to_levels(
@@ -133,9 +148,11 @@ class GeopysparkDataCube(DriverDataCube):
             metadata=self.metadata.filter_temporal(start, end)
         )
 
+    @callsite
     def filter_bbox(self, west, east, north, south, crs=None, base=None, height=None) -> 'GeopysparkDataCube':
         return self.filter_spatial(geometries=box(west,south,east,north),geometry_crs=crs,mask=False)
 
+    @callsite
     def filter_spatial(
         self, geometries: Union[Polygon, MultiPolygon, DriverVectorCube], geometry_crs="EPSG:4326", mask=True
     ) -> "GeopysparkDataCube":
@@ -165,19 +182,23 @@ class GeopysparkDataCube(DriverDataCube):
             metadata=self.metadata.filter_bbox(west=xmin, south=ymin, east=xmax, north=ymax, crs=layer_crs)
         )
 
+    @callsite
     def filter_bands(self, bands) -> 'GeopysparkDataCube':
         band_indices = [self.metadata.get_band_index(b) for b in bands]
         _log.info("filter_bands({b!r}) -> indices {i!r}".format(b=bands, i=band_indices))
         return self.apply_to_levels(lambda rdd: rdd.bands(band_indices), metadata=self.metadata.filter_bands(bands))
 
+    @callsite
     def filter_labels(self, condition: dict, dimension: str, context: Optional[dict] = None,
                       env: EvalEnv = None) -> 'DriverDataCube':
         #TODO this is provided by FileLayerProvider, but also need this here
         return self
 
+    @callsite
     def rename_dimension(self, source: str, target: str) -> 'GeopysparkDataCube':
         return GeopysparkDataCube(pyramid=self.pyramid, metadata=self.metadata.rename_dimension(source, target))
 
+    @callsite
     def apply(self, process: dict, *, context: Optional[dict] = None, env: EvalEnv) -> "GeopysparkDataCube":
         from openeogeotrellis.backend import GeoPySparkBackendImplementation
 
@@ -215,6 +236,7 @@ class GeopysparkDataCube(DriverDataCube):
 
         return udf, udf_context
 
+    @callsite
     def apply_dimension(
         self,
         process: Union[dict, GeotrellisTileProcessGraphVisitor],
@@ -260,6 +282,7 @@ class GeopysparkDataCube(DriverDataCube):
 
         raise FeatureUnsupportedException(f"Unsupported: apply_dimension with {process}")
 
+    @callsite
     def reduce_bands(self, pgVisitor: GeotrellisTileProcessGraphVisitor) -> 'GeopysparkDataCube':
         """
         TODO Define in super class? API is not yet ready for client side...
@@ -313,12 +336,14 @@ class GeopysparkDataCube(DriverDataCube):
             raise FeatureUnsupportedException('Reducer {r!r} not supported'.format(r=reducer))
         return reducer
 
+    @callsite
     def add_dimension(self, name: str, label: str, type: str = None):
         return GeopysparkDataCube(
             pyramid=self.pyramid,
             metadata=self.metadata.add_dimension(name=name, label=label, type=type)
         )
 
+    @callsite
     def drop_dimension(self, name: str):
         if name not in self.metadata.dimension_names():
             raise OpenEOApiException(status_code=400, code="DimensionNotAvailable", message=
@@ -339,6 +364,7 @@ class GeopysparkDataCube(DriverDataCube):
             raise OpenEOApiException(status_code=400, code="DimensionNotAvailable", message=
                 """'drop_dimension' is only supported for dimension types 'bands' and 'temporal'.""")
 
+    @callsite
     def dimension_labels(self, dimension: str):
         if dimension not in self.metadata.dimension_names():
             raise OpenEOApiException(status_code=400, code="DimensionNotAvailable", message=
@@ -352,6 +378,7 @@ class GeopysparkDataCube(DriverDataCube):
             raise OpenEOApiException(status_code=400, code="DimensionNotAvailable", message=
                 """'dimension_labels' is only supported for dimension types 'bands' and 'temporal'.""")
 
+    @callsite
     def rename_labels(self, dimension: str, target: list, source: list=None) -> 'GeopysparkDataCube':
         """ Renames the labels of the specified dimension in the data cube from source to target.
 
@@ -459,6 +486,7 @@ class GeopysparkDataCube(DriverDataCube):
         the_array = xr.DataArray(bands_numpy, coords=coords,dims=dims,name="openEODataChunk")
         return XarrayDataCube(the_array)
 
+    @callsite
     def apply_tiles_spatiotemporal(self, udf_code: str, udf_context: Optional[dict] = None, runtime: str = "Python", overlap_x: int = 0, overlap_y: int = 0) -> "GeopysparkDataCube":
         """
         Group tiles by SpatialKey, then apply a Python function to every group of tiles.
@@ -569,6 +597,7 @@ class GeopysparkDataCube(DriverDataCube):
 
         return self.apply_to_levels(partial(rdd_function, self.metadata))
 
+    @callsite
     def chunk_polygon(
         self,
         reducer: Union[ProcessGraphVisitor, Dict],
@@ -621,6 +650,7 @@ class GeopysparkDataCube(DriverDataCube):
             raise NotImplementedError()
         return result_collection
 
+    @callsite
     def reduce_dimension(
         self,
         reducer: Union[ProcessGraphVisitor, Dict],
@@ -670,6 +700,7 @@ class GeopysparkDataCube(DriverDataCube):
         else:
             raise FeatureUnsupportedException(f"reduce_dimension with UDF along dimension {dimension} is not supported")
 
+    @callsite
     def apply_tiles(self, udf_code: str, context={}, runtime="python", overlap_x: int = 0, overlap_y: int = 0) -> 'GeopysparkDataCube':
         """Apply a function to the given set of bands in this image collection."""
         #TODO apply .bands(bands)
@@ -765,6 +796,7 @@ class GeopysparkDataCube(DriverDataCube):
         #reduce
         pass
 
+    @callsite
     def aggregate_temporal(
         self, intervals: List, labels: List, reducer, dimension: str = None, context: Optional[dict] = None, reduce = True
     ) -> "GeopysparkDataCube":
@@ -869,7 +901,7 @@ class GeopysparkDataCube(DriverDataCube):
         from pyproj import Transformer
         return transform(Transformer.from_crs(srs, dest_srs, always_xy=True).transform, polygon)  # apply projection
 
-
+    @callsite
     def merge_cubes(self, other: 'GeopysparkDataCube', overlaps_resolver:str=None):
         #we may need to align datacubes automatically?
         #other_pyramid_levels = {k: l.tile_to_layout(layout=self.pyramid.levels[k]) for k, l in other.pyramid.levels.items()}
@@ -968,6 +1000,7 @@ class GeopysparkDataCube(DriverDataCube):
     # TODO legacy alias to be removed
     merge = merge_cubes
 
+    @callsite
     def mask_polygon(self, mask: Union[Polygon, MultiPolygon], srs="EPSG:4326",
                      replacement=None, inside=False) -> 'GeopysparkDataCube':
         max_level = self.get_max_level()
@@ -981,6 +1014,7 @@ class GeopysparkDataCube(DriverDataCube):
             options=gps.RasterizerOptions()
         ))
 
+    @callsite
     def mask(self, mask: 'GeopysparkDataCube',
              replacement=None) -> 'GeopysparkDataCube':
 
@@ -1016,6 +1050,7 @@ class GeopysparkDataCube(DriverDataCube):
             )
         )
 
+    @callsite
     def apply_kernel(self, kernel: np.ndarray, factor=1, border=0, replace_invalid=0):
         # TODO: support border options and replace_invalid
         if border != 0:
@@ -1055,6 +1090,7 @@ class GeopysparkDataCube(DriverDataCube):
                 lambda rdd, level: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().apply_kernel_spatial(rdd,geotrellis_tile))
         return result_collection
 
+    @callsite
     def apply_neighborhood(
         self, process: dict, *, size: List[dict], overlap: List[dict], context: Optional[dict] = None, env: EvalEnv
     ) -> "GeopysparkDataCube":
@@ -1169,6 +1205,7 @@ class GeopysparkDataCube(DriverDataCube):
 
         return result_collection
 
+    @callsite
     def resample_cube_spatial(self, target: 'GeopysparkDataCube', method: str = 'near') -> 'GeopysparkDataCube':
         """
         Resamples the spatial dimensions (x,y) of this data cube to a target data cube and return the results as a new data cube.
@@ -1205,9 +1242,7 @@ class GeopysparkDataCube(DriverDataCube):
         pyramid = Pyramid({target.pyramid.max_zoom:layer})
         return GeopysparkDataCube(pyramid=pyramid, metadata=self.metadata)
 
-
-
-
+    @callsite
     def resample_spatial(
             self,
             resolution: Union[float, Tuple[float, float]],
@@ -1436,6 +1471,7 @@ class GeopysparkDataCube(DriverDataCube):
     def get_max_level(self) -> TiledRasterLayer:
         return self.pyramid.levels[self.pyramid.max_zoom]
 
+    @callsite
     def aggregate_spatial(self, geometries: Union[str, BaseGeometry, DriverVectorCube], reducer,
                           target_dimension: str = "result") -> Union[AggregatePolygonResult,
                                                                      AggregateSpatialVectorCube]:
@@ -1591,6 +1627,7 @@ class GeopysparkDataCube(DriverDataCube):
         spatial_rdd = self.get_max_level()
         return self._collect_as_xarray(spatial_rdd)
 
+    @callsite
     def save_result(self, filename: Union[str, pathlib.Path], format: str, format_options: dict = None) -> str:
         result = self.write_assets(filename, format, format_options)
         return result.popitem()[1]['href']
@@ -2274,6 +2311,7 @@ class GeopysparkDataCube(DriverDataCube):
             return jvm.org.openeo.geotrellis.geotiff.package.saveStitchedTileGrid(spatial_rdd.srdd.rdd(), path,
                                                                                   tile_grid, max_compression)
 
+    @callsite
     def ndvi(self, **kwargs) -> 'GeopysparkDataCube':
         return self._ndvi_v10(**kwargs)
 
@@ -2381,6 +2419,7 @@ class GeopysparkDataCube(DriverDataCube):
 
         return self.reduce_bands(visitor.accept_process_graph(reduce_graph))
 
+    @callsite
     def atmospheric_correction(
         self,
         method: Optional[str] = None,
@@ -2446,6 +2485,7 @@ class GeopysparkDataCube(DriverDataCube):
         # Nothing to do: the actual SAR backscatter processing already happened in `load_collection`
         return self
 
+    @callsite
     def resolution_merge(self, args: ResolutionMergeArgs) -> 'GeopysparkDataCube':
         high_band_indices = [self.metadata.get_band_index(b) for b in args.high_resolution_bands]
         low_band_indices = [self.metadata.get_band_index(b) for b in args.low_resolution_bands]
