@@ -61,11 +61,16 @@ _log = logging.getLogger(__name__)
 SpatialExtent = collections.namedtuple("SpatialExtent", ["top", "bottom", "right", "left", "height", "width"])
 
 def callsite(func):
+    def try_str(f):
+        try:
+            return str(f)
+        except Exception as e:
+            return repr(e)
 
     def run(*args, **kwargs):
         name = func.__name__
-        name += ','.join(map(str,args))
-        name += ','.join(map(str, kwargs.values()))
+        name += ','.join(map(try_str,args))
+        name += ','.join(map(try_str, kwargs.values()))
         gps.get_spark_context().setLocalProperty("callSite.short",name)
         try:
             return func(*args, **kwargs)

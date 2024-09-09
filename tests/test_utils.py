@@ -10,6 +10,7 @@ import pytest
 
 from openeo_driver.testing import TIFF_DUMMY_DATA
 from openeogeotrellis.config import get_backend_config
+from openeogeotrellis.geopysparkdatacube import callsite
 from openeogeotrellis.testing import gps_config_overrides
 from openeogeotrellis.utils import (
     dict_merge_recursive,
@@ -377,6 +378,19 @@ def test_parse_approximate_isoduration(duration_str, expected):
     print(f"duration={duration}")
     assert str(duration) == expected
 
+def test_callsite():
+    # object that throws error when converting to string:
+    class BadObject:
+        value = 5
+        def __str__(self):
+            raise ValueError("to string error")
+
+    @callsite
+    def f(o):
+        return "hello " + str(o.value)
+
+    f(BadObject())
+    print("done")
 
 def test_map_optional():
     to_upper = str.upper
