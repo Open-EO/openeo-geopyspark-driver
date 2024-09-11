@@ -1,3 +1,5 @@
+from unittest import mock
+
 import json
 import os
 import shutil
@@ -1170,3 +1172,103 @@ def test_results_geometry_from_load_collection_with_crs_not_wgs84(tmp_path):
         results_geometry = json.load(f)["geometry"]
 
     validate_geojson_coordinates(results_geometry)
+
+
+def test_load_ml_model_via_jobid(tmp_path):
+    job_spec = {
+      "process_graph": {
+        "loadmlmodel1": {
+          "process_id": "load_ml_model",
+          "arguments": {
+            "id": "j-2409091a32614623a5338083d040db83"
+          }
+        },
+        "loadcollection1": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "TestCollection-LonLat4x4",
+                "temporal_extent": ["2021-01-01", "2021-02-01"],
+                "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 2.0},
+                "bands": ["TileRow", "TileCol"]
+            },
+        },
+        "reducedimension1": {
+          "process_id": "reduce_dimension",
+          "arguments": {
+            "data": {
+              "from_node": "loadcollection1"
+            },
+            "dimension": "t",
+            "reducer": {
+              "process_graph": {
+                "mean1": {
+                  "process_id": "mean",
+                  "arguments": {
+                    "data": {
+                      "from_parameter": "data"
+                    }
+                  },
+                  "result": True
+                }
+              }
+            }
+          }
+        },
+        "reducedimension2": {
+          "process_id": "reduce_dimension",
+          "arguments": {
+            "context": {
+              "from_node": "loadmlmodel1"
+            },
+            "data": {
+              "from_node": "reducedimension1"
+            },
+            "dimension": "bands",
+            "reducer": {
+              "process_graph": {
+                "predictrandomforest1": {
+                  "process_id": "predict_random_forest",
+                  "arguments": {
+                    "data": {
+                      "from_parameter": "data"
+                    },
+                    "model": {
+                      "from_parameter": "context"
+                    }
+                  },
+                  "result": True
+                }
+              }
+            }
+          }
+        },
+        "saveresult1": {
+          "process_id": "save_result",
+          "arguments": {
+            "data": {
+              "from_node": "reducedimension2"
+            },
+            "format": "GTiff",
+            "options": {}
+          },
+          "result": True
+        }
+      }
+    }
+    metadata_file = tmp_path / "metadata.json"
+    with mock.patch("openeogeotrellis.backend.GpsBatchJobs.get_job_output_dir") as mock_get_job_output_dir:
+        mock_get_job_output_dir.return_value = Path(TEST_DATA_ROOT) / "mlmodel"
+        run_job(
+            job_spec,
+            output_file=tmp_path / "out.tiff",
+            metadata_file=metadata_file,
+            api_version="1.0.0",
+            job_dir=ensure_dir(tmp_path / "job_dir"),
+            dependencies={},
+            user_id="jenkins",
+        )
+        with metadata_file.open() as f:
+            metadata = json.load(f)
+        assets = metadata["assets"]
+        assert len(assets) == 1
+        assert assets["out.tiff"]
