@@ -14,6 +14,8 @@ without compromising stable operations.
 
 ## Unreleased
 
+- quantiles, when used in apply_dimension was corrected to use the interpolation method that is prescribed by the openEO process definition. 
+
 ## 0.40.1
 
 - Fix `load_stac` of GeoTiff batch job results by returning compliant GeoJSON in `"geometry"` of STAC Items. [#854](https://github.com/Open-EO/openeo-geopyspark-driver/issues/854)
