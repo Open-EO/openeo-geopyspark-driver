@@ -14,11 +14,13 @@ from pyspark.mllib.tree import RandomForestModel
 
 from openeo_driver.utils import generate_unique_id
 from openeogeotrellis.configparams import ConfigParams
+
+from openeogeotrellis.ml.geopysparkmlmodel import GeopysparkMlModel
 from openeogeotrellis.utils import download_s3_directory, to_s3_url
 
 logger = logging.getLogger(__name__)
 
-class GeopySparkRandomForestModel(DriverMlModel):
+class GeopySparkRandomForestModel(GeopysparkMlModel):
 
     def __init__(self, model: RandomForestModel):
         self._model = model
@@ -130,6 +132,8 @@ class GeopySparkRandomForestModel(DriverMlModel):
         return self.get_model()._java_model
     
     @staticmethod
-    def load_native_model(sc, path) -> "GeopySparkRandomForestModel":
-        model = RandomForestModel(RandomForestModel._load_java(sc=sc, path=path))
-        return GeopySparkRandomForestModel(model)
+    def from_path(sc, path) -> "GeopySparkRandomForestModel":
+        return GeopySparkRandomForestModel(RandomForestModel(RandomForestModel._load_java(sc=sc, path=path)))
+
+    def get_java_object(self):
+        return self._model._java_model

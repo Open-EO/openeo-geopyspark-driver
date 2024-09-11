@@ -89,6 +89,7 @@ from openeogeotrellis.layercatalog import (
 )
 from openeogeotrellis.logs import elasticsearch_logs
 from openeogeotrellis.ml.geopysparkcatboostmodel import GeopySparkCatBoostModel
+from openeogeotrellis.ml.geopysparkmlmodel import GeopysparkMlModel
 from openeogeotrellis.ml.geopysparkrandomforestmodel import GeopySparkRandomForestModel
 from openeogeotrellis.processgraphvisiting import GeotrellisTileProcessGraphVisitor, SingleNodeUDFProcessGraphVisitor
 from openeogeotrellis.sentinel_hub.batchprocessing import SentinelHubBatchProcessing
@@ -749,7 +750,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
     def load_stac(self, url: str, load_params: LoadParameters, env: EvalEnv) -> GeopysparkDataCube:
         return load_stac.load_stac(url, load_params, env, layer_properties={}, batch_jobs=self.batch_jobs)
 
-    def load_ml_model(self, model_id: str) -> 'JavaObject':
+    def load_ml_model(self, model_id: str) -> GeopysparkMlModel:
 
         # Trick to make sure IDE infers right type of `self.batch_jobs` and can resolve `get_job_output_dir`
         gps_batch_jobs: GpsBatchJobs = self.batch_jobs
@@ -796,7 +797,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             # TODO: How to handle multiple models?
             if len(checkpoints) > 1:
                 raise OpenEOApiException(
-                    message=f"{model_id} contains multiple checkpoints.",
+                    message=f"{model_id} contains multiple checkpoints which is not yet supported.",
                     status_code=400)
 
             # Get the url for the actual model from the STAC metadata.
@@ -827,7 +828,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                         # Load the spark model using the new s3 path.
                         s3_path = f"s3a://{model_dir_path}/randomforest.model/"
                         logger.info("Loading ml_model using filename: {}".format(s3_path))
-                        model: JavaObject = GeopySparkRandomForestModel.load_native_model(sc=gps.get_spark_context(), path =s3_path).get_java_model()
+                        model: GeopysparkMlModel = GeopySparkRandomForestModel.from_path(sc=gps.get_spark_context(), path=s3_path)
                         return model
                 dest_path = Path(model_dir_path + "/randomforest.model.tar.gz")
                 with open(dest_path, 'wb') as f:
@@ -835,7 +836,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 shutil.unpack_archive(dest_path, extract_dir=model_dir_path, format='gztar')
                 unpacked_model_path = str(dest_path).replace(".tar.gz", "")
                 logger.info("Loading ml_model using filename: {}".format(unpacked_model_path))
-                model: JavaObject = GeopySparkRandomForestModel.load_native_model(sc=gps.get_spark_context(), path="file:" + unpacked_model_path).get_java_model()
+                model: GeopysparkMlModel = GeopySparkRandomForestModel.from_path(sc=gps.get_spark_context(), path= "file:" + unpacked_model_path)
                 return model
             elif architecture == "catboost":
                 if use_s3:
@@ -846,13 +847,13 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                         logger.info(f"Downloading ml_model from {model_url} to {tmp_path}")
                         with open(tmp_path, 'wb') as f:
                             f.write(requests.get(model_url).content)
-                        model: JavaObject = GeopySparkCatBoostModel.load_native_model(tmp_path).get_java_model()
+                        model: GeopysparkMlModel = GeopySparkCatBoostModel.from_path(tmp_path)
                         return model
                 filename = Path(model_dir_path + "/catboost_model.cbm")
                 with open(filename, 'wb') as f:
                     f.write(requests.get(model_url).content)
                 logger.info("Loading ml_model using filename: {}".format(filename))
-                model: JavaObject = GeopySparkCatBoostModel.load_native_model(str(filename)).get_java_model()
+                model: GeopysparkMlModel = GeopySparkCatBoostModel.from_path(str(filename))
             else:
                 raise NotImplementedError("The ml-model architecture is not supported by the backend: " + architecture)
             return model
@@ -864,12 +865,12 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             model_path = str(Path(directory) / "randomforest.model")
             if Path(model_path).exists():
                 logger.info("Loading ml_model using filename: {}".format(model_path))
-                model: JavaObject = GeopySparkRandomForestModel.load_native_model(sc=gps.get_spark_context(), path="file:" + model_path).get_java_model()
+                model: GeopysparkMlModel = GeopySparkRandomForestModel.from_path(sc=gps.get_spark_context(), path="file:" + model_path)
             elif Path(model_path+".tar.gz").exists():
                 packed_model_path = model_path+".tar.gz"
                 shutil.unpack_archive(packed_model_path, extract_dir=directory, format='gztar')
                 unpacked_model_path = str(packed_model_path).replace(".tar.gz", "")
-                model: JavaObject = GeopySparkRandomForestModel.load_native_model(sc=gps.get_spark_context(), path="file:" + unpacked_model_path).get_java_model()
+                model: GeopysparkMlModel = GeopySparkRandomForestModel.from_path(sc=gps.get_spark_context(), path="file:" + unpacked_model_path)
             else:
                 raise OpenEOApiException(
                     message=f"No random forest model found for job {model_id}",status_code=400)

@@ -3,17 +3,16 @@ import shutil
 import typing
 from pathlib import Path
 from typing import Dict, Union
-from py4j.java_gateway import JavaObject
 
-from openeo_driver.datacube import DriverMlModel
 from openeo_driver.datastructs import StacAsset
 from openeo_driver.utils import generate_unique_id
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.ml.catboost_spark import CatBoostClassificationModel
+from openeogeotrellis.ml.geopysparkmlmodel import GeopysparkMlModel
 from openeogeotrellis.utils import download_s3_directory, to_s3_url
 
 
-class GeopySparkCatBoostModel(DriverMlModel):
+class GeopySparkCatBoostModel(GeopysparkMlModel):
 
     def __init__(self, model: CatBoostClassificationModel):
         self._model = model
@@ -121,9 +120,10 @@ class GeopySparkCatBoostModel(DriverMlModel):
     def get_model(self) -> CatBoostClassificationModel:
         return self._model
 
-    def get_java_model(self) -> JavaObject:
-        return self.get_model()._java_obj
-
     @staticmethod
-    def load_native_model(path) -> "GeopySparkCatBoostModel":
-        return GeopySparkCatBoostModel(CatBoostClassificationModel.loadNativeModel(path))
+    def from_path(path) -> "GeopySparkCatBoostModel":
+        catboost_model = CatBoostClassificationModel.loadNativeModel(path)
+        return GeopySparkCatBoostModel(catboost_model)
+
+    def get_java_object(self):
+        return self._model._java_obj

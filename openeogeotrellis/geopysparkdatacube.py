@@ -42,6 +42,7 @@ from openeo_driver.utils import EvalEnv
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkcubemetadata import GeopysparkCubeMetadata
+from openeogeotrellis.ml.geopysparkmlmodel import GeopysparkMlModel
 from openeogeotrellis.processgraphvisiting import GeotrellisTileProcessGraphVisitor, SingleNodeUDFProcessGraphVisitor
 from openeogeotrellis.ml.aggregatespatialvectorcube import AggregateSpatialVectorCube
 from openeogeotrellis.utils import (
@@ -309,9 +310,11 @@ class GeopysparkDataCube(DriverDataCube):
         # Apply process to every tile, with tile.bands (List[Tile]) as process input.
         # This is done for the entire pyramid.
         pysc = gps.get_spark_context()
+        if isinstance(context, GeopysparkMlModel):
+            context = context.get_java_object()
         if context is None:
             context = {}
-        elif not isinstance(context,dict):
+        elif not isinstance(context, dict):
             context = {"context": context}
 
         if self.metadata.has_band_dimension():
