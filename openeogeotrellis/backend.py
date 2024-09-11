@@ -884,15 +884,6 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         :param target: Reference DriverDataCube used to determine the layout definition, resolution and CRS of the output raster cube.
         :return: DriverDataCube with the rasterized bands.
         """
-        if not isinstance(input_vector_cube, DriverVectorCube):
-            if hasattr(input_vector_cube, 'to_driver_vector_cube'):
-                input_vector_cube = input_vector_cube.to_driver_vector_cube()
-            else:
-                raise ProcessParameterInvalidException(
-                    parameter='data', process='vector_to_raster',
-                    reason=f"Invalid vector cube {type(input_vector_cube)}."
-                )
-
         if not isinstance(target, GeopysparkDataCube):
             raise ProcessParameterInvalidException(
                 parameter='target', process='vector_to_raster',
