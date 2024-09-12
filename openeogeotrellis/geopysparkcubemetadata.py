@@ -123,7 +123,7 @@ class GeopysparkCubeMetadata(CollectionMetadata):
         if isinstance(crs, int):
             crs = "EPSG:%s" % str(crs)
         elif isinstance(crs, dict):
-            if crs["name"] == "AUTO 42001 (Universal Transverse Mercator)":
+            if crs.get("name") == "AUTO 42001 (Universal Transverse Mercator)":
                 crs = "Auto42001"
         return crs
 
