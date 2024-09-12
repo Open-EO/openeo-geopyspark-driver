@@ -37,6 +37,7 @@ class GeopysparkCubeMetadata(CollectionMetadata):
             spatial_extent: dict = None, temporal_extent: tuple = None
     ):
         super().__init__(metadata=metadata, dimensions=dimensions)
+        # TODO: why do we need these in addition to those in dimensions?
         self._spatial_extent = spatial_extent
         self._temporal_extent = temporal_extent
         if self.has_temporal_dimension() and temporal_extent is not None:
@@ -67,6 +68,9 @@ class GeopysparkCubeMetadata(CollectionMetadata):
 
     def filter_temporal(self, start, end) -> 'GeopysparkCubeMetadata':
         """Create new metadata instance with temporal extent"""
+        if self._temporal_extent is None:  # TODO: only for backwards compatibility
+            return self._clone_and_update(temporal_extent=(start, end))
+
         this_start, this_end = map(dateutil.parser.parse, self._temporal_extent)
         that_start, that_end = map(dateutil.parser.parse, (start, end))
 
