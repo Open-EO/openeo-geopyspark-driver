@@ -1046,6 +1046,7 @@
         "type": "file-oscars",
         "opensearch_collection_id": "urn:eop:VITO:ESA_WorldCover_10m_2021_V2",
         "root_path": "/data/MTDA/WORLDCOVER/ESA_WORLDCOVER_10M_2021_V200/MAP",
+        "consider_as_singular_time_step": true,
         "realign": true
       }
     },

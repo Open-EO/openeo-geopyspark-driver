@@ -118,6 +118,32 @@ class GeopysparkCubeMetadata(CollectionMetadata):
             no_data_value = default_value
         return float(no_data_value)
 
+    def get_layer_crs(self):
+        crs = self.get("cube:dimensions", "x", "reference_system", default="EPSG:4326")
+        if isinstance(crs, int):
+            crs = "EPSG:%s" % str(crs)
+        elif isinstance(crs, dict):
+            if crs["name"] == "AUTO 42001 (Universal Transverse Mercator)":
+                crs = "Auto42001"
+        return crs
+
+    def get_overall_spatial_extent(self):
+        global_extent_latlon = {"west": -180.0, "south": -90, "east": 180, "north": 90}
+        bboxes = self.get("extent", "spatial", "bbox")
+        if not bboxes:
+            return global_extent_latlon
+        # https://github.com/radiantearth/stac-spec/blob/master/collection-spec/collection-spec.md#spatial-extent-object
+        # "The first bounding box always describes the overall spatial extent of the data"
+        bbox = bboxes[0]
+        overall_extent = dict(zip(["west", "south", "east", "north"], bbox))
+
+        likely_latlon = abs(overall_extent["west"] + 180) < 0.01 and abs(overall_extent["east"] - 180) < 0.01
+        if self.get_layer_crs() != "EPSG:4326" and not likely_latlon:
+            # We can only trust bbox values in LatLon
+            return global_extent_latlon
+
+        return overall_extent
+
     def get_GSD_in_meters(self) -> Union[tuple, dict, None]:
         bands_metadata = self.get("summaries", "eo:bands",
                                   default=self.get("summaries", "raster:bands", default=[]))
@@ -142,13 +168,7 @@ class GeopysparkCubeMetadata(CollectionMetadata):
         if gsd_layer_wide:
             return gsd_layer_wide
 
-        crs = self.get("cube:dimensions", "x", "reference_system", default='EPSG:4326')
-        if isinstance(crs, int):
-            crs = 'EPSG:%s' % str(crs)
-        elif isinstance(crs, dict):
-            if crs["name"] == 'AUTO 42001 (Universal Transverse Mercator)':
-                crs = 'Auto42001'
-
+        crs = self.get_layer_crs()
         if crs == "EPSG:4326":
             # step could be expressed in LatLon or layer native crs.
             # Only when the layer native CRS is LatLon, we can trust it
