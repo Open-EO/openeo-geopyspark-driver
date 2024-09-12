@@ -5,7 +5,7 @@ import logging
 from typing import Union, Optional, Tuple, Dict, List, Iterable
 from urllib.parse import urlparse
 
-import dateutil
+import dateutil.parser
 import geopyspark as gps
 import planetary_computer
 import pystac
@@ -314,9 +314,13 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
                 for child in root.get_children():
                     yield from intersecting_catalogs(child)
 
-            intersecting_items = (itm
-                                  for intersecting_catalog in intersecting_catalogs(root=catalog)
-                                  for itm in intersecting_catalog.get_items() if intersects_spatiotemporally(itm))
+            intersecting_items = (
+                itm
+                for intersecting_catalog in intersecting_catalogs(root=catalog)
+                for itm in intersecting_catalog.get_items()
+                if intersects_spatiotemporally(itm)
+                # if itm.id in ["openEO_2017_AF_One-Acre-Fund-MEL_POINT_110_2017_AF_OAF_POINT_1102217.nc", "openEO_2017_AF_One-Acre-Fund-MEL_POINT_110_2017_AF_OAF_POINT_1102405.nc"]  TODO: remove
+            )
 
     jvm = get_jvm()
 
@@ -324,6 +328,7 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
 
     stac_bbox = None
     items_found = False
+    start_datetime = end_datetime = None
     proj_epsg = None
     proj_bbox = None
     proj_shape = None
@@ -338,6 +343,16 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
         netcdf_with_time_dimension = len(dimensions) == 1 and "time" in dimensions.pop()
 
     for itm in intersecting_items:
+        items_found = True
+
+        item_start_datetime = dateutil.parser.parse(itm.properties.get("datetime") or itm.properties["start_datetime"])
+        item_end_datetime = dateutil.parser.parse(itm.properties.get("datetime") or itm.properties["end_datetime"])
+
+        if not start_datetime or item_start_datetime < start_datetime:
+            start_datetime = item_start_datetime
+        if not end_datetime or item_end_datetime > end_datetime:
+            end_datetime = item_end_datetime
+
         band_assets = {asset_id: asset for asset_id, asset
                        in dict(sorted(itm.get_assets().items())).items() if is_band_asset(asset)}
 
@@ -382,8 +397,6 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
                      else BoundingBox.from_wsen_tuple(item_bbox.as_polygon().union(stac_bbox.as_polygon()).bounds,
                                                       stac_bbox.crs))
 
-        items_found = True
-
     if not items_found:
         raise no_data_available_exception
 
@@ -413,12 +426,17 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
         target_epsg = target_bbox.best_utm()
         cell_width = cell_height = 10.0
 
-    metadata = GeopysparkCubeMetadata(metadata={}, dimensions=[
-        # TODO: detect actual dimensions instead of this simple default?
-        SpatialDimension(name="x", extent=[]), SpatialDimension(name="y", extent=[]),
-        TemporalDimension(name='t', extent=[]),
-        BandDimension(name="bands", bands=[Band(band_name) for band_name in (override_band_names or band_names)])
-    ])
+    metadata = GeopysparkCubeMetadata(
+        metadata={},
+        dimensions=[
+            # TODO: detect actual dimensions instead of this simple default?
+            SpatialDimension(name="x", extent=[]),
+            SpatialDimension(name="y", extent=[]),
+            TemporalDimension(name="t", extent=[]),
+            BandDimension(name="bands", bands=[Band(band_name) for band_name in (override_band_names or band_names)]),
+        ],
+        temporal_extent=tuple([d.isoformat() for d in (start_datetime, end_datetime)]),
+    )
 
     if load_params.bands:
         metadata = metadata.filter_bands(load_params.bands)

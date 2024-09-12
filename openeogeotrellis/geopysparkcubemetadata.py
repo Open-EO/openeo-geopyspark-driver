@@ -1,6 +1,7 @@
 import logging
 from typing import List, Union
 
+import dateutil.parser
 from openeo.metadata import CollectionMetadata, Dimension
 from openeogeotrellis.utils import reproject_cellsize
 
@@ -38,7 +39,7 @@ class GeopysparkCubeMetadata(CollectionMetadata):
         super().__init__(metadata=metadata, dimensions=dimensions)
         self._spatial_extent = spatial_extent
         self._temporal_extent = temporal_extent
-        if (self.has_temporal_dimension() and temporal_extent is not None):
+        if self.has_temporal_dimension() and temporal_extent is not None:
             self.temporal_dimension.extent = temporal_extent
 
     def _clone_and_update(
@@ -66,8 +67,21 @@ class GeopysparkCubeMetadata(CollectionMetadata):
 
     def filter_temporal(self, start, end) -> 'GeopysparkCubeMetadata':
         """Create new metadata instance with temporal extent"""
-        # TODO take intersection with existing extent
-        return self._clone_and_update(temporal_extent=(start, end))
+        this_start, this_end = map(dateutil.parser.parse, self._temporal_extent)
+        that_start, that_end = map(dateutil.parser.parse, (start, end))
+
+        if this_end < that_start or this_start > that_end:
+            raise ValueError(start, end)
+        elif this_start >= that_start and this_end <= that_end:
+            interval = this_start, this_end
+        elif that_start >= this_start and that_end <= this_end:
+            interval = that_start, that_end
+        elif this_start < that_start:
+            interval = that_start, this_end
+        else:
+            interval = this_start, that_end
+
+        return self._clone_and_update(temporal_extent=tuple([d.isoformat() for d in interval]))
 
     @property
     def temporal_extent(self) -> tuple:

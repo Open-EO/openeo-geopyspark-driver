@@ -1272,3 +1272,24 @@ def test_load_ml_model_via_jobid(tmp_path):
         assets = metadata["assets"]
         assert len(assets) == 1
         assert assets["out.tiff"]
+
+
+def skip_load_datetime_null():  # TODO: proper test
+    tmp_path = Path("/tmp/test_load_datetime_null")
+
+    process_graph_file = "j-24083059866540a38cab32b028be0ab5_process_graph.json"  # original
+    process_graph_file = "j-24083059866540a38cab32b028be0ab5_process_graph_without_merge_cubes.json"  # avoid merge_cubes for the moment, only load_stac
+
+    with open(
+        f"/home/bossie/Documents/VITO/openeo-geopyspark-driver/Temporal extent is null for vectorcube STAC items #852/{process_graph_file}"
+    ) as f:
+        process = json.load(f)
+
+    run_job(
+        process,
+        output_file=tmp_path / "out",
+        metadata_file=tmp_path / "job_metadata.json",
+        api_version="2.0.0",
+        job_dir=tmp_path,
+        dependencies=[],
+    )
