@@ -197,6 +197,24 @@ def test_extra_validation_layer_too_large_copernicus_30(backend_implementation):
     errors = list(processing.extra_validation({}, env, None, env_source_constraints))
     assert errors == []
 
+
+def test_extra_validation_layer_fail(backend_implementation):
+    processing = GpsProcessing()
+    source_id1 = "load_collection", ("!!BOGUS_LAYER!!", None)
+    env_source_constraints = [
+        (source_id1, {
+            "temporal_extent": None,
+            "spatial_extent": None,
+        })
+    ]
+    env = EvalEnv(
+        values={ENV_SOURCE_CONSTRAINTS: env_source_constraints, "backend_implementation": backend_implementation,
+                "version": "1.0.0"})
+    errors = list(processing.extra_validation({}, env, None, env_source_constraints))
+    assert len(errors) == 1
+    assert errors[0]['code'] == "Internal"
+
+
 def test_extra_validation_without_extent(backend_implementation):
     processing = GpsProcessing()
     source_id1 = "load_collection", ("ESA_WORLDCOVER_10M_2021_V2", None)
@@ -204,7 +222,7 @@ def test_extra_validation_without_extent(backend_implementation):
         (source_id1, {
             "temporal_extent": None,
             "spatial_extent": {"east": 1941516.7822, "south": -637292.4712999999, "crs": "EPSG:32637",
-                               "north": 2493707.5287, "west": -1285483.2178},
+                               "north": 2493707.5287, "west": 0},
             "bands": ["MAP"],
         })
     ]
@@ -232,8 +250,29 @@ def test_extra_validation_layer_too_large_area(backend_implementation):
                 "version": "1.0.0"})
     errors = list(processing.extra_validation({}, env, None, env_source_constraints))
     assert len(errors) == 1
-    assert errors[0]['code'] == "ExtentTooLarge"
-    assert "spatial extent" in errors[0]['message']
+    assert errors[0]["code"] == "ExtentTooLarge"
+    assert "spatial extent" in errors[0]["message"].lower()
+
+
+def test_extra_validation_layer_timezone(backend_implementation):
+    processing = GpsProcessing()
+    source_id1 = "load_collection", ("SENTINEL1_GRD", None)
+    env_source_constraints = [
+        (source_id1, {
+            "temporal_extent": ["2022-01-01T00:00:00Z", "2022-01-09"],
+            "spatial_extent": {"south": -952987.7582, "west": 1495130.8875, "north": 910166.7419, "east": 9088482.3929,
+                               "crs": "EPSG:32632"},
+            "bands": ["VV"],
+        })
+    ]
+    env = EvalEnv(
+        values={ENV_SOURCE_CONSTRAINTS: env_source_constraints, "backend_implementation": backend_implementation,
+                "sync_job": True,
+                "version": "1.0.0"})
+    errors = list(processing.extra_validation({}, env, None, env_source_constraints))
+    assert len(errors) == 1
+    assert errors[0]["code"] == "ExtentTooLarge"
+    assert "spatial extent" in errors[0]["message"].lower()
 
 
 def test_extra_validation_layer_too_large_delayedvector(backend_implementation):

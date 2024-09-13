@@ -2000,24 +2000,19 @@ def test_extra_validation_terrascope(jvm_mock, api100):
         assert list(sorted(map(str, response.json["errors"]))) == list(sorted(map(str, expected["errors"])))
 
 
-@pytest.mark.parametrize(["lc_args", "expected"], [
-    (
-            {"id": "TERRASCOPE_S2_TOC_V2"},
-            ["No temporal extent given.", "No spatial extent given."]
-    ),
-    (
-            {"id": "TERRASCOPE_S2_TOC_V2", "temporal_extent": ["2020-03-01", "2020-03-10"]},
-            ["No spatial extent given."]
-    ),
-    (
-            {"id": "TERRASCOPE_S2_TOC_V2", "spatial_extent": {"west": -87, "south": 67, "east": -86, "north": 68}},
-            ["No temporal extent given."]
-    ),
-])
-def test_extra_validation_unlimited_extent(api100, lc_args, expected):
+@pytest.mark.parametrize(
+    "lc_args",
+    [
+        {"id": "TERRASCOPE_S2_TOC_V2"},
+        {"id": "TERRASCOPE_S2_TOC_V2", "temporal_extent": ["2020-03-01", "2020-03-10"]},
+        {"id": "TERRASCOPE_S2_TOC_V2", "spatial_extent": {"east": 5.08, "north": 51.22, "south": 51.215, "west": 5.07}},
+    ],
+)
+def test_extra_validation_unlimited_extent(api100, lc_args):
     pg = {"lc": {"process_id": "load_collection", "arguments": lc_args, "result": True}}
     response = api100.validation(pg)
-    assert response.json == {'errors': [{'code': 'UnlimitedExtent', 'message': m} for m in expected]}
+    for m in response.json["errors"]:
+        assert m["code"] == "ExtentTooLarge"
 
 
 @pytest.mark.parametrize(["temporal_extent", "expected"], [

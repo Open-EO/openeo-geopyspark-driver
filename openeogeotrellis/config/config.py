@@ -144,6 +144,8 @@ class GpsBackendConfig(OpenEoBackendConfig):
     fuse_mount_batchjob_s3_mount_options: str = os.environ.get("FUSE_MOUNT_BATCHJOB_S3_MOUNT_OPTIONS", "-o uid=18585 -o gid=18585 -o compat_dir")
     fuse_mount_batchjob_s3_storage_class: str = os.environ.get("FUSE_MOUNT_BATCHJOB_S3_STORAGE_CLASS", "csi-s3")
 
+    batch_scheduler: str = "default-scheduler"
+
     """
     Reading strategy for load_collection and load_stac processes:
     load_by_target_partition: first apply a partitioner, then simply read data for each partition
