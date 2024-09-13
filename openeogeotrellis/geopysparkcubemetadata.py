@@ -71,21 +71,12 @@ class GeopysparkCubeMetadata(CollectionMetadata):
         if self._temporal_extent is None:  # TODO: only for backwards compatibility
             return self._clone_and_update(temporal_extent=(start, end))
 
-        this_start, this_end = map(dateutil.parser.parse, self._temporal_extent)
-        that_start, that_end = map(dateutil.parser.parse, (start, end))
+        this_start, this_end = self._temporal_extent
 
-        if this_end < that_start or this_start > that_end:
+        if this_start > end or this_end < start:  # no overlap
             raise ValueError(start, end)
-        elif this_start >= that_start and this_end <= that_end:
-            interval = this_start, this_end
-        elif that_start >= this_start and that_end <= this_end:
-            interval = that_start, that_end
-        elif this_start < that_start:
-            interval = that_start, this_end
-        else:
-            interval = this_start, that_end
 
-        return self._clone_and_update(temporal_extent=tuple([d.isoformat() for d in interval]))
+        return self._clone_and_update(temporal_extent=(max(this_start, start), min(this_end, end)))
 
     @property
     def temporal_extent(self) -> tuple:
