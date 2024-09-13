@@ -319,7 +319,6 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
                 for intersecting_catalog in intersecting_catalogs(root=catalog)
                 for itm in intersecting_catalog.get_items()
                 if intersects_spatiotemporally(itm)
-                # if itm.id in ["openEO_2017_AF_One-Acre-Fund-MEL_POINT_110_2017_AF_OAF_POINT_1102217.nc", "openEO_2017_AF_One-Acre-Fund-MEL_POINT_110_2017_AF_OAF_POINT_1102405.nc"]  TODO: remove
             )
 
     jvm = get_jvm()
