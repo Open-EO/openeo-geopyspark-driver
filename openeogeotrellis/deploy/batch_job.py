@@ -389,16 +389,16 @@ def run_job(
 
         _export_workspace(result, result_metadata, stac_metadata_dir=job_dir)
     finally:
-
         write_metadata({**result_metadata, **_get_tracker_metadata("")}, metadata_file, job_dir)
 
-        try:
-            get_jvm().com.azavea.gdal.GDALWarp.deinit()
-        except Py4JError as e:
-            if str(e) == "com.azavea.gdal.GDALWarp does not exist in the JVM":
-                logger.debug(f"intentionally swallowing exception {e}", exc_info=True)
-            else:
-                raise
+        if __name__ == "__main__":
+            try:
+                get_jvm().com.azavea.gdal.GDALWarp.deinit()
+            except Py4JError as e:
+                if str(e) == "com.azavea.gdal.GDALWarp does not exist in the JVM":
+                    logger.debug(f"intentionally swallowing exception {e}", exc_info=True)
+                else:
+                    raise
 
 
 def write_metadata(metadata, metadata_file, job_dir):
@@ -526,6 +526,7 @@ def start_main():
             extra={"exc_info_with_locals": format_exc(e, fmt = fmt)}
         )
         raise
+
 
 if __name__ == "__main__":
     start_main()
