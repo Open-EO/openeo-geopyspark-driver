@@ -158,7 +158,11 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             env_validate = env.push({
                 "allow_check_missing_products": False,
             })
-            issues = extra_validation_load_collection(collection_id, load_params, env_validate)
+            try:
+                issues = extra_validation_load_collection(collection_id, load_params, env_validate)
+            except Exception as e:
+                issues = [{"code": "Internal", "message": str(e)}]
+                logger.warning(f"Error during extra_validation_load_collection: {e!r}")
             # Only care for certain errors and make list of strings:
             issues = [e["message"] for e in issues if e["code"] == "ExtentTooLarge"]
             if issues:
