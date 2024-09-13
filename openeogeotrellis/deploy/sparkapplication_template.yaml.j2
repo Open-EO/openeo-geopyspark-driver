@@ -13,6 +13,9 @@ spec:
   type: Python
   pythonVersion: "3"
   mode: cluster
+{%- if batch_scheduler != 'default-scheduler' %}
+  batchScheduler: {{ batch_scheduler }}
+{%- endif %}
   image: {{ image_name }}
   imagePullPolicy: Always
   timeToLiveSeconds: 172800
@@ -129,6 +132,11 @@ spec:
 {%- endif %}
 {%- endblock %}
   driver:
+{%- if batch_scheduler == 'yunikorn' %}
+    annotations:
+      yunikorn.apache.org/schedulingPolicyParameters: "placeholderTimeoutInSeconds=1800 gangSchedulingStyle=Hard"
+      yunikorn.apache.org/allow-preemption: "false"
+{%- endif %}
 {%- block driver_options %}
     cores: {{ driver_cores }}
     javaOptions: "-Dscala.concurrent.context.maxThreads=2 -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/data/projects/OpenEO/{{ current_time }}.hprof -Dlog4j2.configurationFile=file:/opt/batch_job_log4j2.xml -Dpixels.treshold=1000000 -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.apache.ApacheSdkHttpService -Dopeneo.logging.threshold={{ logging_threshold }} -Dhttp.credentials.file=/opt/http_credentials/http_credentials.json -Dsun.net.client.defaultReadTimeout=60000"
