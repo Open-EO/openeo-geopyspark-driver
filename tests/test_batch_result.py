@@ -1345,8 +1345,8 @@ def test_load_stac_temporal_extent_in_result_metadata(tmp_path, requests_mock):
     expected_end_datetime = "2018-05-03T00:00:00+00:00"
 
     time_series_asset = job_metadata["assets"]["timeseries.parquet"]
-    assert time_series_asset["start_datetime"] == expected_start_datetime
-    assert time_series_asset["end_datetime"] == expected_end_datetime
+    assert time_series_asset.get("start_datetime") == expected_start_datetime, str(time_series_asset)
+    assert time_series_asset.get("end_datetime") == expected_end_datetime, str(time_series_asset)
 
     # asset checks
     gdf = gpd.read_parquet(tmp_path / "timeseries.parquet")
