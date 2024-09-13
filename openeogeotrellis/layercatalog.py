@@ -158,7 +158,11 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             env_validate = env.push({
                 "allow_check_missing_products": False,
             })
-            issues = extra_validation_load_collection(collection_id, load_params, env_validate)
+            try:
+                issues = extra_validation_load_collection(collection_id, load_params, env_validate)
+            except Exception as e:
+                issues = [{"code": "Internal", "message": str(e)}]
+                logger.warning(f"Error during extra_validation_load_collection: {e!r}")
             # Only care for certain errors and make list of strings:
             issues = [e["message"] for e in issues if e["code"] == "ExtentTooLarge"]
             if issues:
@@ -1286,6 +1290,7 @@ def extra_validation_load_collection(collection_id: str, load_params: LoadParame
         float(env.get("large_layer_threshold_in_pixels", LARGE_LAYER_THRESHOLD_IN_PIXELS)))
     metadata_json = catalog.get_collection_metadata(collection_id=collection_id)
     metadata = GeopysparkCubeMetadata(metadata_json)
+    logger.info("load_params: " + str(load_params))  # investigate: https://gist.github.com/JeroenVerstraelen/f5127c5ac671998ac80718afb90ee406
     load_params = deepcopy(load_params)
     load_params.temporal_extent = normalize_temporal_extent(catalog.derive_temporal_extent(collection_id, load_params))
     temporal_extent = load_params.temporal_extent
