@@ -1589,7 +1589,6 @@ class GeopysparkDataCube(DriverDataCube):
                         temp_dir, regions=regions, metadata=self.metadata
                     )
             else:
-                # this situation!
                 geometry_wkts = regions_to_wkt(regions)
                 geometries_srs = "EPSG:4326"
 

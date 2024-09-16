@@ -57,5 +57,7 @@ def test_filter_temporal_disjunct_extents(this_temporal_extent, that_temporal_ex
 
     metadata = GeopysparkCubeMetadata(metadata={}, temporal_extent=(this_start, this_end))
 
-    with pytest.raises(ValueError):  # TODO: more thorough check of ValueError to avoid false negatives
+    with pytest.raises(ValueError) as exc_info:
         metadata.filter_temporal(start=that_start, end=that_end)
+
+    assert exc_info.value.args == (that_start, that_end)

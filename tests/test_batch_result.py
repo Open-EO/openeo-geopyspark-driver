@@ -1274,39 +1274,6 @@ def test_load_ml_model_via_jobid(tmp_path):
         assert assets["out.tiff"]
 
 
-def skip_load_datetime_null(tmp_path):  # TODO: proper test
-    tmp_path = Path("/tmp/test_load_datetime_null")
-
-    process_graph_file = "j-24083059866540a38cab32b028be0ab5_process_graph.json"  # original
-    # process_graph_file = "j-24083059866540a38cab32b028be0ab5_process_graph_without_merge_cubes.json"  # avoid merge_cubes for the moment, only load_stac
-
-    with open(
-        f"/home/bossie/Documents/VITO/openeo-geopyspark-driver/Temporal extent is null for vectorcube STAC items #852/{process_graph_file}"
-    ) as f:
-        process = json.load(f)
-
-    run_job(
-        process,
-        output_file=tmp_path / "out",
-        metadata_file=tmp_path / "job_metadata.json",
-        api_version="2.0.0",
-        job_dir=tmp_path,
-        dependencies=[],
-    )
-
-    with open(tmp_path / "job_metadata.json") as f:
-        job_metadata = json.load(f)
-
-    time_series_asset = job_metadata["assets"]["timeseries.parquet"]
-
-    # without merge_cubes
-    # assert time_series_asset["start_datetime"] == "2016-10-30T00:00:00+00:00"
-    # assert time_series_asset["end_datetime"] == "2018-05-03T00:00:00+00:00"
-
-    print(time_series_asset.get("start_datetime"))
-    print(time_series_asset.get("end_datetime"))
-
-
 def test_load_stac_temporal_extent_in_result_metadata(tmp_path, requests_mock):
     with open(get_test_data_file("binary/load_stac/issue852-temporal-extent/process_graph.json")) as f:
         process = json.load(f)
