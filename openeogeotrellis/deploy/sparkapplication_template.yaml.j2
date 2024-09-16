@@ -134,7 +134,7 @@ spec:
   driver:
 {%- if batch_scheduler == 'yunikorn' %}
     annotations:
-      yunikorn.apache.org/schedulingPolicyParameters: "placeholderTimeoutInSeconds=1800 gangSchedulingStyle=Hard"
+      yunikorn.apache.org/schedulingPolicyParameters: "placeholderTimeoutInSeconds={{ yunikorn_scheduling_timeout }} gangSchedulingStyle=Hard"
       yunikorn.apache.org/allow-preemption: "false"
 {%- endif %}
 {%- block driver_options %}
