@@ -572,6 +572,7 @@ class S1BackscatterOrfeo:
         # Tile size to use in the TiledRasterLayer.
         tile_size = sar_backscatter_arguments.options.get("tile_size", self._DEFAULT_TILE_SIZE)
 
+        geopyspark.get_spark_context().setLocalProperty("callSite.short", f"load_collection: SENTINEL1_GRD {from_date}-{to_date} Area: {projected_polygons.areaInSquareMeters()/(1000.0*1000.0)}km²")
 
         debug_mode = smart_bool(sar_backscatter_arguments.options.get("debug"))
 
@@ -609,6 +610,9 @@ class S1BackscatterOrfeo:
                 hashPartitioner = pyspark.rdd.portable_hash
                 return hashPartitioner(tuple)
         grouped = per_product.partitionBy(per_product.count(),partitionByPath)
+
+        geopyspark.get_spark_context().setLocalProperty("callSite.short",
+                                                        f"sar_backscatter: {sar_backscatter_arguments.coefficient} {from_date}-{to_date} Area: {projected_polygons.areaInSquareMeters() / (1000.0 * 1000.0)}km²")
 
         #local = grouped.collect()
 
@@ -844,6 +848,9 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
         noise_removal = bool(sar_backscatter_arguments.noise_removal)
         debug_mode = smart_bool(sar_backscatter_arguments.options.get("debug"))
 
+        geopyspark.get_spark_context().setLocalProperty("callSite.short",
+                                                        f"load_collection: SENTINEL1_GRD {from_date}-{to_date} Area: {projected_polygons.areaInSquareMeters() / (1000.0 * 1000.0)}km²")
+
         # an RDD of Python objects (basically SpaceTimeKey + feature) with gps.Metadata
         target_resolution = sar_backscatter_arguments.options.get("resolution", (10.0, 10.0))
         feature_pyrdd, layer_metadata_py = self._build_feature_rdd(
@@ -1048,6 +1055,8 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
                 return hashPartitioner(tuple)
 
         grouped = per_product.partitionBy(per_product.count(),partitionByPath)
+        geopyspark.get_spark_context().setLocalProperty("callSite.short",
+                                                        f"sar_backscatter: {sar_backscatter_arguments.coefficient} {from_date}-{to_date} Area: {projected_polygons.areaInSquareMeters() / (1000.0 * 1000.0)}km²")
         tile_rdd = grouped.flatMap(process_product)
         if result_dtype:
             layer_metadata_py.cell_type = geopyspark.CellType.create_user_defined_celltype(result_dtype,0)
