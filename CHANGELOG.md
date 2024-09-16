@@ -14,7 +14,8 @@ without compromising stable operations.
 
 ## Unreleased
 
-- quantiles, when used in apply_dimension was corrected to use the interpolation method that is prescribed by the openEO process definition. 
+- quantiles, when used in apply_dimension was corrected to use the interpolation method that is prescribed by the openEO process definition.
+- return STAC Items with valid date/time for time series job results ([#852](https://github.com/Open-EO/openeo-geopyspark-driver/issues/852))
 
 ## 0.40.1
 

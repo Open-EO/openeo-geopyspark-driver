@@ -1,7 +1,8 @@
 import logging
 from typing import List, Union
 
-from openeo.metadata import CollectionMetadata, Dimension
+import dateutil.parser
+from openeo.metadata import CollectionMetadata, Dimension, TemporalDimension
 from openeogeotrellis.utils import reproject_cellsize
 
 _log = logging.getLogger(__name__)
@@ -36,9 +37,10 @@ class GeopysparkCubeMetadata(CollectionMetadata):
             spatial_extent: dict = None, temporal_extent: tuple = None
     ):
         super().__init__(metadata=metadata, dimensions=dimensions)
+        # TODO: why do we need these in addition to those in dimensions?
         self._spatial_extent = spatial_extent
         self._temporal_extent = temporal_extent
-        if (self.has_temporal_dimension() and temporal_extent is not None):
+        if self.has_temporal_dimension() and temporal_extent is not None:
             self.temporal_dimension.extent = temporal_extent
 
     def _clone_and_update(
@@ -66,12 +68,31 @@ class GeopysparkCubeMetadata(CollectionMetadata):
 
     def filter_temporal(self, start, end) -> 'GeopysparkCubeMetadata':
         """Create new metadata instance with temporal extent"""
-        # TODO take intersection with existing extent
-        return self._clone_and_update(temporal_extent=(start, end))
+        if self._temporal_extent is None:  # TODO: only for backwards compatibility
+            return self._clone_and_update(temporal_extent=(start, end))
+
+        this_start, this_end = self._temporal_extent
+
+        if this_start > end or this_end < start:  # compared lexicographically
+            # no overlap
+            raise ValueError(start, end)
+
+        return self._clone_and_update(temporal_extent=(max(this_start, start), min(this_end, end)))
 
     @property
     def temporal_extent(self) -> tuple:
         return self._temporal_extent
+
+    def with_temporal_extent(self, temporal_extent: tuple):
+        assert self.has_temporal_dimension()
+
+        return self._clone_and_update(
+            dimensions=[
+                TemporalDimension(d.name, temporal_extent) if isinstance(d, TemporalDimension) else d
+                for d in self._dimensions
+            ],
+            temporal_extent=temporal_extent,
+        )
 
     @property
     def opensearch_link_titles(self) -> List[str]:

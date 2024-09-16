@@ -14,7 +14,7 @@ import rasterio
 from openeo.util import ensure_dir
 from openeo_driver.errors import OpenEOApiException
 from openeo_driver.testing import DictSubSet
-from shapely.geometry import Point, Polygon, mapping, shape
+from shapely.geometry import Point, Polygon, shape
 import xarray
 
 from openeo.metadata import Band
@@ -1272,3 +1272,88 @@ def test_load_ml_model_via_jobid(tmp_path):
         assets = metadata["assets"]
         assert len(assets) == 1
         assert assets["out.tiff"]
+
+
+def skip_load_datetime_null(tmp_path):  # TODO: proper test
+    tmp_path = Path("/tmp/test_load_datetime_null")
+
+    process_graph_file = "j-24083059866540a38cab32b028be0ab5_process_graph.json"  # original
+    # process_graph_file = "j-24083059866540a38cab32b028be0ab5_process_graph_without_merge_cubes.json"  # avoid merge_cubes for the moment, only load_stac
+
+    with open(
+        f"/home/bossie/Documents/VITO/openeo-geopyspark-driver/Temporal extent is null for vectorcube STAC items #852/{process_graph_file}"
+    ) as f:
+        process = json.load(f)
+
+    run_job(
+        process,
+        output_file=tmp_path / "out",
+        metadata_file=tmp_path / "job_metadata.json",
+        api_version="2.0.0",
+        job_dir=tmp_path,
+        dependencies=[],
+    )
+
+    with open(tmp_path / "job_metadata.json") as f:
+        job_metadata = json.load(f)
+
+    time_series_asset = job_metadata["assets"]["timeseries.parquet"]
+
+    # without merge_cubes
+    # assert time_series_asset["start_datetime"] == "2016-10-30T00:00:00+00:00"
+    # assert time_series_asset["end_datetime"] == "2018-05-03T00:00:00+00:00"
+
+    print(time_series_asset.get("start_datetime"))
+    print(time_series_asset.get("end_datetime"))
+
+
+def test_load_stac_temporal_extent_in_result_metadata(tmp_path, requests_mock):
+    with open(get_test_data_file("binary/load_stac/issue852-temporal-extent/process_graph.json")) as f:
+        process = json.load(f)
+
+    geoparquet_url = "http://foo.test/32736-random-points.geoparquet"
+
+    process["process_graph"]["loadstac1"]["arguments"]["url"] = str(
+        get_test_data_file("binary/load_stac/issue852-temporal-extent/s1/collection.json").absolute()
+    )
+    process["process_graph"]["loadstac2"]["arguments"]["url"] = str(
+        get_test_data_file("binary/load_stac/issue852-temporal-extent/s2/collection.json").absolute()
+    )
+    process["process_graph"]["loadurl1"]["arguments"]["url"] = geoparquet_url
+
+    with open(
+        get_test_data_file("binary/load_stac/issue852-temporal-extent/32736-random-points.geoparquet"), "rb"
+    ) as f:
+        geoparquet_content = f.read()
+
+    requests_mock.get(geoparquet_url, content=geoparquet_content)
+
+    run_job(
+        process,
+        output_file=tmp_path / "out",
+        metadata_file=tmp_path / "job_metadata.json",
+        api_version="2.0.0",
+        job_dir=tmp_path,
+        dependencies=[],
+    )
+
+    with open(tmp_path / "job_metadata.json") as f:
+        job_metadata = json.load(f)
+
+    # metadata checks
+    expected_start_datetime = "2016-10-30T00:00:00+00:00"
+    expected_end_datetime = "2018-05-03T00:00:00+00:00"
+
+    time_series_asset = job_metadata["assets"]["timeseries.parquet"]
+    assert time_series_asset.get("start_datetime") == expected_start_datetime
+    assert time_series_asset.get("end_datetime") == expected_end_datetime
+
+    # asset checks
+    gdf = gpd.read_parquet(tmp_path / "timeseries.parquet")
+
+    band_columns = [column_name for column_name in gdf.columns.tolist() if column_name.startswith("S")]
+    assert len(band_columns) == 17
+
+    timestamps = gdf["date"].tolist()
+    assert len(timestamps) > 0
+    assert all(expected_start_datetime <= timestamp <= expected_end_datetime for timestamp in timestamps)
