@@ -1290,14 +1290,8 @@ def extra_validation_load_collection(collection_id: str, load_params: LoadParame
         float(env.get("large_layer_threshold_in_pixels", LARGE_LAYER_THRESHOLD_IN_PIXELS)))
     metadata_json = catalog.get_collection_metadata(collection_id=collection_id)
     metadata = GeopysparkCubeMetadata(metadata_json)
-
-    for key, value in load_params.items():
-        # Even a print can cause a crash, so print line per line
-        # investigate: https://gist.github.com/JeroenVerstraelen/f5127c5ac671998ac80718afb90ee406
-        logger.info(f"load_params key: {key}")
-        logger.info(f"load_params key:value: {key}:{value}")
-
     load_params = deepcopy(load_params)
+    load_params.data_mask = {}  # Clear to avoid SPARK-5063 error
     load_params.temporal_extent = normalize_temporal_extent(catalog.derive_temporal_extent(collection_id, load_params))
     temporal_extent = load_params.temporal_extent
 
