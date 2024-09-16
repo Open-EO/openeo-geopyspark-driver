@@ -945,7 +945,7 @@ class GeopysparkDataCube(DriverDataCube):
                     + f" Left names: {leftBandNames}, right names: {rightBandNames}.",
                 )
 
-        # TODO properly combine bbox and temporal extents in metadata? Yes! Then pass to _apply_to_levels_geotrellis_rdd
+        # TODO properly combine bbox in metadata?
         pr = pysc._jvm.org.openeo.geotrellis.OpenEOProcesses()
         if self._is_spatial() and other._is_spatial():
             def merge(rdd,other,level):
@@ -1002,6 +1002,14 @@ class GeopysparkDataCube(DriverDataCube):
             for iband in other.metadata.bands:
                 if iband.name not in merged_data.metadata.band_names:
                     merged_data.metadata = merged_data.metadata.append_band(iband)
+
+        if self.metadata.has_temporal_dimension() and other.metadata.has_temporal_dimension():
+            self_lower, self_upper = self.metadata.temporal_dimension.extent
+            other_lower, other_upper = other.metadata.temporal_dimension.extent
+
+            merged_data.metadata = merged_data.metadata.with_temporal_extent(
+                (min([self_lower, other_lower]), max([self_upper, other_upper]))  # compared lexicographically
+            )
 
         return merged_data
 
