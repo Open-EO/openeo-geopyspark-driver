@@ -1664,7 +1664,7 @@ class GpsBatchJobs(backend.BatchJobs):
             ]
         ):
             job_dependencies = self._schedule_and_get_dependencies(
-                supports_async_tasks=not ConfigParams().is_kube_deploy,
+                supports_async_tasks=not ConfigParams().is_kube_deploy and get_backend_config().use_zk_job_registry,
                 process_graph=job_process_graph,
                 api_version=api_version,
                 user_id=user_id,
