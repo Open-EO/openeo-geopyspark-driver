@@ -145,6 +145,7 @@ class GpsBackendConfig(OpenEoBackendConfig):
     fuse_mount_batchjob_s3_storage_class: str = os.environ.get("FUSE_MOUNT_BATCHJOB_S3_STORAGE_CLASS", "csi-s3")
 
     batch_scheduler: str = "default-scheduler"
+    yunikorn_queue: str = os.environ.get("YUNIKORN_QUEUE", "root.default")
     yunikorn_scheduling_timeout: str = os.environ.get("YUNIKORN_SCHEDULING_TIMEOUT", "10800")
 
     """

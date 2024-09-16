@@ -15,6 +15,10 @@ spec:
   mode: cluster
 {%- if batch_scheduler != 'default-scheduler' %}
   batchScheduler: {{ batch_scheduler }}
+{%- if batch_scheduler == 'yunikorn' %}
+  batchSchedulerOptions:
+    queue: {{ yunikorn_queue }}
+{%- endif %}
 {%- endif %}
   image: {{ image_name }}
   imagePullPolicy: Always
