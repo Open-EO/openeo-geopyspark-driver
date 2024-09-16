@@ -28,7 +28,7 @@ kinit -kt $keytab openeo@VGT.VITO.BE
 export BATCH_JOBS_ZOOKEEPER_ROOT_PATH=$batch_jobs_zookeeper_root_path
 export ASYNC_TASK_HANDLER_ENV=$async_task_handler_env
 export PYARROW_IGNORE_TIMEZONE=1
-export OPENEO_ENV="$deploy_env"
+export OPENEO_EJR_BACKEND_ID="mep-$deploy_env"
 
 /opt/venv/bin/python -m openeogeotrellis.job_tracker_v2 \
   --app-cluster yarn \
