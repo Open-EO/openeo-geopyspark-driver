@@ -1966,7 +1966,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 openeo_ejr_oidc_client_credentials=os.environ.get("OPENEO_EJR_OIDC_CLIENT_CREDENTIALS"),
                 profile=profile,
                 batch_scheduler=get_backend_config().batch_scheduler,
-                yunikorn_queue=get_backend_config().yunikorn_queue
+                yunikorn_queue=get_backend_config().yunikorn_queue,
                 yunikorn_scheduling_timeout=get_backend_config().yunikorn_scheduling_timeout
             )
 
