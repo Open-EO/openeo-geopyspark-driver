@@ -1967,7 +1967,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 profile=profile,
                 batch_scheduler=get_backend_config().batch_scheduler,
                 yunikorn_queue=get_backend_config().yunikorn_queue,
-                yunikorn_scheduling_timeout=get_backend_config().yunikorn_scheduling_timeout
+                yunikorn_scheduling_timeout=get_backend_config().yunikorn_scheduling_timeout.rstrip()
             )
 
             if get_backend_config().fuse_mount_batchjob_s3_bucket:
