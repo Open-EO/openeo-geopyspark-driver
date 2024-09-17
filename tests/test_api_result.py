@@ -4664,3 +4664,85 @@ def test_spatiotemporal_vector_cube_to_geoparquet(api110, tmp_path):
         'Flat:2': [2.0, 2.0, 2.0, 2.0, 2.0, 2.0],
         'name': ['maize', 'maize', 'maize', 'maize', 'maize', 'maize']
     }
+
+
+def test_aggregate_temporal_period_from_merge_cubes_on_time_dimension_contains_full_time_range(api110, tmp_path):
+    response = api110.check_result(
+        {
+            "loadcollection1": {
+                "process_id": "load_collection",
+                "arguments": {
+                    "id": "TestCollection-LonLat4x4",
+                    "temporal_extent": ["2024-01-01", "2024-02-01"],
+                },
+            },
+            "loadcollection2": {
+                "process_id": "load_collection",
+                "arguments": {
+                    "id": "TestCollection-LonLat4x4",
+                    "temporal_extent": ["2024-03-01", "2024-04-01"],
+                },
+            },
+            "mergecubes1": {
+                "process_id": "merge_cubes",
+                "arguments": {
+                    "cube1": {"from_node": "loadcollection1"},
+                    "cube2": {"from_node": "loadcollection2"},
+                    "overlap_resolver": {
+                        "process_graph": {
+                            "max1": {
+                                "process_id": "max",
+                                "arguments": {"data": {"from_parameter": "x"}},
+                                "result": True,
+                            }
+                        }
+                    },
+                },
+            },
+            "filterbbox1": {
+                "process_id": "filter_bbox",
+                "arguments": {
+                    "data": {"from_node": "mergecubes1"},
+                    "extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 1.0},
+                },
+            },
+            "filterbands1": {
+                "process_id": "filter_bands",
+                "arguments": {
+                    "data": {"from_node": "filterbbox1"},
+                    "bands": ["TileCol"],
+                },
+            },
+            "aggregatetemporalperiod1": {
+                "process_id": "aggregate_temporal_period",
+                "arguments": {
+                    "data": {"from_node": "filterbands1"},
+                    "period": "month",
+                    "reducer": {
+                        "process_graph": {
+                            "mean1": {
+                                "process_id": "mean",
+                                "arguments": {"data": {"from_parameter": "data"}},
+                                "result": True,
+                            }
+                        }
+                    },
+                },
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "aggregatetemporalperiod1"}, "format": "netCDF"},
+                "result": True,
+            },
+        }
+    )
+
+    ds = _load_xarray_dataset_from_netcdf_response(response, tmp_path=tmp_path)
+
+    assert_equal(
+        ds.coords["t"].values,
+        [
+            np.datetime64("2024-01-01"),
+            np.datetime64("2024-03-01"),
+        ],
+    )
