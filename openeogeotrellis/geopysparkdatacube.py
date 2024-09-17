@@ -38,7 +38,7 @@ from openeo_driver.errors import FeatureUnsupportedException, OpenEOApiException
     ProcessParameterInvalidException
 from openeo_driver.ProcessGraphDeserializer import convert_node, _period_to_intervals
 from openeo_driver.save_result import AggregatePolygonResult
-from openeo_driver.utils import EvalEnv
+from openeo_driver.utils import EvalEnv, smart_bool
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkcubemetadata import GeopysparkCubeMetadata
@@ -1751,7 +1751,12 @@ class GeopysparkDataCube(DriverDataCube):
         colormap = format_options.get("colormap", None)
         description = format_options.get("file_metadata",{}).get("description","")
         filename_prefix = get_jvm().scala.Option.apply(format_options.get("filename_prefix", None))
-        separate_asset_per_band = get_jvm().scala.Option.apply(format_options.get("separate_asset_per_band", None))
+        separate_asset_per_band_tmp = (
+            smart_bool(format_options.get("separate_asset_per_band"))
+            if "separate_asset_per_band" in format_options
+            else None
+        )
+        separate_asset_per_band = get_jvm().scala.Option.apply(separate_asset_per_band_tmp)
 
         if separate_asset_per_band.isDefined() and format != "GTIFF":
             raise OpenEOApiException("separate_asset_per_band is only supported with format GTIFF")
