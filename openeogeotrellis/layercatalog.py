@@ -5,7 +5,7 @@ import json
 import logging
 import math
 import sys
-from copy import deepcopy
+from copy import deepcopy, copy
 from datetime import datetime
 from functools import lru_cache
 from typing import List, Dict, Iterable, Optional, Tuple, Union
@@ -1290,8 +1290,9 @@ def extra_validation_load_collection(collection_id: str, load_params: LoadParame
         float(env.get("large_layer_threshold_in_pixels", LARGE_LAYER_THRESHOLD_IN_PIXELS)))
     metadata_json = catalog.get_collection_metadata(collection_id=collection_id)
     metadata = GeopysparkCubeMetadata(metadata_json)
-    load_params = deepcopy(load_params)
-    load_params.data_mask = {}  # Clear to avoid SPARK-5063 error
+    load_params_tmp = copy(load_params)  # Make shallow copy, so we can remove data_mask
+    load_params_tmp.data_mask = {}  # Clear to avoid SPARK-5063 error
+    load_params = deepcopy(load_params_tmp)  # deepcopy so we can modify it
     load_params.temporal_extent = normalize_temporal_extent(catalog.derive_temporal_extent(collection_id, load_params))
     temporal_extent = load_params.temporal_extent
 
