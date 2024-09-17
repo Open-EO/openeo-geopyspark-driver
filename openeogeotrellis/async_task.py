@@ -189,6 +189,10 @@ def main():
                                             redirect_stderr=sys.stderr)
 
         try:
+            backend_config = get_backend_config()
+            requests_session = requests_with_retry()
+            elastic_job_registry = get_elastic_job_registry(requests_session) if backend_config.ejr_api else None
+
             def get_batch_jobs(batch_job_id: str, user_id: str) -> GpsBatchJobs:
                 vault = Vault(ConfigParams().vault_addr)
                 catalog = get_layer_catalog(vault=vault)
@@ -197,7 +201,15 @@ def main():
                 jvm.org.slf4j.MDC.put(jvm.org.openeo.logging.JsonLayout.UserId(), user_id)
                 jvm.org.slf4j.MDC.put(jvm.org.openeo.logging.JsonLayout.JobId(), batch_job_id)
 
-                batch_jobs = GpsBatchJobs(catalog, jvm, args.principal, args.keytab, vault=vault)
+                batch_jobs = GpsBatchJobs(
+                    catalog,
+                    jvm,
+                    args.principal,
+                    args.keytab,
+                    vault=vault,
+                    elastic_job_registry=elastic_job_registry,
+                    requests_session=requests_session,
+                )
 
                 default_sentinel_hub_credentials = vault.get_sentinel_hub_credentials(
                     sentinel_hub_client_alias='default',
@@ -231,16 +243,14 @@ def main():
                 vault_token = arguments.get('vault_token')
 
                 batch_jobs = get_batch_jobs(batch_job_id, user_id)
-                requests_session = requests_with_retry()
 
                 log = logging.LoggerAdapter(_log, extra={'job_id': batch_job_id, 'user_id': user_id})
 
-                backend_config = get_backend_config()
                 max_poll_time = time.time() + backend_config.job_dependencies_max_poll_delay_seconds
 
                 double_job_registry = DoubleJobRegistry(
                     zk_job_registry_factory=ZkJobRegistry if backend_config.use_zk_job_registry else None,
-                    elastic_job_registry=get_elastic_job_registry(requests_session) if backend_config.ejr_api else None,
+                    elastic_job_registry=elastic_job_registry,
                 )
 
                 while True:
