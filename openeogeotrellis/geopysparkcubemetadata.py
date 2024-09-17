@@ -38,6 +38,7 @@ class GeopysparkCubeMetadata(CollectionMetadata):
     ):
         super().__init__(metadata=metadata, dimensions=dimensions)
         # TODO: why do we need these in addition to those in dimensions?
+        # TODO: normalize extents or user proper types altogether
         self._spatial_extent = spatial_extent
         self._temporal_extent = temporal_extent
         if self.has_temporal_dimension() and temporal_extent is not None:
@@ -73,6 +74,7 @@ class GeopysparkCubeMetadata(CollectionMetadata):
 
         this_start, this_end = self._temporal_extent
 
+        # TODO: support time zones other than UTC
         if this_start > end or this_end < start:  # compared lexicographically
             # no overlap
             raise ValueError(start, end)

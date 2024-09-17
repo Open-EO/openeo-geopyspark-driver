@@ -50,7 +50,9 @@ from openeogeotrellis.utils import (
     log_memory,
     ensure_executor_logging,
     get_jvm,
-    temp_csv_dir, reproject_cellsize,
+    temp_csv_dir,
+    reproject_cellsize,
+    normalize_temporal_extent,
 )
 from openeogeotrellis.udf import run_udf_code
 from openeogeotrellis._version import __version__ as softwareversion
@@ -149,6 +151,8 @@ class GeopysparkDataCube(DriverDataCube):
     @callsite
     def filter_temporal(self, start: str, end: str) -> 'GeopysparkDataCube':
         # TODO: is this necessary? Temporal range is handled already at load_collection time
+        start, end = normalize_temporal_extent((start, end))
+
         return self.apply_to_levels(
             lambda rdd: rdd.filter_by_times([pd.to_datetime(start), pd.to_datetime(end)]),
             metadata=self.metadata.filter_temporal(start, end)
