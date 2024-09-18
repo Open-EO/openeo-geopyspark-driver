@@ -136,7 +136,7 @@ class GeopysparkCubeMetadata(CollectionMetadata):
                 no_data_value = nodata
             if no_data_value != nodata:
                 # TODO: Support different nodata values per band in a layer.
-                raise Exception("Requested bands have different nodata values: " + no_data_value + " and " + nodata)
+                raise Exception(f"Requested bands have different nodata values: {no_data_value} and {nodata}")
         if no_data_value == "undefined":
             no_data_value = default_value
         return float(no_data_value)
