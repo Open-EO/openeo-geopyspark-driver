@@ -16,7 +16,7 @@ without compromising stable operations.
 
 - quantiles, when used in apply_dimension was corrected to use the interpolation method that is prescribed by the openEO process definition.
 - return STAC Items with valid date/time for time series job results ([#852](https://github.com/Open-EO/openeo-geopyspark-driver/issues/852))
-- filter_labels now also supported for collections that use orfeo backscatter. ([Open-EO/openeo-geotrellis-extensions#320](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/320))
+- filter_labels now also supported for collections that use sar_backscatter and use the internal Orfeo toolbox based method to compute backscatter on the fly. For example: SENTINEL1_GRD ([Open-EO/openeo-geotrellis-extensions#320](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/320))
 
 ## 0.40.1
 
