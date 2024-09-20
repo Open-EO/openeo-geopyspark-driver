@@ -67,7 +67,7 @@ from xarray import DataArray
 import numpy as np
 
 import openeogeotrellis
-from openeogeotrellis import sentinel_hub, load_stac
+from openeogeotrellis import sentinel_hub, load_stac, datacube_parameters
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkdatacube import GeopysparkCubeMetadata, GeopysparkDataCube
@@ -564,7 +564,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
         feature_flags = load_params.get("featureflags", {})
         experimental = feature_flags.get("experimental", False)
-        datacubeParams, single_level = self.catalog.create_datacube_parameters(load_params, env)
+        datacubeParams, single_level = datacube_parameters.create(load_params, env)
 
         extent = jvm.geotrellis.vector.Extent(float(west), float(south), float(east), float(north)) \
             if spatial_bounds_present else None
