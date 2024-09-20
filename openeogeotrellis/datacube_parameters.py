@@ -7,8 +7,6 @@ from py4j.java_gateway import JVMView
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.constants import EvalEnvKeys
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
-from openeogeotrellis.utils import get_jvm
-
 
 logger = logging.getLogger(__name__)
 

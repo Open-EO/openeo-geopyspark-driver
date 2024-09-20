@@ -3,6 +3,7 @@ from openeo_driver.utils import EvalEnv
 
 from openeogeotrellis import datacube_parameters
 from openeogeotrellis.constants import EvalEnvKeys
+from openeogeotrellis.utils import get_jvm
 
 
 def test_data_cube_params():
@@ -15,6 +16,6 @@ def test_data_cube_params():
     )
     env = EvalEnv({EvalEnvKeys.REQUIRE_BOUNDS: True})
 
-    cube_params, level = datacube_parameters.create(load_params, env)
+    cube_params, level = datacube_parameters.create(load_params, env, get_jvm())
     assert str(cube_params) == "DataCubeParameters(128, {}, ZoomedLayoutScheme, ByDay, 6, None, Average, 0.0, 0.0)"
     assert "Average" == str(cube_params.resampleMethod())
