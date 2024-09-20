@@ -257,7 +257,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         logger.debug(projected_polygons_native_crs.extent())
         logger.debug(projected_polygons_native_crs.polygons()[0].toString())
 
-        datacubeParams, single_level = datacube_parameters.create(load_params, env)
+        datacubeParams, single_level = datacube_parameters.create(load_params, env, jvm)
         opensearch_endpoint = layer_source_info.get(
             "opensearch_endpoint", get_backend_config().default_opensearch_endpoint
         )

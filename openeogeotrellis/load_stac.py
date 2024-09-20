@@ -480,7 +480,7 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
     metadata_properties = {}
     correlation_id = env.get(EvalEnvKeys.CORRELATION_ID, "")
 
-    data_cube_parameters, single_level = datacube_parameters.create(load_params, env)
+    data_cube_parameters, single_level = datacube_parameters.create(load_params, env, jvm)
     getattr(data_cube_parameters, "layoutScheme_$eq")("FloatingLayoutScheme")
 
     feature_flags = load_params.get("featureflags", {})

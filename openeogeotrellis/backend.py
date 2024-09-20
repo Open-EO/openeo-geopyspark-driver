@@ -564,7 +564,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
         feature_flags = load_params.get("featureflags", {})
         experimental = feature_flags.get("experimental", False)
-        datacubeParams, single_level = datacube_parameters.create(load_params, env)
+        datacubeParams, single_level = datacube_parameters.create(load_params, env, jvm)
 
         extent = jvm.geotrellis.vector.Extent(float(west), float(south), float(east), float(north)) \
             if spatial_bounds_present else None

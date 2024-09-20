@@ -2,6 +2,7 @@ import logging
 
 from openeo_driver.backend import LoadParameters
 from openeo_driver.utils import EvalEnv
+from py4j.java_gateway import JVMView
 
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.constants import EvalEnvKeys
@@ -12,8 +13,7 @@ from openeogeotrellis.utils import get_jvm
 logger = logging.getLogger(__name__)
 
 
-def create(load_params: LoadParameters, env: EvalEnv):
-    jvm = get_jvm()
+def create(load_params: LoadParameters, env: EvalEnv, jvm: JVMView):
     feature_flags = load_params.get("featureflags", {})
     tilesize = feature_flags.get("tilesize", 256)
     default_temporal_resolution = "ByDay"
