@@ -14,6 +14,7 @@ import rasterio
 from openeo.util import ensure_dir
 from openeo_driver.errors import OpenEOApiException
 from openeo_driver.testing import DictSubSet
+from openeo_driver.workspace import DiskWorkspace
 from shapely.geometry import Point, Polygon, shape
 import xarray
 
@@ -24,6 +25,8 @@ from openeo_driver.dry_run import DryRunDataTracer
 from openeo_driver.testing import ephemeral_fileserver
 from openeo_driver.util.geometry import validate_geojson_coordinates
 from openeo_driver.utils import EvalEnv
+
+from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.deploy.batch_job import run_job
 from openeogeotrellis.deploy.batch_job_metadata import extract_result_metadata
 from .data import get_test_data_file, TEST_DATA_ROOT
@@ -937,9 +940,10 @@ def test_export_workspace(tmp_path):
 
     process = {"process_graph": process_graph}
 
-    # TODO: avoid depending on `/tmp` for test output, make sure to leverage `tmp_path` fixture
-    workspace_dir = Path(f"/tmp/{merge}")
-    workspace_dir.mkdir()
+    # TODO: avoid depending on `/tmp` for test output, make sure to leverage `tmp_path` fixture (https://github.com/Open-EO/openeo-python-driver/issues/265)
+    workspace: DiskWorkspace = get_backend_config().workspaces[workspace_id]
+    workspace_dir = Path(f"{workspace.root_directory}/{merge}")
+
     try:
         run_job(
             process,
@@ -953,12 +957,9 @@ def test_export_workspace(tmp_path):
         output_file = tmp_path / "openEO_2021-01-05Z.tif"
         assert output_file.exists()
 
-        workspace_files = os.listdir(workspace_dir)
-        assert set(workspace_files) == {
-            "collection.json",
-            "openEO_2021-01-05Z.tif",
-            "openEO_2021-01-05Z.tif.json"
-        }
+        workspace_files = {"collection.json", "openEO_2021-01-05Z.tif", "openEO_2021-01-05Z.tif.json"}
+
+        assert set(os.listdir(workspace_dir)) == workspace_files
 
         stac_collection = pystac.Collection.from_file(str(workspace_dir / "collection.json"))
         stac_collection.validate_all()

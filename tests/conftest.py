@@ -282,7 +282,7 @@ def mock_s3_resource(aws_credentials):
 @pytest.fixture(scope="function")
 def mock_s3_client(aws_credentials):
     with moto.mock_aws():
-        yield boto3.s3_client("s3", region_name=TEST_AWS_REGION_NAME)
+        yield boto3.client("s3", region_name=TEST_AWS_REGION_NAME)
 
 
 @pytest.fixture(scope="function")
