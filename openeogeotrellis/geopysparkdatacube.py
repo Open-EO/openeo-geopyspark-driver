@@ -14,6 +14,7 @@ from typing import Dict, List, Union, Tuple, Iterable, Callable, Optional
 import geopyspark as gps
 import numpy as np
 import pandas as pd
+import geopandas as gpd
 import pyproj
 import pytz
 import xarray as xr
@@ -1465,6 +1466,66 @@ class GeopysparkDataCube(DriverDataCube):
 
         return result
 
+    @staticmethod
+    def _parse_raster_to_vector_geojson(filename) -> DriverVectorCube:
+        with open(filename, "r") as f:
+            geojson = json.load(f)
+        # Time and bands are OrderedSets via dictionary keys.
+        dim_g = DriverVectorCube.DIM_GEOMETRY
+        dim_t = DriverVectorCube.DIM_TIME
+        dim_b = DriverVectorCube.DIM_BANDS
+        coords = {dim_g: [], dim_t: {}, dim_b: {}}
+        dims = (dim_g, dim_t, dim_b)
+
+        def id_to_date_band(id: str):
+            split = id.split("_")
+            date = None
+            if len(split) == 3:
+                date = split.pop(0)
+                date = pd.to_datetime(date).tz_localize("UTC").tz_convert("UTC").strftime("%Y-%m-%dT%H:%M:%SZ")
+            band = split[0]
+            return date, band
+
+        # Calculate the coordinates.
+        features = geojson["features"]
+        feature_key_values = []
+        for feature in features:
+            # feature["id"] is for example: "20171025_band0_0"
+            date, band = id_to_date_band(feature["id"])
+            if date:
+                coords[dim_t][date] = None
+            coords[dim_b][band] = None
+            value = float(feature["properties"]["value"])
+            feature_key_values.append((date, band, value))
+
+        geometries = gpd.GeoDataFrame.from_features(geojson["features"]).drop(columns=["value"])
+        coords[dim_g] = geometries.geometry.index.to_list()
+        coords[dim_t] = list(coords[dim_t].keys())
+        coords[dim_b] = list(coords[dim_b].keys())
+
+        if len(coords[dim_t]) == 0:
+            del coords[dim_t]
+            values = np.empty((len(geometries), len(coords[dim_b])))
+            values.fill(np.nan)
+            for geom_index, key_value in enumerate(feature_key_values):
+                _, band, value = key_value
+                band_index = coords[dim_b].index(band)
+                values[geom_index, band_index] = value
+        else:
+            values = np.empty((len(geometries), len(coords[dim_t]), len(coords[dim_b])))
+            values.fill(np.nan)
+            for geom_index, key_value in enumerate(feature_key_values):
+                date, band, value = key_value
+                date_index = coords[dim_t].index(date)
+                band_index = coords[dim_b].index(band)
+                values[geom_index, date_index, band_index] = value
+
+        # TODO: There is no guarantee that the bands are in the correct order because we load from geojson.
+        # TODO: What to do when certain dates in rastercube have no vector results? Number of dates will differ.
+        cube = xr.DataArray(values, dims = dims, coords = coords)
+        cube = cube.sortby(dim_t)
+        return DriverVectorCube(geometries, cube)
+
     def raster_to_vector(self):
         """
         Outputs polygons, where polygons are formed from homogeneous zones of four-connected neighbors
@@ -1472,9 +1533,8 @@ class GeopysparkDataCube(DriverDataCube):
         """
         max_level = self.get_max_level()
         with tempfile.NamedTemporaryFile(suffix=".json.tmp",delete=False) as temp_file:
-            gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses().vectorize(max_level.srdd.rdd(),temp_file.name)
-            #postpone turning into an actual collection upon usage
-            return DelayedVector(temp_file.name).to_driver_vector_cube()
+            gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses().vectorize(max_level.srdd.rdd(), temp_file.name)
+            return GeopysparkDataCube._parse_raster_to_vector_geojson(temp_file.name)
 
     def get_max_level(self) -> TiledRasterLayer:
         return self.pyramid.levels[self.pyramid.max_zoom]
