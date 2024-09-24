@@ -2,7 +2,7 @@ from openeo_driver.backend import LoadParameters
 from openeo_driver.utils import EvalEnv
 
 from openeogeotrellis import datacube_parameters
-from openeogeotrellis.constants import EvalEnvKeys
+from openeogeotrellis.constants import EVAL_ENV_KEY
 from openeogeotrellis.utils import get_jvm
 
 
@@ -14,7 +14,7 @@ def test_data_cube_params():
         global_extent={"east": 2.0, "west": 1.0, "south": 2.0, "north": 3.0, "crs": "EPSG:4326"},
         featureflags={"tilesize": 128},
     )
-    env = EvalEnv({EvalEnvKeys.REQUIRE_BOUNDS: True})
+    env = EvalEnv({EVAL_ENV_KEY.REQUIRE_BOUNDS: True})
 
     cube_params, level = datacube_parameters.create(load_params, env, get_jvm())
     assert str(cube_params) == "DataCubeParameters(128, {}, ZoomedLayoutScheme, ByDay, 6, None, Average, 0.0, 0.0)"

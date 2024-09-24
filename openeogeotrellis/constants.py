@@ -1,4 +1,4 @@
-class EvalEnvKeys:
+class EVAL_ENV_KEY:
     VAULT_TOKEN = "vault_token"
     SENTINEL_HUB_CLIENT_ALIAS = "sentinel_hub_client_alias"
     MAX_SOFT_ERRORS_RATIO = "max_soft_errors_ratio"

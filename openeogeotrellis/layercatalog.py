@@ -40,7 +40,7 @@ from openeogeotrellis.collections import sentinel3
 from openeogeotrellis.collections.testing import load_test_collection
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
-from openeogeotrellis.constants import EvalEnvKeys
+from openeogeotrellis.constants import EVAL_ENV_KEY
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
 from openeogeotrellis.load_stac import load_stac
 from openeogeotrellis.opensearch import OpenSearch, OpenSearchOscars, OpenSearchCreodias, OpenSearchCdse
@@ -58,16 +58,16 @@ from openeogeotrellis.utils import (
 from openeogeotrellis.vault import Vault
 
 WHITELIST = [
-    EvalEnvKeys.VAULT_TOKEN,
-    EvalEnvKeys.SENTINEL_HUB_CLIENT_ALIAS,
-    EvalEnvKeys.MAX_SOFT_ERRORS_RATIO,
-    EvalEnvKeys.DEPENDENCIES,
-    EvalEnvKeys.PYRAMID_LEVELS,
-    EvalEnvKeys.REQUIRE_BOUNDS,
-    EvalEnvKeys.CORRELATION_ID,
-    EvalEnvKeys.USER,
-    EvalEnvKeys.ALLOW_EMPTY_CUBES,
-    EvalEnvKeys.DO_EXTENT_CHECK,
+    EVAL_ENV_KEY.VAULT_TOKEN,
+    EVAL_ENV_KEY.SENTINEL_HUB_CLIENT_ALIAS,
+    EVAL_ENV_KEY.MAX_SOFT_ERRORS_RATIO,
+    EVAL_ENV_KEY.DEPENDENCIES,
+    EVAL_ENV_KEY.PYRAMID_LEVELS,
+    EVAL_ENV_KEY.REQUIRE_BOUNDS,
+    EVAL_ENV_KEY.CORRELATION_ID,
+    EVAL_ENV_KEY.USER,
+    EVAL_ENV_KEY.ALLOW_EMPTY_CUBES,
+    EVAL_ENV_KEY.DO_EXTENT_CHECK,
 ]
 LARGE_LAYER_THRESHOLD_IN_PIXELS = pow(10, 11)
 
@@ -89,7 +89,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
     @TimingLogger(title="load_collection", logger=logger)
     def load_collection(self, collection_id: str, load_params: LoadParameters, env: EvalEnv) -> GeopysparkDataCube:
 
-        if smart_bool(env.get(EvalEnvKeys.DO_EXTENT_CHECK, True)):
+        if smart_bool(env.get(EVAL_ENV_KEY.DO_EXTENT_CHECK, True)):
             env_validate = env.push({
                 "allow_check_missing_products": False,
             })
@@ -130,7 +130,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
         spatial_bounds_present = all(b is not None for b in [west, south, east, north])
         if not spatial_bounds_present:
-            if env.get(EvalEnvKeys.REQUIRE_BOUNDS, False):
+            if env.get(EVAL_ENV_KEY.REQUIRE_BOUNDS, False):
                 raise OpenEOApiException(code="MissingSpatialFilter", status_code=400,
                                          message="No spatial filter could be derived to load this collection: {c} . Please specify a bounding box, or polygons to define your area of interest.".format(
                                              c=collection_id))
@@ -196,7 +196,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
         metadata = metadata.filter_temporal(from_date, to_date)
 
-        correlation_id = env.get(EvalEnvKeys.CORRELATION_ID, "")
+        correlation_id = env.get(EVAL_ENV_KEY.CORRELATION_ID, "")
         logger.info("Correlation ID is '{cid}'".format(cid=correlation_id))
 
         logger.info("Detected process types:" + str(load_params.process_types))
@@ -261,7 +261,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         opensearch_endpoint = layer_source_info.get(
             "opensearch_endpoint", get_backend_config().default_opensearch_endpoint
         )
-        max_soft_errors_ratio = env.get(EvalEnvKeys.MAX_SOFT_ERRORS_RATIO, 0.0)
+        max_soft_errors_ratio = env.get(EVAL_ENV_KEY.MAX_SOFT_ERRORS_RATIO, 0.0)
         no_data_value = metadata.get_nodata_value(load_params.bands, 0.0)
         if feature_flags.get("no_resample_on_read", False):
             logger.info("Setting NoResampleOnRead to true")
@@ -397,7 +397,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             # TODO: move the metadata manipulation out of this function and get rid of the nonlocal?
             nonlocal metadata
 
-            dependencies = env.get(EvalEnvKeys.DEPENDENCIES, [])
+            dependencies = env.get(EVAL_ENV_KEY.DEPENDENCIES, [])
             sar_backscatter_arguments: Optional[SarBackscatterArgs] = (
                 (load_params.sar_backscatter or SarBackscatterArgs()) if sar_backscatter_compatible
                 else None
@@ -504,7 +504,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 cell_size = jvm.geotrellis.raster.CellSize(cell_width, cell_height)
 
                 if ConfigParams().is_kube_deploy:
-                    access_token = env[EvalEnvKeys.USER].internal_auth_data["access_token"]
+                    access_token = env[EVAL_ENV_KEY.USER].internal_auth_data["access_token"]
 
                     pyramid_factory = jvm.org.openeo.geotrellissentinelhub.PyramidFactory.withFixedAccessToken(
                         endpoint,
@@ -519,14 +519,14 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                         no_data_value,
                     )
                 else:
-                    sentinel_hub_client_alias = env.get(EvalEnvKeys.SENTINEL_HUB_CLIENT_ALIAS, "default")
+                    sentinel_hub_client_alias = env.get(EVAL_ENV_KEY.SENTINEL_HUB_CLIENT_ALIAS, "default")
                     logger.debug(f"Sentinel Hub client alias: {sentinel_hub_client_alias}")
 
                     if sentinel_hub_client_alias == 'default':
                         sentinel_hub_client_id = self._default_sentinel_hub_client_id
                         sentinel_hub_client_secret = self._default_sentinel_hub_client_secret
                     else:
-                        vault_token = env[EvalEnvKeys.VAULT_TOKEN]
+                        vault_token = env[EVAL_ENV_KEY.VAULT_TOKEN]
                         sentinel_hub_client_id, sentinel_hub_client_secret = (
                             self._vault.get_sentinel_hub_credentials(sentinel_hub_client_alias, vault_token))
 

@@ -5,7 +5,7 @@ from openeo_driver.utils import EvalEnv
 from py4j.java_gateway import JVMView
 
 from openeogeotrellis.config import get_backend_config
-from openeogeotrellis.constants import EvalEnvKeys
+from openeogeotrellis.constants import EVAL_ENV_KEY
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 
 logger = logging.getLogger(__name__)
@@ -33,7 +33,7 @@ def create(load_params: LoadParameters, env: EvalEnv, jvm: JVMView):
     datacubeParams.setPartitionerTemporalResolution(temporalResolution)
 
     datacubeParams.setAllowEmptyCube(
-        feature_flags.get("allow_empty_cube", env.get(EvalEnvKeys.ALLOW_EMPTY_CUBES, False))
+        feature_flags.get("allow_empty_cube", env.get(EVAL_ENV_KEY.ALLOW_EMPTY_CUBES, False))
     )
 
     globalbounds = feature_flags.get("global_bounds", True)
@@ -42,7 +42,7 @@ def create(load_params: LoadParameters, env: EvalEnv, jvm: JVMView):
         datacubeParams.setGlobalExtent(
             float(ge["west"]), float(ge["south"]), float(ge["east"]), float(ge["north"]), ge["crs"]
         )
-    single_level = env.get(EvalEnvKeys.PYRAMID_LEVELS, "all") != "all"
+    single_level = env.get(EVAL_ENV_KEY.PYRAMID_LEVELS, "all") != "all"
     if single_level:
         getattr(datacubeParams, "layoutScheme_$eq")("FloatingLayoutScheme")
 

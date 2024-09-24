@@ -32,7 +32,7 @@ from openeogeotrellis.backend import JOB_METADATA_FILENAME, GeoPySparkBackendImp
 from openeogeotrellis.collect_unique_process_ids_visitor import CollectUniqueProcessIdsVisitor
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
-from openeogeotrellis.constants import EvalEnvKeys
+from openeogeotrellis.constants import EVAL_ENV_KEY
 from openeogeotrellis.deploy import load_custom_processes
 from openeogeotrellis.deploy.batch_job_metadata import _assemble_result_metadata, _transform_stac_metadata, \
     _convert_job_metadatafile_outputs_to_s3_urls, _get_tracker_metadata
@@ -274,8 +274,8 @@ def run_job(
         job_option_whitelist = [
             "data_mask_optimization",
             "node_caching",
-            EvalEnvKeys.ALLOW_EMPTY_CUBES,
-            EvalEnvKeys.DO_EXTENT_CHECK,
+            EVAL_ENV_KEY.ALLOW_EMPTY_CUBES,
+            EVAL_ENV_KEY.DO_EXTENT_CHECK,
         ]
         env_values.update({k: job_options[k] for k in job_option_whitelist if k in job_options})
         env = EvalEnv(env_values)
