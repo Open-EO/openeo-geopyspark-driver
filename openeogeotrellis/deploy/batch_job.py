@@ -32,11 +32,11 @@ from openeogeotrellis.backend import JOB_METADATA_FILENAME, GeoPySparkBackendImp
 from openeogeotrellis.collect_unique_process_ids_visitor import CollectUniqueProcessIdsVisitor
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
+from openeogeotrellis.constants import EVAL_ENV_KEY
 from openeogeotrellis.deploy import load_custom_processes
 from openeogeotrellis.deploy.batch_job_metadata import _assemble_result_metadata, _transform_stac_metadata, \
     _convert_job_metadatafile_outputs_to_s3_urls, _get_tracker_metadata
 from openeogeotrellis.integrations.hadoop import setup_kerberos_auth
-from openeogeotrellis.layercatalog import DO_EXTENT_CHECK
 from openeogeotrellis.udf import (collect_python_udf_dependencies, install_python_udf_dependencies,
                                   UDF_PYTHON_DEPENDENCIES_FOLDER_NAME, )
 from openeogeotrellis.utils import (describe_path, log_memory, get_jvm, add_permissions, json_default, )
@@ -274,8 +274,8 @@ def run_job(
         job_option_whitelist = [
             "data_mask_optimization",
             "node_caching",
-            "allow_empty_cubes",
-            DO_EXTENT_CHECK,
+            EVAL_ENV_KEY.ALLOW_EMPTY_CUBES,
+            EVAL_ENV_KEY.DO_EXTENT_CHECK,
         ]
         env_values.update({k: job_options[k] for k in job_option_whitelist if k in job_options})
         env = EvalEnv(env_values)
@@ -532,10 +532,7 @@ def start_main():
         error_summary = GeoPySparkBackendImplementation.summarize_exception_static(e)
         fmt = Format(max_value_str_len=1000)
         logger.exception("OpenEO batch job failed: " + error_summary.summary)
-        logger.error(
-            "Batch job error stack trace with locals", 
-            extra={"exc_info_with_locals": format_exc(e, fmt = fmt)}
-        )
+        logger.error("Batch job error stack trace with locals", extra={"exc_info_with_locals": format_exc(e, fmt=fmt)})
         raise
 
 

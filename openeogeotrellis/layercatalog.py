@@ -33,13 +33,14 @@ from openeo_driver.utils import read_json, EvalEnv, WhiteListEvalEnv, smart_bool
 from shapely.geometry import box
 from shapely.geometry.base import BaseGeometry
 
-from openeogeotrellis import sentinel_hub
+from openeogeotrellis import sentinel_hub, datacube_parameters
 from openeogeotrellis.catalogs.creo import CreoCatalogClient
 from openeogeotrellis.collections.s1backscatter_orfeo import get_implementation as get_s1_backscatter_orfeo
 from openeogeotrellis.collections import sentinel3
 from openeogeotrellis.collections.testing import load_test_collection
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
+from openeogeotrellis.constants import EVAL_ENV_KEY
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
 from openeogeotrellis.load_stac import load_stac
 from openeogeotrellis.opensearch import OpenSearch, OpenSearchOscars, OpenSearchCreodias, OpenSearchCdse
@@ -56,27 +57,17 @@ from openeogeotrellis.utils import (
 )
 from openeogeotrellis.vault import Vault
 
-VAULT_TOKEN = 'vault_token'
-SENTINEL_HUB_CLIENT_ALIAS = 'sentinel_hub_client_alias'
-MAX_SOFT_ERRORS_RATIO = 'max_soft_errors_ratio'
-DEPENDENCIES = 'dependencies'
-PYRAMID_LEVELS = 'pyramid_levels'
-REQUIRE_BOUNDS = 'require_bounds'
-CORRELATION_ID = 'correlation_id'
-USER = 'user'
-ALLOW_EMPTY_CUBES = "allow_empty_cubes"
-DO_EXTENT_CHECK = "do_extent_check"
 WHITELIST = [
-    VAULT_TOKEN,
-    SENTINEL_HUB_CLIENT_ALIAS,
-    MAX_SOFT_ERRORS_RATIO,
-    DEPENDENCIES,
-    PYRAMID_LEVELS,
-    REQUIRE_BOUNDS,
-    CORRELATION_ID,
-    USER,
-    ALLOW_EMPTY_CUBES,
-    DO_EXTENT_CHECK,
+    EVAL_ENV_KEY.VAULT_TOKEN,
+    EVAL_ENV_KEY.SENTINEL_HUB_CLIENT_ALIAS,
+    EVAL_ENV_KEY.MAX_SOFT_ERRORS_RATIO,
+    EVAL_ENV_KEY.DEPENDENCIES,
+    EVAL_ENV_KEY.PYRAMID_LEVELS,
+    EVAL_ENV_KEY.REQUIRE_BOUNDS,
+    EVAL_ENV_KEY.CORRELATION_ID,
+    EVAL_ENV_KEY.USER,
+    EVAL_ENV_KEY.ALLOW_EMPTY_CUBES,
+    EVAL_ENV_KEY.DO_EXTENT_CHECK,
 ]
 LARGE_LAYER_THRESHOLD_IN_PIXELS = pow(10, 11)
 
@@ -95,66 +86,10 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         self._default_sentinel_hub_client_id = client_id
         self._default_sentinel_hub_client_secret = client_secret
 
-    def create_datacube_parameters(self, load_params, env):
-        jvm = get_jvm()
-        feature_flags = load_params.get("featureflags", {})
-        tilesize = feature_flags.get("tilesize", 256)
-        default_temporal_resolution = "ByDay"
-        default_indexReduction = 6
-        #if len(load_params.process_types) == 1 and ProcessType.GLOBAL_TIME in load_params.process_types:
-            # for pure timeseries processing, adjust partitioning strategy
-            #default_temporal_resolution = "None"
-            #default_indexReduction = 0
-        indexReduction = feature_flags.get("indexreduction", default_indexReduction)
-        temporalResolution = feature_flags.get("temporalresolution", default_temporal_resolution)
-        datacubeParams = jvm.org.openeo.geotrelliscommon.DataCubeParameters()
-        # WTF simple assignment to a var in a scala class doesn't work??
-        getattr(datacubeParams, "tileSize_$eq")(tilesize)
-        getattr(datacubeParams, "maskingStrategyParameters_$eq")(load_params.custom_mask)
-        logger.debug(f"Using load_params.data_mask {load_params.data_mask!r}")
-        if isinstance(load_params.data_mask, GeopysparkDataCube):
-            datacubeParams.setMaskingCube(load_params.data_mask.get_max_level().srdd.rdd())
-        datacubeParams.setPartitionerIndexReduction(indexReduction)
-        datacubeParams.setPartitionerTemporalResolution(temporalResolution)
-
-        datacubeParams.setAllowEmptyCube(feature_flags.get("allow_empty_cube", env.get(ALLOW_EMPTY_CUBES, False)))
-
-        globalbounds = feature_flags.get("global_bounds", True)
-        if globalbounds and load_params.global_extent is not None and len(load_params.global_extent) > 0:
-            ge = load_params.global_extent
-            datacubeParams.setGlobalExtent(float(ge["west"]), float(ge["south"]), float(ge["east"]), float(ge["north"]),
-                                           ge["crs"])
-        single_level = env.get(PYRAMID_LEVELS, 'all') != 'all'
-        if single_level:
-            getattr(datacubeParams, "layoutScheme_$eq")("FloatingLayoutScheme")
-
-        if load_params.pixel_buffer is not None:
-            datacubeParams.setPixelBuffer(load_params.pixel_buffer[0],load_params.pixel_buffer[1])
-
-        load_per_product = feature_flags.get("load_per_product",None)
-        if load_per_product is not None:
-            datacubeParams.setLoadPerProduct(load_per_product)
-        elif(get_backend_config().default_reading_strategy == "load_per_product"):
-            datacubeParams.setLoadPerProduct(True)
-
-        if (get_backend_config().default_tile_size is not None):
-            if "tilesize" not in feature_flags:
-                getattr(datacubeParams, "tileSize_$eq")(get_backend_config().default_tile_size)
-
-
-        datacubeParams.setResampleMethod(GeopysparkDataCube._get_resample_method(load_params.resample_method))
-
-        if load_params.filter_temporal_labels is not None:
-            from openeogeotrellis.backend import GeoPySparkBackendImplementation
-            labels_filter = GeoPySparkBackendImplementation.accept_process_graph(load_params.filter_temporal_labels["process_graph"])
-            datacubeParams.setTimeDimensionFilter(labels_filter.builder)
-        return datacubeParams, single_level
-
-
     @TimingLogger(title="load_collection", logger=logger)
     def load_collection(self, collection_id: str, load_params: LoadParameters, env: EvalEnv) -> GeopysparkDataCube:
 
-        if smart_bool(env.get(DO_EXTENT_CHECK, True)):
+        if smart_bool(env.get(EVAL_ENV_KEY.DO_EXTENT_CHECK, True)):
             env_validate = env.push({
                 "allow_check_missing_products": False,
             })
@@ -195,7 +130,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
         spatial_bounds_present = all(b is not None for b in [west, south, east, north])
         if not spatial_bounds_present:
-            if env.get(REQUIRE_BOUNDS, False):
+            if env.get(EVAL_ENV_KEY.REQUIRE_BOUNDS, False):
                 raise OpenEOApiException(code="MissingSpatialFilter", status_code=400,
                                          message="No spatial filter could be derived to load this collection: {c} . Please specify a bounding box, or polygons to define your area of interest.".format(
                                              c=collection_id))
@@ -261,8 +196,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
         metadata = metadata.filter_temporal(from_date, to_date)
 
-
-        correlation_id = env.get(CORRELATION_ID, '')
+        correlation_id = env.get(EVAL_ENV_KEY.CORRELATION_ID, "")
         logger.info("Correlation ID is '{cid}'".format(cid=correlation_id))
 
         logger.info("Detected process types:" + str(load_params.process_types))
@@ -323,11 +257,11 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         logger.debug(projected_polygons_native_crs.extent())
         logger.debug(projected_polygons_native_crs.polygons()[0].toString())
 
-        datacubeParams, single_level = self.create_datacube_parameters(load_params, env)
+        datacubeParams, single_level = datacube_parameters.create(load_params, env, jvm)
         opensearch_endpoint = layer_source_info.get(
             "opensearch_endpoint", get_backend_config().default_opensearch_endpoint
         )
-        max_soft_errors_ratio = env.get(MAX_SOFT_ERRORS_RATIO, 0.0)
+        max_soft_errors_ratio = env.get(EVAL_ENV_KEY.MAX_SOFT_ERRORS_RATIO, 0.0)
         no_data_value = metadata.get_nodata_value(load_params.bands, 0.0)
         if feature_flags.get("no_resample_on_read", False):
             logger.info("Setting NoResampleOnRead to true")
@@ -463,7 +397,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             # TODO: move the metadata manipulation out of this function and get rid of the nonlocal?
             nonlocal metadata
 
-            dependencies = env.get(DEPENDENCIES, [])
+            dependencies = env.get(EVAL_ENV_KEY.DEPENDENCIES, [])
             sar_backscatter_arguments: Optional[SarBackscatterArgs] = (
                 (load_params.sar_backscatter or SarBackscatterArgs()) if sar_backscatter_compatible
                 else None
@@ -570,7 +504,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 cell_size = jvm.geotrellis.raster.CellSize(cell_width, cell_height)
 
                 if ConfigParams().is_kube_deploy:
-                    access_token = env[USER].internal_auth_data["access_token"]
+                    access_token = env[EVAL_ENV_KEY.USER].internal_auth_data["access_token"]
 
                     pyramid_factory = jvm.org.openeo.geotrellissentinelhub.PyramidFactory.withFixedAccessToken(
                         endpoint,
@@ -585,14 +519,14 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                         no_data_value,
                     )
                 else:
-                    sentinel_hub_client_alias = env.get(SENTINEL_HUB_CLIENT_ALIAS, 'default')
+                    sentinel_hub_client_alias = env.get(EVAL_ENV_KEY.SENTINEL_HUB_CLIENT_ALIAS, "default")
                     logger.debug(f"Sentinel Hub client alias: {sentinel_hub_client_alias}")
 
                     if sentinel_hub_client_alias == 'default':
                         sentinel_hub_client_id = self._default_sentinel_hub_client_id
                         sentinel_hub_client_secret = self._default_sentinel_hub_client_secret
                     else:
-                        vault_token = env[VAULT_TOKEN]
+                        vault_token = env[EVAL_ENV_KEY.VAULT_TOKEN]
                         sentinel_hub_client_id, sentinel_hub_client_secret = (
                             self._vault.get_sentinel_hub_credentials(sentinel_hub_client_alias, vault_token))
 

@@ -465,18 +465,6 @@ def test_driver_vector_cube_supports_load_collection_caching(jvm_mock, catalog):
         assert n_load_collection_calls == 2
 
 
-def test_data_cube_params(catalog):
-    load_params = LoadParameters(bands=['TOC-B03_10M'], resample_method="average", target_crs="EPSG:4326", global_extent = {"east":2.0,"west":1.0,"south":2.0,"north":3.0, "crs":"EPSG:4326"}, featureflags={"tilesize":128})
-    env = EvalEnv({'require_bounds': True})
-
-    cube_params, level = catalog.create_datacube_parameters(load_params, env)
-    assert (
-        str(cube_params)
-        == "DataCubeParameters(128, {}, ZoomedLayoutScheme, ByDay, 6, None, Average, 0.0, 0.0)"
-    )
-    assert "Average" == str(cube_params.resampleMethod())
-
-
 @pytest.mark.parametrize(["bands", "expected_bands"], [
     ([], ["SPROD", "TPROD", "QFLAG"]),  # ordered as specified in layercatalog.json
     (["TPROD", "QFLAG", "SPROD"], ["TPROD", "QFLAG", "SPROD"])  # override order

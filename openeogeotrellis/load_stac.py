@@ -27,7 +27,9 @@ from pathlib import Path
 from pystac import STACObject
 from shapely.geometry import Polygon, shape
 
+from openeogeotrellis import datacube_parameters
 from openeogeotrellis.config import get_backend_config
+from openeogeotrellis.constants import EVAL_ENV_KEY
 from openeogeotrellis.geopysparkcubemetadata import GeopysparkCubeMetadata
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.utils import normalize_temporal_extent, get_jvm, to_projected_polygons
@@ -446,7 +448,7 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
     if netcdf_with_time_dimension:
         pyramid_factory = jvm.org.openeo.geotrellis.layers.NetCDFCollection
     else:
-        max_soft_errors_ratio = env.get("max_soft_errors_ratio", 0.0)
+        max_soft_errors_ratio = env.get(EVAL_ENV_KEY.MAX_SOFT_ERRORS_RATIO, 0.0)
 
         pyramid_factory = jvm.org.openeo.geotrellis.file.PyramidFactory(
             opensearch_client,
@@ -477,16 +479,15 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
     ).reproject(projected_polygons, target_epsg)
 
     metadata_properties = {}
-    correlation_id = env.get('correlation_id', '')
+    correlation_id = env.get(EVAL_ENV_KEY.CORRELATION_ID, "")
 
-    data_cube_parameters = jvm.org.openeo.geotrelliscommon.DataCubeParameters()
+    data_cube_parameters, single_level = datacube_parameters.create(load_params, env, jvm)
     getattr(data_cube_parameters, "layoutScheme_$eq")("FloatingLayoutScheme")
 
     feature_flags = load_params.get("featureflags", {})
     tilesize = feature_flags.get("tilesize", None)
     if tilesize:
         getattr(data_cube_parameters, "tileSize_$eq")(tilesize)
-    single_level = env.get('pyramid_levels', 'all') != 'all'
 
     if netcdf_with_time_dimension:
         pyramid = pyramid_factory.datacube_seq(projected_polygons, from_date.isoformat(), to_date.isoformat(),
