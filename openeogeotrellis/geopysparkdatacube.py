@@ -2015,7 +2015,7 @@ class GeopysparkDataCube(DriverDataCube):
                 return return_netcdf_assets(asset_paths, bands, nodata)
             else:
                 originalName = pathlib.Path(filename)
-                filename_tmp = "openEO.nc" if originalName.name == "out" else originalName.name
+                filename_tmp = format_options.get("filename_prefix", "openEO") + ".nc" if originalName.name == "out" else originalName.name
                 if not stitch:
                     filename = save_directory + "/" + filename_tmp
                     if strict_cropping:

@@ -1910,7 +1910,9 @@ class GpsBatchJobs(backend.BatchJobs):
             spark_app_id = k8s_job_name()
 
             # allow to override the image name via job options, other option would be to deduce it from the udf runtimes being used
-            image_name = job_options.get("image-name",os.environ.get("IMAGE_NAME"))
+            running_image = api_instance_core.read_namespaced_pod(name=os.environ.get("POD_NAME"), namespace=os.environ.get("POD_NAMESPACE")).spec.containers[0].image
+
+            image_name = job_options.get("image-name", running_image)
 
             sparkapplication_dict = k8s_render_manifest_template(
                 "sparkapplication.yaml.j2",
