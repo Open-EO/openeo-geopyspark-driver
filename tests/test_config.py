@@ -4,6 +4,7 @@ from pathlib import Path
 import attrs
 import pytest
 
+from openeo_driver.config.config import check_config_definition
 from openeogeotrellis.config import (
     GpsBackendConfig,
     get_backend_config,
@@ -35,6 +36,9 @@ def get_config_file(
 
 
 class TestGpsBackendConfig:
+    def test_check_config_definition(self):
+        check_config_definition(GpsBackendConfig)
+
     def test_all_defaults(self):
         """Test that config can be created without arguments: everything has default value"""
         config = GpsBackendConfig()
