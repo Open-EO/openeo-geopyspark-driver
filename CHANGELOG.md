@@ -19,6 +19,7 @@ without compromising stable operations.
 - filter_labels now also supported for collections that use sar_backscatter and use the internal Orfeo toolbox based method to compute backscatter on the fly. For example: SENTINEL1_GRD ([Open-EO/openeo-geotrellis-extensions#320](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/320))
 - support mask assets in `load_stac` ([#874](https://github.com/Open-EO/openeo-geopyspark-driver/issues/874))
 - align `DataCubeParameters` with `load_collection` ([#812](https://github.com/Open-EO/openeo-geopyspark-driver/issues/812))
+- apply/apply_dimension(dimension='bands'): nodata tiles were removed as an optimization, but this could lead to unexpected results depending on subsequent steps. They are now replaced with a memory efficient implementation. ([WorldCereal issue][https://github.com/WorldCereal/worldcereal-classification/issues/141])
 
 ## 0.40.1
 
