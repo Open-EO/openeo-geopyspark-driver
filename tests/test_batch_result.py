@@ -7,6 +7,7 @@ import uuid
 from pathlib import Path
 
 import geopandas as gpd
+from osgeo import gdal
 import pystac
 import pytest
 import rasterio
@@ -26,6 +27,7 @@ from openeo_driver.testing import ephemeral_fileserver
 from openeo_driver.util.geometry import validate_geojson_coordinates
 from openeo_driver.utils import EvalEnv
 
+from openeogeotrellis._version import __version__
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.deploy.batch_job import run_job
 from openeogeotrellis.deploy.batch_job_metadata import extract_result_metadata
@@ -1325,3 +1327,78 @@ def test_load_stac_temporal_extent_in_result_metadata(tmp_path, requests_mock):
     timestamps = gdf["date"].tolist()
     assert len(timestamps) > 0
     assert all(expected_start_datetime <= timestamp <= expected_end_datetime for timestamp in timestamps)
+
+
+def test_geotiff_scale_offset(tmp_path):
+    # TODO: support asset_per_band/other flags?
+    # TODO: test sync requests as well
+
+    tmp_path = Path("/tmp/test_geotiff_scale_offset")  # TODO: remove
+
+    process_graph = {
+        "loadcollection1": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "TestCollection-LonLat4x4",
+                "temporal_extent": ["2021-01-05", "2021-01-06"],
+                "spatial_extent": {"west": 0.0, "south": 50.0, "east": 5.0, "north": 55.0},
+                "bands": ["Flat:2"],
+            },
+        },
+        "saveresult1": {
+            "process_id": "save_result",
+            "arguments": {
+                "data": {"from_node": "loadcollection1"},
+                "format": "GTiff",
+                "options": {
+                    "bands_metadata": {
+                        "Flat:2": {
+                            "SCALE": 1.23,
+                            "OFFSET": 4.56,
+                            "ARBITRARY": "value",
+                        },
+                        # TODO: add more combinations of bands and their metadata incl. non-matching
+                    }
+                },
+            },
+            "result": True,
+        },
+    }
+
+    process = {
+        "process_graph": process_graph,
+        "description": "some description",
+    }
+
+    run_job(
+        process,
+        output_file=tmp_path / "out.tif",
+        metadata_file=tmp_path / "job_metadata.json",
+        api_version="2.0.0",
+        job_dir=tmp_path,
+        dependencies=[],
+    )
+
+    # metadata should be embedded in the tiff, not in a sidecar file
+    aux_files = [tmp_path / aux_file for aux_file in os.listdir(tmp_path) if aux_file.endswith(".tif.aux.xml")]
+    for aux_file in aux_files:
+        aux_file.unlink()
+
+    output_tiffs = [tmp_path / tiff_file for tiff_file in os.listdir(tmp_path) if tiff_file.endswith(".tif")]
+    assert len(output_tiffs) == 1
+    output_tiff = output_tiffs[0]
+
+    raster = gdal.Open(str(output_tiff))
+    head_metadata = raster.GetMetadata()
+    assert head_metadata["AREA_OR_POINT"] == "Area"
+    assert head_metadata["PROCESSING_SOFTWARE"] == __version__
+    assert head_metadata["ImageDescription"] == "some description"
+
+    band_count = raster.RasterCount
+    assert band_count == 1
+    band = raster.GetRasterBand(1)
+    assert band.GetDescription() == "Flat:2"
+    assert band.GetScale() == 1.23
+    assert band.GetOffset() == 4.56
+    band_metadata = band.GetMetadata()
+    assert band_metadata["ARBITRARY"] == "value"

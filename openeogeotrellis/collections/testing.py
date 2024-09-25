@@ -48,7 +48,7 @@ def load_test_collection(
     # TODO: support more test collections
     assert collection_id == "TestCollection-LonLat4x4"
     grid_size: float = 1.0
-    tile_size = 4
+    tile_size = 16
 
     # TODO: support other srs'es?
     assert srs == "EPSG:4326"
