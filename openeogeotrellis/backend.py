@@ -2098,6 +2098,12 @@ class GpsBatchJobs(backend.BatchJobs):
                 args.append(get_backend_config().ejr_api or "")
                 args.append(get_backend_config().ejr_backend_id)
                 args.append(os.environ.get("OPENEO_EJR_OIDC_CLIENT_CREDENTIALS", ""))
+                docker_mounts = get_backend_config().batch_docker_mounts
+
+                if user_id in get_backend_config().batch_user_docker_mounts:
+                    docker_mounts = docker_mounts + "," + ",".join(get_backend_config().batch_user_docker_mounts[user_id])
+
+                args.append(docker_mounts)
                 # TODO: this positional `args` handling is getting out of hand, leverage _write_sensitive_values?
 
                 try:

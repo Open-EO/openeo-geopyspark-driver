@@ -205,3 +205,9 @@ class GpsBackendConfig(OpenEoBackendConfig):
     job_dependencies_max_poll_delay_seconds: float = 60 * 60 * 24 * 7  # for a maximum delay of y seconds
 
     udf_dependencies_sleep_after_install: Optional[float] = None
+
+    """
+    Only used by YARN, allows to specify paths to mount in batch job docker containers.
+    """
+    batch_docker_mounts = "/var/lib/sss/pubconf/krb5.include.d:/var/lib/sss/pubconf/krb5.include.d:ro,/var/lib/sss/pipes:/var/lib/sss/pipes:rw,/usr/hdp/current/:/usr/hdp/current/:ro,/etc/hadoop/conf/:/etc/hadoop/conf/:ro,/etc/krb5.conf:/etc/krb5.conf:ro,/data/MTDA:/data/MTDA:ro,/data/projects/OpenEO:/data/projects/OpenEO:rw,/data/MEP:/data/MEP:ro,/data/users:/data/users:rw,/tmp_epod:/tmp_epod:rw,/opt/tensorflow:/opt/tensorflow:ro"
+    batch_user_docker_mounts: dict[str,List[str]] = {}
