@@ -22,7 +22,7 @@ import numpy as np
 import numpy.testing as npt
 import geopandas as gpd
 
-from utils import EvalEnv
+from openeo_driver.utils import EvalEnv
 
 
 @pytest.mark.parametrize(
