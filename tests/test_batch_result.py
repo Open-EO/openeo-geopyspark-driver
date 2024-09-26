@@ -282,7 +282,7 @@ def test_separate_asset_per_band(tmp_path, from_node, expected_names):
                 "process_id": "load_collection",
                 "arguments": {
                     "bands": ["TileRow", "TileCol"],
-                    "id": "TestCollection-LonLat4x4",
+                    "id": "TestCollection-LonLat16x16",
                     "properties": {},
                     "spatial_extent": {"west": 0.0, "south": 50.0, "east": 5.0, "north": 55.0},
                     "temporal_extent": ["2021-06-01", "2021-06-16"],
@@ -868,7 +868,7 @@ def test_multiple_image_collection_results(tmp_path):
             "loadcollection1": {
                 "process_id": "load_collection",
                 "arguments": {
-                    "id": "TestCollection-LonLat4x4",
+                    "id": "TestCollection-LonLat16x16",
                     "spatial_extent": {"west": 0.0, "south": 50.0, "east": 5.0, "north": 55.0},
                     "temporal_extent": ["2021-01-04", "2021-01-06"],
                     "bands": ["Flat:2"]
@@ -916,7 +916,7 @@ def test_export_workspace(tmp_path):
         "loadcollection1": {
             "process_id": "load_collection",
             "arguments": {
-                "id": "TestCollection-LonLat4x4",
+                "id": "TestCollection-LonLat16x16",
                 "temporal_extent": ["2021-01-05", "2021-01-06"],
                 "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 2.0},
                 "bands": ["Flat:2"]
@@ -994,7 +994,7 @@ def test_export_workspace(tmp_path):
 
         # TODO: check other things e.g. proj:
     finally:
-        shutil.rmtree(workspace_dir)
+        shutil.rmtree(workspace_dir, ignore_errors=True)
 
 
 def test_discard_result(tmp_path):
@@ -1037,7 +1037,7 @@ def test_multiple_top_level_side_effects(tmp_path, caplog):
         "loadcollection1": {
             "process_id": "load_collection",
             "arguments": {
-                "id": "TestCollection-LonLat4x4",
+                "id": "TestCollection-LonLat16x16",
                 "spatial_extent": {"west": 5, "south": 50, "east": 5.1, "north": 50.1},
                 "temporal_extent": ["2024-07-11", "2024-07-21"],
                 "bands": ["Flat:1"]
