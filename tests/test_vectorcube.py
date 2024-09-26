@@ -278,7 +278,7 @@ def test_raster_to_vector_and_apply_udf(imagecollection_with_two_bands_and_three
                 "data": {
                     "from_parameter": "data"
                 },
-                "udf": "import openeo\nprint(\"hello\")\ndef apply_vectorcube(geometries, cube: xarray.DataArray, context: dict):\n\tcube_squared = cube ** 2\n\treturn (geometries, cube_squared)",
+                "udf": "import openeo\nimport geopandas as gpd\nprint(\"hello\")\ndef apply_vectorcube(geometries: gpd.GeoDataFrame, cube: xarray.DataArray, context: dict):\n\tcube_squared = cube ** 2\n\treturn (geometries, cube_squared)",
                 "runtime": "Python",
                 "version": "1.0.0",
                 "context": {}
