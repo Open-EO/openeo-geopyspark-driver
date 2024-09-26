@@ -278,7 +278,7 @@ def test_raster_to_vector_and_apply_udf(imagecollection_with_two_bands_and_three
                 "data": {
                     "from_parameter": "data"
                 },
-                "udf": "import openeo\nprint(\"hello\")\ndef apply_vectorcube(geometries, cube: xarray.DataArray):\n\treturn (geometries, cube)",
+                "udf": "import openeo\nprint(\"hello\")\ndef apply_vectorcube(geometries, cube: xarray.DataArray):\n\tcube_squared = cube ** 2\n\treturn (geometries, cube_squared)",
                 "runtime": "Python",
                 "version": "1.0.0",
                 "context": {}
@@ -294,5 +294,5 @@ def test_raster_to_vector_and_apply_udf(imagecollection_with_two_bands_and_three
     assert cube_udf_applied.shape == cube.shape
     assert cube_udf_applied.dims == cube.dims
     assert cube_udf_applied.shape == cube.shape
-    assert np.allclose(cube_udf_applied.values, cube.values, equal_nan=True)
+    assert np.allclose(cube_udf_applied.values, cube.values ** 2, equal_nan=True)
     assert all(vectorcube_udf_applied.get_geometries() == vectorcube.get_geometries())
