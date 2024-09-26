@@ -1,4 +1,4 @@
-import datetime
+import datetime as dt
 from typing import Dict
 
 import numpy as np
@@ -29,7 +29,7 @@ def _stitch(cube: GeopysparkDataCube) -> Tile:
     return cube.pyramid.levels[0].stitch()
 
 
-def _timeseries_stitch(cube: GeopysparkDataCube) -> Dict[datetime.datetime, Tile]:
+def _timeseries_stitch(cube: GeopysparkDataCube) -> Dict[dt.datetime, Tile]:
     """Stitch each instant of the SPACETIME TiledRasterLayer of given cube."""
     layer: TiledRasterLayer = cube.pyramid.levels[0]
     keys = layer.collect_keys()
@@ -47,10 +47,10 @@ def test_reduce_bands(imagecollection_with_two_bands_and_three_dates):
     env = EvalEnv()
     cube = cube.reduce_dimension(dimension="bands", reducer=reducer, env=env)
     ts = _timeseries_stitch(cube)
-    assert len(ts) == 2
-    expected = np.full((1, 8, 8), 3.0)
-    for t, tile in ts.items():
-        assert_array_almost_equal(tile.cells, expected)
+    assert len(ts) == 3
+    assert_array_almost_equal(ts[dt.datetime(2017, 9, 25, 11, 37, 0)].cells, np.full((1, 8, 8), 3.0))
+    assert_array_almost_equal(ts[dt.datetime(2017, 9, 30, 0, 37, 0)].cells, np.full((1, 8, 8), np.nan))
+    assert_array_almost_equal(ts[dt.datetime(2017, 9, 25, 11, 37, 0)].cells, np.full((1, 8, 8), 3.0))
 
 
 @pytest.mark.parametrize("udf", [("udf_noop"), ("udf_noop_jep")])
@@ -65,7 +65,7 @@ def test_reduce_bands_reduce_time(imagecollection_with_two_bands_and_three_dates
     env = EvalEnv()
     cube = cube.reduce_dimension(dimension="bands", reducer=reducer, env=env)
     ts = _timeseries_stitch(cube)
-    assert len(ts) == 2
+    assert len(ts) == 3
     assert set(t.cells.shape for t in ts.values()) == {(1, 8, 8)}
 
     cube = cube.reduce_dimension(dimension='t', reducer=udf, env=env)
@@ -78,7 +78,7 @@ def test_reduce_bands_reduce_time(imagecollection_with_two_bands_and_three_dates
 @pytest.mark.parametrize("udf", [("udf_noop"), ("udf_noop_jep")])
 def test_reduce_bands_udf(imagecollection_with_two_bands_and_three_dates, udf, request):
     udf = request.getfixturevalue(udf)
-    the_date = datetime.datetime(2017, 9, 25, 11, 37)
+    the_date = dt.datetime(2017, 9, 25, 11, 37)
     cube = imagecollection_with_two_bands_and_three_dates
     input = imagecollection_with_two_bands_and_three_dates.pyramid.levels[0].to_spatial_layer(the_date).stitch().cells
     result = imagecollection_with_two_bands_and_three_dates.reduce_dimension(
