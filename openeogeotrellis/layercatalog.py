@@ -689,10 +689,18 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         elif layer_source_type == 'accumulo':
             pyramid = accumulo_pyramid()
         elif layer_source_type == 'testing':
+            import re
+
+            tile_cols, tile_rows = map(int, re.match(r".*?(\d+)x(\d+)", collection_id).groups())
+            assert tile_cols == tile_rows
+
             pyramid = load_test_collection(
-                collection_id=collection_id, collection_metadata=metadata,
-                extent=extent, srs=srs,
-                from_date=from_date, to_date=to_date,
+                tile_size=tile_cols,
+                collection_metadata=metadata,
+                extent=extent,
+                srs=srs,
+                from_date=from_date,
+                to_date=to_date,
                 bands=bands,
                 correlation_id=correlation_id
             )

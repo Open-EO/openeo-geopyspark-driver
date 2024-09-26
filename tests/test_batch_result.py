@@ -1333,13 +1333,13 @@ def test_geotiff_scale_offset(tmp_path):
     # TODO: support asset_per_band/other flags?
     # TODO: test sync requests as well
 
-    tmp_path = Path("/tmp/test_geotiff_scale_offset")  # TODO: remove
+    # tmp_path = Path("/tmp/test_geotiff_scale_offset")  # TODO: remove
 
     process_graph = {
         "loadcollection1": {
             "process_id": "load_collection",
             "arguments": {
-                "id": "TestCollection-LonLat4x4",
+                "id": "TestCollection-LonLat16x16",
                 "temporal_extent": ["2021-01-05", "2021-01-06"],
                 "spatial_extent": {"west": 0.0, "south": 50.0, "east": 5.0, "north": 55.0},
                 "bands": ["Flat:2"],

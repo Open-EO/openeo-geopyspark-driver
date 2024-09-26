@@ -26,16 +26,18 @@ def dates_between(start: datetime, end: datetime) -> List[datetime]:
 
 
 def load_test_collection(
-        collection_id: str,
-        collection_metadata: GeopysparkCubeMetadata,
-        extent, srs: str,
-        from_date: str, to_date: str,
-        bands=None,
-        correlation_id: str = "NA",
+    tile_size: int,
+    collection_metadata: GeopysparkCubeMetadata,
+    extent,
+    srs: str,
+    from_date: str,
+    to_date: str,
+    bands=None,
+    correlation_id: str = "NA",
 ) -> Dict[int, geopyspark.TiledRasterLayer]:
     """
     Load synthetic data as test collection
-    :param collection_id:
+    :param tile_size:
     :param collection_metadata:
     :param extent:
     :param srs:
@@ -45,10 +47,7 @@ def load_test_collection(
     :param correlation_id:
     :return:
     """
-    # TODO: support more test collections
-    assert collection_id == "TestCollection-LonLat4x4"
     grid_size: float = 1.0
-    tile_size = 16
 
     # TODO: support other srs'es?
     assert srs == "EPSG:4326"

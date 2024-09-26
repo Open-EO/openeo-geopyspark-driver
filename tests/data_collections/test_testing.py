@@ -53,7 +53,7 @@ def test_load_test_collection():
 
     extent = get_jvm().geotrellis.vector.Extent(1.0, 2.0, 2.0, 4.0)
     pyramid = load_test_collection(
-        collection_id="TestCollection-LonLat4x4",
+        tile_size=4,
         collection_metadata=collection_metadata,
         extent=extent,
         srs="EPSG:4326",
