@@ -43,6 +43,7 @@ from openeo_driver.utils import EvalEnv, smart_bool
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkcubemetadata import GeopysparkCubeMetadata
+from openeogeotrellis.integrations import tiffset
 from openeogeotrellis.integrations.gdal import GeoTiffMetadata
 from openeogeotrellis.ml.geopysparkmlmodel import GeopysparkMlModel
 from openeogeotrellis.processgraphvisiting import GeotrellisTileProcessGraphVisitor, SingleNodeUDFProcessGraphVisitor
@@ -1957,9 +1958,7 @@ class GeopysparkDataCube(DriverDataCube):
                                         geotiff_metadata.add_band_tag(tag_name, tag_value, band_index, role)
 
                                 for timestamped_path in timestamped_paths:
-                                    # TODO: encapsulate? use gdal instead?
-                                    args = ["tiffset", "-s", "42112", geotiff_metadata.to_xml(), timestamped_path._1()]
-                                    subprocess.check_call(args)
+                                    tiffset.embed_gdal_metadata(geotiff_metadata.to_xml(), timestamped_path._1())
 
                         assets = {}
 
