@@ -22,6 +22,8 @@ import numpy as np
 import numpy.testing as npt
 import geopandas as gpd
 
+from openeo_driver.utils import EvalEnv
+
 
 @pytest.mark.parametrize(
     "file",[
@@ -247,3 +249,50 @@ def test_aggregatespatialresultcsv_vector_to_raster(imagecollection_with_two_ban
         else:
             assert mean_band0[0] == expected_band_values[0] and np.isnan(mean_band0[1])
             assert mean_band1[0] == expected_band_values[1] and np.isnan(mean_band1[1])
+
+
+def test_raster_to_vector_and_apply_udf(imagecollection_with_two_bands_and_three_dates, backend_implementation):
+    vectorcube: DriverVectorCube = imagecollection_with_two_bands_and_three_dates.raster_to_vector()
+    # Check raster_to_vector result.
+    assert isinstance(vectorcube, DriverVectorCube)
+    cube: xarray.DataArray = vectorcube.get_cube()
+    num_geometries = vectorcube.geometry_count()
+    nr_bands, nr_dates = (1, 2)
+    assert cube is not None
+    assert num_geometries > 1
+    assert cube.shape == (num_geometries, nr_dates, nr_bands)
+    assert cube.dims == ('geometry', 't', 'bands')
+    assert vectorcube._geometries.shape == (num_geometries,1)
+
+    date1_values = np.array([[np.nan], [np.nan], [np.nan], [np.nan], [ 1.], [ 1.], [ 1.], [ 1.]])
+    date2_values = np.array([[2.], [2.], [2.], [2.], [np.nan], [np.nan], [np.nan], [np.nan]])
+    assert np.allclose(cube.isel(t=0).values, date1_values, equal_nan=True)
+    assert np.allclose(cube.isel(t=1).values, date2_values, equal_nan=True)
+
+    # Test apply_dimension with UDF on raster_to_vector result.
+    process = {
+        "process_graph": {
+            "process_id": "run_udf",
+            "result": True,
+            "arguments": {
+                "data": {
+                    "from_parameter": "data"
+                },
+                "udf": "import openeo\nimport geopandas as gpd\nprint(\"hello\")\ndef apply_vectorcube(geometries: gpd.GeoDataFrame, cube: xarray.DataArray, context: dict):\n\tcube_squared = cube ** 2\n\treturn (geometries, cube_squared)",
+                "runtime": "Python",
+                "version": "1.0.0",
+                "context": {}
+            }
+        }
+    }
+    env = EvalEnv(values = {
+        "backend_implementation": backend_implementation,
+    })
+    vectorcube_udf_applied = vectorcube.apply_dimension(process=process, dimension=DriverVectorCube.DIM_GEOMETRY, env=env)
+    assert isinstance(vectorcube_udf_applied, DriverVectorCube)
+    cube_udf_applied = vectorcube_udf_applied.get_cube()
+    assert cube_udf_applied.shape == cube.shape
+    assert cube_udf_applied.dims == cube.dims
+    assert cube_udf_applied.shape == cube.shape
+    assert np.allclose(cube_udf_applied.values, cube.values ** 2, equal_nan=True)
+    assert all(vectorcube_udf_applied.get_geometries() == vectorcube.get_geometries())

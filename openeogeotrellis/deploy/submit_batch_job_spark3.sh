@@ -192,6 +192,8 @@ spark-submit \
  --conf spark.yarn.historyServer.address=epod-ha.vgt.vito.be:18481 \
  --conf spark.archives=${archives} \
  --conf spark.extraListeners=org.openeo.sparklisteners.LogErrorSparkListener,org.openeo.sparklisteners.BatchJobProgressListener \
+ --conf spark.sql.adaptive.coalescePartitions.parallelismFirst=false \
+ --conf spark.sql.adaptive.advisoryPartitionSizeInBytes=5242880 \
  --files "${files}" \
  --py-files "${pyfiles}" \
  --conf spark.hadoop.security.authentication=kerberos --conf spark.yarn.maxAppAttempts=1 \
