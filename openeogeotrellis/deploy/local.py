@@ -33,6 +33,7 @@ def setup_local_spark(additional_jar_dirs=[]):
     from geopyspark import geopyspark_conf
     conf = geopyspark_conf(master=master_str, appName="openeo-geotrellis-local", additional_jar_dirs=additional_jar_dirs)
     conf.set('spark.kryoserializer.buffer.max', value='1G')
+    conf.set(key='spark.kryo.registrator', value='geotrellis.spark.store.kryo.KryoRegistrator')
     conf.set('spark.ui.enabled', True)
     # Some options to allow attaching a Java debugger to running Spark driver
     conf.set('spark.driver.extraJavaOptions', '-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5009')
