@@ -1402,7 +1402,7 @@ class GpsBatchJobs(backend.BatchJobs):
             if dependency_job_info:
                 partial_job_status = PARTIAL_JOB_STATUS.for_job_status(dependency_job_info.status)
             else:
-                with requests_session.get(url, timeout=600) as resp:
+                with requests_session.get(url, timeout=20) as resp:
                     resp.raise_for_status()
                     stac_object = resp.json()
                 partial_job_status = stac_object.get('openeo:status')
@@ -2550,7 +2550,7 @@ class GpsBatchJobs(backend.BatchJobs):
                         partial_job_status = PARTIAL_JOB_STATUS.for_job_status(dependency_job_info.status)
                     else:
                         with TimingLogger(f'load_stac({url}): extract "openeo:status"', logger=logger_adapter.debug):
-                            with self._requests_session.get(url, timeout=600) as resp:
+                            with self._requests_session.get(url, timeout=20) as resp:
                                 resp.raise_for_status()
                                 stac_object = resp.json()
                             partial_job_status = stac_object.get('openeo:status')
