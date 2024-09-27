@@ -151,6 +151,10 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
         ]
     }))
 
+    if OPENEO_LOCAL_DEBUGGING:
+        # TODO: Activate default logging for this message
+        print("Spark UI: " + str(context.uiWebUrl))
+
     out.write_line("[conftest.py] Validating the Spark context")
     dummy = context._jvm.org.openeo.geotrellis.OpenEOProcesses()
     #answer = context.parallelize([9, 10, 11, 12]).sum()

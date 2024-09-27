@@ -1,5 +1,6 @@
+# The base image is buiild from vito CI/CD pipeline:
 FROM vito-docker.artifactory.vgt.vito.be/openeo-geotrellis-kube:latest
-# sudo docker build --file Dockerfile -t openeo_docker_local .
+# sudo docker build -t openeo_docker_local .
 
 USER root
 # TODO: fix yum installs
@@ -36,6 +37,8 @@ RUN cd /opt && \
     curl -L -O https://github.com/Open-EO/openeo-geopyspark-driver/archive/refs/heads/master.zip && \
     unzip master.zip && \
     mv openeo-geopyspark-driver-master openeo-geopyspark-driver && \
+    # delete files to be sure they don't get used:
+    rm -f /opt/openeo-geopyspark-driver/tests/test_*.py && rm -rf /opt/openeo-geopyspark-driver/openeogeotrellis && \
     mkdir /opt/openeo-geopyspark-driver/jars/ && \
     ln -s /opt/geotrellis-extensions-static.jar /opt/openeo-geopyspark-driver/jars/ && \
     ln -s /opt/openeo-logging-static.jar /opt/openeo-geopyspark-driver/jars/ && \
@@ -45,7 +48,8 @@ COPY test_run_graph.py /opt/openeo-geopyspark-driver/tests
 
 # for logging:
 ENV OPENEO_BATCH_JOB_ID="unknown-job"
-ENV OPENEO_USER_ID="unknown-user"
+ENV OPENEO_USER_ID="openeo_docker_local"
+ENV OPENEO_LOCAL_DEBUGGING="true"
 
 # Write directly to the mount. If an error occurs, there is something to debug with
 # openeo.log will be written in the current directory, so change current directory

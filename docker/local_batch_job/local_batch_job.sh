@@ -18,9 +18,11 @@ parent_folder="$(dirname "$1")"
 # Opening a /vsi file with the netCDF driver requires Linux userfaultfd to be available. If running from Docker, --security-opt seccomp=unconfined might be needed.
 # mount is used to read process_graph and write results
 # Avoid -i, to avoid "the input device is not a TTY"
+# --network host can fix internet connection when the host machine is behind a VPN
 docker run -t \
     --user "$(id -g):$(id -u)" \
     -v /etc/passwd:/etc/passwd:ro \
     --security-opt seccomp=unconfined \
     -v "$parent_folder":/opt/docker_mount \
+    --network host \
     openeo_docker_local
