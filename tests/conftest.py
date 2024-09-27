@@ -9,6 +9,7 @@ import flask
 import pytest
 import moto
 import moto.server
+import requests_mock
 from _pytest.terminal import TerminalReporter
 
 from openeo_driver.backend import OpenEoBackendImplementation, UserDefinedProcesses
@@ -30,6 +31,8 @@ os.environ["OPENEO_CATALOG_FILES"] = str(Path(__file__).parent / "layercatalog.j
 
 
 pytest_plugins = "pytester"
+
+
 
 
 
@@ -98,7 +101,7 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
     conf.set(key='spark.kryo.registrator', value='geotrellis.spark.store.kryo.KryoRegistrator')
     conf.set(
         key="spark.kryo.classesToRegister",
-        value="org.openeo.geotrellisaccumulo.SerializableConfiguration,ar.com.hjg.pngj.ImageInfo,ar.com.hjg.pngj.ImageLineInt,geotrellis.raster.RasterRegion$GridBoundsRasterRegion",
+        value="ar.com.hjg.pngj.ImageInfo,ar.com.hjg.pngj.ImageLineInt,geotrellis.raster.RasterRegion$GridBoundsRasterRegion",
     )
     # Only show spark progress bars for high verbosity levels
     conf.set('spark.ui.showConsoleProgress', verbosity >= 3)
@@ -131,7 +134,7 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
     # 'agentlib' to allow attaching a Java debugger to running Spark driver
     extra_options = f'-Dlog4j2.configurationFile=file:{sparkSubmitLog4jConfigurationFile}'
     if OPENEO_LOCAL_DEBUGGING:
-        extra_options += f' -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5009'
+        extra_options += f' -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5009 -Dgeotrellis.jts.precision.type=fixed -Dgeotrellis.jts.simplification.scale=1e10'
     conf.set('spark.driver.extraJavaOptions', extra_options)
     # conf.set('spark.executor.extraJavaOptions', extra_options) # Seems not needed
 
@@ -150,8 +153,8 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
 
     out.write_line("[conftest.py] Validating the Spark context")
     dummy = context._jvm.org.openeo.geotrellis.OpenEOProcesses()
-    answer = context.parallelize([9, 10, 11, 12]).sum()
-    out.write_line("[conftest.py] " + repr((answer, dummy)))
+    #answer = context.parallelize([9, 10, 11, 12]).sum()
+    #out.write_line("[conftest.py] " + repr((answer, dummy)))
 
     return context
 
