@@ -14,7 +14,7 @@ pythonPipeline {
   hadoop = true
   pre_test_script = 'pre_test.sh'
   extra_env_variables = [
-    'JAVA_HOME=/usr/lib/jvm/java-11-openjdk-11.0.14.0.9-2.el8_5.x86_64',
+    'JAVA_HOME=/usr/lib/jvm/java-11-openjdk-11.0.15.0.9-2.el8_5.x86_64',
     /* Set pytest `basetemp` inside Jenkins workspace. (Note: this is intentionally Jenkins specific, instead of a global pytest.ini thing.) */
     "PYTEST_DEBUG_TEMPROOT=pytest-tmp",
   ]
