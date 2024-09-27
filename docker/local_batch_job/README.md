@@ -1,4 +1,4 @@
-# Run openEO from Docker file
+# Run openEO from Docker file (experimental)
 
 This method does not have access to the collection on Terrascope or dataspace.copernicus.eu.
 External public STAC collections are usable.

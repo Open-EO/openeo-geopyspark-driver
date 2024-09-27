@@ -45,6 +45,11 @@ You can run the service with:
 For production, a gunicorn server script is available:
 PYTHONPATH=. python openeogeotrellis/server.py
 
+### Running locally with Docker
+
+This will set up the environment (Java/Python with dependencies) and makes it possible to run simple process graphs.
+For more information, see: [docker/local_batch_job/](./docker/local_batch_job/README.md)
+
 ### Running on the Proba-V MEP
 The web application can be deployed by running:
 sh scripts/submit.sh
