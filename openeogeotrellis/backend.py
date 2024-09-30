@@ -1227,7 +1227,7 @@ class GpsProcessing(ConcreteProcessing):
             # TODO: remove this temporary feature flag https://github.com/Open-EO/openeo-geopyspark-driver/issues/404
             return run_udf_code(code=udf, data=data, require_executor_context=False)
         sc = SparkContext.getOrCreate()
-        data_rdd = sc.parallelize([data])
+        data_rdd = sc.parallelize([data],1)
         result_rdd = data_rdd.map(lambda d: run_udf_code(code=udf, data=d))
         result = result_rdd.collect()
         if not len(result) == 1:
