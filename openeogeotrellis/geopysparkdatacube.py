@@ -1003,6 +1003,15 @@ class GeopysparkDataCube(DriverDataCube):
                 lambda rdd, level:merge(rdd,other,level)
             )
 
+            """
+            merged_data.metadata = merged_data.metadata.add_dimension(name="bands", label=leftBandNames[0], type="bands")
+            for band_name in leftBandNames[1:]:
+                merged_data.metadata = merged_data.metadata.append_band(Band(band_name))
+            for band_name in rightBandNames:
+                if band_name not in merged_data.metadata.band_names:
+                    merged_data.metadata = merged_data.metadata.append_band(Band(band_name))
+            """
+
         if self.metadata.has_band_dimension() and other.metadata.has_band_dimension():
             for iband in other.metadata.bands:
                 if iband.name not in merged_data.metadata.band_names:

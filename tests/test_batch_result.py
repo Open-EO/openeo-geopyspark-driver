@@ -1325,3 +1325,88 @@ def test_load_stac_temporal_extent_in_result_metadata(tmp_path, requests_mock):
     timestamps = gdf["date"].tolist()
     assert len(timestamps) > 0
     assert all(expected_start_datetime <= timestamp <= expected_end_datetime for timestamp in timestamps)
+
+
+def test_wouter_load_stac():
+    tmp_path = Path("/tmp/test_wouter_load_stac")
+
+    process = {
+        "process_graph": {
+            "loadstac1": {
+                "process_id": "load_stac",
+                "arguments": {
+                    "url_": "https://openeo.vito.be/openeo/1.2/jobs/j-240926a62a944341907b8f993c75e8c9/results/OTY4M2IyZjAtZWI3ZC00YzI0LTlhMGUtYzU1NWQ0NTU2ODM3/e37799a88239f9cc712a42a472b8964c?expires=1727988352",  # original canonical
+                    "url___": "https://openeo.vito.be/openeo/1.2/jobs/j-240926a62a944341907b8f993c75e8c9/results/OTY4M2IyZjAtZWI3ZC00YzI0LTlhMGUtYzU1NWQ0NTU2ODM3/3da05b144dfe56a38ca4b164003657cd?expires=1728301620",  # newer canonical to make sure it does not expire
+                    "url__": "/home/bossie/Documents/VITO/openeo-cdse-infra/load_stac_from_job does not save all geotiff correctly 269/wouter.json/e37799a88239f9cc712a42a472b8964c",  # local patched with "eo:bands"
+                    "url": "https://openeo-dev.vito.be/openeo/1.1/jobs/j-240930194bf243c3a02827879867b571/results/N2Q1MjMzODEzNzRiNjJlNmYyYWFkMWYyZjlmYjZlZGRmNjI0ZDM4MmE4ZjcxZGI2ZGNmNTc4OGUzYWFlMGFmM0BlZ2kuZXU=/db143cd7e65a1818333d1d3c25b1b2a5?expires=1728308367",  # from process graph with 2 add_dimensions
+                },
+            },
+            "renamelabels1": {  # needed for netCDF output
+                "process_id": "rename_labels",
+                "arguments": {
+                    "data": {"from_node": "loadstac1"},
+                    "dimension": "bands",
+                    "target": ["20210618", "20210512"],
+                },
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "loadstac1"}, "format": "GTiff", "options": {}},
+                "result": True,
+            },
+        }
+    }
+
+    run_job(
+        process,
+        output_file=tmp_path / "out",
+        metadata_file=tmp_path / "job_metadata.json",
+        api_version="2.0.0",
+        job_dir=tmp_path,
+        dependencies=[],
+    )
+
+
+def test_wouter_merge_ndwis(tmp_path):
+    tmp_path = Path("/tmp/test_wouter_merge_ndwis")
+
+    from openeogeotrellis.deploy import load_custom_processes
+
+    load_custom_processes()
+
+    ndwi_process_graph_file = "/home/bossie/Documents/VITO/openeo-cdse-infra/load_stac_from_job does not save all geotiff correctly 269/j-240926a62a944341907b8f993c75e8c9_process_graph.json"
+    ndwi_process_graph_file = "/home/bossie/Documents/VITO/openeo-cdse-infra/load_stac_from_job does not save all geotiff correctly 269/j-240926a62a944341907b8f993c75e8c9_process_graph_with_2_add_dimension.json"
+
+    with open(ndwi_process_graph_file) as f:
+        process = json.load(f)
+
+    run_job(
+        process,
+        output_file=tmp_path / "out",
+        metadata_file=tmp_path / "job_metadata.json",
+        api_version="2.0.0",
+        job_dir=tmp_path,
+        dependencies=[],
+    )
+
+
+def test_wouter_ndwi(tmp_path):
+    tmp_path = Path("/tmp/test_wouter_ndwi")
+
+    from openeogeotrellis.deploy import load_custom_processes
+
+    load_custom_processes()
+
+    ndwi_process_graph_file = "/home/bossie/Documents/VITO/openeo-cdse-infra/load_stac_from_job does not save all geotiff correctly 269/ndwi_process_graph.json"
+
+    with open(ndwi_process_graph_file) as f:
+        process = json.load(f)
+
+    run_job(
+        process,
+        output_file=tmp_path / "out",
+        metadata_file=tmp_path / "job_metadata.json",
+        api_version="2.0.0",
+        job_dir=tmp_path,
+        dependencies=[],
+    )

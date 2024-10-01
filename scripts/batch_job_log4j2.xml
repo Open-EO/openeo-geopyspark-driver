@@ -21,6 +21,7 @@
         <Logger name="org.apache.zookeeper" level="warn"/>
         <Logger name="org.apache.zookeeper.ClientCnxn" level="error"/> <!-- Ignore this: "Unable to read additional data from server sessionid 0x..., likely server has closed socket" -->
         <Logger name="org.sparkproject.jetty.server" level="warn"/>
+        <Logger name="geotrellis" level="warn"/>
         <Root level="${sys:openeo.logging.threshold}">
             <AppenderRef ref="stdout"/>
             <AppenderRef ref="file"/>

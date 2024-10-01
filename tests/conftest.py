@@ -117,11 +117,11 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
     conf.set('spark.driver.extraClassPath', extraClassPath)
     conf.set('spark.executor.extraClassPath', extraClassPath)
 
-    sparkSubmitLog4jConfigurationFile = Path(__file__).parent.parent / "scripts/batch_job_log4j2.xml"
-    with open(sparkSubmitLog4jConfigurationFile, 'r') as read_file:
+    log4jConfigurationFile = Path(__file__).parent.parent / "scripts/batch_job_log4j2.xml"
+    with open(log4jConfigurationFile, "r") as read_file:
         content = read_file.read()
-        sparkSubmitLog4jConfigurationFile = "/tmp/sparkSubmitLog4jConfigurationFile.xml"
-        with open(sparkSubmitLog4jConfigurationFile, 'w') as write_file:
+        log4jConfigurationFile = "/tmp/sparkSubmitLog4jConfigurationFile.xml"
+        with open(log4jConfigurationFile, "w") as write_file:
             # There could be a more elegant way to fill in this variable during testing:
             write_file.write(content
                              .replace("${sys:spark.yarn.app.container.log.dir}/", "")
@@ -129,10 +129,10 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
                              )
 
     # 'agentlib' to allow attaching a Java debugger to running Spark driver
-    extra_options = f'-Dlog4j2.configurationFile=file:{sparkSubmitLog4jConfigurationFile}'
+    extra_options = f"-Dlog4j2.configurationFile=file:{log4jConfigurationFile}"
     if OPENEO_LOCAL_DEBUGGING:
-        extra_options += f' -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5009 -Dgeotrellis.jts.precision.type=fixed -Dgeotrellis.jts.simplification.scale=1e10'
-    conf.set('spark.driver.extraJavaOptions', extra_options)
+        extra_options += f" -agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=5009 -Dgeotrellis.jts.precision.type=fixed -Dgeotrellis.jts.simplification.scale=1e10"
+    conf.set("spark.driver.extraJavaOptions", extra_options)
     # conf.set('spark.executor.extraJavaOptions', extra_options) # Seems not needed
 
 
@@ -156,6 +156,8 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
     dummy = context._jvm.org.openeo.geotrellis.OpenEOProcesses()
     #answer = context.parallelize([9, 10, 11, 12]).sum()
     #out.write_line("[conftest.py] " + repr((answer, dummy)))
+
+    context.addPyFile("/home/bossie/PycharmProjects/openeo/openeo-deploy/mep/custom_processes.py")
 
     return context
 
