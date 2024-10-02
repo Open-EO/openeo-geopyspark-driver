@@ -1338,7 +1338,9 @@ def test_wouter_load_stac():
                     "url_": "https://openeo.vito.be/openeo/1.2/jobs/j-240926a62a944341907b8f993c75e8c9/results/OTY4M2IyZjAtZWI3ZC00YzI0LTlhMGUtYzU1NWQ0NTU2ODM3/e37799a88239f9cc712a42a472b8964c?expires=1727988352",  # original canonical
                     "url___": "https://openeo.vito.be/openeo/1.2/jobs/j-240926a62a944341907b8f993c75e8c9/results/OTY4M2IyZjAtZWI3ZC00YzI0LTlhMGUtYzU1NWQ0NTU2ODM3/3da05b144dfe56a38ca4b164003657cd?expires=1728301620",  # newer canonical to make sure it does not expire
                     "url__": "/home/bossie/Documents/VITO/openeo-cdse-infra/load_stac_from_job does not save all geotiff correctly 269/wouter.json/e37799a88239f9cc712a42a472b8964c",  # local patched with "eo:bands"
-                    "url": "https://openeo-dev.vito.be/openeo/1.1/jobs/j-240930194bf243c3a02827879867b571/results/N2Q1MjMzODEzNzRiNjJlNmYyYWFkMWYyZjlmYjZlZGRmNjI0ZDM4MmE4ZjcxZGI2ZGNmNTc4OGUzYWFlMGFmM0BlZ2kuZXU=/db143cd7e65a1818333d1d3c25b1b2a5?expires=1728308367",  # from process graph with 2 add_dimensions
+                    "url____": "https://openeo-dev.vito.be/openeo/1.1/jobs/j-240930194bf243c3a02827879867b571/results/N2Q1MjMzODEzNzRiNjJlNmYyYWFkMWYyZjlmYjZlZGRmNjI0ZDM4MmE4ZjcxZGI2ZGNmNTc4OGUzYWFlMGFmM0BlZ2kuZXU=/db143cd7e65a1818333d1d3c25b1b2a5?expires=1728308367",  # from process graph with 2 add_dimensions
+                    "url_____": "https://openeo-dev.vito.be/openeo/1.1/jobs/j-241001461e0246ffa55dbaf5e8b847ed/results/N2Q1MjMzODEzNzRiNjJlNmYyYWFkMWYyZjlmYjZlZGRmNjI0ZDM4MmE4ZjcxZGI2ZGNmNTc4OGUzYWFlMGFmM0BlZ2kuZXU=/78c2eab23a9a7a74c57544913c1b8d21?expires=1728394722",  # from process graph with overlaps_resolver
+                    "url": "https://openeo-dev.vito.be/openeo/1.1/jobs/j-241001b3653645fa8f8607c675aa5a3c/results/N2Q1MjMzODEzNzRiNjJlNmYyYWFkMWYyZjlmYjZlZGRmNjI0ZDM4MmE4ZjcxZGI2ZGNmNTc4OGUzYWFlMGFmM0BlZ2kuZXU=/47439ba378853282f8e45e3c48c1a31b?expires=1728395621",  # from process graph with 2 add_dimensions and overlaps_resolver
                 },
             },
             "renamelabels1": {  # needed for netCDF output
@@ -1376,6 +1378,7 @@ def test_wouter_merge_ndwis(tmp_path):
 
     ndwi_process_graph_file = "/home/bossie/Documents/VITO/openeo-cdse-infra/load_stac_from_job does not save all geotiff correctly 269/j-240926a62a944341907b8f993c75e8c9_process_graph.json"
     ndwi_process_graph_file = "/home/bossie/Documents/VITO/openeo-cdse-infra/load_stac_from_job does not save all geotiff correctly 269/j-240926a62a944341907b8f993c75e8c9_process_graph_with_2_add_dimension.json"
+    ndwi_process_graph_file = "/home/bossie/Documents/VITO/openeo-cdse-infra/load_stac_from_job does not save all geotiff correctly 269/j-240926a62a944341907b8f993c75e8c9_process_graph_with_2_overlap_resolver.json"
 
     with open(ndwi_process_graph_file) as f:
         process = json.load(f)
