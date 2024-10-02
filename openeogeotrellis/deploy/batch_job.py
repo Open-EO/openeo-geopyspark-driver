@@ -341,6 +341,7 @@ def run_job(
                 add_permissions(Path(asset["href"]), stat.S_IWGRP)
             logger.info(f"wrote {len(the_assets_metadata)} assets to {output_file}")
             assets_metadata = {**assets_metadata, **the_assets_metadata}
+            _export_workspace(result, assets_metadata, stac_metadata_dir=job_dir)
 
         if any(dependency['card4l'] for dependency in dependencies):  # TODO: clean this up
             logger.debug("awaiting Sentinel Hub CARD4L data...")
@@ -407,8 +408,6 @@ def run_job(
                                                     unique_process_ids=unique_process_ids,
                                                     asset_metadata=assets_metadata,
                                                     ml_model_metadata=ml_model_metadata,skip_gdal=False)
-
-        _export_workspace(result, result_metadata, stac_metadata_dir=job_dir)
     finally:
         write_metadata({**result_metadata, **_get_tracker_metadata("")}, metadata_file, job_dir)
 
@@ -435,15 +434,15 @@ def write_metadata(metadata, metadata_file, job_dir):
             _convert_job_metadatafile_outputs_to_s3_urls(metadata_file)
 
 
-def _export_workspace(result: SaveResult, result_metadata: dict, stac_metadata_dir: Path):
-    asset_paths = [Path(asset["href"]) for asset in result_metadata.get("assets", {}).values()]
-    stac_paths = _write_exported_stac_collection(stac_metadata_dir, result_metadata)
+def _export_workspace(result: SaveResult, assets_metadata: dict, stac_metadata_dir: Path):
+    asset_paths = [Path(asset["href"]) for asset in assets_metadata.values()]
+    stac_paths = _write_exported_stac_collection(stac_metadata_dir, assets_metadata)
     result.export_workspace(workspace_repository=backend_config_workspace_repository,
                             files=asset_paths + stac_paths,
                             default_merge=OPENEO_BATCH_JOB_ID)
 
 
-def _write_exported_stac_collection(job_dir: Path, result_metadata: dict) -> List[Path]:  # TODO: change to Set?
+def _write_exported_stac_collection(job_dir: Path, assets_metadata: dict) -> List[Path]:  # TODO: change to Set?
     def write_stac_item_file(asset_id: str, asset: dict) -> Path:
         item_file = job_dir / f"{asset_id}.json"
 
@@ -472,8 +471,7 @@ def _write_exported_stac_collection(job_dir: Path, result_metadata: dict) -> Lis
 
         return item_file
 
-    item_files = [write_stac_item_file(asset_id, asset)
-                  for asset_id, asset in result_metadata.get("assets", {}).items()]
+    item_files = [write_stac_item_file(asset_id, asset) for asset_id, asset in assets_metadata.items()]
 
     def item_link(item_file: Path) -> dict:
         return {

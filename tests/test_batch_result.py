@@ -1327,10 +1327,7 @@ def test_load_stac_temporal_extent_in_result_metadata(tmp_path, requests_mock):
     assert all(expected_start_datetime <= timestamp <= expected_end_datetime for timestamp in timestamps)
 
 
-@pytest.mark.parametrize("attempt", range(5))
-def test_debug_export_workspace_with_multiple_save_results(tmp_path, attempt):
-    # tmp_path = Path("/tmp/test_debug_export_workspace_with_multiple_save_results")
-
+def test_debug_export_workspace_with_multiple_save_results(tmp_path):
     with open(
         "/home/bossie/Documents/VITO/openeo-cdse-infra/export_workspace not executed with multiple save_results #264/original_process_graph.json"
     ) as f:
@@ -1346,8 +1343,6 @@ def test_debug_export_workspace_with_multiple_save_results(tmp_path, attempt):
     shutil.rmtree(workspace_dir, ignore_errors=True)
     assert not workspace_dir.exists()
 
-    del process["process_graph"]["saveresult1"]  # always copies files to workspace
-
     run_job(
         process,
         output_file=tmp_path / "out",
@@ -1356,6 +1351,10 @@ def test_debug_export_workspace_with_multiple_save_results(tmp_path, attempt):
         job_dir=tmp_path,
         dependencies=[],
     )
+
+    output_files = set(os.listdir(tmp_path))
+    assert "lcfm-s1-55GEN_062_19.tif" in output_files
+    assert "openEO.nc" in output_files
 
     assert set(os.listdir(workspace_dir)) == {
         "lcfm-s1-55GEN_062_19.tif",
