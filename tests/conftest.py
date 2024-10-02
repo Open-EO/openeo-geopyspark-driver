@@ -28,7 +28,7 @@ from .datacube_fixtures import imagecollection_with_two_bands_and_three_dates, \
     imagecollection_with_two_bands_spatial_only, imagecollection_with_two_bands_and_one_date_multiple_values
 from .data import get_test_data_file, TEST_DATA_ROOT
 
-os.environ["OPENEO_CATALOG_FILES"] = str(Path(__file__).parent / "layercatalog.json")
+# os.environ["OPENEO_CATALOG_FILES"] = str(Path(__file__).parent / "layercatalog.json")
 
 
 pytest_plugins = "pytester"
@@ -43,7 +43,7 @@ def pytest_configure(config):
     os.environ['PYTEST_CONFIGURE'] = (os.environ.get('PYTEST_CONFIGURE', '') + ':' + __file__).lstrip(':')
 
     # Load test GpsBackendConfig by default
-    os.environ["OPENEO_BACKEND_CONFIG"] = str(Path(__file__).parent / "backend_config.py")
+    # os.environ["OPENEO_BACKEND_CONFIG"] = str(Path(__file__).parent / "backend_config.py")
 
     # TODO #285 we need a better config system, e.g. to avoid monkeypatching `os.environ` here
     os.environ["BATCH_JOBS_ZOOKEEPER_ROOT_PATH"] = "/openeo.test/jobs"
