@@ -768,7 +768,7 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
         self.zk_job_registry: Optional[ZkJobRegistry] = None
         self.elastic_job_registry = elastic_job_registry
         # Synchronisation lock to make sure that only one thread at a time can use this as a context manager.
-        self._lock = threading.RLock()
+        # self._lock = threading.RLock()
 
     def __repr__(self):
         return (
@@ -776,7 +776,7 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
         )
 
     def __enter__(self):
-        self._lock.acquire()
+        # self._lock.acquire()
         self.zk_job_registry = self._zk_job_registry_factory() if self._zk_job_registry_factory else None
         self._log.debug(f"Context enter {self!r}")
         if self.zk_job_registry:
@@ -794,7 +794,7 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
                 self.zk_job_registry.__exit__(exc_type, exc_val, exc_tb)
         finally:
             self.zk_job_registry = None
-            self._lock.release()
+            # self._lock.release()
 
     def create_job(
         self,
