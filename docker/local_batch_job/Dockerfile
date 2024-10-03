@@ -1,5 +1,5 @@
 # The base image is buiild from vito CI/CD pipeline:
-FROM vito-docker.artifactory.vgt.vito.be/openeo-geotrellis-kube:latest
+FROM vito-docker.artifactory.vgt.vito.be/openeo-base:latest
 # sudo docker build -t openeo_docker_local . -f docker/local_batch_job/Dockerfile
 
 USER root
@@ -21,10 +21,7 @@ ENV PYTHONPATH="$SPARK_HOME/python/lib/py4j-0.10.9.7-src.zip:$PYTHONPATH"
 RUN (python3 -m pip config --global unset global.extra-index-url || echo ignore) && \
     (python3 -m pip config --global unset global.index-url || echo ignore )
 
-RUN python3 -m pip install --root-user-action=ignore pytest-runner && \
-    python3 -m pip install --root-user-action=ignore pytest-timeout && \
-    python3 -m pip install --root-user-action=ignore junitparser && \
-    python3 -m pip install --root-user-action=ignore rioxarray && \
+RUN python3 -m pip install --root-user-action=ignore rioxarray && \
     python3 -m pip install --root-user-action=ignore dirty_equals && \
     python3 -m pip install --root-user-action=ignore requests_mock && \
     python3 -m pip install --root-user-action=ignore moto
@@ -44,10 +41,9 @@ ENV GEOPYSPARK_JARS_PATH=/opt/
 # for logging:
 ENV OPENEO_BATCH_JOB_ID="unknown-job"
 ENV OPENEO_USER_ID="openeo_docker_local"
-ENV OPENEO_LOCAL_DEBUGGING="true"
 
 # Write directly to the mount. If an error occurs, there is something to debug with
 # openeo.log will be written in the current directory, so change current directory
 RUN mkdir /opt/docker_mount
 WORKDIR /opt/docker_mount
-CMD ["python3", "/opt/venv/lib64/python3.8/site-packages/openeogeotrellis/deploy/run_graph_locally.py"]
+CMD ["python3", "-u", "/opt/venv/lib64/python3.8/site-packages/openeogeotrellis/deploy/run_graph_locally.py"]

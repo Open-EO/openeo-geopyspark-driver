@@ -7,11 +7,13 @@ import openeo
 
 spatial_extent_tap = {"east": 5.08, "north": 51.22, "south": 51.215, "west": 5.07}
 
+stac_root = str(Path("example_stac_catalog/").absolute())
+
 datacube = openeo.rest.datacube.DataCube(  # Syntax will be enhanced in future release of the Python client.
     openeo.rest.datacube.PGNode(
         "load_stac",
         arguments={
-            "url": "https://artifactory.vgt.vito.be/artifactory/testdata-public/stac_example/collection.json",
+            "url": stac_root + "/collection.json",
             "temporal_extent": ["2023-06-01", "2023-06-09"],
             "spatial_extent": spatial_extent_tap,
         },
@@ -28,4 +30,6 @@ output_dir.mkdir(exist_ok=True)
 datacube.print_json(file=output_dir / "process_graph.json", indent=2)
 
 containing_folder = Path(__file__).parent
-os.system(f"{containing_folder}/local_batch_job {output_dir / 'process_graph.json'}")
+os.system(f"{containing_folder}/local_batch_job {output_dir / 'process_graph.json'} {containing_folder}")
+
+# Note that output_dir / "collection.json" is a new stac collection and can be loaded in a new process graph.

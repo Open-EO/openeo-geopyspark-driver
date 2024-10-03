@@ -29,11 +29,16 @@ def setup_local_spark(additional_jar_dirs=[]):
     _log.debug('sys.path: {p!r}'.format(p=sys.path))
     master_str = "local[2]"
 
+    OPENEO_LOCAL_DEBUGGING = smart_bool(os.environ.get("OPENEO_LOCAL_DEBUGGING", "false"))
+
     from geopyspark import geopyspark_conf
-    conf = geopyspark_conf(master=master_str, appName="openeo-geotrellis-local", additional_jar_dirs=additional_jar_dirs)
-    conf.set('spark.kryoserializer.buffer.max', value='1G')
-    conf.set(key='spark.kryo.registrator', value='geotrellis.spark.store.kryo.KryoRegistrator')
-    conf.set('spark.ui.enabled', True)
+
+    conf = geopyspark_conf(
+        master=master_str, appName="openeo-geotrellis-local", additional_jar_dirs=additional_jar_dirs
+    )
+    conf.set("spark.kryoserializer.buffer.max", value="1G")
+    conf.set(key="spark.kryo.registrator", value="geotrellis.spark.store.kryo.KryoRegistrator")
+    conf.set("spark.ui.enabled", OPENEO_LOCAL_DEBUGGING)
 
     jars = []
     more_jars = [] if "GEOPYSPARK_JARS_PATH" not in os.environ else os.environ["GEOPYSPARK_JARS_PATH"].split(":")
@@ -45,7 +50,7 @@ def setup_local_spark(additional_jar_dirs=[]):
     conf.set("spark.driver.extraClassPath", extraClassPath)
     conf.set("spark.executor.extraClassPath", extraClassPath)
 
-    path = "/opt/batch_job_log4j2.xml"
+    path = "/opt/venv/openeo-geopyspark-driver/batch_job_log4j2.xml"  # TODO: get path from data_files
     if os.path.exists(path):
         sparkSubmitLog4jConfigurationFile = path
     else:
@@ -64,8 +69,10 @@ def setup_local_spark(additional_jar_dirs=[]):
 
     # 'agentlib' to allow attaching a Java debugger to running Spark driver
     extra_options = f"-Dlog4j2.configurationFile=file:{sparkSubmitLog4jConfigurationFile}"
+    extra_options += " -Dgeotrellis.jts.precision.type=fixed -Dgeotrellis.jts.simplification.scale=1e10"
     # Some options to allow attaching a Java debugger to running Spark driver
-    extra_options += f" -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5009 -Dgeotrellis.jts.precision.type=fixed -Dgeotrellis.jts.simplification.scale=1e10"
+    if OPENEO_LOCAL_DEBUGGING:
+        extra_options += f" -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5009"
     conf.set("spark.driver.extraJavaOptions", extra_options)
     # conf.set('spark.executor.extraJavaOptions', extra_options) # Seems not needed
 
@@ -81,7 +88,8 @@ def setup_local_spark(additional_jar_dirs=[]):
     pysc = SparkContext.getOrCreate(conf)
     pysc.setLogLevel("INFO")
     _log.info('Created Spark Context {s}'.format(s=pysc))
-    _log.info('Spark web UI: http://localhost:{p}/'.format(p=pysc.getConf().get('spark.ui.port') or 4040))
+    if OPENEO_LOCAL_DEBUGGING:
+        _log.info("Spark web UI: http://localhost:{p}/".format(p=pysc.getConf().get("spark.ui.port") or 4040))
 
     return pysc
 

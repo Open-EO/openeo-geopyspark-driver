@@ -18,12 +18,16 @@ requests.packages.urllib3.util.connection.HAS_IPV6 = False
 
 
 def run_graph_locally(process_graph, output_dir):
+    output_dir = Path(output_dir)
+    process_graph = as_flat_graph(process_graph)
+    if "process_graph" not in process_graph:
+        process_graph = {"process_graph": process_graph}
     run_job(
-        as_flat_graph(process_graph),
+        process_graph,
         output_file=output_dir / "random_folder_name",
         metadata_file=output_dir / "metadata.json",
         api_version="1.0.0",
-        job_dir=ensure_dir(output_dir / "job_dir"),
+        job_dir=ensure_dir(output_dir),
         dependencies=[],
         user_id="jenkins",
     )

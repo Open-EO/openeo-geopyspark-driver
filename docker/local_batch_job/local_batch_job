@@ -12,6 +12,16 @@ fi
 
 parent_folder="$(dirname "$1")"
 
+export extra_arguments=()
+if [ -n "$2" ]; then
+    echo Mounting folder: "$2"
+    if [ ! -d "$2" ]; then
+        echo "Folder not found: $2"
+        exit 1
+    fi
+    extra_arguments=(-v "$2":"$2":ro)
+fi
+
 # --entrypoint /bin/bash
 # Specify user otherwise output files are root
 # /etc/passwd to avoid "whoami: cannot find name for user ID"
@@ -24,6 +34,6 @@ docker run -t \
     -v /etc/passwd:/etc/passwd:ro \
     --security-opt seccomp=unconfined \
     -v "$parent_folder":/opt/docker_mount \
+    "${extra_arguments[@]}" \
     --network host \
     openeo_docker_local
-echo "Output written to: $parent_folder"
