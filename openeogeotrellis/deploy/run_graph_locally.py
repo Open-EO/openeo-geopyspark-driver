@@ -9,7 +9,10 @@ from openeogeotrellis.deploy.batch_job import run_job
 # Avoid IPv6, to avoid hanging on https://services.terrascope.be/catalogue//collections
 requests.packages.urllib3.util.connection.HAS_IPV6 = False
 
-# workdir = Path(os.path.dirname(os.path.abspath(__file__)))
+import openeogeotrellis.deploy.local
+
+openeogeotrellis.deploy.local.setup_local_spark(["/opt/"])  # TODO: cleanup /opt contains jars in the docker file
+
 workdir = Path(os.getcwd())
 
 process_graph_path = workdir / "process_graph.json"

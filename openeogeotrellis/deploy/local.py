@@ -25,6 +25,7 @@ def setup_local_spark(additional_jar_dirs=[]):
     from pyspark import SparkContext, find_spark_home
 
     spark_python = os.path.join(find_spark_home._find_spark_home(), 'python')
+    logging.info(f"spark_python: {spark_python}")
     py4j = glob(os.path.join(spark_python, 'lib', 'py4j-*.zip'))[0]
     sys.path[:0] = [spark_python, py4j]
     _log.debug('sys.path: {p!r}'.format(p=sys.path))
@@ -60,7 +61,13 @@ def on_started() -> None:
     show_log_level(logging.getLogger('werkzeug'))
 
 
-if __name__ == '__main__':
+def setup_environment():
+    repository_root = Path(__file__).parent.parent.parent
+    os.chdir(repository_root)
+    os.environ["OPENEO_CATALOG_FILES"] = str(repository_root / "openeogeotrellis/deploy/empty_layercatalog.json")
+    os.environ["PYTEST_CONFIGURE"] = ""  # to enable is_ci_context
+    os.environ["FLASK_DEBUG"] = "1"
+
     root_handlers = [LOG_HANDLER_STDERR_JSON]
     if smart_bool(os.environ.get("OPENEO_DRIVER_SIMPLE_LOGGING")):
         root_handlers = None
@@ -83,16 +90,22 @@ if __name__ == '__main__':
 
     os.environ.setdefault(
         openeo_driver.config.load.ConfigGetter.OPENEO_BACKEND_CONFIG,
-        str(Path(__file__).parent / "local_config.py"),
+        str(Path(__file__).parent / "local_backend_config.py"),
     )
+
+
+if __name__ == "__main__":
+    setup_environment()
 
     # Note: local import is necessary because `openeogeotrellis.backend` requires `SPARK_HOME` env var
     # which we want to set up just in time
     from openeogeotrellis.backend import GeoPySparkBackendImplementation
+    from openeogeotrellis.job_registry import InMemoryJobRegistry
 
     backend_implementation = GeoPySparkBackendImplementation(
         use_zookeeper=False,
         use_job_registry=bool(get_backend_config().ejr_api),
+        elastic_job_registry=InMemoryJobRegistry(),
     )
     app = build_app(backend_implementation=backend_implementation)
 

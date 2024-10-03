@@ -18,9 +18,10 @@ ENV LD_LIBRARY_PATH="/opt/venv/lib64"
 ENV PYTHONPATH="$SPARK_HOME/python:$PYTHONPATH"
 ENV PYTHONPATH="$SPARK_HOME/python/lib/py4j-0.10.9.7-src.zip:$PYTHONPATH"
 
-RUN python3 -m pip config --global unset global.extra-index-url && \
-    python3 -m pip config --global unset global.index-url && \
-    python3 -m pip install --root-user-action=ignore pytest-runner && \
+RUN (python3 -m pip config --global unset global.extra-index-url || echo ignore) && \
+    (python3 -m pip config --global unset global.index-url || echo ignore )
+
+RUN python3 -m pip install --root-user-action=ignore pytest-runner && \
     python3 -m pip install --root-user-action=ignore pytest-timeout && \
     python3 -m pip install --root-user-action=ignore junitparser && \
     python3 -m pip install --root-user-action=ignore rioxarray && \
