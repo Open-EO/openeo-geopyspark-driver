@@ -3804,7 +3804,7 @@ class TestLoadStac:
         urllib_and_request_mock.get(
             "https://catalogue.dataspace.copernicus.eu/stac/search?limit=20&bbox=5.07%2C51.215%2C5.08%2C51.22&datetime=2023-06-01T00%3A00%3A00Z%2F2023-06-30T23%3A59%3A59.999000Z&collections=GLOBAL-MOSAICS",
             data=item_json(
-                "stac/issue830_alternate_url_s3/catalogue.dataspace.copernicus.eu/stac/search?limit=20&bbox=5.07,51.215,5.08,51.22&datetime=2023-06-01T00:00:00Z%2F2023-06-30T23:59:59.999000Z&collections=GLOBAL-MOSAICS.json"
+                "stac/issue830_alternate_url_s3/catalogue.dataspace.copernicus.eu/stac/search?limit=20&bbox=5.07,51.215,5.08,51.22&datetime=2023-06-01T00_00_00Z%2F2023-06-30T23_59_59.999000Z&collections=GLOBAL-MOSAICS.json"
             ),
         )
 
