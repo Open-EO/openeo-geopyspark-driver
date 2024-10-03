@@ -26,3 +26,4 @@ docker run -t \
     -v "$parent_folder":/opt/docker_mount \
     --network host \
     openeo_docker_local
+echo "Output written to: $parent_folder"
