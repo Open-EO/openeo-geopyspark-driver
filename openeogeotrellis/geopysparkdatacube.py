@@ -72,7 +72,7 @@ def callsite(func):
                     return ",".join(f.metadata.band_names)
                 else:
                     return 'datacube'
-            return str(f)
+            return str_truncate(str(f),width=32)
         except Exception as e:
             return repr(e)
 
