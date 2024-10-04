@@ -67,6 +67,11 @@ SpatialExtent = collections.namedtuple("SpatialExtent", ["top", "bottom", "right
 def callsite(func):
     def try_str(f):
         try:
+            if(isinstance(f,DriverDataCube)):
+                if( f.metadata.has_band_dimension()):
+                    return ",".join(f.metadata.band_names)
+                else:
+                    return 'datacube'
             return str(f)
         except Exception as e:
             return repr(e)
