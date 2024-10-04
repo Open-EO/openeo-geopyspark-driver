@@ -19,14 +19,6 @@ ENV LD_LIBRARY_PATH="/opt/venv/lib64"
 ENV PYTHONPATH="$SPARK_HOME/python:$PYTHONPATH"
 ENV PYTHONPATH="$SPARK_HOME/python/lib/py4j-0.10.9.7-src.zip:$PYTHONPATH"
 
-RUN (python3 -m pip config --global unset global.extra-index-url || echo ignore) && \
-    (python3 -m pip config --global unset global.index-url || echo ignore )
-
-RUN python3 -m pip install --root-user-action=ignore rioxarray && \
-    python3 -m pip install --root-user-action=ignore dirty_equals && \
-    python3 -m pip install --root-user-action=ignore requests_mock && \
-    python3 -m pip install --root-user-action=ignore moto
-
 # test python packages:
 RUN python3 -c "import pyspark;import openeo;import otbApplication"
 

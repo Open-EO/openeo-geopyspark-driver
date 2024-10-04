@@ -29,7 +29,7 @@ output_dir = Path("tmp_local_output").absolute()
 output_dir.mkdir(exist_ok=True)
 datacube.print_json(file=output_dir / "process_graph.json", indent=2)
 
-containing_folder = Path(__file__).parent
+containing_folder = Path(__file__).parent.absolute()
 os.system(f"{containing_folder}/local_batch_job {output_dir / 'process_graph.json'} {containing_folder}")
 
 # Note that output_dir / "collection.json" is a new stac collection and can be loaded in a new process graph.
