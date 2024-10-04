@@ -2,7 +2,7 @@
 
 if [ -z "$1" ]; then
     echo "First argument should be the path to the process graph. For example:"
-    echo "'$0 path/to/process_graph.json'"
+    echo "'$0 path/to/process_graph.json folder/that/contains/local/stac/catalogs/'"
     exit 1
 fi
 if [ ! -f "$1" ]; then
