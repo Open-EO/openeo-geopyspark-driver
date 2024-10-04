@@ -10,6 +10,7 @@ USER root
 ENV JAVA_HOME=/usr/lib/jvm/jre
 ENV PYTHON_EGG_CACHE=./
 ENV PYSPARK_PYTHON="/opt/venv/bin/python"
+ENV PATH="/opt/venv/bin:$PATH"
 ENV WMTS_BASE_URL_PATTERN=http://openeo.vgt.vito.be/openeo/services/%s
 ENV PYTHONPATH="/opt/venv/lib64/python3.8/site-packages:/opt/venv/lib/python3.8/site-packages:/opt/tensorflow/python38/2.8.0:/usr/lib/python3.8/site-packages:/usr/lib64/python3.8/site-packages"
 ENV LD_LIBRARY_PATH="/opt/venv/lib64"
@@ -30,6 +31,7 @@ RUN python3 -m pip install --root-user-action=ignore rioxarray && \
 RUN python3 -c "import pyspark;import openeo;import otbApplication"
 
 # COPY files to allow building the image with the latest version stored locally:
+# TODO: Disable this by default when a new openeo-base is available.
 COPY ./openeogeotrellis /opt/venv/lib64/python3.8/site-packages/openeogeotrellis
 COPY ./openeogeotrellis/deploy/run_graph_locally.py /opt/venv/lib64/python3.8/site-packages/openeogeotrellis/deploy/run_graph_locally.py
 COPY ./openeogeotrellis/deploy/local.py /opt/venv/lib64/python3.8/site-packages/openeogeotrellis/deploy/local.py
@@ -41,9 +43,12 @@ ENV GEOPYSPARK_JARS_PATH=/opt/
 # for logging:
 ENV OPENEO_BATCH_JOB_ID="unknown-job"
 ENV OPENEO_USER_ID="openeo_docker_local"
+# When debugging is enabled, port 4040 and 5009 are exposed:
+ENV OPENEO_LOCAL_DEBUGGING="false"
 
 # Write directly to the mount. If an error occurs, there is something to debug with
 # openeo.log will be written in the current directory, so change current directory
 RUN mkdir /opt/docker_mount
 WORKDIR /opt/docker_mount
+# TODO: Use /opt/venv/bin/run_graph_locally.py when a new openeo-base is available:
 CMD ["python3", "-u", "/opt/venv/lib64/python3.8/site-packages/openeogeotrellis/deploy/run_graph_locally.py"]
