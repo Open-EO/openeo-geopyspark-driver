@@ -4,14 +4,13 @@ SET parent_folder=%~dp1
 ::Remove trailing backslash:
 IF %parent_folder:~-1%==\ SET parent_folder=%parent_folder:~0,-1%
 
-SET extra_arguments=""
 IF NOT "%2"=="" (
     :: check if path exists:
     IF NOT EXIST "%2" (
         ECHO Folder not found: %2
         EXIT /B 1
     )
-    SET extra_arguments="-v %2:%2:ro"
+    ECHO Mounting user chosen path not supported in Windows!
 )
 
 :: --entrypoint /bin/bash
@@ -20,5 +19,5 @@ IF NOT "%2"=="" (
 :: mount is used to read process_graph and write results
 :: Avoid -i, to avoid "the input device is not a TTY"
 :: --network host can fix internet connection when the host machine is behind a VPN
-docker run -t -v /etc/passwd:/etc/passwd:ro --security-opt seccomp=unconfined -v "%parent_folder%":/opt/docker_mount %extra_arguments% --network host openeo_docker_local
+docker run -t -v /etc/passwd:/etc/passwd:ro --security-opt seccomp=unconfined -v "%parent_folder%":/opt/docker_mount --network host openeo_docker_local
 echo Output written to: %parent_folder%

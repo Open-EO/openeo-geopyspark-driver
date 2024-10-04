@@ -2,6 +2,7 @@
 
 This tool allows to run simple openEO processes. External collections can be loaded with load_stac.
 prerequisites: Docker already installed. Python with the openEO client installed.
+Note, you can refer to local stac collections by file path on Linux, but not on Windows.
 
 - Clone / download this repository
 - Build the image with `cd openeo-geopyspark-driver && sudo docker build -t openeo_docker_local . -f docker/local_batch_job/Dockerfile`
