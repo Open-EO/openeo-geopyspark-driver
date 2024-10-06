@@ -50,7 +50,7 @@ GlobalExtraLoggingFilter.set("job_id", OPENEO_BATCH_JOB_ID)
 
 
 def _create_job_dir(job_dir: Path):
-    logger.info("creating job dir {j!r} (parent dir: {p}))".format(j=job_dir, p=describe_path(job_dir.parent)))
+    logger.debug("creating job dir {j!r} (parent dir: {p}))".format(j=job_dir, p=describe_path(job_dir.parent)))
     ensure_dir(job_dir)
     if not ConfigParams().is_kube_deploy:
         try:
@@ -119,7 +119,7 @@ def main(argv: List[str]) -> None:
     # Override default temp dir (under CWD). Original default temp dir `/tmp` might be cleaned up unexpectedly.
     temp_dir = Path(os.getcwd()) / "tmp"
     temp_dir.mkdir(parents=True, exist_ok=True)
-    logger.info("Using temp dir {t}".format(t=temp_dir))
+    logger.debug("Using temp dir {t}".format(t=temp_dir))
     os.environ["TMPDIR"] = str(temp_dir)
 
     if ConfigParams().is_kube_deploy:
@@ -239,7 +239,7 @@ def run_job(
         job_dir = Path(job_dir)
 
         logger.info(f"Job spec: {json.dumps(job_specification,indent=1)}")
-        logger.info(f"{job_dir=}, {job_dir.resolve()=}, {output_file=}, {metadata_file=}")
+        logger.debug(f"{job_dir=}, {job_dir.resolve()=}, {output_file=}, {metadata_file=}")
         process_graph = job_specification['process_graph']
         job_options = job_specification.get("job_options", {})
 
@@ -255,7 +255,7 @@ def run_job(
         if default_sentinel_hub_credentials is not None:
             backend_implementation.set_default_sentinel_hub_credentials(*default_sentinel_hub_credentials)
 
-        logger.info(f"Using backend implementation {backend_implementation}")
+        logger.debug(f"Using backend implementation {backend_implementation}")
         correlation_id = OPENEO_BATCH_JOB_ID
         logger.info(f"Correlation id: {correlation_id}")
         env_values = {
@@ -280,7 +280,7 @@ def run_job(
         env_values.update({k: job_options[k] for k in job_option_whitelist if k in job_options})
         env = EvalEnv(env_values)
         tracer = DryRunDataTracer()
-        logger.info("Starting process graph evaluation")
+        logger.debug("Starting process graph evaluation")
         pg_copy = deepcopy(process_graph)
         result = ProcessGraphDeserializer.evaluate(process_graph, env=env, do_dry_run=tracer)
         logger.info("Evaluated process graph, result (type {t}): {r!r}".format(t=type(result), r=result))
@@ -402,7 +402,7 @@ def run_job(
                                                     ml_model_metadata=ml_model_metadata,skip_gdal=True)
 
         write_metadata({**result_metadata, **_get_tracker_metadata("")}, metadata_file, job_dir)
-        logger.info("Starting GDAL-based retrieval of asset metadata")
+        logger.debug("Starting GDAL-based retrieval of asset metadata")
         result_metadata = _assemble_result_metadata(tracer=tracer, result=result, output_file=output_file,
                                                     unique_process_ids=unique_process_ids,
                                                     asset_metadata=assets_metadata,
