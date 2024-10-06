@@ -893,13 +893,13 @@ def _get_layer_catalog(
     def read_catalog_file(catalog_file) -> CatalogDict:
         return {coll["id"]: coll for coll in read_json(catalog_file)}
 
-    logger.info(f"_get_layer_catalog: {catalog_files=}")
+    logger.debug(f"_get_layer_catalog: {catalog_files=}")
     for path in catalog_files:
-        logger.info(f"_get_layer_catalog: reading {path}")
+        logger.debug(f"_get_layer_catalog: reading {path}")
         metadata = dict_merge_recursive(metadata, read_catalog_file(path), overwrite=True)
-        logger.info(f"_get_layer_catalog: collected {len(metadata)} collections")
+        logger.debug(f"_get_layer_catalog: collected {len(metadata)} collections")
 
-    logger.info(f"_get_layer_catalog: {opensearch_enrich=}")
+    logger.debug(f"_get_layer_catalog: {opensearch_enrich=}")
     if opensearch_enrich:
         opensearch_metadata = {}
         sh_collection_metadatas = None
