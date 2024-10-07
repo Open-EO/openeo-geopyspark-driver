@@ -1,0 +1,412 @@
+{
+  "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+      [
+        [
+          5.07,
+          51.215
+        ],
+        [
+          5.07,
+          51.22
+        ],
+        [
+          5.08,
+          51.22
+        ],
+        [
+          5.08,
+          51.215
+        ],
+        [
+          5.07,
+          51.215
+        ]
+      ]
+    ]
+  },
+  "bbox": [
+    5.07,
+    51.215,
+    5.08,
+    51.22
+  ],
+  "area": {
+    "value": 388654.6769542694,
+    "unit": "square meter"
+  },
+  "start_datetime": "2023-06-01T00:00:00Z",
+  "end_datetime": "2023-06-09T00:00:00Z",
+  "links": [
+    {
+      "href": "openEO_2023-06-04Z.tif",
+      "rel": "derived_from",
+      "title": "Derived from openEO_2023-06-04Z.tif",
+      "type": "application/json"
+    },
+    {
+      "href": "openEO_2023-06-06Z.tif",
+      "rel": "derived_from",
+      "title": "Derived from openEO_2023-06-06Z.tif",
+      "type": "application/json"
+    },
+    {
+      "href": "openEO_2023-06-01Z.tif",
+      "rel": "derived_from",
+      "title": "Derived from openEO_2023-06-01Z.tif",
+      "type": "application/json"
+    }
+  ],
+  "proj:bbox": [
+    644550.0,
+    5675770.0,
+    645280.0,
+    5676350.0
+  ],
+  "proj:shape": [
+    58,
+    73
+  ],
+  "assets": {
+    "openEO_2023-06-01Z.tif": {
+      "href": "/opt/docker_mount/openEO_2023-06-01Z.tif",
+      "type": "image/tiff; application=geotiff",
+      "roles": [
+        "data"
+      ],
+      "bands": [
+        {
+          "name": "B04",
+          "common_name": null,
+          "wavelength_um": null,
+          "aliases": null,
+          "gsd": null
+        },
+        {
+          "name": "B03",
+          "common_name": null,
+          "wavelength_um": null,
+          "aliases": null,
+          "gsd": null
+        },
+        {
+          "name": "B02",
+          "common_name": null,
+          "wavelength_um": null,
+          "aliases": null,
+          "gsd": null
+        }
+      ],
+      "nodata": -32768,
+      "datetime": "2023-06-01T00:00:00Z",
+      "bbox": [
+        5.069685009564396,
+        51.21481793134414,
+        5.080364860947119,
+        51.22021524164682
+      ],
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              5.069685009564396,
+              51.21481793134414
+            ],
+            [
+              5.069685009564396,
+              51.22021524164682
+            ],
+            [
+              5.080364860947119,
+              51.22021524164682
+            ],
+            [
+              5.080364860947119,
+              51.21481793134414
+            ],
+            [
+              5.069685009564396,
+              51.21481793134414
+            ]
+          ]
+        ]
+      },
+      "raster:bands": [
+        {
+          "name": "B04",
+          "statistics": {
+            "minimum": 180.0,
+            "maximum": 1766.0,
+            "mean": 401.07085498347,
+            "stddev": 162.43588375276,
+            "valid_percent": 100.0
+          }
+        },
+        {
+          "name": "B03",
+          "statistics": {
+            "minimum": 278.0,
+            "maximum": 1336.0,
+            "mean": 598.11572980633,
+            "stddev": 133.74416960473,
+            "valid_percent": 100.0
+          }
+        },
+        {
+          "name": "B02",
+          "statistics": {
+            "minimum": 216.0,
+            "maximum": 1072.0,
+            "mean": 368.17264997638,
+            "stddev": 99.2670146459,
+            "valid_percent": 100.0
+          }
+        }
+      ]
+    },
+    "openEO_2023-06-04Z.tif": {
+      "href": "/opt/docker_mount/openEO_2023-06-04Z.tif",
+      "type": "image/tiff; application=geotiff",
+      "roles": [
+        "data"
+      ],
+      "bands": [
+        {
+          "name": "B04",
+          "common_name": null,
+          "wavelength_um": null,
+          "aliases": null,
+          "gsd": null
+        },
+        {
+          "name": "B03",
+          "common_name": null,
+          "wavelength_um": null,
+          "aliases": null,
+          "gsd": null
+        },
+        {
+          "name": "B02",
+          "common_name": null,
+          "wavelength_um": null,
+          "aliases": null,
+          "gsd": null
+        }
+      ],
+      "nodata": -32768,
+      "datetime": "2023-06-04T00:00:00Z",
+      "bbox": [
+        5.069685009564396,
+        51.21481793134414,
+        5.080364860947119,
+        51.22021524164682
+      ],
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              5.069685009564396,
+              51.21481793134414
+            ],
+            [
+              5.069685009564396,
+              51.22021524164682
+            ],
+            [
+              5.080364860947119,
+              51.22021524164682
+            ],
+            [
+              5.080364860947119,
+              51.21481793134414
+            ],
+            [
+              5.069685009564396,
+              51.21481793134414
+            ]
+          ]
+        ]
+      },
+      "raster:bands": [
+        {
+          "name": "B04",
+          "statistics": {
+            "minimum": 174.0,
+            "maximum": 1628.0,
+            "mean": 360.10746339159,
+            "stddev": 160.47737013663,
+            "valid_percent": 100.0
+          }
+        },
+        {
+          "name": "B03",
+          "statistics": {
+            "minimum": 263.0,
+            "maximum": 1358.0,
+            "mean": 546.93197921587,
+            "stddev": 129.15120454283,
+            "valid_percent": 100.0
+          }
+        },
+        {
+          "name": "B02",
+          "statistics": {
+            "minimum": 200.0,
+            "maximum": 1116.0,
+            "mean": 344.86820973075,
+            "stddev": 95.975778884601,
+            "valid_percent": 100.0
+          }
+        }
+      ]
+    },
+    "openEO_2023-06-06Z.tif": {
+      "href": "/opt/docker_mount/openEO_2023-06-06Z.tif",
+      "type": "image/tiff; application=geotiff",
+      "roles": [
+        "data"
+      ],
+      "bands": [
+        {
+          "name": "B04",
+          "common_name": null,
+          "wavelength_um": null,
+          "aliases": null,
+          "gsd": null
+        },
+        {
+          "name": "B03",
+          "common_name": null,
+          "wavelength_um": null,
+          "aliases": null,
+          "gsd": null
+        },
+        {
+          "name": "B02",
+          "common_name": null,
+          "wavelength_um": null,
+          "aliases": null,
+          "gsd": null
+        }
+      ],
+      "nodata": -32768,
+      "datetime": "2023-06-06T00:00:00Z",
+      "bbox": [
+        5.069685009564396,
+        51.21481793134414,
+        5.080364860947119,
+        51.22021524164682
+      ],
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              5.069685009564396,
+              51.21481793134414
+            ],
+            [
+              5.069685009564396,
+              51.22021524164682
+            ],
+            [
+              5.080364860947119,
+              51.22021524164682
+            ],
+            [
+              5.080364860947119,
+              51.21481793134414
+            ],
+            [
+              5.069685009564396,
+              51.21481793134414
+            ]
+          ]
+        ]
+      },
+      "raster:bands": [
+        {
+          "name": "B04",
+          "statistics": {
+            "minimum": 171.0,
+            "maximum": 1774.0,
+            "mean": 380.50094473311,
+            "stddev": 176.19790726983,
+            "valid_percent": 100.0
+          }
+        },
+        {
+          "name": "B03",
+          "statistics": {
+            "minimum": 282.0,
+            "maximum": 1470.0,
+            "mean": 592.27586206896,
+            "stddev": 138.20284171799,
+            "valid_percent": 100.0
+          }
+        },
+        {
+          "name": "B02",
+          "statistics": {
+            "minimum": 270.0,
+            "maximum": 1190.0,
+            "mean": 412.22508266415,
+            "stddev": 103.22080164099,
+            "valid_percent": 100.0
+          }
+        }
+      ]
+    }
+  },
+  "epsg": 32631,
+  "instruments": [],
+  "processing:facility": "VITO - SPARK",
+  "processing:software": "openeo-geotrellis-0.40.1a1",
+  "unique_process_ids": [
+    "load_stac"
+  ],
+  "providers": [
+    {
+      "name": "VITO",
+      "description": "This data was processed on an openEO backend maintained by VITO.",
+      "roles": [
+        "processor"
+      ],
+      "processing:facility": "openEO Geotrellis backend",
+      "processing:software": {
+        "Geotrellis backend": "0.40.1a1"
+      },
+      "processing:expression": {
+        "format": "openeo",
+        "expression": {
+          "loadstac1": {
+            "process_id": "load_stac",
+            "arguments": {
+              "spatial_extent": {
+                "east": 5.08,
+                "north": 51.22,
+                "south": 51.215,
+                "west": 5.07
+              },
+              "temporal_extent": [
+                "2023-06-01",
+                "2023-06-09"
+              ],
+              "url": "https://openeo.dataspace.copernicus.eu/openeo/1.2/jobs/j-241002837e7f4caa8ce95f5265c69a98/results/YTc3ZDBjMjgtNGE3OC00YzBjLThlODUtOTMyNjQzYWQ5ZjU2/a9273847fa84a296fb2d9aa864ad1082?expires=1728477227"
+            },
+            "result": true
+          }
+        }
+      }
+    }
+  ],
+  "usage": {
+    "input_pixel": {
+      "value": 0.5625,
+      "unit": "mega-pixel"
+    }
+  }
+}
