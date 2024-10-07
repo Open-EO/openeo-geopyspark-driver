@@ -486,8 +486,8 @@ def _write_exported_stac_collection(job_dir: Path, result_metadata: dict) -> Lis
         "type": "Collection",
         "stac_version": "1.0.0",
         "id": OPENEO_BATCH_JOB_ID,
-        "description": "TODO",  # TODO
-        "license": "TODO",  # TODO
+        "description": f"This is the STAC metadata for the openEO job '{OPENEO_BATCH_JOB_ID}'",  # TODO
+        "license": "unknown",  # TODO
         "extent": {
             "spatial": {"bbox": [[-180, -90, 180, 90]]},  # TODO
             "temporal": {"interval": [[None, None]]}  # TODO
