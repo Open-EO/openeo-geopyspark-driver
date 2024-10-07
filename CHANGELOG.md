@@ -21,6 +21,8 @@ without compromising stable operations.
 - align `DataCubeParameters` with `load_collection` ([#812](https://github.com/Open-EO/openeo-geopyspark-driver/issues/812))
 - apply/apply_dimension(dimension='bands'): nodata tiles were removed as an optimization, but this could lead to unexpected results depending on subsequent steps. They are now replaced with a memory efficient implementation. ([WorldCereal issue][https://github.com/WorldCereal/worldcereal-classification/issues/141])
 - `load_collection` with an excessive extent (temporal or spatial) will now be blocked to avoid excessive resource usage. This check can be disabled with `job_options.do_extent_check=False` ([#815](https://github.com/Open-EO/openeo-geopyspark-driver/issues/815))
+- Mixing bands with signed and unsigned data types could lead to negative values being misrepresented. This is now fixed by using the correct data type for the output.
+- Logging output is being reduced to focus on most relevant messages from a user perspective.
 
 ## 0.40.1
 
