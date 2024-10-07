@@ -991,7 +991,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
     def summarize_exception_static(error: Exception, width=2000) -> Union[ErrorSummary, Exception]:
         if "Container killed on request. Exit code is 143" in str(error):
             is_client_error = False  # Give user the benefit of doubt.
-            summary = "Your batch job failed because workers used too much Python memory. The same task was attempted multiple times. Consider increasing executor-memoryOverhead or contact the developers to investigate."
+            summary = "Your batch job failed because workers used too much memory. The same task was attempted multiple times. Consider increasing executor-memory, python-memory or executor-memoryOverhead or contact the developers to investigate."
 
         elif isinstance(error, Py4JJavaError):
             def get_exception_chain(from_java_exception) -> list:
