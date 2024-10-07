@@ -72,15 +72,20 @@ def callsite(func):
                     return ",".join(f.metadata.band_names)
                 else:
                     return 'datacube'
+            if (isinstance(f, DriverVectorCube)):
+                return 'vectorcube'
+            if (isinstance(f, dict)):
+                return str_truncate(", ".join(f.keys()), width=40)
             return str_truncate(str(f),width=32)
         except Exception as e:
             return repr(e)
 
     def run(*args, **kwargs):
         name = func.__name__
-        name += ','.join(map(try_str,args))
-        name += ','.join(map(try_str, kwargs.values()))
-        gps.get_spark_context().setLocalProperty("callSite.short",name)
+        arg_str = ','.join(map(try_str,args))
+        kwargs_str = ','.join(map(try_str, kwargs.values()))
+        full = ", ".join([name,arg_str,kwargs_str])
+        gps.get_spark_context().setLocalProperty("callSite.short",full)
         try:
             return func(*args, **kwargs)
         finally:
