@@ -1,10 +1,15 @@
+#!/usr/bin/env python3
+
 import os
 from pathlib import Path
 
 import openeo
 
-# this example makes a small process graph and executes it in a local OpenEO container.
+# This example makes a small process graph and executes it in a local OpenEO container.
 
+#############################
+# Step 1, build process graph
+#############################
 spatial_extent_tap = {"east": 5.08, "north": 51.22, "south": 51.215, "west": 5.07}
 
 stac_root = str(Path("example_stac_catalog/").absolute())
@@ -29,6 +34,9 @@ output_dir = Path("tmp_local_output").absolute()
 output_dir.mkdir(exist_ok=True)
 datacube.print_json(file=output_dir / "process_graph.json", indent=2)
 
+###################################
+# Step 2, run process graph locally
+###################################
 containing_folder = Path(__file__).parent.absolute()
 os.system(f"{containing_folder}/local_batch_job {output_dir / 'process_graph.json'} {containing_folder}")
 

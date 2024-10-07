@@ -10,19 +10,19 @@ if [ ! -f "$1" ]; then
     exit 1
 fi
 
-parent_folder="$(dirname "$1")"
+graph_path=$(realpath "$1")
+graph_directory="$(dirname "$graph_path")"
+graph_filename=$(basename -- "$graph_path")
 
 export extra_arguments=()
 if [ -n "$2" ]; then
-    echo Mounting folder: "$2"
     if [ ! -d "$2" ]; then
         echo "Folder not found: $2"
         exit 1
     fi
-    extra_arguments=(-v "$2":"$2":ro)
+    extra_mount_realpath=$(realpath "$2")
+    extra_arguments=(-v "$extra_mount_realpath":"$extra_mount_realpath":ro)
 fi
-
-file_name=$(basename -- "$1")
 
 # --entrypoint /bin/bash
 # Specify user otherwise output files are root
@@ -35,8 +35,8 @@ docker run -t \
     --user "$(id -g):$(id -u)" \
     -v /etc/passwd:/etc/passwd:ro \
     --security-opt seccomp=unconfined \
-    -v "$parent_folder":/opt/docker_mount \
+    -v "$graph_directory":/opt/docker_mount \
     "${extra_arguments[@]}" \
     --network host \
     openeo_docker_local \
-    "$file_name"
+    "$graph_filename"
