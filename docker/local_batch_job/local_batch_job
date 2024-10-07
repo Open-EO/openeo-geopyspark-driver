@@ -22,6 +22,8 @@ if [ -n "$2" ]; then
     extra_arguments=(-v "$2":"$2":ro)
 fi
 
+file_name=$(basename -- "$1")
+
 # --entrypoint /bin/bash
 # Specify user otherwise output files are root
 # /etc/passwd to avoid "whoami: cannot find name for user ID"
@@ -36,4 +38,5 @@ docker run -t \
     -v "$parent_folder":/opt/docker_mount \
     "${extra_arguments[@]}" \
     --network host \
-    openeo_docker_local
+    openeo_docker_local \
+    "$file_name"

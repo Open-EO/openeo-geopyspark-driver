@@ -33,17 +33,17 @@ def run_graph_locally(process_graph, output_dir):
     )
 
 
-def start_entrypoint():
+def main():
     """
     for setup.py entry_points
     """
-    if len(sys.argv) >= 2:
-        workdir = Path(sys.argv[1])
+    process_graph_path = Path(sys.argv[1])
+    if len(sys.argv) > 2:
+        workdir = Path(sys.argv[2])
     else:
-        workdir = Path.cwd()
-    process_graph_path = workdir / "process_graph.json"
+        workdir = process_graph_path.parent
     run_graph_locally(process_graph_path, workdir)
 
 
 if __name__ == "__main__":
-    start_entrypoint()
+    main()

@@ -1,13 +1,12 @@
 # The base image is buiild from vito CI/CD pipeline:
 FROM vito-docker.artifactory.vgt.vito.be/openeo-base:latest
-# sudo docker build -t openeo_docker_local . -f docker/local_batch_job/Dockerfile
+# docker build -t openeo_docker_local . -f docker/local_batch_job/Dockerfile
 
 USER root
 # TODO: fix yum installs
 #RUN yum install -y sshfs
 
 # from openeo-deploy/mep/entrypont.sh
-ENV JAVA_HOME=/usr/lib/jvm/jre
 ENV PYTHON_EGG_CACHE=./
 ENV PYSPARK_PYTHON="/opt/venv/bin/python"
 ENV PATH="/opt/venv/bin:$PATH"
@@ -43,4 +42,4 @@ ENV OPENEO_LOCAL_DEBUGGING="false"
 RUN mkdir /opt/docker_mount
 WORKDIR /opt/docker_mount
 # TODO: Use /opt/venv/bin/run_graph_locally.py when a new openeo-base is available:
-CMD ["python3", "-u", "/opt/venv/lib64/python3.8/site-packages/openeogeotrellis/deploy/run_graph_locally.py"]
+ENTRYPOINT ["python3", "-u", "/opt/venv/lib64/python3.8/site-packages/openeogeotrellis/deploy/run_graph_locally.py"]

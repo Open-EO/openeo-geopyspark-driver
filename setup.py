@@ -114,7 +114,7 @@ setup(
         "console_scripts": [
             "openeo_kube.py = openeogeotrellis.deploy.kube:main",
             "openeo_batch.py = openeogeotrellis.deploy.batch_job:start_main",
-            "run_graph_locally.py = openeogeotrellis.deploy.run_graph_locally:start_entrypoint",
+            "run_graph_locally.py = openeogeotrellis.deploy.run_graph_locally:main",
         ]
     }
 )
