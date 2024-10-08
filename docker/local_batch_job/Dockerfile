@@ -36,6 +36,8 @@ ENV OPENEO_BATCH_JOB_ID="unknown-job"
 ENV OPENEO_USER_ID="openeo_docker_local"
 # When debugging is enabled, port 4040 and 5009 are exposed:
 ENV OPENEO_LOCAL_DEBUGGING="false"
+# Avoid GDAL making .aux files
+ENV GDAL_PAM_ENABLED=NO
 
 # Write directly to the mount. If an error occurs, there is something to debug with
 # openeo.log will be written in the current directory, so change current directory

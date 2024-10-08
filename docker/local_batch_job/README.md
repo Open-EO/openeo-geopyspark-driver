@@ -11,7 +11,7 @@ Prerequisites: Docker already installed. Python with the openEO client installed
 Note, you can refer to local stac collections by file path on Linux, but not on Windows.
 
 - Clone / download this repository
-- Build the image with `cd openeo-geopyspark-driver && sudo docker build -t openeo_docker_local . -f docker/local_batch_job/Dockerfile`
+- Build the image with `cd openeo-geopyspark-driver && docker build -t openeo_docker_local . -f docker/local_batch_job/Dockerfile`
 - Run graph with `./local_batch_job path/to/process_graph.json folder/that/contains/local/stac/catalogs/`
 - The output files will be written to the same folder as process_graph.json
 
