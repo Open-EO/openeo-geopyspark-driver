@@ -933,7 +933,7 @@ def _get_layer_catalog(
                     logger.warning(f"Failed to enrich collection metadata of {cid}: {e}", exc_info=True)
             elif data_source.get("type") == "stac":
                 url = data_source.get("url")
-                logger.info(f"Getting collection metadata from {url}")
+                logger.debug(f"Getting collection metadata from {url}")
                 import requests
                 try:
                     resp = requests.get(url=url)
