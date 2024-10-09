@@ -1327,43 +1327,6 @@ def test_load_stac_temporal_extent_in_result_metadata(tmp_path, requests_mock):
     assert all(expected_start_datetime <= timestamp <= expected_end_datetime for timestamp in timestamps)
 
 
-@pytest.mark.skip("not to be run automatically")
-def test_debug_export_workspace_with_multiple_save_results(tmp_path):
-    with open(
-        "/home/bossie/Documents/VITO/openeo-cdse-infra/export_workspace not executed with multiple save_results #264/original_process_graph.json"
-    ) as f:
-        process = json.load(f)
-
-    process_graph = process["process_graph"]
-    workspace_id = process_graph["exportworkspace1"]["arguments"]["workspace"]
-    merge = process_graph["exportworkspace1"]["arguments"]["merge"]
-
-    workspace: DiskWorkspace = get_backend_config().workspaces[workspace_id]
-    workspace_dir = Path(f"{workspace.root_directory}/{merge}")
-
-    shutil.rmtree(workspace_dir, ignore_errors=True)
-    assert not workspace_dir.exists()
-
-    run_job(
-        process,
-        output_file=tmp_path / "out",
-        metadata_file=tmp_path / "job_metadata.json",
-        api_version="2.0.0",
-        job_dir=tmp_path,
-        dependencies=[],
-    )
-
-    output_files = set(os.listdir(tmp_path))
-    assert "lcfm-s1-55GEN_062_19.tif" in output_files
-    assert "openEO.nc" in output_files
-
-    assert set(os.listdir(workspace_dir)) == {
-        "lcfm-s1-55GEN_062_19.tif",
-        "lcfm-s1-55GEN_062_19.tif.json",
-        "collection.json",
-    }
-
-
 def test_multiple_save_result_single_export_workspace(tmp_path):
     workspace_id = "tmp"
     merge = f"OpenEO-workspace-{uuid.uuid4()}"
