@@ -33,8 +33,6 @@ fi
 # --network host can fix internet connection when the host machine is behind a VPN
 # --rm to remove the container after it finishes. Remove all stopped containers with `docker container prune -f && docker ps -a`
 docker run -t \
-    --user "$(id -g):$(id -u)" \
-    -v /etc/passwd:/etc/passwd:ro \
     --security-opt seccomp=unconfined \
     -v "$graph_directory":/opt/docker_mount \
     "${extra_arguments[@]}" \
