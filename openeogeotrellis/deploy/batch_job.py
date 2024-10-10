@@ -411,6 +411,8 @@ def run_job(
     finally:
         write_metadata({**result_metadata, **_get_tracker_metadata("")}, metadata_file, job_dir)
 
+    # Wait for files to be written to mount:
+    os.fsync(os.open(job_dir, os.O_RDONLY))
 
 def write_metadata(metadata, metadata_file, job_dir):
     with open(metadata_file, 'w') as f:
