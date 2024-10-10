@@ -451,6 +451,35 @@ def test_extra_validation_layer_too_large_resample_spatial_auto42001(backend_imp
     errors = list(processing.extra_validation({}, env, None, env_source_constraints))
     assert len(errors) == 0
 
+def test_extra_validation_layer_too_large_resample_spatial_zero(backend_implementation):
+    # Resample with different CRS, but resolution 0 should be ok.
+    processing = GpsProcessing()
+    source_id1 = "load_collection", ("COPERNICUS_30", None)
+    env_source_constraints = [
+        (
+            source_id1,
+            {
+                "temporal_extent": ["2019-01-01", "2019-01-02"],
+                "spatial_extent": {"south": 0.0, "west": 0.0, "north": 50.0, "east": 60.0, "crs": "EPSG:4326"},
+                "bands": ["DEM"],
+                "resample": {
+                    "target_crs": {"id": {"code": "Auto42001"}},
+                    "resolution": [0.0, 0.0],
+                    "method": "near",
+                },
+            },
+        ),
+    ]
+    env = EvalEnv(
+        values={
+            ENV_SOURCE_CONSTRAINTS: env_source_constraints,
+            "backend_implementation": backend_implementation,
+            "version": "1.0.0",
+        }
+    )
+    errors = list(processing.extra_validation({}, env, None, env_source_constraints))
+    assert len(errors) == 0
+
 
 def test_extract_udf_stacktrace_1():
     summarized = GeoPySparkBackendImplementation.extract_udf_stacktrace("""

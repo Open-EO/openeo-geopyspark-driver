@@ -1365,28 +1365,30 @@ def is_layer_too_large(
     if not health_check_extent(spatial_extent):
         return f"Unsupported spatial extent: {spatial_extent}"
 
+    target_crs = native_crs
     # Resampling process overwrites native_crs and resolution from metadata.
-    resample_target_crs = load_params.target_crs
-    if resample_target_crs:
-        native_crs = resample_target_crs
-    resample_target_resolution = load_params.target_resolution
-    if resample_target_resolution:
-        resample_width, resample_height = resample_target_resolution
-        if resample_width != 0 and resample_height != 0:
-            # This can happen with e.g. resample_spatial(resolution=0, projection=4326)
-            cell_width, cell_height = resample_width, resample_height
+    if load_params.target_resolution is not None:
+        # This can happen with e.g. resample_spatial(resolution=0, projection=4326)
+        if load_params.target_resolution[0] != 0.0 and load_params.target_resolution[1] != 0.0:
+            cell_width = float(load_params.target_resolution[0])
+            cell_height = float(load_params.target_resolution[1])
+            if load_params.target_crs is not None:
+                target_crs = load_params.target_crs
 
-    # Reproject.
-    if isinstance(native_crs, dict):
-        native_crs = native_crs.get("id", {}).get("code", None)
-    if native_crs is None:
+    if isinstance(target_crs, dict):
+        target_crs = target_crs.get("id", {}).get("code", None)
+    if target_crs is None:
         raise InternalException("No native CRS found during is_layer_too_large check.")
-    if native_crs == "Auto42001":
+    if target_crs == "Auto42001":
         west, south = spatial_extent["west"], spatial_extent["south"]
         east, north = spatial_extent["east"], spatial_extent["north"]
-        native_crs = "EPSG:%s" % str(auto_utm_epsg_for_geometry(box(west, south, east, north), srs))
-    if srs != native_crs:
-        spatial_extent = reproject_bounding_box(spatial_extent, from_crs=srs, to_crs=native_crs)
+        target_crs = "EPSG:%s" % str(auto_utm_epsg_for_geometry(box(west, south, east, north), srs))
+    else:
+        target_crs = pyproj.CRS.from_user_input(target_crs).to_epsg()
+    if isinstance(target_crs, int):
+        target_crs = "EPSG:%s" % str(target_crs)
+    if srs != target_crs:
+        spatial_extent = reproject_bounding_box(spatial_extent, from_crs=srs, to_crs=target_crs)
 
     bbox_width = abs(spatial_extent["east"] - spatial_extent["west"])
     bbox_height = abs(spatial_extent["north"] - spatial_extent["south"])
@@ -1411,11 +1413,11 @@ def is_layer_too_large(
             elif isinstance(geometries, BaseGeometry):
                 geometries_area = calculate_rough_area([geometries])
             else:
-                raise TypeError(f'Unsupported geometry type: {type(geometries)}')
-            if native_crs != 'EPSG:4326':
+                raise TypeError(f"Unsupported geometry type: {type(geometries)}")
+            if target_crs != "EPSG:4326":
                 # Geojson is always in 4326. Reproject the cell bbox from native to 4326 so we can calculate the area.
-                cell_bbox = {"west": 0, "east": cell_width, "south": 0, "north": cell_height, "crs": native_crs}
-                cell_bbox = reproject_bounding_box(cell_bbox, from_crs=native_crs, to_crs='EPSG:4326')
+                cell_bbox = {"west": 0, "east": cell_width, "south": 0, "north": cell_height, "crs": target_crs}
+                cell_bbox = reproject_bounding_box(cell_bbox, from_crs=target_crs, to_crs="EPSG:4326")
                 cell_width = abs(cell_bbox["east"] - cell_bbox["west"])
                 cell_height = abs(cell_bbox["north"] - cell_bbox["south"])
             surface_area_pixels = geometries_area / (cell_width * cell_height)
