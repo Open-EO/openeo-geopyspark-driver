@@ -7,19 +7,20 @@ import pytz
 
 from openeogeotrellis.service_registry import InMemoryServiceRegistry
 
-matrix_of_one = np.zeros((1, 4, 4))
+TILE_SIZE = 16
+
+matrix_of_one = np.zeros((1, TILE_SIZE, TILE_SIZE))
 matrix_of_one.fill(1)
 
-matrix_of_two = np.zeros((1, 4, 4))
+matrix_of_two = np.zeros((1, TILE_SIZE, TILE_SIZE))
 matrix_of_two.fill(2)
 
-matrix_of_nodata = np.zeros((1, 4, 4))
+matrix_of_nodata = np.zeros((1, TILE_SIZE, TILE_SIZE))
 matrix_of_nodata.fill(-1)
 
-extent = {'xmin': 0.0, 'ymin': 0.0, 'xmax': 4.0, 'ymax': 4.0}
-extent_webmerc = {'xmin': 0.0, 'ymin': 0.0, 'xmax': 445277.96317309426, 'ymax': 445640.1096560266}
-layout = {'layoutCols': 1, 'layoutRows': 1, 'tileCols': 4, 'tileRows': 4}
-
+extent = {"xmin": 0.0, "ymin": 0.0, "xmax": 4.0, "ymax": 4.0}
+extent_webmerc = {"xmin": 0.0, "ymin": 0.0, "xmax": 445277.96317309426, "ymax": 445640.1096560266}
+layout = {"layoutCols": 1, "layoutRows": 1, "tileCols": TILE_SIZE, "tileRows": TILE_SIZE}
 
 
 openeo_metadata = {

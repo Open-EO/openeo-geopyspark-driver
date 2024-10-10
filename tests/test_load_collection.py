@@ -416,7 +416,7 @@ def test_load_disk_collection_pyramid(
     cube = cube.rename_labels("bands", ["band1", "bands"])
 
     assert len(cube.metadata.spatial_dimensions) == 2
-    assert len(cube.pyramid.levels) == 2
+    assert len(cube.pyramid.levels) == 4
 
 
 def test_load_disk_collection_batch(imagecollection_with_two_bands_and_three_dates,backend_implementation,tmp_path):
