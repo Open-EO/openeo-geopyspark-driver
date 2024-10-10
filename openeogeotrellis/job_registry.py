@@ -737,7 +737,8 @@ class InMemoryJobRegistry(JobRegistryInterface):
         # TODO: implement max_age support
         return [job for job in self.db.values() if job["status"] in active]
 
-    def list_trackable_jobs(self, fields: Optional[List[str]] = None) -> List[JobDict]:
+    def list_trackable_jobs(self, fields: Optional[List[str]] = None, max_age: Optional[int] = None) -> List[JobDict]:
+        # TODO: implement max_age support
         return [job for job in self.db.values()
                 if job["status"] in [JOB_STATUS.CREATED, JOB_STATUS.QUEUED, JOB_STATUS.RUNNING]
                 and job.get("application_id")]
@@ -1000,15 +1001,25 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
         )
         return jobs
 
-    def get_active_jobs(self) -> Iterator[Dict]:
+    def get_active_jobs(self, max_age: Optional[int] = None) -> Iterator[Dict]:
         if self.zk_job_registry:
             # Note: `parse_specification` is enabled here because the jobtracker needs job_options (e.g. to determine target ETL)
             yield from self.zk_job_registry.get_running_jobs(parse_specification=True)
         elif self.elastic_job_registry:
-            yield from self.elastic_job_registry.list_trackable_jobs(fields=[
-                "job_id", "user_id", "application_id", "status", "created", "title", "job_options", "dependencies",
-                "dependency_usage",
-            ])
+            yield from self.elastic_job_registry.list_trackable_jobs(
+                fields=[
+                    "job_id",
+                    "user_id",
+                    "application_id",
+                    "status",
+                    "created",
+                    "title",
+                    "job_options",
+                    "dependencies",
+                    "dependency_usage",
+                ],
+                max_age=max_age,
+            )
 
     def set_results_metadata(self, job_id, user_id, costs: Optional[float], usage: dict,
                              results_metadata: Dict[str, Any]):
