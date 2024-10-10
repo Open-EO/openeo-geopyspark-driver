@@ -28,7 +28,7 @@ class OpenSearchOscars(OpenSearch):
                 # When no sortKeys is specified default should be 'id'
                 # https://git.vito.be/projects/BIGGEO/repos/oscars/browse/src/main/java/be/vito/opensearch/elasticsearch/SearchOperation.java#85
                 url = f"{self.endpoint}/collections?startIndex={start_index}&count=200"
-                logger.info(f"Getting collection metadata from {url}")
+                logger.debug(f"Getting collection metadata from {url}")
                 resp = requests.get(url=url)
                 resp.raise_for_status()
                 json = resp.json()
@@ -187,7 +187,7 @@ class OpenSearchCreodias(OpenSearch):
     def _get_collection(self, collection_id: str) -> dict:
         if not self._collections_cache:
             url = self.endpoint + "/resto/collections.json"
-            logger.info(f"Getting collection metadata from {url}")
+            logger.debug(f"Getting collection metadata from {url}")
             resp = requests.get(url=url)
             resp.raise_for_status()
             self._collections_cache = {c["name"]: c for c in resp.json()["collections"]}
@@ -211,7 +211,7 @@ class OpenSearchCdse(OpenSearch):
     def get_metadata(self, collection_id: str) -> dict:
         if not self._collections_cache:
             url = self.endpoint + "/collections"
-            logger.info(f"Getting collection metadata from {url}")
+            logger.debug(f"Getting collection metadata from {url}")
             resp = requests.get(url=url)
             resp.raise_for_status()
             self._collections_cache = {c["id"]: c for c in resp.json()["collections"]}

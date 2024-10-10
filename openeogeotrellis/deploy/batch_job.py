@@ -50,7 +50,7 @@ GlobalExtraLoggingFilter.set("job_id", OPENEO_BATCH_JOB_ID)
 
 
 def _create_job_dir(job_dir: Path):
-    logger.info("creating job dir {j!r} (parent dir: {p}))".format(j=job_dir, p=describe_path(job_dir.parent)))
+    logger.debug("creating job dir {j!r} (parent dir: {p}))".format(j=job_dir, p=describe_path(job_dir.parent)))
     ensure_dir(job_dir)
     if not ConfigParams().is_kube_deploy:
         try:
@@ -119,7 +119,7 @@ def main(argv: List[str]) -> None:
     # Override default temp dir (under CWD). Original default temp dir `/tmp` might be cleaned up unexpectedly.
     temp_dir = Path(os.getcwd()) / "tmp"
     temp_dir.mkdir(parents=True, exist_ok=True)
-    logger.info("Using temp dir {t}".format(t=temp_dir))
+    logger.debug("Using temp dir {t}".format(t=temp_dir))
     os.environ["TMPDIR"] = str(temp_dir)
 
     if ConfigParams().is_kube_deploy:
@@ -239,7 +239,7 @@ def run_job(
         job_dir = Path(job_dir)
 
         logger.info(f"Job spec: {json.dumps(job_specification,indent=1)}")
-        logger.info(f"{job_dir=}, {job_dir.resolve()=}, {output_file=}, {metadata_file=}")
+        logger.debug(f"{job_dir=}, {job_dir.resolve()=}, {output_file=}, {metadata_file=}")
         process_graph = job_specification['process_graph']
         job_options = job_specification.get("job_options", {})
 
@@ -255,7 +255,7 @@ def run_job(
         if default_sentinel_hub_credentials is not None:
             backend_implementation.set_default_sentinel_hub_credentials(*default_sentinel_hub_credentials)
 
-        logger.info(f"Using backend implementation {backend_implementation}")
+        logger.debug(f"Using backend implementation {backend_implementation}")
         correlation_id = OPENEO_BATCH_JOB_ID
         logger.info(f"Correlation id: {correlation_id}")
         env_values = {
@@ -280,7 +280,7 @@ def run_job(
         env_values.update({k: job_options[k] for k in job_option_whitelist if k in job_options})
         env = EvalEnv(env_values)
         tracer = DryRunDataTracer()
-        logger.info("Starting process graph evaluation")
+        logger.debug("Starting process graph evaluation")
         pg_copy = deepcopy(process_graph)
         result = ProcessGraphDeserializer.evaluate(process_graph, env=env, do_dry_run=tracer)
         logger.info("Evaluated process graph, result (type {t}): {r!r}".format(t=type(result), r=result))
@@ -340,6 +340,7 @@ def run_job(
             for name, asset in the_assets_metadata.items():
                 add_permissions(Path(asset["href"]), stat.S_IWGRP)
             logger.info(f"wrote {len(the_assets_metadata)} assets to {output_file}")
+            _export_workspace(result, result_metadata, the_assets_metadata, stac_metadata_dir=job_dir)
             assets_metadata = {**assets_metadata, **the_assets_metadata}
 
         if any(dependency['card4l'] for dependency in dependencies):  # TODO: clean this up
@@ -402,16 +403,16 @@ def run_job(
                                                     ml_model_metadata=ml_model_metadata,skip_gdal=True)
 
         write_metadata({**result_metadata, **_get_tracker_metadata("")}, metadata_file, job_dir)
-        logger.info("Starting GDAL-based retrieval of asset metadata")
+        logger.debug("Starting GDAL-based retrieval of asset metadata")
         result_metadata = _assemble_result_metadata(tracer=tracer, result=result, output_file=output_file,
                                                     unique_process_ids=unique_process_ids,
                                                     asset_metadata=assets_metadata,
                                                     ml_model_metadata=ml_model_metadata,skip_gdal=False)
-
-        _export_workspace(result, result_metadata, stac_metadata_dir=job_dir)
     finally:
         write_metadata({**result_metadata, **_get_tracker_metadata("")}, metadata_file, job_dir)
 
+    # Wait for files to be written to mount:
+    os.fsync(os.open(job_dir, os.O_RDONLY))
 
 def write_metadata(metadata, metadata_file, job_dir):
     with open(metadata_file, 'w') as f:
@@ -435,17 +436,31 @@ def write_metadata(metadata, metadata_file, job_dir):
             _convert_job_metadatafile_outputs_to_s3_urls(metadata_file)
 
 
-def _export_workspace(result: SaveResult, result_metadata: dict, stac_metadata_dir: Path):
-    asset_paths = [Path(asset["href"]) for asset in result_metadata.get("assets", {}).values()]
-    stac_paths = _write_exported_stac_collection(stac_metadata_dir, result_metadata)
+def _export_workspace(result: SaveResult, result_metadata: dict, assets_metadata: dict, stac_metadata_dir: Path):
+    asset_paths = [Path(asset["href"]) for asset in assets_metadata.values()]
+    stac_paths = _write_exported_stac_collection(stac_metadata_dir, result_metadata, assets_metadata)
     result.export_workspace(workspace_repository=backend_config_workspace_repository,
                             files=asset_paths + stac_paths,
                             default_merge=OPENEO_BATCH_JOB_ID)
 
 
-def _write_exported_stac_collection(job_dir: Path, result_metadata: dict) -> List[Path]:  # TODO: change to Set?
+def _write_exported_stac_collection(
+    job_dir: Path, result_metadata: dict, assets_metadata: dict
+) -> List[Path]:  # TODO: change to Set?
     def write_stac_item_file(asset_id: str, asset: dict) -> Path:
         item_file = job_dir / f"{asset_id}.json"
+
+        properties = {"datetime": asset.get("datetime")}
+
+        if properties["datetime"] is None:
+            start_datetime = asset.get("start_datetime") or result_metadata.get("start_datetime")
+            end_datetime = asset.get("end_datetime") or result_metadata.get("end_datetime")
+
+            if start_datetime == end_datetime:
+                properties["datetime"] = start_datetime
+            else:
+                properties["start_datetime"] = start_datetime
+                properties["end_datetime"] = end_datetime
 
         stac_item = {
             "type": "Feature",
@@ -453,9 +468,7 @@ def _write_exported_stac_collection(job_dir: Path, result_metadata: dict) -> Lis
             "id": asset_id,
             "geometry": asset.get("geometry"),
             "bbox": asset.get("bbox"),
-            "properties": {
-                "datetime": asset.get("datetime"),
-            },
+            "properties": properties,
             "links": [],  # TODO
             "assets": {
                 asset_id: dict_no_none(**{
@@ -472,8 +485,7 @@ def _write_exported_stac_collection(job_dir: Path, result_metadata: dict) -> Lis
 
         return item_file
 
-    item_files = [write_stac_item_file(asset_id, asset)
-                  for asset_id, asset in result_metadata.get("assets", {}).items()]
+    item_files = [write_stac_item_file(asset_id, asset) for asset_id, asset in assets_metadata.items()]
 
     def item_link(item_file: Path) -> dict:
         return {
@@ -486,8 +498,8 @@ def _write_exported_stac_collection(job_dir: Path, result_metadata: dict) -> Lis
         "type": "Collection",
         "stac_version": "1.0.0",
         "id": OPENEO_BATCH_JOB_ID,
-        "description": "TODO",  # TODO
-        "license": "TODO",  # TODO
+        "description": f"This is the STAC metadata for the openEO job '{OPENEO_BATCH_JOB_ID}'",  # TODO
+        "license": "unknown",  # TODO
         "extent": {
             "spatial": {"bbox": [[-180, -90, 180, 90]]},  # TODO
             "temporal": {"interval": [[None, None]]}  # TODO
@@ -495,7 +507,7 @@ def _write_exported_stac_collection(job_dir: Path, result_metadata: dict) -> Lis
         "links": [item_link(item_file) for item_file in item_files],
     }
 
-    collection_file = job_dir / "collection.json"
+    collection_file = job_dir / "collection.json"  # TODO: file is reused for each result
     with open(collection_file, "wt") as fc:
         json.dump(stac_collection, fc)
 

@@ -991,7 +991,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
     def summarize_exception_static(error: Exception, width=2000) -> Union[ErrorSummary, Exception]:
         if "Container killed on request. Exit code is 143" in str(error):
             is_client_error = False  # Give user the benefit of doubt.
-            summary = "Your batch job failed because workers used too much Python memory. The same task was attempted multiple times. Consider increasing executor-memoryOverhead or contact the developers to investigate."
+            summary = "Your batch job failed because workers used too much memory. The same task was attempted multiple times. Consider increasing executor-memory, python-memory or executor-memoryOverhead or contact the developers to investigate."
 
         elif isinstance(error, Py4JJavaError):
             def get_exception_chain(from_java_exception) -> list:
@@ -1227,7 +1227,7 @@ class GpsProcessing(ConcreteProcessing):
             # TODO: remove this temporary feature flag https://github.com/Open-EO/openeo-geopyspark-driver/issues/404
             return run_udf_code(code=udf, data=data, require_executor_context=False)
         sc = SparkContext.getOrCreate()
-        data_rdd = sc.parallelize([data])
+        data_rdd = sc.parallelize([data],1)
         result_rdd = data_rdd.map(lambda d: run_udf_code(code=udf, data=d))
         result = result_rdd.collect()
         if not len(result) == 1:
@@ -1402,7 +1402,7 @@ class GpsBatchJobs(backend.BatchJobs):
             if dependency_job_info:
                 partial_job_status = PARTIAL_JOB_STATUS.for_job_status(dependency_job_info.status)
             else:
-                with requests_session.get(url, timeout=600) as resp:
+                with requests_session.get(url, timeout=20) as resp:
                     resp.raise_for_status()
                     stac_object = resp.json()
                 partial_job_status = stac_object.get('openeo:status')
@@ -1832,7 +1832,7 @@ class GpsBatchJobs(backend.BatchJobs):
             else:
                 # If python-memory is not set, we convert most of the overhead memory to python memory
                 python_max = memOverheadBytes - jvmOverheadBytes
-                executor_memory_overhead = f"{jvmOverheadBytes//(1024**2)}m"
+                executor_memory_overhead = f"{memOverheadBytes//(1024**2)}m"
 
             if as_bytes(executor_memory) + as_bytes(executor_memory_overhead) + python_max > as_bytes(
                     get_backend_config().max_executor_or_driver_memory
@@ -2550,7 +2550,7 @@ class GpsBatchJobs(backend.BatchJobs):
                         partial_job_status = PARTIAL_JOB_STATUS.for_job_status(dependency_job_info.status)
                     else:
                         with TimingLogger(f'load_stac({url}): extract "openeo:status"', logger=logger_adapter.debug):
-                            with self._requests_session.get(url, timeout=600) as resp:
+                            with self._requests_session.get(url, timeout=20) as resp:
                                 resp.raise_for_status()
                                 stac_object = resp.json()
                             partial_job_status = stac_object.get('openeo:status')

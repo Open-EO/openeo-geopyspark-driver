@@ -53,7 +53,7 @@ setup(
     tests_require=tests_require,
     install_requires=[
         "openeo>=0.32.0.a2.dev",
-        "openeo_driver>=0.108.0.dev",
+        "openeo_driver>=0.110.0.dev",
         'pyspark==3.4.2; python_version>="3.8"',
         'pyspark>=2.3.1,<2.4.0; python_version<"3.8"',
         'geopyspark==0.4.7+openeo',
@@ -111,9 +111,10 @@ setup(
         ],
     },
     entry_points={
-        'console_scripts': [
-            'openeo_kube.py = openeogeotrellis.deploy.kube:main',
-            'openeo_batch.py = openeogeotrellis.deploy.batch_job:start_main'
+        "console_scripts": [
+            "openeo_kube.py = openeogeotrellis.deploy.kube:main",
+            "openeo_batch.py = openeogeotrellis.deploy.batch_job:start_main",
+            "run_graph_locally.py = openeogeotrellis.deploy.run_graph_locally:main",
         ]
     }
 )

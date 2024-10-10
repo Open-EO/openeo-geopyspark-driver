@@ -22,6 +22,7 @@ from openeogeotrellis.job_registry import InMemoryJobRegistry
 from openeogeotrellis.testing import gps_config_overrides
 from openeogeotrellis.vault import Vault
 
+# TODO: Explicitly import these fixtures where there are needed.
 from .datacube_fixtures import imagecollection_with_two_bands_and_three_dates, \
     imagecollection_with_two_bands_and_one_date, imagecollection_with_two_bands_and_three_dates_webmerc, \
     imagecollection_with_two_bands_spatial_only, imagecollection_with_two_bands_and_one_date_multiple_values
@@ -134,7 +135,7 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
     # 'agentlib' to allow attaching a Java debugger to running Spark driver
     extra_options = f'-Dlog4j2.configurationFile=file:{sparkSubmitLog4jConfigurationFile}'
     if OPENEO_LOCAL_DEBUGGING:
-        extra_options += f' -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5009 -Dgeotrellis.jts.precision.type=fixed -Dgeotrellis.jts.simplification.scale=1e10'
+        extra_options += f' -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5009'
     conf.set('spark.driver.extraJavaOptions', extra_options)
     # conf.set('spark.executor.extraJavaOptions', extra_options) # Seems not needed
 
@@ -151,10 +152,14 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
         ]
     }))
 
+    if OPENEO_LOCAL_DEBUGGING:
+        # TODO: Activate default logging for this message
+        print("Spark UI: " + str(context.uiWebUrl))
+
     out.write_line("[conftest.py] Validating the Spark context")
     dummy = context._jvm.org.openeo.geotrellis.OpenEOProcesses()
-    #answer = context.parallelize([9, 10, 11, 12]).sum()
-    #out.write_line("[conftest.py] " + repr((answer, dummy)))
+    answer = context.parallelize([9, 10, 11, 12]).sum()
+    out.write_line("[conftest.py] " + repr((answer, dummy)))
 
     return context
 

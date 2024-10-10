@@ -737,7 +737,8 @@ class InMemoryJobRegistry(JobRegistryInterface):
         # TODO: implement max_age support
         return [job for job in self.db.values() if job["status"] in active]
 
-    def list_trackable_jobs(self, fields: Optional[List[str]] = None) -> List[JobDict]:
+    def list_trackable_jobs(self, fields: Optional[List[str]] = None, max_age: Optional[int] = None) -> List[JobDict]:
+        # TODO: implement max_age support
         return [job for job in self.db.values()
                 if job["status"] in [JOB_STATUS.CREATED, JOB_STATUS.QUEUED, JOB_STATUS.RUNNING]
                 and job.get("application_id")]
@@ -768,7 +769,7 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
         self.zk_job_registry: Optional[ZkJobRegistry] = None
         self.elastic_job_registry = elastic_job_registry
         # Synchronisation lock to make sure that only one thread at a time can use this as a context manager.
-        self._lock = threading.RLock()
+        # self._lock = threading.RLock()
 
     def __repr__(self):
         return (
@@ -776,7 +777,7 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
         )
 
     def __enter__(self):
-        self._lock.acquire()
+        # self._lock.acquire()
         self.zk_job_registry = self._zk_job_registry_factory() if self._zk_job_registry_factory else None
         self._log.debug(f"Context enter {self!r}")
         if self.zk_job_registry:
@@ -794,7 +795,7 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
                 self.zk_job_registry.__exit__(exc_type, exc_val, exc_tb)
         finally:
             self.zk_job_registry = None
-            self._lock.release()
+            # self._lock.release()
 
     def create_job(
         self,
@@ -1000,15 +1001,25 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
         )
         return jobs
 
-    def get_active_jobs(self) -> Iterator[Dict]:
+    def get_active_jobs(self, max_age: Optional[int] = None) -> Iterator[Dict]:
         if self.zk_job_registry:
             # Note: `parse_specification` is enabled here because the jobtracker needs job_options (e.g. to determine target ETL)
             yield from self.zk_job_registry.get_running_jobs(parse_specification=True)
         elif self.elastic_job_registry:
-            yield from self.elastic_job_registry.list_trackable_jobs(fields=[
-                "job_id", "user_id", "application_id", "status", "created", "title", "job_options", "dependencies",
-                "dependency_usage",
-            ])
+            yield from self.elastic_job_registry.list_trackable_jobs(
+                fields=[
+                    "job_id",
+                    "user_id",
+                    "application_id",
+                    "status",
+                    "created",
+                    "title",
+                    "job_options",
+                    "dependencies",
+                    "dependency_usage",
+                ],
+                max_age=max_age,
+            )
 
     def set_results_metadata(self, job_id, user_id, costs: Optional[float], usage: dict,
                              results_metadata: Dict[str, Any]):

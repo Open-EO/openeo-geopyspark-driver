@@ -14,12 +14,23 @@ without compromising stable operations.
 
 ## Unreleased
 
+## 0.42.0
+
+- Job tracker (still based on `DoubleJobRegistry`) only consider last 2 weeks of "trackable" jobs ([#902](https://github.com/Open-EO/openeo-geopyspark-driver/issues/902))
+
+## 0.41.0
+
 - quantiles, when used in apply_dimension was corrected to use the interpolation method that is prescribed by the openEO process definition.
 - return STAC Items with valid date/time for time series job results ([#852](https://github.com/Open-EO/openeo-geopyspark-driver/issues/852))
 - filter_labels now also supported for collections that use sar_backscatter and use the internal Orfeo toolbox based method to compute backscatter on the fly. For example: SENTINEL1_GRD ([Open-EO/openeo-geotrellis-extensions#320](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/320))
 - support mask assets in `load_stac` ([#874](https://github.com/Open-EO/openeo-geopyspark-driver/issues/874))
 - align `DataCubeParameters` with `load_collection` ([#812](https://github.com/Open-EO/openeo-geopyspark-driver/issues/812))
 - apply/apply_dimension(dimension='bands'): nodata tiles were removed as an optimization, but this could lead to unexpected results depending on subsequent steps. They are now replaced with a memory efficient implementation. ([WorldCereal issue][https://github.com/WorldCereal/worldcereal-classification/issues/141])
+- `load_collection` with an excessive extent (temporal or spatial) will now be blocked to avoid excessive resource usage. This check can be disabled with `job_options.do_extent_check=False` ([#815](https://github.com/Open-EO/openeo-geopyspark-driver/issues/815))
+- Mixing bands with signed and unsigned data types could lead to negative values being misrepresented. This is now fixed by using the correct data type for the output.
+- Logging output is being reduced to focus on most relevant messages from a user perspective.
+- Support multiple `export_workspace` processes ([eu-cdse/openeo-cdse-infra#264](https://github.com/eu-cdse/openeo-cdse-infra/issues/264))
+- Fix `export_workspace` process not executed in process graph with multiple `save_result` processes ([eu-cdse/openeo-cdse-infra#264](https://github.com/eu-cdse/openeo-cdse-infra/issues/264))
 
 ## 0.40.1
 

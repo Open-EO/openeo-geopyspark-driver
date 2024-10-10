@@ -988,9 +988,9 @@ def test_export_workspace(tmp_path):
         assert geotiff_asset.media_type == "image/tiff; application=geotiff"
         assert geotiff_asset.extra_fields["eo:bands"] == [DictSubSet({"name": "Flat:2"})]
 
-        geotiff_asset_file = tmp_path / "openEO_2021-01-05Z_copy.tif"
-        geotiff_asset.copy(str(geotiff_asset_file))  # downloads the asset file
-        assert geotiff_asset_file.exists()
+        geotiff_asset_copy_path = tmp_path / "openEO_2021-01-05Z.tif.copy"
+        geotiff_asset.copy(str(geotiff_asset_copy_path))  # downloads the asset file
+        assert geotiff_asset_copy_path.exists()
 
         # TODO: check other things e.g. proj:
     finally:
@@ -1327,6 +1327,79 @@ def test_load_stac_temporal_extent_in_result_metadata(tmp_path, requests_mock):
     timestamps = gdf["date"].tolist()
     assert len(timestamps) > 0
     assert all(expected_start_datetime <= timestamp <= expected_end_datetime for timestamp in timestamps)
+
+
+def test_multiple_save_result_single_export_workspace(tmp_path):
+    workspace_id = "tmp"
+    merge = f"OpenEO-workspace-{uuid.uuid4()}"
+
+    process_graph = {
+        "loadcollection1": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "TestCollection-LonLat4x4",
+                "temporal_extent": ["2021-01-05", "2021-01-06"],
+                "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 2.0},
+                "bands": ["Flat:2"],
+            },
+        },
+        "saveresult1": {
+            "process_id": "save_result",
+            "arguments": {"data": {"from_node": "loadcollection1"}, "format": "NetCDF", "options": {}},
+        },
+        "dropdimension1": {
+            "process_id": "drop_dimension",
+            "arguments": {"data": {"from_node": "loadcollection1"}, "name": "t"},
+        },
+        "saveresult2": {
+            "process_id": "save_result",
+            "arguments": {
+                "data": {"from_node": "dropdimension1"},
+                "format": "GTiff",
+            },
+        },
+        "exportworkspace1": {
+            "process_id": "export_workspace",
+            "arguments": {
+                "data": {"from_node": "saveresult2"},
+                "workspace": workspace_id,
+                "merge": merge,
+            },
+            "result": True,
+        },
+    }
+
+    process = {"process_graph": process_graph}
+
+    # TODO: avoid depending on `/tmp` for test output, make sure to leverage `tmp_path` fixture (https://github.com/Open-EO/openeo-python-driver/issues/265)
+    workspace: DiskWorkspace = get_backend_config().workspaces[workspace_id]
+    workspace_dir = Path(f"{workspace.root_directory}/{merge}")
+
+    try:
+        run_job(
+            process,
+            output_file=tmp_path / "out",
+            metadata_file=tmp_path / "job_metadata.json",
+            api_version="2.0.0",
+            job_dir=tmp_path,
+            dependencies=[],
+        )
+
+        assert (tmp_path / "openEO.tif").exists()
+        assert (tmp_path / "openEO.nc").exists()
+
+        assert set(os.listdir(workspace_dir)) == {"collection.json", "openEO.tif", "openEO.tif.json"}
+
+        stac_collection = pystac.Collection.from_file(str(workspace_dir / "collection.json"))
+        stac_collection.validate_all()
+
+        for item in stac_collection.get_items():
+            for asset_key, asset in item.get_assets().items():
+                asset_copy_path = tmp_path / f"{asset_key}.copy"
+                asset.copy(str(asset_copy_path))  # downloads the asset file
+                assert asset_copy_path.exists()
+    finally:
+        shutil.rmtree(workspace_dir)
 
 
 def test_geotiff_scale_offset(tmp_path):
