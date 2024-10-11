@@ -954,12 +954,12 @@ def test_export_workspace(tmp_path):
             dependencies=[],
         )
 
-        output_file = tmp_path / "openEO_2021-01-05Z.tif"
-        assert output_file.exists()
+        job_dir_files = set(os.listdir(tmp_path))
+        assert len(job_dir_files) > 0
+        assert "openEO_2021-01-05Z.tif" not in job_dir_files
 
-        workspace_files = {"collection.json", "openEO_2021-01-05Z.tif", "openEO_2021-01-05Z.tif.json"}
-
-        assert set(os.listdir(workspace_dir)) == workspace_files
+        workspace_files = set(os.listdir(workspace_dir))
+        assert workspace_files == {"collection.json", "openEO_2021-01-05Z.tif", "openEO_2021-01-05Z.tif.json"}
 
         stac_collection = pystac.Collection.from_file(str(workspace_dir / "collection.json"))
         stac_collection.validate_all()
@@ -988,7 +988,8 @@ def test_export_workspace(tmp_path):
 
         geotiff_asset_copy_path = tmp_path / "openEO_2021-01-05Z.tif.copy"
         geotiff_asset.copy(str(geotiff_asset_copy_path))  # downloads the asset file
-        assert geotiff_asset_copy_path.exists()
+        with rasterio.open(geotiff_asset_copy_path) as dataset:
+            assert dataset.driver == "GTiff"
 
         # TODO: check other things e.g. proj:
     finally:
@@ -1383,10 +1384,13 @@ def test_multiple_save_result_single_export_workspace(tmp_path):
             dependencies=[],
         )
 
-        assert (tmp_path / "openEO.tif").exists()
-        assert (tmp_path / "openEO.nc").exists()
+        job_dir_files = set(os.listdir(tmp_path))
+        assert len(job_dir_files) > 0
+        assert "openEO.nc" in job_dir_files
+        assert "openEO.tif" not in job_dir_files
 
-        assert set(os.listdir(workspace_dir)) == {"collection.json", "openEO.tif", "openEO.tif.json"}
+        workspace_files = set(os.listdir(workspace_dir))
+        assert workspace_files == {"collection.json", "openEO.tif", "openEO.tif.json"}
 
         stac_collection = pystac.Collection.from_file(str(workspace_dir / "collection.json"))
         stac_collection.validate_all()
@@ -1395,6 +1399,7 @@ def test_multiple_save_result_single_export_workspace(tmp_path):
             for asset_key, asset in item.get_assets().items():
                 asset_copy_path = tmp_path / f"{asset_key}.copy"
                 asset.copy(str(asset_copy_path))  # downloads the asset file
-                assert asset_copy_path.exists()
+                with rasterio.open(asset_copy_path) as dataset:
+                    assert dataset.driver == "GTiff"
     finally:
         shutil.rmtree(workspace_dir)
