@@ -7,6 +7,8 @@ import pytz
 
 from openeogeotrellis.service_registry import InMemoryServiceRegistry
 
+# TODO: put these things in a function that accepts a tile_size parameter to avoid having to change a lot of tests,
+#  then request tile_size=16 for tests that actually write GeoTiffs
 TILE_SIZE = 16
 
 matrix_of_one = np.zeros((1, TILE_SIZE, TILE_SIZE))

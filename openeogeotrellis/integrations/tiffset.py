@@ -11,4 +11,5 @@ def embed_gdal_metadata(gdal_metadata_xml: str, geotiff_path: Union[Path, str]):
         tmp.write(f"{gdal_metadata_xml}\n")
         tmp.flush()
 
+        # TODO: print stdout/stderr in case of error
         subprocess.check_call(["tiffset", "-sf", "42112", tmp.name, str(geotiff_path)])
