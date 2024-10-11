@@ -538,13 +538,13 @@ def start_main():
     )
 
     try:
-        with TimingLogger(f"batch_job.py main {os.getpid()=}", logger=logger):
+        with TimingLogger(f"Starting batch job {os.getpid()=}", logger=logger):
             main(sys.argv)
     except Exception as e:
         error_summary = GeoPySparkBackendImplementation.summarize_exception_static(e)
         fmt = Format(max_value_str_len=1000)
         logger.exception("OpenEO batch job failed: " + error_summary.summary)
-        logger.error("Batch job error stack trace with locals", extra={"exc_info_with_locals": format_exc(e, fmt=fmt)})
+        logger.info("Batch job error stack trace with locals", extra={"exc_info_with_locals": format_exc(e, fmt=fmt)})
         raise
 
 
