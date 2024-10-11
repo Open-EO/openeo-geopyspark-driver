@@ -313,11 +313,16 @@ def run_job(
 
         unique_process_ids = CollectUniqueProcessIdsVisitor().accept_process_graph(process_graph).process_ids
 
-        result_metadata = _assemble_result_metadata(tracer=tracer, result=results[0], output_file=output_file,
-                                                    unique_process_ids=unique_process_ids,
-                                                    asset_metadata={},
-                                                    ml_model_metadata=ml_model_metadata,skip_gdal=True)
-        #perform a first metadata write _before_ actually computing the result. This provides a bit more info, even if the job fails.
+        result_metadata = _assemble_result_metadata(
+            tracer=tracer,
+            result=results[0],
+            output_file=output_file,
+            unique_process_ids=unique_process_ids,
+            apply_gdal=False,
+            asset_metadata={},
+            ml_model_metadata=ml_model_metadata,
+        )
+        # perform a first metadata write _before_ actually computing the result. This provides a bit more info, even if the job fails.
         write_metadata({**result_metadata, **_get_tracker_metadata("")}, metadata_file, job_dir)
 
         for result in results:
@@ -397,22 +402,33 @@ def run_job(
                     }
                 }]
 
-        result_metadata = _assemble_result_metadata(tracer=tracer, result=result, output_file=output_file,
-                                                    unique_process_ids=unique_process_ids,
-                                                    asset_metadata=assets_metadata,
-                                                    ml_model_metadata=ml_model_metadata,skip_gdal=True)
+        result_metadata = _assemble_result_metadata(
+            tracer=tracer,
+            result=result,
+            output_file=output_file,
+            unique_process_ids=unique_process_ids,
+            apply_gdal=False,
+            asset_metadata=assets_metadata,
+            ml_model_metadata=ml_model_metadata,
+        )
 
         write_metadata({**result_metadata, **_get_tracker_metadata("")}, metadata_file, job_dir)
         logger.debug("Starting GDAL-based retrieval of asset metadata")
-        result_metadata = _assemble_result_metadata(tracer=tracer, result=result, output_file=output_file,
-                                                    unique_process_ids=unique_process_ids,
-                                                    asset_metadata=assets_metadata,
-                                                    ml_model_metadata=ml_model_metadata,skip_gdal=False)
+        result_metadata = _assemble_result_metadata(
+            tracer=tracer,
+            result=result,
+            output_file=output_file,
+            unique_process_ids=unique_process_ids,
+            apply_gdal=True,
+            asset_metadata=assets_metadata,
+            ml_model_metadata=ml_model_metadata,
+        )
     finally:
         write_metadata({**result_metadata, **_get_tracker_metadata("")}, metadata_file, job_dir)
 
     # Wait for files to be written to mount:
     os.fsync(os.open(job_dir, os.O_RDONLY))
+
 
 def write_metadata(metadata, metadata_file, job_dir):
     with open(metadata_file, 'w') as f:
