@@ -37,9 +37,19 @@ from openeogeotrellis.deploy import load_custom_processes
 from openeogeotrellis.deploy.batch_job_metadata import _assemble_result_metadata, _transform_stac_metadata, \
     _convert_job_metadatafile_outputs_to_s3_urls, _get_tracker_metadata
 from openeogeotrellis.integrations.hadoop import setup_kerberos_auth
-from openeogeotrellis.udf import (collect_python_udf_dependencies, install_python_udf_dependencies,
-                                  UDF_PYTHON_DEPENDENCIES_FOLDER_NAME, )
-from openeogeotrellis.utils import (describe_path, log_memory, get_jvm, add_permissions, json_default, )
+from openeogeotrellis.udf import (
+    collect_python_udf_dependencies,
+    install_python_udf_dependencies,
+    UDF_PYTHON_DEPENDENCIES_FOLDER_NAME,
+)
+from openeogeotrellis.utils import (
+    describe_path,
+    log_memory,
+    get_jvm,
+    add_permissions,
+    json_default,
+    to_jsonable,
+)
 
 logger = logging.getLogger('openeogeotrellis.deploy.batch_job')
 
@@ -308,7 +318,7 @@ def run_job(
             "institution": "openEO platform - Geotrellis backend: " + __version__
         }
 
-        assets_metadata = {}
+        assets_metadata = []
         ml_model_metadata = None
 
         unique_process_ids = CollectUniqueProcessIdsVisitor().accept_process_graph(process_graph).process_ids
@@ -345,8 +355,7 @@ def run_job(
             for name, asset in the_assets_metadata.items():
                 add_permissions(Path(asset["href"]), stat.S_IWGRP)
             logger.info(f"wrote {len(the_assets_metadata)} assets to {output_file}")
-            _export_workspace(result, result_metadata, the_assets_metadata, stac_metadata_dir=job_dir)
-            assets_metadata = {**assets_metadata, **the_assets_metadata}
+            assets_metadata.append(the_assets_metadata)
 
         if any(dependency['card4l'] for dependency in dependencies):  # TODO: clean this up
             logger.debug("awaiting Sentinel Hub CARD4L data...")
@@ -408,7 +417,12 @@ def run_job(
             output_file=output_file,
             unique_process_ids=unique_process_ids,
             apply_gdal=False,
-            asset_metadata=assets_metadata,
+            asset_metadata={
+                # TODO: flattened instead of per-result, clean this up?
+                asset_key: asset_metadata
+                for result_assets_metadata in assets_metadata
+                for asset_key, asset_metadata in result_assets_metadata.items()
+            },
             ml_model_metadata=ml_model_metadata,
         )
 
@@ -420,9 +434,22 @@ def run_job(
             output_file=output_file,
             unique_process_ids=unique_process_ids,
             apply_gdal=True,
-            asset_metadata=assets_metadata,
+            asset_metadata={
+                # TODO: flattened instead of per-result, clean this up?
+                asset_key: asset_metadata
+                for result_assets_metadata in assets_metadata
+                for asset_key, asset_metadata in result_assets_metadata.items()
+            },
             ml_model_metadata=ml_model_metadata,
         )
+
+        assert len(results) == len(assets_metadata)
+        for result, result_assets_metadata in zip(results, assets_metadata):
+            _export_workspace(
+                result, result_metadata, result_asset_keys=result_assets_metadata.keys(), stac_metadata_dir=job_dir
+            )
+
+        # TODO: delete exported assets from local disk/Swift
     finally:
         write_metadata({**result_metadata, **_get_tracker_metadata("")}, metadata_file, job_dir)
 
@@ -452,16 +479,18 @@ def write_metadata(metadata, metadata_file, job_dir):
             _convert_job_metadatafile_outputs_to_s3_urls(metadata_file)
 
 
-def _export_workspace(result: SaveResult, result_metadata: dict, assets_metadata: dict, stac_metadata_dir: Path):
-    asset_paths = [Path(asset["href"]) for asset in assets_metadata.values()]
-    stac_paths = _write_exported_stac_collection(stac_metadata_dir, result_metadata, assets_metadata)
+def _export_workspace(result: SaveResult, result_metadata: dict, result_asset_keys: List[str], stac_metadata_dir: Path):
+    asset_paths = [Path(result_metadata.get("assets", {})[asset_key]["href"]) for asset_key in result_asset_keys]
+    stac_paths = _write_exported_stac_collection(stac_metadata_dir, result_metadata, result_asset_keys)
     result.export_workspace(workspace_repository=backend_config_workspace_repository,
                             files=asset_paths + stac_paths,
                             default_merge=OPENEO_BATCH_JOB_ID)
 
 
 def _write_exported_stac_collection(
-    job_dir: Path, result_metadata: dict, assets_metadata: dict
+    job_dir: Path,
+    result_metadata: dict,
+    asset_keys: List[str],
 ) -> List[Path]:  # TODO: change to Set?
     def write_stac_item_file(asset_id: str, asset: dict) -> Path:
         item_file = job_dir / f"{asset_id}.json"
@@ -487,21 +516,26 @@ def _write_exported_stac_collection(
             "properties": properties,
             "links": [],  # TODO
             "assets": {
-                asset_id: dict_no_none(**{
-                    "href": f"./{Path(asset['href']).name}",
-                    "roles": asset.get("roles"),
-                    "type": asset.get("type"),
-                    "eo:bands": asset.get("bands"),
-                })
+                asset_id: dict_no_none(
+                    **{
+                        "href": f"./{Path(asset['href']).name}",
+                        "roles": asset.get("roles"),
+                        "type": asset.get("type"),
+                        "eo:bands": asset.get("bands"),
+                        "raster:bands": to_jsonable(asset.get("raster:bands")),
+                    }
+                )
             },
         }
 
         with open(item_file, "wt") as fi:
-            json.dump(stac_item, fi)
+            json.dump(stac_item, fi, allow_nan=False)
 
         return item_file
 
-    item_files = [write_stac_item_file(asset_id, asset) for asset_id, asset in assets_metadata.items()]
+    item_files = [
+        write_stac_item_file(asset_key, result_metadata.get("assets", {})[asset_key]) for asset_key in asset_keys
+    ]
 
     def item_link(item_file: Path) -> dict:
         return {

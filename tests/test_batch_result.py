@@ -985,6 +985,12 @@ def test_export_workspace(tmp_path):
         assert geotiff_asset.href == "./openEO_2021-01-05Z.tif"
         assert geotiff_asset.media_type == "image/tiff; application=geotiff"
         assert geotiff_asset.extra_fields["eo:bands"] == [DictSubSet({"name": "Flat:2"})]
+        assert geotiff_asset.extra_fields["raster:bands"] == [
+            {
+                "name": "Flat:2",
+                "statistics": {"minimum": 2.0, "maximum": 2.0, "mean": 2.0, "stddev": 0.0, "valid_percent": 100.0},
+            }
+        ]
 
         geotiff_asset_copy_path = tmp_path / "openEO_2021-01-05Z.tif.copy"
         geotiff_asset.copy(str(geotiff_asset_copy_path))  # downloads the asset file
@@ -1395,11 +1401,21 @@ def test_multiple_save_result_single_export_workspace(tmp_path):
         stac_collection = pystac.Collection.from_file(str(workspace_dir / "collection.json"))
         stac_collection.validate_all()
 
-        for item in stac_collection.get_items():
-            for asset_key, asset in item.get_assets().items():
-                asset_copy_path = tmp_path / f"{asset_key}.copy"
-                asset.copy(str(asset_copy_path))  # downloads the asset file
-                with rasterio.open(asset_copy_path) as dataset:
-                    assert dataset.driver == "GTiff"
+        items = list(stac_collection.get_items())
+        assert len(items) == 1
+
+        item = items[0]
+        geotiff_asset = item.get_assets()["openEO.tif"]
+        assert geotiff_asset.extra_fields["raster:bands"] == [
+            {
+                "name": "Flat:2",
+                "statistics": {"minimum": 2.0, "maximum": 2.0, "mean": 2.0, "stddev": 0.0, "valid_percent": 100.0},
+            }
+        ]
+
+        geotiff_asset_copy_path = tmp_path / "openEO.tif.copy"
+        geotiff_asset.copy(str(geotiff_asset_copy_path))  # downloads the asset file
+        with rasterio.open(geotiff_asset_copy_path) as dataset:
+            assert dataset.driver == "GTiff"
     finally:
         shutil.rmtree(workspace_dir)
