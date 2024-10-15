@@ -738,9 +738,12 @@ class InMemoryJobRegistry(JobRegistryInterface):
         has_application_id: bool = False,
     ) -> List[JobDict]:
         active = [JOB_STATUS.CREATED, JOB_STATUS.QUEUED, JOB_STATUS.RUNNING]
-        # TODO: implement support for max_age, has_application_id, fields
-        return [job for job in self.db.values() if job["status"] in active]
-
+        # TODO: implement support for max_age, fields
+        return [
+            job
+            for job in self.db.values()
+            if job["status"] in active and (not has_application_id or job.get("application_id") is not None)
+        ]
 
 
 class DoubleJobRegistryException(Exception):
