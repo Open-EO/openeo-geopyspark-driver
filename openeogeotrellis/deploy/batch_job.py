@@ -437,11 +437,15 @@ def write_metadata(metadata, metadata_file, job_dir):
 
 
 def _export_workspace(result: SaveResult, result_metadata: dict, assets_metadata: dict, stac_metadata_dir: Path):
-    asset_paths = [Path(asset["href"]) for asset in assets_metadata.values()]
-    stac_paths = _write_exported_stac_collection(stac_metadata_dir, result_metadata, assets_metadata)
-    result.export_workspace(workspace_repository=backend_config_workspace_repository,
-                            files=asset_paths + stac_paths,
-                            default_merge=OPENEO_BATCH_JOB_ID)
+    asset_hrefs = [asset["href"] for asset in assets_metadata.values()]
+    stac_hrefs = [
+        f"file:{path}" for path in _write_exported_stac_collection(stac_metadata_dir, result_metadata, assets_metadata)
+    ]
+    result.export_workspace(
+        workspace_repository=backend_config_workspace_repository,
+        hrefs=asset_hrefs + stac_hrefs,
+        default_merge=OPENEO_BATCH_JOB_ID,
+    )
 
 
 def _write_exported_stac_collection(
