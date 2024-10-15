@@ -733,16 +733,17 @@ class InMemoryJobRegistry(JobRegistryInterface):
     def list_active_jobs(
         self,
         *,
-        max_age: Optional[int] = None,
         fields: Optional[List[str]] = None,
-        has_application_id: bool = False,
+        max_age: Optional[int] = None,
+        max_updated_ago: Optional[int] = None,
+        require_application_id: bool = False,
     ) -> List[JobDict]:
         active = [JOB_STATUS.CREATED, JOB_STATUS.QUEUED, JOB_STATUS.RUNNING]
-        # TODO: implement support for max_age, fields
+        # TODO: implement support for max_age, max_updated_ago, fields
         return [
             job
             for job in self.db.values()
-            if job["status"] in active and (not has_application_id or job.get("application_id") is not None)
+            if job["status"] in active and (not require_application_id or job.get("application_id") is not None)
         ]
 
 
@@ -1003,7 +1004,11 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
         )
         return jobs
 
-    def get_active_jobs(self, max_age: Optional[int] = None) -> Iterator[Dict]:
+    def get_active_jobs(
+        self,
+        max_age: Optional[int] = None,
+        max_updated_ago: Optional[int] = None,
+    ) -> Iterator[Dict]:
         if self.zk_job_registry:
             # Note: `parse_specification` is enabled here because the jobtracker needs job_options (e.g. to determine target ETL)
             yield from self.zk_job_registry.get_running_jobs(parse_specification=True)
@@ -1021,7 +1026,8 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
                     "dependency_usage",
                 ],
                 max_age=max_age,
-                has_application_id=True,
+                max_updated_ago=max_updated_ago,
+                require_application_id=True,
             )
 
     def set_results_metadata(self, job_id, user_id, costs: Optional[float], usage: dict,
