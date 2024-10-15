@@ -7,6 +7,7 @@ import uuid
 from pathlib import Path
 
 import geopandas as gpd
+from osgeo import gdal
 import pystac
 import pytest
 import rasterio
@@ -26,6 +27,7 @@ from openeo_driver.testing import ephemeral_fileserver
 from openeo_driver.util.geometry import validate_geojson_coordinates
 from openeo_driver.utils import EvalEnv
 
+from openeogeotrellis._version import __version__
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.deploy.batch_job import run_job
 from openeogeotrellis.deploy.batch_job_metadata import extract_result_metadata
@@ -280,7 +282,7 @@ def test_separate_asset_per_band(tmp_path, from_node, expected_names):
                 "process_id": "load_collection",
                 "arguments": {
                     "bands": ["TileRow", "TileCol"],
-                    "id": "TestCollection-LonLat4x4",
+                    "id": "TestCollection-LonLat16x16",
                     "properties": {},
                     "spatial_extent": {"west": 0.0, "south": 50.0, "east": 5.0, "north": 55.0},
                     "temporal_extent": ["2021-06-01", "2021-06-16"],
@@ -866,7 +868,7 @@ def test_multiple_image_collection_results(tmp_path):
             "loadcollection1": {
                 "process_id": "load_collection",
                 "arguments": {
-                    "id": "TestCollection-LonLat4x4",
+                    "id": "TestCollection-LonLat16x16",
                     "spatial_extent": {"west": 0.0, "south": 50.0, "east": 5.0, "north": 55.0},
                     "temporal_extent": ["2021-01-04", "2021-01-06"],
                     "bands": ["Flat:2"]
@@ -914,7 +916,7 @@ def test_export_workspace(tmp_path):
         "loadcollection1": {
             "process_id": "load_collection",
             "arguments": {
-                "id": "TestCollection-LonLat4x4",
+                "id": "TestCollection-LonLat16x16",
                 "temporal_extent": ["2021-01-05", "2021-01-06"],
                 "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 2.0},
                 "bands": ["Flat:2"]
@@ -992,7 +994,7 @@ def test_export_workspace(tmp_path):
 
         # TODO: check other things e.g. proj:
     finally:
-        shutil.rmtree(workspace_dir)
+        shutil.rmtree(workspace_dir, ignore_errors=True)
 
 
 def test_discard_result(tmp_path):
@@ -1035,7 +1037,7 @@ def test_multiple_top_level_side_effects(tmp_path, caplog):
         "loadcollection1": {
             "process_id": "load_collection",
             "arguments": {
-                "id": "TestCollection-LonLat4x4",
+                "id": "TestCollection-LonLat16x16",
                 "spatial_extent": {"west": 5, "south": 50, "east": 5.1, "north": 50.1},
                 "temporal_extent": ["2024-07-11", "2024-07-21"],
                 "bands": ["Flat:1"]
@@ -1398,3 +1400,78 @@ def test_multiple_save_result_single_export_workspace(tmp_path):
                 assert asset_copy_path.exists()
     finally:
         shutil.rmtree(workspace_dir)
+
+
+def test_geotiff_scale_offset(tmp_path):
+    # TODO: support asset_per_band/other flags?
+    # TODO: test sync requests as well
+
+    # tmp_path = Path("/tmp/test_geotiff_scale_offset")  # TODO: remove
+
+    process_graph = {
+        "loadcollection1": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "TestCollection-LonLat16x16",
+                "temporal_extent": ["2021-01-05", "2021-01-06"],
+                "spatial_extent": {"west": 0.0, "south": 50.0, "east": 5.0, "north": 55.0},
+                "bands": ["Flat:2"],
+            },
+        },
+        "saveresult1": {
+            "process_id": "save_result",
+            "arguments": {
+                "data": {"from_node": "loadcollection1"},
+                "format": "GTiff",
+                "options": {
+                    "bands_metadata": {
+                        "Flat:2": {
+                            "SCALE": 1.23,
+                            "OFFSET": 4.56,
+                            "ARBITRARY": "value",
+                        },
+                        # TODO: add more combinations of bands and their metadata incl. non-matching
+                    }
+                },
+            },
+            "result": True,
+        },
+    }
+
+    process = {
+        "process_graph": process_graph,
+        "description": "some description",
+    }
+
+    run_job(
+        process,
+        output_file=tmp_path / "out.tif",
+        metadata_file=tmp_path / "job_metadata.json",
+        api_version="2.0.0",
+        job_dir=tmp_path,
+        dependencies=[],
+    )
+
+    # metadata should be embedded in the tiff, not in a sidecar file
+    aux_files = [tmp_path / aux_file for aux_file in os.listdir(tmp_path) if aux_file.endswith(".tif.aux.xml")]
+    for aux_file in aux_files:
+        aux_file.unlink()
+
+    output_tiffs = [tmp_path / tiff_file for tiff_file in os.listdir(tmp_path) if tiff_file.endswith(".tif")]
+    assert len(output_tiffs) == 1
+    output_tiff = output_tiffs[0]
+
+    raster = gdal.Open(str(output_tiff))
+    head_metadata = raster.GetMetadata()
+    assert head_metadata["AREA_OR_POINT"] == "Area"
+    assert head_metadata["PROCESSING_SOFTWARE"] == __version__
+    assert head_metadata["ImageDescription"] == "some description"
+
+    band_count = raster.RasterCount
+    assert band_count == 1
+    band = raster.GetRasterBand(1)
+    assert band.GetDescription() == "Flat:2"
+    assert band.GetScale() == 1.23
+    assert band.GetOffset() == 4.56
+    band_metadata = band.GetMetadata()
+    assert band_metadata["ARBITRARY"] == "value"
