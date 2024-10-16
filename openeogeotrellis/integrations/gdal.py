@@ -1,6 +1,10 @@
 import multiprocessing
 from dataclasses import dataclass
+import json
+import logging
+import os
 from pathlib import Path
+import time
 from typing import Dict, Optional, Union, Any, Tuple
 
 import pyproj
@@ -8,7 +12,21 @@ from math import isfinite
 from openeo.util import dict_no_none
 from osgeo import gdal
 
-from openeogeotrellis.utils import get_s3_binary_file_contents, _make_set_for_key
+from openeogeotrellis.utils import stream_s3_binary_file_contents, _make_set_for_key
+
+
+def poorly_log(message: str, level=logging.INFO):
+    # TODO: fix logging in combination with multiprocessing (#906)
+    log_entry = dict_no_none(
+        levelname=logging.getLevelName(level),
+        message=message,
+        created=time.time(),
+        filename=Path(__file__).name,
+        user_id=os.environ.get("OPENEO_USER_ID"),
+        job_id=os.environ.get("OPENEO_BATCH_JOB_ID"),
+    )
+
+    print(json.dumps(log_entry))
 
 
 """Output from GDAL.Info.
@@ -108,8 +126,7 @@ def _extract_gdal_asset_raster_metadata(
 
 
     def error_handler(e):
-        #logger.warning(f"Error while looking up result metadata, may be incomplete. {str(e)}")
-        pass
+        poorly_log(f"Error while looking up result metadata, may be incomplete. {str(e)}", level=logging.WARNING)
 
     pool_size = min(10,max(1,int(len(asset_metadata)//3)))
 
@@ -159,9 +176,15 @@ def _get_metadata_callback(asset_path: str, asset_md: Dict[str, str], job_dir: P
     asset_href: str = asset_md.get("href", "")
     if not abs_asset_path.exists() and asset_href.startswith("s3://"):
         try:
-            abs_asset_path.write_bytes(get_s3_binary_file_contents(asset_href))
+            with open(abs_asset_path, "wb") as f:
+                for chunk in stream_s3_binary_file_contents(asset_href):
+                    f.write(chunk)
         except Exception as exc:
-            pass
+            message = (
+                "Could not download asset from object storage: "
+                + f"asset={asset_path}, href={asset_href!r}, exception: {exc!r}"
+            )
+            poorly_log(message, level=logging.ERROR)
 
     asset_gdal_metadata: AssetRasterMetadata = read_gdal_raster_metadata(abs_asset_path)
     # If gdal could not extract the projection metadata from the file
