@@ -14,6 +14,9 @@ without compromising stable operations.
 
 ## Unreleased
 
+## 0.44.1
+
+- Stream assets from object storage to prevent batch job driver pod from being OOMKilled ([eu-cdse/openeo-cdse-infra#278](https://github.com/eu-cdse/openeo-cdse-infra/issues/278))
 
 ## 0.44.0
 
