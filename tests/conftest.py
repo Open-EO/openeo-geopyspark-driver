@@ -138,7 +138,7 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
                              )
     # got some options from 'sparkDriverJavaOptions'
     sparkDriverJavaOptions = f"-Dlog4j2.configurationFile=file:{sparkSubmitLog4jConfigurationFile}\
-    -Dscala.concurrent.context.numThreads=6 -Dpixels.treshold=100000000\
+    -Dscala.concurrent.context.numThreads=6 \
     -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService\
     -Dtsservice.layersConfigClass=ProdLayersConfiguration -Dtsservice.sparktasktimeout=600"
     if OPENEO_LOCAL_DEBUGGING:
