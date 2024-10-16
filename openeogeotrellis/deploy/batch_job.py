@@ -414,7 +414,8 @@ def run_job(
     # Wait for files to be written to mount:
     os.fsync(os.open(job_dir, os.O_RDONLY))
 
-def write_metadata(metadata, metadata_file, job_dir):
+
+def write_metadata(metadata, metadata_file, job_dir: Path):
     with open(metadata_file, 'w') as f:
         json.dump(metadata, f, default=json_default)
     add_permissions(metadata_file, stat.S_IWGRP)
@@ -429,9 +430,13 @@ def write_metadata(metadata, metadata_file, job_dir):
             s3_instance = s3_client()
 
             logger.info("Writing results to object storage")
-            for file in os.listdir(job_dir):
-                full_path = str(job_dir) + "/" + file
-                s3_instance.upload_file(full_path, bucket, full_path.strip("/"))
+            for filename in os.listdir(job_dir):
+                if filename == UDF_PYTHON_DEPENDENCIES_FOLDER_NAME:
+                    logger.warning(f"Omitting {filename} as the executors will not be able to access it")
+                else:
+                    file_path = job_dir / filename
+                    full_path = str(file_path.absolute())
+                    s3_instance.upload_file(full_path, bucket, full_path.strip("/"))
         else:
             _convert_job_metadatafile_outputs_to_s3_urls(metadata_file)
 
