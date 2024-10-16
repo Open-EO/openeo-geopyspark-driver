@@ -775,7 +775,7 @@ class GeopysparkDataCube(DriverDataCube):
                     datacube: XarrayDataCube = GeopysparkDataCube._numpy_to_xarraydatacube(
                         geotrellis_tile[1].cells,
                         extent=extent,
-                        band_coordinates=openeo_metadata.band_dimension.band_names
+                        band_coordinates=openeo_metadata.band_dimension.band_names if openeo_metadata.has_band_dimension() else None,
                     )
                     data = UdfData(proj={"EPSG": CRS.from_user_input(metadata.crs).to_epsg()}, datacube_list=[datacube], user_context=context)
 
