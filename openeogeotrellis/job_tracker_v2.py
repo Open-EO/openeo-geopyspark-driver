@@ -53,8 +53,7 @@ from openeogeotrellis.job_costs_calculator import (
     DynamicEtlApiJobCostCalculator,
 )
 from openeogeotrellis.job_registry import DoubleJobRegistry, ZkJobRegistry, get_deletable_dependency_sources
-from openeogeotrellis.utils import StatsReporter, dict_merge_recursive
-
+from openeogeotrellis.utils import StatsReporter, dict_merge_recursive, to_jsonable
 
 # Note: hardcoded logger name as this script is executed directly which kills the usefulness of `__name__`.
 _log = logging.getLogger("openeogeotrellis.job_tracker_v2")
@@ -566,9 +565,13 @@ class JobTracker:
                 job_costs = None
 
             total_usage = dict_merge_recursive(job_metadata.usage.to_dict(), result_metadata.get("usage", {}))
-            double_job_registry.set_results_metadata(job_id, user_id, costs=job_costs,
-                                                     usage=self._to_jsonable(dict(total_usage)),
-                                                     results_metadata=self._to_jsonable(result_metadata))
+            double_job_registry.set_results_metadata(
+                job_id,
+                user_id,
+                costs=job_costs,
+                usage=to_jsonable(dict(total_usage)),
+                results_metadata=to_jsonable(result_metadata),
+            )
 
         datetime_formatter = Rfc3339(propagate_none=True)
 
@@ -579,21 +582,6 @@ class JobTracker:
             started=datetime_formatter.datetime(job_metadata.start_time),
             finished=datetime_formatter.datetime(job_metadata.finish_time),
         )
-
-    @staticmethod
-    def _to_jsonable_float(x: float) -> Union[float, str]:
-        return x if isfinite(x) else str(x)
-
-    @staticmethod
-    def _to_jsonable(x):
-        if isinstance(x, float):
-            return JobTracker._to_jsonable_float(x)
-        if isinstance(x, dict):
-            return {JobTracker._to_jsonable(key): JobTracker._to_jsonable(value) for key, value in x.items()}
-        elif isinstance(x, list):
-            return [JobTracker._to_jsonable(elem) for elem in x]
-
-        return x
 
 
 class CliApp:
