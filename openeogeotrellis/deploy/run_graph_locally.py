@@ -4,12 +4,12 @@ from pathlib import Path
 import openeogeotrellis.deploy.local
 from openeo.internal.graph_building import as_flat_graph
 from openeo.util import ensure_dir
-from openeogeotrellis.backend import JOB_METADATA_FILENAME
 
 
 def run_graph_locally(process_graph, output_dir):
     openeogeotrellis.deploy.local.setup_environment()
     # Can only import after setup_environment:
+    from openeogeotrellis.backend import JOB_METADATA_FILENAME
     from openeogeotrellis.deploy.batch_job import run_job
     output_dir = Path(output_dir)
     process_graph = as_flat_graph(process_graph)
