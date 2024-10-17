@@ -457,7 +457,7 @@ def run_job(
     os.fsync(os.open(job_dir, os.O_RDONLY))
 
 
-def write_metadata(metadata, metadata_file, job_dir):
+def write_metadata(metadata, metadata_file, job_dir: Path):
     with open(metadata_file, 'w') as f:
         json.dump(metadata, f, default=json_default)
     add_permissions(metadata_file, stat.S_IWGRP)
@@ -472,19 +472,28 @@ def write_metadata(metadata, metadata_file, job_dir):
             s3_instance = s3_client()
 
             logger.info("Writing results to object storage")
-            for file in os.listdir(job_dir):
-                full_path = str(job_dir) + "/" + file
-                s3_instance.upload_file(full_path, bucket, full_path.strip("/"))
+            for filename in os.listdir(job_dir):
+                if filename == UDF_PYTHON_DEPENDENCIES_FOLDER_NAME:
+                    logger.warning(f"Omitting {filename} as the executors will not be able to access it")
+                else:
+                    file_path = job_dir / filename
+                    full_path = str(file_path.absolute())
+                    s3_instance.upload_file(full_path, bucket, full_path.strip("/"))
         else:
             _convert_job_metadatafile_outputs_to_s3_urls(metadata_file)
 
 
 def _export_workspace(result: SaveResult, result_metadata: dict, result_asset_keys: List[str], stac_metadata_dir: Path):
-    asset_paths = [Path(result_metadata.get("assets", {})[asset_key]["href"]) for asset_key in result_asset_keys]
-    stac_paths = _write_exported_stac_collection(stac_metadata_dir, result_metadata, result_asset_keys)
-    result.export_workspace(workspace_repository=backend_config_workspace_repository,
-                            files=asset_paths + stac_paths,
-                            default_merge=OPENEO_BATCH_JOB_ID)
+    asset_hrefs = [result_metadata.get("assets", {})[asset_key]["href"] for asset_key in result_asset_keys]
+    stac_hrefs = [
+        f"file:{path}"
+        for path in _write_exported_stac_collection(stac_metadata_dir, result_metadata, result_asset_keys)
+    ]
+    result.export_workspace(
+        workspace_repository=backend_config_workspace_repository,
+        hrefs=asset_hrefs + stac_hrefs,
+        default_merge=OPENEO_BATCH_JOB_ID,
+    )
 
 
 def _write_exported_stac_collection(

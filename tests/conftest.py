@@ -95,6 +95,11 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
         additional_jar_dirs=additional_jar_dirs,
     )
 
+    spark_jars = conf.get("spark.jars").split(",")
+    # geotrellis-extensions needs to be loaded first to avoid "java.lang.NoClassDefFoundError: shapeless/lazily$"
+    spark_jars.sort(key=lambda x: "geotrellis-extensions" not in x)
+    conf.set(key="spark.jars", value=",".join(spark_jars))
+
     # Use UTC timezone by default when formatting/parsing dates (e.g. CSV export of timeseries)
     conf.set("spark.sql.session.timeZone", "UTC")
 
@@ -131,14 +136,20 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
                              .replace("${sys:spark.yarn.app.container.log.dir}/", "")
                              .replace("${sys:openeo.logging.threshold}", "DEBUG")
                              )
-
-    # 'agentlib' to allow attaching a Java debugger to running Spark driver
-    extra_options = f'-Dlog4j2.configurationFile=file:{sparkSubmitLog4jConfigurationFile}'
+    # got some options from 'sparkDriverJavaOptions'
+    sparkDriverJavaOptions = f"-Dlog4j2.configurationFile=file:{sparkSubmitLog4jConfigurationFile}\
+    -Dscala.concurrent.context.numThreads=6 \
+    -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService\
+    -Dtsservice.layersConfigClass=ProdLayersConfiguration -Dtsservice.sparktasktimeout=600"
     if OPENEO_LOCAL_DEBUGGING:
-        extra_options += f' -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5009'
-    conf.set('spark.driver.extraJavaOptions', extra_options)
-    # conf.set('spark.executor.extraJavaOptions', extra_options) # Seems not needed
+        # 'agentlib' to allow attaching a Java debugger to running Spark driver
+        sparkDriverJavaOptions += f" -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5009"
+    conf.set("spark.driver.extraJavaOptions", sparkDriverJavaOptions)
 
+    sparkExecutorJavaOptions = f"-Dlog4j2.configurationFile=file:{sparkSubmitLog4jConfigurationFile}\
+     -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService\
+     -Dscala.concurrent.context.numThreads=8"
+    conf.set("spark.executor.extraJavaOptions", sparkExecutorJavaOptions)
 
     out.write_line("[conftest.py] SparkContext.getOrCreate with {c!r}".format(c=conf.getAll()))
     context = SparkContext.getOrCreate(conf)

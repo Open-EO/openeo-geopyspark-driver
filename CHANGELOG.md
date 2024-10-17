@@ -14,9 +14,21 @@ without compromising stable operations.
 
 ## Unreleased
 
+## 0.44.1
+
+- Stream assets from object storage to prevent batch job driver pod from being OOMKilled ([eu-cdse/openeo-cdse-infra#278](https://github.com/eu-cdse/openeo-cdse-infra/issues/278))
+
+## 0.44.0
+
+- Job tracker: only consider jobs _updated_ in last 2 weeks ([#902](https://github.com/Open-EO/openeo-geopyspark-driver/issues/902))
+
+## 0.43.0
+
+- Support exporting objects to object storage workspace ([eu-cdse/openeo-cdse-infra#278](https://github.com/eu-cdse/openeo-cdse-infra/issues/278))
+
 ## 0.42.0
 
-- Job tracker (still based on `DoubleJobRegistry`) only consider last 2 weeks of "trackable" jobs ([#902](https://github.com/Open-EO/openeo-geopyspark-driver/issues/902))
+- Job tracker (still based on `DoubleJobRegistry`): only consider last 2 weeks of "trackable" jobs ([#902](https://github.com/Open-EO/openeo-geopyspark-driver/issues/902))
 
 ## 0.41.0
 

@@ -309,7 +309,7 @@ def get_s3_file_contents(filename: Union[os.PathLike,str]) -> str:
     return body.read().decode("utf8")
 
 
-def get_s3_binary_file_contents(s3_url: str) -> bytes:
+def stream_s3_binary_file_contents(s3_url: str) -> Iterable[bytes]:
     """Get contents of a binary file from the S3 bucket."""
     # TODO: move this to openeogeotrellis.integrations.s3?
 
@@ -319,12 +319,12 @@ def get_s3_binary_file_contents(s3_url: str) -> bytes:
         raise ValueError(f"s3_url must be a URL that starts with 's3://' Value is: {s3_url=}")
 
     bucket, file_name = s3_url[5:].split("/", 1)
-    logger.debug(f"Downloading contents from S3 object storage: {bucket=}, key={file_name}")
+    logger.debug(f"Streaming contents from S3 object storage: {bucket=}, key={file_name}")
 
     s3_instance = s3_client()
     s3_file_object = s3_instance.get_object(Bucket=bucket, Key=file_name)
     body = s3_file_object["Body"]
-    return body.read()
+    return body.iter_chunks()
 
 
 def download_s3_directory(s3_url: str, output_dir: str):
