@@ -493,6 +493,7 @@ def _export_workspace(result: SaveResult, result_metadata: dict, result_asset_ke
         workspace_repository=backend_config_workspace_repository,
         hrefs=asset_hrefs + stac_hrefs,
         default_merge=OPENEO_BATCH_JOB_ID,
+        remove_original=True,
     )
 
 
