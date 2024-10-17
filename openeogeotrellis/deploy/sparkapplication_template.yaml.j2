@@ -58,7 +58,7 @@ spec:
     "spark.kryoserializer.buffer.max": "1g"
     "spark.kryo.classesToRegister": "org.openeo.geotrellis.layers.BandCompositeRasterSource,geotrellis.raster.RasterRegion,geotrellis.raster.geotiff.GeoTiffResampleRasterSource,geotrellis.raster.RasterSource,geotrellis.raster.SourceName,geotrellis.raster.geotiff.GeoTiffPath"
     "spark.serializer": "org.apache.spark.serializer.KryoSerializer"
-    "spark.extraListeners": "org.openeo.sparklisteners.LogErrorSparkListener,org.openeo.sparklisteners.BatchJobProgressListener"
+    "spark.extraListeners": "org.openeo.sparklisteners.BatchJobProgressListener"
     "spark.dynamicAllocation.enabled": "true"
     "spark.dynamicAllocation.shuffleTracking.enabled": "true"
     "spark.dynamicAllocation.executorIdleTimeout": "240s"
