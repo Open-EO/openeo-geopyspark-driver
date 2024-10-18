@@ -1,5 +1,7 @@
 import shutil
+import tarfile
 import textwrap
+import zipfile
 
 import pyspark
 import pytest
@@ -8,6 +10,7 @@ from openeo_driver.testing import ephemeral_fileserver
 
 from openeogeotrellis.udf import (
     assert_running_in_executor,
+    build_python_udf_dependencies_archive,
     collect_python_udf_dependencies,
     install_python_udf_dependencies,
     run_udf_code,
@@ -318,3 +321,31 @@ class TestInstallPythonUdfDependencies:
             "pip install output: ERROR: Could not find a version that satisfies the requirement nope-nope"
             in caplog.text
         )
+
+    def test_package_python_udf_dependencies_zip_basic(self, tmp_path, dummy_pypi, caplog):
+        target_base_name = tmp_path / "udf-deps"
+        expected_target_path = tmp_path / "udf-deps.zip"
+
+        assert not expected_target_path.exists()
+        archive = build_python_udf_dependencies_archive(
+            dependencies=["mehh"], target_base_name=target_base_name, index=dummy_pypi
+        )
+        assert archive == expected_target_path
+        assert archive.exists()
+
+        with zipfile.ZipFile(archive, "r") as zf:
+            assert "mehh.py" in zf.namelist()
+
+    def test_package_python_udf_dependencies_tar_basic(self, tmp_path, dummy_pypi, caplog):
+        target_base_name = tmp_path / "udf-deps"
+        expected_target_path = tmp_path / "udf-deps.tar"
+
+        assert not expected_target_path.exists()
+        archive = build_python_udf_dependencies_archive(
+            dependencies=["mehh"], target_base_name=target_base_name, format="tar", index=dummy_pypi
+        )
+        assert archive == expected_target_path
+        assert archive.exists()
+
+        with tarfile.open(archive, "r") as tf:
+            assert "./mehh.py" in tf.getnames()
