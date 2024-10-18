@@ -1,5 +1,8 @@
 import collections
 import logging
+import shutil
+import tempfile
+
 import time
 
 import pyspark
@@ -132,3 +135,39 @@ def install_python_udf_dependencies(
         if sleep_after_install:
             _log.info(f"Sleeping after pip install ({sleep_after_install}s)")
             time.sleep(sleep_after_install)
+
+
+def build_python_udf_dependencies_archive(
+    dependencies: Iterable[str],
+    target_base_name: Union[str, Path],
+    *,
+    format: str = "zip",
+    retries: int = 2,
+    timeout: float = 5,
+    index: Optional[str] = None,
+) -> Path:
+    """
+    Install Python UDF dependencies in a temp directory
+    and package them into an archive file (e.g. a zip or tar file)
+
+    :param dependencies: Iterable of dependency package names
+    :param target_base_name: base name (without extension) of the target archive file
+    :param format: Archive format (e.g. "zip", "tar", "gztar", ... see `shutil.make_archive`)
+    """
+    with tempfile.TemporaryDirectory(prefix="udf-py-deps-") as tempdir:
+        install_python_udf_dependencies(
+            dependencies=dependencies,
+            target=tempdir,
+            retries=retries,
+            timeout=timeout,
+            index=index,
+        )
+
+        # Archive everything in a ZIP file
+        with TimingLogger(
+            title=f"Archiving Python UDF dependencies from {tempdir} to {format} file {target_base_name}",
+            logger=_log.info,
+        ):
+            archive_path = shutil.make_archive(base_name=target_base_name, format=format, root_dir=tempdir)
+
+    return Path(archive_path)
