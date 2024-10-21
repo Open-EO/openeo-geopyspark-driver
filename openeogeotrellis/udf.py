@@ -1,4 +1,5 @@
 import collections
+import contextlib
 import logging
 import shutil
 import subprocess
@@ -154,7 +155,7 @@ def build_python_udf_dependencies_archive(
     :param format: Archive format (e.g. "zip", "tar", "gztar", ... see `shutil.make_archive`)
     """
 
-    with tempfile.TemporaryDirectory(prefix="udf-py-deps-") as temp_root:
+    with tempfile.TemporaryDirectory(prefix="udfpydeps-pack-") as temp_root:
         temp_root = Path(temp_root)
 
         # Start with installing the dependencies in a temp directory
@@ -183,3 +184,24 @@ def build_python_udf_dependencies_archive(
         shutil.copy(src=temp_archive, dst=target)
 
         return target
+
+
+@contextlib.contextmanager
+def python_udf_dependency_context_from_archive(archive: Path):
+    """
+    Context manager that extracts UDF dependencies from an archive file and adds them to the Python path.
+    """
+    # TODO: make sure archive does not escape its intended directory (e.g. only support ZIP for now?)
+    # TODO: mode to not clean up unpacked archive (for reuse in subsequent calls)?
+    #       But how to establish identity then? By hash of archive file?
+    with tempfile.TemporaryDirectory(prefix="udfpypeps-unpack-") as extra_deps:
+        with TimingLogger(title=f"Extracting Python UDF dependencies from {archive} to {extra_deps}", logger=_log.info):
+            shutil.unpack_archive(filename=archive, extract_dir=extra_deps)
+
+        extra_deps = str(extra_deps)
+        sys.path.append(extra_deps)
+        try:
+            yield Path(extra_deps)
+        finally:
+            if extra_deps in sys.path:
+                sys.path.remove(extra_deps)

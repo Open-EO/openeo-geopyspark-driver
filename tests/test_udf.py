@@ -3,6 +3,7 @@ import shutil
 import tarfile
 import textwrap
 import zipfile
+from pathlib import Path
 
 import pyspark
 import pytest
@@ -15,6 +16,7 @@ from openeogeotrellis.udf import (
     collect_python_udf_dependencies,
     install_python_udf_dependencies,
     run_udf_code,
+    python_udf_dependency_context_from_archive,
 )
 
 from .data import get_test_data_file
@@ -351,3 +353,19 @@ class TestInstallPythonUdfDependencies:
             assert "./mehh.py" in tf.getnames()
 
         assert re.search(r"Copying .*/archive\.[.a-z]+ \(\d+ bytes\) to .*/udf-deps\.tar", caplog.text)
+
+    def test_python_udf_dependency_context_from_archive(self, tmp_path, dummy_pypi, caplog):
+        archive_path = tmp_path / "udf-deps.zip"
+
+        build_python_udf_dependencies_archive(dependencies=["mehh"], target=archive_path, index=dummy_pypi)
+
+        with pytest.raises(ImportError, match="No module named 'mehh'"):
+            import mehh
+
+        with python_udf_dependency_context_from_archive(archive=archive_path):
+            import mehh
+
+            mehh_path = Path(mehh.__file__)
+            assert mehh_path.exists()
+
+        assert not mehh_path.exists()
