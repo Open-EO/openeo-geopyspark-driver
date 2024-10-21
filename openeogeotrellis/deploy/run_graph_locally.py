@@ -19,7 +19,7 @@ def run_graph_locally(process_graph, output_dir):
         process_graph,
         output_file=output_dir / "random_folder_name",
         metadata_file=output_dir / JOB_METADATA_FILENAME,
-        api_version="1.0.0",
+        api_version="2.0.0",
         job_dir=ensure_dir(output_dir),
         dependencies=[],
         user_id="jenkins",
