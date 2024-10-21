@@ -446,7 +446,11 @@ def run_job(
         assert len(results) == len(assets_metadata)
         for result, result_assets_metadata in zip(results, assets_metadata):
             _export_workspace(
-                result, result_metadata, result_asset_keys=result_assets_metadata.keys(), stac_metadata_dir=job_dir
+                result,
+                result_metadata,
+                result_asset_keys=result_assets_metadata.keys(),
+                stac_metadata_dir=job_dir,
+                remove_original=job_options.get("remove-exported-assets", False),
             )
 
         # TODO: delete exported assets from local disk/Swift
@@ -483,7 +487,13 @@ def write_metadata(metadata, metadata_file, job_dir: Path):
             _convert_job_metadatafile_outputs_to_s3_urls(metadata_file)
 
 
-def _export_workspace(result: SaveResult, result_metadata: dict, result_asset_keys: List[str], stac_metadata_dir: Path):
+def _export_workspace(
+    result: SaveResult,
+    result_metadata: dict,
+    result_asset_keys: List[str],
+    stac_metadata_dir: Path,
+    remove_original: bool,
+):
     asset_hrefs = [result_metadata.get("assets", {})[asset_key]["href"] for asset_key in result_asset_keys]
     stac_hrefs = [
         f"file:{path}"
@@ -493,7 +503,7 @@ def _export_workspace(result: SaveResult, result_metadata: dict, result_asset_ke
         workspace_repository=backend_config_workspace_repository,
         hrefs=asset_hrefs + stac_hrefs,
         default_merge=OPENEO_BATCH_JOB_ID,
-        remove_original=True,
+        remove_original=remove_original,
     )
 
 
