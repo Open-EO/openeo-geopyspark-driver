@@ -938,7 +938,12 @@ def test_export_workspace(tmp_path):
         }
     }
 
-    process = {"process_graph": process_graph}
+    process = {
+        "process_graph": process_graph,
+        "job_options": {
+            "remove-exported-assets": True,
+        },
+    }
 
     # TODO: avoid depending on `/tmp` for test output, make sure to leverage `tmp_path` fixture (https://github.com/Open-EO/openeo-python-driver/issues/265)
     workspace: DiskWorkspace = get_backend_config().workspaces[workspace_id]
@@ -1374,7 +1379,12 @@ def test_multiple_save_result_single_export_workspace(tmp_path):
         },
     }
 
-    process = {"process_graph": process_graph}
+    process = {
+        "process_graph": process_graph,
+        "job_options": {
+            "remove-exported-assets": True,
+        },
+    }
 
     # TODO: avoid depending on `/tmp` for test output, make sure to leverage `tmp_path` fixture (https://github.com/Open-EO/openeo-python-driver/issues/265)
     workspace: DiskWorkspace = get_backend_config().workspaces[workspace_id]

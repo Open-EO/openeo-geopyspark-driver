@@ -450,7 +450,7 @@ def run_job(
                 result_metadata,
                 result_asset_keys=result_assets_metadata.keys(),
                 stac_metadata_dir=job_dir,
-                remove_original=job_options.get("remove-exported-assets", False),
+                remove_original=job_options.get("remove-exported-assets", False),  # TODO: remove feature flag
             )
 
         # TODO: delete exported assets from local disk/Swift
