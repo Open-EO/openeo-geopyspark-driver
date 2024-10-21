@@ -1,3 +1,4 @@
+import re
 import shutil
 import tarfile
 import textwrap
@@ -323,29 +324,30 @@ class TestInstallPythonUdfDependencies:
         )
 
     def test_package_python_udf_dependencies_zip_basic(self, tmp_path, dummy_pypi, caplog):
-        target_base_name = tmp_path / "udf-deps"
-        expected_target_path = tmp_path / "udf-deps.zip"
+        target = tmp_path / "udf-deps.zip"
 
-        assert not expected_target_path.exists()
-        archive = build_python_udf_dependencies_archive(
-            dependencies=["mehh"], target_base_name=target_base_name, index=dummy_pypi
-        )
-        assert archive == expected_target_path
-        assert archive.exists()
+        assert not target.exists()
+        actual = build_python_udf_dependencies_archive(dependencies=["mehh"], target=target, index=dummy_pypi)
+        assert actual == target
+        assert target.exists()
 
-        with zipfile.ZipFile(archive, "r") as zf:
+        with zipfile.ZipFile(target, "r") as zf:
             assert "mehh.py" in zf.namelist()
 
-    def test_package_python_udf_dependencies_tar_basic(self, tmp_path, dummy_pypi, caplog):
-        target_base_name = tmp_path / "udf-deps"
-        expected_target_path = tmp_path / "udf-deps.tar"
+        assert re.search(r"Copying .*/archive\.zip \(\d+ bytes\) to .*/udf-deps\.zip", caplog.text)
 
-        assert not expected_target_path.exists()
-        archive = build_python_udf_dependencies_archive(
-            dependencies=["mehh"], target_base_name=target_base_name, format="tar", index=dummy_pypi
+    @pytest.mark.parametrize("format", ["tar", "gztar"])
+    def test_package_python_udf_dependencies_tar_basic(self, tmp_path, dummy_pypi, caplog, format):
+        target = tmp_path / "udf-deps.tar"
+
+        assert not target.exists()
+        actual = build_python_udf_dependencies_archive(
+            dependencies=["mehh"], target=target, format=format, index=dummy_pypi
         )
-        assert archive == expected_target_path
-        assert archive.exists()
+        assert actual == target
+        assert target.exists()
 
-        with tarfile.open(archive, "r") as tf:
+        with tarfile.open(target, "r") as tf:
             assert "./mehh.py" in tf.getnames()
+
+        assert re.search(r"Copying .*/archive\.[.a-z]+ \(\d+ bytes\) to .*/udf-deps\.tar", caplog.text)

@@ -138,8 +138,8 @@ def install_python_udf_dependencies(
 
 def build_python_udf_dependencies_archive(
     dependencies: Iterable[str],
-    target_base_name: Union[str, Path],
     *,
+    target: Union[str, Path],
     format: str = "zip",
     retries: int = 2,
     timeout: float = 5,
@@ -147,26 +147,39 @@ def build_python_udf_dependencies_archive(
 ) -> Path:
     """
     Install Python UDF dependencies in a temp directory
-    and package them into an archive file (e.g. a zip or tar file)
+    and package them into an archive file (e.g. a zip or tar file).
 
     :param dependencies: Iterable of dependency package names
-    :param target_base_name: base name (without extension) of the target archive file
+    :param target: path for the target archive file
     :param format: Archive format (e.g. "zip", "tar", "gztar", ... see `shutil.make_archive`)
     """
-    with tempfile.TemporaryDirectory(prefix="udf-py-deps-") as tempdir:
+
+    with tempfile.TemporaryDirectory(prefix="udf-py-deps-") as temp_root:
+        temp_root = Path(temp_root)
+
+        # Start with installing the dependencies in a temp directory
+        temp_install = temp_root / "packages"
         install_python_udf_dependencies(
             dependencies=dependencies,
-            target=tempdir,
+            target=temp_install,
             retries=retries,
             timeout=timeout,
             index=index,
         )
 
+        # Put installed packages in a temp archive
+        temp_archive_base_name = temp_root / "archive"
         # Archive everything in a ZIP file
         with TimingLogger(
-            title=f"Archiving Python UDF dependencies from {tempdir} to {format} file {target_base_name}",
+            title=f"Archiving Python UDF dependencies from {temp_install} to {format} archive {temp_archive_base_name}",
             logger=_log.info,
         ):
-            archive_path = shutil.make_archive(base_name=target_base_name, format=format, root_dir=tempdir)
+            temp_archive = shutil.make_archive(base_name=temp_archive_base_name, format=format, root_dir=temp_install)
+            temp_archive = Path(temp_archive)
 
-    return Path(archive_path)
+        # Copy the archive to the target location
+        target = Path(target)
+        _log.info(f"Copying {temp_archive} ({temp_archive.stat().st_size} bytes) to {target}")
+        shutil.copy(src=temp_archive, dst=target)
+
+        return target
