@@ -15,7 +15,6 @@ from scipy.spatial import cKDTree  # used for tuning the griddata interpolation 
 import xarray as xr
 
 from openeo_driver.errors import OpenEOApiException, InternalException
-from openeo_driver.util.geometry import GeometryBufferer
 from openeogeotrellis.utils import get_jvm, ensure_executor_logging, set_max_memory
 
 OLCI_PRODUCT_TYPE = "OL_1_EFR___"
@@ -72,6 +71,9 @@ def pyramid(metadata_properties, projected_polygons_native_crs, from_date, to_da
     product_type = metadata_properties["productType"]
     correlation_id = ""
 
+    # intentionally fixing cell_size
+    cell_size = jvm.geotrellis.raster.CellSize(0.00297619047619, 0.00297619047619)  # FIXME: SENTINEL3_SLSTR_L2_LST has a different one; get from creo_layercatalog.json?
+
     if (
         projected_polygons_native_crs.crs().epsgCode().isDefined()
         and projected_polygons_native_crs.crs().epsgCode().get() != 4326
@@ -91,12 +93,6 @@ def pyramid(metadata_properties, projected_polygons_native_crs, from_date, to_da
                 global_extent_4326.ymax(),
                 "EPSG:4326",
             )
-
-        cell_width_4326 = GeometryBufferer.transform_meter_to_crs(
-            distance=cell_size.width(), loi=(-15.9321496959502387, 15.3771210169591281)
-        )  # TODO: fixed loi
-        # cell_width_4326 = 0.00297619047619  # original from creo_layercatalog.json seems to work
-        cell_size = jvm.geotrellis.raster.CellSize(cell_width_4326, cell_width_4326)
 
     file_rdd_factory = jvm.org.openeo.geotrellis.file.FileRDDFactory(
         opensearch_client, collection_id, metadata_properties, correlation_id, cell_size
@@ -135,6 +131,7 @@ def pyramid(metadata_properties, projected_polygons_native_crs, from_date, to_da
 
     creo_paths = per_product.keys().collect()
 
+    assert cell_size.width() == cell_size.height()
     tile_rdd = per_product.partitionBy(numPartitions=len(creo_paths), partitionFunc=creo_paths.index).flatMap(
         partial(
             read_product,
@@ -245,7 +242,7 @@ def read_product(product, product_type, band_names, tile_size, limit_python_memo
                     band_names,
                     [layout_extent["xmin"], layout_extent["ymin"], layout_extent["xmax"], layout_extent["ymax"]],
                     digital_numbers=digital_numbers,
-                    resolution=resolution,
+                    final_grid_resolution=resolution,
                 )
                 if orfeo_bands is None:
                     continue
@@ -295,22 +292,19 @@ def read_product(product, product_type, band_names, tile_size, limit_python_memo
     return tiles
 
 
-def create_s3_toa(product_type, creo_path, band_names, bbox_tile, digital_numbers=True, resolution: float = None):
+def create_s3_toa(product_type, creo_path, band_names, bbox_tile, digital_numbers=True, final_grid_resolution: float = None):
     if product_type == OLCI_PRODUCT_TYPE:
         geofile = 'geo_coordinates.nc'
         lat_band = 'latitude'
         lon_band = 'longitude'
-        final_grid_resolution = 1 / 112 / 3
     elif product_type == SYNERGY_PRODUCT_TYPE:
         geofile = 'geolocation.nc'
         lat_band = 'lat'
         lon_band = 'lon'
-        final_grid_resolution = resolution or 1 / 112 / 3
     elif product_type == SLSTR_PRODUCT_TYPE:
         geofile = 'geodetic_in.nc'
         lat_band = 'latitude_in'
         lon_band = 'longitude_in'
-        final_grid_resolution = 1 / 112
     else:
         raise ValueError(product_type)
 
