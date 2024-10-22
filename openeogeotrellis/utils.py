@@ -777,8 +777,9 @@ def wait_till_path_available(path: Path):
     while not os.path.exists(path):
         if retry < max_tries:
             retry += 1
-            time.sleep(10)
-            logger.info(f"Waiting for path to be available. Try {retry}/{max_tries}: {path}")
+            seconds = int(math.pow(2, retry + 2))  # exponential backoff
+            logger.info(f"Waiting for path to be available. Try {retry}/{max_tries} (sleep:{seconds}seconds): {path}")
+            time.sleep(seconds)
         else:
             logger.warning(f"Path is not available after {max_tries} tries: {path}")
             return  # TODO: Throw error instead
