@@ -752,3 +752,19 @@ U = TypeVar("U")
 
 def map_optional(f: Callable[[T], U], optional: Optional[T]) -> Optional[U]:
     return None if optional is None else f(optional)
+
+
+def to_jsonable_float(x: float) -> Union[float, str]:
+    """Replaces nan, inf and -inf with its string representation to allow JSON serialization."""
+    return x if math.isfinite(x) else str(x)
+
+
+def to_jsonable(x):
+    if isinstance(x, float):
+        return to_jsonable_float(x)
+    if isinstance(x, dict):
+        return {to_jsonable(key): to_jsonable(value) for key, value in x.items()}
+    elif isinstance(x, list):
+        return [to_jsonable(elem) for elem in x]
+
+    return x
