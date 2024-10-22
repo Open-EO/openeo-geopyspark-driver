@@ -293,6 +293,7 @@ def run_job(
         logger.debug("Starting process graph evaluation")
         pg_copy = deepcopy(process_graph)
         result = ProcessGraphDeserializer.evaluate(process_graph, env=env, do_dry_run=tracer)
+        os.fsync(os.open(job_dir, os.O_RDONLY))  # experiment
         logger.info("Evaluated process graph, result (type {t}): {r!r}".format(t=type(result), r=result))
 
         if isinstance(result, DelayedVector):
