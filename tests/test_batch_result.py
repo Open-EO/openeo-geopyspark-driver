@@ -25,6 +25,7 @@ from openeo_driver.dry_run import DryRunDataTracer
 from openeo_driver.testing import ephemeral_fileserver
 from openeo_driver.util.geometry import validate_geojson_coordinates
 from openeo_driver.utils import EvalEnv
+from openeogeotrellis.backend import JOB_METADATA_FILENAME
 
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.deploy.batch_job import run_job
@@ -1003,6 +1004,118 @@ def test_export_workspace(tmp_path):
             assert dataset.driver == "GTiff"
 
         # TODO: check other things e.g. proj:
+    finally:
+        shutil.rmtree(workspace_dir)
+
+
+def test_export_workspace_with_asset_per_band(tmp_path):
+    workspace_id = "tmp"
+    merge = f"OpenEO-workspace-{uuid.uuid4()}"
+
+    process_graph = {
+        "loadcollection1": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "TestCollection-LonLat4x4",
+                "temporal_extent": ["2021-01-05", "2021-01-06"],
+                "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 2.0},
+                "bands": ["Longitude", "Latitude"],
+            },
+        },
+        "saveresult1": {
+            "process_id": "save_result",
+            "arguments": {
+                "data": {"from_node": "loadcollection1"},
+                "format": "GTiff",
+                "options": {"separate_asset_per_band": "true"},
+            },
+        },
+        "exportworkspace1": {
+            "process_id": "export_workspace",
+            "arguments": {
+                "data": {"from_node": "saveresult1"},
+                "workspace": workspace_id,
+                "merge": merge,
+            },
+            "result": True,
+        },
+    }
+
+    process = {
+        "process_graph": process_graph,
+        "job_options": {
+            "remove-exported-assets": False,
+        },
+    }
+
+    # TODO: avoid depending on `/tmp` for test output, make sure to leverage `tmp_path` fixture (https://github.com/Open-EO/openeo-python-driver/issues/265)
+    workspace: DiskWorkspace = get_backend_config().workspaces[workspace_id]
+    workspace_dir = Path(f"{workspace.root_directory}/{merge}")
+
+    try:
+        run_job(
+            process,
+            output_file=tmp_path / "out",
+            metadata_file=tmp_path / JOB_METADATA_FILENAME,
+            api_version="2.0.0",
+            job_dir=tmp_path,
+            dependencies=[],
+        )
+
+        job_dir_files = set(os.listdir(tmp_path))
+        assert len(job_dir_files) > 0
+        assert "openEO_2021-01-05Z_Longitude.tif" in job_dir_files != process["job_options"]["remove-exported-assets"]
+        assert "openEO_2021-01-05Z_Latitude.tif" in job_dir_files != process["job_options"]["remove-exported-assets"]
+
+        workspace_files = set(os.listdir(workspace_dir))
+        assert workspace_files == {
+            "collection.json",
+            "openEO_2021-01-05Z_Longitude.tif",
+            "openEO_2021-01-05Z_Longitude.tif.json",
+            "openEO_2021-01-05Z_Latitude.tif",
+            "openEO_2021-01-05Z_Latitude.tif.json",
+        }
+
+        stac_collection = pystac.Collection.from_file(str(workspace_dir / "collection.json"))
+        stac_collection.validate_all()
+
+        item_links = [item_link for item_link in stac_collection.links if item_link.rel == "item"]
+        assert len(item_links) == 2
+        item_link = item_links[0]
+
+        assert item_link.media_type == "application/geo+json"
+        assert item_link.href == "./openEO_2021-01-05Z_Latitude.tif.json"
+
+        items = list(stac_collection.get_items())
+        assert len(items) == 2
+
+        item = items[0]
+        assert item.id == "openEO_2021-01-05Z_Latitude.tif"
+        assert item.bbox == [0.0, 0.0, 1.0, 2.0]
+        assert shape(item.geometry).normalize().almost_equals(Polygon.from_bounds(0.0, 0.0, 1.0, 2.0).normalize())
+
+        geotiff_asset = item.get_assets()["openEO_2021-01-05Z_Latitude.tif"]
+        assert "data" in geotiff_asset.roles
+        assert geotiff_asset.href == "./openEO_2021-01-05Z_Latitude.tif"
+        assert geotiff_asset.media_type == "image/tiff; application=geotiff"
+        assert geotiff_asset.extra_fields["eo:bands"] == [DictSubSet({"name": "Latitude"})]
+        assert geotiff_asset.extra_fields["raster:bands"] == [
+            {
+                "name": "Latitude",
+                "statistics": {
+                    "maximum": 1.75,
+                    "mean": 0.875,
+                    "minimum": 0.0,
+                    "stddev": 0.57282196186948,
+                    "valid_percent": 100.0,
+                },
+            }
+        ]
+
+        geotiff_asset_copy_path = tmp_path / "openEO_2021-01-05Z_Latitude.copy"
+        geotiff_asset.copy(str(geotiff_asset_copy_path))  # downloads the asset file
+        with rasterio.open(geotiff_asset_copy_path) as dataset:
+            assert dataset.driver == "GTiff"
     finally:
         shutil.rmtree(workspace_dir)
 
