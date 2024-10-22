@@ -16,7 +16,7 @@ without compromising stable operations.
 
 ## 0.45.0
 
-- Experimental support for removal of original assets exported to workspace ([Open-EO/openeo-geopyspark-driver#883](https://github.com/Open-EO/openeo-geopyspark-driver/issues/883))
+- Experimental support for removal of originals of assets exported to workspace ([Open-EO/openeo-geopyspark-driver#883](https://github.com/Open-EO/openeo-geopyspark-driver/issues/883))
 
 ## 0.44.1
 

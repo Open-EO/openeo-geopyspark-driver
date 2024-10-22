@@ -452,8 +452,6 @@ def run_job(
                 stac_metadata_dir=job_dir,
                 remove_original=job_options.get("remove-exported-assets", False),  # TODO: remove feature flag
             )
-
-        # TODO: delete exported assets from local disk/Swift
     finally:
         write_metadata({**result_metadata, **_get_tracker_metadata("")}, metadata_file, job_dir)
 
