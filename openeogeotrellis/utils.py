@@ -13,6 +13,7 @@ import pwd
 import resource
 import stat
 import tempfile
+import time
 from functools import partial
 from pathlib import Path
 from typing import Callable, Iterable, Optional, Tuple, Union, Dict, Any, TypeVar
@@ -768,3 +769,16 @@ def to_jsonable(x):
         return [to_jsonable(elem) for elem in x]
 
     return x
+
+
+def wait_till_path_available(path: Path):
+    retry = 0
+    max_tries = 5
+    while not os.path.exists(path):
+        if retry < max_tries:
+            retry += 1
+            time.sleep(10)
+            logger.info(f"Waiting for path to be available. Try {retry}/{max_tries}: {path}")
+        else:
+            logger.warning(f"Path is not available after {max_tries} tries: {path}")
+            return  # TODO: Throw error instead

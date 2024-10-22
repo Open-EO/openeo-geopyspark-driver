@@ -49,6 +49,7 @@ from openeogeotrellis.utils import (
     add_permissions,
     json_default,
     to_jsonable,
+    wait_till_path_available,
 )
 
 logger = logging.getLogger('openeogeotrellis.deploy.batch_job')
@@ -354,6 +355,7 @@ def run_job(
                 ml_model_metadata = result.get_model_metadata(str(output_file))
                 logger.info("Extracted ml model metadata from %s" % output_file)
             for name, asset in the_assets_metadata.items():
+                wait_till_path_available(Path(asset["href"]))
                 add_permissions(Path(asset["href"]), stat.S_IWGRP)
             logger.info(f"wrote {len(the_assets_metadata)} assets to {output_file}")
             assets_metadata.append(the_assets_metadata)
