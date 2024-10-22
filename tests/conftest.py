@@ -1,9 +1,11 @@
 import contextlib
 import os
+import shutil
 import sys
 import typing
 from datetime import datetime
 from pathlib import Path
+from typing import Union
 from unittest import mock
 
 import boto3
@@ -16,7 +18,7 @@ import time_machine
 from _pytest.terminal import TerminalReporter
 from openeo_driver.backend import OpenEoBackendImplementation, UserDefinedProcesses
 from openeo_driver.jobregistry import ElasticJobRegistry, JobRegistryInterface
-from openeo_driver.testing import ApiTester
+from openeo_driver.testing import ApiTester, ephemeral_fileserver
 from openeo_driver.utils import smart_bool
 from openeo_driver.views import build_app
 
@@ -370,3 +372,33 @@ def moto_server(monkeypatch) -> str:
     monkeypatch.setenv("SWIFT_URL", endpoint_url)
     yield endpoint_url
     server.stop()
+
+
+@pytest.fixture
+def dummy_pypi(tmp_path):
+    """
+    Fixture for fake PyPI index for testing package installation (without using real PyPI).
+
+    Based on 'PEP 503 – Simple Repository API'
+    """
+    root = tmp_path / ".package-index"
+    root.mkdir(parents=True)
+    (root / "index.html").write_text(
+        """
+        <!DOCTYPE html><html><body>
+            <a href="/mehh/">mehh</a>
+        </body></html>
+        """
+    )
+    mehh_folder = root / "mehh"
+    mehh_folder.mkdir(parents=True)
+    shutil.copy(src=get_test_data_file("pip/mehh/dist/mehh-1.2.3-py3-none-any.whl"), dst=mehh_folder)
+    (mehh_folder / "index.html").write_text(
+        """
+        <!DOCTYPE html><html><body>
+            <a href="/mehh/mehh-1.2.3-py3-none-any.whl#md5=33c211631375b944c7cb9452074ee3e1">meh-1.2.3-py3-none-any.whl</a>
+        </body></html>
+        """
+    )
+    with ephemeral_fileserver(root) as pypi_url:
+        yield pypi_url
