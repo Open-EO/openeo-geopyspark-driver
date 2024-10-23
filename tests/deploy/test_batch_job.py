@@ -391,7 +391,7 @@ def test_run_job(evaluate, tmp_path):
 
 
 @mock.patch("openeo_driver.ProcessGraphDeserializer.evaluate")
-def test_run_job_get_projection_extension_metadata(evaluate, tmp_path):
+def test_run_job_get_projection_extension_metadata(evaluate, tmp_path, fast_sleep):
     cube_mock = MagicMock()
 
     job_dir = tmp_path / "job-402"
@@ -517,9 +517,7 @@ def test_run_job_get_projection_extension_metadata(evaluate, tmp_path):
 
 
 @mock.patch("openeo_driver.ProcessGraphDeserializer.evaluate")
-def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox(
-    evaluate, tmp_path
-):
+def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox(evaluate, tmp_path, fast_sleep):
     """When there are two raster assets with the same projection metadata, it should put
     those metadata at the level of the item instead of the individual bands.
     """
@@ -959,7 +957,7 @@ def test_run_job_get_projection_extension_metadata_assets_with_different_epsg(
 
 
 @mock.patch("openeo_driver.ProcessGraphDeserializer.evaluate")
-def test_run_job_get_projection_extension_metadata_job_dir_is_relative_path(evaluate):
+def test_run_job_get_projection_extension_metadata_job_dir_is_relative_path(evaluate, fast_sleep):
     cube_mock = MagicMock()
     # job dir should be a relative path,
     # We still want the test data to be cleaned up though, so we need to use
