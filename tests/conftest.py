@@ -1,3 +1,4 @@
+from datetime import datetime
 from unittest import mock
 
 import boto3
@@ -181,7 +182,7 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
 def api_version(request):
     return request.param
 
-
+# TODO: Deduplicate code with openeo-python-driver
 class _Sleeper:
     def __init__(self):
         self.history = []
@@ -206,6 +207,8 @@ def fast_sleep(time_machine) -> typing.Iterator[_Sleeper]:
     """
     Fixture using `time_machine` to make `sleep` instant and update the current time.
     """
+    now = datetime.now().isoformat()
+    time_machine.move_to(now)
     with _Sleeper().patch(time_machine=time_machine) as sleeper:
         yield sleeper
 
