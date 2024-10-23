@@ -325,7 +325,7 @@ class TestInstallPythonUdfDependencies:
 
         assert re.search(r"Copying .*/archive\.[.a-z]+ \(\d+ bytes\) to .*/udf-deps\.tar", caplog.text)
 
-    def test_python_udf_dependency_context_from_archive(self, tmp_path, dummy_pypi, caplog):
+    def test_python_udf_dependency_context_from_archive(self, tmp_path, dummy_pypi, caplog, unload_dummy_packages):
         archive_path = tmp_path / "udf-deps.zip"
 
         build_python_udf_dependencies_archive(dependencies=["mehh"], target=archive_path, index=dummy_pypi)
@@ -341,7 +341,9 @@ class TestInstallPythonUdfDependencies:
 
         assert not mehh_path.exists()
 
-    def test_run_udf_code_with_deps_from_archive(self, tmp_path, dummy_pypi, monkeypatch, caplog):
+    def test_run_udf_code_with_deps_from_archive(
+        self, tmp_path, dummy_pypi, monkeypatch, caplog, unload_dummy_packages
+    ):
         """Test automatic unpacking of UDF deps from archive, when using `run_udf_code`."""
         udf_code = textwrap.dedent(
             """
@@ -360,7 +362,7 @@ class TestInstallPythonUdfDependencies:
         )
 
         # Create dependency archive
-        udf_archive = tmp_path / "udf-deps.zip"
+        udf_archive = tmp_path / "udf-depz.zip"
         build_python_udf_dependencies_archive(dependencies=["mehh"], target=udf_archive, format="zip", index=dummy_pypi)
 
         # Note that we just test with `run_udf_code` in driver (with require_executor_context=False),

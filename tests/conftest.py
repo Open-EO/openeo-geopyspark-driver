@@ -1,4 +1,5 @@
 import contextlib
+import importlib
 import os
 import shutil
 import sys
@@ -380,6 +381,9 @@ def dummy_pypi(tmp_path):
     Fixture for fake PyPI index for testing package installation (without using real PyPI).
 
     Based on 'PEP 503 – Simple Repository API'
+
+    Also see `unload_dummy_packages` fixture
+    (to automatically unload on-the-fly installed dummy packages at the end of a test)
     """
     root = tmp_path / ".package-index"
     root.mkdir(parents=True)
@@ -402,3 +406,22 @@ def dummy_pypi(tmp_path):
     )
     with ephemeral_fileserver(root) as pypi_url:
         yield pypi_url
+
+
+@pytest.fixture
+def unload_dummy_packages():
+    """
+    Fixture to automatically unload dummy packages at the end of a test,
+    to avoid leakage between tests due to import caching mechanisms.
+
+    This fixture should be added to tests that do
+    on-the-fly package installation and import of dummy packages like `mehh`
+
+    also see `dummy_pypi` fixture
+    """
+    packages = ["mehh"]
+    yield
+    for package in packages:
+        if package in sys.modules:
+            del sys.modules[package]
+    importlib.invalidate_caches()
