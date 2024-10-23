@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 import dateutil.parser
 import geopyspark as gps
 import planetary_computer
+import pyproj
 import pystac
 import pystac_client
 from geopyspark import LayerType, TiledRasterLayer
@@ -427,6 +428,22 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
     else:  # 10m UTM
         target_epsg = target_bbox.best_utm()
         cell_width = cell_height = 10.0
+
+    if (load_params.target_resolution is not None):
+        if load_params.target_resolution[0] != 0.0 and load_params.target_resolution[1] != 0.0:
+            cell_width = float(load_params.target_resolution[0])
+            cell_height = float(load_params.target_resolution[1])
+
+    if (load_params.target_crs is not None):
+        if load_params.target_resolution is not None and load_params.target_resolution[0] != 0.0 and \
+                load_params.target_resolution[1] != 0.0:
+            if isinstance(load_params.target_crs, int):
+                target_epsg = load_params.target_crs
+            elif isinstance(load_params.target_crs, dict) and load_params.target_crs.get("id", {}).get(
+                    "code") == 'Auto42001':
+                target_epsg = target_bbox.best_utm()
+            else:
+                target_epsg = pyproj.CRS.from_user_input(load_params.target_crs).to_epsg()
 
     metadata = GeopysparkCubeMetadata(
         metadata={},

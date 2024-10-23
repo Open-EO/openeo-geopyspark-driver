@@ -1,16 +1,19 @@
-import os
-from typing import Union
-
-import sys
-from pathlib import Path
+from datetime import datetime
+from unittest import mock
 
 import boto3
+import contextlib
 import flask
-import pytest
 import moto
 import moto.server
+import os
+import pytest
+import sys
+import time_machine
+import typing
 import requests_mock
 from _pytest.terminal import TerminalReporter
+from pathlib import Path
 
 from openeo_driver.backend import OpenEoBackendImplementation, UserDefinedProcesses
 from openeo_driver.jobregistry import ElasticJobRegistry, JobRegistryInterface
@@ -95,6 +98,11 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
         additional_jar_dirs=additional_jar_dirs,
     )
 
+    spark_jars = conf.get("spark.jars").split(",")
+    # geotrellis-extensions needs to be loaded first to avoid "java.lang.NoClassDefFoundError: shapeless/lazily$"
+    spark_jars.sort(key=lambda x: "geotrellis-extensions" not in x)
+    conf.set(key="spark.jars", value=",".join(spark_jars))
+
     # Use UTC timezone by default when formatting/parsing dates (e.g. CSV export of timeseries)
     conf.set("spark.sql.session.timeZone", "UTC")
 
@@ -131,14 +139,20 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
                              .replace("${sys:spark.yarn.app.container.log.dir}/", "")
                              .replace("${sys:openeo.logging.threshold}", "DEBUG")
                              )
-
-    # 'agentlib' to allow attaching a Java debugger to running Spark driver
-    extra_options = f'-Dlog4j2.configurationFile=file:{sparkSubmitLog4jConfigurationFile}'
+    # got some options from 'sparkDriverJavaOptions'
+    sparkDriverJavaOptions = f"-Dlog4j2.configurationFile=file:{sparkSubmitLog4jConfigurationFile}\
+    -Dscala.concurrent.context.numThreads=6 \
+    -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService\
+    -Dtsservice.layersConfigClass=ProdLayersConfiguration -Dtsservice.sparktasktimeout=600"
     if OPENEO_LOCAL_DEBUGGING:
-        extra_options += f' -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5009'
-    conf.set('spark.driver.extraJavaOptions', extra_options)
-    # conf.set('spark.executor.extraJavaOptions', extra_options) # Seems not needed
+        # 'agentlib' to allow attaching a Java debugger to running Spark driver
+        sparkDriverJavaOptions += f" -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5009"
+    conf.set("spark.driver.extraJavaOptions", sparkDriverJavaOptions)
 
+    sparkExecutorJavaOptions = f"-Dlog4j2.configurationFile=file:{sparkSubmitLog4jConfigurationFile}\
+     -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService\
+     -Dscala.concurrent.context.numThreads=8"
+    conf.set("spark.executor.extraJavaOptions", sparkExecutorJavaOptions)
 
     out.write_line("[conftest.py] SparkContext.getOrCreate with {c!r}".format(c=conf.getAll()))
     context = SparkContext.getOrCreate(conf)
@@ -167,6 +181,36 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
 @pytest.fixture(params=["1.0.0"])
 def api_version(request):
     return request.param
+
+# TODO: Deduplicate code with openeo-python-client
+class _Sleeper:
+    def __init__(self):
+        self.history = []
+
+    @contextlib.contextmanager
+    def patch(self, time_machine: time_machine.TimeMachineFixture) -> typing.Iterator["_Sleeper"]:
+        def sleep(seconds):
+            # Note: this requires that `time_machine.move_to()` has been called before
+            # also see https://github.com/adamchainz/time-machine/issues/247
+            time_machine.coordinates.shift(seconds)
+            self.history.append(seconds)
+
+        with mock.patch("time.sleep", new=sleep):
+            yield self
+
+    def did_sleep(self) -> bool:
+        return len(self.history) > 0
+
+
+@pytest.fixture
+def fast_sleep(time_machine) -> typing.Iterator[_Sleeper]:
+    """
+    Fixture using `time_machine` to make `sleep` instant and update the current time.
+    """
+    now = datetime.now().isoformat()
+    time_machine.move_to(now)
+    with _Sleeper().patch(time_machine=time_machine) as sleeper:
+        yield sleeper
 
 
 @pytest.fixture

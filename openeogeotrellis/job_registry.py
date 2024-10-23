@@ -731,17 +731,20 @@ class InMemoryJobRegistry(JobRegistryInterface):
         return [job for job in self.db.values() if job["user_id"] == user_id]
 
     def list_active_jobs(
-        self, max_age: Optional[int] = None, fields: Optional[List[str]] = None
+        self,
+        *,
+        fields: Optional[List[str]] = None,
+        max_age: Optional[int] = None,
+        max_updated_ago: Optional[int] = None,
+        require_application_id: bool = False,
     ) -> List[JobDict]:
         active = [JOB_STATUS.CREATED, JOB_STATUS.QUEUED, JOB_STATUS.RUNNING]
-        # TODO: implement max_age support
-        return [job for job in self.db.values() if job["status"] in active]
-
-    def list_trackable_jobs(self, fields: Optional[List[str]] = None, max_age: Optional[int] = None) -> List[JobDict]:
-        # TODO: implement max_age support
-        return [job for job in self.db.values()
-                if job["status"] in [JOB_STATUS.CREATED, JOB_STATUS.QUEUED, JOB_STATUS.RUNNING]
-                and job.get("application_id")]
+        # TODO: implement support for max_age, max_updated_ago, fields
+        return [
+            job
+            for job in self.db.values()
+            if job["status"] in active and (not require_application_id or job.get("application_id") is not None)
+        ]
 
 
 class DoubleJobRegistryException(Exception):
@@ -1001,12 +1004,16 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
         )
         return jobs
 
-    def get_active_jobs(self, max_age: Optional[int] = None) -> Iterator[Dict]:
+    def get_active_jobs(
+        self,
+        max_age: Optional[int] = None,
+        max_updated_ago: Optional[int] = None,
+    ) -> Iterator[Dict]:
         if self.zk_job_registry:
             # Note: `parse_specification` is enabled here because the jobtracker needs job_options (e.g. to determine target ETL)
             yield from self.zk_job_registry.get_running_jobs(parse_specification=True)
         elif self.elastic_job_registry:
-            yield from self.elastic_job_registry.list_trackable_jobs(
+            yield from self.elastic_job_registry.list_active_jobs(
                 fields=[
                     "job_id",
                     "user_id",
@@ -1019,6 +1026,8 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
                     "dependency_usage",
                 ],
                 max_age=max_age,
+                max_updated_ago=max_updated_ago,
+                require_application_id=True,
             )
 
     def set_results_metadata(self, job_id, user_id, costs: Optional[float], usage: dict,

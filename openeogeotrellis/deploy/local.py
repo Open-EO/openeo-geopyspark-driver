@@ -36,6 +36,12 @@ def setup_local_spark(additional_jar_dirs=[]):
     conf = geopyspark_conf(
         master=master_str, appName="openeo-geotrellis-local", additional_jar_dirs=additional_jar_dirs
     )
+
+    spark_jars = conf.get("spark.jars").split(",")
+    # geotrellis-extensions needs to be loaded first to avoid "java.lang.NoClassDefFoundError: shapeless/lazily$"
+    spark_jars.sort(key=lambda x: "geotrellis-extensions" not in x)
+    conf.set(key="spark.jars", value=",".join(spark_jars))
+
     conf.set("spark.kryoserializer.buffer.max", value="1G")
     conf.set(key="spark.kryo.registrator", value="geotrellis.spark.store.kryo.KryoRegistrator")
     conf.set("spark.ui.enabled", OPENEO_LOCAL_DEBUGGING)
@@ -106,7 +112,8 @@ def setup_environment():
         previous = (":" + os.environ["GEOPYSPARK_JARS_PATH"]) if "GEOPYSPARK_JARS_PATH" in os.environ else ""
         os.environ["GEOPYSPARK_JARS_PATH"] = str(repository_root / "jars") + previous
 
-    os.environ["OPENEO_CATALOG_FILES"] = str(repository_root / "openeogeotrellis/deploy/empty_layercatalog.json")
+    if "OPENEO_CATALOG_FILES" not in os.environ:
+        os.environ["OPENEO_CATALOG_FILES"] = str(repository_root / "openeogeotrellis/deploy/empty_layercatalog.json")
     os.environ["PYTEST_CONFIGURE"] = ""  # to enable is_ci_context
     os.environ["FLASK_DEBUG"] = "1"
 

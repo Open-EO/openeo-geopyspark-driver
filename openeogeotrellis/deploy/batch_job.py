@@ -36,10 +36,22 @@ from openeogeotrellis.constants import EVAL_ENV_KEY
 from openeogeotrellis.deploy import load_custom_processes
 from openeogeotrellis.deploy.batch_job_metadata import _assemble_result_metadata, _transform_stac_metadata, \
     _convert_job_metadatafile_outputs_to_s3_urls, _get_tracker_metadata
+from openeogeotrellis.integrations.gdal import get_abs_path_of_asset
 from openeogeotrellis.integrations.hadoop import setup_kerberos_auth
-from openeogeotrellis.udf import (collect_python_udf_dependencies, install_python_udf_dependencies,
-                                  UDF_PYTHON_DEPENDENCIES_FOLDER_NAME, )
-from openeogeotrellis.utils import (describe_path, log_memory, get_jvm, add_permissions, json_default, )
+from openeogeotrellis.udf import (
+    collect_python_udf_dependencies,
+    install_python_udf_dependencies,
+    UDF_PYTHON_DEPENDENCIES_FOLDER_NAME,
+)
+from openeogeotrellis.utils import (
+    describe_path,
+    log_memory,
+    get_jvm,
+    add_permissions,
+    json_default,
+    to_jsonable,
+    wait_till_path_available,
+)
 
 logger = logging.getLogger('openeogeotrellis.deploy.batch_job')
 
@@ -308,16 +320,21 @@ def run_job(
             "institution": "openEO platform - Geotrellis backend: " + __version__
         }
 
-        assets_metadata = {}
+        assets_metadata = []
         ml_model_metadata = None
 
         unique_process_ids = CollectUniqueProcessIdsVisitor().accept_process_graph(process_graph).process_ids
 
-        result_metadata = _assemble_result_metadata(tracer=tracer, result=results[0], output_file=output_file,
-                                                    unique_process_ids=unique_process_ids,
-                                                    asset_metadata={},
-                                                    ml_model_metadata=ml_model_metadata,skip_gdal=True)
-        #perform a first metadata write _before_ actually computing the result. This provides a bit more info, even if the job fails.
+        result_metadata = _assemble_result_metadata(
+            tracer=tracer,
+            result=results[0],
+            output_file=output_file,
+            unique_process_ids=unique_process_ids,
+            apply_gdal=False,
+            asset_metadata={},
+            ml_model_metadata=ml_model_metadata,
+        )
+        # perform a first metadata write _before_ actually computing the result. This provides a bit more info, even if the job fails.
         write_metadata({**result_metadata, **_get_tracker_metadata("")}, metadata_file, job_dir)
 
         for result in results:
@@ -334,14 +351,21 @@ def run_job(
                     logger.error("samply_by_feature was set, but no geometries provided through filter_spatial. "
                                  "Make sure to provide geometries.")
             the_assets_metadata = result.write_assets(str(output_file))
+            os.fsync(os.open(job_dir, os.O_RDONLY))  # experiment
             if isinstance(result, MlModelResult):
                 ml_model_metadata = result.get_model_metadata(str(output_file))
                 logger.info("Extracted ml model metadata from %s" % output_file)
             for name, asset in the_assets_metadata.items():
+                href = asset["href"]
+                url = urlparse(href)
+                if url.scheme in ["", "file"]:
+                    file_path = url.path
+                    # fusemount could have some delay to make files accessible, so poll a bit:
+                    asset_path = get_abs_path_of_asset(file_path, job_dir)
+                    wait_till_path_available(asset_path)
                 add_permissions(Path(asset["href"]), stat.S_IWGRP)
             logger.info(f"wrote {len(the_assets_metadata)} assets to {output_file}")
-            _export_workspace(result, result_metadata, the_assets_metadata, stac_metadata_dir=job_dir)
-            assets_metadata = {**assets_metadata, **the_assets_metadata}
+            assets_metadata.append(the_assets_metadata)
 
         if any(dependency['card4l'] for dependency in dependencies):  # TODO: clean this up
             logger.debug("awaiting Sentinel Hub CARD4L data...")
@@ -397,24 +421,56 @@ def run_job(
                     }
                 }]
 
-        result_metadata = _assemble_result_metadata(tracer=tracer, result=result, output_file=output_file,
-                                                    unique_process_ids=unique_process_ids,
-                                                    asset_metadata=assets_metadata,
-                                                    ml_model_metadata=ml_model_metadata,skip_gdal=True)
+        result_metadata = _assemble_result_metadata(
+            tracer=tracer,
+            result=result,
+            output_file=output_file,
+            unique_process_ids=unique_process_ids,
+            apply_gdal=False,
+            asset_metadata={
+                # TODO: flattened instead of per-result, clean this up?
+                asset_key: asset_metadata
+                for result_assets_metadata in assets_metadata
+                for asset_key, asset_metadata in result_assets_metadata.items()
+            },
+            ml_model_metadata=ml_model_metadata,
+        )
 
         write_metadata({**result_metadata, **_get_tracker_metadata("")}, metadata_file, job_dir)
         logger.debug("Starting GDAL-based retrieval of asset metadata")
-        result_metadata = _assemble_result_metadata(tracer=tracer, result=result, output_file=output_file,
-                                                    unique_process_ids=unique_process_ids,
-                                                    asset_metadata=assets_metadata,
-                                                    ml_model_metadata=ml_model_metadata,skip_gdal=False)
+        result_metadata = _assemble_result_metadata(
+            tracer=tracer,
+            result=result,
+            output_file=output_file,
+            unique_process_ids=unique_process_ids,
+            apply_gdal=True,
+            asset_metadata={
+                # TODO: flattened instead of per-result, clean this up?
+                asset_key: asset_metadata
+                for result_assets_metadata in assets_metadata
+                for asset_key, asset_metadata in result_assets_metadata.items()
+            },
+            ml_model_metadata=ml_model_metadata,
+        )
+
+        os.fsync(os.open(job_dir, os.O_RDONLY))  # experiment
+        assert len(results) == len(assets_metadata)
+        for result, result_assets_metadata in zip(results, assets_metadata):
+            _export_workspace(
+                result,
+                result_metadata,
+                result_asset_keys=result_assets_metadata.keys(),
+                stac_metadata_dir=job_dir,
+                remove_original=job_options.get("remove-exported-assets", False),  # TODO: remove feature flag
+            )
     finally:
         write_metadata({**result_metadata, **_get_tracker_metadata("")}, metadata_file, job_dir)
 
     # Wait for files to be written to mount:
     os.fsync(os.open(job_dir, os.O_RDONLY))
 
-def write_metadata(metadata, metadata_file, job_dir):
+
+def write_metadata(metadata, metadata_file, job_dir: Path):
     with open(metadata_file, 'w') as f:
         json.dump(metadata, f, default=json_default)
     add_permissions(metadata_file, stat.S_IWGRP)
@@ -429,23 +485,41 @@ def write_metadata(metadata, metadata_file, job_dir):
             s3_instance = s3_client()
 
             logger.info("Writing results to object storage")
-            for file in os.listdir(job_dir):
-                full_path = str(job_dir) + "/" + file
-                s3_instance.upload_file(full_path, bucket, full_path.strip("/"))
+            for filename in os.listdir(job_dir):
+                if filename == UDF_PYTHON_DEPENDENCIES_FOLDER_NAME:
+                    logger.warning(f"Omitting {filename} as the executors will not be able to access it")
+                else:
+                    file_path = job_dir / filename
+                    full_path = str(file_path.absolute())
+                    s3_instance.upload_file(full_path, bucket, full_path.strip("/"))
         else:
             _convert_job_metadatafile_outputs_to_s3_urls(metadata_file)
 
 
-def _export_workspace(result: SaveResult, result_metadata: dict, assets_metadata: dict, stac_metadata_dir: Path):
-    asset_paths = [Path(asset["href"]) for asset in assets_metadata.values()]
-    stac_paths = _write_exported_stac_collection(stac_metadata_dir, result_metadata, assets_metadata)
-    result.export_workspace(workspace_repository=backend_config_workspace_repository,
-                            files=asset_paths + stac_paths,
-                            default_merge=OPENEO_BATCH_JOB_ID)
+def _export_workspace(
+    result: SaveResult,
+    result_metadata: dict,
+    result_asset_keys: List[str],
+    stac_metadata_dir: Path,
+    remove_original: bool,
+):
+    asset_hrefs = [result_metadata.get("assets", {})[asset_key]["href"] for asset_key in result_asset_keys]
+    stac_hrefs = [
+        f"file:{path}"
+        for path in _write_exported_stac_collection(stac_metadata_dir, result_metadata, result_asset_keys)
+    ]
+    result.export_workspace(
+        workspace_repository=backend_config_workspace_repository,
+        hrefs=asset_hrefs + stac_hrefs,
+        default_merge=OPENEO_BATCH_JOB_ID,
+        remove_original=remove_original,
+    )
 
 
 def _write_exported_stac_collection(
-    job_dir: Path, result_metadata: dict, assets_metadata: dict
+    job_dir: Path,
+    result_metadata: dict,
+    asset_keys: List[str],
 ) -> List[Path]:  # TODO: change to Set?
     def write_stac_item_file(asset_id: str, asset: dict) -> Path:
         item_file = job_dir / f"{asset_id}.json"
@@ -471,21 +545,26 @@ def _write_exported_stac_collection(
             "properties": properties,
             "links": [],  # TODO
             "assets": {
-                asset_id: dict_no_none(**{
-                    "href": f"./{Path(asset['href']).name}",
-                    "roles": asset.get("roles"),
-                    "type": asset.get("type"),
-                    "eo:bands": asset.get("bands"),
-                })
+                asset_id: dict_no_none(
+                    **{
+                        "href": f"./{Path(asset['href']).name}",
+                        "roles": asset.get("roles"),
+                        "type": asset.get("type"),
+                        "eo:bands": asset.get("bands"),
+                        "raster:bands": to_jsonable(asset.get("raster:bands")),
+                    }
+                )
             },
         }
 
         with open(item_file, "wt") as fi:
-            json.dump(stac_item, fi)
+            json.dump(stac_item, fi, allow_nan=False)
 
         return item_file
 
-    item_files = [write_stac_item_file(asset_id, asset) for asset_id, asset in assets_metadata.items()]
+    item_files = [
+        write_stac_item_file(asset_key, result_metadata.get("assets", {})[asset_key]) for asset_key in asset_keys
+    ]
 
     def item_link(item_file: Path) -> dict:
         return {
@@ -538,13 +617,13 @@ def start_main():
     )
 
     try:
-        with TimingLogger(f"batch_job.py main {os.getpid()=}", logger=logger):
+        with TimingLogger(f"Starting batch job {os.getpid()=}", logger=logger):
             main(sys.argv)
     except Exception as e:
         error_summary = GeoPySparkBackendImplementation.summarize_exception_static(e)
         fmt = Format(max_value_str_len=1000)
         logger.exception("OpenEO batch job failed: " + error_summary.summary)
-        logger.error("Batch job error stack trace with locals", extra={"exc_info_with_locals": format_exc(e, fmt=fmt)})
+        logger.info("Batch job error stack trace with locals", extra={"exc_info_with_locals": format_exc(e, fmt=fmt)})
         raise
 
 

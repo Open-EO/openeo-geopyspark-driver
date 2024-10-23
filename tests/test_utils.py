@@ -22,7 +22,7 @@ from openeogeotrellis.utils import (
     UtcNowClock,
     single_value,
     StatsReporter,
-    get_s3_binary_file_contents,
+    stream_s3_binary_file_contents,
     to_s3_url, parse_approximate_isoduration, reproject_cellsize,
     json_default,
 )
@@ -246,9 +246,12 @@ def test_get_s3_binary_file_contents(mock_s3_bucket):
     out_file_s3_url = f"s3://{get_backend_config().s3_bucket_name}/{output_file}"
     mock_s3_bucket.put_object(Key=output_file, Body=TIFF_DUMMY_DATA)
 
-    bytes_retrieved = get_s3_binary_file_contents(out_file_s3_url)
+    buffer = bytearray()
 
-    assert TIFF_DUMMY_DATA == bytes_retrieved
+    for chunk in stream_s3_binary_file_contents(out_file_s3_url):
+        buffer += bytearray(chunk)
+
+    assert bytes(buffer) == TIFF_DUMMY_DATA
 
 
 @pytest.mark.parametrize(

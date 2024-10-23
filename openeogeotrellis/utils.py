@@ -13,6 +13,7 @@ import pwd
 import resource
 import stat
 import tempfile
+import time
 from functools import partial
 from pathlib import Path
 from typing import Callable, Iterable, Optional, Tuple, Union, Dict, Any, TypeVar
@@ -309,7 +310,7 @@ def get_s3_file_contents(filename: Union[os.PathLike,str]) -> str:
     return body.read().decode("utf8")
 
 
-def get_s3_binary_file_contents(s3_url: str) -> bytes:
+def stream_s3_binary_file_contents(s3_url: str) -> Iterable[bytes]:
     """Get contents of a binary file from the S3 bucket."""
     # TODO: move this to openeogeotrellis.integrations.s3?
 
@@ -319,12 +320,12 @@ def get_s3_binary_file_contents(s3_url: str) -> bytes:
         raise ValueError(f"s3_url must be a URL that starts with 's3://' Value is: {s3_url=}")
 
     bucket, file_name = s3_url[5:].split("/", 1)
-    logger.debug(f"Downloading contents from S3 object storage: {bucket=}, key={file_name}")
+    logger.debug(f"Streaming contents from S3 object storage: {bucket=}, key={file_name}")
 
     s3_instance = s3_client()
     s3_file_object = s3_instance.get_object(Bucket=bucket, Key=file_name)
     body = s3_file_object["Body"]
-    return body.read()
+    return body.iter_chunks()
 
 
 def download_s3_directory(s3_url: str, output_dir: str):
@@ -752,3 +753,33 @@ U = TypeVar("U")
 
 def map_optional(f: Callable[[T], U], optional: Optional[T]) -> Optional[U]:
     return None if optional is None else f(optional)
+
+
+def to_jsonable_float(x: float) -> Union[float, str]:
+    """Replaces nan, inf and -inf with its string representation to allow JSON serialization."""
+    return x if math.isfinite(x) else str(x)
+
+
+def to_jsonable(x):
+    if isinstance(x, float):
+        return to_jsonable_float(x)
+    if isinstance(x, dict):
+        return {to_jsonable(key): to_jsonable(value) for key, value in x.items()}
+    elif isinstance(x, list):
+        return [to_jsonable(elem) for elem in x]
+
+    return x
+
+
+def wait_till_path_available(path: Path):
+    retry = 0
+    max_tries = 20  # Almost 2 minutes
+    while not os.path.exists(path):
+        if retry < max_tries:
+            retry += 1
+            seconds = 5
+            logger.info(f"Waiting for path to be available. Try {retry}/{max_tries} (sleep:{seconds}seconds): {path}")
+            time.sleep(seconds)
+        else:
+            logger.warning(f"Path is not available after {max_tries} tries: {path}")
+            return  # TODO: Throw error instead?

@@ -24,9 +24,6 @@ RUN python3 -c "import pyspark;import openeo;import otbApplication"
 # COPY files to allow building the image with the latest version stored locally:
 # TODO: Disable this by default when a new openeo-base is available.
 COPY ./openeogeotrellis /opt/venv/lib64/python3.8/site-packages/openeogeotrellis
-COPY ./openeogeotrellis/deploy/run_graph_locally.py /opt/venv/lib64/python3.8/site-packages/openeogeotrellis/deploy/run_graph_locally.py
-COPY ./openeogeotrellis/deploy/local.py /opt/venv/lib64/python3.8/site-packages/openeogeotrellis/deploy/local.py
-COPY ./openeogeotrellis/deploy/local_backend_config.py /opt/venv/lib64/python3.8/site-packages/openeogeotrellis/deploy/local_backend_config.py
 
 # to find jars:
 ENV GEOPYSPARK_JARS_PATH=/opt/
@@ -43,5 +40,5 @@ ENV GDAL_PAM_ENABLED=NO
 # openeo.log will be written in the current directory, so change current directory
 RUN mkdir /opt/docker_mount
 WORKDIR /opt/docker_mount
-# TODO: Use /opt/venv/bin/run_graph_locally.py when a new openeo-base is available:
-ENTRYPOINT ["python3", "-u", "/opt/venv/lib64/python3.8/site-packages/openeogeotrellis/deploy/run_graph_locally.py"]
+# Can't use run_graph_locally.py directly, because it refers to a non-existing Python installation
+ENTRYPOINT ["python3", "-u", "/opt/venv/bin/run_graph_locally.py"]
