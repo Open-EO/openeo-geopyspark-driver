@@ -15,6 +15,7 @@ from scipy.spatial import cKDTree  # used for tuning the griddata interpolation 
 import xarray as xr
 
 from openeo_driver.errors import OpenEOApiException, InternalException
+from openeo_driver.util.geometry import BoundingBox
 from openeogeotrellis.utils import get_jvm, ensure_executor_logging, set_max_memory
 
 OLCI_PRODUCT_TYPE = "OL_1_EFR___"
@@ -26,12 +27,13 @@ RIM_PIXELS = 60
 logger = logging.getLogger(__name__)
 
 
-def main(product_type, lat_lon_bbox, from_date, to_date, band_names):
+def main(product_type, bbox, from_date, to_date, band_names):
     spark_python = os.path.join(find_spark_home._find_spark_home(), 'python')
     py4j = glob(os.path.join(spark_python, 'lib', 'py4j-*.zip'))[0]
     sys.path[:0] = [spark_python, py4j]
 
     import geopyspark as gps
+    from geopyspark.geotrellis import Extent, LayoutDefinition, TileLayout
 
     conf = gps.geopyspark_conf(master="local[1]", appName=__file__)
     conf.set('spark.kryo.registrator', 'geotrellis.spark.store.kryo.KryoRegistrator')
@@ -43,21 +45,32 @@ def main(product_type, lat_lon_bbox, from_date, to_date, band_names):
 
         metadata_properties = {"productType": product_type}
 
-        extent = jvm.geotrellis.vector.Extent(*lat_lon_bbox)
-        crs = "EPSG:4326"
-        projected_polygons_native_crs = jvm.org.openeo.geotrellis.ProjectedPolygons.fromExtent(extent, crs)
+        extent = jvm.geotrellis.vector.Extent(bbox.west, bbox.south, bbox.east, bbox.north)
+        epsg_code = bbox.crs
+        projected_polygons_native_crs = jvm.org.openeo.geotrellis.ProjectedPolygons.fromExtent(extent, epsg_code)
 
         data_cube_parameters = jvm.org.openeo.geotrelliscommon.DataCubeParameters()
         getattr(data_cube_parameters, "tileSize_$eq")(256)
         getattr(data_cube_parameters, "layoutScheme_$eq")("FloatingLayoutScheme")
-        data_cube_parameters.setGlobalExtent(*lat_lon_bbox, crs)
-        cell_size = jvm.geotrellis.raster.CellSize(0.00297619047619, 0.00297619047619)
+        data_cube_parameters.setGlobalExtent(extent.xmin(), extent.ymin(), extent.xmax(), extent.ymax(), epsg_code)
+        cell_size = None
         feature_flags = {}
 
         layer = pyramid(metadata_properties, projected_polygons_native_crs, from_date, to_date, band_names,
                         data_cube_parameters, cell_size, feature_flags, jvm)[0]
+        layer_crs = layer.srdd.rdd().metadata().crs().epsgCode().get()
         layer.to_spatial_layer().save_stitched(f"/tmp/{product_type}_{from_date}_{to_date}.tif",
-                                               crop_bounds=gps.geotrellis.Extent(*lat_lon_bbox))
+                                               crop_bounds=gps.geotrellis.Extent(*bbox.reproject(layer_crs).as_wsen_tuple()))
+
+        target_extent = Extent(*bbox.as_wsen_tuple())
+        target_tileLayout = TileLayout(layoutCols=4, layoutRows=4, tileCols=256, tileRows=256)
+        reprojected_layer = layer.tile_to_layout(LayoutDefinition(target_extent, target_tileLayout), target_crs=epsg_code)
+
+        reprojected_layer = layer.reproject(epsg_code, "Average")
+
+        reprojected_layer_crs = reprojected_layer.srdd.rdd().metadata().crs().epsgCode().get()
+        reprojected_layer.to_spatial_layer().save_stitched(f"/tmp/{product_type}_{from_date}_{to_date}_reprojected.tif",
+                                               crop_bounds=gps.geotrellis.Extent(*bbox.reproject(reprojected_layer_crs).as_wsen_tuple()))
 
 
 def pyramid(metadata_properties, projected_polygons_native_crs, from_date, to_date, band_names, data_cube_parameters,
@@ -703,9 +716,17 @@ if __name__ == '__main__':
     #lat_lon_bbox = [9.944991786580573, 45.99238819027832, 12.146700668591137, 47.27025711819684]
     #lat_lon_bbox = [-128.4272367635350349, 49.7476186207236424, -126.9726189291401113, 50.8176823149911527]
     #lat_lon_bbox = [0.0, 50.0, 5.0, 55.0]
-    lat_lon_bbox = [-15.932149695950239, 14.382583104023473, -14.90905428983095, 15.377121016959128]
+    #lat_lon_bbox = [-15.932149695950239, 14.382583104023473, -14.90905428983095, 15.377121016959128]
+    bbox = BoundingBox.from_dict({
+            "west": 399960.0,
+            "south": 1590240.0,
+            "east": 509760.0,
+            "north": 1700040.0,
+            "crs": 32628,
+        })
+
     from_date = "2022-06-18T00:00:00Z"
     to_date = from_date
     band_names = ["Syn_Oa01_reflectance"]
 
-    main(SYNERGY_PRODUCT_TYPE, lat_lon_bbox, from_date, to_date, band_names)
+    main(SYNERGY_PRODUCT_TYPE, bbox, from_date, to_date, band_names)
