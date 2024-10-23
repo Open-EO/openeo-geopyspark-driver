@@ -182,7 +182,7 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
 def api_version(request):
     return request.param
 
-# TODO: Deduplicate code with openeo-python-driver
+# TODO: Deduplicate code with openeo-python-client
 class _Sleeper:
     def __init__(self):
         self.history = []
