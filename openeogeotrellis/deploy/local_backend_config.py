@@ -1,4 +1,8 @@
+import os
+from pathlib import Path
+
 from openeo_driver.users.oidc import OidcProvider
+from openeo_driver.workspace import DiskWorkspace
 from openeogeotrellis.config import GpsBackendConfig
 
 oidc_default_client_egi = {
@@ -19,6 +23,10 @@ oidc_providers = [
         default_clients=[oidc_default_client_egi],
     ),
 ]
+
+os.makedirs("/tmp/workspace", exist_ok=True)
+workspaces = {"tmp_workspace": DiskWorkspace(root_directory=Path("/tmp/workspace"))}
+
 config = GpsBackendConfig(
     id="gps-local",
     capabilities_title="Local GeoPySpark openEO Backend",
@@ -26,4 +34,5 @@ config = GpsBackendConfig(
     oidc_providers=oidc_providers,
     opensearch_enrich=False,
     use_zk_job_registry=False,
+    workspaces=workspaces,
 )

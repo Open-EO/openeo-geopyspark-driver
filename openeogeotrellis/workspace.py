@@ -14,16 +14,19 @@ class ObjectStorageWorkspace(Workspace):
     def __init__(self, bucket: str):
         self.bucket = bucket
 
-    def import_file(self, file: Path, merge: str):
+    def import_file(self, file: Path, merge: str, remove_original: bool = False):
         merge = os.path.normpath(merge)
         subdirectory = merge[1:] if merge.startswith("/") else merge
 
         key = subdirectory + "/" + file.name
         s3_client().upload_file(str(file), self.bucket, key)
 
-        _log.debug(f"uploaded {file.absolute()} to s3://{self.bucket}/{key}")
+        if remove_original:
+            file.unlink()
 
-    def import_object(self, s3_uri: str, merge: str):
+        _log.debug(f"{'moved' if remove_original else 'uploaded'} {file.absolute()} to s3://{self.bucket}/{key}")
+
+    def import_object(self, s3_uri: str, merge: str, remove_original: bool = False):
         uri_parts = urlparse(s3_uri)
 
         if not uri_parts.scheme or uri_parts.scheme.lower() != "s3":
@@ -35,8 +38,12 @@ class ObjectStorageWorkspace(Workspace):
 
         target_key = f"{merge}/{filename}"
 
-        s3_client().copy_object(
-            CopySource={"Bucket": source_bucket, "Key": source_key}, Bucket=self.bucket, Key=target_key
-        )
+        s3 = s3_client()
+        s3.copy_object(CopySource={"Bucket": source_bucket, "Key": source_key}, Bucket=self.bucket, Key=target_key)
+        if remove_original:
+            s3.delete_object(Bucket=source_bucket, Key=source_key)
 
-        _log.debug(f"copied s3://{source_bucket}/{source_key} to s3://{self.bucket}/{target_key}")
+        _log.debug(
+            f"{'moved' if remove_original else 'copied'} "
+            f"s3://{source_bucket}/{source_key} to s3://{self.bucket}/{target_key}"
+        )

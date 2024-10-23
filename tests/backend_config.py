@@ -1,4 +1,5 @@
 from pathlib import Path
+import os
 
 from openeo_driver.users.oidc import OidcProvider
 from openeo_driver.workspace import DiskWorkspace
@@ -23,7 +24,9 @@ oidc_providers = [
     ),
 ]
 
+os.makedirs("/tmp/workspace", exist_ok=True)
 workspaces = {
+    "tmp_workspace": DiskWorkspace(root_directory=Path("/tmp/workspace")),
     "tmp": DiskWorkspace(root_directory=Path("/tmp"))
 }
 

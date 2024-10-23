@@ -1521,6 +1521,8 @@ class GeopysparkDataCube(DriverDataCube):
             feature_key_values.append((date, band, value))
 
         geometries = gpd.GeoDataFrame.from_features(geojson["features"]).drop(columns=["value"])
+        epsg = int(geojson["crs"]["properties"]["name"].replace("epsg:", ""))
+        geometries.set_crs(epsg=epsg, inplace=True, allow_override=True)
         coords[dim_g] = geometries.geometry.index.to_list()
         coords[dim_t] = list(coords[dim_t].keys())
         coords[dim_b] = list(coords[dim_b].keys())
