@@ -36,9 +36,12 @@ def main(product_type, lat_lon_bbox, from_date, to_date, band_names):
     conf = gps.geopyspark_conf(master="local[1]", appName=__file__)
     conf.set('spark.kryo.registrator', 'geotrellis.spark.store.kryo.KryoRegistrator')
     conf.set('spark.driver.extraJavaOptions', "-Dlog4j2.debug=false -Dlog4j2.configurationFile=file:/home/bossie/PycharmProjects/openeo/openeo-python-driver/log4j2.xml")
+    conf.set("spark.ui.enabled", "true")
 
     with SparkContext(conf=conf):
         jvm = get_jvm()
+
+        metadata_properties = {"productType": product_type}
 
         extent = jvm.geotrellis.vector.Extent(*lat_lon_bbox)
         crs = "EPSG:4326"
@@ -48,10 +51,11 @@ def main(product_type, lat_lon_bbox, from_date, to_date, band_names):
         getattr(data_cube_parameters, "tileSize_$eq")(256)
         getattr(data_cube_parameters, "layoutScheme_$eq")("FloatingLayoutScheme")
         data_cube_parameters.setGlobalExtent(*lat_lon_bbox, crs)
-        cell_size = jvm.geotrellis.raster.CellSize(0.008928571428571, 0.008928571428571)
+        cell_size = jvm.geotrellis.raster.CellSize(0.00297619047619, 0.00297619047619)
+        feature_flags = {}
 
-        layer = pyramid(product_type, projected_polygons_native_crs, from_date, to_date, band_names,
-                        data_cube_parameters, cell_size, jvm)[0]
+        layer = pyramid(metadata_properties, projected_polygons_native_crs, from_date, to_date, band_names,
+                        data_cube_parameters, cell_size, feature_flags, jvm)[0]
         layer.to_spatial_layer().save_stitched(f"/tmp/{product_type}_{from_date}_{to_date}.tif",
                                                crop_bounds=gps.geotrellis.Extent(*lat_lon_bbox))
 
@@ -695,12 +699,13 @@ def apply_LUT_on_band(in_data, LUT, nodata=None):
 if __name__ == '__main__':
     logging.basicConfig(level="INFO")
 
-    lat_lon_bbox = [2.535352308127358, 50.57415247573394, 5.713651867060349, 51.718230797191836]
-    lat_lon_bbox = [9.944991786580573, 45.99238819027832, 12.146700668591137, 47.27025711819684]
-    lat_lon_bbox = [-128.4272367635350349, 49.7476186207236424, -126.9726189291401113, 50.8176823149911527]
+    #lat_lon_bbox = [2.535352308127358, 50.57415247573394, 5.713651867060349, 51.718230797191836]
+    #lat_lon_bbox = [9.944991786580573, 45.99238819027832, 12.146700668591137, 47.27025711819684]
+    #lat_lon_bbox = [-128.4272367635350349, 49.7476186207236424, -126.9726189291401113, 50.8176823149911527]
     #lat_lon_bbox = [0.0, 50.0, 5.0, 55.0]
-    from_date = "2018-03-12T00:00:00Z"
+    lat_lon_bbox = [-15.932149695950239, 14.382583104023473, -14.90905428983095, 15.377121016959128]
+    from_date = "2022-06-18T00:00:00Z"
     to_date = from_date
-    band_names = ["LST_in:LST"]
+    band_names = ["Syn_Oa01_reflectance"]
 
-    main(SLSTR_PRODUCT_TYPE, lat_lon_bbox, from_date, to_date, band_names)
+    main(SYNERGY_PRODUCT_TYPE, lat_lon_bbox, from_date, to_date, band_names)
