@@ -356,10 +356,11 @@ def run_job(
                 ml_model_metadata = result.get_model_metadata(str(output_file))
                 logger.info("Extracted ml model metadata from %s" % output_file)
             for name, asset in the_assets_metadata.items():
-                if not asset.get("href").lower().startswith("s3:/"):
-                    # fusemount could have some delay to make files accessible, so poll a bit:
-                    asset_path = get_abs_path_of_asset(asset["href"], job_dir)
-                    wait_till_path_available(asset_path)
+                # TODO: test in separate branch
+                # if not asset.get("href").lower().startswith("s3:/"):
+                #     # fusemount could have some delay to make files accessible, so poll a bit:
+                #     asset_path = get_abs_path_of_asset(asset["href"], job_dir)
+                #     wait_till_path_available(asset_path)
                 add_permissions(Path(asset["href"]), stat.S_IWGRP)
             logger.info(f"wrote {len(the_assets_metadata)} assets to {output_file}")
             assets_metadata.append(the_assets_metadata)
