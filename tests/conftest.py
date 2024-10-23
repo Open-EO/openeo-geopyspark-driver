@@ -1,16 +1,19 @@
-import os
-from typing import Union
-
-import sys
-from pathlib import Path
+from datetime import datetime
+from unittest import mock
 
 import boto3
+import contextlib
 import flask
-import pytest
 import moto
 import moto.server
+import os
+import pytest
+import sys
+import time_machine
+import typing
 import requests_mock
 from _pytest.terminal import TerminalReporter
+from pathlib import Path
 
 from openeo_driver.backend import OpenEoBackendImplementation, UserDefinedProcesses
 from openeo_driver.jobregistry import ElasticJobRegistry, JobRegistryInterface
@@ -178,6 +181,36 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
 @pytest.fixture(params=["1.0.0"])
 def api_version(request):
     return request.param
+
+# TODO: Deduplicate code with openeo-python-client
+class _Sleeper:
+    def __init__(self):
+        self.history = []
+
+    @contextlib.contextmanager
+    def patch(self, time_machine: time_machine.TimeMachineFixture) -> typing.Iterator["_Sleeper"]:
+        def sleep(seconds):
+            # Note: this requires that `time_machine.move_to()` has been called before
+            # also see https://github.com/adamchainz/time-machine/issues/247
+            time_machine.coordinates.shift(seconds)
+            self.history.append(seconds)
+
+        with mock.patch("time.sleep", new=sleep):
+            yield self
+
+    def did_sleep(self) -> bool:
+        return len(self.history) > 0
+
+
+@pytest.fixture
+def fast_sleep(time_machine) -> typing.Iterator[_Sleeper]:
+    """
+    Fixture using `time_machine` to make `sleep` instant and update the current time.
+    """
+    now = datetime.now().isoformat()
+    time_machine.move_to(now)
+    with _Sleeper().patch(time_machine=time_machine) as sleeper:
+        yield sleeper
 
 
 @pytest.fixture
