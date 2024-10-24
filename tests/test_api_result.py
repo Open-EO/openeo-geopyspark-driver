@@ -3762,6 +3762,10 @@ class TestLoadStac:
         urllib_and_request_mock.get(
             "https://stac.terrascope.be/search?limit=20&bbox=5.07%2C51.215%2C5.08%2C51.22&datetime=2024-06-16T00%3A00%3A00Z%2F2024-06-23T23%3A59%3A59.999000Z&collections=sentinel-2-l2a&fields=%2Bproperties.proj%3Abbox%2C%2Bproperties.proj%3Ashape%2C%2Bproperties.proj%3Aepsg&token=MTcxOTEzOTU3OTAyNCxTMkJfTVNJTDJBXzIwMjQwNjIzVDEwNDYxOV9OMDUxMF9SMDUxX1QzMVVGU18yMDI0MDYyM1QxMjIxNTYsc2VudGluZWwtMi1sMmE%3D",
             data=item_json("stac/issue830_alternate_url/search_queried_page2.json"))
+        urllib_and_request_mock.get(
+            "https://stac.terrascope.be/search?limit=20&bbox=5.07%2C51.215%2C5.08%2C51.22&datetime=2024-06-23T00%3A00%3A00Z%2F2024-06-23T23%3A59%3A59.999000Z&collections=sentinel-2-l2a&fields=%2Btype%2C%2Bgeometry%2C%2Bproperties%2C%2Bid%2C%2Bbbox%2C%2Bstac_version%2C%2Bassets%2C%2Blinks%2C%2Bcollection",
+            data=item_json("stac/issue830_alternate_url/search_queried.json"),
+        )
 
         process_graph = {
             "process_graph": {
@@ -4088,9 +4092,18 @@ class TestLoadStac:
                 assert "fields" not in request.qs
             else:
                 # a GET request has a single "fields" param with values separated by commas
-                assert set(request.qs["fields"][0].split(",")) == {"+properties.proj:epsg", "+properties.proj:bbox",
-                                                                   "+properties.proj:shape", "+properties.season",
-                                                                   }
+                # After https://stac.openeo.vito.be is updated, this might not be needed anymore
+                assert set(request.qs["fields"][0].split(",")) == {
+                    "+links",
+                    "+stac_version",
+                    "+bbox",
+                    "+collection",
+                    "+assets",
+                    "+id",
+                    "+properties",
+                    "+type",
+                    "+geometry",
+                }
 
             def item(path) -> dict:
                 return json.loads(
