@@ -903,7 +903,8 @@ def test_multiple_image_collection_results(tmp_path):
     assert "openEO.nc" in output_files
 
 
-def test_export_workspace(tmp_path):
+@pytest.mark.parametrize("remove_original", [False, True])
+def test_export_workspace(tmp_path, remove_original):
     workspace_id = "tmp"
     merge = f"OpenEO-workspace-{uuid.uuid4()}"
 
@@ -938,7 +939,7 @@ def test_export_workspace(tmp_path):
     process = {
         "process_graph": process_graph,
         "job_options": {
-            "remove-exported-assets": True,
+            "remove-exported-assets": remove_original,
         },
     }
 
@@ -958,7 +959,7 @@ def test_export_workspace(tmp_path):
 
         job_dir_files = set(os.listdir(tmp_path))
         assert len(job_dir_files) > 0
-        assert "openEO_2021-01-05Z.tif" not in job_dir_files
+        assert ("openEO_2021-01-05Z.tif" in job_dir_files) != remove_original
 
         workspace_files = set(os.listdir(workspace_dir))
         assert workspace_files == {"collection.json", "openEO_2021-01-05Z.tif", "openEO_2021-01-05Z.tif.json"}
@@ -1039,9 +1040,6 @@ def test_export_workspace_with_asset_per_band(tmp_path):
 
     process = {
         "process_graph": process_graph,
-        "job_options": {
-            "remove-exported-assets": False,
-        },
     }
 
     # TODO: avoid depending on `/tmp` for test output, make sure to leverage `tmp_path` fixture (https://github.com/Open-EO/openeo-python-driver/issues/265)
@@ -1060,8 +1058,8 @@ def test_export_workspace_with_asset_per_band(tmp_path):
 
         job_dir_files = set(os.listdir(tmp_path))
         assert len(job_dir_files) > 0
-        assert "openEO_2021-01-05Z_Longitude.tif" in job_dir_files != process["job_options"]["remove-exported-assets"]
-        assert "openEO_2021-01-05Z_Latitude.tif" in job_dir_files != process["job_options"]["remove-exported-assets"]
+        assert "openEO_2021-01-05Z_Longitude.tif" in job_dir_files
+        assert "openEO_2021-01-05Z_Latitude.tif" in job_dir_files
 
         workspace_files = set(os.listdir(workspace_dir))
         assert workspace_files == {
@@ -1490,9 +1488,6 @@ def test_multiple_save_result_single_export_workspace(tmp_path):
 
     process = {
         "process_graph": process_graph,
-        "job_options": {
-            "remove-exported-assets": True,
-        },
     }
 
     # TODO: avoid depending on `/tmp` for test output, make sure to leverage `tmp_path` fixture (https://github.com/Open-EO/openeo-python-driver/issues/265)
@@ -1512,7 +1507,7 @@ def test_multiple_save_result_single_export_workspace(tmp_path):
         job_dir_files = set(os.listdir(tmp_path))
         assert len(job_dir_files) > 0
         assert "openEO.nc" in job_dir_files
-        assert "openEO.tif" not in job_dir_files
+        assert "openEO.tif" in job_dir_files
 
         workspace_files = set(os.listdir(workspace_dir))
         assert workspace_files == {"collection.json", "openEO.tif", "openEO.tif.json"}
