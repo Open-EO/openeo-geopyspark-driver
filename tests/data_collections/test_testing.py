@@ -4,7 +4,11 @@ import geopyspark
 import numpy as np
 from numpy.testing import assert_equal
 
-from openeogeotrellis.collections.testing import load_test_collection, GeopysparkCubeMetadata, TestCollectionLonLat
+from openeogeotrellis.collections.testing import (
+    GeopysparkCubeMetadata,
+    TestCollectionLonLat,
+    load_test_collection,
+)
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.utils import get_jvm
 

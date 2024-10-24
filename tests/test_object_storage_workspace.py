@@ -2,7 +2,6 @@ from typing import Set
 
 import pytest
 
-
 from openeogeotrellis.workspace import ObjectStorageWorkspace
 
 

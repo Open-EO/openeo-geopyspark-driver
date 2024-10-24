@@ -1,20 +1,19 @@
+import geopandas as gpd
+import geopyspark as gps
 import mock
 import pytest
 import rasterio
-from mock import MagicMock, ANY
-
+from mock import ANY, MagicMock
 from openeo_driver.backend import LoadParameters
 from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.errors import OpenEOApiException
 from openeo_driver.utils import EvalEnv
 from py4j.java_gateway import JavaGateway
-from tests.data import get_test_data_file
 
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.layercatalog import get_layer_catalog
-import geopandas as gpd
-import geopyspark as gps
+from tests.data import get_test_data_file
 
 
 @pytest.fixture

@@ -1,4 +1,4 @@
-from geopyspark import TiledRasterLayer, Extent
+from geopyspark import Extent, TiledRasterLayer
 from openeo_driver.utils import EvalEnv
 from py4j.protocol import Py4JJavaError
 from shapely.geometry import MultiPolygon
@@ -6,7 +6,6 @@ from shapely.geometry import MultiPolygon
 from openeogeotrellis.backend import GeoPySparkBackendImplementation
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.utils import get_jvm
-
 
 # Note: Ensure that the python environment has all the required modules installed.
 # Numpy should be installed before Jep for off-heap memory tiles to work!

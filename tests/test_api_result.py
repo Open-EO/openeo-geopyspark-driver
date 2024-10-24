@@ -17,17 +17,14 @@ import geopandas as gpd
 import mock
 import numpy
 import numpy as np
+import openeo
+import openeo.processes
 import pandas
 import pytest
 import rasterio
 import xarray
 from mock import MagicMock
 from numpy.testing import assert_equal
-from pystac import Asset, Catalog, Collection, Extent, Item, SpatialExtent, TemporalExtent
-from shapely.geometry import GeometryCollection, Point, Polygon, box, mapping
-
-import openeo
-import openeo.processes
 from openeo_driver.backend import UserDefinedProcesses
 from openeo_driver.jobregistry import JOB_STATUS
 from openeo_driver.testing import (
@@ -35,21 +32,41 @@ from openeo_driver.testing import (
     ApiResponse,
     ApiTester,
     DictSubSet,
+    DummyUser,
     IgnoreOrder,
     ListSubSet,
     RegexMatcher,
     UrllibMocker,
     load_json,
-    DummyUser,
 )
 from openeo_driver.users import User
 from openeo_driver.util.auth import ClientCredentials
-from openeo_driver.util.geometry import as_geojson_feature, as_geojson_feature_collection
+from openeo_driver.util.geometry import (
+    as_geojson_feature,
+    as_geojson_feature_collection,
+)
+from pystac import (
+    Asset,
+    Catalog,
+    Collection,
+    Extent,
+    Item,
+    SpatialExtent,
+    TemporalExtent,
+)
+from shapely.geometry import GeometryCollection, Point, Polygon, box, mapping
+
 from openeogeotrellis.backend import JOB_METADATA_FILENAME
 from openeogeotrellis.config.config import EtlApiConfig
 from openeogeotrellis.job_registry import ZkJobRegistry
 from openeogeotrellis.testing import KazooClientMock, gps_config_overrides, random_name
-from openeogeotrellis.utils import UtcNowClock, drop_empty_from_aggregate_polygon_result, get_jvm, is_package_available
+from openeogeotrellis.utils import (
+    UtcNowClock,
+    drop_empty_from_aggregate_polygon_result,
+    get_jvm,
+    is_package_available,
+)
+
 from .data import get_test_data_file
 
 _log = logging.getLogger(__name__)

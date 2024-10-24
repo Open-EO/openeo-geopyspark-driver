@@ -1,14 +1,17 @@
 import mock
 import pytest
 import shapely
-
-from openeo_driver.ProcessGraphDeserializer import ENV_SOURCE_CONSTRAINTS
 from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.delayed_vector import DelayedVector
+from openeo_driver.ProcessGraphDeserializer import ENV_SOURCE_CONSTRAINTS
 from openeo_driver.users import User
 from openeo_driver.utils import EvalEnv
 
-from openeogeotrellis.backend import GpsBatchJobs, GpsProcessing, GeoPySparkBackendImplementation
+from openeogeotrellis.backend import (
+    GeoPySparkBackendImplementation,
+    GpsBatchJobs,
+    GpsProcessing,
+)
 from openeogeotrellis.testing import gps_config_overrides
 
 

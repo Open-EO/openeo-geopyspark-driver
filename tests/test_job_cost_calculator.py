@@ -5,9 +5,12 @@ from openeo.rest.auth.testing import OidcMock
 from openeo_driver.testing import DictSubSet
 from openeo_driver.users import User
 from openeo_driver.util.auth import ClientCredentials
-from openeogeotrellis.config.config import EtlApiConfig
 
-from openeogeotrellis.job_costs_calculator import CostsDetails, DynamicEtlApiJobCostCalculator
+from openeogeotrellis.config.config import EtlApiConfig
+from openeogeotrellis.job_costs_calculator import (
+    CostsDetails,
+    DynamicEtlApiJobCostCalculator,
+)
 from openeogeotrellis.testing import gps_config_overrides
 
 

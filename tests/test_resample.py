@@ -1,7 +1,9 @@
 import datetime
 import math
+
 import geopyspark as gps
 import pytest
+
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 
 

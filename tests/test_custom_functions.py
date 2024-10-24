@@ -6,14 +6,14 @@ import geopyspark as gps
 import numpy as np
 import pytest
 import pytz
-from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time)
+from geopyspark.geotrellis import SpaceTimeKey, Tile, _convert_to_unix_time
 from geopyspark.geotrellis.constants import LayerType
 from geopyspark.geotrellis.layer import TiledRasterLayer
+from openeo_driver.save_result import AggregatePolygonResultCSV
+from openeo_driver.utils import EvalEnv
 from pyspark import SparkContext
 from shapely.geometry import Point, Polygon
 
-from openeo_driver.save_result import AggregatePolygonResultCSV
-from openeo_driver.utils import EvalEnv
 from openeogeotrellis.backend import GeoPySparkBackendImplementation
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 

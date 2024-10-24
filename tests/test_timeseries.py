@@ -7,16 +7,24 @@ import geopyspark as gps
 import numpy as np
 import pytest
 import pytz
-from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time)
+from geopyspark.geotrellis import SpaceTimeKey, Tile, _convert_to_unix_time
 from geopyspark.geotrellis.constants import LayerType
 from geopyspark.geotrellis.layer import TiledRasterLayer
-from pyspark import SparkContext
-from shapely.geometry import mapping, Point, Polygon, GeometryCollection, MultiPolygon, box
-
 from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.delayed_vector import DelayedVector
-from openeo_driver.save_result import AggregatePolygonResultCSV, AggregatePolygonResult
+from openeo_driver.save_result import AggregatePolygonResult, AggregatePolygonResultCSV
+from pyspark import SparkContext
+from shapely.geometry import (
+    GeometryCollection,
+    MultiPolygon,
+    Point,
+    Polygon,
+    box,
+    mapping,
+)
+
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
+
 from .data import get_test_data_file
 
 
