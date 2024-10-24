@@ -12,7 +12,7 @@ from math import isfinite
 from openeo.util import dict_no_none
 from osgeo import gdal
 
-from openeogeotrellis.utils import stream_s3_binary_file_contents, _make_set_for_key
+from openeogeotrellis.utils import stream_s3_binary_file_contents, _make_set_for_key, map_optional
 
 
 def poorly_log(message: str, level=logging.INFO):
@@ -479,7 +479,8 @@ def _get_raster_statistics(gdal_info: GDALInfo, band_name: Optional[str] = None)
         # just the empty string.
         gdal_band_stats = band_metadata.get("", {})
         band_name_out = (
-            band_name or gdal_band_stats.get("long_name") or gdal_band_stats.get("DESCRIPTION") or str(band_num)
+                band_name or gdal_band_stats.get("long_name") or band.get("description")
+                or gdal_band_stats.get("DESCRIPTION") or str(band_num)
         )
 
         def to_float_or_none(x: Optional[str]):
@@ -495,3 +496,24 @@ def _get_raster_statistics(gdal_info: GDALInfo, band_name: Optional[str] = None)
         raster_stats[band_name_out] = band_stats
 
     return raster_stats
+
+
+class GeoTiffMetadata:
+    def __init__(self):
+        self._band_tags = []
+
+    def add_head_tag(self, name: str, value):
+        self._band_tags.append((name, value, None, None))
+
+    def add_band_tag(self, name: str, value, index: int, role: str = None):
+        self._band_tags.append((name, value, index, role))
+
+    def to_xml(self) -> str:
+        item_elements = [self._as_item_element(*band_tag) for band_tag in self._band_tags]
+        return f'<GDALMetadata>{"".join(item_elements)}</GDALMetadata>'
+
+    @staticmethod
+    def _as_item_element(name: str, value, index: Optional[int], role: Optional[str]) -> str:
+        sample_attribute = map_optional(lambda i: f'sample="{i}"', index) or ""
+        role_attribute = map_optional(lambda r: f'role="{r}"', role) or ""
+        return f'<Item name="{name}" {sample_attribute} {role_attribute}>{value}</Item>'

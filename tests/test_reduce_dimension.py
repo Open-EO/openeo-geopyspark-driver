@@ -41,16 +41,16 @@ def test_reduce_bands(imagecollection_with_two_bands_and_three_dates):
     cube = imagecollection_with_two_bands_and_three_dates
     ts = _timeseries_stitch(cube)
     assert len(ts) == 3
-    assert set(t.cells.shape for t in ts.values()) == {(2, 8, 8)}
+    assert set(t.cells.shape for t in ts.values()) == {(2, 32, 32)}
 
     reducer = _simple_reducer("sum")
     env = EvalEnv()
     cube = cube.reduce_dimension(dimension="bands", reducer=reducer, env=env)
     ts = _timeseries_stitch(cube)
     assert len(ts) == 3
-    assert_array_almost_equal(ts[dt.datetime(2017, 9, 25, 11, 37, 0)].cells, np.full((1, 8, 8), 3.0))
-    assert_array_almost_equal(ts[dt.datetime(2017, 9, 30, 0, 37, 0)].cells, np.full((1, 8, 8), np.nan))
-    assert_array_almost_equal(ts[dt.datetime(2017, 9, 25, 11, 37, 0)].cells, np.full((1, 8, 8), 3.0))
+    assert_array_almost_equal(ts[dt.datetime(2017, 9, 25, 11, 37, 0)].cells, np.full((1, 32, 32), 3.0))
+    assert_array_almost_equal(ts[dt.datetime(2017, 9, 30, 0, 37, 0)].cells, np.full((1, 32, 32), np.nan))
+    assert_array_almost_equal(ts[dt.datetime(2017, 9, 25, 11, 37, 0)].cells, np.full((1, 32, 32), 3.0))
 
 
 @pytest.mark.parametrize("udf", [("udf_noop"), ("udf_noop_jep")])
@@ -59,19 +59,19 @@ def test_reduce_bands_reduce_time(imagecollection_with_two_bands_and_three_dates
     cube = imagecollection_with_two_bands_and_three_dates
     ts = _timeseries_stitch(cube)
     assert len(ts) == 3
-    assert set(t.cells.shape for t in ts.values()) == {(2, 8, 8)}
+    assert set(t.cells.shape for t in ts.values()) == {(2, 32, 32)}
 
     reducer = _simple_reducer("sum")
     env = EvalEnv()
     cube = cube.reduce_dimension(dimension="bands", reducer=reducer, env=env)
     ts = _timeseries_stitch(cube)
     assert len(ts) == 3
-    assert set(t.cells.shape for t in ts.values()) == {(1, 8, 8)}
+    assert set(t.cells.shape for t in ts.values()) == {(1, 32, 32)}
 
     cube = cube.reduce_dimension(dimension='t', reducer=udf, env=env)
     stiched = _stitch(cube)
-    assert stiched.cells.shape == (1, 8, 8)
-    expected = np.full((1, 8, 8), 3.0)
+    assert stiched.cells.shape == (1, 32, 32)
+    expected = np.full((1, 32, 32), 3.0)
     assert_array_almost_equal(stiched.cells, expected)
 
 

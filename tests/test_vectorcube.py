@@ -237,7 +237,7 @@ def test_aggregatespatialresultcsv_vector_to_raster(imagecollection_with_two_ban
         space_time_key = output_cube_np[i][0]
         tile: geopyspark.Tile = output_cube_np[i][1]
         assert space_time_key in expected_values.keys()
-        assert tile.cells.shape == (2, 4, 4)
+        assert tile.cells.shape == (2, 16, 16)
         mean_band0 = np.unique(tile.cells[0]).tolist()
         mean_band1 = np.unique(tile.cells[1]).tolist()
         expected_band_values = expected_values[space_time_key]
