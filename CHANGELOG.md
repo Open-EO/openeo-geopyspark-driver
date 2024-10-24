@@ -14,6 +14,14 @@ without compromising stable operations.
 
 ## Unreleased
 
+## 0.46.0
+
+- Automatic Python UDF dependency handling: add option to work with ZIP archive
+  instead of full tree in job work folder, to improve performance/stability
+  in contexts where large file trees under the job work folder are not ideal,
+  e.g. FUSE-mounted S3 storage
+  ([#845](https://github.com/Open-EO/openeo-geopyspark-driver/issues/845), [docs](docs/udf-deps.md))
+
 ## 0.45.0
 
 - Experimental support for removal of originals of assets exported to workspace ([Open-EO/openeo-geopyspark-driver#883](https://github.com/Open-EO/openeo-geopyspark-driver/issues/883))
