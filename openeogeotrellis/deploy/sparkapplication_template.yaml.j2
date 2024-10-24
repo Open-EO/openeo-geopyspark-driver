@@ -228,7 +228,11 @@ spec:
       - name: GDAL_HTTP_MERGE_CONSECUTIVE_RANGES
         value: "YES"
       - name: PYTHONPATH
-        value: "$PYTHONPATH:/opt/tensorflow/python38/2.3.0/:/opt/openeo/lib/python3.8/site-packages/:/batch_jobs/{{ job_id_full }}/{{ UDF_PYTHON_DEPENDENCIES_FOLDER_NAME }}"
+        value: "$PYTHONPATH:/opt/tensorflow/python38/2.3.0/:/opt/openeo/lib/python3.8/site-packages/{% if udf_python_dependencies_folder_path %}:{{ udf_python_dependencies_folder_path }}{% endif %}"
+      - name: UDF_PYTHON_DEPENDENCIES_FOLDER_PATH
+        value: "{{ udf_python_dependencies_folder_path }}"
+      - name: UDF_PYTHON_DEPENDENCIES_ARCHIVE_PATH
+        value: "{{ udf_python_dependencies_archive_path }}"
       - name: VSI_CACHE
         value: "TRUE"
       - name: FUSE_MOUNT_BATCHJOB_S3_BUCKET
@@ -362,7 +366,11 @@ spec:
       - name: GDAL_HTTP_RETRY_DELAY
         value: "10"
       - name: PYTHONPATH
-        value: "$PYTHONPATH:/opt/tensorflow/python38/2.3.0/:/opt/openeo/lib/python3.8/site-packages/:/batch_jobs/{{ job_id_full }}/{{ UDF_PYTHON_DEPENDENCIES_FOLDER_NAME }}"
+        value: "$PYTHONPATH:/opt/tensorflow/python38/2.3.0/:/opt/openeo/lib/python3.8/site-packages/{% if udf_python_dependencies_folder_path %}:{{ udf_python_dependencies_folder_path }}{% endif %}"
+      - name: UDF_PYTHON_DEPENDENCIES_FOLDER_PATH
+        value: "{{ udf_python_dependencies_folder_path }}"
+      - name: UDF_PYTHON_DEPENDENCIES_ARCHIVE_PATH
+        value: "{{ udf_python_dependencies_archive_path }}"
       - name: VSI_CACHE
         value: "TRUE"
       - name: SPARK_USER

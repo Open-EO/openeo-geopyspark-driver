@@ -1,7 +1,10 @@
 import json
 import logging
+import re
 import shutil
 import tempfile
+import textwrap
+import zipfile
 from pathlib import Path
 from unittest import mock
 
@@ -17,7 +20,11 @@ from pytest import approx
 from shapely.geometry import box, mapping, shape
 
 from openeogeotrellis._version import __version__
-from openeogeotrellis.deploy.batch_job import run_job
+from openeogeotrellis.config.constants import UDF_DEPENDENCIES_INSTALL_MODE
+from openeogeotrellis.deploy.batch_job import (
+    _extract_and_install_udf_dependencies,
+    run_job,
+)
 from openeogeotrellis.deploy.batch_job_metadata import (
     _convert_asset_outputs_to_s3_urls,
     _convert_job_metadatafile_outputs_to_s3_urls,
@@ -31,6 +38,7 @@ from openeogeotrellis.integrations.gdal import (
     parse_gdal_raster_metadata,
     read_gdal_raster_metadata,
 )
+from openeogeotrellis.testing import gps_config_overrides
 from openeogeotrellis.utils import get_jvm, to_s3_url
 
 EXPECTED_GRAPH = [{"expression": {"nop": {"process_id": "discard_result",
@@ -1672,3 +1680,98 @@ def test_convert_job_metadatafile_outputs_to_s3_urls(tmp_path):
 
     assert converted_metadata['assets']['openEO_2017-11-21Z.tif']["href"].startswith("s3://")
     assert converted_metadata['assets']['a-second-asset-file.tif']["href"].startswith("s3://")
+
+
+class TestUdfDependenciesHandling:
+    def _get_process_graph(self) -> dict:
+        """
+        Process graph containing a UDF
+        with dependency on dummy package "mehh" available on dummy_pypi fixture
+        """
+        udf = textwrap.dedent(
+            """
+            # /// script
+            # dependencies = ["mehh"]
+            # ///
+            def foo(x):
+                return x + 1
+            """
+        )
+        process_graph = {
+            "lc1": {"process_id": "load_collection", "arguments": {"id": "S66"}},
+            "apply1": {
+                "process_id": "apply",
+                "arguments": {
+                    "data": {"from_node": "lc1"},
+                    "process": {
+                        "process_graph": {
+                            "runudf1": {
+                                "process_id": "run_udf",
+                                "arguments": {"data": {"from_parameter": "x"}, "udf": udf, "runtime": "Python"},
+                                "result": True,
+                            }
+                        }
+                    },
+                },
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "apply2"}, "format": "GTiff", "options": {}},
+                "result": True,
+            },
+        }
+        return process_graph
+
+    def test_extract_and_install_udf_dependencies_disabled(self):
+        process_graph = self._get_process_graph()
+        with gps_config_overrides(
+            udf_dependencies_install_mode=UDF_DEPENDENCIES_INSTALL_MODE.DISABLED,
+        ):
+            with pytest.raises(ValueError, match="No UDF dependency handling"):
+                _extract_and_install_udf_dependencies(process_graph=process_graph)
+
+    def test_extract_and_install_udf_dependencies_direct_no_env(self, dummy_pypi):
+        process_graph = self._get_process_graph()
+        with gps_config_overrides(
+            udf_dependencies_install_mode=UDF_DEPENDENCIES_INSTALL_MODE.DIRECT,
+            udf_dependencies_pypi_index=dummy_pypi,
+        ):
+            with pytest.raises(RuntimeError, match="Empty env var 'UDF_PYTHON_DEPENDENCIES_FOLDER_PATH'"):
+                _extract_and_install_udf_dependencies(process_graph=process_graph)
+
+    def test_extract_and_install_udf_dependencies_direct_with_env(self, tmp_path, dummy_pypi, monkeypatch, caplog):
+        process_graph = self._get_process_graph()
+        with gps_config_overrides(
+            udf_dependencies_install_mode=UDF_DEPENDENCIES_INSTALL_MODE.DIRECT,
+            udf_dependencies_pypi_index=dummy_pypi,
+        ):
+            deps_dir = tmp_path / "udf-depz"
+            monkeypatch.setenv("UDF_PYTHON_DEPENDENCIES_FOLDER_PATH", str(deps_dir))
+            assert not deps_dir.exists()
+            _extract_and_install_udf_dependencies(process_graph=process_graph)
+
+        assert "mehh.py" in {f.name for f in deps_dir.iterdir()}
+        assert any(re.search(r"Installing Python UDF dependencies.*/udf-depz'", m) for m in caplog.messages)
+
+    def test_extract_and_install_udf_dependencies_zip_no_env(self, dummy_pypi):
+        process_graph = self._get_process_graph()
+        with gps_config_overrides(
+            udf_dependencies_install_mode=UDF_DEPENDENCIES_INSTALL_MODE.ZIP,
+            udf_dependencies_pypi_index=dummy_pypi,
+        ):
+            with pytest.raises(RuntimeError, match="Empty env var 'UDF_PYTHON_DEPENDENCIES_ARCHIVE_PATH'"):
+                _extract_and_install_udf_dependencies(process_graph=process_graph)
+
+    def test_extract_and_install_udf_dependencies_zip_with_env(self, tmp_path, dummy_pypi, monkeypatch, caplog):
+        process_graph = self._get_process_graph()
+        with gps_config_overrides(
+            udf_dependencies_install_mode=UDF_DEPENDENCIES_INSTALL_MODE.ZIP,
+            udf_dependencies_pypi_index=dummy_pypi,
+        ):
+            deps_archive = tmp_path / "udf-depz.zip"
+            monkeypatch.setenv("UDF_PYTHON_DEPENDENCIES_ARCHIVE_PATH", str(deps_archive))
+            assert not deps_archive.exists()
+            _extract_and_install_udf_dependencies(process_graph=process_graph)
+
+        assert deps_archive.exists()
+        assert "mehh.py" in zipfile.ZipFile(deps_archive).namelist()
