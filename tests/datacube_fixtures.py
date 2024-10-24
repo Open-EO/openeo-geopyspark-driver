@@ -7,9 +7,7 @@ import pytz
 
 from openeogeotrellis.service_registry import InMemoryServiceRegistry
 
-# TODO: put these things in a function that accepts a tile_size parameter to avoid having to change a lot of tests,
-#  then request tile_size=16 for tests that actually write GeoTiffs
-TILE_SIZE = 16
+TILE_SIZE = 16  # multiple of 16 as this is used for the GeoTIFF tile size as well and mandated by its spec
 
 matrix_of_one = np.zeros((1, TILE_SIZE, TILE_SIZE))
 matrix_of_one.fill(1)
@@ -22,6 +20,7 @@ matrix_of_nodata.fill(-1)
 
 extent = {"xmin": 0.0, "ymin": 0.0, "xmax": 4.0, "ymax": 4.0}
 extent_webmerc = {"xmin": 0.0, "ymin": 0.0, "xmax": 445277.96317309426, "ymax": 445640.1096560266}
+# TODO: shouldn't layoutCols/Rows be 2 as we're adding 4 tiles to it? Or at least make it easier to reason about?
 layout = {"layoutCols": 1, "layoutRows": 1, "tileCols": TILE_SIZE, "tileRows": TILE_SIZE}
 
 

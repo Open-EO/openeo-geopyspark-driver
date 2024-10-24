@@ -456,6 +456,7 @@ def run_job(
         )
 
         os.fsync(os.open(job_dir, os.O_RDONLY))  # experiment
+
         assert len(results) == len(assets_metadata)
         for result, result_assets_metadata in zip(results, assets_metadata):
             _export_workspace(
