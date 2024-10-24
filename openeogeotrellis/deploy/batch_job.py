@@ -347,9 +347,11 @@ def run_job(
                                    "They can be specified using filter_spatial.")
                 else:
                     result.options["geometries"] = geoms
-                if result.options["geometries"] is None:
-                    logger.error("samply_by_feature was set, but no geometries provided through filter_spatial. "
-                                 "Make sure to provide geometries.")
+                if result.options.get("geometries") is None:
+                    logger.error(
+                        "sample_by_feature was set, but no geometries provided through filter_spatial. "
+                        "Make sure to provide geometries."
+                    )
             the_assets_metadata = result.write_assets(str(output_file))
             os.fsync(os.open(job_dir, os.O_RDONLY))  # experiment
             if isinstance(result, MlModelResult):
