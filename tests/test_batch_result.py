@@ -1,36 +1,32 @@
-from unittest import mock
-
 import json
 import os
 import shutil
 import uuid
 from pathlib import Path
+from unittest import mock
 
 import geopandas as gpd
 import pystac
 import pytest
 import rasterio
-
-from openeo.util import ensure_dir
-from openeo_driver.errors import OpenEOApiException
-from openeo_driver.testing import DictSubSet
-from openeo_driver.workspace import DiskWorkspace
-from shapely.geometry import Point, Polygon, shape
 import xarray
-
 from openeo.metadata import Band
-
-from openeo_driver.ProcessGraphDeserializer import ENV_DRY_RUN_TRACER, evaluate
+from openeo.util import ensure_dir
 from openeo_driver.dry_run import DryRunDataTracer
-from openeo_driver.testing import ephemeral_fileserver
+from openeo_driver.errors import OpenEOApiException
+from openeo_driver.ProcessGraphDeserializer import ENV_DRY_RUN_TRACER, evaluate
+from openeo_driver.testing import DictSubSet, ephemeral_fileserver
 from openeo_driver.util.geometry import validate_geojson_coordinates
 from openeo_driver.utils import EvalEnv
-from openeogeotrellis.backend import JOB_METADATA_FILENAME
+from openeo_driver.workspace import DiskWorkspace
+from shapely.geometry import Point, Polygon, shape
 
+from openeogeotrellis.backend import JOB_METADATA_FILENAME
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.deploy.batch_job import run_job
 from openeogeotrellis.deploy.batch_job_metadata import extract_result_metadata
-from .data import get_test_data_file, TEST_DATA_ROOT
+
+from .data import TEST_DATA_ROOT, get_test_data_file
 
 
 def test_png_export(tmp_path):

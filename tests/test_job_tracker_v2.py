@@ -17,11 +17,12 @@ from openeo.util import rfc3339, url_join
 from openeo_driver.testing import DictSubSet
 from openeo_driver.utils import generate_unique_id
 
+from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.integrations.kubernetes import K8S_SPARK_APP_STATE, k8s_job_name
 from openeogeotrellis.integrations.prometheus import Prometheus
 from openeogeotrellis.integrations.yarn import YARN_FINAL_STATUS, YARN_STATE
 from openeogeotrellis.job_costs_calculator import CostsDetails
-from openeogeotrellis.job_registry import ZkJobRegistry, InMemoryJobRegistry
+from openeogeotrellis.job_registry import InMemoryJobRegistry, ZkJobRegistry
 from openeogeotrellis.job_tracker_v2 import (
     JobCostsCalculator,
     JobTracker,
@@ -31,7 +32,6 @@ from openeogeotrellis.job_tracker_v2 import (
 )
 from openeogeotrellis.testing import KazooClientMock, gps_config_overrides
 from openeogeotrellis.utils import json_write
-from openeogeotrellis.configparams import ConfigParams
 
 # TODO: move YARN related mocks to openeogeotrellis.testing
 

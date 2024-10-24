@@ -4,22 +4,22 @@ import subprocess
 import sys
 import textwrap
 import zipfile
-
 from pathlib import Path
 from unittest import mock, skip
 
 import pytest
 import rasterio
 from numpy.testing import assert_allclose
-
 from openeo_driver.backend import LoadParameters
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.utils import EvalEnv
+
 from openeogeotrellis.collections.s1backscatter_orfeo import (
     S1BackscatterOrfeo,
-    _instant_ms_to_day,
     S1BackscatterOrfeoV2,
+    _instant_ms_to_day,
 )
+
 
 @pytest.mark.parametrize(
     ["bbox", "bbox_epsg"],
@@ -243,8 +243,8 @@ class TestOrfeoPipeline:
 
     @staticmethod
     def extract_product(input, target_location):
-        import zipfile
         import os
+        import zipfile
 
         with zipfile.ZipFile(input) as zip_file:
             for member in zip_file.namelist():

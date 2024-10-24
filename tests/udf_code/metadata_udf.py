@@ -1,4 +1,4 @@
-from openeo.metadata import CollectionMetadata, Band
+from openeo.metadata import Band, CollectionMetadata
 from openeo.udf import XarrayDataCube
 
 

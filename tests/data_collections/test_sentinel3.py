@@ -1,9 +1,10 @@
 from pathlib import Path
 
+import pytest
 from pyproj import CRS
 
 from openeogeotrellis.collections.sentinel3 import *
-import pytest
+
 
 def test_read_single():
 
@@ -25,7 +26,7 @@ def test_read_single():
 
 
     import rasterio
-    from rasterio.transform import from_origin, from_bounds
+    from rasterio.transform import from_bounds, from_origin
 
     arr = result[0][1].cells
 

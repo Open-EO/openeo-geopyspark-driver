@@ -1,35 +1,40 @@
+import contextlib
+import os
+import sys
+import typing
 from datetime import datetime
+from pathlib import Path
 from unittest import mock
 
 import boto3
-import contextlib
 import flask
 import moto
 import moto.server
-import os
 import pytest
-import sys
-import time_machine
-import typing
 import requests_mock
+import time_machine
 from _pytest.terminal import TerminalReporter
-from pathlib import Path
-
 from openeo_driver.backend import OpenEoBackendImplementation, UserDefinedProcesses
 from openeo_driver.jobregistry import ElasticJobRegistry, JobRegistryInterface
 from openeo_driver.testing import ApiTester
 from openeo_driver.utils import smart_bool
 from openeo_driver.views import build_app
+
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.job_registry import InMemoryJobRegistry
 from openeogeotrellis.testing import gps_config_overrides
 from openeogeotrellis.vault import Vault
 
+from .data import TEST_DATA_ROOT, get_test_data_file
+
 # TODO: Explicitly import these fixtures where there are needed.
-from .datacube_fixtures import imagecollection_with_two_bands_and_three_dates, \
-    imagecollection_with_two_bands_and_one_date, imagecollection_with_two_bands_and_three_dates_webmerc, \
-    imagecollection_with_two_bands_spatial_only, imagecollection_with_two_bands_and_one_date_multiple_values
-from .data import get_test_data_file, TEST_DATA_ROOT
+from .datacube_fixtures import (
+    imagecollection_with_two_bands_and_one_date,
+    imagecollection_with_two_bands_and_one_date_multiple_values,
+    imagecollection_with_two_bands_and_three_dates,
+    imagecollection_with_two_bands_and_three_dates_webmerc,
+    imagecollection_with_two_bands_spatial_only,
+)
 
 os.environ["OPENEO_CATALOG_FILES"] = str(Path(__file__).parent / "layercatalog.json")
 

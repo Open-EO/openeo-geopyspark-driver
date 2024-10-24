@@ -3,15 +3,16 @@ import textwrap
 
 import pyspark
 import pytest
-from openeo.udf import UdfData, StructuredData
+from openeo.udf import StructuredData, UdfData
 from openeo_driver.testing import ephemeral_fileserver
 
 from openeogeotrellis.udf import (
     assert_running_in_executor,
-    run_udf_code,
     collect_python_udf_dependencies,
     install_python_udf_dependencies,
+    run_udf_code,
 )
+
 from .data import get_test_data_file
 
 

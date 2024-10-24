@@ -3,20 +3,20 @@ from typing import Optional
 
 import dirty_equals
 import pytest
-
 from openeo.rest.auth.testing import OidcMock
 from openeo_driver.users import User
 from openeo_driver.util.auth import ClientCredentials
 from openeo_driver.util.caching import TtlCache
+
 from openeogeotrellis.config.config import EtlApiConfig
 from openeogeotrellis.integrations.etl_api import (
     ETL_API_STATE,
     EtlApi,
+    EtlApiConfigException,
+    MultiEtlApiConfig,
+    SimpleEtlApiConfig,
     get_etl_api,
     get_etl_api_credentials_from_env,
-    SimpleEtlApiConfig,
-    MultiEtlApiConfig,
-    EtlApiConfigException,
 )
 from openeogeotrellis.testing import gps_config_overrides
 

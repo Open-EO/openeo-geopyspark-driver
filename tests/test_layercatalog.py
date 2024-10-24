@@ -4,12 +4,15 @@ from typing import List, Tuple
 
 import pytest
 import schema
-
 from openeo.util import deep_get
 from openeo_driver.utils import read_json
+
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.geopysparkdatacube import GeopysparkCubeMetadata
-from openeogeotrellis.layercatalog import get_layer_catalog, _merge_layers_with_common_name
+from openeogeotrellis.layercatalog import (
+    _merge_layers_with_common_name,
+    get_layer_catalog,
+)
 from openeogeotrellis.vault import Vault
 
 
