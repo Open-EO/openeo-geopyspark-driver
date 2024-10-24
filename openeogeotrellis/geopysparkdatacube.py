@@ -1957,22 +1957,27 @@ class GeopysparkDataCube(DriverDataCube):
                             )
                             band_indices_per_file = [tup._4() for tup in timestamped_paths]
 
-                            geotiff_metadata = GeoTiffMetadata()
-                            geotiff_metadata.add_head_tag("PROCESSING_SOFTWARE", softwareversion)
-                            if description:
-                                geotiff_metadata.add_head_tag("ImageDescription", description)
-
                             if self.metadata.has_band_dimension():
-                                for band_index, band_name in enumerate(self.metadata.band_dimension.band_names):
-                                    geotiff_metadata.add_band_tag(
-                                        name="DESCRIPTION", value=band_name, index=band_index, role="description"
-                                    )
-                                    for tag_name, tag_value in bands_metadata.get(band_name, {}).items():
-                                        role = tag_name.lower() if tag_name in ["SCALE", "OFFSET"] else None
-                                        geotiff_metadata.add_band_tag(tag_name, tag_value, band_index, role)
-
                                 for timestamped_path in timestamped_paths:
-                                    tiffset.embed_gdal_metadata(geotiff_metadata.to_xml(), timestamped_path._1())
+                                    geotiff_metadata = GeoTiffMetadata()
+                                    geotiff_metadata.add_head_tag("PROCESSING_SOFTWARE", softwareversion)
+                                    if description:
+                                        geotiff_metadata.add_head_tag("ImageDescription", description)
+
+                                    path = timestamped_path._1()
+                                    band_indices = timestamped_path._4()
+
+                                    for i, band_index in enumerate(band_indices):
+                                        band_name = self.metadata.band_dimension.band_names[band_index]
+
+                                        geotiff_metadata.add_band_tag(
+                                            name="DESCRIPTION", value=band_name, index=i, role="description"
+                                        )
+                                        for tag_name, tag_value in bands_metadata.get(band_name, {}).items():
+                                            role = tag_name.lower() if tag_name in ["SCALE", "OFFSET"] else None
+                                            geotiff_metadata.add_band_tag(tag_name, tag_value, i, role)
+
+                                        tiffset.embed_gdal_metadata(geotiff_metadata.to_xml(), path)
 
                         assets = {}
 

@@ -1015,7 +1015,7 @@ def test_export_workspace_with_asset_per_band(tmp_path):
         "loadcollection1": {
             "process_id": "load_collection",
             "arguments": {
-                "id": "TestCollection-LonLat4x4",
+                "id": "TestCollection-LonLat16x16",
                 "temporal_extent": ["2021-01-05", "2021-01-06"],
                 "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 2.0},
                 "bands": ["Longitude", "Latitude"],
@@ -1099,10 +1099,10 @@ def test_export_workspace_with_asset_per_band(tmp_path):
             {
                 "name": "Latitude",
                 "statistics": {
-                    "maximum": 1.75,
-                    "mean": 0.875,
+                    "maximum": 1.9375,
+                    "mean": 0.96875,
                     "minimum": 0.0,
-                    "stddev": 0.57282196186948,
+                    "stddev": 0.57706829101936,
                     "valid_percent": 100.0,
                 },
             }
