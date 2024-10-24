@@ -1,10 +1,12 @@
 import shutil
+import subprocess
 import textwrap
 from pathlib import Path
 
 from osgeo import gdal
 
 from openeogeotrellis.integrations import tiffset
+from openeogeotrellis.integrations.tiffset import TiffsetException
 from tests.data import get_test_data_file
 
 
@@ -28,6 +30,14 @@ def test_embed_gdal_metadata(tmp_path):
     tiffset.embed_gdal_metadata(gdal_metadata_xml, geotiff_copy)
 
     assert _processing_software(geotiff_copy) == "0.45.0a1"  # updated
+
+
+def test_raise_exception_with_details(tmp_path):
+    try:
+        tiffset.embed_gdal_metadata(gdal_metadata_xml="", geotiff_path=tmp_path / "doesnotexist.tif")
+    except TiffsetException as e:
+        assert isinstance(e.__cause__, subprocess.CalledProcessError)
+        assert "doesnotexist.tif: No such file or directory" in str(e)
 
 
 def _processing_software(geotiff: Path) -> str:
