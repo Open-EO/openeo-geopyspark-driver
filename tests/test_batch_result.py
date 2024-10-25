@@ -1,36 +1,32 @@
-from unittest import mock
-
 import json
 import os
 import shutil
 import uuid
 from pathlib import Path
+from unittest import mock
 
 import geopandas as gpd
 import pystac
 import pytest
 import rasterio
-
-from openeo.util import ensure_dir
-from openeo_driver.errors import OpenEOApiException
-from openeo_driver.testing import DictSubSet
-from openeo_driver.workspace import DiskWorkspace
-from shapely.geometry import Point, Polygon, shape
 import xarray
-
 from openeo.metadata import Band
-
-from openeo_driver.ProcessGraphDeserializer import ENV_DRY_RUN_TRACER, evaluate
+from openeo.util import ensure_dir
 from openeo_driver.dry_run import DryRunDataTracer
-from openeo_driver.testing import ephemeral_fileserver
+from openeo_driver.errors import OpenEOApiException
+from openeo_driver.ProcessGraphDeserializer import ENV_DRY_RUN_TRACER, evaluate
+from openeo_driver.testing import DictSubSet, ephemeral_fileserver
 from openeo_driver.util.geometry import validate_geojson_coordinates
 from openeo_driver.utils import EvalEnv
-from openeogeotrellis.backend import JOB_METADATA_FILENAME
+from openeo_driver.workspace import DiskWorkspace
+from shapely.geometry import Point, Polygon, shape
 
+from openeogeotrellis.backend import JOB_METADATA_FILENAME
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.deploy.batch_job import run_job
 from openeogeotrellis.deploy.batch_job_metadata import extract_result_metadata
-from .data import get_test_data_file, TEST_DATA_ROOT
+
+from .data import TEST_DATA_ROOT, get_test_data_file
 
 
 def test_png_export(tmp_path):
@@ -907,7 +903,8 @@ def test_multiple_image_collection_results(tmp_path):
     assert "openEO.nc" in output_files
 
 
-def test_export_workspace(tmp_path):
+@pytest.mark.parametrize("remove_original", [False, True])
+def test_export_workspace(tmp_path, remove_original):
     workspace_id = "tmp"
     merge = f"OpenEO-workspace-{uuid.uuid4()}"
 
@@ -942,7 +939,7 @@ def test_export_workspace(tmp_path):
     process = {
         "process_graph": process_graph,
         "job_options": {
-            "remove-exported-assets": True,
+            "remove-exported-assets": remove_original,
         },
     }
 
@@ -962,7 +959,7 @@ def test_export_workspace(tmp_path):
 
         job_dir_files = set(os.listdir(tmp_path))
         assert len(job_dir_files) > 0
-        assert "openEO_2021-01-05Z.tif" not in job_dir_files
+        assert ("openEO_2021-01-05Z.tif" in job_dir_files) != remove_original
 
         workspace_files = set(os.listdir(workspace_dir))
         assert workspace_files == {"collection.json", "openEO_2021-01-05Z.tif", "openEO_2021-01-05Z.tif.json"}
@@ -1043,9 +1040,6 @@ def test_export_workspace_with_asset_per_band(tmp_path):
 
     process = {
         "process_graph": process_graph,
-        "job_options": {
-            "remove-exported-assets": False,
-        },
     }
 
     # TODO: avoid depending on `/tmp` for test output, make sure to leverage `tmp_path` fixture (https://github.com/Open-EO/openeo-python-driver/issues/265)
@@ -1064,8 +1058,8 @@ def test_export_workspace_with_asset_per_band(tmp_path):
 
         job_dir_files = set(os.listdir(tmp_path))
         assert len(job_dir_files) > 0
-        assert "openEO_2021-01-05Z_Longitude.tif" in job_dir_files != process["job_options"]["remove-exported-assets"]
-        assert "openEO_2021-01-05Z_Latitude.tif" in job_dir_files != process["job_options"]["remove-exported-assets"]
+        assert "openEO_2021-01-05Z_Longitude.tif" in job_dir_files
+        assert "openEO_2021-01-05Z_Latitude.tif" in job_dir_files
 
         workspace_files = set(os.listdir(workspace_dir))
         assert workspace_files == {
@@ -1494,9 +1488,6 @@ def test_multiple_save_result_single_export_workspace(tmp_path):
 
     process = {
         "process_graph": process_graph,
-        "job_options": {
-            "remove-exported-assets": True,
-        },
     }
 
     # TODO: avoid depending on `/tmp` for test output, make sure to leverage `tmp_path` fixture (https://github.com/Open-EO/openeo-python-driver/issues/265)
@@ -1516,7 +1507,7 @@ def test_multiple_save_result_single_export_workspace(tmp_path):
         job_dir_files = set(os.listdir(tmp_path))
         assert len(job_dir_files) > 0
         assert "openEO.nc" in job_dir_files
-        assert "openEO.tif" not in job_dir_files
+        assert "openEO.tif" in job_dir_files
 
         workspace_files = set(os.listdir(workspace_dir))
         assert workspace_files == {"collection.json", "openEO.tif", "openEO.tif.json"}
@@ -1542,3 +1533,35 @@ def test_multiple_save_result_single_export_workspace(tmp_path):
             assert dataset.driver == "GTiff"
     finally:
         shutil.rmtree(workspace_dir)
+
+
+def test_vectorcube_write_assets(tmp_path):
+    with ephemeral_fileserver(TEST_DATA_ROOT) as fileserver_root:
+        job_spec = {
+            "title": "my job",
+            "description": "vectorcube write_assets",
+            "process_graph":{
+                "geometry": {
+                    "process_id": "load_url",
+                    "arguments": {
+                        "url": f"{fileserver_root}/geometries/FeatureCollection03.geoparquet",
+                        "format": "Parquet",
+                    },
+                },
+                "save": {
+                    "process_id": "save_result",
+                    "arguments": {"data": {"from_node": "geometry"}, "format": "geojson"},
+                    "result": True,
+                }
+            }
+        }
+        metadata_file = tmp_path / "metadata.json"
+        run_job(
+            job_spec,
+            output_file=tmp_path / "out.geojson",
+            metadata_file=metadata_file,
+            api_version="1.0.0",
+            job_dir=ensure_dir(tmp_path / "job_dir"),
+            dependencies={},
+            user_id="jenkins",
+        )

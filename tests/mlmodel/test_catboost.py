@@ -1,29 +1,33 @@
-import re
 import json
+import re
 from datetime import datetime
 from pathlib import Path
 from random import uniform
-from typing import List, Any
+from typing import Any, List
 from unittest import skip
 
 import mock
-from py4j.java_gateway import JavaObject
-from shapely.geometry import GeometryCollection, Point
-
 from openeo_driver.backend import BatchJobMetadata
 from openeo_driver.save_result import MlModelResult
-from openeo_driver.testing import TEST_USER_AUTH_HEADER, ApiTester, RegexMatcher, DictSubSet, ListSubSet
+from openeo_driver.testing import (
+    TEST_USER_AUTH_HEADER,
+    ApiTester,
+    DictSubSet,
+    ListSubSet,
+    RegexMatcher,
+)
 from openeo_driver.utils import read_json
-
-from openeogeotrellis.backend import JOB_METADATA_FILENAME
-from openeogeotrellis.deploy.batch_job import run_job
-from openeogeotrellis.ml.geopysparkcatboostmodel import GeopySparkCatBoostModel
-from openeogeotrellis.ml.aggregatespatialvectorcube import AggregateSpatialVectorCube
-import openeogeotrellis.ml.catboost_spark as catboost_spark
-from tests.data import TEST_DATA_ROOT
-
+from py4j.java_gateway import JavaObject
 from pyspark.ml.linalg import Vectors
 from pyspark.sql.types import *
+from shapely.geometry import GeometryCollection, Point
+
+import openeogeotrellis.ml.catboost_spark as catboost_spark
+from openeogeotrellis.backend import JOB_METADATA_FILENAME
+from openeogeotrellis.deploy.batch_job import run_job
+from openeogeotrellis.ml.aggregatespatialvectorcube import AggregateSpatialVectorCube
+from openeogeotrellis.ml.geopysparkcatboostmodel import GeopySparkCatBoostModel
+from tests.data import TEST_DATA_ROOT
 
 FEATURE_COLLECTION_1 = {
     "type": "FeatureCollection",

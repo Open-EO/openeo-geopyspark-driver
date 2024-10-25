@@ -1,23 +1,29 @@
 import collections
+import contextlib
 import logging
-import time
-
-import pyspark
+import os
+import shutil
 import subprocess
 import sys
+import tempfile
 import textwrap
+import time
 from pathlib import Path
-from typing import Union, Iterator, Tuple, Dict, Iterable, Optional
+from typing import Dict, Iterable, Iterator, Optional, Tuple, Union
 
 import openeo.udf
+import pyspark
 from openeo.udf.run_code import extract_udf_dependencies
 from openeo.util import TimingLogger
+
 from openeogeotrellis.config import get_backend_config
+from openeogeotrellis.config.constants import UDF_DEPENDENCIES_INSTALL_MODE
 
 _log = logging.getLogger(__name__)
 
 # Reusable constant to streamline discoverability and grep-ability of this folder name.
-UDF_PYTHON_DEPENDENCIES_FOLDER_NAME = "udf-py-deps"
+UDF_PYTHON_DEPENDENCIES_FOLDER_NAME = "udf-py-deps.d"
+UDF_PYTHON_DEPENDENCIES_ARCHIVE_NAME = "udf-py-deps.zip"
 
 
 def run_udf_code(code: str, data: openeo.udf.UdfData, require_executor_context: bool = True) -> openeo.udf.UdfData:
@@ -33,7 +39,20 @@ def run_udf_code(code: str, data: openeo.udf.UdfData, require_executor_context: 
             """
         )
 
-    return openeo.udf.run_udf_code(code=code, data=data)
+    context = contextlib.nullcontext()
+
+    udf_python_dependencies_archive_path = os.environ.get("UDF_PYTHON_DEPENDENCIES_ARCHIVE_PATH")
+    if get_backend_config().udf_dependencies_install_mode == UDF_DEPENDENCIES_INSTALL_MODE.ZIP:
+        if udf_python_dependencies_archive_path and Path(udf_python_dependencies_archive_path).exists():
+            context = python_udf_dependency_context_from_archive(archive=udf_python_dependencies_archive_path)
+        else:
+            # TODO: make this an exception instead of warning?
+            _log.warning(
+                f"Empty/non-existent UDF_PYTHON_DEPENDENCIES_ARCHIVE_PATH {udf_python_dependencies_archive_path}"
+            )
+
+    with context:
+        return openeo.udf.run_udf_code(code=code, data=data)
 
 
 def assert_running_in_executor():
@@ -104,8 +123,11 @@ def install_python_udf_dependencies(
         "--timeout",
         str(timeout),
     ]
+
+    index = index or get_backend_config().udf_dependencies_pypi_index
     if index:
         command.extend(["--index", index])
+
     # TODO: --cache-dir
     command.extend(sorted(set(dependencies)))
 
@@ -132,3 +154,75 @@ def install_python_udf_dependencies(
         if sleep_after_install:
             _log.info(f"Sleeping after pip install ({sleep_after_install}s)")
             time.sleep(sleep_after_install)
+
+
+def build_python_udf_dependencies_archive(
+    dependencies: Iterable[str],
+    *,
+    target: Union[str, Path],
+    format: str = "zip",
+    retries: int = 2,
+    timeout: float = 5,
+    index: Optional[str] = None,
+) -> Path:
+    """
+    Install Python UDF dependencies in a temp directory
+    and package them into an archive file (e.g. a zip or tar file).
+
+    :param dependencies: Iterable of dependency package names
+    :param target: path for the target archive file
+    :param format: Archive format (e.g. "zip", "tar", "gztar", ... see `shutil.make_archive`)
+    """
+
+    with tempfile.TemporaryDirectory(prefix="udfpydeps-pack-") as temp_root:
+        temp_root = Path(temp_root)
+
+        # Start with installing the dependencies in a temp directory
+        temp_install = temp_root / "packages"
+        install_python_udf_dependencies(
+            dependencies=dependencies,
+            target=temp_install,
+            retries=retries,
+            timeout=timeout,
+            index=index,
+        )
+
+        # Put installed packages in a temp archive
+        temp_archive_base_name = temp_root / "archive"
+        # Archive everything in a ZIP file
+        with TimingLogger(
+            title=f"Archiving Python UDF dependencies from {temp_install} to {format} archive {temp_archive_base_name}",
+            logger=_log.info,
+        ):
+            temp_archive = shutil.make_archive(base_name=temp_archive_base_name, format=format, root_dir=temp_install)
+            temp_archive = Path(temp_archive)
+
+        # Copy the archive to the target location
+        target = Path(target)
+        _log.info(f"Copying {temp_archive} ({temp_archive.stat().st_size} bytes) to {target}")
+        shutil.copy(src=temp_archive, dst=target)
+
+        return target
+
+
+@contextlib.contextmanager
+def python_udf_dependency_context_from_archive(archive: Union[str, Path]):
+    """
+    Context manager that extracts UDF dependencies from an archive file and adds them to the Python path.
+    """
+    # TODO: make sure archive does not escape its intended directory (e.g. only support ZIP for now?)
+    # TODO: mode to not clean up unpacked archive (for reuse in subsequent calls)?
+    #       But how to establish identity then? By hash of archive file?
+    archive = Path(archive)
+    with tempfile.TemporaryDirectory(prefix="udfpypeps-unpack-") as extra_deps:
+        with TimingLogger(title=f"Extracting Python UDF dependencies from {archive} to {extra_deps}", logger=_log.info):
+            shutil.unpack_archive(filename=archive, extract_dir=extra_deps)
+
+        extra_deps = str(extra_deps)
+        sys.path.append(extra_deps)
+        try:
+            yield Path(extra_deps)
+        finally:
+            if extra_deps in sys.path:
+                sys.path.remove(extra_deps)
+            _log.info(f"Cleaning up temporary UDF deps at {extra_deps}")

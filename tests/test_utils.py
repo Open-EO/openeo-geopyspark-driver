@@ -7,24 +7,26 @@ import pathlib
 from pathlib import Path
 
 import pytest
-
 from openeo_driver.testing import TIFF_DUMMY_DATA
+
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.geopysparkdatacube import callsite
 from openeogeotrellis.testing import gps_config_overrides
 from openeogeotrellis.utils import (
-    dict_merge_recursive,
+    StatsReporter,
+    UtcNowClock,
     describe_path,
+    dict_merge_recursive,
+    json_default,
     lonlat_to_mercator_tile_indices,
     map_optional,
     nullcontext,
-    utcnow,
-    UtcNowClock,
+    parse_approximate_isoduration,
+    reproject_cellsize,
     single_value,
-    StatsReporter,
     stream_s3_binary_file_contents,
-    to_s3_url, parse_approximate_isoduration, reproject_cellsize,
-    json_default,
+    to_s3_url,
+    utcnow,
 )
 
 

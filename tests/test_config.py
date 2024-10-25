@@ -3,12 +3,9 @@ from pathlib import Path
 
 import attrs
 import pytest
-
 from openeo_driver.config.config import check_config_definition
-from openeogeotrellis.config import (
-    GpsBackendConfig,
-    get_backend_config,
-)
+
+from openeogeotrellis.config import GpsBackendConfig, get_backend_config
 
 SIMPLE_CONFIG = """
     from openeogeotrellis.config import GpsBackendConfig

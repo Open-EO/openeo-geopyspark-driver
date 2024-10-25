@@ -4,7 +4,7 @@ from unittest import TestCase, skip
 import geopyspark as gps
 import numpy as np
 import requests
-from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time)
+from geopyspark.geotrellis import SpaceTimeKey, Tile, _convert_to_unix_time
 from geopyspark.geotrellis.constants import LayerType
 from geopyspark.geotrellis.layer import TiledRasterLayer
 from pyspark import SparkContext

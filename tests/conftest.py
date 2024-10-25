@@ -1,32 +1,43 @@
+import contextlib
+import importlib
 import os
-from typing import Union
-
+import shutil
 import sys
+import typing
+from datetime import datetime
 from pathlib import Path
+from typing import Union
+from unittest import mock
 
 import boto3
 import flask
-import pytest
 import moto
 import moto.server
+import pytest
 import requests_mock
+import time_machine
 from _pytest.terminal import TerminalReporter
-
 from openeo_driver.backend import OpenEoBackendImplementation, UserDefinedProcesses
 from openeo_driver.jobregistry import ElasticJobRegistry, JobRegistryInterface
-from openeo_driver.testing import ApiTester
+from openeo_driver.testing import ApiTester, ephemeral_fileserver
 from openeo_driver.utils import smart_bool
 from openeo_driver.views import build_app
+
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.job_registry import InMemoryJobRegistry
 from openeogeotrellis.testing import gps_config_overrides
 from openeogeotrellis.vault import Vault
 
+from .data import TEST_DATA_ROOT, get_test_data_file
+
 # TODO: Explicitly import these fixtures where there are needed.
-from .datacube_fixtures import imagecollection_with_two_bands_and_three_dates, \
-    imagecollection_with_two_bands_and_one_date, imagecollection_with_two_bands_and_three_dates_webmerc, \
-    imagecollection_with_two_bands_spatial_only, imagecollection_with_two_bands_and_one_date_multiple_values
-from .data import get_test_data_file, TEST_DATA_ROOT
+from .datacube_fixtures import (
+    imagecollection_with_two_bands_and_one_date,
+    imagecollection_with_two_bands_and_one_date_multiple_values,
+    imagecollection_with_two_bands_and_three_dates,
+    imagecollection_with_two_bands_and_three_dates_webmerc,
+    imagecollection_with_two_bands_spatial_only,
+)
 
 os.environ["OPENEO_CATALOG_FILES"] = str(Path(__file__).parent / "layercatalog.json")
 
@@ -178,6 +189,36 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
 @pytest.fixture(params=["1.0.0"])
 def api_version(request):
     return request.param
+
+# TODO: Deduplicate code with openeo-python-client
+class _Sleeper:
+    def __init__(self):
+        self.history = []
+
+    @contextlib.contextmanager
+    def patch(self, time_machine: time_machine.TimeMachineFixture) -> typing.Iterator["_Sleeper"]:
+        def sleep(seconds):
+            # Note: this requires that `time_machine.move_to()` has been called before
+            # also see https://github.com/adamchainz/time-machine/issues/247
+            time_machine.coordinates.shift(seconds)
+            self.history.append(seconds)
+
+        with mock.patch("time.sleep", new=sleep):
+            yield self
+
+    def did_sleep(self) -> bool:
+        return len(self.history) > 0
+
+
+@pytest.fixture
+def fast_sleep(time_machine) -> typing.Iterator[_Sleeper]:
+    """
+    Fixture using `time_machine` to make `sleep` instant and update the current time.
+    """
+    now = datetime.now().isoformat()
+    time_machine.move_to(now)
+    with _Sleeper().patch(time_machine=time_machine) as sleeper:
+        yield sleeper
 
 
 @pytest.fixture
@@ -332,3 +373,55 @@ def moto_server(monkeypatch) -> str:
     monkeypatch.setenv("SWIFT_URL", endpoint_url)
     yield endpoint_url
     server.stop()
+
+
+@pytest.fixture
+def dummy_pypi(tmp_path):
+    """
+    Fixture for fake PyPI index for testing package installation (without using real PyPI).
+
+    Based on 'PEP 503 – Simple Repository API'
+
+    Also see `unload_dummy_packages` fixture
+    (to automatically unload on-the-fly installed dummy packages at the end of a test)
+    """
+    root = tmp_path / ".package-index"
+    root.mkdir(parents=True)
+    (root / "index.html").write_text(
+        """
+        <!DOCTYPE html><html><body>
+            <a href="/mehh/">mehh</a>
+        </body></html>
+        """
+    )
+    mehh_folder = root / "mehh"
+    mehh_folder.mkdir(parents=True)
+    shutil.copy(src=get_test_data_file("pip/mehh/dist/mehh-1.2.3-py3-none-any.whl"), dst=mehh_folder)
+    (mehh_folder / "index.html").write_text(
+        """
+        <!DOCTYPE html><html><body>
+            <a href="/mehh/mehh-1.2.3-py3-none-any.whl#md5=33c211631375b944c7cb9452074ee3e1">meh-1.2.3-py3-none-any.whl</a>
+        </body></html>
+        """
+    )
+    with ephemeral_fileserver(root) as pypi_url:
+        yield pypi_url
+
+
+@pytest.fixture
+def unload_dummy_packages():
+    """
+    Fixture to automatically unload dummy packages at the end of a test,
+    to avoid leakage between tests due to import caching mechanisms.
+
+    This fixture should be added to tests that do
+    on-the-fly package installation and import of dummy packages like `mehh`
+
+    also see `dummy_pypi` fixture
+    """
+    packages = ["mehh"]
+    yield
+    for package in packages:
+        if package in sys.modules:
+            del sys.modules[package]
+    importlib.invalidate_caches()

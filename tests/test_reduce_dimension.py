@@ -5,8 +5,8 @@ import numpy as np
 import pytest
 from geopyspark import Tile, TiledRasterLayer
 from numpy.testing import assert_array_almost_equal
-
 from openeo_driver.utils import EvalEnv
+
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.processgraphvisiting import GeotrellisTileProcessGraphVisitor
 

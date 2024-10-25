@@ -6,15 +6,15 @@ from pathlib import Path
 from unittest import mock
 
 import pytest
-
-from openeo_driver.testing import RegexMatcher, DictSubSet
+from openeo_driver.testing import DictSubSet, RegexMatcher
 from openeo_driver.utils import EvalEnv
+
 from openeogeotrellis.deploy import (
-    load_custom_processes,
-    get_jar_version_info,
-    get_jar_versions,
     build_gps_backend_deploy_metadata,
     find_geotrellis_jars,
+    get_jar_version_info,
+    get_jar_versions,
+    load_custom_processes,
 )
 from openeogeotrellis.testing import random_name
 

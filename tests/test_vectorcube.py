@@ -1,28 +1,26 @@
-from shapely.geometry.base import BaseGeometry
-from typing import Sequence
-
 import datetime
-import geopyspark.geotrellis
 import json
-import xarray
-from geopyspark import TiledRasterLayer, LayerType, Bounds
-from openeogeotrellis.ml.aggregatespatialvectorcube import AggregateSpatialVectorCube
-from openeo_driver.errors import OpenEOApiException
-
+from typing import Sequence
 from unittest.mock import MagicMock
-import pytest
 
-from openeo_driver.datacube import DriverVectorCube, DriverDataCube
+import geopandas as gpd
+import geopyspark.geotrellis
+import numpy as np
+import numpy.testing as npt
+import pytest
+import xarray
+from geopyspark import Bounds, LayerType, TiledRasterLayer
+from openeo_driver.datacube import DriverDataCube, DriverVectorCube
+from openeo_driver.errors import OpenEOApiException
+from openeo_driver.utils import EvalEnv
+from shapely.geometry.base import BaseGeometry
+
 from openeogeotrellis.backend import GeoPySparkBackendImplementation
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
+from openeogeotrellis.ml.aggregatespatialvectorcube import AggregateSpatialVectorCube
 from openeogeotrellis.utils import to_projected_polygons
 from openeogeotrellis.vectorcube import AggregateSpatialResultCSV
 from tests.data import get_test_data_file
-import numpy as np
-import numpy.testing as npt
-import geopandas as gpd
-
-from openeo_driver.utils import EvalEnv
 
 
 @pytest.mark.parametrize(

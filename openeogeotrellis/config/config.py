@@ -12,7 +12,11 @@ from openeo_driver.util.auth import ClientCredentials
 from openeo_driver.utils import smart_bool
 
 from openeogeotrellis import get_backend_version
-from openeogeotrellis.deploy import build_gps_backend_deploy_metadata, find_geotrellis_jars
+from openeogeotrellis.config.constants import UDF_DEPENDENCIES_INSTALL_MODE
+from openeogeotrellis.deploy import (
+    build_gps_backend_deploy_metadata,
+    find_geotrellis_jars,
+)
 
 
 def _default_capabilities_deploy_metadata() -> dict:
@@ -204,7 +208,22 @@ class GpsBackendConfig(OpenEoBackendConfig):
     job_dependencies_poll_interval_seconds: float = 60  # poll every x seconds
     job_dependencies_max_poll_delay_seconds: float = 60 * 60 * 24 * 7  # for a maximum delay of y seconds
 
+    udf_dependencies_pypi_index: Optional[str] = attrs.field(
+        default=None, metadata={"description": "Custom PyPI index to use to install UDF dependencies"}
+    )
     udf_dependencies_sleep_after_install: Optional[float] = None
+    udf_dependencies_install_mode: str = attrs.field(
+        # TODO: before being configurable, "direct" was original install mode, so it's the default for now.
+        #       Make "disabled" the default however?
+        default=UDF_DEPENDENCIES_INSTALL_MODE.DIRECT,
+        validator=attrs.validators.in_(
+            [
+                UDF_DEPENDENCIES_INSTALL_MODE.DISABLED,
+                UDF_DEPENDENCIES_INSTALL_MODE.DIRECT,
+                UDF_DEPENDENCIES_INSTALL_MODE.ZIP,
+            ]
+        ),
+    )
 
     """
     Only used by YARN, allows to specify paths to mount in batch job docker containers.

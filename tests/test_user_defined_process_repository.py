@@ -4,11 +4,13 @@ from unittest import mock
 
 import pytest
 from kazoo.exceptions import NodeExistsError, NoNodeError
-
 from openeo_driver.backend import UserDefinedProcessMetadata
 from openeo_driver.errors import ProcessGraphNotFoundException
-from openeogeotrellis.user_defined_process_repository import InMemoryUserDefinedProcessRepository, \
-    ZooKeeperUserDefinedProcessRepository
+
+from openeogeotrellis.user_defined_process_repository import (
+    InMemoryUserDefinedProcessRepository,
+    ZooKeeperUserDefinedProcessRepository,
+)
 
 PG_2PLUS3 = {
     "add": {"process_id": "add", "arguments": {"x": 2, "y": 3}, "result": True}

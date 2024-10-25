@@ -1,13 +1,14 @@
 import datetime
+from typing import List, Tuple
 
 import numpy as np
-from geopyspark import Tile, SpaceTimeKey
-from typing import List, Tuple
 import pytest
+from geopyspark import SpaceTimeKey, Tile
 from numpy.testing import assert_array_almost_equal
-
 from openeo_driver.utils import EvalEnv
+
 from .data import get_test_data_file
+
 
 def test_apply_neighborhood_no_overlap(imagecollection_with_two_bands_and_three_dates):
     the_date = datetime.datetime(2017, 9, 25, 11, 37)

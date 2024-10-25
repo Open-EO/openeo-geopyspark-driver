@@ -1,8 +1,7 @@
 from pathlib import Path
 
-from osgeo import gdal
-
 import openeo
+from osgeo import gdal
 
 UDF_CODE_PATH = Path(__file__).parent / "udf_code"
 

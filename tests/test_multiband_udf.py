@@ -3,7 +3,11 @@ from unittest import TestCase
 import numpy as np
 from geopyspark import Tile
 
-from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata, SpatialExtent
+from openeogeotrellis.geopysparkdatacube import (
+    GeopysparkCubeMetadata,
+    GeopysparkDataCube,
+    SpatialExtent,
+)
 
 
 class TestMultiBandUDF(TestCase):

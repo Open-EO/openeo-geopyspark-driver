@@ -1,21 +1,22 @@
-import logging
 import datetime
-import pytest
+import logging
 from unittest import mock
-import kazoo.exceptions
-from kazoo.handlers.threading import KazooTimeoutError
 
+import kazoo.exceptions
+import pytest
+from kazoo.handlers.threading import KazooTimeoutError
 from openeo_driver.backend import BatchJobMetadata
 from openeo_driver.errors import JobNotFoundException
 from openeo_driver.jobregistry import JOB_STATUS
 from openeo_driver.testing import DictSubSet
+
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.job_registry import (
-    ZkJobRegistry,
-    InMemoryJobRegistry,
     DoubleJobRegistry,
-    get_deletable_dependency_sources,
+    InMemoryJobRegistry,
+    ZkJobRegistry,
     ZkStrippedSpecification,
+    get_deletable_dependency_sources,
 )
 from openeogeotrellis.testing import KazooClientMock, gps_config_overrides
 

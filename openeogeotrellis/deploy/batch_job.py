@@ -31,6 +31,7 @@ from openeogeotrellis._version import __version__
 from openeogeotrellis.backend import JOB_METADATA_FILENAME, GeoPySparkBackendImplementation
 from openeogeotrellis.collect_unique_process_ids_visitor import CollectUniqueProcessIdsVisitor
 from openeogeotrellis.config import get_backend_config
+from openeogeotrellis.config.constants import UDF_DEPENDENCIES_INSTALL_MODE
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.constants import EVAL_ENV_KEY
 from openeogeotrellis.deploy import load_custom_processes
@@ -42,6 +43,8 @@ from openeogeotrellis.udf import (
     collect_python_udf_dependencies,
     install_python_udf_dependencies,
     UDF_PYTHON_DEPENDENCIES_FOLDER_NAME,
+    build_python_udf_dependencies_archive,
+    UDF_PYTHON_DEPENDENCIES_ARCHIVE_NAME,
 )
 from openeogeotrellis.utils import (
     describe_path,
@@ -256,7 +259,7 @@ def run_job(
         job_options = job_specification.get("job_options", {})
 
         try:
-            _extract_and_install_udf_dependencies(process_graph=process_graph, job_dir=job_dir)
+            _extract_and_install_udf_dependencies(process_graph=process_graph)
         except Exception as e:
             logger.exception(f"Failed extracting and installing UDF dependencies: {e}")
 
@@ -347,20 +350,23 @@ def run_job(
                                    "They can be specified using filter_spatial.")
                 else:
                     result.options["geometries"] = geoms
-                if result.options["geometries"] is None:
-                    logger.error("samply_by_feature was set, but no geometries provided through filter_spatial. "
-                                 "Make sure to provide geometries.")
+                if result.options.get("geometries") is None:
+                    logger.error(
+                        "sample_by_feature was set, but no geometries provided through filter_spatial. "
+                        "Make sure to provide geometries."
+                    )
             the_assets_metadata = result.write_assets(str(output_file))
-            os.fsync(os.open(job_dir, os.O_RDONLY))  # experiment
             if isinstance(result, MlModelResult):
                 ml_model_metadata = result.get_model_metadata(str(output_file))
                 logger.info("Extracted ml model metadata from %s" % output_file)
             for name, asset in the_assets_metadata.items():
-                # TODO: test in separate branch
-                # if not asset.get("href").lower().startswith("s3:/"):
-                #     # fusemount could have some delay to make files accessible, so poll a bit:
-                #     asset_path = get_abs_path_of_asset(asset["href"], job_dir)
-                #     wait_till_path_available(asset_path)
+                href = str(asset["href"])
+                url = urlparse(href)
+                if url.scheme in ["", "file"]:
+                    file_path = url.path
+                    # fusemount could have some delay to make files accessible, so poll a bit:
+                    asset_path = get_abs_path_of_asset(file_path, job_dir)
+                    wait_till_path_available(asset_path)
                 add_permissions(Path(asset["href"]), stat.S_IWGRP)
             logger.info(f"wrote {len(the_assets_metadata)} assets to {output_file}")
             assets_metadata.append(the_assets_metadata)
@@ -451,7 +457,6 @@ def run_job(
             ml_model_metadata=ml_model_metadata,
         )
 
-        os.fsync(os.open(job_dir, os.O_RDONLY))  # experiment
         assert len(results) == len(assets_metadata)
         for result, result_assets_metadata in zip(results, assets_metadata):
             _export_workspace(
@@ -463,9 +468,6 @@ def run_job(
             )
     finally:
         write_metadata({**result_metadata, **_get_tracker_metadata("")}, metadata_file, job_dir)
-
-    # Wait for files to be written to mount:
-    os.fsync(os.open(job_dir, os.O_RDONLY))
 
 
 def write_metadata(metadata, metadata_file, job_dir: Path):
@@ -591,17 +593,41 @@ def _write_exported_stac_collection(
     return item_files + [collection_file]
 
 
-def _extract_and_install_udf_dependencies(process_graph: dict, job_dir: Path):
+def _get_env_var_or_fail(env_var: str) -> str:
+    """Get value from env var, but fail hard if it's empty."""
+    val = os.environ.get(env_var, "").strip()
+    if not val:
+        raise RuntimeError(f"Empty env var {env_var!r}")
+    return val
+
+
+def _extract_and_install_udf_dependencies(process_graph: dict):
     udf_dep_map = collect_python_udf_dependencies(process_graph)
     logger.debug(f"Extracted {udf_dep_map=}")
     if len(udf_dep_map) > 1:
         logger.warning("Merging dependencies from multiple UDF runtimes/versions")
     udf_deps = set(d for ds in udf_dep_map.values() for d in ds)
     if udf_deps:
-        # TODO: add "udf_deps" folder to python path where appropriate
-        install_python_udf_dependencies(
-            dependencies=udf_deps, target=job_dir / UDF_PYTHON_DEPENDENCIES_FOLDER_NAME, timeout=20
-        )
+        udf_deps_install_mode = get_backend_config().udf_dependencies_install_mode
+        if udf_deps_install_mode == UDF_DEPENDENCIES_INSTALL_MODE.DISABLED:
+            raise ValueError("No UDF dependency handling")
+        elif udf_deps_install_mode == UDF_DEPENDENCIES_INSTALL_MODE.DIRECT:
+            # Install UDF deps directly to target folder
+            udf_python_dependencies_folder_path = _get_env_var_or_fail("UDF_PYTHON_DEPENDENCIES_FOLDER_PATH")
+            install_python_udf_dependencies(
+                dependencies=udf_deps, target=udf_python_dependencies_folder_path, timeout=20
+            )
+        elif udf_deps_install_mode == UDF_DEPENDENCIES_INSTALL_MODE.ZIP:
+            udf_python_dependencies_archive_path = _get_env_var_or_fail("UDF_PYTHON_DEPENDENCIES_ARCHIVE_PATH")
+            build_python_udf_dependencies_archive(
+                dependencies=udf_deps,
+                target=udf_python_dependencies_archive_path,
+                # TODO: guess format from file extension (or at least avoid this hardcoding)?
+                format="zip",
+                timeout=20,
+            )
+        else:
+            raise ValueError(f"Unsupported UDF dependencies install mode: {udf_deps_install_mode}")
 
 
 def start_main():

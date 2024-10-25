@@ -1,5 +1,5 @@
-from pathlib import Path
 import os
+from pathlib import Path
 
 from openeo_driver.users.oidc import OidcProvider
 from openeo_driver.workspace import DiskWorkspace

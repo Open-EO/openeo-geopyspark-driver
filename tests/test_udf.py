@@ -1,18 +1,23 @@
-import shutil
+import re
+import tarfile
 import textwrap
+import zipfile
+from pathlib import Path
 
 import pyspark
 import pytest
-from openeo.udf import UdfData, StructuredData
-from openeo_driver.testing import ephemeral_fileserver
+from openeo.udf import StructuredData, UdfData
 
+from openeogeotrellis.config.constants import UDF_DEPENDENCIES_INSTALL_MODE
+from openeogeotrellis.testing import gps_config_overrides
 from openeogeotrellis.udf import (
     assert_running_in_executor,
-    run_udf_code,
+    build_python_udf_dependencies_archive,
     collect_python_udf_dependencies,
     install_python_udf_dependencies,
+    python_udf_dependency_context_from_archive,
+    run_udf_code,
 )
-from .data import get_test_data_file
 
 
 def test_assert_running_in_executor_in_driver():
@@ -262,34 +267,7 @@ class TestUdfCollection:
 
 
 class TestInstallPythonUdfDependencies:
-    @pytest.fixture
-    def dummy_pypi(self, tmp_path):
-        """
-        Fixture for fake PyPI index for testing package installation (without using real PyPI).
 
-        Based on 'PEP 503 – Simple Repository API'
-        """
-        root = tmp_path / ".package-index"
-        root.mkdir(parents=True)
-        (root / "index.html").write_text(
-            """
-            <!DOCTYPE html><html><body>
-                <a href="/mehh/">mehh</a>
-            </body></html>
-            """
-        )
-        mehh_folder = root / "mehh"
-        mehh_folder.mkdir(parents=True)
-        shutil.copy(src=get_test_data_file("pip/mehh/dist/mehh-1.2.3-py3-none-any.whl"), dst=mehh_folder)
-        (mehh_folder / "index.html").write_text(
-            """
-            <!DOCTYPE html><html><body>
-                <a href="/mehh/mehh-1.2.3-py3-none-any.whl#md5=33c211631375b944c7cb9452074ee3e1">meh-1.2.3-py3-none-any.whl</a>
-            </body></html>
-            """
-        )
-        with ephemeral_fileserver(root) as pypi_url:
-            yield pypi_url
 
     def test_install_python_udf_dependencies_basic(self, tmp_path, dummy_pypi, caplog):
         caplog.set_level("DEBUG")
@@ -317,3 +295,88 @@ class TestInstallPythonUdfDependencies:
             "pip install output: ERROR: Could not find a version that satisfies the requirement nope-nope"
             in caplog.text
         )
+
+    def test_package_python_udf_dependencies_zip_basic(self, tmp_path, dummy_pypi, caplog):
+        target = tmp_path / "udf-deps.zip"
+
+        assert not target.exists()
+        actual = build_python_udf_dependencies_archive(dependencies=["mehh"], target=target, index=dummy_pypi)
+        assert actual == target
+        assert target.exists()
+
+        with zipfile.ZipFile(target, "r") as zf:
+            assert "mehh.py" in zf.namelist()
+
+        assert re.search(r"Copying .*/archive\.zip \(\d+ bytes\) to .*/udf-deps\.zip", caplog.text)
+
+    @pytest.mark.parametrize("format", ["tar", "gztar"])
+    def test_package_python_udf_dependencies_tar_basic(self, tmp_path, dummy_pypi, caplog, format):
+        target = tmp_path / "udf-deps.tar"
+
+        assert not target.exists()
+        actual = build_python_udf_dependencies_archive(
+            dependencies=["mehh"], target=target, format=format, index=dummy_pypi
+        )
+        assert actual == target
+        assert target.exists()
+
+        with tarfile.open(target, "r") as tf:
+            assert "./mehh.py" in tf.getnames()
+
+        assert re.search(r"Copying .*/archive\.[.a-z]+ \(\d+ bytes\) to .*/udf-deps\.tar", caplog.text)
+
+    def test_python_udf_dependency_context_from_archive(self, tmp_path, dummy_pypi, caplog, unload_dummy_packages):
+        archive_path = tmp_path / "udf-deps.zip"
+
+        build_python_udf_dependencies_archive(dependencies=["mehh"], target=archive_path, index=dummy_pypi)
+
+        with pytest.raises(ImportError, match="No module named 'mehh'"):
+            import mehh
+
+        with python_udf_dependency_context_from_archive(archive=archive_path):
+            import mehh
+
+            mehh_path = Path(mehh.__file__)
+            assert mehh_path.exists()
+
+        assert not mehh_path.exists()
+
+    def test_run_udf_code_with_deps_from_archive(
+        self, tmp_path, dummy_pypi, monkeypatch, caplog, unload_dummy_packages
+    ):
+        """Test automatic unpacking of UDF deps from archive, when using `run_udf_code`."""
+        udf_code = textwrap.dedent(
+            """
+            from openeo.udf import UdfData, StructuredData
+            import mehh
+
+            def apply_udf_data(data: UdfData):
+                xs = data.get_structured_data_list()[0].data
+                data.set_structured_data_list([
+                    StructuredData({
+                        "x squared": [x*x for x in xs],
+                        "mehh.__file__": mehh.__file__,
+                    }),
+                ])
+            """
+        )
+
+        # Create dependency archive
+        udf_archive = tmp_path / "udf-depz.zip"
+        build_python_udf_dependencies_archive(dependencies=["mehh"], target=udf_archive, format="zip", index=dummy_pypi)
+
+        # Note that we just test with `run_udf_code` in driver (with require_executor_context=False),
+        # as monkeypatching of os.environ in the executors would be challenging,
+        # and quite a bit of overkill for testing this feature.
+        with gps_config_overrides(udf_dependencies_install_mode=UDF_DEPENDENCIES_INSTALL_MODE.ZIP):
+            monkeypatch.setenv("UDF_PYTHON_DEPENDENCIES_ARCHIVE_PATH", str(udf_archive))
+            data = UdfData(structured_data_list=[StructuredData([1, 2, 3, 4, 5])])
+            result = run_udf_code(code=udf_code, data=data, require_executor_context=False)
+
+        data = result.get_structured_data_list()[0].data
+        assert data["x squared"] == [1, 4, 9, 16, 25]
+
+        # Check that temp UDF dep folder is cleaned up now
+        mehh_path = Path(data["mehh.__file__"])
+        assert not mehh_path.exists()
+        assert f"Cleaning up temporary UDF deps at {mehh_path.parent}" in caplog.text

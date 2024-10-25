@@ -1,41 +1,41 @@
 import collections
-import decimal
-from typing import Optional
-import datetime
-
-import kazoo.exceptions
-import time_machine
-import boto3
-
 import contextlib
-import logging
+import datetime
+import decimal
 import json
+import logging
 import os
-import re
 import pathlib
+import re
 import subprocess
+from typing import Optional
 from unittest import mock
-import pytest
-from elasticsearch.exceptions import ConnectionTimeout
 
-import openeogeotrellis.job_registry
-from openeo_driver.jobregistry import JOB_STATUS
-from openeogeotrellis.job_registry import ZkJobRegistry, DoubleJobRegistry
+import boto3
+import kazoo.exceptions
+import pytest
+import time_machine
+from elasticsearch.exceptions import ConnectionTimeout
 from openeo.util import deep_get
+from openeo_driver.jobregistry import JOB_STATUS
 from openeo_driver.testing import (
-    TEST_USER_AUTH_HEADER,
     TEST_USER,
-    TIFF_DUMMY_DATA,
-    DictSubSet,
+    TEST_USER_AUTH_HEADER,
     TEST_USER_BEARER_TOKEN,
+    TIFF_DUMMY_DATA,
     ApiTester,
+    DictSubSet,
     ListSubSet,
     RegexMatcher,
 )
-from openeogeotrellis.backend import GpsBatchJobs, JOB_METADATA_FILENAME
+
+import openeogeotrellis.job_registry
+import openeogeotrellis.sentinel_hub.batchprocessing
+from openeogeotrellis.backend import JOB_METADATA_FILENAME, GpsBatchJobs
+from openeogeotrellis.job_registry import DoubleJobRegistry, ZkJobRegistry
 from openeogeotrellis.testing import KazooClientMock
 from openeogeotrellis.utils import to_s3_url
-import openeogeotrellis.sentinel_hub.batchprocessing
+
 from .data import TEST_DATA_ROOT
 
 

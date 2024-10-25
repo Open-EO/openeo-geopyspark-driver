@@ -3,23 +3,32 @@ import textwrap
 from pathlib import Path
 from unittest import TestCase
 
+import geopyspark as gps
 import numpy as np
 import numpy.testing
 import pytest
 import rasterio
-import geopyspark as gps
 from geopyspark import CellType
-from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time, TemporalProjectedExtent, Extent,
-                                   RasterLayer)
+from geopyspark.geotrellis import (
+    Extent,
+    RasterLayer,
+    SpaceTimeKey,
+    TemporalProjectedExtent,
+    Tile,
+    _convert_to_unix_time,
+)
 from geopyspark.geotrellis.constants import LayerType
-from geopyspark.geotrellis.layer import TiledRasterLayer, Pyramid
+from geopyspark.geotrellis.layer import Pyramid, TiledRasterLayer
 from numpy.testing import assert_array_almost_equal
+from openeo_driver.errors import FeatureUnsupportedException
+from openeo_driver.utils import EvalEnv
 from pyspark import SparkContext
 from shapely.geometry import Point
 
-from openeo_driver.errors import FeatureUnsupportedException
-from openeo_driver.utils import EvalEnv
-from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
+from openeogeotrellis.geopysparkdatacube import (
+    GeopysparkCubeMetadata,
+    GeopysparkDataCube,
+)
 from openeogeotrellis.numpy_aggregators import max_composite
 from tests.datacube_fixtures import layer_with_one_band_and_three_dates
 

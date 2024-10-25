@@ -773,13 +773,13 @@ def to_jsonable(x):
 
 def wait_till_path_available(path: Path):
     retry = 0
-    max_tries = 5
+    max_tries = 20  # Almost 2 minutes
     while not os.path.exists(path):
         if retry < max_tries:
             retry += 1
-            seconds = int(math.pow(2, retry + 2))  # exponential backoff
+            seconds = 5
             logger.info(f"Waiting for path to be available. Try {retry}/{max_tries} (sleep:{seconds}seconds): {path}")
             time.sleep(seconds)
         else:
             logger.warning(f"Path is not available after {max_tries} tries: {path}")
-            return  # TODO: Throw error instead
+            return  # TODO: Throw error instead?

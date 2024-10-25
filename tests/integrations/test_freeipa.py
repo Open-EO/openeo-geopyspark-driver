@@ -1,10 +1,14 @@
 import textwrap
-from typing import Optional, List
+from typing import List, Optional
 
 import dirty_equals
 import pytest
 
-from openeogeotrellis.integrations.freeipa import FreeIpaClient, get_freeipa_server_from_env, get_verify_tls_from_env
+from openeogeotrellis.integrations.freeipa import (
+    FreeIpaClient,
+    get_freeipa_server_from_env,
+    get_verify_tls_from_env,
+)
 
 
 class TestFreeIpaClient:

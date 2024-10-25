@@ -17,17 +17,14 @@ import geopandas as gpd
 import mock
 import numpy
 import numpy as np
+import openeo
+import openeo.processes
 import pandas
 import pytest
 import rasterio
 import xarray
 from mock import MagicMock
 from numpy.testing import assert_equal
-from pystac import Asset, Catalog, Collection, Extent, Item, SpatialExtent, TemporalExtent
-from shapely.geometry import GeometryCollection, Point, Polygon, box, mapping
-
-import openeo
-import openeo.processes
 from openeo_driver.backend import UserDefinedProcesses
 from openeo_driver.jobregistry import JOB_STATUS
 from openeo_driver.testing import (
@@ -35,21 +32,41 @@ from openeo_driver.testing import (
     ApiResponse,
     ApiTester,
     DictSubSet,
+    DummyUser,
     IgnoreOrder,
     ListSubSet,
     RegexMatcher,
     UrllibMocker,
     load_json,
-    DummyUser,
 )
 from openeo_driver.users import User
 from openeo_driver.util.auth import ClientCredentials
-from openeo_driver.util.geometry import as_geojson_feature, as_geojson_feature_collection
+from openeo_driver.util.geometry import (
+    as_geojson_feature,
+    as_geojson_feature_collection,
+)
+from pystac import (
+    Asset,
+    Catalog,
+    Collection,
+    Extent,
+    Item,
+    SpatialExtent,
+    TemporalExtent,
+)
+from shapely.geometry import GeometryCollection, Point, Polygon, box, mapping
+
 from openeogeotrellis.backend import JOB_METADATA_FILENAME
 from openeogeotrellis.config.config import EtlApiConfig
 from openeogeotrellis.job_registry import ZkJobRegistry
 from openeogeotrellis.testing import KazooClientMock, gps_config_overrides, random_name
-from openeogeotrellis.utils import UtcNowClock, drop_empty_from_aggregate_polygon_result, get_jvm, is_package_available
+from openeogeotrellis.utils import (
+    UtcNowClock,
+    drop_empty_from_aggregate_polygon_result,
+    get_jvm,
+    is_package_available,
+)
+
 from .data import get_test_data_file
 
 _log = logging.getLogger(__name__)
@@ -3745,6 +3762,10 @@ class TestLoadStac:
         urllib_and_request_mock.get(
             "https://stac.terrascope.be/search?limit=20&bbox=5.07%2C51.215%2C5.08%2C51.22&datetime=2024-06-16T00%3A00%3A00Z%2F2024-06-23T23%3A59%3A59.999000Z&collections=sentinel-2-l2a&fields=%2Bproperties.proj%3Abbox%2C%2Bproperties.proj%3Ashape%2C%2Bproperties.proj%3Aepsg&token=MTcxOTEzOTU3OTAyNCxTMkJfTVNJTDJBXzIwMjQwNjIzVDEwNDYxOV9OMDUxMF9SMDUxX1QzMVVGU18yMDI0MDYyM1QxMjIxNTYsc2VudGluZWwtMi1sMmE%3D",
             data=item_json("stac/issue830_alternate_url/search_queried_page2.json"))
+        urllib_and_request_mock.get(
+            "https://stac.terrascope.be/search?limit=20&bbox=5.07%2C51.215%2C5.08%2C51.22&datetime=2024-06-23T00%3A00%3A00Z%2F2024-06-23T23%3A59%3A59.999000Z&collections=sentinel-2-l2a&fields=%2Btype%2C%2Bgeometry%2C%2Bproperties%2C%2Bid%2C%2Bbbox%2C%2Bstac_version%2C%2Bassets%2C%2Blinks%2C%2Bcollection",
+            data=item_json("stac/issue830_alternate_url/search_queried.json"),
+        )
 
         process_graph = {
             "process_graph": {
@@ -4071,9 +4092,18 @@ class TestLoadStac:
                 assert "fields" not in request.qs
             else:
                 # a GET request has a single "fields" param with values separated by commas
-                assert set(request.qs["fields"][0].split(",")) == {"+properties.proj:epsg", "+properties.proj:bbox",
-                                                                   "+properties.proj:shape", "+properties.season",
-                                                                   }
+                # After https://stac.openeo.vito.be is updated, this might not be needed anymore
+                assert set(request.qs["fields"][0].split(",")) == {
+                    "+links",
+                    "+stac_version",
+                    "+bbox",
+                    "+collection",
+                    "+assets",
+                    "+id",
+                    "+properties",
+                    "+type",
+                    "+geometry",
+                }
 
             def item(path) -> dict:
                 return json.loads(

@@ -2,7 +2,7 @@ import datetime as dt
 
 import mock
 import pytest
-from openeo_driver.backend import BatchJobs, BatchJobMetadata
+from openeo_driver.backend import BatchJobMetadata, BatchJobs
 
 from openeogeotrellis.load_stac import extract_own_job_info
 

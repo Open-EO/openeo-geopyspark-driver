@@ -3,7 +3,7 @@ import shutil
 import tempfile
 from datetime import datetime
 from pathlib import Path
-from random import uniform, seed
+from random import seed, uniform
 from typing import List
 from unittest import TestCase, skip
 from unittest.mock import patch
@@ -13,14 +13,18 @@ import mock
 import pytest
 import shapely.geometry
 from openeo.metadata import CollectionMetadata, Dimension, TemporalDimension
-from py4j.java_gateway import JavaObject
-from shapely.geometry import GeometryCollection, Point
-
 from openeo_driver.backend import BatchJobMetadata
 from openeo_driver.save_result import MlModelResult
-from openeo_driver.testing import TEST_USER_AUTH_HEADER, ApiTester, RegexMatcher, DictSubSet
+from openeo_driver.testing import (
+    TEST_USER_AUTH_HEADER,
+    ApiTester,
+    DictSubSet,
+    RegexMatcher,
+)
 from openeo_driver.utils import EvalEnv, read_json
+from py4j.java_gateway import JavaObject
 from pyspark.mllib.tree import RandomForestModel
+from shapely.geometry import GeometryCollection, Point
 
 from openeogeotrellis.backend import JOB_METADATA_FILENAME
 from openeogeotrellis.deploy.batch_job import run_job
