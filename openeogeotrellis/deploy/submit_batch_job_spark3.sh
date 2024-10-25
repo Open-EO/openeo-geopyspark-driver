@@ -75,7 +75,7 @@ if [ -n "$udf_python_dependencies_folder_path" ]; then
   export PYTHONPATH="$PYTHONPATH:$udf_python_dependencies_folder_path"
 fi
 
-if [-n "udf_python_dependencies_archive_path"]; then
+if [ -n "udf_python_dependencies_archive_path" ]; then
   export UDF_PYTHON_DEPENDENCIES_ARCHIVE_PATH="$udf_python_dependencies_archive_path"
 fi
 
