@@ -71,12 +71,7 @@ export LD_LIBRARY_PATH="/opt/venv/lib64"
 
 export PYTHONPATH="/opt/venv/lib64/python3.8/site-packages:/opt/venv/lib/python3.8/site-packages:/opt/tensorflow/python38/2.8.0:/usr/lib/python3.8/site-packages:/usr/lib64/python3.8/site-packages"
 if [ -n "$udf_python_dependencies_folder_path" ]; then
-  export UDF_PYTHON_DEPENDENCIES_FOLDER_PATH="$udf_python_dependencies_folder_path"
   export PYTHONPATH="$PYTHONPATH:$udf_python_dependencies_folder_path"
-fi
-
-if [ -n "udf_python_dependencies_archive_path" ]; then
-  export UDF_PYTHON_DEPENDENCIES_ARCHIVE_PATH="$udf_python_dependencies_archive_path"
 fi
 
 extensions="geotrellis-extensions-static.jar"
@@ -183,6 +178,9 @@ spark-submit \
  --conf spark.executorEnv.YARN_CONTAINER_RUNTIME_TYPE=docker \
  --conf spark.executorEnv.YARN_CONTAINER_RUNTIME_DOCKER_IMAGE=${YARN_CONTAINER_RUNTIME_DOCKER_IMAGE} \
  --conf spark.executorEnv.YARN_CONTAINER_RUNTIME_DOCKER_MOUNTS=${docker_mounts} \
+ --conf spark.yarn.appMasterEnv.UDF_PYTHON_DEPENDENCIES_FOLDER_PATH="$udf_python_dependencies_folder_path" \
+ --conf spark.yarn.appMasterEnv.UDF_PYTHON_DEPENDENCIES_ARCHIVE_PATH="$udf_python_dependencies_archive_path" \
+ --conf spark.executorEnv.UDF_PYTHON_DEPENDENCIES_ARCHIVE_PATH="$udf_python_dependencies_archive_path" \
  --conf spark.driver.extraClassPath=${logging_jar:-} \
  --conf spark.executor.extraClassPath=${logging_jar:-} \
  --conf spark.hadoop.yarn.timeline-service.enabled=false \
