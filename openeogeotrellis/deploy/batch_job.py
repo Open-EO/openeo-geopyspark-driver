@@ -360,7 +360,7 @@ def run_job(
                 ml_model_metadata = result.get_model_metadata(str(output_file))
                 logger.info("Extracted ml model metadata from %s" % output_file)
             for name, asset in the_assets_metadata.items():
-                href = asset["href"]
+                href = str(asset["href"])
                 url = urlparse(href)
                 if url.scheme in ["", "file"]:
                     file_path = url.path
