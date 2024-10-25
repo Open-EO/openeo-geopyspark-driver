@@ -1533,3 +1533,35 @@ def test_multiple_save_result_single_export_workspace(tmp_path):
             assert dataset.driver == "GTiff"
     finally:
         shutil.rmtree(workspace_dir)
+
+
+def test_vectorcube_write_assets(tmp_path):
+    with ephemeral_fileserver(TEST_DATA_ROOT) as fileserver_root:
+        job_spec = {
+            "title": "my job",
+            "description": "vectorcube write_assets",
+            "process_graph":{
+                "geometry": {
+                    "process_id": "load_url",
+                    "arguments": {
+                        "url": f"{fileserver_root}/geometries/FeatureCollection03.geoparquet",
+                        "format": "Parquet",
+                    },
+                },
+                "save": {
+                    "process_id": "save_result",
+                    "arguments": {"data": {"from_node": "geometry"}, "format": "geojson"},
+                    "result": True,
+                }
+            }
+        }
+        metadata_file = tmp_path / "metadata.json"
+        run_job(
+            job_spec,
+            output_file=tmp_path / "out.geojson",
+            metadata_file=metadata_file,
+            api_version="1.0.0",
+            job_dir=ensure_dir(tmp_path / "job_dir"),
+            dependencies={},
+            user_id="jenkins",
+        )
