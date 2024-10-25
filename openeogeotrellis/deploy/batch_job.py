@@ -356,7 +356,6 @@ def run_job(
                         "Make sure to provide geometries."
                     )
             the_assets_metadata = result.write_assets(str(output_file))
-            os.fsync(os.open(job_dir, os.O_RDONLY))  # experiment
             if isinstance(result, MlModelResult):
                 ml_model_metadata = result.get_model_metadata(str(output_file))
                 logger.info("Extracted ml model metadata from %s" % output_file)
@@ -458,7 +457,6 @@ def run_job(
             ml_model_metadata=ml_model_metadata,
         )
 
-        os.fsync(os.open(job_dir, os.O_RDONLY))  # experiment
         assert len(results) == len(assets_metadata)
         for result, result_assets_metadata in zip(results, assets_metadata):
             _export_workspace(
@@ -470,9 +468,6 @@ def run_job(
             )
     finally:
         write_metadata({**result_metadata, **_get_tracker_metadata("")}, metadata_file, job_dir)
-
-    # Wait for files to be written to mount:
-    os.fsync(os.open(job_dir, os.O_RDONLY))
 
 
 def write_metadata(metadata, metadata_file, job_dir: Path):
