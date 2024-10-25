@@ -1986,15 +1986,13 @@ class GeopysparkDataCube(DriverDataCube):
                         timestamped_paths = [(timestamped_path._1(), timestamped_path._2(), timestamped_path._3())
                                              for timestamped_path in timestamped_paths]
                         for index, (path, timestamp, bbox) in enumerate(timestamped_paths):
-                            tmp_bands = bands
-                            if band_indices_per_file:
-                                band_indices = band_indices_per_file[index]
-                                tmp_bands = [b for i, b in enumerate(bands) if i in band_indices]
                             assets[str(pathlib.Path(path).name)] = {
                                 "href": str(path),
                                 "type": "image/tiff; application=geotiff",
                                 "roles": ["data"],
-                                "bands": tmp_bands,
+                                "bands": (
+                                    [bands[i] for i in band_indices_per_file[index]] if band_indices_per_file else bands
+                                ),
                                 "nodata": nodata,
                                 "datetime": timestamp,
                                 "bbox": to_latlng_bbox(bbox),
@@ -2030,12 +2028,11 @@ class GeopysparkDataCube(DriverDataCube):
                             assets = {}
                             for path, band_indices in paths_tuples:
                                 file_name = pathlib.Path(path).name
-                                tmp_bands = [b for i, b in enumerate(bands) if i in band_indices]
                                 assets[file_name] = {
                                     "href": str(path),
                                     "type": "image/tiff; application=geotiff",
                                     "roles": ["data"],
-                                    "bands": tmp_bands,
+                                    "bands": [bands[i] for i in band_indices],
                                     "nodata": nodata,
                                 }
                             return assets
