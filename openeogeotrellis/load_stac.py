@@ -239,6 +239,7 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
             else:
                 modifier = None
                 # standard behavior seems to be to include only a minimal subset e.g. https://stac.openeo.vito.be/
+                # and e.g. https://stac.terrascope.be
                 # include all fields to ease the transition of stac catalog
                 fields = [
                     "type",
