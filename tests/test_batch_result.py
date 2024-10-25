@@ -1058,7 +1058,7 @@ def test_export_workspace_with_asset_per_band(tmp_path):
 
         job_dir_files = set(os.listdir(tmp_path))
         assert len(job_dir_files) > 0
-        assert "openEO_2021-01-05Z_Longitude.tif" in job_dir_files
+        assert "folder1" in job_dir_files
         assert "openEO_2021-01-05Z_Latitude.tif" in job_dir_files
 
         workspace_files = set(os.listdir(workspace_dir))
@@ -1111,7 +1111,7 @@ def test_export_workspace_with_asset_per_band(tmp_path):
         with rasterio.open(geotiff_asset_copy_path) as dataset:
             assert dataset.driver == "GTiff"
     finally:
-        shutil.rmtree(workspace_dir)
+        shutil.rmtree(workspace_dir, ignore_errors=True)
 
 
 def test_discard_result(tmp_path):

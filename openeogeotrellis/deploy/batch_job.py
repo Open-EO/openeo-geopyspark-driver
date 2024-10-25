@@ -522,7 +522,8 @@ def _write_exported_stac_collection(
     asset_keys: List[str],
 ) -> List[Path]:  # TODO: change to Set?
     def write_stac_item_file(asset_id: str, asset: dict) -> Path:
-        item_file = job_dir / f"{asset_id}.json"
+        asset_hrefs = result_metadata.get("assets", {})[asset_id]["href"]
+        item_file = Path(f"{asset_hrefs}.json")
 
         properties = {"datetime": asset.get("datetime")}
 
