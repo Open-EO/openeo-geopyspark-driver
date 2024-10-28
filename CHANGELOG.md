@@ -14,6 +14,10 @@ without compromising stable operations.
 
 ## Unreleased
 
+## 0.47.0
+
+- Support `bands_metadata` format option to set band-specific scale, offset and other metadata on `GTiff` output assets ([Open-EO/openeo-geotrellis-extensions#317](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/317))
+
 ## 0.46.0
 
 - Automatic Python UDF dependency handling: add option to work with ZIP archive
