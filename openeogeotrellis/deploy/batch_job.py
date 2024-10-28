@@ -568,8 +568,9 @@ def _write_exported_stac_collection(
     ]
 
     def item_link(item_file: Path) -> dict:
+        relative_path = item_file.relative_to(job_dir)
         return {
-            "href": f"./{item_file.name}",
+            "href": f"./{relative_path}",
             "rel": "item",
             "type": "application/geo+json",
         }

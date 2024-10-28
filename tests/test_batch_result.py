@@ -56,7 +56,7 @@ def test_png_export(tmp_path):
         output_file=tmp_path / "out.png",
         metadata_file=metadata_file,
         api_version="1.0.0",
-        job_dir=ensure_dir(tmp_path / "job_dir"),
+        job_dir=tmp_path,
         dependencies={},
         user_id="jenkins",
     )
@@ -94,7 +94,7 @@ def test_simple_math(tmp_path):
         output_file=tmp_path / "out.json",
         metadata_file=metadata_file,
         api_version="1.0.0",
-        job_dir=ensure_dir(tmp_path / "job_dir"),
+        job_dir=tmp_path,
         dependencies={},
         user_id="jenkins",
     )
@@ -157,7 +157,7 @@ def test_ep3899_netcdf_no_bands(tmp_path):
         output_file=tmp_path / "out.nc",
         metadata_file=metadata_file,
         api_version="1.0.0",
-        job_dir=ensure_dir(tmp_path / "job_dir"),
+        job_dir=tmp_path,
         dependencies={},
         user_id="jenkins",
     )
@@ -230,7 +230,7 @@ def test_ep3874_sample_by_feature_filter_spatial_inline_geojson(prefix, tmp_path
         output_file=tmp_path / "out",
         metadata_file=metadata_file,
         api_version="1.0.0",
-        job_dir=ensure_dir(tmp_path / "job_dir"),
+        job_dir=tmp_path,
         dependencies={},
         user_id="jenkins",
     )
@@ -317,7 +317,7 @@ def test_separate_asset_per_band(tmp_path, from_node, expected_names):
         output_file=tmp_path / "out",
         metadata_file=metadata_file,
         api_version="1.0.0",
-        job_dir=ensure_dir(tmp_path / "job_dir"),
+        job_dir=tmp_path,
         dependencies=[],
         user_id="jenkins",
     )
@@ -368,7 +368,7 @@ def test_separate_asset_per_band_throw(tmp_path):
             output_file=tmp_path / "out",
             metadata_file=metadata_file,
             api_version="1.0.0",
-            job_dir=ensure_dir(tmp_path / "job_dir"),
+            job_dir=tmp_path,
             dependencies=[],
             user_id="jenkins",
         )
@@ -421,7 +421,7 @@ def test_sample_by_feature_filter_spatial_vector_cube_from_load_url(tmp_path):
             output_file=tmp_path / "out",
             metadata_file=metadata_file,
             api_version="1.0.0",
-            job_dir=ensure_dir(tmp_path / "job_dir"),
+            job_dir=tmp_path,
             dependencies={},
             user_id="jenkins",
         )
@@ -523,7 +523,7 @@ def test_aggregate_spatial_area_result(tmp_path):
         output_file=tmp_path / "out",
         metadata_file=metadata_file,
         api_version="1.0.0",
-        job_dir=ensure_dir(tmp_path / "job_dir"),
+        job_dir=tmp_path,
         dependencies={},
         user_id="jenkins",
     )
@@ -677,7 +677,7 @@ def test_spatial_geoparquet(tmp_path):
         output_file=tmp_path / "out",
         metadata_file=tmp_path / "metadata.json",
         api_version="1.0.0",
-        job_dir=ensure_dir(tmp_path / "job_dir"),
+        job_dir=tmp_path,
         dependencies=[],
         user_id="jenkins",
     )
@@ -762,7 +762,7 @@ def test_spatial_cube_to_netcdf_sample_by_feature(tmp_path):
         output_file=tmp_path / "out",
         metadata_file=metadata_file,
         api_version="1.0.0",
-        job_dir=ensure_dir(tmp_path / "job_dir"),
+        job_dir=tmp_path,
         dependencies=[],
         user_id="jenkins",
     )
@@ -846,7 +846,7 @@ def test_multiple_time_series_results(tmp_path):
         output_file=tmp_path / "out",
         metadata_file=tmp_path / "job_metadata.json",
         api_version="1.0.0",
-        job_dir=ensure_dir(tmp_path / "job_dir"),
+        job_dir=tmp_path,
         dependencies=[],
         user_id="jenkins",
     )
@@ -892,7 +892,7 @@ def test_multiple_image_collection_results(tmp_path):
         output_file=tmp_path / "out",
         metadata_file=tmp_path / "job_metadata.json",
         api_version="1.0.0",
-        job_dir=ensure_dir(tmp_path / "job_dir"),
+        job_dir=tmp_path,
         dependencies=[],
         user_id="jenkins",
     )
@@ -1058,7 +1058,7 @@ def test_export_workspace_with_asset_per_band(tmp_path):
 
         job_dir_files = set(os.listdir(tmp_path))
         assert len(job_dir_files) > 0
-        assert "folder1" in job_dir_files
+        assert "openEO_2021-01-05Z_Longitude.tif" in job_dir_files
         assert "openEO_2021-01-05Z_Latitude.tif" in job_dir_files
 
         workspace_files = set(os.listdir(workspace_dir))
@@ -1112,6 +1112,115 @@ def test_export_workspace_with_asset_per_band(tmp_path):
             assert dataset.driver == "GTiff"
     finally:
         shutil.rmtree(workspace_dir, ignore_errors=True)
+
+
+def test_filepath_per_band(tmp_path):
+    process_graph = {
+        "loadcollection1": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "TestCollection-LonLat4x4",
+                "temporal_extent": ["2021-01-05", "2021-01-06"],
+                "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 2.0},
+                "bands": ["Longitude", "Latitude"],
+            },
+        },
+        "reducedimension1": {
+            "process_id": "reduce_dimension",
+            "arguments": {
+                "data": {"from_node": "loadcollection1"},
+                "dimension": "t",
+                "reducer": {
+                    "process_graph": {
+                        "first1": {
+                            "process_id": "first",
+                            "arguments": {"data": {"from_parameter": "data"}},
+                            "result": True,
+                        }
+                    }
+                },
+            },
+        },
+        "saveresult1": {
+            "process_id": "save_result",
+            "arguments": {
+                "data": {"from_node": "reducedimension1"},
+                "format": "GTiff",
+                "options": {
+                    "separate_asset_per_band": "true",
+                    "filepath_per_band": ["folder1/lon.tif", "lat.tif"],
+                },
+            },
+            "result": True,
+        },
+    }
+
+    process = {
+        "process_graph": process_graph,
+    }
+
+    run_job(
+        process,
+        output_file=tmp_path / "out",
+        metadata_file=tmp_path / JOB_METADATA_FILENAME,
+        api_version="2.0.0",
+        job_dir=tmp_path,
+        dependencies=[],
+    )
+
+    job_dir_files = set(os.listdir(tmp_path))
+    assert len(job_dir_files) > 0
+    assert "folder1" in job_dir_files
+    assert "lat.tif" in job_dir_files
+
+    workspace_files = set(os.listdir(tmp_path))
+    assert workspace_files == {
+        "collection.json",
+        "folder1",
+        "job_metadata.json",
+        "lat.tif",
+        "lat.tif.json",
+    }
+
+    stac_collection = pystac.Collection.from_file(str(tmp_path / "collection.json"))
+    stac_collection.validate_all()
+    item_links = [item_link for item_link in stac_collection.links if item_link.rel == "item"]
+    assert len(item_links) == 2
+    item_link = item_links[0]
+
+    assert item_link.media_type == "application/geo+json"
+    assert item_link.href == "./folder1/lon.tif.json"
+
+    items = list(stac_collection.get_items())
+    assert len(items) == 2
+
+    item = items[0]
+    assert item.id == "lon.tif"
+    # assert item.bbox == [0.0, 0.0, 1.0, 2.0] # TODO: Is missing because defined higher in STAC hierarchy?
+    # assert shape(item.geometry).normalize().almost_equals(Polygon.from_bounds(0.0, 0.0, 1.0, 2.0).normalize())
+
+    geotiff_asset = item.get_assets()["lon.tif"]
+    assert "data" in geotiff_asset.roles
+    assert geotiff_asset.href == "./lon.tif"  # relative to the json file
+    assert geotiff_asset.media_type == "image/tiff; application=geotiff"
+    assert geotiff_asset.extra_fields["eo:bands"] == [DictSubSet({"name": "Longitude"})]
+    assert geotiff_asset.extra_fields["raster:bands"] == [
+        {
+            "name": "Longitude",
+            "statistics": {
+                "maximum": 0.75,
+                "mean": 0.375,
+                "minimum": 0.0,
+                "stddev": 0.27950849718747,
+                "valid_percent": 100.0,
+            },
+        }
+    ]
+
+    geotiff_asset_copy_path = tmp_path / "file.copy"
+    geotiff_asset.copy(str(geotiff_asset_copy_path))  # downloads the asset file
+    with rasterio.open(geotiff_asset_copy_path) as dataset:
+        assert dataset.driver == "GTiff"
 
 
 def test_discard_result(tmp_path):
@@ -1383,7 +1492,7 @@ def test_load_ml_model_via_jobid(tmp_path):
             output_file=tmp_path / "out.tiff",
             metadata_file=metadata_file,
             api_version="1.0.0",
-            job_dir=ensure_dir(tmp_path / "job_dir"),
+            job_dir=tmp_path,
             dependencies={},
             user_id="jenkins",
         )
@@ -1561,7 +1670,7 @@ def test_vectorcube_write_assets(tmp_path):
             output_file=tmp_path / "out.geojson",
             metadata_file=metadata_file,
             api_version="1.0.0",
-            job_dir=ensure_dir(tmp_path / "job_dir"),
+            job_dir=tmp_path,
             dependencies={},
             user_id="jenkins",
         )
