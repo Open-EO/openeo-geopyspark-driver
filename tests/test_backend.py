@@ -1,3 +1,4 @@
+import dirty_equals
 import mock
 import pytest
 import shapely
@@ -12,6 +13,7 @@ from openeogeotrellis.backend import (
     GpsBatchJobs,
     GpsProcessing,
 )
+from openeogeotrellis.integrations.kubernetes import k8s_render_manifest_template
 from openeogeotrellis.testing import gps_config_overrides
 
 
@@ -615,3 +617,50 @@ def test_request_costs(mock_get_etl_api_credentials_from_env, backend_implementa
         )
 
         assert credit_cost == 6
+
+
+def test_k8s_sparkapplication_dict_udf_python_deps():
+    # TODO: this is minimal attempt to have a bit of test coverage for UDF dep env var handling
+    #       in the K8s code path. But there is a lot of room for improvement.
+    #       Also see https://github.com/Open-EO/openeo-geopyspark-driver/issues/915
+    app_dict = k8s_render_manifest_template(
+        "sparkapplication.yaml.j2",
+        udf_python_dependencies_folder_path="/jobs/j123/udfdepz.d",
+        udf_python_dependencies_archive_path="/jobs/j123/udfdepz.zip",
+    )
+    assert app_dict == dirty_equals.IsPartialDict(
+        spec=dirty_equals.IsPartialDict(
+            driver=dirty_equals.IsPartialDict(
+                env=dirty_equals.Contains(
+                    {
+                        "name": "PYTHONPATH",
+                        "value": dirty_equals.IsStr(regex=r".+:/jobs/j123/udfdepz\.d(:|$)"),
+                    },
+                    {
+                        "name": "UDF_PYTHON_DEPENDENCIES_FOLDER_PATH",
+                        "value": "/jobs/j123/udfdepz.d",
+                    },
+                    {
+                        "name": "UDF_PYTHON_DEPENDENCIES_ARCHIVE_PATH",
+                        "value": "/jobs/j123/udfdepz.zip",
+                    },
+                )
+            ),
+            executor=dirty_equals.IsPartialDict(
+                env=dirty_equals.Contains(
+                    {
+                        "name": "PYTHONPATH",
+                        "value": dirty_equals.IsStr(regex=r".+:/jobs/j123/udfdepz\.d(:|$)"),
+                    },
+                    {
+                        "name": "UDF_PYTHON_DEPENDENCIES_FOLDER_PATH",
+                        "value": "/jobs/j123/udfdepz.d",
+                    },
+                    {
+                        "name": "UDF_PYTHON_DEPENDENCIES_ARCHIVE_PATH",
+                        "value": "/jobs/j123/udfdepz.zip",
+                    },
+                )
+            ),
+        )
+    )

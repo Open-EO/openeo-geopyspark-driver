@@ -99,7 +99,7 @@ from openeogeotrellis.service_registry import (
     ServiceEntity,
     ZooKeeperServiceRegistry,
 )
-from openeogeotrellis.udf import run_udf_code, UDF_PYTHON_DEPENDENCIES_FOLDER_NAME
+from openeogeotrellis.udf import run_udf_code, UDF_PYTHON_DEPENDENCIES_FOLDER_NAME, UDF_PYTHON_DEPENDENCIES_ARCHIVE_NAME
 from openeogeotrellis.user_defined_process_repository import (
     InMemoryUserDefinedProcessRepository,
     ZooKeeperUserDefinedProcessRepository,
@@ -1285,6 +1285,8 @@ class GpsBatchJobs(backend.BatchJobs):
         self._requests_session = requests_session or requests.Session()
 
         # TODO: Generalize assumption that output_dir == local FS? (e.g. results go to non-local S3)
+        # TODO: What's called here "output" dir is also used for input (e.g. specification file or UDF dependencies).
+        #       Rename to more general "work" dir, or have clean separation between input/output dirs?
         self._output_root_dir = Path(
             output_root_dir or ConfigParams().batch_job_output_root
         )
@@ -1576,6 +1578,16 @@ class GpsBatchJobs(backend.BatchJobs):
     def get_job_output_dir(self, job_id: str) -> Path:
         # TODO: instead of flat dir with potentially a lot of subdirs (which is hard to maintain/clean up):
         #       add an intermediate level (e.g. based on job_id/user_id prefix or date or ...)?
+        # TODO: this so called "output" dir is also being used for "input" (e.g. specification file, UDF deps, ...),
+        #       so "work dir" would be a better name. Also see `get_job_work_dir`.
+        return self._output_root_dir / job_id
+
+    def get_job_work_dir(self, job_id: str) -> Path:
+        """
+        Get the work directory for a given job, where input files can be found and output data can be stored.
+
+        also see get_job_output_dir (deprecated)
+        """
         return self._output_root_dir / job_id
 
     @staticmethod
@@ -1891,9 +1903,9 @@ class GpsBatchJobs(backend.BatchJobs):
                 s3_instance.create_bucket(Bucket=bucket)
 
             output_dir = str(self.get_job_output_dir(job_id))
+            job_work_dir = self.get_job_work_dir(job_id=job_id)
 
-            job_specification_file = output_dir + '/job_specification.json'
-
+            job_specification_file = str(job_work_dir / "job_specification.json")
             s3_instance.upload_fileobj(
                 io.BytesIO(job_specification_json.encode("utf8")),
                 bucket,
@@ -1963,6 +1975,8 @@ class GpsBatchJobs(backend.BatchJobs):
                 access_token=user.internal_auth_data["access_token"],
                 fuse_mount_batchjob_s3_bucket=get_backend_config().fuse_mount_batchjob_s3_bucket,
                 UDF_PYTHON_DEPENDENCIES_FOLDER_NAME=UDF_PYTHON_DEPENDENCIES_FOLDER_NAME,
+                udf_python_dependencies_folder_path=str(job_work_dir / UDF_PYTHON_DEPENDENCIES_FOLDER_NAME),
+                udf_python_dependencies_archive_path=str(job_work_dir / UDF_PYTHON_DEPENDENCIES_ARCHIVE_NAME),
                 openeo_ejr_api=get_backend_config().ejr_api,
                 openeo_ejr_backend_id=get_backend_config().ejr_backend_id,
                 openeo_ejr_oidc_client_credentials=os.environ.get("OPENEO_EJR_OIDC_CLIENT_CREDENTIALS"),
@@ -2026,7 +2040,7 @@ class GpsBatchJobs(backend.BatchJobs):
             if len(py_files)>0:
                 extra_py_files = "," + py_files.join(",")
 
-
+            job_work_dir = self.get_job_work_dir(job_id=job_id)
 
             # TODO: use different root dir for these temp input files than self._output_root_dir (which is for output files)?
             with tempfile.NamedTemporaryFile(
@@ -2094,16 +2108,18 @@ class GpsBatchJobs(backend.BatchJobs):
                 args.append(archives)
                 args.append(logging_threshold)
                 args.append(os.environ.get(ConfigGetter.OPENEO_BACKEND_CONFIG, ""))
-                args.append(self.get_job_output_dir(job_id) / UDF_PYTHON_DEPENDENCIES_FOLDER_NAME)
+                args.append(str(job_work_dir / UDF_PYTHON_DEPENDENCIES_FOLDER_NAME))
                 args.append(get_backend_config().ejr_api or "")
                 args.append(get_backend_config().ejr_backend_id)
                 args.append(os.environ.get("OPENEO_EJR_OIDC_CLIENT_CREDENTIALS", ""))
-                docker_mounts = get_backend_config().batch_docker_mounts
 
+                docker_mounts = get_backend_config().batch_docker_mounts
                 if user_id in get_backend_config().batch_user_docker_mounts:
                     docker_mounts = docker_mounts + "," + ",".join(get_backend_config().batch_user_docker_mounts[user_id])
-
                 args.append(docker_mounts)
+
+                args.append(str(job_work_dir / UDF_PYTHON_DEPENDENCIES_ARCHIVE_NAME))
+
                 # TODO: this positional `args` handling is getting out of hand, leverage _write_sensitive_values?
 
                 try:

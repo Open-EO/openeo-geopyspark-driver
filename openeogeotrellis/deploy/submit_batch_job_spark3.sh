@@ -51,11 +51,13 @@ propertiesFile=${26}
 archives=${27}
 logging_threshold=${28}
 openeo_backend_config=${29}
-udf_python_deps_folder=${30}
+udf_python_dependencies_folder_path=${30}
 ejr_api=${31}
 ejr_backend_id=${32}
 ejr_oidc_client_credentials=${33}
 docker_mounts=${34-"/var/lib/sss/pubconf/krb5.include.d:/var/lib/sss/pubconf/krb5.include.d:ro,/var/lib/sss/pipes:/var/lib/sss/pipes:rw,/usr/hdp/current/:/usr/hdp/current/:ro,/etc/hadoop/conf/:/etc/hadoop/conf/:ro,/etc/krb5.conf:/etc/krb5.conf:ro,/data/MTDA:/data/MTDA:ro,/data/projects/OpenEO:/data/projects/OpenEO:rw,/data/MEP:/data/MEP:ro,/data/users:/data/users:rw,/tmp_epod:/tmp_epod:rw,/opt/tensorflow:/opt/tensorflow:ro"}
+udf_python_dependencies_archive_path=${35}
+
 
 pysparkPython="/opt/venv/bin/python"
 
@@ -68,8 +70,8 @@ export SPARK_SUBMIT_OPTS="-Dlog4j2.configurationFile=file:${sparkSubmitLog4jConf
 export LD_LIBRARY_PATH="/opt/venv/lib64"
 
 export PYTHONPATH="/opt/venv/lib64/python3.8/site-packages:/opt/venv/lib/python3.8/site-packages:/opt/tensorflow/python38/2.8.0:/usr/lib/python3.8/site-packages:/usr/lib64/python3.8/site-packages"
-if [ -n "$udf_python_deps_folder" ]; then
-  export PYTHONPATH="$PYTHONPATH:$udf_python_deps_folder"
+if [ -n "$udf_python_dependencies_folder_path" ]; then
+  export PYTHONPATH="$PYTHONPATH:$udf_python_dependencies_folder_path"
 fi
 
 extensions="geotrellis-extensions-static.jar"
@@ -176,6 +178,9 @@ spark-submit \
  --conf spark.executorEnv.YARN_CONTAINER_RUNTIME_TYPE=docker \
  --conf spark.executorEnv.YARN_CONTAINER_RUNTIME_DOCKER_IMAGE=${YARN_CONTAINER_RUNTIME_DOCKER_IMAGE} \
  --conf spark.executorEnv.YARN_CONTAINER_RUNTIME_DOCKER_MOUNTS=${docker_mounts} \
+ --conf spark.yarn.appMasterEnv.UDF_PYTHON_DEPENDENCIES_FOLDER_PATH="$udf_python_dependencies_folder_path" \
+ --conf spark.yarn.appMasterEnv.UDF_PYTHON_DEPENDENCIES_ARCHIVE_PATH="$udf_python_dependencies_archive_path" \
+ --conf spark.executorEnv.UDF_PYTHON_DEPENDENCIES_ARCHIVE_PATH="$udf_python_dependencies_archive_path" \
  --conf spark.driver.extraClassPath=${logging_jar:-} \
  --conf spark.executor.extraClassPath=${logging_jar:-} \
  --conf spark.hadoop.yarn.timeline-service.enabled=false \

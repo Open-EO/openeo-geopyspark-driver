@@ -239,10 +239,19 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
             else:
                 modifier = None
                 # standard behavior seems to be to include only a minimal subset e.g. https://stac.openeo.vito.be/
-                fields = sorted(
-                    f"properties.{property_name}"
-                    for property_name in {"proj:epsg", "proj:bbox", "proj:shape"}.union(all_properties.keys())
-                )
+                # and e.g. https://stac.terrascope.be
+                # include all fields to ease the transition of stac catalog
+                fields = [
+                    "type",
+                    "geometry",
+                    "properties",
+                    "id",
+                    "bbox",
+                    "stac_version",
+                    "assets",
+                    "links",
+                    "collection",
+                ]
 
             client = pystac_client.Client.open(root_catalog.get_self_href(), modifier=modifier)
 
