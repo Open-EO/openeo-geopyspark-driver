@@ -1,9 +1,12 @@
+import json
+import os
 import sys
 from pathlib import Path
 
-import openeogeotrellis.deploy.local
 from openeo.internal.graph_building import as_flat_graph
 from openeo.util import ensure_dir
+
+import openeogeotrellis.deploy.local
 
 
 def run_graph_locally(process_graph, output_dir):
@@ -24,6 +27,21 @@ def run_graph_locally(process_graph, output_dir):
         dependencies=[],
         user_id="jenkins",
     )
+    # Set the permissions so any user can read and delete the files:
+    # For when running inside a docker container.
+    files = [
+        output_dir / JOB_METADATA_FILENAME,
+        output_dir / "collection.json",
+        output_dir / "openeo.log",
+    ]
+    with open(output_dir / JOB_METADATA_FILENAME) as f:
+        j = json.load(f)
+        files += [output_dir / asset["href"] for asset in j.get("links", [])]
+    with open(output_dir / "collection.json") as f:
+        j = json.load(f)
+        files += [output_dir / asset["href"] for asset in j.get("links", [])]
+    for file in files:
+        os.chmod(file, 0o666)
 
 
 def main():
