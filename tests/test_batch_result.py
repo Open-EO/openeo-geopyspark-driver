@@ -19,8 +19,10 @@ from openeo_driver.testing import DictSubSet, ephemeral_fileserver
 from openeo_driver.util.geometry import validate_geojson_coordinates
 from openeo_driver.utils import EvalEnv
 from openeo_driver.workspace import DiskWorkspace
+from osgeo import gdal
 from shapely.geometry import Point, Polygon, shape
 
+from openeogeotrellis._version import __version__
 from openeogeotrellis.backend import JOB_METADATA_FILENAME
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.deploy.batch_job import run_job
@@ -277,7 +279,7 @@ def test_separate_asset_per_band(tmp_path, from_node, expected_names):
                 "process_id": "load_collection",
                 "arguments": {
                     "bands": ["TileRow", "TileCol"],
-                    "id": "TestCollection-LonLat4x4",
+                    "id": "TestCollection-LonLat16x16",
                     "properties": {},
                     "spatial_extent": {"west": 0.0, "south": 50.0, "east": 5.0, "north": 55.0},
                     "temporal_extent": ["2021-06-01", "2021-06-16"],
@@ -863,7 +865,7 @@ def test_multiple_image_collection_results(tmp_path):
             "loadcollection1": {
                 "process_id": "load_collection",
                 "arguments": {
-                    "id": "TestCollection-LonLat4x4",
+                    "id": "TestCollection-LonLat16x16",
                     "spatial_extent": {"west": 0.0, "south": 50.0, "east": 5.0, "north": 55.0},
                     "temporal_extent": ["2021-01-04", "2021-01-06"],
                     "bands": ["Flat:2"]
@@ -912,7 +914,7 @@ def test_export_workspace(tmp_path, remove_original):
         "loadcollection1": {
             "process_id": "load_collection",
             "arguments": {
-                "id": "TestCollection-LonLat4x4",
+                "id": "TestCollection-LonLat16x16",
                 "temporal_extent": ["2021-01-05", "2021-01-06"],
                 "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 2.0},
                 "bands": ["Flat:2"]
@@ -1013,7 +1015,7 @@ def test_export_workspace_with_asset_per_band(tmp_path):
         "loadcollection1": {
             "process_id": "load_collection",
             "arguments": {
-                "id": "TestCollection-LonLat4x4",
+                "id": "TestCollection-LonLat16x16",
                 "temporal_extent": ["2021-01-05", "2021-01-06"],
                 "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 2.0},
                 "bands": ["Longitude", "Latitude"],
@@ -1097,10 +1099,10 @@ def test_export_workspace_with_asset_per_band(tmp_path):
             {
                 "name": "Latitude",
                 "statistics": {
-                    "maximum": 1.75,
-                    "mean": 0.875,
+                    "maximum": 1.9375,
+                    "mean": 0.96875,
                     "minimum": 0.0,
-                    "stddev": 0.57282196186948,
+                    "stddev": 0.57706829101936,
                     "valid_percent": 100.0,
                 },
             }
@@ -1154,7 +1156,7 @@ def test_multiple_top_level_side_effects(tmp_path, caplog):
         "loadcollection1": {
             "process_id": "load_collection",
             "arguments": {
-                "id": "TestCollection-LonLat4x4",
+                "id": "TestCollection-LonLat16x16",
                 "spatial_extent": {"west": 5, "south": 50, "east": 5.1, "north": 50.1},
                 "temporal_extent": ["2024-07-11", "2024-07-21"],
                 "bands": ["Flat:1"]
@@ -1229,8 +1231,8 @@ def test_multiple_top_level_side_effects(tmp_path, caplog):
         "final.tif": lambda dataset: dataset.res == (80, 80)
     }),
     ("pg02.json", {
-        "B04.tif": lambda dataset: dataset.tags(1)["DESCRIPTION"] == "B04",
-        "B11.tif": lambda dataset: dataset.tags(1)["DESCRIPTION"] == "B11",
+        "B04.tif": lambda dataset: dataset.descriptions == ("B04",),
+        "B11.tif": lambda dataset: dataset.descriptions == ("B11",),
     }),
 ])
 def test_multiple_save_results(tmp_path, process_graph_file, output_file_predicates):
@@ -1306,7 +1308,7 @@ def test_load_ml_model_via_jobid(tmp_path):
         "loadcollection1": {
             "process_id": "load_collection",
             "arguments": {
-                "id": "TestCollection-LonLat4x4",
+                "id": "TestCollection-LonLat16x16",
                 "temporal_extent": ["2021-01-01", "2021-02-01"],
                 "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 2.0},
                 "bands": ["TileRow", "TileCol"]
@@ -1454,7 +1456,7 @@ def test_multiple_save_result_single_export_workspace(tmp_path):
         "loadcollection1": {
             "process_id": "load_collection",
             "arguments": {
-                "id": "TestCollection-LonLat4x4",
+                "id": "TestCollection-LonLat16x16",
                 "temporal_extent": ["2021-01-05", "2021-01-06"],
                 "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 2.0},
                 "bands": ["Flat:2"],
@@ -1565,3 +1567,72 @@ def test_vectorcube_write_assets(tmp_path):
             dependencies={},
             user_id="jenkins",
         )
+
+
+def test_geotiff_scale_offset(tmp_path):
+    process_graph = {
+        "loadcollection1": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "TestCollection-LonLat16x16",
+                "temporal_extent": ["2021-01-05", "2021-01-06"],
+                "spatial_extent": {"west": 0.0, "south": 50.0, "east": 5.0, "north": 55.0},
+                "bands": ["Flat:2"],
+            },
+        },
+        "saveresult1": {
+            "process_id": "save_result",
+            "arguments": {
+                "data": {"from_node": "loadcollection1"},
+                "format": "GTiff",
+                "options": {
+                    "bands_metadata": {
+                        "Flat:2": {
+                            "SCALE": 1.23,
+                            "OFFSET": 4.56,
+                            "ARBITRARY": "value",
+                        },
+                    }
+                },
+            },
+            "result": True,
+        },
+    }
+
+    process = {
+        "process_graph": process_graph,
+        "description": "some description",
+    }
+
+    run_job(
+        process,
+        output_file=tmp_path / "out.tif",
+        metadata_file=tmp_path / "job_metadata.json",
+        api_version="2.0.0",
+        job_dir=tmp_path,
+        dependencies=[],
+    )
+
+    # metadata should be embedded in the tiff, not in a sidecar file
+    aux_files = [tmp_path / aux_file for aux_file in os.listdir(tmp_path) if aux_file.endswith(".tif.aux.xml")]
+    for aux_file in aux_files:
+        aux_file.unlink()
+
+    output_tiffs = [tmp_path / tiff_file for tiff_file in os.listdir(tmp_path) if tiff_file.endswith(".tif")]
+    assert len(output_tiffs) == 1
+    output_tiff = output_tiffs[0]
+
+    raster = gdal.Open(str(output_tiff))
+    head_metadata = raster.GetMetadata()
+    assert head_metadata["AREA_OR_POINT"] == "Area"
+    assert head_metadata["PROCESSING_SOFTWARE"] == __version__
+    assert head_metadata["ImageDescription"] == "some description"
+
+    band_count = raster.RasterCount
+    assert band_count == 1
+    band = raster.GetRasterBand(1)
+    assert band.GetDescription() == "Flat:2"
+    assert band.GetScale() == 1.23
+    assert band.GetOffset() == 4.56
+    band_metadata = band.GetMetadata()
+    assert band_metadata["ARBITRARY"] == "value"

@@ -1821,7 +1821,7 @@ class GeopysparkDataCube(DriverDataCube):
         overviews = format_options.get("overviews", "AUTO")
         overview_resample = format_options.get("overview_method", "near")
         colormap = format_options.get("colormap", None)
-        description = format_options.get("file_metadata",{}).get("description","")
+        description = format_options.get("file_metadata", {}).get("description", "")
         filename_prefix = get_jvm().scala.Option.apply(format_options.get("filename_prefix", None))
         separate_asset_per_band_tmp = (
             smart_bool(format_options.get("separate_asset_per_band"))
@@ -1829,6 +1829,7 @@ class GeopysparkDataCube(DriverDataCube):
             else None
         )
         separate_asset_per_band = get_jvm().scala.Option.apply(separate_asset_per_band_tmp)
+        bands_metadata = format_options.get("bands_metadata", {})  # band_name -> (tag -> value)
 
         if separate_asset_per_band.isDefined() and format != "GTIFF":
             raise OpenEOApiException("separate_asset_per_band is only supported with format GTIFF")
@@ -1910,6 +1911,9 @@ class GeopysparkDataCube(DriverDataCube):
                         for index, band_name in enumerate(self.metadata.band_dimension.band_names):
                             gtiff_options.addBandTag(index, "DESCRIPTION", str(band_name))
 
+                            for tag_name, tag_value in bands_metadata.get(band_name, {}).items():
+                                gtiff_options.addBandTag(index, tag_name.upper(), str(tag_value))
+
                     bands = []
                     if self.metadata.has_band_dimension():
                         bands = [b._asdict() for b in self.metadata.bands]
@@ -1963,17 +1967,14 @@ class GeopysparkDataCube(DriverDataCube):
                         # TODO: contains a bbox so rename
                         timestamped_paths = [(timestamped_path._1(), timestamped_path._2(), timestamped_path._3())
                                              for timestamped_path in timestamped_paths]
-                        for index, tup in enumerate(timestamped_paths):
-                            path, timestamp, bbox = tup
-                            tmp_bands = bands
-                            if band_indices_per_file:
-                                band_indices = band_indices_per_file[index]
-                                tmp_bands = [b for i, b in enumerate(bands) if i in band_indices]
+                        for index, (path, timestamp, bbox) in enumerate(timestamped_paths):
                             assets[str(pathlib.Path(path).name)] = {
                                 "href": str(path),
                                 "type": "image/tiff; application=geotiff",
                                 "roles": ["data"],
-                                "bands": tmp_bands,
+                                "bands": (
+                                    [bands[i] for i in band_indices_per_file[index]] if band_indices_per_file else bands
+                                ),
                                 "nodata": nodata,
                                 "datetime": timestamp,
                                 "bbox": to_latlng_bbox(bbox),
@@ -2000,7 +2001,8 @@ class GeopysparkDataCube(DriverDataCube):
                                 str(save_filename),
                                 zlevel,
                                 get_jvm().scala.Option.apply(crop_extent),
-                                gtiff_options)
+                                gtiff_options,
+                            )
 
                             paths_tuples = [
                                 (timestamped_path._1(), timestamped_path._2()) for timestamped_path in paths_tuples
@@ -2008,12 +2010,11 @@ class GeopysparkDataCube(DriverDataCube):
                             assets = {}
                             for path, band_indices in paths_tuples:
                                 file_name = pathlib.Path(path).name
-                                tmp_bands = [b for i, b in enumerate(bands) if i in band_indices]
                                 assets[file_name] = {
                                     "href": str(path),
                                     "type": "image/tiff; application=geotiff",
                                     "roles": ["data"],
-                                    "bands": tmp_bands,
+                                    "bands": [bands[i] for i in band_indices],
                                     "nodata": nodata,
                                 }
                             return assets

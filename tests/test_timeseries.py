@@ -400,7 +400,7 @@ def test_multiple_zonal_statistics(imagecollection_with_two_bands_and_three_date
     result = imagecollection_with_two_bands_and_three_dates.aggregate_spatial(polygon, callback)
     assert isinstance(result, AggregatePolygonResultCSV)
     assert result.get_data() == {
-        "2017-09-25T11:37:00Z": [[1.0, 1.0, 1.0, 2.0, 1.0, 2.0]],
+        "2017-09-25T11:37:00Z": [[16.0, 16.0, 1.0, 32.0, 16.0, 2.0]],
         "2017-09-30T00:37:00Z": [
             [
                 pytest.approx(np.nan, nan_ok=True),
@@ -411,7 +411,7 @@ def test_multiple_zonal_statistics(imagecollection_with_two_bands_and_three_date
                 pytest.approx(np.nan, nan_ok=True),
             ]
         ],
-        "2017-10-25T11:37:00Z": [[2.0, 1.0, 2.0, 1.0, 1.0, 1.0]],
+        "2017-10-25T11:37:00Z": [[32.0, 16.0, 2.0, 16.0, 16.0, 1.0]],
     }
 
 

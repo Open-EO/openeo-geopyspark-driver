@@ -45,6 +45,7 @@ from openeo_driver.util.geometry import (
     as_geojson_feature,
     as_geojson_feature_collection,
 )
+from osgeo import gdal
 from pystac import (
     Asset,
     Catalog,
@@ -56,6 +57,7 @@ from pystac import (
 )
 from shapely.geometry import GeometryCollection, Point, Polygon, box, mapping
 
+from openeogeotrellis._version import __version__
 from openeogeotrellis.backend import JOB_METADATA_FILENAME
 from openeogeotrellis.config.config import EtlApiConfig
 from openeogeotrellis.job_registry import ZkJobRegistry
@@ -2086,7 +2088,7 @@ def test_apply_neighborhood_filter_spatial(api100, tmp_path):
         "lc": {
             "process_id": "load_collection",
             "arguments": {
-                "id": "TestCollection-LonLat4x4",
+                "id": "TestCollection-LonLat16x16",
                 "temporal_extent": ["2020-03-01", "2020-03-10"],
                 "spatial_extent": {"west": 0.0, "south": 0.0, "east": 32.0, "north": 32.0},
                 "bands": ["Longitude", "Day"]
@@ -2124,7 +2126,7 @@ def test_apply_neighborhood_filter_spatial(api100, tmp_path):
     with rasterio.open(tmp_path / "apply_neighborhood.tif") as ds:
         print(ds.bounds)
         assert ds.bounds.right == 11
-        assert ds.width == 4
+        assert ds.width == 16
 
 
 def test_aggregate_spatial_netcdf_feature_names(api100, tmp_path):
@@ -4776,3 +4778,66 @@ def test_aggregate_temporal_period_from_merge_cubes_on_time_dimension_contains_f
             np.datetime64("2024-03-01"),
         ],
     )
+
+
+def test_geotiff_scale_offset(api110, tmp_path):
+    response = api110.check_result(
+        {
+            "loadcollection1": {
+                "process_id": "load_collection",
+                "arguments": {
+                    "id": "TestCollection-LonLat16x16",
+                    "temporal_extent": ["2021-01-05", "2021-01-06"],
+                    "spatial_extent": {"west": 0.0, "south": 50.0, "east": 5.0, "north": 55.0},
+                    "bands": ["Flat:1", "Flat:2"],
+                },
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {
+                    "data": {"from_node": "loadcollection1"},
+                    "format": "GTiff",
+                    "options": {
+                        "bands_metadata": {
+                            "Flat:1": {
+                                "SCALE": 1.23,
+                                "ARBITRARY": "value",
+                            },
+                            "Flat:2": {
+                                "OFFSET": 4.56,
+                            },
+                            "Flat:3": {
+                                "SCALE": 7.89,
+                                "OFFSET": 10.11
+                            }
+                        }
+                    },
+                },
+                "result": True,
+            },
+        }
+    )
+
+    output_file = tmp_path / "out.tif"
+
+    with open(output_file, mode="wb") as f:
+        f.write(response.data)
+
+    raster = gdal.Open(str(output_file))
+    head_metadata = raster.GetMetadata()
+    assert head_metadata["AREA_OR_POINT"] == "Area"
+    assert head_metadata["PROCESSING_SOFTWARE"] == __version__
+
+    band_count = raster.RasterCount
+    assert band_count == 2
+
+    first_band = raster.GetRasterBand(1)
+    assert first_band.GetDescription() == "Flat:1"
+    assert first_band.GetScale() == 1.23
+    assert first_band.GetOffset() == 0.0
+    assert first_band.GetMetadata()["ARBITRARY"] == "value"
+
+    second_band = raster.GetRasterBand(2)
+    assert second_band.GetDescription() == "Flat:2"
+    assert second_band.GetScale() == 1.0
+    assert second_band.GetOffset() == 4.56
