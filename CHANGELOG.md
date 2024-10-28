@@ -14,6 +14,8 @@ without compromising stable operations.
 
 ## Unreleased
 
+- Expose `filename_prefix` format option for netCDF output assets ([#876](https://github.com/Open-EO/openeo-geopyspark-driver/issues/876))
+
 ## 0.47.0
 
 - Support `bands_metadata` format option to set band-specific scale, offset and other metadata on `GTiff` output assets ([Open-EO/openeo-geotrellis-extensions#317](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/317))

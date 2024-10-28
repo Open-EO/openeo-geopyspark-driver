@@ -491,7 +491,12 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                             "type": ["string", "null"],
                             "default": None,
                             "description": "Specifies the name of the feature attribute that is to be used as feature id, by processes that require it. Can be used to link a given output back to an input feature."
-                        }
+                        },
+                        "filename_prefix": {
+                            "type": "string",
+                            "description": "Specifies the filename prefix when outputting multiple files. By default, depending on the context, 'OpenEO' or a part of the input filename will be used as prefix.",
+                            "default": None,
+                        },
                     },
                 },
                 "JSON": {
