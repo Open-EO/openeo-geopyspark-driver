@@ -478,7 +478,8 @@ def _get_raster_statistics(gdal_info: GDALInfo, band_name: Optional[str] = None)
         # just the empty string.
         gdal_band_stats = band_metadata.get("", {})
         band_name_out = (
-            band_name or gdal_band_stats.get("long_name") or gdal_band_stats.get("DESCRIPTION") or str(band_num)
+                band_name or gdal_band_stats.get("long_name") or band.get("description")
+                or gdal_band_stats.get("DESCRIPTION") or str(band_num)
         )
 
         def to_float_or_none(x: Optional[str]):
