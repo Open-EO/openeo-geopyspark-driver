@@ -14,21 +14,14 @@ spatial_extent_tap = {"east": 5.08, "north": 51.22, "south": 51.215, "west": 5.0
 
 stac_root = str(Path("example_stac_catalog/").absolute())
 
-datacube = openeo.rest.datacube.DataCube(  # Syntax will be enhanced in future release of the Python client.
-    openeo.rest.datacube.PGNode(
-        "load_stac",
-        arguments={
-            "url": stac_root + "/collection.json",
-            "temporal_extent": ["2023-06-01", "2023-06-09"],
-            "spatial_extent": spatial_extent_tap,
-        },
-    ),
-    connection=None,
+datacube = openeo.DataCube.load_stac(
+    url=stac_root + "/collection.json",
+    temporal_extent=["2023-06-01", "2023-06-09"],
+    spatial_extent=spatial_extent_tap,
 )
 
 # Scale values to make the output tiffs look good in standard image visualization tools:
-datacube = datacube * (65534 / 2500)
-datacube = datacube.linear_scale_range(0, 65534, 0, 65534)
+datacube = datacube.linear_scale_range(0, 2500, 0, 65534)
 
 output_dir = Path("tmp_local_output").absolute()
 output_dir.mkdir(exist_ok=True)

@@ -8,6 +8,7 @@ It should also work for larger workloads, but this may require sufficient IT ski
 For users that require support, we recommend using one of the online deployments.
 
 Prerequisites: Docker already installed. Python with the openEO client installed.
+If your version is older than 0.33.0, upgrade with the following command: `pip install openeo --upgrade`
 Note, you can refer to local stac collections by file path on Linux, but not on Windows.
 
 - Clone / download this repository

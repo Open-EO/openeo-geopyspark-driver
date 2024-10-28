@@ -83,6 +83,13 @@ def _ensure_geopyspark(out: TerminalReporter):
         sys.path.append(str(py4j_zip))
 
 
+def is_port_free(port: int) -> bool:
+    import socket
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        return s.connect_ex(("localhost", port)) != 0
+
+
 def _setup_local_spark(out: TerminalReporter, verbosity=0):
     # TODO make a "spark_context" fixture instead of doing this through pytest_configure
     out.write_line("[conftest.py] Setting up local Spark")
@@ -153,8 +160,12 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
     -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService\
     -Dtsservice.layersConfigClass=ProdLayersConfiguration -Dtsservice.sparktasktimeout=600"
     if OPENEO_LOCAL_DEBUGGING:
-        # 'agentlib' to allow attaching a Java debugger to running Spark driver
-        sparkDriverJavaOptions += f" -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5009"
+        for port in [5005, 5009]:
+            if is_port_free(port):
+                # 'agentlib' to allow attaching a Java debugger to running Spark driver
+                # IntelliJ IDEA: Run -> Edit Configurations -> Remote JVM Debug uses 5005 by default
+                sparkDriverJavaOptions += f" -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:{port}"
+                break
     conf.set("spark.driver.extraJavaOptions", sparkDriverJavaOptions)
 
     sparkExecutorJavaOptions = f"-Dlog4j2.configurationFile=file:{sparkSubmitLog4jConfigurationFile}\
