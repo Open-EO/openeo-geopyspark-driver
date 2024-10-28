@@ -497,6 +497,4 @@ def test_load_stac_collection_with_property_filters(catalog, tmp_path, requests_
 
     with rasterio.open(output_file) as ds:
         assert ds.count == len(expected_bands)
-        for band_index, band_name in enumerate(expected_bands):
-            # ds.tags(0) has global metadata, band metadata starts from 1
-            assert ds.tags(band_index + 1)["DESCRIPTION"] == expected_bands[band_index]
+        assert list(ds.descriptions) == expected_bands
