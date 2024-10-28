@@ -1231,8 +1231,8 @@ def test_multiple_top_level_side_effects(tmp_path, caplog):
         "final.tif": lambda dataset: dataset.res == (80, 80)
     }),
     ("pg02.json", {
-        "B04.tif": lambda dataset: dataset.tags(1)["DESCRIPTION"] == "B04",
-        "B11.tif": lambda dataset: dataset.tags(1)["DESCRIPTION"] == "B11",
+        "B04.tif": lambda dataset: dataset.descriptions == ("B04",),
+        "B11.tif": lambda dataset: dataset.descriptions == ("B11",),
     }),
 ])
 def test_multiple_save_results(tmp_path, process_graph_file, output_file_predicates):
@@ -1308,7 +1308,7 @@ def test_load_ml_model_via_jobid(tmp_path):
         "loadcollection1": {
             "process_id": "load_collection",
             "arguments": {
-                "id": "TestCollection-LonLat4x4",
+                "id": "TestCollection-LonLat16x16",
                 "temporal_extent": ["2021-01-01", "2021-02-01"],
                 "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 2.0},
                 "bands": ["TileRow", "TileCol"]
@@ -1456,7 +1456,7 @@ def test_multiple_save_result_single_export_workspace(tmp_path):
         "loadcollection1": {
             "process_id": "load_collection",
             "arguments": {
-                "id": "TestCollection-LonLat4x4",
+                "id": "TestCollection-LonLat16x16",
                 "temporal_extent": ["2021-01-05", "2021-01-06"],
                 "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 2.0},
                 "bands": ["Flat:2"],
@@ -1538,11 +1538,6 @@ def test_multiple_save_result_single_export_workspace(tmp_path):
 
 
 def test_geotiff_scale_offset(tmp_path):
-    # TODO: support asset_per_band/other flags?
-    # TODO: test sync requests as well
-
-    # tmp_path = Path("/tmp/test_geotiff_scale_offset")  # TODO: remove
-
     process_graph = {
         "loadcollection1": {
             "process_id": "load_collection",
@@ -1565,7 +1560,6 @@ def test_geotiff_scale_offset(tmp_path):
                             "OFFSET": 4.56,
                             "ARBITRARY": "value",
                         },
-                        # TODO: add more combinations of bands and their metadata incl. non-matching
                     }
                 },
             },

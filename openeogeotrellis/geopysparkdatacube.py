@@ -1899,6 +1899,9 @@ class GeopysparkDataCube(DriverDataCube):
                         gtiff_options.setFilenamePrefix(filename_prefix.get())
                     if separate_asset_per_band.isDefined():
                         gtiff_options.setSeparateAssetPerBand(separate_asset_per_band.get())
+                    gtiff_options.addHeadTag("PROCESSING_SOFTWARE",softwareversion)
+                    if description != "":
+                        gtiff_options.addHeadTag("ImageDescription", description)
                     gtiff_options.setResampleMethod(overview_resample)
                     getattr(gtiff_options, "overviews_$eq")(overviews)
                     color_cmap = get_color_cmap()
@@ -1909,6 +1912,9 @@ class GeopysparkDataCube(DriverDataCube):
                         band_count = len(self.metadata.band_dimension.band_names)
                         for index, band_name in enumerate(self.metadata.band_dimension.band_names):
                             gtiff_options.addBandTag(index, "DESCRIPTION", str(band_name))
+
+                            for tag_name, tag_value in bands_metadata.get(band_name, {}).items():
+                                gtiff_options.addBandTag(index, tag_name.upper(), str(tag_value))
 
                     bands = []
                     if self.metadata.has_band_dimension():
@@ -1977,7 +1983,7 @@ class GeopysparkDataCube(DriverDataCube):
                                             role = tag_name.lower() if tag_name in ["SCALE", "OFFSET"] else None
                                             geotiff_metadata.add_band_tag(tag_name, tag_value, i, role)
 
-                                        tiffset.embed_gdal_metadata(geotiff_metadata.to_xml(), path)
+                                        # tiffset.embed_gdal_metadata(geotiff_metadata.to_xml(), path)
 
                         assets = {}
 
