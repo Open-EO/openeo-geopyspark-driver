@@ -1004,7 +1004,7 @@ def test_export_workspace(tmp_path, remove_original):
 
         # TODO: check other things e.g. proj:
     finally:
-        shutil.rmtree(workspace_dir, ignore_errors=True)
+        shutil.rmtree(workspace_dir)
 
 
 def test_export_workspace_with_asset_per_band(tmp_path):

@@ -43,8 +43,6 @@ from openeo_driver.utils import EvalEnv, smart_bool
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkcubemetadata import GeopysparkCubeMetadata
-from openeogeotrellis.integrations import tiffset
-from openeogeotrellis.integrations.gdal import GeoTiffMetadata
 from openeogeotrellis.ml.geopysparkmlmodel import GeopysparkMlModel
 from openeogeotrellis.processgraphvisiting import GeotrellisTileProcessGraphVisitor, SingleNodeUDFProcessGraphVisitor
 from openeogeotrellis.ml.aggregatespatialvectorcube import AggregateSpatialVectorCube
@@ -1958,32 +1956,10 @@ class GeopysparkDataCube(DriverDataCube):
                                     save_directory,
                                     zlevel,
                                     get_jvm().scala.Option.apply(crop_extent),
-                                    gtiff_options,  # here
+                                    gtiff_options,
                                 )
                             )
                             band_indices_per_file = [tup._4() for tup in timestamped_paths]
-
-                            if self.metadata.has_band_dimension():
-                                for timestamped_path in timestamped_paths:
-                                    geotiff_metadata = GeoTiffMetadata()
-                                    geotiff_metadata.add_head_tag("PROCESSING_SOFTWARE", softwareversion)
-                                    if description:
-                                        geotiff_metadata.add_head_tag("ImageDescription", description)
-
-                                    path = timestamped_path._1()
-                                    band_indices = timestamped_path._4()
-
-                                    for i, band_index in enumerate(band_indices):
-                                        band_name = self.metadata.band_dimension.band_names[band_index]
-
-                                        geotiff_metadata.add_band_tag(
-                                            name="DESCRIPTION", value=band_name, index=i, role="description"
-                                        )
-                                        for tag_name, tag_value in bands_metadata.get(band_name, {}).items():
-                                            role = tag_name.lower() if tag_name in ["SCALE", "OFFSET"] else None
-                                            geotiff_metadata.add_band_tag(tag_name, tag_value, i, role)
-
-                                        # tiffset.embed_gdal_metadata(geotiff_metadata.to_xml(), path)
 
                         assets = {}
 
@@ -2025,7 +2001,7 @@ class GeopysparkDataCube(DriverDataCube):
                                 str(save_filename),
                                 zlevel,
                                 get_jvm().scala.Option.apply(crop_extent),
-                                gtiff_options,  # here
+                                gtiff_options,
                             )
 
                             paths_tuples = [
