@@ -14,7 +14,11 @@ without compromising stable operations.
 
 ## Unreleased
 
+
+## 0.48.0
+
 - Expose `filename_prefix` format option for netCDF output assets ([#876](https://github.com/Open-EO/openeo-geopyspark-driver/issues/876))
+- Make sure `OPENEO_BACKEND_CONFIG` env var is set in K8s executors
 
 ## 0.47.0
 
