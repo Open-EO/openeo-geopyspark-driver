@@ -635,11 +635,13 @@ def _extract_and_install_udf_dependencies(process_graph: dict):
         elif udf_deps_install_mode == UDF_DEPENDENCIES_INSTALL_MODE.DIRECT:
             # Install UDF deps directly to target folder
             udf_python_dependencies_folder_path = _get_env_var_or_fail("UDF_PYTHON_DEPENDENCIES_FOLDER_PATH")
+            logger.info(f"UDF dep handling with {udf_deps_install_mode=} {udf_python_dependencies_folder_path=}")
             install_python_udf_dependencies(
                 dependencies=udf_deps, target=udf_python_dependencies_folder_path, timeout=20
             )
         elif udf_deps_install_mode == UDF_DEPENDENCIES_INSTALL_MODE.ZIP:
             udf_python_dependencies_archive_path = _get_env_var_or_fail("UDF_PYTHON_DEPENDENCIES_ARCHIVE_PATH")
+            logger.info(f"UDF dep handling with {udf_deps_install_mode=} {udf_python_dependencies_archive_path=}")
             build_python_udf_dependencies_archive(
                 dependencies=udf_deps,
                 target=udf_python_dependencies_archive_path,
