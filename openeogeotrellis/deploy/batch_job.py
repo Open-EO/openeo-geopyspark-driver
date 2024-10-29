@@ -3,55 +3,76 @@ import logging
 import os
 import shutil
 import stat
+import sys
 from copy import deepcopy
+from itertools import chain
 from pathlib import Path
-from traceback_with_variables import Format, format_exc
 from typing import Dict, List, Optional, Tuple, Union
 from urllib.parse import urlparse
 
-import sys
-from itertools import chain
-from openeo.util import ensure_dir, TimingLogger, dict_no_none
-from py4j.protocol import Py4JError, Py4JJavaError
-from pyspark import SparkContext, SparkConf
-from pyspark.profiler import BasicProfiler
-from shapely.geometry import mapping
-
+from openeo.util import TimingLogger, dict_no_none, ensure_dir
 from openeo_driver import ProcessGraphDeserializer
 from openeo_driver.datacube import DriverDataCube, DriverVectorCube
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import DryRunDataTracer
-from openeo_driver.save_result import (ImageCollectionResult, JSONResult, SaveResult, MlModelResult, VectorCubeResult, )
+from openeo_driver.save_result import (
+    ImageCollectionResult,
+    JSONResult,
+    MlModelResult,
+    SaveResult,
+    VectorCubeResult,
+)
 from openeo_driver.users import User
-from openeo_driver.util.logging import (GlobalExtraLoggingFilter, get_logging_config, setup_logging,
-                                        LOGGING_CONTEXT_BATCH_JOB, LOG_HANDLER_STDERR_JSON, LOG_HANDLER_FILE_JSON, )
+from openeo_driver.util.logging import (
+    LOG_HANDLER_FILE_JSON,
+    LOG_HANDLER_STDERR_JSON,
+    LOGGING_CONTEXT_BATCH_JOB,
+    GlobalExtraLoggingFilter,
+    get_logging_config,
+    setup_logging,
+)
 from openeo_driver.utils import EvalEnv
 from openeo_driver.workspacerepository import backend_config_workspace_repository
+from py4j.protocol import Py4JError, Py4JJavaError
+from pyspark import SparkConf, SparkContext
+from pyspark.profiler import BasicProfiler
+from shapely.geometry import mapping
+from traceback_with_variables import Format, format_exc
+
 from openeogeotrellis._version import __version__
-from openeogeotrellis.backend import JOB_METADATA_FILENAME, GeoPySparkBackendImplementation
-from openeogeotrellis.collect_unique_process_ids_visitor import CollectUniqueProcessIdsVisitor
+from openeogeotrellis.backend import (
+    JOB_METADATA_FILENAME,
+    GeoPySparkBackendImplementation,
+)
+from openeogeotrellis.collect_unique_process_ids_visitor import (
+    CollectUniqueProcessIdsVisitor,
+)
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.config.constants import UDF_DEPENDENCIES_INSTALL_MODE
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.constants import EVAL_ENV_KEY
 from openeogeotrellis.deploy import load_custom_processes
-from openeogeotrellis.deploy.batch_job_metadata import _assemble_result_metadata, _transform_stac_metadata, \
-    _convert_job_metadatafile_outputs_to_s3_urls, _get_tracker_metadata
+from openeogeotrellis.deploy.batch_job_metadata import (
+    _assemble_result_metadata,
+    _convert_job_metadatafile_outputs_to_s3_urls,
+    _get_tracker_metadata,
+    _transform_stac_metadata,
+)
 from openeogeotrellis.integrations.gdal import get_abs_path_of_asset
 from openeogeotrellis.integrations.hadoop import setup_kerberos_auth
 from openeogeotrellis.udf import (
-    collect_python_udf_dependencies,
-    install_python_udf_dependencies,
+    UDF_PYTHON_DEPENDENCIES_ARCHIVE_NAME,
     UDF_PYTHON_DEPENDENCIES_FOLDER_NAME,
     build_python_udf_dependencies_archive,
-    UDF_PYTHON_DEPENDENCIES_ARCHIVE_NAME,
+    collect_python_udf_dependencies,
+    install_python_udf_dependencies,
 )
 from openeogeotrellis.utils import (
-    describe_path,
-    log_memory,
-    get_jvm,
     add_permissions,
+    describe_path,
+    get_jvm,
     json_default,
+    log_memory,
     to_jsonable,
     wait_till_path_available,
 )
