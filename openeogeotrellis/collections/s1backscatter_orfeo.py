@@ -81,7 +81,7 @@ def _instant_ms_to_day(instant: int) -> datetime:
     of our openEO backend implementation and necessary to follow, for example
     to ensure that timeseries related data joins work properly.
     """
-    return datetime(*(datetime.utcfromtimestamp(instant // 1000).timetuple()[:3]))
+    return datetime(*(datetime.utcfromtimestamp(instant // 1000).timetuple()[:4]))  # FIXME: hourly resolution only for Sentinel 3
 
 
 def get_total_extent(features):
