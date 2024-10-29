@@ -249,9 +249,9 @@ def run_job(
     try:
         # We actually expect type Path, but in reality paths as strings tend to
         # slip in anyway, so we better catch them and convert them.
-        output_file = Path(output_file)
-        metadata_file = Path(metadata_file)
-        job_dir = Path(job_dir)
+        output_file = Path(output_file).absolute()
+        metadata_file = Path(metadata_file).absolute()
+        job_dir = Path(job_dir).absolute()
 
         logger.info(f"Job spec: {json.dumps(job_specification,indent=1)}")
         logger.debug(f"{job_dir=}, {job_dir.resolve()=}, {output_file=}, {metadata_file=}")
@@ -523,7 +523,7 @@ def _write_exported_stac_collection(
 ) -> List[Path]:  # TODO: change to Set?
     def write_stac_item_file(asset_id: str, asset: dict) -> Path:
         asset_hrefs = result_metadata.get("assets", {})[asset_id]["href"]
-        item_file = Path(f"{asset_hrefs}.json")
+        item_file = get_abs_path_of_asset(Path(f"{asset_hrefs}.json"), job_dir)
 
         properties = {"datetime": asset.get("datetime")}
 

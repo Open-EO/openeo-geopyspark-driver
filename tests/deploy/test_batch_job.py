@@ -324,7 +324,9 @@ def test_extract_result_metadata_aggregate_spatial_delayed_vector_when_bbox_crs_
 
 
 @mock.patch('openeo_driver.ProcessGraphDeserializer.evaluate')
-def test_run_job(evaluate, tmp_path):
+def test_run_job(evaluate, tmp_path, fast_sleep):
+    job_dir = tmp_path / "job-338"
+    (job_dir / "tmp").mkdir(parents=True, exist_ok=True)
     cube_mock = MagicMock()
     asset_meta = {"openEO01-01.tif": {"href": "tmp/openEO01-01.tif", "roles": "data"},"openEO01-05.tif": {"href": "tmp/openEO01-05.tif", "roles": "data"}}
     cube_mock.write_assets.return_value = asset_meta
@@ -346,7 +348,6 @@ def test_run_job(evaluate, tmp_path):
     t.add(PU_COUNTER, 0.4)
     t.add(PIXEL_COUNTER, 3670016)
 
-    job_dir = tmp_path / "job-338"
     job_dir.mkdir(parents=True, exist_ok=True)
     run_job(
         job_specification={"process_graph": {"nop": {"process_id": "discard_result", "result": True}}},
@@ -983,6 +984,8 @@ def test_run_job_get_projection_extension_metadata_job_dir_is_relative_path(eval
         dir=".", suffix="job-test-proj-metadata"
     ) as job_dir:
         job_dir = Path(job_dir)
+        # Emile 2024-10-29: Not sure what the use-case of a relative path is here.
+        # STAC metadata uses relative paths internally, but the job_dir is better absolute IMHO
         assert not job_dir.is_absolute()
 
         # Note that batch_job's main() interprets its output_file and metadata_file
