@@ -14,7 +14,3 @@ repos:
     rev: v2.1.1
     hooks:
       - id: darker
-  - repo: https://github.com/pycqa/isort
-    rev: 5.13.2
-    hooks:
-      - id: isort

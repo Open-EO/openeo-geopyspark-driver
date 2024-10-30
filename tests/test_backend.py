@@ -1,7 +1,11 @@
+import os
+
 import dirty_equals
 import mock
 import pytest
 import shapely
+
+from openeo_driver.config.load import ConfigGetter
 from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.ProcessGraphDeserializer import ENV_SOURCE_CONSTRAINTS
@@ -619,7 +623,7 @@ def test_request_costs(mock_get_etl_api_credentials_from_env, backend_implementa
         assert credit_cost == 6
 
 
-def test_k8s_sparkapplication_dict_udf_python_deps():
+def test_k8s_sparkapplication_dict_udf_python_deps(backend_config_path):
     # TODO: this is minimal attempt to have a bit of test coverage for UDF dep env var handling
     #       in the K8s code path. But there is a lot of room for improvement.
     #       Also see https://github.com/Open-EO/openeo-geopyspark-driver/issues/915
@@ -627,6 +631,8 @@ def test_k8s_sparkapplication_dict_udf_python_deps():
         "sparkapplication.yaml.j2",
         udf_python_dependencies_folder_path="/jobs/j123/udfdepz.d",
         udf_python_dependencies_archive_path="/jobs/j123/udfdepz.zip",
+        # TODO: avoid duplication of the actual code here
+        openeo_backend_config=os.environ.get(ConfigGetter.OPENEO_BACKEND_CONFIG, ""),
     )
     assert app_dict == dirty_equals.IsPartialDict(
         spec=dirty_equals.IsPartialDict(
@@ -644,7 +650,11 @@ def test_k8s_sparkapplication_dict_udf_python_deps():
                         "name": "UDF_PYTHON_DEPENDENCIES_ARCHIVE_PATH",
                         "value": "/jobs/j123/udfdepz.zip",
                     },
-                )
+                    {"name": "OPENEO_BACKEND_CONFIG", "value": str(backend_config_path)},
+                ),
+                volumeMounts=dirty_equals.Contains(
+                    {"name": "backend-config-configmap", "mountPath": "/opt/backend_config/"}
+                ),
             ),
             executor=dirty_equals.IsPartialDict(
                 env=dirty_equals.Contains(
@@ -660,7 +670,11 @@ def test_k8s_sparkapplication_dict_udf_python_deps():
                         "name": "UDF_PYTHON_DEPENDENCIES_ARCHIVE_PATH",
                         "value": "/jobs/j123/udfdepz.zip",
                     },
-                )
+                    {"name": "OPENEO_BACKEND_CONFIG", "value": str(backend_config_path)},
+                ),
+                volumeMounts=dirty_equals.Contains(
+                    {"name": "backend-config-configmap", "mountPath": "/opt/backend_config/"}
+                ),
             ),
         )
     )
