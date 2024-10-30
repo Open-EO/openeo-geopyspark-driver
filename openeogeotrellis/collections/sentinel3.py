@@ -54,14 +54,14 @@ def main(product_type, bbox, from_date, to_date, band_names):
         getattr(data_cube_parameters, "tileSize_$eq")(256)
         getattr(data_cube_parameters, "layoutScheme_$eq")("FloatingLayoutScheme")
         data_cube_parameters.setGlobalExtent(extent.xmin(), extent.ymin(), extent.xmax(), extent.ymax(), epsg_code)
-        cell_size = None
+        native_cell_size = jvm.geotrellis.raster.CellSize(0.00297619047619, 0.00297619047619)
         feature_flags = {}
 
         layer = pyramid(metadata_properties, projected_polygons_native_crs, from_date, to_date, band_names,
-                        data_cube_parameters, cell_size, feature_flags, jvm)[0]
+                        data_cube_parameters, native_cell_size, feature_flags, jvm)[0]
         layer_crs = layer.srdd.rdd().metadata().crs().epsgCode().get()
         layer.to_spatial_layer().save_stitched(f"/tmp/{product_type}_{from_date}_{to_date}.tif",
-                                               crop_bounds=gps.geotrellis.Extent(*bbox.reproject(layer_crs).as_wsen_tuple()))
+                                               crop_bounds=geopyspark.geotrellis.Extent(*bbox.reproject(layer_crs).as_wsen_tuple()))
 
         target_extent = Extent(*bbox.as_wsen_tuple())
         target_tileLayout = TileLayout(layoutCols=4, layoutRows=4, tileCols=256, tileRows=256)
@@ -71,11 +71,11 @@ def main(product_type, bbox, from_date, to_date, band_names):
 
         reprojected_layer_crs = reprojected_layer.srdd.rdd().metadata().crs().epsgCode().get()
         reprojected_layer.to_spatial_layer().save_stitched(f"/tmp/{product_type}_{from_date}_{to_date}_reprojected.tif",
-                                               crop_bounds=gps.geotrellis.Extent(*bbox.reproject(reprojected_layer_crs).as_wsen_tuple()))
+                                               crop_bounds=geopyspark.geotrellis.Extent(*bbox.reproject(reprojected_layer_crs).as_wsen_tuple()))
 
 
 def pyramid(metadata_properties, projected_polygons_native_crs, from_date, to_date, band_names, data_cube_parameters,
-            cell_size, feature_flags, jvm):
+            native_cell_size, feature_flags, jvm):
     import geopyspark as gps
 
     limit_executor_python_memory = feature_flags.get("limit_executor_python_memory", False)
@@ -87,9 +87,6 @@ def pyramid(metadata_properties, projected_polygons_native_crs, from_date, to_da
     collection_id = "Sentinel3"
     product_type = metadata_properties["productType"]
     correlation_id = ""
-
-    # intentionally fixing cell_size
-    cell_size = jvm.geotrellis.raster.CellSize(0.00297619047619, 0.00297619047619)  # FIXME: SENTINEL3_SLSTR_L2_LST has a different one; get from creo_layercatalog.json?
 
     if (
         projected_polygons_native_crs.crs().epsgCode().isDefined()
@@ -112,7 +109,7 @@ def pyramid(metadata_properties, projected_polygons_native_crs, from_date, to_da
             )
 
     file_rdd_factory = jvm.org.openeo.geotrellis.file.FileRDDFactory(
-        opensearch_client, collection_id, metadata_properties, correlation_id, cell_size
+        opensearch_client, collection_id, metadata_properties, correlation_id, native_cell_size
     )
 
     zoom = 0
@@ -148,7 +145,7 @@ def pyramid(metadata_properties, projected_polygons_native_crs, from_date, to_da
 
     creo_paths = per_product.keys().collect()
 
-    assert cell_size.width() == cell_size.height()
+    assert native_cell_size.width() == native_cell_size.height()
     tile_rdd = per_product.partitionBy(numPartitions=len(creo_paths), partitionFunc=creo_paths.index).flatMap(
         partial(
             read_product,
@@ -156,7 +153,7 @@ def pyramid(metadata_properties, projected_polygons_native_crs, from_date, to_da
             band_names=band_names,
             tile_size=tile_size,
             limit_python_memory=limit_executor_python_memory,
-            resolution=cell_size.width(),
+            resolution=native_cell_size.width(),
         )
     )
 
