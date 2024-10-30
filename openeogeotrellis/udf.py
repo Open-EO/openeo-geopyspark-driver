@@ -152,10 +152,6 @@ def install_python_udf_dependencies(
         if exit_code != 0:
             raise RuntimeError(f"pip install of UDF dependencies failed with {exit_code=}")
 
-        sleep_after_install = get_backend_config().udf_dependencies_sleep_after_install
-        if sleep_after_install:
-            _log.info(f"Sleeping after pip install ({sleep_after_install}s)")
-            time.sleep(sleep_after_install)
 
 
 def build_python_udf_dependencies_archive(

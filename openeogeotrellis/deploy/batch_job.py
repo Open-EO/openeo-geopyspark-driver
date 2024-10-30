@@ -1,3 +1,5 @@
+import time
+
 import json
 import logging
 import os
@@ -629,6 +631,13 @@ def _extract_and_install_udf_dependencies(process_graph: dict):
         logger.warning("Merging dependencies from multiple UDF runtimes/versions")
     udf_deps = set(d for ds in udf_dep_map.values() for d in ds)
     if udf_deps:
+
+        def sleep_after_udf_dep_setup():
+            delay = get_backend_config().udf_dependencies_sleep_after_install
+            if delay:
+                logger.info(f"Sleeping after UDF dependency setup ({delay}s)")
+                time.sleep(delay)
+
         udf_deps_install_mode = get_backend_config().udf_dependencies_install_mode
         if udf_deps_install_mode == UDF_DEPENDENCIES_INSTALL_MODE.DISABLED:
             raise ValueError("No UDF dependency handling")
@@ -639,6 +648,7 @@ def _extract_and_install_udf_dependencies(process_graph: dict):
             install_python_udf_dependencies(
                 dependencies=udf_deps, target=udf_python_dependencies_folder_path, timeout=20
             )
+            sleep_after_udf_dep_setup()
         elif udf_deps_install_mode == UDF_DEPENDENCIES_INSTALL_MODE.ZIP:
             udf_python_dependencies_archive_path = _get_env_var_or_fail("UDF_PYTHON_DEPENDENCIES_ARCHIVE_PATH")
             logger.info(f"UDF dep handling with {udf_deps_install_mode=} {udf_python_dependencies_archive_path=}")
@@ -649,8 +659,10 @@ def _extract_and_install_udf_dependencies(process_graph: dict):
                 format="zip",
                 timeout=20,
             )
+            sleep_after_udf_dep_setup()
         else:
             raise ValueError(f"Unsupported UDF dependencies install mode: {udf_deps_install_mode}")
+
 
 
 def start_main():
