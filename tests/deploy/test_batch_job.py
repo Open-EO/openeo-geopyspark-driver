@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import re
 import shutil
 import tempfile
@@ -20,6 +21,7 @@ from pytest import approx
 from shapely.geometry import box, mapping, shape
 
 from openeogeotrellis._version import __version__
+from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.config.constants import UDF_DEPENDENCIES_INSTALL_MODE
 from openeogeotrellis.deploy.batch_job import (
     _extract_and_install_udf_dependencies,
@@ -325,8 +327,6 @@ def test_extract_result_metadata_aggregate_spatial_delayed_vector_when_bbox_crs_
 
 @mock.patch('openeo_driver.ProcessGraphDeserializer.evaluate')
 def test_run_job(evaluate, tmp_path, fast_sleep):
-    job_dir = tmp_path / "job-338"
-    (job_dir / "tmp").mkdir(parents=True, exist_ok=True)
     cube_mock = MagicMock()
     asset_meta = {"openEO01-01.tif": {"href": "tmp/openEO01-01.tif", "roles": "data"},"openEO01-05.tif": {"href": "tmp/openEO01-05.tif", "roles": "data"}}
     cube_mock.write_assets.return_value = asset_meta
@@ -348,6 +348,7 @@ def test_run_job(evaluate, tmp_path, fast_sleep):
     t.add(PU_COUNTER, 0.4)
     t.add(PIXEL_COUNTER, 3670016)
 
+    job_dir = tmp_path / "job-338"
     job_dir.mkdir(parents=True, exist_ok=True)
     run_job(
         job_specification={"process_graph": {"nop": {"process_id": "discard_result", "result": True}}},
@@ -1124,9 +1125,10 @@ def test_run_job_get_projection_extension_metadata_assets_in_s3(
     mock_config_use_object_storage.return_value = True
     cube_mock = MagicMock()
 
-    job_id = "j-123546"
-    job_dir = tmp_path / "job-1115"
+    job_id = "j-123"
+    job_dir = tmp_path / job_id
     job_dir.mkdir()
+
     output_file = job_dir / "out"
     metadata_file = job_dir / "metadata.json"
 
@@ -1152,6 +1154,12 @@ def test_run_job_get_projection_extension_metadata_assets_in_s3(
     # starting the job. It will be downloaded when gdalinfo needs it.
     first_asset_dest = job_dir / single_asset_name
     assert not first_asset_dest.exists()
+    from openeogeotrellis.utils import s3_client
+
+    s3_instance = s3_client()
+
+    files_before = {o["Key"] for o in s3_instance.list_objects(Bucket=get_backend_config().s3_bucket_name)["Contents"]}
+    assert files_before == {"j-123/Copernicus_DSM_COG_10_N50_00_E005_00_DEM.tif"}
 
     run_job(
         job_specification={"process_graph": {"nop": {"process_id": "discard_result", "result": True}}},

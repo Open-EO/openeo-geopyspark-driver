@@ -2013,7 +2013,7 @@ class GeopysparkDataCube(DriverDataCube):
                             ]
                             assets = {}
                             for path, band_indices in paths_tuples:
-                                file_name = pathlib.Path(path).name
+                                file_name = str(pathlib.Path(path).relative_to(save_directory))
                                 assets[file_name] = {
                                     "href": str(path),
                                     "type": "image/tiff; application=geotiff",
@@ -2128,9 +2128,6 @@ class GeopysparkDataCube(DriverDataCube):
                     else:
                         result=self._collect_as_xarray(max_level)
 
-
-                    # if batch_mode:
-                    #     filename = directory +  "/openEO.nc"
                     XarrayIO.to_netcdf_file(array=result, path=filename)
                     if batch_mode:
                         asset = {

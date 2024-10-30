@@ -357,8 +357,9 @@ def mock_s3_client(aws_credentials):
 
 
 @pytest.fixture(scope="function")
-def mock_s3_bucket(mock_s3_resource):
+def mock_s3_bucket(mock_s3_resource, monkeypatch):
     bucket_name = "openeo-fake-bucketname"
+    monkeypatch.setenv("SWIFT_BUCKET", bucket_name)
 
     with gps_config_overrides(s3_bucket_name=bucket_name):
         assert get_backend_config().s3_bucket_name == bucket_name

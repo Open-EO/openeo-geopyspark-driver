@@ -485,11 +485,12 @@ def write_metadata(metadata, metadata_file, job_dir: Path):
             s3_instance = s3_client()
 
             logger.info("Writing results to object storage")
-            for filename in os.listdir(job_dir):
-                if filename == UDF_PYTHON_DEPENDENCIES_FOLDER_NAME:
-                    logger.warning(f"Omitting {filename} as the executors will not be able to access it")
+            file_paths = list(job_dir.rglob("*"))
+            file_paths = list(filter(lambda x: x.is_file(), file_paths))
+            for file_path in file_paths:
+                if file_path.name == UDF_PYTHON_DEPENDENCIES_FOLDER_NAME:
+                    logger.warning(f"Omitting {file_path} as the executors will not be able to access it")
                 else:
-                    file_path = job_dir / filename
                     full_path = str(file_path.absolute())
                     s3_instance.upload_file(full_path, bucket, full_path.strip("/"))
         else:
@@ -522,8 +523,7 @@ def _write_exported_stac_collection(
     asset_keys: List[str],
 ) -> List[Path]:  # TODO: change to Set?
     def write_stac_item_file(asset_id: str, asset: dict) -> Path:
-        asset_hrefs = result_metadata.get("assets", {})[asset_id]["href"]
-        item_file = get_abs_path_of_asset(Path(f"{asset_hrefs}.json"), job_dir)
+        item_file = get_abs_path_of_asset(Path(f"{asset_id}.json"), job_dir)
 
         properties = {"datetime": asset.get("datetime")}
 

@@ -162,19 +162,21 @@ def _extract_gdal_asset_raster_metadata(
     return raster_metadata, is_some_raster_md_missing
 
 
-def _get_metadata_callback(asset_key: str, asset_md: Dict[str, str], job_dir: Path):
+def _get_metadata_callback(asset_path: str, asset_md: Dict[str, str], job_dir: Path):
+
     mime_type: str = asset_md.get("type", "")
-    abs_asset_path = Path(asset_md.get("href"))
+
     # Skip assets that are clearly not images.
-    if abs_asset_path.name.lower().endswith(".json"):
+    if asset_path.endswith(".json"):
         return None
 
     # The asset path should be relative to the job directory.
-    abs_asset_path: Path = get_abs_path_of_asset(abs_asset_path, job_dir)
+    abs_asset_path: Path = get_abs_path_of_asset(asset_path, job_dir)
 
     asset_href: str = asset_md.get("href", "")
     if not abs_asset_path.exists() and asset_href.startswith("s3://"):
         try:
+            abs_asset_path.parent.mkdir(parents=True, exist_ok=True)
             with open(abs_asset_path, "wb") as f:
                 for chunk in stream_s3_binary_file_contents(asset_href):
                     f.write(chunk)
@@ -191,7 +193,7 @@ def _get_metadata_callback(asset_key: str, asset_md: Dict[str, str], job_dir: Pa
     if asset_gdal_metadata.could_not_read_file:
         return None
     else:
-        return (asset_key, asset_gdal_metadata.to_dict())
+        return (asset_path, asset_gdal_metadata.to_dict())
         # TODO: Would make it simpler if we could store the AssetRasterMetadata
         #   and convert it to dict at the end.
         # raster_metadata[asset_path] = asset_gdal_metadata
@@ -413,6 +415,8 @@ def get_abs_path_of_asset(asset_filename: Union[str, Path], job_dir: Union[str, 
 
     :return: the absolute path to the asset file, inside job_dir.
     """
+    if str(asset_filename).startswith("s3:/"):
+        return Path(asset_filename)
     abs_asset_path = Path(asset_filename)
     if not abs_asset_path.is_absolute():
         abs_asset_path = Path(job_dir).resolve() / asset_filename

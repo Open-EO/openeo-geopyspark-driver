@@ -58,7 +58,7 @@ def test_png_export(tmp_path):
         output_file=tmp_path / "out.png",
         metadata_file=metadata_file,
         api_version="1.0.0",
-        job_dir=tmp_path,
+        job_dir=ensure_dir(tmp_path / "job_dir"),
         dependencies={},
         user_id="jenkins",
     )
@@ -96,7 +96,7 @@ def test_simple_math(tmp_path):
         output_file=tmp_path / "out.json",
         metadata_file=metadata_file,
         api_version="1.0.0",
-        job_dir=tmp_path,
+        job_dir=ensure_dir(tmp_path / "job_dir"),
         dependencies={},
         user_id="jenkins",
     )
@@ -159,7 +159,7 @@ def test_ep3899_netcdf_no_bands(tmp_path):
         output_file=tmp_path / "out.nc",
         metadata_file=metadata_file,
         api_version="1.0.0",
-        job_dir=tmp_path,
+        job_dir=ensure_dir(tmp_path / "job_dir"),
         dependencies={},
         user_id="jenkins",
     )
@@ -232,7 +232,7 @@ def test_ep3874_sample_by_feature_filter_spatial_inline_geojson(prefix, tmp_path
         output_file=tmp_path / "out",
         metadata_file=metadata_file,
         api_version="1.0.0",
-        job_dir=tmp_path,
+        job_dir=ensure_dir(tmp_path / "job_dir"),
         dependencies={},
         user_id="jenkins",
     )
@@ -319,7 +319,7 @@ def test_separate_asset_per_band(tmp_path, from_node, expected_names):
         output_file=tmp_path / "out",
         metadata_file=metadata_file,
         api_version="1.0.0",
-        job_dir=tmp_path,
+        job_dir=ensure_dir(tmp_path / "job_dir"),
         dependencies=[],
         user_id="jenkins",
     )
@@ -370,7 +370,7 @@ def test_separate_asset_per_band_throw(tmp_path):
             output_file=tmp_path / "out",
             metadata_file=metadata_file,
             api_version="1.0.0",
-            job_dir=tmp_path,
+            job_dir=ensure_dir(tmp_path / "job_dir"),
             dependencies=[],
             user_id="jenkins",
         )
@@ -423,7 +423,7 @@ def test_sample_by_feature_filter_spatial_vector_cube_from_load_url(tmp_path):
             output_file=tmp_path / "out",
             metadata_file=metadata_file,
             api_version="1.0.0",
-            job_dir=tmp_path,
+            job_dir=ensure_dir(tmp_path / "job_dir"),
             dependencies={},
             user_id="jenkins",
         )
@@ -525,7 +525,7 @@ def test_aggregate_spatial_area_result(tmp_path):
         output_file=tmp_path / "out",
         metadata_file=metadata_file,
         api_version="1.0.0",
-        job_dir=tmp_path,
+        job_dir=ensure_dir(tmp_path / "job_dir"),
         dependencies={},
         user_id="jenkins",
     )
@@ -679,7 +679,7 @@ def test_spatial_geoparquet(tmp_path):
         output_file=tmp_path / "out",
         metadata_file=tmp_path / "metadata.json",
         api_version="1.0.0",
-        job_dir=tmp_path,
+        job_dir=ensure_dir(tmp_path / "job_dir"),
         dependencies=[],
         user_id="jenkins",
     )
@@ -764,7 +764,7 @@ def test_spatial_cube_to_netcdf_sample_by_feature(tmp_path):
         output_file=tmp_path / "out",
         metadata_file=metadata_file,
         api_version="1.0.0",
-        job_dir=tmp_path,
+        job_dir=ensure_dir(tmp_path / "job_dir"),
         dependencies=[],
         user_id="jenkins",
     )
@@ -848,7 +848,7 @@ def test_multiple_time_series_results(tmp_path):
         output_file=tmp_path / "out",
         metadata_file=tmp_path / "job_metadata.json",
         api_version="1.0.0",
-        job_dir=tmp_path,
+        job_dir=ensure_dir(tmp_path / "job_dir"),
         dependencies=[],
         user_id="jenkins",
     )
@@ -894,7 +894,7 @@ def test_multiple_image_collection_results(tmp_path):
         output_file=tmp_path / "out",
         metadata_file=tmp_path / "job_metadata.json",
         api_version="1.0.0",
-        job_dir=tmp_path,
+        job_dir=ensure_dir(tmp_path / "job_dir"),
         dependencies=[],
         user_id="jenkins",
     )
@@ -955,7 +955,7 @@ def test_export_workspace(tmp_path, remove_original):
             output_file=tmp_path / "out.tif",
             metadata_file=tmp_path / "job_metadata.json",
             api_version="2.0.0",
-            job_dir=tmp_path,
+            job_dir=ensure_dir(tmp_path / "job_dir"),
             dependencies=[],
         )
 
@@ -1054,7 +1054,7 @@ def test_export_workspace_with_asset_per_band(tmp_path):
             output_file=tmp_path / "out",
             metadata_file=tmp_path / JOB_METADATA_FILENAME,
             api_version="2.0.0",
-            job_dir=tmp_path,
+            job_dir=ensure_dir(tmp_path / "job_dir"),
             dependencies=[],
         )
 
@@ -1160,7 +1160,6 @@ def test_filepath_per_band(tmp_path):
     process = {
         "process_graph": process_graph,
     }
-
     run_job(
         process,
         output_file=tmp_path / "out",
@@ -1197,11 +1196,11 @@ def test_filepath_per_band(tmp_path):
     assert len(items) == 2
 
     item = items[0]
-    assert item.id == "lon.tif"
+    assert item.id == "folder1/lon.tif"
     # assert item.bbox == [0.0, 0.0, 1.0, 2.0] # TODO: Is missing because defined higher in STAC hierarchy?
     # assert shape(item.geometry).normalize().almost_equals(Polygon.from_bounds(0.0, 0.0, 1.0, 2.0).normalize())
 
-    geotiff_asset = item.get_assets()["lon.tif"]
+    geotiff_asset = item.get_assets()["folder1/lon.tif"]
     assert "data" in geotiff_asset.roles
     assert geotiff_asset.href == "./lon.tif"  # relative to the json file
     assert geotiff_asset.media_type == "image/tiff; application=geotiff"
@@ -1252,7 +1251,7 @@ def test_discard_result(tmp_path):
         output_file=tmp_path / "out.tif",
         metadata_file=tmp_path / "job_metadata.json",
         api_version="2.0.0",
-        job_dir=tmp_path,
+        job_dir=ensure_dir(tmp_path / "job_dir"),
         dependencies=[],
     )
 
@@ -1321,7 +1320,7 @@ def test_multiple_top_level_side_effects(tmp_path, caplog):
         output_file=tmp_path / "out",
         metadata_file=tmp_path / "job_metadata.json",
         api_version="2.0.0",
-        job_dir=tmp_path,
+        job_dir=ensure_dir(tmp_path / "job_dir"),
         dependencies=[],
     )
 
@@ -1353,7 +1352,7 @@ def test_multiple_save_results(tmp_path, process_graph_file, output_file_predica
         output_file=tmp_path / "out",
         metadata_file=tmp_path / "job_metadata.json",
         api_version="2.0.0",
-        job_dir=tmp_path,
+        job_dir=ensure_dir(tmp_path / "job_dir"),
         dependencies=[],
     )
 
@@ -1395,7 +1394,7 @@ def test_results_geometry_from_load_collection_with_crs_not_wgs84(tmp_path):
         output_file=tmp_path / "out",
         metadata_file=tmp_path / "job_metadata.json",
         api_version="2.0.0",
-        job_dir=tmp_path,
+        job_dir=ensure_dir(tmp_path / "job_dir"),
         dependencies=[],
     )
 
@@ -1494,7 +1493,7 @@ def test_load_ml_model_via_jobid(tmp_path):
             output_file=tmp_path / "out.tiff",
             metadata_file=metadata_file,
             api_version="1.0.0",
-            job_dir=tmp_path,
+            job_dir=ensure_dir(tmp_path / "job_dir"),
             dependencies={},
             user_id="jenkins",
         )
@@ -1531,7 +1530,7 @@ def test_load_stac_temporal_extent_in_result_metadata(tmp_path, requests_mock):
         output_file=tmp_path / "out",
         metadata_file=tmp_path / "job_metadata.json",
         api_version="2.0.0",
-        job_dir=tmp_path,
+        job_dir=ensure_dir(tmp_path / "job_dir"),
         dependencies=[],
     )
 
@@ -1611,7 +1610,7 @@ def test_multiple_save_result_single_export_workspace(tmp_path):
             output_file=tmp_path / "out",
             metadata_file=tmp_path / "job_metadata.json",
             api_version="2.0.0",
-            job_dir=tmp_path,
+            job_dir=ensure_dir(tmp_path / "job_dir"),
             dependencies=[],
         )
 
@@ -1672,7 +1671,7 @@ def test_vectorcube_write_assets(tmp_path):
             output_file=tmp_path / "out.geojson",
             metadata_file=metadata_file,
             api_version="1.0.0",
-            job_dir=tmp_path,
+            job_dir=ensure_dir(tmp_path / "job_dir"),
             dependencies={},
             user_id="jenkins",
         )
@@ -1718,7 +1717,7 @@ def test_geotiff_scale_offset(tmp_path):
         output_file=tmp_path / "out.tif",
         metadata_file=tmp_path / "job_metadata.json",
         api_version="2.0.0",
-        job_dir=tmp_path,
+        job_dir=ensure_dir(tmp_path / "job_dir"),
         dependencies=[],
     )
 
