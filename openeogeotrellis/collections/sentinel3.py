@@ -8,8 +8,10 @@ from functools import partial
 from glob import glob
 from typing import Tuple
 
+import geopyspark
 import numpy as np
 import pyspark
+from py4j.java_gateway import JavaObject
 from pyspark import SparkContext, find_spark_home
 from scipy.spatial import cKDTree  # used for tuning the griddata interpolation settings
 import xarray as xr
@@ -32,10 +34,9 @@ def main(product_type, bbox, from_date, to_date, band_names):
     py4j = glob(os.path.join(spark_python, 'lib', 'py4j-*.zip'))[0]
     sys.path[:0] = [spark_python, py4j]
 
-    import geopyspark as gps
     from geopyspark.geotrellis import Extent, LayoutDefinition, TileLayout
 
-    conf = gps.geopyspark_conf(master="local[1]", appName=__file__)
+    conf = geopyspark.geopyspark_conf(master="local[1]", appName=__file__)
     conf.set('spark.kryo.registrator', 'geotrellis.spark.store.kryo.KryoRegistrator')
     conf.set('spark.driver.extraJavaOptions', "-Dlog4j2.debug=false -Dlog4j2.configurationFile=file:/home/bossie/PycharmProjects/openeo/openeo-python-driver/log4j2.xml")
     conf.set("spark.ui.enabled", "true")
@@ -75,7 +76,6 @@ def main(product_type, bbox, from_date, to_date, band_names):
 
 def pyramid(metadata_properties, projected_polygons_native_crs, from_date, to_date, band_names, data_cube_parameters,
             cell_size, feature_flags, jvm):
-    from openeogeotrellis.collections.s1backscatter_orfeo import S1BackscatterOrfeoV2
     import geopyspark as gps
 
     limit_executor_python_memory = feature_flags.get("limit_executor_python_memory", False)
@@ -130,7 +130,7 @@ def pyramid(metadata_properties, projected_polygons_native_crs, from_date, to_da
     pyrdd = gps.create_python_rdd(j2p_rdd, serializer=serializer)
     pyrdd = pyrdd.map(json.loads)
 
-    layer_metadata_py = S1BackscatterOrfeoV2(jvm)._convert_scala_metadata(metadata_sc)
+    layer_metadata_py = _convert_scala_metadata(metadata_sc)
 
     # -----------------------------------
     prefix = ""
@@ -179,7 +179,7 @@ def pyramid(metadata_properties, projected_polygons_native_crs, from_date, to_da
 def _instant_ms_to_hour(instant: int) -> datetime:
     """
     Convert Geotrellis SpaceTimeKey instant (Scala Long, millisecond resolution) to Python datetime object,
-    rounded down to hour resolution (UTC time 00:00:00), a convention used in other places
+    rounded down to hour resolution, a convention used in other places
     of our openEO backend implementation and necessary to follow, for example
     to ensure that timeseries related data joins work properly.
 
@@ -707,6 +707,46 @@ def apply_LUT_on_band(in_data, LUT, nodata=None):
     #grid_values.shape = (grid_values.size // ncols, ncols)  # convert flattend array to 2D
     grid_values[LUT_invalid_index] = nodata
     return grid_values
+
+
+# TODO: reduce code duplication with S1BackscatterOrfeo._convert_scala_metadata
+def _convert_scala_metadata(metadata_sc: JavaObject) -> geopyspark.Metadata:
+    """
+    Convert geotrellis TileLayerMetadata (Java) object to geopyspark Metadata object
+    """
+    logger.info("Convert {m!r} to geopyspark.Metadata".format(m=metadata_sc))
+    crs_py = str(metadata_sc.crs())
+    cell_type_py = str(metadata_sc.cellType())
+
+    def convert_key(key_sc: JavaObject) -> geopyspark.SpaceTimeKey:
+        return geopyspark.SpaceTimeKey(
+            col=key_sc.col(), row=key_sc.row(),
+            instant=_instant_ms_to_hour(key_sc.instant())
+        )
+
+    bounds_sc = metadata_sc.bounds()
+    bounds_py = geopyspark.Bounds(minKey=convert_key(bounds_sc.minKey()), maxKey=convert_key(bounds_sc.maxKey()))
+
+    def convert_extent(extent_sc: JavaObject) -> geopyspark.Extent:
+        return geopyspark.Extent(extent_sc.xmin(), extent_sc.ymin(), extent_sc.xmax(), extent_sc.ymax())
+
+    extent_py = convert_extent(metadata_sc.extent())
+
+    layout_definition_sc = metadata_sc.layout()
+    tile_layout_sc = layout_definition_sc.tileLayout()
+    tile_layout_py = geopyspark.TileLayout(
+        layoutCols=tile_layout_sc.layoutCols(), layoutRows=tile_layout_sc.layoutRows(),
+        tileCols=tile_layout_sc.tileCols(), tileRows=tile_layout_sc.tileRows()
+    )
+    layout_definition_py = geopyspark.LayoutDefinition(
+        extent=convert_extent(layout_definition_sc.extent()),
+        tileLayout=tile_layout_py
+    )
+
+    return geopyspark.Metadata(
+        bounds=bounds_py, crs=crs_py, cell_type=cell_type_py,
+        extent=extent_py, layout_definition=layout_definition_py
+    )
 
 
 if __name__ == '__main__':
