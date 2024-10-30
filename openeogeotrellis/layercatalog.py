@@ -675,10 +675,15 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 max_soft_errors_ratio=max_soft_errors_ratio
             )
         elif layer_source_type == 'file-s3':
+            native_cell_size = jvm.geotrellis.raster.CellSize(
+                float(metadata.get("cube:dimensions", "x", "step")),
+                float(metadata.get("cube:dimensions", "y", "step"))
+            )
+
             pyramid = sentinel3.pyramid(metadata_properties(),
                                         projected_polygons_native_crs, from_date, to_date,
                                         metadata.opensearch_link_titles, datacubeParams,
-                                        jvm.geotrellis.raster.CellSize(cell_width, cell_height), feature_flags, jvm,
+                                        native_cell_size, feature_flags, jvm,
                                         )
         elif layer_source_type == 'stac':
             cube = load_stac(layer_source_info["url"], load_params, env,
