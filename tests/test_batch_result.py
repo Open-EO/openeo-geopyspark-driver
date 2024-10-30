@@ -955,7 +955,7 @@ def test_export_workspace(tmp_path, remove_original):
             output_file=tmp_path / "out.tif",
             metadata_file=tmp_path / "job_metadata.json",
             api_version="2.0.0",
-            job_dir=ensure_dir(tmp_path / "job_dir"),
+            job_dir=tmp_path,
             dependencies=[],
         )
 
@@ -1054,7 +1054,7 @@ def test_export_workspace_with_asset_per_band(tmp_path):
             output_file=tmp_path / "out",
             metadata_file=tmp_path / JOB_METADATA_FILENAME,
             api_version="2.0.0",
-            job_dir=ensure_dir(tmp_path / "job_dir"),
+            job_dir=tmp_path,
             dependencies=[],
         )
 
@@ -1251,7 +1251,7 @@ def test_discard_result(tmp_path):
         output_file=tmp_path / "out.tif",
         metadata_file=tmp_path / "job_metadata.json",
         api_version="2.0.0",
-        job_dir=ensure_dir(tmp_path / "job_dir"),
+        job_dir=tmp_path,
         dependencies=[],
     )
 
@@ -1320,7 +1320,7 @@ def test_multiple_top_level_side_effects(tmp_path, caplog):
         output_file=tmp_path / "out",
         metadata_file=tmp_path / "job_metadata.json",
         api_version="2.0.0",
-        job_dir=ensure_dir(tmp_path / "job_dir"),
+        job_dir=tmp_path,
         dependencies=[],
     )
 
@@ -1352,7 +1352,7 @@ def test_multiple_save_results(tmp_path, process_graph_file, output_file_predica
         output_file=tmp_path / "out",
         metadata_file=tmp_path / "job_metadata.json",
         api_version="2.0.0",
-        job_dir=ensure_dir(tmp_path / "job_dir"),
+        job_dir=tmp_path,
         dependencies=[],
     )
 
@@ -1394,7 +1394,7 @@ def test_results_geometry_from_load_collection_with_crs_not_wgs84(tmp_path):
         output_file=tmp_path / "out",
         metadata_file=tmp_path / "job_metadata.json",
         api_version="2.0.0",
-        job_dir=ensure_dir(tmp_path / "job_dir"),
+        job_dir=tmp_path,
         dependencies=[],
     )
 
@@ -1530,7 +1530,7 @@ def test_load_stac_temporal_extent_in_result_metadata(tmp_path, requests_mock):
         output_file=tmp_path / "out",
         metadata_file=tmp_path / "job_metadata.json",
         api_version="2.0.0",
-        job_dir=ensure_dir(tmp_path / "job_dir"),
+        job_dir=tmp_path,
         dependencies=[],
     )
 
@@ -1610,7 +1610,7 @@ def test_multiple_save_result_single_export_workspace(tmp_path):
             output_file=tmp_path / "out",
             metadata_file=tmp_path / "job_metadata.json",
             api_version="2.0.0",
-            job_dir=ensure_dir(tmp_path / "job_dir"),
+            job_dir=tmp_path,
             dependencies=[],
         )
 
@@ -1717,7 +1717,7 @@ def test_geotiff_scale_offset(tmp_path):
         output_file=tmp_path / "out.tif",
         metadata_file=tmp_path / "job_metadata.json",
         api_version="2.0.0",
-        job_dir=ensure_dir(tmp_path / "job_dir"),
+        job_dir=tmp_path,
         dependencies=[],
     )
 
