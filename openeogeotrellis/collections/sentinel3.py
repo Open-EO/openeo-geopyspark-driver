@@ -8,14 +8,18 @@ from functools import partial
 from glob import glob
 from typing import Tuple
 
+import geopyspark
 import numpy as np
 import pyspark
+import xarray as xr
+from openeo_driver.errors import InternalException, OpenEOApiException
+from openeo_driver.util.geometry import BoundingBox
+from py4j.java_gateway import JavaObject
 from pyspark import SparkContext, find_spark_home
 from scipy.spatial import cKDTree  # used for tuning the griddata interpolation settings
-import xarray as xr
 
-from openeo_driver.errors import OpenEOApiException, InternalException
-from openeogeotrellis.utils import get_jvm, ensure_executor_logging, set_max_memory
+from openeogeotrellis.collections import convert_scala_metadata
+from openeogeotrellis.utils import ensure_executor_logging, get_jvm, set_max_memory
 
 OLCI_PRODUCT_TYPE = "OL_1_EFR___"
 SYNERGY_PRODUCT_TYPE = "SY_2_SYN___"
@@ -26,41 +30,53 @@ RIM_PIXELS = 60
 logger = logging.getLogger(__name__)
 
 
-def main(product_type, lat_lon_bbox, from_date, to_date, band_names):
+def main(product_type, native_resolution, bbox, from_date, to_date, band_names):
     spark_python = os.path.join(find_spark_home._find_spark_home(), 'python')
     py4j = glob(os.path.join(spark_python, 'lib', 'py4j-*.zip'))[0]
     sys.path[:0] = [spark_python, py4j]
 
-    import geopyspark as gps
+    from geopyspark.geotrellis import Extent, LayoutDefinition, TileLayout
 
-    conf = gps.geopyspark_conf(master="local[1]", appName=__file__)
+    conf = geopyspark.geopyspark_conf(master="local[1]", appName=__file__)
     conf.set('spark.kryo.registrator', 'geotrellis.spark.store.kryo.KryoRegistrator')
     conf.set('spark.driver.extraJavaOptions', "-Dlog4j2.debug=false -Dlog4j2.configurationFile=file:/home/bossie/PycharmProjects/openeo/openeo-python-driver/log4j2.xml")
+    conf.set("spark.ui.enabled", "true")
 
     with SparkContext(conf=conf):
         jvm = get_jvm()
 
-        extent = jvm.geotrellis.vector.Extent(*lat_lon_bbox)
-        crs = "EPSG:4326"
-        projected_polygons_native_crs = jvm.org.openeo.geotrellis.ProjectedPolygons.fromExtent(extent, crs)
+        metadata_properties = {"productType": product_type}
+
+        extent = jvm.geotrellis.vector.Extent(bbox.west, bbox.south, bbox.east, bbox.north)
+        epsg_code = bbox.crs
+        projected_polygons_native_crs = jvm.org.openeo.geotrellis.ProjectedPolygons.fromExtent(extent, epsg_code)
 
         data_cube_parameters = jvm.org.openeo.geotrelliscommon.DataCubeParameters()
         getattr(data_cube_parameters, "tileSize_$eq")(256)
         getattr(data_cube_parameters, "layoutScheme_$eq")("FloatingLayoutScheme")
-        data_cube_parameters.setGlobalExtent(*lat_lon_bbox, crs)
-        cell_size = jvm.geotrellis.raster.CellSize(0.008928571428571, 0.008928571428571)
+        data_cube_parameters.setGlobalExtent(extent.xmin(), extent.ymin(), extent.xmax(), extent.ymax(), epsg_code)
+        native_cell_size = jvm.geotrellis.raster.CellSize(native_resolution, native_resolution)
+        feature_flags = {}
 
-        layer = pyramid(product_type, projected_polygons_native_crs, from_date, to_date, band_names,
-                        data_cube_parameters, cell_size, jvm)[0]
+        layer = pyramid(metadata_properties, projected_polygons_native_crs, from_date, to_date, band_names,
+                        data_cube_parameters, native_cell_size, feature_flags, jvm)[0]
+        layer_crs = layer.srdd.rdd().metadata().crs().epsgCode().get()
         layer.to_spatial_layer().save_stitched(f"/tmp/{product_type}_{from_date}_{to_date}.tif",
-                                               crop_bounds=gps.geotrellis.Extent(*lat_lon_bbox))
+                                               crop_bounds=geopyspark.geotrellis.Extent(*bbox.reproject(layer_crs).as_wsen_tuple()))
+
+        target_extent = Extent(*bbox.as_wsen_tuple())
+        target_tileLayout = TileLayout(layoutCols=4, layoutRows=4, tileCols=256, tileRows=256)
+        reprojected_layer = layer.tile_to_layout(LayoutDefinition(target_extent, target_tileLayout), target_crs=epsg_code)
+
+        reprojected_layer_crs = reprojected_layer.srdd.rdd().metadata().crs().epsgCode().get()
+        reprojected_layer.to_spatial_layer().save_stitched(
+            f"/tmp/{product_type}_{from_date}_{to_date}_reprojected.tif",
+            crop_bounds=geopyspark.geotrellis.Extent(*bbox.reproject(reprojected_layer_crs).as_wsen_tuple()),
+        )
 
 
 def pyramid(metadata_properties, projected_polygons_native_crs, from_date, to_date, band_names, data_cube_parameters,
-            cell_size, feature_flags, jvm):
-    from openeogeotrellis.collections.s1backscatter_orfeo import S1BackscatterOrfeoV2
-    import geopyspark as gps
-
+            native_cell_size, feature_flags, jvm):
     limit_executor_python_memory = feature_flags.get("limit_executor_python_memory", False)
 
     opensearch_client = jvm.org.openeo.opensearch.OpenSearchClient.apply(
@@ -71,8 +87,23 @@ def pyramid(metadata_properties, projected_polygons_native_crs, from_date, to_da
     product_type = metadata_properties["productType"]
     correlation_id = ""
 
+    latlng_crs = jvm.geotrellis.proj4.CRS.fromEpsgCode(4326)
+
+    if projected_polygons_native_crs.crs() != latlng_crs:
+        projected_polygons_native_crs = projected_polygons_native_crs.reproject(latlng_crs)
+
+        if data_cube_parameters.globalExtent().isDefined():
+            global_extent_latlng = data_cube_parameters.globalExtent().get().reproject(latlng_crs)
+            data_cube_parameters.setGlobalExtent(
+                global_extent_latlng.xmin(),
+                global_extent_latlng.ymin(),
+                global_extent_latlng.xmax(),
+                global_extent_latlng.ymax(),
+                "EPSG:4326",
+            )
+
     file_rdd_factory = jvm.org.openeo.geotrellis.file.FileRDDFactory(
-        opensearch_client, collection_id, metadata_properties, correlation_id, cell_size
+        opensearch_client, collection_id, metadata_properties, correlation_id, native_cell_size
     )
 
     zoom = 0
@@ -87,10 +118,10 @@ def pyramid(metadata_properties, projected_polygons_native_crs, from_date, to_da
 
     j2p_rdd = jvm.SerDe.javaToPython(jrdd)
     serializer = pyspark.serializers.PickleSerializer()
-    pyrdd = gps.create_python_rdd(j2p_rdd, serializer=serializer)
+    pyrdd = geopyspark.create_python_rdd(j2p_rdd, serializer=serializer)
     pyrdd = pyrdd.map(json.loads)
 
-    layer_metadata_py = S1BackscatterOrfeoV2(jvm)._convert_scala_metadata(metadata_sc)
+    layer_metadata_py = convert_scala_metadata(metadata_sc, epoch_ms_to_datetime=_instant_ms_to_hour, logger=logger)
 
     # -----------------------------------
     prefix = ""
@@ -108,23 +139,28 @@ def pyramid(metadata_properties, projected_polygons_native_crs, from_date, to_da
 
     creo_paths = per_product.keys().collect()
 
-    tile_rdd = (per_product
-                .partitionBy(numPartitions=len(creo_paths), partitionFunc=creo_paths.index)
-                .flatMap(partial(read_product, product_type=product_type, band_names=band_names, tile_size=tile_size,
-                                 limit_python_memory=limit_executor_python_memory)))
+    assert native_cell_size.width() == native_cell_size.height()
+    tile_rdd = per_product.partitionBy(numPartitions=len(creo_paths), partitionFunc=creo_paths.index).flatMap(
+        partial(
+            read_product,
+            product_type=product_type,
+            band_names=band_names,
+            tile_size=tile_size,
+            limit_python_memory=limit_executor_python_memory,
+            resolution=native_cell_size.width(),
+        )
+    )
 
     logger.info("Constructing TiledRasterLayer from numpy rdd, with metadata {m!r}".format(m=layer_metadata_py))
 
-    tile_layer = gps.TiledRasterLayer.from_numpy_rdd(
-        layer_type=gps.LayerType.SPACETIME,
-        numpy_rdd=tile_rdd,
-        metadata=layer_metadata_py
+    tile_layer = geopyspark.TiledRasterLayer.from_numpy_rdd(
+        layer_type=geopyspark.LayerType.SPACETIME, numpy_rdd=tile_rdd, metadata=layer_metadata_py
     )
     # Merge any keys that have more than one tile.
     contextRDD = jvm.org.openeo.geotrellis.OpenEOProcesses().mergeTiles(tile_layer.srdd.rdd())
     temporal_tiled_raster_layer = jvm.geopyspark.geotrellis.TemporalTiledRasterLayer
     srdd = temporal_tiled_raster_layer.apply(jvm.scala.Option.apply(zoom), contextRDD)
-    merged_tile_layer = gps.TiledRasterLayer(gps.LayerType.SPACETIME, srdd)
+    merged_tile_layer = geopyspark.TiledRasterLayer(geopyspark.LayerType.SPACETIME, srdd)
 
     return {zoom: merged_tile_layer}
 
@@ -132,7 +168,7 @@ def pyramid(metadata_properties, projected_polygons_native_crs, from_date, to_da
 def _instant_ms_to_hour(instant: int) -> datetime:
     """
     Convert Geotrellis SpaceTimeKey instant (Scala Long, millisecond resolution) to Python datetime object,
-    rounded down to hour resolution (UTC time 00:00:00), a convention used in other places
+    rounded down to hour resolution, a convention used in other places
     of our openEO backend implementation and necessary to follow, for example
     to ensure that timeseries related data joins work properly.
 
@@ -142,9 +178,8 @@ def _instant_ms_to_hour(instant: int) -> datetime:
 
 
 @ensure_executor_logging
-def read_product(product, product_type, band_names, tile_size, limit_python_memory):
+def read_product(product, product_type, band_names, tile_size, limit_python_memory, resolution):
     from openeogeotrellis.collections.s1backscatter_orfeo import get_total_extent
-    import geopyspark
 
     if limit_python_memory:
         max_total_memory_in_bytes = os.environ.get('PYTHON_MAX_MEMORY')
@@ -206,9 +241,14 @@ def read_product(product, product_type, band_names, tile_size, limit_python_memo
             digital_numbers = product_type == OLCI_PRODUCT_TYPE
 
             try:
-                orfeo_bands = create_s3_toa(product_type, creo_path, band_names,
-                                            [layout_extent['xmin'], layout_extent['ymin'], layout_extent['xmax'],
-                                             layout_extent['ymax']], digital_numbers=digital_numbers)
+                orfeo_bands = create_s3_toa(
+                    product_type,
+                    creo_path,
+                    band_names,
+                    [layout_extent["xmin"], layout_extent["ymin"], layout_extent["xmax"], layout_extent["ymax"]],
+                    digital_numbers=digital_numbers,
+                    final_grid_resolution=resolution,
+                )
                 if orfeo_bands is None:
                     continue
             except Exception as e:
@@ -257,22 +297,19 @@ def read_product(product, product_type, band_names, tile_size, limit_python_memo
     return tiles
 
 
-def create_s3_toa(product_type, creo_path, band_names, bbox_tile, digital_numbers=True):
+def create_s3_toa(product_type, creo_path, band_names, bbox_tile, digital_numbers: bool, final_grid_resolution: float):
     if product_type == OLCI_PRODUCT_TYPE:
         geofile = 'geo_coordinates.nc'
         lat_band = 'latitude'
         lon_band = 'longitude'
-        final_grid_resolution = 1 / 112 / 3
     elif product_type == SYNERGY_PRODUCT_TYPE:
         geofile = 'geolocation.nc'
         lat_band = 'lat'
         lon_band = 'lon'
-        final_grid_resolution = 1 / 112 / 3
     elif product_type == SLSTR_PRODUCT_TYPE:
         geofile = 'geodetic_in.nc'
         lat_band = 'latitude_in'
         lon_band = 'longitude_in'
-        final_grid_resolution = 1 / 112
     else:
         raise ValueError(product_type)
 
@@ -666,9 +703,13 @@ if __name__ == '__main__':
     lat_lon_bbox = [2.535352308127358, 50.57415247573394, 5.713651867060349, 51.718230797191836]
     lat_lon_bbox = [9.944991786580573, 45.99238819027832, 12.146700668591137, 47.27025711819684]
     lat_lon_bbox = [-128.4272367635350349, 49.7476186207236424, -126.9726189291401113, 50.8176823149911527]
-    #lat_lon_bbox = [0.0, 50.0, 5.0, 55.0]
+    # lat_lon_bbox = [0.0, 50.0, 5.0, 55.0]
     from_date = "2018-03-12T00:00:00Z"
     to_date = from_date
     band_names = ["LST_in:LST"]
 
-    main(SLSTR_PRODUCT_TYPE, lat_lon_bbox, from_date, to_date, band_names)
+    product_type = SLSTR_PRODUCT_TYPE
+    native_resolution = 0.008928571428571
+    bbox = BoundingBox.from_wsen_tuple(lat_lon_bbox, crs=4326).reproject(32609)
+
+    main(product_type, native_resolution, bbox, from_date, to_date, band_names)

@@ -42,7 +42,9 @@ def run_udf_code(code: str, data: openeo.udf.UdfData, require_executor_context: 
     context = contextlib.nullcontext()
 
     udf_python_dependencies_archive_path = os.environ.get("UDF_PYTHON_DEPENDENCIES_ARCHIVE_PATH")
-    if get_backend_config().udf_dependencies_install_mode == UDF_DEPENDENCIES_INSTALL_MODE.ZIP:
+    install_mode = get_backend_config().udf_dependencies_install_mode
+    _log.info(f"run_udf with {install_mode=} {udf_python_dependencies_archive_path=}")
+    if install_mode == UDF_DEPENDENCIES_INSTALL_MODE.ZIP:
         if udf_python_dependencies_archive_path and Path(udf_python_dependencies_archive_path).exists():
             context = python_udf_dependency_context_from_archive(archive=udf_python_dependencies_archive_path)
         else:
@@ -150,10 +152,6 @@ def install_python_udf_dependencies(
         if exit_code != 0:
             raise RuntimeError(f"pip install of UDF dependencies failed with {exit_code=}")
 
-        sleep_after_install = get_backend_config().udf_dependencies_sleep_after_install
-        if sleep_after_install:
-            _log.info(f"Sleeping after pip install ({sleep_after_install}s)")
-            time.sleep(sleep_after_install)
 
 
 def build_python_udf_dependencies_archive(
