@@ -508,9 +508,7 @@ def write_metadata(metadata, metadata_file, job_dir: Path):
             s3_instance = s3_client()
 
             logger.info("Writing results to object storage")
-            file_paths = list(job_dir.rglob("*"))
-            file_paths = list(filter(lambda x: x.is_file(), file_paths))
-            for file_path in file_paths:
+            for file_path in filter(lambda x: x.is_file(), job_dir.rglob("*")):
                 if file_path.name == UDF_PYTHON_DEPENDENCIES_FOLDER_NAME:
                     logger.warning(f"Omitting {file_path} as the executors will not be able to access it")
                 else:

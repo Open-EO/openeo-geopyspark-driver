@@ -15,7 +15,7 @@ from openeo.util import ensure_dir
 from openeo_driver.dry_run import DryRunDataTracer
 from openeo_driver.errors import OpenEOApiException
 from openeo_driver.ProcessGraphDeserializer import ENV_DRY_RUN_TRACER, evaluate
-from openeo_driver.testing import DictSubSet, ephemeral_fileserver
+from openeo_driver.testing import DictSubSet, ephemeral_fileserver, ListSubSet
 from openeo_driver.util.geometry import validate_geojson_coordinates
 from openeo_driver.utils import EvalEnv
 from openeo_driver.workspace import DiskWorkspace
@@ -1174,14 +1174,16 @@ def test_filepath_per_band(tmp_path):
     assert "folder1" in job_dir_files
     assert "lat.tif" in job_dir_files
 
-    workspace_files = set(os.listdir(tmp_path))
-    assert workspace_files == {
-        "collection.json",
-        "folder1",
-        "job_metadata.json",
-        "lat.tif",
-        "lat.tif.json",
-    }
+    workspace_files = list(os.listdir(tmp_path))
+    assert workspace_files == ListSubSet(
+        [
+            "collection.json",
+            "folder1",
+            "job_metadata.json",
+            "lat.tif",
+            "lat.tif.json",
+        ]
+    )
 
     stac_collection = pystac.Collection.from_file(str(tmp_path / "collection.json"))
     stac_collection.validate_all()
