@@ -14,6 +14,8 @@ without compromising stable operations.
 
 ## Unreleased
 
+- Fix `load_stac` for collections from stac.terrascope.be ([#862](https://github.com/Open-EO/openeo-geopyspark-driver/issues/862))
+
 ## 0.48.2
 
 - Fix `resample_spatial` of Sentinel-3 data cube ([#920](https://github.com/Open-EO/openeo-geopyspark-driver/issues/920))
