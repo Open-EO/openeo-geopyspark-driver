@@ -1008,6 +1008,8 @@ def test_export_workspace(tmp_path, remove_original):
         with open(metadata_file) as f:
             job_metadata = json.load(f)
 
+        assert job_metadata["assets"]["openEO_2021-01-05Z.tif"]["href"] == str(tmp_path / "openEO_2021-01-05Z.tif")
+
         assert not remove_original or (
             job_metadata["assets"]["openEO_2021-01-05Z.tif"]["public_href"]
             == f"file:{workspace_dir / 'openEO_2021-01-05Z.tif'}"
