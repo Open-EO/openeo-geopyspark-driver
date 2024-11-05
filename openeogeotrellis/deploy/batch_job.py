@@ -14,6 +14,7 @@ from urllib.parse import urlparse
 
 from openeo.util import TimingLogger, dict_no_none, ensure_dir
 from openeo_driver import ProcessGraphDeserializer
+from openeo_driver.backend import BatchJobs
 from openeo_driver.datacube import DriverDataCube, DriverVectorCube
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import DryRunDataTracer
@@ -485,7 +486,7 @@ def run_job(
             _export_workspace(
                 result,
                 result_metadata,
-                result_asset_keys=result_assets_metadata.keys(),
+                result_assets_metadata=result_assets_metadata,
                 stac_metadata_dir=job_dir,
                 remove_original=job_options.get("remove-exported-assets", False),  # TODO: remove feature flag
             )
@@ -522,18 +523,38 @@ def write_metadata(metadata, metadata_file, job_dir: Path):
 def _export_workspace(
     result: SaveResult,
     result_metadata: dict,
-    result_asset_keys: List[str],
+    result_assets_metadata: dict,
     stac_metadata_dir: Path,
     remove_original: bool,
 ):
-    asset_hrefs = [result_metadata.get("assets", {})[asset_key]["href"] for asset_key in result_asset_keys]
-    stac_hrefs = [
-        f"file:{path}"
-        for path in _write_exported_stac_collection(stac_metadata_dir, result_metadata, result_asset_keys)
-    ]
+    # a workspace is not concerned with assets and their keys, only with hrefs, so we maintain a mapping (which is
+    # essentially bidirectional) ourselves
+    original_asset_hrefs = {asset["href"]: asset_key for asset_key, asset in result_assets_metadata.items()}
+
+    assert len(original_asset_hrefs) == len(result_assets_metadata)
+
+    def update_public_href(original_href: str, workspace_href: str):
+        asset_key = original_asset_hrefs[original_href]
+        result_metadata["assets"][asset_key][BatchJobs.ASSET_PUBLIC_HREF] = workspace_href
+
     result.export_workspace(
         workspace_repository=backend_config_workspace_repository,
-        hrefs=asset_hrefs + stac_hrefs,
+        hrefs=list(original_asset_hrefs.keys()),
+        default_merge=OPENEO_BATCH_JOB_ID,
+        remove_original=remove_original,
+        on_exported=update_public_href,
+    )
+
+    stac_hrefs = [
+        f"file:{path}"
+        for path in _write_exported_stac_collection(
+            stac_metadata_dir, result_metadata, list(original_asset_hrefs.values())
+        )
+    ]
+
+    result.export_workspace(
+        workspace_repository=backend_config_workspace_repository,
+        hrefs=stac_hrefs,
         default_merge=OPENEO_BATCH_JOB_ID,
         remove_original=remove_original,
     )

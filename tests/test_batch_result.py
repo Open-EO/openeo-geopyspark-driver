@@ -950,10 +950,12 @@ def test_export_workspace(tmp_path, remove_original):
     workspace_dir = Path(f"{workspace.root_directory}/{merge}")
 
     try:
+        metadata_file = tmp_path / "job_metadata.json"
+
         run_job(
             process,
             output_file=tmp_path / "out.tif",
-            metadata_file=tmp_path / "job_metadata.json",
+            metadata_file=metadata_file,
             api_version="2.0.0",
             job_dir=tmp_path,
             dependencies=[],
@@ -1003,6 +1005,13 @@ def test_export_workspace(tmp_path, remove_original):
             assert dataset.driver == "GTiff"
 
         # TODO: check other things e.g. proj:
+        with open(metadata_file) as f:
+            job_metadata = json.load(f)
+
+        assert (
+            job_metadata["assets"]["openEO_2021-01-05Z.tif"]["public_href"]
+            == f"file:{workspace_dir / 'openEO_2021-01-05Z.tif'}"
+        )
     finally:
         shutil.rmtree(workspace_dir)
 
