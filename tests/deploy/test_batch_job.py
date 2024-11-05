@@ -39,7 +39,7 @@ from openeogeotrellis.integrations.gdal import (
     read_gdal_raster_metadata,
 )
 from openeogeotrellis.testing import gps_config_overrides
-from openeogeotrellis.utils import get_jvm, to_s3_url
+from openeogeotrellis.utils import get_jvm, to_s3_url, s3_client
 
 EXPECTED_GRAPH = [{"expression": {"nop": {"process_id": "discard_result",
                                                "result": True}},
@@ -1299,6 +1299,71 @@ def test_run_job_get_projection_extension_metadata_assets_in_s3_multiple_assets(
             "epsg": None,
         }
     )
+
+
+@mock.patch(
+    "openeogeotrellis.configparams.ConfigParams.is_kube_deploy",
+    new_callable=mock.PropertyMock,
+)
+def test_run_job_to_s3(
+    mock_config_is_kube_deploy,
+    custom_spark_context_restart_delayed,
+    tmp_path,
+    mock_s3_bucket,
+    moto_server,
+    custom_spark_context_restart_instant,
+):
+    mock_config_is_kube_deploy.return_value = True
+    process_graph = {
+        "lc": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "TestCollection-LonLat4x4",
+                "temporal_extent": ["2021-01-01", "2021-01-10"],
+                "spatial_extent": {
+                    "east": 5.08,
+                    "north": 51.22,
+                    "south": 51.215,
+                    "west": 5.07,
+                },
+                "bands": ["Longitude", "Latitude", "Day"],
+            },
+        },
+        "resamplespatial1": {
+            "process_id": "resample_spatial",
+            "arguments": {
+                "align": "upper-left",
+                "data": {"from_node": "lc"},
+                "method": "bilinear",
+                "projection": 4326,
+                "resolution": 0.000297619047619,
+            },
+        },
+        "save": {
+            "process_id": "save_result",
+            "arguments": {"data": {"from_node": "lc"}, "format": "GTiff"},
+            "result": True,
+        },
+    }
+
+    run_job(
+        job_specification={
+            "process_graph": process_graph,
+        },
+        output_file=tmp_path / "out",
+        metadata_file=tmp_path / "metadata.json",
+        api_version="2.0.0",
+        job_dir=tmp_path,
+        dependencies=[],
+        user_id="jenkins",
+    )
+
+    s3_instance = s3_client()
+    from openeogeotrellis.config import get_backend_config
+
+    files = {o["Key"] for o in s3_instance.list_objects(Bucket=get_backend_config().s3_bucket_name)["Contents"]}
+    files = {f[len(str(tmp_path)) :] for f in files}
+    assert files == {"collection.json", "metadata.json", "openEO_2021-01-05Z.tif", "openEO_2021-01-05Z.tif.json"}
 
 
 # TODO: Update this test to include statistics or not? Would need to update the json file.
