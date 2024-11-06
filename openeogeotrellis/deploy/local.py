@@ -22,11 +22,11 @@ def setup_local_spark(additional_jar_dirs=[]):
     # TODO: make this more reusable (e.g. also see `_setup_local_spark` in tests/conftest.py)
     from pyspark import SparkContext, find_spark_home
 
-    spark_python = os.path.join(find_spark_home._find_spark_home(), 'python')
+    spark_python = os.path.join(find_spark_home._find_spark_home(), "python")
     logging.info(f"spark_python: {spark_python}")
-    py4j = glob(os.path.join(spark_python, 'lib', 'py4j-*.zip'))[0]
+    py4j = glob(os.path.join(spark_python, "lib", "py4j-*.zip"))[0]
     sys.path[:0] = [spark_python, py4j]
-    _log.debug('sys.path: {p!r}'.format(p=sys.path))
+    _log.debug("sys.path: {p!r}".format(p=sys.path))
     master_str = "local[2]"
 
     OPENEO_LOCAL_DEBUGGING = smart_bool(os.environ.get("OPENEO_LOCAL_DEBUGGING", "false"))
@@ -82,18 +82,18 @@ def setup_local_spark(additional_jar_dirs=[]):
     conf.set("spark.driver.extraJavaOptions", extra_options)
     # conf.set('spark.executor.extraJavaOptions', extra_options) # Seems not needed
 
-    conf.set(key='spark.driver.memory', value='2G')
-    conf.set(key='spark.executor.memory', value='2G')
+    conf.set(key="spark.driver.memory", value="2G")
+    conf.set(key="spark.executor.memory", value="2G")
 
-    if 'PYSPARK_PYTHON' not in os.environ:
-        os.environ['PYSPARK_PYTHON'] = sys.executable
+    if "PYSPARK_PYTHON" not in os.environ:
+        os.environ["PYSPARK_PYTHON"] = sys.executable
 
-    _log.info('Creating Spark context with config:')
+    _log.info("Creating Spark context with config:")
     for k, v in conf.getAll():
         _log.info("Spark config: {k!r}: {v!r}".format(k=k, v=v))
     pysc = SparkContext.getOrCreate(conf)
     pysc.setLogLevel("INFO")
-    _log.info('Created Spark Context {s}'.format(s=pysc))
+    _log.info("Created Spark Context {s}".format(s=pysc))
     if OPENEO_LOCAL_DEBUGGING:
         _log.info("Spark web UI: http://localhost:{p}/".format(p=pysc.getConf().get("spark.ui.port") or 4040))
 
@@ -101,9 +101,9 @@ def setup_local_spark(additional_jar_dirs=[]):
 
 
 def on_started() -> None:
-    show_log_level(logging.getLogger('gunicorn.error'))
-    show_log_level(logging.getLogger('flask'))
-    show_log_level(logging.getLogger('werkzeug'))
+    show_log_level(logging.getLogger("gunicorn.error"))
+    show_log_level(logging.getLogger("flask"))
+    show_log_level(logging.getLogger("werkzeug"))
 
 
 def setup_environment():
@@ -132,18 +132,20 @@ if __name__ == "__main__":
     if smart_bool(os.environ.get("OPENEO_DRIVER_SIMPLE_LOGGING")):
         root_handlers = None
 
-    setup_logging(get_logging_config(
-        root_handlers=root_handlers,
-        loggers={
-            "openeo": {"level": "DEBUG"},
-            "openeo_driver": {"level": "DEBUG"},
-            'openeogeotrellis': {'level': 'DEBUG'},
-            "flask": {"level": "DEBUG"},
-            "werkzeug": {"level": "DEBUG"},
-            "gunicorn": {"level": "INFO"},
-            'kazoo': {'level': 'WARN'},
-        },
-    ))
+    setup_logging(
+        get_logging_config(
+            root_handlers=root_handlers,
+            loggers={
+                "openeo": {"level": "DEBUG"},
+                "openeo_driver": {"level": "DEBUG"},
+                "openeogeotrellis": {"level": "DEBUG"},
+                "flask": {"level": "DEBUG"},
+                "werkzeug": {"level": "DEBUG"},
+                "gunicorn": {"level": "INFO"},
+                "kazoo": {"level": "WARN"},
+            },
+        )
+    )
 
     setup_environment()
 
@@ -159,9 +161,9 @@ if __name__ == "__main__":
     )
     app = build_app(backend_implementation=backend_implementation)
 
-    show_log_level(logging.getLogger('openeo'))
-    show_log_level(logging.getLogger('openeo_driver'))
-    show_log_level(logging.getLogger('openeogeotrellis'))
+    show_log_level(logging.getLogger("openeo"))
+    show_log_level(logging.getLogger("openeo_driver"))
+    show_log_level(logging.getLogger("openeogeotrellis"))
     show_log_level(app.logger)
 
     host = os.environ.get("OPENEO_DEV_GUNICORN_HOST", "127.0.0.1")
