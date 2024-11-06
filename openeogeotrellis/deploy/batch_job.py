@@ -529,7 +529,7 @@ def _export_to_workspaces(
 ):
     workspace_repository: WorkspaceRepository = backend_config_workspace_repository
     workspace_exports = sorted(
-        list(result.get_workspace_exports()),
+        list(result.workspace_exports),
         key=lambda export: export.workspace_id + (export.merge or ""),  # arbitrary but deterministic order of hrefs
     )
 

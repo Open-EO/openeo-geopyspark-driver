@@ -14,6 +14,9 @@ without compromising stable operations.
 
 ## Unreleased
 
+## 0.49.0
+- Point `href` of job result asset to workspace URI if original was removed ([#883](https://github.com/Open-EO/openeo-geopyspark-driver/issues/883))
+
 ## 0.48.2
 
 - Fix `resample_spatial` of Sentinel-3 data cube ([#920](https://github.com/Open-EO/openeo-geopyspark-driver/issues/920))
@@ -37,7 +40,7 @@ without compromising stable operations.
 
 ## 0.45.0
 
-- Experimental support for removal of originals of assets exported to workspace ([Open-EO/openeo-geopyspark-driver#883](https://github.com/Open-EO/openeo-geopyspark-driver/issues/883))
+- Experimental support for removal of originals of assets exported to workspace ([#883](https://github.com/Open-EO/openeo-geopyspark-driver/issues/883))
 - A rounding bug was fixed in a downstream library that in specific cases leads to a change in the number of pixel rows/columns in the output. We mainly observe this when the input bounding box is not well aligned to the pixel grid of the Copernicus data. [#297](https://github.com/Open-EO/openeo-geopyspark-driver/issues/297)
 - Fixed an issue where jobs asset_per_band sometimes returned empty tiff files.  ([Open-EO/openeo-geotrellis-extensions#329](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/329))
 
