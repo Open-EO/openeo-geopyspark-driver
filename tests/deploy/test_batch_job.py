@@ -3,6 +3,7 @@ import logging
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import textwrap
 import zipfile
@@ -1334,13 +1335,16 @@ def test_run_job_to_s3(
     json_path = tmp_path / "process_graph.json"
     json.dump(process_graph, json_path.open("wt"))
 
-    cmd = ["run_graph_locally.py", json_path]
-    try:
-        # Run in separate subprocess so that all environment variables are
-        # set correctly at the moment the SparkContext is created:
-        output = subprocess.check_output(cmd, stderr=subprocess.STDOUT, universal_newlines=True)
-    except subprocess.CalledProcessError as e:
-        error, output, returncode = e, e.output, e.returncode
+    containing_folder = Path(__file__).parent
+    cmd = [
+        sys.executable,
+        containing_folder.parent.parent / "openeogeotrellis/deploy/run_graph_locally.py",
+        json_path,
+    ]
+    # Run in separate subprocess so that all environment variables are
+    # set correctly at the moment the SparkContext is created:
+    output = subprocess.check_output(cmd, stderr=subprocess.STDOUT, universal_newlines=True)
+
     print(output)
 
     s3_instance = s3_client()
