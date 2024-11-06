@@ -541,6 +541,8 @@ def _export_to_workspaces(
     ]
 
     for asset_key, asset in result_assets_metadata.items():
+        workspace_uris = []
+
         for i, workspace_export in enumerate(workspace_exports):
             workspace: Workspace = workspace_repository.get_by_id(workspace_export.workspace_id)
             merge = workspace_export.merge
@@ -559,12 +561,29 @@ def _export_to_workspaces(
             )
 
             workspace_uri = export_to_workspace(source_uri=asset["href"])
-
-            if remove_original:
-                result_metadata["assets"][asset_key][BatchJobs.ASSET_PUBLIC_HREF] = workspace_uri
+            workspace_uris.append((workspace_export.workspace_id, workspace_export.merge, workspace_uri))
 
             for stac_href in stac_hrefs:
                 export_to_workspace(source_uri=stac_href)
+
+        print(f"{asset_key} workspace URIs: {workspace_uris}")
+
+        if remove_exported_assets:
+            # the last workspace URI becomes the public_href; the rest become "alternate" hrefs
+            result_metadata["assets"][asset_key][BatchJobs.ASSET_PUBLIC_HREF] = workspace_uris[-1][2]
+            alternate = {
+                f"{workspace_id}/{merge}": {"href": workspace_uri}
+                for workspace_id, merge, workspace_uri in workspace_uris[:-1]
+            }
+        else:
+            # the original href still applies; all workspace URIs become "alternate" hrefs
+            alternate = {
+                f"{workspace_id}/{merge}": {"href": workspace_uri}
+                for workspace_id, merge, workspace_uri in workspace_uris
+            }
+
+        print(f"{asset_key} alternate: {alternate}")
+        result_metadata["assets"][asset_key]["alternate"] = alternate
 
 
 def _export_to_workspace(source_uri: str, target: Workspace, merge: str, remove_original: bool) -> str:

@@ -1720,9 +1720,13 @@ def test_export_to_multiple_workspaces(tmp_path):
 
         print(json.dumps(job_metadata, indent=2))
 
-        assert job_metadata["assets"]["openEO_2021-01-05Z.tif"]["href"] == str(tmp_path / "openEO_2021-01-05Z.tif")
-        assert job_metadata["assets"]["openEO_2021-01-05Z.tif"]["public_href"].startswith(
-            f"file:{workspace.root_directory / max(merge1, merge2) }"
+        asset = job_metadata["assets"]["openEO_2021-01-05Z.tif"]
+
+        assert asset["href"] == str(tmp_path / "openEO_2021-01-05Z.tif")
+        assert asset["public_href"] == f"file:{workspace.root_directory / max(merge1, merge2)}/openEO_2021-01-05Z.tif"
+        assert (
+            asset["alternate"][f"{workspace_id}/{min(merge1, merge2)}"]["href"]
+            == f"file:{workspace.root_directory / min(merge1, merge2)}/openEO_2021-01-05Z.tif"
         )
     finally:
         shutil.rmtree(workspace.root_directory / merge1)
