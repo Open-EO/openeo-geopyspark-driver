@@ -566,8 +566,6 @@ def _export_to_workspaces(
             for stac_href in stac_hrefs:
                 export_to_workspace(source_uri=stac_href)
 
-        print(f"{asset_key} workspace URIs: {workspace_uris}")
-
         if remove_exported_assets:
             # the last workspace URI becomes the public_href; the rest become "alternate" hrefs
             result_metadata["assets"][asset_key][BatchJobs.ASSET_PUBLIC_HREF] = workspace_uris[-1][2]
@@ -582,7 +580,6 @@ def _export_to_workspaces(
                 for workspace_id, merge, workspace_uri in workspace_uris
             }
 
-        print(f"{asset_key} alternate: {alternate}")
         result_metadata["assets"][asset_key]["alternate"] = alternate
 
 

@@ -908,7 +908,7 @@ def test_multiple_image_collection_results(tmp_path):
 @pytest.mark.parametrize("remove_original", [False, True])
 def test_export_workspace(tmp_path, remove_original):
     workspace_id = "tmp"
-    merge = f"OpenEO-workspace-{uuid.uuid4()}"
+    merge = _random_merge()
 
     process_graph = {
         "loadcollection1": {
@@ -1020,7 +1020,7 @@ def test_export_workspace(tmp_path, remove_original):
 
 def test_export_workspace_with_asset_per_band(tmp_path):
     workspace_id = "tmp"
-    merge = f"OpenEO-workspace-{uuid.uuid4()}"
+    merge = _random_merge()
 
     process_graph = {
         "loadcollection1": {
@@ -1461,7 +1461,7 @@ def test_load_stac_temporal_extent_in_result_metadata(tmp_path, requests_mock):
 
 def test_multiple_save_result_single_export_workspace(tmp_path):
     workspace_id = "tmp"
-    merge = f"OpenEO-workspace-{uuid.uuid4()}"
+    merge = _random_merge()
 
     process_graph = {
         "loadcollection1": {
@@ -1653,11 +1653,8 @@ def test_geotiff_scale_offset(tmp_path):
 def test_export_to_multiple_workspaces(tmp_path, remove_original):
     workspace_id = "tmp"
 
-    def merge():
-        return f"OpenEO-workspace-{uuid.uuid4()}"  # TODO: move to top-level and call from everywhere
-
-    merge1 = merge()
-    merge2 = merge()
+    merge1 = _random_merge()
+    merge2 = _random_merge()
 
     process_graph = {
         "loadcollection1": {
@@ -1719,8 +1716,6 @@ def test_export_to_multiple_workspaces(tmp_path, remove_original):
         with open(metadata_file) as f:
             job_metadata = json.load(f)
 
-        print(json.dumps(job_metadata, indent=2))
-
         asset = job_metadata["assets"]["openEO_2021-01-05Z.tif"]
 
         assert asset["href"] == str(tmp_path / "openEO_2021-01-05Z.tif")
@@ -1747,3 +1742,7 @@ def test_export_to_multiple_workspaces(tmp_path, remove_original):
     finally:
         shutil.rmtree(workspace.root_directory / merge1)
         shutil.rmtree(workspace.root_directory / merge2)
+
+
+def _random_merge():
+    return f"OpenEO-workspace-{uuid.uuid4()}"
