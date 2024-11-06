@@ -3,19 +3,21 @@ import os
 import sys
 from pathlib import Path
 
+# Force to import from current installation instead of python library:
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+from openeogeotrellis.deploy.local import setup_environment
 from openeo.internal.graph_building import as_flat_graph
 from openeo.util import ensure_dir
 
 
 def run_graph_locally(process_graph, output_dir):
     output_dir = ensure_dir(output_dir)
-    # This might import an external openeogeotrellis library:
-    from openeogeotrellis.deploy.local import setup_environment
-
     setup_environment(output_dir)
     # Can only import after setup_environment:
     from openeogeotrellis.backend import JOB_METADATA_FILENAME
     from openeogeotrellis.deploy.batch_job import run_job
+
     process_graph = as_flat_graph(process_graph)
     if "process_graph" not in process_graph:
         process_graph = {"process_graph": process_graph}
