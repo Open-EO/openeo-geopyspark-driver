@@ -1721,7 +1721,9 @@ def test_export_to_multiple_workspaces(tmp_path):
         print(json.dumps(job_metadata, indent=2))
 
         assert job_metadata["assets"]["openEO_2021-01-05Z.tif"]["href"] == str(tmp_path / "openEO_2021-01-05Z.tif")
-        assert job_metadata["assets"]["openEO_2021-01-05Z.tif"]["public_href"].startswith("file:/tmp/OpenEO-workspace-")  # TODO: can be either one, introduce "alternate"
+        assert job_metadata["assets"]["openEO_2021-01-05Z.tif"]["public_href"].startswith(
+            f"file:{workspace.root_directory / max(merge1, merge2) }"
+        )
     finally:
         shutil.rmtree(workspace.root_directory / merge1)
         shutil.rmtree(workspace.root_directory / merge2)

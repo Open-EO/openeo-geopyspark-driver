@@ -528,7 +528,10 @@ def _export_to_workspaces(
     remove_exported_assets: bool,
 ):
     workspace_repository: WorkspaceRepository = backend_config_workspace_repository
-    workspace_exports = list(result.get_workspace_exports())
+    workspace_exports = sorted(
+        list(result.get_workspace_exports()),
+        key=lambda export: export.workspace_id + (export.merge or ""),  # arbitrary but deterministic order of hrefs
+    )
 
     stac_hrefs = [
         f"file:{path}"
