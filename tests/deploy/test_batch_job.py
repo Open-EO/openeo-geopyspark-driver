@@ -43,6 +43,8 @@ from openeogeotrellis.integrations.gdal import (
 from openeogeotrellis.testing import gps_config_overrides
 from openeogeotrellis.utils import get_jvm, to_s3_url, s3_client
 
+_log = logging.getLogger(__name__)
+
 EXPECTED_GRAPH = [{"expression": {"nop": {"process_id": "discard_result",
                                                "result": True}},
                         "format": "openeo"}]
@@ -1346,7 +1348,7 @@ def test_run_job_to_s3(
     try:
         output = subprocess.check_output(cmd, stderr=subprocess.STDOUT, universal_newlines=True)
     except subprocess.CalledProcessError as e:
-        logging.error(e.output)
+        _log.error("run_graph_locally failed. Output: " + e.output)
         raise
 
     print(output)
