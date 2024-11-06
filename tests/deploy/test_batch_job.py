@@ -328,7 +328,7 @@ def test_extract_result_metadata_aggregate_spatial_delayed_vector_when_bbox_crs_
 
 
 @mock.patch('openeo_driver.ProcessGraphDeserializer.evaluate')
-def test_run_job(evaluate, tmp_path):
+def test_run_job(evaluate, tmp_path, fast_sleep):
     cube_mock = MagicMock()
     asset_meta = {"openEO01-01.tif": {"href": "tmp/openEO01-01.tif", "roles": "data"},"openEO01-05.tif": {"href": "tmp/openEO01-05.tif", "roles": "data"}}
     cube_mock.write_assets.return_value = asset_meta
@@ -1305,7 +1305,7 @@ def test_run_job_get_projection_extension_metadata_assets_in_s3_multiple_assets(
     )
 
 
-@pytest.skip("Can only run manually")  # TODO: Fix so it can run in Jenkins too
+@pytest.mark.skip("Can only run manually")  # TODO: Fix so it can run in Jenkins too
 def test_run_job_to_s3(
     tmp_path,
     mock_s3_bucket,
