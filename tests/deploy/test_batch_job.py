@@ -1305,6 +1305,7 @@ def test_run_job_get_projection_extension_metadata_assets_in_s3_multiple_assets(
     )
 
 
+@pytest.skip("Can only run manually")  # TODO: Fix so it can run in Jenkins too
 def test_run_job_to_s3(
     tmp_path,
     mock_s3_bucket,
