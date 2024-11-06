@@ -14,7 +14,7 @@ class ObjectStorageWorkspace(Workspace):
     def __init__(self, bucket: str):
         self.bucket = bucket
 
-    def import_file(self, file: Path, merge: str, remove_original: bool = False):
+    def import_file(self, file: Path, merge: str, remove_original: bool = False) -> str:
         merge = os.path.normpath(merge)
         subdirectory = merge[1:] if merge.startswith("/") else merge
 
@@ -24,9 +24,12 @@ class ObjectStorageWorkspace(Workspace):
         if remove_original:
             file.unlink()
 
-        _log.debug(f"{'moved' if remove_original else 'uploaded'} {file.absolute()} to s3://{self.bucket}/{key}")
+        workspace_uri = f"s3://{self.bucket}/{key}"
 
-    def import_object(self, s3_uri: str, merge: str, remove_original: bool = False):
+        _log.debug(f"{'moved' if remove_original else 'uploaded'} {file.absolute()} to {workspace_uri}")
+        return workspace_uri
+
+    def import_object(self, s3_uri: str, merge: str, remove_original: bool = False) -> str:
         uri_parts = urlparse(s3_uri)
 
         if not uri_parts.scheme or uri_parts.scheme.lower() != "s3":
@@ -43,7 +46,7 @@ class ObjectStorageWorkspace(Workspace):
         if remove_original:
             s3.delete_object(Bucket=source_bucket, Key=source_key)
 
-        _log.debug(
-            f"{'moved' if remove_original else 'copied'} "
-            f"s3://{source_bucket}/{source_key} to s3://{self.bucket}/{target_key}"
-        )
+        workspace_uri = f"s3://{self.bucket}/{target_key}"
+
+        _log.debug(f"{'moved' if remove_original else 'copied'} s3://{source_bucket}/{source_key} to {workspace_uri}")
+        return workspace_uri

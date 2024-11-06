@@ -15,8 +15,9 @@ def test_import_file(tmp_path, mock_s3_client, mock_s3_bucket, remove_original):
     merge = "some/target"
 
     workspace = ObjectStorageWorkspace(bucket="openeo-fake-bucketname")
-    workspace.import_file(source_file, merge=merge, remove_original=remove_original)
+    workspace_uri = workspace.import_file(source_file, merge=merge, remove_original=remove_original)
 
+    assert workspace_uri == f"s3://{workspace.bucket}/{merge}/{source_file.name}"
     assert _workspace_keys(mock_s3_client, workspace.bucket, prefix=merge) == {f"{merge}/{source_file.name}"}
     assert source_file.exists() != remove_original
 
@@ -39,14 +40,17 @@ def test_import_object(tmp_path, mock_s3_client, mock_s3_bucket, remove_original
     assert _workspace_keys(mock_s3_client, source_bucket, prefix=source_key) == {source_key}
 
     workspace = ObjectStorageWorkspace(bucket=target_bucket)
-    workspace.import_object(f"s3://{source_bucket}/{source_key}", merge=merge, remove_original=remove_original)
+    workspace_uri = workspace.import_object(
+        f"s3://{source_bucket}/{source_key}", merge=merge, remove_original=remove_original
+    )
 
+    assert workspace_uri == f"s3://{target_bucket}/some/target/object"
     assert _workspace_keys(mock_s3_client, workspace.bucket, prefix=merge) == {"some/target/object"}
 
     if remove_original:
         assert _workspace_keys(mock_s3_client, source_bucket) == {"some/target/object"}
     else:
-        assert _workspace_keys(mock_s3_client, source_bucket) == {"some/source/object", "some/target/object"}
+        assert _workspace_keys(mock_s3_client, source_bucket) == {source_key, "some/target/object"}
 
 
 def _workspace_keys(s3_client, bucket, prefix=None) -> Set[str]:
