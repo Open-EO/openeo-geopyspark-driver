@@ -1647,3 +1647,81 @@ def test_geotiff_scale_offset(tmp_path):
     assert band.GetOffset() == 4.56
     band_metadata = band.GetMetadata()
     assert band_metadata["ARBITRARY"] == "value"
+
+
+def test_export_to_multiple_workspaces(tmp_path):
+    workspace_id = "tmp"
+
+    def merge():
+        return f"OpenEO-workspace-{uuid.uuid4()}"  # TODO: move to top-level and call from everywhere
+
+    merge1 = merge()
+    merge2 = merge()
+
+    process_graph = {
+        "loadcollection1": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "TestCollection-LonLat16x16",
+                "temporal_extent": ["2021-01-05", "2021-01-06"],
+                "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 2.0},
+                "bands": ["Flat:2"],
+            },
+        },
+        "saveresult1": {
+            "process_id": "save_result",
+            "arguments": {
+                "data": {"from_node": "loadcollection1"},
+                "format": "GTiff"
+            },
+        },
+        "exportworkspace1": {
+            "process_id": "export_workspace",
+            "arguments": {
+                "data": {"from_node": "saveresult1"},
+                "workspace": "tmp",
+                "merge": merge1,
+            },
+        },
+        "exportworkspace2": {
+            "process_id": "export_workspace",
+            "arguments": {
+                "data": {"from_node": "exportworkspace1"},
+                "workspace": "tmp",
+                "merge": merge2,
+            },
+            "result": True,
+        }
+    }
+
+    process = {
+        "process_graph": process_graph,
+        "job_options": {
+            "remove-exported-assets": True  # TODO: support alternate hrefs if not remove-exported-assets
+        },
+    }
+
+    workspace: DiskWorkspace = get_backend_config().workspaces[workspace_id]
+
+    try:
+        metadata_file = tmp_path / "job_metadata.json"
+
+        run_job(
+            process,
+            output_file=tmp_path / "out.tif",
+            metadata_file=metadata_file,
+            api_version="2.0.0",
+            job_dir=tmp_path,
+            dependencies=[],
+        )
+
+        with open(metadata_file) as f:
+            job_metadata = json.load(f)
+
+        print(json.dumps(job_metadata, indent=2))
+
+        assert job_metadata["assets"]["openEO_2021-01-05Z.tif"]["href"] == str(tmp_path / "openEO_2021-01-05Z.tif")
+        assert job_metadata["assets"]["openEO_2021-01-05Z.tif"]["public_href"].startswith("file:/tmp/OpenEO-workspace-")  # TODO: can be either one, introduce "alternate"
+    finally:
+        shutil.rmtree(workspace.root_directory / merge1)
+        shutil.rmtree(workspace.root_directory / merge2)

@@ -537,31 +537,31 @@ def _export_to_workspaces(
         )
     ]
 
-    for i, workspace_export in enumerate(workspace_exports):
-        workspace: Workspace = workspace_repository.get_by_id(workspace_export.workspace_id)
-        merge = workspace_export.merge
+    for asset_key, asset in result_assets_metadata.items():
+        for i, workspace_export in enumerate(workspace_exports):
+            workspace: Workspace = workspace_repository.get_by_id(workspace_export.workspace_id)
+            merge = workspace_export.merge
 
-        if merge is None:
-            merge = OPENEO_BATCH_JOB_ID
-        elif merge == "":
-            merge = "."
+            if merge is None:
+                merge = OPENEO_BATCH_JOB_ID
+            elif merge == "":
+                merge = "."
 
-        # original asset can only be removed after visiting all workspaces
-        final_export = i >= len(workspace_exports) - 1
-        remove_original = remove_exported_assets and final_export
+            # original asset can only be removed after visiting all workspaces
+            final_export = i >= len(workspace_exports) - 1
+            remove_original = remove_exported_assets and final_export
 
-        export_to_workspace = partial(
-            _export_to_workspace, target=workspace, merge=merge, remove_original=remove_original
-        )
+            export_to_workspace = partial(
+                _export_to_workspace, target=workspace, merge=merge, remove_original=remove_original
+            )
 
-        for asset_key, asset in result_assets_metadata.items():
             workspace_uri = export_to_workspace(source_uri=asset["href"])
 
             if remove_original:
                 result_metadata["assets"][asset_key][BatchJobs.ASSET_PUBLIC_HREF] = workspace_uri
 
-        for stac_href in stac_hrefs:
-            export_to_workspace(source_uri=stac_href)
+            for stac_href in stac_hrefs:
+                export_to_workspace(source_uri=stac_href)
 
 
 def _export_to_workspace(source_uri: str, target: Workspace, merge: str, remove_original: bool) -> str:
