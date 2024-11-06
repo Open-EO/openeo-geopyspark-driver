@@ -25,7 +25,7 @@ def is_port_free(port: int) -> bool:
         return s.connect_ex(("localhost", port)) != 0
 
 
-def setup_local_spark(verbosity=0):
+def setup_local_spark(log_dir: Path = Path.cwd(), verbosity=0):
     # TODO: make this more reusable (e.g. also see `_setup_local_spark` in tests/conftest.py)
     from pyspark import SparkContext, find_spark_home
 
@@ -91,22 +91,14 @@ def setup_local_spark(verbosity=0):
         sparkSubmitLog4jConfigurationFile = path
     else:
         sparkSubmitLog4jConfigurationFile = Path(__file__).parent.parent.parent / "scripts/batch_job_log4j2.xml"
-
-    with open(sparkSubmitLog4jConfigurationFile, "r") as read_file:
-        content = read_file.read()
-        sparkSubmitLog4jConfigurationFile = "/tmp/sparkSubmitLog4jConfigurationFile.xml"
-        with open(sparkSubmitLog4jConfigurationFile, "w") as write_file:
-            # There could be a more elegant way to fill in this variable during testing:
-            write_file.write(
-                content.replace("${sys:spark.yarn.app.container.log.dir}/", "").replace(
-                    "${sys:openeo.logging.threshold}", "DEBUG"
-                )
-            )
+    logging_threshold = "INFO"
     # got some options from 'sparkDriverJavaOptions'
-    sparkDriverJavaOptions = f"-Dlog4j2.configurationFile=file:{sparkSubmitLog4jConfigurationFile}\
+    sparkDriverJavaOptions = f"-Dlog4j2.configurationFile=file:{sparkSubmitLog4jConfigurationFile} \
+        -Dspark.yarn.app.container.log.dir={log_dir} \
+        -Dopeneo.logging.threshold={logging_threshold} \
         -Dscala.concurrent.context.numThreads=6 \
         -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService\
-        -Dtsservice.layersConfigClass=ProdLayersConfiguration -Dtsservice.sparktasktimeout=600"
+        -Dtsservice.layersConfigClass=ProdLayersConfiguration -Dtsservice.sparktasktimeout=600 "
     sparkDriverJavaOptions += " -Dgeotrellis.jts.precision.type=fixed -Dgeotrellis.jts.simplification.scale=1e10"
     if OPENEO_LOCAL_DEBUGGING:
         for port in [5005, 5009]:
@@ -118,13 +110,14 @@ def setup_local_spark(verbosity=0):
     conf.set("spark.driver.extraJavaOptions", sparkDriverJavaOptions)
 
     sparkExecutorJavaOptions = f"-Dlog4j2.configurationFile=file:{sparkSubmitLog4jConfigurationFile}\
-         -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService\
-         -Dscala.concurrent.context.numThreads=8"
+        -Dopeneo.logging.threshold={logging_threshold} \
+        -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService\
+        -Dscala.concurrent.context.numThreads=8"
     conf.set("spark.executor.extraJavaOptions", sparkExecutorJavaOptions)
 
     _log.info("[conftest.py] SparkContext.getOrCreate with {c!r}".format(c=conf.getAll()))
     context = SparkContext.getOrCreate(conf)
-    context.setLogLevel("INFO")
+    context.setLogLevel(logging_threshold)
     _log.info(
         "[conftest.py] JVM info: {d!r}".format(
             d={
@@ -159,7 +152,7 @@ def on_started() -> None:
     show_log_level(logging.getLogger("werkzeug"))
 
 
-def setup_environment():
+def setup_environment(log_dir: Path = Path.cwd()):
     repository_root = Path(__file__).parent.parent.parent
     if os.path.exists(repository_root / "jars"):
         previous = (":" + os.environ["GEOPYSPARK_JARS_PATH"]) if "GEOPYSPARK_JARS_PATH" in os.environ else ""
@@ -172,7 +165,7 @@ def setup_environment():
 
     _log.info(repr({"pid": os.getpid(), "interpreter": sys.executable, "version": sys.version, "argv": sys.argv}))
 
-    setup_local_spark()
+    setup_local_spark(log_dir=log_dir)
 
     os.environ.setdefault(
         openeo_driver.config.load.ConfigGetter.OPENEO_BACKEND_CONFIG,

@@ -10,11 +10,11 @@ import openeogeotrellis.deploy.local
 
 
 def run_graph_locally(process_graph, output_dir):
-    openeogeotrellis.deploy.local.setup_environment()
+    output_dir = ensure_dir(output_dir)
+    openeogeotrellis.deploy.local.setup_environment(output_dir)
     # Can only import after setup_environment:
     from openeogeotrellis.backend import JOB_METADATA_FILENAME
     from openeogeotrellis.deploy.batch_job import run_job
-    output_dir = Path(output_dir)
     process_graph = as_flat_graph(process_graph)
     if "process_graph" not in process_graph:
         process_graph = {"process_graph": process_graph}
@@ -23,9 +23,9 @@ def run_graph_locally(process_graph, output_dir):
         output_file=output_dir / "random_folder_name",
         metadata_file=output_dir / JOB_METADATA_FILENAME,
         api_version="2.0.0",
-        job_dir=ensure_dir(output_dir),
+        job_dir=output_dir,
         dependencies=[],
-        user_id="jenkins",
+        user_id="run_graph_locally",
     )
     # Set the permissions so any user can read and delete the files:
     # For when running inside a docker container.
