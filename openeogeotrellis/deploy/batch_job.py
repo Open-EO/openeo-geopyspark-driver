@@ -580,7 +580,8 @@ def _export_to_workspaces(
                 for workspace_id, merge, workspace_uri in workspace_uris
             }
 
-        result_metadata["assets"][asset_key]["alternate"] = alternate
+        if alternate:
+            result_metadata["assets"][asset_key]["alternate"] = alternate
 
 
 def _export_to_workspace(source_uri: str, target: Workspace, merge: str, remove_original: bool) -> str:
