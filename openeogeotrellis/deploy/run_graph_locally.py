@@ -6,12 +6,13 @@ from pathlib import Path
 from openeo.internal.graph_building import as_flat_graph
 from openeo.util import ensure_dir
 
-import openeogeotrellis.deploy.local
-
 
 def run_graph_locally(process_graph, output_dir):
     output_dir = ensure_dir(output_dir)
-    openeogeotrellis.deploy.local.setup_environment(output_dir)
+    # This might import an external openeogeotrellis library:
+    from openeogeotrellis.deploy.local import setup_environment
+
+    setup_environment(output_dir)
     # Can only import after setup_environment:
     from openeogeotrellis.backend import JOB_METADATA_FILENAME
     from openeogeotrellis.deploy.batch_job import run_job
@@ -53,10 +54,16 @@ def main():
         sys.exit(1)
     process_graph_path = Path(sys.argv[1])
     if len(sys.argv) > 2:
-        workdir = Path(sys.argv[2])
+        output_dir = Path(sys.argv[2])
     else:
-        workdir = process_graph_path.parent
-    run_graph_locally(process_graph_path, workdir)
+        output_dir = process_graph_path.parent
+
+    if not "GEOPYSPARK_JARS_PATH" in os.environ:
+        repository_root = Path(__file__).parent.parent.parent
+        if os.path.exists(repository_root / "jars"):
+            previous = (":" + os.environ["GEOPYSPARK_JARS_PATH"]) if "GEOPYSPARK_JARS_PATH" in os.environ else ""
+            os.environ["GEOPYSPARK_JARS_PATH"] = str(repository_root / "jars") + previous
+    run_graph_locally(process_graph_path, output_dir)
 
 
 if __name__ == "__main__":

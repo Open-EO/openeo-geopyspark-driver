@@ -42,16 +42,10 @@ def setup_local_spark(log_dir: Path = Path.cwd(), verbosity=0):
     from geopyspark import geopyspark_conf
     from pyspark import SparkContext
 
-    # Make sure geopyspark can find the custom jars (e.g. geotrellis-extension)
-    # even if test suite is not run from project root (e.g. "run this test" functionality in an IDE like PyCharm)
-    additional_jar_dirs = [
-        Path(__file__).parent.parent.parent / "jars",
-    ]
-
     conf = geopyspark_conf(
         master=master_str,
         appName="openeo-geopyspark-driver",
-        additional_jar_dirs=additional_jar_dirs,
+        additional_jar_dirs=[],  # passed with GEOPYSPARK_JARS_PATH
     )
 
     spark_jars = conf.get("spark.jars").split(",")
@@ -78,7 +72,7 @@ def setup_local_spark(log_dir: Path = Path.cwd(), verbosity=0):
 
     jars = []
     more_jars = [] if "GEOPYSPARK_JARS_PATH" not in os.environ else os.environ["GEOPYSPARK_JARS_PATH"].split(":")
-    for jar_dir in additional_jar_dirs + more_jars:
+    for jar_dir in more_jars:
         for jar_path in Path(jar_dir).iterdir():
             if jar_path.match("openeo-logging-*.jar"):
                 jars.append(str(jar_path))
