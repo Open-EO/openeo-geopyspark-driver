@@ -212,48 +212,6 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
     return context
 
 
-# noinspection PyProtectedMember
-def restart_spark_context():
-    from pyspark import SparkContext
-
-    with SparkContext._lock:
-        # Need to shut down before creating a new SparkConf (Before SparkContext is not enough)
-        # Like this, the new environment variables are available inside the JVM
-        if SparkContext._active_spark_context:
-            SparkContext._active_spark_context.stop()
-            SparkContext._gateway.shutdown()
-            SparkContext._gateway = None
-            SparkContext._jvm = None
-
-    class TerminalReporterMock:
-        @staticmethod
-        def write_line(message):
-            print(message)
-
-    # noinspection PyTypeChecker
-    _setup_local_spark(TerminalReporterMock(), 0)
-
-
-@pytest.fixture
-def custom_spark_context_restart_instant():
-    """
-    Add this fixture at the end of your argument list.
-    The restarted JVM will pick up your environment variables
-    https://docs.pytest.org/en/6.2.x/fixture.html#yield-fixtures-recommended
-    """
-    restart_spark_context()
-
-
-@pytest.fixture
-def custom_spark_context_restart_delayed():
-    """
-    Add this fixture at the beginning of your argument list.
-    The JVM will be restarted when all mocking is cleaned up.
-    """
-    yield "Spark context is globally accesible now"
-    restart_spark_context()
-
-
 @pytest.fixture(params=["1.0.0"])
 def api_version(request):
     return request.param

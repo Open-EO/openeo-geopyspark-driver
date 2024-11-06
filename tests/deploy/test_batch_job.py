@@ -2,6 +2,7 @@ import json
 import logging
 import re
 import shutil
+import subprocess
 import tempfile
 import textwrap
 import zipfile
@@ -13,7 +14,7 @@ from mock import MagicMock
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import DryRunDataTracer
 from openeo_driver.save_result import ImageCollectionResult
-from openeo_driver.testing import DictSubSet
+from openeo_driver.testing import DictSubSet, ListSubSet
 from openeo_driver.utils import read_json
 from osgeo import gdal
 from pytest import approx
@@ -1301,42 +1302,27 @@ def test_run_job_get_projection_extension_metadata_assets_in_s3_multiple_assets(
     )
 
 
-@mock.patch(
-    "openeogeotrellis.configparams.ConfigParams.is_kube_deploy",
-    new_callable=mock.PropertyMock,
-)
 def test_run_job_to_s3(
-    mock_config_is_kube_deploy,
-    custom_spark_context_restart_delayed,
     tmp_path,
     mock_s3_bucket,
     moto_server,
-    custom_spark_context_restart_instant,
+    monkeypatch,
 ):
-    mock_config_is_kube_deploy.return_value = True
+    monkeypatch.setenv("KUBE", "TRUE")
+    spatial_extent_tap = {
+        "east": 5.08,
+        "north": 51.22,
+        "south": 51.215,
+        "west": 5.07,
+    }
     process_graph = {
         "lc": {
             "process_id": "load_collection",
             "arguments": {
-                "id": "TestCollection-LonLat4x4",
+                "id": "TestCollection-LonLat16x16",
                 "temporal_extent": ["2021-01-01", "2021-01-10"],
-                "spatial_extent": {
-                    "east": 5.08,
-                    "north": 51.22,
-                    "south": 51.215,
-                    "west": 5.07,
-                },
+                "spatial_extent": spatial_extent_tap,
                 "bands": ["Longitude", "Latitude", "Day"],
-            },
-        },
-        "resamplespatial1": {
-            "process_id": "resample_spatial",
-            "arguments": {
-                "align": "upper-left",
-                "data": {"from_node": "lc"},
-                "method": "bilinear",
-                "projection": 4326,
-                "resolution": 0.000297619047619,
             },
         },
         "save": {
@@ -1345,25 +1331,24 @@ def test_run_job_to_s3(
             "result": True,
         },
     }
+    json_path = tmp_path / "process_graph.json"
+    json.dump(process_graph, json_path.open("wt"))
 
-    run_job(
-        job_specification={
-            "process_graph": process_graph,
-        },
-        output_file=tmp_path / "out",
-        metadata_file=tmp_path / "metadata.json",
-        api_version="2.0.0",
-        job_dir=tmp_path,
-        dependencies=[],
-        user_id="jenkins",
-    )
+    cmd = ["run_graph_locally.py", json_path]
+    try:
+        # Run in separate subprocess so that all environment variables are
+        # set correctly at the moment the SparkContext is created:
+        output = subprocess.check_output(cmd, stderr=subprocess.STDOUT, universal_newlines=True)
+    except subprocess.CalledProcessError as e:
+        error, output, returncode = e, e.output, e.returncode
+    print(output)
 
     s3_instance = s3_client()
     from openeogeotrellis.config import get_backend_config
 
     files = {o["Key"] for o in s3_instance.list_objects(Bucket=get_backend_config().s3_bucket_name)["Contents"]}
-    files = {f[len(str(tmp_path)) :] for f in files}
-    assert files == {"collection.json", "metadata.json", "openEO_2021-01-05Z.tif", "openEO_2021-01-05Z.tif.json"}
+    files = [f[len(str(tmp_path)) :] for f in files]
+    assert files == ListSubSet(["collection.json", "openEO_2021-01-05Z.tif", "openEO_2021-01-05Z.tif.json"])
 
 
 # TODO: Update this test to include statistics or not? Would need to update the json file.

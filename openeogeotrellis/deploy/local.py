@@ -18,7 +18,14 @@ from openeogeotrellis.config import get_backend_config
 _log = logging.getLogger(__name__)
 
 
-def setup_local_spark(additional_jar_dirs=[]):
+def is_port_free(port: int) -> bool:
+    import socket
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        return s.connect_ex(("localhost", port)) != 0
+
+
+def setup_local_spark(verbosity=0):
     # TODO: make this more reusable (e.g. also see `_setup_local_spark` in tests/conftest.py)
     from pyspark import SparkContext, find_spark_home
 
@@ -29,12 +36,22 @@ def setup_local_spark(additional_jar_dirs=[]):
     _log.debug("sys.path: {p!r}".format(p=sys.path))
     master_str = "local[2]"
 
-    OPENEO_LOCAL_DEBUGGING = smart_bool(os.environ.get("OPENEO_LOCAL_DEBUGGING", "false"))
+    if "PYSPARK_PYTHON" not in os.environ:
+        os.environ["PYSPARK_PYTHON"] = sys.executable
 
     from geopyspark import geopyspark_conf
+    from pyspark import SparkContext
+
+    # Make sure geopyspark can find the custom jars (e.g. geotrellis-extension)
+    # even if test suite is not run from project root (e.g. "run this test" functionality in an IDE like PyCharm)
+    additional_jar_dirs = [
+        Path(__file__).parent.parent.parent / "jars",
+    ]
 
     conf = geopyspark_conf(
-        master=master_str, appName="openeo-geotrellis-local", additional_jar_dirs=additional_jar_dirs
+        master=master_str,
+        appName="openeo-geopyspark-driver",
+        additional_jar_dirs=additional_jar_dirs,
     )
 
     spark_jars = conf.get("spark.jars").split(",")
@@ -42,8 +59,21 @@ def setup_local_spark(additional_jar_dirs=[]):
     spark_jars.sort(key=lambda x: "geotrellis-extensions" not in x)
     conf.set(key="spark.jars", value=",".join(spark_jars))
 
+    # Use UTC timezone by default when formatting/parsing dates (e.g. CSV export of timeseries)
+    conf.set("spark.sql.session.timeZone", "UTC")
+
     conf.set("spark.kryoserializer.buffer.max", value="1G")
-    conf.set(key="spark.kryo.registrator", value="geotrellis.spark.store.kryo.KryoRegistrator")
+    conf.set("spark.kryo.registrator", "geotrellis.spark.store.kryo.KryoRegistrator")
+    conf.set(
+        key="spark.kryo.classesToRegister",
+        value="ar.com.hjg.pngj.ImageInfo,ar.com.hjg.pngj.ImageLineInt,geotrellis.raster.RasterRegion$GridBoundsRasterRegion",
+    )
+    # Only show spark progress bars for high verbosity levels
+    conf.set("spark.ui.showConsoleProgress", verbosity >= 3)
+
+    conf.set(key="spark.driver.memory", value="2G")
+    conf.set(key="spark.executor.memory", value="2G")
+    OPENEO_LOCAL_DEBUGGING = smart_bool(os.environ.get("OPENEO_LOCAL_DEBUGGING", "false"))
     conf.set("spark.ui.enabled", OPENEO_LOCAL_DEBUGGING)
 
     jars = []
@@ -72,32 +102,55 @@ def setup_local_spark(additional_jar_dirs=[]):
                     "${sys:openeo.logging.threshold}", "DEBUG"
                 )
             )
-
-    # 'agentlib' to allow attaching a Java debugger to running Spark driver
-    extra_options = f"-Dlog4j2.configurationFile=file:{sparkSubmitLog4jConfigurationFile}"
-    extra_options += " -Dgeotrellis.jts.precision.type=fixed -Dgeotrellis.jts.simplification.scale=1e10"
-    # Some options to allow attaching a Java debugger to running Spark driver
+    # got some options from 'sparkDriverJavaOptions'
+    sparkDriverJavaOptions = f"-Dlog4j2.configurationFile=file:{sparkSubmitLog4jConfigurationFile}\
+        -Dscala.concurrent.context.numThreads=6 \
+        -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService\
+        -Dtsservice.layersConfigClass=ProdLayersConfiguration -Dtsservice.sparktasktimeout=600"
+    sparkDriverJavaOptions += " -Dgeotrellis.jts.precision.type=fixed -Dgeotrellis.jts.simplification.scale=1e10"
     if OPENEO_LOCAL_DEBUGGING:
-        extra_options += f" -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5009"
-    conf.set("spark.driver.extraJavaOptions", extra_options)
-    # conf.set('spark.executor.extraJavaOptions', extra_options) # Seems not needed
+        for port in [5005, 5009]:
+            if is_port_free(port):
+                # 'agentlib' to allow attaching a Java debugger to running Spark driver
+                # IntelliJ IDEA: Run -> Edit Configurations -> Remote JVM Debug uses 5005 by default
+                sparkDriverJavaOptions += f" -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:{port}"
+                break
+    conf.set("spark.driver.extraJavaOptions", sparkDriverJavaOptions)
 
-    conf.set(key="spark.driver.memory", value="2G")
-    conf.set(key="spark.executor.memory", value="2G")
+    sparkExecutorJavaOptions = f"-Dlog4j2.configurationFile=file:{sparkSubmitLog4jConfigurationFile}\
+         -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService\
+         -Dscala.concurrent.context.numThreads=8"
+    conf.set("spark.executor.extraJavaOptions", sparkExecutorJavaOptions)
 
-    if "PYSPARK_PYTHON" not in os.environ:
-        os.environ["PYSPARK_PYTHON"] = sys.executable
+    _log.info("[conftest.py] SparkContext.getOrCreate with {c!r}".format(c=conf.getAll()))
+    context = SparkContext.getOrCreate(conf)
+    context.setLogLevel("INFO")
+    _log.info(
+        "[conftest.py] JVM info: {d!r}".format(
+            d={
+                f: context._jvm.System.getProperty(f)
+                for f in [
+                    "java.version",
+                    "java.vendor",
+                    "java.home",
+                    "java.class.version",
+                    # "java.class.path",
+                ]
+            }
+        )
+    )
 
-    _log.info("Creating Spark context with config:")
-    for k, v in conf.getAll():
-        _log.info("Spark config: {k!r}: {v!r}".format(k=k, v=v))
-    pysc = SparkContext.getOrCreate(conf)
-    pysc.setLogLevel("INFO")
-    _log.info("Created Spark Context {s}".format(s=pysc))
     if OPENEO_LOCAL_DEBUGGING:
-        _log.info("Spark web UI: http://localhost:{p}/".format(p=pysc.getConf().get("spark.ui.port") or 4040))
+        # TODO: Activate default logging for this message
+        print("Spark web UI: " + str(context.uiWebUrl))
 
-    return pysc
+    if OPENEO_LOCAL_DEBUGGING:
+        _log.info("[conftest.py] Validating the Spark context")
+        dummy = context._jvm.org.openeo.geotrellis.OpenEOProcesses()
+        answer = context.parallelize([9, 10, 11, 12]).sum()
+        _log.info("[conftest.py] " + repr((answer, dummy)))
+
+    return context
 
 
 def on_started() -> None:
