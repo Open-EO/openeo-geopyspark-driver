@@ -1649,7 +1649,8 @@ def test_geotiff_scale_offset(tmp_path):
     assert band_metadata["ARBITRARY"] == "value"
 
 
-def test_export_to_multiple_workspaces(tmp_path):
+@pytest.mark.parametrize("remove_original", [False, True])
+def test_export_to_multiple_workspaces(tmp_path, remove_original):
     workspace_id = "tmp"
 
     def merge():
@@ -1697,7 +1698,7 @@ def test_export_to_multiple_workspaces(tmp_path):
     process = {
         "process_graph": process_graph,
         "job_options": {
-            "remove-exported-assets": True  # TODO: support alternate hrefs if not remove-exported-assets
+            "remove-exported-assets": remove_original,
         },
     }
 
@@ -1723,11 +1724,26 @@ def test_export_to_multiple_workspaces(tmp_path):
         asset = job_metadata["assets"]["openEO_2021-01-05Z.tif"]
 
         assert asset["href"] == str(tmp_path / "openEO_2021-01-05Z.tif")
-        assert asset["public_href"] == f"file:{workspace.root_directory / max(merge1, merge2)}/openEO_2021-01-05Z.tif"
-        assert (
-            asset["alternate"][f"{workspace_id}/{min(merge1, merge2)}"]["href"]
-            == f"file:{workspace.root_directory / min(merge1, merge2)}/openEO_2021-01-05Z.tif"
-        )
+
+        primary_workspace_uri = f"file:{workspace.root_directory / max(merge1, merge2)}/openEO_2021-01-05Z.tif"
+        secondary_workspace_uri = f"file:{workspace.root_directory / min(merge1, merge2)}/openEO_2021-01-05Z.tif"
+
+        if remove_original:
+            assert asset["public_href"] == primary_workspace_uri
+            assert asset["alternate"] == {
+                f"{workspace_id}/{min(merge1, merge2)}": {
+                    "href": secondary_workspace_uri,
+                },
+            }
+        else:
+            assert asset["alternate"] == {
+                f"{workspace_id}/{max(merge1, merge2)}": {
+                    "href": primary_workspace_uri,
+                },
+                f"{workspace_id}/{min(merge1, merge2)}": {
+                    "href": secondary_workspace_uri,
+                },
+            }
     finally:
         shutil.rmtree(workspace.root_directory / merge1)
         shutil.rmtree(workspace.root_directory / merge2)
