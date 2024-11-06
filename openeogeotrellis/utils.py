@@ -442,6 +442,8 @@ def single_value(xs):
 def add_permissions(path: Path, mode: int):
     # TODO: accept PathLike etc as well
     # TODO: maybe umask is a better/cleaner option
+    if str(path).lower().startswith("s3:/"):
+        return
     if path.exists():
         current_permission_bits = os.stat(path).st_mode
         os.chmod(path, current_permission_bits | mode)

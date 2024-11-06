@@ -1343,12 +1343,21 @@ def test_run_job_to_s3(
     ]
     # Run in separate subprocess so that all environment variables are
     # set correctly at the moment the SparkContext is created:
-    output = subprocess.check_output(cmd, stderr=subprocess.STDOUT, universal_newlines=True)
+    try:
+        output = subprocess.check_output(cmd, stderr=subprocess.STDOUT, universal_newlines=True)
+    except subprocess.CalledProcessError as e:
+        logging.error(e.output)
+        raise
 
     print(output)
 
     s3_instance = s3_client()
     from openeogeotrellis.config import get_backend_config
+
+    with open(json_path, "rb") as f:
+        s3_instance.upload_fileobj(
+            f, get_backend_config().s3_bucket_name, str((tmp_path / "test.json").relative_to("/"))
+        )
 
     files = {o["Key"] for o in s3_instance.list_objects(Bucket=get_backend_config().s3_bucket_name)["Contents"]}
     files = [f[len(str(tmp_path)) :] for f in files]
