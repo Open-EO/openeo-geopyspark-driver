@@ -2,6 +2,8 @@ import json
 import logging
 import re
 import shutil
+import subprocess
+import sys
 import tempfile
 import textwrap
 import zipfile
@@ -13,7 +15,7 @@ from mock import MagicMock
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import DryRunDataTracer
 from openeo_driver.save_result import ImageCollectionResult
-from openeo_driver.testing import DictSubSet
+from openeo_driver.testing import DictSubSet, ListSubSet
 from openeo_driver.utils import read_json
 from osgeo import gdal
 from pytest import approx
@@ -39,7 +41,9 @@ from openeogeotrellis.integrations.gdal import (
     read_gdal_raster_metadata,
 )
 from openeogeotrellis.testing import gps_config_overrides
-from openeogeotrellis.utils import get_jvm, to_s3_url
+from openeogeotrellis.utils import get_jvm, to_s3_url, s3_client
+
+_log = logging.getLogger(__name__)
 
 EXPECTED_GRAPH = [{"expression": {"nop": {"process_id": "discard_result",
                                                "result": True}},
@@ -324,7 +328,7 @@ def test_extract_result_metadata_aggregate_spatial_delayed_vector_when_bbox_crs_
 
 
 @mock.patch('openeo_driver.ProcessGraphDeserializer.evaluate')
-def test_run_job(evaluate, tmp_path):
+def test_run_job(evaluate, tmp_path, fast_sleep):
     cube_mock = MagicMock()
     asset_meta = {"openEO01-01.tif": {"href": "tmp/openEO01-01.tif", "roles": "data"},"openEO01-05.tif": {"href": "tmp/openEO01-05.tif", "roles": "data"}}
     cube_mock.write_assets.return_value = asset_meta
@@ -1299,6 +1303,68 @@ def test_run_job_get_projection_extension_metadata_assets_in_s3_multiple_assets(
             "epsg": None,
         }
     )
+
+
+@pytest.mark.skip("Can only run manually")  # TODO: Fix so it can run in Jenkins too
+def test_run_job_to_s3(
+    tmp_path,
+    mock_s3_bucket,
+    moto_server,
+    monkeypatch,
+):
+    monkeypatch.setenv("KUBE", "TRUE")
+    spatial_extent_tap = {
+        "east": 5.08,
+        "north": 51.22,
+        "south": 51.215,
+        "west": 5.07,
+    }
+    process_graph = {
+        "lc": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "TestCollection-LonLat16x16",
+                "temporal_extent": ["2021-01-01", "2021-01-10"],
+                "spatial_extent": spatial_extent_tap,
+                "bands": ["Longitude", "Latitude", "Day"],
+            },
+        },
+        "save": {
+            "process_id": "save_result",
+            "arguments": {"data": {"from_node": "lc"}, "format": "GTiff"},
+            "result": True,
+        },
+    }
+    json_path = tmp_path / "process_graph.json"
+    json.dump(process_graph, json_path.open("wt"))
+
+    containing_folder = Path(__file__).parent
+    cmd = [
+        sys.executable,
+        containing_folder.parent.parent / "openeogeotrellis/deploy/run_graph_locally.py",
+        json_path,
+    ]
+    # Run in separate subprocess so that all environment variables are
+    # set correctly at the moment the SparkContext is created:
+    try:
+        output = subprocess.check_output(cmd, stderr=subprocess.STDOUT, universal_newlines=True)
+    except subprocess.CalledProcessError as e:
+        _log.error("run_graph_locally failed. Output: " + e.output)
+        raise
+
+    print(output)
+
+    s3_instance = s3_client()
+    from openeogeotrellis.config import get_backend_config
+
+    with open(json_path, "rb") as f:
+        s3_instance.upload_fileobj(
+            f, get_backend_config().s3_bucket_name, str((tmp_path / "test.json").relative_to("/"))
+        )
+
+    files = {o["Key"] for o in s3_instance.list_objects(Bucket=get_backend_config().s3_bucket_name)["Contents"]}
+    files = [f[len(str(tmp_path)) :] for f in files]
+    assert files == ListSubSet(["collection.json", "openEO_2021-01-05Z.tif", "openEO_2021-01-05Z.tif.json"])
 
 
 # TODO: Update this test to include statistics or not? Would need to update the json file.

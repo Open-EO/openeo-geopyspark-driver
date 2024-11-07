@@ -55,7 +55,7 @@ def backend_config_path() -> Path:
 @pytest.hookimpl(trylast=True)
 def pytest_configure(config):
     """Pytest configuration hook"""
-    os.environ['PYTEST_CONFIGURE'] = (os.environ.get('PYTEST_CONFIGURE', '') + ':' + __file__).lstrip(':')
+    os.environ["PYTEST_CONFIGURE"] = (os.environ.get("PYTEST_CONFIGURE", "") + ":" + __file__).lstrip(":")
 
     # Load test GpsBackendConfig by default
     os.environ["OPENEO_BACKEND_CONFIG"] = str(_BACKEND_CONFIG_PATH)
@@ -75,14 +75,18 @@ def _ensure_geopyspark(out: TerminalReporter):
     """Make sure GeoPySpark knows where to find Spark (SPARK_HOME) and py4j"""
     try:
         import geopyspark
+
         out.write_line("[conftest.py] Succeeded to import geopyspark automatically: {p!r}".format(p=geopyspark))
     except KeyError as e:
         # Geopyspark failed to detect Spark home and py4j, let's fix that.
         from pyspark import find_spark_home
+
         pyspark_home = Path(find_spark_home._find_spark_home())
-        out.write_line("[conftest.py] Failed to import geopyspark automatically. "
-                       "Will set up py4j path using Spark home: {h}".format(h=pyspark_home))
-        py4j_zip = next((pyspark_home / 'python' / 'lib').glob('py4j-*-src.zip'))
+        out.write_line(
+            "[conftest.py] Failed to import geopyspark automatically. "
+            "Will set up py4j path using Spark home: {h}".format(h=pyspark_home)
+        )
+        py4j_zip = next((pyspark_home / "python" / "lib").glob("py4j-*-src.zip"))
         out.write_line("[conftest.py] py4j zip: {z!r}".format(z=py4j_zip))
         sys.path.append(str(py4j_zip))
 
@@ -99,8 +103,8 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
     out.write_line("[conftest.py] Setting up local Spark")
     master_str = "local[2]"
 
-    if 'PYSPARK_PYTHON' not in os.environ:
-        os.environ['PYSPARK_PYTHON'] = sys.executable
+    if "PYSPARK_PYTHON" not in os.environ:
+        os.environ["PYSPARK_PYTHON"] = sys.executable
 
     from geopyspark import geopyspark_conf
     from pyspark import SparkContext
@@ -126,18 +130,18 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
     conf.set("spark.sql.session.timeZone", "UTC")
 
     conf.set("spark.kryoserializer.buffer.max", value="1G")
-    conf.set(key='spark.kryo.registrator', value='geotrellis.spark.store.kryo.KryoRegistrator')
+    conf.set("spark.kryo.registrator", "geotrellis.spark.store.kryo.KryoRegistrator")
     conf.set(
         key="spark.kryo.classesToRegister",
         value="ar.com.hjg.pngj.ImageInfo,ar.com.hjg.pngj.ImageLineInt,geotrellis.raster.RasterRegion$GridBoundsRasterRegion",
     )
     # Only show spark progress bars for high verbosity levels
-    conf.set('spark.ui.showConsoleProgress', verbosity >= 3)
+    conf.set("spark.ui.showConsoleProgress", verbosity >= 3)
 
     conf.set(key="spark.driver.memory", value="2G")
     conf.set(key="spark.executor.memory", value="2G")
     OPENEO_LOCAL_DEBUGGING = smart_bool(os.environ.get("OPENEO_LOCAL_DEBUGGING", "false"))
-    conf.set('spark.ui.enabled', OPENEO_LOCAL_DEBUGGING)
+    conf.set("spark.ui.enabled", OPENEO_LOCAL_DEBUGGING)
 
     jars = []
     for jar_dir in additional_jar_dirs:
@@ -145,19 +149,20 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
             if jar_path.match("openeo-logging-*.jar"):
                 jars.append(str(jar_path))
     extraClassPath = ":".join(jars)
-    conf.set('spark.driver.extraClassPath', extraClassPath)
-    conf.set('spark.executor.extraClassPath', extraClassPath)
+    conf.set("spark.driver.extraClassPath", extraClassPath)
+    conf.set("spark.executor.extraClassPath", extraClassPath)
 
     sparkSubmitLog4jConfigurationFile = Path(__file__).parent.parent / "scripts/batch_job_log4j2.xml"
-    with open(sparkSubmitLog4jConfigurationFile, 'r') as read_file:
+    with open(sparkSubmitLog4jConfigurationFile, "r") as read_file:
         content = read_file.read()
         sparkSubmitLog4jConfigurationFile = "/tmp/sparkSubmitLog4jConfigurationFile.xml"
-        with open(sparkSubmitLog4jConfigurationFile, 'w') as write_file:
+        with open(sparkSubmitLog4jConfigurationFile, "w") as write_file:
             # There could be a more elegant way to fill in this variable during testing:
-            write_file.write(content
-                             .replace("${sys:spark.yarn.app.container.log.dir}/", "")
-                             .replace("${sys:openeo.logging.threshold}", "DEBUG")
-                             )
+            write_file.write(
+                content.replace("${sys:spark.yarn.app.container.log.dir}/", "").replace(
+                    "${sys:openeo.logging.threshold}", "DEBUG"
+                )
+            )
     # got some options from 'sparkDriverJavaOptions'
     sparkDriverJavaOptions = f"-Dlog4j2.configurationFile=file:{sparkSubmitLog4jConfigurationFile}\
     -Dscala.concurrent.context.numThreads=6 \
@@ -180,14 +185,20 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
     out.write_line("[conftest.py] SparkContext.getOrCreate with {c!r}".format(c=conf.getAll()))
     context = SparkContext.getOrCreate(conf)
     context.setLogLevel("DEBUG")
-    out.write_line("[conftest.py] JVM info: {d!r}".format(d={
-        f: context._jvm.System.getProperty(f)
-        for f in [
-            "java.version", "java.vendor", "java.home",
-            "java.class.version",
-            # "java.class.path",
-        ]
-    }))
+    out.write_line(
+        "[conftest.py] JVM info: {d!r}".format(
+            d={
+                f: context._jvm.System.getProperty(f)
+                for f in [
+                    "java.version",
+                    "java.vendor",
+                    "java.home",
+                    "java.class.version",
+                    # "java.class.path",
+                ]
+            }
+        )
+    )
 
     if OPENEO_LOCAL_DEBUGGING:
         # TODO: Activate default logging for this message
@@ -204,6 +215,7 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
 @pytest.fixture(params=["1.0.0"])
 def api_version(request):
     return request.param
+
 
 # TODO: Deduplicate code with openeo-python-client
 class _Sleeper:
@@ -244,14 +256,9 @@ def udf_noop():
 
     noop_udf_callback = {
         "udf_process": {
-            "arguments": {
-                "data": {
-                    "from_parameter": "data"
-                },
-                "udf": udf_code
-            },
+            "arguments": {"data": {"from_parameter": "data"}, "udf": udf_code},
             "process_id": "run_udf",
-            "result": True
+            "result": True,
         },
     }
     return noop_udf_callback
@@ -277,9 +284,7 @@ def job_registry() -> InMemoryJobRegistry:
 
 
 @pytest.fixture
-def backend_implementation(
-    request, batch_job_output_root, job_registry
-) -> "GeoPySparkBackendImplementation":
+def backend_implementation(request, batch_job_output_root, job_registry) -> "GeoPySparkBackendImplementation":
     from openeogeotrellis.backend import GeoPySparkBackendImplementation
 
     backend = GeoPySparkBackendImplementation(
@@ -299,8 +304,8 @@ def flask_app(backend_implementation) -> flask.Flask:
         backend_implementation=backend_implementation,
         # error_handling=False,
     )
-    app.config['TESTING'] = True
-    app.config['SERVER_NAME'] = 'oeo.net'
+    app.config["TESTING"] = True
+    app.config["SERVER_NAME"] = "oeo.net"
     return app
 
 
@@ -361,8 +366,9 @@ def mock_s3_client(aws_credentials):
 
 
 @pytest.fixture(scope="function")
-def mock_s3_bucket(mock_s3_resource):
+def mock_s3_bucket(mock_s3_resource, monkeypatch):
     bucket_name = "openeo-fake-bucketname"
+    monkeypatch.setenv("SWIFT_BUCKET", bucket_name)
 
     with gps_config_overrides(s3_bucket_name=bucket_name):
         assert get_backend_config().s3_bucket_name == bucket_name

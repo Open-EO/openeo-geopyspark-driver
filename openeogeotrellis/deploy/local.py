@@ -18,23 +18,34 @@ from openeogeotrellis.config import get_backend_config
 _log = logging.getLogger(__name__)
 
 
-def setup_local_spark(additional_jar_dirs=[]):
+def is_port_free(port: int) -> bool:
+    import socket
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        return s.connect_ex(("localhost", port)) != 0
+
+
+def setup_local_spark(log_dir: Path = Path.cwd(), verbosity=0):
     # TODO: make this more reusable (e.g. also see `_setup_local_spark` in tests/conftest.py)
     from pyspark import SparkContext, find_spark_home
 
-    spark_python = os.path.join(find_spark_home._find_spark_home(), 'python')
+    spark_python = os.path.join(find_spark_home._find_spark_home(), "python")
     logging.info(f"spark_python: {spark_python}")
-    py4j = glob(os.path.join(spark_python, 'lib', 'py4j-*.zip'))[0]
+    py4j = glob(os.path.join(spark_python, "lib", "py4j-*.zip"))[0]
     sys.path[:0] = [spark_python, py4j]
-    _log.debug('sys.path: {p!r}'.format(p=sys.path))
+    _log.debug("sys.path: {p!r}".format(p=sys.path))
     master_str = "local[2]"
 
-    OPENEO_LOCAL_DEBUGGING = smart_bool(os.environ.get("OPENEO_LOCAL_DEBUGGING", "false"))
+    if "PYSPARK_PYTHON" not in os.environ:
+        os.environ["PYSPARK_PYTHON"] = sys.executable
 
     from geopyspark import geopyspark_conf
+    from pyspark import SparkContext
 
     conf = geopyspark_conf(
-        master=master_str, appName="openeo-geotrellis-local", additional_jar_dirs=additional_jar_dirs
+        master=master_str,
+        appName="openeo-geopyspark-driver",
+        additional_jar_dirs=[],  # passed with GEOPYSPARK_JARS_PATH
     )
 
     spark_jars = conf.get("spark.jars").split(",")
@@ -42,13 +53,26 @@ def setup_local_spark(additional_jar_dirs=[]):
     spark_jars.sort(key=lambda x: "geotrellis-extensions" not in x)
     conf.set(key="spark.jars", value=",".join(spark_jars))
 
+    # Use UTC timezone by default when formatting/parsing dates (e.g. CSV export of timeseries)
+    conf.set("spark.sql.session.timeZone", "UTC")
+
     conf.set("spark.kryoserializer.buffer.max", value="1G")
-    conf.set(key="spark.kryo.registrator", value="geotrellis.spark.store.kryo.KryoRegistrator")
+    conf.set("spark.kryo.registrator", "geotrellis.spark.store.kryo.KryoRegistrator")
+    conf.set(
+        key="spark.kryo.classesToRegister",
+        value="ar.com.hjg.pngj.ImageInfo,ar.com.hjg.pngj.ImageLineInt,geotrellis.raster.RasterRegion$GridBoundsRasterRegion",
+    )
+    # Only show spark progress bars for high verbosity levels
+    conf.set("spark.ui.showConsoleProgress", verbosity >= 3)
+
+    conf.set(key="spark.driver.memory", value="2G")
+    conf.set(key="spark.executor.memory", value="2G")
+    OPENEO_LOCAL_DEBUGGING = smart_bool(os.environ.get("OPENEO_LOCAL_DEBUGGING", "false"))
     conf.set("spark.ui.enabled", OPENEO_LOCAL_DEBUGGING)
 
     jars = []
     more_jars = [] if "GEOPYSPARK_JARS_PATH" not in os.environ else os.environ["GEOPYSPARK_JARS_PATH"].split(":")
-    for jar_dir in additional_jar_dirs + more_jars:
+    for jar_dir in more_jars:
         for jar_path in Path(jar_dir).iterdir():
             if jar_path.match("openeo-logging-*.jar"):
                 jars.append(str(jar_path))
@@ -61,52 +85,68 @@ def setup_local_spark(additional_jar_dirs=[]):
         sparkSubmitLog4jConfigurationFile = path
     else:
         sparkSubmitLog4jConfigurationFile = Path(__file__).parent.parent.parent / "scripts/batch_job_log4j2.xml"
-
-    with open(sparkSubmitLog4jConfigurationFile, "r") as read_file:
-        content = read_file.read()
-        sparkSubmitLog4jConfigurationFile = "/tmp/sparkSubmitLog4jConfigurationFile.xml"
-        with open(sparkSubmitLog4jConfigurationFile, "w") as write_file:
-            # There could be a more elegant way to fill in this variable during testing:
-            write_file.write(
-                content.replace("${sys:spark.yarn.app.container.log.dir}/", "").replace(
-                    "${sys:openeo.logging.threshold}", "DEBUG"
-                )
-            )
-
-    # 'agentlib' to allow attaching a Java debugger to running Spark driver
-    extra_options = f"-Dlog4j2.configurationFile=file:{sparkSubmitLog4jConfigurationFile}"
-    extra_options += " -Dgeotrellis.jts.precision.type=fixed -Dgeotrellis.jts.simplification.scale=1e10"
-    # Some options to allow attaching a Java debugger to running Spark driver
+    logging_threshold = "INFO"
+    # got some options from 'sparkDriverJavaOptions'
+    sparkDriverJavaOptions = f"-Dlog4j2.configurationFile=file:{sparkSubmitLog4jConfigurationFile} \
+        -Dspark.yarn.app.container.log.dir={log_dir} \
+        -Dopeneo.logging.threshold={logging_threshold} \
+        -Dscala.concurrent.context.numThreads=6 \
+        -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService\
+        -Dtsservice.layersConfigClass=ProdLayersConfiguration -Dtsservice.sparktasktimeout=600 "
+    sparkDriverJavaOptions += " -Dgeotrellis.jts.precision.type=fixed -Dgeotrellis.jts.simplification.scale=1e10"
     if OPENEO_LOCAL_DEBUGGING:
-        extra_options += f" -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5009"
-    conf.set("spark.driver.extraJavaOptions", extra_options)
-    # conf.set('spark.executor.extraJavaOptions', extra_options) # Seems not needed
+        for port in [5005, 5009]:
+            if is_port_free(port):
+                # 'agentlib' to allow attaching a Java debugger to running Spark driver
+                # IntelliJ IDEA: Run -> Edit Configurations -> Remote JVM Debug uses 5005 by default
+                sparkDriverJavaOptions += f" -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:{port}"
+                break
+    conf.set("spark.driver.extraJavaOptions", sparkDriverJavaOptions)
 
-    conf.set(key='spark.driver.memory', value='2G')
-    conf.set(key='spark.executor.memory', value='2G')
+    sparkExecutorJavaOptions = f"-Dlog4j2.configurationFile=file:{sparkSubmitLog4jConfigurationFile}\
+        -Dopeneo.logging.threshold={logging_threshold} \
+        -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService\
+        -Dscala.concurrent.context.numThreads=8"
+    conf.set("spark.executor.extraJavaOptions", sparkExecutorJavaOptions)
 
-    if 'PYSPARK_PYTHON' not in os.environ:
-        os.environ['PYSPARK_PYTHON'] = sys.executable
+    _log.info("[conftest.py] SparkContext.getOrCreate with {c!r}".format(c=conf.getAll()))
+    context = SparkContext.getOrCreate(conf)
+    context.setLogLevel(logging_threshold)
+    _log.info(
+        "[conftest.py] JVM info: {d!r}".format(
+            d={
+                f: context._jvm.System.getProperty(f)
+                for f in [
+                    "java.version",
+                    "java.vendor",
+                    "java.home",
+                    "java.class.version",
+                    # "java.class.path",
+                ]
+            }
+        )
+    )
 
-    _log.info('Creating Spark context with config:')
-    for k, v in conf.getAll():
-        _log.info("Spark config: {k!r}: {v!r}".format(k=k, v=v))
-    pysc = SparkContext.getOrCreate(conf)
-    pysc.setLogLevel("INFO")
-    _log.info('Created Spark Context {s}'.format(s=pysc))
     if OPENEO_LOCAL_DEBUGGING:
-        _log.info("Spark web UI: http://localhost:{p}/".format(p=pysc.getConf().get("spark.ui.port") or 4040))
+        # TODO: Activate default logging for this message
+        print("Spark web UI: " + str(context.uiWebUrl))
 
-    return pysc
+    if OPENEO_LOCAL_DEBUGGING:
+        _log.info("[conftest.py] Validating the Spark context")
+        dummy = context._jvm.org.openeo.geotrellis.OpenEOProcesses()
+        answer = context.parallelize([9, 10, 11, 12]).sum()
+        _log.info("[conftest.py] " + repr((answer, dummy)))
+
+    return context
 
 
 def on_started() -> None:
-    show_log_level(logging.getLogger('gunicorn.error'))
-    show_log_level(logging.getLogger('flask'))
-    show_log_level(logging.getLogger('werkzeug'))
+    show_log_level(logging.getLogger("gunicorn.error"))
+    show_log_level(logging.getLogger("flask"))
+    show_log_level(logging.getLogger("werkzeug"))
 
 
-def setup_environment():
+def setup_environment(log_dir: Path = Path.cwd()):
     repository_root = Path(__file__).parent.parent.parent
     if os.path.exists(repository_root / "jars"):
         previous = (":" + os.environ["GEOPYSPARK_JARS_PATH"]) if "GEOPYSPARK_JARS_PATH" in os.environ else ""
@@ -119,7 +159,7 @@ def setup_environment():
 
     _log.info(repr({"pid": os.getpid(), "interpreter": sys.executable, "version": sys.version, "argv": sys.argv}))
 
-    setup_local_spark()
+    setup_local_spark(log_dir=log_dir)
 
     os.environ.setdefault(
         openeo_driver.config.load.ConfigGetter.OPENEO_BACKEND_CONFIG,
@@ -132,18 +172,20 @@ if __name__ == "__main__":
     if smart_bool(os.environ.get("OPENEO_DRIVER_SIMPLE_LOGGING")):
         root_handlers = None
 
-    setup_logging(get_logging_config(
-        root_handlers=root_handlers,
-        loggers={
-            "openeo": {"level": "DEBUG"},
-            "openeo_driver": {"level": "DEBUG"},
-            'openeogeotrellis': {'level': 'DEBUG'},
-            "flask": {"level": "DEBUG"},
-            "werkzeug": {"level": "DEBUG"},
-            "gunicorn": {"level": "INFO"},
-            'kazoo': {'level': 'WARN'},
-        },
-    ))
+    setup_logging(
+        get_logging_config(
+            root_handlers=root_handlers,
+            loggers={
+                "openeo": {"level": "DEBUG"},
+                "openeo_driver": {"level": "DEBUG"},
+                "openeogeotrellis": {"level": "DEBUG"},
+                "flask": {"level": "DEBUG"},
+                "werkzeug": {"level": "DEBUG"},
+                "gunicorn": {"level": "INFO"},
+                "kazoo": {"level": "WARN"},
+            },
+        )
+    )
 
     setup_environment()
 
@@ -159,9 +201,9 @@ if __name__ == "__main__":
     )
     app = build_app(backend_implementation=backend_implementation)
 
-    show_log_level(logging.getLogger('openeo'))
-    show_log_level(logging.getLogger('openeo_driver'))
-    show_log_level(logging.getLogger('openeogeotrellis'))
+    show_log_level(logging.getLogger("openeo"))
+    show_log_level(logging.getLogger("openeo_driver"))
+    show_log_level(logging.getLogger("openeogeotrellis"))
     show_log_level(app.logger)
 
     host = os.environ.get("OPENEO_DEV_GUNICORN_HOST", "127.0.0.1")
