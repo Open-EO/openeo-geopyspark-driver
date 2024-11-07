@@ -1141,7 +1141,7 @@ def test_export_workspace_with_asset_per_band(tmp_path):
         shutil.rmtree(workspace_dir, ignore_errors=True)
 
 
-@pytest.mark.parametrize("use_S3", [True, False])
+@pytest.mark.parametrize("use_S3", [False])  # use_S3 does not work on Jenkins
 def test_filepath_per_band(
         tmp_path,
         use_S3,
@@ -1265,7 +1265,7 @@ def test_filepath_per_band(
 
     item = items[0]
     assert item.id == "folder1/lon.tif"
-    # assert item.bbox == [0.0, 0.0, 1.0, 2.0] # TODO: Is missing because defined higher in STAC hierarchy?
+    # assert item.bbox == [0.0, 0.0, 1.0, 2.0] # There is no bbox for spatial only geotifs.
     # assert shape(item.geometry).normalize().almost_equals(Polygon.from_bounds(0.0, 0.0, 1.0, 2.0).normalize())
 
     geotiff_asset = item.get_assets()["folder1/lon.tif"]
