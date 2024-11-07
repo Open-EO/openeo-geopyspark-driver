@@ -3,6 +3,8 @@ import os
 from pathlib import Path
 from urllib.parse import urlparse
 
+from boto3.s3.transfer import TransferConfig
+
 from openeo_driver.workspace import Workspace
 
 from openeogeotrellis.utils import s3_client
@@ -11,6 +13,9 @@ _log = logging.getLogger(__name__)
 
 
 class ObjectStorageWorkspace(Workspace):
+
+    MULTIPART_THRESHOLD_IN_MB = 50
+
     def __init__(self, bucket: str):
         self.bucket = bucket
 
@@ -18,8 +23,11 @@ class ObjectStorageWorkspace(Workspace):
         merge = os.path.normpath(merge)
         subdirectory = merge[1:] if merge.startswith("/") else merge
 
+        MB = 1024 ** 2
+        config = TransferConfig(multipart_threshold=self.MULTIPART_THRESHOLD_IN_MB * MB)
+
         key = subdirectory + "/" + file.name
-        s3_client().upload_file(str(file), self.bucket, key)
+        s3_client().upload_file(str(file), self.bucket, key, Config=config)
 
         if remove_original:
             file.unlink()
