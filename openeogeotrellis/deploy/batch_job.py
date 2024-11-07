@@ -7,13 +7,14 @@ import shutil
 import stat
 import sys
 from copy import deepcopy
-from itertools import chain
+from functools import partial
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 from urllib.parse import urlparse
 
 from openeo.util import TimingLogger, dict_no_none, ensure_dir
 from openeo_driver import ProcessGraphDeserializer
+from openeo_driver.backend import BatchJobs
 from openeo_driver.datacube import DriverDataCube, DriverVectorCube
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import DryRunDataTracer
@@ -34,7 +35,7 @@ from openeo_driver.util.logging import (
     setup_logging,
 )
 from openeo_driver.utils import EvalEnv
-from openeo_driver.workspacerepository import backend_config_workspace_repository
+from openeo_driver.workspacerepository import Workspace, WorkspaceRepository, backend_config_workspace_repository
 from py4j.protocol import Py4JError, Py4JJavaError
 from pyspark import SparkConf, SparkContext
 from pyspark.profiler import BasicProfiler
@@ -482,12 +483,12 @@ def run_job(
 
         assert len(results) == len(assets_metadata)
         for result, result_assets_metadata in zip(results, assets_metadata):
-            _export_workspace(
+            _export_to_workspaces(
                 result,
                 result_metadata,
-                result_asset_keys=result_assets_metadata.keys(),
+                result_assets_metadata=result_assets_metadata,
                 stac_metadata_dir=job_dir,
-                remove_original=job_options.get("remove-exported-assets", False),  # TODO: remove feature flag
+                remove_exported_assets=job_options.get("remove-exported-assets", False),
             )
     finally:
         write_metadata({**result_metadata, **_get_tracker_metadata("")}, metadata_file, job_dir)
@@ -518,24 +519,79 @@ def write_metadata(metadata, metadata_file, job_dir: Path):
             _convert_job_metadatafile_outputs_to_s3_urls(metadata_file)
 
 
-def _export_workspace(
+def _export_to_workspaces(
     result: SaveResult,
     result_metadata: dict,
-    result_asset_keys: List[str],
+    result_assets_metadata: dict,
     stac_metadata_dir: Path,
-    remove_original: bool,
+    remove_exported_assets: bool,
 ):
-    asset_hrefs = [result_metadata.get("assets", {})[asset_key]["href"] for asset_key in result_asset_keys]
+    workspace_repository: WorkspaceRepository = backend_config_workspace_repository
+    workspace_exports = sorted(
+        list(result.workspace_exports),
+        key=lambda export: export.workspace_id + (export.merge or ""),  # arbitrary but deterministic order of hrefs
+    )
+
     stac_hrefs = [
         f"file:{path}"
-        for path in _write_exported_stac_collection(stac_metadata_dir, result_metadata, result_asset_keys)
+        for path in _write_exported_stac_collection(
+            stac_metadata_dir, result_metadata, list(result_assets_metadata.keys())
+        )
     ]
-    result.export_workspace(
-        workspace_repository=backend_config_workspace_repository,
-        hrefs=asset_hrefs + stac_hrefs,
-        default_merge=OPENEO_BATCH_JOB_ID,
-        remove_original=remove_original,
-    )
+
+    for asset_key, asset in result_assets_metadata.items():
+        workspace_uris = []
+
+        for i, workspace_export in enumerate(workspace_exports):
+            workspace: Workspace = workspace_repository.get_by_id(workspace_export.workspace_id)
+            merge = workspace_export.merge
+
+            if merge is None:
+                merge = OPENEO_BATCH_JOB_ID
+            elif merge == "":
+                merge = "."
+
+            # original asset can only be removed after visiting all workspaces
+            final_export = i >= len(workspace_exports) - 1
+            remove_original = remove_exported_assets and final_export
+
+            export_to_workspace = partial(
+                _export_to_workspace, target=workspace, merge=merge, remove_original=remove_original
+            )
+
+            workspace_uri = export_to_workspace(source_uri=asset["href"])
+            workspace_uris.append((workspace_export.workspace_id, workspace_export.merge, workspace_uri))
+
+            for stac_href in stac_hrefs:
+                export_to_workspace(source_uri=stac_href)
+
+        if remove_exported_assets:
+            # the last workspace URI becomes the public_href; the rest become "alternate" hrefs
+            result_metadata["assets"][asset_key][BatchJobs.ASSET_PUBLIC_HREF] = workspace_uris[-1][2]
+            alternate = {
+                f"{workspace_id}/{merge}": {"href": workspace_uri}
+                for workspace_id, merge, workspace_uri in workspace_uris[:-1]
+            }
+        else:
+            # the original href still applies; all workspace URIs become "alternate" hrefs
+            alternate = {
+                f"{workspace_id}/{merge}": {"href": workspace_uri}
+                for workspace_id, merge, workspace_uri in workspace_uris
+            }
+
+        if alternate:
+            result_metadata["assets"][asset_key]["alternate"] = alternate
+
+
+def _export_to_workspace(source_uri: str, target: Workspace, merge: str, remove_original: bool) -> str:
+    uri_parts = urlparse(source_uri)
+
+    if not uri_parts.scheme or uri_parts.scheme.lower() == "file":
+        return target.import_file(Path(uri_parts.path), merge, remove_original)
+    elif uri_parts.scheme == "s3":
+        return target.import_object(source_uri, merge, remove_original)
+    else:
+        raise ValueError(f"unsupported scheme {uri_parts.scheme} for {source_uri}; supported are: file, s3")
 
 
 def _write_exported_stac_collection(

@@ -908,7 +908,7 @@ def test_multiple_image_collection_results(tmp_path):
 @pytest.mark.parametrize("remove_original", [False, True])
 def test_export_workspace(tmp_path, remove_original):
     workspace_id = "tmp"
-    merge = f"OpenEO-workspace-{uuid.uuid4()}"
+    merge = _random_merge()
 
     process_graph = {
         "loadcollection1": {
@@ -950,10 +950,12 @@ def test_export_workspace(tmp_path, remove_original):
     workspace_dir = Path(f"{workspace.root_directory}/{merge}")
 
     try:
+        metadata_file = tmp_path / "job_metadata.json"
+
         run_job(
             process,
             output_file=tmp_path / "out.tif",
-            metadata_file=tmp_path / "job_metadata.json",
+            metadata_file=metadata_file,
             api_version="2.0.0",
             job_dir=tmp_path,
             dependencies=[],
@@ -1003,13 +1005,22 @@ def test_export_workspace(tmp_path, remove_original):
             assert dataset.driver == "GTiff"
 
         # TODO: check other things e.g. proj:
+        with open(metadata_file) as f:
+            job_metadata = json.load(f)
+
+        assert job_metadata["assets"]["openEO_2021-01-05Z.tif"]["href"] == str(tmp_path / "openEO_2021-01-05Z.tif")
+
+        assert not remove_original or (
+            job_metadata["assets"]["openEO_2021-01-05Z.tif"]["public_href"]
+            == f"file:{workspace_dir / 'openEO_2021-01-05Z.tif'}"
+        )
     finally:
         shutil.rmtree(workspace_dir)
 
 
 def test_export_workspace_with_asset_per_band(tmp_path):
     workspace_id = "tmp"
-    merge = f"OpenEO-workspace-{uuid.uuid4()}"
+    merge = _random_merge()
 
     process_graph = {
         "loadcollection1": {
@@ -1560,7 +1571,7 @@ def test_load_stac_temporal_extent_in_result_metadata(tmp_path, requests_mock):
 
 def test_multiple_save_result_single_export_workspace(tmp_path):
     workspace_id = "tmp"
-    merge = f"OpenEO-workspace-{uuid.uuid4()}"
+    merge = _random_merge()
 
     process_graph = {
         "loadcollection1": {
@@ -1746,3 +1757,102 @@ def test_geotiff_scale_offset(tmp_path):
     assert band.GetOffset() == 4.56
     band_metadata = band.GetMetadata()
     assert band_metadata["ARBITRARY"] == "value"
+
+
+@pytest.mark.parametrize("remove_original", [False, True])
+def test_export_to_multiple_workspaces(tmp_path, remove_original):
+    workspace_id = "tmp"
+
+    merge1 = _random_merge()
+    merge2 = _random_merge()
+
+    process_graph = {
+        "loadcollection1": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "TestCollection-LonLat16x16",
+                "temporal_extent": ["2021-01-05", "2021-01-06"],
+                "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 2.0},
+                "bands": ["Flat:2"],
+            },
+        },
+        "saveresult1": {
+            "process_id": "save_result",
+            "arguments": {
+                "data": {"from_node": "loadcollection1"},
+                "format": "GTiff"
+            },
+        },
+        "exportworkspace1": {
+            "process_id": "export_workspace",
+            "arguments": {
+                "data": {"from_node": "saveresult1"},
+                "workspace": "tmp",
+                "merge": merge1,
+            },
+        },
+        "exportworkspace2": {
+            "process_id": "export_workspace",
+            "arguments": {
+                "data": {"from_node": "exportworkspace1"},
+                "workspace": "tmp",
+                "merge": merge2,
+            },
+            "result": True,
+        }
+    }
+
+    process = {
+        "process_graph": process_graph,
+        "job_options": {
+            "remove-exported-assets": remove_original,
+        },
+    }
+
+    workspace: DiskWorkspace = get_backend_config().workspaces[workspace_id]
+
+    try:
+        metadata_file = tmp_path / "job_metadata.json"
+
+        run_job(
+            process,
+            output_file=tmp_path / "out.tif",
+            metadata_file=metadata_file,
+            api_version="2.0.0",
+            job_dir=tmp_path,
+            dependencies=[],
+        )
+
+        with open(metadata_file) as f:
+            job_metadata = json.load(f)
+
+        asset = job_metadata["assets"]["openEO_2021-01-05Z.tif"]
+
+        assert asset["href"] == str(tmp_path / "openEO_2021-01-05Z.tif")
+
+        primary_workspace_uri = f"file:{workspace.root_directory / max(merge1, merge2)}/openEO_2021-01-05Z.tif"
+        secondary_workspace_uri = f"file:{workspace.root_directory / min(merge1, merge2)}/openEO_2021-01-05Z.tif"
+
+        if remove_original:
+            assert asset["public_href"] == primary_workspace_uri
+            assert asset["alternate"] == {
+                f"{workspace_id}/{min(merge1, merge2)}": {
+                    "href": secondary_workspace_uri,
+                },
+            }
+        else:
+            assert asset["alternate"] == {
+                f"{workspace_id}/{max(merge1, merge2)}": {
+                    "href": primary_workspace_uri,
+                },
+                f"{workspace_id}/{min(merge1, merge2)}": {
+                    "href": secondary_workspace_uri,
+                },
+            }
+    finally:
+        shutil.rmtree(workspace.root_directory / merge1)
+        shutil.rmtree(workspace.root_directory / merge2)
+
+
+def _random_merge():
+    return f"OpenEO-workspace-{uuid.uuid4()}"

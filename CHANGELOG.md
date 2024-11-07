@@ -13,6 +13,11 @@ without compromising stable operations.
 <!-- start-of-changelog -->
 
 ## Unreleased
+- Py4j log level is now always 'WARN' to avoid spurious messages.
+
+## 0.49.0
+- Fix `load_stac` for collections from stac.terrascope.be ([#862](https://github.com/Open-EO/openeo-geopyspark-driver/issues/862))
+- Point `href` of job result asset to workspace URI if original was removed ([#883](https://github.com/Open-EO/openeo-geopyspark-driver/issues/883))
 
 ## 0.48.2
 
@@ -37,7 +42,7 @@ without compromising stable operations.
 
 ## 0.45.0
 
-- Experimental support for removal of originals of assets exported to workspace ([Open-EO/openeo-geopyspark-driver#883](https://github.com/Open-EO/openeo-geopyspark-driver/issues/883))
+- Experimental support for removal of originals of assets exported to workspace ([#883](https://github.com/Open-EO/openeo-geopyspark-driver/issues/883))
 - A rounding bug was fixed in a downstream library that in specific cases leads to a change in the number of pixel rows/columns in the output. We mainly observe this when the input bounding box is not well aligned to the pixel grid of the Copernicus data. [#297](https://github.com/Open-EO/openeo-geopyspark-driver/issues/297)
 - Fixed an issue where jobs asset_per_band sometimes returned empty tiff files.  ([Open-EO/openeo-geotrellis-extensions#329](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/329))
 
