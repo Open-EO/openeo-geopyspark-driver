@@ -13,6 +13,7 @@ without compromising stable operations.
 <!-- start-of-changelog -->
 
 ## Unreleased
+- Py4j log level is now always 'WARN' to avoid spurious messages.
 
 ## 0.49.0
 - Fix `load_stac` for collections from stac.terrascope.be ([#862](https://github.com/Open-EO/openeo-geopyspark-driver/issues/862))
