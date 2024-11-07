@@ -14,6 +14,9 @@ without compromising stable operations.
 
 ## Unreleased
 
+## 0.49.1
+- Fix removal of multiple original job result assets ([#883](https://github.com/Open-EO/openeo-geopyspark-driver/issues/883))
+
 ## 0.49.0
 - Fix `load_stac` for collections from stac.terrascope.be ([#862](https://github.com/Open-EO/openeo-geopyspark-driver/issues/862))
 - Point `href` of job result asset to workspace URI if original was removed ([#883](https://github.com/Open-EO/openeo-geopyspark-driver/issues/883))
