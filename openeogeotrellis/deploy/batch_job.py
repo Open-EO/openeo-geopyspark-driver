@@ -637,6 +637,7 @@ def _write_exported_stac_collection(
             },
         }
 
+        item_file.parent.mkdir(parents=True, exist_ok=True)
         with open(item_file, "wt") as fi:
             json.dump(stac_item, fi, allow_nan=False)
 

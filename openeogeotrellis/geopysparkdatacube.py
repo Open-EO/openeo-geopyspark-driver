@@ -1903,6 +1903,9 @@ class GeopysparkDataCube(DriverDataCube):
                     if separate_asset_per_band.isDefined():
                         gtiff_options.setSeparateAssetPerBand(separate_asset_per_band.get())
                     if filepath_per_band:
+                        if self.metadata.has_temporal_dimension():
+                            # The user would need a way to encode the date in the filenames
+                            raise OpenEOApiException("filepath_per_band is not supported with temporal dimension")
                         gtiff_options.setFilepathPerBand(get_jvm().scala.Option.apply(filepath_per_band))
                     gtiff_options.addHeadTag("PROCESSING_SOFTWARE",softwareversion)
                     if description != "":
