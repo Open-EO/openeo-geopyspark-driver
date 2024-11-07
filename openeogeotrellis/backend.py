@@ -1871,7 +1871,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 with zk_client(hosts=ConfigParams().zookeepernodes) as zk:
                     zk_path = f"{get_backend_config().zookeeper_root_path}/config/users/{user_id}/concurrent_pod_limit"
                     concurrent_pod_limit = int(zk.get(zk_path)[0])
-                    log.info(f"concurrent_pod_limit for user {user_id} found: {concurrent_pod_limit}")
+                    log.info(f"Concurrent job limit for user {user_id} found: {concurrent_pod_limit}")
             except kazoo.exceptions.NoNodeError:
                 pass
             except Exception:
