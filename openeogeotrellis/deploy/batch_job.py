@@ -563,9 +563,9 @@ def _export_to_workspaces(
 
         for asset_key, asset in result_assets_metadata.items():
             workspace_uri = export_to_workspace(source_uri=asset["href"])
-            xs = workspace_uris.get(asset_key, [])
-            xs.append((workspace_export.workspace_id, workspace_export.merge, workspace_uri))
-            workspace_uris[asset_key] = xs
+            workspace_uris.setdefault(asset_key, []).append(
+                (workspace_export.workspace_id, workspace_export.merge, workspace_uri)
+            )
 
     for asset_key, workspace_uris in workspace_uris.items():
         if remove_exported_assets:
