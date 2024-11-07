@@ -915,7 +915,7 @@ def test_export_workspace(tmp_path, remove_original):
             "process_id": "load_collection",
             "arguments": {
                 "id": "TestCollection-LonLat16x16",
-                "temporal_extent": ["2021-01-05", "2021-01-06"],
+                "temporal_extent": ["2021-01-05", "2021-01-16"],
                 "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 2.0},
                 "bands": ["Flat:2"]
             }
@@ -963,26 +963,37 @@ def test_export_workspace(tmp_path, remove_original):
 
         job_dir_files = set(os.listdir(tmp_path))
         assert len(job_dir_files) > 0
-        assert ("openEO_2021-01-05Z.tif" in job_dir_files) != remove_original
+
+        if remove_original:
+            assert "openEO_2021-01-05Z.tif" not in job_dir_files
+            assert "openEO_2021-01-15Z.tif" not in job_dir_files
+        else:
+            assert "openEO_2021-01-05Z.tif" in job_dir_files
+            assert "openEO_2021-01-15Z.tif" in job_dir_files
 
         workspace_files = set(os.listdir(workspace_dir))
-        assert workspace_files == {"collection.json", "openEO_2021-01-05Z.tif", "openEO_2021-01-05Z.tif.json"}
+        assert workspace_files == {
+            "collection.json",
+            "openEO_2021-01-05Z.tif",
+            "openEO_2021-01-05Z.tif.json",
+            "openEO_2021-01-15Z.tif",
+            "openEO_2021-01-15Z.tif.json",
+        }
 
         stac_collection = pystac.Collection.from_file(str(workspace_dir / "collection.json"))
         stac_collection.validate_all()
 
         item_links = [item_link for item_link in stac_collection.links if item_link.rel == "item"]
-        assert len(item_links) == 1
-        item_link = item_links[0]
+        assert len(item_links) == 2
+        item_link = [item_link for item_link in item_links if "openEO_2021-01-05Z.tif" in item_link.href][0]
 
         assert item_link.media_type == "application/geo+json"
         assert item_link.href == "./openEO_2021-01-05Z.tif.json"
 
         items = list(stac_collection.get_items())
-        assert len(items) == 1
+        assert len(items) == 2
 
-        item = items[0]
-        assert item.id == "openEO_2021-01-05Z.tif"
+        item = [item for item in items if item.id == "openEO_2021-01-05Z.tif"][0]
         assert item.bbox == [0.0, 0.0, 1.0, 2.0]
         assert (shape(item.geometry).normalize()
                 .almost_equals(Polygon.from_bounds(0.0, 0.0, 1.0, 2.0).normalize()))

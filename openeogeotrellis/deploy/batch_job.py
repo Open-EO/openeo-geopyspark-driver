@@ -539,32 +539,34 @@ def _export_to_workspaces(
         )
     ]
 
-    for asset_key, asset in result_assets_metadata.items():
-        workspace_uris = []
+    workspace_uris = {}
 
-        for i, workspace_export in enumerate(workspace_exports):
-            workspace: Workspace = workspace_repository.get_by_id(workspace_export.workspace_id)
-            merge = workspace_export.merge
+    for i, workspace_export in enumerate(workspace_exports):
+        workspace: Workspace = workspace_repository.get_by_id(workspace_export.workspace_id)
+        merge = workspace_export.merge
 
-            if merge is None:
-                merge = OPENEO_BATCH_JOB_ID
-            elif merge == "":
-                merge = "."
+        if merge is None:
+            merge = OPENEO_BATCH_JOB_ID
+        elif merge == "":
+            merge = "."
 
-            # original asset can only be removed after visiting all workspaces
-            final_export = i >= len(workspace_exports) - 1
-            remove_original = remove_exported_assets and final_export
+        final_export = i >= len(workspace_exports) - 1
+        remove_original = remove_exported_assets and final_export
 
-            export_to_workspace = partial(
-                _export_to_workspace, target=workspace, merge=merge, remove_original=remove_original
+        export_to_workspace = partial(
+            _export_to_workspace, target=workspace, merge=merge, remove_original=remove_original
+        )
+
+        for stac_href in stac_hrefs:
+            export_to_workspace(stac_href)
+
+        for asset_key, asset in result_assets_metadata.items():
+            workspace_uri = export_to_workspace(source_uri=asset["href"])
+            workspace_uris.setdefault(asset_key, []).append(
+                (workspace_export.workspace_id, workspace_export.merge, workspace_uri)
             )
 
-            workspace_uri = export_to_workspace(source_uri=asset["href"])
-            workspace_uris.append((workspace_export.workspace_id, workspace_export.merge, workspace_uri))
-
-            for stac_href in stac_hrefs:
-                export_to_workspace(source_uri=stac_href)
-
+    for asset_key, workspace_uris in workspace_uris.items():
         if remove_exported_assets:
             # the last workspace URI becomes the public_href; the rest become "alternate" hrefs
             result_metadata["assets"][asset_key][BatchJobs.ASSET_PUBLIC_HREF] = workspace_uris[-1][2]

@@ -985,7 +985,9 @@ class GeopysparkDataCube(DriverDataCube):
                     rdd,
                     overlaps_resolver,
                     True  # swapOperands
-                )
+                ),
+                target_type=gps.LayerType.SPACETIME
+
             )
         elif other._is_spatial():
             merged_data = self._apply_to_levels_geotrellis_rdd(
@@ -995,7 +997,8 @@ class GeopysparkDataCube(DriverDataCube):
                     other.pyramid.levels[level].srdd.rdd(),
                     overlaps_resolver,
                     False  # swapOperands
-                )
+                ),
+                target_type=gps.LayerType.SPACETIME
             )
         else:
             def merge(rdd,other,level):
