@@ -415,8 +415,6 @@ def get_abs_path_of_asset(asset_filename: Union[str, Path], job_dir: Union[str, 
 
     :return: the absolute path to the asset file, inside job_dir.
     """
-    if str(asset_filename).startswith("s3:/"):
-        return Path(asset_filename)
     abs_asset_path = Path(asset_filename)
     if not abs_asset_path.is_absolute():
         abs_asset_path = Path(job_dir).resolve() / asset_filename

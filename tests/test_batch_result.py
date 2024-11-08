@@ -1141,13 +1141,13 @@ def test_export_workspace_with_asset_per_band(tmp_path):
         shutil.rmtree(workspace_dir, ignore_errors=True)
 
 
-@pytest.mark.parametrize("use_S3", [False])  # use_S3 does not work on Jenkins
+@pytest.mark.parametrize("use_s3", [False])  # use_s3 does not work on Jenkins
 def test_filepath_per_band(
-        tmp_path,
-        use_S3,
-        mock_s3_bucket,
-        moto_server,
-        monkeypatch,
+    tmp_path,
+    use_s3,
+    mock_s3_bucket,
+    moto_server,
+    monkeypatch,
 ):
     process_graph = {
         "loadcollection1": {
@@ -1189,10 +1189,10 @@ def test_filepath_per_band(
         },
     }
 
-    if use_S3:
+    if use_s3:
         monkeypatch.setenv("KUBE", "TRUE")
         json_path = tmp_path / "process_graph.json"
-        json.dump(process_graph, json_path.open("wt"))
+        json.dump(process_graph, json_path.open("w"))
 
         containing_folder = Path(__file__).parent
         cmd = [
@@ -1248,7 +1248,7 @@ def test_filepath_per_band(
             "lat.tif.json",
         ]
     )
-    if not use_S3:
+    if not use_s3:
         assert "lat.tif" in workspace_files
 
     stac_collection = pystac.Collection.from_file(str(tmp_path / "collection.json"))
@@ -1265,15 +1265,13 @@ def test_filepath_per_band(
 
     item = items[0]
     assert item.id == "folder1/lon.tif"
-    # assert item.bbox == [0.0, 0.0, 1.0, 2.0] # There is no bbox for spatial only geotifs.
-    # assert shape(item.geometry).normalize().almost_equals(Polygon.from_bounds(0.0, 0.0, 1.0, 2.0).normalize())
 
     geotiff_asset = item.get_assets()["folder1/lon.tif"]
     assert "data" in geotiff_asset.roles
     assert geotiff_asset.href == "./lon.tif"  # relative to the json file
     assert geotiff_asset.media_type == "image/tiff; application=geotiff"
     assert geotiff_asset.extra_fields["eo:bands"] == [DictSubSet({"name": "Longitude"})]
-    if not use_S3:
+    if not use_s3:
         assert geotiff_asset.extra_fields["raster:bands"] == [
             {
                 "name": "Longitude",

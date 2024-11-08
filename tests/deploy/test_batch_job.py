@@ -1,6 +1,5 @@
 import json
 import logging
-import os
 import re
 import shutil
 import subprocess
@@ -1347,7 +1346,7 @@ def test_run_job_to_s3(
         },
     }
     json_path = tmp_path / "process_graph.json"
-    json.dump(process_graph, json_path.open("wt"))
+    json.dump(process_graph, json_path.open("w"))
 
     containing_folder = Path(__file__).parent
     cmd = [
