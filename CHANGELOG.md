@@ -18,6 +18,7 @@ without compromising stable operations.
 
 - Py4j log level is now always 'WARN' to avoid spurious messages.
 - Fix removal of multiple original job result assets ([#883](https://github.com/Open-EO/openeo-geopyspark-driver/issues/883))
+- Fix using asset_per_band with large extends giving partial tiff files ([Open-EO/openeo-geotrellis-extensions#329](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/329))
 
 ## 0.49.0
 
