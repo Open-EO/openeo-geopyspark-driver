@@ -1837,6 +1837,8 @@ class GeopysparkDataCube(DriverDataCube):
         if separate_asset_per_band.isDefined() and format != "GTIFF":
             raise OpenEOApiException("separate_asset_per_band is only supported with format GTIFF")
 
+        filepath_per_band = format_options.get("filepath_per_band", None)
+
         save_filename = s3_filename if batch_mode and ConfigParams().is_kube_deploy and not get_backend_config().fuse_mount_batchjob_s3_bucket else filename
         save_directory = s3_directory if batch_mode and ConfigParams().is_kube_deploy and not get_backend_config().fuse_mount_batchjob_s3_bucket else directory
 
@@ -1900,6 +1902,11 @@ class GeopysparkDataCube(DriverDataCube):
                         gtiff_options.setFilenamePrefix(filename_prefix.get())
                     if separate_asset_per_band.isDefined():
                         gtiff_options.setSeparateAssetPerBand(separate_asset_per_band.get())
+                    if filepath_per_band:
+                        if self.metadata.has_temporal_dimension():
+                            # The user would need a way to encode the date in the filenames
+                            raise OpenEOApiException("filepath_per_band is not supported with temporal dimension")
+                        gtiff_options.setFilepathPerBand(get_jvm().scala.Option.apply(filepath_per_band))
                     gtiff_options.addHeadTag("PROCESSING_SOFTWARE",softwareversion)
                     if description != "":
                         gtiff_options.addHeadTag("ImageDescription", description)
@@ -2012,7 +2019,7 @@ class GeopysparkDataCube(DriverDataCube):
                             ]
                             assets = {}
                             for path, band_indices in paths_tuples:
-                                file_name = pathlib.Path(path).name
+                                file_name = str(pathlib.Path(path).relative_to(save_directory))
                                 assets[file_name] = {
                                     "href": str(path),
                                     "type": "image/tiff; application=geotiff",
@@ -2127,9 +2134,6 @@ class GeopysparkDataCube(DriverDataCube):
                     else:
                         result=self._collect_as_xarray(max_level)
 
-
-                    # if batch_mode:
-                    #     filename = directory +  "/openEO.nc"
                     XarrayIO.to_netcdf_file(array=result, path=filename)
                     if batch_mode:
                         asset = {

@@ -1,6 +1,8 @@
 import json
 import os
 import shutil
+import subprocess
+import sys
 import uuid
 from pathlib import Path
 from unittest import mock
@@ -15,7 +17,7 @@ from openeo.util import ensure_dir
 from openeo_driver.dry_run import DryRunDataTracer
 from openeo_driver.errors import OpenEOApiException
 from openeo_driver.ProcessGraphDeserializer import ENV_DRY_RUN_TRACER, evaluate
-from openeo_driver.testing import DictSubSet, ephemeral_fileserver
+from openeo_driver.testing import DictSubSet, ephemeral_fileserver, ListSubSet
 from openeo_driver.util.geometry import validate_geojson_coordinates
 from openeo_driver.utils import EvalEnv
 from openeo_driver.workspace import DiskWorkspace
@@ -27,6 +29,7 @@ from openeogeotrellis.backend import JOB_METADATA_FILENAME
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.deploy.batch_job import run_job
 from openeogeotrellis.deploy.batch_job_metadata import extract_result_metadata
+from openeogeotrellis.utils import s3_client
 
 from .data import TEST_DATA_ROOT, get_test_data_file
 
@@ -1135,7 +1138,157 @@ def test_export_workspace_with_asset_per_band(tmp_path):
         with rasterio.open(geotiff_asset_copy_path) as dataset:
             assert dataset.driver == "GTiff"
     finally:
-        shutil.rmtree(workspace_dir)
+        shutil.rmtree(workspace_dir, ignore_errors=True)
+
+
+@pytest.mark.parametrize("use_s3", [False])  # use_s3 does not work on Jenkins
+def test_filepath_per_band(
+    tmp_path,
+    use_s3,
+    mock_s3_bucket,
+    moto_server,
+    monkeypatch,
+):
+    process_graph = {
+        "loadcollection1": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "TestCollection-LonLat4x4",
+                "temporal_extent": ["2021-01-05", "2021-01-06"],
+                "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 2.0},
+                "bands": ["Longitude", "Latitude"],
+            },
+        },
+        "reducedimension1": {
+            "process_id": "reduce_dimension",
+            "arguments": {
+                "data": {"from_node": "loadcollection1"},
+                "dimension": "t",
+                "reducer": {
+                    "process_graph": {
+                        "first1": {
+                            "process_id": "first",
+                            "arguments": {"data": {"from_parameter": "data"}},
+                            "result": True,
+                        }
+                    }
+                },
+            },
+        },
+        "saveresult1": {
+            "process_id": "save_result",
+            "arguments": {
+                "data": {"from_node": "reducedimension1"},
+                "format": "GTiff",
+                "options": {
+                    "separate_asset_per_band": "true",
+                    "filepath_per_band": ["folder1/lon.tif", "lat.tif"],
+                },
+            },
+            "result": True,
+        },
+    }
+
+    if use_s3:
+        monkeypatch.setenv("KUBE", "TRUE")
+        json_path = tmp_path / "process_graph.json"
+        json.dump(process_graph, json_path.open("w"))
+
+        containing_folder = Path(__file__).parent
+        cmd = [
+            sys.executable,
+            containing_folder.parent / "openeogeotrellis/deploy/run_graph_locally.py",
+            json_path,
+        ]
+        # Run in separate subprocess so that all environment variables are
+        # set correctly at the moment the SparkContext is created:
+        try:
+            output = subprocess.check_output(cmd, stderr=subprocess.STDOUT, universal_newlines=True, env=os.environ)
+        except subprocess.CalledProcessError as e:
+            print("run_graph_locally failed. Output: " + e.output)
+            raise
+
+        print(output)
+
+        s3_instance = s3_client()
+        from openeogeotrellis.config import get_backend_config
+
+        with open(json_path, "rb") as f:
+            s3_instance.upload_fileobj(
+                f, get_backend_config().s3_bucket_name, str((tmp_path / "test.json").relative_to("/"))
+            )
+
+        job_dir_files = {o["Key"] for o in
+                         s3_instance.list_objects(Bucket=get_backend_config().s3_bucket_name)["Contents"]}
+        job_dir_files = [f[len(str(tmp_path)):] for f in job_dir_files]
+    else:
+        process = {
+            "process_graph": process_graph,
+        }
+        run_job(
+            process,
+            output_file=tmp_path / "out",
+            metadata_file=tmp_path / JOB_METADATA_FILENAME,
+            api_version="2.0.0",
+            job_dir=tmp_path,
+            dependencies=[],
+        )
+
+        job_dir_files = set(os.listdir(tmp_path))
+    assert len(job_dir_files) > 0
+    assert "lat.tif" in job_dir_files
+    assert any(f.startswith("folder1") for f in job_dir_files)
+
+    workspace_files = list(os.listdir(tmp_path))
+    assert workspace_files == ListSubSet(
+        [
+            "collection.json",
+            "folder1",
+            "job_metadata.json",
+            "lat.tif.json",
+        ]
+    )
+    if not use_s3:
+        assert "lat.tif" in workspace_files
+
+    stac_collection = pystac.Collection.from_file(str(tmp_path / "collection.json"))
+    stac_collection.validate_all()
+    item_links = [item_link for item_link in stac_collection.links if item_link.rel == "item"]
+    assert len(item_links) == 2
+    item_link = item_links[0]
+
+    assert item_link.media_type == "application/geo+json"
+    assert item_link.href == "./folder1/lon.tif.json"
+
+    items = list(stac_collection.get_items())
+    assert len(items) == 2
+
+    item = items[0]
+    assert item.id == "folder1/lon.tif"
+
+    geotiff_asset = item.get_assets()["folder1/lon.tif"]
+    assert "data" in geotiff_asset.roles
+    assert geotiff_asset.href == "./lon.tif"  # relative to the json file
+    assert geotiff_asset.media_type == "image/tiff; application=geotiff"
+    assert geotiff_asset.extra_fields["eo:bands"] == [DictSubSet({"name": "Longitude"})]
+    if not use_s3:
+        assert geotiff_asset.extra_fields["raster:bands"] == [
+            {
+                "name": "Longitude",
+                "statistics": {
+                    "maximum": 0.75,
+                    "mean": 0.375,
+                    "minimum": 0.0,
+                    "stddev": 0.27950849718747,
+                    "valid_percent": 100.0,
+                },
+            }
+        ]
+
+        geotiff_asset_copy_path = tmp_path / "file.copy"
+        geotiff_asset.copy(str(geotiff_asset_copy_path))  # downloads the asset file
+        with rasterio.open(geotiff_asset_copy_path) as dataset:
+            assert dataset.driver == "GTiff"
 
 
 def test_discard_result(tmp_path):

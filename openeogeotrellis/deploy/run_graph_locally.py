@@ -23,7 +23,7 @@ def run_graph_locally(process_graph, output_dir):
         process_graph = {"process_graph": process_graph}
     run_job(
         process_graph,
-        output_file=output_dir / "random_folder_name",
+        output_file=output_dir / "out",  # just like in backend.py
         metadata_file=output_dir / JOB_METADATA_FILENAME,
         api_version="2.0.0",
         job_dir=output_dir,

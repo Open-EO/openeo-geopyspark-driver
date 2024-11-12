@@ -176,13 +176,14 @@ def _get_metadata_callback(asset_path: str, asset_md: Dict[str, str], job_dir: P
     asset_href: str = asset_md.get("href", "")
     if not abs_asset_path.exists() and asset_href.startswith("s3://"):
         try:
+            abs_asset_path.parent.mkdir(parents=True, exist_ok=True)
             with open(abs_asset_path, "wb") as f:
                 for chunk in stream_s3_binary_file_contents(asset_href):
                     f.write(chunk)
         except Exception as exc:
             message = (
                 "Could not download asset from object storage: "
-                + f"asset={asset_path}, href={asset_href!r}, exception: {exc!r}"
+                + f"asset={abs_asset_path}, href={asset_href!r}, exception: {exc!r}"
             )
             poorly_log(message, level=logging.ERROR)
 
@@ -393,7 +394,7 @@ def _get_projection_extension_metadata(gdal_info: GDALInfo) -> ProjectionMetadat
     return proj_metadata
 
 
-def get_abs_path_of_asset(asset_filename: str, job_dir: Union[str, Path]) -> Path:
+def get_abs_path_of_asset(asset_filename: Union[str, Path], job_dir: Union[str, Path]) -> Path:
     """Get a correct absolute path for the asset file.
 
     A simple `Path(mypath).resolve()` is not enough, because that is based on

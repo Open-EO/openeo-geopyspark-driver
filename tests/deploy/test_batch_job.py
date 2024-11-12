@@ -23,6 +23,7 @@ from pytest import approx
 from shapely.geometry import box, mapping, shape
 
 from openeogeotrellis._version import __version__
+from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.config.constants import UDF_DEPENDENCIES_INSTALL_MODE
 from openeogeotrellis.deploy.batch_job import (
     _extract_and_install_udf_dependencies,
@@ -988,6 +989,8 @@ def test_run_job_get_projection_extension_metadata_job_dir_is_relative_path(eval
         dir=".", suffix="job-test-proj-metadata"
     ) as job_dir:
         job_dir = Path(job_dir)
+        # Emile 2024-10-29: Not sure what the use-case of a relative path is here.
+        # STAC metadata uses relative paths internally, but the job_dir is better absolute IMHO
         assert not job_dir.is_absolute()
 
         # Note that batch_job's main() interprets its output_file and metadata_file
@@ -1126,9 +1129,10 @@ def test_run_job_get_projection_extension_metadata_assets_in_s3(
     mock_config_use_object_storage.return_value = True
     cube_mock = MagicMock()
 
-    job_id = "j-123546"
-    job_dir = tmp_path / "job-1115"
+    job_id = "j-123"
+    job_dir = tmp_path / job_id
     job_dir.mkdir()
+
     output_file = job_dir / "out"
     metadata_file = job_dir / "metadata.json"
 
@@ -1154,6 +1158,12 @@ def test_run_job_get_projection_extension_metadata_assets_in_s3(
     # starting the job. It will be downloaded when gdalinfo needs it.
     first_asset_dest = job_dir / single_asset_name
     assert not first_asset_dest.exists()
+    from openeogeotrellis.utils import s3_client
+
+    s3_instance = s3_client()
+
+    files_before = {o["Key"] for o in s3_instance.list_objects(Bucket=get_backend_config().s3_bucket_name)["Contents"]}
+    assert files_before == {"j-123/Copernicus_DSM_COG_10_N50_00_E005_00_DEM.tif"}
 
     run_job(
         job_specification={"process_graph": {"nop": {"process_id": "discard_result", "result": True}}},
@@ -1340,7 +1350,7 @@ def test_run_job_to_s3(
     separate_process = True
     if separate_process:
         json_path = tmp_path / "process_graph.json"
-        json.dump(process_graph, json_path.open("wt"), indent=2)
+        json.dump(process_graph, json_path.open("w"), indent=2)
         containing_folder = Path(__file__).parent
         cmd = [
             sys.executable,

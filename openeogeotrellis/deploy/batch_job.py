@@ -273,9 +273,9 @@ def run_job(
     try:
         # We actually expect type Path, but in reality paths as strings tend to
         # slip in anyway, so we better catch them and convert them.
-        output_file = Path(output_file)
-        metadata_file = Path(metadata_file)
-        job_dir = Path(job_dir)
+        output_file = Path(output_file).absolute()
+        metadata_file = Path(metadata_file).absolute()
+        job_dir = Path(job_dir).absolute()
 
         logger.info(f"Job spec: {json.dumps(job_specification,indent=1)}")
         logger.debug(f"{job_dir=}, {job_dir.resolve()=}, {output_file=}, {metadata_file=}")
@@ -509,11 +509,10 @@ def write_metadata(metadata, metadata_file, job_dir: Path):
             s3_instance = s3_client()
 
             logger.info("Writing results to object storage")
-            for filename in os.listdir(job_dir):
-                if filename == UDF_PYTHON_DEPENDENCIES_FOLDER_NAME:
-                    logger.warning(f"Omitting {filename} as the executors will not be able to access it")
+            for file_path in filter(lambda x: x.is_file(), job_dir.rglob("*")):
+                if file_path.name == UDF_PYTHON_DEPENDENCIES_FOLDER_NAME:
+                    logger.warning(f"Omitting {file_path} as the executors will not be able to access it")
                 else:
-                    file_path = job_dir / filename
                     full_path = str(file_path.absolute())
                     s3_instance.upload_file(full_path, bucket, full_path.strip("/"))
         else:
@@ -603,7 +602,7 @@ def _write_exported_stac_collection(
     asset_keys: List[str],
 ) -> List[Path]:  # TODO: change to Set?
     def write_stac_item_file(asset_id: str, asset: dict) -> Path:
-        item_file = job_dir / f"{asset_id}.json"
+        item_file = get_abs_path_of_asset(Path(f"{asset_id}.json"), job_dir)
 
         properties = {"datetime": asset.get("datetime")}
 
@@ -638,6 +637,7 @@ def _write_exported_stac_collection(
             },
         }
 
+        item_file.parent.mkdir(parents=True, exist_ok=True)
         with open(item_file, "wt") as fi:
             json.dump(stac_item, fi, allow_nan=False)
 
@@ -648,8 +648,9 @@ def _write_exported_stac_collection(
     ]
 
     def item_link(item_file: Path) -> dict:
+        relative_path = item_file.relative_to(job_dir)
         return {
-            "href": f"./{item_file.name}",
+            "href": f"./{relative_path}",
             "rel": "item",
             "type": "application/geo+json",
         }
