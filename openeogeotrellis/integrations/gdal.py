@@ -417,7 +417,7 @@ def get_abs_path_of_asset(asset_filename: Union[str, Path], job_dir: Union[str, 
     """
     abs_asset_path = Path(asset_filename)
     if not abs_asset_path.is_absolute():
-        abs_asset_path = Path(job_dir).resolve() / asset_filename
+        abs_asset_path = Path(job_dir).absolute() / asset_filename
 
     return abs_asset_path
 

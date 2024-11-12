@@ -278,7 +278,7 @@ def run_job(
         job_dir = Path(job_dir).absolute()
 
         logger.info(f"Job spec: {json.dumps(job_specification,indent=1)}")
-        logger.debug(f"{job_dir=}, {job_dir.resolve()=}, {output_file=}, {metadata_file=}")
+        logger.debug(f"{job_dir=}, {job_dir=}, {output_file=}, {metadata_file=}")
         process_graph = job_specification['process_graph']
         job_options = job_specification.get("job_options", {})
 
