@@ -238,20 +238,9 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
                 fields = None
             else:
                 modifier = None
-                # standard behavior seems to be to include only a minimal subset e.g. https://stac.openeo.vito.be/
-                # and e.g. https://stac.terrascope.be
-                # include all fields to ease the transition of stac catalog
-                fields = [
-                    "type",
-                    "geometry",
-                    "properties",
-                    "id",
-                    "bbox",
-                    "stac_version",
-                    "assets",
-                    "links",
-                    "collection",
-                ]
+                # Those now also return all fields by default as well:
+                # https://stac.openeo.vito.be/ and https://stac.terrascope.be
+                fields = None
 
             client = pystac_client.Client.open(root_catalog.get_self_href(), modifier=modifier)
 
