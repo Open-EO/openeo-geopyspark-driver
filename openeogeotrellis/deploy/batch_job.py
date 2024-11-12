@@ -628,7 +628,7 @@ def _write_exported_stac_collection(
             "assets": {
                 asset_id: dict_no_none(
                     **{
-                        "href": f"./{Path(asset['href']).name}",
+                        "href": f"{Path(asset['href']).name}",
                         "roles": asset.get("roles"),
                         "type": asset.get("type"),
                         "eo:bands": asset.get("bands"),
@@ -649,7 +649,7 @@ def _write_exported_stac_collection(
 
     def item_link(item_file: Path) -> dict:
         return {
-            "href": f"./{item_file.name}",
+            "href": f"{item_file.name}",
             "rel": "item",
             "type": "application/geo+json",
         }

@@ -947,7 +947,7 @@ def test_export_workspace(tmp_path, remove_original):
 
     # TODO: avoid depending on `/tmp` for test output, make sure to leverage `tmp_path` fixture (https://github.com/Open-EO/openeo-python-driver/issues/265)
     workspace: DiskWorkspace = get_backend_config().workspaces[workspace_id]
-    workspace_dir = Path(f"{workspace.root_directory}/{merge}")
+    workspace_dir = (workspace.root_directory / merge).parent
 
     try:
         metadata_file = tmp_path / "job_metadata.json"
@@ -1068,7 +1068,7 @@ def test_export_workspace_with_asset_per_band(tmp_path):
 
     # TODO: avoid depending on `/tmp` for test output, make sure to leverage `tmp_path` fixture (https://github.com/Open-EO/openeo-python-driver/issues/265)
     workspace: DiskWorkspace = get_backend_config().workspaces[workspace_id]
-    workspace_dir = Path(f"{workspace.root_directory}/{merge}")
+    workspace_dir = (workspace.root_directory / merge).parent
 
     try:
         run_job(
@@ -1516,7 +1516,7 @@ def test_multiple_save_result_single_export_workspace(tmp_path):
 
     # TODO: avoid depending on `/tmp` for test output, make sure to leverage `tmp_path` fixture (https://github.com/Open-EO/openeo-python-driver/issues/265)
     workspace: DiskWorkspace = get_backend_config().workspaces[workspace_id]
-    workspace_dir = Path(f"{workspace.root_directory}/{merge}")
+    workspace_dir = (workspace.root_directory / merge).parent
 
     try:
         run_job(
@@ -1731,29 +1731,29 @@ def test_export_to_multiple_workspaces(tmp_path, remove_original):
 
         assert asset["href"] == str(tmp_path / "openEO_2021-01-05Z.tif")
 
-        primary_workspace_uri = f"file:{workspace.root_directory / max(merge1, merge2)}/openEO_2021-01-05Z.tif"
-        secondary_workspace_uri = f"file:{workspace.root_directory / min(merge1, merge2)}/openEO_2021-01-05Z.tif"
+        first_workspace_uri = f"file:{(workspace.root_directory / max(merge1, merge2)).parent}/openEO_2021-01-05Z.tif"
+        second_workspace_uri = f"file:{(workspace.root_directory / min(merge1, merge2)).parent}/openEO_2021-01-05Z.tif"
 
         if remove_original:
-            assert asset["public_href"] == primary_workspace_uri
+            assert asset["public_href"] == first_workspace_uri
             assert asset["alternate"] == {
                 f"{workspace_id}/{min(merge1, merge2)}": {
-                    "href": secondary_workspace_uri,
+                    "href": second_workspace_uri,
                 },
             }
         else:
             assert asset["alternate"] == {
                 f"{workspace_id}/{max(merge1, merge2)}": {
-                    "href": primary_workspace_uri,
+                    "href": first_workspace_uri,
                 },
                 f"{workspace_id}/{min(merge1, merge2)}": {
-                    "href": secondary_workspace_uri,
+                    "href": second_workspace_uri,
                 },
             }
     finally:
-        shutil.rmtree(workspace.root_directory / merge1)
-        shutil.rmtree(workspace.root_directory / merge2)
+        shutil.rmtree((workspace.root_directory / merge1).parent)
+        shutil.rmtree((workspace.root_directory / merge2).parent)
 
 
-def _random_merge():
-    return f"OpenEO-workspace-{uuid.uuid4()}"
+def _random_merge() -> str:
+    return f"OpenEO-workspace-{uuid.uuid4()}/collection.json"
