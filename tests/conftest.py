@@ -98,6 +98,21 @@ def is_port_free(port: int) -> bool:
         return s.connect_ex(("localhost", port)) != 0
 
 
+def force_restart_spark_context():
+    # Restart SparkContext will make sure that the new environment variables are available inside the JVM
+    # This is a hacky way to allow debugging in the same process.
+    from pyspark import SparkContext
+
+    with SparkContext._lock:
+        # Need to shut down before creating a new SparkConf (Before SparkContext is not enough)
+        # Like this, the new environment variables are available inside the JVM
+        if SparkContext._active_spark_context:
+            SparkContext._active_spark_context.stop()
+            SparkContext._gateway.shutdown()
+            SparkContext._gateway = None
+            SparkContext._jvm = None
+
+
 def _setup_local_spark(out: TerminalReporter, verbosity=0):
     # TODO make a "spark_context" fixture instead of doing this through pytest_configure
     out.write_line("[conftest.py] Setting up local Spark")
