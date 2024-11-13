@@ -510,7 +510,9 @@ def write_metadata(metadata, metadata_file, job_dir: Path):
 
             logger.info("Writing results to object storage")
             for file_path in filter(lambda x: x.is_file(), job_dir.rglob("*")):
-                if file_path.name == UDF_PYTHON_DEPENDENCIES_FOLDER_NAME:
+                # TODO: Get list of files to upload from metadata file.
+                #  AFAIK, nothing else is created locally and needs to be uploaded to s3 afterwards.
+                if UDF_PYTHON_DEPENDENCIES_FOLDER_NAME in str(file_path):
                     logger.warning(f"Omitting {file_path} as the executors will not be able to access it")
                 else:
                     full_path = str(file_path.absolute())
