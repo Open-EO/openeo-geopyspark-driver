@@ -17,6 +17,7 @@ version = __version__
 
 tests_require = [
     'pytest',
+    'pytest-timeout',
     'mock',
     'moto[s3]>=5.0.0',
     'schema',
