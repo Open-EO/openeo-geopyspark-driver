@@ -487,7 +487,7 @@ def run_job(
                 result,
                 result_metadata,
                 result_assets_metadata=result_assets_metadata,
-                stac_metadata_dir=job_dir,
+                job_dir=job_dir,
                 remove_exported_assets=job_options.get("remove-exported-assets", False),
             )
     finally:
@@ -525,7 +525,7 @@ def _export_to_workspaces(
     result: SaveResult,
     result_metadata: dict,
     result_assets_metadata: dict,
-    stac_metadata_dir: Path,
+    job_dir: Path,
     remove_exported_assets: bool,
 ):
     workspace_repository: WorkspaceRepository = backend_config_workspace_repository
@@ -536,9 +536,7 @@ def _export_to_workspaces(
 
     stac_hrefs = [
         f"file:{path}"
-        for path in _write_exported_stac_collection(
-            stac_metadata_dir, result_metadata, list(result_assets_metadata.keys())
-        )
+        for path in _write_exported_stac_collection(job_dir, result_metadata, list(result_assets_metadata.keys()))
     ]
 
     workspace_uris = {}
@@ -556,11 +554,15 @@ def _export_to_workspaces(
         remove_original = remove_exported_assets and final_export
 
         export_to_workspace = partial(
-            _export_to_workspace, target=workspace, merge=merge, remove_original=remove_original
+            _export_to_workspace,
+            job_dir=job_dir,
+            target=workspace,
+            merge=merge,
+            remove_original=remove_original,
         )
 
         for stac_href in stac_hrefs:
-            export_to_workspace(stac_href)
+            export_to_workspace(source_uri=stac_href)
 
         for asset_key, asset in result_assets_metadata.items():
             workspace_uri = export_to_workspace(source_uri=asset["href"])
@@ -587,13 +589,13 @@ def _export_to_workspaces(
             result_metadata["assets"][asset_key]["alternate"] = alternate
 
 
-def _export_to_workspace(source_uri: str, target: Workspace, merge: str, remove_original: bool) -> str:
+def _export_to_workspace(job_dir: str, source_uri: str, target: Workspace, merge: str, remove_original: bool) -> str:
     uri_parts = urlparse(source_uri)
 
     if not uri_parts.scheme or uri_parts.scheme.lower() == "file":
-        return target.import_file(Path(uri_parts.path), merge, remove_original)
+        return target.import_file(job_dir, Path(uri_parts.path), merge, remove_original)
     elif uri_parts.scheme == "s3":
-        return target.import_object(source_uri, merge, remove_original)
+        return target.import_object(job_dir, source_uri, merge, remove_original)
     else:
         raise ValueError(f"unsupported scheme {uri_parts.scheme} for {source_uri}; supported are: file, s3")
 

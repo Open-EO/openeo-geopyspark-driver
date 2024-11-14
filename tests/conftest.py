@@ -98,7 +98,7 @@ def is_port_free(port: int) -> bool:
         return s.connect_ex(("localhost", port)) != 0
 
 
-def force_restart_spark_context():
+def force_stop_spark_context():
     # Restart SparkContext will make sure that the new environment variables are available inside the JVM
     # This is a hacky way to allow debugging in the same process.
     from pyspark import SparkContext
