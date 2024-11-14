@@ -40,7 +40,7 @@ from py4j.protocol import Py4JError, Py4JJavaError
 from pyspark import SparkConf, SparkContext
 from pyspark.profiler import BasicProfiler
 from shapely.geometry import mapping
-from traceback_with_variables import Format, format_exc
+import traceback_with_variables
 
 from openeogeotrellis._version import __version__
 from openeogeotrellis.backend import (
@@ -741,9 +741,13 @@ def start_main():
             main(sys.argv)
     except Exception as e:
         error_summary = GeoPySparkBackendImplementation.summarize_exception_static(e)
-        fmt = Format(max_value_str_len=1000)
         logger.exception("OpenEO batch job failed: " + error_summary.summary)
-        logger.info("Batch job error stack trace with locals", extra={"exc_info_with_locals": format_exc(e, fmt=fmt)})
+        if False:  # TODO #939
+            fmt = traceback_with_variables.Format(max_value_str_len=100)
+            logger.info(
+                "Batch job error stack trace with locals",
+                extra={"exc_info_with_locals": traceback_with_variables.format_exc(e, fmt=fmt)},
+            )
         raise
 
 
