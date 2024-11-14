@@ -15,7 +15,9 @@ def test_import_file(tmp_path, mock_s3_client, mock_s3_bucket, remove_original):
     merge = "some/target"
 
     workspace = ObjectStorageWorkspace(bucket="openeo-fake-bucketname")
-    workspace_uri = workspace.import_file(source_file, merge=merge, remove_original=remove_original)
+    workspace_uri = workspace.import_file(
+        common_path=source_directory, file=source_file, merge=merge, remove_original=remove_original
+    )
 
     assert workspace_uri == f"s3://{workspace.bucket}/{merge}/{source_file.name}"
     assert _workspace_keys(mock_s3_client, workspace.bucket, prefix=merge) == {f"{merge}/{source_file.name}"}
@@ -41,7 +43,10 @@ def test_import_object(tmp_path, mock_s3_client, mock_s3_bucket, remove_original
 
     workspace = ObjectStorageWorkspace(bucket=target_bucket)
     workspace_uri = workspace.import_object(
-        f"s3://{source_bucket}/{source_key}", merge=merge, remove_original=remove_original
+        common_path="some/source/",
+        s3_uri=f"s3://{source_bucket}/{source_key}",
+        merge=merge,
+        remove_original=remove_original,
     )
 
     assert workspace_uri == f"s3://{target_bucket}/some/target/object"
