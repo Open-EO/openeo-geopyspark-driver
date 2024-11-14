@@ -1369,9 +1369,9 @@ def test_run_job_to_s3(
         from openeogeotrellis.configparams import ConfigParams
 
         if ConfigParams().use_object_storage:
-            from tests.conftest import force_restart_spark_context
+            from tests.conftest import force_stop_spark_context
 
-            force_restart_spark_context()
+            force_stop_spark_context()
 
         # Run in the same process, so that we can check the output directly:
         from openeogeotrellis.deploy.run_graph_locally import run_graph_locally

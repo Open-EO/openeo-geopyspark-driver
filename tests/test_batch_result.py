@@ -30,6 +30,7 @@ from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.deploy.batch_job import run_job
 from openeogeotrellis.deploy.batch_job_metadata import extract_result_metadata
 from openeogeotrellis.utils import s3_client
+from .conftest import force_stop_spark_context, _setup_local_spark
 
 from .data import TEST_DATA_ROOT, get_test_data_file
 
@@ -1141,7 +1142,7 @@ def test_export_workspace_with_asset_per_band(tmp_path):
         shutil.rmtree(workspace_dir, ignore_errors=True)
 
 
-@pytest.mark.parametrize("use_s3", [False])  # use_s3 does not work on Jenkins
+@pytest.mark.parametrize("use_s3", [False])  # use_s3 is only for debugging locally. Does not work on Jenkins
 def test_filepath_per_band(
     tmp_path,
     use_s3,
@@ -1149,6 +1150,13 @@ def test_filepath_per_band(
     moto_server,
     monkeypatch,
 ):
+    if use_s3:
+        workspace_id = "s3_workspace"
+    else:
+        workspace_id = "tmp_workspace"
+
+    merge = _random_merge()
+
     process_graph = {
         "loadcollection1": {
             "process_id": "load_collection",
@@ -1185,43 +1193,31 @@ def test_filepath_per_band(
                     "filepath_per_band": ["folder1/lon.tif", "lat.tif"],
                 },
             },
+            "result": False,
+        },
+        "exportworkspace1": {
+            "process_id": "export_workspace",
+            "arguments": {
+                "data": {"from_node": "saveresult1"},
+                "workspace": workspace_id,
+                "merge": merge,
+            },
             "result": True,
         },
     }
 
     if use_s3:
         monkeypatch.setenv("KUBE", "TRUE")
-        json_path = tmp_path / "process_graph.json"
-        json.dump(process_graph, json_path.open("w"))
+        force_stop_spark_context()  # only use this when running a single test
 
-        containing_folder = Path(__file__).parent
-        cmd = [
-            sys.executable,
-            containing_folder.parent / "openeogeotrellis/deploy/run_graph_locally.py",
-            json_path,
-        ]
-        # Run in separate subprocess so that all environment variables are
-        # set correctly at the moment the SparkContext is created:
-        try:
-            output = subprocess.check_output(cmd, stderr=subprocess.STDOUT, universal_newlines=True, env=os.environ)
-        except subprocess.CalledProcessError as e:
-            print("run_graph_locally failed. Output: " + e.output)
-            raise
+        class TerminalReporterMock:
+            @staticmethod
+            def write_line(message):
+                print(message)
 
-        print(output)
-
+        _setup_local_spark(TerminalReporterMock(), 0)
         s3_instance = s3_client()
-        from openeogeotrellis.config import get_backend_config
-
-        with open(json_path, "rb") as f:
-            s3_instance.upload_fileobj(
-                f, get_backend_config().s3_bucket_name, str((tmp_path / "test.json").relative_to("/"))
-            )
-
-        job_dir_files = {o["Key"] for o in
-                         s3_instance.list_objects(Bucket=get_backend_config().s3_bucket_name)["Contents"]}
-        job_dir_files = [f[len(str(tmp_path)):] for f in job_dir_files]
-    else:
+    try:
         process = {
             "process_graph": process_graph,
         }
@@ -1234,61 +1230,83 @@ def test_filepath_per_band(
             dependencies=[],
         )
 
-        job_dir_files = set(os.listdir(tmp_path))
-    assert len(job_dir_files) > 0
-    assert "lat.tif" in job_dir_files
-    assert any(f.startswith("folder1") for f in job_dir_files)
-
-    workspace_files = list(os.listdir(tmp_path))
-    assert workspace_files == ListSubSet(
-        [
-            "collection.json",
-            "folder1",
-            "job_metadata.json",
-            "lat.tif.json",
-        ]
-    )
-    if not use_s3:
-        assert "lat.tif" in workspace_files
-
-    stac_collection = pystac.Collection.from_file(str(tmp_path / "collection.json"))
-    stac_collection.validate_all()
-    item_links = [item_link for item_link in stac_collection.links if item_link.rel == "item"]
-    assert len(item_links) == 2
-    item_link = item_links[0]
-
-    assert item_link.media_type == "application/geo+json"
-    assert item_link.href == "./folder1/lon.tif.json"
-
-    items = list(stac_collection.get_items())
-    assert len(items) == 2
-
-    item = items[0]
-    assert item.id == "folder1/lon.tif"
-
-    geotiff_asset = item.get_assets()["folder1/lon.tif"]
-    assert "data" in geotiff_asset.roles
-    assert geotiff_asset.href == "./lon.tif"  # relative to the json file
-    assert geotiff_asset.media_type == "image/tiff; application=geotiff"
-    assert geotiff_asset.extra_fields["eo:bands"] == [DictSubSet({"name": "Longitude"})]
-    if not use_s3:
-        assert geotiff_asset.extra_fields["raster:bands"] == [
-            {
-                "name": "Longitude",
-                "statistics": {
-                    "maximum": 0.75,
-                    "mean": 0.375,
-                    "minimum": 0.0,
-                    "stddev": 0.27950849718747,
-                    "valid_percent": 100.0,
-                },
+        if use_s3:
+            job_dir_files = {
+                o["Key"] for o in s3_instance.list_objects(Bucket=get_backend_config().s3_bucket_name)["Contents"]
             }
-        ]
+            print(job_dir_files)
+        job_dir_files = set(os.listdir(tmp_path))
 
-        geotiff_asset_copy_path = tmp_path / "file.copy"
-        geotiff_asset.copy(str(geotiff_asset_copy_path))  # downloads the asset file
-        with rasterio.open(geotiff_asset_copy_path) as dataset:
-            assert dataset.driver == "GTiff"
+        assert len(job_dir_files) > 0
+        assert "lat.tif" in job_dir_files
+        assert any(f.startswith("folder1") for f in job_dir_files)
+
+        stac_collection = pystac.Collection.from_file(str(tmp_path / "collection.json"))
+        stac_collection.validate_all()
+        item_links = [item_link for item_link in stac_collection.links if item_link.rel == "item"]
+        assert len(item_links) == 2
+        item_link = item_links[0]
+
+        assert item_link.media_type == "application/geo+json"
+        assert item_link.href == "./folder1/lon.tif.json"
+
+        items = list(stac_collection.get_items())
+        assert len(items) == 2
+
+        item = items[0]
+        assert item.id == "folder1/lon.tif"
+
+        geotiff_asset = item.get_assets()["folder1/lon.tif"]
+        assert "data" in geotiff_asset.roles
+        assert geotiff_asset.href == "./lon.tif"  # relative to the json file
+        assert geotiff_asset.media_type == "image/tiff; application=geotiff"
+        assert geotiff_asset.extra_fields["eo:bands"] == [DictSubSet({"name": "Longitude"})]
+        if not use_s3:
+            assert geotiff_asset.extra_fields["raster:bands"] == [
+                {
+                    "name": "Longitude",
+                    "statistics": {
+                        "maximum": 0.75,
+                        "mean": 0.375,
+                        "minimum": 0.0,
+                        "stddev": 0.27950849718747,
+                        "valid_percent": 100.0,
+                    },
+                }
+            ]
+
+            geotiff_asset_copy_path = tmp_path / "file.copy"
+            geotiff_asset.copy(str(geotiff_asset_copy_path))  # downloads the asset file
+            with rasterio.open(geotiff_asset_copy_path) as dataset:
+                assert dataset.driver == "GTiff"
+
+        workspace = get_backend_config().workspaces[workspace_id]
+        if use_s3:
+            # job bucket and workspace bucket are the same
+            job_dir_files_s3 = [
+                o["Key"] for o in s3_instance.list_objects(Bucket=get_backend_config().s3_bucket_name)["Contents"]
+            ]
+            assert job_dir_files_s3 == ListSubSet(
+                [
+                    f"{merge}/collection.json",
+                    f"{merge}/folder1/lon.tif",
+                    f"{merge}/folder1/lon.tif.json",
+                    f"{merge}/lat.tif",
+                    f"{merge}/lat.tif.json",
+                ]
+            )
+
+        else:
+            workspace_dir = Path(f"{workspace.root_directory}/{merge}")
+            assert workspace_dir.exists()
+            assert (workspace_dir / "lat.tif").exists()
+            assert (workspace_dir / "folder1/lon.tif").exists()
+            stac_collection_exported = pystac.Collection.from_file(str(workspace_dir / "collection.json"))
+            stac_collection_exported.validate_all()
+    finally:
+        if not use_s3:
+            workspace_dir = Path(f"{workspace.root_directory}/{merge}")
+            shutil.rmtree(workspace_dir, ignore_errors=True)
 
 
 def test_discard_result(tmp_path):
