@@ -294,7 +294,7 @@ class TestDownload:
     # Parameters found inside 'write_assets'. If all parameters are tested: 768 cases that take 2min to run.
     @pytest.mark.parametrize("tiled", [True])  # Specify [True, False] to run more tests
     @pytest.mark.parametrize("stitch", [True])  # Specify [True, False] to run more tests
-    @pytest.mark.parametrize("catalog", [True])  # Specify [True, False] to run more tests
+    @pytest.mark.parametrize("catalog", [True, False])
     @pytest.mark.parametrize("tile_grid", [None, "100km"])
     @pytest.mark.parametrize("sample_by_feature", [True, False])
     @pytest.mark.parametrize("batch_mode", [True, False])
@@ -353,6 +353,7 @@ class TestDownload:
                 "geometries": geometries,
                 # "feature_id_property": 'id',  # not used
                 # "multidate": True,  # not used
+                "ZLEVEL": 6,
             }
         )
         # with open(self.test_write_assets_parameterize_path + test_name + ".json", 'w') as fp:

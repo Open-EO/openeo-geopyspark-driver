@@ -1867,10 +1867,10 @@ class GeopysparkDataCube(DriverDataCube):
                 max_level = max_level.to_spatial_layer()
 
             if format == "GTIFF":
-                zlevel = format_options.get("ZLEVEL",6)
+                zlevel = format_options.get("ZLEVEL", 6)
                 if catalog:
                     _log.info("save_result (catalog) save_on_executors")
-                    self._save_on_executors(max_level, filename, filename_prefix=filename_prefix)
+                    self._save_on_executors(max_level, filename, zlevel, filename_prefix=filename_prefix)
                 elif stitch:
                     if tile_grid:
                         _log.info("save_result save_stitched_tile_grid")

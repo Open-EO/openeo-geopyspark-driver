@@ -14,6 +14,8 @@ without compromising stable operations.
 
 ## Unreleased
 
+- Fix type of `ZLEVEL` option for `GTiff` format
+
 ## 0.49.1
 
 - Py4j log level is now always 'WARN' to avoid spurious messages.

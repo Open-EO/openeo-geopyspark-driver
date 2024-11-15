@@ -422,9 +422,9 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                             "enum": ["wgs84-1degree", "utm-100km", "utm-20km", "utm-10km"]
                         },
                         "ZLEVEL": {
-                            "type": "string",
+                            "type": "integer",
                             "description": "Specifies the compression level used for DEFLATE compression. As a number from 1 to 9, lowest and fastest compression is 1 while 9 is highest and slowest compression.",
-                            "default": "6"
+                            "default": 6
                         },
                         "sample_by_feature": {
                             "type": "boolean",
