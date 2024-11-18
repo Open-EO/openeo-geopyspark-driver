@@ -15,6 +15,7 @@ without compromising stable operations.
 ## Unreleased
 
 - Fix type of `ZLEVEL` option for `GTiff` format
+- Add `filepath_per_band` to `save_result` options. ([#877](https://github.com/Open-EO/openeo-geopyspark-driver/issues/877))
 
 ## 0.49.1
 
