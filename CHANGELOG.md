@@ -14,8 +14,13 @@ without compromising stable operations.
 
 ## Unreleased
 
+
+## 0.50.0
+
 - Fix type of `ZLEVEL` option for `GTiff` format
 - Add `filepath_per_band` to `save_result` options. ([#877](https://github.com/Open-EO/openeo-geopyspark-driver/issues/877))
+- Allow pointing to custom processes with `OPENEO_CUSTOM_PROCESSES` env var (related to [#936](https://github.com/Open-EO/openeo-geopyspark-driver/issues/936))
+
 
 ## 0.49.1
 
