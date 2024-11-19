@@ -1926,5 +1926,23 @@ def test_export_to_multiple_workspaces(tmp_path, remove_original):
         shutil.rmtree(workspace.root_directory / merge2)
 
 
+def test_ndvi(tmp_path):
+    tmp_path = Path("/tmp/test_ndvi")
+
+    with open(
+        '/home/bossie/Documents/VITO/openeo-geopyspark-driver/reduce bands works in sync request but raises "IndexError: list index out of range" in batch job #943/j-2411197640724b6c9708856b0126bf5a_process_graph.json'
+    ) as f:
+        process = json.load(f)
+
+    run_job(
+        process,
+        output_file=tmp_path / "out",
+        metadata_file=tmp_path / JOB_METADATA_FILENAME,
+        api_version="2.0.0",
+        job_dir=tmp_path,
+        dependencies=[],
+    )
+
+
 def _random_merge():
     return f"OpenEO-workspace-{uuid.uuid4()}"

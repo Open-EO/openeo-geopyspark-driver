@@ -4829,3 +4829,19 @@ def test_geotiff_scale_offset(api110, tmp_path):
     assert second_band.GetDescription() == "Flat:2"
     assert second_band.GetScale() == 1.0
     assert second_band.GetOffset() == 4.56
+
+
+def test_ndvi(api110, tmp_path):
+    tmp_path = Path("/tmp/test_ndvi")
+
+    with open(
+        '/home/bossie/Documents/VITO/openeo-geopyspark-driver/reduce bands works in sync request but raises "IndexError: list index out of range" in batch job #943/j-2411197640724b6c9708856b0126bf5a_process_graph.json'
+    ) as f:
+        process = json.load(f)
+
+    response = api110.check_result(process["process_graph"])
+
+    output_file = tmp_path / "sync.tif"
+
+    with open(output_file, mode="wb") as f:
+        f.write(response.data)

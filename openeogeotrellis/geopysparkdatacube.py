@@ -1983,7 +1983,9 @@ class GeopysparkDataCube(DriverDataCube):
                                 "type": "image/tiff; application=geotiff",
                                 "roles": ["data"],
                                 "bands": (
-                                    [bands[i] for i in band_indices_per_file[index]] if band_indices_per_file else bands
+                                    [band for i, band in enumerate(bands) if i in band_indices_per_file[index]]
+                                    if band_indices_per_file
+                                    else bands
                                 ),
                                 "nodata": nodata,
                                 "datetime": timestamp,
@@ -2024,7 +2026,7 @@ class GeopysparkDataCube(DriverDataCube):
                                     "href": str(path),
                                     "type": "image/tiff; application=geotiff",
                                     "roles": ["data"],
-                                    "bands": [bands[i] for i in band_indices],
+                                    "bands": [band for i, band in enumerate(bands) if i in band_indices],
                                     "nodata": nodata,
                                 }
                             return assets
