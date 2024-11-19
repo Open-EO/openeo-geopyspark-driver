@@ -23,6 +23,7 @@ from pytest import approx
 from shapely.geometry import box, mapping, shape
 
 from openeogeotrellis._version import __version__
+from openeogeotrellis.backend import JOB_METADATA_FILENAME
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.config.constants import UDF_DEPENDENCIES_INSTALL_MODE
 from openeogeotrellis.deploy.batch_job import (
@@ -327,6 +328,67 @@ def test_extract_result_metadata_aggregate_spatial_delayed_vector_when_bbox_crs_
         "value": approx(6763173869883.0, 1.0),
         "unit": "square meter",
     }
+
+
+def start_log_locker():
+    from threading import Thread
+    from queue import Queue
+    from logging.handlers import QueueListener, QueueHandler
+
+    # Logs get written to a queue, and then a thread reads
+    # from that queue and writes messages to a file:
+    _log_queue = Queue()
+    QueueListener(_log_queue, logging.FileHandler("out.log")).start()
+    logging.getLogger().addHandler(QueueHandler(_log_queue))
+
+    is_active = True
+
+    def stop_log_locker():
+        nonlocal is_active
+        is_active = False
+
+    def write_logs():
+        while is_active:
+            logging.warning("attempting to create deadlock")
+
+    Thread(target=write_logs).start()
+    return stop_log_locker
+
+
+@pytest.mark.timeout(30)
+def test_log_lock(tmp_path):
+    process_graph = {
+        "loadcollection1": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "TestCollection-LonLat4x4",
+                "temporal_extent": ["2021-01-05", "2021-01-06"],
+                "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 2.0},
+                "bands": ["Longitude", "Latitude"],
+            },
+        },
+        "saveresult1": {
+            "process_id": "save_result",
+            "arguments": {
+                "data": {"from_node": "loadcollection1"},
+                "format": "NetCDF",
+            },
+            "result": True,
+        },
+    }
+    process = {
+        "process_graph": process_graph,
+    }
+    stop_log_locker = start_log_locker()
+    stop_log_locker()  # nothing should go wrong after this
+    run_job(
+        process,
+        output_file=tmp_path / "out",
+        metadata_file=tmp_path / JOB_METADATA_FILENAME,
+        api_version="2.0.0",
+        job_dir=tmp_path,
+        dependencies=[],
+    )
 
 
 @mock.patch('openeo_driver.ProcessGraphDeserializer.evaluate')
