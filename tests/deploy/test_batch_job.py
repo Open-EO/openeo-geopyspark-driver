@@ -380,7 +380,6 @@ def test_log_lock(tmp_path):
         "process_graph": process_graph,
     }
     stop_log_locker = start_log_locker()
-    stop_log_locker()  # nothing should go wrong after this
     run_job(
         process,
         output_file=tmp_path / "out",
@@ -389,6 +388,7 @@ def test_log_lock(tmp_path):
         job_dir=tmp_path,
         dependencies=[],
     )
+    stop_log_locker()
 
 
 @mock.patch('openeo_driver.ProcessGraphDeserializer.evaluate')
