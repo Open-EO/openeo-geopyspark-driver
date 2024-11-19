@@ -1926,13 +1926,54 @@ def test_export_to_multiple_workspaces(tmp_path, remove_original):
         shutil.rmtree(workspace.root_directory / merge2)
 
 
-def test_ndvi(tmp_path):
-    tmp_path = Path("/tmp/test_ndvi")
-
-    with open(
-        '/home/bossie/Documents/VITO/openeo-geopyspark-driver/reduce bands works in sync request but raises "IndexError: list index out of range" in batch job #943/j-2411197640724b6c9708856b0126bf5a_process_graph.json'
-    ) as f:
-        process = json.load(f)
+def test_reduce_bands_to_geotiff(tmp_path):
+    process = {
+        "process_graph": {
+            "loadcollection1": {
+                "process_id": "load_collection",
+                "arguments": {
+                    "bands": [
+                        "Flat:0"
+                    ],
+                    "id": "TestCollection-LonLat16x16",
+                    "spatial_extent": {
+                        "west": 4.906082,
+                        "south": 51.024594,
+                        "east": 4.928398,
+                        "north": 51.034499
+                    },
+                    "temporal_extent": [
+                        "2024-10-01",
+                        "2024-10-10"
+                    ]
+                }
+            },
+            "reducedimension1": {
+                "process_id": "reduce_dimension",
+                "arguments": {
+                    "data": {
+                        "from_node": "loadcollection1"
+                    },
+                    "dimension": "bands",
+                    "reducer": {
+                        "process_graph": {
+                            "arrayelement1": {
+                                "process_id": "array_element",
+                                "arguments": {
+                                    "data": {
+                                        "from_parameter": "data"
+                                    },
+                                    "index": 0
+                                },
+                                "result": True
+                            }
+                        }
+                    }
+                },
+                "result": True
+            }
+        }
+    }
 
     run_job(
         process,
@@ -1942,6 +1983,15 @@ def test_ndvi(tmp_path):
         job_dir=tmp_path,
         dependencies=[],
     )
+
+    output_tiffs = {filename for filename in os.listdir(tmp_path) if filename.endswith(".tif")}
+    assert output_tiffs == {"openEO_2024-10-05Z.tif"}
+
+    raster = gdal.Open(output_tiffs.pop())
+    assert raster.RasterCount == 1
+
+    only_band = raster.GetRasterBand(1)
+    assert not only_band.GetDescription()
 
 
 def _random_merge():
