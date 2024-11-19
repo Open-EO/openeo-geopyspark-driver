@@ -1987,7 +1987,7 @@ def test_reduce_bands_to_geotiff(tmp_path):
     output_tiffs = {filename for filename in os.listdir(tmp_path) if filename.endswith(".tif")}
     assert output_tiffs == {"openEO_2024-10-05Z.tif"}
 
-    raster = gdal.Open(output_tiffs.pop())
+    raster = gdal.Open(str(tmp_path / output_tiffs.pop()))
     assert raster.RasterCount == 1
 
     only_band = raster.GetRasterBand(1)
