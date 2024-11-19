@@ -14,6 +14,10 @@ without compromising stable operations.
 
 ## Unreleased
 
+## 0.50.1
+
+- Fix `reduce_dimension` of bands for GeoTIFF output in batch job ([#943](https://github.com/Open-EO/openeo-geopyspark-driver/issues/943))
+
 
 ## 0.50.0
 
