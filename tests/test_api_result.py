@@ -4829,3 +4829,62 @@ def test_geotiff_scale_offset(api110, tmp_path):
     assert second_band.GetDescription() == "Flat:2"
     assert second_band.GetScale() == 1.0
     assert second_band.GetOffset() == 4.56
+
+
+def test_reduce_bands_to_geotiff(api110, tmp_path):
+    response = api110.check_result({
+        "loadcollection1": {
+            "process_id": "load_collection",
+            "arguments": {
+                "bands": [
+                    "Flat:0"
+                ],
+                "id": "TestCollection-LonLat16x16",
+                "spatial_extent": {
+                    "west": 4.906082,
+                    "south": 51.024594,
+                    "east": 4.928398,
+                    "north": 51.034499
+                },
+                "temporal_extent": [
+                    "2024-10-01",
+                    "2024-10-10"
+                ]
+            }
+        },
+        "reducedimension1": {
+            "process_id": "reduce_dimension",
+            "arguments": {
+                "data": {
+                    "from_node": "loadcollection1"
+                },
+                "dimension": "bands",
+                "reducer": {
+                    "process_graph": {
+                        "arrayelement1": {
+                            "process_id": "array_element",
+                            "arguments": {
+                                "data": {
+                                    "from_parameter": "data"
+                                },
+                                "index": 0
+                            },
+                            "result": True
+                        }
+                    }
+                }
+            },
+            "result": True
+        }
+    })
+
+    output_file = tmp_path / "reduced.tif"
+
+    with open(output_file, mode="wb") as f:
+        f.write(response.data)
+
+    raster = gdal.Open(str(output_file))
+    assert raster.RasterCount == 1
+
+    only_band = raster.GetRasterBand(1)
+    assert not only_band.GetDescription()
