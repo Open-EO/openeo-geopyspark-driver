@@ -111,7 +111,7 @@ def exec_parallel_with_fallback(callback, argument_tuples):
 
     pool_size = min(10, max(1, int(len(argument_tuples) // 3)))
 
-    if False and pool_size == 1:
+    if pool_size == 1:
         # no need for error-prone multiprocessing here (Typical for NetCDF output)
         results = [callback(*arg_tuple) for arg_tuple in argument_tuples]
     else:

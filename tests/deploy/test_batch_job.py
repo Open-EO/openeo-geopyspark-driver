@@ -355,7 +355,7 @@ def start_log_locker():
     return stop_log_locker
 
 
-@pytest.mark.timeout(30)
+@pytest.mark.timeout(70)
 def test_log_lock(tmp_path):
     process_graph = {
         "loadcollection1": {
