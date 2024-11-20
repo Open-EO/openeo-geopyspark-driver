@@ -130,7 +130,7 @@ def _extract_gdal_asset_raster_metadata(
 
     pool_size = min(10,max(1,int(len(asset_metadata)//3)))
 
-    pool = multiprocessing.Pool(pool_size)
+    pool = multiprocessing.get_context("spawn").Pool(pool_size)
     job = [pool.apply_async(_get_metadata_callback, (asset_path, asset_md,job_dir,), error_callback=error_handler) for asset_path, asset_md in asset_metadata.items()]
     pool.close()
     pool.join()
