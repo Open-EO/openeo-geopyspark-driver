@@ -18,11 +18,13 @@ from openeo_driver.save_result import (ImageCollectionResult, SaveResult, NullRe
 from openeo_driver.util.geometry import spatial_extent_union, reproject_bounding_box
 from openeo_driver.util.utm import area_in_square_meters
 from openeo_driver.utils import temporal_extent_union
+
 from openeogeotrellis._version import __version__
 from openeogeotrellis.backend import GeoPySparkBackendImplementation, JOB_METADATA_FILENAME
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.integrations.gdal import _extract_gdal_asset_raster_metadata
-from openeogeotrellis.utils import (get_jvm, _make_set_for_key, to_s3_url, )
+from openeogeotrellis.utils import get_jvm, _make_set_for_key, to_s3_url
+
 
 logger = logging.getLogger(__name__)
 

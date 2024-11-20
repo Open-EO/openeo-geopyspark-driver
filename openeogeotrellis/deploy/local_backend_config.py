@@ -5,6 +5,7 @@ from openeo_driver.users.oidc import OidcProvider
 from openeo_driver.workspace import DiskWorkspace
 from openeogeotrellis.config import GpsBackendConfig
 
+
 oidc_default_client_egi = {
     "id": "vito-default-client",
     "grant_types": [
