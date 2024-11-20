@@ -3,8 +3,6 @@ import os
 import sys
 from pathlib import Path
 
-# Force to import from current installation instead of python library:
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from openeogeotrellis.deploy.local import setup_environment
 from openeo.internal.graph_building import as_flat_graph
