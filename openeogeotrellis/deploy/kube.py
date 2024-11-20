@@ -17,9 +17,13 @@ log = logging.getLogger(__name__)
 
 
 def main():
+    # By default, use JSON logging to stderr,
+    # but allow overriding this with an environment variable
+    root_handler = os.environ.get("OPENEO_LOGGING_ROOT_HANDLER", LOG_HANDLER_STDERR_JSON)
+
     setup_logging(
         get_logging_config(
-            root_handlers=[LOG_HANDLER_STDERR_JSON],
+            root_handlers=[root_handler],
             loggers={
                 "openeo": {"level": "DEBUG"},
                 "openeo_driver": {"level": "DEBUG"},
