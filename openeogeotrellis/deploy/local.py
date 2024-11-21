@@ -22,6 +22,7 @@ def is_port_free(port: int) -> bool:
     import socket
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(10)  # seconds
         return s.connect_ex(("localhost", port)) != 0
 
 
@@ -34,7 +35,7 @@ def setup_local_spark(log_dir: Path = Path.cwd(), verbosity=0):
     py4j = glob(os.path.join(spark_python, "lib", "py4j-*.zip"))[0]
     sys.path[:0] = [spark_python, py4j]
     _log.debug("sys.path: {p!r}".format(p=sys.path))
-    master_str = "local[2]"
+    master_str = "local[*]"
 
     if "PYSPARK_PYTHON" not in os.environ:
         os.environ["PYSPARK_PYTHON"] = sys.executable

@@ -95,6 +95,7 @@ def is_port_free(port: int) -> bool:
     import socket
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(10)  # seconds
         return s.connect_ex(("localhost", port)) != 0
 
 
