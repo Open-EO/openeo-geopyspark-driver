@@ -116,12 +116,12 @@ def exec_parallel_with_fallback(callback, argument_tuples):
         results = [callback(*arg_tuple) for arg_tuple in argument_tuples]
     else:
         pool = multiprocessing.Pool(pool_size)
-        job = [pool.apply_async(callback, arg_tuple, error_callback=error_handler) for arg_tuple in argument_tuples]
+        jobs = [pool.apply_async(callback, arg_tuple, error_callback=error_handler) for arg_tuple in argument_tuples]
         pool.close()
         try:
-            results = [j.get(timeout=60) for j in job]
+            results = [job.get(timeout=60) for job in jobs]
             pool.join()
-        except multiprocessing.context.TimeoutError:
+        except multiprocessing.TimeoutError:
             pool.terminate()
             pool.join()
             poorly_log(
