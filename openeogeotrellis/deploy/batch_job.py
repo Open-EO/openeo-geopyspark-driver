@@ -508,8 +508,9 @@ def write_metadata(metadata, metadata_file, job_dir: Path):
             bucket = os.environ.get('SWIFT_BUCKET')
             s3_instance = s3_client()
 
-            logger.info("Writing results to object storage")
-            for file_path in filter(lambda x: x.is_file(), job_dir.rglob("*")):
+            paths = list(filter(lambda x: x.is_file(), job_dir.rglob("*")))
+            logger.info(f"Writing results to object storage. paths={paths}")
+            for file_path in paths:
                 # TODO: Get list of files to upload from metadata file.
                 #  AFAIK, nothing else is created locally and needs to be uploaded to s3 afterwards.
                 if UDF_PYTHON_DEPENDENCIES_FOLDER_NAME in str(file_path):
