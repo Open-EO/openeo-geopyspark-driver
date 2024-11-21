@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-import os
+import subprocess
 from pathlib import Path
 
 import openeo
@@ -31,6 +31,6 @@ datacube.print_json(file=output_dir / "process_graph.json", indent=2)
 # Step 2, run process graph locally
 ###################################
 containing_folder = Path(__file__).parent.absolute()
-os.system(f"{containing_folder}/local_batch_job {output_dir / 'process_graph.json'} {containing_folder}")
+subprocess.check_output([f"{containing_folder}/local_batch_job", output_dir / "process_graph.json", containing_folder])
 
 # Note that output_dir / "collection.json" is a new stac collection and can be loaded in a new process graph.
