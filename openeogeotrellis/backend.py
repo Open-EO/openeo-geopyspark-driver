@@ -1062,6 +1062,8 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                             if len(udf_stacktrace_new) < width - 150:
                                 udf_stacktrace = udf_stacktrace_new
                         summary = f"UDF exception while evaluating processing graph. Please check your user defined functions. {udf_stacktrace}"
+                    elif "Missing an output location" in root_cause_message:
+                        summary = f"A part of your process graph failed multiple times. Simply try submitting again, or use batch job logs to find more detailed information in case of persistent failures. Increasing executor memory may help if the root cause is not clear from the logs."
                     else:
                         summary = f"Exception during Spark execution: {root_cause_class_name}: {root_cause_message}"
                 else:
