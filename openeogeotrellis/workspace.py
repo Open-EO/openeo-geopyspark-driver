@@ -1,11 +1,16 @@
 import logging
 import os
-from pathlib import Path
+from pathlib import Path, PurePath
+from typing import Union, Any
 from urllib.parse import urlparse
 
+import boto3
 from boto3.s3.transfer import TransferConfig
 
 from openeo_driver.workspace import Workspace
+from pystac import STACObject, Collection, CatalogType, Link, Item
+from pystac.layout import HrefLayoutStrategy, CustomLayoutStrategy
+from pystac.stac_io import DefaultStacIO
 
 from openeogeotrellis.utils import s3_client
 
@@ -18,6 +23,7 @@ class ObjectStorageWorkspace(Workspace):
 
     def __init__(self, bucket: str):
         self.bucket = bucket
+        self._stac_io = CustomStacIO()
 
     def import_file(self, file: Path, merge: str, remove_original: bool = False) -> str:
         merge = os.path.normpath(merge)
@@ -58,3 +64,63 @@ class ObjectStorageWorkspace(Workspace):
 
         _log.debug(f"{'moved' if remove_original else 'copied'} s3://{source_bucket}/{source_key} to {workspace_uri}")
         return workspace_uri
+
+    def merge(self, stac_resource: STACObject, target: PurePath, remove_original: bool = False) -> STACObject:
+        # Originally, STAC objects came from files on disk and assets could either be on disk or in S3; this is
+        # reflected in the import_file and import_object methods.
+
+        # Now, we have a STACObject in memory that can be saved to S3 as well as assets that can be on disk or in S3.
+        # The former requires a pystac.StacIO implementation: https://pystac.readthedocs.io/en/stable/concepts.html#i-o-in-pystac
+        # The latter should check each asset href's scheme and act accordingly: upload or copy.
+
+        # TODO: reduce code duplication with openeo_driver.workspace.DiskWorkspace
+        def href_layout_strategy() -> HrefLayoutStrategy:
+            def collection_func(_: Collection, parent_dir: str, is_root: bool) -> str:
+                if not is_root:
+                    raise NotImplementedError("nested collections")
+                # make the collection file end up at $target, not at $target/collection.json
+                return parent_dir
+
+            def item_func(item: Item, parent_dir: str) -> str:
+                return f"{parent_dir}/{item.collection_id}/{item.id}/{item.id}.json"
+
+            return CustomLayoutStrategy(collection_func=collection_func, item_func=item_func)
+
+        if isinstance(stac_resource, Collection):
+            new_collection = stac_resource
+
+            new_collection.normalize_hrefs(root_href=f"s3://{self.bucket}/{target}", strategy=href_layout_strategy())
+            new_collection.save(CatalogType.SELF_CONTAINED, stac_io=self._stac_io)
+            return new_collection
+
+            # TODO: support merge into existing
+            # TODO: support assets
+        else:
+            raise NotImplementedError(stac_resource)
+
+
+# TODO: move to dedicated file?
+class CustomStacIO(DefaultStacIO):  # supports S3 as well
+    def __init__(self):
+        self.s3 = boto3.resource("s3")
+        super().__init__()
+
+    def read_text(self, source: Union[str, Link], *args: Any, **kwargs: Any) -> str:
+        parsed = urlparse(source)
+        if parsed.scheme == "s3":
+            bucket = parsed.netloc
+            key = parsed.path[1:]
+
+            obj = self.s3.Object(bucket, key)
+            return obj.get()["Body"].read().decode("utf-8")
+        else:
+            return super().read_text(source, *args, **kwargs)
+
+    def write_text(self, dest: Union[str, Link], txt: str, *args: Any, **kwargs: Any) -> None:
+        parsed = urlparse(dest)
+        if parsed.scheme == "s3":
+            bucket = parsed.netloc
+            key = parsed.path[1:]
+            self.s3.Object(bucket, key).put(Body=txt, ContentEncoding="utf-8")
+        else:
+            super().write_text(dest, txt, *args, **kwargs)
