@@ -363,7 +363,7 @@ def run_job(
             ml_model_metadata=ml_model_metadata,
         )
         # perform a first metadata write _before_ actually computing the result. This provides a bit more info, even if the job fails.
-        write_metadata({**result_metadata, **_get_tracker_metadata("")}, metadata_file, job_dir)
+        write_metadata({**result_metadata, **_get_tracker_metadata("")}, metadata_file)
 
         for result in results:
             result.options["batch_mode"] = True
@@ -465,7 +465,7 @@ def run_job(
             ml_model_metadata=ml_model_metadata,
         )
 
-        write_metadata({**result_metadata, **_get_tracker_metadata("")}, metadata_file, job_dir)
+        write_metadata({**result_metadata, **_get_tracker_metadata("")}, metadata_file)
         logger.debug("Starting GDAL-based retrieval of asset metadata")
         result_metadata = _assemble_result_metadata(
             tracer=tracer,
@@ -492,10 +492,10 @@ def run_job(
                 remove_exported_assets=job_options.get("remove-exported-assets", False),
             )
     finally:
-        write_metadata({**result_metadata, **_get_tracker_metadata("")}, metadata_file, job_dir, stac_hrefs)
+        write_metadata({**result_metadata, **_get_tracker_metadata("")}, metadata_file, stac_hrefs)
 
 
-def write_metadata(metadata, metadata_file, job_dir: Path, stac_hrefs: List[Union[str, Path]] = None):
+def write_metadata(metadata, metadata_file, stac_hrefs: List[Union[str, Path]] = None):
     with open(metadata_file, 'w') as f:
         json.dump(metadata, f, default=json_default)
     add_permissions(metadata_file, stat.S_IWGRP)
