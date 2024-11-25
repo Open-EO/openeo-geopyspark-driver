@@ -488,7 +488,7 @@ def test_load_stac_pixel_shift(api110, tmp_path, flask_app):
     with (tmp_path / JOB_METADATA_FILENAME).open("r", encoding="utf-8") as f:
         metadata = json.load(f)
     bbox = metadata["proj:bbox"]
-    # assert bbox[0] == 631800  # TODO: Fix
+    assert bbox[0] == 631800  # TODO: Fix
 
 
 @pytest.mark.parametrize(["bands", "expected_bands"], [

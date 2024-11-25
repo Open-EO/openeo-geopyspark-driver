@@ -1,14 +1,13 @@
 {
     "type": "Collection",
-    "id": "tif_2023",
+    "id": "SCF",
     "stac_version": "1.0.0",
-    "description": "tif",
+    "description": "SCF",
     "links": [
         {
             "rel": "root",
             "href": "./collection.json",
-            "type": "application/json",
-            "title": "tif"
+            "type": "application/json"
         },
         {
             "rel": "item",
@@ -23,12 +22,12 @@
         "https://stac-extensions.github.io/eo/v1.1.0/schema.json"
     ],
     "item_assets": {
-        "tif": {
+        "SCF": {
             "type": "image/tiff; application=geotiff",
-            "title": "tif",
-            "description": "tif",
+            "title": "SCF",
+            "description": "SCF",
             "roles": ["data"],
-            "eo:bands": [{"name": "tif", "description": "tif"}]
+            "eo:bands": [{"name": "SCF", "description": "SCF"}]
         }
     },
     "title": "tif 2023",
@@ -44,6 +43,30 @@
             ]
         },
         "temporal": {"interval": [["2023-01-20T00:00:00Z", "2023-01-31T23:59:59Z"]]}
+    },
+    "cube:dimensions": {
+        "x": {
+            "axis": "x",
+            "step": 500,
+            "type": "spatial",
+            "extent": [631800, 655800],
+            "reference_system": 32632
+        },
+        "y": {
+            "axis": "y",
+            "step": 500,
+            "type": "spatial",
+            "extent": [5167700, 5184200],
+            "reference_system": 32632
+        },
+        "time": {
+            "type": "temporal",
+            "extent": [
+                "2023-01-20T00:00:00.000000000",
+                "2023-01-31T23:00:00.000000000"
+            ]
+        },
+        "bands": {"type": "bands", "values": ["SCF"]}
     },
     "license": "proprietary"
 }
