@@ -1,9 +1,13 @@
+import json
+
 import geopandas as gpd
 import geopyspark as gps
 import mock
 import pytest
 import rasterio
 from mock import ANY, MagicMock
+
+import openeo
 from openeo_driver.backend import LoadParameters
 from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.datastructs import SarBackscatterArgs
@@ -11,6 +15,8 @@ from openeo_driver.errors import OpenEOApiException
 from openeo_driver.utils import EvalEnv
 from py4j.java_gateway import JavaGateway
 
+from openeogeotrellis.backend import JOB_METADATA_FILENAME
+from openeogeotrellis.deploy.batch_job import run_job
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.layercatalog import get_layer_catalog
 from tests.data import get_test_data_file
@@ -462,6 +468,27 @@ def test_driver_vector_cube_supports_load_collection_caching(jvm_mock, catalog):
 
         n_load_collection_calls = len(creating_layer_calls)
         assert n_load_collection_calls == 2
+
+
+def test_load_stac_pixel_shift(api110, tmp_path, flask_app):
+    data_cube = openeo.DataCube.load_stac(
+        url=str(get_test_data_file("stac/issue648-pixel-shift/collection.json")),
+        temporal_extent=["2023-01-20", "2023-02-01"],
+    )
+
+    run_job(
+        {"process_graph": data_cube.flat_graph()},
+        output_file=tmp_path / "out",  # just like in backend.py
+        metadata_file=tmp_path / JOB_METADATA_FILENAME,
+        api_version="2.0.0",
+        job_dir=tmp_path,
+        dependencies=[],
+        user_id="jenkins",
+    )
+    with (tmp_path / JOB_METADATA_FILENAME).open("r", encoding="utf-8") as f:
+        metadata = json.load(f)
+    bbox = metadata["proj:bbox"]
+    # assert bbox[0] == 631800  # TODO: Fix
 
 
 @pytest.mark.parametrize(["bands", "expected_bands"], [

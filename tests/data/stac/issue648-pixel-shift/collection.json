@@ -1,0 +1,49 @@
+{
+    "type": "Collection",
+    "id": "tif_2023",
+    "stac_version": "1.0.0",
+    "description": "tif",
+    "links": [
+        {
+            "rel": "root",
+            "href": "./collection.json",
+            "type": "application/json",
+            "title": "tif"
+        },
+        {
+            "rel": "item",
+            "href": "./SCF_20230120000000.json",
+            "type": "application/json"
+        }
+    ],
+    "stac_extensions": [
+        "https://stac-extensions.github.io/item-assets/v1.0.0/schema.json",
+        "https://stac-extensions.github.io/raster/v1.1.0/schema.json",
+        "https://stac-extensions.github.io/classification/v1.0.0/schema.json",
+        "https://stac-extensions.github.io/eo/v1.1.0/schema.json"
+    ],
+    "item_assets": {
+        "tif": {
+            "type": "image/tiff; application=geotiff",
+            "title": "tif",
+            "description": "tif",
+            "roles": ["data"],
+            "eo:bands": [{"name": "tif", "description": "tif"}]
+        }
+    },
+    "title": "tif 2023",
+    "extent": {
+        "spatial": {
+            "bbox": [
+                [
+                    10.722422964228954,
+                    46.64474318306361,
+                    11.041470996849343,
+                    46.798312551732984
+                ]
+            ]
+        },
+        "temporal": {"interval": [["2023-01-20T00:00:00Z", "2023-01-31T23:59:59Z"]]}
+    },
+    "license": "proprietary"
+}
