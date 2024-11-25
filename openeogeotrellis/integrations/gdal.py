@@ -105,6 +105,33 @@ class AssetRasterMetadata:
         return result
 
 
+def exec_parallel_with_fallback(callback, argument_tuples):
+    def error_handler(e):
+        poorly_log(f"Error while calling '{callback.__name__}', may be incomplete. {str(e)}", level=logging.WARNING)
+
+    pool_size = min(10, max(1, int(len(argument_tuples) // 3)))
+
+    if pool_size == 1:
+        # no need for error-prone multiprocessing here (Typical for NetCDF output)
+        results = [callback(*arg_tuple) for arg_tuple in argument_tuples]
+    else:
+        pool = multiprocessing.Pool(pool_size)
+        jobs = [pool.apply_async(callback, arg_tuple, error_callback=error_handler) for arg_tuple in argument_tuples]
+        pool.close()
+        try:
+            results = [job.get(timeout=60) for job in jobs]
+            pool.join()
+        except multiprocessing.TimeoutError:
+            pool.terminate()
+            pool.join()
+            poorly_log(
+                "Multiprocessing had timeout. This could be due to a deadlock. Retrying without threading.",
+                level=logging.WARNING,
+            )
+            results = [callback(*arg_tuple) for arg_tuple in argument_tuples]
+    return results
+
+
 def _extract_gdal_asset_raster_metadata(
     asset_metadata: Dict[str, Any],
     job_dir: Path,
@@ -124,17 +151,17 @@ def _extract_gdal_asset_raster_metadata(
     # TODO would be better if we could return just Dict[str, AssetRasterMetadata]
     #   or even CollectionRasterMetadata with CollectionRasterMetadata = Dict[str, AssetRasterMetadata]
 
-
-    def error_handler(e):
-        poorly_log(f"Error while looking up result metadata, may be incomplete. {str(e)}", level=logging.WARNING)
-
-    pool_size = min(10,max(1,int(len(asset_metadata)//3)))
-
-    pool = multiprocessing.Pool(pool_size)
-    job = [pool.apply_async(_get_metadata_callback, (asset_path, asset_md,job_dir,), error_callback=error_handler) for asset_path, asset_md in asset_metadata.items()]
-    pool.close()
-    pool.join()
-
+    # Ideally gdalinfo would be called on the moment the asset is created.
+    # Then it could profit from Sparks parallel processing.
+    argument_tuples = [
+        (
+            asset_path,
+            asset_md,
+            job_dir,
+        )
+        for asset_path, asset_md in asset_metadata.items()
+    ]
+    results = exec_parallel_with_fallback(_get_metadata_callback, argument_tuples)
 
     # Add the projection extension metadata.
     # When the projection metadata is the same for all assets, then set it at
@@ -147,9 +174,8 @@ def _extract_gdal_asset_raster_metadata(
     # metadata at the item level.
     is_some_raster_md_missing = False
 
-    for j in job:
+    for result in results:
         try:
-            result = j.get()
             if result is not None:
                 raster_metadata[result[0]] = result[1]
             else:
