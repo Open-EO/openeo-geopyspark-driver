@@ -355,6 +355,7 @@ def start_log_locker():
     return stop_log_locker
 
 
+@pytest.mark.skip("test_log_lock can add 40Mb to the logs. Keep it disabled by default.")
 @pytest.mark.timeout(130)
 def test_log_lock(tmp_path):
     process_graph = {
