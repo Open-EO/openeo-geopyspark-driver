@@ -1286,15 +1286,16 @@ def test_filepath_per_band(
             job_dir_files_s3 = [
                 o["Key"] for o in s3_instance.list_objects(Bucket=get_backend_config().s3_bucket_name)["Contents"]
             ]
-            assert job_dir_files_s3 == ListSubSet(
-                [
-                    f"{merge}/collection.json",
-                    f"{merge}/folder1/lon.tif",
-                    f"{merge}/folder1/lon.tif.json",
-                    f"{merge}/lat.tif",
-                    f"{merge}/lat.tif.json",
-                ]
-            )
+            for prefix in [merge, tmp_path.relative_to("/")]:
+                assert job_dir_files_s3 == ListSubSet(
+                    [
+                        f"{prefix}/collection.json",
+                        f"{prefix}/folder1/lon.tif",
+                        f"{prefix}/folder1/lon.tif.json",
+                        f"{prefix}/lat.tif",
+                        f"{prefix}/lat.tif.json",
+                    ]
+                )
 
         else:
             workspace_dir = Path(f"{workspace.root_directory}/{merge}")
