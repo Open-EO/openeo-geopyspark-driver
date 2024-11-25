@@ -355,14 +355,14 @@ def start_log_locker():
     return stop_log_locker
 
 
-@pytest.mark.timeout(70)
+@pytest.mark.timeout(130)
 def test_log_lock(tmp_path):
     process_graph = {
         "loadcollection1": {
             "process_id": "load_collection",
             "arguments": {
                 "id": "TestCollection-LonLat4x4",
-                "temporal_extent": ["2021-01-05", "2021-01-06"],
+                "temporal_extent": ["2023-06-01", "2023-08-01"],
                 "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 2.0},
                 "bands": ["Longitude", "Latitude"],
             },
@@ -371,7 +371,7 @@ def test_log_lock(tmp_path):
             "process_id": "save_result",
             "arguments": {
                 "data": {"from_node": "loadcollection1"},
-                "format": "NetCDF",
+                "format": "GTiff",
             },
             "result": True,
         },
