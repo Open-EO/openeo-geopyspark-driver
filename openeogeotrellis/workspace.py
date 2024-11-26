@@ -8,7 +8,7 @@ import boto3
 from boto3.s3.transfer import TransferConfig
 
 from openeo_driver.workspace import Workspace
-from pystac import STACObject, Collection, CatalogType, Link, Item
+from pystac import STACObject, Collection, CatalogType, Link, Item, Asset
 from pystac.layout import HrefLayoutStrategy, CustomLayoutStrategy
 from pystac.stac_io import DefaultStacIO
 
@@ -72,6 +72,7 @@ class ObjectStorageWorkspace(Workspace):
         # Now, we have a STACObject in memory that can be saved to S3 as well as assets that can be on disk or in S3.
         # The former requires a pystac.StacIO implementation: https://pystac.readthedocs.io/en/stable/concepts.html#i-o-in-pystac
         # The latter should check each asset href's scheme and act accordingly: upload or copy.
+        stac_resource = stac_resource.full_copy()
 
         # TODO: reduce code duplication with openeo_driver.workspace.DiskWorkspace
         def href_layout_strategy() -> HrefLayoutStrategy:
@@ -86,24 +87,57 @@ class ObjectStorageWorkspace(Workspace):
 
             return CustomLayoutStrategy(collection_func=collection_func, item_func=item_func)
 
+        def replace_asset_href(asset_key: str, asset: Asset) -> Asset:
+            if urlparse(asset.href).scheme not in ["", "file", "s3"]:  # TODO: convenient place; move elsewhere?
+                raise ValueError(asset.href)
+
+            # TODO: crummy way to export assets after STAC Collection has been written to disk with new asset hrefs;
+            #  it ends up in the asset metadata on disk
+            asset.extra_fields["_original_absolute_href"] = asset.get_absolute_href()
+            asset.href = asset_key  # asset key matches the asset filename, becomes the relative path
+            return asset
+
         if isinstance(stac_resource, Collection):
             new_collection = stac_resource
 
             new_collection.normalize_hrefs(root_href=f"s3://{self.bucket}/{target}", strategy=href_layout_strategy())
+            new_collection = new_collection.map_assets(replace_asset_href)
             new_collection.save(CatalogType.SELF_CONTAINED, stac_io=self._stac_io)
-            return new_collection
+
+            for item in new_collection.get_items():
+                for asset in item.get_assets().values():
+                    self._copy(asset.extra_fields["_original_absolute_href"], item.get_self_href(), remove_original)
 
             # TODO: support merge into existing
-            # TODO: support assets
+            return new_collection
         else:
             raise NotImplementedError(stac_resource)
+
+    def _copy(self, asset_uri: str, item_s3_uri: str, remove_original: bool):
+        source_uri_parts = urlparse(asset_uri)
+
+        item_uri_parts = urlparse(item_s3_uri)
+        target_prefix = "/".join(item_uri_parts.path[1:].split("/")[:-1])
+
+        if source_uri_parts.scheme in ["", "file"]:
+            file = Path(source_uri_parts.path)
+            target_key = f"{target_prefix}/{file.name}"
+            s3_client().upload_file(file, self.bucket, target_key)
+
+            if remove_original:
+                file.unlink()  # TODO: test
+        else:
+            # TODO: support S3 asset_uri
+            raise NotImplementedError
 
 
 # TODO: move to dedicated file?
 class CustomStacIO(DefaultStacIO):  # supports S3 as well
-    def __init__(self):
-        self.s3 = boto3.resource("s3")
-        super().__init__()
+
+    @property
+    def _s3(self):
+        # TODO: otherwise there's an infinite recursion error upon Item.get_assets() wrt/ some boto3 reference
+        return boto3.resource("s3")
 
     def read_text(self, source: Union[str, Link], *args: Any, **kwargs: Any) -> str:
         parsed = urlparse(source)
@@ -111,7 +145,7 @@ class CustomStacIO(DefaultStacIO):  # supports S3 as well
             bucket = parsed.netloc
             key = parsed.path[1:]
 
-            obj = self.s3.Object(bucket, key)
+            obj = self._s3.Object(bucket, key)
             return obj.get()["Body"].read().decode("utf-8")
         else:
             return super().read_text(source, *args, **kwargs)
@@ -121,6 +155,6 @@ class CustomStacIO(DefaultStacIO):  # supports S3 as well
         if parsed.scheme == "s3":
             bucket = parsed.netloc
             key = parsed.path[1:]
-            self.s3.Object(bucket, key).put(Body=txt, ContentEncoding="utf-8")
+            self._s3.Object(bucket, key).put(Body=txt, ContentEncoding="utf-8")
         else:
             super().write_text(dest, txt, *args, **kwargs)
