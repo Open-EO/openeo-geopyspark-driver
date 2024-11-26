@@ -85,7 +85,20 @@ def test_merge_new(mock_s3_client, mock_s3_bucket, tmp_path, remove_original: bo
     ][0]
 
     workspace = ObjectStorageWorkspace(bucket=target_bucket)
-    workspace.merge(new_collection, merge, remove_original)  # TODO: check returned workspace URIs
+    exported_collection = workspace.merge(new_collection, merge, remove_original)
+
+    assert isinstance(exported_collection, Collection)
+
+    asset_workspace_uris = {
+        asset_key: asset.extra_fields["alternate"]["s3"]
+        for item in exported_collection.get_items()
+        for asset_key, asset in item.get_assets().items()
+    }
+
+    assert asset_workspace_uris == {
+        "disk_asset.tif": f"s3://{target_bucket}/{merge}/disk_asset.tif/disk_asset.tif",
+        "object_asset.tif": f"s3://{target_bucket}/{merge}/object_asset.tif/object_asset.tif",
+    }
 
     assert _workspace_keys(mock_s3_client, target_bucket, prefix="some/target/collection") == {
         "some/target/collection",

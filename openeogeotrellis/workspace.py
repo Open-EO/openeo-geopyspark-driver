@@ -105,15 +105,18 @@ class ObjectStorageWorkspace(Workspace):
             new_collection.save(CatalogType.SELF_CONTAINED, stac_io=self._stac_io)
 
             for item in new_collection.get_items():
-                for asset in item.get_assets().values():
-                    self._copy(asset.extra_fields["_original_absolute_href"], item.get_self_href(), remove_original)
+                for asset in item.assets.values():
+                    workspace_uri = self._copy(
+                        asset.extra_fields["_original_absolute_href"], item.get_self_href(), remove_original
+                    )
+                    asset.extra_fields["alternate"] = {"s3": workspace_uri}
 
             # TODO: support merge into existing
             return new_collection
         else:
             raise NotImplementedError(stac_resource)
 
-    def _copy(self, asset_uri: str, item_s3_uri: str, remove_original: bool):
+    def _copy(self, asset_uri: str, item_s3_uri: str, remove_original: bool) -> str:
         source_uri_parts = urlparse(asset_uri)
         source_path = Path(source_uri_parts.path)
 
@@ -136,6 +139,8 @@ class ObjectStorageWorkspace(Workspace):
                 s3.delete_object(Bucket=source_bucket, Key=source_key)
         else:
             raise ValueError(asset_uri)
+
+        return f"s3://{self.bucket}/{target_key}"
 
 
 # TODO: move to dedicated file?
