@@ -1633,10 +1633,10 @@ class GpsBatchJobs(backend.BatchJobs):
             terrascope_access_token = self._get_terrascope_access_token(user, sentinel_hub_client_alias)
             return self._vault.login_jwt(terrascope_access_token)
 
-        self._start_job(job_id, user, _get_vault_token)
+        self._start_job(job_id, user, _get_vault_token,proxy_user=proxy_user)
 
     def _start_job(self, job_id: str, user: User, get_vault_token: Callable[[str], str],
-                   dependencies: Union[list, None] = None):
+                   dependencies: Union[list, None] = None,proxy_user=None):
         from openeogeotrellis import async_task  # TODO: avoid local import because of circular dependency
 
         user_id = user.user_id
@@ -2088,7 +2088,8 @@ class GpsBatchJobs(backend.BatchJobs):
                     args.append("no_principal")
                     args.append("no_keytab")
 
-                args.append(job_info.get('proxy_user') or user_id)
+                # due to eventual consistency, job_info does not necessarily have the latest info
+                args.append(proxy_user or job_info.get('proxy_user') or user_id)
 
                 if api_version:
                     args.append(api_version)
