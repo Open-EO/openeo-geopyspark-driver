@@ -115,20 +115,27 @@ class ObjectStorageWorkspace(Workspace):
 
     def _copy(self, asset_uri: str, item_s3_uri: str, remove_original: bool):
         source_uri_parts = urlparse(asset_uri)
+        source_path = Path(source_uri_parts.path)
 
         item_uri_parts = urlparse(item_s3_uri)
         target_prefix = "/".join(item_uri_parts.path[1:].split("/")[:-1])
+        target_key = f"{target_prefix}/{source_path.name}"
 
         if source_uri_parts.scheme in ["", "file"]:
-            file = Path(source_uri_parts.path)
-            target_key = f"{target_prefix}/{file.name}"
-            s3_client().upload_file(file, self.bucket, target_key)
+            s3_client().upload_file(source_path, self.bucket, target_key)
 
             if remove_original:
-                file.unlink()
+                source_path.unlink()
+        elif source_uri_parts.scheme == "s3":
+            source_bucket = source_uri_parts.netloc
+            source_key = str(source_path).lstrip("/")
+
+            s3 = s3_client()
+            s3.copy_object(CopySource={"Bucket": source_bucket, "Key": source_key}, Bucket=self.bucket, Key=target_key)
+            if remove_original:
+                s3.delete_object(Bucket=source_bucket, Key=source_key)
         else:
-            # TODO: support S3 asset_uri
-            raise NotImplementedError
+            raise ValueError(asset_uri)
 
 
 # TODO: move to dedicated file?
