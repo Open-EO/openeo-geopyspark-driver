@@ -59,7 +59,7 @@ def test_import_object(tmp_path, mock_s3_client, mock_s3_bucket, remove_original
 
 @pytest.mark.parametrize("remove_original", [False, True])
 def test_merge_new(mock_s3_client, mock_s3_bucket, tmp_path, remove_original: bool):
-    merge = PurePath("some/target/collection")
+    merge = PurePath("some") / "target" / "collection"
 
     source_directory = tmp_path / "src"
     source_directory.mkdir()
@@ -76,13 +76,9 @@ def test_merge_new(mock_s3_client, mock_s3_bucket, tmp_path, remove_original: bo
     new_collection = _collection(
         root_path=source_directory / "collection",
         collection_id="collection",
-        asset_hrefs=[str(disk_asset_path), f"s3://{source_bucket}/src/object_asset.tif"],
+        asset_hrefs=[str(disk_asset_path), f"s3://{source_bucket}/{source_key}"],
         s3_client=mock_s3_client,
     )
-
-    original_asset_path = [
-        Path(asset.get_absolute_href()) for item in new_collection.get_items() for asset in item.get_assets().values()
-    ][0]
 
     workspace = ObjectStorageWorkspace(bucket=target_bucket)
     exported_collection = workspace.merge(new_collection, merge, remove_original)
@@ -108,40 +104,109 @@ def test_merge_new(mock_s3_client, mock_s3_bucket, tmp_path, remove_original: bo
         "some/target/collection/object_asset.tif/object_asset.tif",
     }
 
-    assert original_asset_path.exists() != remove_original
-    assert bool(_workspace_keys(mock_s3_client, target_bucket, prefix="src/object_asset.tif")) != remove_original
+    assert disk_asset_path.exists() != remove_original
+    assert bool(_workspace_keys(mock_s3_client, workspace.bucket, prefix=source_key)) != remove_original
 
-    custom_stac_io = CustomStacIO()
-
-    exported_collection = Collection.from_file(f"s3://{target_bucket}/{merge}", stac_io=custom_stac_io)
+    exported_collection = Collection.from_file(f"s3://{workspace.bucket}/{merge}", stac_io=CustomStacIO())
     assert exported_collection.id == "collection"
     assert exported_collection.validate_all() == 2
 
     disk_item, object_item = [item for item in exported_collection.get_items()]
 
     assert disk_item.id == "disk_asset.tif"
-    assert disk_item.get_self_href() == f"s3://{target_bucket}/{merge}/{disk_item.id}/{disk_item.id}.json"
+    assert disk_item.get_self_href() == f"s3://{workspace.bucket}/{merge}/{disk_item.id}/{disk_item.id}.json"
     exported_disk_asset = disk_item.get_assets().pop("disk_asset.tif")
-    assert exported_disk_asset.get_absolute_href() == f"s3://{target_bucket}/{merge}/{disk_item.id}/{disk_item.id}"
+    assert exported_disk_asset.get_absolute_href() == f"s3://{workspace.bucket}/{merge}/{disk_item.id}/{disk_item.id}"
 
     assert object_item.id == "object_asset.tif"
-    assert object_item.get_self_href() == f"s3://{target_bucket}/{merge}/{object_item.id}/{object_item.id}.json"
+    assert object_item.get_self_href() == f"s3://{workspace.bucket}/{merge}/{object_item.id}/{object_item.id}.json"
     exported_object_asset = object_item.get_assets().pop("object_asset.tif")
     assert (
-        exported_object_asset.get_absolute_href() == f"s3://{target_bucket}/{merge}/{object_item.id}/{object_item.id}"
+        exported_object_asset.get_absolute_href()
+        == f"s3://{workspace.bucket}/{merge}/{object_item.id}/{object_item.id}"
     )
 
+    assert _downloadable_assets(exported_collection, mock_s3_client) == 2
+
+
+@pytest.mark.parametrize("remove_original", [False, True])
+def test_merge_into_existing(tmp_path, mock_s3_client, mock_s3_bucket, remove_original):
+    merge = PurePath("some") / "target" / "collection"
+
+    source_directory = tmp_path / "src"
+    source_directory.mkdir()
+    disk_asset_path = source_directory / "disk_asset.tif"
+
+    with open(disk_asset_path, "w") as f:
+        f.write("disk_asset.tif\n")
+
+    source_bucket = target_bucket = "openeo-fake-bucketname"
+    source_key = "src/object_asset.tif"
+
+    mock_s3_client.put_object(Bucket=source_bucket, Key=source_key, Body="object_asset.tif\n")
+
+    existing_collection = _collection(
+        root_path=tmp_path / "src" / "existing_collection",
+        collection_id="existing_collection",
+        asset_hrefs=[str(disk_asset_path)],
+        spatial_extent=SpatialExtent([[0, 50, 2, 52]]),
+        temporal_extent=TemporalExtent([[
+            dt.datetime.fromisoformat("2024-11-01T00:00:00+00:00"),
+            dt.datetime.fromisoformat("2024-11-03T00:00:00+00:00")
+        ]]),
+    )
+
+    new_collection = _collection(
+        root_path=tmp_path / "src" / "new_collection",
+        collection_id="new_collection",
+        asset_hrefs=[f"s3://{source_bucket}/{source_key}"],
+        # TODO: use different extents for this collection
+        spatial_extent=SpatialExtent([[0, 50, 2, 52]]),
+        temporal_extent=TemporalExtent([[
+            dt.datetime.fromisoformat("2024-11-01T00:00:00+00:00"),
+            dt.datetime.fromisoformat("2024-11-03T00:00:00+00:00")
+        ]]),
+        s3_client=mock_s3_client,
+    )
+
+    workspace = ObjectStorageWorkspace(target_bucket)
+    workspace.merge(existing_collection, target=merge, remove_original=remove_original)
+    merged_collection = workspace.merge(new_collection, target=merge, remove_original=remove_original)
+
+    assert isinstance(merged_collection, Collection)
+    assert merged_collection.extent.spatial.bboxes == [[0, 50, 2, 52]]
+    assert merged_collection.extent.temporal.intervals == [[
+        dt.datetime.fromisoformat("2024-11-01T00:00:00+00:00"),
+        dt.datetime.fromisoformat("2024-11-03T00:00:00+00:00")
+    ]]
+
+    assert _workspace_keys(mock_s3_client, target_bucket, prefix="some/target/collection") == {
+        "some/target/collection",
+        "some/target/collection/disk_asset.tif/disk_asset.tif",
+        "some/target/collection/disk_asset.tif/disk_asset.tif.json",
+        "some/target/collection/object_asset.tif/object_asset.tif",
+        "some/target/collection/object_asset.tif/object_asset.tif.json",
+    }
+
+    assert disk_asset_path.exists() != remove_original
+    assert bool(_workspace_keys(mock_s3_client, target_bucket, prefix=source_key)) != remove_original
+
+    exported_collection = Collection.from_file(f"s3://{workspace.bucket}/{merge}", stac_io=CustomStacIO())
+    assert exported_collection.validate_all() == 2
     assert _downloadable_assets(exported_collection, mock_s3_client) == 2
 
 
 def _collection(
     root_path: Path,
     collection_id: str,
-    asset_hrefs: List[str],
-    s3_client=None,
+    asset_hrefs: List[str] = None,
     spatial_extent: SpatialExtent = SpatialExtent([[-180, -90, 180, 90]]),
     temporal_extent: TemporalExtent = TemporalExtent([[None, None]]),
+    s3_client=None,
 ) -> Collection:
+    if asset_hrefs is None:
+        asset_hrefs = []
+
     collection = Collection(
         id=collection_id,
         description=collection_id,

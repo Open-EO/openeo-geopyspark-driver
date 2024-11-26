@@ -5,6 +5,7 @@ from typing import Union, Any
 from urllib.parse import urlparse
 
 import boto3
+import botocore.exceptions
 from boto3.s3.transfer import TransferConfig
 
 from openeo_driver.workspace import Workspace
@@ -80,10 +81,10 @@ class ObjectStorageWorkspace(Workspace):
                 if not is_root:
                     raise NotImplementedError("nested collections")
                 # make the collection file end up at $target, not at $target/collection.json
-                return parent_dir
+                return f"{parent_dir}/{target.name}"
 
             def item_func(item: Item, parent_dir: str) -> str:
-                return f"{parent_dir}/{item.collection_id}/{item.id}/{item.id}.json"
+                return f"{parent_dir}/{target.name}/{item.id}/{item.id}.json"
 
             return CustomLayoutStrategy(collection_func=collection_func, item_func=item_func)
 
@@ -100,19 +101,49 @@ class ObjectStorageWorkspace(Workspace):
         if isinstance(stac_resource, Collection):
             new_collection = stac_resource
 
-            new_collection.normalize_hrefs(root_href=f"s3://{self.bucket}/{target}", strategy=href_layout_strategy())
-            new_collection = new_collection.map_assets(replace_asset_href)
-            new_collection.save(CatalogType.SELF_CONTAINED, stac_io=self._stac_io)
+            existing_collection = None
+            try:
+                existing_collection = Collection.from_file(f"s3://{self.bucket}/{target}", stac_io=self._stac_io)
+            except botocore.exceptions.ClientError as e:
+                if e.response["Error"]["Code"] != "NoSuchKey":
+                    raise
 
-            for item in new_collection.get_items():
-                for asset in item.assets.values():
-                    workspace_uri = self._copy(
-                        asset.extra_fields["_original_absolute_href"], item.get_self_href(), remove_original
-                    )
-                    asset.extra_fields["alternate"] = {"s3": workspace_uri}
+            if not existing_collection:
+                new_collection.normalize_hrefs(
+                    root_href=f"s3://{self.bucket}/{target.parent}", strategy=href_layout_strategy()
+                )
+                new_collection = new_collection.map_assets(replace_asset_href)
+                new_collection.save(CatalogType.SELF_CONTAINED, stac_io=self._stac_io)
 
-            # TODO: support merge into existing
-            return new_collection
+                for new_item in new_collection.get_items():
+                    for asset in new_item.assets.values():
+                        workspace_uri = self._copy(
+                            asset.extra_fields["_original_absolute_href"], new_item.get_self_href(), remove_original
+                        )
+                        asset.extra_fields["alternate"] = {"s3": workspace_uri}
+
+                merged_collection = new_collection
+            else:
+                merged_collection = existing_collection  # TODO: merge metadata
+                new_collection = new_collection.map_assets(replace_asset_href)
+
+                for new_item in new_collection.get_items():
+                    new_item.clear_links()  # sever ties with previous collection
+                    merged_collection.add_item(new_item, strategy=href_layout_strategy())
+
+                merged_collection.normalize_hrefs(
+                    root_href=f"s3://{self.bucket}/{target.parent}", strategy=href_layout_strategy()
+                )
+                merged_collection.save(CatalogType.SELF_CONTAINED)
+
+                for new_item in new_collection.get_items():
+                    for asset in new_item.assets.values():
+                        workspace_uri = self._copy(
+                            asset.extra_fields["_original_absolute_href"], new_item.get_self_href(), remove_original
+                        )
+                        asset.extra_fields["alternate"] = {"s3": workspace_uri}
+
+            return merged_collection
         else:
             raise NotImplementedError(stac_resource)
 
