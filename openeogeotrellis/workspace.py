@@ -125,7 +125,7 @@ class ObjectStorageWorkspace(Workspace):
             s3_client().upload_file(file, self.bucket, target_key)
 
             if remove_original:
-                file.unlink()  # TODO: test
+                file.unlink()
         else:
             # TODO: support S3 asset_uri
             raise NotImplementedError

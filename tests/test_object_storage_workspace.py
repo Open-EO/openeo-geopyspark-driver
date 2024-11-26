@@ -58,7 +58,8 @@ def test_import_object(tmp_path, mock_s3_client, mock_s3_bucket, remove_original
         assert _workspace_keys(mock_s3_client, source_bucket) == {source_key, "some/target/object"}
 
 
-def test_merge_new(mock_s3_client, mock_s3_bucket, tmp_path):
+@pytest.mark.parametrize("remove_original", [False, True])
+def test_merge_new(mock_s3_client, mock_s3_bucket, tmp_path, remove_original: bool):
     target_bucket = "openeo-fake-bucketname"
     merge = PurePath("some/target/collection")
 
@@ -66,14 +67,20 @@ def test_merge_new(mock_s3_client, mock_s3_bucket, tmp_path):
         root_path=tmp_path / "src" / "collection", collection_id="collection", asset_filename="asset.tif"
     )
 
+    original_asset_path = [
+        Path(asset.get_absolute_href()) for item in new_collection.get_items() for asset in item.get_assets().values()
+    ][0]
+
     workspace = ObjectStorageWorkspace(bucket=target_bucket)
-    workspace.merge(new_collection, merge)  # TODO: check returned workspace URI
+    workspace.merge(new_collection, merge, remove_original)  # TODO: check returned workspace URI
 
     assert _workspace_keys(mock_s3_client, target_bucket) == {
         "some/target/collection",
         "some/target/collection/asset.tif/asset.tif.json",
         "some/target/collection/asset.tif/asset.tif",
     }
+
+    assert original_asset_path.exists() != remove_original
 
     custom_stac_io = CustomStacIO()
 
@@ -85,10 +92,10 @@ def test_merge_new(mock_s3_client, mock_s3_bucket, tmp_path):
     assert item.id == "asset.tif"
     assert item.get_self_href() == f"s3://{target_bucket}/{merge}/{item.id}/{item.id}.json"
 
-    asset = item.get_assets().pop("asset.tif")
-    assert asset.get_absolute_href() == f"s3://{target_bucket}/{merge}/{item.id}/{item.id}"
+    exported_asset = item.get_assets().pop("asset.tif")
+    assert exported_asset.get_absolute_href() == f"s3://{target_bucket}/{merge}/{item.id}/{item.id}"
 
-    assert custom_stac_io.read_text(asset.get_absolute_href()) == "asset.tif\n"
+    assert custom_stac_io.read_text(exported_asset.get_absolute_href()) == "asset.tif\n"
 
 
 def _collection(
