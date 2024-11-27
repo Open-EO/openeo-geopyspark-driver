@@ -270,7 +270,8 @@ def run_job(
 ):
     result_metadata = {}
 
-    stac_hrefs = []
+    # while creating the stac metadata, hrefs are temporary local paths.
+    stac_file_paths = []
     try:
         # We actually expect type Path, but in reality paths as strings tend to
         # slip in anyway, so we better catch them and convert them.
@@ -484,7 +485,7 @@ def run_job(
 
         assert len(results) == len(assets_metadata)
         for result, result_assets_metadata in zip(results, assets_metadata):
-            stac_hrefs += _export_to_workspaces(
+            stac_file_paths += _export_to_workspaces(
                 result,
                 result_metadata,
                 result_assets_metadata=result_assets_metadata,
@@ -492,10 +493,10 @@ def run_job(
                 remove_exported_assets=job_options.get("remove-exported-assets", False),
             )
     finally:
-        write_metadata({**result_metadata, **_get_tracker_metadata("")}, metadata_file, stac_hrefs)
+        write_metadata({**result_metadata, **_get_tracker_metadata("")}, metadata_file, stac_file_paths)
 
 
-def write_metadata(metadata, metadata_file, stac_hrefs: List[Union[str, Path]] = None):
+def write_metadata(metadata, metadata_file, stac_file_paths: List[Union[str, Path]] = None):
     with open(metadata_file, 'w') as f:
         json.dump(metadata, f, default=json_default)
     add_permissions(metadata_file, stat.S_IWGRP)
@@ -509,7 +510,7 @@ def write_metadata(metadata, metadata_file, stac_hrefs: List[Union[str, Path]] =
             bucket = os.environ.get('SWIFT_BUCKET')
             s3_instance = s3_client()
 
-            paths = [metadata_file] + (stac_hrefs or [])
+            paths = [metadata_file] + (stac_file_paths or [])
             # asset files are already uploaded by Scala code
             logger.info(f"Writing results to object storage. paths={paths}")
             for file_path in paths:
