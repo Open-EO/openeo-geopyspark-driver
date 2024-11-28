@@ -160,11 +160,10 @@ def test_merge_into_existing(tmp_path, mock_s3_client, mock_s3_bucket, remove_or
         root_path=tmp_path / "src" / "new_collection",
         collection_id="new_collection",
         asset_hrefs=[f"s3://{source_bucket}/{source_key}"],
-        # TODO: use different extents for this collection
-        spatial_extent=SpatialExtent([[0, 50, 2, 52]]),
+        spatial_extent=SpatialExtent([[1, 51, 3, 53]]),
         temporal_extent=TemporalExtent([[
-            dt.datetime.fromisoformat("2024-11-01T00:00:00+00:00"),
-            dt.datetime.fromisoformat("2024-11-03T00:00:00+00:00")
+            dt.datetime.fromisoformat("2024-11-02T00:00:00+00:00"),
+            dt.datetime.fromisoformat("2024-11-04T00:00:00+00:00")
         ]]),
         s3_client=mock_s3_client,
     )
@@ -174,10 +173,10 @@ def test_merge_into_existing(tmp_path, mock_s3_client, mock_s3_bucket, remove_or
     merged_collection = workspace.merge(new_collection, target=merge, remove_original=remove_original)
 
     assert isinstance(merged_collection, Collection)
-    assert merged_collection.extent.spatial.bboxes == [[0, 50, 2, 52]]
+    assert merged_collection.extent.spatial.bboxes == [[0, 50, 3, 53]]
     assert merged_collection.extent.temporal.intervals == [[
         dt.datetime.fromisoformat("2024-11-01T00:00:00+00:00"),
-        dt.datetime.fromisoformat("2024-11-03T00:00:00+00:00")
+        dt.datetime.fromisoformat("2024-11-04T00:00:00+00:00")
     ]]
 
     assert _workspace_keys(mock_s3_client, target_bucket, prefix="some/target/collection") == {

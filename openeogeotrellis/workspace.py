@@ -8,7 +8,7 @@ import boto3
 import botocore.exceptions
 from boto3.s3.transfer import TransferConfig
 
-from openeo_driver.workspace import Workspace
+from openeo_driver.workspace import Workspace, _merge_collection_metadata
 from pystac import STACObject, Collection, CatalogType, Link, Item, Asset
 from pystac.layout import HrefLayoutStrategy, CustomLayoutStrategy
 from pystac.stac_io import DefaultStacIO
@@ -124,7 +124,7 @@ class ObjectStorageWorkspace(Workspace):
 
                 merged_collection = new_collection
             else:
-                merged_collection = existing_collection  # TODO: merge metadata
+                merged_collection = _merge_collection_metadata(existing_collection, new_collection)
                 new_collection = new_collection.map_assets(replace_asset_href)
 
                 for new_item in new_collection.get_items():
