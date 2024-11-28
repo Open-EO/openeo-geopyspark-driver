@@ -14,6 +14,8 @@ without compromising stable operations.
 
 ## Unreleased
 
+- Throw error when trying to use unsupported `target_dimension` in `aggregate_spatial` ([#951](https://github.com/Open-EO/openeo-geopyspark-driver/issues/951))
+
 ## 0.50.1
 
 - Fix `reduce_dimension` of bands for GeoTIFF output in batch job ([#943](https://github.com/Open-EO/openeo-geopyspark-driver/issues/943))
