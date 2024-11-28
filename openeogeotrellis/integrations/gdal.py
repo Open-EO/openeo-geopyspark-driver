@@ -472,9 +472,6 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
     # See https://gdal.org/api/python_gotchas.html
     gdal.UseExceptions()
 
-    # Experiment for https://github.com/Open-EO/openeo-geopyspark-driver/issues/906
-    gdal.SetConfigOption("GDAL_NUM_THREADS", "1")
-
     try:
         data_gdalinfo = gdal.Info(
             asset_uri,
