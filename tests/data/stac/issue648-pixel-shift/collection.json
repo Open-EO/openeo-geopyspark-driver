@@ -30,7 +30,7 @@
             "eo:bands": [{"name": "SCF", "description": "SCF"}]
         }
     },
-    "title": "tif 2023",
+    "title": "SCF",
     "extent": {
         "spatial": {
             "bbox": [

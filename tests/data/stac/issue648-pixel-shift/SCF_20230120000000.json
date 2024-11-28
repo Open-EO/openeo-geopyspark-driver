@@ -64,13 +64,13 @@
             "rel": "collection",
             "href": "./collection.json",
             "type": "application/json",
-            "title": "tif 2023"
+            "title": "SCF"
         },
         {
             "rel": "parent",
             "href": "./collection.json",
             "type": "application/json",
-            "title": "tif 2023"
+            "title": "SCF"
         }
     ],
     "assets": {
@@ -84,5 +84,5 @@
             "roles": ["data"]
         }
     },
-    "collection": "tif_2023"
+    "collection": "SCF"
 }
