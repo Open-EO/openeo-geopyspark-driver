@@ -14,6 +14,8 @@ without compromising stable operations.
 
 ## Unreleased
 
+- `load_stac`: Align output pixels with source pixels if source data is UTM and has an offset. ([#648](https://github.com/Open-EO/openeo-geopyspark-driver/issues/648))
+
 ## 0.50.1
 
 - Fix `reduce_dimension` of bands for GeoTIFF output in batch job ([#943](https://github.com/Open-EO/openeo-geopyspark-driver/issues/943))
