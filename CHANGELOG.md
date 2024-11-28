@@ -16,6 +16,10 @@ without compromising stable operations.
 
 - Throw error when trying to use unsupported `target_dimension` in `aggregate_spatial` ([#951](https://github.com/Open-EO/openeo-geopyspark-driver/issues/951))
 
+## 0.51.0
+
+- `load_stac`: omit `datetime` parameter from STAC API item search request if no `temporal_extent` specified ([#950](https://github.com/Open-EO/openeo-geopyspark-driver/issues/950))
+
 ## 0.50.1
 
 - Fix `reduce_dimension` of bands for GeoTIFF output in batch job ([#943](https://github.com/Open-EO/openeo-geopyspark-driver/issues/943))

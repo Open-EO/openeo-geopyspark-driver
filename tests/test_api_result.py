@@ -4376,7 +4376,10 @@ class TestLoadStac:
         process_graph = {
             "loadstac1": {
                 "process_id": "load_stac",
-                "arguments": {"url": "https://stac.test/collections/collection"},
+                "arguments": {
+                    "url": "https://stac.test/collections/collection",
+                    "temporal_extent": ["2021-02-01", "2021-03-01"],
+                },
             },
             "saveresult1": {
                 "process_id": "save_result",
@@ -4396,6 +4399,50 @@ class TestLoadStac:
         assert (ds["band2"] == 2).all()
         assert (ds["band3"] == 3).all()
         assert (ds["band4"] == 4).all()
+
+    def test_load_stac_omits_default_temporal_extent(self, api110, urllib_mock, requests_mock, tmp_path):
+        """load_stac from a STAC API without specifying a temporal_extent"""
+
+        def feature_collection(request, _) -> dict:
+            assert request.qs["collections"][0] == "collection"  # sanity check
+            assert "datetime" not in request.qs
+
+            return {
+                "type": "FeatureCollection",
+                "features": [],
+            }
+
+        urllib_mock.get(
+            "https://stac.test/collections/collection",
+            data=get_test_data_file("stac/issue950-api-omit-temporal-extent/collection.json").read_text(),
+        )
+        urllib_mock.get(
+            "https://stac.test",  # for pystac
+            data=get_test_data_file("stac/issue950-api-omit-temporal-extent/catalog.json").read_text(),
+        )
+        requests_mock.get(
+            "https://stac.test",  # for pystac_client
+            text=get_test_data_file("stac/issue950-api-omit-temporal-extent/catalog.json").read_text(),
+        )
+        requests_mock.get("https://stac.test/search", json=feature_collection)
+
+        process_graph = {
+            "loadstac1": {
+                "process_id": "load_stac",
+                "arguments": {
+                    "url": "https://stac.test/collections/collection",
+                    # no temporal_extent
+                },
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "loadstac1"}, "format": "NetCDF"},
+                "result": True,
+            },
+        }
+
+        res = api110.result(process_graph).assert_status_code(400)
+        assert "NoDataAvailable" in res.text
 
 
 class TestEtlApiReporting:
