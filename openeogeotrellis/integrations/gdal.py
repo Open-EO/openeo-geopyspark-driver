@@ -13,6 +13,7 @@ from math import isfinite
 from openeo.util import dict_no_none
 from osgeo import gdal
 
+from openeo_driver.utils import smart_bool
 from openeogeotrellis.utils import stream_s3_binary_file_contents, _make_set_for_key
 
 
@@ -474,21 +475,33 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
     gdal.UseExceptions()
 
     try:
-        start = time.time()
-        data_gdalinfo = gdal.Info(
-            asset_uri,
-            options=gdal.InfoOptions(format="json", stats=True),
-        )
-        end = time.time()
-        poorly_log(f"gdal.Info() took {(end - start) * 1000}ms for {asset_uri}")
+        data_gdalinfo = None
+        GDALINFO_PYTHON_CALL = smart_bool(os.environ.get("GDALINFO_PYTHON_CALL", "true"))
+        GDALINFO_USE_SUBPROCESS = smart_bool(os.environ.get("GDALINFO_USE_SUBPROCESS", "false"))
+        if not GDALINFO_PYTHON_CALL and not GDALINFO_USE_SUBPROCESS:
+            poorly_log("Neither GDALINFO_PYTHON_CALL nor GDALINFO_USE_SUBPROCESS is set. Avoiding gdalinfo.")
+            data_gdalinfo = {}
 
-        start = time.time()
-        cmd = ["gdalinfo", asset_uri, "-json", "-stats"]
-        out = subprocess.check_output(cmd, timeout=60)
-        data_gdalinfo_from_subprocess = json.loads(out)
-        assert data_gdalinfo_from_subprocess == data_gdalinfo
-        end = time.time()
-        poorly_log(f"gdalinfo took {(end - start) * 1000}ms for {asset_uri}")
+        if GDALINFO_PYTHON_CALL:
+            start = time.time()
+            data_gdalinfo = gdal.Info(
+                asset_uri,
+                options=gdal.InfoOptions(format="json", stats=True),
+            )
+            end = time.time()
+            poorly_log(f"gdal.Info() took {(end - start) * 1000}ms for {asset_uri}")
+
+        if GDALINFO_USE_SUBPROCESS:
+            start = time.time()
+            cmd = ["gdalinfo", asset_uri, "-json", "-stats"]
+            out = subprocess.check_output(cmd, timeout=60)
+            data_gdalinfo_from_subprocess = json.loads(out)
+            end = time.time()
+            poorly_log(f"gdalinfo took {(end - start) * 1000}ms for {asset_uri}")
+            if data_gdalinfo:
+                assert data_gdalinfo_from_subprocess == data_gdalinfo
+            else:
+                data_gdalinfo = data_gdalinfo_from_subprocess
     except Exception as exc:
         # TODO: Specific exception type(s) would be better but Wasn't able to find what
         #   specific exceptions gdal.Info might raise.
