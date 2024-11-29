@@ -246,3 +246,6 @@ class GpsBackendConfig(OpenEoBackendConfig):
     gdalinfo_python_call: bool = False
     gdalinfo_use_subprocess: bool = True  # TODO: Only keep one gdalinfo on true
     gdalinfo_use_python_subprocess: bool = False
+
+    calrissian_namespace: Optional[str] = None
+    calrissian_image: Optional[str] = "ghcr.io/duke-gcb/calrissian/calrissian:0.17.1"
