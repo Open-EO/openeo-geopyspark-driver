@@ -242,3 +242,6 @@ class GpsBackendConfig(OpenEoBackendConfig):
         "/opt/tensorflow:/opt/tensorflow:ro"
     )
     batch_user_docker_mounts: dict[str, List[str]] = {}
+
+    calrissian_namespace: Optional[str] = None
+    calrissian_image: Optional[str] = "ghcr.io/duke-gcb/calrissian/calrissian:0.17.1"
