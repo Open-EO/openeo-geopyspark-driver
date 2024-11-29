@@ -483,7 +483,7 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
         poorly_log(f"gdal.Info() took {(end - start) * 1000}ms for {asset_uri}")
 
         start = time.time()
-        cmd = ["gdalinfo", asset_uri, "-json"]
+        cmd = ["gdalinfo", asset_uri, "-json", "-stats"]
         out = subprocess.check_output(cmd, timeout=60)
         data_gdalinfo_from_subprocess = json.loads(out)
         assert data_gdalinfo_from_subprocess == data_gdalinfo
