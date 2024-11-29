@@ -285,6 +285,7 @@ class K8sStatusGetter(JobMetadataGetterInterface):
             metadata = self._kubernetes_api.get_namespaced_custom_object(
                 group="sparkoperator.k8s.io",
                 version="v1beta2",
+                # TODO: this namespace should come from job metadata, not config
                 namespace=ConfigParams().pod_namespace,
                 plural="sparkapplications",
                 name=app_id,
