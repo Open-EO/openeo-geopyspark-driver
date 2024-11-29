@@ -1,4 +1,5 @@
 import multiprocessing
+import subprocess
 from dataclasses import dataclass
 import json
 import logging
@@ -473,10 +474,21 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
     gdal.UseExceptions()
 
     try:
+        start = time.time()
         data_gdalinfo = gdal.Info(
             asset_uri,
             options=gdal.InfoOptions(format="json", stats=True),
         )
+        end = time.time()
+        poorly_log(f"gdal.Info() took {(end - start) * 1000}ms for {asset_uri}")
+
+        start = time.time()
+        cmd = ["gdalinfo", asset_uri, "-json"]
+        out = subprocess.check_output(cmd, timeout=60)
+        data_gdalinfo_from_subprocess = json.loads(out)
+        assert data_gdalinfo_from_subprocess == data_gdalinfo
+        end = time.time()
+        poorly_log(f"gdalinfo took {(end - start) * 1000}ms for {asset_uri}")
     except Exception as exc:
         # TODO: Specific exception type(s) would be better but Wasn't able to find what
         #   specific exceptions gdal.Info might raise.
