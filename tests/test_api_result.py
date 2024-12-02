@@ -3768,6 +3768,10 @@ class TestLoadStac:
             "https://stac.terrascope.be/search?limit=20&bbox=5.07%2C51.215%2C5.08%2C51.22&datetime=2024-06-23T00%3A00%3A00Z%2F2024-06-23T23%3A59%3A59.999000Z&collections=sentinel-2-l2a&fields=%2Btype%2C%2Bgeometry%2C%2Bproperties%2C%2Bid%2C%2Bbbox%2C%2Bstac_version%2C%2Bassets%2C%2Blinks%2C%2Bcollection",
             data=item_json("stac/issue830_alternate_url/search_queried.json"),
         )
+        urllib_and_request_mock.get(
+            "https://stac.terrascope.be/search?limit=20&bbox=5.07%2C51.215%2C5.08%2C51.22&datetime=2024-06-23T00%3A00%3A00Z%2F2024-06-23T23%3A59%3A59.999000Z&collections=sentinel-2-l2a",
+            data=item_json("stac/issue830_alternate_url/search_queried.json"),
+        )
 
         process_graph = {
             "process_graph": {
@@ -4089,23 +4093,7 @@ class TestLoadStac:
     ])
     def test_stac_api_property_filter(self, api110, urllib_mock, requests_mock, catalog_url, tmp_path):
         def feature_collection(request, _) -> dict:
-            if catalog_url in ["https://tamn.snapplanet.io", "https://planetarycomputer.microsoft.com/api/stac/v1",
-                               "https://stac.eurac.edu"]:
-                assert "fields" not in request.qs
-            else:
-                # a GET request has a single "fields" param with values separated by commas
-                # After https://stac.openeo.vito.be is updated, this might not be needed anymore
-                assert set(request.qs["fields"][0].split(",")) == {
-                    "+links",
-                    "+stac_version",
-                    "+bbox",
-                    "+collection",
-                    "+assets",
-                    "+id",
-                    "+properties",
-                    "+type",
-                    "+geometry",
-                }
+            assert "fields" not in request.qs
 
             def item(path) -> dict:
                 return json.loads(
@@ -4388,7 +4376,10 @@ class TestLoadStac:
         process_graph = {
             "loadstac1": {
                 "process_id": "load_stac",
-                "arguments": {"url": "https://stac.test/collections/collection"},
+                "arguments": {
+                    "url": "https://stac.test/collections/collection",
+                    "temporal_extent": ["2021-02-01", "2021-03-01"],
+                },
             },
             "saveresult1": {
                 "process_id": "save_result",
@@ -4408,6 +4399,50 @@ class TestLoadStac:
         assert (ds["band2"] == 2).all()
         assert (ds["band3"] == 3).all()
         assert (ds["band4"] == 4).all()
+
+    def test_load_stac_omits_default_temporal_extent(self, api110, urllib_mock, requests_mock, tmp_path):
+        """load_stac from a STAC API without specifying a temporal_extent"""
+
+        def feature_collection(request, _) -> dict:
+            assert request.qs["collections"][0] == "collection"  # sanity check
+            assert "datetime" not in request.qs
+
+            return {
+                "type": "FeatureCollection",
+                "features": [],
+            }
+
+        urllib_mock.get(
+            "https://stac.test/collections/collection",
+            data=get_test_data_file("stac/issue950-api-omit-temporal-extent/collection.json").read_text(),
+        )
+        urllib_mock.get(
+            "https://stac.test",  # for pystac
+            data=get_test_data_file("stac/issue950-api-omit-temporal-extent/catalog.json").read_text(),
+        )
+        requests_mock.get(
+            "https://stac.test",  # for pystac_client
+            text=get_test_data_file("stac/issue950-api-omit-temporal-extent/catalog.json").read_text(),
+        )
+        requests_mock.get("https://stac.test/search", json=feature_collection)
+
+        process_graph = {
+            "loadstac1": {
+                "process_id": "load_stac",
+                "arguments": {
+                    "url": "https://stac.test/collections/collection",
+                    # no temporal_extent
+                },
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "loadstac1"}, "format": "NetCDF"},
+                "result": True,
+            },
+        }
+
+        res = api110.result(process_graph).assert_status_code(400)
+        assert "NoDataAvailable" in res.text
 
 
 class TestEtlApiReporting:
@@ -4841,3 +4876,62 @@ def test_geotiff_scale_offset(api110, tmp_path):
     assert second_band.GetDescription() == "Flat:2"
     assert second_band.GetScale() == 1.0
     assert second_band.GetOffset() == 4.56
+
+
+def test_reduce_bands_to_geotiff(api110, tmp_path):
+    response = api110.check_result({
+        "loadcollection1": {
+            "process_id": "load_collection",
+            "arguments": {
+                "bands": [
+                    "Flat:0"
+                ],
+                "id": "TestCollection-LonLat16x16",
+                "spatial_extent": {
+                    "west": 4.906082,
+                    "south": 51.024594,
+                    "east": 4.928398,
+                    "north": 51.034499
+                },
+                "temporal_extent": [
+                    "2024-10-01",
+                    "2024-10-10"
+                ]
+            }
+        },
+        "reducedimension1": {
+            "process_id": "reduce_dimension",
+            "arguments": {
+                "data": {
+                    "from_node": "loadcollection1"
+                },
+                "dimension": "bands",
+                "reducer": {
+                    "process_graph": {
+                        "arrayelement1": {
+                            "process_id": "array_element",
+                            "arguments": {
+                                "data": {
+                                    "from_parameter": "data"
+                                },
+                                "index": 0
+                            },
+                            "result": True
+                        }
+                    }
+                }
+            },
+            "result": True
+        }
+    })
+
+    output_file = tmp_path / "reduced.tif"
+
+    with open(output_file, mode="wb") as f:
+        f.write(response.data)
+
+    raster = gdal.Open(str(output_file))
+    assert raster.RasterCount == 1
+
+    only_band = raster.GetRasterBand(1)
+    assert not only_band.GetDescription()

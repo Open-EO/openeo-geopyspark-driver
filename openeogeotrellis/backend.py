@@ -422,9 +422,9 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                             "enum": ["wgs84-1degree", "utm-100km", "utm-20km", "utm-10km"]
                         },
                         "ZLEVEL": {
-                            "type": "string",
+                            "type": "integer",
                             "description": "Specifies the compression level used for DEFLATE compression. As a number from 1 to 9, lowest and fastest compression is 1 while 9 is highest and slowest compression.",
-                            "default": "6"
+                            "default": 6
                         },
                         "sample_by_feature": {
                             "type": "boolean",
@@ -1062,6 +1062,8 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                             if len(udf_stacktrace_new) < width - 150:
                                 udf_stacktrace = udf_stacktrace_new
                         summary = f"UDF exception while evaluating processing graph. Please check your user defined functions. {udf_stacktrace}"
+                    elif "Missing an output location" in root_cause_message:
+                        summary = f"A part of your process graph failed multiple times. Simply try submitting again, or use batch job logs to find more detailed information in case of persistent failures. Increasing executor memory may help if the root cause is not clear from the logs."
                     else:
                         summary = f"Exception during Spark execution: {root_cause_class_name}: {root_cause_message}"
                 else:
@@ -1631,10 +1633,10 @@ class GpsBatchJobs(backend.BatchJobs):
             terrascope_access_token = self._get_terrascope_access_token(user, sentinel_hub_client_alias)
             return self._vault.login_jwt(terrascope_access_token)
 
-        self._start_job(job_id, user, _get_vault_token)
+        self._start_job(job_id, user, _get_vault_token,proxy_user=proxy_user)
 
     def _start_job(self, job_id: str, user: User, get_vault_token: Callable[[str], str],
-                   dependencies: Union[list, None] = None):
+                   dependencies: Union[list, None] = None,proxy_user=None):
         from openeogeotrellis import async_task  # TODO: avoid local import because of circular dependency
 
         user_id = user.user_id
@@ -2086,7 +2088,8 @@ class GpsBatchJobs(backend.BatchJobs):
                     args.append("no_principal")
                     args.append("no_keytab")
 
-                args.append(job_info.get('proxy_user') or user_id)
+                # due to eventual consistency, job_info does not necessarily have the latest info
+                args.append(proxy_user or job_info.get('proxy_user') or user_id)
 
                 if api_version:
                     args.append(api_version)

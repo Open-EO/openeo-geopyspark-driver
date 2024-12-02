@@ -1567,9 +1567,14 @@ class GeopysparkDataCube(DriverDataCube):
         return self.pyramid.levels[self.pyramid.max_zoom]
 
     @callsite
-    def aggregate_spatial(self, geometries: Union[str, BaseGeometry, DriverVectorCube], reducer,
-                          target_dimension: str = "result") -> Union[AggregatePolygonResult,
-                                                                     AggregateSpatialVectorCube]:
+    def aggregate_spatial(
+        self,
+        geometries: Union[str, BaseGeometry, DriverVectorCube],
+        reducer,
+        target_dimension: Optional[str] = None,
+    ) -> Union[AggregatePolygonResult, AggregateSpatialVectorCube]:
+        if target_dimension:
+            raise FeatureUnsupportedException("Argument `target_dimension` not supported in `aggregate_spatial`")
 
         if isinstance(reducer, dict) and len(reducer) > 0:
             single_process = next(iter(reducer.values())).get('process_id')
@@ -1837,6 +1842,8 @@ class GeopysparkDataCube(DriverDataCube):
         if separate_asset_per_band.isDefined() and format != "GTIFF":
             raise OpenEOApiException("separate_asset_per_band is only supported with format GTIFF")
 
+        filepath_per_band = format_options.get("filepath_per_band", None)
+
         save_filename = s3_filename if batch_mode and ConfigParams().is_kube_deploy and not get_backend_config().fuse_mount_batchjob_s3_bucket else filename
         save_directory = s3_directory if batch_mode and ConfigParams().is_kube_deploy and not get_backend_config().fuse_mount_batchjob_s3_bucket else directory
 
@@ -1865,10 +1872,10 @@ class GeopysparkDataCube(DriverDataCube):
                 max_level = max_level.to_spatial_layer()
 
             if format == "GTIFF":
-                zlevel = format_options.get("ZLEVEL",6)
+                zlevel = format_options.get("ZLEVEL", 6)
                 if catalog:
                     _log.info("save_result (catalog) save_on_executors")
-                    self._save_on_executors(max_level, filename, filename_prefix=filename_prefix)
+                    self._save_on_executors(max_level, filename, zlevel, filename_prefix=filename_prefix)
                 elif stitch:
                     if tile_grid:
                         _log.info("save_result save_stitched_tile_grid")
@@ -1900,6 +1907,11 @@ class GeopysparkDataCube(DriverDataCube):
                         gtiff_options.setFilenamePrefix(filename_prefix.get())
                     if separate_asset_per_band.isDefined():
                         gtiff_options.setSeparateAssetPerBand(separate_asset_per_band.get())
+                    if filepath_per_band:
+                        if self.metadata.has_temporal_dimension():
+                            # The user would need a way to encode the date in the filenames
+                            raise OpenEOApiException("filepath_per_band is not supported with temporal dimension")
+                        gtiff_options.setFilepathPerBand(get_jvm().scala.Option.apply(filepath_per_band))
                     gtiff_options.addHeadTag("PROCESSING_SOFTWARE",softwareversion)
                     if description != "":
                         gtiff_options.addHeadTag("ImageDescription", description)
@@ -1976,7 +1988,9 @@ class GeopysparkDataCube(DriverDataCube):
                                 "type": "image/tiff; application=geotiff",
                                 "roles": ["data"],
                                 "bands": (
-                                    [bands[i] for i in band_indices_per_file[index]] if band_indices_per_file else bands
+                                    [band for i, band in enumerate(bands) if i in band_indices_per_file[index]]
+                                    if band_indices_per_file
+                                    else bands
                                 ),
                                 "nodata": nodata,
                                 "datetime": timestamp,
@@ -2012,12 +2026,12 @@ class GeopysparkDataCube(DriverDataCube):
                             ]
                             assets = {}
                             for path, band_indices in paths_tuples:
-                                file_name = pathlib.Path(path).name
+                                file_name = str(pathlib.Path(path).relative_to(save_directory))
                                 assets[file_name] = {
                                     "href": str(path),
                                     "type": "image/tiff; application=geotiff",
                                     "roles": ["data"],
-                                    "bands": [bands[i] for i in band_indices],
+                                    "bands": [band for i, band in enumerate(bands) if i in band_indices],
                                     "nodata": nodata,
                                 }
                             return assets
@@ -2127,9 +2141,6 @@ class GeopysparkDataCube(DriverDataCube):
                     else:
                         result=self._collect_as_xarray(max_level)
 
-
-                    # if batch_mode:
-                    #     filename = directory +  "/openEO.nc"
                     XarrayIO.to_netcdf_file(array=result, path=filename)
                     if batch_mode:
                         asset = {

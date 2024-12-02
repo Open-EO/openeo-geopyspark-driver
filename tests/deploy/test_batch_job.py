@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import re
 import shutil
 import subprocess
@@ -22,6 +23,8 @@ from pytest import approx
 from shapely.geometry import box, mapping, shape
 
 from openeogeotrellis._version import __version__
+from openeogeotrellis.backend import JOB_METADATA_FILENAME
+from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.config.constants import UDF_DEPENDENCIES_INSTALL_MODE
 from openeogeotrellis.deploy.batch_job import (
     _extract_and_install_udf_dependencies,
@@ -41,7 +44,7 @@ from openeogeotrellis.integrations.gdal import (
     read_gdal_raster_metadata,
 )
 from openeogeotrellis.testing import gps_config_overrides
-from openeogeotrellis.utils import get_jvm, to_s3_url, s3_client
+from openeogeotrellis.utils import get_jvm, to_s3_url, s3_client, stream_s3_binary_file_contents
 
 _log = logging.getLogger(__name__)
 
@@ -327,9 +330,75 @@ def test_extract_result_metadata_aggregate_spatial_delayed_vector_when_bbox_crs_
     }
 
 
-@mock.patch('openeo_driver.ProcessGraphDeserializer.evaluate')
-def test_run_job(evaluate, tmp_path, fast_sleep):
+def start_log_locker():
+    from threading import Thread
+    from queue import Queue
+    from logging.handlers import QueueListener, QueueHandler
+
+    # Logs get written to a queue, and then a thread reads
+    # from that queue and writes messages to a file:
+    _log_queue = Queue()
+    QueueListener(_log_queue, logging.FileHandler("out.log")).start()
+    logging.getLogger().addHandler(QueueHandler(_log_queue))
+
+    is_active = True
+
+    def stop_log_locker():
+        nonlocal is_active
+        is_active = False
+
+    def write_logs():
+        while is_active:
+            logging.warning("attempting to create deadlock")
+
+    Thread(target=write_logs).start()
+    return stop_log_locker
+
+
+@pytest.mark.skip("test_log_lock can add 40Mb to the logs. Keep it disabled by default.")
+@pytest.mark.timeout(130)
+def test_log_lock(tmp_path):
+    process_graph = {
+        "loadcollection1": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "TestCollection-LonLat4x4",
+                "temporal_extent": ["2023-06-01", "2023-08-01"],
+                "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 2.0},
+                "bands": ["Longitude", "Latitude"],
+            },
+        },
+        "saveresult1": {
+            "process_id": "save_result",
+            "arguments": {
+                "data": {"from_node": "loadcollection1"},
+                "format": "GTiff",
+            },
+            "result": True,
+        },
+    }
+    process = {
+        "process_graph": process_graph,
+    }
+    stop_log_locker = start_log_locker()
+    try:
+        run_job(
+            process,
+            output_file=tmp_path / "out",
+            metadata_file=tmp_path / JOB_METADATA_FILENAME,
+            api_version="2.0.0",
+            job_dir=tmp_path,
+            dependencies=[],
+        )
+    finally:
+        stop_log_locker()
+
+
+@mock.patch("openeogeotrellis.utils.wait_till_path_available")
+@mock.patch("openeo_driver.ProcessGraphDeserializer.evaluate")
+def test_run_job(evaluate, wait_till_path_available_mock, tmp_path):
     cube_mock = MagicMock()
+    wait_till_path_available_mock.return_value = None  # Avoid waiting
     asset_meta = {"openEO01-01.tif": {"href": "tmp/openEO01-01.tif", "roles": "data"},"openEO01-05.tif": {"href": "tmp/openEO01-05.tif", "roles": "data"}}
     cube_mock.write_assets.return_value = asset_meta
     evaluate.return_value = ImageCollectionResult(cube=cube_mock, format="GTiff", options={"multidate":True})
@@ -411,9 +480,11 @@ def test_run_job(evaluate, tmp_path, fast_sleep):
     t.setGlobalTracking(False)
 
 
+@mock.patch("openeogeotrellis.utils.wait_till_path_available")
 @mock.patch("openeo_driver.ProcessGraphDeserializer.evaluate")
-def test_run_job_get_projection_extension_metadata(evaluate, tmp_path, fast_sleep):
+def test_run_job_get_projection_extension_metadata(evaluate, wait_till_path_available_mock, tmp_path):
     cube_mock = MagicMock()
+    wait_till_path_available_mock.return_value = None  # Avoid waiting
 
     job_dir = tmp_path / "job-402"
     job_dir.mkdir()
@@ -537,12 +608,16 @@ def test_run_job_get_projection_extension_metadata(evaluate, tmp_path, fast_slee
     t.setGlobalTracking(False)
 
 
+@mock.patch("openeogeotrellis.utils.wait_till_path_available")
 @mock.patch("openeo_driver.ProcessGraphDeserializer.evaluate")
-def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox(evaluate, tmp_path, fast_sleep):
+def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox(
+    evaluate, wait_till_path_available_mock, tmp_path
+):
     """When there are two raster assets with the same projection metadata, it should put
     those metadata at the level of the item instead of the individual bands.
     """
     cube_mock = MagicMock()
+    wait_till_path_available_mock.return_value = None  # Avoid waiting
 
     job_dir = tmp_path / "job-533"
     job_dir.mkdir()
@@ -977,9 +1052,11 @@ def test_run_job_get_projection_extension_metadata_assets_with_different_epsg(
     t.setGlobalTracking(False)
 
 
+@mock.patch("openeogeotrellis.utils.wait_till_path_available")
 @mock.patch("openeo_driver.ProcessGraphDeserializer.evaluate")
-def test_run_job_get_projection_extension_metadata_job_dir_is_relative_path(evaluate, fast_sleep):
+def test_run_job_get_projection_extension_metadata_job_dir_is_relative_path(evaluate, wait_till_path_available_mock):
     cube_mock = MagicMock()
+    wait_till_path_available_mock.return_value = None  # Avoid waiting
     # job dir should be a relative path,
     # We still want the test data to be cleaned up though, so we need to use
     # tempfile instead of pytest's tmp_path.
@@ -987,6 +1064,8 @@ def test_run_job_get_projection_extension_metadata_job_dir_is_relative_path(eval
         dir=".", suffix="job-test-proj-metadata"
     ) as job_dir:
         job_dir = Path(job_dir)
+        # Emile 2024-10-29: Not sure what the use-case of a relative path is here.
+        # STAC metadata uses relative paths internally, but the job_dir is better absolute IMHO
         assert not job_dir.is_absolute()
 
         # Note that batch_job's main() interprets its output_file and metadata_file
@@ -1125,9 +1204,10 @@ def test_run_job_get_projection_extension_metadata_assets_in_s3(
     mock_config_use_object_storage.return_value = True
     cube_mock = MagicMock()
 
-    job_id = "j-123546"
-    job_dir = tmp_path / "job-1115"
+    job_id = "j-123"
+    job_dir = tmp_path / job_id
     job_dir.mkdir()
+
     output_file = job_dir / "out"
     metadata_file = job_dir / "metadata.json"
 
@@ -1153,6 +1233,12 @@ def test_run_job_get_projection_extension_metadata_assets_in_s3(
     # starting the job. It will be downloaded when gdalinfo needs it.
     first_asset_dest = job_dir / single_asset_name
     assert not first_asset_dest.exists()
+    from openeogeotrellis.utils import s3_client
+
+    s3_instance = s3_client()
+
+    files_before = {o["Key"] for o in s3_instance.list_objects(Bucket=get_backend_config().s3_bucket_name)["Contents"]}
+    assert files_before == {"j-123/Copernicus_DSM_COG_10_N50_00_E005_00_DEM.tif"}
 
     run_job(
         job_specification={"process_graph": {"nop": {"process_id": "discard_result", "result": True}}},
@@ -1335,36 +1421,60 @@ def test_run_job_to_s3(
             "result": True,
         },
     }
-    json_path = tmp_path / "process_graph.json"
-    json.dump(process_graph, json_path.open("wt"))
 
-    containing_folder = Path(__file__).parent
-    cmd = [
-        sys.executable,
-        containing_folder.parent.parent / "openeogeotrellis/deploy/run_graph_locally.py",
-        json_path,
-    ]
-    # Run in separate subprocess so that all environment variables are
-    # set correctly at the moment the SparkContext is created:
-    try:
-        output = subprocess.check_output(cmd, stderr=subprocess.STDOUT, universal_newlines=True)
-    except subprocess.CalledProcessError as e:
-        _log.error("run_graph_locally failed. Output: " + e.output)
-        raise
+    separate_process = True
+    if separate_process:
+        json_path = tmp_path / "process_graph.json"
+        json.dump(process_graph, json_path.open("w"), indent=2)
+        containing_folder = Path(__file__).parent
+        cmd = [
+            sys.executable,
+            containing_folder.parent.parent / "openeogeotrellis/deploy/run_graph_locally.py",
+            json_path,
+        ]
+        # Run in separate subprocess so that all environment variables are
+        # set correctly at the moment the SparkContext is created:
+        try:
+            output = subprocess.check_output(cmd, stderr=subprocess.STDOUT, universal_newlines=True)
+        except subprocess.CalledProcessError as e:
+            _log.error("run_graph_locally failed. Output: " + e.output)
+            raise
+        print(output)
+    else:
+        from openeogeotrellis.configparams import ConfigParams
 
-    print(output)
+        if ConfigParams().use_object_storage:
+            from tests.conftest import force_stop_spark_context
+
+            force_stop_spark_context()
+
+        # Run in the same process, so that we can check the output directly:
+        from openeogeotrellis.deploy.run_graph_locally import run_graph_locally
+
+        run_graph_locally(process_graph, tmp_path)
 
     s3_instance = s3_client()
     from openeogeotrellis.config import get_backend_config
 
-    with open(json_path, "rb") as f:
-        s3_instance.upload_fileobj(
-            f, get_backend_config().s3_bucket_name, str((tmp_path / "test.json").relative_to("/"))
-        )
-
-    files = {o["Key"] for o in s3_instance.list_objects(Bucket=get_backend_config().s3_bucket_name)["Contents"]}
-    files = [f[len(str(tmp_path)) :] for f in files]
+    files_absolute = {
+        o["Key"] for o in s3_instance.list_objects(Bucket=get_backend_config().s3_bucket_name)["Contents"]
+    }
+    files = [f[len(str(tmp_path)) :] for f in files_absolute]
     assert files == ListSubSet(["collection.json", "openEO_2021-01-05Z.tif", "openEO_2021-01-05Z.tif.json"])
+
+    metadata_file = next(f for f in files_absolute if str(f).__contains__("metadata"))
+    s3_file_object = s3_instance.get_object(
+        Bucket=get_backend_config().s3_bucket_name,
+        Key=str(metadata_file).strip("/"),
+    )
+    streaming_body = s3_file_object["Body"]
+    with open(tmp_path / "metadata.json", "wb") as f:
+        f.write(streaming_body.read())
+
+    metadata = json.load(open(tmp_path / "metadata.json"))
+    s3_links = [metadata["assets"][a]["href"] for a in metadata["assets"]]
+    test = stream_s3_binary_file_contents(s3_links[0])
+    print(test)
 
 
 # TODO: Update this test to include statistics or not? Would need to update the json file.

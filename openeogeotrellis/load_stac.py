@@ -20,6 +20,7 @@ from openeo_driver.backend import LoadParameters, BatchJobMetadata
 from openeo_driver.errors import OpenEOApiException, ProcessParameterUnsupportedException, JobNotFoundException, \
     ProcessParameterInvalidException
 from openeo_driver.jobregistry import PARTIAL_JOB_STATUS
+from openeo_driver.ProcessGraphDeserializer import DEFAULT_TEMPORAL_EXTENT
 from openeo_driver.users import User
 from openeo_driver.util.geometry import BoundingBox, GeometryBufferer
 from openeo_driver.util.utm import utm_zone_from_epsg
@@ -238,20 +239,9 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
                 fields = None
             else:
                 modifier = None
-                # standard behavior seems to be to include only a minimal subset e.g. https://stac.openeo.vito.be/
-                # and e.g. https://stac.terrascope.be
-                # include all fields to ease the transition of stac catalog
-                fields = [
-                    "type",
-                    "geometry",
-                    "properties",
-                    "id",
-                    "bbox",
-                    "stac_version",
-                    "assets",
-                    "links",
-                    "collection",
-                ]
+                # Those now also return all fields by default as well:
+                # https://stac.openeo.vito.be/ and https://stac.terrascope.be
+                fields = None
 
             client = pystac_client.Client.open(root_catalog.get_self_href(), modifier=modifier)
 
@@ -260,8 +250,11 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
                 collections=collection_id,
                 bbox=requested_bbox.reproject("EPSG:4326").as_wsen_tuple() if requested_bbox else None,
                 limit=20,
-                datetime=f"{from_date.isoformat().replace('+00:00', 'Z')}/"
-                         f"{to_date.isoformat().replace('+00:00', 'Z')}",  # end is inclusive
+                datetime=(
+                    None if temporal_extent is DEFAULT_TEMPORAL_EXTENT
+                    else f"{from_date.isoformat().replace('+00:00', 'Z')}/"
+                         f"{to_date.isoformat().replace('+00:00', 'Z')}"  # end is inclusive
+                ),
                 fields=fields,
             )
 

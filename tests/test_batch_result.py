@@ -1,6 +1,8 @@
 import json
 import os
 import shutil
+import subprocess
+import sys
 import uuid
 from pathlib import Path
 from typing import Set
@@ -16,7 +18,7 @@ from openeo.util import ensure_dir
 from openeo_driver.dry_run import DryRunDataTracer
 from openeo_driver.errors import OpenEOApiException
 from openeo_driver.ProcessGraphDeserializer import ENV_DRY_RUN_TRACER, evaluate
-from openeo_driver.testing import DictSubSet, ephemeral_fileserver
+from openeo_driver.testing import DictSubSet, ephemeral_fileserver, ListSubSet
 from openeo_driver.util.geometry import validate_geojson_coordinates
 from openeo_driver.utils import EvalEnv
 from openeo_driver.workspace import DiskWorkspace
@@ -28,6 +30,8 @@ from openeogeotrellis.backend import JOB_METADATA_FILENAME
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.deploy.batch_job import run_job
 from openeogeotrellis.deploy.batch_job_metadata import extract_result_metadata
+from openeogeotrellis.utils import s3_client
+from .conftest import force_stop_spark_context, _setup_local_spark
 
 from .data import TEST_DATA_ROOT, get_test_data_file
 
@@ -1136,7 +1140,175 @@ def test_export_workspace_with_asset_per_band(tmp_path):
         with rasterio.open(geotiff_asset_copy_path) as dataset:
             assert dataset.driver == "GTiff"
     finally:
-        shutil.rmtree(workspace_dir)
+        shutil.rmtree(workspace_dir, ignore_errors=True)
+
+
+@pytest.mark.parametrize("use_s3", [False])  # use_s3 is only for debugging locally. Does not work on Jenkins
+def test_filepath_per_band(
+    tmp_path,
+    use_s3,
+    mock_s3_bucket,
+    moto_server,
+    monkeypatch,
+):
+    if use_s3:
+        workspace_id = "s3_workspace"
+    else:
+        workspace_id = "tmp_workspace"
+
+    merge = _random_merge()
+
+    process_graph = {
+        "loadcollection1": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "TestCollection-LonLat4x4",
+                "temporal_extent": ["2021-01-05", "2021-01-06"],
+                "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 2.0},
+                "bands": ["Longitude", "Latitude"],
+            },
+        },
+        "reducedimension1": {
+            "process_id": "reduce_dimension",
+            "arguments": {
+                "data": {"from_node": "loadcollection1"},
+                "dimension": "t",
+                "reducer": {
+                    "process_graph": {
+                        "first1": {
+                            "process_id": "first",
+                            "arguments": {"data": {"from_parameter": "data"}},
+                            "result": True,
+                        }
+                    }
+                },
+            },
+        },
+        "saveresult1": {
+            "process_id": "save_result",
+            "arguments": {
+                "data": {"from_node": "reducedimension1"},
+                "format": "GTiff",
+                "options": {
+                    "separate_asset_per_band": "true",
+                    "filepath_per_band": ["folder1/lon.tif", "lat.tif"],
+                },
+            },
+            "result": False,
+        },
+        "exportworkspace1": {
+            "process_id": "export_workspace",
+            "arguments": {
+                "data": {"from_node": "saveresult1"},
+                "workspace": workspace_id,
+                "merge": merge,
+            },
+            "result": True,
+        },
+    }
+
+    if use_s3:
+        monkeypatch.setenv("KUBE", "TRUE")
+        force_stop_spark_context()  # only use this when running a single test
+
+        class TerminalReporterMock:
+            @staticmethod
+            def write_line(message):
+                print(message)
+
+        _setup_local_spark(TerminalReporterMock(), 0)
+        s3_instance = s3_client()
+    try:
+        process = {
+            "process_graph": process_graph,
+        }
+        run_job(
+            process,
+            output_file=tmp_path / "out",
+            metadata_file=tmp_path / JOB_METADATA_FILENAME,
+            api_version="2.0.0",
+            job_dir=tmp_path,
+            dependencies=[],
+        )
+
+        if use_s3:
+            job_dir_files = {
+                o["Key"] for o in s3_instance.list_objects(Bucket=get_backend_config().s3_bucket_name)["Contents"]
+            }
+            print(job_dir_files)
+        job_dir_files = set(os.listdir(tmp_path))
+
+        assert len(job_dir_files) > 0
+        assert "lat.tif" in job_dir_files
+        assert any(f.startswith("folder1") for f in job_dir_files)
+
+        stac_collection = pystac.Collection.from_file(str(tmp_path / "collection.json"))
+        stac_collection.validate_all()
+        item_links = [item_link for item_link in stac_collection.links if item_link.rel == "item"]
+        assert len(item_links) == 2
+        item_link = item_links[0]
+
+        assert item_link.media_type == "application/geo+json"
+        assert item_link.href == "./folder1/lon.tif.json"
+
+        items = list(stac_collection.get_items())
+        assert len(items) == 2
+
+        item = items[0]
+        assert item.id == "folder1/lon.tif"
+
+        geotiff_asset = item.get_assets()["folder1/lon.tif"]
+        assert "data" in geotiff_asset.roles
+        assert geotiff_asset.href == "./lon.tif"  # relative to the json file
+        assert geotiff_asset.media_type == "image/tiff; application=geotiff"
+        assert geotiff_asset.extra_fields["eo:bands"] == [DictSubSet({"name": "Longitude"})]
+        if not use_s3:
+            assert geotiff_asset.extra_fields["raster:bands"] == [
+                {
+                    "name": "Longitude",
+                    "statistics": {
+                        "maximum": 0.75,
+                        "mean": 0.375,
+                        "minimum": 0.0,
+                        "stddev": 0.27950849718747,
+                        "valid_percent": 100.0,
+                    },
+                }
+            ]
+
+            geotiff_asset_copy_path = tmp_path / "file.copy"
+            geotiff_asset.copy(str(geotiff_asset_copy_path))  # downloads the asset file
+            with rasterio.open(geotiff_asset_copy_path) as dataset:
+                assert dataset.driver == "GTiff"
+
+        workspace = get_backend_config().workspaces[workspace_id]
+        if use_s3:
+            # job bucket and workspace bucket are the same
+            job_dir_files_s3 = [
+                o["Key"] for o in s3_instance.list_objects(Bucket=get_backend_config().s3_bucket_name)["Contents"]
+            ]
+            for prefix in [merge, tmp_path.relative_to("/")]:
+                assert job_dir_files_s3 == ListSubSet(
+                    [
+                        f"{prefix}/collection.json",
+                        f"{prefix}/folder1/lon.tif",
+                        f"{prefix}/folder1/lon.tif.json",
+                        f"{prefix}/lat.tif",
+                        f"{prefix}/lat.tif.json",
+                    ]
+                )
+
+        else:
+            workspace_dir = Path(f"{workspace.root_directory}/{merge}")
+            assert workspace_dir.exists()
+            assert (workspace_dir / "lat.tif").exists()
+            assert (workspace_dir / "folder1/lon.tif").exists()
+            stac_collection_exported = pystac.Collection.from_file(str(workspace_dir / "collection.json"))
+            stac_collection_exported.validate_all()
+    finally:
+        if not use_s3:
+            workspace_dir = Path(f"{workspace.root_directory}/{merge}")
+            shutil.rmtree(workspace_dir, ignore_errors=True)
 
 
 def test_discard_result(tmp_path):
@@ -1757,6 +1929,74 @@ def test_export_to_multiple_workspaces(tmp_path, remove_original):
     finally:
         shutil.rmtree((workspace.root_directory / merge1).parent)
         shutil.rmtree((workspace.root_directory / merge2).parent)
+
+
+def test_reduce_bands_to_geotiff(tmp_path):
+    process = {
+        "process_graph": {
+            "loadcollection1": {
+                "process_id": "load_collection",
+                "arguments": {
+                    "bands": [
+                        "Flat:0"
+                    ],
+                    "id": "TestCollection-LonLat16x16",
+                    "spatial_extent": {
+                        "west": 4.906082,
+                        "south": 51.024594,
+                        "east": 4.928398,
+                        "north": 51.034499
+                    },
+                    "temporal_extent": [
+                        "2024-10-01",
+                        "2024-10-10"
+                    ]
+                }
+            },
+            "reducedimension1": {
+                "process_id": "reduce_dimension",
+                "arguments": {
+                    "data": {
+                        "from_node": "loadcollection1"
+                    },
+                    "dimension": "bands",
+                    "reducer": {
+                        "process_graph": {
+                            "arrayelement1": {
+                                "process_id": "array_element",
+                                "arguments": {
+                                    "data": {
+                                        "from_parameter": "data"
+                                    },
+                                    "index": 0
+                                },
+                                "result": True
+                            }
+                        }
+                    }
+                },
+                "result": True
+            }
+        }
+    }
+
+    run_job(
+        process,
+        output_file=tmp_path / "out",
+        metadata_file=tmp_path / JOB_METADATA_FILENAME,
+        api_version="2.0.0",
+        job_dir=tmp_path,
+        dependencies=[],
+    )
+
+    output_tiffs = {filename for filename in os.listdir(tmp_path) if filename.endswith(".tif")}
+    assert output_tiffs == {"openEO_2024-10-05Z.tif"}
+
+    raster = gdal.Open(str(tmp_path / output_tiffs.pop()))
+    assert raster.RasterCount == 1
+
+    only_band = raster.GetRasterBand(1)
+    assert not only_band.GetDescription()
 
 
 def _random_merge() -> str:

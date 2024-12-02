@@ -14,6 +14,24 @@ without compromising stable operations.
 
 ## Unreleased
 
+- Throw error when trying to use unsupported `target_dimension` in `aggregate_spatial` ([#951](https://github.com/Open-EO/openeo-geopyspark-driver/issues/951))
+
+## 0.51.0
+
+- `load_stac`: omit `datetime` parameter from STAC API item search request if no `temporal_extent` specified ([#950](https://github.com/Open-EO/openeo-geopyspark-driver/issues/950))
+
+## 0.50.1
+
+- Fix `reduce_dimension` of bands for GeoTIFF output in batch job ([#943](https://github.com/Open-EO/openeo-geopyspark-driver/issues/943))
+
+
+## 0.50.0
+
+- Fix type of `ZLEVEL` option for `GTiff` format
+- Add `filepath_per_band` to `save_result` options. ([#877](https://github.com/Open-EO/openeo-geopyspark-driver/issues/877))
+- Allow pointing to custom processes with `OPENEO_CUSTOM_PROCESSES` env var (related to [#936](https://github.com/Open-EO/openeo-geopyspark-driver/issues/936))
+
+
 ## 0.49.1
 
 - Py4j log level is now always 'WARN' to avoid spurious messages.

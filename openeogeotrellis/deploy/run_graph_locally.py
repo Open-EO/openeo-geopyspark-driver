@@ -3,8 +3,6 @@ import os
 import sys
 from pathlib import Path
 
-# Force to import from current installation instead of python library:
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from openeogeotrellis.deploy.local import setup_environment
 from openeo.internal.graph_building import as_flat_graph
@@ -23,7 +21,7 @@ def run_graph_locally(process_graph, output_dir):
         process_graph = {"process_graph": process_graph}
     run_job(
         process_graph,
-        output_file=output_dir / "random_folder_name",
+        output_file=output_dir / "out",  # just like in backend.py
         metadata_file=output_dir / JOB_METADATA_FILENAME,
         api_version="2.0.0",
         job_dir=output_dir,
@@ -35,8 +33,9 @@ def run_graph_locally(process_graph, output_dir):
     files = [
         output_dir / JOB_METADATA_FILENAME,
         output_dir / "collection.json",
-        output_dir / "openeo.log",
     ]
+    if os.path.exists(output_dir / "openeo.log"):
+        files += [output_dir / "openeo.log"]
     with open(output_dir / JOB_METADATA_FILENAME) as f:
         j = json.load(f)
         files += [output_dir / asset["href"] for asset in j.get("links", [])]

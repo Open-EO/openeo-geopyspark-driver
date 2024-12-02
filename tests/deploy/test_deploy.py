@@ -19,22 +19,60 @@ from openeogeotrellis.deploy import (
 from openeogeotrellis.testing import random_name
 
 
-def _get_logger():
+def _get_logger(level=logging.DEBUG):
     logger = logging.getLogger(__name__)
     stream = StringIO()
     logger.addHandler(logging.StreamHandler(stream))
-    logger.setLevel(logging.DEBUG)
+    logger.setLevel(level=level)
     return logger, stream
 
 
-def test_load_custom_processes_default():
+def test_load_custom_processes_exec(tmp_path, monkeypatch, api_version, backend_implementation):
+    path = tmp_path / "custom_processes.py"
+
+    process_name = random_name(prefix="my_process")
+    content = f"""
+        from openeo_driver.ProcessGraphDeserializer import custom_process
+        @custom_process
+        def {process_name}(args, env):
+            return 42
+    """
+    path.write_text(textwrap.dedent(content))
+
+    monkeypatch.setenv("OPENEO_CUSTOM_PROCESSES", str(path))
+    logger, stream = _get_logger(level=logging.DEBUG)
+    load_custom_processes(logger=logger)
+
+    logs = stream.getvalue()
+    assert f"load_custom_processes: trying exec loading {str(path)!r}" in logs
+    assert f"load_custom_processes: exec loaded {str(path)!r}" in logs
+
+    process_registry = backend_implementation.processing.get_process_registry(api_version=api_version)
+    f = process_registry.get_function(process_name)
+    assert f({}, EvalEnv()) == 42
+
+
+@pytest.mark.parametrize(["content"], [(None,), ("invalid c0ntent!!",)])
+def test_load_custom_processes_exec_broken(tmp_path, monkeypatch, content):
+    path = tmp_path / "broken.py"
+    if content:
+        path.write_text(content)
+
+    monkeypatch.setenv("OPENEO_CUSTOM_PROCESSES", str(path))
+    logger, stream = _get_logger(level=logging.ERROR)
+    load_custom_processes(logger)
+    logs = stream.getvalue()
+    assert f"load_custom_processes: failed to exec load {str(path)!r}" in logs
+
+
+def test_load_custom_processes_import_default():
     logger, stream = _get_logger()
     load_custom_processes(logger)
     logs = stream.getvalue()
     assert "Trying to load 'custom_processes'" in logs
 
 
-def test_load_custom_processes_absent(tmp_path):
+def test_load_custom_processes_import_absent(tmp_path):
     logger, stream = _get_logger()
     sys_path = [str(tmp_path)]
     name = random_name(prefix="custom_processes")
@@ -46,19 +84,19 @@ def test_load_custom_processes_absent(tmp_path):
     assert '{n!r} not loaded: ModuleNotFoundError("No module named {n!r}"'.format(n=name) in logs
 
 
-def test_load_custom_processes_present(tmp_path, api_version, backend_implementation):
+def test_load_custom_processes_import_present(tmp_path, api_version, backend_implementation):
     logger, stream = _get_logger()
     process_name = random_name(prefix="my_process")
     module_name = random_name(prefix="custom_processes")
 
     path = tmp_path / (module_name + '.py')
-    with path.open("w") as f:
-        f.write(textwrap.dedent("""
-            from openeo_driver.ProcessGraphDeserializer import custom_process
-            @custom_process
-            def {p}(args, env):
-                return 42
-        """.format(p=process_name)))
+    content = f"""
+        from openeo_driver.ProcessGraphDeserializer import custom_process
+        @custom_process
+        def {process_name}(args, env):
+            return 42
+    """
+    path.write_text(textwrap.dedent(content))
     with mock.patch("sys.path", new=[str(tmp_path)] + sys.path):
         load_custom_processes(logger, _name=module_name)
 

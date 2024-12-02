@@ -41,7 +41,7 @@ from py4j.protocol import Py4JError, Py4JJavaError
 from pyspark import SparkConf, SparkContext
 from pyspark.profiler import BasicProfiler
 from shapely.geometry import mapping
-from traceback_with_variables import Format, format_exc
+import traceback_with_variables
 
 from openeogeotrellis._version import __version__
 from openeogeotrellis.backend import (
@@ -271,15 +271,17 @@ def run_job(
 ):
     result_metadata = {}
 
+    # while creating the stac metadata, hrefs are temporary local paths.
+    stac_file_paths = []
     try:
         # We actually expect type Path, but in reality paths as strings tend to
         # slip in anyway, so we better catch them and convert them.
-        output_file = Path(output_file)
-        metadata_file = Path(metadata_file)
-        job_dir = Path(job_dir)
+        output_file = Path(output_file).absolute()
+        metadata_file = Path(metadata_file).absolute()
+        job_dir = Path(job_dir).absolute()
 
         logger.info(f"Job spec: {json.dumps(job_specification,indent=1)}")
-        logger.debug(f"{job_dir=}, {job_dir.resolve()=}, {output_file=}, {metadata_file=}")
+        logger.debug(f"{job_dir=}, {job_dir=}, {output_file=}, {metadata_file=}")
         process_graph = job_specification['process_graph']
         job_options = job_specification.get("job_options", {})
 
@@ -363,7 +365,7 @@ def run_job(
             ml_model_metadata=ml_model_metadata,
         )
         # perform a first metadata write _before_ actually computing the result. This provides a bit more info, even if the job fails.
-        write_metadata({**result_metadata, **_get_tracker_metadata("")}, metadata_file, job_dir)
+        write_metadata({**result_metadata, **_get_tracker_metadata("")}, metadata_file)
 
         for result in results:
             result.options["batch_mode"] = True
@@ -465,7 +467,7 @@ def run_job(
             ml_model_metadata=ml_model_metadata,
         )
 
-        write_metadata({**result_metadata, **_get_tracker_metadata("")}, metadata_file, job_dir)
+        write_metadata({**result_metadata, **_get_tracker_metadata("")}, metadata_file)
         logger.debug("Starting GDAL-based retrieval of asset metadata")
         result_metadata = _assemble_result_metadata(
             tracer=tracer,
@@ -484,20 +486,19 @@ def run_job(
 
         assert len(results) == len(assets_metadata)
         for result, result_assets_metadata in zip(results, assets_metadata):
-            _export_to_workspaces(
+            stac_file_paths += _export_to_workspaces(
                 result,
                 result_metadata,
                 result_assets_metadata=result_assets_metadata,
-                stac_metadata_dir=job_dir,
                 job_dir=job_dir,
                 remove_exported_assets=job_options.get("remove-exported-assets", False),
-                enable_merge=job_options.get("enable-merge", True),  # TODO: default to False
+                enable_merge=job_options.get("export-workspace-enable-merge", True),  # TODO: default to False
             )
     finally:
-        write_metadata({**result_metadata, **_get_tracker_metadata("")}, metadata_file, job_dir)
+        write_metadata({**result_metadata, **_get_tracker_metadata("")}, metadata_file, stac_file_paths)
 
 
-def write_metadata(metadata, metadata_file, job_dir: Path):
+def write_metadata(metadata, metadata_file, stac_file_paths: List[Union[str, Path]] = None):
     with open(metadata_file, 'w') as f:
         json.dump(metadata, f, default=json_default)
     add_permissions(metadata_file, stat.S_IWGRP)
@@ -511,14 +512,12 @@ def write_metadata(metadata, metadata_file, job_dir: Path):
             bucket = os.environ.get('SWIFT_BUCKET')
             s3_instance = s3_client()
 
-            logger.info("Writing results to object storage")
-            for filename in os.listdir(job_dir):
-                if filename == UDF_PYTHON_DEPENDENCIES_FOLDER_NAME:
-                    logger.warning(f"Omitting {filename} as the executors will not be able to access it")
-                else:
-                    file_path = job_dir / filename
-                    full_path = str(file_path.absolute())
-                    s3_instance.upload_file(full_path, bucket, full_path.strip("/"))
+            paths = [metadata_file] + (stac_file_paths or [])
+            # asset files are already uploaded by Scala code
+            logger.info(f"Writing results to object storage. paths={paths}")
+            for file_path in paths:
+                file_path = urlparse(str(file_path)).path
+                s3_instance.upload_file(file_path, bucket, file_path.strip("/"))
         else:
             _convert_job_metadatafile_outputs_to_s3_urls(metadata_file)
 
@@ -527,7 +526,6 @@ def _export_to_workspaces(
     result: SaveResult,
     result_metadata: dict,
     result_assets_metadata: dict,
-    stac_metadata_dir: Path,
     job_dir: Path,
     remove_exported_assets: bool,
     enable_merge: bool,
@@ -540,9 +538,7 @@ def _export_to_workspaces(
 
     stac_hrefs = [
         f"file:{path}"
-        for path in _write_exported_stac_collection(
-            stac_metadata_dir, result_metadata, list(result_assets_metadata.keys())
-        )
+        for path in _write_exported_stac_collection(job_dir, result_metadata, list(result_assets_metadata.keys()))
     ]
 
     # TODO: assemble pystac.STACObject and avoid file altogether?
@@ -604,6 +600,7 @@ def _export_to_workspaces(
 
         if alternate:
             result_metadata["assets"][asset_key]["alternate"] = alternate
+    return stac_hrefs
 
 
 def _export_to_workspace(job_dir: str, source_uri: str, target: Workspace, merge: str, remove_original: bool) -> str:
@@ -623,7 +620,7 @@ def _write_exported_stac_collection(
     asset_keys: List[str],
 ) -> List[Path]:  # TODO: change to Set?
     def write_stac_item_file(asset_id: str, asset: dict) -> Path:
-        item_file = job_dir / f"{asset_id}.json"
+        item_file = get_abs_path_of_asset(Path(f"{asset_id}.json"), job_dir)
 
         properties = {"datetime": asset.get("datetime")}
 
@@ -658,6 +655,7 @@ def _write_exported_stac_collection(
             },
         }
 
+        item_file.parent.mkdir(parents=True, exist_ok=True)
         with open(item_file, "wt") as fi:
             json.dump(stac_item, fi, allow_nan=False)
 
@@ -668,8 +666,9 @@ def _write_exported_stac_collection(
     ]
 
     def item_link(item_file: Path) -> dict:
+        relative_path = item_file.relative_to(job_dir)
         return {
-            "href": f"{item_file.name}",
+            "href": f"./{relative_path}",
             "rel": "item",
             "type": "application/geo+json",
         }
@@ -758,9 +757,13 @@ def start_main():
             main(sys.argv)
     except Exception as e:
         error_summary = GeoPySparkBackendImplementation.summarize_exception_static(e)
-        fmt = Format(max_value_str_len=1000)
         logger.exception("OpenEO batch job failed: " + error_summary.summary)
-        logger.info("Batch job error stack trace with locals", extra={"exc_info_with_locals": format_exc(e, fmt=fmt)})
+        if False:  # TODO #939
+            fmt = traceback_with_variables.Format(max_value_str_len=100)
+            logger.info(
+                "Batch job error stack trace with locals",
+                extra={"exc_info_with_locals": traceback_with_variables.format_exc(e, fmt=fmt)},
+            )
         raise
 
 

@@ -1,5 +1,6 @@
 import importlib
 import logging
+import os
 import re
 import socket
 import sys
@@ -8,6 +9,7 @@ from os import PathLike
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional
 
+from openeo_driver.config.load import exec_py_file
 from openeo_driver.server import build_backend_deploy_metadata
 
 import openeogeotrellis
@@ -18,13 +20,24 @@ _log = logging.getLogger(__name__)
 
 def load_custom_processes(logger=_log, _name="custom_processes"):
     """Try loading optional `custom_processes` module"""
-    try:
-        logger.debug("Trying to load {n!r} with PYTHONPATH {p!r}".format(n=_name, p=sys.path))
-        custom_processes = importlib.import_module(_name)
-        logger.debug("Loaded {n!r}: {p!r}".format(n=_name, p=custom_processes.__file__))
-        return custom_processes
-    except ImportError as e:
-        logger.debug('{n!r} not loaded: {e!r}.'.format(n=_name, e=e))
+    if path := os.environ.get("OPENEO_CUSTOM_PROCESSES"):
+        # Directly load custom processes from OPENEO_CUSTOM_PROCESSES
+        logger.debug(f"load_custom_processes: trying exec loading {path!r}")
+        try:
+            exec_py_file(path)
+            logger.info(f"load_custom_processes: exec loaded {path!r}")
+        except Exception as e:
+            logger.error(f"load_custom_processes: failed to exec load {path!r}: {e!r}")
+    else:
+        # Fallback on legacy import-based approach (requires "custom_processes" module to be in PYTHONPATH)
+        # TODO: Deprecate/remove this in longer term
+        try:
+            logger.debug("Trying to load {n!r} with PYTHONPATH {p!r}".format(n=_name, p=sys.path))
+            custom_processes = importlib.import_module(_name)
+            logger.debug("Loaded {n!r}: {p!r}".format(n=_name, p=custom_processes.__file__))
+            return custom_processes
+        except ImportError as e:
+            logger.debug("{n!r} not loaded: {e!r}.".format(n=_name, e=e))
 
 
 def get_socket() -> (str, int):

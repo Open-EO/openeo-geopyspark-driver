@@ -197,7 +197,7 @@ def build_python_udf_dependencies_archive(
 
         # Copy the archive to the target location
         target = Path(target)
-        _log.info(f"Copying {temp_archive} ({temp_archive.stat().st_size} bytes) to {target}")
+        _log.info(f"Copying UDF dep archive {temp_archive} ({temp_archive.stat().st_size} bytes) to {target}")
         shutil.copy(src=temp_archive, dst=target)
 
         return target
