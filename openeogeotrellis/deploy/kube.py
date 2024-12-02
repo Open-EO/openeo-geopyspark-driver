@@ -84,6 +84,29 @@ def main():
         }
     )
 
+    @app.route("/tmp/ogd936", methods=["GET"])
+    def tmp_ogd936():
+        """Temporary endpoint to play with Calrissian based CWL job management"""
+        import kubernetes
+        from openeogeotrellis.integrations.calrissian import (
+            create_cwl_job_body,
+            launch_cwl_job_and_wait,
+            create_input_staging_job_body,
+        )
+
+        namespace = "calrissian-demo-project"
+        kubernetes.config.load_incluster_config()
+
+        # Input staging
+        body = create_input_staging_job_body(namespace=namespace)
+        res = launch_cwl_job_and_wait(body=body, namespace=namespace)
+
+        # CWL job
+        body = create_cwl_job_body(namespace=namespace)
+        res = launch_cwl_job_and_wait(body=body, namespace=namespace)
+
+        return f"Hello from the backend: {res!r}"
+
     host = os.environ.get('SPARK_LOCAL_IP', None)
     if host is None:
         host, _ = get_socket()
