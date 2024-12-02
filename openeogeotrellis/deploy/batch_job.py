@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 from urllib.parse import urlparse
 
+import openeogeotrellis
 from openeo.util import TimingLogger, dict_no_none, ensure_dir
 from openeo_driver import ProcessGraphDeserializer
 from openeo_driver.backend import BatchJobs
@@ -77,7 +78,6 @@ from openeogeotrellis.utils import (
     json_default,
     log_memory,
     to_jsonable,
-    wait_till_path_available,
 )
 
 logger = logging.getLogger('openeogeotrellis.deploy.batch_job')
@@ -392,7 +392,7 @@ def run_job(
                     file_path = url.path
                     # fusemount could have some delay to make files accessible, so poll a bit:
                     asset_path = get_abs_path_of_asset(file_path, job_dir)
-                    wait_till_path_available(asset_path)
+                    openeogeotrellis.utils.wait_till_path_available(asset_path)
                 add_permissions(Path(asset["href"]), stat.S_IWGRP)
             logger.info(f"wrote {len(the_assets_metadata)} assets to {output_file}")
             assets_metadata.append(the_assets_metadata)

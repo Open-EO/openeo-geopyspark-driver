@@ -394,9 +394,11 @@ def test_log_lock(tmp_path):
         stop_log_locker()
 
 
-@mock.patch('openeo_driver.ProcessGraphDeserializer.evaluate')
-def test_run_job(evaluate, tmp_path, fast_sleep):
+@mock.patch("openeogeotrellis.utils.wait_till_path_available")
+@mock.patch("openeo_driver.ProcessGraphDeserializer.evaluate")
+def test_run_job(evaluate, wait_till_path_available_mock, tmp_path):
     cube_mock = MagicMock()
+    wait_till_path_available_mock.return_value = None  # Avoid waiting
     asset_meta = {"openEO01-01.tif": {"href": "tmp/openEO01-01.tif", "roles": "data"},"openEO01-05.tif": {"href": "tmp/openEO01-05.tif", "roles": "data"}}
     cube_mock.write_assets.return_value = asset_meta
     evaluate.return_value = ImageCollectionResult(cube=cube_mock, format="GTiff", options={"multidate":True})
@@ -478,9 +480,11 @@ def test_run_job(evaluate, tmp_path, fast_sleep):
     t.setGlobalTracking(False)
 
 
+@mock.patch("openeogeotrellis.utils.wait_till_path_available")
 @mock.patch("openeo_driver.ProcessGraphDeserializer.evaluate")
-def test_run_job_get_projection_extension_metadata(evaluate, tmp_path, fast_sleep):
+def test_run_job_get_projection_extension_metadata(evaluate, wait_till_path_available_mock, tmp_path):
     cube_mock = MagicMock()
+    wait_till_path_available_mock.return_value = None  # Avoid waiting
 
     job_dir = tmp_path / "job-402"
     job_dir.mkdir()
@@ -604,12 +608,16 @@ def test_run_job_get_projection_extension_metadata(evaluate, tmp_path, fast_slee
     t.setGlobalTracking(False)
 
 
+@mock.patch("openeogeotrellis.utils.wait_till_path_available")
 @mock.patch("openeo_driver.ProcessGraphDeserializer.evaluate")
-def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox(evaluate, tmp_path, fast_sleep):
+def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox(
+    evaluate, wait_till_path_available_mock, tmp_path
+):
     """When there are two raster assets with the same projection metadata, it should put
     those metadata at the level of the item instead of the individual bands.
     """
     cube_mock = MagicMock()
+    wait_till_path_available_mock.return_value = None  # Avoid waiting
 
     job_dir = tmp_path / "job-533"
     job_dir.mkdir()
@@ -1044,9 +1052,11 @@ def test_run_job_get_projection_extension_metadata_assets_with_different_epsg(
     t.setGlobalTracking(False)
 
 
+@mock.patch("openeogeotrellis.utils.wait_till_path_available")
 @mock.patch("openeo_driver.ProcessGraphDeserializer.evaluate")
-def test_run_job_get_projection_extension_metadata_job_dir_is_relative_path(evaluate, fast_sleep):
+def test_run_job_get_projection_extension_metadata_job_dir_is_relative_path(evaluate, wait_till_path_available_mock):
     cube_mock = MagicMock()
+    wait_till_path_available_mock.return_value = None  # Avoid waiting
     # job dir should be a relative path,
     # We still want the test data to be cleaned up though, so we need to use
     # tempfile instead of pytest's tmp_path.
