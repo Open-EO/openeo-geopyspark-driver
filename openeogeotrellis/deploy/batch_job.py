@@ -489,7 +489,9 @@ def run_job(
                 result_metadata,
                 result_assets_metadata=result_assets_metadata,
                 stac_metadata_dir=job_dir,
+                job_dir=job_dir,
                 remove_exported_assets=job_options.get("remove-exported-assets", False),
+                enable_merge=job_options.get("enable-merge", True),  # TODO: default to False
             )
     finally:
         write_metadata({**result_metadata, **_get_tracker_metadata("")}, metadata_file, job_dir)
@@ -526,7 +528,9 @@ def _export_to_workspaces(
     result_metadata: dict,
     result_assets_metadata: dict,
     stac_metadata_dir: Path,
+    job_dir: Path,
     remove_exported_assets: bool,
+    enable_merge: bool,
 ):
     workspace_repository: WorkspaceRepository = backend_config_workspace_repository
     workspace_exports = sorted(
@@ -535,7 +539,7 @@ def _export_to_workspaces(
     )
 
     stac_hrefs = [
-        str(path)
+        f"file:{path}"
         for path in _write_exported_stac_collection(
             stac_metadata_dir, result_metadata, list(result_assets_metadata.keys())
         )
@@ -543,7 +547,7 @@ def _export_to_workspaces(
 
     # TODO: assemble pystac.STACObject and avoid file altogether?
     collection_href = [href for href in stac_hrefs if "collection.json" in href][0]
-    collection = pystac.Collection.from_file(collection_href)
+    collection = pystac.Collection.from_file(urlparse(collection_href).path)
 
     workspace_uris = {}
 
@@ -559,12 +563,26 @@ def _export_to_workspaces(
         final_export = i >= len(workspace_exports) - 1
         remove_original = remove_exported_assets and final_export
 
-        merged_collection = workspace.merge(collection, target=Path(merge), remove_original=remove_original)
-        assert isinstance(merged_collection, pystac.Collection)
+        if enable_merge:
+            merged_collection = workspace.merge(collection, target=Path(merge), remove_original=remove_original)
+            assert isinstance(merged_collection, pystac.Collection)
 
-        for item in merged_collection.get_items(recursive=True):
-            for asset_key, asset in item.get_assets().items():
-                (workspace_uri,) = asset.extra_fields["alternate"].values()
+            for item in merged_collection.get_items(recursive=True):
+                for asset_key, asset in item.get_assets().items():
+                    (workspace_uri,) = asset.extra_fields["alternate"].values()
+                    workspace_uris.setdefault(asset_key, []).append(
+                        (workspace_export.workspace_id, workspace_export.merge, workspace_uri)
+                    )
+        else:
+            export_to_workspace = partial(
+                _export_to_workspace, job_dir=job_dir, target=workspace, merge=merge, remove_original=remove_original
+            )
+
+            for stac_href in stac_hrefs:
+                export_to_workspace(source_uri=stac_href)
+
+            for asset_key, asset in result_assets_metadata.items():
+                workspace_uri = export_to_workspace(source_uri=asset["href"])
                 workspace_uris.setdefault(asset_key, []).append(
                     (workspace_export.workspace_id, workspace_export.merge, workspace_uri)
                 )
@@ -586,6 +604,17 @@ def _export_to_workspaces(
 
         if alternate:
             result_metadata["assets"][asset_key]["alternate"] = alternate
+
+
+def _export_to_workspace(job_dir: str, source_uri: str, target: Workspace, merge: str, remove_original: bool) -> str:
+    uri_parts = urlparse(source_uri)
+
+    if not uri_parts.scheme or uri_parts.scheme.lower() == "file":
+        return target.import_file(job_dir, Path(uri_parts.path), merge, remove_original)
+    elif uri_parts.scheme == "s3":
+        return target.import_object(job_dir, source_uri, merge, remove_original)
+    else:
+        raise ValueError(f"unsupported scheme {uri_parts.scheme} for {source_uri}; supported are: file, s3")
 
 
 def _write_exported_stac_collection(
