@@ -478,8 +478,8 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
     try:
         data_gdalinfo = None
         # TODO: Choose a version, and remove others
-        GDALINFO_PYTHON_CALL = smart_bool(os.environ.get("GDALINFO_PYTHON_CALL", "false"))
-        GDALINFO_USE_SUBPROCESS = smart_bool(os.environ.get("GDALINFO_USE_SUBPROCESS", "true"))
+        GDALINFO_PYTHON_CALL = smart_bool(os.environ.get("GDALINFO_PYTHON_CALL", "true"))
+        GDALINFO_USE_SUBPROCESS = smart_bool(os.environ.get("GDALINFO_USE_SUBPROCESS", "false"))
         GDALINFO_USE_PYTHON_SUBPROCESS = smart_bool(os.environ.get("GDALINFO_USE_PYTHON_SUBPROCESS", "false"))
         if not GDALINFO_PYTHON_CALL and not GDALINFO_USE_SUBPROCESS and not GDALINFO_USE_PYTHON_SUBPROCESS:
             poorly_log(
