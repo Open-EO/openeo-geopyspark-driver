@@ -242,3 +242,6 @@ class GpsBackendConfig(OpenEoBackendConfig):
         "/opt/tensorflow:/opt/tensorflow:ro"
     )
     batch_user_docker_mounts: dict[str, List[str]] = {}
+    gdalinfo_python_call: bool = True
+    gdalinfo_use_subprocess: bool = False
+    gdalinfo_use_python_subprocess: bool = False
