@@ -1,7 +1,7 @@
 import logging
 import os
 from pathlib import Path
-from typing import Union
+from typing import Union, Optional
 from urllib.parse import urlparse
 
 from boto3.s3.transfer import TransferConfig
@@ -18,8 +18,9 @@ class ObjectStorageWorkspace(Workspace):
 
     MULTIPART_THRESHOLD_IN_MB = 50
 
-    def __init__(self, bucket: str):
+    def __init__(self, bucket: str, region: Optional[str] = None):
         self.bucket = bucket
+        self.region = region
 
     def import_file(self, common_path: Union[str, Path], file: Path, merge: str, remove_original: bool = False) -> str:
         merge = os.path.normpath(merge)
