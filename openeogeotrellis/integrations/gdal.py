@@ -498,8 +498,8 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
 
         if backend_config.gdalinfo_use_subprocess:
             start = time.time()
-            cmd = ["gdalinfo", asset_uri, "-json", "-stats"]
-            print("\n" + subprocess.list2cmdline(cmd) + "\n")
+            # Ignore errors like "band 2: Failed to compute statistics, no valid pixels found in sampling."
+            cmd = ["gdalinfo", asset_uri, "-json", "-stats", "--config", "GDAL_IGNORE_ERRORS", "ALL"]
             out = subprocess.check_output(cmd, timeout=60, text=True)
             data_gdalinfo_from_subprocess = json.loads(out)
             end = time.time()
@@ -527,7 +527,7 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
             else:
                 data_gdalinfo = data_gdalinfo_from_subprocess
     except Exception as exc:
-        poorly_log(f"gdalinfo Exception {exc}")
+        poorly_log(f"gdalinfo Exception {exc}", level=logging.WARNING)
         # TODO: Specific exception type(s) would be better but Wasn't able to find what
         #   specific exceptions gdal.Info might raise.
         return {}
