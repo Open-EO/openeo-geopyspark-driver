@@ -1,9 +1,12 @@
+from unittest import mock
+
 from geopyspark import Extent, TiledRasterLayer
 from openeo_driver.utils import EvalEnv
 from py4j.protocol import Py4JJavaError
 from shapely.geometry import MultiPolygon
 
 from openeogeotrellis.backend import GeoPySparkBackendImplementation
+from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.utils import get_jvm
 
@@ -104,6 +107,18 @@ def test_summarize_sentinel1_band_not_present_exception_workaround_for_root_caus
             f' https://docs.sentinel-hub.com/api/latest/data/sentinel-1-grd/#polarization.')
 
     assert ("exception chain classes: org.apache.spark.SparkException" in caplog.messages)
+
+
+@mock.patch.object(ConfigParams, "is_kube_deploy", new_callable=mock.PropertyMock)
+def test_summarize_kubernetes_client_exceptions_ApiException(mock_config_use_object_storage):
+    import kubernetes.client.exceptions
+
+    mock_config_use_object_storage.return_value = True
+    exception = kubernetes.client.exceptions.ApiException(status=401, reason="Unauthorized")
+    error_summary = GeoPySparkBackendImplementation.summarize_exception_static(exception)
+
+    assert "Unauthorized" in error_summary.summary
+
 
 def test_summarize_big_error(caplog):
     caplog.set_level("DEBUG")

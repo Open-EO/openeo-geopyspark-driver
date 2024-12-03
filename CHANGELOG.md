@@ -16,6 +16,7 @@ without compromising stable operations.
 
 - Throw error when trying to use unsupported `target_dimension` in `aggregate_spatial` ([#951](https://github.com/Open-EO/openeo-geopyspark-driver/issues/951))
 - Allow specifying region name for an ObjectStorageWorkspace ([#955](https://github.com/Open-EO/openeo-geopyspark-driver/pull/955))
+- Better print ApiException. ([#962](https://github.com/Open-EO/openeo-geopyspark-driver/pull/962))
 
 ## 0.51.0
 

@@ -1076,7 +1076,17 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             if isinstance(error, FileNotFoundError):
                 summary = repr_truncate(str(error), width=width)
             else:
-                summary = repr_truncate(error, width=width)
+                if ConfigParams().is_kube_deploy:
+                    # Conditional import just to be sure.
+                    import kubernetes.client.exceptions
+
+                    if isinstance(error, kubernetes.client.exceptions.ApiException):
+                        s = "kubernetes.client.exceptions.ApiException: " + str(error).strip()
+                        summary = repr_truncate(s, width=width)
+                    else:
+                        summary = repr_truncate(error, width=width)
+                else:
+                    summary = repr_truncate(error, width=width)
 
         return ErrorSummary(error, is_client_error, summary)
 
