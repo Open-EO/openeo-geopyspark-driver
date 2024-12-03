@@ -15,6 +15,7 @@ from openeo.util import dict_no_none
 from osgeo import gdal
 
 from openeo_driver.utils import smart_bool
+from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.utils import stream_s3_binary_file_contents, _make_set_for_key
 
 
@@ -478,22 +479,24 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
     try:
         data_gdalinfo = None
         # TODO: Choose a version, and remove others
-        GDALINFO_PYTHON_CALL = smart_bool(os.environ.get("GDALINFO_PYTHON_CALL", "true"))
-        GDALINFO_USE_SUBPROCESS = smart_bool(os.environ.get("GDALINFO_USE_SUBPROCESS", "false"))
-        GDALINFO_USE_PYTHON_SUBPROCESS = smart_bool(os.environ.get("GDALINFO_USE_PYTHON_SUBPROCESS", "false"))
-        if not GDALINFO_PYTHON_CALL and not GDALINFO_USE_SUBPROCESS and not GDALINFO_USE_PYTHON_SUBPROCESS:
+        backend_config = get_backend_config()
+        if (
+            not backend_config.gdalinfo_python_call
+            and not backend_config.gdalinfo_use_subprocess
+            and not backend_config.gdalinfo_use_python_subprocess
+        ):
             poorly_log(
-                "Neither GDALINFO_PYTHON_CALL nor GDALINFO_USE_SUBPROCESS nor GDALINFO_USE_PYTHON_SUBPROCESS is set. Avoiding gdalinfo."
+                "Neither gdalinfo_python_call nor gdalinfo_use_subprocess nor gdalinfo_use_python_subprocess is True. Avoiding gdalinfo."
             )
             data_gdalinfo = {}
 
-        if GDALINFO_PYTHON_CALL:
+        if backend_config.gdalinfo_python_call:
             start = time.time()
             data_gdalinfo = gdal.Info(asset_uri, options=gdal.InfoOptions(format="json", stats=True))
             end = time.time()
             poorly_log(f"gdal.Info() took {(end - start) * 1000}ms for {asset_uri}")  # ~10ms
 
-        if GDALINFO_USE_SUBPROCESS:
+        if backend_config.gdalinfo_use_subprocess:
             start = time.time()
             cmd = ["gdalinfo", asset_uri, "-json", "-stats"]
             print("\n" + subprocess.list2cmdline(cmd) + "\n")
@@ -506,7 +509,7 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
             else:
                 data_gdalinfo = data_gdalinfo_from_subprocess
 
-        if GDALINFO_USE_PYTHON_SUBPROCESS:
+        if backend_config.gdalinfo_use_python_subprocess:
             start = time.time()
             cmd = [
                 sys.executable,
