@@ -494,9 +494,11 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
             data_gdalinfo = gdal.Info(asset_uri, options=gdal.InfoOptions(format="json", stats=True))
             end = time.time()
             # This can throw a segfault on empty netcdf bands:
-            poorly_log(f"gdal.Info() took {(end - start) * 1000}ms for {asset_uri}")  # ~10ms
+            poorly_log(f"gdal.Info() took {(end - start) * 1000}ms for {asset_uri}", level=logging.DEBUG)  # ~10ms
         except Exception as exc:
-            poorly_log(f"gdalinfo Exception {exc}. Command: ", level=logging.WARNING)
+            poorly_log(
+                f"gdalinfo Exception. Statistics won't be added to STAC metadata. '{exc}'.", level=logging.WARNING
+            )
 
     if backend_config.gdalinfo_use_subprocess:
         start = time.time()
@@ -507,13 +509,16 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
             out = subprocess.check_output(cmd, timeout=60, text=True)
             data_gdalinfo_from_subprocess = parse_json_from_output(out)
             end = time.time()
-            poorly_log(f"gdalinfo took {(end - start) * 1000}ms for {asset_uri}")  # ~30ms
+            poorly_log(f"gdalinfo took {(end - start) * 1000}ms for {asset_uri}", level=logging.DEBUG)  # ~30ms
             if data_gdalinfo:
                 assert data_gdalinfo_from_subprocess == data_gdalinfo
             else:
                 data_gdalinfo = data_gdalinfo_from_subprocess
         except Exception as exc:
-            poorly_log(f"gdalinfo Exception {exc}. Command: {subprocess.list2cmdline(cmd)}", level=logging.WARNING)
+            poorly_log(
+                f"gdalinfo Exception. Statistics won't be added to STAC metadata. '{exc}'. Command: {subprocess.list2cmdline(cmd)}",
+                level=logging.WARNING,
+            )
 
     if backend_config.gdalinfo_use_python_subprocess:
         start = time.time()
@@ -526,13 +531,18 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
             out = subprocess.check_output(cmd, timeout=60, text=True)
             data_gdalinfo_from_subprocess = parse_json_from_output(out)
             end = time.time()
-            poorly_log(f"gdal.Info() subprocess took {(end - start) * 1000}ms for {asset_uri}")  # ~130ms
+            poorly_log(
+                f"gdal.Info() subprocess took {(end - start) * 1000}ms for {asset_uri}", level=logging.DEBUG
+            )  # ~130ms
             if data_gdalinfo:
                 assert data_gdalinfo_from_subprocess == data_gdalinfo
             else:
                 data_gdalinfo = data_gdalinfo_from_subprocess
         except Exception as exc:
-            poorly_log(f"gdalinfo Exception {exc}. Command: {subprocess.list2cmdline(cmd)}", level=logging.WARNING)
+            poorly_log(
+                f"gdalinfo Exception. Statistics won't be added to STAC metadata. '{exc}'. Command: {subprocess.list2cmdline(cmd)}",
+                level=logging.WARNING,
+            )
 
     return data_gdalinfo
 
