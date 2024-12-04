@@ -386,9 +386,9 @@ class TestInstallPythonUdfDependencies:
         assert f"Cleaning up temporary UDF deps at {mehh_path.parent}" in caplog.text
 
     def test_run_udf_on_vector_data_cube_with_logging(self, tmp_path):
-        stac_root = "/home/emile/openeo/openeo-geopyspark-driver/docker/local_batch_job/example_stac_catalog"
+        repository_root = Path(__file__).parent.parent
         datacube = openeo.DataCube.load_stac(
-            url=stac_root + "/collection.json",
+            url=str(repository_root / "docker/local_batch_job/example_stac_catalog/collection.json"),
             temporal_extent=["2023-06-01", "2023-06-09"],
         )
 
