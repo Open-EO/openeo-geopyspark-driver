@@ -513,7 +513,7 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
             else:
                 data_gdalinfo = data_gdalinfo_from_subprocess
         except Exception as exc:
-            poorly_log(f"gdalinfo Exception {exc}. Command: ", level=logging.WARNING)
+            poorly_log(f"gdalinfo Exception {exc}. Command: {subprocess.list2cmdline(cmd)}", level=logging.WARNING)
 
     if backend_config.gdalinfo_use_python_subprocess:
         start = time.time()
@@ -522,7 +522,6 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
             "-c",
             f"""from osgeo import gdal; import json; gdal.UseExceptions(); print(json.dumps(gdal.Info({asset_uri!r}, options=gdal.InfoOptions(format="json", stats=True))))""",
         ]
-        print("\n" + subprocess.list2cmdline(cmd) + "\n")
         try:
             out = subprocess.check_output(cmd, timeout=60, text=True)
             data_gdalinfo_from_subprocess = parse_json_from_output(out)
@@ -533,7 +532,7 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
             else:
                 data_gdalinfo = data_gdalinfo_from_subprocess
         except Exception as exc:
-            poorly_log(f"gdalinfo Exception {exc}. Command: ", level=logging.WARNING)
+            poorly_log(f"gdalinfo Exception {exc}. Command: {subprocess.list2cmdline(cmd)}", level=logging.WARNING)
 
     return data_gdalinfo
 
