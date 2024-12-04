@@ -16,7 +16,7 @@ from osgeo import gdal
 
 from openeo_driver.utils import smart_bool
 from openeogeotrellis.config import get_backend_config
-from openeogeotrellis.utils import stream_s3_binary_file_contents, _make_set_for_key
+from openeogeotrellis.utils import stream_s3_binary_file_contents, _make_set_for_key, parse_json_from_output
 
 
 def poorly_log(message: str, level=logging.INFO):
@@ -499,9 +499,10 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
         if backend_config.gdalinfo_use_subprocess:
             start = time.time()
             # Ignore errors like "band 2: Failed to compute statistics, no valid pixels found in sampling."
+            # use "--debug ON" to print more logging to cerr
             cmd = ["gdalinfo", asset_uri, "-json", "-stats", "--config", "GDAL_IGNORE_ERRORS", "ALL"]
             out = subprocess.check_output(cmd, timeout=60, text=True)
-            data_gdalinfo_from_subprocess = json.loads(out)
+            data_gdalinfo_from_subprocess = parse_json_from_output(out)
             end = time.time()
             poorly_log(f"gdalinfo took {(end - start) * 1000}ms for {asset_uri}")  # ~30ms
             if data_gdalinfo:
@@ -518,8 +519,7 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
             ]
             print("\n" + subprocess.list2cmdline(cmd) + "\n")
             out = subprocess.check_output(cmd, timeout=60, text=True)
-            last_json_line = next(reversed(list(filter(lambda x: x.startswith("{"), out.split("\n")))))
-            data_gdalinfo_from_subprocess = json.loads(last_json_line)
+            data_gdalinfo_from_subprocess = parse_json_from_output(out)
             end = time.time()
             poorly_log(f"gdal.Info() subprocess took {(end - start) * 1000}ms for {asset_uri}")  # ~130ms
             if data_gdalinfo:
