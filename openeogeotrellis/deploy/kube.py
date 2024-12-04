@@ -6,7 +6,12 @@ import logging
 import os
 
 from openeo_driver.server import run_gunicorn
-from openeo_driver.util.logging import get_logging_config, setup_logging, LOG_HANDLER_STDERR_JSON
+from openeo_driver.util.logging import (
+    get_logging_config,
+    setup_logging,
+    LOG_HANDLER_STDERR_JSON,
+    FlaskRequestCorrelationIdLogging,
+)
 from openeo_driver.views import build_app
 from openeogeotrellis import deploy
 from openeogeotrellis.config import get_backend_config
@@ -87,23 +92,24 @@ def main():
     @app.route("/tmp/ogd936", methods=["GET"])
     def tmp_ogd936():
         """Temporary endpoint to play with Calrissian based CWL job management"""
-        import kubernetes
-        from openeogeotrellis.integrations.calrissian import (
-            create_cwl_job_body,
-            launch_cwl_job_and_wait,
-            create_input_staging_job_body,
-        )
+        import kubernetes.config
+        from openeogeotrellis.integrations.calrissian import CalrissianJobLauncher
+
+        request_id = FlaskRequestCorrelationIdLogging.get_request_id()
+        name_base = request_id[:20]
 
         namespace = "calrissian-demo-project"
         kubernetes.config.load_incluster_config()
 
+        launcher = CalrissianJobLauncher(namespace=namespace, name_base=name_base)
+
         # Input staging
-        body = create_input_staging_job_body(namespace=namespace)
-        res = launch_cwl_job_and_wait(body=body, namespace=namespace)
+        input_staging_manifest = launcher.create_input_staging_job_manifest()
+        res = launcher.launch_job_and_wait(manifest=input_staging_manifest)
 
         # CWL job
-        body = create_cwl_job_body(namespace=namespace)
-        res = launch_cwl_job_and_wait(body=body, namespace=namespace)
+        cwl_manifest = launcher.create_cwl_job_manifest()
+        res = launcher.launch_job_and_wait(manifest=cwl_manifest)
 
         return f"Hello from the backend: {res!r}"
 
