@@ -185,7 +185,7 @@ def _instant_ms_to_minute(instant: int) -> datetime:
 
     Sentinel-3 can have many observations per day, warranting the choice of fine grained aggregation rather than daily aggregation
     """
-    return datetime(*(datetime.utcfromtimestamp(instant // 1000).timetuple()[:3]))
+    return datetime(*(datetime.utcfromtimestamp(instant // 1000).timetuple()[:5]))
 
 
 @ensure_executor_logging
