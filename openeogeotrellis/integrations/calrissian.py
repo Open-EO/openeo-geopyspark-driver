@@ -27,7 +27,7 @@ def create_input_staging_job_body(
     """
     import kubernetes.client
 
-    name = generate_unique_id(prefix="cjs")
+    name = generate_unique_id(prefix="cal-instg")
     namespace = namespace or get_backend_config().calrissian_namespace
     assert namespace
 
@@ -39,7 +39,7 @@ def create_input_staging_job_body(
             name="calrissian-input-data",
             claim_name="calrissian-input-data",
             mount_path="/calrissian/input-data",
-            read_only=True,
+            # TODO: note: no read_only here. Instead do input staging as part of deployment, instead of on the fly?
         ),
     ]
 
@@ -101,7 +101,7 @@ def create_cwl_job_body(
 ) -> "kubernetes.client.V1Job":
     import kubernetes.client
 
-    name = generate_unique_id(prefix="cj")
+    name = generate_unique_id(prefix="cal-cwl")
     namespace = namespace or get_backend_config().calrissian_namespace
     container_image = get_backend_config().calrissian_image
     if not namespace or not container_image:
@@ -232,9 +232,15 @@ def launch_cwl_job_and_wait(
             time.sleep(sleep)
 
     _log.info(f"CWL job {job_name=} {timer.elapsed()=:.2f} {final_status=}")
-    if not final_status:
+    if final_status == "complete":
+        pass
+    elif final_status is None:
         raise TimeoutError(f"CWL Job {job_name} did not finish within {timeout}s")
+    elif final_status != "complete":
+        raise RuntimeError(f"CWL Job {job_name} failed with {final_status=} after {timer.elapsed()=:.2f}s")
+    else:
+        raise ValueError("CWL")
 
-    # TODO: raise Exception if final status is "failed" too?
+    # TODO: how to resolve and extract the results?
 
     return job

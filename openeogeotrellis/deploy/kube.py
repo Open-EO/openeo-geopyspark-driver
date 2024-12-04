@@ -99,7 +99,9 @@ def main():
 
         # Input staging
         body = create_input_staging_job_body(namespace=namespace)
+        # TODO: fail hard if staging fails
         res = launch_cwl_job_and_wait(body=body, namespace=namespace)
+
 
         # CWL job
         body = create_cwl_job_body(namespace=namespace)
