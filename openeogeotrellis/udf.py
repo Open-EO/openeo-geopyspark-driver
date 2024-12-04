@@ -18,6 +18,7 @@ from openeo.util import TimingLogger
 
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.config.constants import UDF_DEPENDENCIES_INSTALL_MODE
+from openeogeotrellis.utils import ensure_executor_logging
 
 _log = logging.getLogger(__name__)
 
@@ -26,6 +27,7 @@ UDF_PYTHON_DEPENDENCIES_FOLDER_NAME = "udf-py-deps.d"
 UDF_PYTHON_DEPENDENCIES_ARCHIVE_NAME = "udf-py-deps.zip"
 
 
+@ensure_executor_logging
 def run_udf_code(code: str, data: openeo.udf.UdfData, require_executor_context: bool = True) -> openeo.udf.UdfData:
     """
     Wrapper around `openeo.udf.run_udf_code` for some additional guardrails and checks
