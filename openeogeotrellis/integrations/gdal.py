@@ -476,31 +476,34 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
     # See https://gdal.org/api/python_gotchas.html
     gdal.UseExceptions()
 
-    try:
-        data_gdalinfo = None
-        # TODO: Choose a version, and remove others
-        backend_config = get_backend_config()
-        if (
+    data_gdalinfo = {}
+    # TODO: Choose a version, and remove others
+    backend_config = get_backend_config()
+    if (
             not backend_config.gdalinfo_python_call
             and not backend_config.gdalinfo_use_subprocess
             and not backend_config.gdalinfo_use_python_subprocess
-        ):
-            poorly_log(
-                "Neither gdalinfo_python_call nor gdalinfo_use_subprocess nor gdalinfo_use_python_subprocess is True. Avoiding gdalinfo."
-            )
-            data_gdalinfo = {}
+    ):
+        poorly_log(
+            "Neither gdalinfo_python_call nor gdalinfo_use_subprocess nor gdalinfo_use_python_subprocess is True. Avoiding gdalinfo."
+        )
 
-        if backend_config.gdalinfo_python_call:
-            start = time.time()
+    if backend_config.gdalinfo_python_call:
+        start = time.time()
+        try:
             data_gdalinfo = gdal.Info(asset_uri, options=gdal.InfoOptions(format="json", stats=True))
             end = time.time()
+            # This can throw a segfault on empty netcdf bands:
             poorly_log(f"gdal.Info() took {(end - start) * 1000}ms for {asset_uri}")  # ~10ms
+        except Exception as exc:
+            poorly_log(f"gdalinfo Exception {exc}. Command: ", level=logging.WARNING)
 
-        if backend_config.gdalinfo_use_subprocess:
-            start = time.time()
-            # Ignore errors like "band 2: Failed to compute statistics, no valid pixels found in sampling."
-            # use "--debug ON" to print more logging to cerr
-            cmd = ["gdalinfo", asset_uri, "-json", "-stats", "--config", "GDAL_IGNORE_ERRORS", "ALL"]
+    if backend_config.gdalinfo_use_subprocess:
+        start = time.time()
+        # Ignore errors like "band 2: Failed to compute statistics, no valid pixels found in sampling."
+        # use "--debug ON" to print more logging to cerr
+        cmd = ["gdalinfo", asset_uri, "-json", "-stats", "--config", "GDAL_IGNORE_ERRORS", "ALL"]
+        try:
             out = subprocess.check_output(cmd, timeout=60, text=True)
             data_gdalinfo_from_subprocess = parse_json_from_output(out)
             end = time.time()
@@ -509,15 +512,18 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
                 assert data_gdalinfo_from_subprocess == data_gdalinfo
             else:
                 data_gdalinfo = data_gdalinfo_from_subprocess
+        except Exception as exc:
+            poorly_log(f"gdalinfo Exception {exc}. Command: ", level=logging.WARNING)
 
-        if backend_config.gdalinfo_use_python_subprocess:
-            start = time.time()
-            cmd = [
-                sys.executable,
-                "-c",
-                f"""from osgeo import gdal; import json; gdal.UseExceptions(); print(json.dumps(gdal.Info({asset_uri!r}, options=gdal.InfoOptions(format="json", stats=True))))""",
-            ]
-            print("\n" + subprocess.list2cmdline(cmd) + "\n")
+    if backend_config.gdalinfo_use_python_subprocess:
+        start = time.time()
+        cmd = [
+            sys.executable,
+            "-c",
+            f"""from osgeo import gdal; import json; gdal.UseExceptions(); print(json.dumps(gdal.Info({asset_uri!r}, options=gdal.InfoOptions(format="json", stats=True))))""",
+        ]
+        print("\n" + subprocess.list2cmdline(cmd) + "\n")
+        try:
             out = subprocess.check_output(cmd, timeout=60, text=True)
             data_gdalinfo_from_subprocess = parse_json_from_output(out)
             end = time.time()
@@ -526,13 +532,10 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
                 assert data_gdalinfo_from_subprocess == data_gdalinfo
             else:
                 data_gdalinfo = data_gdalinfo_from_subprocess
-    except Exception as exc:
-        poorly_log(f"gdalinfo Exception {exc}", level=logging.WARNING)
-        # TODO: Specific exception type(s) would be better but Wasn't able to find what
-        #   specific exceptions gdal.Info might raise.
-        return {}
-    else:
-        return data_gdalinfo
+        except Exception as exc:
+            poorly_log(f"gdalinfo Exception {exc}. Command: ", level=logging.WARNING)
+
+    return data_gdalinfo
 
 
 def _get_raster_statistics(gdal_info: GDALInfo, band_name: Optional[str] = None) -> RasterStatistics:
