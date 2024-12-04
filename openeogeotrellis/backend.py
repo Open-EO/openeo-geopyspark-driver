@@ -1589,7 +1589,11 @@ class GpsBatchJobs(backend.BatchJobs):
 
     def get_user_jobs(self, user_id: str) -> List[BatchJobMetadata]:
         with self._double_job_registry as registry:
-            return registry.get_user_jobs(user_id=user_id)
+            return registry.get_user_jobs(
+                user_id=user_id,
+                # Make sure to include title (in addition to the basic fields)
+                fields=["title"],
+            )
 
     # TODO: issue #232 we should get this from S3 but should there still be an output dir then?
     def get_job_output_dir(self, job_id: str) -> Path:
