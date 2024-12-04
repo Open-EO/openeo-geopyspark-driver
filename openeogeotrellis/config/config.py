@@ -243,5 +243,5 @@ class GpsBackendConfig(OpenEoBackendConfig):
     )
     batch_user_docker_mounts: dict[str, List[str]] = {}
     gdalinfo_python_call: bool = True
-    gdalinfo_use_subprocess: bool = False
-    gdalinfo_use_python_subprocess: bool = False
+    gdalinfo_use_subprocess: bool = True  # TODO: Only keep one on true
+    gdalinfo_use_python_subprocess: bool = True
