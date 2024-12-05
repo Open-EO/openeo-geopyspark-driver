@@ -606,7 +606,6 @@ def test_run_job_get_projection_extension_metadata(evaluate, wait_till_path_avai
         },
     }
     t.setGlobalTracking(False)
-    assert False  # Does jenkins only capture logs on fail?
 
 
 @mock.patch("openeogeotrellis.utils.wait_till_path_available")
