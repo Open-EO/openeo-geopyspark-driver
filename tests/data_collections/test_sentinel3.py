@@ -6,7 +6,8 @@ import rasterio
 
 from openeogeotrellis.collections.sentinel3 import *
 from numpy.testing import assert_allclose
-import pytest
+
+from tests.data import get_test_data_file
 
 def test_read_single():
 
@@ -93,8 +94,7 @@ def test_read_single_edge_with_some_data():
             "key":{
                 "col":10,
                 "row":10,
-                "instant":100,
-
+                "instant":1717326516089,
             },
             "key_extent":{
                 "xmin":13.86,"xmax":18.10,"ymin":47.096,"ymax":47.597
@@ -107,17 +107,31 @@ def test_read_single_edge_with_some_data():
     result = read_product((product_dir, tiles), SLSTR_PRODUCT_TYPE, ["LST_in:LST",  "geometry_tn:solar_zenith_tn"], 1024, True, 0.008928571428571)
 
     assert len(result) == 1
+
+    spacetimekey = result[0][0]
+
+    #instant should be rounded to the minute
+    assert spacetimekey.instant == datetime(2024, 6, 2, 11, 8,0)
     from rasterio.transform import from_origin, from_bounds
 
     arr = result[0][1].cells
 
     transform = from_bounds(13.86, 47.096, 18.10, 47.597, arr.shape[2], arr.shape[1])
 
-    new_dataset = rasterio.open('ref_file_edge3.tif', 'w', driver='GTiff',
-                                height=arr.shape[2], width=arr.shape[2],
-                                count=2, dtype=str(arr.dtype),
-                                crs=CRS.from_epsg(4326),
-                                transform=transform)
+    # new_dataset = rasterio.open('ref_file_edge3.tif', 'w', driver='GTiff',
+    #                              height=arr.shape[1], width=arr.shape[2],
+    #                             count=2, dtype=str(arr.dtype),
+    #                             crs=CRS.from_epsg(4326),
+    #                             transform=transform)
+    #
+    # new_dataset.write(arr)
+    # new_dataset.close()
 
-    new_dataset.write(arr)
-    new_dataset.close()
+    expected_path =  get_test_data_file("binary/Sentinel-3/sentinel3_edge_ref.tif")
+
+    with rasterio.open(expected_path) as ds_ref:
+        expected_result = ds_ref.read()
+    #with rasterio.open(filename) as ds:
+        actual_result = arr
+        assert expected_result.shape == actual_result.shape
+        assert_allclose(expected_result, actual_result, atol=0.00001)

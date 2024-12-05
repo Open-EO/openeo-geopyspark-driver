@@ -452,8 +452,10 @@ def do_reproject(product_type, final_grid_resolution, creo_path, band_names,
         def readAndReproject(data_mask_,LUT):
             band_data, band_settings = read_band(in_file, in_band=variable_name(band_name), data_mask=data_mask_)
             flat = band_data.flatten()
-            flat_mask = data_mask_.where(data_mask_, other=False, drop=True).data.flatten()
-            filtered = flat[flat_mask]
+            #inconvenient approach for compatibility with old xarray version
+            flat_mask = data_mask_.where(data_mask_, drop=True).data.flatten()
+            flat_mask[np.isnan(flat_mask)] = 0
+            filtered = flat[flat_mask.astype(np.bool_)]
             return band_settings,apply_LUT_on_band(filtered, LUT, band_settings.get('_FillValue', None))
 
         if product_type == SLSTR_PRODUCT_TYPE and band_name in ["solar_azimuth_tn", "solar_zenith_tn", "sat_azimuth_tn", "sat_zenith_tn",]:
