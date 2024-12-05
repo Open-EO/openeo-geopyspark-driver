@@ -939,7 +939,7 @@ def test_export_workspace(tmp_path, remove_original):
             "arguments": {
                 "data": {"from_node": "saveresult1"},
                 "workspace": workspace_id,
-                "merge": merge,
+                "merge": str(merge),
             },
             "result": True
         }
@@ -954,7 +954,7 @@ def test_export_workspace(tmp_path, remove_original):
 
     # TODO: avoid depending on `/tmp` for test output, make sure to leverage `tmp_path` fixture (https://github.com/Open-EO/openeo-python-driver/issues/265)
     workspace: DiskWorkspace = get_backend_config().workspaces[workspace_id]
-    workspace_dir = (workspace.root_directory / merge).parent
+    workspace_dir = workspace.root_directory / merge
 
     try:
         metadata_file = tmp_path / "job_metadata.json"
@@ -978,17 +978,15 @@ def test_export_workspace(tmp_path, remove_original):
             assert "openEO_2021-01-05Z.tif" in job_dir_files
             assert "openEO_2021-01-15Z.tif" in job_dir_files
 
-        collection_filename = Path(merge).name
-
         assert _paths_relative_to(workspace_dir) == {
-            Path(collection_filename),
-            Path("openEO_2021-01-05Z.tif/openEO_2021-01-05Z.tif"),
-            Path("openEO_2021-01-05Z.tif/openEO_2021-01-05Z.tif.json"),
-            Path("openEO_2021-01-15Z.tif/openEO_2021-01-15Z.tif"),
-            Path("openEO_2021-01-15Z.tif/openEO_2021-01-15Z.tif.json"),
+            Path("collection.json"),
+            Path("openEO_2021-01-05Z.tif"),
+            Path("openEO_2021-01-05Z.tif.json"),
+            Path("openEO_2021-01-15Z.tif"),
+            Path("openEO_2021-01-15Z.tif.json"),
         }
 
-        stac_collection = pystac.Collection.from_file(str(workspace_dir / collection_filename))
+        stac_collection = pystac.Collection.from_file(str(workspace_dir / "collection.json"))
         stac_collection.validate_all()
 
         item_links = [item_link for item_link in stac_collection.links if item_link.rel == "item"]
@@ -996,7 +994,7 @@ def test_export_workspace(tmp_path, remove_original):
         item_link = [item_link for item_link in item_links if "openEO_2021-01-05Z.tif" in item_link.href][0]
 
         assert item_link.media_type == "application/geo+json"
-        assert item_link.href == "./openEO_2021-01-05Z.tif/openEO_2021-01-05Z.tif.json"
+        assert item_link.href == "./openEO_2021-01-05Z.tif.json"
 
         items = list(stac_collection.get_items())
         assert len(items) == 2
@@ -1031,7 +1029,7 @@ def test_export_workspace(tmp_path, remove_original):
 
         assert not remove_original or (
             job_metadata["assets"]["openEO_2021-01-05Z.tif"]["public_href"]
-            == f"file:{workspace_dir / 'openEO_2021-01-05Z.tif' / 'openEO_2021-01-05Z.tif'}"
+            == f"file:{workspace_dir / 'openEO_2021-01-05Z.tif'}"
         )
     finally:
         shutil.rmtree(workspace_dir)
@@ -1064,7 +1062,7 @@ def test_export_workspace_with_asset_per_band(tmp_path):
             "arguments": {
                 "data": {"from_node": "saveresult1"},
                 "workspace": workspace_id,
-                "merge": merge,
+                "merge": str(merge),
             },
             "result": True,
         },
@@ -1076,7 +1074,7 @@ def test_export_workspace_with_asset_per_band(tmp_path):
 
     # TODO: avoid depending on `/tmp` for test output, make sure to leverage `tmp_path` fixture (https://github.com/Open-EO/openeo-python-driver/issues/265)
     workspace: DiskWorkspace = get_backend_config().workspaces[workspace_id]
-    workspace_dir = (workspace.root_directory / merge).parent
+    workspace_dir = workspace.root_directory / merge
 
     try:
         run_job(
@@ -1095,10 +1093,10 @@ def test_export_workspace_with_asset_per_band(tmp_path):
 
         assert _paths_relative_to(workspace_dir) == {
             Path("collection.json"),
-            Path("openEO_2021-01-05Z_Longitude.tif/openEO_2021-01-05Z_Longitude.tif"),
-            Path("openEO_2021-01-05Z_Longitude.tif/openEO_2021-01-05Z_Longitude.tif.json"),
-            Path("openEO_2021-01-05Z_Latitude.tif/openEO_2021-01-05Z_Latitude.tif"),
-            Path("openEO_2021-01-05Z_Latitude.tif/openEO_2021-01-05Z_Latitude.tif.json"),
+            Path("openEO_2021-01-05Z_Longitude.tif"),
+            Path("openEO_2021-01-05Z_Longitude.tif.json"),
+            Path("openEO_2021-01-05Z_Latitude.tif"),
+            Path("openEO_2021-01-05Z_Latitude.tif.json"),
         }
 
         stac_collection = pystac.Collection.from_file(str(workspace_dir / "collection.json"))
@@ -1109,7 +1107,7 @@ def test_export_workspace_with_asset_per_band(tmp_path):
         item_link = item_links[0]
 
         assert item_link.media_type == "application/geo+json"
-        assert item_link.href == "./openEO_2021-01-05Z_Latitude.tif/openEO_2021-01-05Z_Latitude.tif.json"
+        assert item_link.href == "./openEO_2021-01-05Z_Latitude.tif.json"
 
         items = list(stac_collection.get_items())
         assert len(items) == 2
@@ -1211,7 +1209,7 @@ def test_filepath_per_band(
             "arguments": {
                 "data": {"from_node": "saveresult1"},
                 "workspace": workspace_id,
-                "merge": merge,
+                "merge": str(merge),
             },
             "result": True,
         },
@@ -1325,7 +1323,7 @@ def test_export_workspace_merge_filepath_per_band(tmp_path, mock_s3_bucket):
     job_dir = tmp_path
 
     workspace_id = "s3_workspace"  # most common scenario: assets on disk to workspace in object storage
-    merge = PurePath("path") / "to" / "collection"  # TODO: use _random_merge() eventually
+    merge = _random_merge(is_actual_collection_document=True)
 
     process_graph = {
         "loadcollection1": {
@@ -1804,7 +1802,7 @@ def test_multiple_save_result_single_export_workspace(tmp_path):
             "arguments": {
                 "data": {"from_node": "saveresult2"},
                 "workspace": workspace_id,
-                "merge": merge,
+                "merge": str(merge),
             },
             "result": True,
         },
@@ -1816,7 +1814,7 @@ def test_multiple_save_result_single_export_workspace(tmp_path):
 
     # TODO: avoid depending on `/tmp` for test output, make sure to leverage `tmp_path` fixture (https://github.com/Open-EO/openeo-python-driver/issues/265)
     workspace: DiskWorkspace = get_backend_config().workspaces[workspace_id]
-    workspace_dir = (workspace.root_directory / merge).parent
+    workspace_dir = workspace.root_directory / merge
 
     try:
         run_job(
@@ -1835,8 +1833,8 @@ def test_multiple_save_result_single_export_workspace(tmp_path):
 
         assert _paths_relative_to(workspace_dir) == {
             Path("collection.json"),
-            Path("openEO.tif/openEO.tif"),
-            Path("openEO.tif/openEO.tif.json"),
+            Path("openEO.tif"),
+            Path("openEO.tif.json"),
         }
 
         stac_collection = pystac.Collection.from_file(str(workspace_dir / "collection.json"))
@@ -1992,7 +1990,7 @@ def test_export_to_multiple_workspaces(tmp_path, remove_original):
             "arguments": {
                 "data": {"from_node": "saveresult1"},
                 "workspace": "tmp",
-                "merge": merge1,
+                "merge": str(merge1),
             },
         },
         "exportworkspace2": {
@@ -2000,7 +1998,7 @@ def test_export_to_multiple_workspaces(tmp_path, remove_original):
             "arguments": {
                 "data": {"from_node": "exportworkspace1"},
                 "workspace": "tmp",
-                "merge": merge2,
+                "merge": str(merge2),
             },
             "result": True,
         }
@@ -2034,8 +2032,8 @@ def test_export_to_multiple_workspaces(tmp_path, remove_original):
 
         assert asset["href"] == str(tmp_path / "openEO_2021-01-05Z.tif")
 
-        first_workspace_uri = f"file:{(workspace.root_directory / max(merge1, merge2)).parent}/openEO_2021-01-05Z.tif/openEO_2021-01-05Z.tif"
-        second_workspace_uri = f"file:{(workspace.root_directory / min(merge1, merge2)).parent}/openEO_2021-01-05Z.tif/openEO_2021-01-05Z.tif"
+        first_workspace_uri = f"file:{workspace.root_directory / max(merge1, merge2)}/openEO_2021-01-05Z.tif"
+        second_workspace_uri = f"file:{workspace.root_directory / min(merge1, merge2)}/openEO_2021-01-05Z.tif"
 
         if remove_original:
             assert asset["public_href"] == first_workspace_uri
@@ -2054,8 +2052,8 @@ def test_export_to_multiple_workspaces(tmp_path, remove_original):
                 },
             }
     finally:
-        shutil.rmtree((workspace.root_directory / merge1).parent)
-        shutil.rmtree((workspace.root_directory / merge2).parent)
+        shutil.rmtree(workspace.root_directory / merge1)
+        shutil.rmtree(workspace.root_directory / merge2)
 
 
 def test_reduce_bands_to_geotiff(tmp_path):
@@ -2126,8 +2124,9 @@ def test_reduce_bands_to_geotiff(tmp_path):
     assert not only_band.GetDescription()
 
 
-def _random_merge() -> str:  # TODO: return PurePath?
-    return f"OpenEO-workspace-{uuid.uuid4()}/collection.json"
+def _random_merge(is_actual_collection_document: bool = False) -> PurePath:
+    subdirectory = PurePath(f"OpenEO-workspace-{uuid.uuid4()}")
+    return subdirectory / "collection.json" if is_actual_collection_document else subdirectory
 
 
 def _paths_relative_to(base: Path) -> Set[Path]:
