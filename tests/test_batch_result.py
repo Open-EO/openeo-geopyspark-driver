@@ -1152,9 +1152,17 @@ def test_filepath_per_band(
     monkeypatch,
 ):
     if use_s3:
+        # TODO: the location where executors write result assets to (either disk or object storage as determined by
+        #  the FUSE_MOUNT_BATCHJOB_S3_BUCKET envar) is not related to the type of workspace (DiskWorkspace or
+        #  ObjectStorageWorkspace) that will be used.
+        #  Case in point: FUSE_MOUNT_BATCHJOB_S3_BUCKET is typically set on CDSE, but its configuration currently
+        #  only defines workspaces of type ObjectStorageWorkspace.
         workspace_id = "s3_workspace"
     else:
         workspace_id = "tmp_workspace"
+
+    workspace = get_backend_config().workspaces[workspace_id]
+    s3_instance = s3_client()
 
     merge = _random_merge()
 
@@ -1217,7 +1225,6 @@ def test_filepath_per_band(
                 print(message)
 
         _setup_local_spark(TerminalReporterMock(), 0)
-        s3_instance = s3_client()
     try:
         process = {
             "process_graph": process_graph,
@@ -1281,7 +1288,6 @@ def test_filepath_per_band(
             with rasterio.open(geotiff_asset_copy_path) as dataset:
                 assert dataset.driver == "GTiff"
 
-        workspace = get_backend_config().workspaces[workspace_id]
         if use_s3:
             # job bucket and workspace bucket are the same
             job_dir_files_s3 = [
@@ -1299,6 +1305,7 @@ def test_filepath_per_band(
                 )
 
         else:
+            assert isinstance(workspace, DiskWorkspace)
             workspace_dir = Path(f"{workspace.root_directory}/{merge}")
             assert workspace_dir.exists()
             assert (workspace_dir / "lat.tif").exists()
@@ -1307,6 +1314,7 @@ def test_filepath_per_band(
             stac_collection_exported.validate_all()
     finally:
         if not use_s3:
+            assert isinstance(workspace, DiskWorkspace)
             workspace_dir = Path(f"{workspace.root_directory}/{merge}")
             shutil.rmtree(workspace_dir, ignore_errors=True)
 
