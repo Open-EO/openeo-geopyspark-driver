@@ -3,8 +3,9 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import uuid
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import Set
 from unittest import mock
 
@@ -31,6 +32,7 @@ from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.deploy.batch_job import run_job
 from openeogeotrellis.deploy.batch_job_metadata import extract_result_metadata
 from openeogeotrellis.utils import s3_client
+from openeogeotrellis.workspace import ObjectStorageWorkspace, CustomStacIO
 from .conftest import force_stop_spark_context, _setup_local_spark
 
 from .data import TEST_DATA_ROOT, get_test_data_file
@@ -1319,6 +1321,123 @@ def test_filepath_per_band(
             shutil.rmtree(workspace_dir, ignore_errors=True)
 
 
+def test_export_workspace_merge_filepath_per_band(tmp_path, mock_s3_bucket):
+    job_dir = tmp_path
+
+    workspace_id = "s3_workspace"  # most common scenario: assets on disk to workspace in object storage
+    merge = PurePath("path") / "to" / "collection"  # TODO: use _random_merge() eventually
+
+    process_graph = {
+        "loadcollection1": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "TestCollection-LonLat16x16",
+                "temporal_extent": ["2021-01-05", "2021-01-06"],
+                "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 2.0},
+                "bands": ["Longitude", "Latitude"],
+            },
+        },
+        "reducedimension1": {
+            "process_id": "reduce_dimension",
+            "arguments": {
+                "data": {"from_node": "loadcollection1"},
+                "dimension": "t",
+                "reducer": {
+                    "process_graph": {
+                        "first1": {
+                            "process_id": "first",
+                            "arguments": {
+                                "data": {"from_parameter": "data"}
+                            },
+                            "result": True,
+                        }
+                    }
+                },
+            }
+        },
+        "saveresult1": {
+            "process_id": "save_result",
+            "arguments": {
+                "data": {"from_node": "reducedimension1"},
+                "format": "GTiff",
+                "options": {
+                    "separate_asset_per_band": "true",
+                    "filepath_per_band": ["some/deeply/nested/folder/lon.tif", "lat.tif"],
+                },
+            },
+        },
+        "exportworkspace1": {
+            "process_id": "export_workspace",
+            "arguments": {
+                "data": {"from_node": "saveresult1"},
+                "workspace": workspace_id,
+                "merge": str(merge),
+            },
+            "result": True,
+        },
+    }
+
+    process = {
+        "process_graph": process_graph,
+        "job_options": {
+            "export-workspace-enable-merge": True,
+        },
+    }
+
+    run_job(
+        process,
+        output_file=job_dir / "out",
+        metadata_file=job_dir / "job_metadata.json",
+        api_version="2.0.0",
+        job_dir=job_dir,
+        dependencies=[],
+    )
+
+    assert list(_paths_relative_to(job_dir)) == ListSubSet([
+        Path("some/deeply/nested/folder/lon.tif"),
+        Path("lat.tif"),
+    ])
+
+    workspace = get_backend_config().workspaces[workspace_id]
+    assert isinstance(workspace, ObjectStorageWorkspace)
+    assert workspace.bucket == get_backend_config().s3_bucket_name
+
+    workspace_keys = [PurePath(obj.key) for obj in mock_s3_bucket.objects.all()]
+
+    assert workspace_keys == ListSubSet([
+        merge,  # the Collection itself
+        merge / "some/deeply/nested/folder/lon.tif",
+        merge / "some/deeply/nested/folder/lon.tif.json",
+        merge / "lat.tif",
+        merge / "lat.tif.json",
+    ])
+
+    stac_collection = pystac.Collection.from_file(f"s3://{workspace.bucket}/{merge}", stac_io=CustomStacIO())
+    assert stac_collection.validate_all() == 2
+
+    assets = [asset for item in stac_collection.get_items(recursive=True) for asset in item.get_assets().values()]
+
+    assert len(assets) == 2
+
+    for asset in assets:  # TODO: extract to a method
+        with tempfile.NamedTemporaryFile() as f:
+            object_key = _object_key(asset.get_absolute_href())
+            mock_s3_bucket.download_file(object_key, f.name)
+            with rasterio.open(f.name) as dataset:
+                assert dataset.driver == "GTiff"
+
+
+def _object_key(s3_uri: str) -> str:
+    from urllib.parse import urlparse
+
+    uri_parts = urlparse(s3_uri)
+
+    if uri_parts.scheme != "s3":
+        raise ValueError(s3_uri)
+
+    return uri_parts.path.lstrip("/")
+
+
 def test_discard_result(tmp_path):
     process_graph = {
         "loadcollection1": {
@@ -2007,7 +2126,7 @@ def test_reduce_bands_to_geotiff(tmp_path):
     assert not only_band.GetDescription()
 
 
-def _random_merge() -> str:
+def _random_merge() -> str:  # TODO: return PurePath?
     return f"OpenEO-workspace-{uuid.uuid4()}/collection.json"
 
 

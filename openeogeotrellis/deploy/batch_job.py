@@ -492,7 +492,7 @@ def run_job(
                 result_assets_metadata=result_assets_metadata,
                 job_dir=job_dir,
                 remove_exported_assets=job_options.get("remove-exported-assets", False),
-                enable_merge=job_options.get("export-workspace-enable-merge", True),  # TODO: default to False
+                enable_merge=job_options.get("export-workspace-enable-merge", False),
             )
     finally:
         write_metadata({**result_metadata, **_get_tracker_metadata("")}, metadata_file, stac_file_paths)
@@ -560,7 +560,9 @@ def _export_to_workspaces(
         remove_original = remove_exported_assets and final_export
 
         if enable_merge:
-            merged_collection = workspace.merge(collection, target=Path(merge), remove_original=remove_original)
+            merged_collection = workspace.merge(
+                collection, base=job_dir, target=Path(merge), remove_original=remove_original
+            )
             assert isinstance(merged_collection, pystac.Collection)
 
             for item in merged_collection.get_items(recursive=True):
@@ -571,7 +573,11 @@ def _export_to_workspaces(
                     )
         else:
             export_to_workspace = partial(
-                _export_to_workspace, job_dir=job_dir, target=workspace, merge=merge, remove_original=remove_original
+                _export_to_workspace,
+                common_path=job_dir,
+                target=workspace,
+                merge=merge,
+                remove_original=remove_original,
             )
 
             for stac_href in stac_hrefs:
@@ -603,13 +609,15 @@ def _export_to_workspaces(
     return stac_hrefs
 
 
-def _export_to_workspace(job_dir: str, source_uri: str, target: Workspace, merge: str, remove_original: bool) -> str:
+def _export_to_workspace(
+    common_path: str, source_uri: str, target: Workspace, merge: str, remove_original: bool
+) -> str:
     uri_parts = urlparse(source_uri)
 
     if not uri_parts.scheme or uri_parts.scheme.lower() == "file":
-        return target.import_file(job_dir, Path(uri_parts.path), merge, remove_original)
+        return target.import_file(common_path, Path(uri_parts.path), merge, remove_original)
     elif uri_parts.scheme == "s3":
-        return target.import_object(job_dir, source_uri, merge, remove_original)
+        return target.import_object(common_path, source_uri, merge, remove_original)
     else:
         raise ValueError(f"unsupported scheme {uri_parts.scheme} for {source_uri}; supported are: file, s3")
 

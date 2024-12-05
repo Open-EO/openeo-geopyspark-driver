@@ -68,13 +68,19 @@ class ObjectStorageWorkspace(Workspace):
         _log.debug(f"{'moved' if remove_original else 'copied'} s3://{source_bucket}/{source_key} to {workspace_uri}")
         return workspace_uri
 
-    def merge(self, stac_resource: STACObject, target: PurePath, remove_original: bool = False) -> STACObject:
+    def merge(
+        self, stac_resource: STACObject, base: PurePath, target: PurePath, remove_original: bool = False
+    ) -> STACObject:
         # Originally, STAC objects came from files on disk and assets could either be on disk or in S3; this is
         # reflected in the import_file and import_object methods.
 
         # Now, we have a STACObject in memory that can be saved to S3 as well as assets that can be on disk or in S3.
         # The former requires a pystac.StacIO implementation: https://pystac.readthedocs.io/en/stable/concepts.html#i-o-in-pystac
         # The latter should check each asset href's scheme and act accordingly: upload or copy.
+        if not base.is_absolute():
+            raise ValueError(f"base {base} should be absolute")
+        # TODO: incorporate base to retain asset directory structure in workspace
+
         stac_resource = stac_resource.full_copy()
 
         # TODO: reduce code duplication with openeo_driver.workspace.DiskWorkspace
@@ -86,7 +92,7 @@ class ObjectStorageWorkspace(Workspace):
                 return f"{parent_dir}/{target.name}"
 
             def item_func(item: Item, parent_dir: str) -> str:
-                return f"{parent_dir}/{target.name}/{item.id}/{item.id}.json"
+                return f"{parent_dir}/{target.name}/{item.id}.json"  # item ID == asset key == relative asset path
 
             return CustomLayoutStrategy(collection_func=collection_func, item_func=item_func)
 
@@ -97,7 +103,7 @@ class ObjectStorageWorkspace(Workspace):
             # TODO: crummy way to export assets after STAC Collection has been written to disk with new asset hrefs;
             #  it ends up in the asset metadata on disk
             asset.extra_fields["_original_absolute_href"] = asset.get_absolute_href()
-            asset.href = asset_key  # asset key matches the asset filename, becomes the relative path
+            asset.href = asset_key.split("/")[-1]  # asset key == relative asset path, including subdirectories
             return asset
 
         if isinstance(stac_resource, Collection):
