@@ -1,14 +1,16 @@
 import datetime
 import logging
 from unittest import mock
+import urllib.parse
 
 import kazoo.exceptions
 import pytest
 from kazoo.handlers.threading import KazooTimeoutError
-from openeo_driver.backend import BatchJobMetadata
+from openeo_driver.backend import BatchJobMetadata, JobListing
 from openeo_driver.errors import JobNotFoundException
 from openeo_driver.jobregistry import JOB_STATUS
 from openeo_driver.testing import DictSubSet
+import dirty_equals
 
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.job_registry import (
@@ -259,6 +261,48 @@ class TestInMemoryJobRegistry:
             DictSubSet({"job_id": "j-456", "user_id": "bob", "process": {"foo": 2}}),
         ]
         assert jr.list_user_jobs(user_id="charlie") == []
+
+    def _build_url(self, params: dict):
+        return "https://oeo.test/jobs?" + urllib.parse.urlencode(query=params)
+
+    def test_list_user_jobs_paginated(self):
+        jr = InMemoryJobRegistry()
+        for j in range(1, 8):
+            jr.create_job(job_id=f"j-{j}", user_id="alice", process={"foo": "bar"})
+
+        # First page
+        listing = jr.list_user_jobs(user_id="alice", limit=3)
+        assert isinstance(listing, JobListing)
+        assert listing.to_response_dict(build_url=self._build_url) == {
+            "jobs": [
+                dirty_equals.IsPartialDict(id="j-1"),
+                dirty_equals.IsPartialDict(id="j-2"),
+                dirty_equals.IsPartialDict(id="j-3"),
+            ],
+            "links": [{"href": "https://oeo.test/jobs?limit=3&page=1", "rel": "next"}],
+        }
+
+        # Second page
+        listing = jr.list_user_jobs(user_id="alice", limit=3, request_parameters={"limit": 3, "page": 1})
+        assert isinstance(listing, JobListing)
+        assert listing.to_response_dict(build_url=self._build_url) == {
+            "jobs": [
+                dirty_equals.IsPartialDict(id="j-4"),
+                dirty_equals.IsPartialDict(id="j-5"),
+                dirty_equals.IsPartialDict(id="j-6"),
+            ],
+            "links": [{"href": "https://oeo.test/jobs?limit=3&page=2", "rel": "next"}],
+        }
+
+        # Third page
+        listing = jr.list_user_jobs(user_id="alice", limit=3, request_parameters={"limit": 3, "page": 2})
+        assert isinstance(listing, JobListing)
+        assert listing.to_response_dict(build_url=self._build_url) == {
+            "jobs": [
+                dirty_equals.IsPartialDict(id="j-7"),
+            ],
+            "links": [],
+        }
 
 
 class TestDoubleJobRegistry:
@@ -712,8 +756,44 @@ class TestDoubleJobRegistry:
         assert jobs[1].id == "j-456"
         assert caplog.messages == [
             "DoubleJobRegistry.get_user_jobs(user_id='john') zk_jobs=2 ejr_jobs=2",
-            "DoubleJobRegistry.get_user_jobs(user_id='alice') zk_jobs=[] ejr_jobs=[]",
+            "DoubleJobRegistry.get_user_jobs(user_id='alice') zk_jobs=[] ejr_jobs=0",
         ]
+
+    def _build_url(self, params: dict):
+        return "https://oeo.test/jobs?" + urllib.parse.urlencode(query=params)
+
+    def test_get_user_jobs_paginated(self, memory_jr, caplog):
+        double_jr = DoubleJobRegistry(
+            zk_job_registry_factory=None,
+            elastic_job_registry=memory_jr,
+        )
+
+        with double_jr:
+            for j in range(1, 6):
+                double_jr.create_job(job_id=f"j-{j}", user_id="alice", process=self.DUMMY_PROCESS)
+
+            # First page
+            listing = double_jr.get_user_jobs(user_id="alice", limit=3)
+            assert isinstance(listing, JobListing)
+            assert listing.to_response_dict(build_url=self._build_url) == {
+                "jobs": [
+                    dirty_equals.IsPartialDict(id="j-1"),
+                    dirty_equals.IsPartialDict(id="j-2"),
+                    dirty_equals.IsPartialDict(id="j-3"),
+                ],
+                "links": [{"href": "https://oeo.test/jobs?limit=3&page=1", "rel": "next"}],
+            }
+
+            # Second page
+            listing = double_jr.get_user_jobs(user_id="alice", limit=3, request_parameters={"limit": 3, "page": 1})
+            assert isinstance(listing, JobListing)
+            assert listing.to_response_dict(build_url=self._build_url) == {
+                "jobs": [
+                    dirty_equals.IsPartialDict(id="j-4"),
+                    dirty_equals.IsPartialDict(id="j-5"),
+                ],
+                "links": [],
+            }
 
     def test_get_user_jobs_mismatch(self, double_jr, memory_jr, caplog):
         with double_jr:
@@ -745,7 +825,7 @@ class TestDoubleJobRegistry:
         assert jobs[1].id == "j-456"
         assert caplog.messages == [
             "DoubleJobRegistry.get_user_jobs(user_id='john') zk_jobs=None ejr_jobs=2",
-            "DoubleJobRegistry.get_user_jobs(user_id='alice') zk_jobs=None ejr_jobs=[]",
+            "DoubleJobRegistry.get_user_jobs(user_id='alice') zk_jobs=None ejr_jobs=0",
         ]
 
     @pytest.mark.parametrize(
@@ -820,7 +900,7 @@ class TestDoubleJobRegistry:
             "Stripping 'specification' from ZK payload for job_id='j-123': specification_size=96 > max_specification_size=10",
             "Stripping 'specification' from ZK payload for job_id='j-456': specification_size=96 > max_specification_size=10",
             "DoubleJobRegistry.get_user_jobs(user_id='john') zk_jobs=2 ejr_jobs=2",
-            "DoubleJobRegistry.get_user_jobs(user_id='alice') zk_jobs=[] ejr_jobs=[]",
+            "DoubleJobRegistry.get_user_jobs(user_id='alice') zk_jobs=[] ejr_jobs=0",
         ]
 
     def test_set_results_metadata(self, double_jr, zk_client, memory_jr, time_machine):

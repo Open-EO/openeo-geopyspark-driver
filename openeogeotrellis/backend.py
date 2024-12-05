@@ -39,7 +39,14 @@ from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 from openeo.metadata import Band, BandDimension, Dimension, SpatialDimension, TemporalDimension
 from openeo.util import TimingLogger, deep_get, dict_no_none, repr_truncate, rfc3339, str_truncate
 from openeo_driver import backend
-from openeo_driver.backend import BatchJobMetadata, ErrorSummary, LoadParameters, OidcProvider, ServiceMetadata
+from openeo_driver.backend import (
+    BatchJobMetadata,
+    ErrorSummary,
+    LoadParameters,
+    OidcProvider,
+    ServiceMetadata,
+    JobListing,
+)
 from openeo_driver.config.load import ConfigGetter
 from openeo_driver.datacube import DriverDataCube, DriverVectorCube
 from openeo_driver.datastructs import SarBackscatterArgs
@@ -1587,12 +1594,19 @@ class GpsBatchJobs(backend.BatchJobs):
         else:  # still some running: continue polling
             pass
 
-    def get_user_jobs(self, user_id: str) -> List[BatchJobMetadata]:
+    def get_user_jobs(
+        self,
+        user_id: str,
+        limit: Optional[int] = None,
+        request_parameters: Optional[dict] = None,
+    ) -> Union[List[BatchJobMetadata], JobListing]:
         with self._double_job_registry as registry:
             return registry.get_user_jobs(
                 user_id=user_id,
                 # Make sure to include title (in addition to the basic fields)
                 fields=["title"],
+                limit=limit,
+                request_parameters=request_parameters,
             )
 
     # TODO: issue #232 we should get this from S3 but should there still be an output dir then?

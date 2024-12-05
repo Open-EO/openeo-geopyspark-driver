@@ -3,7 +3,6 @@ import datetime as dt
 import json
 import logging
 import random
-import threading
 from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any, List, Dict, Callable, Union, Optional, Iterator, Tuple
@@ -16,13 +15,15 @@ from kazoo.handlers.threading import KazooTimeoutError
 from kazoo.protocol.states import ZnodeStat
 
 from openeo.util import rfc3339, dict_no_none, TimingLogger
-from openeo_driver.backend import BatchJobMetadata
+from openeo_driver.backend import BatchJobMetadata, JobListing
 from openeo_driver.errors import JobNotFoundException
 from openeo_driver.jobregistry import (
     JOB_STATUS,
     JobRegistryInterface,
     JobDict,
+    ejr_job_info_to_metadata,
 )
+from openeo_driver.util.http import UrlSafeStructCodec
 from openeogeotrellis import sentinel_hub
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
@@ -581,47 +582,6 @@ def zk_job_info_to_metadata(job_info: dict) -> BatchJobMetadata:
     )
 
 
-def ejr_job_info_to_metadata(job_info: JobDict, full: bool = True) -> BatchJobMetadata:
-    """Convert job info dict (from JobRegistryInterface) to BatchJobMetadata"""
-    # TODO: eliminate zk_job_info_to_metadata/ejr_job_info_to_metadata duplication?
-
-    def map_safe(prop: str, f):
-        value = job_info.get(prop)
-        return f(value) if value else None
-
-    def get_results_metadata(result_metadata_prop: str):
-        return job_info.get("results_metadata", {}).get(result_metadata_prop)
-
-    def map_results_metadata_safe(result_metadata_prop: str, f):
-        value = get_results_metadata(result_metadata_prop)
-        return f(value) if value is not None else None
-
-    return BatchJobMetadata(
-        id=job_info["job_id"],
-        status=job_info["status"],
-        created=map_safe("created", rfc3339.parse_datetime),
-        process=job_info.get("process") if full else None,
-        job_options=job_info.get("job_options") if full else None,
-        title=job_info.get("title"),
-        description=job_info.get("description"),
-        updated=map_safe("updated", rfc3339.parse_datetime),
-        started=map_safe("started", rfc3339.parse_datetime),
-        finished=map_safe("finished", rfc3339.parse_datetime),
-        memory_time_megabyte=map_safe("memory_time_megabyte_seconds", lambda seconds: timedelta(seconds=seconds)),
-        cpu_time=map_safe("cpu_time_seconds", lambda seconds: timedelta(seconds=seconds)),
-        geometry=get_results_metadata("geometry"),
-        bbox=get_results_metadata("bbox"),
-        start_datetime=map_results_metadata_safe("start_datetime", rfc3339.parse_datetime),
-        end_datetime=map_results_metadata_safe("end_datetime", rfc3339.parse_datetime),
-        instruments=get_results_metadata("instruments"),
-        epsg=get_results_metadata("epsg"),
-        links=get_results_metadata("links"),
-        usage=job_info.get("usage"),
-        costs=job_info.get("costs"),
-        proj_shape=get_results_metadata("proj:shape"),
-        proj_bbox=get_results_metadata("proj:bbox"),
-    )
-
 
 class InMemoryJobRegistry(JobRegistryInterface):
     """
@@ -726,9 +686,29 @@ class InMemoryJobRegistry(JobRegistryInterface):
         return self._update(job_id=job_id, costs=costs, usage=usage, results_metadata=results_metadata)
 
     def list_user_jobs(
-        self, user_id: str, fields: Optional[List[str]] = None
-    ) -> List[JobDict]:
-        return [job for job in self.db.values() if job["user_id"] == user_id]
+        self,
+        user_id: str,
+        *,
+        fields: Optional[List[str]] = None,
+        limit: Optional[int] = None,
+        request_parameters: Optional[dict] = None,
+        # TODO #959 settle on returning just `JobListing` and eliminate other options/code paths.
+    ) -> Union[JobListing, List[JobDict]]:
+        jobs = [job for job in self.db.values() if job["user_id"] == user_id]
+        if limit:
+            pagination_param = "page"
+            page_number = int((request_parameters or {}).get(pagination_param, 0))
+            assert page_number >= 0 and limit >= 1
+            if len(jobs) > (page_number + 1) * limit:
+                next_parameters = {"limit": limit, pagination_param: page_number + 1}
+            else:
+                next_parameters = None
+            jobs = jobs[page_number * limit : (page_number + 1) * limit]
+            jobs = JobListing(
+                jobs=[ejr_job_info_to_metadata(j, full=False) for j in jobs],
+                next_parameters=next_parameters,
+            )
+        return jobs
 
     def list_active_jobs(
         self,
@@ -962,22 +942,33 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
             self.zk_job_registry.mark_ongoing(job_id=job_id, user_id=user_id)
 
     def get_user_jobs(
-        self, user_id: str, fields: Optional[List[str]] = None
-    ) -> List[BatchJobMetadata]:
+        self,
+        user_id: str,
+        *,
+        fields: Optional[List[str]] = None,
+        limit: Optional[int] = None,
+        request_parameters: Optional[dict] = None,
+        # TODO  # 959 settle on returning just `JobListing` and eliminate other options/code paths.
+    ) -> Union[List[BatchJobMetadata], JobListing]:
         zk_jobs = None
         ejr_jobs = None
         if self.zk_job_registry:
             zk_jobs = [zk_job_info_to_metadata(j) for j in self.zk_job_registry.get_user_jobs(user_id)]
         if self.elastic_job_registry:
-            ejr_jobs = [
-                ejr_job_info_to_metadata(j, full=False)
-                for j in self.elastic_job_registry.list_user_jobs(user_id=user_id, fields=fields)
-            ]
+            ejr_jobs = self.elastic_job_registry.list_user_jobs(
+                user_id=user_id,
+                fields=fields,
+                limit=limit,
+                request_parameters=request_parameters,
+            )
+            # TODO #959 Settle on just handling JobListing and drop other legacy code path
+            if isinstance(ejr_jobs, list):
+                ejr_jobs = [ejr_job_info_to_metadata(j, full=False) for j in ejr_jobs]
 
         # TODO: more insightful comparison? (e.g. only consider recent jobs)
         self._log.log(
             level=logging.WARNING if (zk_jobs is None or ejr_jobs is None) else logging.INFO,
-            msg=f"DoubleJobRegistry.get_user_jobs({user_id=}) zk_jobs={zk_jobs and len(zk_jobs)} ejr_jobs={ejr_jobs and len(ejr_jobs)}",
+            msg=f"DoubleJobRegistry.get_user_jobs({user_id=}) zk_jobs={zk_jobs and len(zk_jobs)} ejr_jobs={len(ejr_jobs) if ejr_jobs is not None else None}",
         )
         # TODO #236/#498: error if both sources failed?
 

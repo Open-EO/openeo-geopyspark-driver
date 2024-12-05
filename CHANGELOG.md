@@ -14,10 +14,13 @@ without compromising stable operations.
 
 ## Unreleased
 
+## 0.52.0
+
 - Throw error when trying to use unsupported `target_dimension` in `aggregate_spatial` ([#951](https://github.com/Open-EO/openeo-geopyspark-driver/issues/951))
 - Allow specifying region name for an ObjectStorageWorkspace ([#955](https://github.com/Open-EO/openeo-geopyspark-driver/pull/955))
 - Better print ApiException. ([#962](https://github.com/Open-EO/openeo-geopyspark-driver/pull/962))
 - Include job title by default in user job listings ([#963](https://github.com/Open-EO/openeo-geopyspark-driver/issues/963))
+- Support pagination of user job listings ([#959](https://github.com/Open-EO/openeo-geopyspark-driver/issues/959)/[Open-EO/openeo-python-driver#332](https://github.com/Open-EO/openeo-python-driver/issues/332))
 
 ## 0.51.0
 
