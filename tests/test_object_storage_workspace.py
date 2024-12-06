@@ -97,16 +97,16 @@ def test_merge_new(mock_s3_client, mock_s3_bucket, tmp_path, remove_original: bo
     }
 
     assert asset_workspace_uris == {
-        "disk_asset.tif": f"s3://{target_bucket}/{merge}/disk_asset.tif/disk_asset.tif",
-        "object_asset.tif": f"s3://{target_bucket}/{merge}/object_asset.tif/object_asset.tif",
+        "disk_asset.tif": f"s3://{target_bucket}/{merge}/disk_asset.tif",
+        "object_asset.tif": f"s3://{target_bucket}/{merge}/object_asset.tif",
     }
 
     assert _workspace_keys(mock_s3_client, target_bucket, prefix="some/target/collection") == {
         "some/target/collection",
-        "some/target/collection/disk_asset.tif/disk_asset.tif.json",
-        "some/target/collection/disk_asset.tif/disk_asset.tif",
-        "some/target/collection/object_asset.tif/object_asset.tif.json",
-        "some/target/collection/object_asset.tif/object_asset.tif",
+        "some/target/collection/disk_asset.tif.json",
+        "some/target/collection/disk_asset.tif",
+        "some/target/collection/object_asset.tif.json",
+        "some/target/collection/object_asset.tif",
     }
 
     assert disk_asset_path.exists() != remove_original
@@ -119,17 +119,14 @@ def test_merge_new(mock_s3_client, mock_s3_bucket, tmp_path, remove_original: bo
     disk_item, object_item = [item for item in exported_collection.get_items()]
 
     assert disk_item.id == "disk_asset.tif"
-    assert disk_item.get_self_href() == f"s3://{workspace.bucket}/{merge}/{disk_item.id}/{disk_item.id}.json"
+    assert disk_item.get_self_href() == f"s3://{workspace.bucket}/{merge}/{disk_item.id}.json"
     exported_disk_asset = disk_item.get_assets().pop("disk_asset.tif")
-    assert exported_disk_asset.get_absolute_href() == f"s3://{workspace.bucket}/{merge}/{disk_item.id}/{disk_item.id}"
+    assert exported_disk_asset.get_absolute_href() == f"s3://{workspace.bucket}/{merge}/{disk_item.id}"
 
     assert object_item.id == "object_asset.tif"
-    assert object_item.get_self_href() == f"s3://{workspace.bucket}/{merge}/{object_item.id}/{object_item.id}.json"
+    assert object_item.get_self_href() == f"s3://{workspace.bucket}/{merge}/{object_item.id}.json"
     exported_object_asset = object_item.get_assets().pop("object_asset.tif")
-    assert (
-        exported_object_asset.get_absolute_href()
-        == f"s3://{workspace.bucket}/{merge}/{object_item.id}/{object_item.id}"
-    )
+    assert exported_object_asset.get_absolute_href() == f"s3://{workspace.bucket}/{merge}/{object_item.id}"
 
     assert _downloadable_assets(exported_collection, mock_s3_client) == 2
 
@@ -186,10 +183,10 @@ def test_merge_into_existing(tmp_path, mock_s3_client, mock_s3_bucket, remove_or
 
     assert _workspace_keys(mock_s3_client, target_bucket, prefix="some/target/collection") == {
         "some/target/collection",
-        "some/target/collection/disk_asset.tif/disk_asset.tif",
-        "some/target/collection/disk_asset.tif/disk_asset.tif.json",
-        "some/target/collection/object_asset.tif/object_asset.tif",
-        "some/target/collection/object_asset.tif/object_asset.tif.json",
+        "some/target/collection/disk_asset.tif",
+        "some/target/collection/disk_asset.tif.json",
+        "some/target/collection/object_asset.tif",
+        "some/target/collection/object_asset.tif.json",
     }
 
     assert disk_asset_path.exists() != remove_original
