@@ -7,18 +7,108 @@ from openeo_driver.users import User
 from openeo_driver.util.auth import ClientCredentials
 
 from openeogeotrellis.config.config import EtlApiConfig
+from openeogeotrellis.integrations.etl_api import EtlApi, ETL_ORGANIZATION_ID_JOB_OPTION
 from openeogeotrellis.job_costs_calculator import (
     CostsDetails,
+    EtlApiJobCostsCalculator,
     DynamicEtlApiJobCostCalculator,
 )
 from openeogeotrellis.testing import gps_config_overrides
 
 
-class TestDynamicEtlApiJobCostCalculator:
+@pytest.fixture
+def etl_credentials() -> ClientCredentials:
+    """Default client credentials for ETL API access"""
+    return ClientCredentials(oidc_issuer="https://oidc.test", client_id="client123", client_secret="s3cr3t")
+
+
+@pytest.fixture()
+def oidc_mock(requests_mock, etl_credentials: ClientCredentials) -> OidcMock:
+    oidc_mock = OidcMock(
+        requests_mock=requests_mock,
+        oidc_issuer=etl_credentials.oidc_issuer,
+        expected_grant_type="client_credentials",
+        expected_client_id=etl_credentials.client_id,
+        expected_fields={"client_secret": etl_credentials.client_secret, "scope": "openid"},
+    )
+    return oidc_mock
+
+
+def _build_post_resources_handler(oidc_mock: OidcMock, expected_data: dict, expected_result: List[dict]):
+    """Build a requests_mock handler for etl api `POST /resources` request"""
+
+    def post_resources(request, context):
+        """Handler for etl api `POST /resources` request"""
+        assert request.headers["Authorization"] == "Bearer " + oidc_mock.state["access_token"]
+        assert request.json() == DictSubSet(expected_data)
+        return expected_result
+
+    return post_resources
+
+
+class TestEtlApiJobCostsCalculator:
     @pytest.fixture
-    def etl_credentials(self) -> ClientCredentials:
-        """Default client credentials for ETL API access"""
-        return ClientCredentials(oidc_issuer="https://oidc.test", client_id="client123", client_secret="s3cr3t")
+    def etl_api(self, etl_credentials, oidc_mock) -> EtlApi:
+        return EtlApi(endpoint="https://etl.test", credentials=etl_credentials)
+
+    def test_basic(self, etl_api, requests_mock, oidc_mock):
+        requests_mock.post(
+            "https://etl.test/resources",
+            json=_build_post_resources_handler(
+                oidc_mock,
+                expected_data={
+                    "jobId": "job-123",
+                    "userId": "john",
+                    "executionId": "exec123",
+                    "state": "FINISHED",
+                    "status": "UNDEFINED",  # TODO #610
+                },
+                expected_result=[{"cost": 33}, {"cost": 55}],
+            ),
+        )
+
+        calculator = EtlApiJobCostsCalculator(etl_api=etl_api)
+        costs_details = CostsDetails(
+            job_id="job-123",
+            user_id="john",
+            execution_id="exec123",
+            app_state_etl_api_deprecated="FINISHED",
+            job_status="finished",
+        )
+        costs = calculator.calculate_costs(costs_details)
+        assert costs == 88.0
+
+    def test_organization_id(self, etl_api, requests_mock, oidc_mock):
+        requests_mock.post(
+            "https://etl.test/resources",
+            json=_build_post_resources_handler(
+                oidc_mock,
+                expected_data={
+                    "jobId": "job-123",
+                    "userId": "john",
+                    "executionId": "exec123",
+                    "state": "FINISHED",
+                    "status": "UNDEFINED",  # TODO #610
+                    "orgId": 9876,
+                },
+                expected_result=[{"cost": 33}, {"cost": 55}],
+            ),
+        )
+
+        calculator = EtlApiJobCostsCalculator(etl_api=etl_api)
+        costs_details = CostsDetails(
+            job_id="job-123",
+            user_id="john",
+            execution_id="exec123",
+            app_state_etl_api_deprecated="FINISHED",
+            job_status="finished",
+            job_options={ETL_ORGANIZATION_ID_JOB_OPTION: 9876},
+        )
+        costs = calculator.calculate_costs(costs_details)
+        assert costs == 88.0
+
+
+class TestDynamicEtlApiJobCostCalculator:
 
     @pytest.fixture
     def custom_etl_api_config(self, etl_credentials) -> EtlApiConfig:
@@ -35,35 +125,13 @@ class TestDynamicEtlApiJobCostCalculator:
 
         return CustomEtlConfig()
 
-    @pytest.fixture(autouse=True)
-    def oidc_mock(self, requests_mock, etl_credentials: ClientCredentials) -> OidcMock:
-        oidc_mock = OidcMock(
-            requests_mock=requests_mock,
-            oidc_issuer=etl_credentials.oidc_issuer,
-            expected_grant_type="client_credentials",
-            expected_client_id=etl_credentials.client_id,
-            expected_fields={"client_secret": etl_credentials.client_secret, "scope": "openid"},
-        )
-        return oidc_mock
-
-    def _build_post_resources_handler(self, oidc_mock: OidcMock, expected_data: dict, expected_result: List[dict]):
-        """Build a requests_mock handler for etl api `POST /resources` request"""
-
-        def post_resources(request, context):
-            """Handler for etl api `POST /resources` request"""
-            assert request.headers["Authorization"] == "Bearer " + oidc_mock.state["access_token"]
-            assert request.json() == DictSubSet(expected_data)
-            return expected_result
-
-        return post_resources
-
     def test_calculate_cost(self, custom_etl_api_config, requests_mock, oidc_mock):
         with gps_config_overrides(etl_api_config=custom_etl_api_config):
             calculator = DynamicEtlApiJobCostCalculator()
 
             mock_alt = requests_mock.post(
                 "https://etl-alt.test/resources",
-                json=self._build_post_resources_handler(
+                json=_build_post_resources_handler(
                     oidc_mock,
                     expected_data={
                         "jobId": "job-123",
@@ -77,7 +145,7 @@ class TestDynamicEtlApiJobCostCalculator:
             )
             mock_planb = requests_mock.post(
                 "https://etl.planb.test/resources",
-                json=self._build_post_resources_handler(
+                json=_build_post_resources_handler(
                     oidc_mock,
                     expected_data={
                         "jobId": "job-456",
