@@ -1322,8 +1322,11 @@ def test_filepath_per_band(
 def test_export_workspace_merge_filepath_per_band(tmp_path, mock_s3_bucket):
     job_dir = tmp_path
 
-    workspace_id = "s3_workspace"  # most common scenario: assets on disk to workspace in object storage
-    merge = _random_merge(is_actual_collection_document=True)
+    object_workspace_id = "s3_workspace"  # most common scenario: assets on disk to workspace in object storage
+    disk_workspace_id = "tmp"  # assets on disk to workspace on disk
+
+    enable_merge = True
+    merge = _random_merge(is_actual_collection_document=enable_merge)
 
     process_graph = {
         "loadcollection1": {
@@ -1368,61 +1371,87 @@ def test_export_workspace_merge_filepath_per_band(tmp_path, mock_s3_bucket):
             "process_id": "export_workspace",
             "arguments": {
                 "data": {"from_node": "saveresult1"},
-                "workspace": workspace_id,
+                "workspace": object_workspace_id,
                 "merge": str(merge),
             },
             "result": True,
+        },
+        "exportworkspace2": {
+            "process_id": "export_workspace",
+            "arguments": {
+                "data": {"from_node": "saveresult1"},
+                "workspace": disk_workspace_id,
+                "merge": str(merge),
+            },
         },
     }
 
     process = {
         "process_graph": process_graph,
         "job_options": {
-            "export-workspace-enable-merge": True,
+            "export-workspace-enable-merge": enable_merge,
         },
     }
 
-    run_job(
-        process,
-        output_file=job_dir / "out",
-        metadata_file=job_dir / "job_metadata.json",
-        api_version="2.0.0",
-        job_dir=job_dir,
-        dependencies=[],
-    )
+    disk_workspace = get_backend_config().workspaces[disk_workspace_id]
+    assert isinstance(disk_workspace, DiskWorkspace)
+    workspace_dir = (disk_workspace.root_directory / merge).parent
 
-    assert list(_paths_relative_to(job_dir)) == ListSubSet([
-        Path("some/deeply/nested/folder/lon.tif"),
-        Path("lat.tif"),
-    ])
+    try:
+        run_job(
+            process,
+            output_file=job_dir / "out",
+            metadata_file=job_dir / "job_metadata.json",
+            api_version="2.0.0",
+            job_dir=job_dir,
+            dependencies=[],
+        )
 
-    workspace = get_backend_config().workspaces[workspace_id]
-    assert isinstance(workspace, ObjectStorageWorkspace)
-    assert workspace.bucket == get_backend_config().s3_bucket_name
+        assert list(_paths_relative_to(job_dir)) == ListSubSet([
+            Path("some/deeply/nested/folder/lon.tif"),
+            Path("lat.tif"),
+        ])
 
-    workspace_keys = [PurePath(obj.key) for obj in mock_s3_bucket.objects.all()]
+        object_workspace = get_backend_config().workspaces[object_workspace_id]
+        assert isinstance(object_workspace, ObjectStorageWorkspace)
+        assert object_workspace.bucket == get_backend_config().s3_bucket_name
 
-    assert workspace_keys == ListSubSet([
-        merge,  # the Collection itself
-        merge / "some/deeply/nested/folder/lon.tif",
-        merge / "some/deeply/nested/folder/lon.tif.json",
-        merge / "lat.tif",
-        merge / "lat.tif.json",
-    ])
+        object_workspace_keys = [PurePath(obj.key) for obj in mock_s3_bucket.objects.all()]
 
-    stac_collection = pystac.Collection.from_file(f"s3://{workspace.bucket}/{merge}", stac_io=CustomStacIO())
-    assert stac_collection.validate_all() == 2
+        assert object_workspace_keys == ListSubSet([
+            merge,  # the Collection itself
+            merge / "some/deeply/nested/folder/lon.tif",
+            merge / "some/deeply/nested/folder/lon.tif.json",
+            merge / "lat.tif",
+            merge / "lat.tif.json",
+        ])
 
-    assets = [asset for item in stac_collection.get_items(recursive=True) for asset in item.get_assets().values()]
+        def load_exported_collection(collection_href: str):
+            assets_in_object_storage = collection_href.startswith("s3://")
 
-    assert len(assets) == 2
+            stac_collection = pystac.Collection.from_file(collection_href, stac_io=CustomStacIO())
+            assert stac_collection.validate_all() == 2
 
-    for asset in assets:  # TODO: extract to a method
-        with tempfile.NamedTemporaryFile() as f:
-            object_key = _object_key(asset.get_absolute_href())
-            mock_s3_bucket.download_file(object_key, f.name)
-            with rasterio.open(f.name) as dataset:
-                assert dataset.driver == "GTiff"
+            assets = [
+                asset for item in stac_collection.get_items(recursive=True) for asset in item.get_assets().values()
+            ]
+            assert len(assets) == 2
+
+            for asset in assets:
+                with tempfile.NamedTemporaryFile() as f:
+                    if assets_in_object_storage:
+                        object_key = _object_key(asset.get_absolute_href())
+                        mock_s3_bucket.download_file(object_key, f.name)
+                    else:  # the asset is on disk
+                        asset.copy(f.name)
+
+                    with rasterio.open(f.name) as dataset:
+                        assert dataset.driver == "GTiff"
+
+        load_exported_collection(f"s3://{object_workspace.bucket}/{merge}")
+        load_exported_collection(str(disk_workspace.root_directory / merge))
+    finally:
+        shutil.rmtree(workspace_dir)
 
 
 def _object_key(s3_uri: str) -> str:
