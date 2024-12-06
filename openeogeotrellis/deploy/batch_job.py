@@ -560,9 +560,7 @@ def _export_to_workspaces(
         remove_original = remove_exported_assets and final_export
 
         if enable_merge:
-            merged_collection = workspace.merge(
-                collection, base=job_dir, target=Path(merge), remove_original=remove_original
-            )
+            merged_collection = workspace.merge(collection, target=Path(merge), remove_original=remove_original)
             assert isinstance(merged_collection, pystac.Collection)
 
             for item in merged_collection.get_items(recursive=True):
