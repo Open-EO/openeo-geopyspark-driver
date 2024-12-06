@@ -11,6 +11,7 @@ import pytest
 
 import openeo
 from openeo.udf import StructuredData, UdfData
+from openeo_driver.util.logging import get_logging_config, LOG_HANDLER_FILE_JSON
 from openeogeotrellis.backend import JOB_METADATA_FILENAME
 from openeogeotrellis.config.constants import UDF_DEPENDENCIES_INSTALL_MODE
 from openeogeotrellis.deploy.batch_job import run_job
@@ -412,6 +413,5 @@ def apply_udf_data(data: UdfData):
             job_dir=tmp_path,
             dependencies=[],
         )
-        log_dir = os.environ.get("LOG_DIRS", ".").split(",")[0]
-        log_file = Path(log_dir) / "openeo_python.log"
+        log_file = get_logging_config()["handlers"][LOG_HANDLER_FILE_JSON]["filename"]
         assert custom_message in log_file.read_text()
