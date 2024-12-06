@@ -70,12 +70,6 @@ class ObjectStorageWorkspace(Workspace):
         return workspace_uri
 
     def merge(self, stac_resource: STACObject, target: PurePath, remove_original: bool = False) -> STACObject:
-        # Originally, STAC objects came from files on disk and assets could either be on disk or in S3; this is
-        # reflected in the import_file and import_object methods.
-
-        # Now, we have a STACObject in memory that can be saved to S3 as well as assets that can be on disk or in S3.
-        # The former requires a pystac.StacIO implementation: https://pystac.readthedocs.io/en/stable/concepts.html#i-o-in-pystac
-        # The latter should check each asset href's scheme and act accordingly: upload or copy.
         stac_resource = stac_resource.full_copy()
 
         # TODO: reduce code duplication with openeo_driver.workspace.DiskWorkspace
@@ -179,11 +173,11 @@ class ObjectStorageWorkspace(Workspace):
 
 
 # TODO: move to dedicated file?
-class CustomStacIO(DefaultStacIO):  # supports S3 as well
+class CustomStacIO(DefaultStacIO):  # adds support for object storage
 
     @property
     def _s3(self):
-        # TODO: otherwise there's an infinite recursion error upon Item.get_assets() wrt/ some boto3 reference
+        # otherwise there's an infinite recursion error upon Item.get_assets() wrt/ some boto3 reference
         return boto3.resource("s3")
 
     def read_text(self, source: Union[str, Link], *args: Any, **kwargs: Any) -> str:
