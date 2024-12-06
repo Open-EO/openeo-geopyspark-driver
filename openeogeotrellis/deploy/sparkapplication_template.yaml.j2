@@ -243,6 +243,8 @@ spec:
         value: {{ openeo_ejr_backend_id }}
       - name: OPENEO_EJR_OIDC_CLIENT_CREDENTIALS
         value: {{ openeo_ejr_oidc_client_credentials }}
+      - name: TRY_SWIFT_STREAMING
+        value: {{ try_swift_streaming }}
 {%- endblock %}
     labels:
 {%- block driver_labels %}
