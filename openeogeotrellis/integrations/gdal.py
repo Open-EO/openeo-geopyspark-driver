@@ -15,7 +15,8 @@ from openeo.util import dict_no_none
 from osgeo import gdal
 
 from openeo_driver.utils import smart_bool
-from openeogeotrellis.utils import stream_s3_binary_file_contents, _make_set_for_key
+from openeogeotrellis.config import get_backend_config
+from openeogeotrellis.utils import stream_s3_binary_file_contents, _make_set_for_key, parse_json_from_output
 
 
 def poorly_log(message: str, level=logging.INFO):
@@ -475,61 +476,75 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
     # See https://gdal.org/api/python_gotchas.html
     gdal.UseExceptions()
 
-    try:
-        data_gdalinfo = None
-        # TODO: Choose a version, and remove others
-        GDALINFO_PYTHON_CALL = smart_bool(os.environ.get("GDALINFO_PYTHON_CALL", "true"))
-        GDALINFO_USE_SUBPROCESS = smart_bool(os.environ.get("GDALINFO_USE_SUBPROCESS", "false"))
-        GDALINFO_USE_PYTHON_SUBPROCESS = smart_bool(os.environ.get("GDALINFO_USE_PYTHON_SUBPROCESS", "false"))
-        if not GDALINFO_PYTHON_CALL and not GDALINFO_USE_SUBPROCESS and not GDALINFO_USE_PYTHON_SUBPROCESS:
-            poorly_log(
-                "Neither GDALINFO_PYTHON_CALL nor GDALINFO_USE_SUBPROCESS nor GDALINFO_USE_PYTHON_SUBPROCESS is set. Avoiding gdalinfo."
-            )
-            data_gdalinfo = {}
+    data_gdalinfo = {}
+    # TODO: Choose a version, and remove others
+    backend_config = get_backend_config()
+    if (
+            not backend_config.gdalinfo_python_call
+            and not backend_config.gdalinfo_use_subprocess
+            and not backend_config.gdalinfo_use_python_subprocess
+    ):
+        poorly_log(
+            "Neither gdalinfo_python_call nor gdalinfo_use_subprocess nor gdalinfo_use_python_subprocess is True. Avoiding gdalinfo."
+        )
 
-        if GDALINFO_PYTHON_CALL:
-            start = time.time()
+    if backend_config.gdalinfo_python_call:
+        start = time.time()
+        try:
             data_gdalinfo = gdal.Info(asset_uri, options=gdal.InfoOptions(format="json", stats=True))
             end = time.time()
-            poorly_log(f"gdal.Info() took {(end - start) * 1000}ms for {asset_uri}")  # ~10ms
+            # This can throw a segfault on empty netcdf bands:
+            poorly_log(f"gdal.Info() took {(end - start) * 1000}ms for {asset_uri}", level=logging.DEBUG)  # ~10ms
+        except Exception as exc:
+            poorly_log(
+                f"gdalinfo Exception. Statistics won't be added to STAC metadata. '{exc}'.", level=logging.WARNING
+            )
 
-        if GDALINFO_USE_SUBPROCESS:
-            start = time.time()
-            cmd = ["gdalinfo", asset_uri, "-json", "-stats"]
-            print("\n" + subprocess.list2cmdline(cmd) + "\n")
+    if backend_config.gdalinfo_use_subprocess:
+        start = time.time()
+        # Ignore errors like "band 2: Failed to compute statistics, no valid pixels found in sampling."
+        # use "--debug ON" to print more logging to cerr
+        cmd = ["gdalinfo", asset_uri, "-json", "-stats", "--config", "GDAL_IGNORE_ERRORS", "ALL"]
+        try:
             out = subprocess.check_output(cmd, timeout=60, text=True)
-            data_gdalinfo_from_subprocess = json.loads(out)
+            data_gdalinfo_from_subprocess = parse_json_from_output(out)
             end = time.time()
-            poorly_log(f"gdalinfo took {(end - start) * 1000}ms for {asset_uri}")  # ~30ms
+            poorly_log(f"gdalinfo took {(end - start) * 1000}ms for {asset_uri}", level=logging.DEBUG)  # ~30ms
             if data_gdalinfo:
                 assert data_gdalinfo_from_subprocess == data_gdalinfo
             else:
                 data_gdalinfo = data_gdalinfo_from_subprocess
+        except Exception as exc:
+            poorly_log(
+                f"gdalinfo Exception. Statistics won't be added to STAC metadata. '{exc}'. Command: {subprocess.list2cmdline(cmd)}",
+                level=logging.WARNING,
+            )
 
-        if GDALINFO_USE_PYTHON_SUBPROCESS:
-            start = time.time()
-            cmd = [
-                sys.executable,
-                "-c",
-                f"""from osgeo import gdal; import json; gdal.UseExceptions(); print(json.dumps(gdal.Info({asset_uri!r}, options=gdal.InfoOptions(format="json", stats=True))))""",
-            ]
-            print("\n" + subprocess.list2cmdline(cmd) + "\n")
+    if backend_config.gdalinfo_use_python_subprocess:
+        start = time.time()
+        cmd = [
+            sys.executable,
+            "-c",
+            f"""from osgeo import gdal; import json; gdal.UseExceptions(); print(json.dumps(gdal.Info({asset_uri!r}, options=gdal.InfoOptions(format="json", stats=True))))""",
+        ]
+        try:
             out = subprocess.check_output(cmd, timeout=60, text=True)
-            last_json_line = next(reversed(list(filter(lambda x: x.startswith("{"), out.split("\n")))))
-            data_gdalinfo_from_subprocess = json.loads(last_json_line)
+            data_gdalinfo_from_subprocess = parse_json_from_output(out)
             end = time.time()
-            poorly_log(f"gdal.Info() subprocess took {(end - start) * 1000}ms for {asset_uri}")  # ~130ms
+            poorly_log(
+                f"gdal.Info() subprocess took {(end - start) * 1000}ms for {asset_uri}", level=logging.DEBUG
+            )  # ~130ms
             if data_gdalinfo:
                 assert data_gdalinfo_from_subprocess == data_gdalinfo
             else:
                 data_gdalinfo = data_gdalinfo_from_subprocess
-    except Exception as exc:
-        poorly_log(f"gdalinfo Exception {exc}")
-        # TODO: Specific exception type(s) would be better but Wasn't able to find what
-        #   specific exceptions gdal.Info might raise.
-        return {}
-    else:
-        return data_gdalinfo
+        except Exception as exc:
+            poorly_log(
+                f"gdalinfo Exception. Statistics won't be added to STAC metadata. '{exc}'. Command: {subprocess.list2cmdline(cmd)}",
+                level=logging.WARNING,
+            )
+
+    return data_gdalinfo
 
 
 def _get_raster_statistics(gdal_info: GDALInfo, band_name: Optional[str] = None) -> RasterStatistics:

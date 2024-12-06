@@ -27,6 +27,7 @@ from openeogeotrellis.utils import (
     stream_s3_binary_file_contents,
     to_s3_url,
     utcnow,
+    parse_json_from_output,
 )
 
 
@@ -208,6 +209,16 @@ def test_single_value():
 def test_json_default(value, expected):
     out = json.loads(json.dumps(value, default=json_default))
     assert out == expected
+
+
+def test_parse_json_from_output():
+    json_dict = parse_json_from_output("{}")
+    assert json_dict == {}
+
+
+def test_parse_json_from_output_complex():
+    json_dict = parse_json_from_output("""prefix\n{}\nmiddle\n{"num":\n 5}\n""")
+    assert json_dict == {"num": 5}
 
 
 class TestStatsReporter:

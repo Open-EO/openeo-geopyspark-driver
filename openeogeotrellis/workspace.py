@@ -1,7 +1,7 @@
 import logging
 import os
 from pathlib import Path, PurePath
-from typing import Union, Any
+from typing import Union, Any, Optional
 from urllib.parse import urlparse
 
 import boto3
@@ -23,8 +23,9 @@ class ObjectStorageWorkspace(Workspace):
 
     MULTIPART_THRESHOLD_IN_MB = 50
 
-    def __init__(self, bucket: str):
+    def __init__(self, bucket: str, region: Optional[str] = None):
         self.bucket = bucket
+        self.region = region
         self._stac_io = CustomStacIO()
 
     def import_file(self, common_path: Union[str, Path], file: Path, merge: str, remove_original: bool = False) -> str:

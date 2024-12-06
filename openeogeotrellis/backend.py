@@ -39,7 +39,14 @@ from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 from openeo.metadata import Band, BandDimension, Dimension, SpatialDimension, TemporalDimension
 from openeo.util import TimingLogger, deep_get, dict_no_none, repr_truncate, rfc3339, str_truncate
 from openeo_driver import backend
-from openeo_driver.backend import BatchJobMetadata, ErrorSummary, LoadParameters, OidcProvider, ServiceMetadata
+from openeo_driver.backend import (
+    BatchJobMetadata,
+    ErrorSummary,
+    LoadParameters,
+    OidcProvider,
+    ServiceMetadata,
+    JobListing,
+)
 from openeo_driver.config.load import ConfigGetter
 from openeo_driver.datacube import DriverDataCube, DriverVectorCube
 from openeo_driver.datastructs import SarBackscatterArgs
@@ -1076,7 +1083,17 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             if isinstance(error, FileNotFoundError):
                 summary = repr_truncate(str(error), width=width)
             else:
-                summary = repr_truncate(error, width=width)
+                if ConfigParams().is_kube_deploy:
+                    # Conditional import just to be sure.
+                    import kubernetes.client.exceptions
+
+                    if isinstance(error, kubernetes.client.exceptions.ApiException):
+                        s = "kubernetes.client.exceptions.ApiException: " + str(error).strip()
+                        summary = repr_truncate(s, width=width)
+                    else:
+                        summary = repr_truncate(error, width=width)
+                else:
+                    summary = repr_truncate(error, width=width)
 
         return ErrorSummary(error, is_client_error, summary)
 
@@ -1577,9 +1594,20 @@ class GpsBatchJobs(backend.BatchJobs):
         else:  # still some running: continue polling
             pass
 
-    def get_user_jobs(self, user_id: str) -> List[BatchJobMetadata]:
+    def get_user_jobs(
+        self,
+        user_id: str,
+        limit: Optional[int] = None,
+        request_parameters: Optional[dict] = None,
+    ) -> Union[List[BatchJobMetadata], JobListing]:
         with self._double_job_registry as registry:
-            return registry.get_user_jobs(user_id=user_id)
+            return registry.get_user_jobs(
+                user_id=user_id,
+                # Make sure to include title (in addition to the basic fields)
+                fields=["title"],
+                limit=limit,
+                request_parameters=request_parameters,
+            )
 
     # TODO: issue #232 we should get this from S3 but should there still be an output dir then?
     def get_job_output_dir(self, job_id: str) -> Path:
@@ -1990,7 +2018,8 @@ class GpsBatchJobs(backend.BatchJobs):
                 profile=profile,
                 batch_scheduler=get_backend_config().batch_scheduler,
                 yunikorn_queue=get_backend_config().yunikorn_queue,
-                yunikorn_scheduling_timeout=get_backend_config().yunikorn_scheduling_timeout.rstrip()
+                yunikorn_scheduling_timeout=get_backend_config().yunikorn_scheduling_timeout.rstrip(),
+                try_swift_streaming=os.environ.get("TRY_SWIFT_STREAMING"),
             )
 
             if get_backend_config().fuse_mount_batchjob_s3_bucket:

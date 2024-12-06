@@ -30,6 +30,7 @@ workspaces = {
     "tmp_workspace": DiskWorkspace(root_directory=Path("/tmp/workspace")),
     "tmp": DiskWorkspace(root_directory=Path("/tmp")),
     "s3_workspace": ObjectStorageWorkspace(bucket="openeo-fake-bucketname"),
+    "s3_workspace_region": ObjectStorageWorkspace(bucket="openeo-fake-eu-nl", region="eu-nl")
 }
 
 
