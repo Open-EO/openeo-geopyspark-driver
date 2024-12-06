@@ -14,6 +14,8 @@ without compromising stable operations.
 
 ## Unreleased
 
+- `export_workspace`: experimental support for merging STAC Collections ([#677](https://github.com/Open-EO/openeo-geopyspark-driver/issues/677))
+
 ## 0.52.0
 
 - Throw error when trying to use unsupported `target_dimension` in `aggregate_spatial` ([#951](https://github.com/Open-EO/openeo-geopyspark-driver/issues/951))
