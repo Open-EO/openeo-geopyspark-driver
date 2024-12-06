@@ -383,6 +383,8 @@ spec:
         value: "{{ python_max_memory }}"
       - name: CPL_DEBUG
         value: "OFF"
+      - name: TRY_SWIFT_STREAMING
+        value: "{{ try_swift_streaming }}"
 {%- endblock %}
     labels:
 {%- block executor_labels %}
