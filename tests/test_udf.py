@@ -3,6 +3,7 @@ import re
 import tarfile
 import textwrap
 import zipfile
+from datetime import datetime
 from pathlib import Path
 
 import pyspark
@@ -386,47 +387,31 @@ class TestInstallPythonUdfDependencies:
         assert f"Cleaning up temporary UDF deps at {mehh_path.parent}" in caplog.text
 
     def test_run_udf_on_vector_data_cube_with_logging(self, tmp_path):
-        repository_root = Path(__file__).parent.parent
-        datacube = openeo.DataCube.load_stac(
-            url=str(repository_root / "docker/local_batch_job/example_stac_catalog/collection.json"),
-            temporal_extent=["2023-06-01", "2023-06-09"],
-        )
-
-        geometries = {
-            "type": "Polygon",
-            "coordinates": [
-                [
-                    [5.07, 51.215],
-                    [5.07, 51.22],
-                    [5.08, 51.22],
-                    [5.08, 51.215],
-                    [5.07, 51.215],
-                ]
-            ],
-        }
-
-        vector_cube = datacube.aggregate_spatial(geometries=geometries, reducer="mean")
-
-        udf = """
+        custom_message = "custom_message" + str(datetime.now())
+        udf = f"""
 from openeo.udf import UdfData
 import logging
 def apply_udf_data(data: UdfData):
-    logging.warn('Hello from UDF!')
+    logging.warn({custom_message!r})
     return data
 """
-        post_processed = vector_cube.process("run_udf", data=vector_cube, udf=udf, runtime="Python")
-
-        log_dir = os.environ.get("LOG_DIRS", ".").split(",")[0]
-        log_file = Path(log_dir) / "openeo_python.log"
-        open(log_file, "w").close()  # Clear file content
 
         run_job(
-            {"process_graph": post_processed.flat_graph()},
+            {
+                "process_graph": {
+                    "runudf1": {
+                        "process_id": "run_udf",
+                        "arguments": {"data": [1, 2, 3], "runtime": "Python", "udf": udf},
+                        "result": True,
+                    }
+                }
+            },
             output_file=tmp_path / "out",
             metadata_file=tmp_path / JOB_METADATA_FILENAME,
             api_version="2.0.0",
             job_dir=tmp_path,
             dependencies=[],
         )
-        # TODO: Use caplog instead
-        assert '"message": "Hello from UDF!"' in log_file.read_text()
+        log_dir = os.environ.get("LOG_DIRS", ".").split(",")[0]
+        log_file = Path(log_dir) / "openeo_python.log"
+        assert custom_message in log_file.read_text()
