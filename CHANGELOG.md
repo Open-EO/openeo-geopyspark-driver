@@ -14,7 +14,10 @@ without compromising stable operations.
 
 ## Unreleased
 
+## 0.53.0
+
 - `export_workspace`: experimental support for merging STAC Collections ([#677](https://github.com/Open-EO/openeo-geopyspark-driver/issues/677))
+- Add support for `orgId` in ETL resource/cost reporting ([#671](https://github.com/Open-EO/openeo-geopyspark-driver/issues/671))
 
 ## 0.52.0
 
