@@ -251,9 +251,10 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
                 bbox=requested_bbox.reproject("EPSG:4326").as_wsen_tuple() if requested_bbox else None,
                 limit=20,
                 datetime=(
-                    None if temporal_extent is DEFAULT_TEMPORAL_EXTENT
+                    None
+                    if temporal_extent is DEFAULT_TEMPORAL_EXTENT
                     else f"{from_date.isoformat().replace('+00:00', 'Z')}/"
-                         f"{to_date.isoformat().replace('+00:00', 'Z')}"  # end is inclusive
+                    f"{to_date.isoformat().replace('+00:00', 'Z')}"  # end is inclusive
                 ),
                 fields=fields,
             )
@@ -500,6 +501,10 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
     metadata_properties = {}
     correlation_id = env.get(EVAL_ENV_KEY.CORRELATION_ID, "")
 
+    if load_params.global_extent is None or len(load_params.global_extent) == 0:
+        # Layer catalog global extent is not known at the moment load_params is created.
+        load_params = load_params.copy()
+        load_params.global_extent = stac_bbox.as_dict()
     data_cube_parameters, single_level = datacube_parameters.create(load_params, env, jvm)
     getattr(data_cube_parameters, "layoutScheme_$eq")("FloatingLayoutScheme")
 
