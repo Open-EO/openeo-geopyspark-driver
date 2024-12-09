@@ -48,9 +48,9 @@ from openeogeotrellis.integrations.etl_api import ETL_API_STATE
 from openeogeotrellis.integrations.yarn import yarn_state_to_openeo_job_status, YARN_STATE
 from openeogeotrellis.job_costs_calculator import (
     JobCostsCalculator,
-    noJobCostsCalculator,
     CostsDetails,
     DynamicEtlApiJobCostCalculator,
+    NoJobCostsCalculator,
 )
 from openeogeotrellis.job_registry import DoubleJobRegistry, ZkJobRegistry, get_deletable_dependency_sources
 from openeogeotrellis.utils import StatsReporter, dict_merge_recursive, to_jsonable
@@ -390,12 +390,12 @@ class JobTracker:
         zk_job_registry: Optional[ZkJobRegistry],
         principal: str,
         keytab: str,
-        job_costs_calculator: JobCostsCalculator = noJobCostsCalculator,
+        job_costs_calculator: Optional[JobCostsCalculator] = None,
         output_root_dir: Optional[Union[str, Path]] = None,
         elastic_job_registry: Optional[ElasticJobRegistry] = None
     ):
         self._app_state_getter = app_state_getter
-        self._job_costs_calculator = job_costs_calculator
+        self._job_costs_calculator: JobCostsCalculator = job_costs_calculator or NoJobCostsCalculator()
         # TODO: inject GpsBatchJobs (instead of constructing it here and requiring all its constructor args to be present)
         #       Also note that only `load_results_metadata` is actually used, so dragging a complete GpsBatchJobs might actually be overkill in the first place.
         self._batch_jobs = GpsBatchJobs(

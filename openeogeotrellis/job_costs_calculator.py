@@ -45,9 +45,6 @@ class NoJobCostsCalculator(JobCostsCalculator):
         return 0.0
 
 
-noJobCostsCalculator = NoJobCostsCalculator()
-
-
 class EtlApiJobCostsCalculator(JobCostsCalculator):
     """
     Base class for cost calculators based on resource reporting with ETL API.
