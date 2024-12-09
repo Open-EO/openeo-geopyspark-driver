@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 from urllib.parse import urlparse
 
+import pystac
 from openeo.util import TimingLogger, dict_no_none, ensure_dir
 from openeo_driver import ProcessGraphDeserializer
 from openeo_driver.backend import BatchJobs
@@ -270,6 +271,8 @@ def run_job(
 ):
     result_metadata = {}
 
+    # while creating the stac metadata, hrefs are temporary local paths.
+    stac_file_paths = []
     try:
         # We actually expect type Path, but in reality paths as strings tend to
         # slip in anyway, so we better catch them and convert them.
@@ -362,7 +365,7 @@ def run_job(
             ml_model_metadata=ml_model_metadata,
         )
         # perform a first metadata write _before_ actually computing the result. This provides a bit more info, even if the job fails.
-        write_metadata({**result_metadata, **_get_tracker_metadata("")}, metadata_file, job_dir)
+        write_metadata({**result_metadata, **_get_tracker_metadata("")}, metadata_file)
 
         for result in results:
             result.options["batch_mode"] = True
@@ -464,7 +467,7 @@ def run_job(
             ml_model_metadata=ml_model_metadata,
         )
 
-        write_metadata({**result_metadata, **_get_tracker_metadata("")}, metadata_file, job_dir)
+        write_metadata({**result_metadata, **_get_tracker_metadata("")}, metadata_file)
         logger.debug("Starting GDAL-based retrieval of asset metadata")
         result_metadata = _assemble_result_metadata(
             tracer=tracer,
@@ -483,18 +486,19 @@ def run_job(
 
         assert len(results) == len(assets_metadata)
         for result, result_assets_metadata in zip(results, assets_metadata):
-            _export_to_workspaces(
+            stac_file_paths += _export_to_workspaces(
                 result,
                 result_metadata,
                 result_assets_metadata=result_assets_metadata,
                 job_dir=job_dir,
                 remove_exported_assets=job_options.get("remove-exported-assets", False),
+                enable_merge=job_options.get("export-workspace-enable-merge", False),
             )
     finally:
-        write_metadata({**result_metadata, **_get_tracker_metadata("")}, metadata_file, job_dir)
+        write_metadata({**result_metadata, **_get_tracker_metadata("")}, metadata_file, stac_file_paths)
 
 
-def write_metadata(metadata, metadata_file, job_dir: Path):
+def write_metadata(metadata, metadata_file, stac_file_paths: List[Union[str, Path]] = None):
     with open(metadata_file, 'w') as f:
         json.dump(metadata, f, default=json_default)
     add_permissions(metadata_file, stat.S_IWGRP)
@@ -508,16 +512,12 @@ def write_metadata(metadata, metadata_file, job_dir: Path):
             bucket = os.environ.get('SWIFT_BUCKET')
             s3_instance = s3_client()
 
-            paths = list(filter(lambda x: x.is_file(), job_dir.rglob("*")))
+            paths = [metadata_file] + (stac_file_paths or [])
+            # asset files are already uploaded by Scala code
             logger.info(f"Writing results to object storage. paths={paths}")
             for file_path in paths:
-                # TODO: Get list of files to upload from metadata file.
-                #  AFAIK, nothing else is created locally and needs to be uploaded to s3 afterwards.
-                if UDF_PYTHON_DEPENDENCIES_FOLDER_NAME in str(file_path):
-                    logger.warning(f"Omitting {file_path} as the executors will not be able to access it")
-                else:
-                    full_path = str(file_path.absolute())
-                    s3_instance.upload_file(full_path, bucket, full_path.strip("/"))
+                file_path = urlparse(str(file_path)).path
+                s3_instance.upload_file(file_path, bucket, file_path.strip("/"))
         else:
             _convert_job_metadatafile_outputs_to_s3_urls(metadata_file)
 
@@ -528,6 +528,7 @@ def _export_to_workspaces(
     result_assets_metadata: dict,
     job_dir: Path,
     remove_exported_assets: bool,
+    enable_merge: bool,
 ):
     workspace_repository: WorkspaceRepository = backend_config_workspace_repository
     workspace_exports = sorted(
@@ -540,6 +541,10 @@ def _export_to_workspaces(
         for path in _write_exported_stac_collection(job_dir, result_metadata, list(result_assets_metadata.keys()))
     ]
 
+    # TODO: assemble pystac.STACObject and avoid file altogether?
+    collection_href = [href for href in stac_hrefs if "collection.json" in href][0]
+    collection = pystac.Collection.from_file(urlparse(collection_href).path)
+
     workspace_uris = {}
 
     for i, workspace_export in enumerate(workspace_exports):
@@ -548,28 +553,39 @@ def _export_to_workspaces(
 
         if merge is None:
             merge = OPENEO_BATCH_JOB_ID
-        elif merge == "":
+        elif merge == "":  # TODO: puts it in root of workspace? move it there?
             merge = "."
 
         final_export = i >= len(workspace_exports) - 1
         remove_original = remove_exported_assets and final_export
 
-        export_to_workspace = partial(
-            _export_to_workspace,
-            job_dir=job_dir,
-            target=workspace,
-            merge=merge,
-            remove_original=remove_original,
-        )
+        if enable_merge:
+            merged_collection = workspace.merge(collection, target=Path(merge), remove_original=remove_original)
+            assert isinstance(merged_collection, pystac.Collection)
 
-        for stac_href in stac_hrefs:
-            export_to_workspace(source_uri=stac_href)
-
-        for asset_key, asset in result_assets_metadata.items():
-            workspace_uri = export_to_workspace(source_uri=asset["href"])
-            workspace_uris.setdefault(asset_key, []).append(
-                (workspace_export.workspace_id, workspace_export.merge, workspace_uri)
+            for item in merged_collection.get_items(recursive=True):
+                for asset_key, asset in item.get_assets().items():
+                    (workspace_uri,) = asset.extra_fields["alternate"].values()
+                    workspace_uris.setdefault(asset_key, []).append(
+                        (workspace_export.workspace_id, workspace_export.merge, workspace_uri)
+                    )
+        else:
+            export_to_workspace = partial(
+                _export_to_workspace,
+                common_path=job_dir,
+                target=workspace,
+                merge=merge,
+                remove_original=remove_original,
             )
+
+            for stac_href in stac_hrefs:
+                export_to_workspace(source_uri=stac_href)
+
+            for asset_key, asset in result_assets_metadata.items():
+                workspace_uri = export_to_workspace(source_uri=asset["href"])
+                workspace_uris.setdefault(asset_key, []).append(
+                    (workspace_export.workspace_id, workspace_export.merge, workspace_uri)
+                )
 
     for asset_key, workspace_uris in workspace_uris.items():
         if remove_exported_assets:
@@ -588,15 +604,18 @@ def _export_to_workspaces(
 
         if alternate:
             result_metadata["assets"][asset_key]["alternate"] = alternate
+    return stac_hrefs
 
 
-def _export_to_workspace(job_dir: str, source_uri: str, target: Workspace, merge: str, remove_original: bool) -> str:
+def _export_to_workspace(
+    common_path: str, source_uri: str, target: Workspace, merge: str, remove_original: bool
+) -> str:
     uri_parts = urlparse(source_uri)
 
     if not uri_parts.scheme or uri_parts.scheme.lower() == "file":
-        return target.import_file(job_dir, Path(uri_parts.path), merge, remove_original)
+        return target.import_file(common_path, Path(uri_parts.path), merge, remove_original)
     elif uri_parts.scheme == "s3":
-        return target.import_object(job_dir, source_uri, merge, remove_original)
+        return target.import_object(common_path, source_uri, merge, remove_original)
     else:
         raise ValueError(f"unsupported scheme {uri_parts.scheme} for {source_uri}; supported are: file, s3")
 
@@ -632,7 +651,7 @@ def _write_exported_stac_collection(
             "assets": {
                 asset_id: dict_no_none(
                     **{
-                        "href": f"./{Path(asset['href']).name}",
+                        "href": f"{Path(asset['href']).name}",
                         "roles": asset.get("roles"),
                         "type": asset.get("type"),
                         "eo:bands": asset.get("bands"),

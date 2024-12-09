@@ -9,7 +9,7 @@ from openeo_driver.utils import smart_bool
 class ConfigParams:
     # TODO: port all these params to GpsBackendConfig
     #       see https://github.com/Open-EO/openeo-geopyspark-driver/issues/285
-
+    is_kube_deploy = False
     def __init__(self, env=os.environ):
         self.openeo_env = env.get("OPENEO_ENV", "unknown")
 

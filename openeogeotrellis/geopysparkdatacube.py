@@ -1567,9 +1567,14 @@ class GeopysparkDataCube(DriverDataCube):
         return self.pyramid.levels[self.pyramid.max_zoom]
 
     @callsite
-    def aggregate_spatial(self, geometries: Union[str, BaseGeometry, DriverVectorCube], reducer,
-                          target_dimension: str = "result") -> Union[AggregatePolygonResult,
-                                                                     AggregateSpatialVectorCube]:
+    def aggregate_spatial(
+        self,
+        geometries: Union[str, BaseGeometry, DriverVectorCube],
+        reducer,
+        target_dimension: Optional[str] = None,
+    ) -> Union[AggregatePolygonResult, AggregateSpatialVectorCube]:
+        if target_dimension:
+            raise FeatureUnsupportedException("Argument `target_dimension` not supported in `aggregate_spatial`")
 
         if isinstance(reducer, dict) and len(reducer) > 0:
             single_process = next(iter(reducer.values())).get('process_id')

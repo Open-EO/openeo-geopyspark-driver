@@ -151,7 +151,6 @@ def test_fit_class_random_forest_from_graph(
                                 }
                             }
                         },
-                        "target_dimension": "bands",
                     },
                 },
                 "fitclassrandomforest1": {

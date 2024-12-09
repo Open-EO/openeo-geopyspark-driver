@@ -20,6 +20,7 @@ from openeo_driver.backend import LoadParameters, BatchJobMetadata
 from openeo_driver.errors import OpenEOApiException, ProcessParameterUnsupportedException, JobNotFoundException, \
     ProcessParameterInvalidException
 from openeo_driver.jobregistry import PARTIAL_JOB_STATUS
+from openeo_driver.ProcessGraphDeserializer import DEFAULT_TEMPORAL_EXTENT
 from openeo_driver.users import User
 from openeo_driver.util.geometry import BoundingBox, GeometryBufferer
 from openeo_driver.util.utm import utm_zone_from_epsg
@@ -249,8 +250,12 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
                 collections=collection_id,
                 bbox=requested_bbox.reproject("EPSG:4326").as_wsen_tuple() if requested_bbox else None,
                 limit=20,
-                datetime=f"{from_date.isoformat().replace('+00:00', 'Z')}/"
-                         f"{to_date.isoformat().replace('+00:00', 'Z')}",  # end is inclusive
+                datetime=(
+                    None
+                    if temporal_extent is DEFAULT_TEMPORAL_EXTENT
+                    else f"{from_date.isoformat().replace('+00:00', 'Z')}/"
+                    f"{to_date.isoformat().replace('+00:00', 'Z')}"  # end is inclusive
+                ),
                 fields=fields,
             )
 

@@ -121,7 +121,7 @@ def pyramid(metadata_properties, projected_polygons_native_crs, from_date, to_da
     pyrdd = geopyspark.create_python_rdd(j2p_rdd, serializer=serializer)
     pyrdd = pyrdd.map(json.loads)
 
-    layer_metadata_py = convert_scala_metadata(metadata_sc, epoch_ms_to_datetime=_instant_ms_to_hour, logger=logger)
+    layer_metadata_py = convert_scala_metadata(metadata_sc, epoch_ms_to_datetime=_instant_ms_to_minute, logger=logger)
 
     # -----------------------------------
     prefix = ""
@@ -175,6 +175,17 @@ def _instant_ms_to_hour(instant: int) -> datetime:
     Sentinel-3 can have many observations per day, warranting the choice of hourly rather than daily aggregation
     """
     return datetime(*(datetime.utcfromtimestamp(instant // 1000).timetuple()[:4]))
+
+def _instant_ms_to_minute(instant: int) -> datetime:
+    """
+    Convert Geotrellis SpaceTimeKey instant (Scala Long, millisecond resolution) to Python datetime object,
+    rounded down to minute resolution, a convention used in other places
+    of our openEO backend implementation and necessary to follow, for example
+    to ensure that timeseries related data joins work properly.
+
+    Sentinel-3 can have many observations per day, warranting the choice of fine grained aggregation rather than daily aggregation
+    """
+    return datetime(*(datetime.utcfromtimestamp(instant // 1000).timetuple()[:5]))
 
 
 @ensure_executor_logging
@@ -284,7 +295,7 @@ def read_product(product, product_type, band_names, tile_size, limit_python_memo
                 c = col - col_start
                 r = row - row_start
 
-                key = geopyspark.SpaceTimeKey(col=col, row=row, instant=_instant_ms_to_hour(instant))
+                key = geopyspark.SpaceTimeKey(col=col, row=row, instant=_instant_ms_to_minute(instant))
                 tile = orfeo_bands[:, r * tile_size:(r + 1) * tile_size, c * tile_size:(c + 1) * tile_size]
                 if not (tile == nodata).all():
                     if debug_mode:
@@ -438,14 +449,23 @@ def do_reproject(product_type, final_grid_resolution, creo_path, band_names,
                 return band_name
             raise ValueError(band_name)
 
+        def readAndReproject(data_mask_,LUT):
+            band_data, band_settings = read_band(in_file, in_band=variable_name(band_name), data_mask=data_mask_)
+            flat = band_data.flatten()
+            #inconvenient approach for compatibility with old xarray version
+            flat_mask = data_mask_.where(data_mask_, drop=True).data.flatten()
+            flat_mask[np.isnan(flat_mask)] = 0
+            filtered = flat[flat_mask.astype(np.bool_)]
+            return band_settings,apply_LUT_on_band(filtered, LUT, band_settings.get('_FillValue', None))
+
         if product_type == SLSTR_PRODUCT_TYPE and band_name in ["solar_azimuth_tn", "solar_zenith_tn", "sat_azimuth_tn", "sat_zenith_tn",]:
-            band_data, band_settings = read_band(in_file, in_band=variable_name(band_name), data_mask=angle_data_mask)
-            reprojected_data = apply_LUT_on_band(band_data, LUT_angles, band_settings.get('_FillValue', None))  # result is an numpy array with reprojected data
+              # result is an numpy array with reprojected data
+            band_settings, reprojected_data = readAndReproject(angle_data_mask,LUT_angles)
             interpolated = _linearNDinterpolate(reprojected_data)
             reprojected_data = interpolated[RIM_PIXELS:-RIM_PIXELS, RIM_PIXELS:-RIM_PIXELS]
         else:
-            band_data, band_settings = read_band(in_file, in_band=variable_name(band_name), data_mask=data_mask)
-            reprojected_data = apply_LUT_on_band(band_data, LUT, band_settings.get('_FillValue', None))  # result is an numpy array with reprojected data
+            band_settings, reprojected_data = readAndReproject(data_mask, LUT)
+
 
         if '_FillValue' in band_settings and not digital_numbers:
             reprojected_data[reprojected_data == band_settings['_FillValue']] = np.nan
@@ -556,7 +576,7 @@ def _read_latlonfile(bbox, latlon_file, lat_band="latitude", lon_band="longitude
     return bbox_original, source_coordinates, data_mask
 
 def create_index_LUT(coordinates, target_coordinates, max_distance):
-    """Create A LUT containing the reprojection indexes. Find ALL the indices of the nearest neighbors within the maximum distance.
+    """Create A LUT (lookup table) containing the reprojection indexes. Find ALL the indices of the nearest neighbors within the maximum distance.
 
     Parameters
     ----------
@@ -663,9 +683,9 @@ def apply_LUT_on_band(in_data, LUT, nodata=None):
     Parameters
     ----------
     in_data : numpy array
-        A 2D-numpy array containing all the source(frame) values
+        A 1D-numpy array containing all the source(frame) values
     LUT : numpy array
-        A 2D-numpy array : LUT has the size of a tile, containing the index of the source data
+        A 2D-numpy array : LUT has the size of a tile, containing the index of the source data (the index in in_data)
     nodata : float
         The nodata value to use when a target coordinate has no corresponding input value.
 
@@ -674,8 +694,7 @@ def apply_LUT_on_band(in_data, LUT, nodata=None):
     grid_values: numpy array
         2D-numpy array with the size of a tile containing reprojected values
     """
-    data_flat = in_data.flatten()
-    data_flat = data_flat[~np.isnan(data_flat)]
+
 
     # if nodata is empty, we will just use the max possible value
     if nodata is None:
@@ -686,7 +705,7 @@ def apply_LUT_on_band(in_data, LUT, nodata=None):
             nodata = np.nan
             # nodata = np.finfo(in_data.dtype).max
 
-    data_flat = np.append(data_flat, nodata)
+    data_flat = np.append(in_data, nodata)
     #TODO: this avoids getting IndexOutOfBounds, but may hide the actual issue because array sizes don't match
     LUT_invalid_index = LUT >= len(data_flat)
     LUT[LUT_invalid_index] = 0

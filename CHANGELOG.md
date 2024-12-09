@@ -14,7 +14,20 @@ without compromising stable operations.
 
 ## Unreleased
 
+- `export_workspace`: experimental support for merging STAC Collections ([#677](https://github.com/Open-EO/openeo-geopyspark-driver/issues/677))
 - `load_stac`: Align output pixels with source pixels if source data is UTM and has an offset. ([#648](https://github.com/Open-EO/openeo-geopyspark-driver/issues/648))
+
+## 0.52.0
+
+- Throw error when trying to use unsupported `target_dimension` in `aggregate_spatial` ([#951](https://github.com/Open-EO/openeo-geopyspark-driver/issues/951))
+- Allow specifying region name for an ObjectStorageWorkspace ([#955](https://github.com/Open-EO/openeo-geopyspark-driver/pull/955))
+- Better print ApiException. ([#962](https://github.com/Open-EO/openeo-geopyspark-driver/pull/962))
+- Include job title by default in user job listings ([#963](https://github.com/Open-EO/openeo-geopyspark-driver/issues/963))
+- Support pagination of user job listings ([#959](https://github.com/Open-EO/openeo-geopyspark-driver/issues/959)/[Open-EO/openeo-python-driver#332](https://github.com/Open-EO/openeo-python-driver/issues/332))
+
+## 0.51.0
+
+- `load_stac`: omit `datetime` parameter from STAC API item search request if no `temporal_extent` specified ([#950](https://github.com/Open-EO/openeo-geopyspark-driver/issues/950))
 
 ## 0.50.1
 

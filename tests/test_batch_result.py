@@ -3,8 +3,10 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import uuid
-from pathlib import Path
+from pathlib import Path, PurePath
+from typing import Set
 from unittest import mock
 
 import geopandas as gpd
@@ -30,6 +32,7 @@ from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.deploy.batch_job import run_job
 from openeogeotrellis.deploy.batch_job_metadata import extract_result_metadata
 from openeogeotrellis.utils import s3_client
+from openeogeotrellis.workspace import ObjectStorageWorkspace, CustomStacIO
 from .conftest import force_stop_spark_context, _setup_local_spark
 
 from .data import TEST_DATA_ROOT, get_test_data_file
@@ -936,7 +939,7 @@ def test_export_workspace(tmp_path, remove_original):
             "arguments": {
                 "data": {"from_node": "saveresult1"},
                 "workspace": workspace_id,
-                "merge": merge,
+                "merge": str(merge),
             },
             "result": True
         }
@@ -951,7 +954,7 @@ def test_export_workspace(tmp_path, remove_original):
 
     # TODO: avoid depending on `/tmp` for test output, make sure to leverage `tmp_path` fixture (https://github.com/Open-EO/openeo-python-driver/issues/265)
     workspace: DiskWorkspace = get_backend_config().workspaces[workspace_id]
-    workspace_dir = Path(f"{workspace.root_directory}/{merge}")
+    workspace_dir = workspace.root_directory / merge
 
     try:
         metadata_file = tmp_path / "job_metadata.json"
@@ -975,13 +978,12 @@ def test_export_workspace(tmp_path, remove_original):
             assert "openEO_2021-01-05Z.tif" in job_dir_files
             assert "openEO_2021-01-15Z.tif" in job_dir_files
 
-        workspace_files = set(os.listdir(workspace_dir))
-        assert workspace_files == {
-            "collection.json",
-            "openEO_2021-01-05Z.tif",
-            "openEO_2021-01-05Z.tif.json",
-            "openEO_2021-01-15Z.tif",
-            "openEO_2021-01-15Z.tif.json",
+        assert _paths_relative_to(workspace_dir) == {
+            Path("collection.json"),
+            Path("openEO_2021-01-05Z.tif"),
+            Path("openEO_2021-01-05Z.tif.json"),
+            Path("openEO_2021-01-15Z.tif"),
+            Path("openEO_2021-01-15Z.tif.json"),
         }
 
         stac_collection = pystac.Collection.from_file(str(workspace_dir / "collection.json"))
@@ -1060,7 +1062,7 @@ def test_export_workspace_with_asset_per_band(tmp_path):
             "arguments": {
                 "data": {"from_node": "saveresult1"},
                 "workspace": workspace_id,
-                "merge": merge,
+                "merge": str(merge),
             },
             "result": True,
         },
@@ -1072,7 +1074,7 @@ def test_export_workspace_with_asset_per_band(tmp_path):
 
     # TODO: avoid depending on `/tmp` for test output, make sure to leverage `tmp_path` fixture (https://github.com/Open-EO/openeo-python-driver/issues/265)
     workspace: DiskWorkspace = get_backend_config().workspaces[workspace_id]
-    workspace_dir = Path(f"{workspace.root_directory}/{merge}")
+    workspace_dir = workspace.root_directory / merge
 
     try:
         run_job(
@@ -1089,13 +1091,12 @@ def test_export_workspace_with_asset_per_band(tmp_path):
         assert "openEO_2021-01-05Z_Longitude.tif" in job_dir_files
         assert "openEO_2021-01-05Z_Latitude.tif" in job_dir_files
 
-        workspace_files = set(os.listdir(workspace_dir))
-        assert workspace_files == {
-            "collection.json",
-            "openEO_2021-01-05Z_Longitude.tif",
-            "openEO_2021-01-05Z_Longitude.tif.json",
-            "openEO_2021-01-05Z_Latitude.tif",
-            "openEO_2021-01-05Z_Latitude.tif.json",
+        assert _paths_relative_to(workspace_dir) == {
+            Path("collection.json"),
+            Path("openEO_2021-01-05Z_Longitude.tif"),
+            Path("openEO_2021-01-05Z_Longitude.tif.json"),
+            Path("openEO_2021-01-05Z_Latitude.tif"),
+            Path("openEO_2021-01-05Z_Latitude.tif.json"),
         }
 
         stac_collection = pystac.Collection.from_file(str(workspace_dir / "collection.json"))
@@ -1151,9 +1152,17 @@ def test_filepath_per_band(
     monkeypatch,
 ):
     if use_s3:
+        # TODO: the location where executors write result assets to (either disk or object storage as determined by
+        #  the FUSE_MOUNT_BATCHJOB_S3_BUCKET envar) is not related to the type of workspace (DiskWorkspace or
+        #  ObjectStorageWorkspace) that will be used.
+        #  Case in point: FUSE_MOUNT_BATCHJOB_S3_BUCKET is typically set on CDSE, but its configuration currently
+        #  only defines workspaces of type ObjectStorageWorkspace.
         workspace_id = "s3_workspace"
     else:
         workspace_id = "tmp_workspace"
+
+    workspace = get_backend_config().workspaces[workspace_id]
+    s3_instance = s3_client()
 
     merge = _random_merge()
 
@@ -1200,7 +1209,7 @@ def test_filepath_per_band(
             "arguments": {
                 "data": {"from_node": "saveresult1"},
                 "workspace": workspace_id,
-                "merge": merge,
+                "merge": str(merge),
             },
             "result": True,
         },
@@ -1216,7 +1225,6 @@ def test_filepath_per_band(
                 print(message)
 
         _setup_local_spark(TerminalReporterMock(), 0)
-        s3_instance = s3_client()
     try:
         process = {
             "process_graph": process_graph,
@@ -1280,23 +1288,24 @@ def test_filepath_per_band(
             with rasterio.open(geotiff_asset_copy_path) as dataset:
                 assert dataset.driver == "GTiff"
 
-        workspace = get_backend_config().workspaces[workspace_id]
         if use_s3:
             # job bucket and workspace bucket are the same
             job_dir_files_s3 = [
                 o["Key"] for o in s3_instance.list_objects(Bucket=get_backend_config().s3_bucket_name)["Contents"]
             ]
-            assert job_dir_files_s3 == ListSubSet(
-                [
-                    f"{merge}/collection.json",
-                    f"{merge}/folder1/lon.tif",
-                    f"{merge}/folder1/lon.tif.json",
-                    f"{merge}/lat.tif",
-                    f"{merge}/lat.tif.json",
-                ]
-            )
+            for prefix in [merge, tmp_path.relative_to("/")]:
+                assert job_dir_files_s3 == ListSubSet(
+                    [
+                        f"{prefix}/collection.json",
+                        f"{prefix}/folder1/lon.tif",
+                        f"{prefix}/folder1/lon.tif.json",
+                        f"{prefix}/lat.tif",
+                        f"{prefix}/lat.tif.json",
+                    ]
+                )
 
         else:
+            assert isinstance(workspace, DiskWorkspace)
             workspace_dir = Path(f"{workspace.root_directory}/{merge}")
             assert workspace_dir.exists()
             assert (workspace_dir / "lat.tif").exists()
@@ -1305,8 +1314,155 @@ def test_filepath_per_band(
             stac_collection_exported.validate_all()
     finally:
         if not use_s3:
+            assert isinstance(workspace, DiskWorkspace)
             workspace_dir = Path(f"{workspace.root_directory}/{merge}")
             shutil.rmtree(workspace_dir, ignore_errors=True)
+
+
+def test_export_workspace_merge_filepath_per_band(tmp_path, mock_s3_bucket):
+    job_dir = tmp_path
+
+    object_workspace_id = "s3_workspace"  # most common scenario: assets on disk to workspace in object storage
+    disk_workspace_id = "tmp"  # assets on disk to workspace on disk
+
+    enable_merge = True
+    merge = _random_merge(is_actual_collection_document=enable_merge)
+
+    process_graph = {
+        "loadcollection1": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "TestCollection-LonLat16x16",
+                "temporal_extent": ["2021-01-05", "2021-01-06"],
+                "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 2.0},
+                "bands": ["Longitude", "Latitude"],
+            },
+        },
+        "reducedimension1": {
+            "process_id": "reduce_dimension",
+            "arguments": {
+                "data": {"from_node": "loadcollection1"},
+                "dimension": "t",
+                "reducer": {
+                    "process_graph": {
+                        "first1": {
+                            "process_id": "first",
+                            "arguments": {
+                                "data": {"from_parameter": "data"}
+                            },
+                            "result": True,
+                        }
+                    }
+                },
+            }
+        },
+        "saveresult1": {
+            "process_id": "save_result",
+            "arguments": {
+                "data": {"from_node": "reducedimension1"},
+                "format": "GTiff",
+                "options": {
+                    "separate_asset_per_band": "true",
+                    "filepath_per_band": ["some/deeply/nested/folder/lon.tif", "lat.tif"],
+                },
+            },
+        },
+        "exportworkspace1": {
+            "process_id": "export_workspace",
+            "arguments": {
+                "data": {"from_node": "saveresult1"},
+                "workspace": object_workspace_id,
+                "merge": str(merge),
+            },
+            "result": True,
+        },
+        "exportworkspace2": {
+            "process_id": "export_workspace",
+            "arguments": {
+                "data": {"from_node": "saveresult1"},
+                "workspace": disk_workspace_id,
+                "merge": str(merge),
+            },
+        },
+    }
+
+    process = {
+        "process_graph": process_graph,
+        "job_options": {
+            "export-workspace-enable-merge": enable_merge,
+        },
+    }
+
+    disk_workspace = get_backend_config().workspaces[disk_workspace_id]
+    assert isinstance(disk_workspace, DiskWorkspace)
+    workspace_dir = (disk_workspace.root_directory / merge).parent
+
+    try:
+        run_job(
+            process,
+            output_file=job_dir / "out",
+            metadata_file=job_dir / "job_metadata.json",
+            api_version="2.0.0",
+            job_dir=job_dir,
+            dependencies=[],
+        )
+
+        assert list(_paths_relative_to(job_dir)) == ListSubSet([
+            Path("some/deeply/nested/folder/lon.tif"),
+            Path("lat.tif"),
+        ])
+
+        object_workspace = get_backend_config().workspaces[object_workspace_id]
+        assert isinstance(object_workspace, ObjectStorageWorkspace)
+        assert object_workspace.bucket == get_backend_config().s3_bucket_name
+
+        object_workspace_keys = [PurePath(obj.key) for obj in mock_s3_bucket.objects.all()]
+
+        assert object_workspace_keys == ListSubSet([
+            merge,  # the Collection itself
+            merge / "some/deeply/nested/folder/lon.tif",
+            merge / "some/deeply/nested/folder/lon.tif.json",
+            merge / "lat.tif",
+            merge / "lat.tif.json",
+        ])
+
+        def load_exported_collection(collection_href: str):
+            assets_in_object_storage = collection_href.startswith("s3://")
+
+            stac_collection = pystac.Collection.from_file(collection_href, stac_io=CustomStacIO())
+            assert stac_collection.validate_all() == 2
+
+            assets = [
+                asset for item in stac_collection.get_items(recursive=True) for asset in item.get_assets().values()
+            ]
+            assert len(assets) == 2
+
+            for asset in assets:
+                with tempfile.NamedTemporaryFile() as f:
+                    if assets_in_object_storage:
+                        object_key = _object_key(asset.get_absolute_href())
+                        mock_s3_bucket.download_file(object_key, f.name)
+                    else:  # the asset is on disk
+                        asset.copy(f.name)
+
+                    with rasterio.open(f.name) as dataset:
+                        assert dataset.driver == "GTiff"
+
+        load_exported_collection(f"s3://{object_workspace.bucket}/{merge}")
+        load_exported_collection(str(disk_workspace.root_directory / merge))
+    finally:
+        shutil.rmtree(workspace_dir)
+
+
+def _object_key(s3_uri: str) -> str:
+    from urllib.parse import urlparse
+
+    uri_parts = urlparse(s3_uri)
+
+    if uri_parts.scheme != "s3":
+        raise ValueError(s3_uri)
+
+    return uri_parts.path.lstrip("/")
 
 
 def test_discard_result(tmp_path):
@@ -1675,7 +1831,7 @@ def test_multiple_save_result_single_export_workspace(tmp_path):
             "arguments": {
                 "data": {"from_node": "saveresult2"},
                 "workspace": workspace_id,
-                "merge": merge,
+                "merge": str(merge),
             },
             "result": True,
         },
@@ -1687,7 +1843,7 @@ def test_multiple_save_result_single_export_workspace(tmp_path):
 
     # TODO: avoid depending on `/tmp` for test output, make sure to leverage `tmp_path` fixture (https://github.com/Open-EO/openeo-python-driver/issues/265)
     workspace: DiskWorkspace = get_backend_config().workspaces[workspace_id]
-    workspace_dir = Path(f"{workspace.root_directory}/{merge}")
+    workspace_dir = workspace.root_directory / merge
 
     try:
         run_job(
@@ -1704,8 +1860,11 @@ def test_multiple_save_result_single_export_workspace(tmp_path):
         assert "openEO.nc" in job_dir_files
         assert "openEO.tif" in job_dir_files
 
-        workspace_files = set(os.listdir(workspace_dir))
-        assert workspace_files == {"collection.json", "openEO.tif", "openEO.tif.json"}
+        assert _paths_relative_to(workspace_dir) == {
+            Path("collection.json"),
+            Path("openEO.tif"),
+            Path("openEO.tif.json"),
+        }
 
         stac_collection = pystac.Collection.from_file(str(workspace_dir / "collection.json"))
         stac_collection.validate_all()
@@ -1860,7 +2019,7 @@ def test_export_to_multiple_workspaces(tmp_path, remove_original):
             "arguments": {
                 "data": {"from_node": "saveresult1"},
                 "workspace": "tmp",
-                "merge": merge1,
+                "merge": str(merge1),
             },
         },
         "exportworkspace2": {
@@ -1868,7 +2027,7 @@ def test_export_to_multiple_workspaces(tmp_path, remove_original):
             "arguments": {
                 "data": {"from_node": "exportworkspace1"},
                 "workspace": "tmp",
-                "merge": merge2,
+                "merge": str(merge2),
             },
             "result": True,
         }
@@ -1902,23 +2061,23 @@ def test_export_to_multiple_workspaces(tmp_path, remove_original):
 
         assert asset["href"] == str(tmp_path / "openEO_2021-01-05Z.tif")
 
-        primary_workspace_uri = f"file:{workspace.root_directory / max(merge1, merge2)}/openEO_2021-01-05Z.tif"
-        secondary_workspace_uri = f"file:{workspace.root_directory / min(merge1, merge2)}/openEO_2021-01-05Z.tif"
+        first_workspace_uri = f"file:{workspace.root_directory / max(merge1, merge2)}/openEO_2021-01-05Z.tif"
+        second_workspace_uri = f"file:{workspace.root_directory / min(merge1, merge2)}/openEO_2021-01-05Z.tif"
 
         if remove_original:
-            assert asset["public_href"] == primary_workspace_uri
+            assert asset["public_href"] == first_workspace_uri
             assert asset["alternate"] == {
                 f"{workspace_id}/{min(merge1, merge2)}": {
-                    "href": secondary_workspace_uri,
+                    "href": second_workspace_uri,
                 },
             }
         else:
             assert asset["alternate"] == {
                 f"{workspace_id}/{max(merge1, merge2)}": {
-                    "href": primary_workspace_uri,
+                    "href": first_workspace_uri,
                 },
                 f"{workspace_id}/{min(merge1, merge2)}": {
-                    "href": secondary_workspace_uri,
+                    "href": second_workspace_uri,
                 },
             }
     finally:
@@ -1994,5 +2153,14 @@ def test_reduce_bands_to_geotiff(tmp_path):
     assert not only_band.GetDescription()
 
 
-def _random_merge():
-    return f"OpenEO-workspace-{uuid.uuid4()}"
+def _random_merge(is_actual_collection_document: bool = False) -> PurePath:
+    subdirectory = PurePath(f"OpenEO-workspace-{uuid.uuid4()}")
+    return subdirectory / "collection.json" if is_actual_collection_document else subdirectory
+
+
+def _paths_relative_to(base: Path) -> Set[Path]:
+    return {
+        (Path(dirpath) / filename).relative_to(base)
+        for dirpath, dirnames, filenames in os.walk(base)
+        for filename in filenames
+    }
