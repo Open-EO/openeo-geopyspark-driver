@@ -123,7 +123,7 @@ def exec_parallel_with_fallback(callback, argument_tuples):
         jobs = [pool.apply_async(callback, arg_tuple, error_callback=error_handler) for arg_tuple in argument_tuples]
         pool.close()
         try:
-            results = [job.get(timeout=60) for job in jobs]
+            results = [job.get(timeout=1800) for job in jobs]
             pool.join()
         except multiprocessing.TimeoutError:
             pool.terminate()
@@ -507,7 +507,7 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
         # use "--debug ON" to print more logging to cerr
         cmd = ["gdalinfo", asset_uri, "-json", "-stats", "--config", "GDAL_IGNORE_ERRORS", "ALL"]
         try:
-            out = subprocess.check_output(cmd, timeout=60, text=True)
+            out = subprocess.check_output(cmd, timeout=1800, text=True)
             data_gdalinfo_from_subprocess = parse_json_from_output(out)
             end = time.time()
             poorly_log(f"gdalinfo took {int((end - start) * 1000)}ms for {asset_uri}", level=logging.DEBUG)  # ~30ms
@@ -529,7 +529,7 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
             f"""from osgeo import gdal; import json; gdal.UseExceptions(); print(json.dumps(gdal.Info({asset_uri!r}, options=gdal.InfoOptions(format="json", stats=True))))""",
         ]
         try:
-            out = subprocess.check_output(cmd, timeout=60, text=True)
+            out = subprocess.check_output(cmd, timeout=1800, text=True)
             data_gdalinfo_from_subprocess = parse_json_from_output(out)
             end = time.time()
             poorly_log(
