@@ -296,6 +296,7 @@ def test_extra_validation_layer_too_large_delayedvector(backend_implementation):
             "temporal_extent": ["2019-01-01", "2019-01-02"],
             "spatial_extent": {"south": 0.0, "west": 0.0, "north": 90.0, "east": 180.0},
             "bands": ["HH", "HV", "VV"],
+            "resample": {"target_crs": "EPSG:4326"},
             "aggregate_spatial": {
                 "geometries": DelayedVector.from_json_dict(polygon1),
             },
@@ -304,6 +305,7 @@ def test_extra_validation_layer_too_large_delayedvector(backend_implementation):
             "temporal_extent": ["2019-01-01", "2019-01-02"],
             "spatial_extent": {"south": 0.0, "west": 0.0, "north": 90.0, "east": 180.0},
             "bands": ["DEM"],
+            "resample": {"target_crs": "EPSG:4326"},
             "aggregate_spatial": {
                 "geometries": DelayedVector.from_json_dict(geom_coll),
             },
@@ -326,6 +328,7 @@ def test_extra_validation_layer_too_large_geometrycollection(backend_implementat
             "temporal_extent": ["2019-01-01", "2019-01-02"],
             "spatial_extent": {"south": 0.0, "west": 0.0, "north": 90.0, "east": 180.0},
             "bands": ["HH", "HV", "VV"],
+            "resample": {"target_crs": "EPSG:4326"},
             "aggregate_spatial": {
                 "geometries": shapely.geometry.MultiPolygon([polygon1]),
             },
@@ -334,6 +337,7 @@ def test_extra_validation_layer_too_large_geometrycollection(backend_implementat
             "temporal_extent": ["2019-01-01", "2019-01-02"],
             "spatial_extent": {"south": 0.0, "west": 0.0, "north": 90.0, "east": 180.0},
             "bands": ["DEM"],
+            "resample": { "target_crs": "EPSG:4326" },
             "aggregate_spatial": {
                 "geometries": shapely.geometry.GeometryCollection([polygon1, polygon2]),
             },
@@ -618,6 +622,7 @@ def test_request_costs(mock_get_etl_api_credentials_from_env, backend_implementa
             duration_ms=None,
             sentinel_hub_processing_units=shpu if shpu else None,
             additional_credits_cost=None,
+            organization_id=None,
         )
 
         assert credit_cost == 6

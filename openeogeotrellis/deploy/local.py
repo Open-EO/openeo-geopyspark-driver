@@ -96,7 +96,7 @@ def setup_local_spark(log_dir: Path = Path.cwd(), verbosity=0):
         -Dtsservice.layersConfigClass=ProdLayersConfiguration -Dtsservice.sparktasktimeout=600 "
     sparkDriverJavaOptions += " -Dgeotrellis.jts.precision.type=fixed -Dgeotrellis.jts.simplification.scale=1e10"
     if OPENEO_LOCAL_DEBUGGING:
-        for port in [5005, 5009]:
+        for port in range(5005, 5009):
             if is_port_free(port):
                 # 'agentlib' to allow attaching a Java debugger to running Spark driver
                 # IntelliJ IDEA: Run -> Edit Configurations -> Remote JVM Debug uses 5005 by default

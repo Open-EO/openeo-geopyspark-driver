@@ -185,7 +185,7 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
     -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService\
     -Dtsservice.layersConfigClass=ProdLayersConfiguration -Dtsservice.sparktasktimeout=600"
     if OPENEO_LOCAL_DEBUGGING:
-        for port in [5005, 5009]:
+        for port in range(5005, 5009):
             if is_port_free(port):
                 # 'agentlib' to allow attaching a Java debugger to running Spark driver
                 # IntelliJ IDEA: Run -> Edit Configurations -> Remote JVM Debug uses 5005 by default

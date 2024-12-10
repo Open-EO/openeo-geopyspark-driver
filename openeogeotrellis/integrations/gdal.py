@@ -123,7 +123,7 @@ def exec_parallel_with_fallback(callback, argument_tuples):
         jobs = [pool.apply_async(callback, arg_tuple, error_callback=error_handler) for arg_tuple in argument_tuples]
         pool.close()
         try:
-            results = [job.get(timeout=60) for job in jobs]
+            results = [job.get(timeout=1800) for job in jobs]
             pool.join()
         except multiprocessing.TimeoutError:
             pool.terminate()
@@ -196,8 +196,9 @@ def _get_metadata_callback(asset_path: str, asset_md: Dict[str, str], job_dir: P
 
     mime_type: str = asset_md.get("type", "")
 
-    # Skip assets that are clearly not images.
-    if asset_path.endswith(".json"):
+    # Skip assets that are clearly not images. TODO: Whitelist instead of blacklist
+    asset_path_extension = Path(asset_path).suffix.lower()
+    if asset_path_extension in [".json", ".csv", ".parquet"]:
         return None
 
     # The asset path should be relative to the job directory.
@@ -494,7 +495,7 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
             data_gdalinfo = gdal.Info(asset_uri, options=gdal.InfoOptions(format="json", stats=True))
             end = time.time()
             # This can throw a segfault on empty netcdf bands:
-            poorly_log(f"gdal.Info() took {(end - start) * 1000}ms for {asset_uri}", level=logging.DEBUG)  # ~10ms
+            poorly_log(f"gdal.Info() took {int((end - start) * 1000)}ms for {asset_uri}", level=logging.DEBUG)  # ~10ms
         except Exception as exc:
             poorly_log(
                 f"gdalinfo Exception. Statistics won't be added to STAC metadata. '{exc}'.", level=logging.WARNING
@@ -506,10 +507,10 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
         # use "--debug ON" to print more logging to cerr
         cmd = ["gdalinfo", asset_uri, "-json", "-stats", "--config", "GDAL_IGNORE_ERRORS", "ALL"]
         try:
-            out = subprocess.check_output(cmd, timeout=60, text=True)
+            out = subprocess.check_output(cmd, timeout=1800, text=True)
             data_gdalinfo_from_subprocess = parse_json_from_output(out)
             end = time.time()
-            poorly_log(f"gdalinfo took {(end - start) * 1000}ms for {asset_uri}", level=logging.DEBUG)  # ~30ms
+            poorly_log(f"gdalinfo took {int((end - start) * 1000)}ms for {asset_uri}", level=logging.DEBUG)  # ~30ms
             if data_gdalinfo:
                 assert data_gdalinfo_from_subprocess == data_gdalinfo
             else:
@@ -528,11 +529,11 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
             f"""from osgeo import gdal; import json; gdal.UseExceptions(); print(json.dumps(gdal.Info({asset_uri!r}, options=gdal.InfoOptions(format="json", stats=True))))""",
         ]
         try:
-            out = subprocess.check_output(cmd, timeout=60, text=True)
+            out = subprocess.check_output(cmd, timeout=1800, text=True)
             data_gdalinfo_from_subprocess = parse_json_from_output(out)
             end = time.time()
             poorly_log(
-                f"gdal.Info() subprocess took {(end - start) * 1000}ms for {asset_uri}", level=logging.DEBUG
+                f"gdal.Info() subprocess took {int((end - start) * 1000)}ms for {asset_uri}", level=logging.DEBUG
             )  # ~130ms
             if data_gdalinfo:
                 assert data_gdalinfo_from_subprocess == data_gdalinfo
