@@ -254,3 +254,8 @@ class GpsBackendConfig(OpenEoBackendConfig):
     # calrissian_image: Optional[str] = "ghcr.io/duke-gcb/calrissian/calrissian:0.17.1"
     calrissian_image: Optional[str] = "registry.stag.warsaw.openeo.dataspace.copernicus.eu/rand/calrissian:latest"
     calrissian_bucket: Optional[str] = "calrissian"
+
+    """
+    Inject S3 profiles and tokens that allow S3 access scoped to the Job execution.      
+    """
+    provide_s3_profiles_and_tokens: bool = False
