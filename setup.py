@@ -98,7 +98,8 @@ setup(
         "planetary-computer~=1.0.0",
         "reretry~=0.11.8",
         "traceback-with-variables==2.0.4",
-        'scipy>=1.8' # used by sentinel-3 reader
+        'scipy>=1.8',  # used by sentinel-3 reader
+        "PyJWT[crypto]~=2.9.0",  # For identity tokens
     ],
     extras_require={
         "dev": tests_require,

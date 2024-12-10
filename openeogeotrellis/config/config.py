@@ -245,3 +245,8 @@ class GpsBackendConfig(OpenEoBackendConfig):
     gdalinfo_python_call: bool = False
     gdalinfo_use_subprocess: bool = True  # TODO: Only keep one gdalinfo on true
     gdalinfo_use_python_subprocess: bool = False
+
+    """
+    Inject S3 profiles and tokens that allow S3 access scoped to the Job execution.      
+    """
+    provide_s3_profiles_and_tokens: bool = False

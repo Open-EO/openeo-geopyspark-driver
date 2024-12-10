@@ -4,6 +4,7 @@ import getpass
 import json
 import logging
 import pathlib
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -28,6 +29,7 @@ from openeogeotrellis.utils import (
     to_s3_url,
     utcnow,
     parse_json_from_output,
+    get_file_reload_register_func_if_changed,
 )
 
 
@@ -413,3 +415,43 @@ def test_map_optional():
 
     assert map_optional(to_upper, None) is None
     assert map_optional(to_upper, "hello") == "HELLO"
+
+
+def test_get_file_reload_register_func_if_changed():
+    with tempfile.TemporaryDirectory(
+        dir="/tmp", suffix="test-cfg-file"
+    ) as temp_test_dir:
+        # GIVEN a file path that does not exist yet
+        temp_dir_path = Path(temp_test_dir)
+        cfg_file_path = temp_dir_path.joinpath("cfg.json")
+
+        # WHEN you check if a file needs to be reloaded the first time
+        reg_func = get_file_reload_register_func_if_changed(cfg_file_path)
+        # THEN it needs to be loaded whether it exists or not
+        assert reg_func is not None
+
+        # GIVEN the reload was not successfull (reg_func not called)
+        # WHEN you check if a file needs to be reloaded again
+        reg_func = get_file_reload_register_func_if_changed(cfg_file_path)
+        # THEN it still needs to be loaded whether it exists or not
+        assert reg_func is not None
+
+        # WHEN reload is registered as completed
+        reg_func()
+        # WHEN you check if a file needs to be reloaded after succesful registration but no change to the file
+        reg_func = get_file_reload_register_func_if_changed(cfg_file_path)
+        # THEN no reload is required
+        assert reg_func is None
+
+        # WHEN file gets changed
+        with open(cfg_file_path, "w") as fh:
+            fh.write("file changed")
+        # THEN a subsequent check would require reload
+        reg_func = get_file_reload_register_func_if_changed(cfg_file_path)
+        assert reg_func is not None
+
+        # When reload succeeded again
+        reg_func()
+        # THEN subsequent check would not require reload
+        reg_func = get_file_reload_register_func_if_changed(cfg_file_path)
+        assert reg_func is None
