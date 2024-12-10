@@ -1,3 +1,4 @@
+from __future__ import annotations
 import re
 from configparser import ConfigParser
 from io import StringIO
@@ -78,7 +79,7 @@ class S3Config:
             return io.read()
 
     @classmethod
-    def from_backend_config(cls, session_name: str, token_file: str) -> "S3Config":
+    def from_backend_config(cls, session_name: str, token_file: str) -> S3Config:
         profiles = []
         sanitized_session_name = cls._sanitize_session_name(session_name)
 
