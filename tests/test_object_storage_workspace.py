@@ -6,7 +6,8 @@ from urllib.parse import urlparse
 from pystac import Collection, Extent, SpatialExtent, TemporalExtent, Item, CatalogType, Asset
 import pytest
 
-from openeogeotrellis.workspace import ObjectStorageWorkspace, CustomStacIO
+from openeogeotrellis.workspace import ObjectStorageWorkspace
+from openeogeotrellis.workspace.custom_stac_io import CustomStacIO
 
 
 @pytest.mark.parametrize("remove_original", [False, True])

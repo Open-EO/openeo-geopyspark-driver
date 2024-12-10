@@ -32,7 +32,8 @@ from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.deploy.batch_job import run_job
 from openeogeotrellis.deploy.batch_job_metadata import extract_result_metadata
 from openeogeotrellis.utils import s3_client
-from openeogeotrellis.workspace import ObjectStorageWorkspace, CustomStacIO
+from openeogeotrellis.workspace import ObjectStorageWorkspace
+from openeogeotrellis.workspace.custom_stac_io import CustomStacIO
 from .conftest import force_stop_spark_context, _setup_local_spark
 
 from .data import TEST_DATA_ROOT, get_test_data_file
