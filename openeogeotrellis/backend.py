@@ -78,7 +78,7 @@ from openeogeotrellis import sentinel_hub, load_stac, datacube_parameters
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkdatacube import GeopysparkCubeMetadata, GeopysparkDataCube
-from openeogeotrellis.integrations.etl_api import get_etl_api
+from openeogeotrellis.integrations.etl_api import get_etl_api, ETL_ORGANIZATION_ID_JOB_OPTION
 from openeogeotrellis.integrations.hadoop import setup_kerberos_auth
 from openeogeotrellis.integrations.kubernetes import k8s_job_name, kube_client, truncate_job_id_k8s, k8s_render_manifest_template
 from openeogeotrellis.integrations.traefik import Traefik
@@ -1220,6 +1220,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                                                if sentinel_hub_processing_units and
                                                   backend_config.report_usage_sentinelhub_pus else None),
                 additional_credits_cost=None,
+                organization_id=(job_options or {}).get(ETL_ORGANIZATION_ID_JOB_OPTION),
             )
 
             logger.info(
@@ -1244,7 +1245,8 @@ class GpsProcessing(ConcreteProcessing):
                     load_params = _extract_load_parameters(env, source_id=source_id)
                     yield from extra_validation_load_collection(collection_id, load_params, env)
         except Exception as e:
-            yield {"code": "Internal", "message": str(e)}
+            logger.error("extra validation failed", exc_info=True)
+            yield {"code": "Internal", "message": str(e)}  # TODO: just propagate errors not related to validation?
 
     def run_udf(self, udf: str, data: openeo.udf.UdfData) -> openeo.udf.UdfData:
         if get_backend_config().allow_run_udf_in_driver:
