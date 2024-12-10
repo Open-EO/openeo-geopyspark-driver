@@ -220,7 +220,9 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
         elif isinstance(stac_object, pystac.Collection) and supports_item_search(stac_object):
             collection = stac_object
             collection_id = collection.id
-            metadata = GeopysparkCubeMetadata(metadata=stac_object.to_dict())
+            metadata = GeopysparkCubeMetadata(
+                metadata=stac_object.to_dict(include_self_link=False, transform_hrefs=False)
+            )
             root_catalog = collection.get_root()
 
             band_names = [b["name"] for b in collection.summaries.lists.get("eo:bands", [])]
@@ -267,7 +269,9 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
         else:
             assert isinstance(stac_object, pystac.Catalog)  # static Catalog + Collection
             catalog = stac_object
-            metadata = GeopysparkCubeMetadata(metadata=stac_object.to_dict())
+            metadata = GeopysparkCubeMetadata(
+                metadata=stac_object.to_dict(include_self_link=False, transform_hrefs=False)
+            )
 
             if load_params.properties:
                 raise properties_unsupported_exception
@@ -450,25 +454,20 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
             else:
                 target_epsg = pyproj.CRS.from_user_input(load_params.target_crs).to_epsg()
 
-    temporal_extent_union = (start_datetime.isoformat(), end_datetime.isoformat())
-    if metadata:
-        metadata = metadata.with_temporal_extent(temporal_extent_union)
-        if override_band_names:
-            metadata = metadata.with_new_band_names(override_band_names)
-    else:
+    if not metadata:
         metadata = GeopysparkCubeMetadata(
             metadata={},
             dimensions=[
                 # TODO: detect actual dimensions instead of this simple default?
                 SpatialDimension(name="x", extent=[]),
                 SpatialDimension(name="y", extent=[]),
-                TemporalDimension(name="t", extent=[]),
-                BandDimension(
-                    name="bands", bands=[Band(band_name) for band_name in (override_band_names or band_names)]
-                ),
             ],
-            temporal_extent=temporal_extent_union,
         )
+    metadata = metadata.with_temporal_extent(
+        temporal_extent=(start_datetime.isoformat(), end_datetime.isoformat()), allow_adding_dimension=True
+    )
+    # Overwrite band_names because new bands could be detected in stac items:
+    metadata = metadata.with_new_band_names(override_band_names or band_names)
 
     if load_params.global_extent is None or len(load_params.global_extent) == 0:
         layer_native_extent = metadata.get_layer_native_extent()
