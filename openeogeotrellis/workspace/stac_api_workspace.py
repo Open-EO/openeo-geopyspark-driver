@@ -1,9 +1,11 @@
 from pathlib import PurePath, Path
 from typing import Union
+from urllib.error import HTTPError
 
 import pystac_client
+import requests
 from openeo_driver.workspace import Workspace
-from pystac import STACObject, Catalog
+from pystac import STACObject, Catalog, Collection
 
 
 class StacApiWorkspace(Workspace):
@@ -19,18 +21,34 @@ class StacApiWorkspace(Workspace):
         raise NotImplementedError
 
     def merge(self, stac_resource: STACObject, target: PurePath, remove_original: bool = False) -> STACObject:
+        stac_resource = stac_resource.full_copy()
+
         client = pystac_client.Client.open(self.root_url)
 
-        if not self._supports_transaction_extensions(client):
+        if not self._supports_necessary_operations(client):
+            # TODO: raise from within method?
             raise ValueError(f"STAC API {self.root_url} does not support transaction extensions")
 
-        # TODO: create/update collection
-        # TODO: add items
-        raise NotImplementedError
+        existing_collection = None
+        try:
+            existing_collection = Collection.from_file(f"{self.root_url}/{target}")
+        except Exception as e:
+            if not self._is_not_found_error(e):  # TODO: fix double negative?
+                raise
+
+        if existing_collection:
+            pass  # TODO: update collection and add items
+        else:
+            # TODO: add items
+            stac_resource.remove_hierarchical_links()
+            requests.post(f"{self.root_url}/collections", json=stac_resource.to_dict())
+
+        return existing_collection
 
     @staticmethod
-    def _supports_transaction_extensions(root_catalog: Catalog):
+    def _supports_necessary_operations(root_catalog: Catalog):
         conforms_to = root_catalog.extra_fields.get("conformsTo", [])
+        # TODO: check additional extensions like for GET /collections as well?
 
         supports_collection_methods = any(
             conformance_class.endswith("/collections/extensions/transaction") for conformance_class in conforms_to
@@ -41,3 +59,8 @@ class StacApiWorkspace(Workspace):
         )
 
         return supports_collection_methods and supports_item_methods
+
+    def _is_not_found_error(self, e: BaseException) -> bool:
+        return (isinstance(e, HTTPError) and e.code == 404) or (
+            e.__cause__ is not None and self._is_not_found_error(e.__cause__)
+        )

@@ -1941,12 +1941,6 @@ def jvm_mock():
         yield jvm_mock
 
 
-@pytest.fixture
-def urllib_mock() -> UrllibMocker:
-    with UrllibMocker().patch() as mocker:
-        yield mocker
-
-
 class UrllibAndRequestMocker:
     def __init__(self, urllib_mock, requests_mock):
         self.urllib_mock = urllib_mock
