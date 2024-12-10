@@ -1245,7 +1245,8 @@ class GpsProcessing(ConcreteProcessing):
                     load_params = _extract_load_parameters(env, source_id=source_id)
                     yield from extra_validation_load_collection(collection_id, load_params, env)
         except Exception as e:
-            yield {"code": "Internal", "message": str(e)}
+            logger.error("extra validation failed", exc_info=True)
+            yield {"code": "Internal", "message": str(e)}  # TODO: just propagate errors not related to validation?
 
     def run_udf(self, udf: str, data: openeo.udf.UdfData) -> openeo.udf.UdfData:
         if get_backend_config().allow_run_udf_in_driver:
