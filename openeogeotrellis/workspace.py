@@ -4,7 +4,6 @@ from pathlib import Path, PurePath
 from typing import Union, Any, Optional
 from urllib.parse import urlparse
 
-import boto3
 import botocore.exceptions
 from boto3.s3.transfer import TransferConfig
 
@@ -173,12 +172,13 @@ class ObjectStorageWorkspace(Workspace):
 
 
 # TODO: move to dedicated file?
-class CustomStacIO(DefaultStacIO):  # adds support for object storage
+class CustomStacIO(DefaultStacIO):
+    """Adds support for object storage."""
 
     @property
     def _s3(self):
         # otherwise there's an infinite recursion error upon Item.get_assets() wrt/ some boto3 reference
-        return boto3.resource("s3")
+        return s3_client()
 
     def read_text(self, source: Union[str, Link], *args: Any, **kwargs: Any) -> str:
         parsed = urlparse(source)
@@ -186,8 +186,8 @@ class CustomStacIO(DefaultStacIO):  # adds support for object storage
             bucket = parsed.netloc
             key = parsed.path[1:]
 
-            obj = self._s3.Object(bucket, key)
-            return obj.get()["Body"].read().decode("utf-8")
+            obj = self._s3.get_object(Bucket=bucket, Key=key)
+            return obj["Body"].read().decode("utf-8")
         else:
             return super().read_text(source, *args, **kwargs)
 
@@ -196,6 +196,6 @@ class CustomStacIO(DefaultStacIO):  # adds support for object storage
         if parsed.scheme == "s3":
             bucket = parsed.netloc
             key = parsed.path[1:]
-            self._s3.Object(bucket, key).put(Body=txt, ContentEncoding="utf-8")
+            self._s3.put_object(Bucket=bucket, Key=key, Body=txt.encode("utf-8"), ContentEncoding="utf-8")
         else:
             super().write_text(dest, txt, *args, **kwargs)
