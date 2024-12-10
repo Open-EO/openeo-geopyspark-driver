@@ -153,7 +153,7 @@ class ObjectStorageWorkspace(Workspace):
         target_key = f"{target_prefix}/{source_path.name}"
 
         if source_uri_parts.scheme in ["", "file"]:
-            s3_client().upload_file(source_path, self.bucket, target_key)
+            s3_client().upload_file(str(source_path), self.bucket, target_key)
 
             if remove_original:
                 source_path.unlink()
