@@ -143,6 +143,7 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
         return True
 
     collection = None
+    metadata = None
 
     backend_config = get_backend_config()
     poll_interval_seconds = backend_config.job_dependencies_poll_interval_seconds
@@ -219,7 +220,7 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
         elif isinstance(stac_object, pystac.Collection) and supports_item_search(stac_object):
             collection = stac_object
             collection_id = collection.id
-
+            metadata = GeopysparkCubeMetadata(metadata=stac_object.to_dict())
             root_catalog = collection.get_root()
 
             band_names = [b["name"] for b in collection.summaries.lists.get("eo:bands", [])]
@@ -266,6 +267,7 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
         else:
             assert isinstance(stac_object, pystac.Catalog)  # static Catalog + Collection
             catalog = stac_object
+            metadata = GeopysparkCubeMetadata(metadata=stac_object.to_dict())
 
             if load_params.properties:
                 raise properties_unsupported_exception
@@ -448,17 +450,31 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
             else:
                 target_epsg = pyproj.CRS.from_user_input(load_params.target_crs).to_epsg()
 
-    metadata = GeopysparkCubeMetadata(
-        metadata={},
-        dimensions=[
-            # TODO: detect actual dimensions instead of this simple default?
-            SpatialDimension(name="x", extent=[]),
-            SpatialDimension(name="y", extent=[]),
-            TemporalDimension(name="t", extent=[]),
-            BandDimension(name="bands", bands=[Band(band_name) for band_name in (override_band_names or band_names)]),
-        ],
-        temporal_extent=tuple([d.isoformat() for d in (start_datetime, end_datetime)]),
-    )
+    temporal_extent_union = (start_datetime.isoformat(), end_datetime.isoformat())
+    if metadata:
+        metadata = metadata.with_temporal_extent(temporal_extent_union)
+        if override_band_names:
+            metadata = metadata.with_new_band_names(override_band_names)
+    else:
+        metadata = GeopysparkCubeMetadata(
+            metadata={},
+            dimensions=[
+                # TODO: detect actual dimensions instead of this simple default?
+                SpatialDimension(name="x", extent=[]),
+                SpatialDimension(name="y", extent=[]),
+                TemporalDimension(name="t", extent=[]),
+                BandDimension(
+                    name="bands", bands=[Band(band_name) for band_name in (override_band_names or band_names)]
+                ),
+            ],
+            temporal_extent=temporal_extent_union,
+        )
+
+    if load_params.global_extent is None or len(load_params.global_extent) == 0:
+        layer_native_extent = metadata.get_layer_native_extent()
+        if layer_native_extent:
+            load_params = load_params.copy()
+            load_params.global_extent = layer_native_extent.as_dict()
 
     if load_params.bands:
         metadata = metadata.filter_bands(load_params.bands)
@@ -501,10 +517,6 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
     metadata_properties = {}
     correlation_id = env.get(EVAL_ENV_KEY.CORRELATION_ID, "")
 
-    if load_params.global_extent is None or len(load_params.global_extent) == 0:
-        # Layer catalog global extent is not known at the moment load_params is created.
-        load_params = load_params.copy()
-        load_params.global_extent = stac_bbox.as_dict()
     data_cube_parameters, single_level = datacube_parameters.create(load_params, env, jvm)
     getattr(data_cube_parameters, "layoutScheme_$eq")("FloatingLayoutScheme")
 
