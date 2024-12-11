@@ -84,7 +84,7 @@ class IDPTokenIssuer:
         except Exception as e:
             logger.warning(f"Could not reload IDP details from {idp_details_file} due to {e}")
 
-    def get_job_token(self, user_id: str, job_id: str) -> Optional[str]:
+    def get_job_token(self, sub_id: str, user_id: str, job_id: str) -> Optional[str]:
         """
         Get a JWT token that can be used by a job's execution environment to proof it is
         really the job it claims to be and that it is issued by a specific user.
@@ -97,7 +97,7 @@ class IDPTokenIssuer:
             now = utcnow()
             return jwt.encode(
                 {
-                    "sub": user_id,  # TODO: see if we can use subject from upstream IDP instead
+                    "sub": sub_id,
                     "exp": now + timedelta(seconds=self._TOKEN_EXPIRES_IN_SECONDS),
                     "nbf": now,
                     "iss": idp_details.issuer,
