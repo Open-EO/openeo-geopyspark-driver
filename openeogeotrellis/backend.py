@@ -2041,11 +2041,12 @@ class GpsBatchJobs(backend.BatchJobs):
             )
 
             if get_backend_config().provide_s3_profiles_and_tokens:
+                # For now we cannot access the subject of the initial access token but generally it is the user_id
                 s3_profiles_cfg_batch_secret = k8s_render_manifest_template(
                     "batch_job_cfg_secret.yaml.j2",
                     secret_name=batch_job_cfg_secret_name,
                     job_id=job_id,
-                    token=IDP_TOKEN_ISSUER.get_job_token(user_id, job_id),
+                    token=IDP_TOKEN_ISSUER.get_job_token(sub_id=user_id, user_id=user_id, job_id=job_id),
                     profile_file_content=S3Config.from_backend_config(job_id, "/opt/job_config/token")
                 )
 

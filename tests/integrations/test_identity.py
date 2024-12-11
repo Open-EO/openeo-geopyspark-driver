@@ -23,7 +23,7 @@ def test_without_valid_config_token_should_just_be_none(monkeypatch):
     # GIVEN no valid config
     with gps_config_overrides(openeo_idp_details_file=Path("/tmp/file_that_do3s_not_exist.arr")):
         # WHEN we get a token for a job of a specific user
-        token = IDP_TOKEN_ISSUER.get_job_token("userA", "j-20250120231301301301013")
+        token = IDP_TOKEN_ISSUER.get_job_token("subject", "userA", "j-20250120231301301301013")
         # THEN the token is None
         assert token is None
 
@@ -71,7 +71,7 @@ def test_a_valid_token_should_be_produced_if_there_is_proper_config(idp_token_is
         "job_id": "j-20250120231301301301013",
     }
     # WHEN we get a token for a job of a specific user
-    token = IDP_TOKEN_ISSUER.get_job_token(**claims)
+    token = IDP_TOKEN_ISSUER.get_job_token(sub_id="subject", **claims)
     # THEN the token is not None
     assert token is not None
     # THEN the token should be valid
@@ -94,6 +94,7 @@ def test_the_validity_of_a_token_should_be_restricted_in_time(idp_token_issuer, 
     # GIVEN valid config (idp_token_issuer fixture)
     # GIVEN claims we want to certify
     claims = {
+        "sub_id": "subject",
         "user_id": "userA",
         "job_id": "j-20250120231301301301013",
     }
