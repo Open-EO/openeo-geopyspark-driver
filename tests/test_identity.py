@@ -10,6 +10,7 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives import serialization
 from openeogeotrellis.identity import IDPTokenIssuer, IDP_TOKEN_ISSUER
+from openeogeotrellis.testing import gps_config_overrides
 
 
 def test_idptokenissuer_should_not_be_instantiated_manually():
@@ -21,11 +22,11 @@ def test_idptokenissuer_should_not_be_instantiated_manually():
 
 def test_without_valid_config_token_should_just_be_none(monkeypatch):
     # GIVEN no valid config
-    monkeypatch.setattr(IDP_TOKEN_ISSUER, '_IDP_DETAILS_FILE', Path("/tmp/file_that_do3s_not_exist.arr"))
-    # WHEN we get a token for a job of a specific user
-    token = IDP_TOKEN_ISSUER.get_identity_token("userA", "j-20250120231301301301013")
-    # THEN the token is None
-    assert token is None
+    with gps_config_overrides(openeo_idp_details_file=Path("/tmp/file_that_do3s_not_exist.arr")):
+        # WHEN we get a token for a job of a specific user
+        token = IDP_TOKEN_ISSUER.get_identity_token("userA", "j-20250120231301301301013")
+        # THEN the token is None
+        assert token is None
 
 
 def create_idp_config(file_path: Path) -> str:
@@ -58,9 +59,9 @@ def create_idp_config(file_path: Path) -> str:
 @pytest.fixture
 def idp_token_issuer(monkeypatch, tmp_path) -> Generator[str, None, None]:
     idp_cfg_file = tmp_path / "idp.json"
-    monkeypatch.setattr(IDP_TOKEN_ISSUER, '_IDP_DETAILS_FILE', idp_cfg_file)
-    public_key = create_idp_config(idp_cfg_file)
-    yield public_key
+    with gps_config_overrides(openeo_idp_details_file=idp_cfg_file):
+        public_key = create_idp_config(idp_cfg_file)
+        yield public_key
 
 
 def test_a_valid_token_should_be_produced_if_there_is_proper_config(idp_token_issuer):
