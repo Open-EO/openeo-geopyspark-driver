@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 from typing import Optional, Literal
 
+from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.utils import get_file_reload_register_func_if_changed, utcnow
 
 logger = logging.getLogger(__name__)
@@ -53,7 +54,6 @@ class IDPTokenIssuer:
     An issuer of signed tokens. This is a singleton so to avoid errors having duplicate instances you can call the
     class method `instance() to get the singleton object`.
     """
-    _IDP_DETAILS_FILE = Path(os.environ.get("OPENEO_IDP_DETAILS_FILE", "/opt/.idp/idp_details.json"))
     _TOKEN_EXPIRES_IN_SECONDS = 48 * 3600
     _SINGLETON: Optional[IDPTokenIssuer] = None
 
@@ -71,16 +71,17 @@ class IDPTokenIssuer:
             return cls()
 
     def _reload_idp_details_if_needed(self) -> None:
-        register_reload = get_file_reload_register_func_if_changed(self._IDP_DETAILS_FILE)
+        idp_details_file = get_backend_config().openeo_idp_details_file
+        register_reload = get_file_reload_register_func_if_changed(idp_details_file)
         if register_reload is None:
             return
         try:
-            self._IDP_DETAILS = IDPDetails.from_file(self._IDP_DETAILS_FILE)
+            self._IDP_DETAILS = IDPDetails.from_file(idp_details_file)
             register_reload()
         except AssertionError as ae:
             logger.fatal(f"Invalid config staged for idp: {ae}")
         except Exception as e:
-            logger.warning(f"Could not reload IDP details from {self._IDP_DETAILS_FILE} due to {e}")
+            logger.warning(f"Could not reload IDP details from {idp_details_file} due to {e}")
 
     def get_identity_token(self, user_id: str, job_id: str) -> Optional[str]:
         self._reload_idp_details_if_needed()
