@@ -2248,7 +2248,8 @@ class GpsBatchJobs(backend.BatchJobs):
 
         for (process, arguments), constraints in source_constraints:
             if process == 'load_collection':
-                collection_id, properties_criteria = arguments
+                collection_id = arguments[0]
+                properties_criteria = arguments[1]
 
                 band_names = constraints.get('bands')
 
