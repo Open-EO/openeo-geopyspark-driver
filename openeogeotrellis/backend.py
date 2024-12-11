@@ -57,7 +57,8 @@ from openeo_driver.errors import (InternalException, JobNotFinishedException, Op
                                   ProcessParameterInvalidException, ProcessGraphComplexityException, )
 from openeo_driver.jobregistry import (DEPENDENCY_STATUS, JOB_STATUS, ElasticJobRegistry, PARTIAL_JOB_STATUS,
                                        get_ejr_credentials_from_env)
-from openeo_driver.ProcessGraphDeserializer import ENV_FINAL_RESULT, ENV_SAVE_RESULT, ConcreteProcessing, _extract_load_parameters
+from openeo_driver.ProcessGraphDeserializer import ENV_FINAL_RESULT, ENV_SAVE_RESULT, ConcreteProcessing, \
+    _extract_load_parameters, ENV_MAX_BUFFER
 from openeo_driver.save_result import ImageCollectionResult
 from openeo_driver.users import User
 from openeo_driver.util.geometry import BoundingBox
@@ -1235,6 +1236,7 @@ class GpsProcessing(ConcreteProcessing):
             self, process_graph: dict, env: EvalEnv, result, source_constraints: List[SourceConstraint]
     ) -> Iterable[dict]:
         try:
+            env = env.push(ENV_MAX_BUFFER,{})
             # copy because _extract_load_parameters is stateful
             source_constraints_copy = deepcopy(source_constraints)
             for source_constraint in source_constraints_copy:
