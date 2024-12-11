@@ -81,7 +81,7 @@ from openeogeotrellis.config.s3_config import S3Config
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkdatacube import GeopysparkCubeMetadata, GeopysparkDataCube
 from openeogeotrellis.integrations.etl_api import get_etl_api, ETL_ORGANIZATION_ID_JOB_OPTION
-from openeogeotrellis.identity import IDP_TOKEN_ISSUER
+from openeogeotrellis.integrations.identity import IDP_TOKEN_ISSUER
 from openeogeotrellis.integrations.hadoop import setup_kerberos_auth
 from openeogeotrellis.integrations.kubernetes import (
     k8s_job_name, kube_client,
@@ -2045,7 +2045,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     "batch_job_cfg_secret.yaml.j2",
                     secret_name=batch_job_cfg_secret_name,
                     job_id=job_id,
-                    token=IDP_TOKEN_ISSUER.get_identity_token(user_id, job_id),
+                    token=IDP_TOKEN_ISSUER.get_job_token(user_id, job_id),
                     profile_file_content=S3Config.from_backend_config(job_id, "/opt/job_config/token")
                 )
 
