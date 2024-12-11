@@ -1236,7 +1236,7 @@ class GpsProcessing(ConcreteProcessing):
             self, process_graph: dict, env: EvalEnv, result, source_constraints: List[SourceConstraint]
     ) -> Iterable[dict]:
         try:
-            env = env.push(ENV_MAX_BUFFER,{})
+            env = env.push({ENV_MAX_BUFFER: {}})
             # copy because _extract_load_parameters is stateful
             source_constraints_copy = deepcopy(source_constraints)
             for source_constraint in source_constraints_copy:
