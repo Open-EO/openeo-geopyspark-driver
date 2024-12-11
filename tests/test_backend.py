@@ -699,8 +699,8 @@ def test_k8s_s3_profiles_and_token():
 
     # When we render the kubernetes manifest
     app_dict = k8s_render_manifest_template(
-        "s3_access_cfg_batch_job.yaml.j2",
-        job_name="my-app",
+        "batch_job_cfg_secret.yaml.j2",
+        secret_name="my-app-secret",
         job_id=test_job_id,
         token=test_token,
         profile_file_content=test_profile
@@ -713,7 +713,7 @@ def test_k8s_s3_profiles_and_token():
         ),
         metadata=dirty_equals.IsPartialDict(
             labels=dirty_equals.IsPartialDict(job_id=test_job_id),
-            name="s3-my-app"
+            name="my-app-secret"
         ),
         kind="Secret",
         type="Opaque"
@@ -729,8 +729,8 @@ def test_k8s_s3_profiles_and_token_must_be_cleanable(backend_config_path, fast_s
     with UtcNowClock.mock(now=test_timestamp):
         # WHEN we render the kubernetes manifest for s3 access
         app_dict = k8s_render_manifest_template(
-            "s3_access_cfg_batch_job.yaml.j2",
-            job_name="my-app",
+            "batch_job_cfg_secret.yaml.j2",
+            secret_name="my-app",
             job_id="test_id",
             token="test",
             profile_file_content=""

@@ -102,3 +102,10 @@ def k8s_render_manifest_template(template, **kwargs) -> dict:
     rendered = jinja_template.render(**kwargs)
 
     return yaml.safe_load(rendered)
+
+
+def k8s_get_batch_job_cfg_secret_name(spark_app_name: str) -> str:
+    """
+    Get a secret name for a submitted spark application
+    """
+    return f"cfg-{spark_app_name}"

@@ -135,9 +135,9 @@ spec:
         readOnly: false
 {%- endif %}
 {%- if provide_s3_profiles_and_tokens is sameas true %}
-    - name: "aws-config"
+    - name: "batch-job-cfg"
       secret:
-        secretName: s3-{{ job_name }}
+        secretName: {{ batch_job_cfg_secret_name }}
 {%- endif %}
 {%- endblock %}
   driver:
@@ -279,7 +279,7 @@ spec:
         mountPath: /batch_jobs/{{ job_id_full }}
 {%- endif %}
 {%- if provide_s3_profiles_and_tokens is sameas true %}
-      - name: "aws-config"
+      - name: "batch-job-cfg"
         mountPath: /opt/job_config
         readOnly: true
 {%- endif %}
@@ -427,7 +427,7 @@ spec:
         mountPath: /batch_jobs/{{ job_id_full }}
 {%- endif %}
 {%- if provide_s3_profiles_and_tokens is sameas true %}
-      - name: "aws-config"
+      - name: "batch-job-cfg"
         mountPath: /opt/job_config
         readOnly: true
 {%- endif %}
