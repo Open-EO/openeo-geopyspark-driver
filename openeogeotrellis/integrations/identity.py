@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
-from datetime import timedelta
-import jwt
 import logging
 import os
+from dataclasses import dataclass
+from datetime import timedelta
 from pathlib import Path
-from typing import Optional, Literal
+from typing import Literal, Optional
+
+import jwt
 
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.utils import get_file_reload_register_func_if_changed, utcnow
@@ -83,7 +84,11 @@ class IDPTokenIssuer:
         except Exception as e:
             logger.warning(f"Could not reload IDP details from {idp_details_file} due to {e}")
 
-    def get_identity_token(self, user_id: str, job_id: str) -> Optional[str]:
+    def get_job_token(self, user_id: str, job_id: str) -> Optional[str]:
+        """
+        Get a JWT token that can be used by a job's execution environment to proof it is
+        really the job it claims to be and that it is issued by a specific user.
+        """
         self._reload_idp_details_if_needed()
         if self._IDP_DETAILS is None:
             return None
@@ -119,7 +124,7 @@ IDP_TOKEN_ISSUER = IDPTokenIssuer.instance()
 if __name__ == '__main__':
     aws_config_dir = os.environ.get("AWS_CONFIG_DIR", "/opt/spark/work-dir")
     aws_config_path = Path(aws_config_dir)
-    aws_config_path.mkdir(parents=True, exist_ok=True)
     aws_token_filename = os.environ.get("AWS_TOKEN_FILENAME", "token")
+    aws_config_path.mkdir(parents=True, exist_ok=True)
     with open(aws_config_path.joinpath(aws_token_filename), 'w') as token_file:
-        token_file.write(IDP_TOKEN_ISSUER.get_identity_token("0", "none"))
+        token_file.write(IDP_TOKEN_ISSUER.get_job_token("0", "none"))
