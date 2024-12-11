@@ -2600,7 +2600,7 @@ class GpsBatchJobs(backend.BatchJobs):
                         card4l=card4l  # should the batch job expect CARD4L metadata?
                     ))
             elif process == 'load_stac':
-                url, _ = arguments  # properties will be taken care of @ process graph evaluation time
+                url = arguments[0]  # properties will be taken care of @ process graph evaluation time
 
                 if url.startswith("http://") or url.startswith("https://"):
                     dependency_job_info = load_stac.extract_own_job_info(url, user_id=user_id, batch_jobs=self)
