@@ -56,14 +56,11 @@ def create_idp_config(file_path: Path) -> str:
 
 
 @pytest.fixture
-def idp_token_issuer(monkeypatch) -> Generator[str, None, None]:
-    with tempfile.TemporaryDirectory(
-        dir="/tmp", suffix="test-idp-dir"
-    ) as temp_test_dir:
-        idp_cfg_file = Path(temp_test_dir).joinpath("idp.json")
-        monkeypatch.setattr(IDP_TOKEN_ISSUER, '_IDP_DETAILS_FILE', idp_cfg_file)
-        public_key = create_idp_config(idp_cfg_file)
-        yield public_key
+def idp_token_issuer(monkeypatch, tmp_path) -> Generator[str, None, None]:
+    idp_cfg_file = tmp_path / "idp.json"
+    monkeypatch.setattr(IDP_TOKEN_ISSUER, '_IDP_DETAILS_FILE', idp_cfg_file)
+    public_key = create_idp_config(idp_cfg_file)
+    yield public_key
 
 
 def test_a_valid_token_should_be_produced_if_there_is_proper_config(idp_token_issuer):

@@ -93,7 +93,7 @@ def k8s_render_manifest_template(template, **kwargs) -> dict:
     )
 
     def base64encode(input_str: str) -> str:
-        return base64.b64encode(input_str.encode()).decode()
+        return base64.b64encode(input_str.encode("utf-8")).decode("utf-8")
 
     jinja_env.filters['b64encode'] = base64encode
     jinja_env.globals['utcnow_epoch'] = utcnow_epoch
