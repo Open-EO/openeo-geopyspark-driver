@@ -23,27 +23,39 @@ class StacApiWorkspace(Workspace):
     def merge(self, stac_resource: STACObject, target: PurePath, remove_original: bool = False) -> STACObject:
         stac_resource = stac_resource.full_copy()
 
-        client = pystac_client.Client.open(self.root_url)
+        if isinstance(stac_resource, Collection):
+            new_collection = stac_resource
 
-        if not self._supports_necessary_operations(client):
-            # TODO: raise from within method?
-            raise ValueError(f"STAC API {self.root_url} does not support transaction extensions")
+            client = pystac_client.Client.open(self.root_url)
 
-        existing_collection = None
-        try:
-            existing_collection = Collection.from_file(f"{self.root_url}/{target}")
-        except Exception as e:
-            if not self._is_not_found_error(e):  # TODO: fix double negative?
-                raise
+            if not self._supports_necessary_operations(client):
+                # TODO: raise from within method?
+                raise ValueError(f"STAC API {self.root_url} does not support transaction extensions")
 
-        if existing_collection:
-            pass  # TODO: update collection and add items
+            existing_collection = None
+            try:
+                existing_collection = Collection.from_file(f"{self.root_url}/{target}")
+            except Exception as e:
+                if not self._is_not_found_error(e):  # TODO: fix double negative?
+                    raise
+
+            if existing_collection:
+                # TODO: update collection and add items
+                raise NotImplementedError
+            else:
+                for item in new_collection.get_items():
+                    item.remove_hierarchical_links()
+                    requests.post(f"{self.root_url}/{target}/items", json=item.to_dict(include_self_link=False))
+
+                new_collection.remove_hierarchical_links()
+                # TODO: assume target is "$collection_id" rather than "collections/$collection_id"?
+                requests.post(f"{self.root_url}/collections", json=stac_resource.to_dict(include_self_link=False))
+
+                merged_collection = new_collection
+
+            return merged_collection
         else:
-            # TODO: add items
-            stac_resource.remove_hierarchical_links()
-            requests.post(f"{self.root_url}/collections", json=stac_resource.to_dict())
-
-        return existing_collection
+            raise NotImplementedError(stac_resource)
 
     @staticmethod
     def _supports_necessary_operations(root_catalog: Catalog):
