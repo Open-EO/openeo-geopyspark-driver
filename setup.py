@@ -85,7 +85,7 @@ setup(
         'numbagg==0.1',
         'Bottleneck~=1.3.2; python_version<"3.9"',
         'Bottleneck~=1.4.0; python_version>="3.9"',
-        'python-json-logger~=2.0.0',
+        "python-json-logger~=2.0",  # Avoid breaking change in 3.1.0 https://github.com/nhairs/python-json-logger/issues/29
         'jep==4.1.1',
         'kafka-python==1.4.6',
         'deprecated>=1.2.12',
