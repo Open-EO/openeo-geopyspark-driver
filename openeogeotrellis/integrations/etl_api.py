@@ -47,6 +47,9 @@ class ETL_API_STATUS:
     UNDEFINED = "UNDEFINED"
 
 
+ETL_ORGANIZATION_ID_JOB_OPTION = "etl_organization_id"
+
+
 class EtlApi:
     """
     API for reporting resource usage and added value to the ETL (EOPlaza marketplace) API
@@ -94,6 +97,7 @@ class EtlApi:
     def log_resource_usage(
         self,
         batch_job_id: str,
+        *,
         title: Optional[str],
         execution_id: str,
         user_id: str,
@@ -106,6 +110,7 @@ class EtlApi:
         duration_ms: Optional[float],
         sentinel_hub_processing_units: Optional[float],
         additional_credits_cost: Optional[float],
+        organization_id: Optional[int] = None,
     ) -> float:
         """
         :param user_id: user identifier expected by ETL API: must be "sub" field from (verified) access token
@@ -138,6 +143,9 @@ class EtlApi:
                 "status": status,
                 "metrics": metrics,
             }
+            if organization_id:
+                _log.debug(f"EtlApi.log_resource_usage: custom {organization_id=} for {execution_id=}")
+                data["orgId"] = int(organization_id)
 
             log.debug(f"EtlApi.log_resource_usage: POST {data=} at {self._endpoint!r}")
 

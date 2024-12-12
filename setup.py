@@ -54,7 +54,7 @@ setup(
     tests_require=tests_require,
     install_requires=[
         "openeo>=0.33.0",
-        "openeo_driver>=0.119.0.dev",
+        "openeo_driver>=0.121.0.dev",
         'pyspark==3.4.2; python_version>="3.8"',
         'pyspark>=2.3.1,<2.4.0; python_version<"3.8"',
         'geopyspark==0.4.7+openeo',
@@ -85,7 +85,7 @@ setup(
         'numbagg==0.1',
         'Bottleneck~=1.3.2; python_version<"3.9"',
         'Bottleneck~=1.4.0; python_version>="3.9"',
-        'python-json-logger',
+        'python-json-logger~=2.0.0',
         'jep==4.1.1',
         'kafka-python==1.4.6',
         'deprecated>=1.2.12',

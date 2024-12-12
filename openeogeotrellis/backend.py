@@ -39,7 +39,14 @@ from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 from openeo.metadata import Band, BandDimension, Dimension, SpatialDimension, TemporalDimension
 from openeo.util import TimingLogger, deep_get, dict_no_none, repr_truncate, rfc3339, str_truncate
 from openeo_driver import backend
-from openeo_driver.backend import BatchJobMetadata, ErrorSummary, LoadParameters, OidcProvider, ServiceMetadata
+from openeo_driver.backend import (
+    BatchJobMetadata,
+    ErrorSummary,
+    LoadParameters,
+    OidcProvider,
+    ServiceMetadata,
+    JobListing,
+)
 from openeo_driver.config.load import ConfigGetter
 from openeo_driver.datacube import DriverDataCube, DriverVectorCube
 from openeo_driver.datastructs import SarBackscatterArgs
@@ -50,7 +57,8 @@ from openeo_driver.errors import (InternalException, JobNotFinishedException, Op
                                   ProcessParameterInvalidException, ProcessGraphComplexityException, )
 from openeo_driver.jobregistry import (DEPENDENCY_STATUS, JOB_STATUS, ElasticJobRegistry, PARTIAL_JOB_STATUS,
                                        get_ejr_credentials_from_env)
-from openeo_driver.ProcessGraphDeserializer import ENV_FINAL_RESULT, ENV_SAVE_RESULT, ConcreteProcessing, _extract_load_parameters
+from openeo_driver.ProcessGraphDeserializer import ENV_FINAL_RESULT, ENV_SAVE_RESULT, ConcreteProcessing, \
+    _extract_load_parameters, ENV_MAX_BUFFER
 from openeo_driver.save_result import ImageCollectionResult
 from openeo_driver.users import User
 from openeo_driver.util.geometry import BoundingBox
@@ -71,7 +79,7 @@ from openeogeotrellis import sentinel_hub, load_stac, datacube_parameters
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkdatacube import GeopysparkCubeMetadata, GeopysparkDataCube
-from openeogeotrellis.integrations.etl_api import get_etl_api
+from openeogeotrellis.integrations.etl_api import get_etl_api, ETL_ORGANIZATION_ID_JOB_OPTION
 from openeogeotrellis.integrations.hadoop import setup_kerberos_auth
 from openeogeotrellis.integrations.kubernetes import k8s_job_name, kube_client, truncate_job_id_k8s, k8s_render_manifest_template
 from openeogeotrellis.integrations.traefik import Traefik
@@ -452,7 +460,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                             "description": "Specifies the filename prefix when outputting multiple files. By default, depending on the context, 'OpenEO' or a part of the input filename will be used as prefix.",
                             "default": None,
                         },
-                        "separate_asset_per_band": {
+                        "separate_asset_per_band": {  # TODO: should be a boolean that defaults to false
                             "type": "string",
                             "description": "Set to true to write one output tiff per band. If there is a time dimension, the files will be split on time as well.",
                             "default": None,
@@ -1213,6 +1221,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                                                if sentinel_hub_processing_units and
                                                   backend_config.report_usage_sentinelhub_pus else None),
                 additional_credits_cost=None,
+                organization_id=(job_options or {}).get(ETL_ORGANIZATION_ID_JOB_OPTION),
             )
 
             logger.info(
@@ -1227,6 +1236,7 @@ class GpsProcessing(ConcreteProcessing):
             self, process_graph: dict, env: EvalEnv, result, source_constraints: List[SourceConstraint]
     ) -> Iterable[dict]:
         try:
+            env = env.push({ENV_MAX_BUFFER: {}})
             # copy because _extract_load_parameters is stateful
             source_constraints_copy = deepcopy(source_constraints)
             for source_constraint in source_constraints_copy:
@@ -1237,7 +1247,8 @@ class GpsProcessing(ConcreteProcessing):
                     load_params = _extract_load_parameters(env, source_id=source_id)
                     yield from extra_validation_load_collection(collection_id, load_params, env)
         except Exception as e:
-            yield {"code": "Internal", "message": str(e)}
+            logger.error("extra validation failed", exc_info=True)
+            yield {"code": "Internal", "message": str(e)}  # TODO: just propagate errors not related to validation?
 
     def run_udf(self, udf: str, data: openeo.udf.UdfData) -> openeo.udf.UdfData:
         if get_backend_config().allow_run_udf_in_driver:
@@ -1587,12 +1598,19 @@ class GpsBatchJobs(backend.BatchJobs):
         else:  # still some running: continue polling
             pass
 
-    def get_user_jobs(self, user_id: str) -> List[BatchJobMetadata]:
+    def get_user_jobs(
+        self,
+        user_id: str,
+        limit: Optional[int] = None,
+        request_parameters: Optional[dict] = None,
+    ) -> Union[List[BatchJobMetadata], JobListing]:
         with self._double_job_registry as registry:
             return registry.get_user_jobs(
                 user_id=user_id,
                 # Make sure to include title (in addition to the basic fields)
                 fields=["title"],
+                limit=limit,
+                request_parameters=request_parameters,
             )
 
     # TODO: issue #232 we should get this from S3 but should there still be an output dir then?
@@ -2004,7 +2022,8 @@ class GpsBatchJobs(backend.BatchJobs):
                 profile=profile,
                 batch_scheduler=get_backend_config().batch_scheduler,
                 yunikorn_queue=get_backend_config().yunikorn_queue,
-                yunikorn_scheduling_timeout=get_backend_config().yunikorn_scheduling_timeout.rstrip()
+                yunikorn_scheduling_timeout=get_backend_config().yunikorn_scheduling_timeout.rstrip(),
+                try_swift_streaming=os.environ.get("TRY_SWIFT_STREAMING"),
             )
 
             if get_backend_config().fuse_mount_batchjob_s3_bucket:
@@ -2231,7 +2250,8 @@ class GpsBatchJobs(backend.BatchJobs):
 
         for (process, arguments), constraints in source_constraints:
             if process == 'load_collection':
-                collection_id, properties_criteria = arguments
+                collection_id = arguments[0]
+                properties_criteria = arguments[1]
 
                 band_names = constraints.get('bands')
 
@@ -2580,7 +2600,7 @@ class GpsBatchJobs(backend.BatchJobs):
                         card4l=card4l  # should the batch job expect CARD4L metadata?
                     ))
             elif process == 'load_stac':
-                url, _ = arguments  # properties will be taken care of @ process graph evaluation time
+                url = arguments[0]  # properties will be taken care of @ process graph evaluation time
 
                 if url.startswith("http://") or url.startswith("https://"):
                     dependency_job_info = load_stac.extract_own_job_info(url, user_id=user_id, batch_jobs=self)

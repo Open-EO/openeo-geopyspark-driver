@@ -555,6 +555,22 @@ def json_default(obj: Any) -> Any:
     raise TypeError("%r is not JSON serializable" % obj)
 
 
+def parse_json_from_output(output_str: str) -> Dict[str, Any]:
+    lines = output_str.split("\n")
+    parsing_json = False
+    json_str = ""
+    # reverse order to get last possible json line
+    for l in reversed(lines):
+        if not parsing_json:
+            if l.endswith("}"):
+                parsing_json = True
+        json_str = l + json_str
+        if l.startswith("{"):
+            break
+
+    return json.loads(json_str)
+
+
 def calculate_rough_area(geoms: Iterable[BaseGeometry]):
     """
     For every geometry, roughly estimate its area using its bounding box and return their sum.

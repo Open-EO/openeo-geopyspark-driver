@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 from urllib.parse import urlparse
 
-import openeogeotrellis
+import pystac
 from openeo.util import TimingLogger, dict_no_none, ensure_dir
 from openeo_driver import ProcessGraphDeserializer
 from openeo_driver.backend import BatchJobs
@@ -78,6 +78,7 @@ from openeogeotrellis.utils import (
     json_default,
     log_memory,
     to_jsonable,
+    wait_till_path_available,
 )
 
 logger = logging.getLogger('openeogeotrellis.deploy.batch_job')
@@ -392,7 +393,7 @@ def run_job(
                     file_path = url.path
                     # fusemount could have some delay to make files accessible, so poll a bit:
                     asset_path = get_abs_path_of_asset(file_path, job_dir)
-                    openeogeotrellis.utils.wait_till_path_available(asset_path)
+                    wait_till_path_available(asset_path)
                 add_permissions(Path(asset["href"]), stat.S_IWGRP)
             logger.info(f"wrote {len(the_assets_metadata)} assets to {output_file}")
             assets_metadata.append(the_assets_metadata)
@@ -491,6 +492,7 @@ def run_job(
                 result_assets_metadata=result_assets_metadata,
                 job_dir=job_dir,
                 remove_exported_assets=job_options.get("remove-exported-assets", False),
+                enable_merge=job_options.get("export-workspace-enable-merge", False),
             )
     finally:
         write_metadata({**result_metadata, **_get_tracker_metadata("")}, metadata_file, stac_file_paths)
@@ -526,6 +528,7 @@ def _export_to_workspaces(
     result_assets_metadata: dict,
     job_dir: Path,
     remove_exported_assets: bool,
+    enable_merge: bool,
 ):
     workspace_repository: WorkspaceRepository = backend_config_workspace_repository
     workspace_exports = sorted(
@@ -538,6 +541,10 @@ def _export_to_workspaces(
         for path in _write_exported_stac_collection(job_dir, result_metadata, list(result_assets_metadata.keys()))
     ]
 
+    # TODO: assemble pystac.STACObject and avoid file altogether?
+    collection_href = [href for href in stac_hrefs if "collection.json" in href][0]
+    collection = pystac.Collection.from_file(urlparse(collection_href).path)
+
     workspace_uris = {}
 
     for i, workspace_export in enumerate(workspace_exports):
@@ -546,28 +553,39 @@ def _export_to_workspaces(
 
         if merge is None:
             merge = OPENEO_BATCH_JOB_ID
-        elif merge == "":
+        elif merge == "":  # TODO: puts it in root of workspace? move it there?
             merge = "."
 
         final_export = i >= len(workspace_exports) - 1
         remove_original = remove_exported_assets and final_export
 
-        export_to_workspace = partial(
-            _export_to_workspace,
-            job_dir=job_dir,
-            target=workspace,
-            merge=merge,
-            remove_original=remove_original,
-        )
+        if enable_merge:
+            merged_collection = workspace.merge(collection, target=Path(merge), remove_original=remove_original)
+            assert isinstance(merged_collection, pystac.Collection)
 
-        for stac_href in stac_hrefs:
-            export_to_workspace(source_uri=stac_href)
-
-        for asset_key, asset in result_assets_metadata.items():
-            workspace_uri = export_to_workspace(source_uri=asset["href"])
-            workspace_uris.setdefault(asset_key, []).append(
-                (workspace_export.workspace_id, workspace_export.merge, workspace_uri)
+            for item in merged_collection.get_items(recursive=True):
+                for asset_key, asset in item.get_assets().items():
+                    (workspace_uri,) = asset.extra_fields["alternate"].values()
+                    workspace_uris.setdefault(asset_key, []).append(
+                        (workspace_export.workspace_id, workspace_export.merge, workspace_uri)
+                    )
+        else:
+            export_to_workspace = partial(
+                _export_to_workspace,
+                common_path=job_dir,
+                target=workspace,
+                merge=merge,
+                remove_original=remove_original,
             )
+
+            for stac_href in stac_hrefs:
+                export_to_workspace(source_uri=stac_href)
+
+            for asset_key, asset in result_assets_metadata.items():
+                workspace_uri = export_to_workspace(source_uri=asset["href"])
+                workspace_uris.setdefault(asset_key, []).append(
+                    (workspace_export.workspace_id, workspace_export.merge, workspace_uri)
+                )
 
     for asset_key, workspace_uris in workspace_uris.items():
         if remove_exported_assets:
@@ -589,13 +607,15 @@ def _export_to_workspaces(
     return stac_hrefs
 
 
-def _export_to_workspace(job_dir: str, source_uri: str, target: Workspace, merge: str, remove_original: bool) -> str:
+def _export_to_workspace(
+    common_path: str, source_uri: str, target: Workspace, merge: str, remove_original: bool
+) -> str:
     uri_parts = urlparse(source_uri)
 
     if not uri_parts.scheme or uri_parts.scheme.lower() == "file":
-        return target.import_file(job_dir, Path(uri_parts.path), merge, remove_original)
+        return target.import_file(common_path, Path(uri_parts.path), merge, remove_original)
     elif uri_parts.scheme == "s3":
-        return target.import_object(job_dir, source_uri, merge, remove_original)
+        return target.import_object(common_path, source_uri, merge, remove_original)
     else:
         raise ValueError(f"unsupported scheme {uri_parts.scheme} for {source_uri}; supported are: file, s3")
 
@@ -631,7 +651,7 @@ def _write_exported_stac_collection(
             "assets": {
                 asset_id: dict_no_none(
                     **{
-                        "href": f"./{Path(asset['href']).name}",
+                        "href": f"{Path(asset['href']).name}",
                         "roles": asset.get("roles"),
                         "type": asset.get("type"),
                         "eo:bands": asset.get("bands"),
