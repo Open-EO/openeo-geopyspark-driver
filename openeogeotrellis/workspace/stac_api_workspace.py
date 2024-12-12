@@ -53,25 +53,29 @@ class StacApiWorkspace(Workspace):
                 # TODO: only to quickly test against actual STAC API
                 headers = {"Authorization": f"Bearer {self._get_access_token()}"} if self._get_access_token else None
 
-                # create items
-                for item in new_collection.get_items():
-                    item.remove_hierarchical_links()
-                    with requests.post(
-                        f"{self.root_url}/{target}/items",
-                        headers=headers,
-                        json=item.to_dict(include_self_link=False),
-                    ) as resp:
-                        resp.raise_for_status()
-
                 # create collection
-                new_collection.id = target.name
-                new_collection.remove_hierarchical_links()
+                bare_collection = new_collection.clone()
+                bare_collection.id = target.name
+                bare_collection.remove_hierarchical_links()
                 with requests.post(
                     f"{self.root_url}/collections",  # TODO: assume target is "$collection_id" rather than "collections/$collection_id"?
                     headers=headers,
-                    json={**new_collection.to_dict(include_self_link=False), **self._additional_collection_properties},
+                    json={**bare_collection.to_dict(include_self_link=False), **self._additional_collection_properties},
                 ) as resp:
                     resp.raise_for_status()
+
+                del bare_collection
+
+                # create items
+                for new_item in new_collection.get_items():
+                    new_item.remove_hierarchical_links()
+                    new_item.collection_id = target.name
+                    with requests.post(
+                        f"{self.root_url}/{target}/items",
+                        headers=headers,
+                        json=new_item.to_dict(include_self_link=False),
+                    ) as resp:
+                        resp.raise_for_status()
 
                 merged_collection = new_collection
 

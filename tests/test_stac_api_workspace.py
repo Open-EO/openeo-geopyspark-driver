@@ -44,15 +44,16 @@ def test_merge_new(requests_mock, urllib_mock, tmp_path):
 
 def test_against_actual_stac_api(tmp_path):
     root_url = os.environ["STAC_API_ROOT_URL"]
-    client_id = os.environ["STAC_API_AUTH_CLIENT_ID"]
-    issuer = os.environ["STAC_API_AUTH_ISSUER"]
-    username = os.environ["STAC_API_AUTH_USERNAME"]
-    password = os.environ["STAC_API_AUTH_PASSWORD"]
 
-    collection1 = _collection(root_path=tmp_path, collection_id="collection1", item_id=None)
+    collection1 = _collection(root_path=tmp_path, collection_id="collection1", item_id="item1")
 
     def get_access_token():
         from openeo.rest.auth.oidc import OidcClientInfo, OidcProviderInfo, OidcResourceOwnerPasswordAuthenticator
+
+        client_id = os.environ["STAC_API_AUTH_CLIENT_ID"]
+        issuer = os.environ["STAC_API_AUTH_ISSUER"]
+        username = os.environ["STAC_API_AUTH_USERNAME"]
+        password = os.environ["STAC_API_AUTH_PASSWORD"]
 
         authenticator = OidcResourceOwnerPasswordAuthenticator(
             client_info=OidcClientInfo(client_id=client_id, provider=OidcProviderInfo(issuer=issuer)),
