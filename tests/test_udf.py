@@ -1,4 +1,3 @@
-import os
 import re
 import tarfile
 import textwrap
@@ -9,7 +8,6 @@ from pathlib import Path
 import pyspark
 import pytest
 
-import openeo
 from openeo.udf import StructuredData, UdfData
 from openeo_driver.util.logging import get_logging_config, LOG_HANDLER_FILE_JSON
 from openeogeotrellis.backend import JOB_METADATA_FILENAME
