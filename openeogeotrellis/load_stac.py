@@ -86,7 +86,11 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
 
     def is_band_asset(asset: pystac.Asset) -> bool:
         roles_with_bands = ["data", "data-mask", "snow-ice", "land-water", "water-mask"]
-        return any(asset.has_role(role) for role in roles_with_bands) or "eo:bands" in asset.extra_fields
+        return (
+            any(asset.has_role(role) for role in roles_with_bands)
+            and not asset.has_role("metadata")
+            or "eo:bands" in asset.extra_fields
+        )
 
     def get_band_names(itm: pystac.Item, asst: pystac.Asset) -> List[str]:
         def get_band_name(eo_band) -> str:
