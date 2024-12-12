@@ -3003,7 +3003,7 @@ def _setup_metadata_request_mocking(
     # Mock each collection item metadata request too
     for link in results_metadata["links"]:
         if link["rel"] == "item":
-            path = link["href"].partition(api.url_root)[-1]
+            path = api.extract_path(link["href"])
             item_metadata = api.get(path).assert_status_code(200).json
             # Change asset urls to local paths so the data can easily be read (without URL mocking in scala) by
             # org.openeo.geotrellis.geotiff.PyramidFactory.from_uris()
