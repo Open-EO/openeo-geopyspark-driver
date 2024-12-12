@@ -220,7 +220,9 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
         elif isinstance(stac_object, pystac.Collection) and supports_item_search(stac_object):
             collection = stac_object
             collection_id = collection.id
-            metadata = GeopysparkCubeMetadata(metadata=collection.to_dict())
+            metadata = GeopysparkCubeMetadata(
+                metadata=collection.to_dict(include_self_link=False, transform_hrefs=False)
+            )
             root_catalog = collection.get_root()
 
             band_names = [b["name"] for b in collection.summaries.lists.get("eo:bands", [])]
@@ -267,7 +269,7 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
         else:
             assert isinstance(stac_object, pystac.Catalog)  # static Catalog + Collection
             catalog = stac_object
-            metadata = GeopysparkCubeMetadata(metadata=catalog.to_dict())
+            metadata = GeopysparkCubeMetadata(metadata=catalog.to_dict(include_self_link=False, transform_hrefs=False))
 
             if load_params.properties:
                 raise properties_unsupported_exception
