@@ -57,7 +57,8 @@ from openeo_driver.errors import (InternalException, JobNotFinishedException, Op
                                   ProcessParameterInvalidException, ProcessGraphComplexityException, )
 from openeo_driver.jobregistry import (DEPENDENCY_STATUS, JOB_STATUS, ElasticJobRegistry, PARTIAL_JOB_STATUS,
                                        get_ejr_credentials_from_env)
-from openeo_driver.ProcessGraphDeserializer import ENV_FINAL_RESULT, ENV_SAVE_RESULT, ConcreteProcessing, _extract_load_parameters
+from openeo_driver.ProcessGraphDeserializer import ENV_FINAL_RESULT, ENV_SAVE_RESULT, ConcreteProcessing, \
+    _extract_load_parameters, ENV_MAX_BUFFER
 from openeo_driver.save_result import ImageCollectionResult
 from openeo_driver.users import User
 from openeo_driver.util.geometry import BoundingBox
@@ -1235,6 +1236,7 @@ class GpsProcessing(ConcreteProcessing):
             self, process_graph: dict, env: EvalEnv, result, source_constraints: List[SourceConstraint]
     ) -> Iterable[dict]:
         try:
+            env = env.push({ENV_MAX_BUFFER: {}})
             # copy because _extract_load_parameters is stateful
             source_constraints_copy = deepcopy(source_constraints)
             for source_constraint in source_constraints_copy:
@@ -2248,7 +2250,8 @@ class GpsBatchJobs(backend.BatchJobs):
 
         for (process, arguments), constraints in source_constraints:
             if process == 'load_collection':
-                collection_id, properties_criteria = arguments
+                collection_id = arguments[0]
+                properties_criteria = arguments[1]
 
                 band_names = constraints.get('bands')
 
@@ -2597,7 +2600,7 @@ class GpsBatchJobs(backend.BatchJobs):
                         card4l=card4l  # should the batch job expect CARD4L metadata?
                     ))
             elif process == 'load_stac':
-                url, _ = arguments  # properties will be taken care of @ process graph evaluation time
+                url = arguments[0]  # properties will be taken care of @ process graph evaluation time
 
                 if url.startswith("http://") or url.startswith("https://"):
                     dependency_job_info = load_stac.extract_own_job_info(url, user_id=user_id, batch_jobs=self)
