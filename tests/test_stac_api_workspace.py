@@ -39,7 +39,9 @@ def test_merge_new(requests_mock, urllib_mock, tmp_path):
     assert create_collection_mock.last_request.json() == dict(collection1.to_dict(), id=target.name, links=[])
 
     assert create_item_mock.called_once
-    assert create_item_mock.last_request.json() == dict(collection1.get_item(item_id).to_dict(), links=[])
+    assert create_item_mock.last_request.json() == dict(
+        collection1.get_item(item_id).to_dict(), collection=target.name, links=[]
+    )
 
 
 def test_against_actual_stac_api(tmp_path):
