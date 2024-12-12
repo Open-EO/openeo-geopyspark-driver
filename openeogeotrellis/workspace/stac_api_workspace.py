@@ -58,13 +58,11 @@ class StacApiWorkspace(Workspace):
                     bare_collection = new_collection.clone()
                     bare_collection.id = target.name
                     bare_collection.remove_hierarchical_links()
+                    bare_collection.extra_fields.update(self._additional_collection_properties)
                     resp = requests_session.post(
                         f"{self.root_url}/collections",  # TODO: assume target is "$collection_id" rather than "collections/$collection_id"?
                         headers=headers,
-                        json={
-                            **bare_collection.to_dict(include_self_link=False),
-                            **self._additional_collection_properties,
-                        },
+                        json=bare_collection.to_dict(include_self_link=False),
                     )
                     resp.raise_for_status()
 
