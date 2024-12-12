@@ -77,11 +77,18 @@ import numpy as np
 import openeogeotrellis
 from openeogeotrellis import sentinel_hub, load_stac, datacube_parameters
 from openeogeotrellis.config import get_backend_config
+from openeogeotrellis.config.s3_config import S3Config
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkdatacube import GeopysparkCubeMetadata, GeopysparkDataCube
 from openeogeotrellis.integrations.etl_api import get_etl_api, ETL_ORGANIZATION_ID_JOB_OPTION
+from openeogeotrellis.integrations.identity import IDP_TOKEN_ISSUER
 from openeogeotrellis.integrations.hadoop import setup_kerberos_auth
-from openeogeotrellis.integrations.kubernetes import k8s_job_name, kube_client, truncate_job_id_k8s, k8s_render_manifest_template
+from openeogeotrellis.integrations.kubernetes import (
+    k8s_job_name, kube_client,
+    truncate_job_id_k8s,
+    k8s_render_manifest_template,
+    k8s_get_batch_job_cfg_secret_name,
+)
 from openeogeotrellis.integrations.traefik import Traefik
 from openeogeotrellis.job_registry import (
     DoubleJobRegistry,
@@ -1965,6 +1972,8 @@ class GpsBatchJobs(backend.BatchJobs):
 
             image_name = job_options.get("image-name", running_image)
 
+            batch_job_cfg_secret_name = k8s_get_batch_job_cfg_secret_name(spark_app_id)
+
             sparkapplication_dict = k8s_render_manifest_template(
                 "sparkapplication.yaml.j2",
                 job_name=spark_app_id,
@@ -2024,7 +2033,19 @@ class GpsBatchJobs(backend.BatchJobs):
                 yunikorn_queue=get_backend_config().yunikorn_queue,
                 yunikorn_scheduling_timeout=get_backend_config().yunikorn_scheduling_timeout.rstrip(),
                 try_swift_streaming=os.environ.get("TRY_SWIFT_STREAMING"),
+                provide_s3_profiles_and_tokens=get_backend_config().provide_s3_profiles_and_tokens,
+                batch_job_cfg_secret_name=batch_job_cfg_secret_name
             )
+
+            if get_backend_config().provide_s3_profiles_and_tokens:
+                # For now we cannot access the subject of the initial access token but generally it is the user_id
+                s3_profiles_cfg_batch_secret = k8s_render_manifest_template(
+                    "batch_job_cfg_secret.yaml.j2",
+                    secret_name=batch_job_cfg_secret_name,
+                    job_id=job_id,
+                    token=IDP_TOKEN_ISSUER.get_job_token(sub_id=user_id, user_id=user_id, job_id=job_id),
+                    profile_file_content=S3Config.from_backend_config(job_id, "/opt/job_config/token")
+                )
 
             if get_backend_config().fuse_mount_batchjob_s3_bucket:
                 persistentvolume_batch_job_results_dict = k8s_render_manifest_template(
@@ -2048,6 +2069,8 @@ class GpsBatchJobs(backend.BatchJobs):
                     if get_backend_config().fuse_mount_batchjob_s3_bucket:
                         api_instance_core.create_persistent_volume(persistentvolume_batch_job_results_dict, pretty=True)
                         api_instance_core.create_namespaced_persistent_volume_claim(pod_namespace, persistentvolumeclaim_batch_job_results_dict, pretty=True)
+                    if get_backend_config().provide_s3_profiles_and_tokens:
+                        api_instance_core.create_namespaced_secret(pod_namespace, s3_profiles_cfg_batch_secret, pretty=True)
                     submit_response_sparkapplication = api_instance_custom_object.create_namespaced_custom_object("sparkoperator.k8s.io", "v1beta2", pod_namespace, "sparkapplications", sparkapplication_dict, pretty=True)
                     log.info(f"mapped job_id {job_id} to application ID {spark_app_id}")
                     dbl_registry.set_application_id(job_id, user_id, spark_app_id)
@@ -2820,6 +2843,28 @@ class GpsBatchJobs(backend.BatchJobs):
                             # TODO: more precise checking that it was indeed the app that was not found (instead of k8s api itself).
                             logger.info(
                                 f"The storage resources for {application_id} could not be found."
+                            )
+
+                if get_backend_config().provide_s3_profiles_and_tokens:
+                    batch_job_cfg_secret_name = k8s_get_batch_job_cfg_secret_name(application_id)
+                    try:
+                        delete_response_secret = api_instance_core.delete_namespaced_secret(
+                            name=batch_job_cfg_secret_name,
+                            namespace=namespace,
+                            pretty=True
+                        )
+                        logger.debug(
+                            f"Removed secret {batch_job_cfg_secret_name} with kubernetes API call",
+                            extra={'job_id': job_id, 'API response': delete_response_secret}
+                        )
+                    except kubernetes.client.exceptions.ApiException as e:
+                        if e.status == 404:
+                            logger.info(
+                                f"The secret {batch_job_cfg_secret_name} could not be found."
+                            )
+                        else:
+                            logger.warning(
+                                f"Got exception {e} when deleting secret {batch_job_cfg_secret_name}"
                             )
 
                 with self._double_job_registry:
