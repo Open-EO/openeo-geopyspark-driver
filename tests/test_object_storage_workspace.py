@@ -79,8 +79,8 @@ def test_merge_new(mock_s3_client, mock_s3_bucket, tmp_path, remove_original: bo
     mock_s3_client.put_object(Bucket=source_bucket, Key=source_key, Body="object_asset.tif\n")
 
     new_collection = _collection(
-        root_path=source_directory / "collection",
-        collection_id="collection",
+        root_path=source_directory / "new_collection",
+        collection_id="new_collection",
         asset_hrefs=[str(disk_asset_path), f"s3://{source_bucket}/{source_key}"],
         s3_client=mock_s3_client,
     )
@@ -113,17 +113,18 @@ def test_merge_new(mock_s3_client, mock_s3_bucket, tmp_path, remove_original: bo
     assert bool(_workspace_keys(mock_s3_client, workspace.bucket, prefix=source_key)) != remove_original
 
     exported_collection = Collection.from_file(f"s3://{workspace.bucket}/{merge}", stac_io=CustomStacIO())
-    assert exported_collection.id == "collection"
     assert exported_collection.validate_all() == 2
 
     disk_item, object_item = [item for item in exported_collection.get_items()]
 
     assert disk_item.id == "disk_asset.tif"
+    assert disk_item.collection_id == exported_collection.id
     assert disk_item.get_self_href() == f"s3://{workspace.bucket}/{merge}/{disk_item.id}.json"
     exported_disk_asset = disk_item.get_assets().pop("disk_asset.tif")
     assert exported_disk_asset.get_absolute_href() == f"s3://{workspace.bucket}/{merge}/{disk_item.id}"
 
     assert object_item.id == "object_asset.tif"
+    assert object_item.collection_id == exported_collection.id
     assert object_item.get_self_href() == f"s3://{workspace.bucket}/{merge}/{object_item.id}.json"
     exported_object_asset = object_item.get_assets().pop("object_asset.tif")
     assert exported_object_asset.get_absolute_href() == f"s3://{workspace.bucket}/{merge}/{object_item.id}"
@@ -194,6 +195,11 @@ def test_merge_into_existing(tmp_path, mock_s3_client, mock_s3_bucket, remove_or
 
     exported_collection = Collection.from_file(f"s3://{workspace.bucket}/{merge}", stac_io=CustomStacIO())
     assert exported_collection.validate_all() == 2
+
+    items = [item for item in exported_collection.get_items()]
+    assert len(items) == 2
+    assert all(item.collection_id == exported_collection.id for item in items)
+
     assert _downloadable_assets(exported_collection, mock_s3_client) == 2
 
 
