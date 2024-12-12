@@ -3,6 +3,7 @@ import os
 from pathlib import PurePath, Path
 from typing import Optional
 
+import pytest
 from pystac import Collection, Extent, SpatialExtent, TemporalExtent, Item
 
 from openeogeotrellis.workspace import StacApiWorkspace
@@ -44,6 +45,7 @@ def test_merge_new(requests_mock, urllib_mock, tmp_path):
     )
 
 
+@pytest.mark.skipif("BUILD_ID" in os.environ, reason="don't run on Jenkins")
 def test_against_actual_stac_api(tmp_path):
     root_url = os.environ["STAC_API_ROOT_URL"]
 
