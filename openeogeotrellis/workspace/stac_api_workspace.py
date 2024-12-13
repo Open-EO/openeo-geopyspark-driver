@@ -5,7 +5,8 @@ from urllib.error import HTTPError
 import pystac_client
 from openeo_driver.util.http import requests_with_retry
 from openeo_driver.workspace import Workspace
-from pystac import STACObject, Catalog, Collection
+from pystac import STACObject, Catalog, Collection, Item
+from requests import Session
 
 
 class StacApiWorkspace(Workspace):
@@ -30,60 +31,67 @@ class StacApiWorkspace(Workspace):
     def merge(self, stac_resource: STACObject, target: PurePath, remove_original: bool = False) -> STACObject:
         stac_resource = stac_resource.full_copy()
 
+        client = pystac_client.Client.open(self.root_url)
+        if not self._supports_necessary_operations(client):
+            # TODO: raise from within method?
+            raise ValueError(f"STAC API {self.root_url} does not support transaction extensions")
+
         if isinstance(stac_resource, Collection):
             new_collection = stac_resource
-
-            client = pystac_client.Client.open(self.root_url)
-
-            if not self._supports_necessary_operations(client):
-                # TODO: raise from within method?
-                raise ValueError(f"STAC API {self.root_url} does not support transaction extensions")
 
             existing_collection = None
             try:
                 existing_collection = Collection.from_file(f"{self.root_url}/{target}")
             except Exception as e:
-                if not self._is_not_found_error(e):  # TODO: fix double negative?
+                if self._is_not_found_error(e):
+                    pass  # not exceptional: the target collection does not exist yet
+                else:
                     raise
 
             if existing_collection:
                 # TODO: update collection and add items
-                raise NotImplementedError
+                raise NotImplementedError("merge into existing collection")
             else:
-                # TODO: only to quickly test against actual STAC API
-                headers = {"Authorization": f"Bearer {self._get_access_token()}"} if self._get_access_token else None
-
-                with requests_with_retry() as requests_session:
-                    # create collection
-                    bare_collection = new_collection.clone()
-                    bare_collection.id = target.name
-                    bare_collection.remove_hierarchical_links()
-                    bare_collection.extra_fields.update(self._additional_collection_properties)
-                    resp = requests_session.post(
-                        f"{self.root_url}/collections",  # TODO: assume target is "$collection_id" rather than "collections/$collection_id"?
-                        headers=headers,
-                        json=bare_collection.to_dict(include_self_link=False),
+                with requests_with_retry() as session:
+                    # TODO: only to quickly test against actual STAC API
+                    session.headers = (
+                        {"Authorization": f"Bearer {self._get_access_token()}"} if self._get_access_token else None
                     )
-                    resp.raise_for_status()
 
-                    del bare_collection
-
-                    # create items
+                    target_collection_id = self._upload_collection(new_collection, target, session)
                     for new_item in new_collection.get_items():
-                        new_item.remove_hierarchical_links()
-                        new_item.collection_id = target.name
-                        resp = requests_session.post(
-                            f"{self.root_url}/{target}/items",
-                            headers=headers,
-                            json=new_item.to_dict(include_self_link=False),
-                        )
-                        resp.raise_for_status()
+                        self._upload_item(new_item, target_collection_id, target, session)
 
-                merged_collection = new_collection
-
-            return merged_collection
+            return new_collection
         else:
-            raise NotImplementedError(stac_resource)
+            raise NotImplementedError(f"merge from {stac_resource}")
+
+    def _upload_collection(self, collection: Collection, target: PurePath, session: Session) -> str:
+        target_collection_id = target.name
+
+        bare_collection = collection.clone()
+        bare_collection.id = target_collection_id
+        bare_collection.remove_hierarchical_links()
+        bare_collection.extra_fields.update(self._additional_collection_properties)
+
+        resp = session.post(
+            # TODO: assume target is "$collection_id" rather than "collections/$collection_id"?
+            f"{self.root_url}/collections",
+            json=bare_collection.to_dict(include_self_link=False),
+        )
+        resp.raise_for_status()
+
+        return target_collection_id
+
+    def _upload_item(self, item: Item, target_collection_id: str, target: PurePath, session: Session):
+        item.remove_hierarchical_links()
+        item.collection_id = target_collection_id
+
+        resp = session.post(
+            f"{self.root_url}/{target}/items",
+            json=item.to_dict(include_self_link=False),
+        )
+        resp.raise_for_status()
 
     @staticmethod
     def _supports_necessary_operations(root_catalog: Catalog):
