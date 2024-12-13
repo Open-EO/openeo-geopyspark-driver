@@ -86,13 +86,13 @@ def test_merge_new(mock_s3_client, mock_s3_bucket, tmp_path, remove_original: bo
     )
 
     workspace = ObjectStorageWorkspace(bucket=target_bucket)
-    exported_collection = workspace.merge(new_collection, merge, remove_original)
+    imported_collection = workspace.merge(new_collection, merge, remove_original)
 
-    assert isinstance(exported_collection, Collection)
+    assert isinstance(imported_collection, Collection)
 
     asset_workspace_uris = {
         asset_key: asset.extra_fields["alternate"]["s3"]
-        for item in exported_collection.get_items()
+        for item in imported_collection.get_items()
         for asset_key, asset in item.get_assets().items()
     }
 
@@ -173,14 +173,19 @@ def test_merge_into_existing(tmp_path, mock_s3_client, mock_s3_bucket, remove_or
 
     workspace = ObjectStorageWorkspace(target_bucket)
     workspace.merge(existing_collection, target=merge, remove_original=remove_original)
-    merged_collection = workspace.merge(new_collection, target=merge, remove_original=remove_original)
+    imported_collection = workspace.merge(new_collection, target=merge, remove_original=remove_original)
 
-    assert isinstance(merged_collection, Collection)
-    assert merged_collection.extent.spatial.bboxes == [[0, 50, 3, 53]]
-    assert merged_collection.extent.temporal.intervals == [[
-        dt.datetime.fromisoformat("2024-11-01T00:00:00+00:00"),
-        dt.datetime.fromisoformat("2024-11-04T00:00:00+00:00")
-    ]]
+    assert isinstance(imported_collection, Collection)
+
+    asset_workspace_uris = {
+        asset_key: asset.extra_fields["alternate"]["s3"]
+        for item in imported_collection.get_items()
+        for asset_key, asset in item.get_assets().items()
+    }
+
+    assert asset_workspace_uris == {
+        "object_asset.tif": f"s3://{target_bucket}/{merge}/object_asset.tif",
+    }
 
     assert _workspace_keys(mock_s3_client, target_bucket, prefix="some/target/collection") == {
         "some/target/collection",
@@ -194,6 +199,13 @@ def test_merge_into_existing(tmp_path, mock_s3_client, mock_s3_bucket, remove_or
     assert bool(_workspace_keys(mock_s3_client, target_bucket, prefix=source_key)) != remove_original
 
     exported_collection = Collection.from_file(f"s3://{workspace.bucket}/{merge}", stac_io=CustomStacIO())
+
+    assert exported_collection.extent.spatial.bboxes == [[0, 50, 3, 53]]
+    assert exported_collection.extent.temporal.intervals == [[
+        dt.datetime.fromisoformat("2024-11-01T00:00:00+00:00"),
+        dt.datetime.fromisoformat("2024-11-04T00:00:00+00:00")
+    ]]
+
     assert exported_collection.validate_all() == 2
 
     items = [item for item in exported_collection.get_items()]
