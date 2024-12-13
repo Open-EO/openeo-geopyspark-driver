@@ -560,10 +560,10 @@ def _export_to_workspaces(
         remove_original = remove_exported_assets and final_export
 
         if enable_merge:
-            merged_collection = workspace.merge(collection, target=Path(merge), remove_original=remove_original)
-            assert isinstance(merged_collection, pystac.Collection)
+            imported_collection = workspace.merge(collection, target=Path(merge), remove_original=remove_original)
+            assert isinstance(imported_collection, pystac.Collection)
 
-            for item in merged_collection.get_items(recursive=True):
+            for item in imported_collection.get_items(recursive=True):
                 for asset_key, asset in item.get_assets().items():
                     (workspace_uri,) = asset.extra_fields["alternate"].values()
                     workspace_uris.setdefault(asset_key, []).append(

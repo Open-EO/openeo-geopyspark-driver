@@ -118,8 +118,6 @@ class ObjectStorageWorkspace(Workspace):
                             asset.extra_fields["_original_absolute_href"], new_item.get_self_href(), remove_original
                         )
                         asset.extra_fields["alternate"] = {"s3": workspace_uri}
-
-                merged_collection = new_collection
             else:
                 merged_collection = _merge_collection_metadata(existing_collection, new_collection)
                 new_collection = new_collection.map_assets(replace_asset_href)
@@ -140,7 +138,7 @@ class ObjectStorageWorkspace(Workspace):
                         )
                         asset.extra_fields["alternate"] = {"s3": workspace_uri}
 
-            return merged_collection
+            return new_collection
         else:
             raise NotImplementedError(stac_resource)
 

@@ -1319,6 +1319,95 @@ def test_filepath_per_band(
             shutil.rmtree(workspace_dir, ignore_errors=True)
 
 
+def test_export_workspace_merge_into_existing(tmp_path, mock_s3_bucket):
+    object_workspace_id = "s3_workspace"
+
+    enable_merge = True
+    merge = _random_merge(is_actual_collection_document=enable_merge)
+
+    object_workspace = get_backend_config().workspaces[object_workspace_id]
+    assert isinstance(object_workspace, ObjectStorageWorkspace)
+    assert object_workspace.bucket == get_backend_config().s3_bucket_name
+
+    def run_merge_job(job_dir: Path, temporal_extent, expected_asset_filename: str):
+        job_dir.mkdir()
+
+        process_graph = {
+            "loadcollection1": {
+                "process_id": "load_collection",
+                "arguments": {
+                    "id": "TestCollection-LonLat16x16",
+                    "temporal_extent": temporal_extent,
+                    "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 2.0},
+                    "bands": ["Flat:0", "Flat:1"],
+                },
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {
+                    "data": {"from_node": "loadcollection1"},
+                    "format": "GTiff",
+                },
+            },
+            "exportworkspace1": {
+                "process_id": "export_workspace",
+                "arguments": {
+                    "data": {"from_node": "saveresult1"},
+                    "workspace": object_workspace_id,
+                    "merge": str(merge),
+                },
+                "result": True,
+            },
+        }
+
+        process = {
+            "process_graph": process_graph,
+            "job_options": {
+                "export-workspace-enable-merge": enable_merge,
+            },
+        }
+
+        metadata_file = job_dir / "job_metadata.json"
+
+        run_job(
+            process,
+            output_file=job_dir / "out",
+            metadata_file=metadata_file,
+            api_version="2.0.0",
+            job_dir=job_dir,
+            dependencies=[],
+        )
+
+        with open(metadata_file) as f:
+            job_metadata = json.load(f)
+
+        (asset_alternate,) = job_metadata["assets"][expected_asset_filename]["alternate"].values()
+        # noinspection PyUnresolvedReferences
+        assert asset_alternate["href"] == f"s3://{object_workspace.bucket}/{merge}/{expected_asset_filename}"
+
+    run_merge_job(
+        job_dir=tmp_path / "first",
+        temporal_extent=["2021-01-05", "2021-01-06"],
+        expected_asset_filename="openEO_2021-01-05Z.tif",
+    )
+
+    run_merge_job(
+        job_dir=tmp_path / "second",
+        temporal_extent=["2021-01-15", "2021-01-16"],
+        expected_asset_filename="openEO_2021-01-15Z.tif",
+    )
+
+    object_workspace_keys = [PurePath(obj.key) for obj in mock_s3_bucket.objects.all()]
+
+    assert object_workspace_keys == ListSubSet([
+        merge,  # the Collection itself
+        merge / "openEO_2021-01-05Z.tif",
+        merge / "openEO_2021-01-05Z.tif.json",
+        merge / "openEO_2021-01-15Z.tif",
+        merge / "openEO_2021-01-15Z.tif.json",
+    ])
+
+
 def test_export_workspace_merge_filepath_per_band(tmp_path, mock_s3_bucket):
     job_dir = tmp_path
 
