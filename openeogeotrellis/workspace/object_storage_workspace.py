@@ -118,8 +118,6 @@ class ObjectStorageWorkspace(Workspace):
                             asset.extra_fields["_original_absolute_href"], new_item.get_self_href(), remove_original
                         )
                         asset.extra_fields["alternate"] = {"s3": workspace_uri}
-
-                merged_collection = new_collection
             else:
                 merged_collection = _merge_collection_metadata(existing_collection, new_collection)
                 new_collection = new_collection.map_assets(replace_asset_href)
@@ -140,7 +138,7 @@ class ObjectStorageWorkspace(Workspace):
                         )
                         asset.extra_fields["alternate"] = {"s3": workspace_uri}
 
-            return merged_collection
+            return new_collection
         else:
             raise NotImplementedError(stac_resource)
 
@@ -152,11 +150,15 @@ class ObjectStorageWorkspace(Workspace):
         target_prefix = "/".join(item_uri_parts.path[1:].split("/")[:-1])
         target_key = f"{target_prefix}/{source_path.name}"
 
+        workspace_uri = f"s3://{self.bucket}/{target_key}"
+
         if source_uri_parts.scheme in ["", "file"]:
             s3_client().upload_file(str(source_path), self.bucket, target_key)
 
             if remove_original:
                 source_path.unlink()
+
+            _log.debug(f"{'moved' if remove_original else 'uploaded'} {source_path.absolute()} to {workspace_uri}")
         elif source_uri_parts.scheme == "s3":
             source_bucket = source_uri_parts.netloc
             source_key = str(source_path).lstrip("/")
@@ -165,7 +167,11 @@ class ObjectStorageWorkspace(Workspace):
             s3.copy_object(CopySource={"Bucket": source_bucket, "Key": source_key}, Bucket=self.bucket, Key=target_key)
             if remove_original:
                 s3.delete_object(Bucket=source_bucket, Key=source_key)
+
+            _log.debug(
+                f"{'moved' if remove_original else 'copied'} s3://{source_bucket}/{source_key}" f" to {workspace_uri}"
+            )
         else:
             raise ValueError(asset_uri)
 
-        return f"s3://{self.bucket}/{target_key}"
+        return workspace_uri

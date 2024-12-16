@@ -14,6 +14,10 @@ without compromising stable operations.
 
 ## Unreleased
 
+## 0.53.1
+
+- `export_workspace`: fix `KeyError: 'alternate'` upon merging into existing STAC collection ([#677](https://github.com/Open-EO/openeo-geopyspark-driver/issues/677))
+
 ## 0.53.0
 
 - `export_workspace`: experimental support for merging STAC Collections ([#677](https://github.com/Open-EO/openeo-geopyspark-driver/issues/677))
