@@ -1,24 +1,42 @@
 from pathlib import PurePath, Path
-from typing import Union, Callable
+from typing import Union, Callable, Tuple
 from urllib.error import HTTPError
 
 import pystac_client
 from openeo_driver.util.http import requests_with_retry
 from openeo_driver.workspace import Workspace
-from pystac import STACObject, Catalog, Collection, Item
+from pystac import STACObject, Catalog, Collection, Item, Asset
 from requests import Session
 
 
 class StacApiWorkspace(Workspace):
     def __init__(
-        self, root_url: str, additional_collection_properties=None, get_access_token: Callable[[], str] = None
+        self,
+        root_url: str,
+        # (asset, remove_original) => (alternate ID, workspace URI)
+        export_asset: Callable[[Asset, bool], Tuple[str, str]],
+        additional_collection_properties=None,
+        get_access_token: Callable[[], str] = None,
     ):
+        """
+        :param root_url: the URL to the STAC API's root catalog
+        :param additional_collection_properties: top-level Collection properties to include in the request
+        :param get_access_token: supply an access token, if needed
+        :param export_asset: copy/move an asset and return its workspace URI as an alternate
+
+        Re: export_asset:
+        * locally with assets on disk: possibly copy to a persistent directory and adapt href
+        * Terrascope: possibly copy to a public directory and adapt href
+        * CDSE: possibly translate file path to s3:// URI and adapt href
+        """
+
         if additional_collection_properties is None:
             additional_collection_properties = {}
 
         self.root_url = root_url
         self._additional_collection_properties = additional_collection_properties
         self._get_access_token = get_access_token
+        self._export_asset = export_asset
 
     def import_file(self, common_path: Union[str, Path], file: Path, merge: str, remove_original: bool = False) -> str:
         raise NotImplementedError
@@ -53,14 +71,20 @@ class StacApiWorkspace(Workspace):
                 raise NotImplementedError("merge into existing collection")
             else:
                 with requests_with_retry() as session:
-                    # TODO: only to quickly test against actual STAC API
+                    # TODO: proper authentication
                     session.headers = (
                         {"Authorization": f"Bearer {self._get_access_token()}"} if self._get_access_token else None
                     )
 
+                    new_collection.make_all_asset_hrefs_absolute()  # probably makes sense for a STAC API
                     target_collection_id = self._upload_collection(new_collection, target, session)
                     for new_item in new_collection.get_items():
                         self._upload_item(new_item, target_collection_id, target, session)
+
+            for new_item in new_collection.get_items():
+                for asset in new_item.assets.values():
+                    alternate_id, workspace_uri = self._export_asset(asset.clone(), remove_original)
+                    asset.extra_fields["alternate"] = {alternate_id: workspace_uri}
 
             return new_collection
         else:
