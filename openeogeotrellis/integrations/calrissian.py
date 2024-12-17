@@ -1,7 +1,12 @@
+import base64
+import gzip
 import logging
 import dataclasses
+import textwrap
+from pathlib import Path
+
 import time
-from typing import Optional
+from typing import Optional, Union, Tuple, List
 
 from openeo.util import ContextTimer
 from openeo_driver.utils import generate_unique_id
@@ -19,6 +24,7 @@ class VolumeInfo:
     read_only: Optional[bool] = None
 
 
+
 class CalrissianJobLauncher:
     """
     Helper class to launch a Calrissian job on Kubernetes.
@@ -33,20 +39,18 @@ class CalrissianJobLauncher:
     ):
         self._namespace = namespace or get_backend_config().calrissian_namespace
         assert self._namespace
-        self._name_base = name_base
+        self._name_base = name_base or generate_unique_id(prefix="cal")
+        _log.info(f"CalrissianJobLauncher {self._namespace=} {self._name_base=}")
         self._backoff_limit = backoff_limit
 
         # TODO: config for this?
         self._security_context = kubernetes.client.V1SecurityContext(run_as_user=1000, run_as_group=1000)
 
-    def _get_name(self, affix: str) -> str:
-        return f"{self._name_base}-{affix}" if self._name_base else generate_unique_id(prefix=affix)
-
-    def create_input_staging_job_manifest(self) -> kubernetes.client.V1Job:
+    def create_input_staging_job_manifest(self, cwl_content: str) -> Tuple[kubernetes.client.V1Job, str]:
         """
         Create a k8s manifest for a Calrissian input staging job.
         """
-        name = self._get_name("cal-input")
+        name = f"{self._name_base}-cal-input"
         _log.info("Creating input staging job manifest: {name=}")
 
         volumes = [
@@ -59,6 +63,14 @@ class CalrissianJobLauncher:
             ),
         ]
 
+        # Serialize CWL content to string that is safe to pass as command line argument
+        cwl_serialized = base64.b64encode(cwl_content.encode("utf8")).decode("ascii")
+        cwl_path = f"/calrissian/input-data/{self._name_base}.cwl"
+
+        _log.info(
+            f"create_input_staging_job_manifest creating {cwl_path=} from {cwl_content[:32]=} through {cwl_serialized[:32]=}"
+        )
+
         container = kubernetes.client.V1Container(
             name="calrissian-input-staging",
             image="alpine:3",
@@ -69,10 +81,7 @@ class CalrissianJobLauncher:
                 "; ".join(
                     [
                         "set -euxo pipefail",
-                        # TODO: better way to deploy and fetch these resources?
-                        "wget -O /tmp/calrissian-resources.tar.gz https://artifactory.vgt.vito.be/artifactory/auxdata-public/openeo/calrissian-resources/calrissian-resources.tar.gz",
-                        "tar -xzvf /tmp/calrissian-resources.tar.gz -C /calrissian/input-data",
-                        "ls -al /calrissian/input-data",
+                        f"echo '{cwl_serialized}' | base64 -d > {cwl_path}",
                     ]
                 ),
             ],
@@ -106,13 +115,16 @@ class CalrissianJobLauncher:
                 backoff_limit=self._backoff_limit,
             ),
         )
-        return manifest
+        return manifest, cwl_path
 
     def create_cwl_job_manifest(
         self,
+        cwl_path: str,
+        cwl_arguments: List[str],
         # TODO: arguments to set an actual CWL workflow and inputs
     ) -> kubernetes.client.V1Job:
-        name = self._get_name("cal-cwl")
+        # TODO: name must be unique per invocation of this method, not just per instance/request/job.
+        name = f"{self._name_base}-cal-cwl"
         _log.info(f"Creating CWL job manifest: {name=}")
 
         container_image = get_backend_config().calrissian_image
@@ -147,11 +159,11 @@ class CalrissianJobLauncher:
             "--tmp-outdir-prefix",
             "/calrissian/tmpout/",
             "--outdir",
-            "/calrissian/output-data/",
-            "/calrissian/input-data/hello-world.cwl",
-            "--message",
-            "Hello EO world!",
-        ]
+            f"/calrissian/output-data/{self._name_base}",
+            cwl_path,
+        ] + cwl_arguments
+
+        _log.info(f"create_cwl_job_manifest {calrissian_arguments=}")
 
         container = kubernetes.client.V1Container(
             name="calrissian-job",

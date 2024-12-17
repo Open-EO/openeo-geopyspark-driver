@@ -4,6 +4,7 @@ Script to start a production server on Kubernetes. This script can serve as the 
 
 import logging
 import os
+import textwrap
 
 from openeo_driver.server import run_gunicorn
 from openeo_driver.util.logging import (
@@ -104,11 +105,39 @@ def main():
         launcher = CalrissianJobLauncher(namespace=namespace, name_base=name_base)
 
         # Input staging
-        input_staging_manifest = launcher.create_input_staging_job_manifest()
+        cwl_content = textwrap.dedent(
+            """
+            cwlVersion: v1.0
+            class: CommandLineTool
+            baseCommand: echo
+            requirements:
+              - class: DockerRequirement
+                dockerPull: debian:stretch-slim
+            inputs:
+              message:
+                type: string
+                default: "Hello World"
+                inputBinding:
+                  position: 1
+            outputs:
+              output_file:
+                type: File
+                outputBinding:
+                  glob: output.txt
+            stdout: output.txt
+        """
+        )
+        input_staging_manifest, cwl_path = launcher.create_input_staging_job_manifest(cwl_content=cwl_content)
         res = launcher.launch_job_and_wait(manifest=input_staging_manifest)
 
         # CWL job
-        cwl_manifest = launcher.create_cwl_job_manifest()
+        cwl_manifest = launcher.create_cwl_job_manifest(
+            cwl_path=cwl_path,
+            cwl_arguments=[
+                "--message",
+                f"Hello Earth, greetings from {request_id}",
+            ],
+        )
         res = launcher.launch_job_and_wait(manifest=cwl_manifest)
 
         return f"Hello from the backend: {res!r}"
