@@ -65,6 +65,7 @@ class CalrissianJobLauncher:
 
         # Serialize CWL content to string that is safe to pass as command line argument
         cwl_serialized = base64.b64encode(cwl_content.encode("utf8")).decode("ascii")
+        # TODO: ensure isolation of different CWLs (e.g. req/job id is not enough). Include content hash
         cwl_path = f"/calrissian/input-data/{self._name_base}.cwl"
 
         _log.info(
@@ -258,5 +259,14 @@ class CalrissianJobLauncher:
             raise ValueError("CWL")
 
         # TODO: how to resolve and extract the results?
+        # TODO: automatic cleanup after success?
+        # TODO: automatic cleanup after fail?
 
         return job
+
+    def get_volume_name_from_pvc(self, pvc_name: str) -> str:
+        """Get the name of the volume that is mounted by a PVC."""
+        core_api = kubernetes.client.CoreV1Api()
+        pvc = core_api.read_namespaced_persistent_volume_claim(name=pvc_name, namespace=self._namespace)
+        volume_name = pvc.spec.volume_name
+        return volume_name
