@@ -21,7 +21,6 @@ class VolumeInfo:
     name: str
     claim_name: str
     mount_path: str
-    read_only: Optional[bool] = None
 
 
 
@@ -43,6 +42,22 @@ class CalrissianJobLauncher:
         _log.info(f"CalrissianJobLauncher {self._namespace=} {self._name_base=}")
         self._backoff_limit = backoff_limit
 
+        self._volume_input = VolumeInfo(
+            name="calrissian-input-data",
+            claim_name="calrissian-input-data",
+            mount_path="/calrissian/input-data",
+        )
+        self._volume_tmp = VolumeInfo(
+            name="calrissian-tmpout",
+            claim_name="calrissian-tmpout",
+            mount_path="/calrissian/tmpout",
+        )
+        self._volume_output = VolumeInfo(
+            name="calrissian-output-data",
+            claim_name="calrissian-output-data",
+            mount_path="/calrissian/output-data",
+        )
+
         # TODO: config for this?
         self._security_context = kubernetes.client.V1SecurityContext(run_as_user=1000, run_as_group=1000)
 
@@ -53,21 +68,11 @@ class CalrissianJobLauncher:
         name = f"{self._name_base}-cal-input"
         _log.info("Creating input staging job manifest: {name=}")
 
-        volumes = [
-            # TODO: build these volume infos in init?
-            VolumeInfo(
-                name="calrissian-input-data",
-                claim_name="calrissian-input-data",
-                mount_path="/calrissian/input-data",
-                # TODO: note: no read_only here. Instead do input staging as part of deployment, instead of on the fly?
-            ),
-        ]
-
         # Serialize CWL content to string that is safe to pass as command line argument
         cwl_serialized = base64.b64encode(cwl_content.encode("utf8")).decode("ascii")
         # TODO: ensure isolation of different CWLs (e.g. req/job id is not enough). Include content hash
-        cwl_path = f"/calrissian/input-data/{self._name_base}.cwl"
-
+        # TODO: cleanup procedure of these CWL files?
+        cwl_path = str(Path(self._volume_input.mount_path) / f"{self._name_base}.cwl")
         _log.info(
             f"create_input_staging_job_manifest creating {cwl_path=} from {cwl_content[:32]=} through {cwl_serialized[:32]=}"
         )
@@ -77,18 +82,11 @@ class CalrissianJobLauncher:
             image="alpine:3",
             security_context=self._security_context,
             command=["/bin/sh"],
-            args=[
-                "-c",
-                "; ".join(
-                    [
-                        "set -euxo pipefail",
-                        f"echo '{cwl_serialized}' | base64 -d > {cwl_path}",
-                    ]
-                ),
-            ],
+            args=["-c", f"set -euxo pipefail; echo '{cwl_serialized}' | base64 -d > {cwl_path}"],
             volume_mounts=[
-                kubernetes.client.V1VolumeMount(name=v.name, mount_path=v.mount_path, read_only=v.read_only)
-                for v in volumes
+                kubernetes.client.V1VolumeMount(
+                    name=self._volume_input.name, mount_path=self._volume_input.mount_path, read_only=False
+                )
             ],
         )
         manifest = kubernetes.client.V1Job(
@@ -103,19 +101,18 @@ class CalrissianJobLauncher:
                         restart_policy="Never",
                         volumes=[
                             kubernetes.client.V1Volume(
-                                name=v.name,
+                                name=self._volume_input.name,
                                 persistent_volume_claim=kubernetes.client.V1PersistentVolumeClaimVolumeSource(
-                                    claim_name=v.claim_name,
-                                    read_only=v.read_only,
+                                    claim_name=self._volume_input.claim_name, read_only=False
                                 ),
                             )
-                            for v in volumes
                         ],
                     )
                 ),
                 backoff_limit=self._backoff_limit,
             ),
         )
+
         return manifest, cwl_path
 
     def create_cwl_job_manifest(
@@ -131,36 +128,23 @@ class CalrissianJobLauncher:
         container_image = get_backend_config().calrissian_image
         assert container_image
 
-        volumes = [
-            # TODO: build these volume infos in init?
-            VolumeInfo(
-                name="calrissian-input-data",
-                claim_name="calrissian-input-data",
-                mount_path="/calrissian/input-data",
-                read_only=True,
-            ),
-            VolumeInfo(
-                name="calrissian-tmpout",
-                claim_name="calrissian-tmpout",
-                mount_path="/calrissian/tmpout",
-            ),
-            VolumeInfo(
-                name="calrissian-output-data",
-                claim_name="calrissian-output-data",
-                mount_path="/calrissian/output-data",
-            ),
-        ]
+        # Pairs of (volume_info, read_only)
+        volumes = [(self._volume_input, True), (self._volume_tmp, False), (self._volume_output, False)]
+
+        # Ensure trailing "/" so that `tmp-outdir-prefix` is handled as a root directory.
+        tmp_dir = self._volume_tmp.mount_path.rstrip("/") + "/"
+        output_dir = str(Path(self._volume_output.mount_path) / self._name_base)
 
         calrissian_arguments = [
+            "--debug",
             "--max-ram",
             "2G",
             "--max-cores",
             "1",
-            "--debug",
             "--tmp-outdir-prefix",
-            "/calrissian/tmpout/",
+            tmp_dir,
             "--outdir",
-            f"/calrissian/output-data/{self._name_base}",
+            output_dir,
             cwl_path,
         ] + cwl_arguments
 
@@ -173,8 +157,10 @@ class CalrissianJobLauncher:
             command=["calrissian"],
             args=calrissian_arguments,
             volume_mounts=[
-                kubernetes.client.V1VolumeMount(name=v.name, mount_path=v.mount_path, read_only=v.read_only)
-                for v in volumes
+                kubernetes.client.V1VolumeMount(
+                    name=volume_info.name, mount_path=volume_info.mount_path, read_only=read_only
+                )
+                for volume_info, read_only in volumes
             ],
             env=[
                 kubernetes.client.V1EnvVar(
@@ -197,13 +183,13 @@ class CalrissianJobLauncher:
                         restart_policy="Never",
                         volumes=[
                             kubernetes.client.V1Volume(
-                                name=v.name,
+                                name=volume_info.name,
                                 persistent_volume_claim=kubernetes.client.V1PersistentVolumeClaimVolumeSource(
-                                    claim_name=v.claim_name,
-                                    read_only=v.read_only,
+                                    claim_name=volume_info.claim_name,
+                                    read_only=read_only,
                                 ),
                             )
-                            for v in volumes
+                            for volume_info, read_only in volumes
                         ],
                     )
                 ),
