@@ -4,7 +4,7 @@ from urllib.error import HTTPError
 
 import pystac_client
 from openeo_driver.util.http import requests_with_retry
-from openeo_driver.workspace import Workspace
+from openeo_driver.workspace import Workspace, _merge_collection_metadata
 from pystac import STACObject, Catalog, Collection, Item, Asset
 from requests import Session
 
@@ -49,7 +49,7 @@ class StacApiWorkspace(Workspace):
     def merge(self, stac_resource: STACObject, target: PurePath, remove_original: bool = False) -> STACObject:
         stac_resource = stac_resource.full_copy()
 
-        client = pystac_client.Client.open(self.root_url)
+        client = pystac_client.Client.open(self.root_url)  # TODO: just use pystac?
         if not self._supports_necessary_operations(client):
             # TODO: raise from within method?
             raise ValueError(f"STAC API {self.root_url} does not support transaction extensions")
@@ -66,20 +66,26 @@ class StacApiWorkspace(Workspace):
                 else:
                     raise
 
-            if existing_collection:
-                # TODO: update collection and add items
-                raise NotImplementedError("merge into existing collection")
-            else:
-                with requests_with_retry() as session:
-                    # TODO: proper authentication
-                    session.headers = (
-                        {"Authorization": f"Bearer {self._get_access_token()}"} if self._get_access_token else None
-                    )
+            with requests_with_retry() as session:
+                # TODO: proper authentication
+                session.headers = (
+                    {"Authorization": f"Bearer {self._get_access_token()}"} if self._get_access_token else None
+                )
 
-                    new_collection.make_all_asset_hrefs_absolute()  # probably makes sense for a STAC API
-                    target_collection_id = self._upload_collection(new_collection, target, session)
-                    for new_item in new_collection.get_items():
-                        self._upload_item(new_item, target_collection_id, target, session)
+                merged_collection = (
+                    _merge_collection_metadata(existing_collection, new_collection) if existing_collection
+                    else new_collection
+                )
+
+                target_collection_id = self._upload_collection(
+                    merged_collection,
+                    target,
+                    modify_existing=bool(existing_collection),
+                    session=session,
+                )
+
+                for new_item in new_collection.get_items():
+                    self._upload_item(new_item, target_collection_id, target, session)
 
             for new_item in new_collection.get_items():
                 for asset in new_item.assets.values():
@@ -90,21 +96,32 @@ class StacApiWorkspace(Workspace):
         else:
             raise NotImplementedError(f"merge from {stac_resource}")
 
-    def _upload_collection(self, collection: Collection, target: PurePath, session: Session) -> str:
+    def _upload_collection(
+        self, collection: Collection, target: PurePath, modify_existing: bool, session: Session
+    ) -> str:
         target_collection_id = target.name
 
         bare_collection = collection.clone()
         bare_collection.id = target_collection_id
         bare_collection.remove_hierarchical_links()
         bare_collection.extra_fields.update(self._additional_collection_properties)
+        bare_collection.make_all_asset_hrefs_absolute()  # probably makes sense for a STAC API
 
-        resp = session.post(
-            # TODO: assume target is "$collection_id" rather than "collections/$collection_id"?
-            f"{self.root_url}/collections",
-            json=bare_collection.to_dict(include_self_link=False),
-        )
+        request_json = bare_collection.to_dict(include_self_link=False)
+
+        if modify_existing:
+            resp = session.put(
+                f"{self.root_url}/{target}",
+                json=request_json,
+            )
+        else:
+            resp = session.post(
+                # TODO: assume target is "$collection_id" rather than "collections/$collection_id"?
+                f"{self.root_url}/collections",
+                json=request_json,
+            )
+
         resp.raise_for_status()
-
         return target_collection_id
 
     def _upload_item(self, item: Item, target_collection_id: str, target: PurePath, session: Session):
