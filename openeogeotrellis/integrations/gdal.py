@@ -481,13 +481,20 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
     # TODO: Choose a version, and remove others
     backend_config = get_backend_config()
     if (
-            not backend_config.gdalinfo_python_call
-            and not backend_config.gdalinfo_use_subprocess
-            and not backend_config.gdalinfo_use_python_subprocess
+        not backend_config.gdalinfo_from_file
+        and not backend_config.gdalinfo_python_call
+        and not backend_config.gdalinfo_use_subprocess
+        and not backend_config.gdalinfo_use_python_subprocess
     ):
         poorly_log(
             "Neither gdalinfo_python_call nor gdalinfo_use_subprocess nor gdalinfo_use_python_subprocess is True. Avoiding gdalinfo."
         )
+
+    if backend_config.gdalinfo_from_file:
+        GDALINFO_SUFFIX = "_gdalinfo.json"
+        if os.path.exists(asset_uri + GDALINFO_SUFFIX):
+            with open(asset_uri + GDALINFO_SUFFIX) as f:
+                data_gdalinfo = json.load(f)
 
     if backend_config.gdalinfo_python_call:
         start = time.time()
