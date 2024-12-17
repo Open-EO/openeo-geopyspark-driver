@@ -85,6 +85,7 @@ class StacApiWorkspace(Workspace):
                 )
 
                 for new_item in new_collection.get_items():
+                    new_item.make_asset_hrefs_absolute()  # probably makes sense for a STAC API
                     self._upload_item(new_item, target_collection_id, target, session)
 
             for new_item in new_collection.get_items():
@@ -105,7 +106,6 @@ class StacApiWorkspace(Workspace):
         bare_collection.id = target_collection_id
         bare_collection.remove_hierarchical_links()
         bare_collection.extra_fields.update(self._additional_collection_properties)
-        bare_collection.make_all_asset_hrefs_absolute()  # probably makes sense for a STAC API
 
         request_json = bare_collection.to_dict(include_self_link=False)
 
