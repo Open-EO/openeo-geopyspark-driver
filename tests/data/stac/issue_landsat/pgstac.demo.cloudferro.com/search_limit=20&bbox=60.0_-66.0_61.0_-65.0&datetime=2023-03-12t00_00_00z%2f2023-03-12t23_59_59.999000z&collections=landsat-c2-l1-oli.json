@@ -1,0 +1,20 @@
+{
+  "type": "FeatureCollection",
+  "context": {
+    "limit": 20,
+    "returned": 0
+  },
+  "features": [],
+  "links": [
+    {
+      "rel": "root",
+      "type": "application/json",
+      "href": "https://pgstac.demo.cloudferro.com/"
+    },
+    {
+      "rel": "self",
+      "type": "application/json",
+      "href": "https://pgstac.demo.cloudferro.com/search?limit=20&bbox=60.0%2C-66.0%2C61.0%2C-65.0&datetime=2023-03-12T00%3A00%3A00Z%2F2023-03-12T23%3A59%3A59.999000Z&collections=landsat-c2-l1-oli"
+    }
+  ]
+}

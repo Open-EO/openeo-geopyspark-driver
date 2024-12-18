@@ -1,0 +1,810 @@
+{
+  "type": "Catalog",
+  "id": "test",
+  "title": "CDSE Demo SpatioTemporal Asset Catalog",
+  "description": "Service provides comprehensive data management through the STAC catalog as the primary user access interface. The system excels in three core areas: automated metadata extraction, optimized database performance, and scalable API delivery. This solution enables continuous data acquisition while maintaining efficient access and processing capabilities for growing datasets.",
+  "stac_version": "1.0.0",
+  "conformsTo": [
+    "http://www.opengis.net/spec/ogcapi-features-3/1.0/conf/filter",
+    "http://www.opengis.net/spec/ogcapi-features-3/1.0/conf/features-filter",
+    "https://api.stacspec.org/v1.0.0/core",
+    "https://api.stacspec.org/v1.0.0-rc.2/item-search#context",
+    "http://www.opengis.net/spec/ogcapi-features-1/1.0/conf/geojson",
+    "http://www.opengis.net/spec/cql2/1.0/conf/cql2-json",
+    "https://api.stacspec.org/v1.0.0/item-search#query",
+    "http://www.opengis.net/spec/ogcapi-features-1/1.0/conf/core",
+    "http://www.opengis.net/spec/cql2/1.0/conf/basic-cql2",
+    "https://api.stacspec.org/v1.0.0-rc.2/item-search#filter",
+    "https://api.stacspec.org/v1.0.0-rc.3/ogcapi-features/extensions/transaction",
+    "https://api.stacspec.org/v1.0.0/item-search",
+    "http://www.opengis.net/spec/cql2/1.0/conf/cql2-text",
+    "http://www.opengis.net/spec/ogcapi-features-1/1.0/conf/oas30",
+    "https://api.stacspec.org/v1.0.0/item-search#fields",
+    "https://api.stacspec.org/v1.0.0/item-search#sort",
+    "https://api.stacspec.org/v1.0.0/ogcapi-features",
+    "https://api.stacspec.org/v1.0.0/collections"
+  ],
+  "links": [
+    {
+      "rel": "self",
+      "type": "application/json",
+      "href": "https://pgstac.demo.cloudferro.com/"
+    },
+    {
+      "rel": "root",
+      "type": "application/json",
+      "href": "https://pgstac.demo.cloudferro.com/"
+    },
+    {
+      "rel": "data",
+      "type": "application/json",
+      "href": "https://pgstac.demo.cloudferro.com/collections"
+    },
+    {
+      "rel": "conformance",
+      "type": "application/json",
+      "title": "STAC/OGC conformance classes implemented by this server",
+      "href": "https://pgstac.demo.cloudferro.com/conformance"
+    },
+    {
+      "rel": "search",
+      "type": "application/geo+json",
+      "title": "STAC search",
+      "href": "https://pgstac.demo.cloudferro.com/search",
+      "method": "GET"
+    },
+    {
+      "rel": "search",
+      "type": "application/geo+json",
+      "title": "STAC search",
+      "href": "https://pgstac.demo.cloudferro.com/search",
+      "method": "POST"
+    },
+    {
+      "rel": "http://www.opengis.net/def/rel/ogc/1.0/queryables",
+      "type": "application/schema+json",
+      "title": "Queryables",
+      "href": "https://pgstac.demo.cloudferro.com/queryables",
+      "method": "GET"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 OLCI Water Reduced Resolution (NRT)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-olci-2-wrr-nrt"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 SLSTR Aerosol Optical Depth (NRT)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-sl-2-aod-nrt"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 SRAL Radar Altimetry (NRT)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-sr-1-sra-a-nrt"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 SRAL Radar Altimetry (NTC)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-sr-1-sra-bs-ntc"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 SRAL Land Radar Altimetry - Land Ice (NTC)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-sr-2-lan-li-ntc"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Copernicus Contributed Missions (CCM), Kompsat 2-3",
+      "href": "https://pgstac.demo.cloudferro.com/collections/ccm-ais"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Copernicus Contributed Missions (CCM), WorldView-3",
+      "href": "https://pgstac.demo.cloudferro.com/collections/ccm-wv3"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 OLCI Earth Observation Reduced Resolution (NTC)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-olci-1-err-ntc"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 OLCI Land Full Resolution (NRT)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-olci-2-lfr-nrt"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 OLCI Water Reduced Resolution (NTC)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-olci-2-wrr-ntc"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 SRAL Radar Altimetry (STC)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-sr-1-sra-bs-stc"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 SRAL Radar Altimetry (NRT)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-sr-1-sra-nrt"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-2 Level-2A",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-2-l2a"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Landsat Collection 2 Level 1 Operational Land Imager - Thermal Infrared Sensor",
+      "href": "https://pgstac.demo.cloudferro.com/collections/landsat-c2-l1-oli-tirs"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-5P Level 2 Formaldehyde (RPRO)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-5p-l2-hcho-rpro"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-5P Level 2 Cloud (RPRO)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-5p-l2-cloud-rpro"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "STAC 1.1 DEMO Sentinel-2 Level-1C",
+      "href": "https://pgstac.demo.cloudferro.com/collections/stac-11-sentinel-2-l1c"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 OLCI Land Full Resolution (NTC)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-olci-2-lfr-ntc"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-2 Level-1C",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-2-l1c"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "cryo-demo",
+      "href": "https://pgstac.demo.cloudferro.com/collections/cryo-demo"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-5P Level 2 Formaldehyde (NRTI)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-5p-l2-hcho-nrti"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 SLSTR Radiance and Brightness Temperature (NRT)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-slstr-1-rbt-nrt"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 OLCI Water Full Resolution (NRT)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-olci-2-wfr-nrt"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Landsat Collection 2 Level 1 Operational Land Imager",
+      "href": "https://pgstac.demo.cloudferro.com/collections/landsat-c2-l1-oli"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 Top of Atmosphere Reflectance (SPOT VEGETATION)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-syn-2-vgp"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-1 Ground Range Detected (GRD)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-1-grd"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 OLCI Land Reduced Resolution (NTC)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-olci-2-lrr-ntc"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Copernicus Contributed Missions (CCM), Geosat-2",
+      "href": "https://pgstac.demo.cloudferro.com/collections/ccm-hrs"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 SLSTR Radiance and Brightness Temperature (NTC)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-slstr-1-rbt-ntc"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 OLCI Earth Observation Full Resolution (NTC)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-olci-1-efr-ntc"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 OLCI Earth Observation Reduced Resolution (NRT)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-olci-1-err-nrt"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 OLCI Earth Observation (EFR/ERR)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-olci-1-efr-err"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 OLCI Land (LFR/LRR)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-olci-2-lfr-lrr"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 OLCI Water (WFR/WRR)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-olci-2-wfr-wrr"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 SYNERGY Aerosol Optical Depth",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-syn-2-aod"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 Land Surface Reflectance and Aerosol",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-syn-2-syn"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 10-Day Surface Reflectance and NDVI",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-syn-2-v10"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 1-Day Surface Reflectance and NDVI",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-syn-2-vg1"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 OLCI Land Reduced Resolution (NRT)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-olci-2-lrr-nrt"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Landsat Collection 2 Level 1 Thermal Infrared Sensor",
+      "href": "https://pgstac.demo.cloudferro.com/collections/landsat-c2-l1-tirs"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Copernicus Contributed Missions (CCM), SPOT 6-7",
+      "href": "https://pgstac.demo.cloudferro.com/collections/ccm-nao"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 OLCI Water Full Resolution (NTC)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-olci-2-wfr-ntc"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 SLSTR Land Surface Temperature (NRT)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-sl-2-lst-nrt"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 SLSTR Water Surface Temperature (NRT)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-sl-2-wst-nrt"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Copernicus Contributed Missions (CCM), SuperView-1",
+      "href": "https://pgstac.demo.cloudferro.com/collections/ccm-opt"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 SLSTR Radiance and Brightness Temperature (NRT)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-sl-1-rbt-nrt"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 SLSTR Radiance and Brightness Temperature (NTC)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-sl-1-rbt-ntc"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 SLSTR Fire Radiative Power (NTC)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-sl-2-frp-ntc"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 SRAL Land Radar Altimetry - Hydrology (STC)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-sr-2-lan-hy-stc"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 SRAL Land Radar Altimetry - Land Ice (NRT)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-sr-2-lan-li-nrt"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 SRAL Land Radar Altimetry - Land Ice (STC)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-sr-2-lan-li-stc"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-5P Level 2 Tropospheric Ozone (OFFL)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-5p-l2-o3-tcl-offl"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-5P Level 2 Cloud (NRTI)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-5p-l2-cloud-nrti"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 SLSTR Land Surface Temperature (NTC)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-sl-2-lst-ntc"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 SRAL Land Radar Altimetry (NRT)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-sr-2-lan-nrt"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 SRAL Land Radar Altimetry (NTC)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-sr-2-lan-ntc"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 SRAL Land Radar Altimetry (STC)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-sr-2-lan-stc"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 SRAL Ocean Radar Altimetry (NRT)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-sr-2-wat-nrt"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 SLSTR Water Surface Temperature (NTC)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-sl-2-wst-ntc"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 SYNERGY Aerosol Optical Depth (NTC)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-syn-2-aod-ntc"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 Land Surface Reflectance and Aerosol (NTC)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-syn-2-syn-ntc"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Copernicus Contributed Missions (CCM), Triplesat",
+      "href": "https://pgstac.demo.cloudferro.com/collections/ccm-vhi"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 SRAL Ocean Radar Altimetry (STC)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-sr-2-wat-stc"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 Land Surface Reflectance and Aerosol (STC)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-syn-2-syn-stc"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 Top of Atmosphere Reflectance (NTC)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-syn-2-vgp-ntc"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 OLCI Earth Observation Full Resolution (NRT)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-olci-1-efr-nrt"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 SRAL Land Radar Altimetry - Sea Ice (NRT)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-sr-2-lan-si-nrt"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 Top of Atmosphere Reflectance (STC)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-syn-2-vgp-stc"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-5P Level 2 Tropospheric Ozone (RPRO)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-5p-l2-o3-tcl-rpro"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 SLSTR Fire Radiative Power (NRT)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-sl-2-frp-nrt"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 SRAL Radar Altimetry (NTC)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-sr-1-sra-a-ntc"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 SRAL Radar Altimetry (STC)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-sr-1-sra-a-stc"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 SRAL Radar Altimetry (NTC)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-sr-1-sra-ntc"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 SRAL Radar Altimetry (STC)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-sr-1-sra-stc"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 SRAL Land Radar Altimetry - Hydrology (NTC)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-sr-2-lan-hy-ntc"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-5P Level 2 Tropospheric Ozone (NRTI)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-5p-l2-o3-tcl-nrti"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-5P Level 2 Cloud (OFFL)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-5p-l2-cloud-offl"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 SRAL Land Radar Altimetry - Hydrology (NRT)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-sr-2-lan-hy-nrt"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 SRAL Ocean Radar Altimetry (NTC)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-sr-2-wat-ntc"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 1-Day Surface Reflectance and NDVI (NTC)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-syn-2-vg1-ntc"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Copernicus Contributed Missions (CCM), WorldView-2",
+      "href": "https://pgstac.demo.cloudferro.com/collections/ccm-wv1"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 SRAL Land Radar Altimetry - Sea Ice (NTC)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-sr-2-lan-si-ntc"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 SRAL Land Radar Altimetry - Sea Ice (STC)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-sr-2-lan-si-stc"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 10-Day Surface Reflectance and NDVI (NTC)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-syn-2-v10-ntc"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 10-Day Surface Reflectance and NDVI (STC)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-syn-2-v10-stc"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-3 1-Day Surface Reflectance and NDVI (STC)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-3-syn-2-vg1-stc"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-5P Level 2 Formaldehyde (OFFL)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-5p-l2-hcho-offl"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-2 Global Mosaics",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-2-global-mosaics"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-5P Level 2 NPP Cloud (OFFL)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-5p-l2-np-bd7-offl"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-5P Level 2 NPP Cloud (RPRO)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-5p-l2-np-bd7-rpro"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-5P Level 2 Aerosol Layer Height (RPRO)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-5p-l2-aer-lh-rpro"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-5P Level 2 Aerosol Layer Height (OFFL)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-5p-l2-aer-lh-offl"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-5P Level 2 Aerosol Layer Height (NRTI)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-5p-l2-aer-lh-nrti"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-5P Level 2 Methane (RPRO)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-5p-l2-ch4-rpro"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-5P Level 2 Methane (OFFL)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-5p-l2-ch4-offl"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-5P Level 2 Nitrogen Dioxide (NRTI)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-5p-l2-no2-nrti"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-5P Level 2 Nitrogen Dioxide (OFFL)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-5p-l2-no2-offl"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-5P Level 2 Nitrogen Dioxide (RPRO)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-5p-l2-no2-rpro"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-5P Level 2 Ozone (OFFL)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-5p-l2-o3-offl"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-5P Level 2 Ozone (RPRO)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-5p-l2-o3-rpro"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-5P Level 2 Ozone (NRTI)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-5p-l2-o3-nrti"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-5P Level 2 NPP Cloud (RPRO)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-5p-l2-np-bd3-rpro"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-5P Level 2 NPP Cloud (OFFL)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-5p-l2-np-bd3-offl"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-5P Level 2 Sulphur Dioxide (RPRO)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-5p-l2-so2-rpro"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-5P Level 2 Sulphur Dioxide (NRTI)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-5p-l2-so2-nrti"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-5P Level 2 Sulphur Dioxide (OFFL)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-5p-l2-so2-offl"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-5P Level 2 Carbon Monoxide (OFFL)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-5p-l2-co-offl"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-5P Level 2 Carbon Monoxide (NRTI)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-5p-l2-co-nrti"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-5P Level 2 Carbon Monoxide (RPRO)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-5p-l2-co-rpro"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-5P Level 2 Ultraviolet Aerosol Index (NRTI)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-5p-l2-aer-ai-nrti"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-5P Level 2 Ultraviolet Aerosol Index (OFFL)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-5p-l2-aer-ai-offl"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-5P Level 2 Ultraviolet Aerosol Index (RPRO)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-5p-l2-aer-ai-rpro"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-5P Level 2 Ozone Profile (RPRO)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-5p-l2-o3-pr-rpro"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-5P Level 2 Ozone Profile (OFFL)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-5p-l2-o3-pr-offl"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-5P Level 2 Ozone Profile (NRTI)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-5p-l2-o3-pr-nrti"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-5P Level 2 NPP Cloud (RPRO)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-5p-l2-np-bd6-rpro"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Sentinel-5P Level 2 NPP Cloud (OFFL)",
+      "href": "https://pgstac.demo.cloudferro.com/collections/sentinel-5p-l2-np-bd6-offl"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Copernicus Contributed Missions (CCM), PlanetScope",
+      "href": "https://pgstac.demo.cloudferro.com/collections/ccm-dov"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Copernicus Contributed Missions (CCM), Pleiades",
+      "href": "https://pgstac.demo.cloudferro.com/collections/ccm-phr"
+    },
+    {
+      "rel": "child",
+      "type": "application/json",
+      "title": "Copernicus Contributed Missions (CCM), Vision-1",
+      "href": "https://pgstac.demo.cloudferro.com/collections/ccm-s14"
+    },
+    {
+      "rel": "service-desc",
+      "type": "application/vnd.oai.openapi+json;version=3.0",
+      "title": "OpenAPI service description",
+      "href": "https://pgstac.demo.cloudferro.com/api"
+    },
+    {
+      "rel": "service-doc",
+      "type": "text/html",
+      "title": "OpenAPI service documentation",
+      "href": "https://pgstac.demo.cloudferro.com/api.html"
+    },
+    {
+      "rel": "http://www.opengis.net/def/rel/ogc/1.0/queryables",
+      "type": "application/schema+json",
+      "title": "Queryables",
+      "href": "https://pgstac.demo.cloudferro.com/queryables"
+    }
+  ],
+  "stac_extensions": []
+}
