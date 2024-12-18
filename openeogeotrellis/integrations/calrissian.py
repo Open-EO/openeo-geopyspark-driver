@@ -120,7 +120,7 @@ class CalrissianJobLauncher:
         cwl_path: str,
         cwl_arguments: List[str],
         # TODO: arguments to set an actual CWL workflow and inputs
-    ) -> kubernetes.client.V1Job:
+    ) -> Tuple[kubernetes.client.V1Job, str]:
         # TODO: name must be unique per invocation of this method, not just per instance/request/job.
         name = f"{self._name_base}-cal-cwl"
         _log.info(f"Creating CWL job manifest: {name=}")
@@ -133,7 +133,8 @@ class CalrissianJobLauncher:
 
         # Ensure trailing "/" so that `tmp-outdir-prefix` is handled as a root directory.
         tmp_dir = self._volume_tmp.mount_path.rstrip("/") + "/"
-        output_dir = str(Path(self._volume_output.mount_path) / self._name_base)
+        relative_output_dir = name
+        output_dir = str(Path(self._volume_output.mount_path) / relative_output_dir)
 
         calrissian_arguments = [
             "--debug",
@@ -196,7 +197,7 @@ class CalrissianJobLauncher:
                 backoff_limit=self._backoff_limit,
             ),
         )
-        return manifest
+        return manifest, relative_output_dir
 
     def launch_job_and_wait(
         self,
@@ -244,15 +245,15 @@ class CalrissianJobLauncher:
         else:
             raise ValueError("CWL")
 
-        # TODO: how to resolve and extract the results?
         # TODO: automatic cleanup after success?
         # TODO: automatic cleanup after fail?
-
         return job
 
-    def get_volume_name_from_pvc(self, pvc_name: str) -> str:
-        """Get the name of the volume that is mounted by a PVC."""
+    def get_output_volume_name(self) -> str:
+        """Get the actual name of the output volume claim."""
         core_api = kubernetes.client.CoreV1Api()
-        pvc = core_api.read_namespaced_persistent_volume_claim(name=pvc_name, namespace=self._namespace)
+        pvc = core_api.read_namespaced_persistent_volume_claim(
+            name=self._volume_output.claim_name, namespace=self._namespace
+        )
         volume_name = pvc.spec.volume_name
         return volume_name
