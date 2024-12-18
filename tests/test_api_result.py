@@ -4444,6 +4444,44 @@ class TestLoadStac:
         res = api110.result(process_graph).assert_status_code(400)
         assert "NoDataAvailable" in res.text
 
+    def test_load_stac_copernicus_global_mosaics(self, api110, urllib_and_request_mock, tmp_path):
+        urllib_and_request_mock.get(
+            "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-2-global-mosaics",
+            data=get_test_data_file(
+                "stac/issue_copernicus_global_mosaics/stac.dataspace.copernicus.eu/v1/collections/sentinel-2-global-mosaics.json"
+            ).read_text(),
+        )
+        urllib_and_request_mock.get(
+            "https://stac.dataspace.copernicus.eu/v1/search?limit=20&bbox=1.88%2C35.31%2C1.93%2C35.32&datetime=2023-01-01T00%3A00%3A00Z%2F2023-01-01T23%3A59%3A59.999000Z&collections=sentinel-2-global-mosaics",
+            data=get_test_data_file(
+                "stac/issue_copernicus_global_mosaics/stac.dataspace.copernicus.eu/v1/search_limit=20&bbox=1.88_35.31_1.93_35.32&datetime=2023-01-01t00_00_00z%2f2023-01-01t23_59_59.999000z&collections=sentinel-2-global-mosaics.json",
+            ).read_text(),
+        )
+        urllib_and_request_mock.get(
+            "https://stac.dataspace.copernicus.eu/v1/",
+            data=get_test_data_file(
+                "stac/issue_copernicus_global_mosaics/stac.dataspace.copernicus.eu/v1/index.html.json"
+            ).read_text(),
+        )
+
+        # Equivalent of: SENTINEL2_GLOBAL_MOSAICS_STAC_COPERNICUS
+        datacube = openeo.DataCube.load_stac(
+            "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-2-global-mosaics",
+            temporal_extent=["2023-01-01", "2023-01-02"],
+            spatial_extent={"west": 1.88, "south": 35.31, "east": 1.93, "north": 35.32},
+            bands=["B02"],
+        )
+
+        res = api110.result(datacube.flat_graph()).assert_status_code(200)
+        res_path = tmp_path / "res.tiff"
+        res_path.write_bytes(res.data)
+
+        raster = gdal.Open(str(res_path))
+        assert raster.RasterCount == 1
+
+        only_band = raster.GetRasterBand(1)
+        assert only_band.GetDescription() == "B02"
+
 
 class TestEtlApiReporting:
     @pytest.fixture(autouse=True)
