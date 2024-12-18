@@ -2,10 +2,10 @@ from pathlib import PurePath, Path
 from typing import Union, Callable, Tuple
 from urllib.error import HTTPError
 
-import pystac_client
 from openeo_driver.util.http import requests_with_retry
 from openeo_driver.workspace import Workspace, _merge_collection_metadata
-from pystac import STACObject, Catalog, Collection, Item, Asset
+import pystac
+from pystac import STACObject, Collection, Item, Asset
 from requests import Session
 
 
@@ -47,12 +47,9 @@ class StacApiWorkspace(Workspace):
         raise NotImplementedError
 
     def merge(self, stac_resource: STACObject, target: PurePath, remove_original: bool = False) -> STACObject:
-        stac_resource = stac_resource.full_copy()
+        self._assert_catalog_supports_necessary_api()
 
-        client = pystac_client.Client.open(self.root_url)  # TODO: just use pystac?
-        if not self._supports_necessary_operations(client):
-            # TODO: raise from within method?
-            raise ValueError(f"STAC API {self.root_url} does not support transaction extensions")
+        stac_resource = stac_resource.full_copy()
 
         if isinstance(stac_resource, Collection):
             new_collection = stac_resource
@@ -134,8 +131,9 @@ class StacApiWorkspace(Workspace):
         )
         resp.raise_for_status()
 
-    @staticmethod
-    def _supports_necessary_operations(root_catalog: Catalog):
+    def _assert_catalog_supports_necessary_api(self):
+        root_catalog = pystac.Catalog.from_file(self.root_url)
+
         conforms_to = root_catalog.extra_fields.get("conformsTo", [])
         # TODO: check additional extensions like for GET /collections as well?
 
@@ -143,11 +141,15 @@ class StacApiWorkspace(Workspace):
             conformance_class.endswith("/collections/extensions/transaction") for conformance_class in conforms_to
         )
 
+        if not supports_collection_methods:
+            raise ValueError(f"STAC API {self.root_url} does not support Transaction extension for Collections")
+
         supports_item_methods = any(
             conformance_class.endswith("/ogcapi-features/extensions/transaction") for conformance_class in conforms_to
         )
 
-        return supports_collection_methods and supports_item_methods
+        if not supports_item_methods:
+            raise ValueError(f"STAC API {self.root_url} does not support Transaction extension for Items")
 
     def _is_not_found_error(self, e: BaseException) -> bool:
         return (isinstance(e, HTTPError) and e.code == 404) or (

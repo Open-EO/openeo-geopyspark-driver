@@ -15,7 +15,7 @@ def test_merge_new(requests_mock, urllib_mock, tmp_path):
     target = PurePath("collections/new_collection")
     asset_path = Path("/path") / "to" / "asset1.tif"
 
-    _mock_stac_api_root_catalog(requests_mock, stac_api_workspace.root_url)
+    _mock_stac_api_root_catalog(urllib_mock, stac_api_workspace.root_url)
     # no need to mock URL for existing Collection as urllib_mock will return a 404 by default
 
     create_collection_mock = requests_mock.post(f"{stac_api_workspace.root_url}/collections")
@@ -50,7 +50,7 @@ def test_merge_into_existing(requests_mock, urllib_mock, tmp_path):
     target = PurePath("collections/existing_collection")
     asset_path = Path("/path") / "to" / "asset2.tif"
 
-    _mock_stac_api_root_catalog(requests_mock, stac_api_workspace.root_url)
+    _mock_stac_api_root_catalog(urllib_mock, stac_api_workspace.root_url)
     update_collection_mock = requests_mock.put(f"{stac_api_workspace.root_url}/{target}")
     create_item_mock = requests_mock.post(f"{stac_api_workspace.root_url}/{target}/items")
 
@@ -110,11 +110,11 @@ def test_merge_into_existing(requests_mock, urllib_mock, tmp_path):
     )
 
 
-def _mock_stac_api_root_catalog(requests_mock, root_url: str):
+def _mock_stac_api_root_catalog(urllib_mock, root_url: str):
     # STAC API root catalog with "conformsTo" for pystac_client
-    requests_mock.get(
+    urllib_mock.get(
         root_url,
-        json={
+        data=json.dumps({
             "type": "Catalog",
             "stac_version": "1.0.0",
             "id": "stacapi.test",
@@ -124,7 +124,7 @@ def _mock_stac_api_root_catalog(requests_mock, root_url: str):
                 "https://api.stacspec.org/v1.0.0/ogcapi-features/extensions/transaction",
             ],
             "links": [],
-        },
+        }),
     )
 
 
