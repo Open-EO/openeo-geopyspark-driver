@@ -6,13 +6,15 @@ import textwrap
 from pathlib import Path
 
 import time
-from typing import Optional, Union, Tuple, List
+from typing import Optional, Union, Tuple, List, Dict
 
 from openeo.util import ContextTimer
 from openeo_driver.utils import generate_unique_id
 from openeogeotrellis.config import get_backend_config
 
 import kubernetes.client
+
+from openeogeotrellis.utils import s3_client
 
 _log = logging.getLogger(__name__)
 
@@ -22,6 +24,21 @@ class VolumeInfo:
     claim_name: str
     mount_path: str
 
+
+
+@dataclasses.dataclass(frozen=True)
+class CalrissianS3Result:
+    s3_bucket: str
+    s3_key: str
+
+    def read(self, encoding: Union[None, str] = None) -> Union[bytes, str]:
+        _log.info(f"Reading from S3: {self.s3_bucket=}, {self.s3_key=}")
+        s3_file_object = s3_client().get_object(Bucket=self.s3_bucket, Key=self.s3_key)
+        body = s3_file_object["Body"]
+        content = body.read()
+        if encoding:
+            content = content.decode(encoding)
+        return content
 
 
 class CalrissianJobLauncher:
@@ -34,11 +51,14 @@ class CalrissianJobLauncher:
         *,
         namespace: Optional[str] = None,
         name_base: Optional[str] = None,
+        s3_bucket: Optional[str] = None,
         backoff_limit: int = 1,
     ):
         self._namespace = namespace or get_backend_config().calrissian_namespace
         assert self._namespace
         self._name_base = name_base or generate_unique_id(prefix="cal")
+        self._s3_bucket = s3_bucket or get_backend_config().calrissian_bucket
+
         _log.info(f"CalrissianJobLauncher {self._namespace=} {self._name_base=}")
         self._backoff_limit = backoff_limit
 
@@ -64,6 +84,11 @@ class CalrissianJobLauncher:
     def create_input_staging_job_manifest(self, cwl_content: str) -> Tuple[kubernetes.client.V1Job, str]:
         """
         Create a k8s manifest for a Calrissian input staging job.
+
+        :param cwl_content: CWL content as a string to dump to CWL file in the input volume.
+        :return: Tuple of
+            - k8s job manifest
+            - path to the CWL file in the input volume.
         """
         name = f"{self._name_base}-cal-input"
         _log.info("Creating input staging job manifest: {name=}")
@@ -121,6 +146,16 @@ class CalrissianJobLauncher:
         cwl_arguments: List[str],
         # TODO: arguments to set an actual CWL workflow and inputs
     ) -> Tuple[kubernetes.client.V1Job, str]:
+        """
+        Create a k8s manifest for a Calrissian CWL job.
+
+        :param cwl_path: path to the CWL file to run (inside the input staging volume),
+            as produced by `create_input_staging_job_manifest`
+        :param cwl_arguments:
+        :return: Tuple of
+            - k8s job manifest
+            - relative output directory (inside the output volume)
+        """
         # TODO: name must be unique per invocation of this method, not just per instance/request/job.
         name = f"{self._name_base}-cal-cwl"
         _log.info(f"Creating CWL job manifest: {name=}")
@@ -206,7 +241,9 @@ class CalrissianJobLauncher:
         sleep: float = 5,
         timeout: float = 60,
     ) -> kubernetes.client.V1Job:
-        """Launch a k8s job and wait (with active polling) for it to finish."""
+        """
+        Launch a k8s job and wait (with active polling) for it to finish.
+        """
 
         k8s_batch = kubernetes.client.BatchV1Api()
 
@@ -257,3 +294,36 @@ class CalrissianJobLauncher:
         )
         volume_name = pvc.spec.volume_name
         return volume_name
+
+    def run_cwl_workflow(
+        self, cwl_content: str, cwl_arguments: List[str], output_paths: List[str]
+    ) -> Dict[str, CalrissianS3Result]:
+        """
+        Run a CWL workflow on Calrissian and return the output as a string.
+
+        :param cwl_content: CWL content as a string.
+        :param cwl_arguments: arguments to pass to the CWL workflow.
+        :return: output of the CWL workflow as a string.
+        """
+        # Input staging
+        input_staging_manifest, cwl_path = self.create_input_staging_job_manifest(cwl_content=cwl_content)
+        input_staging_job = self.launch_job_and_wait(manifest=input_staging_manifest)
+
+        # CWL job
+        cwl_manifest, relative_output_dir = self.create_cwl_job_manifest(
+            cwl_path=cwl_path,
+            cwl_arguments=cwl_arguments,
+        )
+        cwl_job = self.launch_job_and_wait(manifest=cwl_manifest)
+
+        # Collect results
+        output_volume_name = self.get_output_volume_name()
+        s3_bucket = self._s3_bucket
+        results = {
+            output_path: CalrissianS3Result(
+                s3_bucket=s3_bucket,
+                s3_key=f"{output_volume_name}/{relative_output_dir.strip('/')}/{output_path.strip('/')}",
+            )
+            for output_path in output_paths
+        }
+        return results

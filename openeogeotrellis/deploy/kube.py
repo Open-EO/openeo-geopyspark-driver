@@ -22,7 +22,7 @@ from openeogeotrellis import deploy
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.deploy import get_socket
 from openeogeotrellis.job_registry import ZkJobRegistry
-from openeogeotrellis.utils import get_s3_file_contents, s3_client
+
 
 log = logging.getLogger(__name__)
 
@@ -120,14 +120,14 @@ def _cwl_demo(args: ProcessArgs, env: EvalEnv):
         "name",
         default="World",
         validator=ProcessArgs.validator_generic(
-            lambda n: bool(re.fullmatch("^[a-zA-Z]+$", n)), error_message="Must be a simple name, but got {actual!r}."
+            # TODO: helper to create regex based validator
+            lambda n: bool(re.fullmatch("^[a-zA-Z]+$", n)),
+            error_message="Must be a simple name, but got {actual!r}.",
         ),
     )
 
-    log = logging.getLogger("openeogeotrellis.deploy.kube._cwl_demo")
-
     if env.get(ENV_DRY_RUN_TRACER):
-        return name
+        return "dummy"
 
     # TODO: move this imports to top-level?
     import kubernetes.config
@@ -135,12 +135,11 @@ def _cwl_demo(args: ProcessArgs, env: EvalEnv):
 
     request_id = FlaskRequestCorrelationIdLogging.get_request_id()
     name_base = request_id[:20]
-    namespace = "calrissian-demo-project"
 
+    # TODO: better place to load this config?
     kubernetes.config.load_incluster_config()
-    launcher = CalrissianJobLauncher(namespace=namespace, name_base=name_base)
+    launcher = CalrissianJobLauncher(name_base=name_base)
 
-    # Input staging
     cwl_content = textwrap.dedent(
         """
         cwlVersion: v1.0
@@ -163,30 +162,18 @@ def _cwl_demo(args: ProcessArgs, env: EvalEnv):
         stdout: output.txt
     """
     )
-    input_staging_manifest, cwl_path = launcher.create_input_staging_job_manifest(cwl_content=cwl_content)
-    input_staging_job = launcher.launch_job_and_wait(manifest=input_staging_manifest)
+    cwl_arguments = [
+        "--message",
+        f"Hello {name}, greetings from {request_id}.",
+    ]
 
-    # CWL job
-    cwl_manifest, relative_output_dir = launcher.create_cwl_job_manifest(
-        cwl_path=cwl_path,
-        cwl_arguments=[
-            "--message",
-            f"Hello {name}, greetings from {request_id}.",
-        ],
+    results = launcher.run_cwl_workflow(
+        cwl_content=cwl_content,
+        cwl_arguments=cwl_arguments,
+        output_paths=["output.txt"],
     )
-    cwl_job = launcher.launch_job_and_wait(manifest=cwl_manifest)
 
-    output_volume_name = launcher.get_output_volume_name()
-    s3_instance = s3_client()
-    # TODO: get S3 bucket name from config?
-    s3_bucket = "calrissian"
-    # TODO: this must correspond with the CWL output definition
-    s3_key = f"{output_volume_name}/{relative_output_dir.strip('/')}/output.txt"
-    log.info(f"Getting CWL output from S3: {s3_bucket=}, {s3_key=}")
-    s3_file_object = s3_instance.get_object(Bucket=s3_bucket, Key=s3_key)
-    body = s3_file_object["Body"]
-    content = body.read().decode("utf8")
-    return content
+    return results["output.txt"].read(encoding="utf8")
 
 
 

@@ -247,7 +247,9 @@ class GpsBackendConfig(OpenEoBackendConfig):
     gdalinfo_use_subprocess: bool = True  # TODO: Only keep one gdalinfo on true
     gdalinfo_use_python_subprocess: bool = False
 
-    calrissian_namespace: Optional[str] = None
+    # TODO: replace these temp default with None (or better defaults)
+    calrissian_namespace: Optional[str] = "calrissian-demo-project"
     # TODO: proper calrissian image? Official one doesn't work due to https://github.com/Duke-GCB/calrissian/issues/124#issuecomment-947008286
     # calrissian_image: Optional[str] = "ghcr.io/duke-gcb/calrissian/calrissian:0.17.1"
     calrissian_image: Optional[str] = "registry.stag.warsaw.openeo.dataspace.copernicus.eu/rand/calrissian:latest"
+    calrissian_bucket: Optional[str] = "calrissian"
