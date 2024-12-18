@@ -4445,30 +4445,34 @@ class TestLoadStac:
         assert "NoDataAvailable" in res.text
 
     def test_load_stac_copernicus_global_mosaics(self, api110, urllib_and_request_mock, tmp_path):
+        def item_json(path):
+            text = get_test_data_file(path).read_text()
+            path = get_test_data_file("stac/issue_copernicus_global_mosaics/B02_flat_color.tif")
+            text = re.sub(r'"href":\s*"s3:/(/eodata/[^"]*\.tif|jp2)"', f'"href": "{path}"', text)
+            return text
+
         urllib_and_request_mock.get(
             "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-2-global-mosaics",
-            data=get_test_data_file(
+            data=item_json(
                 "stac/issue_copernicus_global_mosaics/stac.dataspace.copernicus.eu/v1/collections/sentinel-2-global-mosaics.json"
-            ).read_text(),
+            ),
         )
         urllib_and_request_mock.get(
-            "https://stac.dataspace.copernicus.eu/v1/search?limit=20&bbox=1.88%2C35.31%2C1.93%2C35.32&datetime=2023-01-01T00%3A00%3A00Z%2F2023-01-01T23%3A59%3A59.999000Z&collections=sentinel-2-global-mosaics",
-            data=get_test_data_file(
-                "stac/issue_copernicus_global_mosaics/stac.dataspace.copernicus.eu/v1/search_limit=20&bbox=1.88_35.31_1.93_35.32&datetime=2023-01-01t00_00_00z%2f2023-01-01t23_59_59.999000z&collections=sentinel-2-global-mosaics.json",
-            ).read_text(),
+            "https://stac.dataspace.copernicus.eu/v1/search?limit=20&bbox=2.1%2C35.31%2C2.2%2C35.32&datetime=2023-01-01T00%3A00%3A00Z%2F2023-01-01T23%3A59%3A59.999000Z&collections=sentinel-2-global-mosaics",
+            data=item_json(
+                "stac/issue_copernicus_global_mosaics/stac.dataspace.copernicus.eu/v1/search_limit=20&bbox=2.1_35.31_2.2_35.32&datetime=2023-01-01t00_00_00z%2f2023-01-01t23_59_59.999000z&collections=sentinel-2-global-mosaics.json"
+            ),
         )
         urllib_and_request_mock.get(
             "https://stac.dataspace.copernicus.eu/v1/",
-            data=get_test_data_file(
-                "stac/issue_copernicus_global_mosaics/stac.dataspace.copernicus.eu/v1/index.html.json"
-            ).read_text(),
+            data=item_json("stac/issue_copernicus_global_mosaics/stac.dataspace.copernicus.eu/v1/index.html.json"),
         )
 
         # Equivalent of: SENTINEL2_GLOBAL_MOSAICS_STAC_COPERNICUS
         datacube = openeo.DataCube.load_stac(
             "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-2-global-mosaics",
             temporal_extent=["2023-01-01", "2023-01-02"],
-            spatial_extent={"west": 1.88, "south": 35.31, "east": 1.93, "north": 35.32},
+            spatial_extent={"west": 2.1, "south": 35.31, "east": 2.2, "north": 35.32},
             bands=["B02"],
         )
 
