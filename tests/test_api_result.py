@@ -3830,9 +3830,7 @@ class TestLoadStac:
         )
         urllib_and_request_mock.get(
             "https://catalogue.dataspace.copernicus.eu/stac/search?limit=20&bbox=5.07%2C51.215%2C5.08%2C51.22&datetime=2023-06-01T00%3A00%3A00Z%2F2023-06-30T23%3A59%3A59.999000Z&collections=GLOBAL-MOSAICS",
-            data=item_json(
-                "stac/issue830_alternate_url_s3/catalogue.dataspace.copernicus.eu/stac/search_limit=20&bbox=5.07,51.215,5.08,51.22&datetime=2023-06-01T00_00_00Z%2F2023-06-30T23_59_59.999000Z&collections=GLOBAL-MOSAICS.json"
-            ),
+            data=item_json("stac/issue830_alternate_url_s3/catalogue.dataspace.copernicus.eu/stac/search_queried.json"),
         )
 
         process_graph = {
@@ -4459,9 +4457,7 @@ class TestLoadStac:
         )
         urllib_and_request_mock.get(
             "https://stac.dataspace.copernicus.eu/v1/search?limit=20&bbox=2.1%2C35.31%2C2.2%2C35.32&datetime=2023-01-01T00%3A00%3A00Z%2F2023-01-01T23%3A59%3A59.999000Z&collections=sentinel-2-global-mosaics",
-            data=item_json(
-                "stac/issue_copernicus_global_mosaics/stac.dataspace.copernicus.eu/v1/search_limit=20&bbox=2.1_35.31_2.2_35.32&datetime=2023-01-01t00_00_00z%2f2023-01-01t23_59_59.999000z&collections=sentinel-2-global-mosaics.json"
-            ),
+            data=item_json("stac/issue_copernicus_global_mosaics/stac.dataspace.copernicus.eu/v1/search_queried.json"),
         )
         urllib_and_request_mock.get(
             "https://stac.dataspace.copernicus.eu/v1/",
