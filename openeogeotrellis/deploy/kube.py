@@ -4,8 +4,10 @@ Script to start a production server on Kubernetes. This script can serve as the 
 
 import logging
 import os
+import re
 import textwrap
 
+from openeo_driver.processes import ProcessArgs
 from openeo_driver.server import run_gunicorn
 from openeo_driver.util.logging import (
     get_logging_config,
@@ -13,6 +15,8 @@ from openeo_driver.util.logging import (
     LOG_HANDLER_STDERR_JSON,
     FlaskRequestCorrelationIdLogging,
 )
+from openeo_driver.ProcessGraphDeserializer import non_standard_process, ProcessSpec, ENV_DRY_RUN_TRACER
+from openeo_driver.utils import EvalEnv
 from openeo_driver.views import build_app
 from openeogeotrellis import deploy
 from openeogeotrellis.config import get_backend_config
@@ -90,58 +94,6 @@ def main():
         }
     )
 
-    @app.route("/tmp/ogd936", methods=["GET"])
-    def tmp_ogd936():
-        """Temporary endpoint to play with Calrissian based CWL job management"""
-        import kubernetes.config
-        from openeogeotrellis.integrations.calrissian import CalrissianJobLauncher
-
-        request_id = FlaskRequestCorrelationIdLogging.get_request_id()
-        name_base = request_id[:20]
-
-        namespace = "calrissian-demo-project"
-        kubernetes.config.load_incluster_config()
-
-        launcher = CalrissianJobLauncher(namespace=namespace, name_base=name_base)
-
-        # Input staging
-        cwl_content = textwrap.dedent(
-            """
-            cwlVersion: v1.0
-            class: CommandLineTool
-            baseCommand: echo
-            requirements:
-              - class: DockerRequirement
-                dockerPull: debian:stretch-slim
-            inputs:
-              message:
-                type: string
-                default: "Hello World"
-                inputBinding:
-                  position: 1
-            outputs:
-              output_file:
-                type: File
-                outputBinding:
-                  glob: output.txt
-            stdout: output.txt
-        """
-        )
-        input_staging_manifest, cwl_path = launcher.create_input_staging_job_manifest(cwl_content=cwl_content)
-        res = launcher.launch_job_and_wait(manifest=input_staging_manifest)
-
-        # CWL job
-        cwl_manifest = launcher.create_cwl_job_manifest(
-            cwl_path=cwl_path,
-            cwl_arguments=[
-                "--message",
-                f"Hello Earth, greetings from {request_id}",
-            ],
-        )
-        res = launcher.launch_job_and_wait(manifest=cwl_manifest)
-
-        return f"Hello from the backend: {res!r}"
-
     host = os.environ.get('SPARK_LOCAL_IP', None)
     if host is None:
         host, _ = get_socket()
@@ -154,6 +106,75 @@ def main():
         port=port,
         on_started=on_started
     )
+
+
+@non_standard_process(
+    ProcessSpec(id="_cwl_demo", description="Proof-of-concept process to run CWL based processing.")
+    .param(name="name", description="Name to greet", schema={"type": "string"}, required=False)
+    .returns(description="data", schema={})
+)
+def _cwl_demo(args: ProcessArgs, env: EvalEnv):
+    """Proof of concept openEO process to run CWL based processing"""
+    name = args.get_optional(
+        "name",
+        default="World",
+        validator=ProcessArgs.validator_generic(
+            lambda n: bool(re.fullmatch("^[a-zA-Z]+$", n)), error_message="Must be a simple name, but got {actual!r}."
+        ),
+    )
+
+    if env.get(ENV_DRY_RUN_TRACER):
+        return name
+
+    # TODO: move this imports to top-level?
+    import kubernetes.config
+    from openeogeotrellis.integrations.calrissian import CalrissianJobLauncher
+
+    request_id = FlaskRequestCorrelationIdLogging.get_request_id()
+    name_base = request_id[:20]
+    namespace = "calrissian-demo-project"
+
+    kubernetes.config.load_incluster_config()
+    launcher = CalrissianJobLauncher(namespace=namespace, name_base=name_base)
+
+    # Input staging
+    cwl_content = textwrap.dedent(
+        """
+        cwlVersion: v1.0
+        class: CommandLineTool
+        baseCommand: echo
+        requirements:
+          - class: DockerRequirement
+            dockerPull: debian:stretch-slim
+        inputs:
+          message:
+            type: string
+            default: "Hello World"
+            inputBinding:
+              position: 1
+        outputs:
+          output_file:
+            type: File
+            outputBinding:
+              glob: output.txt
+        stdout: output.txt
+    """
+    )
+    input_staging_manifest, cwl_path = launcher.create_input_staging_job_manifest(cwl_content=cwl_content)
+    res = launcher.launch_job_and_wait(manifest=input_staging_manifest)
+
+    # CWL job
+    cwl_manifest = launcher.create_cwl_job_manifest(
+        cwl_path=cwl_path,
+        cwl_arguments=[
+            "--message",
+            f"Hello {name}, greetings from {request_id}.",
+        ],
+    )
+    res = launcher.launch_job_and_wait(manifest=cwl_manifest)
+
+    # TODO
+    return "TODO"
 
 
 if __name__ == '__main__':
