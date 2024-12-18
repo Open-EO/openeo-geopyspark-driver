@@ -4461,7 +4461,7 @@ class TestLoadStac:
         )
         urllib_and_request_mock.get(
             "https://stac.dataspace.copernicus.eu/v1/",
-            data=item_json("stac/issue_copernicus_global_mosaics/stac.dataspace.copernicus.eu/v1/index.html.json"),
+            data=item_json("stac/issue_copernicus_global_mosaics/stac.dataspace.copernicus.eu/v1/index.json"),
         )
 
         # Equivalent of: SENTINEL2_GLOBAL_MOSAICS_STAC_COPERNICUS
