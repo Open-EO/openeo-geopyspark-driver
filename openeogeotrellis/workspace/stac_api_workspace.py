@@ -64,7 +64,7 @@ class StacApiWorkspace(Workspace):
                     raise
 
             with requests_with_retry() as session:
-                # TODO: proper authentication
+                # TODO: uses a single access token for the collection + all items
                 session.headers = (
                     {"Authorization": f"Bearer {self._get_access_token()}"} if self._get_access_token else None
                 )
