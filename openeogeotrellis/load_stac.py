@@ -96,6 +96,8 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
             or mime_type.startswith("application/x-hdf")  # matches hdf5 and hdf
             or mime_type.startswith("application/x-netcdf")
             or mime_type.startswith("application/netcdf")
+            # matches GeoTIFF in some cases. Would be nice to get rid of:
+            or mime_type.startswith("application/octet-stream")
         )
 
     def is_band_asset(asset: pystac.Asset) -> bool:
