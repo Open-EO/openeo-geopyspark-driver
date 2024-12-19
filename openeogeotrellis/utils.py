@@ -45,6 +45,10 @@ from shapely.geometry.base import BaseGeometry
 
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
+from openeogeotrellis.util.runtime import get_job_id
+
+# TODO split up this kitchen sink module into more focused modules
+
 
 logger = logging.getLogger(__name__)
 
@@ -456,7 +460,7 @@ def add_permissions(path: Path, mode: int):
 
 def ensure_executor_logging(f) -> Callable:
     def setup_context_aware_logging(user_id: Optional[str], request_id: str):
-        job_id = os.environ.get("OPENEO_BATCH_JOB_ID")
+        job_id = get_job_id()
         in_batch_job_context = job_id is not None
 
         if in_batch_job_context:
