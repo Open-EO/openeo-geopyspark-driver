@@ -14,6 +14,11 @@ without compromising stable operations.
 
 ## Unreleased
 
+
+## 0.56.0
+
+- Initial support for CWL based processes with Calrissian on a Kubernetes cluster ([#936](https://github.com/Open-EO/openeo-geopyspark-driver/issues/936))
+
 ## 0.55.0
 
 - Support `file_metadata` format option to set file-specific metadata on `GTiff` output assets ([#970](https://github.com/Open-EO/openeo-geopyspark-driver/issues/970))
