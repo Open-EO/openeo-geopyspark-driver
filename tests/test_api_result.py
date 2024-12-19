@@ -1943,12 +1943,6 @@ def jvm_mock():
         yield jvm_mock
 
 
-@pytest.fixture
-def urllib_mock() -> UrllibMocker:
-    with UrllibMocker().patch() as mocker:
-        yield mocker
-
-
 class UrllibAndRequestMocker:
     def __init__(self, urllib_mock, requests_mock):
         self.urllib_mock = urllib_mock
@@ -3890,9 +3884,7 @@ class TestLoadStac:
         )
         urllib_and_request_mock.get(
             "https://catalogue.dataspace.copernicus.eu/stac/search?limit=20&bbox=5.07%2C51.215%2C5.08%2C51.22&datetime=2023-06-01T00%3A00%3A00Z%2F2023-06-30T23%3A59%3A59.999000Z&collections=GLOBAL-MOSAICS",
-            data=item_json(
-                "stac/issue830_alternate_url_s3/catalogue.dataspace.copernicus.eu/stac/search_limit=20&bbox=5.07,51.215,5.08,51.22&datetime=2023-06-01T00_00_00Z%2F2023-06-30T23_59_59.999000Z&collections=GLOBAL-MOSAICS.json"
-            ),
+            data=item_json("stac/issue830_alternate_url_s3/catalogue.dataspace.copernicus.eu/stac/search_queried.json"),
         )
 
         process_graph = {
@@ -4503,6 +4495,46 @@ class TestLoadStac:
 
         res = api110.result(process_graph).assert_status_code(400)
         assert "NoDataAvailable" in res.text
+
+    def test_load_stac_copernicus_global_mosaics(self, api110, urllib_and_request_mock, tmp_path):
+        def item_json(path):
+            text = get_test_data_file(path).read_text()
+            path = get_test_data_file("stac/issue_copernicus_global_mosaics/B02_flat_color.tif")
+            text = re.sub(r'"href":\s*"s3:/(/eodata/[^"]*\.tif|jp2)"', f'"href": "{path}"', text)
+            return text
+
+        urllib_and_request_mock.get(
+            "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-2-global-mosaics",
+            data=item_json(
+                "stac/issue_copernicus_global_mosaics/stac.dataspace.copernicus.eu/v1/collections/sentinel-2-global-mosaics.json"
+            ),
+        )
+        urllib_and_request_mock.get(
+            "https://stac.dataspace.copernicus.eu/v1/search?limit=20&bbox=2.1%2C35.31%2C2.2%2C35.32&datetime=2023-01-01T00%3A00%3A00Z%2F2023-01-01T23%3A59%3A59.999000Z&collections=sentinel-2-global-mosaics",
+            data=item_json("stac/issue_copernicus_global_mosaics/stac.dataspace.copernicus.eu/v1/search_queried.json"),
+        )
+        urllib_and_request_mock.get(
+            "https://stac.dataspace.copernicus.eu/v1/",
+            data=item_json("stac/issue_copernicus_global_mosaics/stac.dataspace.copernicus.eu/v1/index.json"),
+        )
+
+        # Equivalent of: SENTINEL2_GLOBAL_MOSAICS_STAC_COPERNICUS
+        datacube = openeo.DataCube.load_stac(
+            "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-2-global-mosaics",
+            temporal_extent=["2023-01-01", "2023-01-02"],
+            spatial_extent={"west": 2.1, "south": 35.31, "east": 2.2, "north": 35.32},
+            bands=["B02"],
+        )
+
+        res = api110.result(datacube.flat_graph()).assert_status_code(200)
+        res_path = tmp_path / "res.tiff"
+        res_path.write_bytes(res.data)
+
+        raster = gdal.Open(str(res_path))
+        assert raster.RasterCount == 1
+
+        only_band = raster.GetRasterBand(1)
+        assert only_band.GetDescription() == "B02"
 
 
 class TestEtlApiReporting:

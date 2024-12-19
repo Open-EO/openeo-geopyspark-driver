@@ -32,6 +32,7 @@ from openeo_driver.utils import smart_bool
 
 from openeogeotrellis.collections import convert_scala_metadata
 from openeogeotrellis.config import get_backend_config
+from openeogeotrellis.util.runtime import in_batch_job_context
 from openeogeotrellis.utils import lonlat_to_mercator_tile_indices, nullcontext, get_jvm, set_max_memory, \
     ensure_executor_logging
 
@@ -749,7 +750,7 @@ class S1BackscatterOrfeo:
 
     @staticmethod
     def _get_trackers(spark_context):
-        if "OPENEO_BATCH_JOB_ID" in os.environ:
+        if in_batch_job_context():
             # Trackers are only used for batch jobs, and they are global to that job.
             if S1BackscatterOrfeo._trackers is None:
                 S1BackscatterOrfeo._trackers = (

@@ -16,6 +16,7 @@ from osgeo import gdal
 
 from openeo_driver.utils import smart_bool
 from openeogeotrellis.config import get_backend_config
+from openeogeotrellis.util.runtime import get_job_id
 from openeogeotrellis.utils import stream_s3_binary_file_contents, _make_set_for_key, parse_json_from_output
 
 
@@ -27,7 +28,7 @@ def poorly_log(message: str, level=logging.INFO):
         created=time.time(),
         filename=Path(__file__).name,
         user_id=os.environ.get("OPENEO_USER_ID"),
-        job_id=os.environ.get("OPENEO_BATCH_JOB_ID"),
+        job_id=get_job_id(),
     )
 
     print(json.dumps(log_entry))
@@ -481,13 +482,20 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
     # TODO: Choose a version, and remove others
     backend_config = get_backend_config()
     if (
-            not backend_config.gdalinfo_python_call
-            and not backend_config.gdalinfo_use_subprocess
-            and not backend_config.gdalinfo_use_python_subprocess
+        not backend_config.gdalinfo_from_file
+        and not backend_config.gdalinfo_python_call
+        and not backend_config.gdalinfo_use_subprocess
+        and not backend_config.gdalinfo_use_python_subprocess
     ):
         poorly_log(
             "Neither gdalinfo_python_call nor gdalinfo_use_subprocess nor gdalinfo_use_python_subprocess is True. Avoiding gdalinfo."
         )
+
+    if backend_config.gdalinfo_from_file:
+        GDALINFO_SUFFIX = "_gdalinfo.json"
+        if os.path.exists(asset_uri + GDALINFO_SUFFIX):
+            with open(asset_uri + GDALINFO_SUFFIX) as f:
+                data_gdalinfo = json.load(f)
 
     if backend_config.gdalinfo_python_call:
         start = time.time()
@@ -498,7 +506,8 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
             poorly_log(f"gdal.Info() took {int((end - start) * 1000)}ms for {asset_uri}", level=logging.DEBUG)  # ~10ms
         except Exception as exc:
             poorly_log(
-                f"gdalinfo Exception. Statistics won't be added to STAC metadata. '{exc}'.", level=logging.WARNING
+                f"gdalinfo Exception. Statistics won't be added to STAC metadata. {exc.__class__.__name__}: '{exc}'.",
+                level=logging.WARNING,
             )
 
     if backend_config.gdalinfo_use_subprocess:
@@ -517,7 +526,7 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
                 data_gdalinfo = data_gdalinfo_from_subprocess
         except Exception as exc:
             poorly_log(
-                f"gdalinfo Exception. Statistics won't be added to STAC metadata. '{exc}'. Command: {subprocess.list2cmdline(cmd)}",
+                f"gdalinfo Exception. Statistics won't be added to STAC metadata. {exc.__class__.__name__}: '{exc}'. Command: {subprocess.list2cmdline(cmd)}",
                 level=logging.WARNING,
             )
 
@@ -541,7 +550,7 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
                 data_gdalinfo = data_gdalinfo_from_subprocess
         except Exception as exc:
             poorly_log(
-                f"gdalinfo Exception. Statistics won't be added to STAC metadata. '{exc}'. Command: {subprocess.list2cmdline(cmd)}",
+                f"gdalinfo Exception. Statistics won't be added to STAC metadata. {exc.__class__.__name__}: '{exc}'. Command: {subprocess.list2cmdline(cmd)}",
                 level=logging.WARNING,
             )
 

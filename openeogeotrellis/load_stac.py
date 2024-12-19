@@ -84,9 +84,25 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
         conforms_to = coll.get_root().extra_fields.get("conformsTo", [])
         return any(conformance_class.endswith("/item-search") for conformance_class in conforms_to)
 
+    def is_supported_raster_mime_type(mime_type: str) -> bool:
+        mime_type = mime_type.lower()
+        # https://github.com/radiantearth/stac-spec/blob/master/best-practices.md#common-media-types-in-stac
+        return (
+            mime_type.startswith("image/tiff")  # No 'image/tif', only double 'f' in spec
+            or mime_type.startswith("image/vnd.stac.geotiff")
+            or mime_type.startswith("image/jp2")
+            or mime_type.startswith("image/png")
+            or mime_type.startswith("image/jpeg")
+            or mime_type.startswith("application/x-hdf")  # matches hdf5 and hdf
+            or mime_type.startswith("application/x-netcdf")
+            or mime_type.startswith("application/netcdf")
+        )
+
     def is_band_asset(asset: pystac.Asset) -> bool:
         roles_with_bands = ["data", "data-mask", "snow-ice", "land-water", "water-mask"]
-        return any(asset.has_role(role) for role in roles_with_bands) or "eo:bands" in asset.extra_fields
+        return (any(asset.has_role(role) for role in roles_with_bands) or "eo:bands" in asset.extra_fields) and (
+            asset.media_type is None or is_supported_raster_mime_type(asset.media_type)
+        )
 
     def get_band_names(itm: pystac.Item, asst: pystac.Asset) -> List[str]:
         def get_band_name(eo_band) -> str:
