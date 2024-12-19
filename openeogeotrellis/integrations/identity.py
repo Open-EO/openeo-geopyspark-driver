@@ -27,7 +27,7 @@ class IDPDetails:
     """The public key in PEM format which can be used to verify the tokens"""
 
     @classmethod
-    def from_file(cls, file_path: Path) -> "IDPDetails":
+    def from_file(cls, file_path: Path) -> IDPDetails:
         with open(file_path) as fh:
             file_dict = json.load(fh)
         private_key = file_dict["private_key"].strip()
@@ -65,7 +65,7 @@ class IDPTokenIssuer:
         self.__class__._SINGLETON = self
 
     @classmethod
-    def instance(cls) -> "IDPTokenIssuer":
+    def instance(cls) -> IDPTokenIssuer:
         if cls._SINGLETON is not None:
             return cls._SINGLETON
         else:
