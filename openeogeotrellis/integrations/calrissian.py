@@ -1,29 +1,27 @@
 import base64
+import dataclasses
 import gzip
 import logging
-import dataclasses
 import textwrap
-from pathlib import Path
-
 import time
-from typing import Optional, Union, Tuple, List, Dict
-
-from openeo.util import ContextTimer
-from openeo_driver.utils import generate_unique_id
-from openeogeotrellis.config import get_backend_config
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple, Union
 
 import kubernetes.client
+from openeo.util import ContextTimer
+from openeo_driver.utils import generate_unique_id
 
+from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.utils import s3_client
 
 _log = logging.getLogger(__name__)
+
 
 @dataclasses.dataclass(frozen=True)
 class VolumeInfo:
     name: str
     claim_name: str
     mount_path: str
-
 
 
 @dataclasses.dataclass(frozen=True)
