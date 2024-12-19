@@ -4,8 +4,9 @@ from urllib.error import HTTPError
 
 from openeo_driver.util.http import requests_with_retry
 from openeo_driver.workspace import Workspace, _merge_collection_metadata
-import pystac
 from pystac import STACObject, Collection, Item, Asset
+import pystac_client
+from pystac_client import ConformanceClasses
 from requests import Session
 
 
@@ -132,24 +133,26 @@ class StacApiWorkspace(Workspace):
         resp.raise_for_status()
 
     def _assert_catalog_supports_necessary_api(self):
-        root_catalog = pystac.Catalog.from_file(self.root_url)
+        root_catalog_client = pystac_client.Client.open(self.root_url)
 
-        conforms_to = root_catalog.extra_fields.get("conformsTo", [])
-        # TODO: check additional extensions like for GET /collections as well?
+        if not root_catalog_client.conforms_to(ConformanceClasses.COLLECTIONS):
+            raise ValueError(f"{self.root_url} does not support Collections")
+
+        conforms_to = root_catalog_client.get_conforms_to()
 
         supports_collection_methods = any(
             conformance_class.endswith("/collections/extensions/transaction") for conformance_class in conforms_to
         )
 
         if not supports_collection_methods:
-            raise ValueError(f"STAC API {self.root_url} does not support Transaction extension for Collections")
+            raise ValueError(f"{self.root_url} does not support Transaction extension for Collections")
 
         supports_item_methods = any(
             conformance_class.endswith("/ogcapi-features/extensions/transaction") for conformance_class in conforms_to
         )
 
         if not supports_item_methods:
-            raise ValueError(f"STAC API {self.root_url} does not support Transaction extension for Items")
+            raise ValueError(f"{self.root_url} does not support Transaction extension for Items")
 
     def _is_not_found_error(self, e: BaseException) -> bool:
         return (isinstance(e, HTTPError) and e.code == 404) or (
