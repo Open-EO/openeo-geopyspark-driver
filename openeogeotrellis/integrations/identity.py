@@ -11,7 +11,7 @@ from typing import Literal, Optional
 import jwt
 
 from openeogeotrellis.config import get_backend_config
-from openeogeotrellis.utils import get_file_reload_register_func_if_changed, utcnow
+from openeogeotrellis.utils import FileChangeWatcher, utcnow
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +63,7 @@ class IDPTokenIssuer:
             raise RuntimeError("IDPTokenIssuer is meant as a singleton")
         self._IDP_DETAILS: Optional[IDPDetails] = None
         self.__class__._SINGLETON = self
+        self.watcher = FileChangeWatcher()
 
     @classmethod
     def instance(cls) -> IDPTokenIssuer:
@@ -73,7 +74,7 @@ class IDPTokenIssuer:
 
     def _reload_idp_details_if_needed(self) -> None:
         idp_details_file = get_backend_config().openeo_idp_details_file
-        register_reload = get_file_reload_register_func_if_changed(idp_details_file)
+        register_reload = self.watcher.get_file_reload_register_func_if_changed(idp_details_file)
         if register_reload is None:
             return
         try:
