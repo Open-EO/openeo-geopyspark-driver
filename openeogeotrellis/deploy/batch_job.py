@@ -71,6 +71,7 @@ from openeogeotrellis.udf import (
     collect_python_udf_dependencies,
     install_python_udf_dependencies,
 )
+from openeogeotrellis.util.runtime import get_job_id
 from openeogeotrellis.utils import (
     add_permissions,
     describe_path,
@@ -85,8 +86,7 @@ logger = logging.getLogger('openeogeotrellis.deploy.batch_job')
 
 
 OPENEO_LOGGING_THRESHOLD = os.environ.get("OPENEO_LOGGING_THRESHOLD", "INFO")
-OPENEO_BATCH_JOB_ID = os.environ.get("OPENEO_BATCH_JOB_ID", "unknown-job")
-GlobalExtraLoggingFilter.set("job_id", OPENEO_BATCH_JOB_ID)
+GlobalExtraLoggingFilter.set("job_id", get_job_id(default="unknown-job"))
 
 
 def _create_job_dir(job_dir: Path):
@@ -298,7 +298,7 @@ def run_job(
             backend_implementation.set_default_sentinel_hub_credentials(*default_sentinel_hub_credentials)
 
         logger.debug(f"Using backend implementation {backend_implementation}")
-        correlation_id = OPENEO_BATCH_JOB_ID
+        correlation_id = get_job_id(default="unknown-job")
         logger.info(f"Correlation id: {correlation_id}")
         env_values = {
             'version': api_version or "1.0.0",
@@ -552,7 +552,7 @@ def _export_to_workspaces(
         merge = workspace_export.merge
 
         if merge is None:
-            merge = OPENEO_BATCH_JOB_ID
+            merge = get_job_id(default="unknown-job")
         elif merge == "":  # TODO: puts it in root of workspace? move it there?
             merge = "."
 
@@ -679,11 +679,13 @@ def _write_exported_stac_collection(
             "type": "application/geo+json",
         }
 
+    job_id = get_job_id(default="unknown-job")
+
     stac_collection = {
         "type": "Collection",
         "stac_version": "1.0.0",
-        "id": OPENEO_BATCH_JOB_ID,
-        "description": f"This is the STAC metadata for the openEO job '{OPENEO_BATCH_JOB_ID}'",  # TODO
+        "id": job_id,
+        "description": f"This is the STAC metadata for the openEO job {job_id!r}",  # TODO
         "license": "unknown",  # TODO
         "extent": {
             "spatial": {"bbox": [[-180, -90, 180, 90]]},  # TODO

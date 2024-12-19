@@ -16,6 +16,7 @@ from osgeo import gdal
 
 from openeo_driver.utils import smart_bool
 from openeogeotrellis.config import get_backend_config
+from openeogeotrellis.util.runtime import get_job_id
 from openeogeotrellis.utils import stream_s3_binary_file_contents, _make_set_for_key, parse_json_from_output
 
 
@@ -27,7 +28,7 @@ def poorly_log(message: str, level=logging.INFO):
         created=time.time(),
         filename=Path(__file__).name,
         user_id=os.environ.get("OPENEO_USER_ID"),
-        job_id=os.environ.get("OPENEO_BATCH_JOB_ID"),
+        job_id=get_job_id(),
     )
 
     print(json.dumps(log_entry))
