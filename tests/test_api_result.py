@@ -3751,33 +3751,44 @@ class TestLoadStac:
             ).read_text(),
         )
         urllib_and_request_mock.get(
+            "https://pgstac.demo.cloudferro.com/search?limit=20&bbox=60.0%2C-66.0%2C61.0%2C-65.0&datetime=2022-03-12T00%3A00%3A00Z%2F2022-03-12T23%3A59%3A59.999000Z&collections=landsat-c2-l1-oli",
+            data=get_test_data_file("stac/issue_landsat/pgstac.demo.cloudferro.com/search_queried.json").read_text(),
+        )
+        urllib_and_request_mock.get(
             "https://pgstac.demo.cloudferro.com/search?limit=20&bbox=60.0%2C-66.0%2C61.0%2C-65.0&datetime=2023-03-12T00%3A00%3A00Z%2F2023-03-12T23%3A59%3A59.999000Z&collections=landsat-c2-l1-oli",
-            data=get_test_data_file(
-                "stac/issue_landsat/pgstac.demo.cloudferro.com/search_limit=20&bbox=60.0_-66.0_61.0_-65.0&datetime=2023-03-12t00_00_00z%2f2023-03-12t23_59_59.999000z&collections=landsat-c2-l1-oli.json"
-            ).read_text(),
+            data=get_test_data_file("stac/issue_landsat/pgstac.demo.cloudferro.com/search_queried.json").read_text(),
+        )
+        urllib_and_request_mock.get(
+            "https://pgstac.demo.cloudferro.com/search?limit=20&bbox=60.0%2C-66.0%2C61.0%2C-65.0&datetime=2023-03-12T00%3A00%3A00Z%2F2023-03-12T23%3A59%3A59.999000Z&collections=landsat-c2-l1-oli",
+            data=get_test_data_file("stac/issue_landsat/pgstac.demo.cloudferro.com/search_queried.json").read_text(),
+        )
+        urllib_and_request_mock.get(
+            "https://pgstac.demo.cloudferro.com/search?limit=20&bbox=-66.0%2C60.0%2C-65.0%2C61.0&datetime=2022-03-12T00%3A00%3A00Z%2F2022-03-12T23%3A59%3A59.999000Z&collections=landsat-c2-l1-oli",
+            data=get_test_data_file("stac/issue_landsat/pgstac.demo.cloudferro.com/search_queried.json").read_text(),
         )
         urllib_and_request_mock.get(
             "https://pgstac.demo.cloudferro.com/",
-            data=get_test_data_file("stac/issue_landsat/pgstac.demo.cloudferro.com/index.html.json").read_text(),
+            data=get_test_data_file("stac/issue_landsat/pgstac.demo.cloudferro.com/index.json").read_text(),
         )
 
         spatial_extent = to_bbox_dict(
             [
-                60,
                 -66,
-                61,
+                60,
                 -65,
+                61,
             ]
         )
         datacube = openeo.DataCube.load_stac(
             "https://pgstac.demo.cloudferro.com/collections/landsat-c2-l1-oli",
-            temporal_extent=["2023-03-12", "2023-03-13"],
+            temporal_extent=["2022-03-12", "2022-03-13"],
             spatial_extent=spatial_extent,
-            bands=["B02"],
+            bands=["blue"],
         )
 
-        res = api110.result(datacube.flat_graph()).assert_status_code(400)
-        assert "NoDataAvailable" in res.text
+        res = api110.result(datacube.flat_graph()).assert_status_code(200)
+        res_path = tmp_path / "res.tiff"
+        res_path.write_bytes(res.data)
 
     def test_load_stac_issue830_alternate_url(self, api110, urllib_and_request_mock, tmp_path):
         def item_json(path):
