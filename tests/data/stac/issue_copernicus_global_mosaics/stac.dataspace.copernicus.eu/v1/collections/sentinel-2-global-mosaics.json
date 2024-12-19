@@ -1,0 +1,417 @@
+{
+  "id": "sentinel-2-global-mosaics",
+  "type": "Collection",
+  "bands": [
+    {
+      "name": "B02",
+      "description": "Blue (band 2)",
+      "eo:common_name": "blue"
+    },
+    {
+      "name": "B03",
+      "description": "Green (band 3)",
+      "eo:common_name": "green"
+    },
+    {
+      "name": "B04",
+      "description": "Red (band 4)",
+      "eo:common_name": "red"
+    },
+    {
+      "name": "B08",
+      "description": "NIR 1 (band 8)",
+      "eo:common_name": "nir"
+    },
+    {
+      "name": "observations",
+      "description": "Number of valid observations for each pixel"
+    }
+  ],
+  "links": [
+    {
+      "rel": "items",
+      "type": "application/geo+json",
+      "href": "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-2-global-mosaics/items"
+    },
+    {
+      "rel": "parent",
+      "type": "application/json",
+      "href": "https://stac.dataspace.copernicus.eu/v1/"
+    },
+    {
+      "rel": "root",
+      "type": "application/json",
+      "href": "https://stac.dataspace.copernicus.eu/v1/"
+    },
+    {
+      "rel": "self",
+      "type": "application/json",
+      "href": "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-2-global-mosaics"
+    },
+    {
+      "rel": "license",
+      "href": "https://sentinel.esa.int/documents/247904/690755/Sentinel_Data_Legal_Notice",
+      "type": "application/pdf",
+      "title": "Legal notice on the use of Copernicus Sentinel Data and Service Information"
+    },
+    {
+      "rel": "http://www.opengis.net/def/rel/ogc/1.0/queryables",
+      "type": "application/schema+json",
+      "title": "Queryables",
+      "href": "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-2-global-mosaics/queryables"
+    }
+  ],
+  "title": "Sentinel-2 Global Mosaics",
+  "assets": {
+    "thumbnail": {
+      "href": "https://s3.waw3-2.cloudferro.com/swift/v1/stac-png/Global-Mosaics.jpg",
+      "type": "image/jpeg",
+      "roles": [
+        "thumbnail"
+      ],
+      "title": "Sentinel 2 Global Mosaics Thumbnail",
+      "proj:code": null,
+      "proj:shape": [
+        360,
+        640
+      ]
+    }
+  },
+  "extent": {
+    "spatial": {
+      "bbox": [
+        [
+          -180,
+          -90,
+          180,
+          90
+        ]
+      ]
+    },
+    "temporal": {
+      "interval": [
+        [
+          "2020-01-01T00:00:00.000Z",
+          null
+        ]
+      ]
+    }
+  },
+  "license": "other",
+  "keywords": [
+    "Sentinel",
+    "Copernicus",
+    "ESA",
+    "Satellite",
+    "Global",
+    "Imagery",
+    "Reflectance"
+  ],
+  "providers": [
+    {
+      "url": "https://sentinel.esa.int/web/sentinel/missions/sentinel-2",
+      "name": "ESA",
+      "roles": [
+        "producer"
+      ]
+    },
+    {
+      "url": "https://commission.europa.eu/",
+      "name": "European Commission",
+      "roles": [
+        "licensor"
+      ]
+    },
+    {
+      "url": "https://cloudferro.com/",
+      "name": "CloudFerro",
+      "roles": [
+        "host",
+        "processor"
+      ]
+    }
+  ],
+  "summaries": {
+    "gsd": [
+      10
+    ],
+    "instruments": [
+      "msi"
+    ],
+    "product:type": [
+      "S2MSI_L3__MCQ"
+    ],
+    "constellation": [
+      "sentinel-2"
+    ],
+    "processing:level": [
+      "L3"
+    ],
+    "product:timeliness": [
+      "P3M"
+    ],
+    "processing:facility": [
+      "Sinergise Solutions"
+    ]
+  },
+  "description": "The mosaics have four bands of data (Red (B04), Green (B03), Blue (B02) and wide band Near Infrared (B08)). First, cloud masking based on the scene classification layer of the Sentinel-2 level 2 algorithm was applied, then for each pixel and band, within three-month time periods, the first quartile of the distribution of the pixel values was taken as the output value to filter out any bright pixels misclassified as not clouds. If there are no valid pixels for the given timeframe, the pixel is left empty. Sentinel-2 cloudless mosaics can be used for various purposes such as land cover classification, land use planning, or for the creation of basemaps. These images are especially useful for showing large and cloudy areas with interesting large-scale patterns. Iceland is a prime example, with frequent cloud cover and large areal extent spanning several Sentinel-2 swaths.",
+  "item_assets": {
+    "B02": {
+      "gsd": 10,
+      "type": "image/tiff; application=geotiff; cloud-optimized=true",
+      "bands": [
+        {
+          "name": "B02",
+          "eo:common_name": "blue"
+        }
+      ],
+      "roles": [
+        "data",
+        "reflectance"
+      ],
+      "title": "Blue (band 2)",
+      "nodata": -32768,
+      "alternate": {
+        "https": {
+          "auth:refs": [
+            "oidc"
+          ],
+          "alternate:name": "HTTPS"
+        }
+      },
+      "auth:refs": [
+        "s3"
+      ],
+      "data_type": "int16",
+      "proj:shape": [
+        10008,
+        10008
+      ],
+      "description": "S3 storage provided by CloudFerro Cloud and OpenTelekom Cloud (OTC). Use endpoint URL `https://eodata.dataspace.copernicus.eu`.",
+      "storage:refs": [
+        "cdse-s3",
+        "creodias-s3"
+      ],
+      "alternate:name": "S3"
+    },
+    "B03": {
+      "gsd": 10,
+      "type": "image/tiff; application=geotiff; cloud-optimized=true",
+      "bands": [
+        {
+          "name": "B03",
+          "eo:common_name": "green"
+        }
+      ],
+      "roles": [
+        "data",
+        "reflectance"
+      ],
+      "title": "Green (band 3)",
+      "nodata": -32768,
+      "alternate": {
+        "https": {
+          "auth:refs": [
+            "oidc"
+          ],
+          "alternate:name": "HTTPS"
+        }
+      },
+      "auth:refs": [
+        "s3"
+      ],
+      "data_type": "int16",
+      "proj:shape": [
+        10008,
+        10008
+      ],
+      "description": "S3 storage provided by CloudFerro Cloud and OpenTelekom Cloud (OTC). Use endpoint URL `https://eodata.dataspace.copernicus.eu`.",
+      "storage:refs": [
+        "cdse-s3",
+        "creodias-s3"
+      ],
+      "alternate:name": "S3"
+    },
+    "B04": {
+      "gsd": 10,
+      "type": "image/tiff; application=geotiff; cloud-optimized=true",
+      "bands": [
+        {
+          "name": "B04",
+          "eo:common_name": "red"
+        }
+      ],
+      "roles": [
+        "data",
+        "reflectance"
+      ],
+      "title": "Red (band 4)",
+      "nodata": -32768,
+      "alternate": {
+        "https": {
+          "auth:refs": [
+            "https"
+          ],
+          "alternate:name": "HTTPS"
+        }
+      },
+      "auth:refs": [
+        "s3"
+      ],
+      "data_type": "int16",
+      "proj:shape": [
+        10008,
+        10008
+      ],
+      "description": "S3 storage provided by CloudFerro Cloud and OpenTelekom Cloud (OTC). Use endpoint URL `https://eodata.dataspace.copernicus.eu`.",
+      "storage:refs": [
+        "cdse-s3",
+        "creodias-s3"
+      ],
+      "alternate:name": "S3"
+    },
+    "B08": {
+      "gsd": 10,
+      "type": "image/tiff; application=geotiff; cloud-optimized=true",
+      "bands": [
+        {
+          "name": "B08",
+          "eo:common_name": "nir"
+        }
+      ],
+      "roles": [
+        "data",
+        "reflectance"
+      ],
+      "title": "NIR 1 (band 8)",
+      "nodata": -32768,
+      "alternate": {
+        "https": {
+          "auth:refs": [
+            "oidc"
+          ],
+          "alternate:name": "HTTPS"
+        }
+      },
+      "auth:refs": [
+        "s3"
+      ],
+      "data_type": "int16",
+      "proj:shape": [
+        10008,
+        10008
+      ],
+      "description": "S3 storage provided by CloudFerro Cloud and OpenTelekom Cloud (OTC). Use endpoint URL `https://eodata.dataspace.copernicus.eu`.",
+      "storage:refs": [
+        "cdse-s3",
+        "creodias-s3"
+      ],
+      "alternate:name": "S3"
+    },
+    "Product": {
+      "type": "application/zip",
+      "roles": [
+        "data",
+        "metadata",
+        "archive"
+      ],
+      "title": "Zipped product",
+      "auth:refs": [
+        "oidc"
+      ],
+      "alternate:name": "HTTPS"
+    },
+    "userdata": {
+      "type": "application/json",
+      "roles": [
+        "metadata"
+      ],
+      "title": "Product Odata Response File (JSON)",
+      "alternate": {
+        "https": {
+          "name": "HTTPS",
+          "auth:refs": [
+            "oidc"
+          ]
+        }
+      },
+      "auth:refs": [
+        "s3"
+      ],
+      "description": "S3 storage provided by CloudFerro Cloud and OpenTelekom Cloud (OTC). Use endpoint URL `https://eodata.dataspace.copernicus.eu`.",
+      "storage:refs": [
+        "cdse-s3",
+        "creodias-s3"
+      ],
+      "alternate:name": "S3"
+    },
+    "observations": {
+      "gsd": 10,
+      "type": "image/tiff; application=geotiff; cloud-optimized=true",
+      "roles": [
+        "data"
+      ],
+      "title": "Observations",
+      "nodata": 0,
+      "alternate": {
+        "https": {
+          "auth:refs": [
+            "oidc"
+          ],
+          "alternate:name": "HTTPS"
+        }
+      },
+      "auth:refs": [
+        "s3"
+      ],
+      "data_type": "uint16",
+      "proj:shape": [
+        10008,
+        10008
+      ],
+      "description": "S3 storage provided by CloudFerro Cloud and OpenTelekom Cloud (OTC). Use endpoint URL `https://eodata.dataspace.copernicus.eu`.",
+      "storage:refs": [
+        "cdse-s3",
+        "creodias-s3"
+      ],
+      "alternate:name": "S3"
+    }
+  },
+  "auth:schemes": {
+    "s3": {
+      "type": "s3"
+    },
+    "oidc": {
+      "type": "openIdConnect",
+      "openIdConnectUrl": "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/.well-known/openid-configuration"
+    }
+  },
+  "sci:citation": "Copernicus Sentinel data [Year]",
+  "stac_version": "1.1.0",
+  "stac_extensions": [
+    "https://stac-extensions.github.io/eo/v2.0.0/schema.json",
+    "https://stac-extensions.github.io/authentication/v1.1.0/schema.json",
+    "https://stac-extensions.github.io/projection/v2.0.0/schema.json",
+    "https://stac-extensions.github.io/processing/v1.2.0/schema.json",
+    "https://stac-extensions.github.io/product/v0.1.0/schema.json",
+    "https://stac-extensions.github.io/scientific/v1.0.0/schema.json",
+    "https://stac-extensions.github.io/alternate-assets/v1.2.0/schema.json",
+    "https://stac-extensions.github.io/storage/v2.0.0/schema.json"
+  ],
+  "storage:schemes": {
+    "cdse-s3": {
+      "type": "custom-s3",
+      "title": "Copernicus Data Space Ecosystem S3",
+      "platform": "https://eodata.dataspace.copernicus.eu",
+      "description": "This endpoint provides access to EO data which is stored on the Object Storage. A Global Service Load Balancer (GSLB) directs the request to either CloudFerro Cloud or OpenTelekom Cloud (OTC) S3 endpoint based on the location of the DNS resolver.",
+      "requester_pays": false
+    },
+    "creodias-s3": {
+      "type": "custom-s3",
+      "title": "CREODIAS S3",
+      "platform": "https://eodata.cloudferro.com",
+      "description": "Comprehensive Earth Observation Data (EODATA) archive offered by CREODIAS as a commercial part of CDSE, designed to provide users with access to a vast repository of satellite data without predefined quota limits",
+      "requester_pays": true
+    }
+  }
+}
