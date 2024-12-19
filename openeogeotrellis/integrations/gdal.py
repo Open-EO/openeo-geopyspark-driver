@@ -506,7 +506,8 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
             poorly_log(f"gdal.Info() took {int((end - start) * 1000)}ms for {asset_uri}", level=logging.DEBUG)  # ~10ms
         except Exception as exc:
             poorly_log(
-                f"gdalinfo Exception. Statistics won't be added to STAC metadata. '{exc}'.", level=logging.WARNING
+                f"gdalinfo Exception. Statistics won't be added to STAC metadata. {exc.__class__.__name__}: '{exc}'.",
+                level=logging.WARNING,
             )
 
     if backend_config.gdalinfo_use_subprocess:
@@ -525,7 +526,7 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
                 data_gdalinfo = data_gdalinfo_from_subprocess
         except Exception as exc:
             poorly_log(
-                f"gdalinfo Exception. Statistics won't be added to STAC metadata. '{exc}'. Command: {subprocess.list2cmdline(cmd)}",
+                f"gdalinfo Exception. Statistics won't be added to STAC metadata. {exc.__class__.__name__}: '{exc}'. Command: {subprocess.list2cmdline(cmd)}",
                 level=logging.WARNING,
             )
 
@@ -549,7 +550,7 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
                 data_gdalinfo = data_gdalinfo_from_subprocess
         except Exception as exc:
             poorly_log(
-                f"gdalinfo Exception. Statistics won't be added to STAC metadata. '{exc}'. Command: {subprocess.list2cmdline(cmd)}",
+                f"gdalinfo Exception. Statistics won't be added to STAC metadata. {exc.__class__.__name__}: '{exc}'. Command: {subprocess.list2cmdline(cmd)}",
                 level=logging.WARNING,
             )
 
