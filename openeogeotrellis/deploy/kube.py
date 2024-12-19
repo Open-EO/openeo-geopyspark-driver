@@ -8,21 +8,25 @@ import re
 import textwrap
 
 from openeo_driver.processes import ProcessArgs
+from openeo_driver.ProcessGraphDeserializer import (
+    ENV_DRY_RUN_TRACER,
+    ProcessSpec,
+    non_standard_process,
+)
 from openeo_driver.server import run_gunicorn
 from openeo_driver.util.logging import (
-    get_logging_config,
-    setup_logging,
     LOG_HANDLER_STDERR_JSON,
     FlaskRequestCorrelationIdLogging,
+    get_logging_config,
+    setup_logging,
 )
-from openeo_driver.ProcessGraphDeserializer import non_standard_process, ProcessSpec, ENV_DRY_RUN_TRACER
 from openeo_driver.utils import EvalEnv
 from openeo_driver.views import build_app
+
 from openeogeotrellis import deploy
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.deploy import get_socket
 from openeogeotrellis.job_registry import ZkJobRegistry
-
 
 log = logging.getLogger(__name__)
 
