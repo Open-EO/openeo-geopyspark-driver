@@ -20,6 +20,7 @@ _log = logging.getLogger(__name__)
 
 def load_custom_processes(logger=_log, _name="custom_processes"):
     """Try loading optional `custom_processes` module"""
+    # TODO: use backend_config instead of env var
     if path := os.environ.get("OPENEO_CUSTOM_PROCESSES"):
         # Directly load custom processes from OPENEO_CUSTOM_PROCESSES
         logger.debug(f"load_custom_processes: trying exec loading {path!r}")

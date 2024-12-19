@@ -14,6 +14,11 @@ without compromising stable operations.
 
 ## Unreleased
 
+
+## 0.55.0
+
+- Initial support for CWL based processes with Calrissian on a Kubernetes cluster ([#936](https://github.com/Open-EO/openeo-geopyspark-driver/issues/936))
+
 ## 0.54.0
 
 - `export_workspace`: experimental support for merging into STAC API ([#867](https://github.com/Open-EO/openeo-geopyspark-driver/issues/867))
