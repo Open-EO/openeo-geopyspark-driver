@@ -263,7 +263,7 @@ def test_layer_catalog_step_resolution(vault):
     assert warnings == ""
 
 
-def test_get_layer_native_extent(vault):
+def test_get_layer_native_extent_specific(vault):
     with mock.patch("openeogeotrellis.layercatalog.ConfigParams") as ConfigParams:
         ConfigParams.return_value.layer_catalog_metadata_files = [
             str(Path(__file__).parent / "layercatalog.json"),
@@ -274,6 +274,13 @@ def test_get_layer_native_extent(vault):
             west=-26.15, south=-48, east=60.42, north=39, crs="EPSG:4326"
         )
 
+
+def test_get_layer_native_extent_all(vault):
+    with mock.patch("openeogeotrellis.layercatalog.ConfigParams") as ConfigParams:
+        ConfigParams.return_value.layer_catalog_metadata_files = [
+            str(Path(__file__).parent / "layercatalog.json"),
+        ]
+        catalog = get_layer_catalog(vault, opensearch_enrich=True)
     all_metadata = catalog.get_all_metadata()
     for layer in all_metadata:
         print(layer["id"])
