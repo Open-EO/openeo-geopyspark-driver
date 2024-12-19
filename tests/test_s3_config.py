@@ -62,7 +62,7 @@ testdata = [
 ]
 
 
-@pytest.mark.parametrize("in_str, requires_sanitization", testdata)
+@pytest.mark.parametrize(["in_str", "requires_sanitization"], testdata)
 def test_sanitization_should_always_arrive_at_a_valid_session_name(in_str: str, requires_sanitization: bool):
     sanitized = S3Config._sanitize_session_name(in_str)
     is_sanitized = sanitized != in_str

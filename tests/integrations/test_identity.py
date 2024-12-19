@@ -19,7 +19,7 @@ def test_idptokenissuer_should_not_be_instantiated_manually():
         IDPTokenIssuer()
 
 
-def test_without_valid_config_token_should_just_be_none(monkeypatch):
+def test_without_valid_config_token_should_just_be_none():
     # GIVEN no valid config
     with gps_config_overrides(openeo_idp_details_file=Path("/tmp/file_that_do3s_not_exist.arr")):
         # WHEN we get a token for a job of a specific user
@@ -56,7 +56,7 @@ def create_idp_config(file_path: Path) -> str:
 
 
 @pytest.fixture
-def idp_token_issuer(monkeypatch, tmp_path) -> Generator[str, None, None]:
+def idp_token_issuer(tmp_path) -> Generator[str, None, None]:
     idp_cfg_file = tmp_path / "idp.json"
     with gps_config_overrides(openeo_idp_details_file=idp_cfg_file):
         public_key = create_idp_config(idp_cfg_file)
