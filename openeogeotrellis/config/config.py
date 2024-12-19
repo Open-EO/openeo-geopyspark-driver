@@ -265,3 +265,8 @@ class GpsBackendConfig(OpenEoBackendConfig):
     Config file to generate identity information from this Openeo Instance
     """
     openeo_idp_details_file: Path = Path("/opt/.idp/idp_details.json")
+
+    """
+    Directory where config specific to job execution will be mounted for batch jobs.
+    """
+    batch_job_config_dir: Path = Path("/opt/job_config")

@@ -280,7 +280,7 @@ spec:
 {%- endif %}
 {%- if provide_s3_profiles_and_tokens is sameas true %}
       - name: "batch-job-cfg"
-        mountPath: /opt/job_config
+        mountPath: {{ batch_job_config_dir }}
         readOnly: true
 {%- endif %}
 {%- if mount_tmp %}
@@ -428,7 +428,7 @@ spec:
 {%- endif %}
 {%- if provide_s3_profiles_and_tokens is sameas true %}
       - name: "batch-job-cfg"
-        mountPath: /opt/job_config
+        mountPath: {{batch_job_config_dir}}
         readOnly: true
 {%- endif %}
 {%- endblock %}
