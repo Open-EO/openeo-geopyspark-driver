@@ -19,7 +19,7 @@ import time_machine
 from _pytest.terminal import TerminalReporter
 from openeo_driver.backend import OpenEoBackendImplementation, UserDefinedProcesses
 from openeo_driver.jobregistry import ElasticJobRegistry, JobRegistryInterface
-from openeo_driver.testing import ApiTester, ephemeral_fileserver
+from openeo_driver.testing import ApiTester, ephemeral_fileserver, UrllibMocker
 from openeo_driver.utils import smart_bool
 from openeo_driver.views import build_app
 
@@ -353,6 +353,12 @@ def api110(client) -> ApiTester:
 @pytest.fixture
 def vault() -> Vault:
     return Vault("http://example.org")
+
+
+@pytest.fixture
+def urllib_mock() -> UrllibMocker:
+    with UrllibMocker().patch() as mocker:
+        yield mocker
 
 
 TEST_AWS_REGION_NAME = "eu-central-1"
