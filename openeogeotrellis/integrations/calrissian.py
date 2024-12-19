@@ -170,7 +170,9 @@ class CalrissianJobLauncher:
         output_dir = str(Path(self._volume_output.mount_path) / relative_output_dir)
 
         calrissian_arguments = [
+            # TODO (still) need for this debug flag?
             "--debug",
+            # TODO: better RAM/CPU values than these arbitrary ones?
             "--max-ram",
             "2G",
             "--max-cores",
@@ -185,7 +187,7 @@ class CalrissianJobLauncher:
         _log.info(f"create_cwl_job_manifest {calrissian_arguments=}")
 
         container = kubernetes.client.V1Container(
-            name="calrissian-job",
+            name=name,
             image=container_image,
             security_context=self._security_context,
             command=["calrissian"],
