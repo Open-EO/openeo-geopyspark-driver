@@ -1,10 +1,8 @@
 import datetime as dt
 import json
-import os
 from pathlib import PurePath, Path
 from typing import Dict
 
-import pytest
 from pystac import Collection, Extent, SpatialExtent, TemporalExtent, Item, Asset
 
 from openeogeotrellis.workspace import StacApiWorkspace
@@ -139,49 +137,6 @@ def _asset_workspace_uris(collection: Collection, alternate_key: str) -> Dict[st
         for item in collection.get_items()
         for asset_key, asset in item.get_assets().items()
     }
-
-
-@pytest.mark.skipif("BUILD_ID" in os.environ, reason="don't run on Jenkins")
-def test_against_actual_stac_api(tmp_path):
-    root_url = os.environ["STAC_API_ROOT_URL"]
-    asset_path = Path("/tmp/asset1.tif")
-
-    collection1 = _collection(root_path=tmp_path, collection_id="collection1", asset_path=asset_path)
-
-    def get_access_token():
-        from openeo.rest.auth.oidc import OidcClientInfo, OidcProviderInfo, OidcResourceOwnerPasswordAuthenticator
-
-        client_id = os.environ["STAC_API_AUTH_CLIENT_ID"]
-        issuer = os.environ["STAC_API_AUTH_ISSUER"]
-        username = os.environ["STAC_API_AUTH_USERNAME"]
-        password = os.environ["STAC_API_AUTH_PASSWORD"]
-
-        authenticator = OidcResourceOwnerPasswordAuthenticator(
-            client_info=OidcClientInfo(client_id=client_id, provider=OidcProviderInfo(issuer=issuer)),
-            username=username,
-            password=password,
-        )
-
-        return authenticator.get_tokens().access_token
-
-    additional_collection_properties = {
-        "_auth": {"read": ["anonymous"], "write": ["stac-openeo-admin", "stac-openeo-editor"]}
-    }
-
-    def log(asset: Asset, remove_original: bool) -> (str, str):
-        assert not remove_original
-        # neither copies the asset nor changes its href
-        print(asset)
-        return "file", asset.href
-
-    stac_api_workspace = StacApiWorkspace(
-        root_url=root_url,
-        export_asset=log,
-        additional_collection_properties=additional_collection_properties,
-        get_access_token=get_access_token,
-    )
-
-    stac_api_workspace.merge(collection1, target=PurePath("test_collection_for_stac_merge"))
 
 
 def _collection(
