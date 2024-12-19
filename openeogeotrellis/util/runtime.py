@@ -1,5 +1,9 @@
 import os
 from typing import Union, Type
+import inspect
+
+
+from openeo_driver.util.logging import FlaskRequestCorrelationIdLogging
 
 ENV_VAR_OPENEO_BATCH_JOB_ID = "OPENEO_BATCH_JOB_ID"
 
@@ -9,7 +13,7 @@ def _is_exception_like(value) -> bool:
     return isinstance(value, Exception) or (isinstance(value, type) and issubclass(value, Exception))
 
 
-def get_job_id(*, default: Union[str, None, Exception, Type[Exception]] = None) -> Union[str, None]:
+def get_job_id(*, default: Union[None, str, Exception, Type[Exception]] = None) -> Union[str, None]:
     """
     Get job id from batch job context,
     or a default/exception if not in batch job context.
@@ -22,3 +26,18 @@ def get_job_id(*, default: Union[str, None, Exception, Type[Exception]] = None) 
 
 def in_batch_job_context() -> bool:
     return bool(get_job_id(default=None))
+
+
+def get_request_id(*, default: Union[None, str, Exception, Type[Exception]] = None) -> Union[str, None]:
+    """
+    Get webapp request id from request context,
+    or a default/exception if not in request context.
+    """
+    kwargs = {}
+    if "default" in inspect.signature(FlaskRequestCorrelationIdLogging.get_request_id).parameters:
+        # TODO #936 remove this temporary adapter when openeo-driver dependency is fully updated (to >=0.122.0)
+        kwargs = {"default": default}
+    request_id = FlaskRequestCorrelationIdLogging.get_request_id(**kwargs)
+    if _is_exception_like(request_id):
+        raise request_id
+    return request_id

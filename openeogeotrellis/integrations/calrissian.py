@@ -1,3 +1,4 @@
+from __future__ import annotations
 import base64
 import dataclasses
 import gzip
@@ -12,6 +13,7 @@ from openeo.util import ContextTimer
 from openeo_driver.utils import generate_unique_id
 
 from openeogeotrellis.config import get_backend_config
+from openeogeotrellis.util.runtime import get_job_id, get_request_id
 from openeogeotrellis.utils import s3_client
 
 _log = logging.getLogger(__name__)
@@ -54,7 +56,7 @@ class CalrissianJobLauncher:
     ):
         self._namespace = namespace or get_backend_config().calrissian_namespace
         assert self._namespace
-        self._name_base = name_base or generate_unique_id(prefix="cal")
+        self._name_base = name_base or generate_unique_id(prefix="cal")[:20]
         self._s3_bucket = s3_bucket or get_backend_config().calrissian_bucket
 
         _log.info(f"CalrissianJobLauncher {self._namespace=} {self._name_base=}")
@@ -79,6 +81,21 @@ class CalrissianJobLauncher:
         # TODO: config for this?
         self._security_context = kubernetes.client.V1SecurityContext(run_as_user=1000, run_as_group=1000)
 
+    @staticmethod
+    def from_context() -> CalrissianJobLauncher:
+        """
+        Factory for creating a CalrissianJobLauncher from the current context
+        (e.g. using job_id/request_id for base name).
+        """
+        correlation_id = get_job_id(default=None) or get_request_id(default=None)
+        name_base = correlation_id[:20] if correlation_id else None
+        return CalrissianJobLauncher(name_base=name_base)
+
+    def _build_unique_name(self, infix: str) -> str:
+        """Build unique name from base name, an infix and something random, to be used for k8s resources"""
+        suffix = generate_unique_id(date_prefix=False)[:8]
+        return f"{self._name_base}-{infix}-{suffix}"
+
     def create_input_staging_job_manifest(self, cwl_content: str) -> Tuple[kubernetes.client.V1Job, str]:
         """
         Create a k8s manifest for a Calrissian input staging job.
@@ -88,14 +105,13 @@ class CalrissianJobLauncher:
             - k8s job manifest
             - path to the CWL file in the input volume.
         """
-        name = f"{self._name_base}-cal-input"
-        _log.info("Creating input staging job manifest: {name=}")
+        name = self._build_unique_name(infix="cal-inp")
+        _log.info(f"Creating input staging job manifest: {name=}")
 
         # Serialize CWL content to string that is safe to pass as command line argument
         cwl_serialized = base64.b64encode(cwl_content.encode("utf8")).decode("ascii")
-        # TODO: ensure isolation of different CWLs (e.g. req/job id is not enough). Include content hash
         # TODO: cleanup procedure of these CWL files?
-        cwl_path = str(Path(self._volume_input.mount_path) / f"{self._name_base}.cwl")
+        cwl_path = str(Path(self._volume_input.mount_path) / f"{name}.cwl")
         _log.info(
             f"create_input_staging_job_manifest creating {cwl_path=} from {cwl_content[:32]=} through {cwl_serialized[:32]=}"
         )
@@ -126,7 +142,8 @@ class CalrissianJobLauncher:
                             kubernetes.client.V1Volume(
                                 name=self._volume_input.name,
                                 persistent_volume_claim=kubernetes.client.V1PersistentVolumeClaimVolumeSource(
-                                    claim_name=self._volume_input.claim_name, read_only=False
+                                    claim_name=self._volume_input.claim_name,
+                                    read_only=False,
                                 ),
                             )
                         ],
@@ -155,7 +172,7 @@ class CalrissianJobLauncher:
             - relative output directory (inside the output volume)
         """
         # TODO: name must be unique per invocation of this method, not just per instance/request/job.
-        name = f"{self._name_base}-cal-cwl"
+        name = self._build_unique_name(infix="cal-cwl")
         _log.info(f"Creating CWL job manifest: {name=}")
 
         container_image = get_backend_config().calrissian_image
