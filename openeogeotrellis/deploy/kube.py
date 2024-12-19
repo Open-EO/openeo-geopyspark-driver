@@ -4,14 +4,30 @@ Script to start a production server on Kubernetes. This script can serve as the 
 
 import logging
 import os
+import re
+import textwrap
 
+from openeo_driver.processes import ProcessArgs
+from openeo_driver.ProcessGraphDeserializer import (
+    ENV_DRY_RUN_TRACER,
+    ProcessSpec,
+    non_standard_process,
+)
 from openeo_driver.server import run_gunicorn
-from openeo_driver.util.logging import get_logging_config, setup_logging, LOG_HANDLER_STDERR_JSON
+from openeo_driver.util.logging import (
+    LOG_HANDLER_STDERR_JSON,
+    FlaskRequestCorrelationIdLogging,
+    get_logging_config,
+    setup_logging,
+)
+from openeo_driver.utils import EvalEnv
 from openeo_driver.views import build_app
+
 from openeogeotrellis import deploy
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.deploy import get_socket
 from openeogeotrellis.job_registry import ZkJobRegistry
+from openeogeotrellis.util.runtime import get_job_id, get_request_id
 
 log = logging.getLogger(__name__)
 
@@ -37,6 +53,7 @@ def main():
     )
 
     from pyspark import SparkContext
+
     log.info("starting spark context")
     SparkContext.getOrCreate()
 
@@ -96,6 +113,74 @@ def main():
         port=port,
         on_started=on_started
     )
+
+
+@non_standard_process(
+    ProcessSpec(id="_cwl_demo", description="Proof-of-concept process to run CWL based processing.")
+    .param(name="name", description="Name to greet", schema={"type": "string"}, required=False)
+    .returns(description="data", schema={})
+)
+def _cwl_demo(args: ProcessArgs, env: EvalEnv):
+    """Proof of concept openEO process to run CWL based processing"""
+    name = args.get_optional(
+        "name",
+        default="World",
+        validator=ProcessArgs.validator_generic(
+            # TODO: helper to create regex based validator
+            lambda n: bool(re.fullmatch("^[a-zA-Z]+$", n)),
+            error_message="Must be a simple name, but got {actual!r}.",
+        ),
+    )
+
+    if env.get(ENV_DRY_RUN_TRACER):
+        return "dummy"
+
+    # TODO: move this imports to top-level?
+    import kubernetes.config
+
+    from openeogeotrellis.integrations.calrissian import CalrissianJobLauncher
+
+    # TODO: better place to load this config?
+    kubernetes.config.load_incluster_config()
+
+    launcher = CalrissianJobLauncher.from_context()
+
+    cwl_content = textwrap.dedent(
+        """
+        cwlVersion: v1.0
+        class: CommandLineTool
+        baseCommand: echo
+        requirements:
+          - class: DockerRequirement
+            dockerPull: debian:stretch-slim
+        inputs:
+          message:
+            type: string
+            default: "Hello World"
+            inputBinding:
+              position: 1
+        outputs:
+          output_file:
+            type: File
+            outputBinding:
+              glob: output.txt
+        stdout: output.txt
+    """
+    )
+    correlation_id = get_job_id(default=None) or get_request_id(default=None)
+    cwl_arguments = [
+        "--message",
+        f"Hello {name}, greetings from {correlation_id}.",
+    ]
+
+    results = launcher.run_cwl_workflow(
+        cwl_content=cwl_content,
+        cwl_arguments=cwl_arguments,
+        output_paths=["output.txt"],
+    )
+
+    return results["output.txt"].read(encoding="utf8")
+
 
 
 if __name__ == '__main__':
