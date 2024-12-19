@@ -1,9 +1,13 @@
 import dirty_equals
 import flask
 import pytest
-
 from openeo_driver.util.logging import FlaskRequestCorrelationIdLogging
-from openeogeotrellis.util.runtime import get_job_id, ENV_VAR_OPENEO_BATCH_JOB_ID, get_request_id
+
+from openeogeotrellis.util.runtime import (
+    ENV_VAR_OPENEO_BATCH_JOB_ID,
+    get_job_id,
+    get_request_id,
+)
 
 
 def test_get_job_id_basic():

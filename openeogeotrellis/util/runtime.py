@@ -1,7 +1,6 @@
-import os
-from typing import Union, Type
 import inspect
-
+import os
+from typing import Type, Union
 
 from openeo_driver.util.logging import FlaskRequestCorrelationIdLogging
 

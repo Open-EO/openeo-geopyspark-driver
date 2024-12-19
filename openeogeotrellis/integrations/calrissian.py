@@ -1,17 +1,16 @@
 from __future__ import annotations
+
 import base64
 import dataclasses
-import gzip
 import logging
-import textwrap
-import time
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 
 import kubernetes.client
+import time
+
 from openeo.util import ContextTimer
 from openeo_driver.utils import generate_unique_id
-
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.util.runtime import get_job_id, get_request_id
 from openeogeotrellis.utils import s3_client
