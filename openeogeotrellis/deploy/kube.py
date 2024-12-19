@@ -27,6 +27,7 @@ from openeogeotrellis import deploy
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.deploy import get_socket
 from openeogeotrellis.job_registry import ZkJobRegistry
+from openeogeotrellis.util.runtime import get_job_id, get_request_id
 
 log = logging.getLogger(__name__)
 
@@ -137,12 +138,10 @@ def _cwl_demo(args: ProcessArgs, env: EvalEnv):
     import kubernetes.config
     from openeogeotrellis.integrations.calrissian import CalrissianJobLauncher
 
-    request_id = FlaskRequestCorrelationIdLogging.get_request_id()
-    name_base = request_id[:20]
-
     # TODO: better place to load this config?
     kubernetes.config.load_incluster_config()
-    launcher = CalrissianJobLauncher(name_base=name_base)
+
+    launcher = CalrissianJobLauncher.from_context()
 
     cwl_content = textwrap.dedent(
         """
@@ -166,9 +165,10 @@ def _cwl_demo(args: ProcessArgs, env: EvalEnv):
         stdout: output.txt
     """
     )
+    correlation_id = get_job_id(default=None) or get_request_id(default=None)
     cwl_arguments = [
         "--message",
-        f"Hello {name}, greetings from {request_id}.",
+        f"Hello {name}, greetings from {correlation_id}.",
     ]
 
     results = launcher.run_cwl_workflow(
