@@ -3744,6 +3744,19 @@ class TestLoadStac:
         assert (ds["band3"] == 3).all()
 
     def test_load_stac_landsat(self, api110, urllib_and_request_mock, tmp_path):
+        # p = "/home/emile/openeo/openeo-geopyspark-driver/tests/data/stac/issue_landsat/pgstac.demo.cloudferro.com/search_queried.json"
+        # j = json.load(open(p))
+        # features = j["features"]
+        # for feature in features:
+        #     assert len(feature["geometry"]["coordinates"]) == 1
+        #     l = feature["geometry"]["coordinates"][0]
+        #     for coordinate in l:
+        #         assert len(coordinate) == 2
+        #         coordinate.reverse()
+        # p2 = "/home/emile/openeo/openeo-geopyspark-driver/tests/data/stac/issue_landsat/pgstac.demo.cloudferro.com/search_queried_v02.json"
+        # with open(p2, "w") as f:
+        #     json.dump(j, f)
+        # exit()
         urllib_and_request_mock.get(
             "https://pgstac.demo.cloudferro.com/collections/landsat-c2-l1-oli",
             data=get_test_data_file(
@@ -3771,14 +3784,12 @@ class TestLoadStac:
             data=get_test_data_file("stac/issue_landsat/pgstac.demo.cloudferro.com/index.json").read_text(),
         )
 
-        spatial_extent = to_bbox_dict(
-            [
-                -66,
-                60,
-                -65,
-                61,
-            ]
-        )
+        spatial_extent = {
+            "west": 60,
+            "south": -66,
+            "east": 61,
+            "north": -65,
+        }
         datacube = openeo.DataCube.load_stac(
             "https://pgstac.demo.cloudferro.com/collections/landsat-c2-l1-oli",
             temporal_extent=["2022-03-12", "2022-03-13"],
