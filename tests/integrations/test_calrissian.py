@@ -1,8 +1,13 @@
 from unittest import mock
+
 import dirty_equals
 import kubernetes.client
 import pytest
-from openeogeotrellis.integrations.calrissian import CalrissianJobLauncher, CalrissianS3Result
+
+from openeogeotrellis.integrations.calrissian import (
+    CalrissianJobLauncher,
+    CalrissianS3Result,
+)
 
 
 @pytest.fixture
@@ -15,7 +20,6 @@ def generate_unique_id_mock() -> str:
 
 
 class TestCalrissianJobLauncher:
-
     def test_create_input_staging_job_manifest(self, generate_unique_id_mock):
         launcher = CalrissianJobLauncher(namespace="calrissian-test", name_base="r-1234")
 

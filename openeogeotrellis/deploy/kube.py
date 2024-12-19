@@ -53,6 +53,7 @@ def main():
     )
 
     from pyspark import SparkContext
+
     log.info("starting spark context")
     SparkContext.getOrCreate()
 
@@ -136,6 +137,7 @@ def _cwl_demo(args: ProcessArgs, env: EvalEnv):
 
     # TODO: move this imports to top-level?
     import kubernetes.config
+
     from openeogeotrellis.integrations.calrissian import CalrissianJobLauncher
 
     # TODO: better place to load this config?
