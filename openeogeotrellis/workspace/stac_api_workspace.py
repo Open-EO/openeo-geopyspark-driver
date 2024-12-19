@@ -51,13 +51,15 @@ class StacApiWorkspace(Workspace):
         self._assert_catalog_supports_necessary_api()
 
         stac_resource = stac_resource.full_copy()
+        collection_id = str(target)
+        del target
 
         if isinstance(stac_resource, Collection):
             new_collection = stac_resource
 
             existing_collection = None
             try:
-                existing_collection = Collection.from_file(f"{self.root_url}/{target}")
+                existing_collection = Collection.from_file(f"{self.root_url}/collections/{collection_id}")
             except Exception as e:
                 if self._is_not_found_error(e):
                     pass  # not exceptional: the target collection does not exist yet
@@ -75,16 +77,16 @@ class StacApiWorkspace(Workspace):
                     else new_collection
                 )
 
-                target_collection_id = self._upload_collection(
+                self._upload_collection(
                     merged_collection,
-                    target,
+                    collection_id,
                     modify_existing=bool(existing_collection),
                     session=session,
                 )
 
                 for new_item in new_collection.get_items():
                     new_item.make_asset_hrefs_absolute()  # probably makes sense for a STAC API
-                    self._upload_item(new_item, target_collection_id, target, session)
+                    self._upload_item(new_item, collection_id, session)
 
             for new_item in new_collection.get_items():
                 for asset in new_item.assets.values():
@@ -95,13 +97,9 @@ class StacApiWorkspace(Workspace):
         else:
             raise NotImplementedError(f"merge from {stac_resource}")
 
-    def _upload_collection(
-        self, collection: Collection, target: PurePath, modify_existing: bool, session: Session
-    ) -> str:
-        target_collection_id = target.name
-
+    def _upload_collection(self, collection: Collection, collection_id: str, modify_existing: bool, session: Session):
         bare_collection = collection.clone()
-        bare_collection.id = target_collection_id
+        bare_collection.id = collection_id
         bare_collection.remove_hierarchical_links()
         bare_collection.extra_fields.update(self._additional_collection_properties)
 
@@ -109,25 +107,23 @@ class StacApiWorkspace(Workspace):
 
         if modify_existing:
             resp = session.put(
-                f"{self.root_url}/{target}",
+                f"{self.root_url}/collections/{collection_id}",
                 json=request_json,
             )
         else:
             resp = session.post(
-                # TODO: assume target is "$collection_id" rather than "collections/$collection_id"?
                 f"{self.root_url}/collections",
                 json=request_json,
             )
 
         resp.raise_for_status()
-        return target_collection_id
 
-    def _upload_item(self, item: Item, target_collection_id: str, target: PurePath, session: Session):
+    def _upload_item(self, item: Item, collection_id: str, session: Session):
         item.remove_hierarchical_links()
-        item.collection_id = target_collection_id
+        item.collection_id = collection_id
 
         resp = session.post(
-            f"{self.root_url}/{target}/items",
+            f"{self.root_url}/collections/{collection_id}/items",
             json=item.to_dict(include_self_link=False),
         )
         resp.raise_for_status()

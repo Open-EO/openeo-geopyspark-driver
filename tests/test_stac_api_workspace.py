@@ -12,14 +12,14 @@ from openeogeotrellis.workspace import StacApiWorkspace
 
 def test_merge_new(requests_mock, urllib_mock, tmp_path):
     stac_api_workspace = StacApiWorkspace(root_url="https://stacapi.test", export_asset=_export_asset)
-    target = PurePath("collections/new_collection")
+    target = PurePath("new_collection")
     asset_path = Path("/path") / "to" / "asset1.tif"
 
     _mock_stac_api_root_catalog(requests_mock, stac_api_workspace.root_url)
     # no need to mock URL for existing Collection as urllib_mock will return a 404 by default
 
     create_collection_mock = requests_mock.post(f"{stac_api_workspace.root_url}/collections")
-    create_item_mock = requests_mock.post(f"{stac_api_workspace.root_url}/{target}/items")
+    create_item_mock = requests_mock.post(f"{stac_api_workspace.root_url}/collections/{target}/items")
 
     collection1 = _collection(root_path=tmp_path / "collection1", collection_id="collection1", asset_path=asset_path)
     imported_collection = stac_api_workspace.merge(stac_resource=collection1, target=target)
@@ -37,22 +37,22 @@ def test_merge_new(requests_mock, urllib_mock, tmp_path):
     }
 
     assert create_collection_mock.called_once
-    assert create_collection_mock.last_request.json() == dict(collection1.to_dict(), id=target.name, links=[])
+    assert create_collection_mock.last_request.json() == dict(collection1.to_dict(), id=str(target), links=[])
 
     assert create_item_mock.called_once
     assert create_item_mock.last_request.json() == dict(
-        collection1.get_item(id=asset_path.name).to_dict(), collection=target.name, links=[]
+        collection1.get_item(id=asset_path.name).to_dict(), collection=str(target), links=[]
     )
 
 
 def test_merge_into_existing(requests_mock, urllib_mock, tmp_path):
     stac_api_workspace = StacApiWorkspace(root_url="https://stacapi.test", export_asset=_export_asset)
-    target = PurePath("collections/existing_collection")
+    target = PurePath("existing_collection")
     asset_path = Path("/path") / "to" / "asset2.tif"
 
     _mock_stac_api_root_catalog(requests_mock, stac_api_workspace.root_url)
-    update_collection_mock = requests_mock.put(f"{stac_api_workspace.root_url}/{target}")
-    create_item_mock = requests_mock.post(f"{stac_api_workspace.root_url}/{target}/items")
+    update_collection_mock = requests_mock.put(f"{stac_api_workspace.root_url}/collections/{target}")
+    create_item_mock = requests_mock.post(f"{stac_api_workspace.root_url}/collections/{target}/items")
 
     existing_collection = _collection(
         root_path=tmp_path / "collection1",
@@ -65,7 +65,7 @@ def test_merge_into_existing(requests_mock, urllib_mock, tmp_path):
         ]]),
     )
     urllib_mock.get(
-        f"{stac_api_workspace.root_url}/{target}",
+        f"{stac_api_workspace.root_url}/collections/{target}",
         data=json.dumps(existing_collection.to_dict()),
     )
 
@@ -90,8 +90,8 @@ def test_merge_into_existing(requests_mock, urllib_mock, tmp_path):
     assert update_collection_mock.called_once
     assert update_collection_mock.last_request.json() == dict(
         new_collection.to_dict(),
-        id=target.name,
-        description=target.name,
+        id=str(target),
+        description=str(target),
         links=[],
         extent=Extent(
             SpatialExtent([[0, 50, 3, 53]]),
@@ -105,7 +105,7 @@ def test_merge_into_existing(requests_mock, urllib_mock, tmp_path):
     assert create_item_mock.called_once
     assert create_item_mock.last_request.json() == dict(
         new_collection.get_item(id="asset2.tif").to_dict(),
-        collection=target.name,
+        collection=str(target),
         links=[],
     )
 
@@ -181,7 +181,7 @@ def test_against_actual_stac_api(tmp_path):
         get_access_token=get_access_token,
     )
 
-    stac_api_workspace.merge(collection1, target=PurePath("collections/test_collection_for_stac_merge"))
+    stac_api_workspace.merge(collection1, target=PurePath("test_collection_for_stac_merge"))
 
 
 def _collection(
