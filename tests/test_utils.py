@@ -29,7 +29,7 @@ from openeogeotrellis.utils import (
     to_s3_url,
     utcnow,
     parse_json_from_output,
-    get_file_reload_register_func_if_changed,
+    FileChangeWatcher,
 )
 
 
@@ -420,22 +420,23 @@ def test_map_optional():
 def test_get_file_reload_register_func_if_changed(tmp_path):
     # GIVEN a file path that does not exist yet
     cfg_file_path = tmp_path.joinpath("cfg.json")
+    watcher = FileChangeWatcher()
 
     # WHEN you check if a file needs to be reloaded the first time
-    reg_func = get_file_reload_register_func_if_changed(cfg_file_path)
+    reg_func = watcher.get_file_reload_register_func_if_changed(cfg_file_path)
     # THEN it needs to be loaded whether it exists or not
     assert reg_func is not None
 
     # GIVEN the reload was not successfull (reg_func not called)
     # WHEN you check if a file needs to be reloaded again
-    reg_func = get_file_reload_register_func_if_changed(cfg_file_path)
+    reg_func = watcher.get_file_reload_register_func_if_changed(cfg_file_path)
     # THEN it still needs to be loaded whether it exists or not
     assert reg_func is not None
 
     # WHEN reload is registered as completed
     reg_func()
     # WHEN you check if a file needs to be reloaded after succesful registration but no change to the file
-    reg_func = get_file_reload_register_func_if_changed(cfg_file_path)
+    reg_func = watcher.get_file_reload_register_func_if_changed(cfg_file_path)
     # THEN no reload is required
     assert reg_func is None
 
@@ -443,11 +444,11 @@ def test_get_file_reload_register_func_if_changed(tmp_path):
     with open(cfg_file_path, "w") as fh:
         fh.write("file changed")
     # THEN a subsequent check would require reload
-    reg_func = get_file_reload_register_func_if_changed(cfg_file_path)
+    reg_func = watcher.get_file_reload_register_func_if_changed(cfg_file_path)
     assert reg_func is not None
 
     # When reload succeeded again
     reg_func()
     # THEN subsequent check would not require reload
-    reg_func = get_file_reload_register_func_if_changed(cfg_file_path)
+    reg_func = watcher.get_file_reload_register_func_if_changed(cfg_file_path)
     assert reg_func is None
