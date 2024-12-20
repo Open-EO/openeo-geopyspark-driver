@@ -32,11 +32,7 @@ def get_request_id(*, default: Union[None, str, Exception, Type[Exception]] = No
     Get webapp request id from request context,
     or a default/exception if not in request context.
     """
-    kwargs = {}
-    if "default" in inspect.signature(FlaskRequestCorrelationIdLogging.get_request_id).parameters:
-        # TODO #936 remove this temporary adapter when openeo-driver dependency is fully updated (to >=0.122.0)
-        kwargs = {"default": default}
-    request_id = FlaskRequestCorrelationIdLogging.get_request_id(**kwargs)
+    request_id = FlaskRequestCorrelationIdLogging.get_request_id(default=default)
     if _is_exception_like(request_id):
         raise request_id
     return request_id
