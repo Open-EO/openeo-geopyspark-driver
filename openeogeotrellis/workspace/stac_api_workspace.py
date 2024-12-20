@@ -1,5 +1,6 @@
+import logging
 from pathlib import PurePath, Path
-from typing import Union, Callable, Tuple
+from typing import Union, Callable
 from urllib.error import HTTPError
 
 from openeo_driver.util.http import requests_with_retry
@@ -10,14 +11,17 @@ from pystac_client import ConformanceClasses
 from requests import Session
 
 
+_log = logging.getLogger(__name__)
+
+
 class StacApiWorkspace(Workspace):
     REQUESTS_TIMEOUT_SECONDS = 60
 
     def __init__(
         self,
         root_url: str,
-        # (asset, remove_original) => (alternate ID, workspace URI)
-        export_asset: Callable[[Asset, bool], Tuple[str, str]],
+        export_asset: Callable[[Asset, bool], str],  # (asset, remove_original) => workspace URI
+        asset_alternate_id: str,
         additional_collection_properties=None,
         get_access_token: Callable[[], str] = None,
     ):
@@ -25,7 +29,8 @@ class StacApiWorkspace(Workspace):
         :param root_url: the URL to the STAC API's root catalog
         :param additional_collection_properties: top-level Collection properties to include in the request
         :param get_access_token: supply an access token, if needed
-        :param export_asset: copy/move an asset and return its workspace URI as an alternate
+        :param export_asset: copy/move an asset and return its workspace URI, to be used as an alternate URI
+        :param asset_alternate_id
 
         Re: export_asset:
         * locally with assets on disk: possibly copy to a persistent directory and adapt href
@@ -40,6 +45,7 @@ class StacApiWorkspace(Workspace):
         self._additional_collection_properties = additional_collection_properties
         self._get_access_token = get_access_token
         self._export_asset = export_asset
+        self._asset_alternate_id = asset_alternate_id
 
     def import_file(self, common_path: Union[str, Path], file: Path, merge: str, remove_original: bool = False) -> str:
         raise NotImplementedError
@@ -63,10 +69,15 @@ class StacApiWorkspace(Workspace):
             try:
                 existing_collection = Collection.from_file(f"{self.root_url}/collections/{collection_id}")
             except Exception as e:
-                if self._is_not_found_error(e):
-                    pass  # not exceptional: the target collection does not exist yet
+                if self._is_not_found_error(e):  # not exceptional
+                    pass
                 else:
                     raise
+
+            _log.info(
+                f"merging into {'existing' if existing_collection else 'new'}"
+                f" {self.root_url}/collections/{collection_id}"
+            )
 
             with requests_with_retry() as session:
                 # TODO: uses a single access token for the collection + all items
@@ -87,15 +98,19 @@ class StacApiWorkspace(Workspace):
                 )
 
                 for new_item in new_collection.get_items():
-                    new_item.make_asset_hrefs_absolute()  # probably makes sense for a STAC API
+                    for asset in new_item.assets.values():
+                        # client takes care of copying asset and returns its workspace URI
+                        workspace_uri = self._export_asset(asset, remove_original)
+                        _log.info(f"exported asset {asset.get_absolute_href()} as {workspace_uri}")
+                        asset.href = workspace_uri
+
                     self._upload_item(new_item, collection_id, session)
 
-            for new_item in new_collection.get_items():
-                for asset in new_item.assets.values():
-                    alternate_id, workspace_uri = self._export_asset(asset.clone(), remove_original)
-                    asset.extra_fields["alternate"] = {alternate_id: workspace_uri}
+            def set_alternate_uri(_, asset) -> Asset:
+                asset.extra_fields["alternate"] = {self._asset_alternate_id: asset.href}
+                return asset
 
-            return new_collection
+            return new_collection.map_assets(set_alternate_uri)
         else:
             raise NotImplementedError(f"merge from {stac_resource}")
 
