@@ -4895,11 +4895,13 @@ def test_custom_geotiff_tags(api110, tmp_path):
         f.write(response.data)
 
     raster = gdal.Open(str(output_file))
-    head_metadata = raster.GetMetadata()
-    assert head_metadata["AREA_OR_POINT"] == "Area"
-    assert head_metadata["PROCESSING_SOFTWARE"] == __version__
-    assert head_metadata["product_tile"] == "29TNE"
-    assert head_metadata["product_type"] == "LSF monthly median composite for band B02"
+
+    assert raster.GetMetadata() == DictSubSet({
+        "AREA_OR_POINT": "Area",
+        "PROCESSING_SOFTWARE": __version__,
+        "product_tile": "29TNE",
+        "product_type": "LSF monthly median composite for band B02",
+    })
 
     band_count = raster.RasterCount
     assert band_count == 2
