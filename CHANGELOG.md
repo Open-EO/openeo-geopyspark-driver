@@ -26,6 +26,7 @@ without compromising stable operations.
 
 - `export_workspace`: experimental support for merging STAC Collections ([#677](https://github.com/Open-EO/openeo-geopyspark-driver/issues/677))
 - Add support for `orgId` in ETL resource/cost reporting ([#671](https://github.com/Open-EO/openeo-geopyspark-driver/issues/671))
+- `load_stac`: Align output pixels with source pixels if source data is UTM and has an offset. ([#648](https://github.com/Open-EO/openeo-geopyspark-driver/issues/648))
 
 ## 0.52.0
 

@@ -1,8 +1,9 @@
 import logging
-from typing import List, Union
+from typing import List, Union, Optional, Tuple
 
 import dateutil.parser
-from openeo.metadata import CollectionMetadata, Dimension, TemporalDimension
+from openeo.metadata import CollectionMetadata, Dimension, TemporalDimension, BandDimension, Band
+from openeo_driver.util.geometry import BoundingBox
 from openeogeotrellis.utils import reproject_cellsize
 
 _log = logging.getLogger(__name__)
@@ -85,15 +86,39 @@ class GeopysparkCubeMetadata(CollectionMetadata):
     def temporal_extent(self) -> tuple:
         return self._temporal_extent
 
-    def with_temporal_extent(self, temporal_extent: tuple):
-        assert self.has_temporal_dimension()
-
-        return self._clone_and_update(
-            dimensions=[
+    def with_temporal_extent(self, temporal_extent: Tuple[str, str], allow_adding_dimension: bool = False):
+        if self.has_temporal_dimension():
+            dimensions = [
                 TemporalDimension(d.name, temporal_extent) if isinstance(d, TemporalDimension) else d
                 for d in self._dimensions
-            ],
+            ]
+        else:
+            if not allow_adding_dimension:
+                raise ValueError("Temporal dimension should already be in metadata")
+            dimensions = self._dimensions + [TemporalDimension(name="t", extent=temporal_extent)]
+
+        return self._clone_and_update(
+            dimensions=dimensions,
             temporal_extent=temporal_extent,
+        )
+
+    def with_new_band_names(self, override_band_names: List[str]):
+        if self.has_band_dimension():
+            dimensions = [
+                (
+                    BandDimension(name=d.name, bands=[Band(band_name) for band_name in override_band_names])
+                    if isinstance(d, BandDimension)
+                    else d
+                )
+                for d in self._dimensions
+            ]
+        else:
+            dimensions = self._dimensions + [
+                BandDimension(name="bands", bands=[Band(band_name) for band_name in override_band_names])
+            ]
+
+        return self._clone_and_update(
+            dimensions=dimensions,
         )
 
     @property
@@ -141,7 +166,7 @@ class GeopysparkCubeMetadata(CollectionMetadata):
             no_data_value = default_value
         return float(no_data_value)
 
-    def get_layer_crs(self):
+    def get_layer_crs(self) -> str:
         crs = self.get("cube:dimensions", "x", "reference_system", default="EPSG:4326")
         if isinstance(crs, int):
             crs = "EPSG:%s" % str(crs)
@@ -166,6 +191,22 @@ class GeopysparkCubeMetadata(CollectionMetadata):
             return global_extent_latlon
 
         return overall_extent
+
+    def get_layer_native_extent(self) -> Optional[BoundingBox]:
+        dims = self.spatial_dimensions
+        if not dims:
+            return None
+        x = dims[0]
+        y = dims[1]
+        if not x.extent or not y.extent:
+            return None
+        return BoundingBox(
+            west=x.extent[0],
+            south=y.extent[0],
+            east=x.extent[1],
+            north=y.extent[1],
+            crs=self.get_layer_crs(),
+        )
 
     def get_GSD_in_meters(self) -> Union[tuple, dict, None]:
         bands_metadata = self.get("summaries", "eo:bands",
