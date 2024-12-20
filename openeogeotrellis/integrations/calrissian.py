@@ -58,7 +58,7 @@ class CalrissianJobLauncher:
         self._name_base = name_base or generate_unique_id(prefix="cal")[:20]
         self._s3_bucket = s3_bucket or get_backend_config().calrissian_bucket
 
-        _log.info(f"CalrissianJobLauncher {self._namespace=} {self._name_base=}")
+        _log.info(f"CalrissianJobLauncher.__init__: {self._namespace=} {self._name_base=} {self._s3_bucket=}")
         self._backoff_limit = backoff_limit
 
         self._volume_input = VolumeInfo(
@@ -272,13 +272,14 @@ class CalrissianJobLauncher:
         _log.info(
             f"Created CWL job {job.metadata.name=} {job.metadata.namespace=} {job.metadata.creation_timestamp=} {job.metadata.uid=}"
         )
+        # TODO: add assertions here about successful job creation?
 
         # Track job status (active polling).
         final_status = None
         with ContextTimer() as timer:
             while timer.elapsed() < timeout:
                 job: kubernetes.client.V1Job = k8s_batch.read_namespaced_job(name=job_name, namespace=self._namespace)
-                _log.info(f"CWL job {job_name=} {timer.elapsed()=:.2f} {job.status=}")
+                _log.info(f"CWL job {job_name=} {timer.elapsed()=:.2f} {job.status.to_dict()=}")
                 if job.status.conditions:
                     if any(c.type == "Failed" and c.status == "True" for c in job.status.conditions):
                         final_status = "failed"

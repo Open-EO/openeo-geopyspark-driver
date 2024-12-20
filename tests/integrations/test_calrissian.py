@@ -1,10 +1,11 @@
+from typing import Dict
 from unittest import mock
 
+import boto3
 import dirty_equals
 import kubernetes.client
-import pytest
 import moto
-import boto3
+import pytest
 
 from openeogeotrellis.integrations.calrissian import (
     CalrissianJobLauncher,
@@ -14,6 +15,7 @@ from openeogeotrellis.integrations.calrissian import (
 
 @pytest.fixture
 def generate_unique_id_mock() -> str:
+    """Fixture to fix the UUID used in `generate_unique_id`"""
     # TODO: move this mock fixture to a more generic place
     with mock.patch("openeo_driver.utils.uuid") as uuid:
         fake_uuid = "0123456789abcdef0123456789abcdef"
@@ -22,8 +24,10 @@ def generate_unique_id_mock() -> str:
 
 
 class TestCalrissianJobLauncher:
+    NAMESPACE = "test-calrissian"
+
     def test_create_input_staging_job_manifest(self, generate_unique_id_mock):
-        launcher = CalrissianJobLauncher(namespace="calrissian-test", name_base="r-1234")
+        launcher = CalrissianJobLauncher(namespace=self.NAMESPACE, name_base="r-1234")
 
         manifest, cwl_path = launcher.create_input_staging_job_manifest(cwl_content="class: Dummy")
 
@@ -35,7 +39,7 @@ class TestCalrissianJobLauncher:
         assert manifest_dict["metadata"] == dirty_equals.IsPartialDict(
             {
                 "name": "r-1234-cal-inp-01234567",
-                "namespace": "calrissian-test",
+                "namespace": self.NAMESPACE,
             }
         )
         assert manifest_dict["spec"] == dirty_equals.IsPartialDict(
@@ -79,7 +83,7 @@ class TestCalrissianJobLauncher:
         )
 
     def test_create_cwl_job_manifest(self, generate_unique_id_mock):
-        launcher = CalrissianJobLauncher(namespace="calrissian-test", name_base="r-123")
+        launcher = CalrissianJobLauncher(namespace=self.NAMESPACE, name_base="r-123")
 
         manifest, output_dir = launcher.create_cwl_job_manifest(
             cwl_path="/calrissian/input-data/r-1234-cal-inp-01234567.cwl",
@@ -94,7 +98,7 @@ class TestCalrissianJobLauncher:
         assert manifest_dict["metadata"] == dirty_equals.IsPartialDict(
             {
                 "name": "r-123-cal-cwl-01234567",
-                "namespace": "calrissian-test",
+                "namespace": self.NAMESPACE,
             }
         )
         assert manifest_dict["spec"] == dirty_equals.IsPartialDict(
@@ -166,6 +170,77 @@ class TestCalrissianJobLauncher:
                 ],
             }
         )
+
+    @pytest.fixture()
+    def k8_pvc_api(self):
+        """Mock for PVC API in kubernetes.client.CoreV1Api"""
+        pvc_to_volume_name = {
+            "calrissian-output-data": "1234-abcd-5678-efgh",
+        }
+
+        def read_namespaced_persistent_volume_claim(name: str, namespace: str):
+            assert namespace == self.NAMESPACE
+            return kubernetes.client.V1PersistentVolumeClaim(
+                spec=kubernetes.client.V1PersistentVolumeClaimSpec(volume_name=pvc_to_volume_name[name])
+            )
+
+        with mock.patch("kubernetes.client.CoreV1Api") as CoreV1Api:
+            CoreV1Api.return_value.read_namespaced_persistent_volume_claim = read_namespaced_persistent_volume_claim
+            yield
+
+    def test_get_output_volume_name(self, k8_pvc_api):
+        launcher = CalrissianJobLauncher(namespace=self.NAMESPACE, name_base="r-123")
+        assert launcher.get_output_volume_name() == "1234-abcd-5678-efgh"
+
+    @pytest.fixture()
+    def k8s_batch_api(self):
+        """mock for kubernetes.client.BatchV1Api"""
+
+        class BatchV1Api:
+            def __init__(self):
+                self.jobs: Dict[str, kubernetes.client.V1Job] = {}
+
+            def create_namespaced_job(self, namespace: str, body: kubernetes.client.V1Job):
+                assert body.metadata.namespace == namespace
+                job = kubernetes.client.V1Job(metadata=body.metadata)
+                self.jobs[job.metadata.name] = job
+                return job
+
+            def read_namespaced_job(self, name: str, namespace: str):
+                assert name in self.jobs
+                assert self.jobs[name].metadata.namespace == namespace
+                return kubernetes.client.V1Job(
+                    metadata=self.jobs[name].metadata,
+                    status=kubernetes.client.V1JobStatus(
+                        # TODO: way to specify timeline of job conditions?
+                        conditions=[kubernetes.client.V1JobCondition(type="Complete", status="True")]
+                    ),
+                )
+
+        with mock.patch("kubernetes.client.BatchV1Api", new=BatchV1Api):
+            yield
+
+    def test_launch_job_and_wait_basic(self, k8s_batch_api, caplog):
+        launcher = CalrissianJobLauncher(namespace=self.NAMESPACE, name_base="r-456")
+        job_manifest = kubernetes.client.V1Job(
+            metadata=kubernetes.client.V1ObjectMeta(name="cal-123", namespace=self.NAMESPACE)
+        )
+        result = launcher.launch_job_and_wait(manifest=job_manifest)
+        assert isinstance(result, kubernetes.client.V1Job)
+
+        assert caplog.messages[-1] == dirty_equals.IsStr(regex=".*job_name='cal-123'.*final_status='complete'.*")
+
+    def test_run_cwl_workflow_basic(self, k8_pvc_api, k8s_batch_api, generate_unique_id_mock, caplog):
+        launcher = CalrissianJobLauncher(namespace=self.NAMESPACE, name_base="r-456", s3_bucket="test-bucket")
+        res = launcher.run_cwl_workflow(
+            cwl_content="class: Dummy", cwl_arguments=["--message", "Howdy Earth!"], output_paths=["output.txt"]
+        )
+        assert res == {
+            "output.txt": CalrissianS3Result(
+                s3_bucket="test-bucket",
+                s3_key="1234-abcd-5678-efgh/r-456-cal-cwl-01234567/output.txt",
+            ),
+        }
 
 
 class TestCalrissianS3Result:
