@@ -1838,6 +1838,7 @@ class GeopysparkDataCube(DriverDataCube):
         )
         separate_asset_per_band = get_jvm().scala.Option.apply(separate_asset_per_band_tmp)
         bands_metadata = format_options.get("bands_metadata", {})  # band_name -> (tag -> value)
+        file_metadata = format_options.get("file_metadata", {})  # tag -> value
 
         if separate_asset_per_band.isDefined() and format != "GTIFF":
             raise OpenEOApiException("separate_asset_per_band is only supported with format GTIFF")
@@ -1912,9 +1913,11 @@ class GeopysparkDataCube(DriverDataCube):
                             # The user would need a way to encode the date in the filenames
                             raise OpenEOApiException("filepath_per_band is not supported with temporal dimension")
                         gtiff_options.setFilepathPerBand(get_jvm().scala.Option.apply(filepath_per_band))
-                    gtiff_options.addHeadTag("PROCESSING_SOFTWARE",softwareversion)
+                    gtiff_options.addHeadTag("PROCESSING_SOFTWARE", softwareversion)
                     if description != "":
                         gtiff_options.addHeadTag("ImageDescription", description)
+                    for file_metadata_key, file_metadata_value in file_metadata.items():
+                        gtiff_options.addHeadTag(file_metadata_key, file_metadata_value)
                     gtiff_options.setResampleMethod(overview_resample)
                     getattr(gtiff_options, "overviews_$eq")(overviews)
                     color_cmap = get_color_cmap()

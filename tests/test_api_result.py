@@ -4847,7 +4847,7 @@ def test_aggregate_temporal_period_from_merge_cubes_on_time_dimension_contains_f
     )
 
 
-def test_geotiff_scale_offset(api110, tmp_path):
+def test_custom_geotiff_tags(api110, tmp_path):
     response = api110.check_result(
         {
             "loadcollection1": {
@@ -4877,7 +4877,11 @@ def test_geotiff_scale_offset(api110, tmp_path):
                                 "SCALE": 7.89,
                                 "OFFSET": 10.11
                             }
-                        }
+                        },
+                        "file_metadata": {
+                            "product_tile": "29TNE",
+                            "product_type": "LSF monthly median composite for band B02",
+                        },
                     },
                 },
                 "result": True,
@@ -4891,9 +4895,13 @@ def test_geotiff_scale_offset(api110, tmp_path):
         f.write(response.data)
 
     raster = gdal.Open(str(output_file))
-    head_metadata = raster.GetMetadata()
-    assert head_metadata["AREA_OR_POINT"] == "Area"
-    assert head_metadata["PROCESSING_SOFTWARE"] == __version__
+
+    assert raster.GetMetadata() == DictSubSet({
+        "AREA_OR_POINT": "Area",
+        "PROCESSING_SOFTWARE": __version__,
+        "product_tile": "29TNE",
+        "product_type": "LSF monthly median composite for band B02",
+    })
 
     band_count = raster.RasterCount
     assert band_count == 2
