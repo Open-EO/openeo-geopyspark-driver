@@ -9,7 +9,11 @@ from openeogeotrellis.workspace import StacApiWorkspace
 
 
 def test_merge_new(requests_mock, urllib_mock, tmp_path):
-    stac_api_workspace = StacApiWorkspace(root_url="https://stacapi.test", export_asset=_export_asset)
+    stac_api_workspace = StacApiWorkspace(
+        root_url="https://stacapi.test",
+        export_asset=_export_asset,
+        asset_alternate_id="file",
+    )
     target = PurePath("new_collection")
     asset_path = Path("/path") / "to" / "asset1.tif"
 
@@ -44,7 +48,11 @@ def test_merge_new(requests_mock, urllib_mock, tmp_path):
 
 
 def test_merge_into_existing(requests_mock, urllib_mock, tmp_path):
-    stac_api_workspace = StacApiWorkspace(root_url="https://stacapi.test", export_asset=_export_asset)
+    stac_api_workspace = StacApiWorkspace(
+        root_url="https://stacapi.test",
+        export_asset=_export_asset,
+        asset_alternate_id="file",
+    )
     target = PurePath("existing_collection")
     asset_path = Path("/path") / "to" / "asset2.tif"
 
@@ -126,9 +134,9 @@ def _mock_stac_api_root_catalog(requests_mock, root_url: str):
     )
 
 
-def _export_asset(asset: Asset, _: bool) -> (str, str):
+def _export_asset(asset: Asset, _: bool) -> str:
     # actual copying behaviour is the responsibility of the workspace creator
-    return "file", asset.href
+    return asset.get_absolute_href()
 
 
 def _asset_workspace_uris(collection: Collection, alternate_key: str) -> Dict[str, str]:
