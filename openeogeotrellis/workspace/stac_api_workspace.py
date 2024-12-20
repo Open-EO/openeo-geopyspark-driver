@@ -11,6 +11,8 @@ from requests import Session
 
 
 class StacApiWorkspace(Workspace):
+    REQUESTS_TIMEOUT_SECONDS = 60
+
     def __init__(
         self,
         root_url: str,
@@ -109,11 +111,13 @@ class StacApiWorkspace(Workspace):
             resp = session.put(
                 f"{self.root_url}/collections/{collection_id}",
                 json=request_json,
+                timeout=self.REQUESTS_TIMEOUT_SECONDS,
             )
         else:
             resp = session.post(
                 f"{self.root_url}/collections",
                 json=request_json,
+                timeout=self.REQUESTS_TIMEOUT_SECONDS,
             )
 
         resp.raise_for_status()
@@ -125,11 +129,12 @@ class StacApiWorkspace(Workspace):
         resp = session.post(
             f"{self.root_url}/collections/{collection_id}/items",
             json=item.to_dict(include_self_link=False),
+            timeout=self.REQUESTS_TIMEOUT_SECONDS,
         )
         resp.raise_for_status()
 
     def _assert_catalog_supports_necessary_api(self):
-        root_catalog_client = pystac_client.Client.open(self.root_url)
+        root_catalog_client = pystac_client.Client.open(self.root_url, timeout=self.REQUESTS_TIMEOUT_SECONDS)
 
         if not root_catalog_client.conforms_to(ConformanceClasses.COLLECTIONS):
             raise ValueError(f"{self.root_url} does not support Collections")
