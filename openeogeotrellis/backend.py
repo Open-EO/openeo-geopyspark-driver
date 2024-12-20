@@ -2024,6 +2024,9 @@ class GpsBatchJobs(backend.BatchJobs):
                 yunikorn_queue=get_backend_config().yunikorn_queue,
                 yunikorn_scheduling_timeout=get_backend_config().yunikorn_scheduling_timeout.rstrip(),
                 try_swift_streaming=os.environ.get("TRY_SWIFT_STREAMING"),
+                openeo_stac_oidc_client_secret_stac_openeo_dev=os.environ.get(  # TODO: pass a list or dict?
+                    "OPENEO_STAC_OIDC_CLIENT_SECRET_STAC_OPENEO_DEV"
+                ),
             )
 
             if get_backend_config().fuse_mount_batchjob_s3_bucket:

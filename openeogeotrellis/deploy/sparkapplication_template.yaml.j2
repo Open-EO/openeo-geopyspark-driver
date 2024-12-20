@@ -245,6 +245,8 @@ spec:
         value: {{ openeo_ejr_oidc_client_credentials }}
       - name: TRY_SWIFT_STREAMING
         value: "{{ try_swift_streaming }}"
+      - name: OPENEO_STAC_OIDC_CLIENT_SECRET_STAC_OPENEO_DEV
+        value: {{ openeo_stac_oidc_client_secret_stac_openeo_dev }}
 {%- endblock %}
     labels:
 {%- block driver_labels %}
