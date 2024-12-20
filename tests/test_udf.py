@@ -2,13 +2,17 @@ import re
 import tarfile
 import textwrap
 import zipfile
+from datetime import datetime
 from pathlib import Path
 
 import pyspark
 import pytest
-from openeo.udf import StructuredData, UdfData
 
+from openeo.udf import StructuredData, UdfData
+from openeo_driver.util.logging import get_logging_config, LOG_HANDLER_FILE_JSON
+from openeogeotrellis.backend import JOB_METADATA_FILENAME
 from openeogeotrellis.config.constants import UDF_DEPENDENCIES_INSTALL_MODE
+from openeogeotrellis.deploy.batch_job import run_job
 from openeogeotrellis.testing import gps_config_overrides
 from openeogeotrellis.udf import (
     assert_running_in_executor,
@@ -380,3 +384,32 @@ class TestInstallPythonUdfDependencies:
         mehh_path = Path(data["mehh.__file__"])
         assert not mehh_path.exists()
         assert f"Cleaning up temporary UDF deps at {mehh_path.parent}" in caplog.text
+
+    def test_run_udf_on_vector_data_cube_with_logging(self, tmp_path):
+        custom_message = "custom_message" + str(datetime.now())
+        udf = f"""
+from openeo.udf import UdfData
+import logging
+def apply_udf_data(data: UdfData):
+    logging.warn({custom_message!r})
+    return data
+"""
+
+        run_job(
+            {
+                "process_graph": {
+                    "runudf1": {
+                        "process_id": "run_udf",
+                        "arguments": {"data": [1, 2, 3], "runtime": "Python", "udf": udf},
+                        "result": True,
+                    }
+                }
+            },
+            output_file=tmp_path / "out",
+            metadata_file=tmp_path / JOB_METADATA_FILENAME,
+            api_version="2.0.0",
+            job_dir=tmp_path,
+            dependencies=[],
+        )
+        log_file = get_logging_config()["handlers"][LOG_HANDLER_FILE_JSON]["filename"]
+        assert custom_message in log_file.read_text()
