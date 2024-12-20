@@ -141,6 +141,7 @@ class GpsBackendConfig(OpenEoBackendConfig):
 
     s1backscatter_elev_geoid: Optional[str] = os.environ.get("OPENEO_S1BACKSCATTER_ELEV_GEOID")
 
+    # TODO: generically named config for a single bucket: not future/feature-proof (support for multiple buckets)
     s3_bucket_name: str = os.environ.get("SWIFT_BUCKET", "OpenEO-data")
 
     fuse_mount_batchjob_s3_bucket: bool = smart_bool(os.environ.get("FUSE_MOUNT_BATCHJOB_S3_BUCKET", False))
@@ -246,3 +247,10 @@ class GpsBackendConfig(OpenEoBackendConfig):
     gdalinfo_python_call: bool = False
     gdalinfo_use_subprocess: bool = True  # TODO: Only keep one gdalinfo on true
     gdalinfo_use_python_subprocess: bool = False
+
+    # TODO: replace these temp default with None (or better defaults)
+    calrissian_namespace: Optional[str] = "calrissian-demo-project"
+    # TODO: proper calrissian image? Official one doesn't work due to https://github.com/Duke-GCB/calrissian/issues/124#issuecomment-947008286
+    # calrissian_image: Optional[str] = "ghcr.io/duke-gcb/calrissian/calrissian:0.17.1"
+    calrissian_image: Optional[str] = "registry.stag.warsaw.openeo.dataspace.copernicus.eu/rand/calrissian:latest"
+    calrissian_bucket: Optional[str] = "calrissian"
