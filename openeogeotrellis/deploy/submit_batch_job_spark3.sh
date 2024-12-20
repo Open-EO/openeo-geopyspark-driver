@@ -161,6 +161,7 @@ spark-submit \
  --conf spark.yarn.appMasterEnv.OPENEO_EJR_API=${ejr_api} \
  --conf spark.yarn.appMasterEnv.OPENEO_EJR_BACKEND_ID=${ejr_backend_id} \
  --conf spark.yarn.appMasterEnv.OPENEO_EJR_OIDC_CLIENT_CREDENTIALS=${ejr_oidc_client_credentials} \
+ --conf spark.yarn.appMasterEnv.OPENEO_STAC_OIDC_CLIENT_SECRET_STAC_OPENEO_DEV=${OPENEO_STAC_OIDC_CLIENT_SECRET_STAC_OPENEO_DEV} \
  --conf spark.executorEnv.AWS_REGION=${AWS_REGION} --conf spark.yarn.appMasterEnv.AWS_REGION=${AWS_REGION} \
  --conf spark.executorEnv.AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} --conf spark.yarn.appMasterEnv.AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} \
  --conf spark.executorEnv.AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} --conf spark.yarn.appMasterEnv.AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} \
