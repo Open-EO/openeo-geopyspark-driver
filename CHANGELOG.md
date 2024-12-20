@@ -14,6 +14,8 @@ without compromising stable operations.
 
 ## Unreleased
 
+## 0.55.0
+
 - Support `file_metadata` format option to set file-specific metadata on `GTiff` output assets ([#970](https://github.com/Open-EO/openeo-geopyspark-driver/issues/970))
 
 ## 0.54.0
