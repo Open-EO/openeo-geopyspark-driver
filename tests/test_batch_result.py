@@ -2011,7 +2011,7 @@ def test_vectorcube_write_assets(tmp_path):
         )
 
 
-def test_geotiff_scale_offset(tmp_path):
+def test_custom_geotiff_tags(tmp_path):
     process_graph = {
         "loadcollection1": {
             "process_id": "load_collection",
@@ -2034,7 +2034,11 @@ def test_geotiff_scale_offset(tmp_path):
                             "OFFSET": 4.56,
                             "ARBITRARY": "value",
                         },
-                    }
+                    },
+                    "file_metadata": {
+                        "product_tile": "29TNE",
+                        "product_type": "LSF monthly median composite for band B02",
+                    },
                 },
             },
             "result": True,
@@ -2069,6 +2073,8 @@ def test_geotiff_scale_offset(tmp_path):
     assert head_metadata["AREA_OR_POINT"] == "Area"
     assert head_metadata["PROCESSING_SOFTWARE"] == __version__
     assert head_metadata["ImageDescription"] == "some description"
+    assert head_metadata["product_tile"] == "29TNE"
+    assert head_metadata["product_type"] == "LSF monthly median composite for band B02"
 
     band_count = raster.RasterCount
     assert band_count == 1

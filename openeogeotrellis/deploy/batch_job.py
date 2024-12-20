@@ -369,7 +369,7 @@ def run_job(
 
         for result in results:
             result.options["batch_mode"] = True
-            result.options["file_metadata"] = global_metadata_attributes
+            result.options["file_metadata"] = {**global_metadata_attributes, **result.options.get("file_metadata", {})}
             if result.options.get("sample_by_feature"):
                 geoms = tracer.get_last_geometry("filter_spatial")
                 if geoms is None:
