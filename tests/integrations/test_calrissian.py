@@ -3,6 +3,8 @@ from unittest import mock
 import dirty_equals
 import kubernetes.client
 import pytest
+import moto
+import boto3
 
 from openeogeotrellis.integrations.calrissian import (
     CalrissianJobLauncher,
@@ -164,3 +166,25 @@ class TestCalrissianJobLauncher:
                 ],
             }
         )
+
+
+class TestCalrissianS3Result:
+    @pytest.fixture
+    def s3_output(self):
+        with moto.mock_aws():
+            s3 = boto3.client("s3")
+            bucket = "the-bucket"
+            s3.create_bucket(Bucket=bucket)
+            key = "path/to/output.txt"
+            s3.put_object(Bucket=bucket, Key=key, Body="Howdy, Earth!")
+            yield bucket, key
+
+    def test_read(self, s3_output):
+        bucket, key = s3_output
+        result = CalrissianS3Result(s3_bucket=bucket, s3_key=key)
+        assert result.read() == b"Howdy, Earth!"
+
+    def test_read_encoding(self, s3_output):
+        bucket, key = s3_output
+        result = CalrissianS3Result(s3_bucket=bucket, s3_key=key)
+        assert result.read(encoding="utf-8") == "Howdy, Earth!"

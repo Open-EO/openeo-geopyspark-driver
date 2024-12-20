@@ -141,6 +141,7 @@ class GpsBackendConfig(OpenEoBackendConfig):
 
     s1backscatter_elev_geoid: Optional[str] = os.environ.get("OPENEO_S1BACKSCATTER_ELEV_GEOID")
 
+    # TODO: generically named config for a single bucket: not future/feature-proof (support for multiple buckets)
     s3_bucket_name: str = os.environ.get("SWIFT_BUCKET", "OpenEO-data")
 
     fuse_mount_batchjob_s3_bucket: bool = smart_bool(os.environ.get("FUSE_MOUNT_BATCHJOB_S3_BUCKET", False))
