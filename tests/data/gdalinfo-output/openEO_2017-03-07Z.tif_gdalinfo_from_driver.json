@@ -1,0 +1,325 @@
+{
+  "bands": [
+    {
+      "band": 1,
+      "block": [
+        256,
+        256
+      ],
+      "colorInterpretation": "Gray",
+      "description": "VV",
+      "maximum": 51.277,
+      "mean": 0.232,
+      "metadata": {
+        "": {
+          "STATISTICS_MAXIMUM": "51.277324676514",
+          "STATISTICS_MEAN": "0.23235992786843",
+          "STATISTICS_MINIMUM": "0.0032224406022578",
+          "STATISTICS_STDDEV": "0.62505150152515",
+          "STATISTICS_VALID_PERCENT": "100"
+        }
+      },
+      "minimum": 0.003,
+      "noDataValue": 0,
+      "stdDev": 0.625,
+      "type": "Float64"
+    }
+  ],
+  "coordinateSystem": {
+    "dataAxisToSRSAxisMapping": [
+      1,
+      2
+    ],
+    "wkt": "PROJCRS[\"WGS 84 / UTM zone 31N\",\n    BASEGEOGCRS[\"WGS 84\",\n        ENSEMBLE[\"World Geodetic System 1984 ensemble\",\n            MEMBER[\"World Geodetic System 1984 (Transit)\"],\n            MEMBER[\"World Geodetic System 1984 (G730)\"],\n            MEMBER[\"World Geodetic System 1984 (G873)\"],\n            MEMBER[\"World Geodetic System 1984 (G1150)\"],\n            MEMBER[\"World Geodetic System 1984 (G1674)\"],\n            MEMBER[\"World Geodetic System 1984 (G1762)\"],\n            MEMBER[\"World Geodetic System 1984 (G2139)\"],\n            ELLIPSOID[\"WGS 84\",6378137,298.257223563,\n                LENGTHUNIT[\"metre\",1]],\n            ENSEMBLEACCURACY[2.0]],\n        PRIMEM[\"Greenwich\",0,\n            ANGLEUNIT[\"degree\",0.0174532925199433]],\n        ID[\"EPSG\",4326]],\n    CONVERSION[\"UTM zone 31N\",\n        METHOD[\"Transverse Mercator\",\n            ID[\"EPSG\",9807]],\n        PARAMETER[\"Latitude of natural origin\",0,\n            ANGLEUNIT[\"degree\",0.0174532925199433],\n            ID[\"EPSG\",8801]],\n        PARAMETER[\"Longitude of natural origin\",3,\n            ANGLEUNIT[\"degree\",0.0174532925199433],\n            ID[\"EPSG\",8802]],\n        PARAMETER[\"Scale factor at natural origin\",0.9996,\n            SCALEUNIT[\"unity\",1],\n            ID[\"EPSG\",8805]],\n        PARAMETER[\"False easting\",500000,\n            LENGTHUNIT[\"metre\",1],\n            ID[\"EPSG\",8806]],\n        PARAMETER[\"False northing\",0,\n            LENGTHUNIT[\"metre\",1],\n            ID[\"EPSG\",8807]]],\n    CS[Cartesian,2],\n        AXIS[\"(E)\",east,\n            ORDER[1],\n            LENGTHUNIT[\"metre\",1]],\n        AXIS[\"(N)\",north,\n            ORDER[2],\n            LENGTHUNIT[\"metre\",1]],\n    USAGE[\n        SCOPE[\"Navigation and medium accuracy spatial referencing.\"],\n        AREA[\"Between 0\u00b0E and 6\u00b0E, northern hemisphere between equator and 84\u00b0N, onshore and offshore. Algeria. Andorra. Belgium. Benin. Burkina Faso. Denmark - North Sea. France. Germany - North Sea. Ghana. Luxembourg. Mali. Netherlands. Niger. Nigeria. Norway. Spain. Togo. United Kingdom (UK) - North Sea.\"],\n        BBOX[0,0,84,6]],\n    ID[\"EPSG\",32631]]"
+  },
+  "cornerCoordinates": {
+    "center": [
+      554030,
+      5683475
+    ],
+    "lowerLeft": [
+      552270,
+      5682340
+    ],
+    "lowerRight": [
+      555790,
+      5682340
+    ],
+    "upperLeft": [
+      552270,
+      5684610
+    ],
+    "upperRight": [
+      555790,
+      5684610
+    ]
+  },
+  "description": "/batch_jobs/j-241220b831c94ce59436ac5cdaa35559/openEO_2017-03-07Z.tif",
+  "driverLongName": "GeoTIFF",
+  "driverShortName": "GTiff",
+  "files": [
+    "/batch_jobs/j-241220b831c94ce59436ac5cdaa35559/openEO_2017-03-07Z.tif"
+  ],
+  "geoTransform": [
+    552270,
+    10,
+    0,
+    5684610,
+    0,
+    -10
+  ],
+  "metadata": {
+    "": {
+      "AREA_OR_POINT": "Area",
+      "PROCESSING_SOFTWARE": "0.54.0a1"
+    },
+    "IMAGE_STRUCTURE": {
+      "COMPRESSION": "DEFLATE",
+      "INTERLEAVE": "BAND"
+    }
+  },
+  "size": [
+    352,
+    227
+  ],
+  "stac": {
+    "eo:bands": [
+      {
+        "description": "VV",
+        "name": "b1"
+      }
+    ],
+    "proj:epsg": 32631,
+    "proj:projjson": {
+      "$schema": "https://proj.org/schemas/v0.7/projjson.schema.json",
+      "area": "Between 0\u00b0E and 6\u00b0E, northern hemisphere between equator and 84\u00b0N, onshore and offshore. Algeria. Andorra. Belgium. Benin. Burkina Faso. Denmark - North Sea. France. Germany - North Sea. Ghana. Luxembourg. Mali. Netherlands. Niger. Nigeria. Norway. Spain. Togo. United Kingdom (UK) - North Sea.",
+      "base_crs": {
+        "coordinate_system": {
+          "axis": [
+            {
+              "abbreviation": "Lat",
+              "direction": "north",
+              "name": "Geodetic latitude",
+              "unit": "degree"
+            },
+            {
+              "abbreviation": "Lon",
+              "direction": "east",
+              "name": "Geodetic longitude",
+              "unit": "degree"
+            }
+          ],
+          "subtype": "ellipsoidal"
+        },
+        "datum_ensemble": {
+          "accuracy": "2.0",
+          "ellipsoid": {
+            "inverse_flattening": 298.257223563,
+            "name": "WGS 84",
+            "semi_major_axis": 6378137
+          },
+          "id": {
+            "authority": "EPSG",
+            "code": 6326
+          },
+          "members": [
+            {
+              "id": {
+                "authority": "EPSG",
+                "code": 1166
+              },
+              "name": "World Geodetic System 1984 (Transit)"
+            },
+            {
+              "id": {
+                "authority": "EPSG",
+                "code": 1152
+              },
+              "name": "World Geodetic System 1984 (G730)"
+            },
+            {
+              "id": {
+                "authority": "EPSG",
+                "code": 1153
+              },
+              "name": "World Geodetic System 1984 (G873)"
+            },
+            {
+              "id": {
+                "authority": "EPSG",
+                "code": 1154
+              },
+              "name": "World Geodetic System 1984 (G1150)"
+            },
+            {
+              "id": {
+                "authority": "EPSG",
+                "code": 1155
+              },
+              "name": "World Geodetic System 1984 (G1674)"
+            },
+            {
+              "id": {
+                "authority": "EPSG",
+                "code": 1156
+              },
+              "name": "World Geodetic System 1984 (G1762)"
+            },
+            {
+              "id": {
+                "authority": "EPSG",
+                "code": 1309
+              },
+              "name": "World Geodetic System 1984 (G2139)"
+            }
+          ],
+          "name": "World Geodetic System 1984 ensemble"
+        },
+        "id": {
+          "authority": "EPSG",
+          "code": 4326
+        },
+        "name": "WGS 84"
+      },
+      "bbox": {
+        "east_longitude": 6,
+        "north_latitude": 84,
+        "south_latitude": 0,
+        "west_longitude": 0
+      },
+      "conversion": {
+        "method": {
+          "id": {
+            "authority": "EPSG",
+            "code": 9807
+          },
+          "name": "Transverse Mercator"
+        },
+        "name": "UTM zone 31N",
+        "parameters": [
+          {
+            "id": {
+              "authority": "EPSG",
+              "code": 8801
+            },
+            "name": "Latitude of natural origin",
+            "unit": "degree",
+            "value": 0
+          },
+          {
+            "id": {
+              "authority": "EPSG",
+              "code": 8802
+            },
+            "name": "Longitude of natural origin",
+            "unit": "degree",
+            "value": 3
+          },
+          {
+            "id": {
+              "authority": "EPSG",
+              "code": 8805
+            },
+            "name": "Scale factor at natural origin",
+            "unit": "unity",
+            "value": 0.9996
+          },
+          {
+            "id": {
+              "authority": "EPSG",
+              "code": 8806
+            },
+            "name": "False easting",
+            "unit": "metre",
+            "value": 500000
+          },
+          {
+            "id": {
+              "authority": "EPSG",
+              "code": 8807
+            },
+            "name": "False northing",
+            "unit": "metre",
+            "value": 0
+          }
+        ]
+      },
+      "coordinate_system": {
+        "axis": [
+          {
+            "abbreviation": "E",
+            "direction": "east",
+            "name": "Easting",
+            "unit": "metre"
+          },
+          {
+            "abbreviation": "N",
+            "direction": "north",
+            "name": "Northing",
+            "unit": "metre"
+          }
+        ],
+        "subtype": "Cartesian"
+      },
+      "id": {
+        "authority": "EPSG",
+        "code": 32631
+      },
+      "name": "WGS 84 / UTM zone 31N",
+      "scope": "Navigation and medium accuracy spatial referencing.",
+      "type": "ProjectedCRS"
+    },
+    "proj:shape": [
+      352,
+      227
+    ],
+    "proj:transform": [
+      552270,
+      10,
+      0,
+      5684610,
+      0,
+      -10
+    ],
+    "proj:wkt2": "PROJCRS[\"WGS 84 / UTM zone 31N\",\n    BASEGEOGCRS[\"WGS 84\",\n        ENSEMBLE[\"World Geodetic System 1984 ensemble\",\n            MEMBER[\"World Geodetic System 1984 (Transit)\"],\n            MEMBER[\"World Geodetic System 1984 (G730)\"],\n            MEMBER[\"World Geodetic System 1984 (G873)\"],\n            MEMBER[\"World Geodetic System 1984 (G1150)\"],\n            MEMBER[\"World Geodetic System 1984 (G1674)\"],\n            MEMBER[\"World Geodetic System 1984 (G1762)\"],\n            MEMBER[\"World Geodetic System 1984 (G2139)\"],\n            ELLIPSOID[\"WGS 84\",6378137,298.257223563,\n                LENGTHUNIT[\"metre\",1]],\n            ENSEMBLEACCURACY[2.0]],\n        PRIMEM[\"Greenwich\",0,\n            ANGLEUNIT[\"degree\",0.0174532925199433]],\n        ID[\"EPSG\",4326]],\n    CONVERSION[\"UTM zone 31N\",\n        METHOD[\"Transverse Mercator\",\n            ID[\"EPSG\",9807]],\n        PARAMETER[\"Latitude of natural origin\",0,\n            ANGLEUNIT[\"degree\",0.0174532925199433],\n            ID[\"EPSG\",8801]],\n        PARAMETER[\"Longitude of natural origin\",3,\n            ANGLEUNIT[\"degree\",0.0174532925199433],\n            ID[\"EPSG\",8802]],\n        PARAMETER[\"Scale factor at natural origin\",0.9996,\n            SCALEUNIT[\"unity\",1],\n            ID[\"EPSG\",8805]],\n        PARAMETER[\"False easting\",500000,\n            LENGTHUNIT[\"metre\",1],\n            ID[\"EPSG\",8806]],\n        PARAMETER[\"False northing\",0,\n            LENGTHUNIT[\"metre\",1],\n            ID[\"EPSG\",8807]]],\n    CS[Cartesian,2],\n        AXIS[\"(E)\",east,\n            ORDER[1],\n            LENGTHUNIT[\"metre\",1]],\n        AXIS[\"(N)\",north,\n            ORDER[2],\n            LENGTHUNIT[\"metre\",1]],\n    USAGE[\n        SCOPE[\"Navigation and medium accuracy spatial referencing.\"],\n        AREA[\"Between 0\u00b0E and 6\u00b0E, northern hemisphere between equator and 84\u00b0N, onshore and offshore. Algeria. Andorra. Belgium. Benin. Burkina Faso. Denmark - North Sea. France. Germany - North Sea. Ghana. Luxembourg. Mali. Netherlands. Niger. Nigeria. Norway. Spain. Togo. United Kingdom (UK) - North Sea.\"],\n        BBOX[0,0,84,6]],\n    ID[\"EPSG\",32631]]",
+    "raster:bands": [
+      {
+        "data_type": "float64",
+        "nodata": 0,
+        "stats": {
+          "maximum": 51.277,
+          "mean": 0.232,
+          "minimum": 0.003,
+          "stddev": 0.625
+        }
+      }
+    ]
+  },
+  "wgs84Extent": {
+    "coordinates": [
+      [
+        [
+          3.7499288,
+          51.3103957
+        ],
+        [
+          3.7495963,
+          51.2899856
+        ],
+        [
+          3.800071,
+          51.2896516
+        ],
+        [
+          3.8004259,
+          51.3100615
+        ],
+        [
+          3.7499288,
+          51.3103957
+        ]
+      ]
+    ],
+    "type": "Polygon"
+  }
+}
