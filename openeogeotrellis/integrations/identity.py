@@ -52,8 +52,12 @@ class IDPDetails:
 
 class IDPTokenIssuer:
     """
-    An issuer of signed tokens. This is a singleton so to avoid errors having duplicate instances you can call the
+    An issuer of signed tokens. This is a singleton so to avoid errors having multiple instances you can call the
     class method `instance() to get the singleton object`.
+
+    This is to get tokens from the OpenEO instance itself. So let's say the openeo instance is openeo.example.com then
+    this issuer will create tokens that assert claims as per openeo.example.com. If different types of tokens are
+    required then the issuer could get support for multiple types of tokens but there should only be one token issuer.
     """
     _TOKEN_EXPIRES_IN_SECONDS = 48 * 3600
     _SINGLETON: Optional[IDPTokenIssuer] = None
@@ -122,10 +126,14 @@ class IDPTokenIssuer:
 IDP_TOKEN_ISSUER = IDPTokenIssuer.instance()
 
 
-if __name__ == '__main__':
+def main():
     aws_config_dir = os.environ.get("AWS_CONFIG_DIR", "/opt/spark/work-dir")
     aws_config_path = Path(aws_config_dir)
     aws_token_filename = os.environ.get("AWS_TOKEN_FILENAME", "token")
     aws_config_path.mkdir(parents=True, exist_ok=True)
     with open(aws_config_path.joinpath(aws_token_filename), 'w') as token_file:
         token_file.write(IDP_TOKEN_ISSUER.get_job_token("0", "none"))
+
+
+if __name__ == '__main__':
+    main()
