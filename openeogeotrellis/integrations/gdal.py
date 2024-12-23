@@ -1,3 +1,4 @@
+import copy
 import multiprocessing
 import subprocess
 import sys
@@ -454,6 +455,31 @@ def get_abs_path_of_asset(asset_filename: Union[str, Path], job_dir: Union[str, 
     return abs_asset_path
 
 
+def find_gdalinfo_differences(gdalinfo1: GDALInfo, gdalinfo2: GDALInfo) -> Optional[str]:
+    """
+    Only find relevant differences.
+    """
+    projection_extension_metadata1 = _get_projection_extension_metadata(gdalinfo1)
+    projection_extension_metadata2 = _get_projection_extension_metadata(gdalinfo2)
+    if projection_extension_metadata1 != projection_extension_metadata2:
+        return "Projection metadata differs"
+    gdalinfo1 = copy.deepcopy(gdalinfo1)
+    gdalinfo2 = copy.deepcopy(gdalinfo2)
+    # "wkt" already compared at this point, so we can remove it:
+    gdalinfo1.get("coordinateSystem", {})["wkt"] = None
+    gdalinfo2.get("coordinateSystem", {})["wkt"] = None
+    gdalinfo1.get("stac", {})["proj:wkt2"] = None
+    gdalinfo2.get("stac", {})["proj:wkt2"] = None
+
+    if gdalinfo1["stac"]["proj:projjson"]["name"] != gdalinfo2["stac"]["proj:projjson"]["name"]:
+        return "proj:projjson differs"
+    gdalinfo1["stac"]["proj:projjson"] = None
+    gdalinfo2["stac"]["proj:projjson"] = None
+    if gdalinfo1 != gdalinfo2:
+        return "gdalinfo differs"
+    return None
+
+
 def read_gdal_info(asset_uri: str) -> GDALInfo:
     """Get the JSON output from gdal.Info for the file in asset_path
 
@@ -521,7 +547,7 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
             end = time.time()
             poorly_log(f"gdalinfo took {int((end - start) * 1000)}ms for {asset_uri}", level=logging.DEBUG)  # ~30ms
             if data_gdalinfo:
-                assert data_gdalinfo_from_subprocess == data_gdalinfo
+                assert find_gdalinfo_differences(data_gdalinfo_from_subprocess, data_gdalinfo) is None
             else:
                 data_gdalinfo = data_gdalinfo_from_subprocess
         except Exception as exc:
@@ -545,7 +571,7 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
                 f"gdal.Info() subprocess took {int((end - start) * 1000)}ms for {asset_uri}", level=logging.DEBUG
             )  # ~130ms
             if data_gdalinfo:
-                assert data_gdalinfo_from_subprocess == data_gdalinfo
+                assert find_gdalinfo_differences(data_gdalinfo_from_subprocess, data_gdalinfo) is None
             else:
                 data_gdalinfo = data_gdalinfo_from_subprocess
         except Exception as exc:
