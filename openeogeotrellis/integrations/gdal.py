@@ -536,7 +536,7 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
                 level=logging.WARNING,
             )
 
-    if backend_config.gdalinfo_use_subprocess:
+    if backend_config.gdalinfo_use_subprocess or data_gdalinfo == {}:
         start = time.time()
         # Ignore errors like "band 2: Failed to compute statistics, no valid pixels found in sampling."
         # use "--debug ON" to print more logging to cerr
