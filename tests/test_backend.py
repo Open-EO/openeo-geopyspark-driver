@@ -19,6 +19,7 @@ from openeogeotrellis.backend import (
 )
 from openeogeotrellis.integrations.kubernetes import k8s_render_manifest_template
 from openeogeotrellis.testing import gps_config_overrides
+from openeogeotrellis.utils import utcnow, UtcNowClock
 
 
 def test_extract_application_id():
@@ -683,3 +684,62 @@ def test_k8s_sparkapplication_dict_udf_python_deps(backend_config_path):
             ),
         )
     )
+
+
+def test_k8s_s3_profiles_and_token():
+    # Given a test token and test content for a AWS config file
+    test_token = "mytoken1"
+    test_profile = "[default]\nregion = eu-west-1\n"
+    # Given a job id
+    test_job_id = "j-123test"
+
+    # Given how the base64 encoded form in a kubernetes manifest must look
+    test_tokenb64 = "bXl0b2tlbjE="
+    test_profile_b64 = "W2RlZmF1bHRdCnJlZ2lvbiA9IGV1LXdlc3QtMQo="
+
+    # When we render the kubernetes manifest
+    app_dict = k8s_render_manifest_template(
+        "batch_job_cfg_secret.yaml.j2",
+        secret_name="my-app-secret",
+        job_id=test_job_id,
+        token=test_token,
+        profile_file_content=test_profile
+    )
+    # Then we expect an opaque secret with the base64 encoded format
+    assert app_dict == dirty_equals.IsPartialDict(
+        data=dirty_equals.IsPartialDict(
+            profile_file=test_profile_b64,
+            token=test_tokenb64,
+        ),
+        metadata=dirty_equals.IsPartialDict(
+            labels=dirty_equals.IsPartialDict(job_id=test_job_id),
+            name="my-app-secret"
+        ),
+        kind="Secret",
+        type="Opaque"
+    )
+
+
+def test_k8s_s3_profiles_and_token_must_be_cleanable(backend_config_path, fast_sleep):
+    # GIVEN a specific time
+    test_timestamp = utcnow()
+    test_timestamp_epoch = test_timestamp.timestamp()
+
+    # GIVEN the green infinity stone (to control the time dimension)
+    with UtcNowClock.mock(now=test_timestamp):
+        # WHEN we render the kubernetes manifest for s3 access
+        app_dict = k8s_render_manifest_template(
+            "batch_job_cfg_secret.yaml.j2",
+            secret_name="my-app",
+            job_id="test_id",
+            token="test",
+            profile_file_content=""
+        )
+    # THEN we expect it to be cleanable by having a starttime set to the time it was created.
+    # We can only clean files if we know they are stale
+    assert app_dict == dirty_equals.IsPartialDict(
+        metadata=dirty_equals.IsPartialDict(
+            annotations=dirty_equals.IsPartialDict(created_at=test_timestamp_epoch)
+        ),
+    )
+

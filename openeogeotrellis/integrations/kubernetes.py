@@ -1,6 +1,7 @@
 """
 Utilities, helpers, adapters for integration with Kubernetes (K8s)
 """
+import base64
 import logging
 import os
 import pkg_resources
@@ -8,6 +9,8 @@ import pkg_resources
 from jinja2 import Environment, FileSystemLoader
 from openeo_driver.jobregistry import JOB_STATUS
 from openeo_driver.utils import generate_unique_id
+
+from openeogeotrellis.utils import utcnow_epoch
 
 _log = logging.getLogger(__name__)
 
@@ -76,17 +79,33 @@ def k8s_state_to_openeo_job_status(state: str) -> str:
     # TODO: is there a kubernetes state for canceled apps?
     return job_status
 
+
 def k8s_render_manifest_template(template, **kwargs) -> dict:
     import yaml
     """ Load and render a provided kubernetes manifest jinja template with the passed kwargs """
+    # TODO: move away from pkg_resources https://github.com/Open-EO/openeo-geopyspark-driver/issues/954
     jinja_path = pkg_resources.resource_filename(
         "openeogeotrellis.deploy", template
     )
     jinja_dir = os.path.dirname(jinja_path)
-    jinja_template = Environment(
+    jinja_env = Environment(
         loader=FileSystemLoader(jinja_dir)
-    ).from_string(open(jinja_path).read())
+    )
+
+    def base64encode(input_str: str) -> str:
+        return base64.b64encode(input_str.encode("utf-8")).decode("utf-8")
+
+    jinja_env.filters['b64encode'] = base64encode
+    jinja_env.globals['utcnow_epoch'] = utcnow_epoch
+    jinja_template = jinja_env.from_string(open(jinja_path).read())
 
     rendered = jinja_template.render(**kwargs)
 
     return yaml.safe_load(rendered)
+
+
+def k8s_get_batch_job_cfg_secret_name(spark_app_name: str) -> str:
+    """
+    Get a secret name for a submitted spark application
+    """
+    return f"cfg-{spark_app_name}"

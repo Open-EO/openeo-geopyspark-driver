@@ -1,6 +1,8 @@
+from __future__ import annotations
 import collections
 import collections.abc
 import contextlib
+import dataclasses
 import datetime
 import functools
 import grp
@@ -158,6 +160,10 @@ class UtcNowClock:
 
 # Alias for general usage
 utcnow = UtcNowClock.utcnow
+
+
+def utcnow_epoch() -> float:
+    return utcnow().timestamp()
 
 
 def describe_path(path: Union[Path, str]) -> dict:
@@ -806,3 +812,79 @@ def wait_till_path_available(path: Path):
         else:
             logger.warning(f"Path is not available after {max_tries} tries: {path}")
             return  # TODO: Throw error instead?
+
+
+class FileChangeWatcher:
+    """
+    FileChangeWatcher will keep state to determine whether files have changed since a previous time.
+
+    This is to be used whenever you need to take action on content changes of a file. The process is
+    1) create a wacher: `watcher = FileChangeWatcher()`
+    2) Get a callback or None for the file you want to process:
+       `callback = watcher.get_file_reload_register_func_if_changed("Path(/cfg.ini"))`
+    3a) If None then nothing has changed and you don't need to do anything
+    3b1) if notnNone then Process the config file
+    3b2) If processing is fine call the callback: `callback()`
+       `
+    """
+
+    @dataclasses.dataclass(frozen=True)
+    class _FileChangeFingerprint:
+        """
+        FileChangeFingerprint can help to detect changes in files. This is useful when there is a need to reload a file if
+        its content has changed.
+
+        This is based on wisdom from a blog: https://apenwarr.ca/log/20181113
+        """
+        mtime: float
+        size: int
+        inode_nr: int
+        file_mode: int
+        owner_uid: int
+        owner_gid: int
+
+        @classmethod
+        def from_file(cls, file_path: Path) -> FileChangeWatcher._FileChangeFingerprint:
+            if file_path.exists():
+                fs = os.stat(file_path)
+                return cls(
+                    mtime=fs.st_mtime,
+                    size=fs.st_size,
+                    inode_nr=fs.st_ino,
+                    file_mode=fs.st_mode,
+                    owner_uid=fs.st_uid,
+                    owner_gid=fs.st_gid,
+                )
+            else:
+                # For missing files we take a fingerprint that is impossible for an existing file which can be used as
+                # a sentinel
+                return cls(
+                    mtime=0.0,
+                    size=0,
+                    inode_nr=0,
+                    file_mode=0,
+                    owner_uid=0,
+                    owner_gid=0,
+                )
+
+    def __init__(self):
+        self._last_config_reload: dict[Path, FileChangeWatcher._FileChangeFingerprint] = {}
+
+    def get_file_reload_register_func_if_changed(self, file_path: Path, resolve=True) -> Optional[Callable[[], None]]:
+        """
+        Checks whether a file has changed since the last registered reload time. If it did return a function that can be
+        called after the file has been successfully reloaded.
+        """
+        if resolve:
+            file_path = file_path.resolve()
+
+        existing_fingerprint = self._last_config_reload.get(file_path)
+        current_fingerprint = self._FileChangeFingerprint.from_file(file_path)
+
+        if existing_fingerprint == current_fingerprint:
+            return None
+
+        def register_reload() -> None:
+            self._last_config_reload[file_path] = current_fingerprint
+
+        return register_reload

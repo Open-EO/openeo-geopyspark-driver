@@ -134,6 +134,11 @@ spec:
         claimName: {{ job_name }}
         readOnly: false
 {%- endif %}
+{%- if provide_s3_profiles_and_tokens is sameas true %}
+    - name: "batch-job-cfg"
+      secret:
+        secretName: {{ batch_job_cfg_secret_name }}
+{%- endif %}
 {%- endblock %}
   driver:
 {%- if batch_scheduler == 'yunikorn' %}
@@ -272,6 +277,11 @@ spec:
 {%- if fuse_mount_batchjob_s3_bucket is sameas true %}
       - name: "batch-job-results"
         mountPath: /batch_jobs/{{ job_id_full }}
+{%- endif %}
+{%- if provide_s3_profiles_and_tokens is sameas true %}
+      - name: "batch-job-cfg"
+        mountPath: {{ batch_job_config_dir }}
+        readOnly: true
 {%- endif %}
 {%- if mount_tmp %}
       - name: "spark-local-dir-1"
@@ -415,6 +425,11 @@ spec:
 {%- if fuse_mount_batchjob_s3_bucket is sameas true %}
       - name: "batch-job-results"
         mountPath: /batch_jobs/{{ job_id_full }}
+{%- endif %}
+{%- if provide_s3_profiles_and_tokens is sameas true %}
+      - name: "batch-job-cfg"
+        mountPath: {{batch_job_config_dir}}
+        readOnly: true
 {%- endif %}
 {%- endblock %}
   deps:
