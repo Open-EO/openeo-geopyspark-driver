@@ -7,6 +7,7 @@ from typing import Union
 from kazoo.client import KazooClient
 from kazoo.exceptions import NodeExistsError, NoNodeError
 from kazoo.handlers.threading import KazooTimeoutError
+from kazoo.retry import KazooRetry
 
 from openeo_driver.backend import UserDefinedProcessMetadata, UserDefinedProcesses
 from openeo_driver.errors import ProcessGraphNotFoundException
@@ -81,8 +82,10 @@ class ZooKeeperUserDefinedProcessRepository(UserDefinedProcesses):
 
     @contextlib.contextmanager
     def _zk_client(self):
-        zk = KazooClient(hosts=self._hosts)
-        zk.start()
+        kz_retry = KazooRetry(max_tries=10, delay=0.5, backoff=2)
+        zk = KazooClient(hosts=self._hosts,connection_retry=kz_retry,
+                 command_retry=kz_retry, timeout=3.0)
+        zk.start(timeout=15.0)
 
         try:
             yield zk
