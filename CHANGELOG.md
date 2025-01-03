@@ -14,8 +14,10 @@ without compromising stable operations.
 
 ## Unreleased
 
-- Initial support for S3 profiles and tokens during batch job execution ([#969](https://github.com/Open-EO/openeo-geopyspark-driver/pull/969))
 
+## 0.57.0
+
+- Initial support for S3 profiles and tokens during batch job execution ([#969](https://github.com/Open-EO/openeo-geopyspark-driver/pull/969))
 
 ## 0.56.0
 
