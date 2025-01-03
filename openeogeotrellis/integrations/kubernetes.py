@@ -93,6 +93,8 @@ def k8s_render_manifest_template(template, **kwargs) -> dict:
     )
 
     def base64encode(input_str: str) -> str:
+        if not isinstance(input_str, str):
+            input_str = str(input_str)
         return base64.b64encode(input_str.encode("utf-8")).decode("utf-8")
 
     jinja_env.filters['b64encode'] = base64encode

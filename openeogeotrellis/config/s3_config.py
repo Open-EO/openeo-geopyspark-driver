@@ -83,11 +83,14 @@ class S3Config:
         profiles = []
         sanitized_session_name = cls._sanitize_session_name(session_name)
 
+        # Each platform has a local region which is the platform region
+        platform_region = os.environ.get("PLATFORM_S3_REGION", "waw3-1")
+
         def add_profile(profile_name: str, region: str, role_arn: str) -> None:
             profiles.append(
                 AwsProfileDetails(
                     name=profile_name,
-                    region=region,
+                    region=region if region is not None else platform_region,
                     role_arn=role_arn,
                     web_identity_token_file=token_file,
                     role_session_name=sanitized_session_name
@@ -99,8 +102,7 @@ class S3Config:
                 add_profile(workspace_name, workspace.region, f"arn:openeows:iam:::role/{workspace_name}")
 
         # The base profile which can be used for normal openeo platform S3 access
-        base_region = os.environ.get("PLATFORM_S3_REGION", "waw3-1")
-        add_profile("base", base_region, f"arn:openeo:iam:::role/base")
+        add_profile("base", platform_region, f"arn:openeo:iam:::role/base")
 
         # The eodata profile can be used to access Copernicus data hosted on CloudFerro
         add_profile("eodata", "eodata", f"arn:openeo:iam:::role/eodata")

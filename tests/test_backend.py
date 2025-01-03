@@ -17,6 +17,8 @@ from openeogeotrellis.backend import (
     GpsBatchJobs,
     GpsProcessing,
 )
+from openeogeotrellis.config import get_backend_config
+from openeogeotrellis.config.s3_config import S3Config
 from openeogeotrellis.integrations.kubernetes import k8s_render_manifest_template
 from openeogeotrellis.testing import gps_config_overrides
 from openeogeotrellis.utils import utcnow, UtcNowClock
@@ -728,12 +730,13 @@ def test_k8s_s3_profiles_and_token_must_be_cleanable(backend_config_path, fast_s
     # GIVEN the green infinity stone (to control the time dimension)
     with UtcNowClock.mock(now=test_timestamp):
         # WHEN we render the kubernetes manifest for s3 access
+        token_path = get_backend_config().batch_job_config_dir / "token"
         app_dict = k8s_render_manifest_template(
             "batch_job_cfg_secret.yaml.j2",
             secret_name="my-app",
             job_id="test_id",
             token="test",
-            profile_file_content=""
+            profile_file_content=S3Config.from_backend_config("j-any", str(token_path))
         )
     # THEN we expect it to be cleanable by having a starttime set to the time it was created.
     # We can only clean files if we know they are stale
@@ -742,4 +745,3 @@ def test_k8s_s3_profiles_and_token_must_be_cleanable(backend_config_path, fast_s
             annotations=dirty_equals.IsPartialDict(created_at=test_timestamp_epoch)
         ),
     )
-
