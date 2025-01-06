@@ -742,6 +742,6 @@ def test_k8s_s3_profiles_and_token_must_be_cleanable(backend_config_path, fast_s
     # We can only clean files if we know they are stale
     assert app_dict == dirty_equals.IsPartialDict(
         metadata=dirty_equals.IsPartialDict(
-            annotations=dirty_equals.IsPartialDict(created_at=test_timestamp_epoch)
+            annotations=dirty_equals.IsPartialDict(created_at=str(test_timestamp_epoch))
         ),
     )
