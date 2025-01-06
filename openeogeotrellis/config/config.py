@@ -244,9 +244,9 @@ class GpsBackendConfig(OpenEoBackendConfig):
         "/opt/tensorflow:/opt/tensorflow:ro"
     )
     batch_user_docker_mounts: dict[str, List[str]] = {}
-    gdalinfo_from_file: bool = False
+    gdalinfo_from_file: bool = True
     gdalinfo_python_call: bool = False
-    gdalinfo_use_subprocess: bool = True  # TODO: Only keep one gdalinfo on true
+    gdalinfo_use_subprocess: bool = False
     gdalinfo_use_python_subprocess: bool = False
 
     # TODO: replace these temp default with None (or better defaults)
@@ -257,7 +257,7 @@ class GpsBackendConfig(OpenEoBackendConfig):
     calrissian_bucket: Optional[str] = "calrissian"
 
     """
-    Inject S3 profiles and tokens that allow S3 access scoped to the Job execution.      
+    Inject S3 profiles and tokens that allow S3 access scoped to the Job execution.
     """
     provide_s3_profiles_and_tokens: bool = False
 
