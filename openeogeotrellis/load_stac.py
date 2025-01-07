@@ -131,10 +131,12 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
                 tuple(map(float, bbox)) if bbox else None,
                 tuple(shape) if shape else None)
 
-    def matches_metadata_properties(itm: pystac.Item) -> bool:
-        literal_matches = {property_name: filter_properties.extract_literal_match(condition)
-                           for property_name, condition in all_properties.items()}
+    literal_matches = {
+        property_name: filter_properties.extract_literal_match(condition)
+        for property_name, condition in all_properties.items()
+    }
 
+    def matches_metadata_properties(itm: pystac.Item) -> bool:
         def operator_value(criterion: Dict[str, object]) -> (str, object):
             if len(criterion) != 1:
                 raise ValueError(f'expected a single criterion, was {criterion}')
@@ -264,6 +266,8 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
 
             client = pystac_client.Client.open(root_catalog.get_self_href(), modifier=modifier)
 
+            cql2_text_filter = get_jvm().org.openeo.geotrellissentinelhub.Cql2TextFormatter().format(literal_matches)
+
             search_request = client.search(
                 method="GET",
                 collections=collection_id,
@@ -275,12 +279,13 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
                     else f"{from_date.isoformat().replace('+00:00', 'Z')}/"
                     f"{to_date.isoformat().replace('+00:00', 'Z')}"  # end is inclusive
                 ),
+                filter=cql2_text_filter,
                 fields=fields,
             )
 
             logger.info(f"STAC API request: GET {search_request.url_with_parameters()}")
 
-            # TODO: use server-side filtering as well (at least STAC API Filter Extension)
+            # STAC API might not support Filter Extension so always use client-side filtering as well
             intersecting_items = filter(matches_metadata_properties, search_request.items())
         else:
             assert isinstance(stac_object, pystac.Catalog)  # static Catalog + Collection

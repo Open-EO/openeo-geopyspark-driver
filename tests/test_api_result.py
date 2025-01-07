@@ -4086,6 +4086,8 @@ class TestLoadStac:
     def test_stac_api_property_filter(self, api110, urllib_mock, requests_mock, catalog_url, tmp_path):
         def feature_collection(request, _) -> dict:
             assert "fields" not in request.qs
+            assert request.qs["filter"] == ["season = 's1'"]
+            assert request.qs["filter-lang"] == ["cql2-text"]
 
             def item(path) -> dict:
                 return json.loads(
