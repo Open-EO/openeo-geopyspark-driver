@@ -251,7 +251,9 @@ def test_aggregate_spatial_small_polygon(imagecollection_with_two_bands_and_one_
     )
     assert isinstance(result, AggregatePolygonResultCSV)
 
-    spatial_result = AggregatePolygonResult(result.get_data(), regions=regions)
+    spatial_result = AggregatePolygonResult(
+        result.get_data(), regions=regions, metadata=imagecollection_with_two_bands_and_one_date.metadata
+    )
     filename = spatial_result.to_geoparquet()
     assert Path(filename).exists()
 
