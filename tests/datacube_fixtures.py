@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 import pytz
 
+from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.service_registry import InMemoryServiceRegistry
 
 TILE_SIZE = 16  # multiple of 16 as this is used for the GeoTIFF tile size as well and mandated by its spec
@@ -133,7 +134,7 @@ def layer_with_two_bands_and_one_date():
 
 
 @pytest.fixture
-def imagecollection_with_two_bands_and_one_date(request):
+def imagecollection_with_two_bands_and_one_date(request) -> GeopysparkDataCube:
     import geopyspark as gps
     from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
     geopyspark_layer = layer_with_two_bands_and_one_date()

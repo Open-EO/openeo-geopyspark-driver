@@ -1,5 +1,6 @@
 import datetime
 import json
+from pathlib import Path
 from tempfile import NamedTemporaryFile
 from unittest import TestCase
 
@@ -240,6 +241,19 @@ def test_aggregate_spatial_last_polygon_empty(get_regions, imagecollection_with_
     assert result.get_data() == {
         "2017-09-25T11:37:00Z": [[1.0, 2.0], [pytest.approx(np.nan, nan_ok=True), pytest.approx(np.nan, nan_ok=True)]]
     }
+
+
+def test_aggregate_spatial_small_polygon(imagecollection_with_two_bands_and_one_date):
+    regions = DriverVectorCube.from_fiona([str(get_test_data_file("geometries/small_polygon.geojson"))], None, {})
+
+    result = imagecollection_with_two_bands_and_one_date.aggregate_spatial(
+        regions, {"mean1": {"process_id": "mean", "arguments": {"data": {"from_parameter": "data"}}, "result": True}}
+    )
+    assert isinstance(result, AggregatePolygonResultCSV)
+
+    spatial_result = AggregatePolygonResult(result.get_data(), regions=regions)
+    filename = spatial_result.to_geoparquet()
+    assert Path(filename).exists()
 
 
 def test_zonal_statistics_median_datacube(imagecollection_with_two_bands_and_three_dates):
