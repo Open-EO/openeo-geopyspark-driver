@@ -482,7 +482,11 @@ class JobTracker:
             )
             stats["new metadata"] += 1
         except AppNotFound:
-            log.error(f"App not found: {job_id=} {application_id=}", exc_info=True)
+            log.warning(
+                f"App not found: {job_id=} {application_id=}; "
+                f"this is not necessarily a problem (https://github.com/eu-cdse/openeo-cdse-infra/issues/147)",
+                exc_info=True,
+            )
             # TODO: originally, we set the job status here to "error", but that is potentially
             #       destructive in distributed context with partial replication.
             #       So we just don't touch anything and skip it instead for now.

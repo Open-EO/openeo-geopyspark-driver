@@ -14,6 +14,7 @@ without compromising stable operations.
 
 ## Unreleased
 
+- Improve "App not found" logs to avoid red herrings in root cause analysis ([eu-cdse/openeo-cdse-infra#147](https://github.com/eu-cdse/openeo-cdse-infra/issues/147))
 
 ## 0.57.0
 

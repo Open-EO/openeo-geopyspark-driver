@@ -622,8 +622,9 @@ class TestYarnJobTracker:
         assert caplog.record_tuples == [
             (
                 "openeogeotrellis.job_tracker_v2",
-                logging.ERROR,
-                "App not found: job_id='job-2' application_id='app-2'",
+                logging.WARNING,
+                "App not found: job_id='job-2' application_id='app-2'; "
+                "this is not necessarily a problem (https://github.com/eu-cdse/openeo-cdse-infra/issues/147)",
             )
         ]
 
@@ -1332,8 +1333,9 @@ class TestK8sJobTracker:
         assert caplog.record_tuples == [
             (
                 "openeogeotrellis.job_tracker_v2",
-                logging.ERROR,
-                f"App not found: job_id='job-2' application_id='{app_ids[2]}'",
+                logging.WARNING,
+                f"App not found: job_id='job-2' application_id='{app_ids[2]}'; "
+                f"this is not necessarily a problem (https://github.com/eu-cdse/openeo-cdse-infra/issues/147)",
             )
         ]
 
