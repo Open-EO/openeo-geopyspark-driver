@@ -4083,11 +4083,14 @@ class TestLoadStac:
         "https://planetarycomputer.microsoft.com/api/stac/v1",
         "https://stac.eurac.edu",
     ])
-    def test_stac_api_property_filter(self, api110, urllib_mock, requests_mock, catalog_url, tmp_path):
+    @pytest.mark.parametrize("use_filter_extension", [False, True])
+    def test_stac_api_property_filter(
+        self, api110, urllib_mock, requests_mock, catalog_url, tmp_path, use_filter_extension
+    ):
         def feature_collection(request, _) -> dict:
             assert "fields" not in request.qs
-            assert request.qs["filter"] == ["season = 's1'"]
-            assert request.qs["filter-lang"] == ["cql2-text"]
+            assert not use_filter_extension or request.qs["filter"] == [""""properties.season" = 's1'"""]
+            assert not use_filter_extension or request.qs["filter-lang"] == ["cql2-text"]
 
             def item(path) -> dict:
                 return json.loads(
@@ -4130,7 +4133,10 @@ class TestLoadStac:
                                 }
                             }
                         }
-                    }
+                    },
+                    "featureflags": {
+                        "use-filter-extension": use_filter_extension,
+                    },
                 }
             },
             "saveresult1": {

@@ -15,11 +15,6 @@ without compromising stable operations.
 ## Unreleased
 
 
-## 0.58.0
-
-- `load_stac`: use STAC API Filter Extension to prevent driver OOM ([#979](https://github.com/Open-EO/openeo-geopyspark-driver/issues/979))
-
-
 ## 0.57.0
 
 - Initial support for S3 profiles and tokens during batch job execution ([#969](https://github.com/Open-EO/openeo-geopyspark-driver/pull/969))
