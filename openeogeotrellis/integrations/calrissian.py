@@ -170,7 +170,6 @@ class CalrissianJobLauncher:
             - k8s job manifest
             - relative output directory (inside the output volume)
         """
-        # TODO: name must be unique per invocation of this method, not just per instance/request/job.
         name = self._build_unique_name(infix="cal-cwl")
         _log.info(f"Creating CWL job manifest: {name=}")
 
