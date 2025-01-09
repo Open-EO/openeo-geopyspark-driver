@@ -46,6 +46,8 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
 
     logger.info("load_stac from url {u!r} with load params {p!r}".format(u=url, p=load_params))
 
+    feature_flags = load_params.get("featureflags", {})
+
     no_data_available_exception = OpenEOApiException(message="There is no data available for the given extents.",
                                                      code="NoDataAvailable", status_code=400)
     properties_unsupported_exception = ProcessParameterUnsupportedException("load_stac", "properties")
@@ -131,10 +133,12 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
                 tuple(map(float, bbox)) if bbox else None,
                 tuple(shape) if shape else None)
 
-    def matches_metadata_properties(itm: pystac.Item) -> bool:
-        literal_matches = {property_name: filter_properties.extract_literal_match(condition)
-                           for property_name, condition in all_properties.items()}
+    literal_matches = {
+        property_name: filter_properties.extract_literal_match(condition)
+        for property_name, condition in all_properties.items()
+    }
 
+    def matches_metadata_properties(itm: pystac.Item) -> bool:
         def operator_value(criterion: Dict[str, object]) -> (str, object):
             if len(criterion) != 1:
                 raise ValueError(f'expected a single criterion, was {criterion}')
@@ -275,12 +279,13 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
                     else f"{from_date.isoformat().replace('+00:00', 'Z')}/"
                     f"{to_date.isoformat().replace('+00:00', 'Z')}"  # end is inclusive
                 ),
+                filter=_cql2_text_filter(literal_matches) if feature_flags.get("use-filter-extension", False) else None,
                 fields=fields,
             )
 
             logger.info(f"STAC API request: GET {search_request.url_with_parameters()}")
 
-            # TODO: use server-side filtering as well (at least STAC API Filter Extension)
+            # STAC API might not support Filter Extension so always use client-side filtering as well
             intersecting_items = filter(matches_metadata_properties, search_request.items())
         else:
             assert isinstance(stac_object, pystac.Catalog)  # static Catalog + Collection
@@ -533,7 +538,6 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
     data_cube_parameters, single_level = datacube_parameters.create(load_params, env, jvm)
     getattr(data_cube_parameters, "layoutScheme_$eq")("FloatingLayoutScheme")
 
-    feature_flags = load_params.get("featureflags", {})
     tilesize = feature_flags.get("tilesize", None)
     if tilesize:
         getattr(data_cube_parameters, "tileSize_$eq")(tilesize)
@@ -695,3 +699,12 @@ def _await_stac_object(url, poll_interval_seconds, max_poll_delay_seconds, max_p
         time.sleep(poll_interval_seconds)
 
     return stac_object
+
+
+def _cql2_text_filter(literal_matches) -> str:
+    cql2_text_formatter = get_jvm().org.openeo.geotrellissentinelhub.Cql2TextFormatter()
+
+    return cql2_text_formatter.format(
+        # Cql2TextFormatter won't add necessary quotes so provide them up front
+        {f'"properties.{name}"': criteria for name, criteria in literal_matches.items()}
+    )
