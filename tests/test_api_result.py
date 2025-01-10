@@ -4077,20 +4077,41 @@ class TestLoadStac:
         parsed = pandas.read_csv(io.StringIO(res.text))
         print(parsed)
 
-    @pytest.mark.parametrize("catalog_url", [
-        "https://stac.test",
-        "https://tamn.snapplanet.io",
-        "https://planetarycomputer.microsoft.com/api/stac/v1",
-        "https://stac.eurac.edu",
-    ])
-    @pytest.mark.parametrize("use_filter_extension", [False, True])
+    @pytest.mark.parametrize(
+        "catalog_url",
+        [
+            "https://stac.test",
+            "https://tamn.snapplanet.io",
+            "https://planetarycomputer.microsoft.com/api/stac/v1",
+            "https://stac.eurac.edu",
+        ],
+    )
+    @pytest.mark.parametrize(
+        ["use_filter_extension", "filter_lang", "filter", "body"],
+        [
+            (False, None, None, None),
+            (True, ["cql2-text"], [""""properties.season" = 's1'"""], None),
+            (
+                "cql2-json",
+                None,
+                None,
+                {
+                    "collections": ["collection"],
+                    "limit": 20,
+                    "filter-lang": "cql2-json",
+                    "filter": {"op": "=", "args": [{"property": "properties.season"}, "s1"]},
+                },
+            ),
+        ],
+    )
     def test_stac_api_property_filter(
-        self, api110, urllib_mock, requests_mock, catalog_url, tmp_path, use_filter_extension
+        self, api110, urllib_mock, requests_mock, catalog_url, tmp_path, use_filter_extension, filter_lang, filter, body
     ):
         def feature_collection(request, _) -> dict:
             assert "fields" not in request.qs
-            assert not use_filter_extension or request.qs["filter"] == [""""properties.season" = 's1'"""]
-            assert not use_filter_extension or request.qs["filter-lang"] == ["cql2-text"]
+            assert request.qs.get("filter-lang") == filter_lang
+            assert request.qs.get("filter") == filter
+            assert request.body == body or request.json() == body
 
             def item(path) -> dict:
                 return json.loads(
@@ -4156,6 +4177,7 @@ class TestLoadStac:
                           text=get_test_data_file("stac/issue640-api-property-filter/catalog.json").read_text()
                           .replace("$CATALOG_URL", catalog_url))
         requests_mock.get(f"{catalog_url}/search", json=feature_collection)
+        requests_mock.post(f"{catalog_url}/search", json=feature_collection)
 
         res = api110.result(process_graph).assert_status_code(200)
 
