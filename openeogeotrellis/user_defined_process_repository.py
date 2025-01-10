@@ -12,6 +12,7 @@ from kazoo.retry import KazooRetry
 from openeo_driver.backend import UserDefinedProcessMetadata, UserDefinedProcesses
 from openeo_driver.errors import ProcessGraphNotFoundException
 from openeogeotrellis.configparams import ConfigParams
+from openeogeotrellis.integrations.zookeeper import ZookeeperClient
 
 
 class ZooKeeperUserDefinedProcessRepository(UserDefinedProcesses):
@@ -23,6 +24,7 @@ class ZooKeeperUserDefinedProcessRepository(UserDefinedProcesses):
     def __init__(self, hosts: List[str], root: str = "/openeo/udps"):
         self._hosts = ','.join(hosts)
         self._root = root
+        self._zk_client = ZookeeperClient(self._hosts, logger=self._log)
 
     @staticmethod
     def _serialize(spec: dict) -> bytes:
@@ -35,63 +37,46 @@ class ZooKeeperUserDefinedProcessRepository(UserDefinedProcesses):
         return json.loads(data.decode())
 
     def save(self, user_id: str, process_id: str, spec: dict) -> None:
-        with self._zk_client() as zk:
-            udp_path = "{r}/{u}/{p}".format(r=self._root, u=user_id, p=spec['id'])
-            data = self._serialize(spec)
-
-            try:
-                zk.create(udp_path, data, makepath=True)
-            except NodeExistsError:
-                _, stat = zk.get(udp_path)
-                zk.set(udp_path, data, version=stat.version)
-
-    def get(self, user_id: str, process_id: str) -> Union[UserDefinedProcessMetadata, None]:
-        with self._zk_client() as zk:
-            udp_path = "{r}/{u}/{p}".format(r=self._root, u=user_id, p=process_id)
-            try:
-                data, _ = zk.get(udp_path)
-                return UserDefinedProcessMetadata.from_dict(self._deserialize(data)['specification'])
-            except NoNodeError:
-                return None
-            except KazooTimeoutError:
-                self._log.error(f"Timeout while checking for user defined process {process_id} for user {user_id}")
-                return None
-
-    def get_for_user(self, user_id: str) -> List[UserDefinedProcessMetadata]:
-        with self._zk_client() as zk:
-            user_path = "{r}/{u}".format(r=self._root, u=user_id)
-            try:
-                process_graph_ids = zk.get_children(user_path)
-
-                udps = (self.get(user_id, process_graph_id) for process_graph_id in process_graph_ids)
-                return sorted(udps, key=lambda udp: udp.id.lower())
-            except NoNodeError:
-                return []
-            except KazooTimeoutError:
-                self._log.error(f"Timeout while looking up user defined processes for user {user_id}")
-                return []
-
-    def delete(self, user_id: str, process_id: str) -> None:
-        with self._zk_client() as zk:
-            udp_path = "{r}/{u}/{p}".format(r=self._root, u=user_id, p=process_id)
-
-            try:
-                zk.delete(udp_path)
-            except NoNodeError:
-                raise ProcessGraphNotFoundException(process_graph_id=process_id)
-
-    @contextlib.contextmanager
-    def _zk_client(self):
-        kz_retry = KazooRetry(max_tries=10, delay=0.5, backoff=2)
-        zk = KazooClient(hosts=self._hosts,connection_retry=kz_retry,
-                 command_retry=kz_retry, timeout=3.0)
-        zk.start(timeout=15.0)
+        udp_path = "{r}/{u}/{p}".format(r=self._root, u=user_id, p=spec['id'])
+        data = self._serialize(spec)
 
         try:
-            yield zk
-        finally:
-            zk.stop()
-            zk.close()
+            self._zk_client.create(udp_path, data, makepath=True)
+        except NodeExistsError:
+            _, stat = self._zk_client.get(udp_path)
+            self._zk_client.set(udp_path, data, version=stat.version)
+
+    def get(self, user_id: str, process_id: str) -> Union[UserDefinedProcessMetadata, None]:
+        udp_path = "{r}/{u}/{p}".format(r=self._root, u=user_id, p=process_id)
+        try:
+            data, _ = self._zk_client.get(udp_path)
+            return UserDefinedProcessMetadata.from_dict(self._deserialize(data)['specification'])
+        except NoNodeError:
+            return None
+        except KazooTimeoutError:
+            self._log.error(f"Timeout while checking for user defined process {process_id} for user {user_id}")
+            return None
+
+    def get_for_user(self, user_id: str) -> List[UserDefinedProcessMetadata]:
+        user_path = "{r}/{u}".format(r=self._root, u=user_id)
+        try:
+            process_graph_ids = self._zk_client.get_children(user_path)
+
+            udps = (self.get(user_id, process_graph_id) for process_graph_id in process_graph_ids)
+            return sorted(udps, key=lambda udp: udp.id.lower())
+        except NoNodeError:
+            return []
+        except KazooTimeoutError:
+            self._log.error(f"Timeout while looking up user defined processes for user {user_id}")
+            return []
+
+    def delete(self, user_id: str, process_id: str) -> None:
+        udp_path = "{r}/{u}/{p}".format(r=self._root, u=user_id, p=process_id)
+
+        try:
+            self._zk_client.delete(udp_path)
+        except NoNodeError:
+            raise ProcessGraphNotFoundException(process_graph_id=process_id)
 
 
 class InMemoryUserDefinedProcessRepository(UserDefinedProcesses):
