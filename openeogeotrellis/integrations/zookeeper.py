@@ -1,7 +1,15 @@
 from __future__ import annotations
 
 from time import sleep
-from typing import Any
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from typing import Union, Any, Callable, Optional
+    from kazoo.protocol.states import ZnodeStat
+
+    # Helper type which corresponds to what Zookeeper for callbacks as used by watches
+    ZEvent = tuple[bytes, ZnodeStat]
+    ZCallback = Callable[[ZEvent], None]
 
 from kazoo.client import KazooClient
 import kazoo.exceptions
@@ -58,6 +66,14 @@ class ZookeeperClient:
         # Create KazooClient methods:
         for kazoo_method in ["get", "get_children", "delete", "create", "set"]:
             setattr(self, kazoo_method, self._make_retrying_kazooclient_method(kazoo_method))
+
+    # We add the kazoo methods just to avoid IDEs getting confused and giving unresolved attribute warnings
+    # but these are not the actual methods as those will be created upon initialization.
+    get = KazooClient.get
+    get_children = KazooClient.get_children
+    delete = KazooClient.delete
+    create = KazooClient.create
+    set = KazooClient.set
 
     def __del__(self):
         """
