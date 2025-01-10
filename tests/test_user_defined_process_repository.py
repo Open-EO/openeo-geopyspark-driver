@@ -68,14 +68,14 @@ class TestZooKeeperUserDefinedProcessRepository:
     ZnodeStat = collections.namedtuple("_ZStat", ["version"])
 
     @pytest.fixture
-    def udp_db(self) -> ZooKeeperUserDefinedProcessRepository:
+    def udp_db(self, zk) -> ZooKeeperUserDefinedProcessRepository:
         udp_db = ZooKeeperUserDefinedProcessRepository(hosts=["zk1.test", "zk2.test"])
-        return udp_db
+        yield udp_db
 
     @pytest.fixture
     def zk(self) -> mock.MagicMock:
         """Fixture for `KazooClient instance used by ZooKeeperUserDefinedProcessRepository """
-        with mock.patch('openeogeotrellis.user_defined_process_repository.KazooClient') as KazooClient:
+        with mock.patch('openeogeotrellis.integrations.zookeeper.ZookeeperClient._KazooClient') as KazooClient:
             yield KazooClient()
 
     def test_save_create(self, udp_db, zk):

@@ -10,6 +10,8 @@ from reretry import retry
 
 
 class ZookeeperClient:
+    _KazooClient = KazooClient
+
     def __init__(self, hosts: str, logger: Any = None, attempt_timeout: float = 1.0, total_timeout: float = 120.0,
                  tries: int = 10, delay: float = 0.4, backoff: float = 1.7):
         """
@@ -49,8 +51,8 @@ class ZookeeperClient:
         kz_retry = KazooRetry(max_tries=tries, delay=delay, backoff=backoff)
         self._logger = logger
         self._zkhosts = hosts
-        self._zk = KazooClient(hosts=hosts, connection_retry=kz_retry, command_retry=kz_retry, timeout=attempt_timeout,
-                               logger=logger, read_only=True)
+        self._zk = self._KazooClient(hosts=hosts, connection_retry=kz_retry, command_retry=kz_retry,
+                                     timeout=attempt_timeout, logger=logger, read_only=True)
         self._zk.start(timeout=total_timeout)
 
         # Create KazooClient methods:

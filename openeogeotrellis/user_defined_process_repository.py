@@ -1,13 +1,10 @@
-import contextlib
 import json
 import logging
 from typing import List, Dict
 from typing import Union
 
-from kazoo.client import KazooClient
 from kazoo.exceptions import NodeExistsError, NoNodeError
 from kazoo.handlers.threading import KazooTimeoutError
-from kazoo.retry import KazooRetry
 
 from openeo_driver.backend import UserDefinedProcessMetadata, UserDefinedProcesses
 from openeo_driver.errors import ProcessGraphNotFoundException
