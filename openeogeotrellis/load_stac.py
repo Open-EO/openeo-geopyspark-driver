@@ -1,8 +1,9 @@
 import datetime as dt
+import json
 import time
 from functools import partial
 import logging
-from typing import Union, Optional, Tuple, Dict, List, Iterable
+from typing import Union, Optional, Tuple, Dict, List, Iterable, Any
 from urllib.parse import urlparse
 
 import dateutil.parser
@@ -268,8 +269,17 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
 
             client = pystac_client.Client.open(root_catalog.get_self_href(), modifier=modifier)
 
+            use_filter_extension = feature_flags.get("use-filter-extension", False)
+
+            if use_filter_extension == "cql2-json":
+                cql2_filter = _cql2_json_filter(literal_matches)
+            elif use_filter_extension:
+                cql2_filter = _cql2_text_filter(literal_matches)
+            else:
+                cql2_filter = None
+
             search_request = client.search(
-                method="GET",
+                method="POST" if isinstance(cql2_filter, dict) else "GET",
                 collections=collection_id,
                 bbox=requested_bbox.reproject("EPSG:4326").as_wsen_tuple() if requested_bbox else None,
                 limit=20,
@@ -279,11 +289,17 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
                     else f"{from_date.isoformat().replace('+00:00', 'Z')}/"
                     f"{to_date.isoformat().replace('+00:00', 'Z')}"  # end is inclusive
                 ),
-                filter=_cql2_text_filter(literal_matches) if feature_flags.get("use-filter-extension", False) else None,
+                filter=cql2_filter,
                 fields=fields,
             )
 
-            logger.info(f"STAC API request: GET {search_request.url_with_parameters()}")
+            if isinstance(cql2_filter, dict):
+                logger.info(
+                    f"STAC API request: {search_request.method} {search_request.url} "
+                    f"with body {json.dumps(cql2_filter)}"
+                )
+            else:
+                logger.info(f"STAC API request: {search_request.method} {search_request.url_with_parameters()}")
 
             # STAC API might not support Filter Extension so always use client-side filtering as well
             intersecting_items = filter(matches_metadata_properties, search_request.items())
@@ -701,10 +717,52 @@ def _await_stac_object(url, poll_interval_seconds, max_poll_delay_seconds, max_p
     return stac_object
 
 
-def _cql2_text_filter(literal_matches) -> str:
+def _cql2_text_filter(literal_matches: Dict[str, Dict[str, Any]]) -> str:
     cql2_text_formatter = get_jvm().org.openeo.geotrellissentinelhub.Cql2TextFormatter()
 
     return cql2_text_formatter.format(
         # Cql2TextFormatter won't add necessary quotes so provide them up front
         {f'"properties.{name}"': criteria for name, criteria in literal_matches.items()}
     )
+
+
+def _cql2_json_filter(literal_matches: Dict[str, Dict[str, Any]]) -> Optional[dict]:
+    if len(literal_matches) == 0:
+        return None
+
+    operator_mapping = {
+        "eq": "=",
+        "neq": "<>",
+        "lt": "<",
+        "lte": "<=",
+        "gt": ">",
+        "gte": ">=",
+    }
+
+    def single_filter(property, operator, value) -> dict:
+        cql2_json_operator = operator_mapping.get(operator)
+
+        if cql2_json_operator is None:
+            raise ValueError(f"unsupported operator {operator}")
+
+        return {
+            "op": cql2_json_operator,
+            "args": [
+                {"property": f"properties.{property}"},
+                value
+            ]
+        }
+
+    filters = [
+        single_filter(property, operator, value)
+        for property, criteria in literal_matches.items()
+        for operator, value in criteria.items()
+    ]
+
+    if len(filters) == 1:
+        return filters[0]
+
+    return {
+        "op": "and",
+        "args": filters,
+    }
