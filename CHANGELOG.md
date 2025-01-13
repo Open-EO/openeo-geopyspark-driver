@@ -15,6 +15,10 @@ without compromising stable operations.
 ## Unreleased
 
 - Improve "App not found" logs to avoid red herrings in root cause analysis ([eu-cdse/openeo-cdse-infra#147](https://github.com/eu-cdse/openeo-cdse-infra/issues/147))
+- Avoid pixel shift when source data is not aligned in load_stac. ([#648](https://github.com/Open-EO/openeo-geopyspark-driver/issues/648))
+- Fix when outputting an empty vector cube to GeoParquet ([#987](https://github.com/Open-EO/openeo-geopyspark-driver/issues/987))
+- Fix for outputting a vector cube to legacy `timeseries.json` format. ([#342](https://github.com/Open-EO/openeo-python-driver/issues/342))
+- Add gdalinfo json files next to tiff files. ([openeo-geotrellis-extensions#352](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/352))
 
 ## 0.57.0
 
