@@ -3,6 +3,7 @@ import json
 import time
 from functools import partial
 import logging
+import os
 from typing import Union, Optional, Tuple, Dict, List, Iterable, Any
 from urllib.parse import urlparse
 
@@ -296,7 +297,7 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
             if isinstance(cql2_filter, dict):
                 logger.info(
                     f"STAC API request: {search_request.method} {search_request.url} "
-                    f"with body {json.dumps(cql2_filter)}"
+                    f"with body {json.dumps(search_request.get_parameters())}"
                 )
             else:
                 logger.info(f"STAC API request: {search_request.method} {search_request.url_with_parameters()}")
@@ -625,7 +626,12 @@ def get_best_url(asset: pystac.Asset):
             else:
                 logger.warning(f"Only support file paths as local alternate urls, but found {href}")
 
-    return asset.get_absolute_href() or asset.href
+    href = asset.get_absolute_href() or asset.href
+
+    return (
+        href.replace("s3://eodata/", "/vsis3/EODATA/") if os.environ.get("AWS_DIRECT") == "TRUE"
+        else href.replace("s3://eodata/", "/eodata/")
+    )
 
 
 def _compute_cellsize(proj_bbox, proj_shape):
