@@ -248,8 +248,10 @@ spec:
         value: {{ openeo_ejr_backend_id }}
       - name: OPENEO_EJR_OIDC_CLIENT_CREDENTIALS
         value: {{ openeo_ejr_oidc_client_credentials }}
+{%- if separate_asset_per_band_new_partitioner %}
       - name: SEPARATE_ASSET_PER_BAND_NEW_PARTITIONER
         value: "{{ separate_asset_per_band_new_partitioner }}"
+{%- endif %}
       - name: OPENEO_STAC_OIDC_CLIENT_SECRET_STAC_OPENEO
         value: {{ openeo_stac_oidc_client_secret_stac_openeo }}
 {%- endblock %}
@@ -395,8 +397,10 @@ spec:
         value: "{{ python_max_memory }}"
       - name: CPL_DEBUG
         value: "OFF"
+{%- if separate_asset_per_band_new_partitioner %}
       - name: SEPARATE_ASSET_PER_BAND_NEW_PARTITIONER
         value: "{{ separate_asset_per_band_new_partitioner }}"
+{%- endif %}
 {%- endblock %}
     labels:
 {%- block executor_labels %}
