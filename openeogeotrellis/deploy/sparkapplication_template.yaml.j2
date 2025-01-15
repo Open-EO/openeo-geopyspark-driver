@@ -250,8 +250,8 @@ spec:
         value: {{ openeo_ejr_oidc_client_credentials }}
       - name: SEPARATE_ASSET_PER_BAND_NEW_PARTITIONER
         value: "{{ separate_asset_per_band_new_partitioner }}"
-      - name: OPENEO_STAC_OIDC_CLIENT_SECRET_STAC_OPENEO_DEV
-        value: {{ openeo_stac_oidc_client_secret_stac_openeo_dev }}
+      - name: OPENEO_STAC_OIDC_CLIENT_SECRET_STAC_OPENEO
+        value: {{ openeo_stac_oidc_client_secret_stac_openeo }}
 {%- endblock %}
     labels:
 {%- block driver_labels %}
