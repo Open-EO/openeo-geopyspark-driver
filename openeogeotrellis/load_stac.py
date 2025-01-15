@@ -1,7 +1,7 @@
 import datetime as dt
 import json
 import time
-from functools import partial
+from functools import partial, lru_cache
 import logging
 import os
 from typing import Union, Optional, Tuple, Dict, List, Iterable, Any
@@ -40,7 +40,7 @@ from openeogeotrellis.utils import normalize_temporal_extent, get_jvm, to_projec
 
 logger = logging.getLogger(__name__)
 
-
+@lru_cache(maxsize=20)
 def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_properties: Dict[str, object],
               batch_jobs: Optional[backend.BatchJobs], override_band_names: List[str] = None) -> GeopysparkDataCube:
     if override_band_names is None:
