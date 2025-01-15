@@ -1,6 +1,6 @@
 import logging
 from pathlib import PurePath, Path
-from typing import Union, Callable
+from typing import Union, Callable, Protocol
 from urllib.error import HTTPError
 
 from openeo_driver.util.http import requests_with_retry
@@ -14,13 +14,17 @@ from requests import Session
 _log = logging.getLogger(__name__)
 
 
+class ExportAsset(Protocol):
+    def __call__(self, asset: Asset, remove_original: bool, **kwargs) -> str: ...
+
+
 class StacApiWorkspace(Workspace):
     REQUESTS_TIMEOUT_SECONDS = 60
 
     def __init__(
         self,
         root_url: str,
-        export_asset: Callable[[Asset, bool], str],  # (asset, remove_original) => workspace URI
+        export_asset: ExportAsset,
         asset_alternate_id: str,
         additional_collection_properties=None,
         get_access_token: Callable[[], str] = None,
@@ -31,11 +35,6 @@ class StacApiWorkspace(Workspace):
         :param get_access_token: supply an access token, if needed
         :param export_asset: copy/move an asset and return its workspace URI, to be used as an alternate URI
         :param asset_alternate_id
-
-        Re: export_asset:
-        * locally with assets on disk: possibly copy to a persistent directory and adapt href
-        * Terrascope: possibly copy to a public directory and adapt href
-        * CDSE: possibly translate file path to s3:// URI and adapt href
         """
 
         if additional_collection_properties is None:
@@ -100,7 +99,7 @@ class StacApiWorkspace(Workspace):
                 for new_item in new_collection.get_items():
                     for asset in new_item.assets.values():
                         # client takes care of copying asset and returns its workspace URI
-                        workspace_uri = self._export_asset(asset, remove_original)
+                        workspace_uri = self._export_asset(asset, remove_original, collection_id=collection_id)
                         _log.info(f"exported asset {asset.get_absolute_href()} as {workspace_uri}")
                         asset.href = workspace_uri
 

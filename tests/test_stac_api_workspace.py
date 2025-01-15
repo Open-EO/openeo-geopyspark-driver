@@ -134,7 +134,7 @@ def _mock_stac_api_root_catalog(requests_mock, root_url: str):
     )
 
 
-def _export_asset(asset: Asset, _: bool) -> str:
+def _export_asset(asset: Asset, remove_original: bool, **kwargs) -> str:
     # actual copying behaviour is the responsibility of the workspace creator
     return asset.get_absolute_href()
 
