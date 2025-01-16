@@ -1878,7 +1878,7 @@ class GeopysparkDataCube(DriverDataCube):
 
                 def add_gdalinfo_objects(assets_original):
                     assets_to_add = {}
-                    if get_backend_config().gdalinfo_from_file:
+                    if format_options.get("attach_gdalinfo_assets", False):
                         for key, value in assets_original.items():
                             href_path = str(value["href"])
                             if os.path.exists(href_path + GDALINFO_SUFFIX):
@@ -2204,7 +2204,7 @@ class GeopysparkDataCube(DriverDataCube):
                 message="Format {f!r} is not supported".format(f=format),
                 code="FormatUnsupported", status_code=400
             )
-        return {str(os.path.basename(filename)):{"href":filename}}
+        return {str(os.path.basename(filename)): {"href": filename, "roles": ["data"]}}
 
     def get_labels(self, geometries, feature_id_property=None):
         # TODO: return more descriptive labels/ids than these autoincrement strings (when possible)?

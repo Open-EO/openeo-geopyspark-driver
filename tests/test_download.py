@@ -299,6 +299,7 @@ class TestDownload:
     @pytest.mark.parametrize("sample_by_feature", [True, False])
     @pytest.mark.parametrize("batch_mode", [True, False])
     @pytest.mark.parametrize("filename_prefix", [None, "prefixTest"])
+    @pytest.mark.parametrize("attach_gdalinfo_assets", [True, False])
     @pytest.mark.parametrize("space_type", ["spacetime", "spatial"])
     @pytest.mark.parametrize("format_arg", ["NETCDF", "GTIFF", "PNG"])
     def test_write_assets_parameterize(self, tmp_path, imagecollection_with_two_bands_and_three_dates,
@@ -310,6 +311,7 @@ class TestDownload:
                                        sample_by_feature,
                                        batch_mode,
                                        filename_prefix,
+                                       attach_gdalinfo_assets,
                                        space_type,
                                        format_arg,
                                        ):
@@ -348,6 +350,7 @@ class TestDownload:
                 "sample_by_feature": sample_by_feature,
                 "batch_mode": batch_mode,
                 "filename_prefix": filename_prefix,  # no effect when outputting single file
+                "attach_gdalinfo_assets": attach_gdalinfo_assets,
 
                 # non parametrized:
                 "geometries": geometries,
@@ -359,8 +362,15 @@ class TestDownload:
         # with open(self.test_write_assets_parameterize_path + test_name + ".json", 'w') as fp:
         #     json.dump(assets, fp, indent=2)
 
+        assets = {k: v for (k, v) in assets.items() if "data" in v["roles"]}
         name, asset = next(iter(assets.items()))
-        print("href of first asset: " + asset['href'])
+        print("href of first asset: " + asset["href"])
+        assets_metadata = {k: v for (k, v) in assets.items() if "data" not in v["roles"]}
+        if format_arg == "GTIFF" and not catalog:
+            if attach_gdalinfo_assets:
+                assert len(assets_metadata) == len(assets)
+            else:
+                assert len(assets_metadata) == 0
 
         if len(assets) == 1:
             assert assets[filename]
