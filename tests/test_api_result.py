@@ -3491,6 +3491,51 @@ class TestLoadStac:
         mock_stac_client = mock_pystac_client_open.return_value
         mock_stac_client.search.assert_called_once()
 
+
+    def test_stac_api_caching(self, imagecollection_with_two_bands_and_one_date, api110, urllib_mock, tmp_path):
+        with mock.patch("openeogeotrellis.load_stac.load_stac") as mock_load_stac:
+            mock_load_stac.return_value = imagecollection_with_two_bands_and_one_date
+
+            process_graph = {
+                "loadstac1": {
+                    "process_id": "load_stac",
+                    "arguments": {
+                        "url": "https://stac.test/item.json",
+                    }
+                },
+                "mergecubes2": {
+                    "arguments": {
+                        "cube1": {
+                            "from_node": "loadstac1"
+                        },
+                        "cube2": {
+                            "from_node": "loadstac1"
+                        },
+                        "overlap_resolver": {
+                            "process_graph": {
+                                "max1": {
+                                    "process_id": "max",
+                                    "arguments": {"data": {"from_parameter": "x"}},
+                                    "result": True,
+                                }
+                            }
+                        },
+                    },
+                    "process_id": "merge_cubes",
+                    "result": True
+                },
+                "saveresult1": {
+                    "process_id": "save_result",
+                    "arguments": {"data": {"from_node": "mergecubes2"}, "format": "GTiff"},
+                    "result": False
+                }
+            }
+
+            res = api110.result(process_graph).assert_status_code(200)
+
+            mock_load_stac.assert_called_once()
+
+
     @staticmethod
     def _mock_stac_api_collection() -> Collection:
         collection = Collection(
