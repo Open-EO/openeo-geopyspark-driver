@@ -14,6 +14,10 @@ without compromising stable operations.
 
 ## Unreleased
 
+## 0.58.1
+
+- Fix spatial and temporal extents of exported STAC Collection ([#867](https://github.com/Open-EO/openeo-geopyspark-driver/issues/867))
+
 ## 0.58.0
 
 - Improve "App not found" logs to avoid red herrings in root cause analysis ([eu-cdse/openeo-cdse-infra#147](https://github.com/eu-cdse/openeo-cdse-infra/issues/147))
