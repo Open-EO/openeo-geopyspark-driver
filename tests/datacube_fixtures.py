@@ -30,7 +30,7 @@ openeo_metadata = {
         "x": {"type": "spatial", "axis": "x"},
         "y": {"type": "spatial", "axis": "y"},
         "bands": {"type": "bands", "values": ["red", "nir"]},
-        "t": {"type": "temporal"}
+        "t": {"type": "temporal", "extent":["2016-01-01T11:37:00Z","2019-10-01T11:37:00Z"]}
     },
     "bands": [
 

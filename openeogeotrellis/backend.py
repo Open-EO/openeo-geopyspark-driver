@@ -64,7 +64,7 @@ from openeo_driver.users import User
 from openeo_driver.util.geometry import BoundingBox
 from openeo_driver.util.http import requests_with_retry
 from openeo_driver.util.utm import area_in_square_meters
-from openeo_driver.utils import EvalEnv, generate_unique_id, to_hashable, smart_bool
+from openeo_driver.utils import EvalEnv, generate_unique_id, to_hashable, smart_bool, WhiteListEvalEnv
 from pandas import Timedelta
 from py4j.java_gateway import JavaObject, JVMView
 from py4j.protocol import Py4JJavaError
@@ -99,7 +99,7 @@ from openeogeotrellis.job_registry import (
 from openeogeotrellis.layercatalog import (
     GeoPySparkLayerCatalog,
     get_layer_catalog,
-    extra_validation_load_collection,
+    extra_validation_load_collection, WHITELIST,
 )
 from openeogeotrellis.logs import elasticsearch_logs
 from openeogeotrellis.ml.geopysparkcatboostmodel import GeopySparkCatBoostModel
@@ -767,7 +767,12 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         return cube
 
     def load_stac(self, url: str, load_params: LoadParameters, env: EvalEnv) -> GeopysparkDataCube:
-        return load_stac.load_stac(url, load_params, env, layer_properties={}, batch_jobs=self.batch_jobs)
+        return self._load_stac_cached(url, load_params, WhiteListEvalEnv(env, WHITELIST))
+
+    @lru_cache(maxsize=20)
+    def _load_stac_cached(self, url: str, load_params: LoadParameters, env: EvalEnv):
+        return load_stac.load_stac(url, load_params, env, layer_properties=None,
+                                   batch_jobs=self.batch_jobs)
 
     def load_ml_model(self, model_id: str) -> GeopysparkMlModel:
 
