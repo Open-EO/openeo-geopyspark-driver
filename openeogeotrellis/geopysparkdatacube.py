@@ -1889,6 +1889,7 @@ class GeopysparkDataCube(DriverDataCube):
                                     "href": href_path + GDALINFO_SUFFIX,
                                     "type": "application/json",
                                     "roles": ["metadata"],
+                                    "geometry": value["geometry"],
                                 }
                                 if "bbox" in value:
                                     obj["bbox"] = value["bbox"]
