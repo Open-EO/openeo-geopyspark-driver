@@ -1889,13 +1889,15 @@ class GeopysparkDataCube(DriverDataCube):
                                     "href": href_path + GDALINFO_SUFFIX,
                                     "type": "application/json",
                                     "roles": ["metadata"],
-                                    "geometry": value["geometry"],
                                 }
                                 if "bbox" in value:
                                     obj["bbox"] = value["bbox"]
+                                if "geometry" in value:
+                                    obj["geometry"] = value["geometry"]
                                 if "datetime" in value:
                                     obj["datetime"] = value["datetime"]
-                                assets_to_add[str(pathlib.Path(href_path + GDALINFO_SUFFIX).name)] = obj
+                                name_key = str(pathlib.Path(href_path + GDALINFO_SUFFIX).relative_to(save_directory))
+                                assets_to_add[name_key] = obj
                     return {**assets_original, **assets_to_add}
 
                 if catalog:

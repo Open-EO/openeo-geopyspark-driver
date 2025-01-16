@@ -1179,6 +1179,7 @@ def test_filepath_per_band(
     s3_instance = s3_client()
 
     merge = _random_merge()
+    attach_gdalinfo_assets = True
 
     process_graph = {
         "loadcollection1": {
@@ -1213,6 +1214,7 @@ def test_filepath_per_band(
                 "format": "GTiff",
                 "options": {
                     "separate_asset_per_band": "true",
+                    "attach_gdalinfo_assets": attach_gdalinfo_assets,
                     "filepath_per_band": ["folder1/lon.tif", "lat.tif"],
                 },
             },
@@ -1266,13 +1268,22 @@ def test_filepath_per_band(
         stac_collection = pystac.Collection.from_file(str(tmp_path / "collection.json"))
         stac_collection.validate_all()
         item_links = [item_link for item_link in stac_collection.links if item_link.rel == "item"]
-        assert len(item_links) == 2
+        assert len(item_links) == 4 if attach_gdalinfo_assets else 2
+        for item in item_links:
+            assert os.path.exists(tmp_path / item.href)
         item_link = item_links[0]
 
         assert item_link.media_type == "application/geo+json"
         assert item_link.href == "./folder1/lon.tif.json"
 
-        items = list(stac_collection.get_items())
+        items_all = list(stac_collection.get_items())
+
+        for item in items_all:
+            assert os.path.exists(tmp_path / item.self_href)
+            for asset in item.assets:
+                assert (Path(item.self_href).parent / item.assets[asset].href).exists()
+
+        items = list(filter(lambda x: "data" in x.assets[x.id].roles, items_all))
         assert len(items) == 2
 
         item = items[0]
