@@ -1840,9 +1840,12 @@ class GeopysparkDataCube(DriverDataCube):
         separate_asset_per_band = get_jvm().scala.Option.apply(separate_asset_per_band_tmp)
         bands_metadata = format_options.get("bands_metadata", {})  # band_name -> (tag -> value)
         file_metadata = format_options.get("file_metadata", {})  # tag -> value
+        attach_gdalinfo_assets = format_options.get("attach_gdalinfo_assets", False)
+        if attach_gdalinfo_assets and format != "GTIFF":
+            raise OpenEOApiException(f"attach_gdalinfo_assets is only supported with format GTIFF. Was: {format}")
 
         if separate_asset_per_band.isDefined() and format != "GTIFF":
-            raise OpenEOApiException("separate_asset_per_band is only supported with format GTIFF")
+            raise OpenEOApiException(f"separate_asset_per_band is only supported with format GTIFF. Was: {format}")
 
         filepath_per_band = format_options.get("filepath_per_band", None)
 
@@ -1878,7 +1881,7 @@ class GeopysparkDataCube(DriverDataCube):
 
                 def add_gdalinfo_objects(assets_original):
                     assets_to_add = {}
-                    if format_options.get("attach_gdalinfo_assets", False):
+                    if attach_gdalinfo_assets:
                         for key, value in assets_original.items():
                             href_path = str(value["href"])
                             if os.path.exists(href_path + GDALINFO_SUFFIX):

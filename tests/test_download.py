@@ -321,6 +321,9 @@ class TestDownload:
         if batch_mode and sample_by_feature:
             # 'sample_by_feature' is only relevant in 'batch_mode'
             return
+        if attach_gdalinfo_assets and format_arg != "GTIFF":
+            # 'attach_gdalinfo_assets' is only relevant when outputting 'GTIFF'
+            return
 
         if space_type == "spacetime":
             imagecollection = imagecollection_with_two_bands_and_three_dates
@@ -337,7 +340,7 @@ class TestDownload:
             assert False
         filename = "test_download_result" + extension
         geometries = geojson_to_geometry(self.features)
-        assets = imagecollection.write_assets(
+        assets_all = imagecollection.write_assets(
             str(tmp_path / filename),
             format=format_arg,
             format_options={
@@ -362,18 +365,18 @@ class TestDownload:
         # with open(self.test_write_assets_parameterize_path + test_name + ".json", 'w') as fp:
         #     json.dump(assets, fp, indent=2)
 
-        assets = {k: v for (k, v) in assets.items() if "data" in v["roles"]}
-        name, asset = next(iter(assets.items()))
+        assets_data = {k: v for (k, v) in assets_all.items() if "data" in v["roles"]}
+        name, asset = next(iter(assets_data.items()))
         print("href of first asset: " + asset["href"])
-        assets_metadata = {k: v for (k, v) in assets.items() if "data" not in v["roles"]}
+        assets_metadata = {k: v for (k, v) in assets_all.items() if "data" not in v["roles"]}
         if format_arg == "GTIFF" and not catalog:
             if attach_gdalinfo_assets:
-                assert len(assets_metadata) == len(assets)
+                assert len(assets_metadata) == len(assets_data)
             else:
                 assert len(assets_metadata) == 0
 
-        if len(assets) == 1:
-            assert assets[filename]
+        if len(assets_data) == 1:
+            assert assets_data[filename]
             assert filename in asset['href']
         else:
             if filename_prefix:
