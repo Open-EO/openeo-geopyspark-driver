@@ -767,7 +767,12 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         return cube
 
     def load_stac(self, url: str, load_params: LoadParameters, env: EvalEnv) -> GeopysparkDataCube:
-        return load_stac.load_stac(url, load_params, WhiteListEvalEnv(env, WHITELIST), layer_properties={}, batch_jobs=self.batch_jobs)
+        return self._load_stac_cached(url, load_params, WhiteListEvalEnv(env, WHITELIST))
+
+    @lru_cache(maxsize=20)
+    def _load_stac_cached(self, url: str, load_params: LoadParameters, env: EvalEnv):
+        return load_stac.load_stac(url, load_params, env, layer_properties=None,
+                                   batch_jobs=self.batch_jobs)
 
     def load_ml_model(self, model_id: str) -> GeopysparkMlModel:
 
