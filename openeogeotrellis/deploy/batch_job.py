@@ -529,12 +529,15 @@ def _export_to_workspaces(
     job_dir: Path,
     remove_exported_assets: bool,
     enable_merge: bool,
-):
+) -> List[str]:
     workspace_repository: WorkspaceRepository = backend_config_workspace_repository
     workspace_exports = sorted(
         list(result.workspace_exports),
         key=lambda export: export.workspace_id + (export.merge or ""),  # arbitrary but deterministic order of hrefs
     )
+
+    if not workspace_exports:
+        return []
 
     stac_hrefs = [
         f"file:{path}"

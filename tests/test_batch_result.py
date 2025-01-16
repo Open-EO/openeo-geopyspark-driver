@@ -1591,7 +1591,7 @@ def test_discard_result(tmp_path):
     )
 
     # runs to completion without output assets
-    assert set(os.listdir(tmp_path)) == {"job_metadata.json", "collection.json"}
+    assert os.listdir(tmp_path) == ["job_metadata.json"]
 
 
 def test_multiple_top_level_side_effects(tmp_path, caplog):
