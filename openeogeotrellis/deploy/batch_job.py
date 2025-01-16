@@ -688,8 +688,8 @@ def _write_exported_stac_collection(
         "description": f"This is the STAC metadata for the openEO job {job_id!r}",  # TODO
         "license": "unknown",  # TODO
         "extent": {
-            "spatial": {"bbox": [[-180, -90, 180, 90]]},  # TODO
-            "temporal": {"interval": [[None, None]]}  # TODO
+            "spatial": {"bbox": [result_metadata.get("bbox", [-180, -90, 180, 90])]},
+            "temporal": {"interval": [[result_metadata.get("start_datetime"), result_metadata.get("end_datetime")]]},
         },
         "links": [item_link(item_file) for item_file in item_files],
     }

@@ -1,8 +1,7 @@
+import datetime as dt
 import json
 import os
 import shutil
-import subprocess
-import sys
 import tempfile
 import uuid
 from pathlib import Path, PurePath
@@ -989,6 +988,11 @@ def test_export_workspace(tmp_path, remove_original):
 
         stac_collection = pystac.Collection.from_file(str(workspace_dir / "collection.json"))
         stac_collection.validate_all()
+
+        assert stac_collection.extent.spatial.bboxes == [[0.0, 0.0, 1.0, 2.0]]
+        assert stac_collection.extent.temporal.intervals == [
+            [dt.datetime(2021, 1, 5, tzinfo=dt.timezone.utc), dt.datetime(2021, 1, 16, tzinfo=dt.timezone.utc)]
+        ]
 
         item_links = [item_link for item_link in stac_collection.links if item_link.rel == "item"]
         assert len(item_links) == 2
