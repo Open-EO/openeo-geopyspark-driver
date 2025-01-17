@@ -14,6 +14,9 @@ without compromising stable operations.
 
 ## Unreleased
 
+- load_stac: cube creation is now cached, just like load_collection ([#993](https://github.com/Open-EO/openeo-geopyspark-driver/issues/993))
+- logs: Provide a performance summary at the end of a batch job.
+
 ## 0.58.1
 
 - Fix spatial and temporal extents of exported STAC Collection ([#867](https://github.com/Open-EO/openeo-geopyspark-driver/issues/867))
@@ -26,6 +29,7 @@ without compromising stable operations.
 - Fix for outputting a vector cube to legacy `timeseries.json` format. ([#342](https://github.com/Open-EO/openeo-python-driver/issues/342))
 - Add gdalinfo json files next to tiff files. ([openeo-geotrellis-extensions#352](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/352))
 - Support exporting assets for different collections to different paths ([#867](https://github.com/Open-EO/openeo-geopyspark-driver/issues/867))
+- load_collection: bugfix in 'global extent' computation, increases performance ([#334](https://github.com/Open-EO/openeo-python-driver/issues/334))
 
 ## 0.57.0
 
@@ -38,6 +42,7 @@ without compromising stable operations.
 ## 0.55.0
 
 - Support `file_metadata` format option to set file-specific metadata on `GTiff` output assets ([#970](https://github.com/Open-EO/openeo-geopyspark-driver/issues/970))
+- load_collection for Sentinel-3 Level2 data: avoid data corruption in specific case ([#755](https://github.com/Open-EO/openeo-geopyspark-driver/issues/755))
 
 ## 0.54.0
 
