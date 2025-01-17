@@ -113,7 +113,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
         return self._load_collection_cached(collection_id, load_params, WhiteListEvalEnv(env, WHITELIST))
 
-    @lru_cache(maxsize=20)
+    @lru_cache(maxsize=40)
     def _load_collection_cached(self, collection_id: str, load_params: LoadParameters, env: EvalEnv) -> GeopysparkDataCube:
         logger.info(f"load_collection: Creating raster datacube for {collection_id} with arguments {load_params}, environment: {env}")
 
