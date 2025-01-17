@@ -2248,7 +2248,7 @@ def test_load_collection_is_cached(api100):
         }
 
         # TODO: is there an easier way to count the calls to lru_cache-decorated function load_collection?
-        creating_layer_calls = list(filter(lambda call: call.args[0].startswith("Creating layer for TestCollection-LonLat4x4"),
+        creating_layer_calls = list(filter(lambda call: call.args[0].startswith("load_collection: Creating raster datacube for TestCollection-LonLat4x4"),
                                            logger.info.call_args_list))
 
         n_load_collection_calls = len(creating_layer_calls)

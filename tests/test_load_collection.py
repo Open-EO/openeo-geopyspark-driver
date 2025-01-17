@@ -463,7 +463,7 @@ def test_driver_vector_cube_supports_load_collection_caching(jvm_mock, catalog):
         catalog.load_collection('SENTINEL1_GRD', load_params=load_params1(), env=EvalEnv({'pyramid_levels': 'highest'}))
 
         # TODO: is there an easier way to count the calls to lru_cache-decorated function load_collection?
-        creating_layer_calls = list(filter(lambda call: call.args[0].startswith("Creating layer for SENTINEL1_GRD"),
+        creating_layer_calls = list(filter(lambda call: call.args[0].startswith("load_collection: Creating raster datacube for SENTINEL1_GRD"),
                                            logger.info.call_args_list))
 
         n_load_collection_calls = len(creating_layer_calls)
