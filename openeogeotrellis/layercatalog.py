@@ -115,7 +115,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
     @lru_cache(maxsize=20)
     def _load_collection_cached(self, collection_id: str, load_params: LoadParameters, env: EvalEnv) -> GeopysparkDataCube:
-        logger.info("Creating layer for {c} with load params {p}".format(c=collection_id, p=load_params))
+        logger.info(f"load_collection: Creating raster datacube for {collection_id} with arguments {load_params}, environment: {env}")
 
         from_date, to_date = temporal_extent = normalize_temporal_extent(load_params.temporal_extent)
         spatial_extent = load_params.spatial_extent
@@ -166,7 +166,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         catalog_type = layer_source_info.get("catalog_type", "")  # E.g. STAC, Opensearch, Creodias
 
         postprocessing_band_graph = metadata.get("_vito", "postprocessing_bands", default=None)
-        logger.info("Layer source type: {s!r}".format(s=layer_source_type))
+        logger.debug("Cube source type: {s!r}".format(s=layer_source_type))
         cell_width = float(metadata.get("cube:dimensions", "x", "step", default=10.0))
         cell_height = float(metadata.get("cube:dimensions", "y", "step", default=10.0))
 
@@ -177,7 +177,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             metadata = metadata.rename_labels(metadata.band_dimension.name, bands, metadata.band_names)
         else:
             band_indices = None
-        logger.info("band_indices: {b!r}".format(b=band_indices))
+        logger.debug("band_indices: {b!r}".format(b=band_indices))
         # TODO: avoid this `still_needs_band_filter` ugliness.
         #       Also see https://github.com/Open-EO/openeo-geopyspark-driver/issues/29
         still_needs_band_filter = False
@@ -635,7 +635,6 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             )
             return create_pyramid(factory)
 
-        logger.info("loading pyramid {s}".format(s=layer_source_type))
 
         if layer_source_type == 'file-s2':
             pyramid = file_s2_pyramid()
