@@ -97,10 +97,15 @@ class StacApiWorkspace(Workspace):
                 )
 
                 for new_item in new_collection.get_items():
-                    for asset in new_item.assets.values():
+                    for asset_key, asset in new_item.assets.items():
+                        relative_asset_path = asset_key  # TODO: relies asset key == relative asset path; avoid?
+
                         # client takes care of copying asset and returns its workspace URI
-                        workspace_uri = self._export_asset(asset, remove_original, collection_id=collection_id)
+                        workspace_uri = self._export_asset(
+                            asset, remove_original, collection_id=collection_id, relative_asset_path=relative_asset_path
+                        )
                         _log.info(f"exported asset {asset.get_absolute_href()} as {workspace_uri}")
+
                         asset.href = workspace_uri
 
                     self._upload_item(new_item, collection_id, session)

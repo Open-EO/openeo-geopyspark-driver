@@ -4,6 +4,7 @@ from pathlib import Path
 from openeo_driver.users.oidc import OidcProvider
 from openeo_driver.workspace import DiskWorkspace
 
+from openeogeotrellis.workspace import StacApiWorkspace
 from openeogeotrellis.config import GpsBackendConfig
 from openeogeotrellis.workspace import ObjectStorageWorkspace
 
@@ -25,12 +26,35 @@ oidc_providers = [
     ),
 ]
 
+
+def _stac_api_workspace() -> StacApiWorkspace:
+    import pystac
+    from pathlib import Path
+    from openeogeotrellis.utils import s3_client
+
+    def export_asset(asset: pystac.Asset, remove_original: bool, **kwargs) -> str:
+        assert not remove_original
+        collection_id = kwargs["collection_id"]
+        relative_asset_path = kwargs["relative_asset_path"]
+
+        source_path = Path(asset.get_absolute_href())
+        target_bucket = "openeo-fake-bucketname"
+        target_key = f"{collection_id}/{relative_asset_path}"
+
+        s3_client().upload_file(str(source_path), target_bucket, target_key)
+
+        return f"s3://{target_bucket}/{target_key}"
+
+    return StacApiWorkspace("https://stac.test", export_asset, asset_alternate_id="s3")
+
+
 os.makedirs("/tmp/workspace", exist_ok=True)
 workspaces = {
     "tmp_workspace": DiskWorkspace(root_directory=Path("/tmp/workspace")),
     "tmp": DiskWorkspace(root_directory=Path("/tmp")),
     "s3_workspace": ObjectStorageWorkspace(bucket="openeo-fake-bucketname"),
-    "s3_workspace_region": ObjectStorageWorkspace(bucket="openeo-fake-eu-nl", region="eu-nl")
+    "s3_workspace_region": ObjectStorageWorkspace(bucket="openeo-fake-eu-nl", region="eu-nl"),
+    "stac_api_workspace": _stac_api_workspace(),
 }
 
 
