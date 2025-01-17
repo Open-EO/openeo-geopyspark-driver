@@ -30,7 +30,7 @@ from openeogeotrellis.backend import JOB_METADATA_FILENAME
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.deploy.batch_job import run_job
 from openeogeotrellis.deploy.batch_job_metadata import extract_result_metadata
-from openeogeotrellis.utils import s3_client
+from openeogeotrellis.utils import s3_client, GDALINFO_SUFFIX
 from openeogeotrellis.workspace import ObjectStorageWorkspace
 from openeogeotrellis.workspace.custom_stac_io import CustomStacIO
 from .conftest import force_stop_spark_context, _setup_local_spark
@@ -913,7 +913,8 @@ def test_multiple_image_collection_results(tmp_path):
 
 
 @pytest.mark.parametrize("remove_original", [False, True])
-def test_export_workspace(tmp_path, remove_original):
+@pytest.mark.parametrize("attach_gdalinfo_assets", [False, True])
+def test_export_workspace(tmp_path, remove_original, attach_gdalinfo_assets):
     workspace_id = "tmp"
     merge = _random_merge()
 
@@ -931,6 +932,9 @@ def test_export_workspace(tmp_path, remove_original):
             "process_id": "save_result",
             "arguments": {
                 "data": {"from_node": "loadcollection1"},
+                "options": {
+                    "attach_gdalinfo_assets": attach_gdalinfo_assets,
+                },
                 "format": "GTiff"
             },
         },
@@ -978,13 +982,21 @@ def test_export_workspace(tmp_path, remove_original):
             assert "openEO_2021-01-05Z.tif" in job_dir_files
             assert "openEO_2021-01-15Z.tif" in job_dir_files
 
-        assert _paths_relative_to(workspace_dir) == {
+        expected_paths = {
             Path("collection.json"),
             Path("openEO_2021-01-05Z.tif"),
             Path("openEO_2021-01-05Z.tif.json"),
             Path("openEO_2021-01-15Z.tif"),
             Path("openEO_2021-01-15Z.tif.json"),
         }
+        if attach_gdalinfo_assets:
+            expected_paths |= {
+                Path(f"openEO_2021-01-05Z.tif{GDALINFO_SUFFIX}"),
+                Path(f"openEO_2021-01-05Z.tif{GDALINFO_SUFFIX}.json"),
+                Path(f"openEO_2021-01-15Z.tif{GDALINFO_SUFFIX}"),
+                Path(f"openEO_2021-01-15Z.tif{GDALINFO_SUFFIX}.json"),
+            }
+        assert _paths_relative_to(workspace_dir) == expected_paths
 
         stac_collection = pystac.Collection.from_file(str(workspace_dir / "collection.json"))
         stac_collection.validate_all()
@@ -995,13 +1007,14 @@ def test_export_workspace(tmp_path, remove_original):
         ]
 
         item_links = [item_link for item_link in stac_collection.links if item_link.rel == "item"]
-        assert len(item_links) == 2
+        assert len(item_links) == 4 if attach_gdalinfo_assets else 2
         item_link = [item_link for item_link in item_links if "openEO_2021-01-05Z.tif" in item_link.href][0]
 
         assert item_link.media_type == "application/geo+json"
         assert item_link.href == "./openEO_2021-01-05Z.tif.json"
 
         items = list(stac_collection.get_items())
+        items = list(filter(lambda x: "data" in x.assets[x.id].roles, items))
         assert len(items) == 2
 
         item = [item for item in items if item.id == "openEO_2021-01-05Z.tif"][0]
@@ -1170,6 +1183,7 @@ def test_filepath_per_band(
     s3_instance = s3_client()
 
     merge = _random_merge()
+    attach_gdalinfo_assets = True
 
     process_graph = {
         "loadcollection1": {
@@ -1204,6 +1218,7 @@ def test_filepath_per_band(
                 "format": "GTiff",
                 "options": {
                     "separate_asset_per_band": "true",
+                    "attach_gdalinfo_assets": attach_gdalinfo_assets,
                     "filepath_per_band": ["folder1/lon.tif", "lat.tif"],
                 },
             },
@@ -1257,13 +1272,22 @@ def test_filepath_per_band(
         stac_collection = pystac.Collection.from_file(str(tmp_path / "collection.json"))
         stac_collection.validate_all()
         item_links = [item_link for item_link in stac_collection.links if item_link.rel == "item"]
-        assert len(item_links) == 2
+        assert len(item_links) == 4 if attach_gdalinfo_assets else 2
+        for item in item_links:
+            assert os.path.exists(tmp_path / item.href)
         item_link = item_links[0]
 
         assert item_link.media_type == "application/geo+json"
         assert item_link.href == "./folder1/lon.tif.json"
 
-        items = list(stac_collection.get_items())
+        items_all = list(stac_collection.get_items())
+
+        for item in items_all:
+            assert os.path.exists(tmp_path / item.self_href)
+            for asset in item.assets:
+                assert (Path(item.self_href).parent / item.assets[asset].href).exists()
+
+        items = list(filter(lambda x: "data" in x.assets[x.id].roles, items_all))
         assert len(items) == 2
 
         item = items[0]

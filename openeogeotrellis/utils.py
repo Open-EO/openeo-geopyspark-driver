@@ -54,6 +54,7 @@ from openeogeotrellis.util.runtime import get_job_id
 
 logger = logging.getLogger(__name__)
 
+GDALINFO_SUFFIX = "_gdalinfo.json"
 
 def log_memory(function):
     def memory_logging_wrapper(*args, **kwargs):

@@ -18,7 +18,12 @@ from osgeo import gdal
 from openeo_driver.utils import smart_bool
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.util.runtime import get_job_id
-from openeogeotrellis.utils import stream_s3_binary_file_contents, _make_set_for_key, parse_json_from_output
+from openeogeotrellis.utils import (
+    stream_s3_binary_file_contents,
+    _make_set_for_key,
+    parse_json_from_output,
+    GDALINFO_SUFFIX,
+)
 
 
 def poorly_log(message: str, level=logging.INFO):
@@ -166,6 +171,7 @@ def _extract_gdal_asset_raster_metadata(
             job_dir,
         )
         for asset_path, asset_md in asset_metadata.items()
+        if "roles" not in asset_md or "data" in asset_md.get("roles")
     ]
     results = exec_parallel_with_fallback(_get_metadata_callback, argument_tuples)
 
@@ -518,7 +524,6 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
         )
 
     if backend_config.gdalinfo_from_file:
-        GDALINFO_SUFFIX = "_gdalinfo.json"
         if os.path.exists(asset_uri + GDALINFO_SUFFIX):
             with open(asset_uri + GDALINFO_SUFFIX) as f:
                 data_gdalinfo = json.load(f)
