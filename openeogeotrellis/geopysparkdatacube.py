@@ -780,16 +780,16 @@ class GeopysparkDataCube(DriverDataCube):
                     data = UdfData(proj={"EPSG": CRS.from_user_input(metadata.crs).to_epsg()}, datacube_list=[datacube], user_context=context)
 
                     # Run UDF.
-                    _log.debug(f"[apply_tiles] running UDF {str_truncate(udf_code, width=1000)!r} on {data}!r")
+                    _log.debug(f"run_udf: {str_truncate(udf_code, width=1000)!r} on {data}!r")
                     result_data = run_udf_code(code=udf_code, data=data)
-                    _log.debug(f"[apply_tiles] UDF resulted in {result_data}!r")
+                    _log.debug(f"run_udf output: {result_data}!r")
 
                     # Handle the resulting xarray datacube.
                     cubes: List[XarrayDataCube] = result_data.get_datacube_list()
                     if len(cubes) != 1:
                         raise ValueError("The provided UDF should return one datacube, but got: " + str(cubes))
                     result_array: xr.DataArray = cubes[0].array
-                    _log.info(f"apply_tiles tilefunction result dims: {result_array.dims}")
+                    _log.debug(f"run_udf: result dimensions: {result_array.dims}")
                     result_tile = Tile(result_array.values,
                                        geotrellis_tile[1].cell_type,
                                        geotrellis_tile[1].no_data_value)
