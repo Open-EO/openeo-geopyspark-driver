@@ -1573,8 +1573,29 @@ def test_export_workspace_merge_filepath_per_band(tmp_path, mock_s3_bucket):
         shutil.rmtree(workspace_dir)
 
 
-def test_export_workspace_merge_into_stac_api(tmp_path, mock_s3_bucket, requests_mock, urllib_mock):
-    # TODO: enable KUBE to test s3:// asset flow
+@pytest.mark.parametrize("kube", [False])  # kube==True will not run on Jenkins
+def test_export_workspace_merge_into_stac_api(
+    tmp_path,
+    mock_s3_bucket,
+    requests_mock,
+    urllib_mock,
+    kube,
+    moto_server,
+    monkeypatch,
+):
+    if kube:
+        assert not get_backend_config().fuse_mount_batchjob_s3_bucket
+
+        monkeypatch.setenv("KUBE", "TRUE")
+        force_stop_spark_context()
+
+        class TerminalReporterMock:
+            @staticmethod
+            def write_line(message):
+                print(message)
+
+        _setup_local_spark(TerminalReporterMock(), 0)
+
     job_dir = tmp_path
 
     stac_api_workspace_id = "stac_api_workspace"
@@ -1671,9 +1692,20 @@ def test_export_workspace_merge_into_stac_api(tmp_path, mock_s3_bucket, requests
         dependencies=[],
     )
 
-    # TODO: improve checking of requests to STAC API
     assert create_collection.called_once
     assert create_item.call_count == 2
+
+    assert create_item.request_history[0].json()["assets"] == {
+        "lat.tif": DictSubSet({
+            "href": f"s3://openeo-fake-bucketname/{collection_id}/lat.tif"
+        })
+    }
+
+    assert create_item.request_history[1].json()["assets"] == {
+        "some/deeply/nested/folder/lon.tif": DictSubSet({
+            "href": f"s3://openeo-fake-bucketname/{collection_id}/some/deeply/nested/folder/lon.tif"
+        })
+    }
 
     exported_asset_keys = [PurePath(obj.key) for obj in mock_s3_bucket.objects.all()]
 

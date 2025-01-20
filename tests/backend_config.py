@@ -33,9 +33,14 @@ def _stac_api_workspace() -> StacApiWorkspace:
     from openeogeotrellis.utils import s3_client
 
     def export_asset(asset: pystac.Asset, remove_original: bool, **kwargs) -> str:
-        assert not remove_original
+        if remove_original:
+            raise NotImplementedError
+
         collection_id = kwargs["collection_id"]
         relative_asset_path = kwargs["relative_asset_path"]
+
+        # TODO: relies on assets being downloaded from S3?
+        assert not asset.get_absolute_href().startswith("s3://")
 
         source_path = Path(asset.get_absolute_href())
         target_bucket = "openeo-fake-bucketname"
