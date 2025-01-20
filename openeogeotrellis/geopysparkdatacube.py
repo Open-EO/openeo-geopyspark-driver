@@ -1294,7 +1294,9 @@ class GeopysparkDataCube(DriverDataCube):
         :return:
         """
 
-        # TODO: use align
+        # TODO #910 use align
+        if align != "upper-left":
+            _log.warning(f"Using resample_spatial with non-default {align=}")
 
         resample_method = self._get_resample_method(method)
         max_level = self.get_max_level()
