@@ -4135,9 +4135,8 @@ class TestLoadStac:
         ["use_filter_extension", "filter_lang", "filter", "body"],
         [
             (False, None, None, None),
-            (True, ["cql2-text"], [""""properties.season" = 's1'"""], None),
             (
-                "cql2-json",
+                True,
                 None,
                 None,
                 {
@@ -4147,6 +4146,7 @@ class TestLoadStac:
                     "filter": {"op": "=", "args": [{"property": "properties.season"}, "s1"]},
                 },
             ),
+            ("cql2-text", ["cql2-text"], [""""properties.season" = 's1'"""], None),
         ],
     )
     def test_stac_api_property_filter(

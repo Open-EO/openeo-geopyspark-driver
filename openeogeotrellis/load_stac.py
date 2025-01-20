@@ -269,14 +269,11 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
 
             client = pystac_client.Client.open(root_catalog.get_self_href(), modifier=modifier)
 
-            use_filter_extension = feature_flags.get("use-filter-extension", False)
-
-            if use_filter_extension == "cql2-json":
-                cql2_filter = _cql2_json_filter(literal_matches)
-            elif use_filter_extension:
-                cql2_filter = _cql2_text_filter(literal_matches)
-            else:
-                cql2_filter = None
+            cql2_filter = _cql2_filter(
+                client,
+                literal_matches,
+                use_filter_extension=feature_flags.get("use-filter-extension", True),
+            )
 
             search_request = client.search(
                 method="POST" if isinstance(cql2_filter, dict) else "GET",
@@ -720,6 +717,29 @@ def _await_stac_object(url, poll_interval_seconds, max_poll_delay_seconds, max_p
         time.sleep(poll_interval_seconds)
 
     return stac_object
+
+
+def _cql2_filter(
+    client: pystac_client.Client,
+    literal_matches: Dict[str, Dict[str, Any]],
+    use_filter_extension: Union[bool, str],
+) -> Union[str, dict, None]:
+    if use_filter_extension == "cql2-json":  # force POST JSON
+        return _cql2_json_filter(literal_matches)
+
+    if use_filter_extension == "cql2-text":  # force GET text
+        return _cql2_text_filter(literal_matches)
+
+    if use_filter_extension:  # auto-detect, favor POST
+        search_links = client.get_links(rel="search")
+        supports_post_search = any(link.extra_fields.get("method") == "POST" for link in search_links)
+
+        return (
+            _cql2_json_filter(literal_matches) if supports_post_search
+            else _cql2_text_filter(literal_matches)  # assume serves ignores filter if no "search" method advertised
+        )
+
+    return None  # explicitly disabled
 
 
 def _cql2_text_filter(literal_matches: Dict[str, Dict[str, Any]]) -> str:

@@ -11,7 +11,8 @@
     },
     {
       "rel": "search",
-      "href": "search"
+      "href": "search",
+      "method": "POST"
     }
   ]
 }
