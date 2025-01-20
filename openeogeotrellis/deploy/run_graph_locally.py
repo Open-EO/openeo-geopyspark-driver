@@ -19,6 +19,7 @@ def run_graph_locally(process_graph, output_dir):
     process_graph = as_flat_graph(process_graph)
     if "process_graph" not in process_graph:
         process_graph = {"process_graph": process_graph}
+    files_orig = set(output_dir.glob("*"))
     run_job(
         process_graph,
         output_file=output_dir / "out",  # just like in backend.py
@@ -30,20 +31,8 @@ def run_graph_locally(process_graph, output_dir):
     )
     # Set the permissions so any user can read and delete the files:
     # For when running inside a docker container.
-    files = [
-        output_dir / JOB_METADATA_FILENAME,
-    ]
-    if os.path.exists(output_dir / "openeo.log"):
-        files += [output_dir / "openeo.log"]
-    with open(output_dir / JOB_METADATA_FILENAME) as f:
-        j = json.load(f)
-        files += [output_dir / asset["href"] for asset in j.get("links", [])]
-    if os.path.exists(output_dir / "collection.json"):
-        files += [output_dir / "collection.json"]
-        with open(output_dir / "collection.json") as f:
-            j = json.load(f)
-            files += [output_dir / asset["href"] for asset in j.get("links", [])]
-    for file in files:
+    files_new = set(output_dir.glob("*")) - files_orig
+    for file in files_new:
         os.chmod(file, 0o666)
 
 
