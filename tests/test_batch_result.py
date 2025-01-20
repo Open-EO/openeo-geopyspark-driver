@@ -25,6 +25,7 @@ from openeo_driver.workspace import DiskWorkspace
 from osgeo import gdal
 from shapely.geometry import Point, Polygon, shape
 
+from openeogeotrellis.workspace import StacApiWorkspace
 from openeogeotrellis._version import __version__
 from openeogeotrellis.backend import JOB_METADATA_FILENAME
 from openeogeotrellis.config import get_backend_config
@@ -1570,6 +1571,148 @@ def test_export_workspace_merge_filepath_per_band(tmp_path, mock_s3_bucket):
         load_exported_collection(str(disk_workspace.root_directory / merge))
     finally:
         shutil.rmtree(workspace_dir)
+
+
+@pytest.mark.parametrize("kube", [False])  # kube==True will not run on Jenkins
+def test_export_workspace_merge_into_stac_api(
+    tmp_path,
+    mock_s3_bucket,
+    requests_mock,
+    urllib_mock,
+    kube,
+    moto_server,
+    monkeypatch,
+):
+    if kube:
+        assert not get_backend_config().fuse_mount_batchjob_s3_bucket
+
+        monkeypatch.setenv("KUBE", "TRUE")
+        force_stop_spark_context()
+
+        class TerminalReporterMock:
+            @staticmethod
+            def write_line(message):
+                print(message)
+
+        _setup_local_spark(TerminalReporterMock(), 0)
+
+    job_dir = tmp_path
+
+    stac_api_workspace_id = "stac_api_workspace"
+    stac_api_workspace = get_backend_config().workspaces[stac_api_workspace_id]
+    assert isinstance(stac_api_workspace, StacApiWorkspace)
+
+    enable_merge = True
+    collection_id = "collection1"
+
+    # the root Catalog
+    requests_mock.get(stac_api_workspace.root_url, json={
+        "type": "Catalog",
+        "stac_version": "1.0.0",
+        "id": "stac.test",
+        "description": "stac.test",
+        "conformsTo": [
+            "https://api.stacspec.org/v1.0.0/collections",
+            "https://api.stacspec.org/v1.0.0/collections/extensions/transaction",
+            "https://api.stacspec.org/v1.0.0/ogcapi-features/extensions/transaction",
+        ],
+        "links": [],
+    })
+
+    # does the Collection already exist?
+    urllib_mock.get(f"{stac_api_workspace.root_url}/collections/{collection_id}", code=404, data="Not Found")
+
+    # create STAC objects
+    create_collection = requests_mock.post(f"{stac_api_workspace.root_url}/collections")
+    create_item = requests_mock.post(f"{stac_api_workspace.root_url}/collections/{collection_id}/items")
+
+    process_graph = {
+        "loadcollection1": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "TestCollection-LonLat16x16",
+                "temporal_extent": ["2021-01-05", "2021-01-06"],
+                "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 2.0},
+                "bands": ["Longitude", "Latitude"],
+            },
+        },
+        "reducedimension1": {
+            "process_id": "reduce_dimension",
+            "arguments": {
+                "data": {"from_node": "loadcollection1"},
+                "dimension": "t",
+                "reducer": {
+                    "process_graph": {
+                        "first1": {
+                            "process_id": "first",
+                            "arguments": {
+                                "data": {"from_parameter": "data"}
+                            },
+                            "result": True,
+                        }
+                    }
+                },
+            },
+        },
+        "saveresult1": {
+            "process_id": "save_result",
+            "arguments": {
+                "data": {"from_node": "reducedimension1"},
+                "format": "GTiff",
+                "options": {
+                    "separate_asset_per_band": "true",
+                    "filepath_per_band": ["some/deeply/nested/folder/lon.tif", "lat.tif"],
+                },
+            },
+        },
+        "exportworkspace1": {
+            "process_id": "export_workspace",
+            "arguments": {
+                "data": {"from_node": "saveresult1"},
+                "workspace": stac_api_workspace_id,
+                "merge": collection_id,
+            },
+            "result": True,
+        },
+    }
+
+    process = {
+        "process_graph": process_graph,
+        "job_options": {
+            "export-workspace-enable-merge": enable_merge,
+        },
+    }
+
+    run_job(
+        process,
+        output_file=job_dir / "out",
+        metadata_file=job_dir / "job_metadata.json",
+        api_version="2.0.0",
+        job_dir=job_dir,
+        dependencies=[],
+    )
+
+    assert create_collection.called_once
+    assert create_item.call_count == 2
+
+    assert create_item.request_history[0].json()["assets"] == {
+        "lat.tif": DictSubSet({
+            "href": f"s3://openeo-fake-bucketname/{collection_id}/lat.tif"
+        })
+    }
+
+    assert create_item.request_history[1].json()["assets"] == {
+        "some/deeply/nested/folder/lon.tif": DictSubSet({
+            "href": f"s3://openeo-fake-bucketname/{collection_id}/some/deeply/nested/folder/lon.tif"
+        })
+    }
+
+    exported_asset_keys = [PurePath(obj.key) for obj in mock_s3_bucket.objects.all()]
+
+    assert exported_asset_keys == ListSubSet([
+        Path(collection_id) / "some/deeply/nested/folder/lon.tif",
+        Path(collection_id) / "lat.tif",
+    ])
 
 
 def _object_key(s3_uri: str) -> str:

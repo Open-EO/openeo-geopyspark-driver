@@ -219,6 +219,7 @@ def _get_metadata_callback(asset_path: str, asset_md: Dict[str, str], job_dir: P
             with open(abs_asset_path, "wb") as f:
                 for chunk in stream_s3_binary_file_contents(asset_href):
                     f.write(chunk)
+            poorly_log(f"Downloaded {asset_href} to {abs_asset_path}", level=logging.DEBUG)
         except Exception as exc:
             message = (
                 "Could not download asset from object storage: "
