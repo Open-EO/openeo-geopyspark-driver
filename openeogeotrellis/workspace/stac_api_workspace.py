@@ -1,6 +1,6 @@
 import logging
 from pathlib import PurePath, Path
-from typing import Union, Callable, Protocol
+from typing import Union, Callable
 from urllib.error import HTTPError
 
 from openeo_driver.util.http import requests_with_retry
@@ -14,17 +14,13 @@ from requests import Session
 _log = logging.getLogger(__name__)
 
 
-class ExportAsset(Protocol):
-    def __call__(self, asset: Asset, remove_original: bool, **kwargs) -> str: ...
-
-
 class StacApiWorkspace(Workspace):
     REQUESTS_TIMEOUT_SECONDS = 60
 
     def __init__(
         self,
         root_url: str,
-        export_asset: ExportAsset,
+        export_asset: Callable[[Asset, str, PurePath, bool], str],  # asset, collection_id, relative_asset_path, remove_original
         asset_alternate_id: str,
         additional_collection_properties=None,
         get_access_token: Callable[[], str] = None,
@@ -98,11 +94,14 @@ class StacApiWorkspace(Workspace):
 
                 for new_item in new_collection.get_items():
                     for asset_key, asset in new_item.assets.items():
-                        relative_asset_path = asset_key  # TODO: relies asset key == relative asset path; avoid?
+                        relative_asset_path = PurePath(asset_key)  # TODO: relies asset key == relative asset path; avoid?
 
                         # client takes care of copying asset and returns its workspace URI
                         workspace_uri = self._export_asset(
-                            asset, remove_original, collection_id=collection_id, relative_asset_path=relative_asset_path
+                            asset,
+                            collection_id,
+                            relative_asset_path,
+                            remove_original,
                         )
                         _log.info(f"exported asset {asset.get_absolute_href()} as {workspace_uri}")
 
