@@ -71,4 +71,4 @@ for something to happen. This is not ideal, because total cpu hours might be add
 via dynamic allocation).
 
 The Spark UI shows this, but also user logs show when the last stage was finished. If there's big gaps when all stages
-have finished and it takes long before a new message is printend, than it makes sense to figure out what was happening there.
+have finished and it takes long before a new message is printed, then it makes sense to figure out what was happening there.
