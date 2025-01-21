@@ -254,6 +254,10 @@ spec:
 {%- endif %}
       - name: OPENEO_STAC_OIDC_CLIENT_SECRET_STAC_OPENEO
         value: {{ openeo_stac_oidc_client_secret_stac_openeo }}
+{% for envar, value in propagatable_web_app_driver_envars.items() %}
+      - name: {{ envar }}
+        value: {{ value }}
+{% endfor %}
 {%- endblock %}
     labels:
 {%- block driver_labels %}

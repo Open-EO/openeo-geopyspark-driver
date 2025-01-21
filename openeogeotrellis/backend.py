@@ -1829,6 +1829,10 @@ class GpsBatchJobs(backend.BatchJobs):
         mount_tmp = as_boolean_arg("mount_tmp", default_value="false") != "false"
         use_pvc = as_boolean_arg("spark_pvc", default_value="false") != "false"
         logging_threshold = as_logging_threshold_arg()
+        propagatable_web_app_driver_envars = {
+            envar: os.environ.get(envar, "")
+            for envar in os.environ.get("OPENEO_PROPAGATABLE_WEB_APP_DRIVER_ENVARS", "").split()
+        }
 
         as_bytes = self._jvm.org.apache.spark.util.Utils.byteStringAsBytes
 
@@ -2038,9 +2042,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 yunikorn_queue=get_backend_config().yunikorn_queue,
                 yunikorn_scheduling_timeout=get_backend_config().yunikorn_scheduling_timeout.rstrip(),
                 separate_asset_per_band_new_partitioner=os.environ.get("SEPARATE_ASSET_PER_BAND_NEW_PARTITIONER"),
-                openeo_stac_oidc_client_secret_stac_openeo=os.environ.get(  # TODO: pass a list or dict?
-                    "OPENEO_STAC_OIDC_CLIENT_SECRET_STAC_OPENEO"
-                ),
+                propagatable_web_app_driver_envars=propagatable_web_app_driver_envars,
                 provide_s3_profiles_and_tokens=get_backend_config().provide_s3_profiles_and_tokens,
                 batch_job_cfg_secret_name=batch_job_cfg_secret_name,
                 batch_job_config_dir=get_backend_config().batch_job_config_dir
@@ -2193,6 +2195,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 args.append(docker_mounts)
 
                 args.append(str(job_work_dir / UDF_PYTHON_DEPENDENCIES_ARCHIVE_NAME))
+                args.append(os.environ.get("OPENEO_PROPAGATABLE_WEB_APP_DRIVER_ENVARS", ""))
 
                 # TODO: this positional `args` handling is getting out of hand, leverage _write_sensitive_values?
 
