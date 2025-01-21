@@ -14,6 +14,8 @@ without compromising stable operations.
 
 ## Unreleased
 
+- Make environment variables to be passed from web app driver to batch job driver configurable ([#867](https://github.com/Open-EO/openeo-geopyspark-driver/issues/867))
+
 ## 0.59.0
 
 - load_stac: cube creation is now cached, just like load_collection ([#993](https://github.com/Open-EO/openeo-geopyspark-driver/issues/993))
