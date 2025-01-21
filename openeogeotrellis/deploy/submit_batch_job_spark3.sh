@@ -57,6 +57,7 @@ ejr_backend_id=${32}
 ejr_oidc_client_credentials=${33}
 docker_mounts=${34-"/var/lib/sss/pubconf/krb5.include.d:/var/lib/sss/pubconf/krb5.include.d:ro,/var/lib/sss/pipes:/var/lib/sss/pipes:rw,/usr/hdp/current/:/usr/hdp/current/:ro,/etc/hadoop/conf/:/etc/hadoop/conf/:ro,/etc/krb5.conf:/etc/krb5.conf:ro,/data/MTDA:/data/MTDA:ro,/data/projects/OpenEO:/data/projects/OpenEO:rw,/data/MEP:/data/MEP:ro,/data/users:/data/users:rw,/tmp_epod:/tmp_epod:rw,/opt/tensorflow:/opt/tensorflow:ro"}
 udf_python_dependencies_archive_path=${35}
+propagatable_web_app_driver_envars=${36}
 
 
 pysparkPython="/opt/venv/bin/python"
@@ -116,6 +117,17 @@ else
   run_as="--principal ${principal} --keytab ${keyTab}"
 fi
 
+batch_job_driver_envar_arguments()
+{
+  batch_job_driver_envars=""
+
+  for web_app_diver_envar in ${propagatable_web_app_driver_envars}; do
+    batch_job_driver_envars="${batch_job_driver_envars} --conf spark.yarn.appMasterEnv.${web_app_diver_envar}=\${${web_app_diver_envar}}"
+  done
+
+  echo "${batch_job_driver_envars}"
+}
+
 spark-submit \
  --master yarn --deploy-mode cluster \
  ${run_as} \
@@ -161,7 +173,7 @@ spark-submit \
  --conf spark.yarn.appMasterEnv.OPENEO_EJR_API=${ejr_api} \
  --conf spark.yarn.appMasterEnv.OPENEO_EJR_BACKEND_ID=${ejr_backend_id} \
  --conf spark.yarn.appMasterEnv.OPENEO_EJR_OIDC_CLIENT_CREDENTIALS=${ejr_oidc_client_credentials} \
- --conf spark.yarn.appMasterEnv.OPENEO_STAC_OIDC_CLIENT_SECRET_STAC_OPENEO_DEV=${OPENEO_STAC_OIDC_CLIENT_SECRET_STAC_OPENEO_DEV} \
+ $(batch_job_driver_envar_arguments) \
  --conf spark.executorEnv.AWS_REGION=${AWS_REGION} --conf spark.yarn.appMasterEnv.AWS_REGION=${AWS_REGION} \
  --conf spark.executorEnv.AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} --conf spark.yarn.appMasterEnv.AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} \
  --conf spark.executorEnv.AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} --conf spark.yarn.appMasterEnv.AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} \
