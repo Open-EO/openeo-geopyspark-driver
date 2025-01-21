@@ -751,7 +751,10 @@ def test_k8s_s3_profiles_and_token_must_be_cleanable(backend_config_path, fast_s
 def test_k8s_sparkapplication_dict_propagatable_web_app_driver_envars(backend_config_path):
     app_dict = k8s_render_manifest_template(
         "sparkapplication.yaml.j2",
-        propagatable_web_app_driver_envars={"OPENEO_SOME_ENVAR": "somevalue"},
+        propagatable_web_app_driver_envars={
+            "OPENEO_SOME_ENVAR": "somevalue",
+            "OPENEO_SOME_OTHER_ENVAR": "someothervalue",
+        },
     )
 
     assert app_dict == dirty_equals.IsPartialDict(
@@ -761,6 +764,10 @@ def test_k8s_sparkapplication_dict_propagatable_web_app_driver_envars(backend_co
                     {
                         "name": "OPENEO_SOME_ENVAR",
                         "value": "somevalue",
+                    },
+                    {
+                        "name": "OPENEO_SOME_OTHER_ENVAR",
+                        "value": "someothervalue",
                     },
                 ),
             ),
