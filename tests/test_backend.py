@@ -641,6 +641,7 @@ def test_k8s_sparkapplication_dict_udf_python_deps(backend_config_path):
         udf_python_dependencies_archive_path="/jobs/j123/udfdepz.zip",
         # TODO: avoid duplication of the actual code here
         openeo_backend_config=os.environ.get(ConfigGetter.OPENEO_BACKEND_CONFIG, ""),
+        propagatable_web_app_driver_envars={},
     )
     assert app_dict == dirty_equals.IsPartialDict(
         spec=dirty_equals.IsPartialDict(
@@ -744,4 +745,24 @@ def test_k8s_s3_profiles_and_token_must_be_cleanable(backend_config_path, fast_s
         metadata=dirty_equals.IsPartialDict(
             annotations=dirty_equals.IsPartialDict(created_at=str(test_timestamp_epoch))
         ),
+    )
+
+
+def test_k8s_sparkapplication_dict_propagatable_web_app_driver_envars(backend_config_path):
+    app_dict = k8s_render_manifest_template(
+        "sparkapplication.yaml.j2",
+        propagatable_web_app_driver_envars={"OPENEO_SOME_ENVAR": "somevalue"},
+    )
+
+    assert app_dict == dirty_equals.IsPartialDict(
+        spec=dirty_equals.IsPartialDict(
+            driver=dirty_equals.IsPartialDict(
+                env=dirty_equals.Contains(
+                    {
+                        "name": "OPENEO_SOME_ENVAR",
+                        "value": "somevalue",
+                    },
+                ),
+            ),
+        )
     )
