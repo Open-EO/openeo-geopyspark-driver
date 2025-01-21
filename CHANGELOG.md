@@ -14,9 +14,12 @@ without compromising stable operations.
 
 ## Unreleased
 
+## 0.59.0
+
 - load_stac: cube creation is now cached, just like load_collection ([#993](https://github.com/Open-EO/openeo-geopyspark-driver/issues/993))
 - logs: Provide a performance summary at the end of a batch job.
 - `StacApiWorkspace`: support `filepath_per_band` ([#867](https://github.com/Open-EO/openeo-geopyspark-driver/issues/867))
+- `load_stac`: use STAC API Filter Extension to prevent driver OOM ([#979](https://github.com/Open-EO/openeo-geopyspark-driver/issues/979))
 
 ## 0.58.1
 
