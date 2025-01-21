@@ -10,6 +10,7 @@ from openeo.util import ensure_dir
 
 
 def run_graph_locally(process_graph, output_dir):
+    files_orig = set(output_dir.rglob("*"))
     output_dir = ensure_dir(output_dir)
     setup_environment(output_dir)
     # Can only import after setup_environment:
@@ -19,7 +20,6 @@ def run_graph_locally(process_graph, output_dir):
     process_graph = as_flat_graph(process_graph)
     if "process_graph" not in process_graph:
         process_graph = {"process_graph": process_graph}
-    files_orig = set(output_dir.glob("*"))
     run_job(
         process_graph,
         output_file=output_dir / "out",  # just like in backend.py
@@ -31,9 +31,10 @@ def run_graph_locally(process_graph, output_dir):
     )
     # Set the permissions so any user can read and delete the files:
     # For when running inside a docker container.
-    files_new = set(output_dir.glob("*")) - files_orig
+    files_new = set(output_dir.rglob("*")) - files_orig
     for file in files_new:
-        os.chmod(file, 0o666)
+        if file.is_file():
+            os.chmod(file, 0o666)
 
 
 def main():
