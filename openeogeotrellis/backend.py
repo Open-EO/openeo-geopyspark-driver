@@ -1030,6 +1030,9 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             root_cause_class_name = root_cause.getClass().getName()
             root_cause_message = root_cause.getMessage()
 
+            # Snippet to get JVM stack trace:
+            # get_jvm().org.apache.commons.lang.exception.ExceptionUtils.getStackTrace(root_cause)
+
             logger.debug(f"exception chain classes: "
                          f"{' caused by '.join(exception.getClass().getName() for exception in exception_chain)}")
 
