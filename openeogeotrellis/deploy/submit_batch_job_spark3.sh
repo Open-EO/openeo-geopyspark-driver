@@ -119,13 +119,14 @@ fi
 
 batch_job_driver_envar_arguments()
 {
-  batch_job_driver_envars=""
+  arguments=""
 
-  for web_app_diver_envar in ${propagatable_web_app_driver_envars}; do
-    batch_job_driver_envars="${batch_job_driver_envars} --conf spark.yarn.appMasterEnv.${web_app_diver_envar}=\${${web_app_diver_envar}}"
+  for name in ${propagatable_web_app_driver_envars}; do
+    value=$(eval echo "\$${name}")
+    arguments="${arguments} --conf spark.yarn.appMasterEnv.${name}=${value}"
   done
 
-  echo "${batch_job_driver_envars}"
+  echo "${arguments}"
 }
 
 spark-submit \
