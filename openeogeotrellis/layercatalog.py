@@ -306,13 +306,19 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
         def file_s2_pyramid():
             def pyramid_factory(
-                opensearch_endpoint,
-                opensearch_collection_id,
+                opensearch_endpoint: str,
+                opensearch_collection_id: str,
                 opensearch_link_titles,
-                root_path,
+                root_path: str,
             ):
                 opensearch_client = jvm.org.openeo.opensearch.OpenSearchClient.apply(
-                    opensearch_endpoint, is_utm, "", metadata.band_names, catalog_type, metadata.parallel_query()
+                    opensearch_endpoint,
+                    is_utm,
+                    "",
+                    metadata.band_names,
+                    catalog_type,
+                    metadata.parallel_query(),
+                    metadata.select_one_orbit_per_day(),
                 )
 
                 return jvm.org.openeo.geotrellis.file.PyramidFactory(
