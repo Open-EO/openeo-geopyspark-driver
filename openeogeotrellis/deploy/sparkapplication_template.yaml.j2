@@ -252,12 +252,10 @@ spec:
       - name: SEPARATE_ASSET_PER_BAND_NEW_PARTITIONER
         value: "{{ separate_asset_per_band_new_partitioner }}"
 {%- endif %}
-      - name: OPENEO_STAC_OIDC_CLIENT_SECRET_STAC_OPENEO
-        value: {{ openeo_stac_oidc_client_secret_stac_openeo }}
-{% for envar, value in propagatable_web_app_driver_envars.items() %}
+{%- for envar, value in propagatable_web_app_driver_envars.items() %}
       - name: {{ envar }}
         value: {{ value }}
-{% endfor %}
+{%- endfor %}
 {%- endblock %}
     labels:
 {%- block driver_labels %}
