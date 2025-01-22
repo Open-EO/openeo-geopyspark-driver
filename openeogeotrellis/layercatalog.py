@@ -318,7 +318,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                     metadata.band_names,
                     catalog_type,
                     metadata.parallel_query(),
-                    metadata.select_one_orbit_per_day(),
+                    # metadata.select_one_orbit_per_day(),  # TODO: Update jar
                 )
 
                 return jvm.org.openeo.geotrellis.file.PyramidFactory(
