@@ -1438,8 +1438,9 @@ class GeopysparkDataCube(DriverDataCube):
         return gps.LayoutDefinition(extent=newExtent, tileLayout=gps.TileLayout(int(nbTilesX), int(nbTilesY),
                                                                              int(currentTileCols), int(currentTileRows)))
     @staticmethod
-    def _get_resample_method( method):
-        resample_method = {
+    def _get_resample_method(method: str) -> str:
+        method_map = {
+            "near": gps.ResampleMethod.NEAREST_NEIGHBOR,
             'bilinear': gps.ResampleMethod.BILINEAR,
             'average': gps.ResampleMethod.AVERAGE,
             'cubic': gps.ResampleMethod.CUBIC_CONVOLUTION,
@@ -1449,8 +1450,11 @@ class GeopysparkDataCube(DriverDataCube):
             'max': gps.ResampleMethod.MAX,
             'min': gps.ResampleMethod.MIN,
             'med': gps.ResampleMethod.MEDIAN,
-        }.get(method, gps.ResampleMethod.NEAREST_NEIGHBOR)
-        return resample_method
+        }
+        if method not in method_map:
+            _log.warning(f"Invalid/unsupported resample method {method!r}. Falling back to 'near'.")
+            method = "near"
+        return method_map[method]
 
     def linear_scale_range(self, input_min, input_max, output_min, output_max) -> 'GeopysparkDataCube':
         """ Color stretching
