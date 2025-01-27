@@ -3007,7 +3007,7 @@ def _setup_metadata_request_mocking(
     api: ApiTester,
     results_dir: Path,
     results_url: str,
-    urllib_mock: UrllibMocker,
+    urllib_mock,
 ):
     # Use ApiTester to easily build responses for the metadata request we have to mock
     api.set_auth_bearer_token()
@@ -3451,7 +3451,7 @@ class TestLoadStac:
                                                 9.844419570631366, 50.246156678379016))
 
     def test_stac_collection_multiple_items_no_spatial_extent_specified(self, api110, zk_job_registry,
-                                                                        batch_job_output_root, urllib_mock):
+                                                                        batch_job_output_root, urllib_and_request_mock):
         job_id = "j-ec5d3e778ba5423d8d88a50b08cb9f63"
         results_url = f"https://foobar.test/job/{job_id}/results"
 
@@ -3466,7 +3466,7 @@ class TestLoadStac:
             api=api110,
             results_dir=results_dir,
             results_url=results_url,
-            urllib_mock=urllib_mock,
+            urllib_mock=urllib_and_request_mock,
         )
 
         # sanity check: multiple items
@@ -3513,7 +3513,7 @@ class TestLoadStac:
         mock_stac_client.search.assert_called_once()
 
 
-    def test_stac_api_caching(self, imagecollection_with_two_bands_and_one_date, api110, urllib_mock, tmp_path):
+    def test_stac_api_caching(self, imagecollection_with_two_bands_and_one_date, api110, tmp_path):
         with mock.patch("openeogeotrellis.load_stac.load_stac") as mock_load_stac:
             mock_load_stac.return_value = imagecollection_with_two_bands_and_one_date
 
@@ -3578,7 +3578,7 @@ class TestLoadStac:
             "stac/item02.json",
         ],
     )
-    def test_load_stac_with_stac_item_json(self, item_path, api110, urllib_mock, tmp_path):
+    def test_load_stac_with_stac_item_json(self, item_path, api110, urlopen_mocker, tmp_path):
         """load_stac with a simple STAC item (as JSON file)"""
         item_json = (
             get_test_data_file(item_path).read_text()
@@ -3588,7 +3588,7 @@ class TestLoadStac:
                 "asset01.tiff", f"file://{get_test_data_file('binary/load_stac/BVL_v1/BVL_v1_2021.tif').absolute()}"
             )
         )
-        urllib_mock.get("https://stac.test/item.json", data=item_json)
+        urlopen_mocker.get("https://stac.test/item.json", data=item_json)
 
         process_graph = {
             "loadstac1": {
@@ -3613,7 +3613,7 @@ class TestLoadStac:
         assert ds.coords["y"].values.min() == pytest.approx(3014000, abs=10)
 
     def test_load_stac_with_stac_item_issue619_non_standard_int_eobands_item_properties(
-        self, api110, urllib_mock, tmp_path
+        self, api110, urlopen_mocker, tmp_path
     ):
         """
         https://github.com/Open-EO/openeo-geopyspark-driver/issues/619
@@ -3630,7 +3630,7 @@ class TestLoadStac:
             .replace("asset_green.tiff", f"file://{tiff_path}")
             .replace("asset_blue.tiff", f"file://{tiff_path}")
         )
-        urllib_mock.get("https://stac.test/item01.json", data=item_json)
+        urlopen_mocker.get("https://stac.test/item01.json", data=item_json)
 
         process_graph = {
             "loadstac1": {
@@ -3655,7 +3655,7 @@ class TestLoadStac:
         assert ds.coords["y"].values.min() == pytest.approx(3014000, abs=10)
 
     def test_load_stac_with_stac_item_issue619_non_standard_int_eobands_parent_collection_summaries(
-        self, api110, urllib_mock, tmp_path
+        self, api110, urllib_and_request_mock, tmp_path
     ):
         """
         https://github.com/Open-EO/openeo-geopyspark-driver/issues/619
@@ -3672,8 +3672,8 @@ class TestLoadStac:
             .replace("asset_green.tiff", f"file://{tiff_path}")
             .replace("asset_blue.tiff", f"file://{tiff_path}")
         )
-        urllib_mock.get("https://stac.test/item02.json", data=item_json)
-        urllib_mock.get(
+        urllib_and_request_mock.get("https://stac.test/item02.json", data=item_json)
+        urllib_and_request_mock.get(
             "https://stac.test/collection02.json",
             data=get_test_data_file("stac/issue619-eobands-int/collection02.json").read_text(),
         )
@@ -3700,7 +3700,7 @@ class TestLoadStac:
         assert ds.coords["x"].values.min() == pytest.approx(4309000, abs=10)
         assert ds.coords["y"].values.min() == pytest.approx(3014000, abs=10)
 
-    def test_load_stac_from_stac_item_respects_collection_bands_order(self, api110, urllib_mock, tmp_path):
+    def test_load_stac_from_stac_item_respects_collection_bands_order(self, api110, urllib_and_request_mock, tmp_path):
         """load_stac with a STAC item that lacks "properties"/"eo:bands" and therefore falls back to its
         collection's "summaries"/"eo:bands"
         """
@@ -3713,8 +3713,8 @@ class TestLoadStac:
                 "asset02.tiff", f"file://{get_test_data_file('binary/load_stac/collection01/asset02.tif').absolute()}"
             )
         )
-        urllib_mock.get("https://stac.test/item.json", data=item_json)
-        urllib_mock.get("https://stac.test/collection01.json",
+        urllib_and_request_mock.get("https://stac.test/item.json", data=item_json)
+        urllib_and_request_mock.get("https://stac.test/collection01.json",
                         data=get_test_data_file("stac/collection01.json").read_text())
 
         process_graph = {
@@ -3754,7 +3754,7 @@ class TestLoadStac:
             ("2021-02-03T00:00:00Z", "2021-02-04T00:00:01Z", ["2021-02-03", "2021-02-04"]),
         ],
     )
-    def test_load_stac_from_stac_collection_upper_temporal_bound(self, api110, urllib_mock, tmp_path,
+    def test_load_stac_from_stac_collection_upper_temporal_bound(self, api110, urllib_and_request_mock, tmp_path,
                                                                  lower_temporal_bound, upper_temporal_bound,
                                                                  expected_timestamps):
         """load_stac from a STAC Collection with two items that have different timestamps"""
@@ -3768,11 +3768,11 @@ class TestLoadStac:
                 )
             )
 
-        urllib_mock.get("https://stac.test/collection.json",
+        urllib_and_request_mock.get("https://stac.test/collection.json",
                         data=get_test_data_file("stac/issue609-collection-temporal-bound-exclusive/collection.json").read_text())
-        urllib_mock.get("https://stac.test/item01.json",
+        urllib_and_request_mock.get("https://stac.test/item01.json",
                         data=item_json("stac/issue609-collection-temporal-bound-exclusive/item01.json"))
-        urllib_mock.get("https://stac.test/item02.json",
+        urllib_and_request_mock.get("https://stac.test/item02.json",
                         data=item_json("stac/issue609-collection-temporal-bound-exclusive/item02.json"))
 
         process_graph = {
@@ -3931,7 +3931,7 @@ class TestLoadStac:
             ("2021-02-03T00:00:00Z", "2021-02-04T00:00:01Z", ["2021-02-03", "2021-02-04"]),
         ],
     )
-    def test_load_stac_from_stac_api_upper_temporal_bound(self, api110, urllib_mock, requests_mock, tmp_path,
+    def test_load_stac_from_stac_api_upper_temporal_bound(self, api110, urllib_and_request_mock, requests_mock, tmp_path,
                                                           lower_temporal_bound, upper_temporal_bound,
                                                           expected_timestamps):
         """load_stac from a STAC API with two items that have different timestamps"""
@@ -3964,12 +3964,10 @@ class TestLoadStac:
                 "features": intersecting_items,
             }
 
-        urllib_mock.get("https://stac.test/collections/collection",
+        urllib_and_request_mock.get("https://stac.test/collections/collection",
                         data=get_test_data_file("stac/issue609-api-temporal-bound-exclusive/collection.json").read_text())
-        urllib_mock.get("https://stac.test",  # for pystac
+        urllib_and_request_mock.get("https://stac.test",
                         data=get_test_data_file("stac/issue609-api-temporal-bound-exclusive/catalog.json").read_text())
-        requests_mock.get("https://stac.test",  # for pystac_client
-                          text=get_test_data_file("stac/issue609-api-temporal-bound-exclusive/catalog.json").read_text())
         requests_mock.get("https://stac.test/search",
                           json=feature_collection)
 
@@ -3999,7 +3997,7 @@ class TestLoadStac:
         assert (ds["band2"] == 2).all()
         assert (ds["band3"] == 3).all()
 
-    def test_load_stac_from_stac_collection_item_start_datetime_zulu(self, api110, urllib_mock, tmp_path):
+    def test_load_stac_from_stac_collection_item_start_datetime_zulu(self, api110, urllib_and_request_mock, tmp_path):
         """load_stac from a STAC Collection with an item that has a start_datetime in Zulu time (time zone 'Z')"""
 
         def item_json(path):
@@ -4011,9 +4009,9 @@ class TestLoadStac:
                 )
             )
 
-        urllib_mock.get("https://stac.test/collection.json",
+        urllib_and_request_mock.get("https://stac.test/collection.json",
                         data=get_test_data_file("stac/issue646_start_datetime_zulu/collection.json").read_text())
-        urllib_mock.get("https://stac.test/item01.json",
+        urllib_and_request_mock.get("https://stac.test/item01.json",
                         data=item_json("stac/issue646_start_datetime_zulu/item01.json"))
 
         process_graph = {
@@ -4037,7 +4035,7 @@ class TestLoadStac:
         assert ds.dims == {"t": 1, "x": 10, "y": 10}
         assert numpy.datetime_as_string(ds.coords["t"].values, unit='h', timezone='UTC').tolist() == ["2022-03-04T00Z"]
 
-    def test_load_stac_from_spatial_netcdf_job_results(self, api110, urllib_mock, tmp_path):
+    def test_load_stac_from_spatial_netcdf_job_results(self, api110, urllib_and_request_mock, tmp_path):
         def item_json(path):
             return (
                 get_test_data_file(path).read_text()
@@ -4047,11 +4045,11 @@ class TestLoadStac:
                          f"{get_test_data_file('binary/load_stac/spatial_netcdf/openEO_1.nc').absolute()}")
             )
 
-        urllib_mock.get("https://openeo.test/openeo/jobs/j-2402094545c945c09e1307503aa58a3a/results",
+        urllib_and_request_mock.get("https://openeo.test/openeo/jobs/j-2402094545c945c09e1307503aa58a3a/results",
                         data=get_test_data_file("stac/issue646_spatial_netcdf/collection.json").read_text())
-        urllib_mock.get("https://openeo.test/openeo/jobs/j-2402094545c945c09e1307503aa58a3a/results/items/openEO_0.nc",
+        urllib_and_request_mock.get("https://openeo.test/openeo/jobs/j-2402094545c945c09e1307503aa58a3a/results/items/openEO_0.nc",
                         data=item_json("stac/issue646_spatial_netcdf/item01.json"))
-        urllib_mock.get("https://openeo.test/openeo/jobs/j-2402094545c945c09e1307503aa58a3a/results/items/openEO_1.nc",
+        urllib_and_request_mock.get("https://openeo.test/openeo/jobs/j-2402094545c945c09e1307503aa58a3a/results/items/openEO_1.nc",
                         data=item_json("stac/issue646_spatial_netcdf/item02.json"))
 
         process_graph = {
@@ -4082,7 +4080,7 @@ class TestLoadStac:
         assert ds.coords["x"].values.max() == pytest.approx(702325.000, abs=10)
         assert ds.coords["y"].values.max() == pytest.approx(5626335.000, abs=10)
 
-    def test_load_stac_from_spatiotemporal_netcdf_job_results(self, api110, urllib_mock, tmp_path):
+    def test_load_stac_from_spatiotemporal_netcdf_job_results(self, api110, tmp_path):
 
         process_graph = {
             "loadstac1": {
@@ -4171,7 +4169,7 @@ class TestLoadStac:
         ],
     )
     def test_stac_api_property_filter(
-        self, api110, urllib_mock, requests_mock, catalog_url, tmp_path, use_filter_extension, filter_lang, filter, body
+        self, api110, urllib_and_request_mock, requests_mock, catalog_url, tmp_path, use_filter_extension, filter_lang, filter, body
     ):
         def feature_collection(request, _) -> dict:
             assert "fields" not in request.qs
@@ -4233,15 +4231,12 @@ class TestLoadStac:
             }
         }
 
-        urllib_mock.get(f"{catalog_url}/collections/collection",
+        urllib_and_request_mock.get(f"{catalog_url}/collections/collection",
                         data=get_test_data_file("stac/issue640-api-property-filter/collection.json").read_text()
                         .replace("$CATALOG_URL", catalog_url))
-        urllib_mock.get(catalog_url,
+        urllib_and_request_mock.get(catalog_url,
                         data=get_test_data_file("stac/issue640-api-property-filter/catalog.json").read_text()
                         .replace("$CATALOG_URL", catalog_url))
-        requests_mock.get(catalog_url,
-                          text=get_test_data_file("stac/issue640-api-property-filter/catalog.json").read_text()
-                          .replace("$CATALOG_URL", catalog_url))
         requests_mock.get(f"{catalog_url}/search", json=feature_collection)
         requests_mock.post(f"{catalog_url}/search", json=feature_collection)
 
@@ -4256,7 +4251,7 @@ class TestLoadStac:
             assert ds.shape == (10, 10)
             assert tuple(ds.bounds) == (5.0, 50.0, 6.0, 51.0)
 
-    def test_load_stac_from_unsigned_job_results_respects_proj_metadata(self, api110, urllib_mock, tmp_path,
+    def test_load_stac_from_unsigned_job_results_respects_proj_metadata(self, api110, tmp_path,
                                                                         batch_job_output_root, zk_job_registry):
         # get results from own batch job rather than crawl signed STAC URLs
         results_dir = _setup_existing_job(
@@ -4300,7 +4295,7 @@ class TestLoadStac:
             assert tuple(ds.bounds) == tuple(map(pytest.approx, expected_bbox))
 
     @gps_config_overrides(job_dependencies_poll_interval_seconds=0, job_dependencies_max_poll_delay_seconds=60)
-    def test_load_stac_from_partial_job_results_basic(self, api110, urllib_mock, tmp_path, caplog):
+    def test_load_stac_from_partial_job_results_basic(self, api110, urlopen_mocker, urllib_mock, tmp_path, caplog):
         """load_stac from partial job results Collection (signed case)"""
 
         caplog.set_level("DEBUG")
@@ -4328,9 +4323,11 @@ class TestLoadStac:
                 )
             )
 
-        urllib_mock.register("GET",
-                             "https://openeo.test/openeo/jobs/j-2402094545c945c09e1307503aa58a3a/results?partial=true",
-                             response=collection_json("stac/issue786_partial_job_results/collection.json"))
+        results_url = "https://openeo.test/openeo/jobs/j-2402094545c945c09e1307503aa58a3a/results?partial=true"
+        response = collection_json("stac/issue786_partial_job_results/collection.json")
+        urllib_mock.register("GET", results_url, response=response)
+        urlopen_mocker.register("GET", results_url, response=response)
+
         urllib_mock.get("https://openeo.test/openeo/jobs/j-2402094545c945c09e1307503aa58a3a/results/items/item01.json",
                         data=item_json("stac/issue786_partial_job_results/item01.json"))
 
@@ -4338,7 +4335,7 @@ class TestLoadStac:
             "loadstac1": {
                 "process_id": "load_stac",
                 "arguments": {
-                    "url": "https://openeo.test/openeo/jobs/j-2402094545c945c09e1307503aa58a3a/results?partial=true"
+                    "url": results_url
                 }
             },
             "saveresult1": {
@@ -4350,12 +4347,8 @@ class TestLoadStac:
 
         api110.result(process_graph).assert_status_code(200)
 
-        assert ("OpenEO batch job results status of"
-                " https://openeo.test/openeo/jobs/j-2402094545c945c09e1307503aa58a3a/results?partial=true: running"
-                in caplog.messages)
-        assert ("OpenEO batch job results status of"
-                " https://openeo.test/openeo/jobs/j-2402094545c945c09e1307503aa58a3a/results?partial=true: finished"
-                in caplog.messages)
+        assert ("OpenEO batch job results status of " + results_url + ": running" in caplog.messages)
+        assert ("OpenEO batch job results status of " + results_url + ": finished" in caplog.messages)
 
     @gps_config_overrides(job_dependencies_poll_interval_seconds=0, job_dependencies_max_poll_delay_seconds=60)
     def test_load_stac_from_unsigned_partial_job_results_basic(self, api110, batch_job_output_root, zk_job_registry,
@@ -4405,7 +4398,7 @@ class TestLoadStac:
         assert ("OpenEO batch job results status of own job j-2405078f40904a0b85cf8dc5dd55b07e: finished"
                 in caplog.messages)
 
-    def test_load_stac_loads_assets_without_eo_bands(self, api110, urllib_mock, requests_mock, tmp_path):
+    def test_load_stac_loads_assets_without_eo_bands(self, api110, urllib_and_request_mock, requests_mock, tmp_path):
         """load_stac from a STAC API with one item and two assets, one of which does not carry eo:bands"""
 
         def feature_collection(request, _) -> dict:
@@ -4447,11 +4440,11 @@ class TestLoadStac:
                 "features": intersecting_items,
             }
 
-        urllib_mock.get(
+        urllib_and_request_mock.get(
             "https://stac.test/collections/collection",
             data=get_test_data_file("stac/issue762-api-no-eo-bands/collection.json").read_text(),
         )
-        urllib_mock.get(
+        urllib_and_request_mock.get(
             "https://stac.test",  # for pystac
             data=get_test_data_file("stac/issue762-api-no-eo-bands/catalog.json").read_text(),
         )
@@ -4488,7 +4481,7 @@ class TestLoadStac:
         assert (ds["band3"] == 3).all()
         assert (ds["band4"] == 4).all()
 
-    def test_load_stac_omits_default_temporal_extent(self, api110, urllib_mock, requests_mock, tmp_path):
+    def test_load_stac_omits_default_temporal_extent(self, api110, urllib_and_request_mock, requests_mock, tmp_path):
         """load_stac from a STAC API without specifying a temporal_extent"""
 
         def feature_collection(request, _) -> dict:
@@ -4500,11 +4493,11 @@ class TestLoadStac:
                 "features": [],
             }
 
-        urllib_mock.get(
+        urllib_and_request_mock.get(
             "https://stac.test/collections/collection",
             data=get_test_data_file("stac/issue950-api-omit-temporal-extent/collection.json").read_text(),
         )
-        urllib_mock.get(
+        urllib_and_request_mock.get(
             "https://stac.test",  # for pystac
             data=get_test_data_file("stac/issue950-api-omit-temporal-extent/catalog.json").read_text(),
         )
