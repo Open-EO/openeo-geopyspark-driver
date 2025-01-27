@@ -423,6 +423,7 @@ class TestOrfeoPipeline:
               }}
         )
         datacube = catalog.load_collection("Creodias-S1-Backscatter", load_params=load_params, env=EvalEnv())
+        print(datacube.get_max_level().srdd.rdd().partitioner())
 
         # Compare actual with the expected result.
         filename = tmp_path / "s1backscatter.tiff"
