@@ -389,14 +389,20 @@ def run_job(
         def result_write_assets(result_arg) -> dict:
             return result_arg.write_assets(str(output_file))
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
-            futures = []
-            for result in results:
-                futures.append(executor.submit(result_write_assets, result))
+        concurrent_save_results = int(job_options.get("concurrent-save-results", 1))
+        if concurrent_save_results == 1:
+            assets_metadata = list(map(result_write_assets, results))
+        elif concurrent_save_results > 1:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=concurrent_save_results) as executor:
+                futures = []
+                for result in results:
+                    futures.append(executor.submit(result_write_assets, result))
 
-            for _ in concurrent.futures.as_completed(futures):
-                continue
-        assets_metadata = list(map(lambda f: f.result(), futures))
+                for _ in concurrent.futures.as_completed(futures):
+                    continue
+            assets_metadata = list(map(lambda f: f.result(), futures))
+        else:
+            raise ValueError(f"Invalid concurrent_save_results: {concurrent_save_results}")
 
         for the_assets_metadata in assets_metadata:
             for name, asset in the_assets_metadata.items():
