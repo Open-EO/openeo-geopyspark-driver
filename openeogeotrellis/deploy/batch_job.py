@@ -382,10 +382,13 @@ def run_job(
                         "sample_by_feature was set, but no geometries provided through filter_spatial. "
                         "Make sure to provide geometries."
                     )
+        for result in results:
             the_assets_metadata = result.write_assets(str(output_file))
+            assets_metadata.append(the_assets_metadata)
             if isinstance(result, MlModelResult):
                 ml_model_metadata = result.get_model_metadata(str(output_file))
                 logger.info("Extracted ml model metadata from %s" % output_file)
+        for the_assets_metadata in assets_metadata:
             for name, asset in the_assets_metadata.items():
                 href = str(asset["href"])
                 url = urlparse(href)
@@ -396,7 +399,6 @@ def run_job(
                     wait_till_path_available(asset_path)
                 add_permissions(Path(asset["href"]), stat.S_IWGRP)
             logger.info(f"wrote {len(the_assets_metadata)} assets to {output_file}")
-            assets_metadata.append(the_assets_metadata)
 
         if any(dependency['card4l'] for dependency in dependencies):  # TODO: clean this up
             logger.debug("awaiting Sentinel Hub CARD4L data...")
