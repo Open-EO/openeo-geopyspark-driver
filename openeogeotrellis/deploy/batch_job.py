@@ -1,3 +1,4 @@
+import concurrent
 import time
 
 import json
@@ -350,7 +351,6 @@ def run_job(
             "institution": "openEO platform - Geotrellis backend: " + __version__
         }
 
-        assets_metadata = []
         ml_model_metadata = None
 
         unique_process_ids = CollectUniqueProcessIdsVisitor().accept_process_graph(process_graph).process_ids
@@ -382,12 +382,22 @@ def run_job(
                         "sample_by_feature was set, but no geometries provided through filter_spatial. "
                         "Make sure to provide geometries."
                     )
-        for result in results:
-            the_assets_metadata = result.write_assets(str(output_file))
-            assets_metadata.append(the_assets_metadata)
             if isinstance(result, MlModelResult):
                 ml_model_metadata = result.get_model_metadata(str(output_file))
                 logger.info("Extracted ml model metadata from %s" % output_file)
+
+        def result_write_assets(result_arg) -> dict:
+            return result_arg.write_assets(str(output_file))
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+            futures = []
+            for result in results:
+                futures.append(executor.submit(result_write_assets, result))
+
+            for _ in concurrent.futures.as_completed(futures):
+                continue
+        assets_metadata = list(map(lambda f: f.result(), futures))
+
         for the_assets_metadata in assets_metadata:
             for name, asset in the_assets_metadata.items():
                 href = str(asset["href"])
