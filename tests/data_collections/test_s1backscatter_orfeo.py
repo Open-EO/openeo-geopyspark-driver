@@ -253,7 +253,7 @@ class TestOrfeoPipeline:
                 else:
                     zip_file.extract(member, target_location)
 
-    def test_orfeo_soft_errors(self):
+    def test_orfeo_no_soft_errors(self):
         import geopyspark
         pysc = geopyspark.get_spark_context()
         max_soft_errors_ratio = 0.0
@@ -262,6 +262,18 @@ class TestOrfeoPipeline:
         self.orfeo_success_run(S1BackscatterOrfeo._get_trackers(pysc), max_soft_errors_ratio)
         with pytest.raises(RuntimeError):
             self.orfeo_failed_run(S1BackscatterOrfeo._get_trackers(pysc), max_soft_errors_ratio)
+
+    @pytest.mark.parametrize("success", [True, False], ids=["success", "failure"])
+    def test_orfeo_soft_errors(self, success, caplog):
+        import geopyspark
+
+        pysc = geopyspark.get_spark_context()
+        max_soft_errors_ratio = 0.1
+
+        orfeo_run = self.orfeo_success_run if success else self.orfeo_failed_run
+        orfeo_run(S1BackscatterOrfeo._get_trackers(pysc), max_soft_errors_ratio)
+
+        assert success != ("ignoring soft errors, max_soft_errors_ratio=0.1" in caplog.messages)
 
     @pytest.mark.parametrize(
         [
