@@ -117,9 +117,9 @@ class S1BackscatterOrfeo:
             tile_size: int, datacubeParams=None
     ) -> Tuple[pyspark.RDD, JavaObject, JavaObject]:
         logger.info("Loading feature JSON RDD from {f}".format(f=file_rdd_factory))
-        json_rdd = file_rdd_factory.loadSpatialFeatureJsonRDD(projected_polygons, from_date, to_date, zoom, tile_size,datacubeParams)
-        jrdd = json_rdd._1()
-        layer_metadata_sc = json_rdd._2()
+        json_rdd_partitioner = file_rdd_factory.loadSpatialFeatureJsonRDD(projected_polygons, from_date, to_date, zoom, tile_size,datacubeParams)
+        jrdd = json_rdd_partitioner._1()
+        layer_metadata_sc = json_rdd_partitioner._2()
 
         # Decode/unwrap the JavaRDD of JSON blobs we built in Scala,
         # additionally pickle-serialized by the PySpark adaption layer.
@@ -127,7 +127,7 @@ class S1BackscatterOrfeo:
         serializer = pyspark.serializers.PickleSerializer()
         pyrdd = geopyspark.create_python_rdd(j2p_rdd, serializer=serializer)
         pyrdd = pyrdd.map(json.loads)
-        return pyrdd, layer_metadata_sc,jrdd.partitioner()
+        return pyrdd, layer_metadata_sc,json_rdd_partitioner._3()
 
     def _build_feature_rdd(
             self,
@@ -1035,10 +1035,10 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
         )
 
         the_rdd = tile_layer.srdd.rdd()
-        print(f"Partitioner is present {str(partitioner)}")
-        logger.info(f"Partitioner is present {str(partitioner)}")
-        if(partitioner.isPresent()):
-            the_rdd = tile_layer.srdd.rdd().partitionBy(partitioner.get())
+
+        logger.info(f"sar-backscatter: partitioning with {str(partitioner)}")
+        if(partitioner is not None):
+            the_rdd = tile_layer.srdd.rdd().partitionBy(partitioner)
 
         # Merge any keys that have more than one tile.
         contextRDD = self.jvm.org.openeo.geotrellis.OpenEOProcesses().mergeTiles(the_rdd)
