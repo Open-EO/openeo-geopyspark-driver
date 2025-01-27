@@ -115,7 +115,7 @@ class S1BackscatterOrfeo:
     def _load_feature_rdd(
             self, file_rdd_factory: JavaObject, projected_polygons, from_date: str, to_date: str, zoom: int,
             tile_size: int, datacubeParams=None
-    ) -> Tuple[pyspark.RDD, JavaObject]:
+    ) -> Tuple[pyspark.RDD, JavaObject, JavaObject]:
         logger.info("Loading feature JSON RDD from {f}".format(f=file_rdd_factory))
         json_rdd = file_rdd_factory.loadSpatialFeatureJsonRDD(projected_polygons, from_date, to_date, zoom, tile_size,datacubeParams)
         jrdd = json_rdd._1()
@@ -127,7 +127,7 @@ class S1BackscatterOrfeo:
         serializer = pyspark.serializers.PickleSerializer()
         pyrdd = geopyspark.create_python_rdd(j2p_rdd, serializer=serializer)
         pyrdd = pyrdd.map(json.loads)
-        return pyrdd, layer_metadata_sc
+        return pyrdd, layer_metadata_sc,jrdd.partitioner()
 
     def _build_feature_rdd(
             self,
@@ -158,14 +158,14 @@ class S1BackscatterOrfeo:
         file_rdd_factory = self.jvm.org.openeo.geotrellis.file.FileRDDFactory(
             opensearch_client, collection_id, attributeValues, correlation_id,self.jvm.geotrellis.raster.CellSize(resolution[0], resolution[1])
         )
-        feature_pyrdd, layer_metadata_sc = self._load_feature_rdd(
+        feature_pyrdd, layer_metadata_sc,partitioner = self._load_feature_rdd(
             file_rdd_factory, projected_polygons=projected_polygons, from_date=from_date, to_date=to_date,
             zoom=zoom, tile_size=tile_size, datacubeParams=datacubeParams
         )
         layer_metadata_py = convert_scala_metadata(
             layer_metadata_sc, epoch_ms_to_datetime=_instant_ms_to_day, logger=logger
         )
-        return feature_pyrdd, layer_metadata_py
+        return feature_pyrdd, layer_metadata_py,partitioner
 
     # Mapping of `sar_backscatter` coefficient value to `SARCalibration` Lookup table value
     _coefficient_mapping = {
@@ -543,7 +543,7 @@ class S1BackscatterOrfeo:
 
         debug_mode = smart_bool(sar_backscatter_arguments.options.get("debug"))
 
-        feature_pyrdd, layer_metadata_py = self._build_feature_rdd(
+        feature_pyrdd, layer_metadata_py,partitioner = self._build_feature_rdd(
             collection_id=collection_id, projected_polygons=projected_polygons,
             from_date=from_date, to_date=to_date, extra_properties=extra_properties,
             tile_size=tile_size, zoom=zoom, correlation_id=
@@ -820,7 +820,7 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
 
         # an RDD of Python objects (basically SpaceTimeKey + feature) with gps.Metadata
         target_resolution = sar_backscatter_arguments.options.get("resolution", (10.0, 10.0))
-        feature_pyrdd, layer_metadata_py = self._build_feature_rdd(
+        feature_pyrdd, layer_metadata_py,partitioner = self._build_feature_rdd(
             collection_id=collection_id, projected_polygons=projected_polygons,
             from_date=from_date, to_date=to_date, extra_properties=extra_properties,
             tile_size=tile_size, zoom=zoom, correlation_id=
@@ -1033,6 +1033,11 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
             numpy_rdd=tile_rdd,
             metadata=layer_metadata_py
         )
+
+        if(partitioner.isPresent()):
+            logger.info(f"Partitioner is present {str(partitioner)}")
+            tile_layer.srdd.rdd().partitionBy(partitioner.get())
+
         # Merge any keys that have more than one tile.
         contextRDD = self.jvm.org.openeo.geotrellis.OpenEOProcesses().mergeTiles(tile_layer.srdd.rdd())
         temporal_tiled_raster_layer = self.jvm.geopyspark.geotrellis.TemporalTiledRasterLayer
