@@ -1034,12 +1034,14 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
             metadata=layer_metadata_py
         )
 
+        the_rdd = tile_layer.srdd.rdd()
+        print(f"Partitioner is present {str(partitioner)}")
+        logger.info(f"Partitioner is present {str(partitioner)}")
         if(partitioner.isPresent()):
-            logger.info(f"Partitioner is present {str(partitioner)}")
-            tile_layer.srdd.rdd().partitionBy(partitioner.get())
+            the_rdd = tile_layer.srdd.rdd().partitionBy(partitioner.get())
 
         # Merge any keys that have more than one tile.
-        contextRDD = self.jvm.org.openeo.geotrellis.OpenEOProcesses().mergeTiles(tile_layer.srdd.rdd())
+        contextRDD = self.jvm.org.openeo.geotrellis.OpenEOProcesses().mergeTiles(the_rdd)
         temporal_tiled_raster_layer = self.jvm.geopyspark.geotrellis.TemporalTiledRasterLayer
         srdd = temporal_tiled_raster_layer.apply(self.jvm.scala.Option.apply(zoom), contextRDD)
         merged_tile_layer = geopyspark.TiledRasterLayer(geopyspark.LayerType.SPACETIME, srdd)
