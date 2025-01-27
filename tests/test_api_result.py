@@ -1941,10 +1941,31 @@ def jvm_mock():
         yield jvm_mock
 
 
+class UrlopenMocker(UrllibMocker):
+    @contextlib.contextmanager
+    def patch(self):
+        with mock.patch('urllib3.poolmanager.PoolManager.request', new=self._request):
+            yield self
+
+    def _request(self, method, url, fields=None, headers={}, **urlopen_kw):
+        for match_url in [url, self._drop_query_string(url)]:
+            key = (method, match_url)
+            if key in self.response_callbacks:
+                return self.response_callbacks[key](urllib.request.Request(url, method=method, headers=headers))
+        return self.Response(code=404, msg="Not Found")
+
+
+@pytest.fixture
+def urlopen_mocker() -> UrlopenMocker:
+    with UrlopenMocker().patch() as mocker:
+        yield mocker
+
+
 class UrllibAndRequestMocker:
-    def __init__(self, urllib_mock, requests_mock):
+    def __init__(self, urllib_mock, requests_mock, urlopen_mocker):
         self.urllib_mock = urllib_mock
         self.requests_mock = requests_mock
+        self.urlopen_mocker = urlopen_mocker
 
     def get(self, href, data):
         code = 200
@@ -1952,11 +1973,11 @@ class UrllibAndRequestMocker:
         if isinstance(data, str):
             data = data.encode("utf-8")
         self.requests_mock.get(href, content=data)
-
+        self.urlopen_mocker.get(href, data, code)
 
 @pytest.fixture
-def urllib_and_request_mock(urllib_mock, requests_mock) -> UrllibAndRequestMocker:
-    yield UrllibAndRequestMocker(urllib_mock, requests_mock)
+def urllib_and_request_mock(urllib_mock, requests_mock, urlopen_mocker) -> UrllibAndRequestMocker:
+    yield UrllibAndRequestMocker(urllib_mock, requests_mock, urlopen_mocker)
 
 
 @pytest.fixture
