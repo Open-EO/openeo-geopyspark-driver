@@ -697,8 +697,8 @@ def _await_dependency_job(url, user, batch_jobs, poll_interval_seconds, max_poll
 
 def _await_stac_object(url, poll_interval_seconds, max_poll_delay_seconds, max_poll_time) -> STACObject:
     while True:
-        retries = Retry(total=5, backoff_factor=0.1, status_forcelist=[500, 502, 503, 504])
-        stac_io = StacApiIO(timeout=REQUESTS_TIMEOUT_SECONDS, max_retries=retries)
+        retry = Retry(total=5, backoff_factor=0.1, status_forcelist=[500, 502, 503, 504])
+        stac_io = StacApiIO(timeout=REQUESTS_TIMEOUT_SECONDS, retry=retry)
         stac_object = pystac.read_file(href=url, stac_io=stac_io)
 
         partial_job_status = (stac_object
