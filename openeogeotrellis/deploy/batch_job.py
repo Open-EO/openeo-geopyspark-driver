@@ -1,3 +1,4 @@
+import concurrent
 import time
 
 import json
@@ -350,7 +351,6 @@ def run_job(
             "institution": "openEO platform - Geotrellis backend: " + __version__
         }
 
-        assets_metadata = []
         ml_model_metadata = None
 
         unique_process_ids = CollectUniqueProcessIdsVisitor().accept_process_graph(process_graph).process_ids
@@ -382,10 +382,29 @@ def run_job(
                         "sample_by_feature was set, but no geometries provided through filter_spatial. "
                         "Make sure to provide geometries."
                     )
-            the_assets_metadata = result.write_assets(str(output_file))
             if isinstance(result, MlModelResult):
                 ml_model_metadata = result.get_model_metadata(str(output_file))
                 logger.info("Extracted ml model metadata from %s" % output_file)
+
+        def result_write_assets(result_arg) -> dict:
+            return result_arg.write_assets(str(output_file))
+
+        concurrent_save_results = int(job_options.get("concurrent-save-results", 1))
+        if concurrent_save_results == 1:
+            assets_metadata = list(map(result_write_assets, results))
+        elif concurrent_save_results > 1:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=concurrent_save_results) as executor:
+                futures = []
+                for result in results:
+                    futures.append(executor.submit(result_write_assets, result))
+
+                for _ in concurrent.futures.as_completed(futures):
+                    continue
+            assets_metadata = list(map(lambda f: f.result(), futures))
+        else:
+            raise ValueError(f"Invalid concurrent_save_results: {concurrent_save_results}")
+
+        for the_assets_metadata in assets_metadata:
             for name, asset in the_assets_metadata.items():
                 href = str(asset["href"])
                 url = urlparse(href)
@@ -396,7 +415,6 @@ def run_job(
                     wait_till_path_available(asset_path)
                 add_permissions(Path(asset["href"]), stat.S_IWGRP)
             logger.info(f"wrote {len(the_assets_metadata)} assets to {output_file}")
-            assets_metadata.append(the_assets_metadata)
 
         if any(dependency['card4l'] for dependency in dependencies):  # TODO: clean this up
             logger.debug("awaiting Sentinel Hub CARD4L data...")
