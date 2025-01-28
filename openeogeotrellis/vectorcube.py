@@ -64,6 +64,8 @@ class AggregateSpatialResultCSV(AggregatePolygonResultCSV, SupportsRunUdf):
 
         csv_df = pyspark.pandas.read_csv([f"file://{p}" for p in csv_paths])
 
+        csv_df.date = csv_df.date.dt.strftime("%Y-%m-%d")
+
         columns = csv_df.columns
         values = [v for v in columns if v not in ["index", "feature_index", "date"]]
         csv_df = csv_df.pivot(index="feature_index", columns="date", values=values)
