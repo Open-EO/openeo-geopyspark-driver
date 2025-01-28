@@ -1509,6 +1509,7 @@ def test_export_workspace_merge_filepath_per_band(tmp_path, mock_s3_bucket):
         "process_graph": process_graph,
         "job_options": {
             "export-workspace-enable-merge": enable_merge,
+            "concurrent-save-results": 4,  # TODO: Make this the default
         },
     }
 
@@ -1570,7 +1571,8 @@ def test_export_workspace_merge_filepath_per_band(tmp_path, mock_s3_bucket):
         load_exported_collection(f"s3://{object_workspace.bucket}/{merge}")
         load_exported_collection(str(disk_workspace.root_directory / merge))
     finally:
-        shutil.rmtree(workspace_dir)
+        if os.path.exists(workspace_dir):
+            shutil.rmtree(workspace_dir)
 
 
 @pytest.mark.parametrize("kube", [False])  # kube==True will not run on Jenkins

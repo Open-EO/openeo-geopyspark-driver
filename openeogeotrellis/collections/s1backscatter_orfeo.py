@@ -329,11 +329,10 @@ class S1BackscatterOrfeo:
                 msg = f"Segmentation fault while running Orfeo toolbox. {input_tiff} {extent} EPSG {extent_epsg} {sar_calibration_lut}"
                 logger.error(msg)
             # Check soft error ratio.
-            if trackers is not None:
+            if trackers is not None and error_counter.value > 0:
                 if max_soft_errors_ratio == 0.0:
-                    if error_counter.value > 0:
-                        msg = f"sar_backscatter: Orfeo error can be found in the logs. Errors can happen due to corrupted input products. Setting the 'soft-errors' job option allows you to skip these products and continue processing."
-                        raise RuntimeError(msg)
+                    msg = f"sar_backscatter: Orfeo error can be found in the logs. Errors can happen due to corrupted input products. Setting the 'soft-errors' job option allows you to skip these products and continue processing."
+                    raise RuntimeError(msg)
                 else:
                     # TODO: #302 Implement singleton for batch jobs, to check soft errors after collect.
                     logger.warning(f"ignoring soft errors, max_soft_errors_ratio={max_soft_errors_ratio}")
