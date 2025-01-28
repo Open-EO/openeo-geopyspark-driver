@@ -58,13 +58,18 @@ class AggregateSpatialResultCSV(AggregatePolygonResultCSV, SupportsRunUdf):
             f"{type(self).__name__} run_udf with {self._csv_dir=} ({len(csv_paths)=})"
         )
         import pyspark.pandas
-        #pyspark.pandas.set_option('compute.default_index_type', 'distributed')
-        #pyspark.pandas.set_option('compute.shortcut_limit', 1)
-        #pyspark.pandas.set_option('compute.max_rows', None)
+        pyspark.pandas.set_option('compute.default_index_type', 'distributed')
+        pyspark.pandas.set_option('compute.shortcut_limit', 1)
+        pyspark.pandas.set_option('compute.max_rows', None)
 
         csv_df = pyspark.pandas.read_csv([f"file://{p}" for p in csv_paths])
 
-        processed_df = csv_df.groupby("feature_index").apply(callback).reset_index()
+        columns = csv_df.columns
+        values = [v for v in columns if v not in ["index", "feature_index", "date"]]
+        csv_df = csv_df.pivot(index="feature_index", columns="date", values=values)
+
+        with_callback = csv_df.apply(callback,axis=1)
+        processed_df = with_callback.reset_index()
 
         output_dir = temp_csv_dir(message=f"{type(self).__name__}.run_udf output")
         with TimingLogger(logger=_log, title=f"Dump {processed_df=} to {output_dir=}"):
@@ -96,10 +101,9 @@ class AggregateSpatialResultCSV(AggregatePolygonResultCSV, SupportsRunUdf):
 
         def callback(data: pandas.DataFrame):
             # Get current feature index and drop whole column
-            feature_index = data["feature_index"].iloc[0]
-            feature_data = data.drop("feature_index", axis=1).set_index("date")
+            #data has a multiindex, as a result of the 'pivot' operation
             # TODO: also pass feature_index to udf?
-            processed = udf_function(feature_data)
+            processed = udf_function(data.unstack(level=-1).T)
 
             # Post-process UDF output
             if isinstance(processed, (int, float, str)):
@@ -191,6 +195,7 @@ class AggregateSpatialResultCSV(AggregatePolygonResultCSV, SupportsRunUdf):
                 raise openeo.udf.OpenEoUdfException(
                     f"Failed to convert UDF return type to pandas Series/DataFrame: {type(processed)}"
                 )
+            print(processed)
             return processed
 
         return callback
