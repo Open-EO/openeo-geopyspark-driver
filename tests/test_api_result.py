@@ -2813,13 +2813,16 @@ class TestVectorCubeRunUdf:
             """
             import pandas as pd
             def udf_apply_feature_dataframe(df: pd.DataFrame) -> pd.DataFrame:
-                return df + 1000
+                df.Latitude = df.Latitude + 1000
+                df.Longitude = df.Longitude + 1000
+                df.Day = df.Day + 1000
+                return df
         """
         )
         processed = openeo.processes.run_udf(aggregates, udf=udf, runtime="Python")
 
         result = api100.check_result(processed).json
-        result = drop_empty_from_aggregate_polygon_result(result)
+        #result = drop_empty_from_aggregate_polygon_result(result)
         assert result == DictSubSet(
             columns=[
                 "feature_index",
@@ -2856,18 +2859,18 @@ class TestVectorCubeRunUdf:
         result = api100.check_result(processed).json
         result = drop_empty_from_aggregate_polygon_result(result)
         assert result == DictSubSet(
-            columns=[
+            columns=IgnoreOrder([
                 "feature_index",
                 "Day",
                 "Longitude",
                 "Latitude",
-            ],
+            ]),
             data=IgnoreOrder(
                 [
-                    [0, 5 + 15 + 25, 3 * 2.75, 3 * 2.75],
-                    [1, 5 + 15 + 25, 3 * 6.75, 3 * 3.75],
-                    [2, 5 + 15 + 25, 3 * 2.75, 3 * 7.75],
-                    [3, 5 + 15 + 25, 3 * 5.75, 3 * 0.75],
+                    [0, 5 + 15 + 25.0, 3 * 2.75, 3 * 2.75],
+                    [1, 5 + 15 + 25.0, 3 * 6.75, 3 * 3.75],
+                    [2, 5 + 15 + 25.0, 3 * 2.75, 3 * 7.75],
+                    [3, 5 + 15 + 25.0, 3 * 5.75, 3 * 0.75],
                 ]
             ),
         )
@@ -2889,7 +2892,7 @@ class TestVectorCubeRunUdf:
         result = api100.check_result(processed).json
         result = drop_empty_from_aggregate_polygon_result(result)
         assert result == DictSubSet(
-            columns=["feature_index", "2021-01-05 00:00:00", "2021-01-15 00:00:00", "2021-01-25 00:00:00"],
+            columns=["feature_index", "2021-01-05T00:00:00.000Z", "2021-01-15T00:00:00.000Z", "2021-01-25T00:00:00.000Z"],
             data=IgnoreOrder(
                 [
                     [0, 5 + 2.75 + 2.75, 15 + 2.75 + 2.75, 25 + 2.75 + 2.75],

@@ -4,6 +4,7 @@ from typing import Optional, Callable
 
 import pandas
 import pandas as pd
+from pyspark.sql import SparkSession
 
 import openeo.udf
 import openeo.udf.run_code
@@ -57,32 +58,43 @@ class AggregateSpatialResultCSV(AggregatePolygonResultCSV, SupportsRunUdf):
         _log.info(
             f"{type(self).__name__} run_udf with {self._csv_dir=} ({len(csv_paths)=})"
         )
-        import pyspark.pandas
-        pyspark.pandas.set_option('compute.default_index_type', 'distributed')
-        pyspark.pandas.set_option('compute.shortcut_limit', 1)
-        pyspark.pandas.set_option('compute.max_rows', None)
 
-        csv_df = pyspark.pandas.read_csv([f"file://{p}" for p in csv_paths])
 
-        csv_df.date = csv_df.date.dt.strftime("%Y-%m-%d")
+        spark = SparkSession.builder.master('local[1]').getOrCreate()
+        df = spark.read.csv([f"file://{p}" for p in csv_paths],header=True)
 
-        columns = csv_df.columns
-        values = [v for v in columns if v not in ["index", "feature_index", "date"]]
-        csv_df = csv_df.pivot(index="feature_index", columns="date", values=values)
 
-        with_callback = csv_df.apply(callback,axis=1)
-        processed_df = with_callback.reset_index()
+        columns = df.columns
+        id_index = columns.index("feature_index")
 
-        output_dir = temp_csv_dir(message=f"{type(self).__name__}.run_udf output")
-        with TimingLogger(logger=_log, title=f"Dump {processed_df=} to {output_dir=}"):
-            processed_df.to_csv(f"file://{output_dir}")
+        def mapTimeseriesRows(id_bands):
+            bands = id_bands[1]
+            import pandas as pd
+            bands_df = pd.DataFrame(bands,columns=columns)
+            bands_df.set_index("date",inplace=True)
 
-        # Read CSV result(s) as a single pandas DataFrame
+            if "feature_index" in columns:
+                bands_df.drop("feature_index",axis=1,inplace=True)
+
+            values = [v for v in columns if v not in ["index", "feature_index", "date"]]
+
+            for v in values:
+                bands_df[v] = pd.to_numeric(bands_df[v],errors="ignore")
+
+            result = callback(bands_df)
+            if isinstance(result,pd.Series):
+                result = pd.DataFrame(result).T
+            result["feature_index"] = pd.to_numeric(id_bands[0])
+            result.insert(0, 'feature_index', result.pop('feature_index'))
+            return result.to_dict(orient='tight')
+
+        csv_as_list = df.rdd.map(list).map(lambda x: (x[id_index],x)).groupByKey().map(mapTimeseriesRows)
+
+        output = csv_as_list.collect()
+
         # TODO: make "feature_index" the real index, instead of generic autoincrement index?
-        result_df = pandas.concat(
-            (pd.read_csv(p) for p in Path(output_dir).glob("*.csv")),
-            ignore_index=True,
-        )
+        result_df = pandas.concat([ pd.DataFrame.from_dict(o,orient="tight") for o in output])
+
         # TODO: return real vector cube instead of adhoc jsonifying the data here
         return JSONResult(data=result_df.to_dict("split"))
 
@@ -105,7 +117,7 @@ class AggregateSpatialResultCSV(AggregatePolygonResultCSV, SupportsRunUdf):
             # Get current feature index and drop whole column
             #data has a multiindex, as a result of the 'pivot' operation
             # TODO: also pass feature_index to udf?
-            processed = udf_function(data.unstack(level=-1).T)
+            processed = udf_function(data)
 
             # Post-process UDF output
             if isinstance(processed, (int, float, str)):
