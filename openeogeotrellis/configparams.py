@@ -39,7 +39,7 @@ class ConfigParams:
 
         # TODO #283 using this "is_ci_context" switch is an anti-pattern (induces hard to maintain code and make unit testing difficult)
         # Are we running in a unittest or continuous integration context?
-        self.is_ci_context = any(v in env for v in ['PYTEST_CURRENT_TEST', 'PYTEST_CONFIGURE'])
+        self.is_ci_context = False  # FIXME: restore
 
         # TODO: can we avoid using env variables?
         self.layer_catalog_metadata_files = env.get("OPENEO_CATALOG_FILES", "layercatalog.json").split(",")

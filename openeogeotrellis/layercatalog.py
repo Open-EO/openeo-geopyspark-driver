@@ -111,7 +111,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                         + " ".join(issues)
                     )
 
-        return self._load_collection_cached(collection_id, load_params, WhiteListEvalEnv(env, WHITELIST))
+        return self._load_collection_cached(collection_id, load_params, env)  # FIXME: restore
 
     @lru_cache(maxsize=40)
     def _load_collection_cached(self, collection_id: str, load_params: LoadParameters, env: EvalEnv) -> GeopysparkDataCube:
@@ -271,8 +271,10 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             layer_properties = metadata.get("_vito", "properties", default={})
             custom_properties = load_params.properties
 
-            all_properties = {property_name: filter_properties.extract_literal_match(condition)
-                        for property_name, condition in {**layer_properties, **custom_properties}.items()}
+            all_properties = {
+                property_name: filter_properties.extract_literal_match(condition, env)
+                for property_name, condition in {**layer_properties, **custom_properties}.items()
+            }
 
             def eq_value(criterion: Dict[str, object]) -> object:
                 if len(criterion) != 1:
