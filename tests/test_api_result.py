@@ -2632,7 +2632,7 @@ class TestVectorCubeRunUdf:
                 # Data's structure: {datetime: [[float for each band] for each polygon]}
                 assert isinstance(data, dict)
                 # Convert to single scalar value
-                ((_, lon, lat),) = data["2021-01-05T00:00:00Z"]
+                ((_, lon, lat),) = data["2021-01-05T00:00:00.000Z"]
                 return 1000 * lon + lat
         """
         )
@@ -2641,7 +2641,7 @@ class TestVectorCubeRunUdf:
         result = api100.check_result(processed).json
         result = drop_empty_from_aggregate_polygon_result(result)
         assert result == DictSubSet(
-            columns=["feature_index", "0"],
+            columns=["feature_index", 0],
             data=IgnoreOrder(
                 [
                     [0, 1001.0],
@@ -2673,17 +2673,17 @@ class TestVectorCubeRunUdf:
         result = api100.check_result(processed).json
         result = drop_empty_from_aggregate_polygon_result(result)
         assert result == DictSubSet(
-            columns=["feature_index", "level_1", "0"],
+            columns=["feature_index", "level_1", 0],
             data=IgnoreOrder(
                 [
-                    [0, "2021-01-05T00:00:00Z", 5 + 1 + 1],
-                    [0, "2021-01-15T00:00:00Z", 15 + 1 + 1],
-                    [1, "2021-01-05T00:00:00Z", 5 + 4 + 2],
-                    [1, "2021-01-15T00:00:00Z", 15 + 4 + 2],
-                    [2, "2021-01-05T00:00:00Z", 5 + 2 + 4],
-                    [2, "2021-01-15T00:00:00Z", 15 + 2 + 4],
-                    [3, "2021-01-05T00:00:00Z", 5 + 5 + 0],
-                    [3, "2021-01-15T00:00:00Z", 15 + 5 + 0],
+                    [0, "2021-01-05T00:00:00.000Z", 5 + 1 + 1],
+                    [0, "2021-01-15T00:00:00.000Z", 15 + 1 + 1],
+                    [1, "2021-01-05T00:00:00.000Z", 5 + 4 + 2],
+                    [1, "2021-01-15T00:00:00.000Z", 15 + 4 + 2],
+                    [2, "2021-01-05T00:00:00.000Z", 5 + 2 + 4],
+                    [2, "2021-01-15T00:00:00.000Z", 15 + 2 + 4],
+                    [3, "2021-01-05T00:00:00.000Z", 5 + 5 + 0],
+                    [3, "2021-01-15T00:00:00.000Z", 15 + 5 + 0],
                 ]
             ),
         )
@@ -2851,6 +2851,7 @@ class TestVectorCubeRunUdf:
             """
             import pandas as pd
             def udf_apply_feature_dataframe(df: pd.DataFrame) -> pd.Series:
+                print(df)
                 return df.sum(axis=0)
         """
         )

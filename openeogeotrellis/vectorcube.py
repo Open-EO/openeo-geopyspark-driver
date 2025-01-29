@@ -1,6 +1,6 @@
 import logging
 from pathlib import Path
-from typing import Optional, Callable
+from typing import Optional, Callable, List
 
 import pandas
 import pandas as pd
@@ -40,19 +40,7 @@ class AggregateSpatialResultCSV(AggregatePolygonResultCSV, SupportsRunUdf):
         # TODO: leverage `runtime` argument?
         udf_globals = openeo.udf.run_code.load_module_from_string(code=udf)
 
-        # TODO: Port this UDF detection to openeo.udf.run_code?
-        if "udf_apply_udf_data" in udf_globals:
-            udf_function = udf_globals["udf_apply_udf_data"]
-            callback = self._get_run_udf_udf_data_callback(
-                udf_function=udf_function, context=context
-            )
-        elif "udf_apply_feature_dataframe" in udf_globals:
-            udf_function = udf_globals["udf_apply_feature_dataframe"]
-            callback = self._get_run_udf_pandas_callback(
-                udf_function=udf_function, context=context
-            )
-        else:
-            raise openeo.udf.OpenEoUdfException("No UDF found")
+
 
         csv_paths = list(Path(self._csv_dir).glob("*.csv"))
         _log.info(
@@ -65,23 +53,27 @@ class AggregateSpatialResultCSV(AggregatePolygonResultCSV, SupportsRunUdf):
 
 
         columns = df.columns
+
+        # TODO: Port this UDF detection to openeo.udf.run_code?
+        if "udf_apply_udf_data" in udf_globals:
+            udf_function = udf_globals["udf_apply_udf_data"]
+            callback = self._get_run_udf_udf_data_callback(
+                udf_function=udf_function, context=context,columns = columns
+            )
+        elif "udf_apply_feature_dataframe" in udf_globals:
+            udf_function = udf_globals["udf_apply_feature_dataframe"]
+            callback = self._get_run_udf_pandas_callback(
+                udf_function=udf_function, context=context, columns=columns
+            )
+        else:
+            raise openeo.udf.OpenEoUdfException("No UDF found")
+
         id_index = columns.index("feature_index")
 
         def mapTimeseriesRows(id_bands):
-            bands = id_bands[1]
-            import pandas as pd
-            bands_df = pd.DataFrame(bands,columns=columns)
-            bands_df.set_index("date",inplace=True)
 
-            if "feature_index" in columns:
-                bands_df.drop("feature_index",axis=1,inplace=True)
 
-            values = [v for v in columns if v not in ["index", "feature_index", "date"]]
-
-            for v in values:
-                bands_df[v] = pd.to_numeric(bands_df[v],errors="ignore")
-
-            result = callback(bands_df)
+            result = callback(id_bands)
             if isinstance(result,pd.Series):
                 result = pd.DataFrame(result).T
             result["feature_index"] = pd.to_numeric(id_bands[0])
@@ -100,7 +92,7 @@ class AggregateSpatialResultCSV(AggregatePolygonResultCSV, SupportsRunUdf):
 
     @staticmethod
     def _get_run_udf_pandas_callback(
-        udf_function: Callable, context: Optional[dict] = None
+        udf_function: Callable, context: Optional[dict] = None, columns: List = None
     ) -> Callable:
         """
         Build `pyspark.pandas.groupby.GroupBy.apply` callback
@@ -113,11 +105,24 @@ class AggregateSpatialResultCSV(AggregatePolygonResultCSV, SupportsRunUdf):
         :return:
         """
 
-        def callback(data: pandas.DataFrame):
+        def callback(id_bands):
             # Get current feature index and drop whole column
             #data has a multiindex, as a result of the 'pivot' operation
             # TODO: also pass feature_index to udf?
-            processed = udf_function(data)
+            bands = id_bands[1]
+            import pandas as pd
+            bands_df = pd.DataFrame(bands, columns=columns)
+            bands_df.set_index("date", inplace=True)
+
+            if "feature_index" in columns:
+                bands_df.drop("feature_index", axis=1, inplace=True)
+
+            values = [v for v in columns if v not in ["index", "feature_index", "date"]]
+
+            for v in values:
+                bands_df[v] = pd.to_numeric(bands_df[v], errors="ignore")
+
+            processed = udf_function(bands_df)
 
             # Post-process UDF output
             if isinstance(processed, (int, float, str)):
@@ -143,7 +148,7 @@ class AggregateSpatialResultCSV(AggregatePolygonResultCSV, SupportsRunUdf):
 
     @staticmethod
     def _get_run_udf_udf_data_callback(
-        udf_function: Callable, context: Optional[dict] = None
+        udf_function: Callable, context: Optional[dict] = None, columns:List = None
     ) -> Callable:
         """
         Build `pyspark.pandas.groupby.GroupBy.apply` callback
@@ -157,25 +162,38 @@ class AggregateSpatialResultCSV(AggregatePolygonResultCSV, SupportsRunUdf):
         :param context:
         :return:
         """
-        def callback(data: pandas.DataFrame):
+        import pyspark.pandas
+        def callback(id_bands) -> pyspark.pandas.DataFrame:
             # Get current feature index and drop whole column
-            feature_index = data["feature_index"].iloc[0]
-            feature_data = data.drop("feature_index", axis=1)
+            #feature_index = data["feature_index"].iloc[0]
+            #feature_data = data.drop("feature_index", axis=1)
             # TODO: We assume here that the `date` column already has parsed dates (naive, without timezone info).
             #       At the moment `pyspark.pandas.read_csv` seems to parse dates automatically
             #       (as pandas timestamp) even-though the docs states otherwise
             #       also see https://issues.apache.org/jira/browse/SPARK-40934
-            feature_data = feature_data.set_index("date")
-            feature_data.index = feature_data.index.strftime("%Y-%m-%dT%H:%M:%SZ")
+            #if "date" in feature_data.columns:
+            #    feature_data = feature_data.set_index("date")
+            #feature_data.index = feature_data.index.strftime("%Y-%m-%dT%H:%M:%SZ")
 
             # Convert to legacy AggregatePolygonResult-style construct:
             #       {datetime: [[float for each band] for each polygon]}
             # and wrap in UdfData/StructuredData
+            date_index = columns.index("date")
+            feature_index = columns.index("feature_index")
+            indices = [date_index,feature_index]
+            indices.sort(reverse=True)
+            rows = id_bands[1]
+
+            def filter_row(r):
+                for i in indices:
+                    r.pop(i)
+                return r
+
             timeseries = {
-                date: [row.to_list()] for date, row in feature_data.iterrows()
+                row[date_index]: [filter_row([pd.to_numeric(x,errors="ignore") for x in row])] for row in rows
             }
             structured_data = openeo.udf.StructuredData(
-                description=f"Feature data {feature_index}",
+                description=f"Feature data {id_bands[0]}",
                 data=timeseries,
                 type="dict",
             )
