@@ -76,6 +76,8 @@ class AggregateSpatialResultCSV(AggregatePolygonResultCSV, SupportsRunUdf):
             result = callback(id_bands)
             if isinstance(result,pd.Series):
                 result = pd.DataFrame(result).T
+            else:
+                result.reset_index(inplace=True)
             result["feature_index"] = pd.to_numeric(id_bands[0])
             result.insert(0, 'feature_index', result.pop('feature_index'))
             return result.to_dict(orient='tight')
