@@ -3,8 +3,9 @@ from typing import (
     Optional,
 )
 from urllib.error import HTTPError
+from urllib.parse import urlparse
 
-from pystac.stac_io import DefaultStacIO, _is_url
+from pystac.stac_io import DefaultStacIO
 from urllib3 import Retry, PoolManager
 
 
@@ -26,7 +27,8 @@ class StacApiIO(DefaultStacIO):
         Args:
             href : The URI of the file to open.
         """
-        if _is_url(href):
+        is_url = urlparse(href).scheme != ""
+        if is_url:
             http = PoolManager(retries=self.retry, timeout=20)
             try:
                 response = http.request(
