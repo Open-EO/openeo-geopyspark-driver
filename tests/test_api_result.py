@@ -2920,7 +2920,7 @@ class TestVectorCubeRunUdf:
         result = api100.check_result(processed).json
         result = drop_empty_from_aggregate_polygon_result(result)
         assert result == DictSubSet(
-            columns=["feature_index", "0"],
+            columns=["feature_index", 0],
             data=IgnoreOrder(
                 [
                     [0, 5 + 15 + 25 + 3 * (2.75 + 2.75)],
