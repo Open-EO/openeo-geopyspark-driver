@@ -553,5 +553,5 @@ def test_property_filter_from_parameter(catalog):
 
     env = EvalEnv().push_parameters({"cloud_cover": 24})
 
-    with pytest.raises(OpenEOApiException, match=r"There is no data available"):
+    with pytest.raises(OpenEOApiException, match=r"There is no data available"):  # expected, not a problem
         catalog.load_collection("TERRASCOPE_S2_TOC_V2", load_params=load_params, env=env)
