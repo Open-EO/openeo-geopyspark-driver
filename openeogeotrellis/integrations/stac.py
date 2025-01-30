@@ -10,6 +10,7 @@ from urllib3 import Retry, PoolManager
 
 
 class StacApiIO(DefaultStacIO):
+    """A STAC IO implementation that supports reading with timeout and retry."""
 
     def __init__(
         self,
@@ -29,7 +30,7 @@ class StacApiIO(DefaultStacIO):
         """
         is_url = urlparse(href).scheme != ""
         if is_url:
-            http = PoolManager(retries=self.retry, timeout=20)
+            http = PoolManager(retries=self.retry, timeout=self.timeout)
             try:
                 response = http.request(
                     "GET", href
