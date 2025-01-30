@@ -68,6 +68,7 @@ WHITELIST = [
     EVAL_ENV_KEY.USER,
     EVAL_ENV_KEY.ALLOW_EMPTY_CUBES,
     EVAL_ENV_KEY.DO_EXTENT_CHECK,
+    EVAL_ENV_KEY.PARAMETERS,
 ]
 LARGE_LAYER_THRESHOLD_IN_PIXELS = pow(10, 11)
 
@@ -271,8 +272,10 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             layer_properties = metadata.get("_vito", "properties", default={})
             custom_properties = load_params.properties
 
-            all_properties = {property_name: filter_properties.extract_literal_match(condition)
-                        for property_name, condition in {**layer_properties, **custom_properties}.items()}
+            all_properties = {
+                property_name: filter_properties.extract_literal_match(condition, env)
+                for property_name, condition in {**layer_properties, **custom_properties}.items()
+            }
 
             def eq_value(criterion: Dict[str, object]) -> object:
                 if len(criterion) != 1:

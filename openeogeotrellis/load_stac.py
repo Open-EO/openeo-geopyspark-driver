@@ -55,7 +55,7 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
 
     all_properties = {**layer_properties, **load_params.properties} if layer_properties else load_params.properties
 
-    user: Union[User, None] = env["user"]
+    user: Optional[User] = env.get("user")
 
     requested_bbox = BoundingBox.from_dict_or_none(
         load_params.spatial_extent, default_crs="EPSG:4326"
@@ -135,7 +135,7 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
                 tuple(shape) if shape else None)
 
     literal_matches = {
-        property_name: filter_properties.extract_literal_match(condition)
+        property_name: filter_properties.extract_literal_match(condition, env)
         for property_name, condition in all_properties.items()
     }
 
@@ -171,9 +171,11 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
     max_poll_delay_seconds = backend_config.job_dependencies_max_poll_delay_seconds
     max_poll_time = time.time() + max_poll_delay_seconds
 
-    # TODO: `user` might be None
-    dependency_job_info = _await_dependency_job(url, user, batch_jobs, poll_interval_seconds,
-                                                max_poll_delay_seconds, max_poll_time)
+    dependency_job_info = (
+        _await_dependency_job(url, user, batch_jobs, poll_interval_seconds, max_poll_delay_seconds, max_poll_time)
+        if user
+        else None
+    )
 
     if dependency_job_info:
         intersecting_items = []
@@ -220,7 +222,7 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
 
         if isinstance(stac_object, pystac.Item):
             if load_params.properties:
-                raise properties_unsupported_exception
+                raise properties_unsupported_exception  # as dictated by the load_stac spec
 
             item = stac_object
 
@@ -306,7 +308,7 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
             metadata = GeopysparkCubeMetadata(metadata=catalog.to_dict(include_self_link=False, transform_hrefs=False))
 
             if load_params.properties:
-                raise properties_unsupported_exception
+                raise properties_unsupported_exception  # as dictated by the load_stac spec
 
             if isinstance(catalog, pystac.Collection):
                 collection = catalog
