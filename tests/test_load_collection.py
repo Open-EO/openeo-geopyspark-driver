@@ -526,3 +526,32 @@ def test_load_stac_collection_with_property_filters(catalog, tmp_path, requests_
     with rasterio.open(output_file) as ds:
         assert ds.count == len(expected_bands)
         assert list(ds.descriptions) == expected_bands
+
+
+def test_property_filter_from_parameter(catalog):
+    properties = {
+        "eo:cloud_cover": {
+            "process_graph": {
+                "lte1": {
+                    "process_id": "lte",
+                    "arguments": {
+                        "x": {"from_parameter": "value"},
+                        "y": {"from_parameter": "cloud_cover"}
+                    },
+                    "result": True,
+                }
+            }
+        }
+    }
+
+    load_params = LoadParameters(
+        temporal_extent=("2019-01-01", "2019-01-02"),
+        bands=["TOC-B03_10M"],
+        spatial_extent={"west": 4, "east": 4.001, "north": 52, "south": 51.9999, "crs": 4326},
+        properties=properties,
+    )
+
+    env = EvalEnv().push_parameters({"cloud_cover": 24})
+
+    with pytest.raises(OpenEOApiException, match=r"There is no data available"):
+        catalog.load_collection("TERRASCOPE_S2_TOC_V2", load_params=load_params, env=env)
