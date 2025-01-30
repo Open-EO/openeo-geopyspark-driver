@@ -1970,10 +1970,10 @@ class UrllibAndRequestMocker:
     def get(self, href, data):
         code = 200
         self.urllib_mock.get(href, data, code)
+        self.urllib_poolmanager_mock.get(href, data, code)
         if isinstance(data, str):
             data = data.encode("utf-8")
         self.requests_mock.get(href, content=data)
-        self.urllib_poolmanager_mock.get(href, data, code)
 
 @pytest.fixture
 def urllib_and_request_mock(urllib_mock, requests_mock, urllib_poolmanager_mock) -> UrllibAndRequestMocker:
