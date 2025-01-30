@@ -1941,7 +1941,7 @@ def jvm_mock():
         yield jvm_mock
 
 
-class UrlopenMocker(UrllibMocker):
+class UrllibPoolManagerMocker(UrllibMocker):
     @contextlib.contextmanager
     def patch(self):
         with mock.patch('urllib3.poolmanager.PoolManager.request', new=self._request):
@@ -1956,16 +1956,16 @@ class UrlopenMocker(UrllibMocker):
 
 
 @pytest.fixture
-def urlopen_mocker() -> UrlopenMocker:
-    with UrlopenMocker().patch() as mocker:
+def urllib_poolmanager_mocker() -> UrllibPoolManagerMocker:
+    with UrllibPoolManagerMocker().patch() as mocker:
         yield mocker
 
 
 class UrllibAndRequestMocker:
-    def __init__(self, urllib_mock, requests_mock, urlopen_mocker):
+    def __init__(self, urllib_mock, requests_mock, urllib_poolmanager_mocker):
         self.urllib_mock = urllib_mock
         self.requests_mock = requests_mock
-        self.urlopen_mocker = urlopen_mocker
+        self.urllib_poolmanager_mocker = urllib_poolmanager_mocker
 
     def get(self, href, data):
         code = 200
@@ -1973,11 +1973,11 @@ class UrllibAndRequestMocker:
         if isinstance(data, str):
             data = data.encode("utf-8")
         self.requests_mock.get(href, content=data)
-        self.urlopen_mocker.get(href, data, code)
+        self.urllib_poolmanager_mocker.get(href, data, code)
 
 @pytest.fixture
-def urllib_and_request_mock(urllib_mock, requests_mock, urlopen_mocker) -> UrllibAndRequestMocker:
-    yield UrllibAndRequestMocker(urllib_mock, requests_mock, urlopen_mocker)
+def urllib_and_request_mock(urllib_mock, requests_mock, urllib_poolmanager_mocker) -> UrllibAndRequestMocker:
+    yield UrllibAndRequestMocker(urllib_mock, requests_mock, urllib_poolmanager_mocker)
 
 
 @pytest.fixture
@@ -3578,7 +3578,7 @@ class TestLoadStac:
             "stac/item02.json",
         ],
     )
-    def test_load_stac_with_stac_item_json(self, item_path, api110, urlopen_mocker, tmp_path):
+    def test_load_stac_with_stac_item_json(self, item_path, api110, urllib_poolmanager_mocker, tmp_path):
         """load_stac with a simple STAC item (as JSON file)"""
         item_json = (
             get_test_data_file(item_path).read_text()
@@ -3588,7 +3588,7 @@ class TestLoadStac:
                 "asset01.tiff", f"file://{get_test_data_file('binary/load_stac/BVL_v1/BVL_v1_2021.tif').absolute()}"
             )
         )
-        urlopen_mocker.get("https://stac.test/item.json", data=item_json)
+        urllib_poolmanager_mocker.get("https://stac.test/item.json", data=item_json)
 
         process_graph = {
             "loadstac1": {
@@ -3613,7 +3613,7 @@ class TestLoadStac:
         assert ds.coords["y"].values.min() == pytest.approx(3014000, abs=10)
 
     def test_load_stac_with_stac_item_issue619_non_standard_int_eobands_item_properties(
-        self, api110, urlopen_mocker, tmp_path
+        self, api110, urllib_poolmanager_mocker, tmp_path
     ):
         """
         https://github.com/Open-EO/openeo-geopyspark-driver/issues/619
@@ -3630,7 +3630,7 @@ class TestLoadStac:
             .replace("asset_green.tiff", f"file://{tiff_path}")
             .replace("asset_blue.tiff", f"file://{tiff_path}")
         )
-        urlopen_mocker.get("https://stac.test/item01.json", data=item_json)
+        urllib_poolmanager_mocker.get("https://stac.test/item01.json", data=item_json)
 
         process_graph = {
             "loadstac1": {
@@ -4295,7 +4295,7 @@ class TestLoadStac:
             assert tuple(ds.bounds) == tuple(map(pytest.approx, expected_bbox))
 
     @gps_config_overrides(job_dependencies_poll_interval_seconds=0, job_dependencies_max_poll_delay_seconds=60)
-    def test_load_stac_from_partial_job_results_basic(self, api110, urlopen_mocker, urllib_mock, tmp_path, caplog):
+    def test_load_stac_from_partial_job_results_basic(self, api110, urllib_poolmanager_mocker, urllib_mock, tmp_path, caplog):
         """load_stac from partial job results Collection (signed case)"""
 
         caplog.set_level("DEBUG")
@@ -4326,7 +4326,7 @@ class TestLoadStac:
         results_url = "https://openeo.test/openeo/jobs/j-2402094545c945c09e1307503aa58a3a/results?partial=true"
         response = collection_json("stac/issue786_partial_job_results/collection.json")
         urllib_mock.register("GET", results_url, response=response)
-        urlopen_mocker.register("GET", results_url, response=response)
+        urllib_poolmanager_mocker.register("GET", results_url, response=response)
 
         urllib_mock.get("https://openeo.test/openeo/jobs/j-2402094545c945c09e1307503aa58a3a/results/items/item01.json",
                         data=item_json("stac/issue786_partial_job_results/item01.json"))
