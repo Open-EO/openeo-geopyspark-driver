@@ -2673,7 +2673,7 @@ class TestVectorCubeRunUdf:
         result = api100.check_result(processed).json
         result = drop_empty_from_aggregate_polygon_result(result)
         assert result == DictSubSet(
-            columns=["feature_index", "level_1", 0],
+            columns=["feature_index", "index", 0],
             data=IgnoreOrder(
                 [
                     [0, "2021-01-05T00:00:00.000Z", 5 + 1 + 1],
@@ -2713,13 +2713,13 @@ class TestVectorCubeRunUdf:
         result = api100.check_result(processed).json
         result = drop_empty_from_aggregate_polygon_result(result)
         assert result == DictSubSet(
-            columns=["feature_index", "level_1", "0", "1", "2"],
+            columns=["feature_index", "index", 0, 1, 2],
             data=IgnoreOrder(
                 [
-                    [0, 0, 5 + 15 + 25, 3 * 1, 3 * 1],
-                    [1, 0, 5 + 15 + 25, 3 * 4, 3 * 2],
-                    [2, 0, 5 + 15 + 25, 3 * 2, 3 * 4],
-                    [3, 0, 5 + 15 + 25, 3 * 5, 3 * 0],
+                    [0, 0, 5 + 15 + 25.0, 3 * 1.0, 3 * 1.0],
+                    [1, 0, 5 + 15 + 25.0, 3 * 4.0, 3 * 2.0],
+                    [2, 0, 5 + 15 + 25.0, 3 * 2.0, 3 * 4.0],
+                    [3, 0, 5 + 15 + 25.0, 3 * 5.0, 3 * 0.0],
                 ]
             ),
         )
