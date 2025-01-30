@@ -68,6 +68,7 @@ WHITELIST = [
     EVAL_ENV_KEY.USER,
     EVAL_ENV_KEY.ALLOW_EMPTY_CUBES,
     EVAL_ENV_KEY.DO_EXTENT_CHECK,
+    EVAL_ENV_KEY.PARAMETERS,
 ]
 LARGE_LAYER_THRESHOLD_IN_PIXELS = pow(10, 11)
 
@@ -111,7 +112,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                         + " ".join(issues)
                     )
 
-        return self._load_collection_cached(collection_id, load_params, env)  # FIXME: restore
+        return self._load_collection_cached(collection_id, load_params, WhiteListEvalEnv(env, WHITELIST))
 
     @lru_cache(maxsize=40)
     def _load_collection_cached(self, collection_id: str, load_params: LoadParameters, env: EvalEnv) -> GeopysparkDataCube:
