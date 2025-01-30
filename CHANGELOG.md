@@ -14,7 +14,10 @@ without compromising stable operations.
 
 ## Unreleased
 
+## 0.60.0
+
 - Make environment variables to be passed from web app driver to batch job driver configurable ([#867](https://github.com/Open-EO/openeo-geopyspark-driver/issues/867))
+- `load_collection`/`load_stac`: support parameters in `properties` ([Open-EO/openeo-python-driver#327](https://github.com/Open-EO/openeo-python-driver/issues/327))
 
 ## 0.59.0
 
