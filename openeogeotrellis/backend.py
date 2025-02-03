@@ -48,6 +48,7 @@ from openeo_driver.backend import (
     JobListing,
 )
 from openeo_driver.config.load import ConfigGetter
+from openeo_driver.constants import DEFAULT_LOG_LEVEL_RETRIEVAL
 from openeo_driver.datacube import DriverDataCube, DriverVectorCube
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.delayed_vector import DelayedVector
@@ -2789,9 +2790,11 @@ class GpsBatchJobs(backend.BatchJobs):
     def get_log_entries(
         self,
         job_id: str,
+        *,
         user_id: str,
-        offset: Optional[str] = None,
-        level: Optional[str] = None,
+        offset: Union[str, None] = None,
+        limit: Union[str, None] = None,
+        level: str = DEFAULT_LOG_LEVEL_RETRIEVAL,
     ) -> Iterable[dict]:
         # will throw if job doesn't match user
         job_info = self.get_job_info(job_id=job_id, user_id=user_id)
