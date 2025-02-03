@@ -134,7 +134,8 @@ def _mock_stac_api_root_catalog(requests_mock, root_url: str):
     )
 
 
-def _export_asset(asset: Asset, _: bool) -> str:
+
+def _export_asset(asset: Asset, collection_id: str, relative_asset_path: PurePath, remove_original: bool) -> str:
     # actual copying behaviour is the responsibility of the workspace creator
     return asset.get_absolute_href()
 
@@ -164,7 +165,7 @@ def _collection(
 
     item_id = asset_key = asset_path.name
 
-    item = Item(id=item_id, geometry=None, bbox=None, datetime=dt.datetime.utcnow(), properties={})
+    item = Item(id=item_id, geometry=None, bbox=None, datetime=dt.datetime.now(dt.timezone.utc), properties={})
     asset = Asset(href=str(asset_path))
 
     item.add_asset(asset_key, asset)

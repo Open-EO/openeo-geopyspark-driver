@@ -1,0 +1,87 @@
+<mxfile host="app.diagrams.net" agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36" version="26.0.6">
+  <diagram name="Pagina-1" id="OgwnGcALeTYJm1_mWGGk">
+    <mxGraphModel dx="2074" dy="1136" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="vhtunmTtKn49kY8v_iSu-13" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=1;entryY=0.5;entryDx=0;entryDy=0;entryPerimeter=0;" edge="1" parent="1" source="vhtunmTtKn49kY8v_iSu-1" target="vhtunmTtKn49kY8v_iSu-2">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="290" y="645" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="vhtunmTtKn49kY8v_iSu-1" value="MultibandTileLayerRDD&amp;lt;SpacetimeKey&amp;gt;&lt;div&gt;With Metadata&lt;/div&gt;" style="html=1;outlineConnect=0;whiteSpace=wrap;fillColor=#99ffff;shape=mxgraph.archimate3.application;appType=comp;archiType=square;" vertex="1" parent="1">
+          <mxGeometry x="430" y="620" width="300" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="vhtunmTtKn49kY8v_iSu-2" value="RasterCube" style="html=1;outlineConnect=0;whiteSpace=wrap;fillColor=#ffff99;shape=mxgraph.archimate3.application;appType=passive;archiType=square;" vertex="1" parent="1">
+          <mxGeometry x="180" y="620" width="100" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="vhtunmTtKn49kY8v_iSu-5" value="returns" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="vhtunmTtKn49kY8v_iSu-3" target="vhtunmTtKn49kY8v_iSu-2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="vhtunmTtKn49kY8v_iSu-3" value="load_collection" style="html=1;outlineConnect=0;whiteSpace=wrap;fillColor=#ffff99;shape=mxgraph.archimate3.application;appType=passive;archiType=square;" vertex="1" parent="1">
+          <mxGeometry x="180" y="480" width="100" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="vhtunmTtKn49kY8v_iSu-14" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="vhtunmTtKn49kY8v_iSu-4" target="vhtunmTtKn49kY8v_iSu-3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="vhtunmTtKn49kY8v_iSu-24" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="vhtunmTtKn49kY8v_iSu-4" target="vhtunmTtKn49kY8v_iSu-23">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="vhtunmTtKn49kY8v_iSu-25" value="catalog query" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="vhtunmTtKn49kY8v_iSu-4" target="vhtunmTtKn49kY8v_iSu-23">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="vhtunmTtKn49kY8v_iSu-4" value="FileLayerProvider&lt;br&gt;&lt;span style=&quot;color: rgb(31, 35, 40); font-family: ui-monospace, SFMono-Regular, &amp;quot;SF Mono&amp;quot;, Menlo, Consolas, &amp;quot;Liberation Mono&amp;quot;, monospace; text-align: start; white-space-collapse: preserve; background-color: rgb(172, 238, 187);&quot;&gt;LoadCollectionFromAssets&lt;/span&gt;" style="html=1;outlineConnect=0;whiteSpace=wrap;fillColor=#99ffff;shape=mxgraph.archimate3.application;appType=comp;archiType=square;" vertex="1" parent="1">
+          <mxGeometry x="430" y="480" width="280" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="vhtunmTtKn49kY8v_iSu-6" value="OpenEOProcesses" style="html=1;outlineConnect=0;whiteSpace=wrap;fillColor=#99ffff;shape=mxgraph.archimate3.application;appType=comp;archiType=square;" vertex="1" parent="1">
+          <mxGeometry x="370" y="755" width="150" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="vhtunmTtKn49kY8v_iSu-8" value="transforms" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="vhtunmTtKn49kY8v_iSu-7" target="vhtunmTtKn49kY8v_iSu-2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="vhtunmTtKn49kY8v_iSu-7" value="DataCube Processes&lt;br&gt;(resample_spatial, merge_cubes, apply_dimension,...)" style="html=1;outlineConnect=0;whiteSpace=wrap;fillColor=#ffff99;shape=mxgraph.archimate3.application;appType=passive;archiType=square;" vertex="1" parent="1">
+          <mxGeometry x="130" y="735" width="200" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="vhtunmTtKn49kY8v_iSu-9" value="MultibandTile" style="html=1;outlineConnect=0;whiteSpace=wrap;fillColor=#99ffff;shape=mxgraph.archimate3.application;appType=comp;archiType=square;" vertex="1" parent="1">
+          <mxGeometry x="491" y="840" width="180" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="vhtunmTtKn49kY8v_iSu-10" value="contains" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;entryPerimeter=0;endArrow=diamond;endFill=0;" edge="1" parent="1" source="vhtunmTtKn49kY8v_iSu-1" target="vhtunmTtKn49kY8v_iSu-9">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="vhtunmTtKn49kY8v_iSu-11" value="Scalar &amp;amp; Array Processes&lt;br&gt;sum, mean, abs, array_apply,...." style="html=1;outlineConnect=0;whiteSpace=wrap;fillColor=#ffff99;shape=mxgraph.archimate3.application;appType=passive;archiType=square;" vertex="1" parent="1">
+          <mxGeometry x="141" y="932.5" width="150" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="vhtunmTtKn49kY8v_iSu-12" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=1;entryY=0.5;entryDx=0;entryDy=0;entryPerimeter=0;" edge="1" parent="1" source="vhtunmTtKn49kY8v_iSu-6" target="vhtunmTtKn49kY8v_iSu-7">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="vhtunmTtKn49kY8v_iSu-16" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="vhtunmTtKn49kY8v_iSu-15" target="vhtunmTtKn49kY8v_iSu-11">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="vhtunmTtKn49kY8v_iSu-15" value="OpenEOProcessScriptBuilder" style="html=1;outlineConnect=0;whiteSpace=wrap;fillColor=#99ffff;shape=mxgraph.archimate3.application;appType=comp;archiType=square;" vertex="1" parent="1">
+          <mxGeometry x="476" y="945" width="210" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="vhtunmTtKn49kY8v_iSu-17" value="transforms" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=1;entryDx=0;entryDy=0;entryPerimeter=0;" edge="1" parent="1" source="vhtunmTtKn49kY8v_iSu-15" target="vhtunmTtKn49kY8v_iSu-9">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="vhtunmTtKn49kY8v_iSu-18" value="save_result" style="html=1;outlineConnect=0;whiteSpace=wrap;fillColor=#ffff99;shape=mxgraph.archimate3.application;appType=passive;archiType=square;" vertex="1" parent="1">
+          <mxGeometry x="156" y="1070" width="120" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="vhtunmTtKn49kY8v_iSu-19" value="SaveResultAsGeotiff" style="html=1;outlineConnect=0;whiteSpace=wrap;fillColor=#99ffff;shape=mxgraph.archimate3.application;appType=comp;archiType=square;" vertex="1" parent="1">
+          <mxGeometry x="504" y="1058" width="154" height="42" as="geometry" />
+        </mxCell>
+        <mxCell id="vhtunmTtKn49kY8v_iSu-20" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;entryPerimeter=0;" edge="1" parent="1" source="vhtunmTtKn49kY8v_iSu-18" target="vhtunmTtKn49kY8v_iSu-19">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="vhtunmTtKn49kY8v_iSu-21" value="SaveResultAsNetCDF" style="html=1;outlineConnect=0;whiteSpace=wrap;fillColor=#99ffff;shape=mxgraph.archimate3.application;appType=comp;archiType=square;" vertex="1" parent="1">
+          <mxGeometry x="504" y="1120" width="154" height="42" as="geometry" />
+        </mxCell>
+        <mxCell id="vhtunmTtKn49kY8v_iSu-22" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;entryPerimeter=0;" edge="1" parent="1" source="vhtunmTtKn49kY8v_iSu-18" target="vhtunmTtKn49kY8v_iSu-21">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="vhtunmTtKn49kY8v_iSu-23" value="OpenSearchClient" style="html=1;outlineConnect=0;whiteSpace=wrap;fillColor=#99ffff;shape=mxgraph.archimate3.application;appType=comp;archiType=square;" vertex="1" parent="1">
+          <mxGeometry x="490" y="380" width="160" height="40" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

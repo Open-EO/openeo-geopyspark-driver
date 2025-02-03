@@ -68,6 +68,7 @@ WHITELIST = [
     EVAL_ENV_KEY.USER,
     EVAL_ENV_KEY.ALLOW_EMPTY_CUBES,
     EVAL_ENV_KEY.DO_EXTENT_CHECK,
+    EVAL_ENV_KEY.PARAMETERS,
 ]
 LARGE_LAYER_THRESHOLD_IN_PIXELS = pow(10, 11)
 
@@ -113,9 +114,9 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
         return self._load_collection_cached(collection_id, load_params, WhiteListEvalEnv(env, WHITELIST))
 
-    @lru_cache(maxsize=20)
+    @lru_cache(maxsize=40)
     def _load_collection_cached(self, collection_id: str, load_params: LoadParameters, env: EvalEnv) -> GeopysparkDataCube:
-        logger.info("Creating layer for {c} with load params {p}".format(c=collection_id, p=load_params))
+        logger.info(f"load_collection: Creating raster datacube for {collection_id} with arguments {load_params}, environment: {env}")
 
         from_date, to_date = temporal_extent = normalize_temporal_extent(load_params.temporal_extent)
         spatial_extent = load_params.spatial_extent
@@ -166,7 +167,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         catalog_type = layer_source_info.get("catalog_type", "")  # E.g. STAC, Opensearch, Creodias
 
         postprocessing_band_graph = metadata.get("_vito", "postprocessing_bands", default=None)
-        logger.info("Layer source type: {s!r}".format(s=layer_source_type))
+        logger.debug("Cube source type: {s!r}".format(s=layer_source_type))
         cell_width = float(metadata.get("cube:dimensions", "x", "step", default=10.0))
         cell_height = float(metadata.get("cube:dimensions", "y", "step", default=10.0))
 
@@ -177,7 +178,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             metadata = metadata.rename_labels(metadata.band_dimension.name, bands, metadata.band_names)
         else:
             band_indices = None
-        logger.info("band_indices: {b!r}".format(b=band_indices))
+        logger.debug("band_indices: {b!r}".format(b=band_indices))
         # TODO: avoid this `still_needs_band_filter` ugliness.
         #       Also see https://github.com/Open-EO/openeo-geopyspark-driver/issues/29
         still_needs_band_filter = False
@@ -271,8 +272,10 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             layer_properties = metadata.get("_vito", "properties", default={})
             custom_properties = load_params.properties
 
-            all_properties = {property_name: filter_properties.extract_literal_match(condition)
-                        for property_name, condition in {**layer_properties, **custom_properties}.items()}
+            all_properties = {
+                property_name: filter_properties.extract_literal_match(condition, env)
+                for property_name, condition in {**layer_properties, **custom_properties}.items()
+            }
 
             def eq_value(criterion: Dict[str, object]) -> object:
                 if len(criterion) != 1:
@@ -306,13 +309,19 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
         def file_s2_pyramid():
             def pyramid_factory(
-                opensearch_endpoint,
-                opensearch_collection_id,
+                opensearch_endpoint: str,
+                opensearch_collection_id: str,
                 opensearch_link_titles,
-                root_path,
+                root_path: str,
             ):
                 opensearch_client = jvm.org.openeo.opensearch.OpenSearchClient.apply(
-                    opensearch_endpoint, is_utm, "", metadata.band_names, catalog_type, metadata.parallel_query()
+                    opensearch_endpoint,
+                    is_utm,
+                    "",
+                    metadata.band_names,
+                    catalog_type,
+                    metadata.parallel_query(),
+                    metadata.select_one_orbit_per_day(),
                 )
 
                 return jvm.org.openeo.geotrellis.file.PyramidFactory(
@@ -635,7 +644,6 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             )
             return create_pyramid(factory)
 
-        logger.info("loading pyramid {s}".format(s=layer_source_type))
 
         if layer_source_type == 'file-s2':
             pyramid = file_s2_pyramid()
@@ -658,7 +666,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         elif layer_source_type == 'file-oscars'  or layer_source_type == "cgls_oscars":
             pyramid = file_s2_pyramid()
         elif layer_source_type == 'creodias-s1-backscatter':
-            sar_backscatter_arguments = load_params.sar_backscatter or SarBackscatterArgs()
+            #make a copy before modifying: it is used as a cache key
+            sar_backscatter_arguments = deepcopy(load_params.sar_backscatter or SarBackscatterArgs())
             sar_backscatter_arguments.options["resolution"] = (cell_width, cell_height)
             s1_backscatter_orfeo = get_s1_backscatter_orfeo(
                 version=sar_backscatter_arguments.options.get("implementation_version", "2"),

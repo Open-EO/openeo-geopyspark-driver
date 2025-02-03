@@ -1,8 +1,7 @@
+import datetime as dt
 import json
 import os
 import shutil
-import subprocess
-import sys
 import tempfile
 import uuid
 from pathlib import Path, PurePath
@@ -26,12 +25,13 @@ from openeo_driver.workspace import DiskWorkspace
 from osgeo import gdal
 from shapely.geometry import Point, Polygon, shape
 
+from openeogeotrellis.workspace import StacApiWorkspace
 from openeogeotrellis._version import __version__
 from openeogeotrellis.backend import JOB_METADATA_FILENAME
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.deploy.batch_job import run_job
 from openeogeotrellis.deploy.batch_job_metadata import extract_result_metadata
-from openeogeotrellis.utils import s3_client
+from openeogeotrellis.utils import s3_client, GDALINFO_SUFFIX
 from openeogeotrellis.workspace import ObjectStorageWorkspace
 from openeogeotrellis.workspace.custom_stac_io import CustomStacIO
 from .conftest import force_stop_spark_context, _setup_local_spark
@@ -914,7 +914,8 @@ def test_multiple_image_collection_results(tmp_path):
 
 
 @pytest.mark.parametrize("remove_original", [False, True])
-def test_export_workspace(tmp_path, remove_original):
+@pytest.mark.parametrize("attach_gdalinfo_assets", [False, True])
+def test_export_workspace(tmp_path, remove_original, attach_gdalinfo_assets):
     workspace_id = "tmp"
     merge = _random_merge()
 
@@ -932,6 +933,9 @@ def test_export_workspace(tmp_path, remove_original):
             "process_id": "save_result",
             "arguments": {
                 "data": {"from_node": "loadcollection1"},
+                "options": {
+                    "attach_gdalinfo_assets": attach_gdalinfo_assets,
+                },
                 "format": "GTiff"
             },
         },
@@ -979,25 +983,39 @@ def test_export_workspace(tmp_path, remove_original):
             assert "openEO_2021-01-05Z.tif" in job_dir_files
             assert "openEO_2021-01-15Z.tif" in job_dir_files
 
-        assert _paths_relative_to(workspace_dir) == {
+        expected_paths = {
             Path("collection.json"),
             Path("openEO_2021-01-05Z.tif"),
             Path("openEO_2021-01-05Z.tif.json"),
             Path("openEO_2021-01-15Z.tif"),
             Path("openEO_2021-01-15Z.tif.json"),
         }
+        if attach_gdalinfo_assets:
+            expected_paths |= {
+                Path(f"openEO_2021-01-05Z.tif{GDALINFO_SUFFIX}"),
+                Path(f"openEO_2021-01-05Z.tif{GDALINFO_SUFFIX}.json"),
+                Path(f"openEO_2021-01-15Z.tif{GDALINFO_SUFFIX}"),
+                Path(f"openEO_2021-01-15Z.tif{GDALINFO_SUFFIX}.json"),
+            }
+        assert _paths_relative_to(workspace_dir) == expected_paths
 
         stac_collection = pystac.Collection.from_file(str(workspace_dir / "collection.json"))
         stac_collection.validate_all()
 
+        assert stac_collection.extent.spatial.bboxes == [[0.0, 0.0, 1.0, 2.0]]
+        assert stac_collection.extent.temporal.intervals == [
+            [dt.datetime(2021, 1, 5, tzinfo=dt.timezone.utc), dt.datetime(2021, 1, 16, tzinfo=dt.timezone.utc)]
+        ]
+
         item_links = [item_link for item_link in stac_collection.links if item_link.rel == "item"]
-        assert len(item_links) == 2
+        assert len(item_links) == 4 if attach_gdalinfo_assets else 2
         item_link = [item_link for item_link in item_links if "openEO_2021-01-05Z.tif" in item_link.href][0]
 
         assert item_link.media_type == "application/geo+json"
         assert item_link.href == "./openEO_2021-01-05Z.tif.json"
 
         items = list(stac_collection.get_items())
+        items = list(filter(lambda x: "data" in x.assets[x.id].roles, items))
         assert len(items) == 2
 
         item = [item for item in items if item.id == "openEO_2021-01-05Z.tif"][0]
@@ -1166,6 +1184,7 @@ def test_filepath_per_band(
     s3_instance = s3_client()
 
     merge = _random_merge()
+    attach_gdalinfo_assets = True
 
     process_graph = {
         "loadcollection1": {
@@ -1200,6 +1219,7 @@ def test_filepath_per_band(
                 "format": "GTiff",
                 "options": {
                     "separate_asset_per_band": "true",
+                    "attach_gdalinfo_assets": attach_gdalinfo_assets,
                     "filepath_per_band": ["folder1/lon.tif", "lat.tif"],
                 },
             },
@@ -1253,13 +1273,22 @@ def test_filepath_per_band(
         stac_collection = pystac.Collection.from_file(str(tmp_path / "collection.json"))
         stac_collection.validate_all()
         item_links = [item_link for item_link in stac_collection.links if item_link.rel == "item"]
-        assert len(item_links) == 2
+        assert len(item_links) == 4 if attach_gdalinfo_assets else 2
+        for item in item_links:
+            assert os.path.exists(tmp_path / item.href)
         item_link = item_links[0]
 
         assert item_link.media_type == "application/geo+json"
         assert item_link.href == "./folder1/lon.tif.json"
 
-        items = list(stac_collection.get_items())
+        items_all = list(stac_collection.get_items())
+
+        for item in items_all:
+            assert os.path.exists(tmp_path / item.self_href)
+            for asset in item.assets:
+                assert (Path(item.self_href).parent / item.assets[asset].href).exists()
+
+        items = list(filter(lambda x: "data" in x.assets[x.id].roles, items_all))
         assert len(items) == 2
 
         item = items[0]
@@ -1480,6 +1509,7 @@ def test_export_workspace_merge_filepath_per_band(tmp_path, mock_s3_bucket):
         "process_graph": process_graph,
         "job_options": {
             "export-workspace-enable-merge": enable_merge,
+            "concurrent-save-results": 4,  # TODO: Make this the default
         },
     }
 
@@ -1541,7 +1571,150 @@ def test_export_workspace_merge_filepath_per_band(tmp_path, mock_s3_bucket):
         load_exported_collection(f"s3://{object_workspace.bucket}/{merge}")
         load_exported_collection(str(disk_workspace.root_directory / merge))
     finally:
-        shutil.rmtree(workspace_dir)
+        if os.path.exists(workspace_dir):
+            shutil.rmtree(workspace_dir)
+
+
+@pytest.mark.parametrize("kube", [False])  # kube==True will not run on Jenkins
+def test_export_workspace_merge_into_stac_api(
+    tmp_path,
+    mock_s3_bucket,
+    requests_mock,
+    urllib_mock,
+    kube,
+    moto_server,
+    monkeypatch,
+):
+    if kube:
+        assert not get_backend_config().fuse_mount_batchjob_s3_bucket
+
+        monkeypatch.setenv("KUBE", "TRUE")
+        force_stop_spark_context()
+
+        class TerminalReporterMock:
+            @staticmethod
+            def write_line(message):
+                print(message)
+
+        _setup_local_spark(TerminalReporterMock(), 0)
+
+    job_dir = tmp_path
+
+    stac_api_workspace_id = "stac_api_workspace"
+    stac_api_workspace = get_backend_config().workspaces[stac_api_workspace_id]
+    assert isinstance(stac_api_workspace, StacApiWorkspace)
+
+    enable_merge = True
+    collection_id = "collection1"
+
+    # the root Catalog
+    requests_mock.get(stac_api_workspace.root_url, json={
+        "type": "Catalog",
+        "stac_version": "1.0.0",
+        "id": "stac.test",
+        "description": "stac.test",
+        "conformsTo": [
+            "https://api.stacspec.org/v1.0.0/collections",
+            "https://api.stacspec.org/v1.0.0/collections/extensions/transaction",
+            "https://api.stacspec.org/v1.0.0/ogcapi-features/extensions/transaction",
+        ],
+        "links": [],
+    })
+
+    # does the Collection already exist?
+    urllib_mock.get(f"{stac_api_workspace.root_url}/collections/{collection_id}", code=404, data="Not Found")
+
+    # create STAC objects
+    create_collection = requests_mock.post(f"{stac_api_workspace.root_url}/collections")
+    create_item = requests_mock.post(f"{stac_api_workspace.root_url}/collections/{collection_id}/items")
+
+    process_graph = {
+        "loadcollection1": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "TestCollection-LonLat16x16",
+                "temporal_extent": ["2021-01-05", "2021-01-06"],
+                "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 2.0},
+                "bands": ["Longitude", "Latitude"],
+            },
+        },
+        "reducedimension1": {
+            "process_id": "reduce_dimension",
+            "arguments": {
+                "data": {"from_node": "loadcollection1"},
+                "dimension": "t",
+                "reducer": {
+                    "process_graph": {
+                        "first1": {
+                            "process_id": "first",
+                            "arguments": {
+                                "data": {"from_parameter": "data"}
+                            },
+                            "result": True,
+                        }
+                    }
+                },
+            },
+        },
+        "saveresult1": {
+            "process_id": "save_result",
+            "arguments": {
+                "data": {"from_node": "reducedimension1"},
+                "format": "GTiff",
+                "options": {
+                    "separate_asset_per_band": "true",
+                    "filepath_per_band": ["some/deeply/nested/folder/lon.tif", "lat.tif"],
+                },
+            },
+        },
+        "exportworkspace1": {
+            "process_id": "export_workspace",
+            "arguments": {
+                "data": {"from_node": "saveresult1"},
+                "workspace": stac_api_workspace_id,
+                "merge": collection_id,
+            },
+            "result": True,
+        },
+    }
+
+    process = {
+        "process_graph": process_graph,
+        "job_options": {
+            "export-workspace-enable-merge": enable_merge,
+        },
+    }
+
+    run_job(
+        process,
+        output_file=job_dir / "out",
+        metadata_file=job_dir / "job_metadata.json",
+        api_version="2.0.0",
+        job_dir=job_dir,
+        dependencies=[],
+    )
+
+    assert create_collection.called_once
+    assert create_item.call_count == 2
+
+    assert create_item.request_history[0].json()["assets"] == {
+        "lat.tif": DictSubSet({
+            "href": f"s3://openeo-fake-bucketname/{collection_id}/lat.tif"
+        })
+    }
+
+    assert create_item.request_history[1].json()["assets"] == {
+        "some/deeply/nested/folder/lon.tif": DictSubSet({
+            "href": f"s3://openeo-fake-bucketname/{collection_id}/some/deeply/nested/folder/lon.tif"
+        })
+    }
+
+    exported_asset_keys = [PurePath(obj.key) for obj in mock_s3_bucket.objects.all()]
+
+    assert exported_asset_keys == ListSubSet([
+        Path(collection_id) / "some/deeply/nested/folder/lon.tif",
+        Path(collection_id) / "lat.tif",
+    ])
 
 
 def _object_key(s3_uri: str) -> str:
@@ -1587,7 +1760,7 @@ def test_discard_result(tmp_path):
     )
 
     # runs to completion without output assets
-    assert set(os.listdir(tmp_path)) == {"job_metadata.json", "collection.json"}
+    assert os.listdir(tmp_path) == ["job_metadata.json"]
 
 
 def test_multiple_top_level_side_effects(tmp_path, caplog):

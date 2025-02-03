@@ -164,6 +164,14 @@ def test_extract_result_metadata_reprojects_bbox_when_bbox_crs_not_epsg4326(
         arguments={
             "temporal_extent": ["2020-02-02", "2020-03-03"],
         },
+        metadata={
+            "cube:dimensions": {
+                "t": {"type": "temporal"},
+                "bands": {"type": "bands"},
+                "x": {"type": "spatial"},
+                "y": {"type": "spatial"},
+            }
+        },
     )
     cube = cube.filter_bbox(
         west=west, south=south, east=east, north=north, crs=crs_epsg
@@ -211,6 +219,14 @@ def test_extract_result_metadata_aggregate_spatial_when_bbox_crs_not_epsg4326(
         collection_id="Sentinel2",
         arguments={
             "temporal_extent": ["2020-02-02", "2020-03-03"],
+        },
+        metadata={
+            "cube:dimensions": {
+                "t": {"type": "temporal"},
+                "bands": {"type": "bands"},
+                "x": {"type": "spatial"},
+                "y": {"type": "spatial"},
+            }
         },
     )
     cube = cube.filter_bbox(
@@ -279,6 +295,14 @@ def test_extract_result_metadata_aggregate_spatial_delayed_vector_when_bbox_crs_
         collection_id="Sentinel2",
         arguments={
             "temporal_extent": ["2020-02-02", "2020-03-03"],
+        },
+        metadata={
+            "cube:dimensions": {
+                "t": {"type": "temporal"},
+                "bands": {"type": "bands"},
+                "x": {"type": "spatial"},
+                "y": {"type": "spatial"},
+            }
         },
     )
     cube = cube.filter_bbox(

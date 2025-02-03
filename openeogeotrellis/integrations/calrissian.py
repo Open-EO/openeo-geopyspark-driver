@@ -158,7 +158,6 @@ class CalrissianJobLauncher:
         self,
         cwl_path: str,
         cwl_arguments: List[str],
-        # TODO: arguments to set an actual CWL workflow and inputs
     ) -> Tuple[kubernetes.client.V1Job, str]:
         """
         Create a k8s manifest for a Calrissian CWL job.

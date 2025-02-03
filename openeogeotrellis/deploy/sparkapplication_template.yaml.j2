@@ -248,10 +248,14 @@ spec:
         value: {{ openeo_ejr_backend_id }}
       - name: OPENEO_EJR_OIDC_CLIENT_CREDENTIALS
         value: {{ openeo_ejr_oidc_client_credentials }}
-      - name: TRY_SWIFT_STREAMING
-        value: "{{ try_swift_streaming }}"
-      - name: OPENEO_STAC_OIDC_CLIENT_SECRET_STAC_OPENEO_DEV
-        value: {{ openeo_stac_oidc_client_secret_stac_openeo_dev }}
+{%- if separate_asset_per_band_new_partitioner is defined and separate_asset_per_band_new_partitioner is not none %}
+      - name: SEPARATE_ASSET_PER_BAND_NEW_PARTITIONER
+        value: "{{ separate_asset_per_band_new_partitioner }}"
+{%- endif %}
+{%- for envar, value in propagatable_web_app_driver_envars.items() %}
+      - name: {{ envar }}
+        value: {{ value }}
+{%- endfor %}
 {%- endblock %}
     labels:
 {%- block driver_labels %}
@@ -395,8 +399,10 @@ spec:
         value: "{{ python_max_memory }}"
       - name: CPL_DEBUG
         value: "OFF"
-      - name: TRY_SWIFT_STREAMING
-        value: "{{ try_swift_streaming }}"
+{%- if separate_asset_per_band_new_partitioner is defined and separate_asset_per_band_new_partitioner is not none %}
+      - name: SEPARATE_ASSET_PER_BAND_NEW_PARTITIONER
+        value: "{{ separate_asset_per_band_new_partitioner }}"
+{%- endif %}
 {%- endblock %}
     labels:
 {%- block executor_labels %}

@@ -1,0 +1,27 @@
+project:
+  type: website
+  preview:
+    port: 4200
+
+website:
+  search:
+    location: sidebar
+    type: textbox
+    copy-button: true
+
+  navbar:
+    pinned: true
+  page-navigation: true
+  title: "openEO Geotrellis documentation"
+  sidebar:
+    style: "floating"
+    collapse-level: 2
+    contents:
+      - href: development.md
+        text: Development
+      - href: geotrellis_processing.md
+        text: Geotrellis Processing
+      - href: performance_debug.md
+        text: Performance Debugging
+      - href: vectorcube-run_udf.md
+        text: Running UDF on vector cube

@@ -72,7 +72,7 @@ class ObjectStorageWorkspace(Workspace):
         stac_resource = stac_resource.full_copy()
 
         # TODO: reduce code duplication with openeo_driver.workspace.DiskWorkspace
-        # TODO: relies on item ID == asset key == asset path; avoid?
+        # TODO: relies on item ID == asset key == relative asset path; avoid?
         def href_layout_strategy() -> HrefLayoutStrategy:
             def collection_func(_: Collection, parent_dir: str, is_root: bool) -> str:
                 if not is_root:

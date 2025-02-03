@@ -14,7 +14,31 @@ without compromising stable operations.
 
 ## Unreleased
 
+## 0.60.0
+
+- Make environment variables to be passed from web app driver to batch job driver configurable ([#867](https://github.com/Open-EO/openeo-geopyspark-driver/issues/867))
+- `load_collection`/`load_stac`: support parameters in `properties` ([Open-EO/openeo-python-driver#327](https://github.com/Open-EO/openeo-python-driver/issues/327))
+
+## 0.59.0
+
+- load_stac: cube creation is now cached, just like load_collection ([#993](https://github.com/Open-EO/openeo-geopyspark-driver/issues/993))
+- logs: Provide a performance summary at the end of a batch job.
+- `StacApiWorkspace`: support `filepath_per_band` ([#867](https://github.com/Open-EO/openeo-geopyspark-driver/issues/867))
+- `load_stac`: use STAC API Filter Extension to prevent driver OOM ([#979](https://github.com/Open-EO/openeo-geopyspark-driver/issues/979))
+
+## 0.58.1
+
+- Fix spatial and temporal extents of exported STAC Collection ([#867](https://github.com/Open-EO/openeo-geopyspark-driver/issues/867))
+
+## 0.58.0
+
 - Improve "App not found" logs to avoid red herrings in root cause analysis ([eu-cdse/openeo-cdse-infra#147](https://github.com/eu-cdse/openeo-cdse-infra/issues/147))
+- Avoid pixel shift when source data is not aligned in load_stac. ([#648](https://github.com/Open-EO/openeo-geopyspark-driver/issues/648))
+- Fix when outputting an empty vector cube to GeoParquet ([#987](https://github.com/Open-EO/openeo-geopyspark-driver/issues/987))
+- Fix for outputting a vector cube to legacy `timeseries.json` format. ([#342](https://github.com/Open-EO/openeo-python-driver/issues/342))
+- Add gdalinfo json files next to tiff files. ([openeo-geotrellis-extensions#352](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/352))
+- Support exporting assets for different collections to different paths ([#867](https://github.com/Open-EO/openeo-geopyspark-driver/issues/867))
+- load_collection: bugfix in 'global extent' computation, increases performance ([#334](https://github.com/Open-EO/openeo-python-driver/issues/334))
 
 ## 0.57.0
 
@@ -27,6 +51,7 @@ without compromising stable operations.
 ## 0.55.0
 
 - Support `file_metadata` format option to set file-specific metadata on `GTiff` output assets ([#970](https://github.com/Open-EO/openeo-geopyspark-driver/issues/970))
+- load_collection for Sentinel-3 Level2 data: avoid data corruption in specific case ([#755](https://github.com/Open-EO/openeo-geopyspark-driver/issues/755))
 
 ## 0.54.0
 

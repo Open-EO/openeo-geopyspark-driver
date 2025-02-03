@@ -20,7 +20,7 @@ class StacApiWorkspace(Workspace):
     def __init__(
         self,
         root_url: str,
-        export_asset: Callable[[Asset, bool], str],  # (asset, remove_original) => workspace URI
+        export_asset: Callable[[Asset, str, PurePath, bool], str],  # asset, collection_id, relative_asset_path, remove_original
         asset_alternate_id: str,
         additional_collection_properties=None,
         get_access_token: Callable[[], str] = None,
@@ -31,11 +31,6 @@ class StacApiWorkspace(Workspace):
         :param get_access_token: supply an access token, if needed
         :param export_asset: copy/move an asset and return its workspace URI, to be used as an alternate URI
         :param asset_alternate_id
-
-        Re: export_asset:
-        * locally with assets on disk: possibly copy to a persistent directory and adapt href
-        * Terrascope: possibly copy to a public directory and adapt href
-        * CDSE: possibly translate file path to s3:// URI and adapt href
         """
 
         if additional_collection_properties is None:
@@ -98,10 +93,18 @@ class StacApiWorkspace(Workspace):
                 )
 
                 for new_item in new_collection.get_items():
-                    for asset in new_item.assets.values():
+                    for asset_key, asset in new_item.assets.items():
+                        relative_asset_path = PurePath(asset_key)  # TODO: relies asset key == relative asset path; avoid?
+
                         # client takes care of copying asset and returns its workspace URI
-                        workspace_uri = self._export_asset(asset, remove_original)
+                        workspace_uri = self._export_asset(
+                            asset,
+                            collection_id,
+                            relative_asset_path,
+                            remove_original,
+                        )
                         _log.info(f"exported asset {asset.get_absolute_href()} as {workspace_uri}")
+
                         asset.href = workspace_uri
 
                     self._upload_item(new_item, collection_id, session)

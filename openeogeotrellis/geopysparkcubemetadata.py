@@ -130,11 +130,14 @@ class GeopysparkCubeMetadata(CollectionMetadata):
     def provider_backend(self) -> Union[str, None]:
         return self.get("_vito", "data_source", "provider:backend", default=None)
 
-    def auto_polarization(self) -> Union[str, None]:
+    def auto_polarization(self) -> bool:
         return self.get("_vito", "data_source", "auto_polarization", default=False)
 
-    def parallel_query(self) -> Union[str, None]:
+    def parallel_query(self) -> bool:
         return self.get("_vito", "data_source", "parallel_query", default=False)
+
+    def select_one_orbit_per_day(self) -> bool:
+        return self.get("_vito", "data_source", "select_one_orbit_per_day", default=False)
 
     def common_name_priority(self) -> int:
         priority = self.get("_vito", "data_source", "common_name_priority", default=None)

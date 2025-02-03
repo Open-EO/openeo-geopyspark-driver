@@ -117,8 +117,8 @@ def main():
 
 @non_standard_process(
     ProcessSpec(id="_cwl_demo", description="Proof-of-concept process to run CWL based processing.")
-    .param(name="name", description="Name to greet", schema={"type": "string"}, required=False)
-    .returns(description="data", schema={})
+    .param(name="name", description="Name to greet.", schema={"type": "string"}, required=False)
+    .returns(description="data", schema={"type": "string"})
 )
 def _cwl_demo(args: ProcessArgs, env: EvalEnv):
     """Proof of concept openEO process to run CWL based processing"""

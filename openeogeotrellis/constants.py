@@ -9,3 +9,4 @@ class EVAL_ENV_KEY:
     USER = "user"
     ALLOW_EMPTY_CUBES = "allow_empty_cubes"
     DO_EXTENT_CHECK = "do_extent_check"
+    PARAMETERS = "parameters"

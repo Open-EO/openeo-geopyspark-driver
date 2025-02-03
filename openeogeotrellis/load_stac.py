@@ -1,8 +1,10 @@
 import datetime as dt
+import json
 import time
-from functools import partial
+from functools import partial, lru_cache
 import logging
-from typing import Union, Optional, Tuple, Dict, List, Iterable
+import os
+from typing import Union, Optional, Tuple, Dict, List, Iterable, Any
 from urllib.parse import urlparse
 
 import dateutil.parser
@@ -38,7 +40,6 @@ from openeogeotrellis.utils import normalize_temporal_extent, get_jvm, to_projec
 
 logger = logging.getLogger(__name__)
 
-
 def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_properties: Dict[str, object],
               batch_jobs: Optional[backend.BatchJobs], override_band_names: List[str] = None) -> GeopysparkDataCube:
     if override_band_names is None:
@@ -52,9 +53,9 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
                                                      code="NoDataAvailable", status_code=400)
     properties_unsupported_exception = ProcessParameterUnsupportedException("load_stac", "properties")
 
-    all_properties = {**layer_properties, **load_params.properties}
+    all_properties = {**layer_properties, **load_params.properties} if layer_properties else load_params.properties
 
-    user: Union[User, None] = env["user"]
+    user: Optional[User] = env.get("user")
 
     requested_bbox = BoundingBox.from_dict_or_none(
         load_params.spatial_extent, default_crs="EPSG:4326"
@@ -134,7 +135,7 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
                 tuple(shape) if shape else None)
 
     literal_matches = {
-        property_name: filter_properties.extract_literal_match(condition)
+        property_name: filter_properties.extract_literal_match(condition, env)
         for property_name, condition in all_properties.items()
     }
 
@@ -170,9 +171,11 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
     max_poll_delay_seconds = backend_config.job_dependencies_max_poll_delay_seconds
     max_poll_time = time.time() + max_poll_delay_seconds
 
-    # TODO: `user` might be None
-    dependency_job_info = _await_dependency_job(url, user, batch_jobs, poll_interval_seconds,
-                                                max_poll_delay_seconds, max_poll_time)
+    dependency_job_info = (
+        _await_dependency_job(url, user, batch_jobs, poll_interval_seconds, max_poll_delay_seconds, max_poll_time)
+        if user
+        else None
+    )
 
     if dependency_job_info:
         intersecting_items = []
@@ -219,7 +222,7 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
 
         if isinstance(stac_object, pystac.Item):
             if load_params.properties:
-                raise properties_unsupported_exception
+                raise properties_unsupported_exception  # as dictated by the load_stac spec
 
             item = stac_object
 
@@ -268,8 +271,14 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
 
             client = pystac_client.Client.open(root_catalog.get_self_href(), modifier=modifier)
 
+            cql2_filter = _cql2_filter(
+                client,
+                literal_matches,
+                use_filter_extension=feature_flags.get("use-filter-extension", True),
+            )
+
             search_request = client.search(
-                method="GET",
+                method="POST" if isinstance(cql2_filter, dict) else "GET",
                 collections=collection_id,
                 bbox=requested_bbox.reproject("EPSG:4326").as_wsen_tuple() if requested_bbox else None,
                 limit=20,
@@ -279,11 +288,17 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
                     else f"{from_date.isoformat().replace('+00:00', 'Z')}/"
                     f"{to_date.isoformat().replace('+00:00', 'Z')}"  # end is inclusive
                 ),
-                filter=_cql2_text_filter(literal_matches) if feature_flags.get("use-filter-extension", False) else None,
+                filter=cql2_filter,
                 fields=fields,
             )
 
-            logger.info(f"STAC API request: GET {search_request.url_with_parameters()}")
+            if isinstance(cql2_filter, dict):
+                logger.info(
+                    f"STAC API request: {search_request.method} {search_request.url} "
+                    f"with body {json.dumps(search_request.get_parameters())}"
+                )
+            else:
+                logger.info(f"STAC API request: {search_request.method} {search_request.url_with_parameters()}")
 
             # STAC API might not support Filter Extension so always use client-side filtering as well
             intersecting_items = filter(matches_metadata_properties, search_request.items())
@@ -293,7 +308,7 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
             metadata = GeopysparkCubeMetadata(metadata=catalog.to_dict(include_self_link=False, transform_hrefs=False))
 
             if load_params.properties:
-                raise properties_unsupported_exception
+                raise properties_unsupported_exception  # as dictated by the load_stac spec
 
             if isinstance(catalog, pystac.Collection):
                 collection = catalog
@@ -609,7 +624,12 @@ def get_best_url(asset: pystac.Asset):
             else:
                 logger.warning(f"Only support file paths as local alternate urls, but found {href}")
 
-    return asset.get_absolute_href() or asset.href
+    href = asset.get_absolute_href() or asset.href
+
+    return (
+        href.replace("s3://eodata/", "/vsis3/EODATA/") if os.environ.get("AWS_DIRECT") == "TRUE"
+        else href.replace("s3://eodata/", "/eodata/")
+    )
 
 
 def _compute_cellsize(proj_bbox, proj_shape):
@@ -701,10 +721,75 @@ def _await_stac_object(url, poll_interval_seconds, max_poll_delay_seconds, max_p
     return stac_object
 
 
-def _cql2_text_filter(literal_matches) -> str:
+def _cql2_filter(
+    client: pystac_client.Client,
+    literal_matches: Dict[str, Dict[str, Any]],
+    use_filter_extension: Union[bool, str],
+) -> Union[str, dict, None]:
+    if use_filter_extension == "cql2-json":  # force POST JSON
+        return _cql2_json_filter(literal_matches)
+
+    if use_filter_extension == "cql2-text":  # force GET text
+        return _cql2_text_filter(literal_matches)
+
+    if use_filter_extension:  # auto-detect, favor POST
+        search_links = client.get_links(rel="search")
+        supports_post_search = any(link.extra_fields.get("method") == "POST" for link in search_links)
+
+        return (
+            _cql2_json_filter(literal_matches) if supports_post_search
+            else _cql2_text_filter(literal_matches)  # assume serves ignores filter if no "search" method advertised
+        )
+
+    return None  # explicitly disabled
+
+
+def _cql2_text_filter(literal_matches: Dict[str, Dict[str, Any]]) -> str:
     cql2_text_formatter = get_jvm().org.openeo.geotrellissentinelhub.Cql2TextFormatter()
 
     return cql2_text_formatter.format(
         # Cql2TextFormatter won't add necessary quotes so provide them up front
         {f'"properties.{name}"': criteria for name, criteria in literal_matches.items()}
     )
+
+
+def _cql2_json_filter(literal_matches: Dict[str, Dict[str, Any]]) -> Optional[dict]:
+    if len(literal_matches) == 0:
+        return None
+
+    operator_mapping = {
+        "eq": "=",
+        "neq": "<>",
+        "lt": "<",
+        "lte": "<=",
+        "gt": ">",
+        "gte": ">=",
+    }
+
+    def single_filter(property, operator, value) -> dict:
+        cql2_json_operator = operator_mapping.get(operator)
+
+        if cql2_json_operator is None:
+            raise ValueError(f"unsupported operator {operator}")
+
+        return {
+            "op": cql2_json_operator,
+            "args": [
+                {"property": f"properties.{property}"},
+                value
+            ]
+        }
+
+    filters = [
+        single_filter(property, operator, value)
+        for property, criteria in literal_matches.items()
+        for operator, value in criteria.items()
+    ]
+
+    if len(filters) == 1:
+        return filters[0]
+
+    return {
+        "op": "and",
+        "args": filters,
+    }

@@ -64,7 +64,7 @@ from openeo_driver.users import User
 from openeo_driver.util.geometry import BoundingBox
 from openeo_driver.util.http import requests_with_retry
 from openeo_driver.util.utm import area_in_square_meters
-from openeo_driver.utils import EvalEnv, generate_unique_id, to_hashable, smart_bool
+from openeo_driver.utils import EvalEnv, generate_unique_id, to_hashable, smart_bool, WhiteListEvalEnv
 from pandas import Timedelta
 from py4j.java_gateway import JavaObject, JVMView
 from py4j.protocol import Py4JJavaError
@@ -99,7 +99,7 @@ from openeogeotrellis.job_registry import (
 from openeogeotrellis.layercatalog import (
     GeoPySparkLayerCatalog,
     get_layer_catalog,
-    extra_validation_load_collection,
+    extra_validation_load_collection, WHITELIST,
 )
 from openeogeotrellis.logs import elasticsearch_logs
 from openeogeotrellis.ml.geopysparkcatboostmodel import GeopySparkCatBoostModel
@@ -767,7 +767,12 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         return cube
 
     def load_stac(self, url: str, load_params: LoadParameters, env: EvalEnv) -> GeopysparkDataCube:
-        return load_stac.load_stac(url, load_params, env, layer_properties={}, batch_jobs=self.batch_jobs)
+        return self._load_stac_cached(url, load_params, WhiteListEvalEnv(env, WHITELIST))
+
+    @lru_cache(maxsize=20)
+    def _load_stac_cached(self, url: str, load_params: LoadParameters, env: EvalEnv):
+        return load_stac.load_stac(url, load_params, env, layer_properties=None,
+                                   batch_jobs=self.batch_jobs)
 
     def load_ml_model(self, model_id: str) -> GeopysparkMlModel:
 
@@ -1024,6 +1029,9 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             root_cause = exception_chain[-1]
             root_cause_class_name = root_cause.getClass().getName()
             root_cause_message = root_cause.getMessage()
+
+            # Snippet to get JVM stack trace:
+            # get_jvm().org.apache.commons.lang.exception.ExceptionUtils.getStackTrace(root_cause)
 
             logger.debug(f"exception chain classes: "
                          f"{' caused by '.join(exception.getClass().getName() for exception in exception_chain)}")
@@ -1824,6 +1832,10 @@ class GpsBatchJobs(backend.BatchJobs):
         mount_tmp = as_boolean_arg("mount_tmp", default_value="false") != "false"
         use_pvc = as_boolean_arg("spark_pvc", default_value="false") != "false"
         logging_threshold = as_logging_threshold_arg()
+        propagatable_web_app_driver_envars = {
+            envar: os.environ.get(envar, "")
+            for envar in os.environ.get("OPENEO_PROPAGATABLE_WEB_APP_DRIVER_ENVARS", "").split()
+        }
 
         as_bytes = self._jvm.org.apache.spark.util.Utils.byteStringAsBytes
 
@@ -2032,10 +2044,8 @@ class GpsBatchJobs(backend.BatchJobs):
                 batch_scheduler=get_backend_config().batch_scheduler,
                 yunikorn_queue=get_backend_config().yunikorn_queue,
                 yunikorn_scheduling_timeout=get_backend_config().yunikorn_scheduling_timeout.rstrip(),
-                try_swift_streaming=os.environ.get("TRY_SWIFT_STREAMING"),
-                openeo_stac_oidc_client_secret_stac_openeo_dev=os.environ.get(  # TODO: pass a list or dict?
-                    "OPENEO_STAC_OIDC_CLIENT_SECRET_STAC_OPENEO_DEV"
-                ),
+                separate_asset_per_band_new_partitioner=os.environ.get("SEPARATE_ASSET_PER_BAND_NEW_PARTITIONER"),
+                propagatable_web_app_driver_envars=propagatable_web_app_driver_envars,
                 provide_s3_profiles_and_tokens=get_backend_config().provide_s3_profiles_and_tokens,
                 batch_job_cfg_secret_name=batch_job_cfg_secret_name,
                 batch_job_config_dir=get_backend_config().batch_job_config_dir
@@ -2188,6 +2198,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 args.append(docker_mounts)
 
                 args.append(str(job_work_dir / UDF_PYTHON_DEPENDENCIES_ARCHIVE_NAME))
+                args.append(os.environ.get("OPENEO_PROPAGATABLE_WEB_APP_DRIVER_ENVARS", ""))
 
                 # TODO: this positional `args` handling is getting out of hand, leverage _write_sensitive_values?
 
