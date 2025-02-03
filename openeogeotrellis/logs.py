@@ -5,7 +5,12 @@ from typing import Iterable, Optional
 
 from elasticsearch import Elasticsearch, ConnectionTimeout, TransportError
 
-from openeo.api.logs import normalize_log_level
+try:
+    from openeo.rest.models.logs import normalize_log_level
+except ImportError:
+    # TODO remove old deprecated import (since openeo 0.38.0)
+    from openeo.api.logs import normalize_log_level
+
 from openeo.util import dict_no_none, rfc3339
 from openeo_driver.errors import OpenEOApiException
 from openeo_driver.util.logging import FlaskRequestCorrelationIdLogging
