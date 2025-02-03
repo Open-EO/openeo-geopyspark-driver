@@ -20,8 +20,16 @@ from reretry import retry
 class ZookeeperClient:
     _KazooClient = KazooClient
 
-    def __init__(self, hosts: str, logger: Any = None, attempt_timeout: float = 1.0, total_timeout: float = 120.0,
-                 tries: int = 10, delay: float = 0.4, backoff: float = 1.7):
+    def __init__(
+        self,
+        hosts: str,
+        logger: Any = None,
+        attempt_timeout: float = 1.0,
+        total_timeout: float = 120.0,
+        tries: int = 10,
+        delay: float = 0.4,
+        backoff: float = 1.7,
+    ):
         """
         Create a client to communicate with Zookeeper. This is meant as a long-term client and to be re-used if
         multiple zookeeper requests are to be made as part of an application lifetime.
@@ -59,8 +67,14 @@ class ZookeeperClient:
         kz_retry = KazooRetry(max_tries=tries, delay=delay, backoff=backoff)
         self._logger = logger
         self._zkhosts = hosts
-        self._zk = self._KazooClient(hosts=hosts, connection_retry=kz_retry, command_retry=kz_retry,
-                                     timeout=attempt_timeout, logger=logger, read_only=True)
+        self._zk = self._KazooClient(
+            hosts=hosts,
+            connection_retry=kz_retry,
+            command_retry=kz_retry,
+            timeout=attempt_timeout,
+            logger=logger,
+            read_only=True,
+        )
         self._zk.start(timeout=total_timeout)
 
         # Create KazooClient methods:
@@ -112,10 +126,8 @@ class ZookeeperClient:
     _wait_up_to_1minute_for_zookeeper_connection = retry(
         exceptions=(NoActiveConnectionException,),
         tries=600,
-        logger=None
-    )(
-        _wait_100ms_for_zookeeper_connection
-    )
+        logger=None,
+    )(_wait_100ms_for_zookeeper_connection)
 
     def _make_retrying_kazooclient_method(self, method: str, tries: int = 3):
         """
@@ -124,13 +136,13 @@ class ZookeeperClient:
         The difference is that this will perform retries if exceptions are encountered. And upon exception it would also
         make sure to await an active connection before
         """
+
         def exception_handler(e: Exception) -> None:
             if self._logger is not None:
-                self._logger.warning(
-                    f"ZookeeperClient Retry of {method} because of {type(e)}({e})"
-                )
+                self._logger.warning(f"ZookeeperClient Retry of {method} because of {type(e)}({e})")
             # KazooClient recovers automagically we can just await recovery
             self._wait_up_to_1minute_for_zookeeper_connection()
+
         return retry(tries=tries, exceptions=self.get_retryable_exceptions(), fail_callback=exception_handler)(
             getattr(self._zk, method)
         )

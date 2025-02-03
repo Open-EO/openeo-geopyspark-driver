@@ -19,22 +19,20 @@ class ZooKeeperUserDefinedProcessRepository(UserDefinedProcesses):
     _log = logging.getLogger(__name__)
 
     def __init__(self, hosts: List[str], root: str = "/openeo/udps"):
-        self._hosts = ','.join(hosts)
+        self._hosts = ",".join(hosts)
         self._root = root
         self._zk_client = ZookeeperClient(self._hosts, logger=self._log)
 
     @staticmethod
     def _serialize(spec: dict) -> bytes:
-        return json.dumps({
-            'specification': spec
-        }).encode()
+        return json.dumps({"specification": spec}).encode()
 
     @staticmethod
     def _deserialize(data: bytes) -> dict:
         return json.loads(data.decode())
 
     def save(self, user_id: str, process_id: str, spec: dict) -> None:
-        udp_path = "{r}/{u}/{p}".format(r=self._root, u=user_id, p=spec['id'])
+        udp_path = "{r}/{u}/{p}".format(r=self._root, u=user_id, p=spec["id"])
         data = self._serialize(spec)
 
         try:
@@ -47,7 +45,7 @@ class ZooKeeperUserDefinedProcessRepository(UserDefinedProcesses):
         udp_path = "{r}/{u}/{p}".format(r=self._root, u=user_id, p=process_id)
         try:
             data, _ = self._zk_client.get(udp_path)
-            return UserDefinedProcessMetadata.from_dict(self._deserialize(data)['specification'])
+            return UserDefinedProcessMetadata.from_dict(self._deserialize(data)["specification"])
         except NoNodeError:
             return None
         except KazooTimeoutError:
@@ -106,18 +104,16 @@ class InMemoryUserDefinedProcessRepository(UserDefinedProcesses):
 def main():
     repo = ZooKeeperUserDefinedProcessRepository(hosts=ConfigParams().zookeepernodes)
 
-    user_id = 'vdboschj'
-    process_graph_id = 'evi'
+    user_id = "vdboschj"
+    process_graph_id = "evi"
     udp_spec = {
-        'id': process_graph_id,
-        'process_graph': {
-            'loadcollection1': {
-                'process_id': 'load_collection',
-                'arguments': {
-                    'id': 'PROBAV_L3_S10_TOC_NDVI_333M'
-                }
+        "id": process_graph_id,
+        "process_graph": {
+            "loadcollection1": {
+                "process_id": "load_collection",
+                "arguments": {"id": "PROBAV_L3_S10_TOC_NDVI_333M"},
             }
-        }
+        },
     }
 
     repo.save(user_id=user_id, process_id=process_graph_id, spec=udp_spec)
@@ -132,5 +128,5 @@ def main():
     print(repo.get(user_id, process_graph_id))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
