@@ -13,13 +13,14 @@ from openeogeotrellis.user_defined_process_repository import (
 )
 
 PG_2PLUS3 = {
-    "add": {"process_id": "add", "arguments": {"x": 2, "y": 3}, "result": True},
+    "add": {"process_id": "add", "arguments": {"x": 2, "y": 3}, "result": True}
 }
 
 PG_2PLUS3_JSON = json.dumps(PG_2PLUS3)
 
 
 class TestInMemoryUserDefinedProcessRepository:
+
     def test_save(self):
         udp_db = InMemoryUserDefinedProcessRepository()
         udp_db.save(user_id="john", process_id="evi", spec={"id": "evi", "process_graph": PG_2PLUS3})
@@ -73,8 +74,8 @@ class TestZooKeeperUserDefinedProcessRepository:
 
     @pytest.fixture
     def zk(self) -> mock.MagicMock:
-        """Fixture for `KazooClient instance used by ZooKeeperUserDefinedProcessRepository"""
-        with mock.patch("openeogeotrellis.integrations.zookeeper.ZookeeperClient._KazooClient") as KazooClient:
+        """Fixture for `KazooClient instance used by ZooKeeperUserDefinedProcessRepository """
+        with mock.patch('openeogeotrellis.integrations.zookeeper.ZookeeperClient._KazooClient') as KazooClient:
             yield KazooClient()
 
     def test_save_create(self, udp_db, zk):
