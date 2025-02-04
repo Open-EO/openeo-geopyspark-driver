@@ -20,9 +20,11 @@ class ZooKeeperUserDefinedProcessRepository(UserDefinedProcesses):
 
     _log = logging.getLogger(__name__)
 
-    def __init__(self, hosts: List[str], root: str = "/openeo/udps"):
-        self._hosts = ','.join(hosts)
+    def __init__(self, hosts: List[str], root: str = "/openeo/udps", zk_client_reuse: bool = False):
+        self._hosts = ",".join(hosts)
         self._root = root
+        self._zk_client_reuse = zk_client_reuse
+        self._zk_client_cache = None
 
     @staticmethod
     def _serialize(spec: dict) -> bytes:
@@ -82,16 +84,32 @@ class ZooKeeperUserDefinedProcessRepository(UserDefinedProcesses):
 
     @contextlib.contextmanager
     def _zk_client(self):
-        kz_retry = KazooRetry(max_tries=10, delay=0.5, backoff=2)
-        zk = KazooClient(hosts=self._hosts,connection_retry=kz_retry,
-                 command_retry=kz_retry, timeout=3.0)
-        zk.start(timeout=15.0)
+        if not self._zk_client_reuse or self._zk_client_cache is None:
+            kz_retry = KazooRetry(max_tries=10, delay=0.5, backoff=2)
+            zk = KazooClient(
+                hosts=self._hosts,
+                connection_retry=kz_retry,
+                command_retry=kz_retry,
+                timeout=3.0,
+            )
+            zk.start(timeout=15.0)
+            if self._zk_client_reuse:
+                self._zk_client_cache = zk
+        else:
+            zk = self._zk_client_cache
 
         try:
             yield zk
         finally:
-            zk.stop()
-            zk.close()
+            if not self._zk_client_reuse:
+                zk.stop()
+                zk.close()
+
+    def __del__(self):
+        if self._zk_client_cache:
+            self._zk_client_cache.stop()
+            self._zk_client_cache.close()
+            self._zk_client_cache = None
 
 
 class InMemoryUserDefinedProcessRepository(UserDefinedProcesses):
