@@ -59,15 +59,13 @@ from openeogeotrellis.constants import EVAL_ENV_KEY
 from openeogeotrellis.deploy import load_custom_processes
 from openeogeotrellis.deploy.batch_job_metadata import (
     _assemble_result_metadata,
-    _convert_job_metadatafile_outputs_to_s3_urls,
+    _convert_asset_outputs_to_s3_urls,
     _get_tracker_metadata,
     _transform_stac_metadata,
 )
 from openeogeotrellis.integrations.gdal import get_abs_path_of_asset
 from openeogeotrellis.integrations.hadoop import setup_kerberos_auth
 from openeogeotrellis.udf import (
-    UDF_PYTHON_DEPENDENCIES_ARCHIVE_NAME,
-    UDF_PYTHON_DEPENDENCIES_FOLDER_NAME,
     build_python_udf_dependencies_archive,
     collect_python_udf_dependencies,
     install_python_udf_dependencies,
@@ -515,24 +513,28 @@ def run_job(
 
 
 def write_metadata(metadata: dict, metadata_file: Path):
+    def log_asset_hrefs(context: str):
+        asset_hrefs = {asset_key: asset.get("href") for asset_key, asset in metadata.get("assets", {}).items()}
+        logger.info(f"{context} asset hrefs: {asset_hrefs!r}")
+
+    log_asset_hrefs("input")
+    if ConfigParams().is_kube_deploy:
+        metadata = _convert_asset_outputs_to_s3_urls(metadata)
+    log_asset_hrefs("output")
+
     with open(metadata_file, 'w') as f:
         json.dump(metadata, f, default=json_default)
     add_permissions(metadata_file, stat.S_IWGRP)
     logger.info("wrote metadata to %s" % metadata_file)
 
-    if ConfigParams().is_kube_deploy:
-        if not get_backend_config().fuse_mount_batchjob_s3_bucket:
-            from openeogeotrellis.utils import s3_client
+    if ConfigParams().is_kube_deploy and not get_backend_config().fuse_mount_batchjob_s3_bucket:
+        from openeogeotrellis.utils import s3_client
 
-            _convert_job_metadatafile_outputs_to_s3_urls(metadata_file)
+        bucket = os.environ.get("SWIFT_BUCKET")
+        s3_instance = s3_client()
 
-            bucket = os.environ.get('SWIFT_BUCKET')
-            s3_instance = s3_client()
-
-            # asset files are already uploaded by Scala code
-            s3_instance.upload_file(str(metadata_file), bucket, str(metadata_file).strip("/"))
-        else:
-            _convert_job_metadatafile_outputs_to_s3_urls(metadata_file)
+        # asset files are already uploaded by Scala code
+        s3_instance.upload_file(str(metadata_file), bucket, str(metadata_file).strip("/"))
 
 
 def _export_to_workspaces(
