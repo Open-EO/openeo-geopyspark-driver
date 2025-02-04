@@ -131,3 +131,12 @@ def _ensure_geopyspark(printer=print):
         py4j_zip = next((pyspark_home / "python" / "lib").glob("py4j-*-src.zip"))
         printer("[conftest.py] py4j zip: {z!r}".format(z=py4j_zip))
         sys.path.append(str(py4j_zip))
+        # sys.path[:0] = [py4j_zip]  # Alternative
+
+
+def is_port_free(port: int) -> bool:
+    import socket
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(10)  # seconds
+        return s.connect_ex(("localhost", port)) != 0

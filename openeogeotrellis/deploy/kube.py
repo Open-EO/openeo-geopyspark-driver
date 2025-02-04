@@ -7,6 +7,8 @@ import os
 import re
 import textwrap
 
+from kubernetes.config.incluster_config import SERVICE_TOKEN_FILENAME
+
 from openeo_driver.processes import ProcessArgs
 from openeo_driver.ProcessGraphDeserializer import (
     ENV_DRY_RUN_TRACER,

@@ -24,7 +24,7 @@ from openeo_driver.utils import smart_bool
 from openeo_driver.views import build_app
 
 from openeogeotrellis.config import get_backend_config
-from openeogeotrellis.deploy import _ensure_geopyspark
+from openeogeotrellis.deploy import _ensure_geopyspark, is_port_free
 from openeogeotrellis.job_registry import InMemoryJobRegistry
 from openeogeotrellis.testing import gps_config_overrides
 from openeogeotrellis.vault import Vault
@@ -70,14 +70,6 @@ def pytest_configure(config):
     _ensure_geopyspark(printer=terminal_reporter.write_line)
     if smart_bool(os.environ.get("OPENEO_TESTING_SETUP_SPARK", "yes")):
         _setup_local_spark(terminal_reporter, verbosity=config.getoption("verbose"))
-
-
-def is_port_free(port: int) -> bool:
-    import socket
-
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.settimeout(10)  # seconds
-        return s.connect_ex(("localhost", port)) != 0
 
 
 def force_stop_spark_context():

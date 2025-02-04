@@ -14,27 +14,14 @@ from openeo_driver.util.logging import get_logging_config, setup_logging, show_l
 from openeo_driver.utils import smart_bool
 from openeo_driver.views import build_app
 from openeogeotrellis.config import get_backend_config
+from __init__ import _ensure_geopyspark, is_port_free
 
 _log = logging.getLogger(__name__)
 
 
-def is_port_free(port: int) -> bool:
-    import socket
-
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.settimeout(10)  # seconds
-        return s.connect_ex(("localhost", port)) != 0
-
-
 def setup_local_spark(log_dir: Path = Path.cwd(), verbosity=0):
     # TODO: make this more reusable (e.g. also see `_setup_local_spark` in tests/conftest.py)
-    from pyspark import SparkContext, find_spark_home
-
-    spark_python = os.path.join(find_spark_home._find_spark_home(), "python")
-    logging.info(f"spark_python: {spark_python}")
-    py4j = glob(os.path.join(spark_python, "lib", "py4j-*.zip"))[0]
-    sys.path[:0] = [spark_python, py4j]
-    _log.debug("sys.path: {p!r}".format(p=sys.path))
+    _ensure_geopyspark(printer=_log.debug)
     master_str = "local[*]"
 
     if "PYSPARK_PYTHON" not in os.environ:
