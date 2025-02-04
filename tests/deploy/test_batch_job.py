@@ -32,7 +32,6 @@ from openeogeotrellis.deploy.batch_job import (
 )
 from openeogeotrellis.deploy.batch_job_metadata import (
     _convert_asset_outputs_to_s3_urls,
-    _convert_job_metadatafile_outputs_to_s3_urls,
     _get_tracker,
     extract_result_metadata,
 )
@@ -1853,31 +1852,10 @@ def test_convert_asset_outputs_to_s3_urls():
     """Test that it converts a metadata dict, translating each output_dir to a URL with the s3:// scheme."""
 
     metadata = get_job_metadata_without_s3(Path("/data/projects/OpenEO/6d11e901-bb5d-4589-b600-8dfb50524740/"))
-    _convert_asset_outputs_to_s3_urls(metadata)
+    metadata = _convert_asset_outputs_to_s3_urls(metadata)
 
     assert metadata['assets']['openEO_2017-11-21Z.tif']["href"].startswith("s3://")
     assert metadata['assets']['a-second-asset-file.tif']["href"].startswith("s3://")
-
-
-def test_convert_job_metadatafile_outputs_to_s3_urls(tmp_path):
-    """Test that it processes the file on disk, converting each output_dir to a URL with the s3:// scheme."""
-
-    job_id = "6d11e901-bb5d-4589-b600-8dfb50524740"
-    job_dir = (tmp_path / job_id)
-    metadata_path = job_dir / "whatever.json"
-    job_dir.mkdir(parents=True)
-    metadata = get_job_metadata_without_s3(job_dir)
-
-    with open(metadata_path, "wt") as md_file:
-        json.dump(metadata, md_file)
-
-    _convert_job_metadatafile_outputs_to_s3_urls(metadata_path)
-
-    with open(metadata_path, "rt") as md_file:
-        converted_metadata = json.load(md_file)
-
-    assert converted_metadata['assets']['openEO_2017-11-21Z.tif']["href"].startswith("s3://")
-    assert converted_metadata['assets']['a-second-asset-file.tif']["href"].startswith("s3://")
 
 
 class TestUdfDependenciesHandling:
