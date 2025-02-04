@@ -105,3 +105,29 @@ def build_gps_backend_deploy_metadata(packages: List[str], jar_paths: Iterable[P
     metadata = build_backend_deploy_metadata(packages=packages)
     metadata["versions"].update(get_jar_versions(paths=jar_paths))
     return metadata
+
+
+def _ensure_geopyspark(printer=print):
+    """Make sure GeoPySpark knows where to find Spark (SPARK_HOME) and py4j"""
+    spark_found = False
+    if "SPARK_HOME" in os.environ:
+        try:
+            import geopyspark
+
+            printer("Succeeded to import geopyspark automatically: {p!r}".format(p=geopyspark))
+            spark_found = True
+        except KeyError:
+            pass
+
+    if not spark_found:
+        # Geopyspark failed to detect Spark home and py4j, let's fix that.
+        from pyspark import find_spark_home
+
+        pyspark_home = Path(find_spark_home._find_spark_home())
+        printer(
+            "Failed to import geopyspark automatically. "
+            "Will set up py4j path using Spark home: {h}".format(h=pyspark_home)
+        )
+        py4j_zip = next((pyspark_home / "python" / "lib").glob("py4j-*-src.zip"))
+        printer("[conftest.py] py4j zip: {z!r}".format(z=py4j_zip))
+        sys.path.append(str(py4j_zip))

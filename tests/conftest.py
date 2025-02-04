@@ -24,6 +24,7 @@ from openeo_driver.utils import smart_bool
 from openeo_driver.views import build_app
 
 from openeogeotrellis.config import get_backend_config
+from openeogeotrellis.deploy import _ensure_geopyspark
 from openeogeotrellis.job_registry import InMemoryJobRegistry
 from openeogeotrellis.testing import gps_config_overrides
 from openeogeotrellis.vault import Vault
@@ -66,29 +67,9 @@ def pytest_configure(config):
     os.environ["ASYNC_TASKS_KAFKA_BOOTSTRAP_SERVERS"] = "kafka01.test:6668"
 
     terminal_reporter = config.pluginmanager.get_plugin("terminalreporter")
-    _ensure_geopyspark(terminal_reporter)
+    _ensure_geopyspark(printer=terminal_reporter.write_line)
     if smart_bool(os.environ.get("OPENEO_TESTING_SETUP_SPARK", "yes")):
         _setup_local_spark(terminal_reporter, verbosity=config.getoption("verbose"))
-
-
-def _ensure_geopyspark(out: TerminalReporter):
-    """Make sure GeoPySpark knows where to find Spark (SPARK_HOME) and py4j"""
-    try:
-        import geopyspark
-
-        out.write_line("[conftest.py] Succeeded to import geopyspark automatically: {p!r}".format(p=geopyspark))
-    except KeyError as e:
-        # Geopyspark failed to detect Spark home and py4j, let's fix that.
-        from pyspark import find_spark_home
-
-        pyspark_home = Path(find_spark_home._find_spark_home())
-        out.write_line(
-            "[conftest.py] Failed to import geopyspark automatically. "
-            "Will set up py4j path using Spark home: {h}".format(h=pyspark_home)
-        )
-        py4j_zip = next((pyspark_home / "python" / "lib").glob("py4j-*-src.zip"))
-        out.write_line("[conftest.py] py4j zip: {z!r}".format(z=py4j_zip))
-        sys.path.append(str(py4j_zip))
 
 
 def is_port_free(port: int) -> bool:

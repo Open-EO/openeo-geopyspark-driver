@@ -141,7 +141,10 @@ def _cwl_demo(args: ProcessArgs, env: EvalEnv):
     from openeogeotrellis.integrations.calrissian import CalrissianJobLauncher
 
     # TODO: better place to load this config?
-    kubernetes.config.load_incluster_config()
+    if os.path.exists(SERVICE_TOKEN_FILENAME):
+        kubernetes.config.load_incluster_config()
+    else:
+        kubernetes.config.load_kube_config()
 
     launcher = CalrissianJobLauncher.from_context()
 
