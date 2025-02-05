@@ -489,14 +489,15 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
                 target_epsg = pyproj.CRS.from_user_input(load_params.target_crs).to_epsg()
 
     if not metadata:
-        metadata = GeopysparkCubeMetadata(
-            metadata={},
-            dimensions=[
-                # TODO: detect actual dimensions instead of this simple default?
-                SpatialDimension(name="x", extent=[]),
-                SpatialDimension(name="y", extent=[]),
-            ],
-        )
+        metadata = GeopysparkCubeMetadata(metadata={})
+
+    spatial_dimension_names = [d.name for d in metadata.spatial_dimensions]
+
+    if "x" not in spatial_dimension_names:
+        metadata = metadata.add_dimension(name="x", label=None, type="spatial")
+    if "y" not in spatial_dimension_names:
+        metadata = metadata.add_dimension(name="y", label=None, type="spatial")
+
     metadata = metadata.with_temporal_extent(
         temporal_extent=(start_datetime.isoformat(), end_datetime.isoformat()), allow_adding_dimension=True
     )
