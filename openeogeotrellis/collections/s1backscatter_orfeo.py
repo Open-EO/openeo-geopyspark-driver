@@ -24,6 +24,7 @@ import shapely.geometry
 import shapely.geometry.polygon
 import shapely.ops
 from py4j.java_gateway import JVMView, JavaObject
+from pyspark import TaskContext
 
 from openeo.util import TimingLogger
 from openeo_driver.datastructs import SarBackscatterArgs
@@ -285,6 +286,9 @@ class S1BackscatterOrfeo:
         if max_total_memory_in_bytes:
             set_max_memory(int(max_total_memory_in_bytes))
 
+        if trackers is not None:
+            trackers[0] += 1
+
         tempdir = tempfile.mkdtemp()
         out_path = os.path.join(tempdir, input_tiff.name)
         write_to_numpy = extent_height_px < 2500 and extent_width_px < 2500
@@ -334,6 +338,12 @@ class S1BackscatterOrfeo:
                     msg = f"sar_backscatter: Orfeo error can be found in the logs. Errors can happen due to corrupted input products. Setting the 'soft-errors' job option allows you to skip these products and continue processing."
                     raise RuntimeError(msg)
                 else:
+                    context = TaskContext.get()
+                    if context.attemptNumber() ==0:
+                        raise RuntimeError(f"sar_backscatter: First attempt for {input_tiff} failed with an error, will retry.")
+                    else:
+                        trackers[1] +=1
+
                     # TODO: #302 Implement singleton for batch jobs, to check soft errors after collect.
                     logger.warning(f"ignoring soft errors, max_soft_errors_ratio={max_soft_errors_ratio}")
 
