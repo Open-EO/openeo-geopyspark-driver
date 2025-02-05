@@ -14,6 +14,9 @@ without compromising stable operations.
 
 ## Unreleased
 
+## 0.60.1
+- `load_stac`: restore spatial dimensions of data cube loaded from STAC Collection that lacks `cube:dimensions`. ([#1036](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1036))
+
 ## 0.60.0
 
 - Make environment variables to be passed from web app driver to batch job driver configurable ([#867](https://github.com/Open-EO/openeo-geopyspark-driver/issues/867))
