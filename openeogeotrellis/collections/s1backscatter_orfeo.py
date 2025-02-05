@@ -762,9 +762,11 @@ class S1BackscatterOrfeo:
         if in_batch_job_context():
             # Trackers are only used for batch jobs, and they are global to that job.
             if S1BackscatterOrfeo._trackers is None:
+                from openeogeotrellis.metrics_tracking import global_tracker
+                metrics_tracker = global_tracker()
                 S1BackscatterOrfeo._trackers = (
-                    spark_context.accumulator(0), # nr_execution_tracker
-                    spark_context.accumulator(0), # nr_error_tracker
+                    metrics_tracker.register_counter(_EXECUTION_TRACKER_ID), # nr_execution_tracker
+                    metrics_tracker.register_counter(_SOFT_ERROR_TRACKER_ID), # nr_error_tracker
                 )
         return S1BackscatterOrfeo._trackers
 
