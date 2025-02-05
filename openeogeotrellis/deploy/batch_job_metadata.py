@@ -360,12 +360,12 @@ def _get_tracker(tracker_id=""):
 
 def _get_tracker_metadata(tracker_id="") -> dict:
     tracker = _get_tracker(tracker_id)
-    scala_metrics = {}
+    usage = {}
+    all_links = []
 
     if tracker is not None:
         tracker_results = tracker.asDict()
 
-        usage = {}
         pu = tracker_results.get("Sentinelhub_Processing_Units", None)
         if pu is not None:
             usage["sentinelhub"] = {"value": pu, "unit": "sentinelhub_processing_unit"}
@@ -390,8 +390,8 @@ def _get_tracker_metadata(tracker_id="") -> dict:
                 for link in all_links
             ]
 
-        scala_metrics = dict_no_none(usage=usage if usage != {} else None, links=all_links)
 
     from openeogeotrellis.metrics_tracking import global_tracker
     python_metrics = global_tracker().as_dict()
-    return { **scala_metrics, **{name: {"value": value, "unit": "count"} for name, value in python_metrics.items()}}
+    usage =  { **usage, **{name: {"value": value, "unit": "count"} for name, value in python_metrics.items()}}
+    return dict_no_none(usage=usage if usage != {} else None, links=all_links)

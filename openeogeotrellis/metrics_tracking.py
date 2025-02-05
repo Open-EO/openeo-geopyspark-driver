@@ -17,6 +17,9 @@ class MetricsTracker():
     def as_dict(self):
         return {name: tracker.value for name, tracker in self._trackers.items()}
 
+    def clear(self):
+        self._trackers = {}
+
 
 _metrics_tracker = MetricsTracker()
 
