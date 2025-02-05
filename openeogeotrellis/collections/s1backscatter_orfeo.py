@@ -339,7 +339,7 @@ class S1BackscatterOrfeo:
                     raise RuntimeError(msg)
                 else:
                     context = TaskContext.get()
-                    if context.attemptNumber() ==0:
+                    if context is not None and context.attemptNumber() == 0:
                         raise RuntimeError(f"sar_backscatter: First attempt for {input_tiff} failed with an error, will retry.")
                     else:
                         trackers[1].add(1)
