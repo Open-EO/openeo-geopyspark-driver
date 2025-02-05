@@ -2,6 +2,7 @@
 Script to start a production server on Kubernetes. This script can serve as the mainApplicationFile for the SparkApplication custom resource of the spark-operator
 """
 
+import json
 import logging
 import os
 import re
@@ -151,13 +152,17 @@ def _cwl_demo(args: ProcessArgs, env: EvalEnv):
     launcher = CalrissianJobLauncher.from_context()
 
     cwl_content = textwrap.dedent(
-        """
+        f"""
         cwlVersion: v1.0
         class: CommandLineTool
         baseCommand: echo
         requirements:
-          - class: DockerRequirement
-            dockerPull: debian:stretch-slim
+          DockerRequirement:
+            dockerPull: registry.stag.warsaw.openeo.dataspace.copernicus.eu/rand/openeo_insar:latest
+          EnvVarRequirement:
+            envDef:
+              AWS_ACCESS_KEY_ID: {json.dumps(os.environ.get("AWS_ACCESS_KEY_ID", ""))}
+              AWS_SECRET_ACCESS_KEY: {json.dumps(os.environ.get("AWS_SECRET_ACCESS_KEY", ""))}
         inputs:
           message:
             type: string

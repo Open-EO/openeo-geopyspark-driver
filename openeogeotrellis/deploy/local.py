@@ -14,7 +14,8 @@ from openeo_driver.util.logging import get_logging_config, setup_logging, show_l
 from openeo_driver.utils import smart_bool
 from openeo_driver.views import build_app
 from openeogeotrellis.config import get_backend_config
-from __init__ import _ensure_geopyspark, is_port_free
+from . import _ensure_geopyspark, is_port_free
+from . import kube
 
 _log = logging.getLogger(__name__)
 
