@@ -287,7 +287,7 @@ class S1BackscatterOrfeo:
             set_max_memory(int(max_total_memory_in_bytes))
 
         if trackers is not None:
-            trackers[0] += 1
+            trackers[0].add(1)
 
         tempdir = tempfile.mkdtemp()
         out_path = os.path.join(tempdir, input_tiff.name)
@@ -342,7 +342,7 @@ class S1BackscatterOrfeo:
                     if context.attemptNumber() ==0:
                         raise RuntimeError(f"sar_backscatter: First attempt for {input_tiff} failed with an error, will retry.")
                     else:
-                        trackers[1] +=1
+                        trackers[1].add(1)
 
                     # TODO: #302 Implement singleton for batch jobs, to check soft errors after collect.
                     logger.warning(f"ignoring soft errors, max_soft_errors_ratio={max_soft_errors_ratio}")
