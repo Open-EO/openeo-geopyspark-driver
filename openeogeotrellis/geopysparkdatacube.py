@@ -778,6 +778,10 @@ class GeopysparkDataCube(DriverDataCube):
                         extent=extent,
                         band_coordinates=openeo_metadata.band_dimension.band_names if openeo_metadata.has_band_dimension() else None,
                     )
+
+                    if isinstance(key,SpaceTimeKey):
+                        datacube.array.attrs = dict( t= key.instant )
+
                     data = UdfData(proj={"EPSG": CRS.from_user_input(metadata.crs).to_epsg()}, datacube_list=[datacube], user_context=context)
 
                     # Run UDF.
