@@ -1,7 +1,7 @@
 import datetime as dt
 import json
 import time
-from functools import partial, lru_cache
+from functools import partial
 import logging
 import os
 from typing import Union, Optional, Tuple, Dict, List, Iterable, Any
@@ -14,7 +14,6 @@ import pyproj
 import pystac
 import pystac_client
 from geopyspark import LayerType, TiledRasterLayer
-from openeo.metadata import SpatialDimension, TemporalDimension, BandDimension, Band
 from openeo.util import dict_no_none, Rfc3339
 from openeo_driver import filter_properties, backend
 from openeo_driver.datacube import DriverVectorCube
@@ -491,12 +490,10 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
     if not metadata:
         metadata = GeopysparkCubeMetadata(metadata={})
 
-    spatial_dimension_names = [d.name for d in metadata.spatial_dimensions]
-
-    if "x" not in spatial_dimension_names:
-        metadata = metadata.add_dimension(name="x", label=None, type="spatial")
-    if "y" not in spatial_dimension_names:
-        metadata = metadata.add_dimension(name="y", label=None, type="spatial")
+    if "x" not in metadata.dimension_names():
+        metadata = metadata.add_spatial_dimension(name="x", extent=[])
+    if "y" not in metadata.dimension_names():
+        metadata = metadata.add_spatial_dimension(name="y", extent=[])
 
     metadata = metadata.with_temporal_extent(
         temporal_extent=(start_datetime.isoformat(), end_datetime.isoformat()), allow_adding_dimension=True
