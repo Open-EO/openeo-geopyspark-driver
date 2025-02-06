@@ -238,8 +238,8 @@ def _cwl_insar(args: ProcessArgs, env: EvalEnv):
             dockerPull: registry.stag.warsaw.openeo.dataspace.copernicus.eu/rand/openeo_insar:latest
           EnvVarRequirement:
             envDef:
-              AWS_ACCESS_KEY_ID: {json.dumps(os.environ.get("AWS_ACCESS_KEY_ID", ""))}
-              AWS_SECRET_ACCESS_KEY: {json.dumps(os.environ.get("AWS_SECRET_ACCESS_KEY", ""))}
+              AWS_ACCESS_KEY_ID: {json.dumps(os.environ.get("SWIFT_ACCESS_KEY_ID", ""))}
+              AWS_SECRET_ACCESS_KEY: {json.dumps(os.environ.get("SWIFT_SECRET_ACCESS_KEY", ""))}
         inputs:
           input_base64_json:
             type: string
@@ -251,7 +251,7 @@ def _cwl_insar(args: ProcessArgs, env: EvalEnv):
               type: array
               items: File
             outputBinding:
-              glob: "*.*"
+              glob: "*2images*"
     """
     )
     # correlation_id = get_job_id(default=None) or get_request_id(default=None)
