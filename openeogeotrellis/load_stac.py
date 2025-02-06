@@ -126,9 +126,16 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
                                                                     Optional[Tuple[float, float, float, float]],
                                                                     Optional[Tuple[int, int]]):
         """Returns EPSG code, bbox (in that EPSG) and number of pixels (rows, cols), if available."""
-        epsg = asst.extra_fields.get("proj:epsg") or itm.properties.get("proj:epsg")
+
+        def to_epsg(proj_code: Optional[str]) -> Optional[int]:
+            prefix = "EPSG:"
+            return int(proj_code[len(prefix):]) if proj_code.upper().startswith(prefix) else None
+
+        code = asst.extra_fields.get("proj:code") or itm.properties.get("proj:code")
+        epsg = to_epsg(code) or asst.extra_fields.get("proj:epsg") or itm.properties.get("proj:epsg")
         bbox = asst.extra_fields.get("proj:bbox") or itm.properties.get("proj:bbox")
         shape = asst.extra_fields.get("proj:shape") or itm.properties.get("proj:shape")
+
         return (epsg,
                 tuple(map(float, bbox)) if bbox else None,
                 tuple(shape) if shape else None)
