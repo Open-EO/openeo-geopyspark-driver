@@ -256,7 +256,7 @@ class CalrissianJobLauncher:
         manifest: kubernetes.client.V1Job,
         *,
         sleep: float = 5,
-        timeout: float = 60,
+        timeout: float = 900,
     ) -> kubernetes.client.V1Job:
         """
         Launch a k8s job and wait (with active polling) for it to finish.
@@ -326,6 +326,7 @@ class CalrissianJobLauncher:
         # Input staging
         input_staging_manifest, cwl_path = self.create_input_staging_job_manifest(cwl_content=cwl_content)
         input_staging_job = self.launch_job_and_wait(manifest=input_staging_manifest)
+        assert input_staging_job.status.succeeded
 
         # CWL job
         cwl_manifest, relative_output_dir = self.create_cwl_job_manifest(
