@@ -28,24 +28,9 @@ from openeo.util import TimingLogger
 from openeo_driver.save_result import ImageCollectionResult, JSONResult
 from openeo_driver.utils import EvalEnv
 from openeo_driver.utils import read_json
+from openeogeotrellis.deploy import _ensure_geopyspark
 
 _log = logging.getLogger(__name__)
-
-
-def _ensure_geopyspark(print=print):
-    """Make sure GeoPySpark knows where to find Spark (SPARK_HOME) and py4j"""
-    try:
-        import geopyspark
-        print("Succeeded to import geopyspark automatically: {p!r}".format(p=geopyspark))
-    except KeyError as e:
-        # Geopyspark failed to detect Spark home and py4j, let's fix that.
-        from pyspark import find_spark_home
-        pyspark_home = Path(find_spark_home._find_spark_home())
-        print("Failed to import geopyspark automatically. "
-              "Will set up py4j path using Spark home: {h}".format(h=pyspark_home))
-        py4j_zip = next((pyspark_home / 'python' / 'lib').glob('py4j-*-src.zip'))
-        print("[conftest.py] py4j zip: {z!r}".format(z=py4j_zip))
-        sys.path.append(str(py4j_zip))
 
 
 def _setup_local_spark(
@@ -58,7 +43,7 @@ def _setup_local_spark(
     if 'PYSPARK_PYTHON' not in os.environ:
         os.environ['PYSPARK_PYTHON'] = sys.executable
 
-    _ensure_geopyspark(print=print)
+    _ensure_geopyspark(printer=print)
     from geopyspark import geopyspark_conf
     from pyspark import SparkContext
 

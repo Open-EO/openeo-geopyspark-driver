@@ -31,6 +31,6 @@ datacube.print_json(file=output_dir / "process_graph.json", indent=2)
 # Step 2, run process graph locally
 ###################################
 containing_folder = Path(__file__).parent.absolute()
-subprocess.run([f"{containing_folder}/local_batch_job", output_dir / "process_graph.json", containing_folder])
+subprocess.run([f"{containing_folder}/local_batch_job", output_dir / "process_graph.json", containing_folder], check=True)
 
 # Note that output_dir / "collection.json" is a new stac collection and can be loaded in a new process graph.

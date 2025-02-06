@@ -8,6 +8,7 @@ from typing import Dict, List, Optional, Tuple, Union
 
 import kubernetes.client
 import time
+import yaml
 
 from openeo.util import ContextTimer
 from openeo_driver.utils import generate_unique_id
@@ -106,6 +107,8 @@ class CalrissianJobLauncher:
         """
         name = self._build_unique_name(infix="cal-inp")
         _log.info(f"Creating input staging job manifest: {name=}")
+        yaml_parsed = list(yaml.safe_load_all(cwl_content))
+        assert len(yaml_parsed) >= 1
 
         # Serialize CWL content to string that is safe to pass as command line argument
         cwl_serialized = base64.b64encode(cwl_content.encode("utf8")).decode("ascii")
@@ -253,7 +256,7 @@ class CalrissianJobLauncher:
         manifest: kubernetes.client.V1Job,
         *,
         sleep: float = 5,
-        timeout: float = 60,
+        timeout: float = 900,
     ) -> kubernetes.client.V1Job:
         """
         Launch a k8s job and wait (with active polling) for it to finish.
@@ -323,6 +326,7 @@ class CalrissianJobLauncher:
         # Input staging
         input_staging_manifest, cwl_path = self.create_input_staging_job_manifest(cwl_content=cwl_content)
         input_staging_job = self.launch_job_and_wait(manifest=input_staging_manifest)
+        assert input_staging_job.status.succeeded
 
         # CWL job
         cwl_manifest, relative_output_dir = self.create_cwl_job_manifest(
