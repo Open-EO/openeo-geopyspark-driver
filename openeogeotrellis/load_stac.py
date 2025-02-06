@@ -1,7 +1,7 @@
 import datetime as dt
 import json
 import time
-from functools import partial, lru_cache
+from functools import partial
 import logging
 import os
 from typing import Union, Optional, Tuple, Dict, List, Iterable, Any
@@ -14,7 +14,6 @@ import pyproj
 import pystac
 import pystac_client
 from geopyspark import LayerType, TiledRasterLayer
-from openeo.metadata import SpatialDimension, TemporalDimension, BandDimension, Band
 from openeo.util import dict_no_none, Rfc3339
 from openeo_driver import filter_properties, backend
 from openeo_driver.datacube import DriverVectorCube
@@ -489,14 +488,13 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
                 target_epsg = pyproj.CRS.from_user_input(load_params.target_crs).to_epsg()
 
     if not metadata:
-        metadata = GeopysparkCubeMetadata(
-            metadata={},
-            dimensions=[
-                # TODO: detect actual dimensions instead of this simple default?
-                SpatialDimension(name="x", extent=[]),
-                SpatialDimension(name="y", extent=[]),
-            ],
-        )
+        metadata = GeopysparkCubeMetadata(metadata={})
+
+    if "x" not in metadata.dimension_names():
+        metadata = metadata.add_spatial_dimension(name="x", extent=[])
+    if "y" not in metadata.dimension_names():
+        metadata = metadata.add_spatial_dimension(name="y", extent=[])
+
     metadata = metadata.with_temporal_extent(
         temporal_extent=(start_datetime.isoformat(), end_datetime.isoformat()), allow_adding_dimension=True
     )
@@ -698,9 +696,7 @@ def _await_stac_object(url, poll_interval_seconds, max_poll_delay_seconds, max_p
     while True:
         stac_object = pystac.read_file(href=url)  # TODO: add retries and set timeout
 
-        partial_job_status = (stac_object
-                              .to_dict(include_self_link=False, transform_hrefs=False)
-                              .get('openeo:status'))
+        partial_job_status = stac_object.to_dict(include_self_link=False, transform_hrefs=False).get("openeo:status")
 
         logger.debug(f"OpenEO batch job results status of {url}: {partial_job_status}")
 
