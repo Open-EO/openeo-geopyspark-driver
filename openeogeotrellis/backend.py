@@ -1888,38 +1888,38 @@ class GpsBatchJobs(backend.BatchJobs):
         if get_backend_config().setup_kerberos_auth:
             setup_kerberos_auth(self._principal, self._key_tab, self._jvm)
 
+        memOverheadBytes = as_bytes(executor_memory_overhead)
+        jvmOverheadBytes = as_bytes("128m")
+
+        # By default, Python uses the space reserved by `spark.executor.memoryOverhead` but no limit is enforced.
+        # When `spark.executor.pyspark.memory` is specified, Python will only use this memory and no more.
+        python_max = job_options.get("python-memory", get_backend_config().default_python_memory)
+        if python_max is not None:
+            python_max = as_bytes(python_max)
+            if "executor-memoryOverhead" not in job_options:
+                memOverheadBytes = jvmOverheadBytes
+                executor_memory_overhead = f"{memOverheadBytes // (1024 ** 2)}m"
+        else:
+            # If python-memory is not set, we convert most of the overhead memory to python memory
+            python_max = memOverheadBytes - jvmOverheadBytes
+            executor_memory_overhead = f"{jvmOverheadBytes // (1024 ** 2)}m"
+
+        if as_bytes(executor_memory) + as_bytes(executor_memory_overhead) + python_max > as_bytes(
+                get_backend_config().max_executor_or_driver_memory
+        ):
+            raise OpenEOApiException(
+                message=f"Requested too much executor memory: "
+                        + f"{executor_memory} + {executor_memory_overhead} + {python_max // (1024 ** 2)}m, "
+                        + f"the max for this instance is: {get_backend_config().max_executor_or_driver_memory}",
+                status_code=400,
+            )
+
         if isKube:
             # TODO: get rid of this "isKube" anti-pattern, it makes testing of this whole code path practically impossible
 
             # TODO: eliminate these local imports
             from kubernetes.client.rest import ApiException
 
-
-            memOverheadBytes = as_bytes(executor_memory_overhead)
-            jvmOverheadBytes = as_bytes("128m")
-
-            # By default, Python uses the space reserved by `spark.executor.memoryOverhead` but no limit is enforced.
-            # When `spark.executor.pyspark.memory` is specified, Python will only use this memory and no more.
-            python_max = job_options.get("python-memory", None)
-            if python_max is not None:
-                python_max = as_bytes(python_max)
-                if "executor-memoryOverhead" not in job_options:
-                    memOverheadBytes = jvmOverheadBytes
-                    executor_memory_overhead = f"{memOverheadBytes//(1024**2)}m"
-            else:
-                # If python-memory is not set, we convert most of the overhead memory to python memory
-                python_max = memOverheadBytes - jvmOverheadBytes
-                executor_memory_overhead = f"{memOverheadBytes//(1024**2)}m"
-
-            if as_bytes(executor_memory) + as_bytes(executor_memory_overhead) + python_max > as_bytes(
-                    get_backend_config().max_executor_or_driver_memory
-            ):
-                raise OpenEOApiException(
-                    message=f"Requested too much executor memory: "
-                    + f"{executor_memory} + {executor_memory_overhead} + {python_max//(1024**2)}m, "
-                    + f"the max for this instance is: {get_backend_config().max_executor_or_driver_memory}",
-                    status_code=400,
-                )
 
             api_instance_custom_object = kube_client("CustomObject")
             api_instance_core = kube_client("Core")
@@ -2206,6 +2206,8 @@ class GpsBatchJobs(backend.BatchJobs):
 
                 args.append(str(job_work_dir / UDF_PYTHON_DEPENDENCIES_ARCHIVE_NAME))
                 args.append(os.environ.get("OPENEO_PROPAGATABLE_WEB_APP_DRIVER_ENVARS", ""))
+
+                args.append(python_max)
 
                 # TODO: this positional `args` handling is getting out of hand, leverage _write_sensitive_values?
 
