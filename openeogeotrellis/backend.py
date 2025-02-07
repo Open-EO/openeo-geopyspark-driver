@@ -1901,8 +1901,9 @@ class GpsBatchJobs(backend.BatchJobs):
                 executor_memory_overhead = f"{memOverheadBytes // (1024 ** 2)}m"
         else:
             # If python-memory is not set, we convert most of the overhead memory to python memory
+            # this in fact duplicates the overhead memory, we should migrate away from this appraoch
             python_max = memOverheadBytes - jvmOverheadBytes
-            executor_memory_overhead = f"{jvmOverheadBytes // (1024 ** 2)}m"
+            executor_memory_overhead = f"{memOverheadBytes // (1024 ** 2)}m"
 
         if as_bytes(executor_memory) + as_bytes(executor_memory_overhead) + python_max > as_bytes(
                 get_backend_config().max_executor_or_driver_memory
