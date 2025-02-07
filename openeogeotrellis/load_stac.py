@@ -35,7 +35,7 @@ from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.constants import EVAL_ENV_KEY
 from openeogeotrellis.geopysparkcubemetadata import GeopysparkCubeMetadata
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
-from openeogeotrellis.utils import normalize_temporal_extent, get_jvm, to_projected_polygons
+from openeogeotrellis.utils import normalize_temporal_extent, get_jvm, to_projected_polygons, map_optional
 
 logger = logging.getLogger(__name__)
 
@@ -127,12 +127,12 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
                                                                     Optional[Tuple[int, int]]):
         """Returns EPSG code, bbox (in that EPSG) and number of pixels (rows, cols), if available."""
 
-        def to_epsg(proj_code: Optional[str]) -> Optional[int]:
+        def to_epsg(proj_code: str) -> Optional[int]:
             prefix = "EPSG:"
             return int(proj_code[len(prefix):]) if proj_code.upper().startswith(prefix) else None
 
         code = asst.extra_fields.get("proj:code") or itm.properties.get("proj:code")
-        epsg = to_epsg(code) or asst.extra_fields.get("proj:epsg") or itm.properties.get("proj:epsg")
+        epsg = map_optional(to_epsg, code) or asst.extra_fields.get("proj:epsg") or itm.properties.get("proj:epsg")
         bbox = asst.extra_fields.get("proj:bbox") or itm.properties.get("proj:bbox")
         shape = asst.extra_fields.get("proj:shape") or itm.properties.get("proj:shape")
 
