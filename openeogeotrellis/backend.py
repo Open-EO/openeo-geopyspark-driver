@@ -2122,6 +2122,8 @@ class GpsBatchJobs(backend.BatchJobs):
             submit_script = "submit_batch_job_spark3.sh"
             script_location = pkg_resources.resource_filename("openeogeotrellis.deploy", submit_script)
 
+            image_name = job_options.get("image-name", os.environ.get("YARN_CONTAINER_RUNTIME_DOCKER_IMAGE"))
+
             extra_py_files=""
             if len(py_files)>0:
                 extra_py_files = "," + py_files.join(",")
@@ -2214,7 +2216,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
                 try:
                     log.info(f"Submitting job with command {args!r}")
-                    script_output = subprocess.check_output(args, stderr=subprocess.STDOUT, universal_newlines=True)
+                    script_output = subprocess.check_output(args, stderr=subprocess.STDOUT, universal_newlines=True, env=dict(**os.environ, YARN_CONTAINER_RUNTIME_DOCKER_IMAGE=image_name))
                     log.info(f"Submitted job, output was: {script_output}")
                 except CalledProcessError as e:
                     log.error(f"Submitting job failed, output was: {e.stdout}", exc_info=True)
