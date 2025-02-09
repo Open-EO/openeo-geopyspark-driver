@@ -10,7 +10,11 @@ from urllib3 import Retry, PoolManager
 
 
 class StacApiIO(DefaultStacIO):
-    """A STAC IO implementation that supports reading with timeout and retry."""
+    """
+    A STAC IO implementation that supports reading with timeout and retry.
+
+    TODO: migrate to RetryStacIO when it has timeout support https://github.com/stac-utils/pystac/issues/1515
+    """
 
     def __init__(
         self,
