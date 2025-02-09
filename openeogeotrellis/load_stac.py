@@ -29,15 +29,18 @@ from openeo_driver.utils import EvalEnv
 from pathlib import Path
 from pystac import STACObject
 from shapely.geometry import Polygon, shape
+from urllib3 import Retry
 
 from openeogeotrellis import datacube_parameters
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.constants import EVAL_ENV_KEY
 from openeogeotrellis.geopysparkcubemetadata import GeopysparkCubeMetadata
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
+from openeogeotrellis.integrations.stac import StacApiIO
 from openeogeotrellis.utils import normalize_temporal_extent, get_jvm, to_projected_polygons
 
 logger = logging.getLogger(__name__)
+REQUESTS_TIMEOUT_SECONDS = 60
 
 def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_properties: Dict[str, object],
               batch_jobs: Optional[backend.BatchJobs], override_band_names: List[str] = None) -> GeopysparkDataCube:
@@ -694,7 +697,9 @@ def _await_dependency_job(url, user, batch_jobs, poll_interval_seconds, max_poll
 
 def _await_stac_object(url, poll_interval_seconds, max_poll_delay_seconds, max_poll_time) -> STACObject:
     while True:
-        stac_object = pystac.read_file(href=url)  # TODO: add retries and set timeout
+        retry = Retry(total=5, backoff_factor=0.1, status_forcelist=[500, 502, 503, 504])
+        stac_io = StacApiIO(timeout=REQUESTS_TIMEOUT_SECONDS, retry=retry)
+        stac_object = pystac.read_file(href=url, stac_io=stac_io)
 
         partial_job_status = stac_object.to_dict(include_self_link=False, transform_hrefs=False).get("openeo:status")
 

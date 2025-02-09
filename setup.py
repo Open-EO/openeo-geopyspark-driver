@@ -101,6 +101,7 @@ setup(
         "traceback-with-variables==2.0.4",
         'scipy>=1.8',  # used by sentinel-3 reader
         "PyJWT[crypto]>=2.9.0",  # For identity tokens
+        "urllib3>=1.26.20"
     ],
     extras_require={
         "dev": tests_require,
