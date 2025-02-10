@@ -393,5 +393,9 @@ def _get_tracker_metadata(tracker_id="") -> dict:
 
     from openeogeotrellis.metrics_tracking import global_tracker
     python_metrics = global_tracker().as_dict()
+    sar_backscatter_errors = python_metrics.pop("orfeo_backscatter_soft_errors",0)
+    sar_backscatter_total = python_metrics.pop("orfeo_backscatter_execution_counter",0)
     usage =  { **usage, **{name: {"value": value, "unit": "count"} for name, value in python_metrics.items()}}
+    if sar_backscatter_total > 0:
+        usage["sar_backscatter_soft_errors"] = {"value": sar_backscatter_errors / sar_backscatter_total, "unit": "fraction"}
     return dict_no_none(usage=usage if usage != {} else None, links=all_links)

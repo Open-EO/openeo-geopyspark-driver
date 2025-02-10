@@ -14,7 +14,6 @@ from openeo_driver.util.logging import get_logging_config, setup_logging, show_l
 from openeo_driver.utils import smart_bool
 from openeo_driver.views import build_app
 from openeogeotrellis.config import get_backend_config
-from . import kube
 
 _log = logging.getLogger(__name__)
 
@@ -36,6 +35,14 @@ def setup_local_spark(log_dir: Path = Path.cwd(), verbosity=0):
     py4j = glob(os.path.join(spark_python, "lib", "py4j-*.zip"))[0]
     sys.path[:0] = [spark_python, py4j]
     _log.debug("sys.path: {p!r}".format(p=sys.path))
+    try:
+        # TODO: Find better way to support local_batch_job and @non_standard_process at the same time
+        sys.path.append(str(Path(__file__).parent))
+        import kube
+    except ImportError as e:
+        _log.warning(
+            "Failed to import kube. Some kubernetes specific processes might not get attached (CWL). error: " + str(e)
+        )
     master_str = "local[*]"
 
     if "PYSPARK_PYTHON" not in os.environ:
