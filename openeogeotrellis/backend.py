@@ -2216,7 +2216,9 @@ class GpsBatchJobs(backend.BatchJobs):
 
                 try:
                     log.info(f"Submitting job with command {args!r}")
-                    script_output = subprocess.check_output(args, stderr=subprocess.STDOUT, universal_newlines=True, env=dict(**os.environ, YARN_CONTAINER_RUNTIME_DOCKER_IMAGE=image_name))
+                    d = dict(**os.environ)
+                    d["YARN_CONTAINER_RUNTIME_DOCKER_IMAGE"] = image_name
+                    script_output = subprocess.check_output(args, stderr=subprocess.STDOUT, universal_newlines=True, env=d)
                     log.info(f"Submitted job, output was: {script_output}")
                 except CalledProcessError as e:
                     log.error(f"Submitting job failed, output was: {e.stdout}", exc_info=True)
