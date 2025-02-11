@@ -182,7 +182,7 @@ spark-submit \
  --conf spark.dynamicAllocation.shuffleTracking.enabled=false --conf spark.dynamicAllocation.enabled=true \
  --conf spark.shuffle.service.enabled=true \
  --conf spark.ui.view.acls.groups=vito \
- --conf spark.yarn.appMasterEnv.YARN_CONTAINER_RUNTIME_DOCKER_MOUNTS=v${docker_mounts} \
+ --conf spark.yarn.appMasterEnv.YARN_CONTAINER_RUNTIME_DOCKER_MOUNTS=${docker_mounts} \
  --conf spark.yarn.appMasterEnv.YARN_CONTAINER_RUNTIME_TYPE=docker \
  --conf spark.yarn.appMasterEnv.YARN_CONTAINER_RUNTIME_DOCKER_IMAGE=${YARN_CONTAINER_RUNTIME_DOCKER_IMAGE} \
  --conf spark.executorEnv.YARN_CONTAINER_RUNTIME_TYPE=docker \
