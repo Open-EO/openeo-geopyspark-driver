@@ -157,13 +157,11 @@ spark-submit \
  --conf spark.speculation.multiplier=8 \
  --conf spark.dynamicAllocation.minExecutors=5 \
  --conf spark.dynamicAllocation.maxExecutors=${maxexecutors} \
- --conf "spark.yarn.appMasterEnv.SPARK_HOME=$SPARK_HOME" --conf spark.yarn.appMasterEnv.PYTHON_EGG_CACHE=./ \
+ --conf spark.yarn.appMasterEnv.PYTHON_EGG_CACHE=./ \
  --conf spark.executorEnv.LD_LIBRARY_PATH=/opt/venv/lib64 \
  --conf spark.executorEnv.PATH=/opt/venv/bin:$PATH \
  --conf spark.yarn.appMasterEnv.LD_LIBRARY_PATH=/opt/venv/lib64 \
- --conf spark.yarn.appMasterEnv.JAVA_HOME=${JAVA_HOME} \
  --conf spark.yarn.am.waitTime=900s \
- --conf spark.executorEnv.JAVA_HOME=${JAVA_HOME} \
  --conf spark.yarn.appMasterEnv.BATCH_JOBS_ZOOKEEPER_ROOT_PATH=${BATCH_JOBS_ZOOKEEPER_ROOT_PATH} \
  --conf spark.yarn.appMasterEnv.OPENEO_USER_ID=${userId} \
  --conf spark.yarn.appMasterEnv.OPENEO_BATCH_JOB_ID=${batchJobId} \
