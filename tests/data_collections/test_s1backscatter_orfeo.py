@@ -275,7 +275,6 @@ class TestOrfeoPipeline:
 
         assert success != ("ignoring soft errors, max_soft_errors_ratio=0.1" in caplog.messages)
 
-    @pytest.mark.skip("This test is not working on the CI")
     @pytest.mark.parametrize(
         [
             "spatial_extent",
