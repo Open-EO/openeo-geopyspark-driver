@@ -36,7 +36,7 @@ def test_extract_own_job_info(url, user_id, job_info_id):
         assert job_info.id == job_info_id
 
 
-def test_property_filter_from_parameter(urllib_mock, requests_mock):
+def test_property_filter_from_parameter(urllib_and_request_mock, requests_mock):
     stac_api_root_url = "https://stac.test"
     stac_collection_url = f"{stac_api_root_url}/collections/collection"
 
@@ -51,7 +51,7 @@ def test_property_filter_from_parameter(urllib_mock, requests_mock):
             "features": [],
         }
 
-    search_mock = _mock_stac_api(urllib_mock, requests_mock, stac_api_root_url, stac_collection_url, feature_collection)
+    search_mock = _mock_stac_api(urllib_and_request_mock, requests_mock, stac_api_root_url, stac_collection_url, feature_collection)
 
     properties = {
         "product_tile": {
@@ -84,7 +84,7 @@ def test_property_filter_from_parameter(urllib_mock, requests_mock):
     assert search_mock.called
 
 
-def test_dimensions(urllib_mock, requests_mock):
+def test_dimensions(urllib_and_request_mock, requests_mock):
     stac_api_root_url = "https://stac.test"
     stac_collection_url = f"{stac_api_root_url}/collections/collection"
 
@@ -95,7 +95,7 @@ def test_dimensions(urllib_mock, requests_mock):
     )
 
     _mock_stac_api(
-        urllib_mock,
+        urllib_and_request_mock,
         requests_mock,
         stac_api_root_url,
         stac_collection_url,

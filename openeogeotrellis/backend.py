@@ -2210,7 +2210,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 args.append(str(job_work_dir / UDF_PYTHON_DEPENDENCIES_ARCHIVE_NAME))
                 args.append(os.environ.get("OPENEO_PROPAGATABLE_WEB_APP_DRIVER_ENVARS", ""))
 
-                args.append(python_max)
+                args.append(str(python_max))
 
                 # TODO: this positional `args` handling is getting out of hand, leverage _write_sensitive_values?
 
