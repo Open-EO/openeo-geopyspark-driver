@@ -36,7 +36,7 @@ def test_extract_own_job_info(url, user_id, job_info_id):
         assert job_info.id == job_info_id
 
 
-def test_property_filter_from_parameter(urllib_and_request_mock, requests_mock):
+def test_property_filter_from_parameter(urllib_poolmanager_mock, requests_mock):
     stac_api_root_url = "https://stac.test"
     stac_collection_url = f"{stac_api_root_url}/collections/collection"
 
@@ -51,7 +51,9 @@ def test_property_filter_from_parameter(urllib_and_request_mock, requests_mock):
             "features": [],
         }
 
-    search_mock = _mock_stac_api(urllib_and_request_mock, requests_mock, stac_api_root_url, stac_collection_url, feature_collection)
+    search_mock = _mock_stac_api(
+        urllib_poolmanager_mock, requests_mock, stac_api_root_url, stac_collection_url, feature_collection
+    )
 
     properties = {
         "product_tile": {
@@ -84,7 +86,7 @@ def test_property_filter_from_parameter(urllib_and_request_mock, requests_mock):
     assert search_mock.called
 
 
-def test_dimensions(urllib_and_request_mock, requests_mock):
+def test_dimensions(urllib_poolmanager_mock, requests_mock):
     stac_api_root_url = "https://stac.test"
     stac_collection_url = f"{stac_api_root_url}/collections/collection"
 
@@ -95,7 +97,7 @@ def test_dimensions(urllib_and_request_mock, requests_mock):
     )
 
     _mock_stac_api(
-        urllib_and_request_mock,
+        urllib_poolmanager_mock,
         requests_mock,
         stac_api_root_url,
         stac_collection_url,
@@ -117,8 +119,8 @@ def test_dimensions(urllib_and_request_mock, requests_mock):
     assert {"x", "y", "t", "bands"} <= set(data_cube.metadata.dimension_names())
 
 
-def _mock_stac_api(urllib_mock, requests_mock, stac_api_root_url, stac_collection_url, feature_collection):
-    urllib_mock.get(
+def _mock_stac_api(urllib_poolmanager_mock, requests_mock, stac_api_root_url, stac_collection_url, feature_collection):
+    urllib_poolmanager_mock.get(
         stac_collection_url,
         data=json.dumps(
             {
@@ -153,7 +155,7 @@ def _mock_stac_api(urllib_mock, requests_mock, stac_api_root_url, stac_collectio
         ],
     }
 
-    urllib_mock.get(stac_api_root_url, data=json.dumps(catalog_response))
+    urllib_poolmanager_mock.get(stac_api_root_url, data=json.dumps(catalog_response))
     requests_mock.get(stac_api_root_url, json=catalog_response)
 
     search_mock = requests_mock.get(f"{stac_api_root_url}/search", json=feature_collection)

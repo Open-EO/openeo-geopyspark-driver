@@ -701,6 +701,9 @@ def _await_stac_object(url, poll_interval_seconds, max_poll_delay_seconds, max_p
         stac_io = StacApiIO(timeout=REQUESTS_TIMEOUT_SECONDS, retry=retry)
         stac_object = pystac.read_file(href=url, stac_io=stac_io)
 
+        if isinstance(stac_object, pystac.Catalog):
+            stac_object._stac_io = stac_io
+
         partial_job_status = stac_object.to_dict(include_self_link=False, transform_hrefs=False).get("openeo:status")
 
         logger.debug(f"OpenEO batch job results status of {url}: {partial_job_status}")
