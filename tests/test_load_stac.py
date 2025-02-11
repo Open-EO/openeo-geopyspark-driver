@@ -170,11 +170,13 @@ def test_data_cube_resolution_matches_requested_bands(
         env=EvalEnv({"pyramid_levels": "highest"}),
         layer_properties={},
         batch_jobs=None,
+        apply_lcfm_improvements=True,
     )
 
     # TODO: how to check the actual argument to PyramidFactory()?
     factory_mock.assert_called_once()
     cellsize_mock.assert_called_once_with(resolution, resolution)
+    # TODO: check CRS is 32636
 
 
 def _mock_stac_api(urllib_and_request_mock, requests_mock, stac_api_root_url, stac_collection_url, feature_collection):

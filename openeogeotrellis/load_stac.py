@@ -4,7 +4,7 @@ import time
 from functools import partial
 import logging
 import os
-from typing import Union, Optional, Tuple, Dict, List, Iterable, Any
+from typing import Union, Optional, Tuple, Dict, List, Iterable, Any, Set
 from urllib.parse import urlparse
 
 import dateutil.parser
@@ -42,8 +42,16 @@ from openeogeotrellis.integrations.stac import StacApiIO
 logger = logging.getLogger(__name__)
 REQUESTS_TIMEOUT_SECONDS = 60
 
-def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_properties: Dict[str, object],
-              batch_jobs: Optional[backend.BatchJobs], override_band_names: List[str] = None) -> GeopysparkDataCube:
+
+def load_stac(
+    url: str,
+    load_params: LoadParameters,
+    env: EvalEnv,
+    layer_properties: Dict[str, object],
+    batch_jobs: Optional[backend.BatchJobs],
+    override_band_names: List[str] = None,
+    apply_lcfm_improvements=False,
+) -> GeopysparkDataCube:
     if override_band_names is None:
         override_band_names = []
 
@@ -388,6 +396,9 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
     proj_bbox = None
     proj_shape = None
 
+    band_resolution: Dict[str, float] = {}
+    band_epsgs: Dict[str, Set[int]] = {}
+
     netcdf_with_time_dimension = False
     if collection is not None:
         # we found some collection level metadata
@@ -417,11 +428,18 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
 
         for asset_id, asset in band_assets.items():
             asset_band_names = get_band_names(itm, asset) or [asset_id]
+            proj_epsg, proj_bbox, proj_shape = get_proj_metadata(itm, asset)
+
             for asset_band_name in asset_band_names:
                 if asset_band_name not in band_names:
                     band_names.append(asset_band_name)
 
-            proj_epsg, proj_bbox, proj_shape = get_proj_metadata(itm, asset)
+                # TODO: assumes square pixels (probably elsewhere too)
+                # assumes a band has the same resolution across assets
+                if proj_bbox and proj_shape:
+                    band_resolution[asset_band_name] = _compute_cellsize(proj_bbox, proj_shape)[0]
+                if proj_epsg:
+                    band_epsgs.setdefault(asset_band_name, set()).add(proj_epsg)
 
             builder = builder.addLink(get_best_url(asset), asset_id, asset_band_names)
 
@@ -430,6 +448,7 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
         if proj_bbox:
             builder = builder.withRasterExtent(*proj_bbox)
 
+        # TODO: does not seem right conceptually; an Item's assets can have different resolutions (and CRS)
         if proj_bbox and proj_shape:
             cell_width, cell_height = _compute_cellsize(proj_bbox, proj_shape)
             builder = builder.withResolution(cell_width)
@@ -465,38 +484,6 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
                    f'please provide a spatial extent.'
             )
 
-    if proj_epsg and proj_bbox and proj_shape:  # exact resolution
-        target_epsg = proj_epsg
-        cell_width, cell_height = _compute_cellsize(proj_bbox, proj_shape)
-    elif proj_epsg:  # about 10m in given CRS
-        target_epsg = proj_epsg
-        try:
-            utm_zone_from_epsg(proj_epsg)
-            cell_width = cell_height = 10.0
-        except ValueError:
-            target_bbox_center = target_bbox.as_polygon().centroid
-            cell_width = cell_height = GeometryBufferer.transform_meter_to_crs(
-                10.0, f"EPSG:{proj_epsg}", loi=(target_bbox_center.x, target_bbox_center.y))
-    else:  # 10m UTM
-        target_epsg = target_bbox.best_utm()
-        cell_width = cell_height = 10.0
-
-    if (load_params.target_resolution is not None):
-        if load_params.target_resolution[0] != 0.0 and load_params.target_resolution[1] != 0.0:
-            cell_width = float(load_params.target_resolution[0])
-            cell_height = float(load_params.target_resolution[1])
-
-    if (load_params.target_crs is not None):
-        if load_params.target_resolution is not None and load_params.target_resolution[0] != 0.0 and \
-                load_params.target_resolution[1] != 0.0:
-            if isinstance(load_params.target_crs, int):
-                target_epsg = load_params.target_crs
-            elif isinstance(load_params.target_crs, dict) and load_params.target_crs.get("id", {}).get(
-                    "code") == 'Auto42001':
-                target_epsg = target_bbox.best_utm()
-            else:
-                target_epsg = pyproj.CRS.from_user_input(load_params.target_crs).to_epsg()
-
     if not metadata:
         metadata = GeopysparkCubeMetadata(metadata={})
 
@@ -521,6 +508,66 @@ def load_stac(url: str, load_params: LoadParameters, env: EvalEnv, layer_propert
         metadata = metadata.filter_bands(load_params.bands)
 
     band_names = metadata.band_names
+
+    if apply_lcfm_improvements:
+        requested_band_epgs = [epsgs for n, epsgs in band_epsgs.items() if n in band_names]
+        epsgs = {epsg for epsgs in requested_band_epgs for epsg in epsgs}
+        requested_band_resolutions = [res for n, res in band_resolution.items() if n in band_names]
+
+        if len(epsgs) == 1 and requested_band_resolutions:  # exact resolution
+            target_epsg = epsgs.pop()
+            cell_width = cell_height = max(requested_band_resolutions)
+        elif len(epsgs) == 1:  # about 10m in given CRS
+            target_epsg = epsgs.pop()
+            try:
+                utm_zone_from_epsg(proj_epsg)
+                cell_width = cell_height = 10.0
+            except ValueError:
+                target_bbox_center = target_bbox.as_polygon().centroid
+                cell_width = cell_height = GeometryBufferer.transform_meter_to_crs(
+                    10.0, f"EPSG:{proj_epsg}", loi=(target_bbox_center.x, target_bbox_center.y)
+                )
+        else:  # 10m UTM
+            target_epsg = target_bbox.best_utm()
+            cell_width = cell_height = 10.0
+    else:
+        if proj_epsg and proj_bbox and proj_shape:  # exact resolution
+            target_epsg = proj_epsg
+            cell_width, cell_height = _compute_cellsize(proj_bbox, proj_shape)
+        elif proj_epsg:  # about 10m in given CRS
+            target_epsg = proj_epsg
+            try:
+                utm_zone_from_epsg(proj_epsg)
+                cell_width = cell_height = 10.0
+            except ValueError:
+                target_bbox_center = target_bbox.as_polygon().centroid
+                cell_width = cell_height = GeometryBufferer.transform_meter_to_crs(
+                    10.0, f"EPSG:{proj_epsg}", loi=(target_bbox_center.x, target_bbox_center.y)
+                )
+        else:  # 10m UTM
+            target_epsg = target_bbox.best_utm()
+            cell_width = cell_height = 10.0
+
+    if load_params.target_resolution is not None:
+        if load_params.target_resolution[0] != 0.0 and load_params.target_resolution[1] != 0.0:
+            cell_width = float(load_params.target_resolution[0])
+            cell_height = float(load_params.target_resolution[1])
+
+    if load_params.target_crs is not None:
+        if (
+            load_params.target_resolution is not None
+            and load_params.target_resolution[0] != 0.0
+            and load_params.target_resolution[1] != 0.0
+        ):
+            if isinstance(load_params.target_crs, int):
+                target_epsg = load_params.target_crs
+            elif (
+                isinstance(load_params.target_crs, dict)
+                and load_params.target_crs.get("id", {}).get("code") == "Auto42001"
+            ):
+                target_epsg = target_bbox.best_utm()
+            else:
+                target_epsg = pyproj.CRS.from_user_input(load_params.target_crs).to_epsg()
 
     if netcdf_with_time_dimension:
         pyramid_factory = jvm.org.openeo.geotrellis.layers.NetCDFCollection
