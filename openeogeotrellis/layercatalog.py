@@ -16,6 +16,7 @@ import py4j.protocol
 import pyproj
 import pyspark.sql.utils
 import pytz
+from py4j.protocol import Py4JJavaError
 
 from openeo.metadata import Band
 from openeo.util import TimingLogger, deep_get, str_truncate
@@ -1199,29 +1200,33 @@ def check_missing_products(
         elif method == "terrascope":
             jvm = get_jvm()
 
-            expected_tiles = query_jvm_opensearch_client(
-                open_search_client=jvm.org.openeo.opensearch.backends.CreodiasClient.apply(),
-                collection_id=check_data["creo_catalog"]["mission"],
-                _query_kwargs=query_kwargs,
-                processing_level=check_data["creo_catalog"]["level"],
-            )
+            try:
+                expected_tiles = query_jvm_opensearch_client(
+                    open_search_client=jvm.org.openeo.opensearch.backends.CreodiasClient.apply(),
+                    collection_id=check_data["creo_catalog"]["mission"],
+                    _query_kwargs=query_kwargs,
+                    processing_level=check_data["creo_catalog"]["level"],
+                )
+                logger.debug(f"Expected tiles ({len(expected_tiles)}): {str_truncate(repr(expected_tiles), 200)}")
+                opensearch_collection_id = collection_metadata.get("_vito", "data_source", "opensearch_collection_id")
 
-            logger.debug(f"Expected tiles ({len(expected_tiles)}): {str_truncate(repr(expected_tiles), 200)}")
-            opensearch_collection_id = collection_metadata.get("_vito", "data_source", "opensearch_collection_id")
+                url = jvm.java.net.URL("https://services.terrascope.be/catalogue")
+                # Terrascope has a different calculation for cloudCover
+                query_kwargs_no_cldPrcnt = query_kwargs.copy()
+                if "cldPrcnt" in query_kwargs_no_cldPrcnt:
+                    del query_kwargs_no_cldPrcnt["cldPrcnt"]
+                terrascope_tiles = query_jvm_opensearch_client(
+                    open_search_client=jvm.org.openeo.opensearch.OpenSearchClient.apply(url, False, ""),
+                    collection_id=opensearch_collection_id,
+                    _query_kwargs=query_kwargs_no_cldPrcnt,
+                )
 
-            url = jvm.java.net.URL("https://services.terrascope.be/catalogue")
-            # Terrascope has a different calculation for cloudCover
-            query_kwargs_no_cldPrcnt = query_kwargs.copy()
-            if "cldPrcnt" in query_kwargs_no_cldPrcnt:
-                del query_kwargs_no_cldPrcnt["cldPrcnt"]
-            terrascope_tiles = query_jvm_opensearch_client(
-                open_search_client=jvm.org.openeo.opensearch.OpenSearchClient.apply(url, False, ""),
-                collection_id=opensearch_collection_id,
-                _query_kwargs=query_kwargs_no_cldPrcnt,
-            )
+                logger.debug(f"Oscar tiles ({len(terrascope_tiles)}): {str_truncate(repr(terrascope_tiles), 200)}")
+                missing = list(expected_tiles.difference(terrascope_tiles))
+            except Py4JJavaError as e:
+                logger.error(f"load_collection: Failed to retrieve list of expected products from CDSE. {e}")
+                missing = [f"unknown - CDSE query failed with {e}"]
 
-            logger.debug(f"Oscar tiles ({len(terrascope_tiles)}): {str_truncate(repr(terrascope_tiles), 200)}")
-            return list(expected_tiles.difference(terrascope_tiles))
         else:
             logger.error(f"Invalid check_missing_products data {check_data}")
             raise InternalException("Invalid check_missing_products data")
