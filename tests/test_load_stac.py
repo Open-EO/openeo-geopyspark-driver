@@ -164,7 +164,7 @@ def test_data_cube_resolution_matches_requested_bands(
     factory_mock = jvm_mock.org.openeo.geotrellis.file.PyramidFactory
     cellsize_mock = jvm_mock.geotrellis.raster.CellSize
 
-    load_stac(
+    data_cube = load_stac(
         stac_collection_url,
         load_params=LoadParameters(bands=band_names),
         env=EvalEnv({"pyramid_levels": "highest"}),
@@ -176,7 +176,7 @@ def test_data_cube_resolution_matches_requested_bands(
     # TODO: how to check the actual argument to PyramidFactory()?
     factory_mock.assert_called_once()
     cellsize_mock.assert_called_once_with(resolution, resolution)
-    # TODO: check CRS is 32636
+    assert data_cube.metadata.spatial_extent["crs"] == "EPSG:32636"
 
 
 def _mock_stac_api(urllib_and_request_mock, requests_mock, stac_api_root_url, stac_collection_url, feature_collection):
