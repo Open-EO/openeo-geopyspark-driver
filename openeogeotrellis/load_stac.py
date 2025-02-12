@@ -510,15 +510,17 @@ def load_stac(
     band_names = metadata.band_names
 
     if apply_lcfm_improvements or env.get(EVAL_ENV_KEY.LOAD_STAC_APPLY_LCFM_IMPROVEMENTS, False):
+        logger.info("applying LCFM resolution improvements")
+
         requested_band_epgs = [epsgs for n, epsgs in band_epsgs.items() if n in band_names]
-        epsgs = {epsg for epsgs in requested_band_epgs for epsg in epsgs}
+        unique_epsgs = {epsg for epsgs in requested_band_epgs for epsg in epsgs}
         requested_band_resolutions = [res for n, res in band_resolution.items() if n in band_names]
 
-        if len(epsgs) == 1 and requested_band_resolutions:  # exact resolution
-            target_epsg = epsgs.pop()
+        if len(unique_epsgs) == 1 and requested_band_resolutions:  # exact resolution
+            target_epsg = unique_epsgs.pop()
             cell_width = cell_height = max(requested_band_resolutions)
-        elif len(epsgs) == 1:  # about 10m in given CRS
-            target_epsg = epsgs.pop()
+        elif len(unique_epsgs) == 1:  # about 10m in given CRS
+            target_epsg = unique_epsgs.pop()
             try:
                 utm_zone_from_epsg(proj_epsg)
                 cell_width = cell_height = 10.0
