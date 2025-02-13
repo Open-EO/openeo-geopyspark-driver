@@ -142,7 +142,10 @@ def load_stac(
             prefix = "EPSG:"
             return int(proj_code[len(prefix):]) if proj_code.upper().startswith(prefix) else None
 
-        code = asst.extra_fields.get("proj:code") or itm.properties.get("proj:code")
+        code = (
+            asst.extra_fields.get("proj:code") or itm.properties.get("proj:code") if apply_lcfm_improvements
+            else None
+        )
         epsg = map_optional(to_epsg, code) or asst.extra_fields.get("proj:epsg") or itm.properties.get("proj:epsg")
         bbox = asst.extra_fields.get("proj:bbox") or itm.properties.get("proj:bbox")
         shape = asst.extra_fields.get("proj:shape") or itm.properties.get("proj:shape")
