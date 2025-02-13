@@ -24,6 +24,7 @@ import shapely.geometry
 import shapely.geometry.polygon
 import shapely.ops
 from py4j.java_gateway import JVMView, JavaObject
+from pyspark import TaskContext
 
 from openeo.util import TimingLogger
 from openeo_driver.datastructs import SarBackscatterArgs
@@ -285,6 +286,9 @@ class S1BackscatterOrfeo:
         if max_total_memory_in_bytes:
             set_max_memory(int(max_total_memory_in_bytes))
 
+        if trackers is not None:
+            trackers[0].add(1)
+
         tempdir = tempfile.mkdtemp()
         out_path = os.path.join(tempdir, input_tiff.name)
         write_to_numpy = extent_height_px < 2500 and extent_width_px < 2500
@@ -334,6 +338,12 @@ class S1BackscatterOrfeo:
                     msg = f"sar_backscatter: Orfeo error can be found in the logs. Errors can happen due to corrupted input products. Setting the 'soft-errors' job option allows you to skip these products and continue processing."
                     raise RuntimeError(msg)
                 else:
+                    context = TaskContext.get()
+                    if context is not None and context.attemptNumber() == 0:
+                        raise RuntimeError(f"sar_backscatter: First attempt for {input_tiff} failed with an error, will retry.")
+                    else:
+                        trackers[1].add(1)
+
                     # TODO: #302 Implement singleton for batch jobs, to check soft errors after collect.
                     logger.warning(f"ignoring soft errors, max_soft_errors_ratio={max_soft_errors_ratio}")
 
@@ -752,9 +762,11 @@ class S1BackscatterOrfeo:
         if in_batch_job_context():
             # Trackers are only used for batch jobs, and they are global to that job.
             if S1BackscatterOrfeo._trackers is None:
+                from openeogeotrellis.metrics_tracking import global_tracker
+                metrics_tracker = global_tracker()
                 S1BackscatterOrfeo._trackers = (
-                    spark_context.accumulator(0), # nr_execution_tracker
-                    spark_context.accumulator(0), # nr_error_tracker
+                    metrics_tracker.register_counter(_EXECUTION_TRACKER_ID), # nr_execution_tracker
+                    metrics_tracker.register_counter(_SOFT_ERROR_TRACKER_ID), # nr_error_tracker
                 )
         return S1BackscatterOrfeo._trackers
 

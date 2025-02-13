@@ -14,6 +14,14 @@ without compromising stable operations.
 
 ## Unreleased
 
+- `python-memory`: make job option available on YARN, add a default config
+- `load_stac`: optimize resolution with regard to requested bands (experimental) ([#1043](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1043))
+
+## 0.60.1
+- `load_stac`: restore spatial dimensions of data cube loaded from STAC Collection that lacks `cube:dimensions`. ([#1036](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1036))
+- `sar_backscatter`: report soft-errors fraction in usage metrics
+- `apply_neighborhood`: for t='P1D', add date to dataarray.attrs with key 't'
+
 ## 0.60.0
 
 - Make environment variables to be passed from web app driver to batch job driver configurable ([#867](https://github.com/Open-EO/openeo-geopyspark-driver/issues/867))

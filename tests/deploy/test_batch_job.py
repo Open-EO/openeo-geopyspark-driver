@@ -42,6 +42,7 @@ from openeogeotrellis.integrations.gdal import (
     parse_gdal_raster_metadata,
     read_gdal_raster_metadata,
 )
+from openeogeotrellis.metrics_tracking import global_tracker
 from openeogeotrellis.testing import gps_config_overrides
 from openeogeotrellis.utils import get_jvm, to_s3_url, s3_client, stream_s3_binary_file_contents
 
@@ -425,6 +426,7 @@ def test_run_job(evaluate, time_sleep_mock, tmp_path):
     asset_meta = {"openEO01-01.tif": {"href": "tmp/openEO01-01.tif", "roles": "data"},"openEO01-05.tif": {"href": "tmp/openEO01-05.tif", "roles": "data"}}
     cube_mock.write_assets.return_value = asset_meta
     evaluate.return_value = ImageCollectionResult(cube=cube_mock, format="GTiff", options={"multidate":True})
+    global_tracker().clear()
     t = _get_tracker()
     t.setGlobalTracking(True)
     t.clearGlobalTracker()
@@ -535,6 +537,8 @@ def test_run_job_get_projection_extension_metadata(evaluate, time_sleep_mock, tm
     evaluate.return_value = ImageCollectionResult(
         cube=cube_mock, format="GTiff", options={"multidate": True}
     )
+    global_tracker().clear()
+
     t = _get_tracker()
     t.setGlobalTracking(True)
     t.clearGlobalTracker()
@@ -674,6 +678,7 @@ def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox
     evaluate.return_value = ImageCollectionResult(
         cube=cube_mock, format="GTiff", options={"multidate": True}
     )
+    global_tracker().clear()
     t = _get_tracker()
     t.setGlobalTracking(True)
     t.clearGlobalTracker()
@@ -958,6 +963,8 @@ def test_run_job_get_projection_extension_metadata_assets_with_different_epsg(
     evaluate.return_value = ImageCollectionResult(
         cube=cube_mock, format="GTiff", options={"multidate": True}
     )
+
+    global_tracker().clear()
     t = _get_tracker()
     t.setGlobalTracking(True)
     t.clearGlobalTracker()

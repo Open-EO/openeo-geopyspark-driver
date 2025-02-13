@@ -199,6 +199,8 @@ class GpsBackendConfig(OpenEoBackendConfig):
 
     default_executor_memoryOverhead: str = "3G"
 
+    default_python_memory: str = None
+
     default_executor_cores: int = 2
 
     """
