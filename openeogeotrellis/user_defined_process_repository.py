@@ -84,7 +84,8 @@ class ZooKeeperUserDefinedProcessRepository(UserDefinedProcesses):
 
     @contextlib.contextmanager
     def _zk_client(self):
-        if not self._zk_client_reuse or self._zk_client_cache is None:
+        create_new_client = (not self._zk_client_reuse) or (self._zk_client_cache is None)
+        if create_new_client:
             kz_retry = KazooRetry(max_tries=10, delay=0.5, backoff=2)
             zk = KazooClient(
                 hosts=self._hosts,
