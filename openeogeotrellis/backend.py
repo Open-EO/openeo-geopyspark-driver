@@ -468,10 +468,20 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                             "description": "Specifies the filename prefix when outputting multiple files. By default, depending on the context, 'OpenEO' or a part of the input filename will be used as prefix.",
                             "default": None,
                         },
-                        "separate_asset_per_band": {  # TODO: should be a boolean that defaults to false
-                            "type": "string",
+                        "separate_asset_per_band": {
+                            "type": "boolean",
                             "description": "Set to true to write one output tiff per band. If there is a time dimension, the files will be split on time as well.",
+                            "default": False,
+                        },
+                        "filepath_per_band": {
+                            "type": "array",
+                            "description": "Specify an array with the same amount of bands, to give each band it's separate path. Subfolders are allowed.",
                             "default": None,
+                        },
+                        "attach_gdalinfo_assets": {
+                            "type": "boolean",
+                            "description": "Attaches *_gdalinfo.json files to the output results.",
+                            "default": False,
                         },
                     },
                 },
