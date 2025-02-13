@@ -396,7 +396,7 @@ def load_stac(
     proj_bbox = None
     proj_shape = None
 
-    band_resolution: Dict[str, float] = {}
+    band_cell_size: Dict[str, float] = {}  # assumes a band has the same resolution across features/assets
     band_epsgs: Dict[str, Set[int]] = {}
 
     netcdf_with_time_dimension = False
@@ -435,9 +435,8 @@ def load_stac(
                     band_names.append(asset_band_name)
 
                 # TODO: assumes square pixels (probably elsewhere too)
-                # assumes a band has the same resolution across assets
                 if proj_bbox and proj_shape:
-                    band_resolution[asset_band_name] = _compute_cellsize(proj_bbox, proj_shape)[0]
+                    band_cell_size[asset_band_name] = _compute_cellsize(proj_bbox, proj_shape)[0]
                 if proj_epsg:
                     band_epsgs.setdefault(asset_band_name, set()).add(proj_epsg)
 
@@ -514,11 +513,11 @@ def load_stac(
 
         requested_band_epgs = [epsgs for n, epsgs in band_epsgs.items() if n in band_names]
         unique_epsgs = {epsg for epsgs in requested_band_epgs for epsg in epsgs}
-        requested_band_resolutions = [res for n, res in band_resolution.items() if n in band_names]
+        requested_band_cell_sizes = [size for band_name, size in band_cell_size.items() if band_name in band_names]
 
-        if len(unique_epsgs) == 1 and requested_band_resolutions:  # exact resolution
+        if len(unique_epsgs) == 1 and requested_band_cell_sizes:  # exact resolution
             target_epsg = unique_epsgs.pop()
-            cell_width = cell_height = max(requested_band_resolutions)
+            cell_width = cell_height = min(requested_band_cell_sizes)
         elif len(unique_epsgs) == 1:  # about 10m in given CRS
             target_epsg = unique_epsgs.pop()
             try:

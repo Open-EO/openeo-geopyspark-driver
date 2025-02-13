@@ -143,6 +143,7 @@ def jvm_mock():
         (["AOT_10m"], 10.0),
         (["WVP_20m"], 20.0),
         (["WVP_60m"], 60.0),
+        (["AOT_10m", "WVP_20m"], 10.0)
     ],
 )
 def test_data_cube_resolution_matches_requested_bands(

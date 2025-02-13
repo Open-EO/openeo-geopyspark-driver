@@ -188,12 +188,15 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         #band specific gsd can override collection default
         band_gsds = [band.gsd['value'] for band in metadata.bands if band.gsd is not None]
         if len(band_gsds) > 0:
-            def highest_resolution(band_gsd, coordinate_index):
-                return (min(res[coordinate_index] for res in band_gsd) if isinstance(band_gsd[0], list)
-                        else band_gsd[coordinate_index])
 
-            cell_width = float(min(highest_resolution(band_gsd, coordinate_index=0) for band_gsd in band_gsds))
-            cell_height = float(min(highest_resolution(band_gsd, coordinate_index=1) for band_gsd in band_gsds))
+            def smallest_cell_size(band_gsd, coordinate_index):
+                return (
+                    min(size[coordinate_index] for size in band_gsd) if isinstance(band_gsd[0], list)
+                    else band_gsd[coordinate_index]
+                )
+
+            cell_width = float(min(smallest_cell_size(band_gsd, coordinate_index=0) for band_gsd in band_gsds))
+            cell_height = float(min(smallest_cell_size(band_gsd, coordinate_index=1) for band_gsd in band_gsds))
 
         native_crs = self._native_crs(metadata)
 
