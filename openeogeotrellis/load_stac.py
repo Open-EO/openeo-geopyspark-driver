@@ -396,7 +396,7 @@ def load_stac(
     proj_bbox = None
     proj_shape = None
 
-    band_cell_size: Dict[str, float] = {}  # assumes a band has the same resolution across features/assets
+    band_cell_size: Dict[str, Tuple[float, float]] = {}  # assumes a band has the same resolution across features/assets
     band_epsgs: Dict[str, Set[int]] = {}
 
     netcdf_with_time_dimension = False
@@ -434,9 +434,8 @@ def load_stac(
                 if asset_band_name not in band_names:
                     band_names.append(asset_band_name)
 
-                # TODO: assumes square pixels (probably elsewhere too)
                 if proj_bbox and proj_shape:
-                    band_cell_size[asset_band_name] = _compute_cellsize(proj_bbox, proj_shape)[0]
+                    band_cell_size[asset_band_name] = _compute_cellsize(proj_bbox, proj_shape)
                 if proj_epsg:
                     band_epsgs.setdefault(asset_band_name, set()).add(proj_epsg)
 
@@ -517,7 +516,9 @@ def load_stac(
 
         if len(unique_epsgs) == 1 and requested_band_cell_sizes:  # exact resolution
             target_epsg = unique_epsgs.pop()
-            cell_width = cell_height = min(requested_band_cell_sizes)
+            cell_widths, cell_heights = zip(*requested_band_cell_sizes)  # unzip
+            cell_width = min(cell_widths)
+            cell_height = min(cell_heights)
         elif len(unique_epsgs) == 1:  # about 10m in given CRS
             target_epsg = unique_epsgs.pop()
             try:
@@ -688,7 +689,7 @@ def get_best_url(asset: pystac.Asset):
     )
 
 
-def _compute_cellsize(proj_bbox, proj_shape):
+def _compute_cellsize(proj_bbox, proj_shape) -> (float, float):
     xmin, ymin, xmax, ymax = proj_bbox
     rows, cols = proj_shape
     cell_width = (xmax - xmin) / cols
