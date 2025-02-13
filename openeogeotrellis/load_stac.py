@@ -510,8 +510,8 @@ def load_stac(
     if apply_lcfm_improvements or env.get(EVAL_ENV_KEY.LOAD_STAC_APPLY_LCFM_IMPROVEMENTS, False):
         logger.info("applying LCFM resolution improvements")
 
-        requested_band_epgs = [epsgs for n, epsgs in band_epsgs.items() if n in band_names]
-        unique_epsgs = {epsg for epsgs in requested_band_epgs for epsg in epsgs}
+        requested_band_epsgs = [epsgs for band_name, epsgs in band_epsgs.items() if band_name in band_names]
+        unique_epsgs = {epsg for epsgs in requested_band_epsgs for epsg in epsgs}
         requested_band_cell_sizes = [size for band_name, size in band_cell_size.items() if band_name in band_names]
 
         if len(unique_epsgs) == 1 and requested_band_cell_sizes:  # exact resolution
