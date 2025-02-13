@@ -111,14 +111,77 @@ def test_dimensions(urllib_and_request_mock, requests_mock):
         env=EvalEnv({"pyramid_levels": "highest"}),
         layer_properties={},
         batch_jobs=None,
-        override_band_names=None,
     )
 
     assert {"x", "y", "t", "bands"} <= set(data_cube.metadata.dimension_names())
 
 
-def _mock_stac_api(urllib_mock, requests_mock, stac_api_root_url, stac_collection_url, feature_collection):
-    urllib_mock.get(
+@pytest.fixture
+def jvm_mock():
+    with mock.patch("openeogeotrellis.load_stac.get_jvm") as get_jvm:
+        jvm_mock = get_jvm.return_value
+
+        raster_layer = mock.MagicMock()
+        jvm_mock.geopyspark.geotrellis.TemporalTiledRasterLayer.return_value = raster_layer
+        raster_layer.layerMetadata.return_value = """{
+            "crs": "EPSG:4326",
+            "cellType": "uint8",
+            "bounds": {"minKey": {"col":0, "row":0}, "maxKey": {"col": 1, "row": 1}},
+            "extent": {"xmin": 0,"ymin": 0, "xmax": 1,"ymax": 1},
+            "layoutDefinition": {
+                "extent": {"xmin": 0, "ymin": 0,"xmax": 1,"ymax": 1},
+                "tileLayout": {"layoutCols": 1, "layoutRows": 1, "tileCols": 256, "tileRows": 256}
+            }
+        }"""
+
+        yield jvm_mock
+
+
+@pytest.mark.parametrize(
+    ["band_names", "resolution"],
+    [
+        (["AOT_10m"], 10.0),
+        (["WVP_20m"], 20.0),
+        (["WVP_60m"], 60.0),
+        (["AOT_10m", "WVP_20m"], 10.0)
+    ],
+)
+def test_data_cube_resolution_matches_requested_bands(
+    urllib_and_request_mock, requests_mock, jvm_mock, band_names, resolution
+):
+    stac_api_root_url = "https://stac.test"
+    stac_collection_url = f"{stac_api_root_url}/collections/collection"
+
+    features = json.loads(get_test_data_file("stac/issue1043-api-proj-code/FeatureCollection.json").read_text())
+
+    _mock_stac_api(
+        urllib_and_request_mock,
+        requests_mock,
+        stac_api_root_url,
+        stac_collection_url,
+        feature_collection=features,
+    )
+
+    factory_mock = jvm_mock.org.openeo.geotrellis.file.PyramidFactory
+    cellsize_mock = jvm_mock.geotrellis.raster.CellSize
+
+    data_cube = load_stac(
+        stac_collection_url,
+        load_params=LoadParameters(bands=band_names),
+        env=EvalEnv({"pyramid_levels": "highest"}),
+        layer_properties={},
+        batch_jobs=None,
+        apply_lcfm_improvements=True,
+    )
+
+    # TODO: how to check the actual argument to PyramidFactory()?
+    factory_mock.assert_called_once()
+    cellsize_mock.assert_called_once_with(resolution, resolution)
+    assert data_cube.metadata.spatial_extent["crs"] == "EPSG:32636"
+
+
+def _mock_stac_api(urllib_and_request_mock, requests_mock, stac_api_root_url, stac_collection_url, feature_collection):
+    urllib_and_request_mock.get(
         stac_collection_url,
         data=json.dumps(
             {
@@ -153,7 +216,7 @@ def _mock_stac_api(urllib_mock, requests_mock, stac_api_root_url, stac_collectio
         ],
     }
 
-    urllib_mock.get(stac_api_root_url, data=json.dumps(catalog_response))
+    urllib_and_request_mock.get(stac_api_root_url, data=json.dumps(catalog_response))
     requests_mock.get(stac_api_root_url, json=catalog_response)
 
     search_mock = requests_mock.get(f"{stac_api_root_url}/search", json=feature_collection)

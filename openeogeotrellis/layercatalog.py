@@ -70,6 +70,7 @@ WHITELIST = [
     EVAL_ENV_KEY.ALLOW_EMPTY_CUBES,
     EVAL_ENV_KEY.DO_EXTENT_CHECK,
     EVAL_ENV_KEY.PARAMETERS,
+    EVAL_ENV_KEY.LOAD_STAC_APPLY_LCFM_IMPROVEMENTS,
 ]
 LARGE_LAYER_THRESHOLD_IN_PIXELS = pow(10, 11)
 
@@ -187,12 +188,15 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         #band specific gsd can override collection default
         band_gsds = [band.gsd['value'] for band in metadata.bands if band.gsd is not None]
         if len(band_gsds) > 0:
-            def highest_resolution(band_gsd, coordinate_index):
-                return (min(res[coordinate_index] for res in band_gsd) if isinstance(band_gsd[0], list)
-                        else band_gsd[coordinate_index])
 
-            cell_width = float(min(highest_resolution(band_gsd, coordinate_index=0) for band_gsd in band_gsds))
-            cell_height = float(min(highest_resolution(band_gsd, coordinate_index=1) for band_gsd in band_gsds))
+            def smallest_cell_size(band_gsd, coordinate_index):
+                return (
+                    min(size[coordinate_index] for size in band_gsd) if isinstance(band_gsd[0], list)
+                    else band_gsd[coordinate_index]
+                )
+
+            cell_width = float(min(smallest_cell_size(band_gsd, coordinate_index=0) for band_gsd in band_gsds))
+            cell_height = float(min(smallest_cell_size(band_gsd, coordinate_index=1) for band_gsd in band_gsds))
 
         native_crs = self._native_crs(metadata)
 
@@ -698,7 +702,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         elif layer_source_type == 'stac':
             cube = load_stac(layer_source_info["url"], load_params, env,
                              layer_properties=metadata.get("_vito", "properties", default={}),
-                             batch_jobs=None, override_band_names=metadata.band_names)
+                             batch_jobs=None, override_band_names=metadata.band_names,
+                             apply_lcfm_improvements=layer_source_info.get("load_stac_apply_lcfm_improvements", False),)
             pyramid = cube.pyramid.levels
             metadata = cube.metadata
         elif layer_source_type == 'accumulo':
