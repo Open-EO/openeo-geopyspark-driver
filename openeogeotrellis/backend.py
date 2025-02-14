@@ -1365,7 +1365,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
     def create_job(
         self,
-        user_id: str,
+        user: User,
         process: dict,
         api_version: str,
         metadata: dict,
@@ -1377,7 +1377,7 @@ class GpsBatchJobs(backend.BatchJobs):
         with self._double_job_registry as registry:
             job_info = registry.create_job(
                 job_id=job_id,
-                user_id=user_id,
+                user_id=user.user_id,
                 process=process,
                 api_version=api_version,
                 job_options=job_options,
