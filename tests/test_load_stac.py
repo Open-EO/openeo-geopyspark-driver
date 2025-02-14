@@ -138,6 +138,13 @@ def jvm_mock():
 
 
 @pytest.mark.parametrize(
+    ["enable_by_catalog", "enable_by_eval_env"],
+    [
+        (True, {}),
+        (False, {"load_stac_apply_lcfm_improvements": True}),
+    ],
+)
+@pytest.mark.parametrize(
     ["band_names", "resolution"],
     [
         (["AOT_10m"], 10.0),
@@ -147,7 +154,13 @@ def jvm_mock():
     ],
 )
 def test_data_cube_resolution_matches_requested_bands(
-    urllib_and_request_mock, requests_mock, jvm_mock, band_names, resolution
+    urllib_and_request_mock,
+    requests_mock,
+    jvm_mock,
+    band_names,
+    resolution,
+    enable_by_catalog,
+    enable_by_eval_env,
 ):
     stac_api_root_url = "https://stac.test"
     stac_collection_url = f"{stac_api_root_url}/collections/collection"
@@ -168,10 +181,10 @@ def test_data_cube_resolution_matches_requested_bands(
     data_cube = load_stac(
         stac_collection_url,
         load_params=LoadParameters(bands=band_names),
-        env=EvalEnv({"pyramid_levels": "highest"}),
+        env=EvalEnv(dict(enable_by_eval_env, pyramid_levels="highest")),
         layer_properties={},
         batch_jobs=None,
-        apply_lcfm_improvements=True,
+        apply_lcfm_improvements=enable_by_catalog,
     )
 
     # TODO: how to check the actual argument to PyramidFactory()?

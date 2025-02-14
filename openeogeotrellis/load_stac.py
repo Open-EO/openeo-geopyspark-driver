@@ -55,6 +55,8 @@ def load_stac(
     if override_band_names is None:
         override_band_names = []
 
+    apply_lcfm_improvements = apply_lcfm_improvements or env.get(EVAL_ENV_KEY.LOAD_STAC_APPLY_LCFM_IMPROVEMENTS, False)
+
     logger.info("load_stac from url {u!r} with load params {p!r}".format(u=url, p=load_params))
 
     feature_flags = load_params.get("featureflags", {})
@@ -142,7 +144,10 @@ def load_stac(
             prefix = "EPSG:"
             return int(proj_code[len(prefix):]) if proj_code.upper().startswith(prefix) else None
 
-        code = asst.extra_fields.get("proj:code") or itm.properties.get("proj:code")
+        code = (
+            asst.extra_fields.get("proj:code") or itm.properties.get("proj:code") if apply_lcfm_improvements
+            else None
+        )
         epsg = map_optional(to_epsg, code) or asst.extra_fields.get("proj:epsg") or itm.properties.get("proj:epsg")
         bbox = asst.extra_fields.get("proj:bbox") or itm.properties.get("proj:bbox")
         shape = asst.extra_fields.get("proj:shape") or itm.properties.get("proj:shape")
@@ -507,7 +512,7 @@ def load_stac(
 
     band_names = metadata.band_names
 
-    if apply_lcfm_improvements or env.get(EVAL_ENV_KEY.LOAD_STAC_APPLY_LCFM_IMPROVEMENTS, False):
+    if apply_lcfm_improvements:
         logger.info("applying LCFM resolution improvements")
 
         requested_band_epsgs = [epsgs for band_name, epsgs in band_epsgs.items() if band_name in band_names]
