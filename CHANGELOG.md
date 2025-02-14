@@ -16,6 +16,7 @@ without compromising stable operations.
 
 - `python-memory`: make job option available on YARN, add a default config
 - `load_stac`: optimize resolution with regard to requested bands (experimental) ([#1043](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1043))
+- Deprecate non-standard "logging-threshold" job option in favor of standardized "log_level" job creation parameter ([#909](https://github.com/Open-EO/openeo-geopyspark-driver/issues/909))
 
 ## 0.60.1
 - `load_stac`: restore spatial dimensions of data cube loaded from STAC Collection that lacks `cube:dimensions`. ([#1036](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1036))

@@ -18,26 +18,25 @@ data_cube.create_job(job_options={
 })
 ```
 
-```python
-data_cube.execute_batch(job_options={
-    "logging-threshold": "info"
-})
-```
-
-### Logging threshold
+### Log level
 
 To reduce:
 * the amount of irrelevant logs for users to wade through,
 * the amount of storage for these logs on disk,
 
-the logging threshold for a batch job can be set by means of the "logging-threshold" job_option, e.g.
+the openEO API spec provides a `log_level` to set at job creation time,
+for example with `create_job()` or `execute_batch()`:
+
 ```python
-job_options={
-    "logging-threshold": "warning"
-}
+cube.create_job(
+    log_level="warning",
+)
 ```
 
-This effectively prevents lower priority logs (in this case: "debug" and "info") from being written to the logs.
+(Note that, originally, this log level could also be set through a "logging-threshold" job option,
+but that usage pattern is deprecated in favor of the standardized way mentioned above)
+
+This log level effectively prevents log entries with a lower level (in this case: "debug" and "info") from being written to the logs.
 
 It accepts the log levels as defined in the OpenEO API: "debug", "info", "warning" and "error" and defaults to "info".
 

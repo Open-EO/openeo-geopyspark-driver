@@ -48,7 +48,7 @@ from openeo_driver.backend import (
     JobListing,
 )
 from openeo_driver.config.load import ConfigGetter
-from openeo_driver.constants import DEFAULT_LOG_LEVEL_RETRIEVAL
+from openeo_driver.constants import DEFAULT_LOG_LEVEL_RETRIEVAL, DEFAULT_LOG_LEVEL_PROCESSING
 from openeo_driver.datacube import DriverDataCube, DriverVectorCube
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.delayed_vector import DelayedVector
@@ -80,6 +80,7 @@ from openeogeotrellis import sentinel_hub, load_stac, datacube_parameters
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.config.s3_config import S3Config
 from openeogeotrellis.configparams import ConfigParams
+from openeogeotrellis.constants import JOB_OPTION_LOG_LEVEL, JOB_OPTION_LOGGING_THRESHOLD
 from openeogeotrellis.geopysparkdatacube import GeopysparkCubeMetadata, GeopysparkDataCube
 from openeogeotrellis.integrations.etl_api import get_etl_api, ETL_ORGANIZATION_ID_JOB_OPTION
 from openeogeotrellis.integrations.identity import IDP_TOKEN_ISSUER
@@ -1374,6 +1375,13 @@ class GpsBatchJobs(backend.BatchJobs):
         job_id = generate_unique_id(prefix="j")
         title = metadata.get("title")
         description = metadata.get("description")
+        log_level = metadata.get("log_level", DEFAULT_LOG_LEVEL_PROCESSING)
+        # TODO: it's not ideal to put "log_level" (processing parameter from official spec)
+        #       in job_options, which is intended for parameters that are not part of official spec.
+        #       Unfortunately, it's quite involved to add a new field like "log_level"
+        #       in all the appropriate job registry related places, so we do it just here for now.
+        job_options[JOB_OPTION_LOG_LEVEL] = log_level
+
         with self._double_job_registry as registry:
             job_info = registry.create_job(
                 job_id=job_id,
@@ -1813,17 +1821,26 @@ class GpsBatchJobs(backend.BatchJobs):
                                      status_code=400)
 
         def as_logging_threshold_arg() -> str:
-            value = job_options.get("logging-threshold", "info").upper()
+            if JOB_OPTION_LOGGING_THRESHOLD in job_options:
+                log.warning(
+                    f"Job option {JOB_OPTION_LOGGING_THRESHOLD!r} is non-standard and deprecated, use the standard job creation parameter 'log_level' instead"
+                )
+                value = job_options[JOB_OPTION_LOGGING_THRESHOLD]
+            else:
+                value = job_options.get(JOB_OPTION_LOG_LEVEL, DEFAULT_LOG_LEVEL_PROCESSING)
+
+            value = value.upper()
 
             if value == "WARNING":
                 value = "WARN"  # Log4j only accepts WARN whereas Python logging accepts WARN as well as WARNING
 
             if value in ["DEBUG", "INFO", "WARN", "ERROR"]:
                 return value
-
-            raise OpenEOApiException(message=f"invalid value {value} for job_option logging-threshold; "
-                                             f'supported values include "debug", "info", "warning" and "error"',
-                                     status_code=400)
+            raise OpenEOApiException(
+                code="InvalidLogLevel",
+                status_code=400,
+                message=f"Invalid log level {value}. Should be one of 'debug', 'info', 'warning' or 'error'.",
+            )
 
         isKube = ConfigParams().is_kube_deploy
         driver_memory = job_options.get("driver-memory", get_backend_config().default_driver_memory )
