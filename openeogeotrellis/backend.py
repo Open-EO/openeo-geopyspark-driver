@@ -1736,7 +1736,7 @@ class GpsBatchJobs(backend.BatchJobs):
         job_title = job_info.get('title', '')
         sentinel_hub_client_alias = deep_get(job_options, 'sentinel-hub', 'client-alias', default="default")
 
-        log.debug("job_options: {o!r}".format(o=job_options))
+        log.debug(f"_start_hob {job_options=}")
 
         if (dependencies is None
             and job_info.get("dependency_status")
@@ -1758,7 +1758,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 logger_adapter=log,
             )
 
-            log.debug(f"job_dependencies: {job_dependencies}")
+            log.debug(f"_start_job {job_dependencies=}")
 
             if job_dependencies:
                 with self._double_job_registry as dbl_registry:
