@@ -1375,12 +1375,14 @@ class GpsBatchJobs(backend.BatchJobs):
         job_id = generate_unique_id(prefix="j")
         title = metadata.get("title")
         description = metadata.get("description")
-        log_level = metadata.get("log_level", DEFAULT_LOG_LEVEL_PROCESSING)
-        # TODO: it's not ideal to put "log_level" (processing parameter from official spec)
-        #       in job_options, which is intended for parameters that are not part of official spec.
-        #       Unfortunately, it's quite involved to add a new field like "log_level"
-        #       in all the appropriate job registry related places, so we do it just here for now.
-        job_options[JOB_OPTION_LOG_LEVEL] = log_level
+        if "log_level" in metadata:
+            # TODO: it's not ideal to put "log_level" (processing parameter from official spec)
+            #       in job_options, which is intended for parameters that are not part of official spec.
+            #       Unfortunately, it's quite involved to add a new field like "log_level"
+            #       in all the appropriate job registry related places, so we do it just here for now.
+            if job_options is None:
+                job_options = {}
+            job_options[JOB_OPTION_LOG_LEVEL] = metadata.get("log_level", DEFAULT_LOG_LEVEL_PROCESSING)
 
         with self._double_job_registry as registry:
             job_info = registry.create_job(
