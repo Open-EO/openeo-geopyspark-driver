@@ -153,7 +153,7 @@ def jvm_mock():
         (["AOT_10m", "WVP_20m"], 10.0)
     ],
 )
-def test_data_cube_resolution_matches_requested_bands(
+def test_lcfm_improvements(  # resolution and offset behind a feature flag; alphabetical head tags are tested elsewhere
     urllib_and_request_mock,
     requests_mock,
     jvm_mock,
