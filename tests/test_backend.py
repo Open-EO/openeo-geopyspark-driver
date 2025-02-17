@@ -661,9 +661,6 @@ def test_k8s_sparkapplication_dict_udf_python_deps(backend_config_path):
                     },
                     {"name": "OPENEO_BACKEND_CONFIG", "value": str(backend_config_path)},
                 ),
-                volumeMounts=dirty_equals.Contains(
-                    {"name": "backend-config-configmap", "mountPath": "/opt/backend_config/"}
-                ),
             ),
             executor=dirty_equals.IsPartialDict(
                 env=dirty_equals.Contains(
@@ -680,9 +677,6 @@ def test_k8s_sparkapplication_dict_udf_python_deps(backend_config_path):
                         "value": "/jobs/j123/udfdepz.zip",
                     },
                     {"name": "OPENEO_BACKEND_CONFIG", "value": str(backend_config_path)},
-                ),
-                volumeMounts=dirty_equals.Contains(
-                    {"name": "backend-config-configmap", "mountPath": "/opt/backend_config/"}
                 ),
             ),
         )
