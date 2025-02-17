@@ -156,6 +156,12 @@ def load_stac(
                 tuple(map(float, bbox)) if bbox else None,
                 tuple(shape) if shape else None)
 
+    def get_pixel_value_offset(itm: pystac.Item, asst: pystac.Asset) -> float:
+        raster_scale = asst.extra_fields.get("raster:scale", itm.properties.get("raster:scale", 1.0))
+        raster_offset = asst.extra_fields.get("raster:offset", itm.properties.get("raster:offset", 0.0))
+
+        return raster_offset / raster_scale
+
     literal_matches = {
         property_name: filter_properties.extract_literal_match(condition, env)
         for property_name, condition in all_properties.items()
@@ -444,7 +450,8 @@ def load_stac(
                 if proj_epsg:
                     band_epsgs.setdefault(asset_band_name, set()).add(proj_epsg)
 
-            builder = builder.addLink(get_best_url(asset), asset_id, asset_band_names)
+            pixel_value_offset = get_pixel_value_offset(itm, asset) if apply_lcfm_improvements else 0.0
+            builder = builder.addLink(get_best_url(asset), asset_id, pixel_value_offset, asset_band_names)
 
         if proj_epsg:
             builder = builder.withCRS(f"EPSG:{proj_epsg}")
