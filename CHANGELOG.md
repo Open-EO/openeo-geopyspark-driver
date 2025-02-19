@@ -14,6 +14,8 @@ without compromising stable operations.
 
 ## Unreleased
 
+- `load_stac`: improve STAC requests resilience ([#818](https://github.com/Open-EO/openeo-geopyspark-driver/issues/818))
+
 ## 0.61.0
 
 - `python-memory`: make job option available on YARN, add a default config
