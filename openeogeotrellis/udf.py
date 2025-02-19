@@ -15,6 +15,7 @@ import openeo.udf
 import pyspark
 from openeo.udf.run_code import extract_udf_dependencies
 from openeo.util import TimingLogger
+from openeo_driver.errors import OpenEOApiException
 
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.config.constants import UDF_DEPENDENCIES_INSTALL_MODE
@@ -25,6 +26,11 @@ _log = logging.getLogger(__name__)
 # Reusable constant to streamline discoverability and grep-ability of this folder name.
 UDF_PYTHON_DEPENDENCIES_FOLDER_NAME = "udf-py-deps.d"
 UDF_PYTHON_DEPENDENCIES_ARCHIVE_NAME = "udf-py-deps.zip"
+
+
+class UdfDependencyHandlingFailure(OpenEOApiException):
+    code = "UdfDependencyHandlingFailure"
+    message = "Unspecified failure while handling UDF dependencies."
 
 
 @ensure_executor_logging
@@ -158,8 +164,9 @@ def install_python_udf_dependencies(
         exit_code = process.wait()
         _log.info(f"pip install exited with exit code {exit_code}")
         if exit_code != 0:
-            raise RuntimeError(f"pip install of UDF dependencies failed with {exit_code=} ({output_head=})")
-
+            raise UdfDependencyHandlingFailure(
+                message=f"pip install of UDF dependencies failed with {exit_code=} ({output_head=})"
+            )
 
 
 def build_python_udf_dependencies_archive(

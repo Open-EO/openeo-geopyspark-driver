@@ -69,6 +69,7 @@ from openeogeotrellis.udf import (
     build_python_udf_dependencies_archive,
     collect_python_udf_dependencies,
     install_python_udf_dependencies,
+    UdfDependencyHandlingFailure,
 )
 from openeogeotrellis.util.runtime import get_job_id
 from openeogeotrellis.utils import (
@@ -284,8 +285,10 @@ def run_job(
 
         try:
             _extract_and_install_udf_dependencies(process_graph=process_graph)
+        except UdfDependencyHandlingFailure as e:
+            raise e
         except Exception as e:
-            logger.exception(f"Failed extracting and installing UDF dependencies: {e}")
+            raise UdfDependencyHandlingFailure(message=f"Failed extracting/installing UDF dependencies.") from e
 
         backend_implementation = GeoPySparkBackendImplementation(
             use_job_registry=bool(get_backend_config().ejr_api),

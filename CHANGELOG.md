@@ -18,6 +18,7 @@ without compromising stable operations.
 - `load_stac`: optimize resolution with regard to requested bands (experimental) ([#1043](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1043))
 - `load_stac`: apply offset (experimental) ([#1051](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1051))
 - Deprecate non-standard "logging-threshold" job option in favor of standardized "log_level" job creation parameter ([#909](https://github.com/Open-EO/openeo-geopyspark-driver/issues/909))
+- Fail fast on UDF dependency installation failure ([#1048](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1048))
 
 ## 0.60.1
 - `load_stac`: restore spatial dimensions of data cube loaded from STAC Collection that lacks `cube:dimensions`. ([#1036](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1036))
