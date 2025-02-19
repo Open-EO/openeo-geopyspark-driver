@@ -51,7 +51,6 @@ setup(
             "scripts/zookeeper_set.py",
         ]),
     ],
-    setup_requires=['pytest-runner'],
     tests_require=tests_require,
     install_requires=[
         "openeo>=0.33.0",
