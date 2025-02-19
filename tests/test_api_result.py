@@ -9,6 +9,7 @@ import shutil
 import textwrap
 import urllib.parse
 import urllib.request
+import urllib3
 from pathlib import Path
 from typing import List, Optional, Sequence, Union
 
@@ -3411,8 +3412,9 @@ class TestLoadStac:
         assert requested_bbox == pytest.approx((9.83318136095339, 50.23894821967924,
                                                 9.844419570631366, 50.246156678379016))
 
-    def test_stac_collection_multiple_items_no_spatial_extent_specified(self, api110, zk_job_registry,
-                                                                        batch_job_output_root, urllib_and_request_mock):
+    def test_stac_collection_multiple_items_no_spatial_extent_specified(
+        self, api110, zk_job_registry, batch_job_output_root, urllib_poolmanager_mock
+    ):
         job_id = "j-ec5d3e778ba5423d8d88a50b08cb9f63"
         results_url = f"https://foobar.test/job/{job_id}/results"
 
@@ -3427,11 +3429,11 @@ class TestLoadStac:
             api=api110,
             results_dir=results_dir,
             results_url=results_url,
-            urllib_mock=urllib_and_request_mock,
+            urllib_mock=urllib_poolmanager_mock,
         )
 
         # sanity check: multiple items
-        results = json.loads(urllib.request.urlopen(results_url).read())
+        results = json.loads(urllib3.PoolManager().request("GET", results_url).data.decode("utf-8"))
         item_links = [link for link in results["links"] if link["rel"] == "item"]
         assert len(item_links) > 1
 
@@ -4256,7 +4258,7 @@ class TestLoadStac:
             assert tuple(ds.bounds) == tuple(map(pytest.approx, expected_bbox))
 
     @gps_config_overrides(job_dependencies_poll_interval_seconds=0, job_dependencies_max_poll_delay_seconds=60)
-    def test_load_stac_from_partial_job_results_basic(self, api110, urllib_poolmanager_mock, urllib_mock, tmp_path, caplog):
+    def test_load_stac_from_partial_job_results_basic(self, api110, urllib_poolmanager_mock, tmp_path, caplog):
         """load_stac from partial job results Collection (signed case)"""
 
         caplog.set_level("DEBUG")
@@ -4286,11 +4288,12 @@ class TestLoadStac:
 
         results_url = "https://openeo.test/openeo/jobs/j-2402094545c945c09e1307503aa58a3a/results?partial=true"
         response = collection_json("stac/issue786_partial_job_results/collection.json")
-        urllib_mock.register("GET", results_url, response=response)
         urllib_poolmanager_mock.register("GET", results_url, response=response)
 
-        urllib_mock.get("https://openeo.test/openeo/jobs/j-2402094545c945c09e1307503aa58a3a/results/items/item01.json",
-                        data=item_json("stac/issue786_partial_job_results/item01.json"))
+        urllib_poolmanager_mock.get(
+            "https://openeo.test/openeo/jobs/j-2402094545c945c09e1307503aa58a3a/results/items/item01.json",
+            data=item_json("stac/issue786_partial_job_results/item01.json"),
+        )
 
         process_graph = {
             "loadstac1": {
