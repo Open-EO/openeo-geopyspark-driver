@@ -150,6 +150,10 @@ def load_stac(
         )
         epsg = map_optional(to_epsg, code) or asst.extra_fields.get("proj:epsg") or itm.properties.get("proj:epsg")
         bbox = asst.extra_fields.get("proj:bbox") or itm.properties.get("proj:bbox")
+
+        if not bbox and epsg == 4326:
+            bbox = itm.bbox
+
         shape = asst.extra_fields.get("proj:shape") or itm.properties.get("proj:shape")
 
         return (epsg,
