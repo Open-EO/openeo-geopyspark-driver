@@ -232,10 +232,10 @@ def _cwl_insar(args: ProcessArgs, env: EvalEnv):
         f"""
         cwlVersion: v1.0
         class: CommandLineTool
-        baseCommand: insar.py
+        baseCommand: OpenEO_insar.py
         requirements:
           DockerRequirement:
-            dockerPull: registry.stag.warsaw.openeo.dataspace.copernicus.eu/rand/openeo_insar:latest
+            dockerPull: registry.stag.warsaw.openeo.dataspace.copernicus.eu/rand/openeo_insar:1.2
           EnvVarRequirement:
             envDef:
               AWS_ACCESS_KEY_ID: {json.dumps(os.environ.get("SWIFT_ACCESS_KEY_ID", ""))}

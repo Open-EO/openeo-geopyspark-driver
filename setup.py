@@ -56,7 +56,7 @@ setup(
     install_requires=[
         "openeo>=0.33.0",
         "openeo_driver>=0.125.0.dev",
-        'pyspark==3.4.2; python_version>="3.8"',
+        'pyspark==3.5.3; python_version>="3.8"',
         'pyspark>=2.3.1,<2.4.0; python_version<"3.8"',
         'geopyspark==0.4.7+openeo',
         # rasterio is an undeclared but required dependency for geopyspark

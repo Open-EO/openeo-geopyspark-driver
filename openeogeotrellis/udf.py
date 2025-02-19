@@ -15,6 +15,7 @@ import openeo.udf
 import pyspark
 from openeo.udf.run_code import extract_udf_dependencies
 from openeo.util import TimingLogger
+from openeo_driver.errors import OpenEOApiException
 
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.config.constants import UDF_DEPENDENCIES_INSTALL_MODE
@@ -25,6 +26,11 @@ _log = logging.getLogger(__name__)
 # Reusable constant to streamline discoverability and grep-ability of this folder name.
 UDF_PYTHON_DEPENDENCIES_FOLDER_NAME = "udf-py-deps.d"
 UDF_PYTHON_DEPENDENCIES_ARCHIVE_NAME = "udf-py-deps.zip"
+
+
+class UdfDependencyHandlingFailure(OpenEOApiException):
+    code = "UdfDependencyHandlingFailure"
+    message = "Unspecified failure while handling UDF dependencies."
 
 
 @ensure_executor_logging
@@ -104,6 +110,7 @@ def install_python_udf_dependencies(
     retries: int = 2,
     timeout: float = 5,
     index: Optional[str] = None,
+    run_context: Optional[str] = None,
 ):
     """
     Install Python UDF dependencies in a target directory
@@ -135,7 +142,7 @@ def install_python_udf_dependencies(
     # TODO: --cache-dir
     command.extend(sorted(set(dependencies)))
 
-    with TimingLogger(title=f"Installing Python UDF dependencies with {command}", logger=_log.info):
+    with TimingLogger(title=f"Installing Python UDF dependencies with {command} ({run_context=})", logger=_log.info):
         # TODO: by piping stdout and stderr to same pipe, we simplify the work necessary to avoid deadlocks.
         #       However, this means that we lose the ability to distinguish between stdout and stderr.
         process = subprocess.Popen(
@@ -146,14 +153,20 @@ def install_python_udf_dependencies(
             encoding="utf-8",
         )
         process.stdin.close()
+
+        output_head = []
         with process.stdout:
             for line in iter(process.stdout.readline, ""):
                 _log.debug(f"pip install output: {line.rstrip()}")
+                if len(output_head) < 5:
+                    output_head.append(line)
+
         exit_code = process.wait()
         _log.info(f"pip install exited with exit code {exit_code}")
         if exit_code != 0:
-            raise RuntimeError(f"pip install of UDF dependencies failed with {exit_code=}")
-
+            raise UdfDependencyHandlingFailure(
+                message=f"pip install of UDF dependencies failed with {exit_code=} ({output_head=})"
+            )
 
 
 def build_python_udf_dependencies_archive(
@@ -185,6 +198,7 @@ def build_python_udf_dependencies_archive(
             retries=retries,
             timeout=timeout,
             index=index,
+            run_context="build_python_udf_dependencies_archive",
         )
 
         # Put installed packages in a temp archive

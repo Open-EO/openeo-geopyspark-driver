@@ -113,10 +113,106 @@ def test_dimensions(urllib_poolmanager_mock, requests_mock):
         env=EvalEnv({"pyramid_levels": "highest"}),
         layer_properties={},
         batch_jobs=None,
-        override_band_names=None,
     )
 
     assert {"x", "y", "t", "bands"} <= set(data_cube.metadata.dimension_names())
+
+
+@pytest.fixture
+def jvm_mock():
+    with mock.patch("openeogeotrellis.load_stac.get_jvm") as get_jvm:
+        jvm_mock = get_jvm.return_value
+
+        raster_layer = mock.MagicMock()
+        jvm_mock.geopyspark.geotrellis.TemporalTiledRasterLayer.return_value = raster_layer
+        raster_layer.layerMetadata.return_value = """{
+            "crs": "EPSG:4326",
+            "cellType": "uint8",
+            "bounds": {"minKey": {"col":0, "row":0}, "maxKey": {"col": 1, "row": 1}},
+            "extent": {"xmin": 0,"ymin": 0, "xmax": 1,"ymax": 1},
+            "layoutDefinition": {
+                "extent": {"xmin": 0, "ymin": 0,"xmax": 1,"ymax": 1},
+                "tileLayout": {"layoutCols": 1, "layoutRows": 1, "tileCols": 256, "tileRows": 256}
+            }
+        }"""
+
+        yield jvm_mock
+
+
+@pytest.mark.parametrize(
+    ["enable_by_catalog", "enable_by_eval_env"],
+    [
+        (True, {}),
+        (False, {"load_stac_apply_lcfm_improvements": True}),
+    ],
+)
+@pytest.mark.parametrize(
+    ["band_names", "resolution"],
+    [
+        (["AOT_10m"], 10.0),
+        (["WVP_20m"], 20.0),
+        (["WVP_60m"], 60.0),
+        (["AOT_10m", "WVP_20m"], 10.0)
+    ],
+)
+def test_lcfm_improvements(  # resolution and offset behind a feature flag; alphabetical head tags are tested elsewhere
+    urllib_poolmanager_mock,
+    requests_mock,
+    jvm_mock,
+    band_names,
+    resolution,
+    enable_by_catalog,
+    enable_by_eval_env,
+):
+    stac_api_root_url = "https://stac.test"
+    stac_collection_url = f"{stac_api_root_url}/collections/collection"
+
+    features = json.loads(get_test_data_file("stac/issue1043-api-proj-code/FeatureCollection.json").read_text())
+
+    _mock_stac_api(
+        urllib_poolmanager_mock,
+        requests_mock,
+        stac_api_root_url,
+        stac_collection_url,
+        feature_collection=features,
+    )
+
+    factory_mock = jvm_mock.org.openeo.geotrellis.file.PyramidFactory
+    cellsize_mock = jvm_mock.geotrellis.raster.CellSize
+
+    feature_builder = mock.MagicMock()
+    jvm_mock.org.openeo.opensearch.OpenSearchResponses.featureBuilder.return_value = feature_builder
+    feature_builder.withId.return_value = feature_builder
+    feature_builder.withNominalDate.return_value = feature_builder
+    feature_builder.addLink.return_value = feature_builder
+
+    data_cube = load_stac(
+        stac_collection_url,
+        load_params=LoadParameters(bands=band_names),
+        env=EvalEnv(dict(enable_by_eval_env, pyramid_levels="highest")),
+        layer_properties={},
+        batch_jobs=None,
+        apply_lcfm_improvements=enable_by_catalog,
+    )
+
+    # TODO: how to check the actual argument to PyramidFactory()?
+    factory_mock.assert_called_once()
+    cellsize_mock.assert_called_once_with(resolution, resolution)
+    assert data_cube.metadata.spatial_extent["crs"] == "EPSG:32636"
+
+    feature_builder.addLink.assert_any_call(
+        "/eodata/Sentinel-2/MSI/L2A_N0500/2020/03/22/S2B_MSIL2A_20200322T074609_N0500_R135_T36NYH_20230612T214223.SAFE/GRANULE/L2A_T36NYH_A015891_20200322T075811/IMG_DATA/R60m/T36NYH_20200322T074609_B01_60m.jp2",
+        "B01_60m",
+        -1000.0,  # has "raster:scale": 0.0001 and "raster:offset": -0.1
+        ["B01_60m"],
+    )
+
+    feature_builder.addLink.assert_any_call(
+        "/eodata/Sentinel-2/MSI/L2A_N0500/2020/03/22/S2B_MSIL2A_20200322T074609_N0500_R135_T36NYH_20230612T214223.SAFE/GRANULE/L2A_T36NYH_A015891_20200322T075811/IMG_DATA/R20m/T36NYH_20200322T074609_SCL_20m.jp2",
+        "SCL_20m",
+        0.0,  # has neither "raster:scale" nor "raster:offset"
+        ["SCL_20m"],
+    )
 
 
 def _mock_stac_api(urllib_poolmanager_mock, requests_mock, stac_api_root_url, stac_collection_url, feature_collection):
@@ -160,3 +256,20 @@ def _mock_stac_api(urllib_poolmanager_mock, requests_mock, stac_api_root_url, st
 
     search_mock = requests_mock.get(f"{stac_api_root_url}/search", json=feature_collection)
     return search_mock
+
+
+def test_world_oom(urllib_poolmanager_mock):
+    stac_item_url = (
+        "https://earthengine.openeo.org/v1.0/results/c08dc17428fde51ea7e1332eec2abd06e74188924e6c773257b4fb00aee0a308"
+    )
+    stac_item = get_test_data_file("stac/issue1055-world-oom/result_item.json").read_text()
+
+    urllib_poolmanager_mock.get(stac_item_url, data=stac_item)
+
+    load_stac(
+        stac_item_url,
+        load_params=LoadParameters(),
+        env=EvalEnv({"pyramid_levels": "highest"}),
+        layer_properties={},
+        batch_jobs=None,
+    )

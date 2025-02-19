@@ -69,6 +69,7 @@ from openeogeotrellis.udf import (
     build_python_udf_dependencies_archive,
     collect_python_udf_dependencies,
     install_python_udf_dependencies,
+    UdfDependencyHandlingFailure,
 )
 from openeogeotrellis.util.runtime import get_job_id
 from openeogeotrellis.utils import (
@@ -284,8 +285,10 @@ def run_job(
 
         try:
             _extract_and_install_udf_dependencies(process_graph=process_graph)
+        except UdfDependencyHandlingFailure as e:
+            raise e
         except Exception as e:
-            logger.exception(f"Failed extracting and installing UDF dependencies: {e}")
+            raise UdfDependencyHandlingFailure(message=f"Failed extracting/installing UDF dependencies.") from e
 
         backend_implementation = GeoPySparkBackendImplementation(
             use_job_registry=bool(get_backend_config().ejr_api),
@@ -315,6 +318,7 @@ def run_job(
             "node_caching",
             EVAL_ENV_KEY.ALLOW_EMPTY_CUBES,
             EVAL_ENV_KEY.DO_EXTENT_CHECK,
+            EVAL_ENV_KEY.LOAD_STAC_APPLY_LCFM_IMPROVEMENTS,
         ]
         env_values.update({k: job_options[k] for k in job_option_whitelist if k in job_options})
         env = EvalEnv(env_values)
@@ -748,7 +752,10 @@ def _extract_and_install_udf_dependencies(process_graph: dict):
             udf_python_dependencies_folder_path = _get_env_var_or_fail("UDF_PYTHON_DEPENDENCIES_FOLDER_PATH")
             logger.info(f"UDF dep handling with {udf_deps_install_mode=} {udf_python_dependencies_folder_path=}")
             install_python_udf_dependencies(
-                dependencies=udf_deps, target=udf_python_dependencies_folder_path, timeout=20
+                dependencies=udf_deps,
+                target=udf_python_dependencies_folder_path,
+                timeout=20,
+                run_context="batch_job.py direct mode",
             )
             sleep_after_udf_dep_setup()
         elif udf_deps_install_mode == UDF_DEPENDENCIES_INSTALL_MODE.ZIP:

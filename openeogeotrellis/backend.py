@@ -48,7 +48,7 @@ from openeo_driver.backend import (
     JobListing,
 )
 from openeo_driver.config.load import ConfigGetter
-from openeo_driver.constants import DEFAULT_LOG_LEVEL_RETRIEVAL
+from openeo_driver.constants import DEFAULT_LOG_LEVEL_RETRIEVAL, DEFAULT_LOG_LEVEL_PROCESSING
 from openeo_driver.datacube import DriverDataCube, DriverVectorCube
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.delayed_vector import DelayedVector
@@ -80,6 +80,7 @@ from openeogeotrellis import sentinel_hub, load_stac, datacube_parameters
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.config.s3_config import S3Config
 from openeogeotrellis.configparams import ConfigParams
+from openeogeotrellis.constants import JOB_OPTION_LOG_LEVEL, JOB_OPTION_LOGGING_THRESHOLD
 from openeogeotrellis.geopysparkdatacube import GeopysparkCubeMetadata, GeopysparkDataCube
 from openeogeotrellis.integrations.etl_api import get_etl_api, ETL_ORGANIZATION_ID_JOB_OPTION
 from openeogeotrellis.integrations.identity import IDP_TOKEN_ISSUER
@@ -468,10 +469,20 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                             "description": "Specifies the filename prefix when outputting multiple files. By default, depending on the context, 'OpenEO' or a part of the input filename will be used as prefix.",
                             "default": None,
                         },
-                        "separate_asset_per_band": {  # TODO: should be a boolean that defaults to false
-                            "type": "string",
+                        "separate_asset_per_band": {
+                            "type": "boolean",
                             "description": "Set to true to write one output tiff per band. If there is a time dimension, the files will be split on time as well.",
+                            "default": False,
+                        },
+                        "filepath_per_band": {
+                            "type": "array",
+                            "description": "Specify an array with the same amount of bands, to give each band it's separate path. Subfolders are allowed.",
                             "default": None,
+                        },
+                        "attach_gdalinfo_assets": {
+                            "type": "boolean",
+                            "description": "Attaches *_gdalinfo.json files to the output results.",
+                            "default": False,
                         },
                     },
                 },
@@ -1355,7 +1366,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
     def create_job(
         self,
-        user_id: str,
+        user: User,
         process: dict,
         api_version: str,
         metadata: dict,
@@ -1364,10 +1375,19 @@ class GpsBatchJobs(backend.BatchJobs):
         job_id = generate_unique_id(prefix="j")
         title = metadata.get("title")
         description = metadata.get("description")
+        if "log_level" in metadata:
+            # TODO: it's not ideal to put "log_level" (processing parameter from official spec)
+            #       in job_options, which is intended for parameters that are not part of official spec.
+            #       Unfortunately, it's quite involved to add a new field like "log_level"
+            #       in all the appropriate job registry related places, so we do it just here for now.
+            if job_options is None:
+                job_options = {}
+            job_options[JOB_OPTION_LOG_LEVEL] = metadata.get("log_level", DEFAULT_LOG_LEVEL_PROCESSING)
+
         with self._double_job_registry as registry:
             job_info = registry.create_job(
                 job_id=job_id,
-                user_id=user_id,
+                user_id=user.user_id,
                 process=process,
                 api_version=api_version,
                 job_options=job_options,
@@ -1726,7 +1746,7 @@ class GpsBatchJobs(backend.BatchJobs):
         job_title = job_info.get('title', '')
         sentinel_hub_client_alias = deep_get(job_options, 'sentinel-hub', 'client-alias', default="default")
 
-        log.debug("job_options: {o!r}".format(o=job_options))
+        log.debug(f"_start_hob {job_options=}")
 
         if (dependencies is None
             and job_info.get("dependency_status")
@@ -1748,7 +1768,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 logger_adapter=log,
             )
 
-            log.debug(f"job_dependencies: {job_dependencies}")
+            log.debug(f"_start_job {job_dependencies=}")
 
             if job_dependencies:
                 with self._double_job_registry as dbl_registry:
@@ -1803,17 +1823,26 @@ class GpsBatchJobs(backend.BatchJobs):
                                      status_code=400)
 
         def as_logging_threshold_arg() -> str:
-            value = job_options.get("logging-threshold", "info").upper()
+            if JOB_OPTION_LOGGING_THRESHOLD in job_options:
+                log.warning(
+                    f"Job option {JOB_OPTION_LOGGING_THRESHOLD!r} is non-standard and deprecated, use the standard job creation parameter 'log_level' instead"
+                )
+                value = job_options[JOB_OPTION_LOGGING_THRESHOLD]
+            else:
+                value = job_options.get(JOB_OPTION_LOG_LEVEL, DEFAULT_LOG_LEVEL_PROCESSING)
+
+            value = value.upper()
 
             if value == "WARNING":
                 value = "WARN"  # Log4j only accepts WARN whereas Python logging accepts WARN as well as WARNING
 
             if value in ["DEBUG", "INFO", "WARN", "ERROR"]:
                 return value
-
-            raise OpenEOApiException(message=f"invalid value {value} for job_option logging-threshold; "
-                                             f'supported values include "debug", "info", "warning" and "error"',
-                                     status_code=400)
+            raise OpenEOApiException(
+                code="InvalidLogLevel",
+                status_code=400,
+                message=f"Invalid log level {value}. Should be one of 'debug', 'info', 'warning' or 'error'.",
+            )
 
         isKube = ConfigParams().is_kube_deploy
         driver_memory = job_options.get("driver-memory", get_backend_config().default_driver_memory )
