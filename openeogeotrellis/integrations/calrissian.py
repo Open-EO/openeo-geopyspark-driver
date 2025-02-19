@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import textwrap
+
 import base64
 import dataclasses
 import logging
+import requests
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 
@@ -40,6 +43,39 @@ class CalrissianS3Result:
         if encoding:
             content = content.decode(encoding)
         return content
+
+
+class CwLSource:
+    """
+    Simple container of CWL source code.
+
+    For now, this is just a wrapper around a string (the CWL content),
+    with factories to support multiple sources (local path, URL, ...).
+    When necessary, this simple abstraction can be evolved easily in something more sophisticated.
+    """
+
+    def __init__(self, content: str):
+        self._cwl = content
+
+    def get_content(self) -> str:
+        return self._cwl
+
+    @classmethod
+    def from_string(cls, content: str, auto_dedent: bool = True) -> CwLSource:
+        if auto_dedent:
+            content = textwrap.dedent(content)
+        return cls(content=content)
+
+    @classmethod
+    def from_path(cls, path: Union[str, Path]) -> CwLSource:
+        with Path(path).open(mode="r", encoding="utf-8") as f:
+            return cls(content=f.read())
+
+    @classmethod
+    def from_url(cls, url: str) -> CwLSource:
+        resp = requests.get(url)
+        resp.raise_for_status()
+        return cls(content=resp.text)
 
 
 class CalrissianJobLauncher:
@@ -97,15 +133,17 @@ class CalrissianJobLauncher:
         suffix = generate_unique_id(date_prefix=False)[:8]
         return f"{self._name_base}-{infix}-{suffix}"
 
-    def create_input_staging_job_manifest(self, cwl_content: str) -> Tuple[kubernetes.client.V1Job, str]:
+    def create_input_staging_job_manifest(self, cwl_source: CwLSource) -> Tuple[kubernetes.client.V1Job, str]:
         """
         Create a k8s manifest for a Calrissian input staging job.
 
-        :param cwl_content: CWL content as a string to dump to CWL file in the input volume.
+        :param cwl_source: CWL source to dump to CWL file in the input volume.
         :return: Tuple of
             - k8s job manifest
             - path to the CWL file in the input volume.
         """
+        cwl_content = cwl_source.get_content()
+
         name = self._build_unique_name(infix="cal-inp")
         _log.info(f"Creating input staging job manifest: {name=}")
         yaml_parsed = list(yaml.safe_load_all(cwl_content))
@@ -315,7 +353,7 @@ class CalrissianJobLauncher:
         return volume_name
 
     def run_cwl_workflow(
-        self, cwl_content: str, cwl_arguments: List[str], output_paths: List[str]
+        self, cwl_source: CwLSource, cwl_arguments: List[str], output_paths: List[str]
     ) -> Dict[str, CalrissianS3Result]:
         """
         Run a CWL workflow on Calrissian and return the output as a string.
@@ -325,7 +363,7 @@ class CalrissianJobLauncher:
         :return: output of the CWL workflow as a string.
         """
         # Input staging
-        input_staging_manifest, cwl_path = self.create_input_staging_job_manifest(cwl_content=cwl_content)
+        input_staging_manifest, cwl_path = self.create_input_staging_job_manifest(cwl_source=cwl_source)
         input_staging_job = self.launch_job_and_wait(manifest=input_staging_manifest)
 
         # CWL job
