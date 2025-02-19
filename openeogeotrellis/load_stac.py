@@ -774,7 +774,7 @@ def _await_stac_object(url, poll_interval_seconds, max_poll_delay_seconds, max_p
         stac_object = pystac.read_file(href=url, stac_io=stac_io)
 
         if isinstance(stac_object, pystac.Catalog):
-            stac_object._stac_io = stac_io
+            stac_object._stac_io = stac_io  # TODO: avoid accessing internals (fix pystac)
 
         partial_job_status = stac_object.to_dict(include_self_link=False, transform_hrefs=False).get("openeo:status")
 
