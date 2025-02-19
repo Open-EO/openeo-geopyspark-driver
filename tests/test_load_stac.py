@@ -254,3 +254,20 @@ def _mock_stac_api(urllib_and_request_mock, requests_mock, stac_api_root_url, st
 
     search_mock = requests_mock.get(f"{stac_api_root_url}/search", json=feature_collection)
     return search_mock
+
+
+def test_world_oom(urllib_poolmanager_mock):
+    stac_item_url = (
+        "https://earthengine.openeo.org/v1.0/results/c08dc17428fde51ea7e1332eec2abd06e74188924e6c773257b4fb00aee0a308"
+    )
+    stac_item = get_test_data_file("stac/issue1055-world-oom/result_item.json").read_text()
+
+    urllib_poolmanager_mock.get(stac_item_url, data=stac_item)
+
+    load_stac(
+        stac_item_url,
+        load_params=LoadParameters(),
+        env=EvalEnv({"pyramid_levels": "highest"}),
+        layer_properties={},
+        batch_jobs=None,
+    )
