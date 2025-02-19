@@ -142,7 +142,7 @@ def _cwl_demo(args: ProcessArgs, env: EvalEnv):
     # TODO: move this imports to top-level?
     import kubernetes.config
 
-    from openeogeotrellis.integrations.calrissian import CalrissianJobLauncher
+    from openeogeotrellis.integrations.calrissian import CalrissianJobLauncher, CwLSource
 
     # TODO: better place to load this config?
     if os.path.exists(SERVICE_TOKEN_FILENAME):
@@ -152,7 +152,7 @@ def _cwl_demo(args: ProcessArgs, env: EvalEnv):
 
     launcher = CalrissianJobLauncher.from_context()
 
-    cwl_content = textwrap.dedent(
+    cwl_source = CwLSource.from_string(
         """
         cwlVersion: v1.0
         class: CommandLineTool
@@ -181,7 +181,7 @@ def _cwl_demo(args: ProcessArgs, env: EvalEnv):
     ]
 
     results = launcher.run_cwl_workflow(
-        cwl_content=cwl_content,
+        cwl_source=cwl_source,
         cwl_arguments=cwl_arguments,
         output_paths=["output.txt"],
     )
@@ -218,7 +218,7 @@ def _cwl_insar(args: ProcessArgs, env: EvalEnv):
     # TODO: move this imports to top-level?
     import kubernetes.config
 
-    from openeogeotrellis.integrations.calrissian import CalrissianJobLauncher
+    from openeogeotrellis.integrations.calrissian import CalrissianJobLauncher, CwLSource
 
     # TODO: better place to load this config?
     if os.path.exists(SERVICE_TOKEN_FILENAME):
@@ -228,7 +228,7 @@ def _cwl_insar(args: ProcessArgs, env: EvalEnv):
 
     launcher = CalrissianJobLauncher.from_context()
 
-    cwl_content = textwrap.dedent(
+    cwl_source = CwLSource.from_string(
         f"""
         cwlVersion: v1.0
         class: CommandLineTool
@@ -260,7 +260,7 @@ def _cwl_insar(args: ProcessArgs, env: EvalEnv):
 
     # TODO: Load the results as datacube with load_stac.
     results = launcher.run_cwl_workflow(
-        cwl_content=cwl_content,
+        cwl_source=cwl_source,
         cwl_arguments=cwl_arguments,
         output_paths=["output.txt"],
     )
