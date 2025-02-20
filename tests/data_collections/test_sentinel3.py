@@ -97,7 +97,7 @@ def test_read_single_edge_with_some_data():
                 "instant":1717326516089,
             },
             "key_extent":{
-                "xmin":13.86,"xmax":18.10,"ymin":47.096,"ymax":47.597
+                "xmin":13.857467,"xmax":18.10,"ymin":47.096,"ymax":47.597925
             },
             "key_epsg":4326
         }
@@ -112,13 +112,13 @@ def test_read_single_edge_with_some_data():
 
     #instant should be rounded to the minute
     assert spacetimekey.instant == datetime(2024, 6, 2, 11, 8,0)
-    from rasterio.transform import from_origin, from_bounds
+    # from rasterio.transform import from_origin, from_bounds
 
     arr = result[0][1].cells
 
-    transform = from_bounds(13.86, 47.096, 18.10, 47.597, arr.shape[2], arr.shape[1])
-
-    # new_dataset = rasterio.open('ref_file_edge3.tif', 'w', driver='GTiff',
+    # transform = from_bounds(13.857467, 47.096, 18.10, 47.597925, arr.shape[2], arr.shape[1])
+    #
+    # new_dataset = rasterio.open('ref_file_edge_shift.tif', 'w', driver='GTiff',
     #                              height=arr.shape[1], width=arr.shape[2],
     #                             count=2, dtype=str(arr.dtype),
     #                             crs=CRS.from_epsg(4326),
