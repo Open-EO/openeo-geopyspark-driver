@@ -20,6 +20,16 @@ from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.util.runtime import get_job_id, get_request_id
 from openeogeotrellis.utils import s3_client
 
+
+try:
+    # TODO #1060 importlib.resources on Python 3.8 is pretty limited so we need backport
+    import importlib_resources
+except ImportError:
+    import importlib.resources
+
+    importlib_resources = importlib.resources
+
+
 _log = logging.getLogger(__name__)
 
 
@@ -76,6 +86,14 @@ class CwLSource:
         resp = requests.get(url)
         resp.raise_for_status()
         return cls(content=resp.text)
+
+    @classmethod
+    def from_resource(cls, anchor: str, path: str) -> CwLSource:
+        """
+        Read CWL from a packaged resource file in importlib.resources-style.
+        """
+        content = importlib_resources.files(anchor=anchor).joinpath(path).read_text(encoding="utf-8")
+        return cls(content=content)
 
 
 class CalrissianJobLauncher:
@@ -200,6 +218,7 @@ class CalrissianJobLauncher:
         self,
         cwl_path: str,
         cwl_arguments: List[str],
+        env_vars: Optional[Dict[str, str]] = None,
     ) -> Tuple[kubernetes.client.V1Job, str]:
         """
         Create a k8s manifest for a Calrissian CWL job.
@@ -242,6 +261,17 @@ class CalrissianJobLauncher:
 
         _log.info(f"create_cwl_job_manifest {calrissian_arguments=}")
 
+        container_env_vars = [
+            kubernetes.client.V1EnvVar(
+                name="CALRISSIAN_POD_NAME",
+                value_from=kubernetes.client.V1EnvVarSource(
+                    field_ref=kubernetes.client.V1ObjectFieldSelector(field_path="metadata.name")
+                ),
+            )
+        ]
+        if env_vars:
+            container_env_vars.extend(kubernetes.client.V1EnvVar(name=k, value=v) for k, v in env_vars.items())
+
         container = kubernetes.client.V1Container(
             name=name,
             image=container_image,
@@ -254,14 +284,7 @@ class CalrissianJobLauncher:
                 )
                 for volume_info, read_only in volumes
             ],
-            env=[
-                kubernetes.client.V1EnvVar(
-                    name="CALRISSIAN_POD_NAME",
-                    value_from=kubernetes.client.V1EnvVarSource(
-                        field_ref=kubernetes.client.V1ObjectFieldSelector(field_path="metadata.name")
-                    ),
-                )
-            ],
+            env=container_env_vars,
         )
         manifest = kubernetes.client.V1Job(
             metadata=kubernetes.client.V1ObjectMeta(
@@ -353,7 +376,11 @@ class CalrissianJobLauncher:
         return volume_name
 
     def run_cwl_workflow(
-        self, cwl_source: CwLSource, cwl_arguments: List[str], output_paths: List[str]
+        self,
+        cwl_source: CwLSource,
+        cwl_arguments: List[str],
+        output_paths: List[str],
+        env_vars: Optional[Dict[str, str]] = None,
     ) -> Dict[str, CalrissianS3Result]:
         """
         Run a CWL workflow on Calrissian and return the output as a string.
@@ -370,6 +397,7 @@ class CalrissianJobLauncher:
         cwl_manifest, relative_output_dir = self.create_cwl_job_manifest(
             cwl_path=cwl_path,
             cwl_arguments=cwl_arguments,
+            env_vars=env_vars,
         )
         cwl_job = self.launch_job_and_wait(manifest=cwl_manifest)
 

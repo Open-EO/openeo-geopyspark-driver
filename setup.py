@@ -100,7 +100,8 @@ setup(
         "traceback-with-variables==2.0.4",
         'scipy>=1.8',  # used by sentinel-3 reader
         "PyJWT[crypto]>=2.9.0",  # For identity tokens
-        "urllib3>=1.26.20"
+        "urllib3>=1.26.20",
+        "importlib_resources; python_version<'3.9'",  # #1060 on python 3.8 we need importlib_resources backport
     ],
     extras_require={
         "dev": tests_require,

@@ -152,28 +152,7 @@ def _cwl_demo(args: ProcessArgs, env: EvalEnv):
 
     launcher = CalrissianJobLauncher.from_context()
 
-    cwl_source = CwLSource.from_string(
-        """
-        cwlVersion: v1.0
-        class: CommandLineTool
-        baseCommand: echo
-        requirements:
-          - class: DockerRequirement
-            dockerPull: debian:stretch-slim
-        inputs:
-          message:
-            type: string
-            default: "Hello World"
-            inputBinding:
-              position: 1
-        outputs:
-          output_file:
-            type: File
-            outputBinding:
-              glob: output.txt
-        stdout: output.txt
-    """
-    )
+    cwl_source = CwLSource.from_resource(anchor="openeogeotrellis.integrations", path="cwl/hello.cwl")
     correlation_id = get_job_id(default=None) or get_request_id(default=None)
     cwl_arguments = [
         "--message",
@@ -228,33 +207,7 @@ def _cwl_insar(args: ProcessArgs, env: EvalEnv):
 
     launcher = CalrissianJobLauncher.from_context()
 
-    cwl_source = CwLSource.from_string(
-        f"""
-        cwlVersion: v1.0
-        class: CommandLineTool
-        baseCommand: OpenEO_insar.py
-        requirements:
-          DockerRequirement:
-            dockerPull: registry.stag.warsaw.openeo.dataspace.copernicus.eu/rand/openeo_insar:1.2
-          EnvVarRequirement:
-            envDef:
-              AWS_ACCESS_KEY_ID: {json.dumps(os.environ.get("SWIFT_ACCESS_KEY_ID", ""))}
-              AWS_SECRET_ACCESS_KEY: {json.dumps(os.environ.get("SWIFT_SECRET_ACCESS_KEY", ""))}
-        inputs:
-          input_base64_json:
-            type: string
-            inputBinding:
-              position: 1
-        outputs:
-          output_file:
-            type:
-              type: array
-              items: File
-            outputBinding:
-              glob: "*2images*"
-    """
-    )
-    # correlation_id = get_job_id(default=None) or get_request_id(default=None)
+    cwl_source = CwLSource.from_resource(anchor="openeogeotrellis.integrations", path="cwl/insar.cwl")
     input_base64_json = base64.b64encode(json.dumps(args).encode("utf8")).decode("ascii")
     cwl_arguments = ["--input_base64_json", input_base64_json]
 
@@ -263,6 +216,10 @@ def _cwl_insar(args: ProcessArgs, env: EvalEnv):
         cwl_source=cwl_source,
         cwl_arguments=cwl_arguments,
         output_paths=["output.txt"],
+        env_vars={
+            "AWS_ACCESS_KEY_ID": os.environ.get("SWIFT_ACCESS_KEY_ID", ""),
+            "AWS_SECRET_ACCESS_KEY": os.environ.get("SWIFT_SECRET_ACCESS_KEY", ""),
+        },
     )
 
     return results["output.txt"].read(encoding="utf8")
