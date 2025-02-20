@@ -299,3 +299,7 @@ class TestCwlSource:
         requests_mock.get(url, text="cwlVersion: v1.0\nclass: CommandLineTool\n")
         cwl = CwLSource.from_url(url=url)
         assert cwl.get_content() == "cwlVersion: v1.0\nclass: CommandLineTool\n"
+
+    def test_from_resource(self):
+        cwl = CwLSource.from_resource(anchor="openeogeotrellis.integrations", path="cwl/hello.cwl")
+        assert "Hello World" in cwl.get_content()

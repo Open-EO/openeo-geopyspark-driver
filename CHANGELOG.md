@@ -15,6 +15,7 @@ without compromising stable operations.
 ## Unreleased
 
 - `load_stac`: improve STAC requests resilience ([#818](https://github.com/Open-EO/openeo-geopyspark-driver/issues/818))
+- Extract demo CWL content to package resources ([#1057](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1057))
 
 ## 0.61.0
 
