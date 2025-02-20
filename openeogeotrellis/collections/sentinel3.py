@@ -372,16 +372,20 @@ def create_final_grid(final_bbox, resolution, rim_pixels=0 ):
     Returns
     -------
     target_coordinates: float
-        A 2D-array containing the final coordinates
+        A 2D-array containing the final coordinates of pixel centers
     target_shape : (int,int)
         A tuple containing the number of rows/columns
     """
 
     final_xmin, final_ymin, final_xmax, final_ymax = final_bbox
     #the boundingbox of the tile seems to missing the last pixels, that is why we add 1 resolution to the second argument
+    # target coordinates have to be computed as pixel centers
     grid_x, grid_y = np.meshgrid(
-        np.arange(final_xmin - (rim_pixels * resolution), final_xmax + resolution +(rim_pixels * resolution), resolution),
-        np.arange(final_ymax + (rim_pixels * resolution), final_ymin - resolution - (rim_pixels * resolution), -resolution)  # without lat mirrored
+        np.arange(final_xmin + 0.5 * resolution - (rim_pixels * resolution),
+                  final_xmax - 0.5 * resolution + resolution + (rim_pixels * resolution), resolution),
+        np.arange(final_ymax - 0.5 * resolution + (rim_pixels * resolution),
+                  final_ymin + 0.5 * resolution - resolution - (rim_pixels * resolution),
+                  -resolution)  # without lat mirrored
         # np.arange(ref_ymin, ref_ymax, self.final_grid_resolution)   #with lat mirrored
     )
     target_shape = grid_x.shape
