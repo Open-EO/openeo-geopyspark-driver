@@ -40,6 +40,7 @@ from openeogeotrellis.utils import lonlat_to_mercator_tile_indices, nullcontext,
 logger = logging.getLogger(__name__)
 _SOFT_ERROR_TRACKER_ID = "orfeo_backscatter_soft_errors"
 _EXECUTION_TRACKER_ID = "orfeo_backscatter_execution_counter"
+_INPUTPIXELS_TRACKER_ID = "orfeo_backscatter_input_pixels"
 
 
 def _import_orfeo_toolbox(otb_home_env_var="OTB_HOME") -> types.ModuleType:
@@ -288,6 +289,7 @@ class S1BackscatterOrfeo:
 
         if trackers is not None:
             trackers[0].add(1)
+            trackers[2].add(extent_width_px * extent_height_px)
 
         tempdir = tempfile.mkdtemp()
         out_path = os.path.join(tempdir, input_tiff.name)
@@ -767,6 +769,7 @@ class S1BackscatterOrfeo:
                 S1BackscatterOrfeo._trackers = (
                     metrics_tracker.register_counter(_EXECUTION_TRACKER_ID), # nr_execution_tracker
                     metrics_tracker.register_counter(_SOFT_ERROR_TRACKER_ID), # nr_error_tracker
+                    metrics_tracker.register_counter(_INPUTPIXELS_TRACKER_ID),  # nr_error_tracker
                 )
         return S1BackscatterOrfeo._trackers
 

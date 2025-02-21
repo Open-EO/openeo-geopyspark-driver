@@ -8,7 +8,8 @@ class MetricsTracker():
 
     def register_counter(self,name):
         from pyspark import SparkContext
-        self._trackers[name] = SparkContext.getOrCreate().accumulator(0)
+        if name not in self._trackers:
+            self._trackers[name] = SparkContext.getOrCreate().accumulator(0)
         return self._trackers[name]
 
     def add(self,name,value):
