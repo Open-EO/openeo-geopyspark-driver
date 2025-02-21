@@ -115,6 +115,7 @@ class AggregateSpatialResultCSV(AggregatePolygonResultCSV, SupportsRunUdf):
             import pandas as pd
             bands_df = pd.DataFrame(bands, columns=columns)
             bands_df.set_index("date", inplace=True)
+            bands_df.index = pd.to_datetime(bands_df.index)
 
             if "feature_index" in columns:
                 bands_df.drop("feature_index", axis=1, inplace=True)

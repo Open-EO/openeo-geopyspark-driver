@@ -2813,16 +2813,13 @@ class TestVectorCubeRunUdf:
             """
             import pandas as pd
             def udf_apply_feature_dataframe(df: pd.DataFrame) -> pd.DataFrame:
-                df.Latitude = df.Latitude + 1000
-                df.Longitude = df.Longitude + 1000
-                df.Day = df.Day + 1000
-                return df
+                return df + 1000
         """
         )
         processed = openeo.processes.run_udf(aggregates, udf=udf, runtime="Python")
 
         result = api100.check_result(processed).json
-        #result = drop_empty_from_aggregate_polygon_result(result)
+        result = drop_empty_from_aggregate_polygon_result(result)
         assert result == DictSubSet(
             columns=[
                 "feature_index",
@@ -2851,7 +2848,6 @@ class TestVectorCubeRunUdf:
             """
             import pandas as pd
             def udf_apply_feature_dataframe(df: pd.DataFrame) -> pd.Series:
-                print(df)
                 return df.sum(axis=0)
         """
         )
@@ -2884,7 +2880,8 @@ class TestVectorCubeRunUdf:
             """
             import pandas as pd
             def udf_apply_feature_dataframe(df: pd.DataFrame) -> pd.Series:
-                series = df.sum(axis=1)                                
+                series = df.sum(axis=1)   
+                series.index = series.index.strftime("%Y-%m-%d")                             
                 return series
         """
         )
@@ -2893,7 +2890,7 @@ class TestVectorCubeRunUdf:
         result = api100.check_result(processed).json
         result = drop_empty_from_aggregate_polygon_result(result)
         assert result == DictSubSet(
-            columns=["feature_index", "2021-01-05T00:00:00.000Z", "2021-01-15T00:00:00.000Z", "2021-01-25T00:00:00.000Z"],
+            columns=["feature_index", "2021-01-05", "2021-01-15", "2021-01-25"],
             data=IgnoreOrder(
                 [
                     [0, 5 + 2.75 + 2.75, 15 + 2.75 + 2.75, 25 + 2.75 + 2.75],
