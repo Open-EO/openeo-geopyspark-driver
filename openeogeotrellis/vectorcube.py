@@ -229,7 +229,6 @@ class AggregateSpatialResultCSV(AggregatePolygonResultCSV, SupportsRunUdf):
                 raise openeo.udf.OpenEoUdfException(
                     f"Failed to convert UDF return type to pandas Series/DataFrame: {type(processed)}"
                 )
-            print(processed)
             return processed
 
         return callback
