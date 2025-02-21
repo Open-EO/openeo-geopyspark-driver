@@ -9,3 +9,9 @@ class EVAL_ENV_KEY:
     USER = "user"
     ALLOW_EMPTY_CUBES = "allow_empty_cubes"
     DO_EXTENT_CHECK = "do_extent_check"
+    PARAMETERS = "parameters"
+    LOAD_STAC_APPLY_LCFM_IMPROVEMENTS = "load_stac_apply_lcfm_improvements"
+
+
+JOB_OPTION_LOG_LEVEL = "log_level"
+JOB_OPTION_LOGGING_THRESHOLD = "logging-threshold"  # Deprecated in favor of JOB_OPTION_LOG_LEVEL

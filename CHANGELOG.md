@@ -14,7 +14,27 @@ without compromising stable operations.
 
 ## Unreleased
 
+- `load_stac`: improve STAC requests resilience ([#818](https://github.com/Open-EO/openeo-geopyspark-driver/issues/818))
+
+## 0.61.0
+
+- `python-memory`: make job option available on YARN, add a default config
+- `load_stac`: optimize resolution with regard to requested bands (experimental) ([#1043](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1043))
+- `load_stac`: apply offset (experimental) ([#1051](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1051))
+- Deprecate non-standard "logging-threshold" job option in favor of standardized "log_level" job creation parameter ([#909](https://github.com/Open-EO/openeo-geopyspark-driver/issues/909))
+- Fail fast on UDF dependency installation failure ([#1048](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1048))
+- `load_stac`: avoid OOM on global low-res assets ([#1055](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1055))
+
+## 0.60.1
+
+- `load_stac`: restore spatial dimensions of data cube loaded from STAC Collection that lacks `cube:dimensions`. ([#1036](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1036))
+- `sar_backscatter`: report soft-errors fraction in usage metrics
+- `apply_neighborhood`: for t='P1D', add date to dataarray.attrs with key 't'
+
+## 0.60.0
+
 - Make environment variables to be passed from web app driver to batch job driver configurable ([#867](https://github.com/Open-EO/openeo-geopyspark-driver/issues/867))
+- `load_collection`/`load_stac`: support parameters in `properties` ([Open-EO/openeo-python-driver#327](https://github.com/Open-EO/openeo-python-driver/issues/327))
 
 ## 0.59.0
 

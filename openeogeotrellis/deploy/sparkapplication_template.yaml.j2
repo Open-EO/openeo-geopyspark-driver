@@ -113,21 +113,12 @@ spec:
       hostPath:
         path: "/shared_pod_volume"
         type: "DirectoryOrCreate"
-    - name: "http-credentials-configmap"
-      configMap:
-        name: "http-credentials"
-    - name: "backend-config-configmap"
-      configMap:
-        name: "backend-config"
 {%- if mount_tmp %}
     - name: "spark-local-dir-1"
       hostPath:
         path: "/opt/spark_tmp/{{ job_id_short }}"
         type: "DirectoryOrCreate"
 {%- endif %}
-    - name: "http-credentials-configmap"
-      configMap:
-        name: "http-credentials"
 {%- if fuse_mount_batchjob_s3_bucket is sameas true %}
     - name: "batch-job-results"
       persistentVolumeClaim:
@@ -273,11 +264,6 @@ spec:
         mountPath: "/vsis3/eodata"
       - name: "shared-pod-volume"
         mountPath: "/shared_pod_volume"
-      - name: "http-credentials-configmap"
-        mountPath: "/opt/http_credentials/http_credentials.json"
-        subPath: "http_credentials.json"
-      - name: "backend-config-configmap"
-        mountPath: "/opt/backend_config/"
 {%- if fuse_mount_batchjob_s3_bucket is sameas true %}
       - name: "batch-job-results"
         mountPath: /batch_jobs/{{ job_id_full }}
@@ -419,11 +405,6 @@ spec:
         mountPath: "/vsis3/eodata"
       - name: "shared-pod-volume"
         mountPath: "/shared_pod_volume"
-      - name: "http-credentials-configmap"
-        mountPath: "/opt/http_credentials/http_credentials.json"
-        subPath: "http_credentials.json"
-      - name: "backend-config-configmap"
-        mountPath: "/opt/backend_config/"
 {%- if mount_tmp %}
       - name: "spark-local-dir-1"
         mountPath: "/spark_tmp"

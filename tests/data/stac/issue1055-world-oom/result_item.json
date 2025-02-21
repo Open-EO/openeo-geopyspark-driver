@@ -1,0 +1,127 @@
+{
+  "stac_version": "1.0.0",
+  "stac_extensions": [
+    "https://stac-extensions.github.io/file/v2.0.0/schema.json",
+    "https://stac-extensions.github.io/datacube/v2.1.0/schema.json",
+    "https://stac-extensions.github.io/projection/v1.1.0/schema.json",
+    "https://stac-extensions.github.io/raster/v1.1.0/schema.json"
+  ],
+  "id": "aCjVWTnhdwvKmVYZ",
+  "type": "Feature",
+  "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+      [
+        [
+          -180,
+          -90
+        ],
+        [
+          180,
+          -90
+        ],
+        [
+          180,
+          90
+        ],
+        [
+          -180,
+          90
+        ],
+        [
+          -180,
+          -90
+        ]
+      ]
+    ]
+  },
+  "properties": {
+    "datetime": "2023-01-01T00:00:00Z",
+    "created": "2025-01-29T15:34:38Z",
+    "updated": "2025-01-29T15:34:38Z",
+    "title": "Climate Europe Max"
+  },
+  "assets": {
+    "max-climate-world": {
+      "href": "https://earthengine.openeo.org/v1.0/storage/c08dc17428fde51ea7e1332eec2abd06e74188924e6c773257b4fb00aee0a308/max-climate-world.tiff",
+      "roles": [
+        "data"
+      ],
+      "type": "image/tiff; application=geotiff",
+      "title": "max-climate-world",
+      "file:size": 790453,
+      "created": "2025-01-30T11:23:26.184Z",
+      "updated": "2025-01-30T11:23:26.818Z",
+      "datetime": "2023-01-01T00:00:00Z",
+      "proj:shape": [
+        1002,
+        2004
+      ],
+      "proj:epsg": 4326,
+      "proj:transform": [
+        0.1796630568239043,
+        0,
+        -180.0223829375521,
+        0,
+        -0.1796630568239043,
+        90.01119146877605
+      ],
+      "raster:bands": [
+        {
+          "name": "tmmx",
+          "statistics": {
+            "minimum": -31.400000000000002,
+            "maximum": 52
+          },
+          "nodata": 0,
+          "data_type": "float64"
+        }
+      ],
+      "eo:bands": [
+        {
+          "name": "tmmx"
+        }
+      ],
+      "cube:dimensions": {
+        "x": {
+          "type": "spatial",
+          "axis": "x",
+          "extent": [
+            -180,
+            180
+          ],
+          "reference_system": 4326
+        },
+        "y": {
+          "type": "spatial",
+          "axis": "y",
+          "extent": [
+            -90,
+            90
+          ],
+          "reference_system": 4326
+        },
+        "bands": {
+          "type": "bands",
+          "values": [
+            "tmmx"
+          ]
+        }
+      },
+      "unit": "°C"
+    }
+  },
+  "links": [
+    {
+      "href": "https://earthengine.openeo.org/v1.0/results/c08dc17428fde51ea7e1332eec2abd06e74188924e6c773257b4fb00aee0a308",
+      "rel": "canonical",
+      "type": "application/json"
+    }
+  ],
+  "bbox": [
+    -180,
+    -90,
+    180,
+    90
+  ]
+}

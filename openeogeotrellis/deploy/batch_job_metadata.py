@@ -1,3 +1,4 @@
+from copy import deepcopy
 import json
 import logging
 import os
@@ -312,21 +313,17 @@ def convert_bbox_to_lat_long(bbox: List[int], bbox_crs: Optional[Union[str, int,
     return bbox
 
 
-def _convert_job_metadatafile_outputs_to_s3_urls(metadata_file: Path):
-    """Convert each asset's output_dir value to a URL on S3, in the job metadata file."""
-    with open(metadata_file, "rt") as mdf:
-        metadata_to_update = json.load(mdf)
-    with open(metadata_file, "wt") as mdf:
-        _convert_asset_outputs_to_s3_urls(metadata_to_update)
-        json.dump(metadata_to_update, mdf)
-
-
-def _convert_asset_outputs_to_s3_urls(job_metadata: dict):
+def _convert_asset_outputs_to_s3_urls(job_metadata: dict) -> dict:
     """Convert each asset's output_dir value to a URL on S3 in the metadata dictionary."""
+
+    job_metadata = deepcopy(job_metadata)
+
     out_assets = job_metadata.get("assets", {})
     for asset in out_assets.values():
         if "href" in asset and not asset["href"].startswith("s3://"):
             asset["href"] = to_s3_url(asset["href"])
+
+    return job_metadata
 
 
 def _transform_stac_metadata(job_dir: Path):
@@ -363,11 +360,12 @@ def _get_tracker(tracker_id=""):
 
 def _get_tracker_metadata(tracker_id="") -> dict:
     tracker = _get_tracker(tracker_id)
+    usage = {}
+    all_links = []
 
     if tracker is not None:
         tracker_results = tracker.asDict()
 
-        usage = {}
         pu = tracker_results.get("Sentinelhub_Processing_Units", None)
         if pu is not None:
             usage["sentinelhub"] = {"value": pu, "unit": "sentinelhub_processing_unit"}
@@ -392,4 +390,12 @@ def _get_tracker_metadata(tracker_id="") -> dict:
                 for link in all_links
             ]
 
-        return dict_no_none(usage=usage if usage != {} else None, links=all_links)
+
+    from openeogeotrellis.metrics_tracking import global_tracker
+    python_metrics = global_tracker().as_dict()
+    sar_backscatter_errors = python_metrics.pop("orfeo_backscatter_soft_errors",0)
+    sar_backscatter_total = python_metrics.pop("orfeo_backscatter_execution_counter",0)
+    usage =  { **usage, **{name: {"value": value, "unit": "count"} for name, value in python_metrics.items()}}
+    if sar_backscatter_total > 0:
+        usage["sar_backscatter_soft_errors"] = {"value": sar_backscatter_errors / sar_backscatter_total, "unit": "fraction"}
+    return dict_no_none(usage=usage if usage != {} else None, links=all_links)

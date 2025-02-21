@@ -48,6 +48,7 @@ from openeo_driver.backend import (
     JobListing,
 )
 from openeo_driver.config.load import ConfigGetter
+from openeo_driver.constants import DEFAULT_LOG_LEVEL_RETRIEVAL, DEFAULT_LOG_LEVEL_PROCESSING
 from openeo_driver.datacube import DriverDataCube, DriverVectorCube
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.delayed_vector import DelayedVector
@@ -79,6 +80,7 @@ from openeogeotrellis import sentinel_hub, load_stac, datacube_parameters
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.config.s3_config import S3Config
 from openeogeotrellis.configparams import ConfigParams
+from openeogeotrellis.constants import JOB_OPTION_LOG_LEVEL, JOB_OPTION_LOGGING_THRESHOLD
 from openeogeotrellis.geopysparkdatacube import GeopysparkCubeMetadata, GeopysparkDataCube
 from openeogeotrellis.integrations.etl_api import get_etl_api, ETL_ORGANIZATION_ID_JOB_OPTION
 from openeogeotrellis.integrations.identity import IDP_TOKEN_ISSUER
@@ -467,10 +469,20 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                             "description": "Specifies the filename prefix when outputting multiple files. By default, depending on the context, 'OpenEO' or a part of the input filename will be used as prefix.",
                             "default": None,
                         },
-                        "separate_asset_per_band": {  # TODO: should be a boolean that defaults to false
-                            "type": "string",
+                        "separate_asset_per_band": {
+                            "type": "boolean",
                             "description": "Set to true to write one output tiff per band. If there is a time dimension, the files will be split on time as well.",
+                            "default": False,
+                        },
+                        "filepath_per_band": {
+                            "type": "array",
+                            "description": "Specify an array with the same amount of bands, to give each band it's separate path. Subfolders are allowed.",
                             "default": None,
+                        },
+                        "attach_gdalinfo_assets": {
+                            "type": "boolean",
+                            "description": "Attaches *_gdalinfo.json files to the output results.",
+                            "default": False,
                         },
                     },
                 },
@@ -1354,7 +1366,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
     def create_job(
         self,
-        user_id: str,
+        user: User,
         process: dict,
         api_version: str,
         metadata: dict,
@@ -1363,10 +1375,19 @@ class GpsBatchJobs(backend.BatchJobs):
         job_id = generate_unique_id(prefix="j")
         title = metadata.get("title")
         description = metadata.get("description")
+        if "log_level" in metadata:
+            # TODO: it's not ideal to put "log_level" (processing parameter from official spec)
+            #       in job_options, which is intended for parameters that are not part of official spec.
+            #       Unfortunately, it's quite involved to add a new field like "log_level"
+            #       in all the appropriate job registry related places, so we do it just here for now.
+            if job_options is None:
+                job_options = {}
+            job_options[JOB_OPTION_LOG_LEVEL] = metadata.get("log_level", DEFAULT_LOG_LEVEL_PROCESSING)
+
         with self._double_job_registry as registry:
             job_info = registry.create_job(
                 job_id=job_id,
-                user_id=user_id,
+                user_id=user.user_id,
                 process=process,
                 api_version=api_version,
                 job_options=job_options,
@@ -1725,7 +1746,7 @@ class GpsBatchJobs(backend.BatchJobs):
         job_title = job_info.get('title', '')
         sentinel_hub_client_alias = deep_get(job_options, 'sentinel-hub', 'client-alias', default="default")
 
-        log.debug("job_options: {o!r}".format(o=job_options))
+        log.debug(f"_start_job {job_options=}")
 
         if (dependencies is None
             and job_info.get("dependency_status")
@@ -1747,7 +1768,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 logger_adapter=log,
             )
 
-            log.debug(f"job_dependencies: {job_dependencies}")
+            log.debug(f"_start_job {job_dependencies=}")
 
             if job_dependencies:
                 with self._double_job_registry as dbl_registry:
@@ -1802,17 +1823,26 @@ class GpsBatchJobs(backend.BatchJobs):
                                      status_code=400)
 
         def as_logging_threshold_arg() -> str:
-            value = job_options.get("logging-threshold", "info").upper()
+            if JOB_OPTION_LOGGING_THRESHOLD in job_options:
+                log.warning(
+                    f"Job option {JOB_OPTION_LOGGING_THRESHOLD!r} is non-standard and deprecated, use the standard job creation parameter 'log_level' instead"
+                )
+                value = job_options[JOB_OPTION_LOGGING_THRESHOLD]
+            else:
+                value = job_options.get(JOB_OPTION_LOG_LEVEL, DEFAULT_LOG_LEVEL_PROCESSING)
+
+            value = value.upper()
 
             if value == "WARNING":
                 value = "WARN"  # Log4j only accepts WARN whereas Python logging accepts WARN as well as WARNING
 
             if value in ["DEBUG", "INFO", "WARN", "ERROR"]:
                 return value
-
-            raise OpenEOApiException(message=f"invalid value {value} for job_option logging-threshold; "
-                                             f'supported values include "debug", "info", "warning" and "error"',
-                                     status_code=400)
+            raise OpenEOApiException(
+                code="InvalidLogLevel",
+                status_code=400,
+                message=f"Invalid log level {value}. Should be one of 'debug', 'info', 'warning' or 'error'.",
+            )
 
         isKube = ConfigParams().is_kube_deploy
         driver_memory = job_options.get("driver-memory", get_backend_config().default_driver_memory )
@@ -1887,38 +1917,39 @@ class GpsBatchJobs(backend.BatchJobs):
         if get_backend_config().setup_kerberos_auth:
             setup_kerberos_auth(self._principal, self._key_tab, self._jvm)
 
+        memOverheadBytes = as_bytes(executor_memory_overhead)
+        jvmOverheadBytes = as_bytes("128m")
+
+        # By default, Python uses the space reserved by `spark.executor.memoryOverhead` but no limit is enforced.
+        # When `spark.executor.pyspark.memory` is specified, Python will only use this memory and no more.
+        python_max = job_options.get("python-memory", get_backend_config().default_python_memory)
+        if python_max is not None:
+            python_max = as_bytes(python_max)
+            if "executor-memoryOverhead" not in job_options:
+                memOverheadBytes = jvmOverheadBytes
+                executor_memory_overhead = f"{memOverheadBytes // (1024 ** 2)}m"
+        else:
+            # If python-memory is not set, we convert most of the overhead memory to python memory
+            # this in fact duplicates the overhead memory, we should migrate away from this appraoch
+            python_max = memOverheadBytes - jvmOverheadBytes
+            executor_memory_overhead = f"{memOverheadBytes // (1024 ** 2)}m"
+
+        if as_bytes(executor_memory) + as_bytes(executor_memory_overhead) + python_max > as_bytes(
+                get_backend_config().max_executor_or_driver_memory
+        ):
+            raise OpenEOApiException(
+                message=f"Requested too much executor memory: "
+                        + f"{executor_memory} + {executor_memory_overhead} + {python_max // (1024 ** 2)}m, "
+                        + f"the max for this instance is: {get_backend_config().max_executor_or_driver_memory}",
+                status_code=400,
+            )
+
         if isKube:
             # TODO: get rid of this "isKube" anti-pattern, it makes testing of this whole code path practically impossible
 
             # TODO: eliminate these local imports
             from kubernetes.client.rest import ApiException
 
-
-            memOverheadBytes = as_bytes(executor_memory_overhead)
-            jvmOverheadBytes = as_bytes("128m")
-
-            # By default, Python uses the space reserved by `spark.executor.memoryOverhead` but no limit is enforced.
-            # When `spark.executor.pyspark.memory` is specified, Python will only use this memory and no more.
-            python_max = job_options.get("python-memory", None)
-            if python_max is not None:
-                python_max = as_bytes(python_max)
-                if "executor-memoryOverhead" not in job_options:
-                    memOverheadBytes = jvmOverheadBytes
-                    executor_memory_overhead = f"{memOverheadBytes//(1024**2)}m"
-            else:
-                # If python-memory is not set, we convert most of the overhead memory to python memory
-                python_max = memOverheadBytes - jvmOverheadBytes
-                executor_memory_overhead = f"{memOverheadBytes//(1024**2)}m"
-
-            if as_bytes(executor_memory) + as_bytes(executor_memory_overhead) + python_max > as_bytes(
-                    get_backend_config().max_executor_or_driver_memory
-            ):
-                raise OpenEOApiException(
-                    message=f"Requested too much executor memory: "
-                    + f"{executor_memory} + {executor_memory_overhead} + {python_max//(1024**2)}m, "
-                    + f"the max for this instance is: {get_backend_config().max_executor_or_driver_memory}",
-                    status_code=400,
-                )
 
             api_instance_custom_object = kube_client("CustomObject")
             api_instance_core = kube_client("Core")
@@ -2120,6 +2151,8 @@ class GpsBatchJobs(backend.BatchJobs):
             submit_script = "submit_batch_job_spark3.sh"
             script_location = pkg_resources.resource_filename("openeogeotrellis.deploy", submit_script)
 
+            image_name = job_options.get("image-name", os.environ.get("YARN_CONTAINER_RUNTIME_DOCKER_IMAGE"))
+
             extra_py_files=""
             if len(py_files)>0:
                 extra_py_files = "," + py_files.join(",")
@@ -2206,11 +2239,15 @@ class GpsBatchJobs(backend.BatchJobs):
                 args.append(str(job_work_dir / UDF_PYTHON_DEPENDENCIES_ARCHIVE_NAME))
                 args.append(os.environ.get("OPENEO_PROPAGATABLE_WEB_APP_DRIVER_ENVARS", ""))
 
+                args.append(str(python_max))
+
                 # TODO: this positional `args` handling is getting out of hand, leverage _write_sensitive_values?
 
                 try:
                     log.info(f"Submitting job with command {args!r}")
-                    script_output = subprocess.check_output(args, stderr=subprocess.STDOUT, universal_newlines=True)
+                    d = dict(**os.environ)
+                    d["YARN_CONTAINER_RUNTIME_DOCKER_IMAGE"] = image_name
+                    script_output = subprocess.check_output(args, stderr=subprocess.STDOUT, universal_newlines=True, env=d)
                     log.info(f"Submitted job, output was: {script_output}")
                 except CalledProcessError as e:
                     log.error(f"Submitting job failed, output was: {e.stdout}", exc_info=True)
@@ -2795,9 +2832,11 @@ class GpsBatchJobs(backend.BatchJobs):
     def get_log_entries(
         self,
         job_id: str,
+        *,
         user_id: str,
-        offset: Optional[str] = None,
-        level: Optional[str] = None,
+        offset: Union[str, None] = None,
+        limit: Union[str, None] = None,
+        level: str = DEFAULT_LOG_LEVEL_RETRIEVAL,
     ) -> Iterable[dict]:
         # will throw if job doesn't match user
         job_info = self.get_job_info(job_id=job_id, user_id=user_id)

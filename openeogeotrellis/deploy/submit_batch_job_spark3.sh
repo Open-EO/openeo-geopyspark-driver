@@ -58,6 +58,7 @@ ejr_oidc_client_credentials=${33}
 docker_mounts=${34-"/var/lib/sss/pubconf/krb5.include.d:/var/lib/sss/pubconf/krb5.include.d:ro,/var/lib/sss/pipes:/var/lib/sss/pipes:rw,/usr/hdp/current/:/usr/hdp/current/:ro,/etc/hadoop/conf/:/etc/hadoop/conf/:ro,/etc/krb5.conf:/etc/krb5.conf:ro,/data/MTDA:/data/MTDA:ro,/data/projects/OpenEO:/data/projects/OpenEO:rw,/data/MEP:/data/MEP:ro,/data/users:/data/users:rw,/tmp_epod:/tmp_epod:rw,/opt/tensorflow:/opt/tensorflow:ro"}
 udf_python_dependencies_archive_path=${35}
 propagatable_web_app_driver_envars=${36}
+python_max_memory=${37-102400}
 
 
 pysparkPython="/opt/venv/bin/python"
@@ -65,12 +66,10 @@ pysparkPython="/opt/venv/bin/python"
 kinit -kt ${keyTab} ${principal} || true
 
 export HDP_VERSION=3.1.4.0-315
-export SPARK_HOME=/opt/spark3_4_0
 export PATH="$SPARK_HOME/bin:$PATH"
 export SPARK_SUBMIT_OPTS="-Dlog4j2.configurationFile=file:${sparkSubmitLog4jConfigurationFile}"
 export LD_LIBRARY_PATH="/opt/venv/lib64"
 
-export PYTHONPATH="/opt/venv/lib64/python3.8/site-packages:/opt/venv/lib/python3.8/site-packages:/opt/tensorflow/python38/2.8.0:/usr/lib/python3.8/site-packages:/usr/lib64/python3.8/site-packages"
 if [ -n "$udf_python_dependencies_folder_path" ]; then
   export PYTHONPATH="$PYTHONPATH:$udf_python_dependencies_folder_path"
 fi
@@ -90,7 +89,7 @@ if [ -f "http_credentials.json" ]; then
   files="${files},http_credentials.json"
 fi
 
-main_py_file="/opt/venv/lib/python3.8/site-packages/openeogeotrellis/deploy/batch_job.py"
+main_py_file="/opt/venv/bin/openeo_batch.py"
 
 sparkDriverJavaOptions="-Dscala.concurrent.context.maxThreads=2 -Dpixels.treshold=100000000\
  -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/data/projects/OpenEO/${batchJobId}\
@@ -151,21 +150,18 @@ spark-submit \
  --conf spark.driver.maxResultSize=5g \
  --conf spark.driver.memoryOverhead=${drivermemoryoverhead} \
  --conf spark.executor.memoryOverhead=${executormemoryoverhead} \
+ --conf spark.executor.pyspark.memory=${python_max_memory}b \
  --conf spark.excludeOnFailure.enabled=true \
  --conf spark.speculation=true \
  --conf spark.speculation.interval=5000ms \
  --conf spark.speculation.multiplier=8 \
  --conf spark.dynamicAllocation.minExecutors=5 \
  --conf spark.dynamicAllocation.maxExecutors=${maxexecutors} \
- --conf "spark.yarn.appMasterEnv.SPARK_HOME=$SPARK_HOME" --conf spark.yarn.appMasterEnv.PYTHON_EGG_CACHE=./ \
- --conf "spark.yarn.appMasterEnv.PYSPARK_PYTHON=$pysparkPython" \
- --conf spark.executorEnv.PYSPARK_PYTHON=${pysparkPython} \
+ --conf spark.yarn.appMasterEnv.PYTHON_EGG_CACHE=./ \
  --conf spark.executorEnv.LD_LIBRARY_PATH=/opt/venv/lib64 \
  --conf spark.executorEnv.PATH=/opt/venv/bin:$PATH \
  --conf spark.yarn.appMasterEnv.LD_LIBRARY_PATH=/opt/venv/lib64 \
- --conf spark.yarn.appMasterEnv.JAVA_HOME=${JAVA_HOME} \
  --conf spark.yarn.am.waitTime=900s \
- --conf spark.executorEnv.JAVA_HOME=${JAVA_HOME} \
  --conf spark.yarn.appMasterEnv.BATCH_JOBS_ZOOKEEPER_ROOT_PATH=${BATCH_JOBS_ZOOKEEPER_ROOT_PATH} \
  --conf spark.yarn.appMasterEnv.OPENEO_USER_ID=${userId} \
  --conf spark.yarn.appMasterEnv.OPENEO_BATCH_JOB_ID=${batchJobId} \

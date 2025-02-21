@@ -514,7 +514,7 @@ class TestBatchJobs:
             assert batch_job_args[5] == job_metadata.name
             assert batch_job_args[8] == TEST_USER
             assert batch_job_args[9] == api.api_version
-            assert batch_job_args[10:16] == ['8G', '2G', '3G', '5', '2', '2G']
+            assert batch_job_args[10:16] == ['8G', '2G', '3072m', '5', '2', '2G']
             assert batch_job_args[16:21] == [
                 'default', 'false', '[]',
                 "__pyfiles__/custom_processes.py,foolib.whl", '100'
@@ -530,9 +530,16 @@ class TestBatchJobs:
             assert meta_data["user_id"] == TEST_USER
             assert meta_data["status"] == "queued"
             assert meta_data["api_version"] == api.api_version
-            assert json.loads(meta_data["specification"]) == (
-                data['process'] if api.api_version_compare.at_least("1.0.0")
-                else {"process_graph": data["process_graph"]})
+            assert json.loads(meta_data["specification"]) == {
+                "process_graph": {
+                    "loadcollection1": {
+                        "process_id": "load_collection",
+                        "arguments": {"id": "BIOPAR_FAPAR_V1_GLOBAL"},
+                        "result": True,
+                    }
+                },
+                "job_options": {"log_level": "info"},
+            }
             assert meta_data["application_id"] == 'application_1587387643572_0842'
             assert meta_data["created"] == "2020-04-20T16:04:03Z"
             res = api.get('/jobs/{j}'.format(j=job_id), headers=TEST_USER_AUTH_HEADER).assert_status_code(200).json
@@ -962,7 +969,7 @@ class TestBatchJobs:
             assert batch_job_args[5] == job_metadata.name
             assert batch_job_args[8] == TEST_USER
             assert batch_job_args[9] == api.api_version
-            assert batch_job_args[10:16] == ['3g', '11g', '3G', '5', '4', '10G']
+            assert batch_job_args[10:16] == ['3g', '11g', '3072m', '5', '4', '10G']
             assert batch_job_args[16:21] == [
                 'somequeue', 'false', '[]',
                 '__pyfiles__/custom_processes.py,foolib.whl', '100'

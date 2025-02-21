@@ -51,12 +51,11 @@ setup(
             "scripts/zookeeper_set.py",
         ]),
     ],
-    setup_requires=['pytest-runner'],
     tests_require=tests_require,
     install_requires=[
         "openeo>=0.33.0",
-        "openeo_driver>=0.122.0.dev",
-        'pyspark==3.4.2; python_version>="3.8"',
+        "openeo_driver>=0.125.0.dev",
+        'pyspark==3.5.3; python_version>="3.8"',
         'pyspark>=2.3.1,<2.4.0; python_version<"3.8"',
         'geopyspark==0.4.7+openeo',
         # rasterio is an undeclared but required dependency for geopyspark
@@ -101,6 +100,7 @@ setup(
         "traceback-with-variables==2.0.4",
         'scipy>=1.8',  # used by sentinel-3 reader
         "PyJWT[crypto]>=2.9.0",  # For identity tokens
+        "urllib3>=1.26.20"
     ],
     extras_require={
         "dev": tests_require,

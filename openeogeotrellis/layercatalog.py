@@ -16,6 +16,7 @@ import py4j.protocol
 import pyproj
 import pyspark.sql.utils
 import pytz
+from py4j.protocol import Py4JJavaError
 
 from openeo.metadata import Band
 from openeo.util import TimingLogger, deep_get, str_truncate
@@ -68,6 +69,8 @@ WHITELIST = [
     EVAL_ENV_KEY.USER,
     EVAL_ENV_KEY.ALLOW_EMPTY_CUBES,
     EVAL_ENV_KEY.DO_EXTENT_CHECK,
+    EVAL_ENV_KEY.PARAMETERS,
+    EVAL_ENV_KEY.LOAD_STAC_APPLY_LCFM_IMPROVEMENTS,
 ]
 LARGE_LAYER_THRESHOLD_IN_PIXELS = pow(10, 11)
 
@@ -185,12 +188,15 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         #band specific gsd can override collection default
         band_gsds = [band.gsd['value'] for band in metadata.bands if band.gsd is not None]
         if len(band_gsds) > 0:
-            def highest_resolution(band_gsd, coordinate_index):
-                return (min(res[coordinate_index] for res in band_gsd) if isinstance(band_gsd[0], list)
-                        else band_gsd[coordinate_index])
 
-            cell_width = float(min(highest_resolution(band_gsd, coordinate_index=0) for band_gsd in band_gsds))
-            cell_height = float(min(highest_resolution(band_gsd, coordinate_index=1) for band_gsd in band_gsds))
+            def smallest_cell_size(band_gsd, coordinate_index):
+                return (
+                    min(size[coordinate_index] for size in band_gsd) if isinstance(band_gsd[0], list)
+                    else band_gsd[coordinate_index]
+                )
+
+            cell_width = float(min(smallest_cell_size(band_gsd, coordinate_index=0) for band_gsd in band_gsds))
+            cell_height = float(min(smallest_cell_size(band_gsd, coordinate_index=1) for band_gsd in band_gsds))
 
         native_crs = self._native_crs(metadata)
 
@@ -271,8 +277,10 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             layer_properties = metadata.get("_vito", "properties", default={})
             custom_properties = load_params.properties
 
-            all_properties = {property_name: filter_properties.extract_literal_match(condition)
-                        for property_name, condition in {**layer_properties, **custom_properties}.items()}
+            all_properties = {
+                property_name: filter_properties.extract_literal_match(condition, env)
+                for property_name, condition in {**layer_properties, **custom_properties}.items()
+            }
 
             def eq_value(criterion: Dict[str, object]) -> object:
                 if len(criterion) != 1:
@@ -694,7 +702,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         elif layer_source_type == 'stac':
             cube = load_stac(layer_source_info["url"], load_params, env,
                              layer_properties=metadata.get("_vito", "properties", default={}),
-                             batch_jobs=None, override_band_names=metadata.band_names)
+                             batch_jobs=None, override_band_names=metadata.band_names,
+                             apply_lcfm_improvements=layer_source_info.get("load_stac_apply_lcfm_improvements", False),)
             pyramid = cube.pyramid.levels
             metadata = cube.metadata
         elif layer_source_type == 'accumulo':
@@ -1196,29 +1205,33 @@ def check_missing_products(
         elif method == "terrascope":
             jvm = get_jvm()
 
-            expected_tiles = query_jvm_opensearch_client(
-                open_search_client=jvm.org.openeo.opensearch.backends.CreodiasClient.apply(),
-                collection_id=check_data["creo_catalog"]["mission"],
-                _query_kwargs=query_kwargs,
-                processing_level=check_data["creo_catalog"]["level"],
-            )
+            try:
+                expected_tiles = query_jvm_opensearch_client(
+                    open_search_client=jvm.org.openeo.opensearch.backends.CreodiasClient.apply(),
+                    collection_id=check_data["creo_catalog"]["mission"],
+                    _query_kwargs=query_kwargs,
+                    processing_level=check_data["creo_catalog"]["level"],
+                )
+                logger.debug(f"Expected tiles ({len(expected_tiles)}): {str_truncate(repr(expected_tiles), 200)}")
+                opensearch_collection_id = collection_metadata.get("_vito", "data_source", "opensearch_collection_id")
 
-            logger.debug(f"Expected tiles ({len(expected_tiles)}): {str_truncate(repr(expected_tiles), 200)}")
-            opensearch_collection_id = collection_metadata.get("_vito", "data_source", "opensearch_collection_id")
+                url = jvm.java.net.URL("https://services.terrascope.be/catalogue")
+                # Terrascope has a different calculation for cloudCover
+                query_kwargs_no_cldPrcnt = query_kwargs.copy()
+                if "cldPrcnt" in query_kwargs_no_cldPrcnt:
+                    del query_kwargs_no_cldPrcnt["cldPrcnt"]
+                terrascope_tiles = query_jvm_opensearch_client(
+                    open_search_client=jvm.org.openeo.opensearch.OpenSearchClient.apply(url, False, ""),
+                    collection_id=opensearch_collection_id,
+                    _query_kwargs=query_kwargs_no_cldPrcnt,
+                )
 
-            url = jvm.java.net.URL("https://services.terrascope.be/catalogue")
-            # Terrascope has a different calculation for cloudCover
-            query_kwargs_no_cldPrcnt = query_kwargs.copy()
-            if "cldPrcnt" in query_kwargs_no_cldPrcnt:
-                del query_kwargs_no_cldPrcnt["cldPrcnt"]
-            terrascope_tiles = query_jvm_opensearch_client(
-                open_search_client=jvm.org.openeo.opensearch.OpenSearchClient.apply(url, False, ""),
-                collection_id=opensearch_collection_id,
-                _query_kwargs=query_kwargs_no_cldPrcnt,
-            )
+                logger.debug(f"Oscar tiles ({len(terrascope_tiles)}): {str_truncate(repr(terrascope_tiles), 200)}")
+                missing = list(expected_tiles.difference(terrascope_tiles))
+            except Py4JJavaError as e:
+                logger.error(f"load_collection: Failed to retrieve list of expected products from CDSE. {e}")
+                missing = [f"unknown - CDSE query failed with {e}"]
 
-            logger.debug(f"Oscar tiles ({len(terrascope_tiles)}): {str_truncate(repr(terrascope_tiles), 200)}")
-            return list(expected_tiles.difference(terrascope_tiles))
         else:
             logger.error(f"Invalid check_missing_products data {check_data}")
             raise InternalException("Invalid check_missing_products data")

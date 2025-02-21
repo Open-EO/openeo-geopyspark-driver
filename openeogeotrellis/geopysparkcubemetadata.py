@@ -1,8 +1,15 @@
 import logging
 from typing import List, Union, Optional, Tuple
 
-import dateutil.parser
-from openeo.metadata import CollectionMetadata, Dimension, TemporalDimension, BandDimension, Band
+from openeo.metadata import (
+    CollectionMetadata,
+    Dimension,
+    TemporalDimension,
+    BandDimension,
+    Band,
+    DimensionAlreadyExistsException,
+    SpatialDimension,
+)
 from openeo_driver.util.geometry import BoundingBox
 from openeogeotrellis.utils import reproject_cellsize
 
@@ -120,6 +127,12 @@ class GeopysparkCubeMetadata(CollectionMetadata):
         return self._clone_and_update(
             dimensions=dimensions,
         )
+
+    def add_spatial_dimension(self, name: str, extent: Union[Tuple[float, float], List[float]]):
+        if any(d.name == name for d in self._dimensions):
+            raise DimensionAlreadyExistsException(f"Dimension with name {name!r} already exists")
+
+        return self._clone_and_update(dimensions=self._dimensions + [SpatialDimension(name, extent)])
 
     @property
     def opensearch_link_titles(self) -> List[str]:
