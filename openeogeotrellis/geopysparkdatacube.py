@@ -1522,8 +1522,11 @@ class GeopysparkDataCube(DriverDataCube):
             band = split[0]
             return date, band
 
-        # Calculate the coordinates.
         features = geojson["features"]
+        if len(features) == 0:
+            return DriverVectorCube(gpd.GeoDataFrame.from_features([]), None)
+
+        # Calculate the coordinates.
         feature_key_values = []
         for feature in features:
             # feature["id"] is for example: "20171025_band0_0"
@@ -1543,6 +1546,7 @@ class GeopysparkDataCube(DriverDataCube):
 
         if len(coords[dim_t]) == 0:
             del coords[dim_t]
+            dims = (dim_g, dim_b)
             values = np.empty((len(geometries), len(coords[dim_b])))
             values.fill(np.nan)
             for geom_index, key_value in enumerate(feature_key_values):
@@ -1561,7 +1565,8 @@ class GeopysparkDataCube(DriverDataCube):
         # TODO: There is no guarantee that the bands are in the correct order because we load from geojson.
         # TODO: What to do when certain dates in rastercube have no vector results? Number of dates will differ.
         cube = xr.DataArray(values, dims = dims, coords = coords)
-        cube = cube.sortby(dim_t)
+        if dim_t in cube.dims:
+            cube = cube.sortby(dim_t)
         return DriverVectorCube(geometries, cube)
 
     def raster_to_vector(self):
