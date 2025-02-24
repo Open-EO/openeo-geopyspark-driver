@@ -259,9 +259,6 @@ def load_stac(
 
             item = stac_object
 
-            if not intersects_spatiotemporally(item):  # TODO: support empty cube
-                raise no_data_available_exception
-
             if "eo:bands" in item.properties:
                 eo_bands_location = item.properties
             elif item.get_collection() is not None:
@@ -272,7 +269,12 @@ def load_stac(
                 eo_bands_location = {}
             band_names = [b["name"] for b in eo_bands_location.get("eo:bands", [])]
 
-            intersecting_items = [item]
+            if intersects_spatiotemporally(item):
+                intersecting_items = [item]
+            elif allow_empty_cubes:
+                intersecting_items = []
+            else:
+                raise no_data_available_exception
         elif isinstance(stac_object, pystac.Collection) and supports_item_search(stac_object):
             collection = stac_object
             collection_id = collection.id

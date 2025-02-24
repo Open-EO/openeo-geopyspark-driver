@@ -280,7 +280,7 @@ def test_world_oom(urllib_poolmanager_mock):
 @pytest.mark.parametrize(
     ["featureflags", "env", "expectation"],
     [
-        ({}, EvalEnv({}), pytest.raises(OpenEOApiException, match="There is no data available for the given extents")),
+        ({}, EvalEnv(), pytest.raises(OpenEOApiException, match="There is no data available for the given extents")),
         ({"allow_empty_cube": True}, {}, nullcontext()),
         ({}, {"allow_empty_cubes": True}, nullcontext()),
     ],
@@ -318,5 +318,31 @@ def test_empty_cube_from_stac_api(urllib_poolmanager_mock, requests_mock, featur
         assert data_cube.metadata.band_names == ["B04", "B03", "B02"]
 
 
-def test_empty_cube_from_non_intersecting_item():
-    raise NotImplementedError
+@pytest.mark.parametrize(
+    ["featureflags", "env", "expectation"],
+    [
+        ({}, EvalEnv({}), pytest.raises(OpenEOApiException, match="There is no data available for the given extents")),
+        ({"allow_empty_cube": True}, {}, nullcontext()),
+        ({}, {"allow_empty_cubes": True}, nullcontext()),
+    ],
+)
+def test_empty_cube_from_non_intersecting_item(urllib_poolmanager_mock, featureflags, env, expectation):
+    stac_item_url = "https://stac.test/item.json"
+
+    urllib_poolmanager_mock.get(stac_item_url, data=get_test_data_file("stac/item01.json").read_text())
+
+    with expectation:
+        data_cube = load_stac(
+            stac_item_url,
+            load_params=LoadParameters(
+                spatial_extent={"west": 0.0, "south": 50.0, "east": 1.0, "north": 51.0},
+                temporal_extent=DEFAULT_TEMPORAL_EXTENT,
+                featureflags=featureflags,
+            ),
+            env=env,
+            layer_properties={},
+            batch_jobs=None,
+        )
+
+        assert data_cube.get_max_level().count() == 0
+        assert data_cube.metadata.band_names == ["A1"]
