@@ -11,7 +11,7 @@ ENV PYTHON_EGG_CACHE=./
 ENV PYSPARK_PYTHON="/opt/venv/bin/python"
 ENV PATH="/opt/venv/bin:$PATH"
 ENV WMTS_BASE_URL_PATTERN=http://openeo.vgt.vito.be/openeo/services/%s
-ENV PYTHONPATH="/opt/venv/lib64/python3.8/site-packages:/opt/venv/lib/python3.8/site-packages:/opt/tensorflow/python38/2.8.0:/usr/lib/python3.8/site-packages:/usr/lib64/python3.8/site-packages"
+ENV PYTHONPATH="/opt/venv/lib64/python3.8/site-packages:/opt/venv/lib/python3.8/site-packages:/usr/lib/python3.8/site-packages:/usr/lib64/python3.8/site-packages"
 ENV LD_LIBRARY_PATH="/opt/venv/lib64"
 
 # from jenkinslib/resources/python/test.sh

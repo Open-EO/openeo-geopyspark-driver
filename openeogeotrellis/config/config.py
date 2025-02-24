@@ -243,7 +243,6 @@ class GpsBackendConfig(OpenEoBackendConfig):
         "/data/MEP:/data/MEP:ro,"
         "/data/users:/data/users:rw,"
         "/tmp_epod:/tmp_epod:rw,"
-        "/opt/tensorflow:/opt/tensorflow:ro"
     )
     batch_user_docker_mounts: dict[str, List[str]] = {}
     gdalinfo_from_file: bool = True
