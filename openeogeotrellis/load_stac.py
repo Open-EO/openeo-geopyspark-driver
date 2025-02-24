@@ -56,11 +56,11 @@ def load_stac(
         override_band_names = []
 
     apply_lcfm_improvements = apply_lcfm_improvements or env.get(EVAL_ENV_KEY.LOAD_STAC_APPLY_LCFM_IMPROVEMENTS, False)
-    allow_empty_cubes = True  # TODO: feature flag
 
     logger.info("load_stac from url {u!r} with load params {p!r}".format(u=url, p=load_params))
 
     feature_flags = load_params.get("featureflags", {})
+    allow_empty_cubes = feature_flags.get("allow_empty_cube", env.get(EVAL_ENV_KEY.ALLOW_EMPTY_CUBES, False))
 
     no_data_available_exception = OpenEOApiException(message="There is no data available for the given extents.",
                                                      code="NoDataAvailable", status_code=400)
@@ -259,7 +259,7 @@ def load_stac(
 
             item = stac_object
 
-            if not intersects_spatiotemporally(item):
+            if not intersects_spatiotemporally(item):  # TODO: support empty cube
                 raise no_data_available_exception
 
             if "eo:bands" in item.properties:
@@ -517,6 +517,10 @@ def load_stac(
     # Overwrite band_names because new bands could be detected in stac items:
     metadata = metadata.with_new_band_names(override_band_names or band_names)
 
+    if allow_empty_cubes and not metadata.band_names and load_params.bands:  # TODO: explicit error when no bands param?
+        # no knowledge of bands except for what the user requested
+        metadata = metadata.with_new_band_names(load_params.bands)
+
     if load_params.global_extent is None or len(load_params.global_extent) == 0:
         layer_native_extent = metadata.get_layer_native_extent()
         if layer_native_extent:
@@ -524,7 +528,7 @@ def load_stac(
             load_params.global_extent = layer_native_extent.as_dict()
 
     if load_params.bands:
-        metadata = metadata.filter_bands(load_params.bands)
+        metadata = metadata.filter_bands(load_params.bands)  # TODO: test with load_stac instead of load_collection("SENTINEL2_L2A_STAC")
 
     band_names = metadata.band_names
 
