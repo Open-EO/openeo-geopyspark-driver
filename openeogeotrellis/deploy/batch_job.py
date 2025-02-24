@@ -292,6 +292,7 @@ def run_job(
 
         backend_implementation = GeoPySparkBackendImplementation(
             use_job_registry=bool(get_backend_config().ejr_api),
+            do_ejr_health_check=False,
         )
 
         if default_sentinel_hub_credentials is not None:
