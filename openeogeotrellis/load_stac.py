@@ -56,6 +56,7 @@ def load_stac(
         override_band_names = []
 
     apply_lcfm_improvements = apply_lcfm_improvements or env.get(EVAL_ENV_KEY.LOAD_STAC_APPLY_LCFM_IMPROVEMENTS, False)
+    allow_empty_cubes = True  # TODO: feature flag
 
     logger.info("load_stac from url {u!r} with load params {p!r}".format(u=url, p=load_params))
 
@@ -485,7 +486,7 @@ def load_stac(
                      else BoundingBox.from_wsen_tuple(item_bbox.as_polygon().union(stac_bbox.as_polygon()).bounds,
                                                       stac_bbox.crs))
 
-    if not items_found:
+    if not allow_empty_cubes and not items_found:
         raise no_data_available_exception
 
     target_bbox = requested_bbox or stac_bbox
@@ -507,7 +508,11 @@ def load_stac(
         metadata = metadata.add_spatial_dimension(name="y", extent=[])
 
     metadata = metadata.with_temporal_extent(
-        temporal_extent=(start_datetime.isoformat(), end_datetime.isoformat()), allow_adding_dimension=True
+        temporal_extent=(
+            map_optional(dt.datetime.isoformat, start_datetime) or temporal_extent[0],
+            map_optional(dt.datetime.isoformat, end_datetime) or temporal_extent[1],
+        ),
+        allow_adding_dimension=True,
     )
     # Overwrite band_names because new bands could be detected in stac items:
     metadata = metadata.with_new_band_names(override_band_names or band_names)
@@ -630,7 +635,11 @@ def load_stac(
     if tilesize:
         getattr(data_cube_parameters, "tileSize_$eq")(tilesize)
 
-    if netcdf_with_time_dimension:
+    if not items_found and allow_empty_cubes:  # TODO: fail faster
+        pyramid = pyramid_factory.empty_datacube_seq(
+            projected_polygons, from_date.isoformat(), to_date.isoformat(), data_cube_parameters
+        )
+    elif netcdf_with_time_dimension:
         pyramid = pyramid_factory.datacube_seq(projected_polygons, from_date.isoformat(), to_date.isoformat(),
                                                metadata_properties, correlation_id, data_cube_parameters,
                                                opensearch_client)
