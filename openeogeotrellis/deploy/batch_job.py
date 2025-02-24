@@ -348,7 +348,7 @@ def run_job(
         global_metadata_attributes = {
             "title": job_specification.get("title", ""),
             "description": job_specification.get("description", ""),
-            "institution": "openEO platform - Geotrellis backend: " + __version__
+            "institution": f"{get_backend_config().processing_facility} - {get_backend_config().capabilities_backend_version}"
         }
 
         ml_model_metadata = None
