@@ -1936,7 +1936,10 @@ class GpsBatchJobs(backend.BatchJobs):
         else:
             # If python-memory is not set, we convert most of the overhead memory to python memory
             # this in fact duplicates the overhead memory, we should migrate away from this appraoch
-            python_max = memOverheadBytes - jvmOverheadBytes
+            if isKube:
+                python_max = memOverheadBytes - jvmOverheadBytes
+            else:
+                python_max = -1
             executor_memory_overhead = f"{memOverheadBytes // (1024 ** 2)}m"
 
         if as_bytes(executor_memory) + as_bytes(executor_memory_overhead) + python_max > as_bytes(

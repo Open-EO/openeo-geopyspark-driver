@@ -58,7 +58,7 @@ ejr_oidc_client_credentials=${33}
 docker_mounts=${34-"/var/lib/sss/pubconf/krb5.include.d:/var/lib/sss/pubconf/krb5.include.d:ro,/var/lib/sss/pipes:/var/lib/sss/pipes:rw,/usr/hdp/current/:/usr/hdp/current/:ro,/etc/hadoop/conf/:/etc/hadoop/conf/:ro,/etc/krb5.conf:/etc/krb5.conf:ro,/data/MTDA:/data/MTDA:ro,/data/projects/OpenEO:/data/projects/OpenEO:rw,/data/MEP:/data/MEP:ro,/data/users:/data/users:rw,/tmp_epod:/tmp_epod:rw"}
 udf_python_dependencies_archive_path=${35}
 propagatable_web_app_driver_envars=${36}
-python_max_memory=${37-102400}
+python_max_memory=${37-"-1"}
 
 
 pysparkPython="/opt/venv/bin/python"
@@ -116,6 +116,12 @@ else
   run_as="--principal ${principal} --keytab ${keyTab}"
 fi
 
+python_max_conf = ""
+if [ "${python_max_memory}" != "-1" ]; then
+  python_max_conf="--conf spark.executor.pyspark.memory=${python_max_memory}b"
+fi
+
+
 batch_job_driver_envar_arguments()
 {
   arguments=""
@@ -150,7 +156,7 @@ spark-submit \
  --conf spark.driver.maxResultSize=5g \
  --conf spark.driver.memoryOverhead=${drivermemoryoverhead} \
  --conf spark.executor.memoryOverhead=${executormemoryoverhead} \
- --conf spark.executor.pyspark.memory=${python_max_memory}b \
+ ${python_max_conf} \
  --conf spark.excludeOnFailure.enabled=true \
  --conf spark.speculation=true \
  --conf spark.speculation.interval=5000ms \
