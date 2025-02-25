@@ -18,8 +18,13 @@ from openeo.util import dict_no_none, Rfc3339
 from openeo_driver import filter_properties, backend
 from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.backend import LoadParameters, BatchJobMetadata
-from openeo_driver.errors import OpenEOApiException, ProcessParameterUnsupportedException, JobNotFoundException, \
-    ProcessParameterInvalidException
+from openeo_driver.errors import (
+    OpenEOApiException,
+    ProcessParameterUnsupportedException,
+    JobNotFoundException,
+    ProcessParameterInvalidException,
+    ProcessParameterRequiredException,
+)
 from openeo_driver.jobregistry import PARTIAL_JOB_STATUS
 from openeo_driver.ProcessGraphDeserializer import DEFAULT_TEMPORAL_EXTENT
 from openeo_driver.users import User
@@ -514,9 +519,12 @@ def load_stac(
     # Overwrite band_names because new bands could be detected in stac items:
     metadata = metadata.with_new_band_names(override_band_names or band_names)
 
-    if allow_empty_cubes and not metadata.band_names and load_params.bands:  # TODO: explicit error when no bands param?
+    if allow_empty_cubes and not metadata.band_names:
         # no knowledge of bands except for what the user requested
-        metadata = metadata.with_new_band_names(load_params.bands)
+        if load_params.bands:
+            metadata = metadata.with_new_band_names(load_params.bands)
+        else:
+            raise ProcessParameterRequiredException(process="load_stac", parameter="bands")
 
     if load_params.global_extent is None or len(load_params.global_extent) == 0:
         layer_native_extent = metadata.get_layer_native_extent()
@@ -641,7 +649,7 @@ def load_stac(
                                                metadata_properties, correlation_id, data_cube_parameters,
                                                opensearch_client)
     elif single_level:
-        if not items_found and allow_empty_cubes:  # TODO: fail faster
+        if not items_found and allow_empty_cubes:
             pyramid = pyramid_factory.empty_datacube_seq(
                 projected_polygons,
                 from_date.isoformat(),
