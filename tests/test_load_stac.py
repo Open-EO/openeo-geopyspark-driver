@@ -280,9 +280,14 @@ def test_world_oom(urllib_poolmanager_mock):
 @pytest.mark.parametrize(
     ["featureflags", "env", "expectation"],
     [
-        ({}, EvalEnv(), pytest.raises(OpenEOApiException, match="There is no data available for the given extents")),
-        ({"allow_empty_cube": True}, {}, nullcontext()),
-        ({}, {"allow_empty_cubes": True}, nullcontext()),
+        (
+            {},
+            EvalEnv({"pyramid_levels": "highest"}),
+            pytest.raises(OpenEOApiException, match="There is no data available for the given extents"),
+        ),
+        ({"allow_empty_cube": True}, EvalEnv({"pyramid_levels": "highest"}), nullcontext()),
+        ({}, EvalEnv({"pyramid_levels": "highest", "allow_empty_cubes": True}), nullcontext()),
+        ({}, EvalEnv({"allow_empty_cubes": True}), nullcontext()),  # pyramid_seq
     ],
 )
 def test_empty_cube_from_stac_api(urllib_poolmanager_mock, requests_mock, featureflags, env, expectation):
@@ -314,16 +319,22 @@ def test_empty_cube_from_stac_api(urllib_poolmanager_mock, requests_mock, featur
             batch_jobs=None,
         )
 
-        assert data_cube.get_max_level().count() == 0
         assert data_cube.metadata.band_names == ["B04", "B03", "B02"]
+        for level in data_cube.pyramid.levels.values():
+            assert level.count() == 0
 
 
 @pytest.mark.parametrize(
     ["featureflags", "env", "expectation"],
     [
-        ({}, EvalEnv({}), pytest.raises(OpenEOApiException, match="There is no data available for the given extents")),
-        ({"allow_empty_cube": True}, {}, nullcontext()),
-        ({}, {"allow_empty_cubes": True}, nullcontext()),
+        (
+            {},
+            EvalEnv({"pyramid_levels": "highest"}),
+            pytest.raises(OpenEOApiException, match="There is no data available for the given extents"),
+        ),
+        ({"allow_empty_cube": True}, EvalEnv({"pyramid_levels": "highest"}), nullcontext()),
+        ({}, EvalEnv({"pyramid_levels": "highest", "allow_empty_cubes": True}), nullcontext()),
+        ({}, EvalEnv({"allow_empty_cubes": True}), nullcontext()),  # pyramid_seq
     ],
 )
 def test_empty_cube_from_non_intersecting_item(urllib_poolmanager_mock, featureflags, env, expectation):
@@ -344,5 +355,6 @@ def test_empty_cube_from_non_intersecting_item(urllib_poolmanager_mock, featuref
             batch_jobs=None,
         )
 
-        assert data_cube.get_max_level().count() == 0
         assert data_cube.metadata.band_names == ["A1"]
+        for level in data_cube.pyramid.levels.values():
+            assert level.count() == 0

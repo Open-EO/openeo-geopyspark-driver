@@ -636,17 +636,27 @@ def load_stac(
     if tilesize:
         getattr(data_cube_parameters, "tileSize_$eq")(tilesize)
 
-    if not items_found and allow_empty_cubes:  # TODO: fail faster
-        pyramid = pyramid_factory.empty_datacube_seq(
-            projected_polygons, from_date.isoformat(), to_date.isoformat(), data_cube_parameters
-        )
-    elif netcdf_with_time_dimension:
+    if netcdf_with_time_dimension:
         pyramid = pyramid_factory.datacube_seq(projected_polygons, from_date.isoformat(), to_date.isoformat(),
                                                metadata_properties, correlation_id, data_cube_parameters,
                                                opensearch_client)
     elif single_level:
-        pyramid = pyramid_factory.datacube_seq(projected_polygons, from_date.isoformat(), to_date.isoformat(),
-                                               metadata_properties, correlation_id, data_cube_parameters)
+        if not items_found and allow_empty_cubes:  # TODO: fail faster
+            pyramid = pyramid_factory.empty_datacube_seq(
+                projected_polygons,
+                from_date.isoformat(),
+                to_date.isoformat(),
+                data_cube_parameters,
+            )
+        else:
+            pyramid = pyramid_factory.datacube_seq(
+                projected_polygons,
+                from_date.isoformat(),
+                to_date.isoformat(),
+                metadata_properties,
+                correlation_id,
+                data_cube_parameters,
+            )
     else:
         if requested_bbox:
             extent = jvm.geotrellis.vector.Extent(*map(float, requested_bbox.as_wsen_tuple()))
@@ -655,11 +665,12 @@ def load_stac(
             extent = jvm.geotrellis.vector.Extent(-180.0, -90.0, 180.0, 90.0)
             extent_crs = "EPSG:4326"
 
-        # TODO: support empty cubes
-        pyramid = pyramid_factory.pyramid_seq(
-            extent, extent_crs, from_date.isoformat(), to_date.isoformat(),
-            metadata_properties, correlation_id
-        )
+        if not items_found and allow_empty_cubes:
+            pyramid = pyramid_factory.empty_pyramid_seq(extent, extent_crs, from_date.isoformat(), to_date.isoformat())
+        else:
+            pyramid = pyramid_factory.pyramid_seq(
+                extent, extent_crs, from_date.isoformat(), to_date.isoformat(), metadata_properties, correlation_id
+            )
 
     metadata = metadata.filter_temporal(from_date.isoformat(), to_date.isoformat())
 
