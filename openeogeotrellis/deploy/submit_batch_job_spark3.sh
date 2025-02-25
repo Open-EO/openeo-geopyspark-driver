@@ -116,7 +116,7 @@ else
   run_as="--principal ${principal} --keytab ${keyTab}"
 fi
 
-python_max_conf = ""
+python_max_conf=""
 if [ "${python_max_memory}" != "-1" ]; then
   python_max_conf="--conf spark.executor.pyspark.memory=${python_max_memory}b"
 fi
