@@ -1,8 +1,10 @@
 import datetime as dt
 import json
+from contextlib import nullcontext
 
 import mock
 import pytest
+from openeo_driver.ProcessGraphDeserializer import DEFAULT_TEMPORAL_EXTENT
 from openeo_driver.backend import BatchJobMetadata, BatchJobs, LoadParameters
 from openeo_driver.errors import OpenEOApiException
 from openeo_driver.utils import EvalEnv
@@ -273,3 +275,86 @@ def test_world_oom(urllib_poolmanager_mock):
         layer_properties={},
         batch_jobs=None,
     )
+
+
+@pytest.mark.parametrize(
+    ["featureflags", "env", "expectation"],
+    [
+        (
+            {},
+            EvalEnv({"pyramid_levels": "highest"}),
+            pytest.raises(OpenEOApiException, match="There is no data available for the given extents"),
+        ),
+        ({"allow_empty_cube": True}, EvalEnv({"pyramid_levels": "highest"}), nullcontext()),
+        ({}, EvalEnv({"pyramid_levels": "highest", "allow_empty_cubes": True}), nullcontext()),
+        ({}, EvalEnv({"allow_empty_cubes": True}), nullcontext()),  # pyramid_seq
+    ],
+)
+def test_empty_cube_from_stac_api(urllib_poolmanager_mock, requests_mock, featureflags, env, expectation):
+    stac_api_root_url = "https://stac.test"
+    stac_collection_url = f"{stac_api_root_url}/collections/collection"
+
+    _mock_stac_api(
+        urllib_poolmanager_mock,
+        requests_mock,
+        stac_api_root_url,
+        stac_collection_url,
+        feature_collection={
+            "type": "FeatureCollection",
+            "features": [],
+        },
+    )
+
+    with expectation:
+        data_cube = load_stac(
+            stac_collection_url,
+            load_params=LoadParameters(
+                spatial_extent={"west": 0.0, "south": 50.0, "east": 1.0, "north": 51.0},
+                temporal_extent=DEFAULT_TEMPORAL_EXTENT,
+                bands=["B04", "B03", "B02"],  # required if empty cubes allowed
+                featureflags=featureflags,
+            ),
+            env=env,
+            layer_properties={},
+            batch_jobs=None,
+        )
+
+        assert data_cube.metadata.band_names == ["B04", "B03", "B02"]
+        for level in data_cube.pyramid.levels.values():
+            assert level.count() == 0
+
+
+@pytest.mark.parametrize(
+    ["featureflags", "env", "expectation"],
+    [
+        (
+            {},
+            EvalEnv({"pyramid_levels": "highest"}),
+            pytest.raises(OpenEOApiException, match="There is no data available for the given extents"),
+        ),
+        ({"allow_empty_cube": True}, EvalEnv({"pyramid_levels": "highest"}), nullcontext()),
+        ({}, EvalEnv({"pyramid_levels": "highest", "allow_empty_cubes": True}), nullcontext()),
+        ({}, EvalEnv({"allow_empty_cubes": True}), nullcontext()),  # pyramid_seq
+    ],
+)
+def test_empty_cube_from_non_intersecting_item(urllib_poolmanager_mock, featureflags, env, expectation):
+    stac_item_url = "https://stac.test/item.json"
+
+    urllib_poolmanager_mock.get(stac_item_url, data=get_test_data_file("stac/item01.json").read_text())
+
+    with expectation:
+        data_cube = load_stac(
+            stac_item_url,
+            load_params=LoadParameters(
+                spatial_extent={"west": 0.0, "south": 50.0, "east": 1.0, "north": 51.0},
+                temporal_extent=DEFAULT_TEMPORAL_EXTENT,
+                featureflags=featureflags,
+            ),
+            env=env,
+            layer_properties={},
+            batch_jobs=None,
+        )
+
+        assert data_cube.metadata.band_names == ["A1"]
+        for level in data_cube.pyramid.levels.values():
+            assert level.count() == 0

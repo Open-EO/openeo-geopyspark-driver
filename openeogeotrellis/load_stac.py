@@ -18,8 +18,13 @@ from openeo.util import dict_no_none, Rfc3339
 from openeo_driver import filter_properties, backend
 from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.backend import LoadParameters, BatchJobMetadata
-from openeo_driver.errors import OpenEOApiException, ProcessParameterUnsupportedException, JobNotFoundException, \
-    ProcessParameterInvalidException
+from openeo_driver.errors import (
+    OpenEOApiException,
+    ProcessParameterUnsupportedException,
+    JobNotFoundException,
+    ProcessParameterInvalidException,
+    ProcessParameterRequiredException,
+)
 from openeo_driver.jobregistry import PARTIAL_JOB_STATUS
 from openeo_driver.ProcessGraphDeserializer import DEFAULT_TEMPORAL_EXTENT
 from openeo_driver.users import User
@@ -60,6 +65,7 @@ def load_stac(
     logger.info("load_stac from url {u!r} with load params {p!r}".format(u=url, p=load_params))
 
     feature_flags = load_params.get("featureflags", {})
+    allow_empty_cubes = feature_flags.get("allow_empty_cube", env.get(EVAL_ENV_KEY.ALLOW_EMPTY_CUBES, False))
 
     no_data_available_exception = OpenEOApiException(message="There is no data available for the given extents.",
                                                      code="NoDataAvailable", status_code=400)
@@ -258,9 +264,6 @@ def load_stac(
 
             item = stac_object
 
-            if not intersects_spatiotemporally(item):
-                raise no_data_available_exception
-
             if "eo:bands" in item.properties:
                 eo_bands_location = item.properties
             elif item.get_collection() is not None:
@@ -271,7 +274,7 @@ def load_stac(
                 eo_bands_location = {}
             band_names = [b["name"] for b in eo_bands_location.get("eo:bands", [])]
 
-            intersecting_items = [item]
+            intersecting_items = [item] if intersects_spatiotemporally(item) else []
         elif isinstance(stac_object, pystac.Collection) and supports_item_search(stac_object):
             collection = stac_object
             collection_id = collection.id
@@ -485,7 +488,7 @@ def load_stac(
                      else BoundingBox.from_wsen_tuple(item_bbox.as_polygon().union(stac_bbox.as_polygon()).bounds,
                                                       stac_bbox.crs))
 
-    if not items_found:
+    if not allow_empty_cubes and not items_found:
         raise no_data_available_exception
 
     target_bbox = requested_bbox or stac_bbox
@@ -507,10 +510,21 @@ def load_stac(
         metadata = metadata.add_spatial_dimension(name="y", extent=[])
 
     metadata = metadata.with_temporal_extent(
-        temporal_extent=(start_datetime.isoformat(), end_datetime.isoformat()), allow_adding_dimension=True
+        temporal_extent=(
+            map_optional(dt.datetime.isoformat, start_datetime) or temporal_extent[0],
+            map_optional(dt.datetime.isoformat, end_datetime) or temporal_extent[1],
+        ),
+        allow_adding_dimension=True,
     )
     # Overwrite band_names because new bands could be detected in stac items:
     metadata = metadata.with_new_band_names(override_band_names or band_names)
+
+    if allow_empty_cubes and not metadata.band_names:
+        # no knowledge of bands except for what the user requested
+        if load_params.bands:
+            metadata = metadata.with_new_band_names(load_params.bands)
+        else:
+            raise ProcessParameterRequiredException(process="load_stac", parameter="bands")
 
     if load_params.global_extent is None or len(load_params.global_extent) == 0:
         layer_native_extent = metadata.get_layer_native_extent()
@@ -635,8 +649,22 @@ def load_stac(
                                                metadata_properties, correlation_id, data_cube_parameters,
                                                opensearch_client)
     elif single_level:
-        pyramid = pyramid_factory.datacube_seq(projected_polygons, from_date.isoformat(), to_date.isoformat(),
-                                               metadata_properties, correlation_id, data_cube_parameters)
+        if not items_found and allow_empty_cubes:
+            pyramid = pyramid_factory.empty_datacube_seq(
+                projected_polygons,
+                from_date.isoformat(),
+                to_date.isoformat(),
+                data_cube_parameters,
+            )
+        else:
+            pyramid = pyramid_factory.datacube_seq(
+                projected_polygons,
+                from_date.isoformat(),
+                to_date.isoformat(),
+                metadata_properties,
+                correlation_id,
+                data_cube_parameters,
+            )
     else:
         if requested_bbox:
             extent = jvm.geotrellis.vector.Extent(*map(float, requested_bbox.as_wsen_tuple()))
@@ -645,10 +673,12 @@ def load_stac(
             extent = jvm.geotrellis.vector.Extent(-180.0, -90.0, 180.0, 90.0)
             extent_crs = "EPSG:4326"
 
-        pyramid = pyramid_factory.pyramid_seq(
-            extent, extent_crs, from_date.isoformat(), to_date.isoformat(),
-            metadata_properties, correlation_id
-        )
+        if not items_found and allow_empty_cubes:
+            pyramid = pyramid_factory.empty_pyramid_seq(extent, extent_crs, from_date.isoformat(), to_date.isoformat())
+        else:
+            pyramid = pyramid_factory.pyramid_seq(
+                extent, extent_crs, from_date.isoformat(), to_date.isoformat(), metadata_properties, correlation_id
+            )
 
     metadata = metadata.filter_temporal(from_date.isoformat(), to_date.isoformat())
 
