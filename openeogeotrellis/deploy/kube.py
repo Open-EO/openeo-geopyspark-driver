@@ -2,36 +2,20 @@
 Script to start a production server on Kubernetes. This script can serve as the mainApplicationFile for the SparkApplication custom resource of the spark-operator
 """
 
-import base64
-import json
 import logging
 import os
-import re
-import textwrap
 
-from kubernetes.config.incluster_config import SERVICE_TOKEN_FILENAME
-
-from openeo_driver.processes import ProcessArgs
-from openeo_driver.ProcessGraphDeserializer import (
-    ENV_DRY_RUN_TRACER,
-    ProcessSpec,
-    non_standard_process,
-)
 from openeo_driver.server import run_gunicorn
 from openeo_driver.util.logging import (
     LOG_HANDLER_STDERR_JSON,
-    FlaskRequestCorrelationIdLogging,
     get_logging_config,
     setup_logging,
 )
-from openeo_driver.utils import EvalEnv
 from openeo_driver.views import build_app
-
 from openeogeotrellis import deploy
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.deploy import get_socket
 from openeogeotrellis.job_registry import ZkJobRegistry
-from openeogeotrellis.util.runtime import get_job_id, get_request_id
 
 log = logging.getLogger(__name__)
 
@@ -118,111 +102,6 @@ def main():
         on_started=on_started
     )
 
-
-@non_standard_process(
-    ProcessSpec(id="_cwl_demo", description="Proof-of-concept process to run CWL based processing.")
-    .param(name="name", description="Name to greet.", schema={"type": "string"}, required=False)
-    .returns(description="data", schema={"type": "string"})
-)
-def _cwl_demo(args: ProcessArgs, env: EvalEnv):
-    """Proof of concept openEO process to run CWL based processing"""
-    name = args.get_optional(
-        "name",
-        default="World",
-        validator=ProcessArgs.validator_generic(
-            # TODO: helper to create regex based validator
-            lambda n: bool(re.fullmatch("^[a-zA-Z]+$", n)),
-            error_message="Must be a simple name, but got {actual!r}.",
-        ),
-    )
-
-    if env.get(ENV_DRY_RUN_TRACER):
-        return "dummy"
-
-    # TODO: move this imports to top-level?
-    import kubernetes.config
-
-    from openeogeotrellis.integrations.calrissian import CalrissianJobLauncher, CwLSource
-
-    # TODO: better place to load this config?
-    if os.path.exists(SERVICE_TOKEN_FILENAME):
-        kubernetes.config.load_incluster_config()
-    else:
-        kubernetes.config.load_kube_config()
-
-    launcher = CalrissianJobLauncher.from_context()
-
-    cwl_source = CwLSource.from_resource(anchor="openeogeotrellis.integrations", path="cwl/hello.cwl")
-    correlation_id = get_job_id(default=None) or get_request_id(default=None)
-    cwl_arguments = [
-        "--message",
-        f"Hello {name}, greetings from {correlation_id}.",
-    ]
-
-    results = launcher.run_cwl_workflow(
-        cwl_source=cwl_source,
-        cwl_arguments=cwl_arguments,
-        output_paths=["output.txt"],
-    )
-
-    return results["output.txt"].read(encoding="utf8")
-
-
-
-@non_standard_process(
-    ProcessSpec(id="_cwl_insar", description="Proof-of-concept process to run CWL based inSAR.")
-    .param(name="spatial_extent", description="Spatial extent.", schema={"type": "dict"}, required=False)
-    .param(name="temporal_extent", description="Temporal extent.", schema={"type": "dict"}, required=False)
-    .returns(description="the data as a data cube", schema={})
-)
-def _cwl_insar(args: ProcessArgs, env: EvalEnv):
-    """Proof of concept openEO process to run CWL based processing"""
-    spatial_extent = args.get_optional(
-        "spatial_extent",
-        default=None,
-    )
-    temporal_extent = args.get_optional(
-        "temporal_extent",
-        default=None,
-    )
-
-    if env.get(ENV_DRY_RUN_TRACER):
-        return "dummy"
-
-    from openeo_driver import dry_run
-
-    # source_id = dry_run.DataSource.load_disk_data(**kwargs).get_source_id()
-    # load_params = _extract_load_parameters(env, source_id=source_id)
-
-    # TODO: move this imports to top-level?
-    import kubernetes.config
-
-    from openeogeotrellis.integrations.calrissian import CalrissianJobLauncher, CwLSource
-
-    # TODO: better place to load this config?
-    if os.path.exists(SERVICE_TOKEN_FILENAME):
-        kubernetes.config.load_incluster_config()
-    else:
-        kubernetes.config.load_kube_config()
-
-    launcher = CalrissianJobLauncher.from_context()
-
-    cwl_source = CwLSource.from_resource(anchor="openeogeotrellis.integrations", path="cwl/insar.cwl")
-    input_base64_json = base64.b64encode(json.dumps(args).encode("utf8")).decode("ascii")
-    cwl_arguments = ["--input_base64_json", input_base64_json]
-
-    # TODO: Load the results as datacube with load_stac.
-    results = launcher.run_cwl_workflow(
-        cwl_source=cwl_source,
-        cwl_arguments=cwl_arguments,
-        output_paths=["output.txt"],
-        env_vars={
-            "AWS_ACCESS_KEY_ID": os.environ.get("SWIFT_ACCESS_KEY_ID", ""),
-            "AWS_SECRET_ACCESS_KEY": os.environ.get("SWIFT_SECRET_ACCESS_KEY", ""),
-        },
-    )
-
-    return results["output.txt"].read(encoding="utf8")
 
 
 if __name__ == '__main__':

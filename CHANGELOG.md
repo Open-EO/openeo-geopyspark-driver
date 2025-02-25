@@ -14,10 +14,15 @@ without compromising stable operations.
 
 ## Unreleased
 
+
+## 0.62.0
+
 - `load_stac`: improve STAC requests resilience ([#818](https://github.com/Open-EO/openeo-geopyspark-driver/issues/818))
 - Extract demo CWL content to package resources ([#1057](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1057))
 - Disable EJR health check from batch job context ([#1066](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1066))
 - `load_stac`: support empty data cubes ([#1049](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1049))
+- Remove proof-of-concept CWL processes (now in openeo-geotrellis-kubernetes) from generic openeo-geopyspark-driver ([#1057](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1057)/[#1038](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1038))
+
 
 ## 0.61.0
 
