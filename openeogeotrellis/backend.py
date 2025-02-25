@@ -325,6 +325,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         batch_job_output_root: Optional[Path] = None,
         use_job_registry: bool = True,
         elastic_job_registry: Optional[ElasticJobRegistry] = None,
+        do_ejr_health_check: bool = True,
     ):
         self._service_registry = (
             # TODO #283 #285: eliminate is_ci_context, use some kind of config structure
@@ -352,7 +353,9 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         if use_job_registry and not elastic_job_registry:
             # TODO #236/#498 avoid this fallback and just make sure it is always set when necessary
             logger.warning("No elastic_job_registry given to GeoPySparkBackendImplementation, creating one")
-            elastic_job_registry = get_elastic_job_registry(requests_session=requests_session)
+            elastic_job_registry = get_elastic_job_registry(
+                requests_session=requests_session, do_health_check=do_ejr_health_check
+            )
 
         super().__init__(
             catalog=catalog,
@@ -1298,6 +1301,7 @@ class GpsProcessing(ConcreteProcessing):
 
 def get_elastic_job_registry(
     requests_session: Optional[requests.Session] = None,
+    do_health_check: bool = True,
 ) -> ElasticJobRegistry:
     """Build ElasticJobRegistry instance from config"""
     config = get_backend_config()
@@ -1317,7 +1321,8 @@ def get_elastic_job_registry(
             # Fail harder
             ejr_creds = get_ejr_credentials_from_env(strict=True)
     job_registry.setup_auth_oidc_client_credentials(credentials=ejr_creds)
-    job_registry.health_check(log=True)
+    if do_health_check:
+        job_registry.health_check(log=True)
     return job_registry
 
 
@@ -1931,7 +1936,10 @@ class GpsBatchJobs(backend.BatchJobs):
         else:
             # If python-memory is not set, we convert most of the overhead memory to python memory
             # this in fact duplicates the overhead memory, we should migrate away from this appraoch
-            python_max = memOverheadBytes - jvmOverheadBytes
+            if isKube:
+                python_max = memOverheadBytes - jvmOverheadBytes
+            else:
+                python_max = -1
             executor_memory_overhead = f"{memOverheadBytes // (1024 ** 2)}m"
 
         if as_bytes(executor_memory) + as_bytes(executor_memory_overhead) + python_max > as_bytes(
