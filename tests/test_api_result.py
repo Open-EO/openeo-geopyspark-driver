@@ -4530,6 +4530,39 @@ class TestLoadStac:
         assert only_band.GetDescription() == "B02"
 
 
+    def test_empty_data_cube(self, api110, urllib_poolmanager_mock, requests_mock):
+        urllib_poolmanager_mock.get(
+            "https://stac.dataspace.copernicus.test/v1/collections/sentinel-2-l2a",
+            data=get_test_data_file("stac/issue1049-api-empty-data-cube/collection.json").read_text(),
+        )
+        urllib_poolmanager_mock.get(
+            "https://stac.dataspace.copernicus.test/v1/",
+            data=get_test_data_file("stac/issue1049-api-empty-data-cube/catalog.json").read_text(),
+        )
+        requests_mock.get(
+            "https://stac.dataspace.copernicus.test/v1/",
+            text=get_test_data_file("stac/issue1049-api-empty-data-cube/catalog.json").read_text(),
+        )
+        requests_mock.get(
+            "https://stac.dataspace.copernicus.test/v1/search",
+            json={
+                "type": "FeatureCollection",
+                "features": [],
+            },
+        )
+
+        with open(get_test_data_file("stac/issue1049-api-empty-data-cube/process_graph.json")) as f:
+            process_graph = json.load(f)["process_graph"]
+
+        timeseries = api110.result(process_graph).assert_status_code(200).json
+
+        flat_1, flat_2, b02_10m = timeseries["2025-01-05T00:00:00Z"][0]
+
+        assert flat_1 == 1
+        assert flat_2 == 2
+        assert b02_10m is None
+
+
 class TestEtlApiReporting:
     @pytest.fixture(autouse=True)
     def _general_config_overrides(self):
