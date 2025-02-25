@@ -525,7 +525,7 @@ def load_stac(
             load_params.global_extent = layer_native_extent.as_dict()
 
     if load_params.bands:
-        metadata = metadata.filter_bands(load_params.bands)  # TODO: test with load_stac instead of load_collection("SENTINEL2_L2A_STAC")
+        metadata = metadata.filter_bands(load_params.bands)
 
     band_names = metadata.band_names
 
@@ -655,6 +655,7 @@ def load_stac(
             extent = jvm.geotrellis.vector.Extent(-180.0, -90.0, 180.0, 90.0)
             extent_crs = "EPSG:4326"
 
+        # TODO: support empty cubes
         pyramid = pyramid_factory.pyramid_seq(
             extent, extent_crs, from_date.isoformat(), to_date.isoformat(),
             metadata_properties, correlation_id
