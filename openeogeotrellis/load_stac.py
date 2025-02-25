@@ -269,12 +269,7 @@ def load_stac(
                 eo_bands_location = {}
             band_names = [b["name"] for b in eo_bands_location.get("eo:bands", [])]
 
-            if intersects_spatiotemporally(item):
-                intersecting_items = [item]
-            elif allow_empty_cubes:
-                intersecting_items = []
-            else:
-                raise no_data_available_exception
+            intersecting_items = [item] if intersects_spatiotemporally(item) else []
         elif isinstance(stac_object, pystac.Collection) and supports_item_search(stac_object):
             collection = stac_object
             collection_id = collection.id
