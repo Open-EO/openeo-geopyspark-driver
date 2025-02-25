@@ -4556,11 +4556,14 @@ class TestLoadStac:
 
         timeseries = api110.result(process_graph).assert_status_code(200).json
 
-        flat_1, flat_2, b02_10m = timeseries["2025-01-05T00:00:00Z"][0]
+        assert set(timeseries.keys()) == {"2025-01-05T00:00:00Z", "2025-01-15T00:00:00Z"}
 
-        assert flat_1 == 1
-        assert flat_2 == 2
-        assert b02_10m is None
+        for band_values in timeseries.values():
+            flat_1, flat_2, b02_10m, b03_10m = band_values[0]
+            assert flat_1 == 1
+            assert flat_2 == 2
+            assert b02_10m is None
+            assert b03_10m is None
 
 
 class TestEtlApiReporting:

@@ -7,7 +7,7 @@
         "spatial_extent": null,
         "temporal_extent": null,
         "bands": [
-          "B02_10m"
+          "B02_10m", "B03_10m"
         ],
         "featureflags": {
           "allow_empty_cube": true
@@ -87,7 +87,7 @@
         },
         "extent": [
           "2025-01-05T00:00:00Z",
-          "2025-01-06T00:00:00Z"
+          "2025-01-16T00:00:00Z"
         ]
       }
     },
