@@ -208,20 +208,24 @@ RuntimeError: Calculated padded input size per channel: (3 x 66 x 66). Kernel si
 
     assert ("Kernel size can't be greater than actual input size" in error_summary.summary)
 
+
 def test_summarize_big_error_syntetic(caplog):
     caplog.set_level("DEBUG")
 
     jvm = get_jvm()
 
     # does not have a root cause attached
-    spark_exception = jvm.org.apache.spark.SparkException("""
+    spark_exception = jvm.org.apache.spark.SparkException(
+        """
   File "/opt/openeo/lib/python3.8/site-packages/openeogeotrellis/geopysparkdatacube.py", line 517, in tile_function
     result_data = run_udf_code(code=udf_code, data=data)
   File "/opt/openeo/lib/python3.8/site-packages/openeogeotrellis/udf.py", line 20, in run_udf_code
     return openeo.udf.run_udf_code(code=code, data=data)
   File "/opt/openeo/lib/python3.8/site-packages/openeo/udf/run_code.py", line 180, in run_udf_code
-  """ + ("A" * 3000) + """
   File "<string>", line 235, in delineate
+  """
+        + ("AAA" * 1000)
+        + """
   File "tmp/venv_model/fielddelineation/utils/delineation.py", line 59, in _apply_delineation
     preds = run_prediction(
   File "tmp/venv_model/vito_lot_delineation/inference/main.py", line 33, in main
@@ -251,11 +255,290 @@ def test_summarize_big_error_syntetic(caplog):
   File "tmp/venv_static/torch/nn/modules/conv.py", line 602, in _conv_forward
     return F.conv3d(
 RuntimeError: Calculated padded input size per channel: (3 x 66 x 66). Kernel size: (4 x 4 x 4). Kernel size can't be greater than actual input size
-""")
-    py4j_error: Exception = Py4JJavaError(
-        msg="",
-        java_exception=spark_exception)
+"""
+    )
+    py4j_error: Exception = Py4JJavaError(msg="", java_exception=spark_exception)
 
     error_summary = GeoPySparkBackendImplementation.summarize_exception_static(py4j_error)
 
     assert "AAAAAAAAAAAAA..." in error_summary.summary
+
+
+def test_extract_udf_stacktrace_standard_exception():
+    summarized = GeoPySparkBackendImplementation.extract_udf_stacktrace(
+        """
+    Traceback (most recent call last):
+ File "/opt/spark3_2_0/python/lib/pyspark.zip/pyspark/worker.py", line 619, in main
+ process()
+ File "/opt/spark3_2_0/python/lib/pyspark.zip/pyspark/worker.py", line 611, in process
+ serializer.dump_stream(out_iter, outfile)
+ File "/opt/spark3_2_0/python/lib/pyspark.zip/pyspark/serializers.py", line 132, in dump_stream
+ for obj in iterator:
+ File "/opt/spark3_2_0/python/lib/pyspark.zip/pyspark/util.py", line 74, in wrapper
+ return f(*args, **kwargs)
+ File "/opt/venv/lib64/python3.8/site-packages/openeogeotrellis/utils.py", line 52, in memory_logging_wrapper
+ return function(*args, **kwargs)
+ File "/opt/venv/lib64/python3.8/site-packages/epsel.py", line 44, in wrapper
+ return _FUNCTION_POINTERS[key](*args, **kwargs)
+ File "/opt/venv/lib64/python3.8/site-packages/epsel.py", line 37, in first_time
+ return f(*args, **kwargs)
+ File "/opt/venv/lib64/python3.8/site-packages/openeogeotrellis/geopysparkdatacube.py", line 701, in tile_function
+ result_data = run_udf_code(code=udf_code, data=data)
+ File "/opt/venv/lib64/python3.8/site-packages/openeo/udf/run_code.py", line 180, in run_udf_code
+ func(data)
+ File "<string>", line 8, in transform
+ File "<string>", line 7, in function_in_transform
+ File "<string>", line 4, in function_in_root
+Exception: This error message should be visible to user
+"""
+    )
+    assert (
+        summarized
+        == """ File "<string>", line 8, in transform
+ File "<string>", line 7, in function_in_transform
+ File "<string>", line 4, in function_in_root
+Exception: This error message should be visible to user"""
+    )
+
+
+def test_extract_udf_stacktrace_inspect():
+    summarized = GeoPySparkBackendImplementation.extract_udf_stacktrace(
+        """Traceback (most recent call last):
+  File "/opt/spark3_2_0/python/lib/pyspark.zip/pyspark/worker.py", line 619, in main
+    process()
+  File "/opt/spark3_2_0/python/lib/pyspark.zip/pyspark/worker.py", line 611, in process
+    serializer.dump_stream(out_iter, outfile)
+  File "/opt/spark3_2_0/python/lib/pyspark.zip/pyspark/serializers.py", line 132, in dump_stream
+    for obj in iterator:
+  File "/opt/spark3_2_0/python/lib/pyspark.zip/pyspark/util.py", line 74, in wrapper
+    return f(*args, **kwargs)
+  File "/opt/venv/lib64/python3.8/site-packages/openeogeotrellis/utils.py", line 49, in memory_logging_wrapper
+    return function(*args, **kwargs)
+  File "/opt/venv/lib64/python3.8/site-packages/epsel.py", line 44, in wrapper
+    return _FUNCTION_POINTERS[key](*args, **kwargs)
+  File "/opt/venv/lib64/python3.8/site-packages/epsel.py", line 37, in first_time
+    return f(*args, **kwargs)
+  File "/opt/venv/lib64/python3.8/site-packages/openeogeotrellis/geopysparkdatacube.py", line 519, in tile_function
+    result_data = run_udf_code(code=udf_code, data=data)
+  File "/opt/venv/lib64/python3.8/site-packages/openeo/udf/run_code.py", line 175, in run_udf_code
+    result_cube = func(data.get_datacube_list()[0], data.user_context)
+  File "<string>", line 156, in apply_datacube
+TypeError: inspect() got multiple values for argument 'data'
+"""
+    )
+    assert (
+        summarized
+        == """  File "<string>", line 156, in apply_datacube
+TypeError: inspect() got multiple values for argument 'data'"""
+    )
+
+
+def test_extract_udf_stacktrace_standard_exception_api100():
+    message = """Traceback (most recent call last):
+  File "/home/***/openeo/venv_python3_8/lib/python3.8/site-packages/pyspark/python/lib/pyspark.zip/pyspark/worker.py", line 1247, in main
+    process()
+  File "/home/***/openeo/venv_python3_8/lib/python3.8/site-packages/pyspark/python/lib/pyspark.zip/pyspark/worker.py", line 1239, in process
+    serializer.dump_stream(out_iter, outfile)
+  File "/home/***/openeo/venv_python3_8/lib/python3.8/site-packages/pyspark/python/lib/pyspark.zip/pyspark/serializers.py", line 146, in dump_stream
+    for obj in iterator:
+  File "/home/***/openeo/venv_python3_8/lib/python3.8/site-packages/pyspark/python/lib/pyspark.zip/pyspark/util.py", line 83, in wrapper
+    return f(*args, **kwargs)
+  File "/home/***/openeo/openeo-geopyspark-driver/openeogeotrellis/utils.py", line 64, in memory_logging_wrapper
+    return function(*args, **kwargs)
+  File "/home/***/openeo/venv_python3_8/lib/python3.8/site-packages/epsel.py", line 44, in wrapper
+    return _FUNCTION_POINTERS[key](*args, **kwargs)
+  File "/home/***/openeo/venv_python3_8/lib/python3.8/site-packages/epsel.py", line 37, in first_time
+    return f(*args, **kwargs)
+  File "/home/***/openeo/openeo-geopyspark-driver/openeogeotrellis/geopysparkdatacube.py", line 789, in tile_function
+    result_data = run_udf_code(code=udf_code, data=data)
+  File "/home/***/openeo/venv_python3_8/lib/python3.8/site-packages/epsel.py", line 44, in wrapper
+    return _FUNCTION_POINTERS[key](*args, **kwargs)
+  File "/home/***/openeo/venv_python3_8/lib/python3.8/site-packages/epsel.py", line 37, in first_time
+    return f(*args, **kwargs)
+  File "/home/***/openeo/openeo-geopyspark-driver/openeogeotrellis/udf.py", line 65, in run_udf_code
+    return openeo.udf.run_udf_code(code=code, data=data)
+  File "/home/***/openeo/openeo-python-client/openeo/udf/run_code.py", line 180, in run_udf_code
+    result_cube = func(cube=data.get_datacube_list()[0], context=data.user_context)
+  File "<string>", line 11, in apply_datacube
+Exception: Test exception
+
+"""
+    udf_stacktrace = GeoPySparkBackendImplementation.extract_udf_stacktrace(message)
+    assert (
+        udf_stacktrace
+        == """  File "<string>", line 11, in apply_datacube
+Exception: Test exception"""
+    )
+
+
+def test_extract_udf_stacktrace_without_user_trace():
+    stacktrace = """Traceback (most recent call last):
+  File "/home/***/openeo/venv_python3_8/lib/python3.8/site-packages/pyspark/python/lib/pyspark.zip/pyspark/worker.py", line 1247, in main
+    process()
+  File "/home/***/openeo/venv_python3_8/lib/python3.8/site-packages/pyspark/python/lib/pyspark.zip/pyspark/worker.py", line 1239, in process
+    serializer.dump_stream(out_iter, outfile)
+  File "/home/***/openeo/venv_python3_8/lib/python3.8/site-packages/pyspark/python/lib/pyspark.zip/pyspark/serializers.py", line 146, in dump_stream
+    for obj in iterator:
+  File "/home/***/openeo/venv_python3_8/lib/python3.8/site-packages/pyspark/python/lib/pyspark.zip/pyspark/util.py", line 83, in wrapper
+    return f(*args, **kwargs)
+  File "/home/***/openeo/openeo-geopyspark-driver/openeogeotrellis/utils.py", line 64, in memory_logging_wrapper
+    return function(*args, **kwargs)
+  File "/home/***/openeo/venv_python3_8/lib/python3.8/site-packages/epsel.py", line 44, in wrapper
+    return _FUNCTION_POINTERS[key](*args, **kwargs)
+  File "/home/***/openeo/venv_python3_8/lib/python3.8/site-packages/epsel.py", line 37, in first_time
+    return f(*args, **kwargs)
+  File "/home/***/openeo/openeo-geopyspark-driver/openeogeotrellis/geopysparkdatacube.py", line 789, in tile_function
+    result_data = run_udf_code(code=udf_code, data=data)
+  File "/home/***/openeo/venv_python3_8/lib/python3.8/site-packages/epsel.py", line 44, in wrapper
+    return _FUNCTION_POINTERS[key](*args, **kwargs)
+  File "/home/***/openeo/venv_python3_8/lib/python3.8/site-packages/epsel.py", line 37, in first_time
+    return f(*args, **kwargs)
+  File "/home/***/openeo/openeo-geopyspark-driver/openeogeotrellis/udf.py", line 65, in run_udf_code
+    return openeo.udf.run_udf_code(code=code, data=data)
+  File "/home/***/openeo/openeo-python-client/openeo/udf/run_code.py", line 235, in run_udf_code
+    raise OpenEoUdfException(
+openeo.udf.OpenEoUdfException: No UDF found.
+Multiline test.
+"""
+    assert GeoPySparkBackendImplementation.extract_udf_stacktrace(stacktrace) is None
+    assert (
+        GeoPySparkBackendImplementation.extract_python_error(stacktrace)
+        == """openeo.udf.OpenEoUdfException: No UDF found.
+Multiline test."""
+    )
+
+
+def test_extract_udf_stacktrace_no_udf():
+    stacktrace = """Traceback (most recent call last):
+  File "/usr/local/spark/python/lib/pyspark.zip/pyspark/worker.py", line 619, in main
+    process()
+  File "/usr/local/spark/python/lib/pyspark.zip/pyspark/worker.py", line 611, in process
+    serializer.dump_stream(out_iter, outfile)
+  File "/usr/local/spark/python/lib/pyspark.zip/pyspark/serializers.py", line 132, in dump_stream
+    for obj in iterator:
+  File "/usr/local/spark/python/lib/pyspark.zip/pyspark/util.py", line 74, in wrapper
+    return f(*args, **kwargs)
+  File "/opt/openeo/lib/python3.8/site-packages/epsel.py", line 44, in wrapper
+    return _FUNCTION_POINTERS[key](*args, **kwargs)
+  File "/opt/openeo/lib/python3.8/site-packages/epsel.py", line 37, in first_time
+    return f(*args, **kwargs)
+  File "/opt/openeo/lib/python3.8/site-packages/openeo/util.py", line 362, in wrapper
+    return f(*args, **kwargs)
+  File "/opt/openeo/lib/python3.8/site-packages/openeogeotrellis/collections/s1backscatter_orfeo.py", line 794, in process_product
+    dem_dir_context = S1BackscatterOrfeo._get_dem_dir_context(
+  File "/opt/openeo/lib64/python3.8/site-packages/openeogeotrellis/collections/s1backscatter_orfeo.py", line 258, in _get_dem_dir_context
+    dem_dir_context = S1BackscatterOrfeo._creodias_dem_subset_srtm_hgt_unzip(
+  File "/opt/openeo/lib64/python3.8/site-packages/openeogeotrellis/collections/s1backscatter_orfeo.py", line 664, in _creodias_dem_subset_srtm_hgt_unzip
+    with zipfile.ZipFile(zip_filename, 'r') as z:
+  File "/usr/lib64/python3.8/zipfile.py", line 1251, in __init__
+    self.fp = io.open(file, filemode)
+FileNotFoundError: [Errno 2] No such file or directory: '/eodata/auxdata/SRTMGL1/dem/N64E024.SRTMGL1.hgt.zip'
+"""
+    assert GeoPySparkBackendImplementation.extract_udf_stacktrace(stacktrace) is None
+    python_error_str = GeoPySparkBackendImplementation.extract_python_error(stacktrace)
+    assert (
+        python_error_str
+        == "FileNotFoundError: [Errno 2] No such file or directory: '/eodata/auxdata/SRTMGL1/dem/N64E024.SRTMGL1.hgt.zip'"
+    )
+
+
+def test_extract_udf_stacktrace_so():
+    # Was launched with "python-memory": "600m" and was OOM
+    stacktrace = """Traceback (most recent call last):
+  File "/usr/local/spark/python/lib/pyspark.zip/pyspark/worker.py", line 1227, in main
+    func, profiler, deserializer, serializer = read_command(pickleSer, infile)
+  File "/usr/local/spark/python/lib/pyspark.zip/pyspark/worker.py", line 90, in read_command
+    command = serializer._read_with_length(file)
+  File "/usr/local/spark/python/lib/pyspark.zip/pyspark/serializers.py", line 174, in _read_with_length
+    return self.loads(obj)
+  File "/usr/local/spark/python/lib/pyspark.zip/pyspark/serializers.py", line 472, in loads
+    return cloudpickle.loads(obj, encoding=encoding)
+  File "/opt/openeo/lib/python3.8/site-packages/openeogeotrellis/collections/sentinel3.py", line 19, in <module>
+    from scipy.spatial import cKDTree  # used for tuning the griddata interpolation settings
+  File "/opt/openeo/lib/python3.8/site-packages/scipy/spatial/__init__.py", line 104, in <module>
+    from ._qhull import *
+ImportError: libopenblasp-r0-8b9e111f.3.17.so: failed to map segment from shared object
+"""
+    assert GeoPySparkBackendImplementation.extract_udf_stacktrace(stacktrace) is None
+    python_error_str = GeoPySparkBackendImplementation.extract_python_error(stacktrace)
+    assert python_error_str == "ImportError: libopenblasp-r0-8b9e111f.3.17.so: failed to map segment from shared object"
+
+
+def test_extract_udf_stacktrace_tensorflow_oom():
+    stacktrace = """Traceback (most recent call last):
+  File "/home/pakske-friet/openeo/venv_python3_8/lib/python3.8/site-packages/tensorflow/python/pywrap_tensorflow.py", line 60, in <module>
+    from tensorflow.python._pywrap_tensorflow_internal import *
+ImportError: /home/pakske-friet/openeo/venv_python3_8/lib/python3.8/site-packages/tensorflow/python/_pywrap_tensorflow_internal.so: failed to map segment from shared object
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/pakske-friet/openeo/venv_python3_8/lib/python3.8/site-packages/pyspark/python/lib/pyspark.zip/pyspark/worker.py", line 1247, in main
+    process()
+  File "/home/pakske-friet/openeo/venv_python3_8/lib/python3.8/site-packages/pyspark/python/lib/pyspark.zip/pyspark/worker.py", line 1239, in process
+    serializer.dump_stream(out_iter, outfile)
+  File "/home/pakske-friet/openeo/venv_python3_8/lib/python3.8/site-packages/pyspark/python/lib/pyspark.zip/pyspark/serializers.py", line 146, in dump_stream
+    for obj in iterator:
+  File "/home/pakske-friet/openeo/venv_python3_8/lib/python3.8/site-packages/pyspark/python/lib/pyspark.zip/pyspark/util.py", line 83, in wrapper
+    return f(*args, **kwargs)
+  File "/home/pakske-friet/openeo/openeo-geopyspark-driver/openeogeotrellis/utils.py", line 64, in memory_logging_wrapper
+    return function(*args, **kwargs)
+  File "/home/pakske-friet/openeo/venv_python3_8/lib/python3.8/site-packages/epsel.py", line 44, in wrapper
+    return _FUNCTION_POINTERS[key](*args, **kwargs)
+  File "/home/pakske-friet/openeo/venv_python3_8/lib/python3.8/site-packages/epsel.py", line 37, in first_time
+    return f(*args, **kwargs)
+  File "/home/pakske-friet/openeo/openeo-geopyspark-driver/openeogeotrellis/geopysparkdatacube.py", line 789, in tile_function
+    result_data = run_udf_code(code=udf_code, data=data)
+  File "/home/pakske-friet/openeo/venv_python3_8/lib/python3.8/site-packages/epsel.py", line 44, in wrapper
+    return _FUNCTION_POINTERS[key](*args, **kwargs)
+  File "/home/pakske-friet/openeo/venv_python3_8/lib/python3.8/site-packages/epsel.py", line 37, in first_time
+    return f(*args, **kwargs)
+  File "/home/pakske-friet/openeo/openeo-geopyspark-driver/openeogeotrellis/udf.py", line 65, in run_udf_code
+    return openeo.udf.run_udf_code(code=code, data=data)
+  File "/home/pakske-friet/openeo/openeo-python-client/openeo/udf/run_code.py", line 149, in run_udf_code
+    module = load_module_from_string(code)
+  File "/home/pakske-friet/openeo/openeo-python-client/openeo/udf/run_code.py", line 61, in load_module_from_string
+    exec(code, globals)
+  File "<string>", line 7, in <module>
+  File "/home/pakske-friet/openeo/venv_python3_8/lib/python3.8/site-packages/tensorflow/__init__.py", line 37, in <module>
+    from tensorflow.python.tools import module_util as _module_util
+  File "/home/pakske-friet/openeo/venv_python3_8/lib/python3.8/site-packages/tensorflow/python/__init__.py", line 36, in <module>
+    from tensorflow.python import pywrap_tensorflow as _pywrap_tensorflow
+  File "/home/pakske-friet/openeo/venv_python3_8/lib/python3.8/site-packages/tensorflow/python/pywrap_tensorflow.py", line 75, in <module>
+    raise ImportError(
+ImportError: Traceback (most recent call last):
+  File "/home/pakske-friet/openeo/venv_python3_8/lib/python3.8/site-packages/tensorflow/python/pywrap_tensorflow.py", line 60, in <module>
+    from tensorflow.python._pywrap_tensorflow_internal import *
+ImportError: /home/pakske-friet/openeo/venv_python3_8/lib/python3.8/site-packages/tensorflow/python/_pywrap_tensorflow_internal.so: failed to map segment from shared object
+
+
+Failed to load the native TensorFlow runtime.
+See https://www.tensorflow.org/install/errors for some common causes and solutions.
+If you need help, create an issue at https://github.com/tensorflow/tensorflow/issues and include the entire stack trace above this error message.
+"""
+
+    udf_stacktrace = GeoPySparkBackendImplementation.extract_udf_stacktrace(stacktrace)
+    assert (
+        udf_stacktrace
+        == """  File "<string>", line 7, in <module>
+  File "/home/pakske-friet/openeo/venv_python3_8/lib/python3.8/site-packages/tensorflow/__init__.py", line 37, in <module>
+    from tensorflow.python.tools import module_util as _module_util
+  File "/home/pakske-friet/openeo/venv_python3_8/lib/python3.8/site-packages/tensorflow/python/__init__.py", line 36, in <module>
+    from tensorflow.python import pywrap_tensorflow as _pywrap_tensorflow
+  File "/home/pakske-friet/openeo/venv_python3_8/lib/python3.8/site-packages/tensorflow/python/pywrap_tensorflow.py", line 75, in <module>
+    raise ImportError(
+ImportError: Traceback (most recent call last):
+  File "/home/pakske-friet/openeo/venv_python3_8/lib/python3.8/site-packages/tensorflow/python/pywrap_tensorflow.py", line 60, in <module>
+    from tensorflow.python._pywrap_tensorflow_internal import *
+ImportError: /home/pakske-friet/openeo/venv_python3_8/lib/python3.8/site-packages/tensorflow/python/_pywrap_tensorflow_internal.so: failed to map segment from shared object
+
+
+Failed to load the native TensorFlow runtime.
+See https://www.tensorflow.org/install/errors for some common causes and solutions.
+If you need help, create an issue at https://github.com/tensorflow/tensorflow/issues and include the entire stack trace above this error message."""
+    )
+    python_error_str = GeoPySparkBackendImplementation.extract_python_error(stacktrace)
+    assert (
+        python_error_str
+        == "ImportError: /home/pakske-friet/openeo/venv_python3_8/lib/python3.8/site-packages/tensorflow/python/_pywrap_tensorflow_internal.so: failed to map segment from shared object"
+    )

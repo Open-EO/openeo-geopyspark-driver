@@ -1098,6 +1098,10 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 elif root_cause_message:
                     udf_stacktrace = GeoPySparkBackendImplementation.extract_udf_stacktrace(root_cause_message)
                     if udf_stacktrace:
+                        if root_cause_class_name != "org.apache.spark.api.python.PythonException":
+                            logger.warning(
+                                f"UDF stacktrace found, but root cause class is not PythonException: {root_cause_class_name}"
+                            )
                         if len(udf_stacktrace) > width - 150:
                             udf_stacktrace_list = udf_stacktrace.split("\n")
                             udf_stacktrace_new = "\n".join(
@@ -1105,7 +1109,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                             )
                             if len(udf_stacktrace_new) < width - 150:
                                 udf_stacktrace = udf_stacktrace_new
-                        summary = f"UDF exception while evaluating processing graph. Please check your user defined functions. {udf_stacktrace}"
+                        summary = f"UDF exception while evaluating processing graph. Please check your user defined functions. stacktrace:\n{udf_stacktrace}"
                     elif "Missing an output location" in root_cause_message:
                         summary = f"A part of your process graph failed multiple times. Simply try submitting again, or use batch job logs to find more detailed information in case of persistent failures. Increasing executor memory may help if the root cause is not clear from the logs."
                     else:
@@ -1137,15 +1141,32 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
     @staticmethod
     def extract_udf_stacktrace(full_stacktrace: str) -> Optional[str]:
         """
+        Select all lines starting from <string>.
+        This is what interests the user
+        """
+        needle = """File "<string>","""
+        needle_index = full_stacktrace.find(needle)
+        if needle_index != -1:
+            start_index = full_stacktrace.rfind("\n", 0, needle_index) + 1
+            if start_index == -1:
+                start_index = 0
+            return full_stacktrace[start_index:].rstrip()
+        return None
+
+    @staticmethod
+    def extract_python_error(full_stacktrace: str) -> Optional[str]:
+        """
         Select all lines a bit under 'run_udf_code'.
         This is what interests the user
         """
-        regex = re.compile(r" in run_udf_code\n.*\n((.|\n)*)", re.MULTILINE)
-
-        match = regex.search(full_stacktrace)
-        if match:
-            return match.group(1).rstrip()
-        return None
+        lines = full_stacktrace.strip().split("\n")
+        if len(lines) < 2 or not lines[0].strip().startswith("Traceback (most recent call last)"):
+            return None
+        # find line that shows error:
+        index = next((i for i, line in enumerate(lines) if not line.startswith(" ") and i >= 1), 0)
+        another_exception = "During handling of the above exception, another exception occurred"
+        index2 = next((i for i, line in enumerate(lines) if another_exception in line and i > index), len(lines))
+        return "\n".join(lines[index:index2]).strip()
 
     def changelog(self) -> Union[str, Path, flask.Response]:
         html = openeo_driver.util.changelog.multi_project_changelog(
