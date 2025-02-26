@@ -1097,6 +1097,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                         summary = (f"Batch job failed due to Kubernetes error, try running again, or contact support if the problem persists. Detailed cause: {kubernetes_exception[0].getMessage()} - {root_cause_message}")
                 elif root_cause_message:
                     udf_stacktrace = GeoPySparkBackendImplementation.extract_udf_stacktrace(root_cause_message)
+                    python_error = GeoPySparkBackendImplementation.extract_python_error(root_cause_message)
                     if udf_stacktrace:
                         if root_cause_class_name != "org.apache.spark.api.python.PythonException":
                             logger.warning(
@@ -1110,6 +1111,8 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                             if len(udf_stacktrace_new) < width - 150:
                                 udf_stacktrace = udf_stacktrace_new
                         summary = f"UDF exception while evaluating processing graph. Please check your user defined functions. stacktrace:\n{udf_stacktrace}"
+                    elif python_error:
+                        summary = f"UDF exception while evaluating processing graph. Please check your user defined functions.\n{python_error}"
                     elif "Missing an output location" in root_cause_message:
                         summary = f"A part of your process graph failed multiple times. Simply try submitting again, or use batch job logs to find more detailed information in case of persistent failures. Increasing executor memory may help if the root cause is not clear from the logs."
                     else:
