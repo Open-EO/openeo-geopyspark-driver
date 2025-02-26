@@ -1097,22 +1097,28 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                         summary = (f"Batch job failed due to Kubernetes error, try running again, or contact support if the problem persists. Detailed cause: {kubernetes_exception[0].getMessage()} - {root_cause_message}")
                 elif root_cause_message:
                     udf_stacktrace = GeoPySparkBackendImplementation.extract_udf_stacktrace(root_cause_message)
-                    python_error = GeoPySparkBackendImplementation.extract_python_error(root_cause_message)
                     if udf_stacktrace:
                         if root_cause_class_name != "org.apache.spark.api.python.PythonException":
                             logger.warning(
                                 f"UDF stacktrace found, but root cause class is not PythonException: {root_cause_class_name}"
                             )
-                        if len(udf_stacktrace) > width - 150:
-                            udf_stacktrace_list = udf_stacktrace.split("\n")
-                            udf_stacktrace_new = "\n".join(
-                                udf_stacktrace_list[:5] + ["... skipped stack frames ..."] + udf_stacktrace_list[-5:]
+                        so_error = "failed to map segment from shared object"
+                        if (
+                            so_error in udf_stacktrace
+                            and not so_error + ": operation not permitted" in root_cause_message
+                        ) or udf_stacktrace.endswith("MemoryError"):
+                            summary = (
+                                f"UDF ran out of memory. If you run as a batch_job, consider increasing python-memory."
                             )
-                            if len(udf_stacktrace_new) < width - 150:
-                                udf_stacktrace = udf_stacktrace_new
+                            return ErrorSummary(error, is_client_error, summary)
+
+                        udf_stacktrace = GeoPySparkBackendImplementation.collapse_stack_strace(udf_stacktrace, width)
                         summary = f"UDF exception while evaluating processing graph. Please check your user defined functions. stacktrace:\n{udf_stacktrace}"
-                    elif python_error:
-                        summary = f"UDF exception while evaluating processing graph. Please check your user defined functions.\n{python_error}"
+                        return ErrorSummary(error, is_client_error, summary)
+
+                    python_error = GeoPySparkBackendImplementation.extract_python_error(root_cause_message)
+                    if python_error:
+                        summary = f"UDF exception while evaluating processing graph. Please check your user defined functions. {python_error}"
                     elif "Missing an output location" in root_cause_message:
                         summary = f"A part of your process graph failed multiple times. Simply try submitting again, or use batch job logs to find more detailed information in case of persistent failures. Increasing executor memory may help if the root cause is not clear from the logs."
                     else:
@@ -1140,6 +1146,16 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                     summary = repr_truncate(error, width=width)
 
         return ErrorSummary(error, is_client_error, summary)
+
+    @staticmethod
+    def collapse_stack_strace(stacktrace: str, width: int) -> Optional[str]:
+        if len(stacktrace) > width - 150:
+            stacktrace_list = stacktrace.split("\n")
+            stacktrace_list = [str_truncate(line, width=500) for line in stacktrace_list]
+            stacktrace_new = "\n".join(stacktrace_list[:5] + ["... skipped stack frames ..."] + stacktrace_list[-5:])
+            if len(stacktrace_new) < len(stacktrace):
+                return stacktrace_new
+        return stacktrace
 
     @staticmethod
     def extract_udf_stacktrace(full_stacktrace: str) -> Optional[str]:

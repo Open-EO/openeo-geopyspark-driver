@@ -1,14 +1,20 @@
+import textwrap
 from unittest import mock
 
+import pytest
 from geopyspark import Extent, TiledRasterLayer
-from openeo_driver.utils import EvalEnv
 from py4j.protocol import Py4JJavaError
 from shapely.geometry import MultiPolygon
 
+import openeo
+from openeo.internal.graph_building import PGNode
+from openeo_driver.testing import ApiException
+from openeo_driver.utils import EvalEnv
 from openeogeotrellis.backend import GeoPySparkBackendImplementation
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.utils import get_jvm
+
 
 # Note: Ensure that the python environment has all the required modules installed.
 # Numpy should be installed before Jep for off-heap memory tiles to work!
@@ -542,3 +548,36 @@ If you need help, create an issue at https://github.com/tensorflow/tensorflow/is
         python_error_str
         == "ImportError: /home/pakske-friet/openeo/venv_python3_8/lib/python3.8/site-packages/tensorflow/python/_pywrap_tensorflow_internal.so: failed to map segment from shared object"
     )
+
+
+@pytest.fixture
+def cube() -> openeo.DataCube:
+    return openeo.DataCube.load_collection(
+        "TestCollection-LonLat4x4",
+        temporal_extent=["2021-01-01", "2021-02-01"],
+        spatial_extent={"west": 0, "south": 0, "east": 8, "north": 5},
+        bands=["Day", "Longitude", "Latitude"],
+        fetch_metadata=False,
+    )
+
+
+def test_udf_with_oom(cube, api100):
+    udf_code = textwrap.dedent(
+        """
+    def apply_datacube(cube: XarrayDataCube, context: dict) -> XarrayDataCube:
+        [' ' * 999999999 for x in range(9999999999)] # trigger OOM
+        arr:xr.DataArray = cube.get_array()
+        return XarrayDataCube(arr)
+    """
+    )
+    cube = cube.apply(
+        PGNode(
+            process_id="run_udf",
+            data={"from_parameter": "data"},
+            udf=udf_code,
+            runtime="Python",
+        ),
+    )
+    with pytest.raises(ApiException) as e_info:
+        api100.check_result(cube)
+    assert "UDF ran out of memory" in str(e_info.value)
