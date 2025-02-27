@@ -93,6 +93,19 @@ def test_summarize_sentinel1_band_not_present_exception(caplog):
             "caused by org.openeo.geotrellissentinelhub.Sentinel1BandNotPresentException" in caplog.messages)
 
 
+def test_summarize_eofexception():
+    jvm = get_jvm()
+    # This exception has no message. It needs to be handled fine too.
+    java_exception = jvm.java.io.EOFException()
+    spark_exception = jvm.org.apache.spark.SparkException("Job aborted due to stage failure ...", java_exception)
+    py4j_error: Exception = Py4JJavaError(msg="An error occur...", java_exception=spark_exception)
+    error_summary = GeoPySparkBackendImplementation.summarize_exception_static(py4j_error).summary
+
+    assert "null" not in error_summary
+    assert "None" not in error_summary
+    assert "EOFException" in error_summary
+
+
 def test_summarize_sentinel1_band_not_present_exception_workaround_for_root_cause_missing(caplog):
     caplog.set_level("DEBUG")
 
@@ -580,4 +593,6 @@ def test_udf_with_oom(cube, api100):
     )
     with pytest.raises(ApiException) as e_info:
         api100.check_result(cube)
-    assert "UDF ran out of memory" in str(e_info.value)
+    msg = e_info.value.args[0]
+    assert "Ran out of memory" in str(msg)
+    assert "python-memory" in str(msg)

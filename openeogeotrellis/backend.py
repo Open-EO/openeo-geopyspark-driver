@@ -1096,29 +1096,33 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                     else:
                         summary = (f"Batch job failed due to Kubernetes error, try running again, or contact support if the problem persists. Detailed cause: {kubernetes_exception[0].getMessage()} - {root_cause_message}")
                 elif root_cause_message:
-                    udf_stacktrace = GeoPySparkBackendImplementation.extract_udf_stacktrace(root_cause_message)
+                    root_cause_message = root_cause_message.rstrip()
+                    so_error = "failed to map segment from shared object"
+                    memory_message = (
+                        "Ran out of memory. If you run as a batch_job, consider increasing job_options > python-memory."
+                    )
+                    if so_error in root_cause_message and not so_error + ":" in root_cause_message:
+                        # This error can be so obscure that we replace it with our own message:
+                        # After the ":" there might be "operation not permitted", in that case we don't change the message
+                        return ErrorSummary(error, True, memory_message)
+
+                    udf_stacktrace = GeoPySparkBackendImplementation.extract_udf_stacktrace(root_cause_message, width)
                     if udf_stacktrace:
                         if root_cause_class_name != "org.apache.spark.api.python.PythonException":
-                            logger.warning(
-                                f"UDF stacktrace found, but root cause class is not PythonException: {root_cause_class_name}"
-                            )
-                        so_error = "failed to map segment from shared object"
-                        if (
-                            so_error in udf_stacktrace
-                            and not so_error + ": operation not permitted" in root_cause_message
-                        ) or udf_stacktrace.endswith("MemoryError"):
-                            summary = (
-                                f"UDF ran out of memory. If you run as a batch_job, consider increasing python-memory."
-                            )
-                            return ErrorSummary(error, is_client_error, summary)
+                            # one word, to be findable in elasticsearch logs
+                            logger.warning(f"StackTraceButNotPythonException: {root_cause_class_name}")
 
-                        udf_stacktrace = GeoPySparkBackendImplementation.collapse_stack_strace(udf_stacktrace, width)
                         summary = f"UDF exception while evaluating processing graph. Please check your user defined functions. stacktrace:\n{udf_stacktrace}"
+                        if udf_stacktrace.endswith("MemoryError") or udf_stacktrace.endswith(
+                            "MemoryError: std::bad_alloc"
+                        ):
+                            summary += "\n" + memory_message
                         return ErrorSummary(error, is_client_error, summary)
 
+                    # Could be an error int the OpenEO stack
                     python_error = GeoPySparkBackendImplementation.extract_python_error(root_cause_message)
                     if python_error:
-                        summary = f"UDF exception while evaluating processing graph. Please check your user defined functions. {python_error}"
+                        summary = f"Python exception while evaluating processing graph. Please check your user defined functions. {python_error}"
                     elif "Missing an output location" in root_cause_message:
                         summary = f"A part of your process graph failed multiple times. Simply try submitting again, or use batch job logs to find more detailed information in case of persistent failures. Increasing executor memory may help if the root cause is not clear from the logs."
                     else:
@@ -1158,7 +1162,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         return stacktrace
 
     @staticmethod
-    def extract_udf_stacktrace(full_stacktrace: str) -> Optional[str]:
+    def extract_udf_stacktrace(full_stacktrace: str, width: int = 3000) -> Optional[str]:
         """
         Select all lines starting from <string>.
         This is what interests the user
@@ -1169,7 +1173,9 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             start_index = full_stacktrace.rfind("\n", 0, needle_index) + 1
             if start_index == -1:
                 start_index = 0
-            return full_stacktrace[start_index:].rstrip()
+            udf_stacktrace = full_stacktrace[start_index:].rstrip()
+            udf_stacktrace = GeoPySparkBackendImplementation.collapse_stack_strace(udf_stacktrace, width)
+            return udf_stacktrace
         return None
 
     @staticmethod
