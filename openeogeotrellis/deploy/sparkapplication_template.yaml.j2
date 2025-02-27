@@ -17,7 +17,11 @@ spec:
   batchScheduler: {{ batch_scheduler }}
 {%- if batch_scheduler == 'yunikorn' %}
   batchSchedulerOptions:
+  {%- if yunikorn_user_specific_queues is sameas true %}
+    queue: {{ yunikorn_queue }}.{{ user_id }}
+  {%- else %}
     queue: {{ yunikorn_queue }}
+  {%- endif %}
 {%- endif %}
 {%- endif %}
   image: {{ image_name }}
@@ -224,7 +228,7 @@ spec:
       - name: GDAL_HTTP_MERGE_CONSECUTIVE_RANGES
         value: "YES"
       - name: PYTHONPATH
-        value: "$PYTHONPATH:/opt/tensorflow/python38/2.3.0/:/opt/openeo/lib/python3.8/site-packages/{% if udf_python_dependencies_folder_path %}:{{ udf_python_dependencies_folder_path }}{% endif %}"
+        value: "$PYTHONPATH:/opt/openeo/lib/python3.8/site-packages/{% if udf_python_dependencies_folder_path %}:{{ udf_python_dependencies_folder_path }}{% endif %}"
       - name: UDF_PYTHON_DEPENDENCIES_FOLDER_PATH
         value: "{{ udf_python_dependencies_folder_path }}"
       - name: UDF_PYTHON_DEPENDENCIES_ARCHIVE_PATH
@@ -372,7 +376,7 @@ spec:
       - name: GDAL_HTTP_RETRY_DELAY
         value: "10"
       - name: PYTHONPATH
-        value: "$PYTHONPATH:/opt/tensorflow/python38/2.3.0/:/opt/openeo/lib/python3.8/site-packages/{% if udf_python_dependencies_folder_path %}:{{ udf_python_dependencies_folder_path }}{% endif %}"
+        value: "$PYTHONPATH:/opt/openeo/lib/python3.8/site-packages/{% if udf_python_dependencies_folder_path %}:{{ udf_python_dependencies_folder_path }}{% endif %}"
       - name: UDF_PYTHON_DEPENDENCIES_FOLDER_PATH
         value: "{{ udf_python_dependencies_folder_path }}"
       - name: UDF_PYTHON_DEPENDENCIES_ARCHIVE_PATH

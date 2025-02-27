@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import textwrap
+
 import base64
 import dataclasses
 import logging
+import requests
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 
@@ -16,6 +19,16 @@ from openeo_driver.utils import generate_unique_id
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.util.runtime import get_job_id, get_request_id
 from openeogeotrellis.utils import s3_client
+
+
+try:
+    # TODO #1060 importlib.resources on Python 3.8 is pretty limited so we need backport
+    import importlib_resources
+except ImportError:
+    import importlib.resources
+
+    importlib_resources = importlib.resources
+
 
 _log = logging.getLogger(__name__)
 
@@ -40,6 +53,47 @@ class CalrissianS3Result:
         if encoding:
             content = content.decode(encoding)
         return content
+
+
+class CwLSource:
+    """
+    Simple container of CWL source code.
+
+    For now, this is just a wrapper around a string (the CWL content),
+    with factories to support multiple sources (local path, URL, ...).
+    When necessary, this simple abstraction can be evolved easily in something more sophisticated.
+    """
+
+    def __init__(self, content: str):
+        self._cwl = content
+
+    def get_content(self) -> str:
+        return self._cwl
+
+    @classmethod
+    def from_string(cls, content: str, auto_dedent: bool = True) -> CwLSource:
+        if auto_dedent:
+            content = textwrap.dedent(content)
+        return cls(content=content)
+
+    @classmethod
+    def from_path(cls, path: Union[str, Path]) -> CwLSource:
+        with Path(path).open(mode="r", encoding="utf-8") as f:
+            return cls(content=f.read())
+
+    @classmethod
+    def from_url(cls, url: str) -> CwLSource:
+        resp = requests.get(url)
+        resp.raise_for_status()
+        return cls(content=resp.text)
+
+    @classmethod
+    def from_resource(cls, anchor: str, path: str) -> CwLSource:
+        """
+        Read CWL from a packaged resource file in importlib.resources-style.
+        """
+        content = importlib_resources.files(anchor=anchor).joinpath(path).read_text(encoding="utf-8")
+        return cls(content=content)
 
 
 class CalrissianJobLauncher:
@@ -97,15 +151,17 @@ class CalrissianJobLauncher:
         suffix = generate_unique_id(date_prefix=False)[:8]
         return f"{self._name_base}-{infix}-{suffix}"
 
-    def create_input_staging_job_manifest(self, cwl_content: str) -> Tuple[kubernetes.client.V1Job, str]:
+    def create_input_staging_job_manifest(self, cwl_source: CwLSource) -> Tuple[kubernetes.client.V1Job, str]:
         """
         Create a k8s manifest for a Calrissian input staging job.
 
-        :param cwl_content: CWL content as a string to dump to CWL file in the input volume.
+        :param cwl_source: CWL source to dump to CWL file in the input volume.
         :return: Tuple of
             - k8s job manifest
             - path to the CWL file in the input volume.
         """
+        cwl_content = cwl_source.get_content()
+
         name = self._build_unique_name(infix="cal-inp")
         _log.info(f"Creating input staging job manifest: {name=}")
         yaml_parsed = list(yaml.safe_load_all(cwl_content))
@@ -162,6 +218,7 @@ class CalrissianJobLauncher:
         self,
         cwl_path: str,
         cwl_arguments: List[str],
+        env_vars: Optional[Dict[str, str]] = None,
     ) -> Tuple[kubernetes.client.V1Job, str]:
         """
         Create a k8s manifest for a Calrissian CWL job.
@@ -204,6 +261,17 @@ class CalrissianJobLauncher:
 
         _log.info(f"create_cwl_job_manifest {calrissian_arguments=}")
 
+        container_env_vars = [
+            kubernetes.client.V1EnvVar(
+                name="CALRISSIAN_POD_NAME",
+                value_from=kubernetes.client.V1EnvVarSource(
+                    field_ref=kubernetes.client.V1ObjectFieldSelector(field_path="metadata.name")
+                ),
+            )
+        ]
+        if env_vars:
+            container_env_vars.extend(kubernetes.client.V1EnvVar(name=k, value=v) for k, v in env_vars.items())
+
         container = kubernetes.client.V1Container(
             name=name,
             image=container_image,
@@ -216,14 +284,7 @@ class CalrissianJobLauncher:
                 )
                 for volume_info, read_only in volumes
             ],
-            env=[
-                kubernetes.client.V1EnvVar(
-                    name="CALRISSIAN_POD_NAME",
-                    value_from=kubernetes.client.V1EnvVarSource(
-                        field_ref=kubernetes.client.V1ObjectFieldSelector(field_path="metadata.name")
-                    ),
-                )
-            ],
+            env=container_env_vars,
         )
         manifest = kubernetes.client.V1Job(
             metadata=kubernetes.client.V1ObjectMeta(
@@ -315,7 +376,11 @@ class CalrissianJobLauncher:
         return volume_name
 
     def run_cwl_workflow(
-        self, cwl_content: str, cwl_arguments: List[str], output_paths: List[str]
+        self,
+        cwl_source: CwLSource,
+        cwl_arguments: List[str],
+        output_paths: List[str],
+        env_vars: Optional[Dict[str, str]] = None,
     ) -> Dict[str, CalrissianS3Result]:
         """
         Run a CWL workflow on Calrissian and return the output as a string.
@@ -325,13 +390,14 @@ class CalrissianJobLauncher:
         :return: output of the CWL workflow as a string.
         """
         # Input staging
-        input_staging_manifest, cwl_path = self.create_input_staging_job_manifest(cwl_content=cwl_content)
+        input_staging_manifest, cwl_path = self.create_input_staging_job_manifest(cwl_source=cwl_source)
         input_staging_job = self.launch_job_and_wait(manifest=input_staging_manifest)
 
         # CWL job
         cwl_manifest, relative_output_dir = self.create_cwl_job_manifest(
             cwl_path=cwl_path,
             cwl_arguments=cwl_arguments,
+            env_vars=env_vars,
         )
         cwl_job = self.launch_job_and_wait(manifest=cwl_manifest)
 

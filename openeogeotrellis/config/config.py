@@ -153,6 +153,7 @@ class GpsBackendConfig(OpenEoBackendConfig):
     batch_scheduler: str = "default-scheduler"
     yunikorn_queue: str = os.environ.get("YUNIKORN_QUEUE", "root.default")
     yunikorn_scheduling_timeout: str = os.environ.get("YUNIKORN_SCHEDULING_TIMEOUT", "10800")
+    yunikorn_user_specific_queues: bool = smart_bool(os.environ.get("YUNIKORN_USER_SPECIFIC_QUEUES", False))
 
     """
     Reading strategy for load_collection and load_stac processes:
@@ -243,7 +244,6 @@ class GpsBackendConfig(OpenEoBackendConfig):
         "/data/MEP:/data/MEP:ro,"
         "/data/users:/data/users:rw,"
         "/tmp_epod:/tmp_epod:rw,"
-        "/opt/tensorflow:/opt/tensorflow:ro"
     )
     batch_user_docker_mounts: dict[str, List[str]] = {}
     gdalinfo_from_file: bool = True

@@ -10,6 +10,7 @@ import pytest
 from openeogeotrellis.integrations.calrissian import (
     CalrissianJobLauncher,
     CalrissianS3Result,
+    CwLSource,
 )
 
 
@@ -29,7 +30,9 @@ class TestCalrissianJobLauncher:
     def test_create_input_staging_job_manifest(self, generate_unique_id_mock):
         launcher = CalrissianJobLauncher(namespace=self.NAMESPACE, name_base="r-1234")
 
-        manifest, cwl_path = launcher.create_input_staging_job_manifest(cwl_content="class: Dummy")
+        manifest, cwl_path = launcher.create_input_staging_job_manifest(
+            cwl_source=CwLSource.from_string("class: Dummy")
+        )
 
         assert cwl_path == "/calrissian/input-data/r-1234-cal-inp-01234567.cwl"
 
@@ -233,7 +236,9 @@ class TestCalrissianJobLauncher:
     def test_run_cwl_workflow_basic(self, k8_pvc_api, k8s_batch_api, generate_unique_id_mock, caplog):
         launcher = CalrissianJobLauncher(namespace=self.NAMESPACE, name_base="r-456", s3_bucket="test-bucket")
         res = launcher.run_cwl_workflow(
-            cwl_content="class: Dummy", cwl_arguments=["--message", "Howdy Earth!"], output_paths=["output.txt"]
+            cwl_source=CwLSource.from_string("class: Dummy"),
+            cwl_arguments=["--message", "Howdy Earth!"],
+            output_paths=["output.txt"],
         )
         assert res == {
             "output.txt": CalrissianS3Result(
@@ -263,3 +268,38 @@ class TestCalrissianS3Result:
         bucket, key = s3_output
         result = CalrissianS3Result(s3_bucket=bucket, s3_key=key)
         assert result.read(encoding="utf-8") == "Howdy, Earth!"
+
+
+class TestCwlSource:
+    def test_from_string(self):
+        content = "cwlVersion: v1.0\nclass: CommandLineTool\n"
+        cwl = CwLSource.from_string(content=content)
+        assert cwl.get_content() == "cwlVersion: v1.0\nclass: CommandLineTool\n"
+
+    def test_from_string_auto_dedent(self):
+        content = """
+            cwlVersion: v1.0
+            class: CommandLineTool
+            inputs:
+                message:
+                    type: string
+        """
+        cwl = CwLSource.from_string(content=content)
+        expected = "\ncwlVersion: v1.0\nclass: CommandLineTool\ninputs:\n    message:\n        type: string\n"
+        assert cwl.get_content() == expected
+
+    def test_from_path(self, tmp_path):
+        path = tmp_path / "dummy.cwl"
+        path.write_text("cwlVersion: v1.0\nclass: CommandLineTool\n")
+        cwl = CwLSource.from_path(path=path)
+        assert cwl.get_content() == "cwlVersion: v1.0\nclass: CommandLineTool\n"
+
+    def test_from_url(self, requests_mock):
+        url = "https://example.com/dummy.cwl"
+        requests_mock.get(url, text="cwlVersion: v1.0\nclass: CommandLineTool\n")
+        cwl = CwLSource.from_url(url=url)
+        assert cwl.get_content() == "cwlVersion: v1.0\nclass: CommandLineTool\n"
+
+    def test_from_resource(self):
+        cwl = CwLSource.from_resource(anchor="openeogeotrellis.integrations", path="cwl/hello.cwl")
+        assert "Hello World" in cwl.get_content()

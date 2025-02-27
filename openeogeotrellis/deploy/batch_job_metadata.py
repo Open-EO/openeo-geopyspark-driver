@@ -398,4 +398,10 @@ def _get_tracker_metadata(tracker_id="") -> dict:
     usage =  { **usage, **{name: {"value": value, "unit": "count"} for name, value in python_metrics.items()}}
     if sar_backscatter_total > 0:
         usage["sar_backscatter_soft_errors"] = {"value": sar_backscatter_errors / sar_backscatter_total, "unit": "fraction"}
+    sar_backscatter_inputpixels = python_metrics.pop("orfeo_backscatter_input_pixels", 0)
+    if sar_backscatter_inputpixels > 0:
+        if "input_pixel" in usage:
+            usage["input_pixel"]["value"] += sar_backscatter_inputpixels / (1024 * 1024)
+        else:
+            usage["input_pixel"] = {"value": sar_backscatter_inputpixels / (1024 * 1024), "unit": "mega-pixel"}
     return dict_no_none(usage=usage if usage != {} else None, links=all_links)

@@ -1522,8 +1522,11 @@ class GeopysparkDataCube(DriverDataCube):
             band = split[0]
             return date, band
 
-        # Calculate the coordinates.
         features = geojson["features"]
+        if len(features) == 0:
+            return DriverVectorCube(gpd.GeoDataFrame.from_features([]), None)
+
+        # Calculate the coordinates.
         feature_key_values = []
         for feature in features:
             # feature["id"] is for example: "20171025_band0_0"
@@ -1543,6 +1546,7 @@ class GeopysparkDataCube(DriverDataCube):
 
         if len(coords[dim_t]) == 0:
             del coords[dim_t]
+            dims = (dim_g, dim_b)
             values = np.empty((len(geometries), len(coords[dim_b])))
             values.fill(np.nan)
             for geom_index, key_value in enumerate(feature_key_values):
@@ -1561,7 +1565,8 @@ class GeopysparkDataCube(DriverDataCube):
         # TODO: There is no guarantee that the bands are in the correct order because we load from geojson.
         # TODO: What to do when certain dates in rastercube have no vector results? Number of dates will differ.
         cube = xr.DataArray(values, dims = dims, coords = coords)
-        cube = cube.sortby(dim_t)
+        if dim_t in cube.dims:
+            cube = cube.sortby(dim_t)
         return DriverVectorCube(geometries, cube)
 
     def raster_to_vector(self):
@@ -1842,19 +1847,14 @@ class GeopysparkDataCube(DriverDataCube):
         colormap = format_options.get("colormap", None)
         description = format_options.get("file_metadata", {}).get("description", "")
         filename_prefix = get_jvm().scala.Option.apply(format_options.get("filename_prefix", None))
-        separate_asset_per_band_tmp = (
-            smart_bool(format_options.get("separate_asset_per_band"))
-            if "separate_asset_per_band" in format_options
-            else None
-        )
-        separate_asset_per_band = get_jvm().scala.Option.apply(separate_asset_per_band_tmp)
+        separate_asset_per_band = smart_bool(format_options.get("separate_asset_per_band", False))
         bands_metadata = format_options.get("bands_metadata", {})  # band_name -> (tag -> value)
         file_metadata = format_options.get("file_metadata", {})  # tag -> value
         attach_gdalinfo_assets = format_options.get("attach_gdalinfo_assets", False)
         if attach_gdalinfo_assets and format != "GTIFF":
             raise OpenEOApiException(f"attach_gdalinfo_assets is only supported with format GTIFF. Was: {format}")
 
-        if separate_asset_per_band.isDefined() and format != "GTIFF":
+        if separate_asset_per_band and format != "GTIFF":
             raise OpenEOApiException(f"separate_asset_per_band is only supported with format GTIFF. Was: {format}")
 
         filepath_per_band = format_options.get("filepath_per_band", None)
@@ -1951,8 +1951,7 @@ class GeopysparkDataCube(DriverDataCube):
                     gtiff_options = get_jvm().org.openeo.geotrellis.geotiff.GTiffOptions()
                     if filename_prefix.isDefined():
                         gtiff_options.setFilenamePrefix(filename_prefix.get())
-                    if separate_asset_per_band.isDefined():
-                        gtiff_options.setSeparateAssetPerBand(separate_asset_per_band.get())
+                    gtiff_options.setSeparateAssetPerBand(separate_asset_per_band)
                     if filepath_per_band:
                         if self.metadata.has_temporal_dimension():
                             # The user would need a way to encode the date in the filenames
@@ -1985,7 +1984,7 @@ class GeopysparkDataCube(DriverDataCube):
                     max_level_rdd = max_level.srdd.rdd()
 
                     if tile_grid:
-                        if separate_asset_per_band.isDefined():
+                        if separate_asset_per_band:
                             raise OpenEOApiException(message="separate_asset_per_band is not supported with tile_grid")
 
                     if batch_mode and max_level.layer_type != gps.LayerType.SPATIAL:
@@ -1998,7 +1997,7 @@ class GeopysparkDataCube(DriverDataCube):
                                 .org.openeo.geotrellis.geotiff.package.saveStitchedTileGridTemporal(
                                 max_level_rdd, save_directory, tile_grid, compression, filename_prefix))
                         elif sample_by_feature:
-                            if separate_asset_per_band.isDefined():
+                            if separate_asset_per_band:
                                 raise OpenEOApiException(
                                     message="separate_asset_per_band is not supported with sample_by_feature"
                                 )
