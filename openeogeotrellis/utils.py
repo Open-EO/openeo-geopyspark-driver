@@ -889,3 +889,7 @@ class FileChangeWatcher:
             self._last_config_reload[file_path] = current_fingerprint
 
         return register_reload
+
+
+def to_tuple(scala_tuple):
+    return tuple(scala_tuple.productElement(i) for i in range(scala_tuple.productArity()))
