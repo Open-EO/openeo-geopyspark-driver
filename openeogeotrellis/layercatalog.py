@@ -692,7 +692,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 float(metadata.get("cube:dimensions", "x", "step")),
                 float(metadata.get("cube:dimensions", "y", "step"))
             )
-            # Only import when sentinel3 layer is used to save ~40Mb RAM:
+            # Local import to save some RAM and avoid potential confusing error:
             from openeogeotrellis.collections import sentinel3
 
             pyramid = sentinel3.pyramid(metadata_properties(),
