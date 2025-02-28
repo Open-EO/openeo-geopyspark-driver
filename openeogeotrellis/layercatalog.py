@@ -37,7 +37,6 @@ from shapely.geometry.base import BaseGeometry
 from openeogeotrellis import sentinel_hub, datacube_parameters
 from openeogeotrellis.catalogs.creo import CreoCatalogClient
 from openeogeotrellis.collections.s1backscatter_orfeo import get_implementation as get_s1_backscatter_orfeo
-from openeogeotrellis.collections import sentinel3
 from openeogeotrellis.collections.testing import load_test_collection
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
@@ -693,6 +692,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 float(metadata.get("cube:dimensions", "x", "step")),
                 float(metadata.get("cube:dimensions", "y", "step"))
             )
+            # Local import to save some RAM and avoid potential confusing error:
+            from openeogeotrellis.collections import sentinel3
 
             pyramid = sentinel3.pyramid(metadata_properties(),
                                         projected_polygons_native_crs, from_date, to_date,
