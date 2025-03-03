@@ -164,7 +164,7 @@ class StacApiWorkspace(Workspace):
             resp.raise_for_status()
         except requests.HTTPError as e:
             if e.response.status_code != 409:
-                # ignore error response to POST that was retried because of a network error
+                # ignore error response to POST that was retried because of a transient (network) error
                 raise
 
     def _assert_catalog_supports_necessary_api(self):

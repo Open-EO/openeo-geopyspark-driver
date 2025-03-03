@@ -3,6 +3,7 @@ import json
 from pathlib import PurePath, Path
 from typing import Dict
 
+import responses
 from pystac import Collection, Extent, SpatialExtent, TemporalExtent, Item, Asset
 
 from openeogeotrellis.workspace import StacApiWorkspace
@@ -114,6 +115,54 @@ def test_merge_into_existing(requests_mock, urllib_mock, tmp_path):
         collection=str(target),
         links=[],
     )
+
+
+@responses.activate(registry=responses.registries.OrderedRegistry)
+def test_merge_resilience(tmp_path, urllib_mock):
+    stac_api_workspace = StacApiWorkspace(
+        root_url="https://stacapi.test",
+        export_asset=_export_asset,
+        asset_alternate_id="file",
+    )
+    target = PurePath("new_collection")
+    asset_path = Path("/path") / "to" / "asset1.tif"
+
+    # TODO: configure GET root: first return 500, return 200 on retry
+    get_root_catalog_resp = responses.get(
+        stac_api_workspace.root_url,
+        json={
+            "type": "Catalog",
+            "stac_version": "1.0.0",
+            "id": "stacapi.test",
+            "description": "stacapi.test",
+            "conformsTo": [
+                "https://api.stacspec.org/v1.0.0/collections/extensions/transaction",
+                "https://api.stacspec.org/v1.0.0/ogcapi-features/extensions/transaction",
+            ],
+            "links": [],
+        },
+    )
+
+    # no need to mock URL for existing Collection as urllib_mock will return a 404 by default
+    # TODO: set up GET collection: first return 500, return 404 on retry
+
+    create_collection_error_resp = responses.post(f"{stac_api_workspace.root_url}/collections", status=500)
+    create_collection_conflict_resp = responses.post(f"{stac_api_workspace.root_url}/collections", status=409)
+
+    create_item_error_resp = responses.post(f"{stac_api_workspace.root_url}/collections/{target}/items", status=500)
+    create_item_conflict_resp = responses.post(f"{stac_api_workspace.root_url}/collections/{target}/items", status=409)
+
+    collection1 = _collection(root_path=tmp_path / "collection1", collection_id="collection1", asset_path=asset_path)
+    stac_api_workspace.merge(stac_resource=collection1, target=target)
+
+    # TODO: assert get_collection_mock.call_count == 2
+    assert get_root_catalog_resp.call_count == 1
+
+    assert create_collection_error_resp.call_count == 1
+    assert create_collection_conflict_resp.call_count == 1
+
+    assert create_item_error_resp.call_count == 1
+    assert create_item_conflict_resp.call_count == 1
 
 
 def _mock_stac_api_root_catalog(requests_mock, root_url: str):
