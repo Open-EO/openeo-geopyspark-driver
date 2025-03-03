@@ -1,15 +1,16 @@
 import logging
 from pathlib import PurePath, Path
 from typing import Union, Callable
-from urllib.error import HTTPError
+import urllib.error
 
 from openeo_driver.util.http import requests_with_retry
 from openeo_driver.workspace import Workspace, _merge_collection_metadata
 from pystac import STACObject, Collection, Item, Asset
 import pystac_client
-from pystac_client import ConformanceClasses
-from requests import Session
-
+from pystac_client import ConformanceClasses, stac_api_io
+import requests
+import requests.adapters
+from urllib3 import Retry
 
 _log = logging.getLogger(__name__)
 
@@ -62,7 +63,7 @@ class StacApiWorkspace(Workspace):
 
             existing_collection = None
             try:
-                existing_collection = Collection.from_file(f"{self.root_url}/collections/{collection_id}")
+                existing_collection = Collection.from_file(f"{self.root_url}/collections/{collection_id}")  # TODO: add retries and timeout
             except Exception as e:
                 if self._is_not_found_error(e):  # not exceptional
                     pass
@@ -74,7 +75,11 @@ class StacApiWorkspace(Workspace):
                 f" {self.root_url}/collections/{collection_id}"
             )
 
-            with requests_with_retry() as session:
+            with requests_with_retry(
+                total=3,
+                backoff_factor=2,
+                allowed_methods=Retry.DEFAULT_ALLOWED_METHODS.union({"POST"}),
+            ) as session:
                 # TODO: uses a single access token for the collection + all items
                 session.headers = (
                     {"Authorization": f"Bearer {self._get_access_token()}"} if self._get_access_token else None
@@ -117,7 +122,9 @@ class StacApiWorkspace(Workspace):
         else:
             raise NotImplementedError(f"merge from {stac_resource}")
 
-    def _upload_collection(self, collection: Collection, collection_id: str, modify_existing: bool, session: Session):
+    def _upload_collection(
+        self, collection: Collection, collection_id: str, modify_existing: bool, session: requests.Session
+    ):
         bare_collection = collection.clone()
         bare_collection.id = collection_id
         bare_collection.remove_hierarchical_links()
@@ -138,9 +145,9 @@ class StacApiWorkspace(Workspace):
                 timeout=self.REQUESTS_TIMEOUT_SECONDS,
             )
 
-        resp.raise_for_status()
+        self._raise_for_status(resp)
 
-    def _upload_item(self, item: Item, collection_id: str, session: Session):
+    def _upload_item(self, item: Item, collection_id: str, session: requests.Session):
         item.remove_hierarchical_links()
         item.collection_id = collection_id
 
@@ -149,10 +156,28 @@ class StacApiWorkspace(Workspace):
             json=item.to_dict(include_self_link=False),
             timeout=self.REQUESTS_TIMEOUT_SECONDS,
         )
-        resp.raise_for_status()
+
+        self._raise_for_status(resp)
+
+    @staticmethod
+    def _raise_for_status(resp: requests.Response):
+        try:
+            resp.raise_for_status()
+        except requests.HTTPError as e:
+            if e.response.status_code != 409:
+                # ignore error response to POST that was retried because of a transient (network) error
+                raise
 
     def _assert_catalog_supports_necessary_api(self):
-        root_catalog_client = pystac_client.Client.open(self.root_url, timeout=self.REQUESTS_TIMEOUT_SECONDS)
+        # TODO: reduce code duplication with openeo_driver.util.http.requests_with_retry
+        retry = requests.adapters.Retry(
+            total=3,
+            backoff_factor=2,
+            status_forcelist=frozenset([429, 500, 502, 503, 504]),
+        )
+
+        stac_io = pystac_client.stac_api_io.StacApiIO(timeout=self.REQUESTS_TIMEOUT_SECONDS, max_retries=retry)
+        root_catalog_client = pystac_client.Client.open(self.root_url, stac_io=stac_io)
 
         if not root_catalog_client.conforms_to(ConformanceClasses.COLLECTIONS):
             raise ValueError(f"{self.root_url} does not support Collections")
@@ -174,6 +199,7 @@ class StacApiWorkspace(Workspace):
             raise ValueError(f"{self.root_url} does not support Transaction extension for Items")
 
     def _is_not_found_error(self, e: BaseException) -> bool:
-        return (isinstance(e, HTTPError) and e.code == 404) or (
+        # TODO: adapt after adding retries and timeout
+        return (isinstance(e, urllib.error.HTTPError) and e.code == 404) or (
             e.__cause__ is not None and self._is_not_found_error(e.__cause__)
         )
