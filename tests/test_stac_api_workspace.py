@@ -127,8 +127,8 @@ def test_merge_resilience(tmp_path, urllib_mock):
     target = PurePath("new_collection")
     asset_path = Path("/path") / "to" / "asset1.tif"
 
-    # TODO: configure GET root: first return 500, return 200 on retry
-    get_root_catalog_resp = responses.get(
+    get_root_catalog_error_resp = responses.get(stac_api_workspace.root_url, status=500)
+    get_root_catalog_ok_resp = responses.get(
         stac_api_workspace.root_url,
         json={
             "type": "Catalog",
@@ -155,8 +155,10 @@ def test_merge_resilience(tmp_path, urllib_mock):
     collection1 = _collection(root_path=tmp_path / "collection1", collection_id="collection1", asset_path=asset_path)
     stac_api_workspace.merge(stac_resource=collection1, target=target)
 
-    # TODO: assert get_collection_mock.call_count == 2
-    assert get_root_catalog_resp.call_count == 1
+    assert get_root_catalog_error_resp.call_count == 1
+    assert get_root_catalog_ok_resp.call_count == 1
+
+    # TODO: test retry getting existing collection (https://github.com/Open-EO/openeo-python-client/issues/738)
 
     assert create_collection_error_resp.call_count == 1
     assert create_collection_conflict_resp.call_count == 1

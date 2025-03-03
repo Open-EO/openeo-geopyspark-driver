@@ -7,8 +7,9 @@ from openeo_driver.util.http import requests_with_retry
 from openeo_driver.workspace import Workspace, _merge_collection_metadata
 from pystac import STACObject, Collection, Item, Asset
 import pystac_client
-from pystac_client import ConformanceClasses
+from pystac_client import ConformanceClasses, stac_api_io
 import requests
+import requests.adapters
 from urllib3 import Retry
 
 _log = logging.getLogger(__name__)
@@ -168,7 +169,15 @@ class StacApiWorkspace(Workspace):
                 raise
 
     def _assert_catalog_supports_necessary_api(self):
-        root_catalog_client = pystac_client.Client.open(self.root_url, timeout=self.REQUESTS_TIMEOUT_SECONDS)
+        # TODO: reduce code duplication with openeo_driver.util.http.requests_with_retry
+        retry = requests.adapters.Retry(
+            total=3,
+            backoff_factor=2,
+            status_forcelist=frozenset([429, 500, 502, 503, 504]),
+        )
+
+        stac_io = pystac_client.stac_api_io.StacApiIO(timeout=self.REQUESTS_TIMEOUT_SECONDS, max_retries=retry)
+        root_catalog_client = pystac_client.Client.open(self.root_url, stac_io=stac_io)
 
         if not root_catalog_client.conforms_to(ConformanceClasses.COLLECTIONS):
             raise ValueError(f"{self.root_url} does not support Collections")
