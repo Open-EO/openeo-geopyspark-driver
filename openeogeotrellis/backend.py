@@ -1106,6 +1106,8 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                         # After the ":" there might be "operation not permitted", in that case we don't change the message
                         return ErrorSummary(error, True, memory_message)
 
+                    # if root_cause_class_name == 'jep.JepException':
+                    #     st = root_cause.stackTrace  # NOTE: UDF stack trace in Jep is not supported yet.
                     udf_stacktrace = GeoPySparkBackendImplementation.extract_udf_stacktrace(root_cause_message, width)
                     if udf_stacktrace:
                         if root_cause_class_name != "org.apache.spark.api.python.PythonException":
@@ -1126,7 +1128,10 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                         if python_error.endswith("MemoryError") or python_error.endswith("MemoryError: std::bad_alloc"):
                             # Got OOM before getting in user UDF code:
                             summary += "\n" + memory_message
-                    elif "Missing an output location" in root_cause_message:
+                    elif (
+                        "Missing an output location" in root_cause_message
+                        or "has failed the maximum allowable number of times" in root_cause_message
+                    ):
                         summary = f"A part of your process graph failed multiple times. Simply try submitting again, or use batch job logs to find more detailed information in case of persistent failures. Increasing executor memory may help if the root cause is not clear from the logs."
                     else:
                         summary = f"Exception during Spark execution: {root_cause_class_name}: {root_cause_message}"

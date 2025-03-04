@@ -34,8 +34,7 @@ def function_in_root():
 
 def apply_datacube(cube: XarrayDataCube, context: dict) -> XarrayDataCube:
     function_in_root()
-    array = cube.get_array()
-    return XarrayDataCube(array)
+    return cube
 """
     udf_add_to_bands = {
         "udf_process": {
@@ -55,6 +54,7 @@ def apply_datacube(cube: XarrayDataCube, context: dict) -> XarrayDataCube:
     chunks = MultiPolygon([polygon1])
     cube: GeopysparkDataCube = imagecollection_with_two_bands_and_three_dates
     try:
+        # Will run in Jep:
         result_cube: GeopysparkDataCube = cube.chunk_polygon(udf_add_to_bands, chunks=chunks, mask_value=None, env=env)
         result_layer: TiledRasterLayer = result_cube.pyramid.levels[0]
         result_layer.to_numpy_rdd().collect()
