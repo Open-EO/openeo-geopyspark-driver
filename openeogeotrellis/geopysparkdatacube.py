@@ -55,6 +55,7 @@ from openeogeotrellis.utils import (
     reproject_cellsize,
     normalize_temporal_extent,
     GDALINFO_SUFFIX,
+    to_tuple,
 )
 from openeogeotrellis.udf import run_udf_code
 from openeogeotrellis._version import __version__ as softwareversion
@@ -2073,11 +2074,17 @@ class GeopysparkDataCube(DriverDataCube):
                                 gtiff_options,
                             )
 
-                            paths_tuples = [
-                                (timestamped_path._1(), timestamped_path._2()) for timestamped_path in paths_tuples
+                            paths_tuples = [  # TODO: for backwards compatibility, remove afterwards
+                                (
+                                    paths_tuple[0],
+                                    paths_tuple[1] if len(paths_tuple) == 3 else None,
+                                    paths_tuple[2] if len(paths_tuple) == 3 else paths_tuple[1],
+                                )
+                                for paths_tuple in map(to_tuple, paths_tuples)
                             ]
+
                             assets = {}
-                            for path, band_indices in paths_tuples:
+                            for path, bbox, band_indices in paths_tuples:
                                 file_name = str(pathlib.Path(path).relative_to(save_directory))
                                 assets[file_name] = {
                                     "href": str(path),
@@ -2086,6 +2093,10 @@ class GeopysparkDataCube(DriverDataCube):
                                     "bands": [band for i, band in enumerate(bands) if i in band_indices],
                                     "nodata": nodata,
                                 }
+                                if bbox:
+                                    assets[file_name]["bbox"] = to_latlng_bbox(bbox)
+                                    assets[file_name]["geometry"] = mapping(Polygon.from_bounds(*to_latlng_bbox(bbox)))
+
                             return add_gdalinfo_objects(assets)
 
             else:

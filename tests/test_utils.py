@@ -4,7 +4,6 @@ import getpass
 import json
 import logging
 import pathlib
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -30,6 +29,8 @@ from openeogeotrellis.utils import (
     utcnow,
     parse_json_from_output,
     FileChangeWatcher,
+    get_jvm,
+    to_tuple,
 )
 
 
@@ -452,3 +453,9 @@ def test_get_file_reload_register_func_if_changed(tmp_path):
     # THEN subsequent check would not require reload
     reg_func = watcher.get_file_reload_register_func_if_changed(cfg_file_path)
     assert reg_func is None
+
+
+def test_to_tuple():
+    scala_tuple = get_jvm().scala.Tuple3(1, 2, 3)
+
+    assert to_tuple(scala_tuple) == (1, 2, 3)

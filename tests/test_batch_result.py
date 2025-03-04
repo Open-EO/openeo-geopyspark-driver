@@ -2435,3 +2435,69 @@ def _paths_relative_to(base: Path) -> Set[Path]:
         for dirpath, dirnames, filenames in os.walk(base)
         for filename in filenames
     }
+
+
+def skip_spatial_geotiff_metadata(tmp_path):
+    job_dir = tmp_path
+
+    process_graph = {
+        "loadcollection1": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "TestCollection-LonLat16x16",
+                "temporal_extent": ["2021-01-05", "2021-01-06"],
+                "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 2.0},
+                "bands": ["Longitude", "Latitude"],
+            },
+        },
+        "reducedimension1": {
+            "process_id": "reduce_dimension",
+            "arguments": {
+                "data": {"from_node": "loadcollection1"},
+                "dimension": "t",
+                "reducer": {
+                    "process_graph": {
+                        "first1": {
+                            "process_id": "first",
+                            "arguments": {"data": {"from_parameter": "data"}},
+                            "result": True,
+                        }
+                    }
+                },
+            },
+        },
+        "saveresult1": {
+            "process_id": "save_result",
+            "arguments": {
+                "data": {"from_node": "reducedimension1"},
+                "format": "GTiff",
+            },
+            "result": True,
+        },
+    }
+
+    process = {
+        "process_graph": process_graph,
+    }
+
+    metadata_file = job_dir / "job_metadata.json"
+
+    run_job(
+        process,
+        output_file=job_dir / "out",
+        metadata_file=metadata_file,
+        api_version="2.0.0",
+        job_dir=job_dir,
+        dependencies=[],
+    )
+
+    with open(metadata_file) as f:
+        assets = json.load(f)["assets"]
+
+    assert set(assets.keys()) == {"openEO.tif"}
+    assert assets["openEO.tif"]["bbox"] == [0.0, 0.0, 1.0, 2.0]
+    assert (
+        shape(assets["openEO.tif"]["geometry"])
+        .normalize()
+        .equals_exact(Polygon.from_bounds(0.0, 0.0, 1.0, 2.0).normalize(), tolerance=0.001)
+    )

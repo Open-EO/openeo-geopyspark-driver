@@ -2140,6 +2140,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 batch_scheduler=get_backend_config().batch_scheduler,
                 yunikorn_queue=get_backend_config().yunikorn_queue,
                 yunikorn_scheduling_timeout=get_backend_config().yunikorn_scheduling_timeout.rstrip(),
+                yunikorn_user_specific_queues=get_backend_config().yunikorn_user_specific_queues,
                 separate_asset_per_band_new_partitioner=os.environ.get("SEPARATE_ASSET_PER_BAND_NEW_PARTITIONER"),
                 propagatable_web_app_driver_envars=propagatable_web_app_driver_envars,
                 provide_s3_profiles_and_tokens=get_backend_config().provide_s3_profiles_and_tokens,

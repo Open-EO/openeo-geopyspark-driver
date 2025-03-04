@@ -12,8 +12,9 @@ without compromising stable operations.
 
 <!-- start-of-changelog -->
 
-## Unreleased
+## In progress: 0.63.0
 
+- add `bbox` and `geometry` to exported STAC items ([eu-cdse/openeo-cdse-infra#418](https://github.com/eu-cdse/openeo-cdse-infra/issues/418))
 
 ## 0.62.0
 
