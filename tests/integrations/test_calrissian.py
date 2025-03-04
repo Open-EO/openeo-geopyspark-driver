@@ -55,7 +55,7 @@ class TestCalrissianJobLauncher:
                 "containers": [
                     dirty_equals.IsPartialDict(
                         {
-                            "name": "calrissian-input-staging",
+                            "name": "r-1234-cal-inp-01234567",
                             "image": "alpine:3",
                             "command": ["/bin/sh"],
                             "args": [
