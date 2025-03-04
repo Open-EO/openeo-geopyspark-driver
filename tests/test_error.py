@@ -563,6 +563,19 @@ If you need help, create an issue at https://github.com/tensorflow/tensorflow/is
     )
 
 
+def test_empty_assert_message():
+    with pytest.raises(AssertionError) as e_info:
+        from openeogeotrellis.collections.testing import load_test_collection
+        from openeogeotrellis.geopysparkcubemetadata import GeopysparkCubeMetadata
+
+        # triggering an assert error directly here gives a default error message.
+        # This nested assert gives an empty message:
+        load_test_collection(4, GeopysparkCubeMetadata({}), None, "EPSG:INVALID", "", "")
+
+    msg = GeoPySparkBackendImplementation.summarize_exception_static(e_info.value).summary
+    assert 'srs == "EPSG:4326"' in str(msg)  # assert message should be in the summary
+
+
 @pytest.fixture
 def cube() -> openeo.DataCube:
     return openeo.DataCube.load_collection(
