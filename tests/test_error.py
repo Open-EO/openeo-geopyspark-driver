@@ -577,26 +577,25 @@ def test_empty_assert_message():
 
 
 @pytest.fixture
-def cube() -> openeo.DataCube:
+def datacube() -> openeo.DataCube:
     return openeo.DataCube.load_collection(
         "TestCollection-LonLat4x4",
-        temporal_extent=["2021-01-01", "2021-02-01"],
+        temporal_extent=["2021-01-05", "2021-01-06"],
         spatial_extent={"west": 0, "south": 0, "east": 8, "north": 5},
-        bands=["Day", "Longitude", "Latitude"],
+        bands=["Longitude"],
         fetch_metadata=False,
     )
 
 
-def test_udf_with_oom(cube, api100):
+def test_udf_with_oom(datacube, api100):
     udf_code = textwrap.dedent(
         """
-    def apply_datacube(cube: XarrayDataCube, context: dict) -> XarrayDataCube:
-        [' ' * 999999999 for x in range(9999999999)] # trigger OOM
-        arr:xr.DataArray = cube.get_array()
-        return XarrayDataCube(arr)
-    """
-    )
-    cube = cube.apply(
+        def apply_datacube(cube: XarrayDataCube, context: dict) -> XarrayDataCube:
+            [' ' * 999999999 for x in range(9999999999)] # trigger OOM
+            return cube
+        """
+    ).rstrip()
+    datacube = datacube.apply(
         PGNode(
             process_id="run_udf",
             data={"from_parameter": "data"},
@@ -605,7 +604,8 @@ def test_udf_with_oom(cube, api100):
         ),
     )
     with pytest.raises(ApiException) as e_info:
-        api100.check_result(cube)
+        api100.check_result(datacube)
     msg = e_info.value.args[0]
-    assert "Ran out of memory" in str(msg)
-    assert "python-memory" in str(msg)
+    assert "in <listcomp>" in str(msg)  # this OOM should have a stacktrace.
+    assert "out of memory" in str(msg)
+    assert "python-memory" in str(msg)  # Check if instructions are displayed

@@ -1119,10 +1119,13 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                             summary += "\n" + memory_message
                         return ErrorSummary(error, is_client_error, summary)
 
-                    # Could be an error int the OpenEO stack
+                    # Could be an error in the OpenEO stack
                     python_error = GeoPySparkBackendImplementation.extract_python_error(root_cause_message)
                     if python_error:
-                        summary = f"Python exception while evaluating processing graph. Please check your user defined functions. {python_error}"
+                        summary = f"Python exception while evaluating processing graph: {python_error}"
+                        if python_error.endswith("MemoryError") or python_error.endswith("MemoryError: std::bad_alloc"):
+                            # Got OOM before getting in user UDF code:
+                            summary += "\n" + memory_message
                     elif "Missing an output location" in root_cause_message:
                         summary = f"A part of your process graph failed multiple times. Simply try submitting again, or use batch job logs to find more detailed information in case of persistent failures. Increasing executor memory may help if the root cause is not clear from the logs."
                     else:
