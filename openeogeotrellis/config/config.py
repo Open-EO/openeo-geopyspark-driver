@@ -251,6 +251,7 @@ class GpsBackendConfig(OpenEoBackendConfig):
     gdalinfo_use_subprocess: bool = False
     gdalinfo_use_python_subprocess: bool = False
 
+    # TODO encapsualte all calrissian related config in a separate class
     # TODO: replace these temp default with None (or better defaults)
     calrissian_namespace: Optional[str] = "calrissian-demo-project"
     # TODO: proper calrissian image? Official one doesn't work due to https://github.com/Duke-GCB/calrissian/issues/124#issuecomment-947008286

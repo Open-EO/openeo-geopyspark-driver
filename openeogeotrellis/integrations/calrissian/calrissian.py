@@ -1,25 +1,22 @@
 from __future__ import annotations
 
-import textwrap
-
 import base64
 import dataclasses
 import logging
-import requests
+import textwrap
+import time
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 
 import kubernetes.client
-import time
-
+import requests
 import yaml
-
 from openeo.util import ContextTimer
 from openeo_driver.utils import generate_unique_id
+
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.util.runtime import get_job_id, get_request_id
 from openeogeotrellis.utils import s3_client
-
 
 try:
     # TODO #1060 importlib.resources on Python 3.8 is pretty limited so we need backport
@@ -176,7 +173,7 @@ class CalrissianJobLauncher:
         )
 
         container = kubernetes.client.V1Container(
-            name="calrissian-input-staging",
+            name=name,
             image="alpine:3",
             security_context=self._security_context,
             command=["/bin/sh"],

@@ -301,5 +301,5 @@ class TestCwlSource:
         assert cwl.get_content() == "cwlVersion: v1.0\nclass: CommandLineTool\n"
 
     def test_from_resource(self):
-        cwl = CwLSource.from_resource(anchor="openeogeotrellis.integrations", path="cwl/hello.cwl")
+        cwl = CwLSource.from_resource(anchor="openeogeotrellis.integrations.calrissian", path="cwl/hello.cwl")
         assert "Hello World" in cwl.get_content()
