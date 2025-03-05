@@ -91,6 +91,7 @@ from openeogeotrellis.integrations.kubernetes import (
     k8s_render_manifest_template,
     k8s_get_batch_job_cfg_secret_name,
 )
+from openeogeotrellis.integrations.stac import StacApiIO
 from openeogeotrellis.integrations.traefik import Traefik
 from openeogeotrellis.job_registry import (
     DoubleJobRegistry,
@@ -643,7 +644,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
         if job_id.startswith("http://") or job_id.startswith("https://"):
             job_results_canonical_url = job_id
-            job_results = pystac.Collection.from_file(href=job_results_canonical_url)
+            job_results = pystac.Collection.from_file(href=job_results_canonical_url, stac_io=StacApiIO())
 
             def intersects_spatial_extent(item) -> bool:
                 if not requested_bbox or item.bbox is None:

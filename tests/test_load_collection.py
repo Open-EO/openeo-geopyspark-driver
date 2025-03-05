@@ -497,6 +497,8 @@ def test_load_stac_pixel_shift(api110, tmp_path, flask_app):
 ])
 def test_load_stac_collection_with_property_filters(catalog, tmp_path, requests_mock, bands, expected_bands):
     requests_mock.get("https://stac.openeo.vito.be/", text=get_test_data_file("stac/issue640-api-layer-property-filter/stac.openeo.vito.be.json").read_text())
+    requests_mock.get("https://stac.openeo.vito.be/collections/copernicus_r_utm-wgs84_10_m_hrvpp-vpp_p_2017-now_v01",
+                      text=get_test_data_file("stac/issue640-api-layer-property-filter/copernicus_r_utm-wgs84_10_m_hrvpp-vpp_p_2017-now_v01_collection.json").read_text())
     requests_mock.post("https://stac.openeo.vito.be/search", text=get_test_data_file(
         "stac/issue640-api-layer-property-filter/copernicus_r_utm-wgs84_10_m_hrvpp-vpp_p_2017-now_v01_features.json")
                        .read_text()
