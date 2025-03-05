@@ -15,6 +15,7 @@ without compromising stable operations.
 ## In progress: 0.63.0
 
 - add `bbox` and `geometry` to exported STAC items ([eu-cdse/openeo-cdse-infra#418](https://github.com/eu-cdse/openeo-cdse-infra/issues/418))
+- improve resilience of `StacApiWorkspace` ([#1073](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1073))
 
 ## 0.62.0
 
