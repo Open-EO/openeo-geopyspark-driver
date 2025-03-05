@@ -1,0 +1,455 @@
+{
+  "id": "copernicus_r_utm-wgs84_10_m_hrvpp-vpp_p_2017-now_v01",
+  "description": "This product includes a set of Vegetation Phenology and Productivity parameters, for up to two growing seasons, based on the filtered time series of the Plant Phenology Index Seasonal Trajectories product. The parameters include the start, end and length of the growing season, the dates when the vegetation index reaches its minimum and maximum values, the maximum value and its distance to the minimum (amplitude), the slopes of the green-up and green-down periods and the seasonal and total productivity. It is derived from Copernicus Sentinel-2 satellite observations and updated annually.",
+  "stac_version": "1.0.0",
+  "links": [
+    {
+      "rel": "aggregate",
+      "type": "application/json",
+      "href": "https://stac.openeo.vito.be/collections/copernicus_r_utm-wgs84_10_m_hrvpp-vpp_p_2017-now_v01/aggregate"
+    },
+    {
+      "rel": "aggregations",
+      "type": "application/json",
+      "href": "https://stac.openeo.vito.be/collections/copernicus_r_utm-wgs84_10_m_hrvpp-vpp_p_2017-now_v01/aggregations"
+    },
+    {
+      "rel": "items",
+      "type": "application/geo+json",
+      "href": "https://stac.openeo.vito.be/collections/copernicus_r_utm-wgs84_10_m_hrvpp-vpp_p_2017-now_v01/items"
+    },
+    {
+      "rel": "parent",
+      "type": "application/json",
+      "href": "https://stac.openeo.vito.be/"
+    },
+    {
+      "rel": "queryables",
+      "type": "application/json",
+      "href": "https://stac.openeo.vito.be/collections/copernicus_r_utm-wgs84_10_m_hrvpp-vpp_p_2017-now_v01/queryables"
+    },
+    {
+      "rel": "root",
+      "type": "application/json",
+      "href": "https://stac.openeo.vito.be/"
+    },
+    {
+      "rel": "self",
+      "type": "application/json",
+      "href": "https://stac.openeo.vito.be/collections/copernicus_r_utm-wgs84_10_m_hrvpp-vpp_p_2017-now_v01"
+    },
+    {
+      "href": "https://www.eea.europa.eu/en/datahub/datahubitem-view/b967dae7-783b-44eb-a3eb-727e3b8fc060",
+      "rel": "describedby",
+      "type": "text/html",
+      "title": "EEA Data hub"
+    },
+    {
+      "href": "https://doi.org/10.2909/2d8ef180-584b-4283-929b-4e3af40c1847",
+      "rel": "cite-as",
+      "type": "text/html",
+      "title": "DOI"
+    }
+  ],
+  "stac_extensions": [
+    "https://stac-extensions.github.io/item-assets/v1.0.0/schema.json",
+    "https://stac-extensions.github.io/raster/v1.1.0/schema.json",
+    "https://stac-extensions.github.io/classification/v1.0.0/schema.json",
+    "https://stac-extensions.github.io/eo/v1.1.0/schema.json"
+  ],
+  "title": "Vegetation Phenology and Productivity parameters, yearly, UTM projection",
+  "type": "Collection",
+  "license": "proprietary",
+  "extent": {
+    "spatial": {
+      "bbox": [
+        [
+          -62.0760771,
+          -21.7894746,
+          56.138312,
+          72.0995811
+        ]
+      ]
+    },
+    "temporal": {
+      "interval": [
+        [
+          "2017-01-01T00:00:00Z",
+          "2023-12-31T23:59:59Z"
+        ]
+      ]
+    }
+  },
+  "keywords": [
+    "PPI",
+    "index",
+    "land",
+    "vegetation",
+    "plant",
+    "phenology",
+    "productivity",
+    "growing season",
+    "sentinel"
+  ],
+  "providers": [
+    {
+      "name": "European Environment Agency",
+      "roles": [
+        "licensor"
+      ],
+      "url": "https://land.copernicus.eu"
+    },
+    {
+      "name": "VITO",
+      "roles": [
+        "processor",
+        "producer"
+      ],
+      "url": "https://www.vito.be"
+    }
+  ],
+  "item_assets": {
+    "SOSD": {
+      "type": "image/tiff; application=geotiff",
+      "title": "SOSD",
+      "description": "SOSD",
+      "roles": [
+        "data"
+      ],
+      "eo:bands": [
+        {
+          "name": "SOSD",
+          "description": "SOSD"
+        }
+      ],
+      "raster:bands": [
+        {
+          "name": "SOSD",
+          "data_type": "uint8",
+          "sampling": "area",
+          "bits_per_sample": 8,
+          "spatial_resolution": 10
+        }
+      ]
+    },
+    "EOSD": {
+      "type": "image/tiff; application=geotiff",
+      "title": "EOSD",
+      "description": "EOSD",
+      "roles": [
+        "data"
+      ],
+      "eo:bands": [
+        {
+          "name": "EOSD",
+          "description": "EOSD"
+        }
+      ],
+      "raster:bands": [
+        {
+          "name": "EOSD",
+          "data_type": "uint8",
+          "sampling": "area",
+          "bits_per_sample": 8,
+          "spatial_resolution": 10
+        }
+      ]
+    },
+    "MAXD": {
+      "type": "image/tiff; application=geotiff",
+      "title": "MAXD",
+      "description": "MAXD",
+      "roles": [
+        "data"
+      ],
+      "eo:bands": [
+        {
+          "name": "MAXD",
+          "description": "MAXD"
+        }
+      ],
+      "raster:bands": [
+        {
+          "name": "MAXD",
+          "data_type": "uint8",
+          "sampling": "area",
+          "bits_per_sample": 8,
+          "spatial_resolution": 10
+        }
+      ]
+    },
+    "SOSV": {
+      "type": "image/tiff; application=geotiff",
+      "title": "SOSV",
+      "description": "SOSV",
+      "roles": [
+        "data"
+      ],
+      "eo:bands": [
+        {
+          "name": "SOSV",
+          "description": "SOSV"
+        }
+      ],
+      "raster:bands": [
+        {
+          "name": "SOSV",
+          "data_type": "uint16",
+          "sampling": "area",
+          "bits_per_sample": 16,
+          "spatial_resolution": 10,
+          "scale": 0.0001,
+          "offset": 0
+        }
+      ]
+    },
+    "EOSV": {
+      "type": "image/tiff; application=geotiff",
+      "title": "EOSV",
+      "description": "EOSV",
+      "roles": [
+        "data"
+      ],
+      "eo:bands": [
+        {
+          "name": "EOSV",
+          "description": "EOSV"
+        }
+      ],
+      "raster:bands": [
+        {
+          "name": "EOSV",
+          "data_type": "uint16",
+          "sampling": "area",
+          "bits_per_sample": 16,
+          "spatial_resolution": 10,
+          "scale": 0.0001,
+          "offset": 0
+        }
+      ]
+    },
+    "MINV": {
+      "type": "image/tiff; application=geotiff",
+      "title": "MINV",
+      "description": "MINV",
+      "roles": [
+        "data"
+      ],
+      "eo:bands": [
+        {
+          "name": "MINV",
+          "description": "MINV"
+        }
+      ],
+      "raster:bands": [
+        {
+          "name": "MINV",
+          "data_type": "uint16",
+          "sampling": "area",
+          "bits_per_sample": 16,
+          "spatial_resolution": 10,
+          "scale": 0.0001,
+          "offset": 0
+        }
+      ]
+    },
+    "MAXV": {
+      "type": "image/tiff; application=geotiff",
+      "title": "MAXV",
+      "description": "MAXV",
+      "roles": [
+        "data"
+      ],
+      "eo:bands": [
+        {
+          "name": "MAXV",
+          "description": "MAXV"
+        }
+      ],
+      "raster:bands": [
+        {
+          "name": "MAXV",
+          "data_type": "uint16",
+          "sampling": "area",
+          "bits_per_sample": 16,
+          "spatial_resolution": 10,
+          "scale": 0.0001,
+          "offset": 0
+        }
+      ]
+    },
+    "AMPL": {
+      "type": "image/tiff; application=geotiff",
+      "title": "AMPL",
+      "description": "AMPL",
+      "roles": [
+        "data"
+      ],
+      "eo:bands": [
+        {
+          "name": "AMPL",
+          "description": "AMPL"
+        }
+      ],
+      "raster:bands": [
+        {
+          "name": "AMPL",
+          "data_type": "uint16",
+          "sampling": "area",
+          "bits_per_sample": 16,
+          "spatial_resolution": 10,
+          "scale": 0.0001,
+          "offset": 0
+        }
+      ]
+    },
+    "LENGTH": {
+      "type": "image/tiff; application=geotiff",
+      "title": "LENGTH",
+      "description": "LENGTH",
+      "roles": [
+        "data"
+      ],
+      "eo:bands": [
+        {
+          "name": "LENGTH",
+          "description": "LENGTH"
+        }
+      ],
+      "raster:bands": [
+        {
+          "name": "LENGTH",
+          "data_type": "uint16",
+          "sampling": "area",
+          "bits_per_sample": 16,
+          "spatial_resolution": 10
+        }
+      ]
+    },
+    "LSLOPE": {
+      "type": "image/tiff; application=geotiff",
+      "title": "LSLOPE",
+      "description": "LSLOPE",
+      "roles": [
+        "data"
+      ],
+      "eo:bands": [
+        {
+          "name": "LSLOPE",
+          "description": "LSLOPE"
+        }
+      ],
+      "raster:bands": [
+        {
+          "name": "LSLOPE",
+          "data_type": "uint16",
+          "sampling": "area",
+          "bits_per_sample": 16,
+          "spatial_resolution": 10,
+          "scale": 0.0001,
+          "offset": 0
+        }
+      ]
+    },
+    "RSLOPE": {
+      "type": "image/tiff; application=geotiff",
+      "title": "RSLOPE",
+      "description": "RSLOPE",
+      "roles": [
+        "data"
+      ],
+      "eo:bands": [
+        {
+          "name": "RSLOPE",
+          "description": "RSLOPE"
+        }
+      ],
+      "raster:bands": [
+        {
+          "name": "RSLOPE",
+          "data_type": "uint16",
+          "sampling": "area",
+          "bits_per_sample": 16,
+          "spatial_resolution": 10,
+          "scale": 0.0001,
+          "offset": 0
+        }
+      ]
+    },
+    "SPROD": {
+      "type": "image/tiff; application=geotiff",
+      "title": "SPROD",
+      "description": "SPROD",
+      "roles": [
+        "data"
+      ],
+      "eo:bands": [
+        {
+          "name": "SPROD",
+          "description": "SPROD"
+        }
+      ],
+      "raster:bands": [
+        {
+          "name": "SPROD",
+          "data_type": "uint16",
+          "sampling": "area",
+          "bits_per_sample": 16,
+          "spatial_resolution": 10,
+          "scale": 0.02,
+          "offset": 0
+        }
+      ]
+    },
+    "TPROD": {
+      "type": "image/tiff; application=geotiff",
+      "title": "TPROD",
+      "description": "TPROD",
+      "roles": [
+        "data"
+      ],
+      "eo:bands": [
+        {
+          "name": "TPROD",
+          "description": "TPROD"
+        }
+      ],
+      "raster:bands": [
+        {
+          "name": "TPROD",
+          "data_type": "uint16",
+          "sampling": "area",
+          "bits_per_sample": 16,
+          "spatial_resolution": 10,
+          "scale": 0.02,
+          "offset": 0
+        }
+      ]
+    },
+    "QFLAG": {
+      "type": "image/tiff; application=geotiff",
+      "title": "QFLAG",
+      "description": "QFLAG",
+      "roles": [
+        "data"
+      ],
+      "eo:bands": [
+        {
+          "name": "QFLAG",
+          "description": "QFLAG"
+        }
+      ],
+      "raster:bands": [
+        {
+          "name": "QFLAG",
+          "data_type": "uint8",
+          "sampling": "area",
+          "bits_per_sample": 8,
+          "spatial_resolution": 10
+        }
+      ]
+    }
+  },
+  "summaries": {},
+  "assets": {}
+}

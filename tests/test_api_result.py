@@ -9,7 +9,7 @@ import shutil
 import textwrap
 import urllib.parse
 import urllib.request
-import urllib3
+import requests
 from pathlib import Path
 from typing import List, Optional, Sequence, Union
 
@@ -2969,14 +2969,14 @@ def _setup_metadata_request_mocking(
     api: ApiTester,
     results_dir: Path,
     results_url: str,
-    urllib_mock,
+    requests_mock,
 ):
     # Use ApiTester to easily build responses for the metadata request we have to mock
     api.set_auth_bearer_token()
     results_metadata = (
         api.get(f"jobs/{job_id}/results").assert_status_code(200).json
     )
-    urllib_mock.get(results_url, data=json.dumps(results_metadata))
+    requests_mock.get(results_url, json=results_metadata)
     # Mock each collection item metadata request too
     for link in results_metadata["links"]:
         if link["rel"] == "item":
@@ -2986,7 +2986,7 @@ def _setup_metadata_request_mocking(
             # org.openeo.geotrellis.geotiff.PyramidFactory.from_uris()
             for k in item_metadata["assets"]:
                 item_metadata["assets"][k]["href"] = str(results_dir / k)
-            urllib_mock.get(link["href"], json.dumps(item_metadata))
+            requests_mock.get(link["href"], json=item_metadata)
 
 
 class TestLoadResult:
@@ -3173,7 +3173,7 @@ class TestLoadResult:
         zk_client,
         zk_job_registry,
         batch_job_output_root,
-        urllib_mock,
+        requests_mock,
     ):
         job_id = "j-ec5d3e778ba5423d8d88a50b08cb9f63"
         results_url = f"https://foobar.test/job/{job_id}/results"
@@ -3189,7 +3189,7 @@ class TestLoadResult:
             api=api110,
             results_dir=results_dir,
             results_url=results_url,
-            urllib_mock=urllib_mock,
+            requests_mock=requests_mock,
         )
 
         process_graph = {
@@ -3322,7 +3322,7 @@ class TestLoadResult:
         zk_client,
         zk_job_registry,
         batch_job_output_root,
-        urllib_mock,
+        requests_mock,
         load_result_kwargs,
         expected,
     ):
@@ -3340,7 +3340,7 @@ class TestLoadResult:
             api=api110,
             results_dir=results_dir,
             results_url=results_url,
-            urllib_mock=urllib_mock,
+            requests_mock=requests_mock,
         )
 
         process_graph = {
@@ -3413,7 +3413,7 @@ class TestLoadStac:
                                                 9.844419570631366, 50.246156678379016))
 
     def test_stac_collection_multiple_items_no_spatial_extent_specified(
-        self, api110, zk_job_registry, batch_job_output_root, urllib_poolmanager_mock
+        self, api110, zk_job_registry, batch_job_output_root, requests_mock
     ):
         job_id = "j-ec5d3e778ba5423d8d88a50b08cb9f63"
         results_url = f"https://foobar.test/job/{job_id}/results"
@@ -3429,11 +3429,11 @@ class TestLoadStac:
             api=api110,
             results_dir=results_dir,
             results_url=results_url,
-            urllib_mock=urllib_poolmanager_mock,
+            requests_mock=requests_mock,
         )
 
         # sanity check: multiple items
-        results = json.loads(urllib3.PoolManager().request("GET", results_url).data.decode("utf-8"))
+        results = requests.get(results_url).json()
         item_links = [link for link in results["links"] if link["rel"] == "item"]
         assert len(item_links) > 1
 
@@ -3541,7 +3541,7 @@ class TestLoadStac:
             "stac/item02.json",
         ],
     )
-    def test_load_stac_with_stac_item_json(self, item_path, api110, urllib_poolmanager_mock, tmp_path):
+    def test_load_stac_with_stac_item_json(self, item_path, api110, requests_mock, tmp_path):
         """load_stac with a simple STAC item (as JSON file)"""
         item_json = (
             get_test_data_file(item_path).read_text()
@@ -3551,7 +3551,7 @@ class TestLoadStac:
                 "asset01.tiff", f"file://{get_test_data_file('binary/load_stac/BVL_v1/BVL_v1_2021.tif').absolute()}"
             )
         )
-        urllib_poolmanager_mock.get("https://stac.test/item.json", data=item_json)
+        requests_mock.get("https://stac.test/item.json", text=item_json)
 
         process_graph = {
             "loadstac1": {
@@ -3576,7 +3576,7 @@ class TestLoadStac:
         assert ds.coords["y"].values.min() == pytest.approx(3014000, abs=10)
 
     def test_load_stac_with_stac_item_issue619_non_standard_int_eobands_item_properties(
-        self, api110, urllib_poolmanager_mock, tmp_path
+        self, api110, requests_mock, tmp_path
     ):
         """
         https://github.com/Open-EO/openeo-geopyspark-driver/issues/619
@@ -3593,7 +3593,7 @@ class TestLoadStac:
             .replace("asset_green.tiff", f"file://{tiff_path}")
             .replace("asset_blue.tiff", f"file://{tiff_path}")
         )
-        urllib_poolmanager_mock.get("https://stac.test/item01.json", data=item_json)
+        requests_mock.get("https://stac.test/item01.json", text=item_json)
 
         process_graph = {
             "loadstac1": {
@@ -4258,24 +4258,14 @@ class TestLoadStac:
             assert tuple(ds.bounds) == tuple(map(pytest.approx, expected_bbox))
 
     @gps_config_overrides(job_dependencies_poll_interval_seconds=0, job_dependencies_max_poll_delay_seconds=60)
-    def test_load_stac_from_partial_job_results_basic(self, api110, urllib_poolmanager_mock, tmp_path, caplog):
+    def test_load_stac_from_partial_job_results_basic(self, api110, requests_mock, tmp_path, caplog):
         """load_stac from partial job results Collection (signed case)"""
 
         caplog.set_level("DEBUG")
 
-        def collection_json(path):
-            # stateful response callback to allow different responses for the same URL: first 'running', then 'finished'
-            dependency_finished = False
+        def collection_json(path, openeo_status):
+            return get_test_data_file(path).read_text().replace("$openeo_status", openeo_status)
 
-            def collection_json_with_openeo_status(_: urllib.request.Request):
-                nonlocal dependency_finished
-
-                openeo_status = 'finished' if dependency_finished else 'running'
-                dependency_finished = True
-                return UrllibMocker.Response(
-                    data=get_test_data_file(path).read_text().replace("$openeo_status", openeo_status))
-
-            return collection_json_with_openeo_status
 
         def item_json(path):
             return (
@@ -4287,12 +4277,14 @@ class TestLoadStac:
             )
 
         results_url = "https://openeo.test/openeo/jobs/j-2402094545c945c09e1307503aa58a3a/results?partial=true"
-        response = collection_json("stac/issue786_partial_job_results/collection.json")
-        urllib_poolmanager_mock.register("GET", results_url, response=response)
+        requests_mock.get(results_url, [
+            {"text": collection_json("stac/issue786_partial_job_results/collection.json", "running")},
+            {"text": collection_json("stac/issue786_partial_job_results/collection.json", "finished")},
+        ])
 
-        urllib_poolmanager_mock.get(
+        requests_mock.get(
             "https://openeo.test/openeo/jobs/j-2402094545c945c09e1307503aa58a3a/results/items/item01.json",
-            data=item_json("stac/issue786_partial_job_results/item01.json"),
+            text=item_json("stac/issue786_partial_job_results/item01.json"),
         )
 
         process_graph = {
@@ -4530,14 +4522,14 @@ class TestLoadStac:
         assert only_band.GetDescription() == "B02"
 
 
-    def test_empty_data_cube(self, api110, urllib_poolmanager_mock, requests_mock):
-        urllib_poolmanager_mock.get(
+    def test_empty_data_cube(self, api110, requests_mock):
+        requests_mock.get(
             "https://stac.dataspace.copernicus.test/v1/collections/sentinel-2-l2a",
-            data=get_test_data_file("stac/issue1049-api-empty-data-cube/collection.json").read_text(),
+            text=get_test_data_file("stac/issue1049-api-empty-data-cube/collection.json").read_text(),
         )
-        urllib_poolmanager_mock.get(
+        requests_mock.get(
             "https://stac.dataspace.copernicus.test/v1/",
-            data=get_test_data_file("stac/issue1049-api-empty-data-cube/catalog.json").read_text(),
+            text=get_test_data_file("stac/issue1049-api-empty-data-cube/catalog.json").read_text(),
         )
         requests_mock.get(
             "https://stac.dataspace.copernicus.test/v1/",
