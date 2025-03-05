@@ -1,7 +1,6 @@
 import logging
 from pathlib import PurePath, Path
 from typing import Union, Callable
-import urllib.error
 
 from openeo_driver.util.http import requests_with_retry
 from openeo_driver.workspace import Workspace, _merge_collection_metadata
@@ -11,6 +10,8 @@ from pystac_client import ConformanceClasses, stac_api_io
 import requests
 import requests.adapters
 from urllib3 import Retry
+
+from openeogeotrellis.integrations.stac import StacApiIO
 
 _log = logging.getLogger(__name__)
 
@@ -63,7 +64,10 @@ class StacApiWorkspace(Workspace):
 
             existing_collection = None
             try:
-                existing_collection = Collection.from_file(f"{self.root_url}/collections/{collection_id}")  # TODO: add retries and timeout
+                stac_io = StacApiIO(session=requests_with_retry())
+                existing_collection = Collection.from_file(
+                    f"{self.root_url}/collections/{collection_id}", stac_io=stac_io
+                )
             except Exception as e:
                 if self._is_not_found_error(e):  # not exceptional
                     pass
@@ -199,7 +203,6 @@ class StacApiWorkspace(Workspace):
             raise ValueError(f"{self.root_url} does not support Transaction extension for Items")
 
     def _is_not_found_error(self, e: BaseException) -> bool:
-        # TODO: adapt after adding retries and timeout
-        return (isinstance(e, urllib.error.HTTPError) and e.code == 404) or (
+        return (isinstance(e, requests.HTTPError) and e.response.status_code == 404) or (
             e.__cause__ is not None and self._is_not_found_error(e.__cause__)
         )

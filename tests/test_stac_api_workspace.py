@@ -1,5 +1,4 @@
 import datetime as dt
-import json
 from pathlib import PurePath, Path
 from typing import Dict
 
@@ -9,7 +8,7 @@ from pystac import Collection, Extent, SpatialExtent, TemporalExtent, Item, Asse
 from openeogeotrellis.workspace import StacApiWorkspace
 
 
-def test_merge_new(requests_mock, urllib_mock, tmp_path):
+def test_merge_new(requests_mock, tmp_path):
     stac_api_workspace = StacApiWorkspace(
         root_url="https://stacapi.test",
         export_asset=_export_asset,
@@ -19,7 +18,7 @@ def test_merge_new(requests_mock, urllib_mock, tmp_path):
     asset_path = Path("/path") / "to" / "asset1.tif"
 
     _mock_stac_api_root_catalog(requests_mock, stac_api_workspace.root_url)
-    # no need to mock URL for existing Collection as urllib_mock will return a 404 by default
+    requests_mock.get(f"{stac_api_workspace.root_url}/collections/{target}", status_code=404)
 
     create_collection_mock = requests_mock.post(f"{stac_api_workspace.root_url}/collections")
     create_item_mock = requests_mock.post(f"{stac_api_workspace.root_url}/collections/{target}/items")
@@ -48,7 +47,7 @@ def test_merge_new(requests_mock, urllib_mock, tmp_path):
     )
 
 
-def test_merge_into_existing(requests_mock, urllib_mock, tmp_path):
+def test_merge_into_existing(requests_mock, tmp_path):
     stac_api_workspace = StacApiWorkspace(
         root_url="https://stacapi.test",
         export_asset=_export_asset,
@@ -71,9 +70,9 @@ def test_merge_into_existing(requests_mock, urllib_mock, tmp_path):
             dt.datetime.fromisoformat("2024-12-19T00:00:00+00:00")
         ]]),
     )
-    urllib_mock.get(
+    requests_mock.get(
         f"{stac_api_workspace.root_url}/collections/{target}",
-        data=json.dumps(existing_collection.to_dict()),
+        json=existing_collection.to_dict(),
     )
 
     new_collection = _collection(
@@ -118,7 +117,7 @@ def test_merge_into_existing(requests_mock, urllib_mock, tmp_path):
 
 
 @responses.activate(registry=responses.registries.OrderedRegistry)
-def test_merge_resilience(tmp_path, urllib_mock):
+def test_merge_resilience(tmp_path):
     stac_api_workspace = StacApiWorkspace(
         root_url="https://stacapi.test",
         export_asset=_export_asset,
@@ -143,8 +142,8 @@ def test_merge_resilience(tmp_path, urllib_mock):
         },
     )
 
-    # no need to mock URL for existing Collection as urllib_mock will return a 404 by default
-    # TODO: set up GET collection: first return 500, return 404 on retry
+    get_collection_error_resp = responses.get(f"{stac_api_workspace.root_url}/collections/{target}", status=500)
+    get_collection_not_found_resp = responses.get(f"{stac_api_workspace.root_url}/collections/{target}", status=404)
 
     create_collection_error_resp = responses.post(f"{stac_api_workspace.root_url}/collections", status=500)
     create_collection_conflict_resp = responses.post(f"{stac_api_workspace.root_url}/collections", status=409)
@@ -158,7 +157,8 @@ def test_merge_resilience(tmp_path, urllib_mock):
     assert get_root_catalog_error_resp.call_count == 1
     assert get_root_catalog_ok_resp.call_count == 1
 
-    # TODO: test retry getting existing collection (https://github.com/Open-EO/openeo-python-client/issues/738)
+    assert get_collection_error_resp.call_count == 1
+    assert get_collection_not_found_resp.call_count == 1
 
     assert create_collection_error_resp.call_count == 1
     assert create_collection_conflict_resp.call_count == 1
