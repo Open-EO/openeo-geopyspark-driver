@@ -38,7 +38,7 @@ def test_extract_own_job_info(url, user_id, job_info_id):
         assert job_info.id == job_info_id
 
 
-def test_property_filter_from_parameter(urllib_poolmanager_mock, requests_mock):
+def test_property_filter_from_parameter(requests_mock):
     stac_api_root_url = "https://stac.test"
     stac_collection_url = f"{stac_api_root_url}/collections/collection"
 
@@ -53,9 +53,7 @@ def test_property_filter_from_parameter(urllib_poolmanager_mock, requests_mock):
             "features": [],
         }
 
-    search_mock = _mock_stac_api(
-        urllib_poolmanager_mock, requests_mock, stac_api_root_url, stac_collection_url, feature_collection
-    )
+    search_mock = _mock_stac_api(requests_mock, stac_api_root_url, stac_collection_url, feature_collection)
 
     properties = {
         "product_tile": {
@@ -88,7 +86,7 @@ def test_property_filter_from_parameter(urllib_poolmanager_mock, requests_mock):
     assert search_mock.called
 
 
-def test_dimensions(urllib_poolmanager_mock, requests_mock):
+def test_dimensions(requests_mock):
     stac_api_root_url = "https://stac.test"
     stac_collection_url = f"{stac_api_root_url}/collections/collection"
 
@@ -99,7 +97,6 @@ def test_dimensions(urllib_poolmanager_mock, requests_mock):
     )
 
     _mock_stac_api(
-        urllib_poolmanager_mock,
         requests_mock,
         stac_api_root_url,
         stac_collection_url,
@@ -158,7 +155,6 @@ def jvm_mock():
     ],
 )
 def test_lcfm_improvements(  # resolution and offset behind a feature flag; alphabetical head tags are tested elsewhere
-    urllib_poolmanager_mock,
     requests_mock,
     jvm_mock,
     band_names,
@@ -172,7 +168,6 @@ def test_lcfm_improvements(  # resolution and offset behind a feature flag; alph
     features = json.loads(get_test_data_file("stac/issue1043-api-proj-code/FeatureCollection.json").read_text())
 
     _mock_stac_api(
-        urllib_poolmanager_mock,
         requests_mock,
         stac_api_root_url,
         stac_collection_url,
@@ -217,28 +212,26 @@ def test_lcfm_improvements(  # resolution and offset behind a feature flag; alph
     )
 
 
-def _mock_stac_api(urllib_poolmanager_mock, requests_mock, stac_api_root_url, stac_collection_url, feature_collection):
-    urllib_poolmanager_mock.get(
+def _mock_stac_api(requests_mock, stac_api_root_url, stac_collection_url, feature_collection):
+    requests_mock.get(
         stac_collection_url,
-        data=json.dumps(
-            {
-                "type": "Collection",
-                "stac_version": "1.0.0",
-                "id": "collection",
-                "description": "collection",
-                "license": "unknown",
-                "extent": {
-                    "spatial": {"bbox": [[-180, -90, 180, 90]]},
-                    "temporal": {"interval": [[None, None]]},
-                },
-                "links": [
-                    {
-                        "rel": "root",
-                        "href": stac_api_root_url,
-                    }
-                ],
-            }
-        ),
+        json={
+            "type": "Collection",
+            "stac_version": "1.0.0",
+            "id": "collection",
+            "description": "collection",
+            "license": "unknown",
+            "extent": {
+                "spatial": {"bbox": [[-180, -90, 180, 90]]},
+                "temporal": {"interval": [[None, None]]},
+            },
+            "links": [
+                {
+                    "rel": "root",
+                    "href": stac_api_root_url,
+                }
+            ],
+        },
     )
 
     catalog_response = {
@@ -253,20 +246,19 @@ def _mock_stac_api(urllib_poolmanager_mock, requests_mock, stac_api_root_url, st
         ],
     }
 
-    urllib_poolmanager_mock.get(stac_api_root_url, data=json.dumps(catalog_response))
     requests_mock.get(stac_api_root_url, json=catalog_response)
 
     search_mock = requests_mock.get(f"{stac_api_root_url}/search", json=feature_collection)
     return search_mock
 
 
-def test_world_oom(urllib_poolmanager_mock):
+def test_world_oom(requests_mock):
     stac_item_url = (
         "https://earthengine.openeo.org/v1.0/results/c08dc17428fde51ea7e1332eec2abd06e74188924e6c773257b4fb00aee0a308"
     )
     stac_item = get_test_data_file("stac/issue1055-world-oom/result_item.json").read_text()
 
-    urllib_poolmanager_mock.get(stac_item_url, data=stac_item)
+    requests_mock.get(stac_item_url, text=stac_item)
 
     load_stac(
         stac_item_url,
@@ -290,12 +282,11 @@ def test_world_oom(urllib_poolmanager_mock):
         ({}, EvalEnv({"allow_empty_cubes": True}), nullcontext()),  # pyramid_seq
     ],
 )
-def test_empty_cube_from_stac_api(urllib_poolmanager_mock, requests_mock, featureflags, env, expectation):
+def test_empty_cube_from_stac_api(requests_mock, featureflags, env, expectation):
     stac_api_root_url = "https://stac.test"
     stac_collection_url = f"{stac_api_root_url}/collections/collection"
 
     _mock_stac_api(
-        urllib_poolmanager_mock,
         requests_mock,
         stac_api_root_url,
         stac_collection_url,
@@ -337,10 +328,10 @@ def test_empty_cube_from_stac_api(urllib_poolmanager_mock, requests_mock, featur
         ({}, EvalEnv({"allow_empty_cubes": True}), nullcontext()),  # pyramid_seq
     ],
 )
-def test_empty_cube_from_non_intersecting_item(urllib_poolmanager_mock, featureflags, env, expectation):
+def test_empty_cube_from_non_intersecting_item(requests_mock, featureflags, env, expectation):
     stac_item_url = "https://stac.test/item.json"
 
-    urllib_poolmanager_mock.get(stac_item_url, data=get_test_data_file("stac/item01.json").read_text())
+    requests_mock.get(stac_item_url, text=get_test_data_file("stac/item01.json").read_text())
 
     with expectation:
         data_cube = load_stac(
