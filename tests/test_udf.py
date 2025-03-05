@@ -1,3 +1,4 @@
+import logging
 import re
 import tarfile
 import textwrap
@@ -5,23 +6,24 @@ import zipfile
 from datetime import datetime
 from pathlib import Path
 
+import dirty_equals
 import pyspark
 import pytest
-
 from openeo.udf import StructuredData, UdfData
-from openeo_driver.util.logging import get_logging_config, LOG_HANDLER_FILE_JSON
+from openeo_driver.util.logging import LOG_HANDLER_FILE_JSON, get_logging_config
+
 from openeogeotrellis.backend import JOB_METADATA_FILENAME
 from openeogeotrellis.config.constants import UDF_DEPENDENCIES_INSTALL_MODE
 from openeogeotrellis.deploy.batch_job import run_job
 from openeogeotrellis.testing import gps_config_overrides
 from openeogeotrellis.udf import (
+    UdfDependencyHandlingFailure,
     assert_running_in_executor,
     build_python_udf_dependencies_archive,
     collect_python_udf_dependencies,
     install_python_udf_dependencies,
     python_udf_dependency_context_from_archive,
     run_udf_code,
-    UdfDependencyHandlingFailure,
 )
 
 
@@ -269,6 +271,198 @@ class TestUdfCollection:
             },
         }
         assert collect_python_udf_dependencies(pg) == {("Python", None): {"numpy", "pandas", "scipy"}}
+
+    def test_collect_python_udf_dependencies_from_remote_udp(self, requests_mock):
+        udp_url = "https://udphub.test/apply_foo.udp.json"
+        udf = textwrap.dedent(
+            """
+            # /// script
+            # dependencies = [
+            #     "numpy",
+            #     'pandas',
+            # ]
+            # ///
+            def foo(x):
+                return x + 1
+            """
+        )
+        udp = {
+            "id": "apply_foo",
+            "process_graph": {
+                "apply1": {
+                    "process_id": "apply",
+                    "arguments": {
+                        "data": {"from_parameter": "data"},
+                        "process": {
+                            "process_graph": {
+                                "runudf1": {
+                                    "process_id": "run_udf",
+                                    "arguments": {"data": {"from_parameter": "x"}, "udf": udf, "runtime": "Python"},
+                                    "result": True,
+                                }
+                            }
+                        },
+                    },
+                    "result": True,
+                }
+            },
+            "parameters": [
+                {"name": "data", "schema": {"type": "object", "subtype": "datacube"}},
+            ],
+            "returns": {"schema": {"type": "object", "subtype": "datacube"}},
+        }
+        requests_mock.get(udp_url, json=udp)
+
+        pg = {
+            "loadcollection1": {
+                "process_id": "load_collection",
+                "arguments": {"id": "SENTINEL123"},
+            },
+            "applyfoo1": {
+                "process_id": "apply_foo",
+                "namespace": udp_url,
+                "arguments": {"data": {"from_node": "loadcollection1"}},
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "applyfoo1"}, "format": "GTiff", "options": {}},
+                "result": True,
+            },
+        }
+        assert collect_python_udf_dependencies(pg) == {("Python", None): {"numpy", "pandas"}}
+
+    def test_collect_python_udf_dependencies_direct_and_remote_udp(self, requests_mock):
+        udp_url = "https://udphub.test/apply_foo.udp.json"
+        udf1 = textwrap.dedent(
+            """
+            # /// script
+            # dependencies = ["numpy", 'pandas']
+            # ///
+            def foo(x):
+                return x + 1
+            """
+        )
+        udf2 = textwrap.dedent(
+            """
+            # /// script
+            # dependencies = ["scipy"]
+            # ///
+            def bar(x):
+                return x * 42
+            """
+        )
+        udp = {
+            "id": "apply_foo",
+            "process_graph": {
+                "apply1": {
+                    "process_id": "apply",
+                    "arguments": {
+                        "data": {"from_parameter": "data"},
+                        "process": {
+                            "process_graph": {
+                                "runudf1": {
+                                    "process_id": "run_udf",
+                                    "arguments": {"data": {"from_parameter": "x"}, "udf": udf1, "runtime": "Python"},
+                                    "result": True,
+                                }
+                            }
+                        },
+                    },
+                    "result": True,
+                }
+            },
+            "parameters": [
+                {"name": "data", "schema": {"type": "object", "subtype": "datacube"}},
+            ],
+            "returns": {"schema": {"type": "object", "subtype": "datacube"}},
+        }
+        requests_mock.get(udp_url, json=udp)
+
+        pg = {
+            "loadcollection1": {
+                "process_id": "load_collection",
+                "arguments": {"id": "SENTINEL123"},
+            },
+            "applyfoo1": {
+                "process_id": "apply_foo",
+                "namespace": udp_url,
+                "arguments": {"data": {"from_node": "loadcollection1"}},
+            },
+            "apply2": {
+                "process_id": "apply",
+                "arguments": {
+                    "data": {"from_node": "applyfoo1"},
+                    "process": {
+                        "process_graph": {
+                            "runudf1": {
+                                "process_id": "run_udf",
+                                "arguments": {"data": {"from_parameter": "x"}, "udf": udf2, "runtime": "Python"},
+                                "result": True,
+                            }
+                        }
+                    },
+                },
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "apply2"}, "format": "GTiff", "options": {}},
+                "result": True,
+            },
+        }
+        assert collect_python_udf_dependencies(pg) == {("Python", None): {"numpy", "pandas", "scipy"}}
+
+    def test_collect_python_udf_dependencies_from_remote_udp_resilience(self, requests_mock, caplog):
+        caplog.set_level(logging.WARNING)
+        udp_url = "https://udphub.test/apply_foo.udp.json"
+        requests_mock.get(udp_url, status_code=404, text="nope nope")
+
+        udf2 = textwrap.dedent(
+            """
+            # /// script
+            # dependencies = ["scipy"]
+            # ///
+            def bar(x):
+                return x * 42
+            """
+        )
+
+        pg = {
+            "loadcollection1": {
+                "process_id": "load_collection",
+                "arguments": {"id": "SENTINEL123"},
+            },
+            "applyfoo1": {
+                "process_id": "apply_foo",
+                "namespace": udp_url,
+                "arguments": {"data": {"from_node": "loadcollection1"}},
+            },
+            "apply2": {
+                "process_id": "apply",
+                "arguments": {
+                    "data": {"from_node": "applyfoo1"},
+                    "process": {
+                        "process_graph": {
+                            "runudf1": {
+                                "process_id": "run_udf",
+                                "arguments": {"data": {"from_parameter": "x"}, "udf": udf2, "runtime": "Python"},
+                                "result": True,
+                            }
+                        }
+                    },
+                },
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "apply2"}, "format": "GTiff", "options": {}},
+                "result": True,
+            },
+        }
+        assert collect_python_udf_dependencies(pg) == {("Python", None): {"scipy"}}
+
+        assert caplog.text == dirty_equals.IsStr(
+            regex=r".*collect_udf: skipping failure.*https://udphub.test/apply_foo.udp.json.*ProcessNamespaceInvalid.*",
+            regex_flags=re.DOTALL,
+        )
 
 
 class TestInstallPythonUdfDependencies:

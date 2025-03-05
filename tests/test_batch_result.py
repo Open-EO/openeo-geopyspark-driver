@@ -2436,7 +2436,7 @@ def _paths_relative_to(base: Path) -> Set[Path]:
     }
 
 
-def skip_spatial_geotiff_metadata(tmp_path):
+def test_spatial_geotiff_metadata(tmp_path):
     job_dir = tmp_path
 
     process_graph = {

@@ -16,6 +16,8 @@ import pyspark
 from openeo.udf.run_code import extract_udf_dependencies
 from openeo.util import TimingLogger
 from openeo_driver.errors import OpenEOApiException
+from openeo_driver.processgraph import get_process_definition_from_url
+from openeo_driver.util.http import is_http_url
 
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.config.constants import UDF_DEPENDENCIES_INSTALL_MODE
@@ -87,6 +89,15 @@ def collect_udfs(process_graph: dict) -> Iterator[Tuple[str, str, Union[str, Non
         for argument_id, argument in node.get("arguments", {}).items():
             if isinstance(argument, dict) and "process_graph" in argument:
                 yield from collect_udfs(argument["process_graph"])
+
+        if "namespace" in node and is_http_url(node["namespace"]):
+            try:
+                process_definition = get_process_definition_from_url(
+                    process_id=node["process_id"], url=node["namespace"]
+                )
+                yield from collect_udfs(process_definition.process_graph)
+            except Exception as e:
+                _log.warning(f"collect_udf: skipping failure on {node=} ({node_id=}): {e!r}")
 
 
 def collect_python_udf_dependencies(process_graph: dict) -> Dict[Tuple[str, str], set]:

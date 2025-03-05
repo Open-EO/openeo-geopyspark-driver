@@ -2074,17 +2074,8 @@ class GeopysparkDataCube(DriverDataCube):
                                 gtiff_options,
                             )
 
-                            paths_tuples = [  # TODO: for backwards compatibility, remove afterwards
-                                (
-                                    paths_tuple[0],
-                                    paths_tuple[1] if len(paths_tuple) == 3 else None,
-                                    paths_tuple[2] if len(paths_tuple) == 3 else paths_tuple[1],
-                                )
-                                for paths_tuple in map(to_tuple, paths_tuples)
-                            ]
-
                             assets = {}
-                            for path, bbox, band_indices in paths_tuples:
+                            for path, bbox, band_indices in map(to_tuple, paths_tuples):
                                 file_name = str(pathlib.Path(path).relative_to(save_directory))
                                 assets[file_name] = {
                                     "href": str(path),
