@@ -5,7 +5,7 @@ import requests
 from pystac.stac_io import DefaultStacIO
 
 
-class StacApiIO(DefaultStacIO):
+class ResilientStacIO(DefaultStacIO):
     """
     A STAC IO implementation that supports reading with timeout and retry.
     """

@@ -11,7 +11,7 @@ import requests
 import requests.adapters
 from urllib3 import Retry
 
-from openeogeotrellis.integrations.stac import StacApiIO
+from openeogeotrellis.integrations.stac import ResilientStacIO
 
 _log = logging.getLogger(__name__)
 
@@ -70,7 +70,7 @@ class StacApiWorkspace(Workspace):
                 allowed_methods=Retry.DEFAULT_ALLOWED_METHODS.union({"POST"}),
             ) as session:
                 try:
-                    stac_io = StacApiIO(session=session)
+                    stac_io = ResilientStacIO(session=session)
                     existing_collection = Collection.from_file(
                         f"{self.root_url}/collections/{collection_id}", stac_io=stac_io
                     )

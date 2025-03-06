@@ -42,7 +42,7 @@ from openeogeotrellis.constants import EVAL_ENV_KEY
 from openeogeotrellis.geopysparkcubemetadata import GeopysparkCubeMetadata
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.utils import normalize_temporal_extent, get_jvm, to_projected_polygons, map_optional
-from openeogeotrellis.integrations.stac import StacApiIO
+from openeogeotrellis.integrations.stac import ResilientStacIO
 
 logger = logging.getLogger(__name__)
 REQUESTS_TIMEOUT_SECONDS = 60
@@ -801,7 +801,7 @@ def _await_stac_object(url, poll_interval_seconds, max_poll_delay_seconds, max_p
     session = requests_with_retry(total=5, backoff_factor=0.1, status_forcelist={500, 502, 503, 504})
 
     while True:
-        stac_io = StacApiIO(session)
+        stac_io = ResilientStacIO(session)
         stac_object = pystac.read_file(href=url, stac_io=stac_io)
 
         if isinstance(stac_object, pystac.Catalog):
