@@ -8,8 +8,6 @@ from pystac.stac_io import DefaultStacIO
 class StacApiIO(DefaultStacIO):
     """
     A STAC IO implementation that supports reading with timeout and retry.
-
-    TODO: migrate to RetryStacIO when it has timeout support https://github.com/stac-utils/pystac/issues/1515
     """
 
     def __init__(
