@@ -1,4 +1,5 @@
 import logging
+import re
 from pathlib import PurePath, Path
 from typing import Union, Callable
 
@@ -18,6 +19,7 @@ _log = logging.getLogger(__name__)
 
 class StacApiWorkspace(Workspace):
     REQUESTS_TIMEOUT_SECONDS = 60
+    TARGET_PATTERN = re.compile(r"^[\w\-]+$")
 
     def __init__(
         self,
@@ -53,11 +55,12 @@ class StacApiWorkspace(Workspace):
         raise NotImplementedError
 
     def merge(self, stac_resource: STACObject, target: PurePath, remove_original: bool = False) -> STACObject:
+        collection_id = self._validate_collection_id(target)
+        del target
+
         self._assert_catalog_supports_necessary_api()
 
         stac_resource = stac_resource.full_copy()
-        collection_id = str(target)
-        del target
 
         if isinstance(stac_resource, Collection):
             new_collection = stac_resource
@@ -209,3 +212,15 @@ class StacApiWorkspace(Workspace):
         return (isinstance(e, requests.HTTPError) and e.response.status_code == 404) or (
             e.__cause__ is not None and self._is_not_found_error(e.__cause__)
         )
+
+    @staticmethod
+    def _validate_collection_id(target: PurePath) -> str:
+        collection_id = str(target)
+
+        if not StacApiWorkspace.TARGET_PATTERN.fullmatch(collection_id):
+            raise ValueError(
+                f"merge argument does not match pattern /{StacApiWorkspace.TARGET_PATTERN.pattern}/,"
+                f" got: {collection_id}"
+            )
+
+        return collection_id

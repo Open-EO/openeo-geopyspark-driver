@@ -1,7 +1,9 @@
 import datetime as dt
+import re
 from pathlib import PurePath, Path
 from typing import Dict
 
+import pytest
 import responses
 from pystac import Collection, Extent, SpatialExtent, TemporalExtent, Item, Asset
 
@@ -171,6 +173,29 @@ def test_merge_resilience(tmp_path):
 
     assert create_item_error_resp.call_count == 1
     assert create_item_conflict_resp.call_count == 1
+
+
+def test_validate_collection_id(requests_mock, tmp_path):
+    asset_path = Path("asset.tif")
+    collection = _collection(root_path=tmp_path / "collection", collection_id="collection", asset_path=asset_path)
+
+    stac_api_workspace = StacApiWorkspace(
+        root_url="https://stacapi.test",
+        export_asset=_export_asset,
+        asset_alternate_id="file",
+    )
+
+    target = PurePath("test/collection_id")
+
+    _mock_stac_api_root_catalog(requests_mock, stac_api_workspace.root_url)
+    requests_mock.get(f"{stac_api_workspace.root_url}/collections/{target}", status_code=404)
+    requests_mock.post(f"{stac_api_workspace.root_url}/collections")
+    requests_mock.post(f"{stac_api_workspace.root_url}/collections/{target}/items")
+
+    with pytest.raises(
+        ValueError, match=re.escape(r"merge argument does not match pattern /^[\w\-]+$/, got: test/collection_id")
+    ):
+        stac_api_workspace.merge(collection, target)
 
 
 def _mock_stac_api_root_catalog(requests_mock, root_url: str):
