@@ -1580,7 +1580,6 @@ def test_export_workspace_merge_into_stac_api(
     tmp_path,
     mock_s3_bucket,
     requests_mock,
-    urllib_mock,
     kube,
     moto_server,
     monkeypatch,
@@ -1622,7 +1621,7 @@ def test_export_workspace_merge_into_stac_api(
     })
 
     # does the Collection already exist?
-    urllib_mock.get(f"{stac_api_workspace.root_url}/collections/{collection_id}", code=404, data="Not Found")
+    requests_mock.get(f"{stac_api_workspace.root_url}/collections/{collection_id}", status_code=404, text="Not Found")
 
     # create STAC objects
     create_collection = requests_mock.post(f"{stac_api_workspace.root_url}/collections")

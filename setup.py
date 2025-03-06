@@ -27,7 +27,8 @@ tests_require = [
     "kubernetes",
     "re-assert",
     "dirty-equals>=0.6",
-    "cryptography>=44.0.0"
+    "cryptography>=44.0.0",
+    "responses",
 ]
 
 setup(
