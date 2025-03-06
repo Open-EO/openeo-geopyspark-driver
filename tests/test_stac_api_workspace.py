@@ -13,6 +13,7 @@ def test_merge_new(requests_mock, tmp_path):
         root_url="https://stacapi.test",
         export_asset=_export_asset,
         asset_alternate_id="file",
+        get_access_token=lambda: "s3cr3t",
     )
     target = PurePath("new_collection")
     asset_path = Path("/path") / "to" / "asset1.tif"
@@ -39,9 +40,11 @@ def test_merge_new(requests_mock, tmp_path):
     }
 
     assert create_collection_mock.called_once
+    assert create_collection_mock.last_request.headers["Authorization"] == "Bearer s3cr3t"
     assert create_collection_mock.last_request.json() == dict(collection1.to_dict(), id=str(target), links=[])
 
     assert create_item_mock.called_once
+    assert create_item_mock.last_request.headers["Authorization"] == "Bearer s3cr3t"
     assert create_item_mock.last_request.json() == dict(
         collection1.get_item(id=asset_path.name).to_dict(), collection=str(target), links=[]
     )
@@ -52,6 +55,7 @@ def test_merge_into_existing(requests_mock, tmp_path):
         root_url="https://stacapi.test",
         export_asset=_export_asset,
         asset_alternate_id="file",
+        get_access_token=lambda: "s3cr3t",
     )
     target = PurePath("existing_collection")
     asset_path = Path("/path") / "to" / "asset2.tif"
@@ -94,6 +98,7 @@ def test_merge_into_existing(requests_mock, tmp_path):
     }
 
     assert update_collection_mock.called_once
+    assert update_collection_mock.last_request.headers["Authorization"] == "Bearer s3cr3t"
     assert update_collection_mock.last_request.json() == dict(
         new_collection.to_dict(),
         id=str(target),
@@ -109,6 +114,7 @@ def test_merge_into_existing(requests_mock, tmp_path):
     )
 
     assert create_item_mock.called_once
+    assert create_item_mock.last_request.headers["Authorization"] == "Bearer s3cr3t"
     assert create_item_mock.last_request.json() == dict(
         new_collection.get_item(id="asset2.tif").to_dict(),
         collection=str(target),

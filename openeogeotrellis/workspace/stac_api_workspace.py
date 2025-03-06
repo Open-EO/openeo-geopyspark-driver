@@ -63,31 +63,30 @@ class StacApiWorkspace(Workspace):
             new_collection = stac_resource
 
             existing_collection = None
-            try:
-                stac_io = StacApiIO(session=requests_with_retry())
-                existing_collection = Collection.from_file(
-                    f"{self.root_url}/collections/{collection_id}", stac_io=stac_io
-                )
-            except Exception as e:
-                if self._is_not_found_error(e):  # not exceptional
-                    pass
-                else:
-                    raise
-
-            _log.info(
-                f"merging into {'existing' if existing_collection else 'new'}"
-                f" {self.root_url}/collections/{collection_id}"
-            )
 
             with requests_with_retry(
                 total=3,
                 backoff_factor=2,
                 allowed_methods=Retry.DEFAULT_ALLOWED_METHODS.union({"POST"}),
             ) as session:
-                # TODO: uses a single access token for the collection + all items
-                session.headers = (
-                    {"Authorization": f"Bearer {self._get_access_token()}"} if self._get_access_token else None
+                try:
+                    stac_io = StacApiIO(session=session)
+                    existing_collection = Collection.from_file(
+                        f"{self.root_url}/collections/{collection_id}", stac_io=stac_io
+                    )
+                except Exception as e:
+                    if self._is_not_found_error(e):  # not exceptional
+                        pass
+                    else:
+                        raise
+
+                _log.info(
+                    f"merging into {'existing' if existing_collection else 'new'}"
+                    f" {self.root_url}/collections/{collection_id}"
                 )
+
+                # TODO: uses a single access token for the collection + all items
+                headers = {"Authorization": f"Bearer {self._get_access_token()}"} if self._get_access_token else None
 
                 merged_collection = (
                     _merge_collection_metadata(existing_collection, new_collection) if existing_collection
@@ -99,6 +98,7 @@ class StacApiWorkspace(Workspace):
                     collection_id,
                     modify_existing=bool(existing_collection),
                     session=session,
+                    headers=headers,
                 )
 
                 for new_item in new_collection.get_items():
@@ -116,7 +116,7 @@ class StacApiWorkspace(Workspace):
 
                         asset.href = workspace_uri
 
-                    self._upload_item(new_item, collection_id, session)
+                    self._upload_item(new_item, collection_id, session, headers)
 
             def set_alternate_uri(_, asset) -> Asset:
                 asset.extra_fields["alternate"] = {self._asset_alternate_id: asset.href}
@@ -127,7 +127,7 @@ class StacApiWorkspace(Workspace):
             raise NotImplementedError(f"merge from {stac_resource}")
 
     def _upload_collection(
-        self, collection: Collection, collection_id: str, modify_existing: bool, session: requests.Session
+        self, collection: Collection, collection_id: str, modify_existing: bool, session: requests.Session, headers
     ):
         bare_collection = collection.clone()
         bare_collection.id = collection_id
@@ -141,17 +141,19 @@ class StacApiWorkspace(Workspace):
                 f"{self.root_url}/collections/{collection_id}",
                 json=request_json,
                 timeout=self.REQUESTS_TIMEOUT_SECONDS,
+                headers=headers,
             )
         else:
             resp = session.post(
                 f"{self.root_url}/collections",
                 json=request_json,
                 timeout=self.REQUESTS_TIMEOUT_SECONDS,
+                headers=headers,
             )
 
         self._raise_for_status(resp)
 
-    def _upload_item(self, item: Item, collection_id: str, session: requests.Session):
+    def _upload_item(self, item: Item, collection_id: str, session: requests.Session, headers):
         item.remove_hierarchical_links()
         item.collection_id = collection_id
 
@@ -159,6 +161,7 @@ class StacApiWorkspace(Workspace):
             f"{self.root_url}/collections/{collection_id}/items",
             json=item.to_dict(include_self_link=False),
             timeout=self.REQUESTS_TIMEOUT_SECONDS,
+            headers=headers,
         )
 
         self._raise_for_status(resp)
