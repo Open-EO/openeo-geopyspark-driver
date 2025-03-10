@@ -437,8 +437,9 @@ def load_stac(
         if not end_datetime or item_end_datetime > end_datetime:
             end_datetime = item_end_datetime
 
-        band_assets = {asset_id: asset for asset_id, asset
-                       in dict(sorted(itm.get_assets().items())).items() if is_band_asset(asset)}
+        band_assets = {
+            asset_id: asset for asset_id, asset in dict(sorted(itm.assets.items())).items() if is_band_asset(asset)
+        }
 
         builder = (jvm.org.openeo.opensearch.OpenSearchResponses.featureBuilder()
                    .withId(itm.id)
