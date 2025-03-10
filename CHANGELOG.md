@@ -12,13 +12,15 @@ without compromising stable operations.
 
 <!-- start-of-changelog -->
 
-## In progress: 0.63.0
+## In progress: 0.64.0
+
+## 0.63.0
 
 - Add `bbox` and `geometry` to exported STAC items pertaining to GeoTiff assets of a spatial data cube ([eu-cdse/openeo-cdse-infra#418](https://github.com/eu-cdse/openeo-cdse-infra/issues/418))
 - Support UDF dependency extraction from remote process definitions (URL based UDPs) ([#1063](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1063))
 - `StacApiWorkspace`: improve STAC requests resilience ([#1073](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1073))
 - `StacApiWorkspace`: reject unsupported characters in `merge` ([eu-cdse/openeo-cdse-infra#415](https://github.com/eu-cdse/openeo-cdse-infra/issues/415))
-- `load_stac`: fix time gap in processing due to expensive item walking ([#1081](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1081))
+- `load_stac`: fix delay in driver due to expensive item/asset processing ([#1081](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1081))
 
 
 ## 0.62.0
