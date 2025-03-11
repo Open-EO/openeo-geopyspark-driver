@@ -1889,6 +1889,7 @@ class GeopysparkDataCube(DriverDataCube):
 
             if format == "GTIFF":
                 zlevel = format_options.get("ZLEVEL", 6)
+                tile_size = format_options.get("tile_size")
 
                 def add_gdalinfo_objects(assets_original):
                     assets_to_add = {}
@@ -1983,6 +1984,14 @@ class GeopysparkDataCube(DriverDataCube):
                     nodata = max_level.layer_metadata.no_data_value
 
                     max_level_rdd = max_level.srdd.rdd()
+                    if tile_size:
+                        max_level_rdd = get_jvm().org.openeo.geotrellis.OpenEOProcesses().retile(
+                            max_level_rdd,
+                            tile_size,
+                            tile_size,
+                            0,
+                            0,
+                        )
 
                     if tile_grid:
                         if separate_asset_per_band:
@@ -2066,7 +2075,7 @@ class GeopysparkDataCube(DriverDataCube):
                             )
                         else:
                             paths_tuples = get_jvm().org.openeo.geotrellis.geotiff.package.saveRDDAllowAssetPerBand(
-                                get_jvm().org.openeo.geotrellis.OpenEOProcesses().retile(max_level_rdd, 256, 256, 0, 0),
+                                max_level_rdd,
                                 band_count,
                                 str(save_filename),
                                 zlevel,
