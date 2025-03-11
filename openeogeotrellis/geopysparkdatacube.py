@@ -2066,7 +2066,7 @@ class GeopysparkDataCube(DriverDataCube):
                             )
                         else:
                             paths_tuples = get_jvm().org.openeo.geotrellis.geotiff.package.saveRDDAllowAssetPerBand(
-                                max_level_rdd,
+                                get_jvm().org.openeo.geotrellis.OpenEOProcesses().retile(max_level_rdd, 256, 256, 0, 0),
                                 band_count,
                                 str(save_filename),
                                 zlevel,
