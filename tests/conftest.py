@@ -302,17 +302,13 @@ def job_registry() -> InMemoryJobRegistry:
 
 
 @pytest.fixture
-def backend_implementation(request, batch_job_output_root, job_registry) -> "GeoPySparkBackendImplementation":
+def backend_implementation(batch_job_output_root, job_registry) -> "GeoPySparkBackendImplementation":
     from openeogeotrellis.backend import GeoPySparkBackendImplementation
 
     backend = GeoPySparkBackendImplementation(
         batch_job_output_root=batch_job_output_root,
         elastic_job_registry=job_registry,
     )
-
-    # TODO: eliminate this `request.instance` stuff, normal fixture usage should suffice
-    if request.instance:
-        request.instance.backend_implementation = backend
     return backend
 
 
