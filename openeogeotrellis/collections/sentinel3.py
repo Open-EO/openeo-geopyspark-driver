@@ -544,12 +544,12 @@ def _read_latlonfile(bbox, latlon_file, lat_band="latitude", lon_band="longitude
     """
     # getting  geo information
     logger.debug("Reading lat/lon from file %s" % latlon_file)
-    lat_lon_ds = xr.open_dataset(latlon_file).astype("float32")
+    lat_lon_ds = xr.open_dataset(latlon_file, chunks="auto").astype("float32")
 
     xmin, ymin, xmax, ymax = bbox
 
-    lat_mask = xr.apply_ufunc(lambda lat: (lat >= ymin - interpolation_margin) & (lat <= ymax + interpolation_margin), lat_lon_ds[lat_band])
-    lon_mask = xr.apply_ufunc(lambda lon: (lon >= xmin - interpolation_margin) & (lon <= xmax + interpolation_margin), lat_lon_ds[lon_band])
+    lat_mask = xr.apply_ufunc(lambda lat: (lat >= ymin - interpolation_margin) & (lat <= ymax + interpolation_margin), lat_lon_ds[lat_band], vectorize=True,dask='allowed')
+    lon_mask = xr.apply_ufunc(lambda lon: (lon >= xmin - interpolation_margin) & (lon <= xmax + interpolation_margin), lat_lon_ds[lon_band], vectorize=True,dask='allowed')
     data_mask = lat_mask & lon_mask
 
 
@@ -698,7 +698,7 @@ def apply_LUT_on_band(in_data, LUT, nodata=None):
     grid_values: numpy array
         2D-numpy array with the size of a tile containing reprojected values
     """
-
+    in_data = np.array(in_data)
 
     # if nodata is empty, we will just use the max possible value
     if nodata is None:
