@@ -15,7 +15,8 @@ def test_read_single():
     #         original:  2.5Gb OOM -  2.6Gb OK
     # dask chunks=128 :  4.4Gb OOM -  4.5Gb OK
     # dask chunks=auto:  2.6Gb OOM -  2.7Gb OK
-    #   open_dataarray:  2.5Gb OOM -  2.6Gb OK
+    #                     open_dataarray:  2.5Gb OOM -  2.6Gb OK
+    # open_dataset + potential_variables:  2.5Gb OOM -  2.6Gb OK
     nr_bytes = int(2.6 * 1024 * 1024 * 1024)
     resource.setrlimit(resource.RLIMIT_AS, (nr_bytes, -1))
     try:

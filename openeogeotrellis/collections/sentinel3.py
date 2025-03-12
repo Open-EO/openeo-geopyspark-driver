@@ -544,27 +544,25 @@ def _read_latlonfile(bbox, latlon_file, lat_band="latitude", lon_band="longitude
     """
     # getting  geo information
     logger.debug("Reading lat/lon from file %s" % latlon_file)
-    drop_variables = ["elevation_in", "elevation_orphan_in",
+    potential_variables = ["elevation_in", "elevation_orphan_in",
                       "latitude_in", "latitude_orphan_in",
                       "longitude_in", "longitude_orphan_in",
                       "latitude_tx", "longitude_tx",
                       ]
-    lat_ds = xr.open_dataarray(latlon_file, drop_variables=[x for x in drop_variables if x != lat_band]).astype("float32")
-    lon_ds = xr.open_dataarray(latlon_file, drop_variables=[x for x in drop_variables if x != lon_band]).astype("float32")
+    lat_lon_ds = xr.open_dataset(latlon_file, drop_variables=[x for x in potential_variables if x != lat_band and x != lon_band]).astype("float32")
 
     xmin, ymin, xmax, ymax = bbox
 
-    lat_mask = xr.apply_ufunc(lambda lat: (lat >= ymin - interpolation_margin) & (lat <= ymax + interpolation_margin), lat_ds)
-    lon_mask = xr.apply_ufunc(lambda lon: (lon >= xmin - interpolation_margin) & (lon <= xmax + interpolation_margin), lon_ds)
+    lat_mask = xr.apply_ufunc(lambda lat: (lat >= ymin - interpolation_margin) & (lat <= ymax + interpolation_margin), lat_lon_ds[lat_band])
+    lon_mask = xr.apply_ufunc(lambda lon: (lon >= xmin - interpolation_margin) & (lon <= xmax + interpolation_margin), lat_lon_ds[lon_band])
     data_mask = lat_mask & lon_mask
 
 
     # Create the coordinate arrays for latitude and longitude
     ## Coordinated referring to the CENTER of the pixel
-    lat_orig = lat_ds.where(data_mask,drop=True).values
-    lon_orig = lon_ds.where(data_mask,drop=True).values
-    lat_ds.close()
-    lon_ds.close()
+    lat_orig = lat_lon_ds[lat_band].where(data_mask,drop=True).values
+    lon_orig = lat_lon_ds[lon_band].where(data_mask,drop=True).values
+    lat_lon_ds.close()
 
     if lat_orig.size == 0 or lon_orig.size == 0:
         logger.warning("No valid data found in lat/lon file")
