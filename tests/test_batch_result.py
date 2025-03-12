@@ -3,6 +3,7 @@ import json
 import os
 import shutil
 import tempfile
+import textwrap
 import uuid
 from pathlib import Path, PurePath
 from typing import Set
@@ -2500,3 +2501,88 @@ def test_spatial_geotiff_metadata(tmp_path):
         .normalize()
         .equals_exact(Polygon.from_bounds(0.0, 0.0, 1.0, 2.0).normalize(), tolerance=0.001)
     )
+
+
+def test_geotiff_tile_size(tmp_path):
+    job_dir = tmp_path
+
+    bands = ["Longitude", "Latitude"]
+    apply_neighborhood_window_size = 81
+    geotiff_tile_size = 64
+
+    udf_code = """
+        from openeo.udf import XarrayDataCube
+
+        def apply_datacube(cube: XarrayDataCube, context: dict) -> XarrayDataCube:
+            return cube
+    """
+
+    process_graph = {
+        "loadcollection1": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "TestCollection-LonLat16x16",
+                "temporal_extent": ["2021-01-05", "2021-01-06"],
+                "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 2.0},
+                "bands": bands,
+            },
+        },
+        "applyneighborhood1": {
+            "process_id": "apply_neighborhood",
+            "arguments": {
+                "data": {"from_node": "loadcollection1"},
+                "size": [
+                    {"dimension": "x", "value": apply_neighborhood_window_size, "unit": "px"},
+                    {"dimension": "y", "value": apply_neighborhood_window_size, "unit": "px"},
+                ],
+                "overlap": [
+                    {"dimension": "x", "value": 0, "unit": "px"},
+                    {"dimension": "y", "value": 0, "unit": "px"}
+                ],
+                "process": {
+                    "process_graph": {
+                        "runudf1": {
+                            "process_id": "run_udf",
+                            "arguments": {
+                                "data": {"from_parameter": "data"},
+                                "runtime": "Python",
+                                "udf": textwrap.dedent(udf_code),
+                            },
+                            "result": True,
+                        }
+                    }
+                },
+            },
+        },
+        "saveresult1": {
+            "process_id": "save_result",
+            "arguments": {
+                "data": {"from_node": "applyneighborhood1"},
+                "format": "GTiff",
+                "options": {
+                    "tile_size": geotiff_tile_size,
+                },
+            },
+            "result": True,
+        },
+    }
+
+    process = {
+        "process_graph": process_graph,
+    }
+
+    metadata_file = job_dir / "job_metadata.json"
+
+    run_job(
+        process,
+        output_file=job_dir / "out",
+        metadata_file=metadata_file,
+        api_version="2.0.0",
+        job_dir=job_dir,
+        dependencies=[],
+    )
+
+    with rasterio.open(job_dir / "openEO_2021-01-05Z.tif") as dataset:
+        assert dataset.count == len(bands)
+        for block_shape in dataset.block_shapes:
+            assert block_shape == (geotiff_tile_size, geotiff_tile_size)
