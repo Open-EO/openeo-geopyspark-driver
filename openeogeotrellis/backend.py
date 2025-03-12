@@ -490,7 +490,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                         },
                         "tile_size": {
                             "type": ["integer", "null"],
-                            "description": "Overrides tiff tile size.",
+                            "description": "Overrides tile size; typically a multiple of 16.",
                             "default": None,
                         },
                     },

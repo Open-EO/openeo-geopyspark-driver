@@ -2508,7 +2508,7 @@ def test_spatial_geotiff_metadata(tmp_path):
     ["window_size", "default_tile_size", "requested_tile_size", "expected_tile_size"],
     [
         (32, None, None, 32),  # keep valid
-        (32, None, 64, 64),  # apply requested
+        (32, None, 64, 64),  # replace valid with requested
         (81, None, None, 256),  # replace invalid with default
         (81, 128, None, 128),  # replace invalid with overridden default
         (81, None, 64, 64),  # replace invalid with requested
