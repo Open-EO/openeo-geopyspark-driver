@@ -1984,11 +1984,19 @@ class GeopysparkDataCube(DriverDataCube):
                     nodata = max_level.layer_metadata.no_data_value
 
                     max_level_rdd = max_level.srdd.rdd()
-                    if tile_size:
+
+                    adjust_tile_size = (
+                        (tile_size and max_level.layer_metadata.layout_definition.tileLayout.tileCols != tile_size)
+                        or (tile_size and max_level.layer_metadata.layout_definition.tileLayout.tileRows != tile_size)
+                        or max_level.layer_metadata.layout_definition.tileLayout.tileCols % 16 != 0
+                        or max_level.layer_metadata.layout_definition.tileLayout.tileRows % 16 != 0
+                    )
+
+                    if adjust_tile_size:
                         max_level_rdd = get_jvm().org.openeo.geotrellis.OpenEOProcesses().retile(
                             max_level_rdd,
-                            tile_size,
-                            tile_size,
+                            tile_size or 256,  # TODO: default tile size?
+                            tile_size or 256,
                             0,
                             0,
                         )

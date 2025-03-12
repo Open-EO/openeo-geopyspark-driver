@@ -2503,12 +2503,19 @@ def test_spatial_geotiff_metadata(tmp_path):
     )
 
 
-def test_geotiff_tile_size(tmp_path):
+@pytest.mark.parametrize(
+    ["window_size", "requested_tile_size", "expected_tile_size"],
+    [
+        (32, None, 32),
+        (32, 64, 64),
+        (81, None, 256),
+        (81, 64, 64),
+    ],
+)
+def test_geotiff_tile_size(tmp_path, window_size, requested_tile_size, expected_tile_size):
     job_dir = tmp_path
 
     bands = ["Longitude", "Latitude"]
-    apply_neighborhood_window_size = 81
-    geotiff_tile_size = 64
 
     udf_code = """
         from openeo.udf import XarrayDataCube
@@ -2532,8 +2539,8 @@ def test_geotiff_tile_size(tmp_path):
             "arguments": {
                 "data": {"from_node": "loadcollection1"},
                 "size": [
-                    {"dimension": "x", "value": apply_neighborhood_window_size, "unit": "px"},
-                    {"dimension": "y", "value": apply_neighborhood_window_size, "unit": "px"},
+                    {"dimension": "x", "value": window_size, "unit": "px"},
+                    {"dimension": "y", "value": window_size, "unit": "px"},
                 ],
                 "overlap": [
                     {"dimension": "x", "value": 0, "unit": "px"},
@@ -2560,7 +2567,7 @@ def test_geotiff_tile_size(tmp_path):
                 "data": {"from_node": "applyneighborhood1"},
                 "format": "GTiff",
                 "options": {
-                    "tile_size": geotiff_tile_size,
+                    "tile_size": requested_tile_size,
                 },
             },
             "result": True,
@@ -2585,4 +2592,4 @@ def test_geotiff_tile_size(tmp_path):
     with rasterio.open(job_dir / "openEO_2021-01-05Z.tif") as dataset:
         assert dataset.count == len(bands)
         for block_shape in dataset.block_shapes:
-            assert block_shape == (geotiff_tile_size, geotiff_tile_size)
+            assert block_shape == (expected_tile_size, expected_tile_size)
