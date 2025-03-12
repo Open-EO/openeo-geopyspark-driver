@@ -18,10 +18,11 @@ import openeogeotrellis
 _log = logging.getLogger(__name__)
 
 
-def load_custom_processes(logger=_log, _name="custom_processes"):
+def load_custom_processes(*, path: Optional[Path] = None, logger=_log, _name="custom_processes"):
     """Try loading optional `custom_processes` module"""
-    # TODO: use backend_config instead of env var
-    if path := os.environ.get("OPENEO_CUSTOM_PROCESSES"):
+    # TODO: use backend_config instead of env var?
+    path = path or os.environ.get("OPENEO_CUSTOM_PROCESSES")
+    if path:
         # Directly load custom processes from OPENEO_CUSTOM_PROCESSES
         logger.debug(f"load_custom_processes: trying exec loading {path!r}")
         try:

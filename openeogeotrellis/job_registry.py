@@ -23,7 +23,9 @@ from openeo_driver.jobregistry import (
     JobDict,
     ejr_job_info_to_metadata,
 )
-from openeo_driver.util.http import UrlSafeStructCodec
+
+# TODO: eliminate coupling of job_registry with openeogeotrellis.sentinel_hub?
+#       It's actually only used for OG_BATCH_RESULTS_BUCKET, which could be a config?
 from openeogeotrellis import sentinel_hub
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
