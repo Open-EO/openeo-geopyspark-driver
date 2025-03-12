@@ -26,6 +26,7 @@ from openeo_driver.workspace import DiskWorkspace
 from osgeo import gdal
 from shapely.geometry import Point, Polygon, shape
 
+from openeogeotrellis.testing import gps_config_overrides
 from openeogeotrellis.workspace import StacApiWorkspace
 from openeogeotrellis._version import __version__
 from openeogeotrellis.backend import JOB_METADATA_FILENAME
@@ -2504,15 +2505,16 @@ def test_spatial_geotiff_metadata(tmp_path):
 
 
 @pytest.mark.parametrize(
-    ["window_size", "requested_tile_size", "expected_tile_size"],
+    ["window_size", "default_tile_size", "requested_tile_size", "expected_tile_size"],
     [
-        (32, None, 32),
-        (32, 64, 64),
-        (81, None, 256),
-        (81, 64, 64),
+        (32, None, None, 32),  # keep valid
+        (32, None, 64, 64),  # apply requested
+        (81, None, None, 256),  # replace invalid with default
+        (81, 128, None, 128),  # replace invalid with overridden default
+        (81, None, 64, 64),  # replace invalid with requested
     ],
 )
-def test_geotiff_tile_size(tmp_path, window_size, requested_tile_size, expected_tile_size):
+def test_geotiff_tile_size(tmp_path, window_size, default_tile_size, requested_tile_size, expected_tile_size):
     job_dir = tmp_path
 
     bands = ["Longitude", "Latitude"]
@@ -2580,14 +2582,15 @@ def test_geotiff_tile_size(tmp_path, window_size, requested_tile_size, expected_
 
     metadata_file = job_dir / "job_metadata.json"
 
-    run_job(
-        process,
-        output_file=job_dir / "out",
-        metadata_file=metadata_file,
-        api_version="2.0.0",
-        job_dir=job_dir,
-        dependencies=[],
-    )
+    with gps_config_overrides(default_tile_size=default_tile_size):
+        run_job(
+            process,
+            output_file=job_dir / "out",
+            metadata_file=metadata_file,
+            api_version="2.0.0",
+            job_dir=job_dir,
+            dependencies=[],
+        )
 
     with rasterio.open(job_dir / "openEO_2021-01-05Z.tif") as dataset:
         assert dataset.count == len(bands)

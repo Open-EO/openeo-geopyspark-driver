@@ -1993,10 +1993,16 @@ class GeopysparkDataCube(DriverDataCube):
                     )
 
                     if adjust_tile_size:
+                        target_tile_size = (
+                            tile_size
+                            or get_backend_config().default_tile_size
+                            or get_jvm().org.openeo.geotrelliscommon.DataCubeParameters().tileSize()
+                        )
+
                         max_level_rdd = get_jvm().org.openeo.geotrellis.OpenEOProcesses().retile(
                             max_level_rdd,
-                            tile_size or 256,  # TODO: default tile size?
-                            tile_size or 256,
+                            target_tile_size,
+                            target_tile_size,
                             0,
                             0,
                         )
