@@ -204,6 +204,8 @@ def load_stac(
     collection = None
     metadata = None
 
+    netcdf_with_time_dimension = False
+
     backend_config = get_backend_config()
     poll_interval_seconds = backend_config.job_dependencies_poll_interval_seconds
     max_poll_delay_seconds = backend_config.job_dependencies_max_poll_delay_seconds
@@ -277,6 +279,7 @@ def load_stac(
             intersecting_items = [item] if intersects_spatiotemporally(item) else []
         elif isinstance(stac_object, pystac.Collection) and supports_item_search(stac_object):
             collection = stac_object
+            netcdf_with_time_dimension = contains_netcdf_with_time_dimension(collection)
             collection_id = collection.id
             metadata = GeopysparkCubeMetadata(
                 metadata=collection.to_dict(include_self_link=False, transform_hrefs=False)
@@ -319,7 +322,7 @@ def load_stac(
                 limit=20,
                 datetime=(
                     None
-                    if temporal_extent is DEFAULT_TEMPORAL_EXTENT
+                    if temporal_extent is (DEFAULT_TEMPORAL_EXTENT or netcdf_with_time_dimension)
                     else f"{from_date.isoformat().replace('+00:00', 'Z')}/"
                     f"{to_date.isoformat().replace('+00:00', 'Z')}"  # end is inclusive
                 ),
@@ -347,6 +350,7 @@ def load_stac(
 
             if isinstance(catalog, pystac.Collection):
                 collection = catalog
+                netcdf_with_time_dimension = contains_netcdf_with_time_dimension(collection)
 
             band_names = [b["name"] for b in (catalog.summaries.lists if isinstance(catalog, pystac.Collection)
                                               else catalog.extra_fields.get("summaries", {})).get("eo:bands", [])]
@@ -417,14 +421,6 @@ def load_stac(
     band_cell_size: Dict[str, Tuple[float, float]] = {}  # assumes a band has the same resolution across features/assets
     band_epsgs: Dict[str, Set[int]] = {}
 
-    netcdf_with_time_dimension = False
-    if collection is not None:
-        # we found some collection level metadata
-        item_assets = collection.extra_fields.get("item_assets", {})
-        dimensions = set([tuple(v.get("dimensions")) for i in item_assets.values() if "cube:variables" in i for v in
-                          i.get("cube:variables", {}).values()])
-        # this is one way to determine if a time dimension is used, but it does depend on the use of item_assets and datacube extension.
-        netcdf_with_time_dimension = len(dimensions) == 1 and "time" in dimensions.pop()
 
     for itm in intersecting_items:
         items_found = True
@@ -700,6 +696,23 @@ def load_stac(
               range(0, pyramid.size())}
 
     return GeopysparkDataCube(pyramid=gps.Pyramid(levels), metadata=metadata)
+
+
+def contains_netcdf_with_time_dimension(collection):
+    """
+    Checks if the STAC collection contains netcdf files with multiple time stamps.
+    This collection organization is used for storing small patches of EO data, and requires special loading because the
+    default readers will not handle this case properly.
+
+    """
+    if collection is not None:
+        # we found some collection level metadata
+        item_assets = collection.extra_fields.get("item_assets", {})
+        dimensions = set([tuple(v.get("dimensions")) for i in item_assets.values() if "cube:variables" in i for v in
+                          i.get("cube:variables", {}).values()])
+        # this is one way to determine if a time dimension is used, but it does depend on the use of item_assets and datacube extension.
+        return len(dimensions) == 1 and "time" in dimensions.pop()
+    return False
 
 
 def get_best_url(asset: pystac.Asset):
