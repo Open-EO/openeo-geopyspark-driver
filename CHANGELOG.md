@@ -14,6 +14,8 @@ without compromising stable operations.
 
 ## In progress: 0.64.0
 
+- Write GeoTiff assets with valid tile size; override with `tile_size` format option. ([#1083](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1083))
+
 ## 0.63.0
 
 - Add `bbox` and `geometry` to exported STAC items pertaining to GeoTiff assets of a spatial data cube ([eu-cdse/openeo-cdse-infra#418](https://github.com/eu-cdse/openeo-cdse-infra/issues/418))
