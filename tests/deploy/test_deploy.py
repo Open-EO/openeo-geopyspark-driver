@@ -60,14 +60,14 @@ def test_load_custom_processes_exec_broken(tmp_path, monkeypatch, content):
 
     monkeypatch.setenv("OPENEO_CUSTOM_PROCESSES", str(path))
     logger, stream = _get_logger(level=logging.ERROR)
-    load_custom_processes(logger)
+    load_custom_processes(logger=logger)
     logs = stream.getvalue()
     assert f"load_custom_processes: failed to exec load {str(path)!r}" in logs
 
 
 def test_load_custom_processes_import_default():
     logger, stream = _get_logger()
-    load_custom_processes(logger)
+    load_custom_processes(logger=logger)
     logs = stream.getvalue()
     assert "Trying to load 'custom_processes'" in logs
 
@@ -77,7 +77,7 @@ def test_load_custom_processes_import_absent(tmp_path):
     sys_path = [str(tmp_path)]
     name = random_name(prefix="custom_processes")
     with mock.patch("sys.path", new=sys_path):
-        load_custom_processes(logger, _name=name)
+        load_custom_processes(logger=logger, _name=name)
 
     logs = stream.getvalue()
     assert "Trying to load {n!r} with PYTHONPATH {p}".format(n=name, p=sys_path) in logs
@@ -98,7 +98,7 @@ def test_load_custom_processes_import_present(tmp_path, api_version, backend_imp
     """
     path.write_text(textwrap.dedent(content))
     with mock.patch("sys.path", new=[str(tmp_path)] + sys.path):
-        load_custom_processes(logger, _name=module_name)
+        load_custom_processes(logger=logger, _name=module_name)
 
     logs = stream.getvalue()
     assert "Trying to load {n!r} with PYTHONPATH ['{p!s}".format(n=module_name, p=str(tmp_path)) in logs
