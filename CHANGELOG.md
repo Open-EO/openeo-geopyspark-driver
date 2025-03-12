@@ -12,7 +12,7 @@ without compromising stable operations.
 
 <!-- start-of-changelog -->
 
-## In progress: 0.64.0
+## In progress: 0.64.1
 
 - `load_custom_processes`: allow specifying path directly
 - `save_result`: write GeoTiff assets with valid tile size; override with `tile_size` format option. ([#1083](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1083))
