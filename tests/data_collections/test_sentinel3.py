@@ -11,10 +11,12 @@ from numpy.testing import assert_allclose
 from tests.data import get_test_data_file
 
 def test_read_single():
+    # run without debug in PyCharm
     #         original:  2.5Gb OOM -  2.6Gb OK
     # dask chunks=128 :  4.4Gb OOM -  4.5Gb OK
     # dask chunks=auto:  2.6Gb OOM -  2.7Gb OK
-    nr_bytes = int(2.7 * 1024 * 1024 * 1024)
+    #   open_dataarray:  2.5Gb OOM -  2.6Gb OK
+    nr_bytes = int(2.6 * 1024 * 1024 * 1024)
     resource.setrlimit(resource.RLIMIT_AS, (nr_bytes, -1))
     try:
         tiles = [
