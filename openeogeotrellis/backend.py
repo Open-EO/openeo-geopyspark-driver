@@ -488,6 +488,11 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                             "description": "Attaches *_gdalinfo.json files to the output results.",
                             "default": False,
                         },
+                        "tile_size": {
+                            "type": ["integer", "null"],
+                            "description": "Overrides tile size; typically a multiple of 16.",
+                            "default": None,
+                        },
                     },
                 },
                 "PNG": {
