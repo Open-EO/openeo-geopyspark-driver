@@ -5,6 +5,15 @@ import pytest
 from pyproj import CRS
 import rasterio
 
+if __name__ == "__main__":
+    import openeogeotrellis.deploy.local
+
+    # Allow to run from commandline:
+    # /usr/bin/time -v python3 tests/data_collections/test_sentinel3.py
+    # python3 -m memory_profiler tests/data_collections/test_sentinel3.py
+    # The SparkContext is only needed to make imports work, but is actually not used for the tests
+    openeogeotrellis.deploy.local.setup_environment()
+
 from openeogeotrellis.collections.sentinel3 import *
 from numpy.testing import assert_allclose
 
@@ -12,9 +21,9 @@ from tests.data import get_test_data_file
 
 def test_read_single():
     # run without debug in PyCharm
-    #         original:  2.5Gb OOM -  2.6Gb OK
-    # dask chunks=128 :  4.4Gb OOM -  4.5Gb OK
-    # dask chunks=auto:  2.6Gb OOM -  2.7Gb OK
+    #                           original:  2.5Gb OOM -  2.6Gb OK
+    #                   dask chunks=128 :  4.4Gb OOM -  4.5Gb OK
+    #                   dask chunks=auto:  2.6Gb OOM -  2.7Gb OK
     #                     open_dataarray:  2.5Gb OOM -  2.6Gb OK
     # open_dataset + potential_variables:  2.5Gb OOM -  2.6Gb OK
     nr_bytes = int(2.6 * 1024 * 1024 * 1024)
@@ -146,3 +155,8 @@ def test_read_single_edge_with_some_data():
         actual_result = arr
         assert expected_result.shape == actual_result.shape
         assert_allclose(expected_result, actual_result, atol=0.00001)
+
+
+if __name__ == "__main__":
+    test_read_single()
+    # input("Press any key to continue...")

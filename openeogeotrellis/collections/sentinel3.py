@@ -188,7 +188,10 @@ def _instant_ms_to_minute(instant: int) -> datetime:
     return datetime(*(datetime.utcfromtimestamp(instant // 1000).timetuple()[:5]))
 
 
-@ensure_executor_logging
+import memory_profiler
+
+
+@memory_profiler.profile()
 def read_product(product, product_type, band_names, tile_size, limit_python_memory, resolution):
     from openeogeotrellis.collections.s1backscatter_orfeo import get_total_extent
 
