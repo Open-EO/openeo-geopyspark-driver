@@ -90,6 +90,7 @@ from openeogeotrellis.integrations.kubernetes import (
     truncate_job_id_k8s,
     k8s_render_manifest_template,
     k8s_get_batch_job_cfg_secret_name,
+    truncate_user_id_k8s,
 )
 from openeogeotrellis.integrations.stac import ResilientStacIO
 from openeogeotrellis.integrations.traefik import Traefik
@@ -2119,6 +2120,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 api_version=api_version,
                 dependencies="[]",  # TODO: use `serialize_dependencies()` here instead? It's probably messy to get that JSON string correctly encoded in the rendered YAML.
                 user_id=user_id,
+                user_id_short=truncate_user_id_k8s(user_id),
                 max_soft_errors_ratio=max_soft_errors_ratio,
                 task_cpus=task_cpus,
                 gdal_dataset_cache_size=gdal_dataset_cache_size,

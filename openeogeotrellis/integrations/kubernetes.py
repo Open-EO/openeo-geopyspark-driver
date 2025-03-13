@@ -35,7 +35,7 @@ def truncate_job_id_k8s(job_id: str) -> str:
 
 
 def truncate_user_id_k8s(user_id: str) -> str:
-    return user_id.split("@")[0][:20]
+    return user_id.split("@")[0][:13]
 
 
 def k8s_job_name() -> str:
