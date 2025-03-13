@@ -532,7 +532,7 @@ def _read_latlonfile(bbox, latlon_file, lat_band="latitude", lon_band="longitude
         the file containing the latitudes and longitudes
     lat_band : str
         the band containing the latitudes (default=latitude)
-    lon_band : float
+    lon_band : str
         the band containing the longitudes (default=longitude)
 
     Returns
@@ -544,7 +544,14 @@ def _read_latlonfile(bbox, latlon_file, lat_band="latitude", lon_band="longitude
     """
     # getting  geo information
     logger.debug("Reading lat/lon from file %s" % latlon_file)
-    lat_lon_ds = xr.open_dataset(latlon_file).astype("float32")
+    potential_variables = ["elevation_in", "elevation_orphan_in",
+                           "latitude_in", "latitude_orphan_in",
+                           "longitude_in", "longitude_orphan_in",
+                           "latitude_tx", "longitude_tx",
+                           ]
+    to_drop = [x for x in potential_variables if x != lat_band and x != lon_band]  # saves memory
+    # `open_dataarray` could allow for lazy loading, but is more complex and saves the same amount of memory
+    lat_lon_ds = xr.open_dataset(latlon_file, drop_variables=to_drop).astype("float32")
 
     xmin, ymin, xmax, ymax = bbox
 
