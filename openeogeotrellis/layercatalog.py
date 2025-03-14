@@ -21,13 +21,14 @@ from py4j.protocol import Py4JJavaError
 from openeo.metadata import Band
 from openeo.util import TimingLogger, deep_get, str_truncate
 from openeo_driver import filter_properties
-from openeo_driver.backend import CollectionCatalog, LoadParameters
+from openeo_driver.backend import CollectionCatalog, LoadParameters, OpenEoBackendImplementation
 from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.errors import OpenEOApiException, InternalException, ProcessGraphComplexityException
 from openeo_driver.filter_properties import extract_literal_match
 from openeo_driver.util.geometry import reproject_bounding_box
+from openeo_driver.util.logging import just_log_exceptions
 from openeo_driver.util.utm import auto_utm_epsg_for_geometry
 from openeo_driver.util.http import requests_with_retry
 from openeo_driver.utils import read_json, EvalEnv, WhiteListEvalEnv, smart_bool
@@ -412,8 +413,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
             dependencies = env.get(EVAL_ENV_KEY.DEPENDENCIES, [])
             sar_backscatter_arguments: Optional[SarBackscatterArgs] = (
-                (load_params.sar_backscatter or SarBackscatterArgs()) if sar_backscatter_compatible
-                else None
+                _get_sar_backscatter_arguments(load_params=load_params, env=env) if sar_backscatter_compatible else None
             )
 
             if dependencies:
@@ -670,8 +670,9 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         elif layer_source_type == 'file-oscars'  or layer_source_type == "cgls_oscars":
             pyramid = file_s2_pyramid()
         elif layer_source_type == 'creodias-s1-backscatter':
+            sar_backscatter_arguments = _get_sar_backscatter_arguments(load_params=load_params, env=env)
             #make a copy before modifying: it is used as a cache key
-            sar_backscatter_arguments = deepcopy(load_params.sar_backscatter or SarBackscatterArgs())
+            sar_backscatter_arguments = deepcopy(sar_backscatter_arguments)
             sar_backscatter_arguments.options["resolution"] = (cell_width, cell_height)
             s1_backscatter_orfeo = get_s1_backscatter_orfeo(
                 version=sar_backscatter_arguments.options.get("implementation_version", "2"),
@@ -1463,6 +1464,29 @@ def is_layer_too_large(
         return f"Requested extent is too large to process. Estimated number of pixels: {estimated_pixels:.2e}, " + \
             f"threshold: {threshold_pixels:.2e}."
     return None
+
+
+def _get_sar_backscatter_arguments(load_params: LoadParameters, env: EvalEnv) -> SarBackscatterArgs:
+    """
+    Get SarBackscatterArgs from LoadParameters if available,
+    otherwise: look in process registry schema to pick defaults that
+    are possibly overridden in deployment configuration.
+    """
+    if load_params.sar_backscatter:
+        sar_backscatter_arguments = load_params.sar_backscatter
+    else:
+        kwargs = {}
+        with just_log_exceptions(name="_get_sar_backscatter_arguments"):
+            backend_impl: Optional[OpenEoBackendImplementation] = env.get("backend_implementation")
+            if backend_impl and backend_impl.processing:
+                process_registry = backend_impl.processing.get_process_registry(api_version=env.openeo_api_version())
+                if process_registry.contains("sar_backscatter"):
+                    process_spec = process_registry.get_spec("sar_backscatter")
+                    [coefficient_param] = (p for p in process_spec["parameters"] if p["name"] == "coefficient")
+                    kwargs["coefficient"] = coefficient_param["default"]
+        sar_backscatter_arguments = SarBackscatterArgs(**kwargs)
+        logger.info(f"No `sar_backscatter` specified. Using fallback {sar_backscatter_arguments} (from {kwargs}).")
+    return sar_backscatter_arguments
 
 
 if __name__ == "__main__":

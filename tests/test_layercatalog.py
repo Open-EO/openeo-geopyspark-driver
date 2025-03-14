@@ -1,18 +1,28 @@
+import logging
+
+import dirty_equals
 import unittest.mock as mock
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Tuple, Union
 
 import pytest
 import schema
 from openeo.util import deep_get
+from openeo.utils.version import ComparableVersion
+from openeo_driver.backend import LoadParameters, OpenEoBackendImplementation, Processing
+from openeo_driver.datastructs import SarBackscatterArgs
+from openeo_driver.processes import ProcessRegistry
+from openeo_driver.specs import read_spec
 from openeo_driver.util.geometry import BoundingBox
-from openeo_driver.utils import read_json
+from openeo_driver.utils import read_json, EvalEnv
+from openeo_driver.views import OPENEO_API_VERSION_DEFAULT
 
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.geopysparkdatacube import GeopysparkCubeMetadata
 from openeogeotrellis.layercatalog import (
     _merge_layers_with_common_name,
     get_layer_catalog,
+    _get_sar_backscatter_arguments,
 )
 from openeogeotrellis.vault import Vault
 
@@ -481,3 +491,64 @@ def test_merge_layers_with_common_name_cube_dimensions_merging():
             },
         },
     }
+
+
+@pytest.mark.parametrize(
+    ["load_params", "sar_backscatter_spec", "expected"],
+    [
+        (
+            # No user-specified sar_backscatter, no backend sar_backscatter spec override
+            LoadParameters(),
+            None,
+            {"coefficient": "gamma0-terrain"},
+        ),
+        (
+            # No user-specified sar_backscatter, no backend sar_backscatter spec override
+            LoadParameters(),
+            read_spec("openeo-processes/2.x/proposals/sar_backscatter.json"),
+            {"coefficient": "gamma0-terrain"},
+        ),
+        (
+            # User specified sar_backscatter arguments, no backend sar_backscatter spec override
+            LoadParameters(sar_backscatter=SarBackscatterArgs(coefficient="omega3")),
+            None,
+            {"coefficient": "omega3"},
+        ),
+        (
+            # Backend-defined default coefficient, no user specified coefficient
+            LoadParameters(),
+            {"id": "sar_backscatter", "parameters": [{"name": "coefficient", "default": "omega666"}]},
+            {"coefficient": "omega666"},
+        ),
+        (
+            # Backend-defined default coefficient and user specified coefficient
+            LoadParameters(sar_backscatter=SarBackscatterArgs(coefficient="omega3")),
+            {"id": "sar_backscatter", "parameters": [{"name": "coefficient", "default": "omega666"}]},
+            {"coefficient": "omega3"},
+        ),
+    ],
+)
+def test_get_sar_backscatter_arguments(load_params: LoadParameters, sar_backscatter_spec: dict, expected, caplog):
+    caplog.set_level(level=logging.WARNING)
+
+    class MyProcessing(Processing):
+        def __init__(self):
+            self.process_registry = ProcessRegistry()
+
+        def get_process_registry(self, api_version: Union[str, ComparableVersion]) -> ProcessRegistry:
+            return self.process_registry
+
+    processing_impl = MyProcessing()
+    if sar_backscatter_spec:
+        processing_impl.process_registry.add_spec(sar_backscatter_spec)
+    env = EvalEnv(
+        {
+            "backend_implementation": OpenEoBackendImplementation(processing=processing_impl),
+            "openeo_api_version": OPENEO_API_VERSION_DEFAULT,
+        }
+    )
+
+    sar_backscatter_arguments = _get_sar_backscatter_arguments(load_params=load_params, env=env)
+    assert isinstance(sar_backscatter_arguments, SarBackscatterArgs)
+    assert sar_backscatter_arguments._asdict() == dirty_equals.IsPartialDict(expected)
+    assert caplog.text == ""
