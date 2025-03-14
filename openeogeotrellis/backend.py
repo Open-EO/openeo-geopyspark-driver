@@ -2387,7 +2387,12 @@ class GpsBatchJobs(backend.BatchJobs):
         )
 
         if api_version:
-            env = env.push({"version": api_version})
+            env = env.push(
+                {
+                    "version": api_version,
+                    "openeo_api_version": api_version,
+                }
+            )
 
         top_level_node = ProcessGraphVisitor.dereference_from_node_arguments(process_graph)
         result_node = process_graph[top_level_node]
