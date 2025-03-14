@@ -15,7 +15,7 @@ without compromising stable operations.
 ## In progress: 0.65.0
 
 - `save_result`: write GeoTiff assets with valid tile size; override with `tile_size` format option. ([#1083](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1083))
-- `sar_backscatter` support: automatically use backend-specific `coefficient` default even if there is no explicit `sar_backscatter` in the process graph ([#376](https://github.com/Open-EO/openeo-python-driver/issues/376))
+- `sar_backscatter` support: automatically use backend-specific `coefficient` default even if there is no explicit `sar_backscatter` in the process graph ([Open-EO/openeo-python-driver#376](https://github.com/Open-EO/openeo-python-driver/issues/376))
 
 
 ## 0.64.1
