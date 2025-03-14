@@ -24,6 +24,7 @@ from openeo_driver.util.geometry import validate_geojson_coordinates
 from openeo_driver.utils import EvalEnv
 from openeo_driver.workspace import DiskWorkspace
 from osgeo import gdal
+from rio_cogeo import cog_validate
 from shapely.geometry import Point, Polygon, shape
 
 from openeogeotrellis.testing import gps_config_overrides
@@ -2592,7 +2593,12 @@ def test_geotiff_tile_size(tmp_path, window_size, default_tile_size, requested_t
             dependencies=[],
         )
 
-    with rasterio.open(job_dir / "openEO_2021-01-05Z.tif") as dataset:
+    output_tiff = job_dir / "openEO_2021-01-05Z.tif"
+
+    with rasterio.open(output_tiff) as dataset:
         assert dataset.count == len(bands)
         for block_shape in dataset.block_shapes:
             assert block_shape == (expected_tile_size, expected_tile_size)
+
+    is_valid_cog, errors, _ = cog_validate(output_tiff)
+    assert is_valid_cog, str(errors)
