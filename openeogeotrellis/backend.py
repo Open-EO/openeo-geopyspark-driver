@@ -2059,18 +2059,19 @@ class GpsBatchJobs(backend.BatchJobs):
 
             # Check concurrent_pod_limit constraints.
             concurrent_pod_limit = ConfigParams().concurrent_pod_limit
-            limitting_state = "RUNNING"
             if not get_backend_config().yunikorn_user_specific_queues:
-              try:
-                  with zk_client(hosts=ConfigParams().zookeepernodes) as zk:
-                      zk_path = f"{get_backend_config().zookeeper_root_path}/config/users/{user_id}/concurrent_pod_limit"
-                      concurrent_pod_limit = int(zk.get(zk_path)[0])
-                      log.info(f"Concurrent job limit for user {user_id} found: {concurrent_pod_limit}")
-              except kazoo.exceptions.NoNodeError:
-                  pass
-              except Exception:
-                  log.warning(f"Failed to get user specific concurrent_pod_limit", exc_info=True)
-              limitting_state = "SUBMITTED"
+                try:
+                    with zk_client(hosts=ConfigParams().zookeepernodes) as zk:
+                        zk_path = f"{get_backend_config().zookeeper_root_path}/config/users/{user_id}/concurrent_pod_limit"
+                        concurrent_pod_limit = int(zk.get(zk_path)[0])
+                        log.info(f"Concurrent job limit for user {user_id} found: {concurrent_pod_limit}")
+                except kazoo.exceptions.NoNodeError:
+                    pass
+                except Exception:
+                    log.warning(f"Failed to get user specific concurrent_pod_limit", exc_info=True)
+                limitting_state = "RUNNING"
+            else:
+                limitting_state = "SUBMITTED"
 
             if concurrent_pod_limit != 0:
                 label_selector = f"user={user_id}"
