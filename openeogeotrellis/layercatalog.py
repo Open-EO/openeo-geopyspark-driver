@@ -36,6 +36,7 @@ from shapely.geometry import box
 from shapely.geometry.base import BaseGeometry
 
 from openeogeotrellis import sentinel_hub, datacube_parameters
+import openeogeotrellis.backend
 from openeogeotrellis.catalogs.creo import CreoCatalogClient
 from openeogeotrellis.collections.s1backscatter_orfeo import get_implementation as get_s1_backscatter_orfeo
 from openeogeotrellis.collections.testing import load_test_collection
@@ -71,6 +72,7 @@ WHITELIST = [
     EVAL_ENV_KEY.DO_EXTENT_CHECK,
     EVAL_ENV_KEY.PARAMETERS,
     EVAL_ENV_KEY.LOAD_STAC_APPLY_LCFM_IMPROVEMENTS,
+    EVAL_ENV_KEY.OPENEO_API_VERSION,
 ]
 LARGE_LAYER_THRESHOLD_IN_PIXELS = pow(10, 11)
 
@@ -1475,17 +1477,16 @@ def _get_sar_backscatter_arguments(load_params: LoadParameters, env: EvalEnv) ->
     if load_params.sar_backscatter:
         sar_backscatter_arguments = load_params.sar_backscatter
     else:
-        kwargs = {}
-        with just_log_exceptions(name="_get_sar_backscatter_arguments"):
-            backend_impl: Optional[OpenEoBackendImplementation] = env.get("backend_implementation")
-            if backend_impl and backend_impl.processing:
-                process_registry = backend_impl.processing.get_process_registry(api_version=env.openeo_api_version())
-                if process_registry.contains("sar_backscatter"):
-                    process_spec = process_registry.get_spec("sar_backscatter")
-                    [coefficient_param] = (p for p in process_spec["parameters"] if p["name"] == "coefficient")
-                    kwargs["coefficient"] = coefficient_param["default"]
-        sar_backscatter_arguments = SarBackscatterArgs(**kwargs)
-        logger.info(f"No `sar_backscatter` specified. Using fallback {sar_backscatter_arguments} (from {kwargs}).")
+        try:
+            # TODO: is it possible to avoid hardcoding `GpsProcessing` here?
+            #       Note that `env.get("backend_implementation").processing` is not available here anymore
+            #       because of that WhiteListEvalEnv caching business.
+            processing = openeogeotrellis.backend.GpsProcessing()
+            api_version = env.openeo_api_version()
+            sar_backscatter_arguments = processing.get_default_sar_backscatter_arguments(api_version=api_version)
+        except Exception as e:
+            logger.warning(f"_get_sar_backscatter_arguments failed: {e!r}")
+            sar_backscatter_arguments = SarBackscatterArgs()
     return sar_backscatter_arguments
 
 

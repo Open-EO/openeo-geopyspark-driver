@@ -1,28 +1,28 @@
 import logging
-
-import dirty_equals
 import unittest.mock as mock
 from pathlib import Path
 from typing import List, Tuple, Union
 
+import dirty_equals
 import pytest
 import schema
 from openeo.util import deep_get
 from openeo.utils.version import ComparableVersion
-from openeo_driver.backend import LoadParameters, OpenEoBackendImplementation, Processing
+from openeo_driver.backend import LoadParameters
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.processes import ProcessRegistry
 from openeo_driver.specs import read_spec
 from openeo_driver.util.geometry import BoundingBox
-from openeo_driver.utils import read_json, EvalEnv
+from openeo_driver.utils import EvalEnv, read_json
 from openeo_driver.views import OPENEO_API_VERSION_DEFAULT
 
+from openeogeotrellis.backend import GpsProcessing
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.geopysparkdatacube import GeopysparkCubeMetadata
 from openeogeotrellis.layercatalog import (
+    _get_sar_backscatter_arguments,
     _merge_layers_with_common_name,
     get_layer_catalog,
-    _get_sar_backscatter_arguments,
 )
 from openeogeotrellis.vault import Vault
 
@@ -531,7 +531,7 @@ def test_merge_layers_with_common_name_cube_dimensions_merging():
 def test_get_sar_backscatter_arguments(load_params: LoadParameters, sar_backscatter_spec: dict, expected, caplog):
     caplog.set_level(level=logging.WARNING)
 
-    class MyProcessing(Processing):
+    class MyProcessing(GpsProcessing):
         def __init__(self):
             self.process_registry = ProcessRegistry()
 
@@ -541,14 +541,12 @@ def test_get_sar_backscatter_arguments(load_params: LoadParameters, sar_backscat
     processing_impl = MyProcessing()
     if sar_backscatter_spec:
         processing_impl.process_registry.add_spec(sar_backscatter_spec)
-    env = EvalEnv(
-        {
-            "backend_implementation": OpenEoBackendImplementation(processing=processing_impl),
-            "openeo_api_version": OPENEO_API_VERSION_DEFAULT,
-        }
-    )
+    env = EvalEnv({"openeo_api_version": OPENEO_API_VERSION_DEFAULT})
 
-    sar_backscatter_arguments = _get_sar_backscatter_arguments(load_params=load_params, env=env)
+    # TODO: unfortunately we have to use mocking here because proper injection
+    #       through env.backend_implementation is ruined by WhiteListEvalEnv caching business.
+    with mock.patch("openeogeotrellis.backend.GpsProcessing", return_value=processing_impl):
+        sar_backscatter_arguments = _get_sar_backscatter_arguments(load_params=load_params, env=env)
     assert isinstance(sar_backscatter_arguments, SarBackscatterArgs)
     assert sar_backscatter_arguments._asdict() == dirty_equals.IsPartialDict(expected)
     assert caplog.text == ""
