@@ -385,6 +385,19 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             "currency": "credits",
         }
 
+    def postprocess_capabilities(self, capabilities: dict) -> dict:
+        extras = get_backend_config().capabilities_extras
+        if extras:
+            for key, value in extras.items():
+                if key not in capabilities:
+                    capabilities[key] = value
+                elif key == "links":
+                    capabilities["links"] += value
+                else:
+                    # TODO: handle more merging cases
+                    logger.warning(f"postprocess_capabilities: unsupported merging of {key=}")
+        return capabilities
+
     def health_check(self, options: Optional[dict] = None) -> dict:
         mode = (options or {}).get("mode", "spark")
         if mode == "spark":

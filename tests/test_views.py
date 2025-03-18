@@ -33,78 +33,96 @@ import openeogeotrellis.job_registry
 import openeogeotrellis.sentinel_hub.batchprocessing
 from openeogeotrellis.backend import JOB_METADATA_FILENAME, GpsBatchJobs
 from openeogeotrellis.job_registry import DoubleJobRegistry, ZkJobRegistry
-from openeogeotrellis.testing import KazooClientMock
+from openeogeotrellis.testing import KazooClientMock, gps_config_overrides
 from openeogeotrellis.utils import to_s3_url
 
 from .data import TEST_DATA_ROOT
 
 
-def test_capabilities(api100):
-    capabilities = api100.get('/').assert_status_code(200).json
-    assert deep_get(capabilities, "billing", "currency") == "credits"
+class TestCapabilities:
+
+    def test_capabilities(self, api100):
+        capabilities = api100.get("/").assert_status_code(200).json
+        assert deep_get(capabilities, "billing", "currency") == "credits"
 
 
-def test_file_formats(api100):
-    formats = api100.get('/file_formats').assert_status_code(200).json
-    assert "GeoJSON" in formats["input"]
-    assert "GTiff" in formats["output"]
-    assert "CovJSON" in formats["output"]
-    assert "netCDF" in formats["output"]
-    assert "Parquet" in formats["output"]
-    assert "description" in deep_get(formats, "output", "PNG", "parameters", "colormap")
+    def test_file_formats(self, api100):
+        formats = api100.get("/file_formats").assert_status_code(200).json
+        assert "GeoJSON" in formats["input"]
+        assert "GTiff" in formats["output"]
+        assert "CovJSON" in formats["output"]
+        assert "netCDF" in formats["output"]
+        assert "Parquet" in formats["output"]
+        assert "description" in deep_get(formats, "output", "PNG", "parameters", "colormap")
+
+    @pytest.mark.parametrize(
+        ["path", "expected"],
+        [
+            ("/health", {"mode": "spark", "status": "OK", "count": 14}),
+            ("/health?mode=spark", {"mode": "spark", "status": "OK", "count": 14}),
+            ("/health?mode=jvm", {"mode": "jvm", "status": "OK", "pi": "3.141592653589793"}),
+            ("/health?mode=basic", {"mode": "basic", "status": "OK"}),
+        ],
+    )
+    def test_health_default(self, api, path, expected):
+        resp = api.get(path).assert_status_code(200)
+        assert resp.json == expected
 
 
-@pytest.mark.parametrize(["path", "expected"], [
-    ("/health", {"mode": "spark", "status": "OK", "count": 14}),
-    ("/health?mode=spark", {"mode": "spark", "status": "OK", "count": 14}),
-    ("/health?mode=jvm", {"mode": "jvm", "status": "OK", "pi": "3.141592653589793"}),
-    ("/health?mode=basic", {"mode": "basic", "status": "OK"}),
-])
-def test_health_default(api, path, expected):
-    resp = api.get(path).assert_status_code(200)
-    assert resp.json == expected
+    def test_credentials_oidc(self, api):
+        resp = api.get("/credentials/oidc").assert_status_code(200)
+        assert resp.json == {
+            "providers": [
+                {
+                    "title": "Test ID",
+                    "id": "testid",
+                    "issuer": "https://oidc.test",
+                    "scopes": ["openid"],
+                    "default_clients": [
+                        {
+                            "grant_types": ["urn:ietf:params:oauth:grant-type:device_code+pkce", "refresh_token"],
+                            "id": "badcafef00d",
+                        }
+                    ],
+                }
+            ]
+        }
 
 
-def test_credentials_oidc(api):
-    resp = api.get("/credentials/oidc").assert_status_code(200)
-    assert resp.json == {
-        "providers": [
-            {
-                "title": "Test ID",
-                "id": "testid",
-                "issuer": "https://oidc.test",
-                "scopes": ["openid"],
-                "default_clients": [
-                    {
-                        "grant_types": ["urn:ietf:params:oauth:grant-type:device_code+pkce", "refresh_token"],
-                        "id": "badcafef00d",
-                    }
-                ],
-            }
-        ]
-    }
-
-
-def test_deploy_metadata(api100):
-    capabilities = api100.get("/").assert_status_code(200).json
-    semver_alike = RegexMatcher(r"^\d+\.\d+\.\d+")
-    assert deep_get(capabilities, "_backend_deploy_metadata") == {
-        "date": RegexMatcher(r"\d{4}-\d{2}-\d{2}.*Z$"),
-        "versions": {
+    def test_deploy_metadata(self, api100):
+        capabilities = api100.get("/").assert_status_code(200).json
+        semver_alike = RegexMatcher(r"^\d+\.\d+\.\d+")
+        assert deep_get(capabilities, "_backend_deploy_metadata") == {
+            "date": RegexMatcher(r"\d{4}-\d{2}-\d{2}.*Z$"),
+            "versions": {
+                "openeo": semver_alike,
+                "openeo_driver": semver_alike,
+                "openeo-geopyspark": semver_alike,
+                "geopyspark": semver_alike,
+                "geotrellis-extensions": semver_alike,
+            },
+        }
+        assert deep_get(capabilities, "processing:software") == {
             "openeo": semver_alike,
             "openeo_driver": semver_alike,
             "openeo-geopyspark": semver_alike,
             "geopyspark": semver_alike,
             "geotrellis-extensions": semver_alike,
-        },
-    }
-    assert deep_get(capabilities, "processing:software") == {
-        "openeo": semver_alike,
-        "openeo_driver": semver_alike,
-        "openeo-geopyspark": semver_alike,
-        "geopyspark": semver_alike,
-        "geotrellis-extensions": semver_alike,
-    }
+        }
+
+    def test_capabilities_extras(self, api100):
+        with gps_config_overrides(
+            capabilities_extras={
+                "foo": ["bar", "baz"],
+                "links": [{"rel": "flavor", "href": "https://flavors.test/sweet"}],
+            }
+        ):
+            capabilities = api100.get("/").assert_status_code(200).json
+
+        assert capabilities["foo"] == ["bar", "baz"]
+        assert len(capabilities["links"]) > 1
+        assert capabilities["links"][-1] == {"rel": "flavor", "href": "https://flavors.test/sweet"}
+
 
 
 class TestCollections:
