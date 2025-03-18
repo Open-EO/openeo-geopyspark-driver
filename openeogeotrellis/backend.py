@@ -38,6 +38,7 @@ import openeo_driver.util.changelog
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 from openeo.metadata import Band, BandDimension, Dimension, SpatialDimension, TemporalDimension
 from openeo.util import TimingLogger, deep_get, dict_no_none, repr_truncate, rfc3339, str_truncate
+from openeo.utils.version import ComparableVersion
 from openeo_driver import backend
 from openeo_driver.backend import (
     BatchJobMetadata,
@@ -1364,6 +1365,20 @@ class GpsProcessing(ConcreteProcessing):
             raise InternalException(message=f"run_udf result RDD with 1 element expected but got {len(result)}")
         return result[0]
 
+    def get_default_sar_backscatter_arguments(self, api_version: Union[str, ComparableVersion]) -> SarBackscatterArgs:
+        """
+        Get default `sar_backscatter` arguments based on actual `sar_backscatter` spec in
+        process registry (which might be deployment-specific).
+        """
+        kwargs = {}
+        process_registry = self.get_process_registry(api_version=api_version)
+        if process_registry.contains("sar_backscatter"):
+            process_spec = process_registry.get_spec("sar_backscatter")
+            [coefficient_param] = (p for p in process_spec["parameters"] if p["name"] == "coefficient")
+            kwargs["coefficient"] = coefficient_param["default"]
+        logger.info(f"get_default_sar_backscatter_arguments: {kwargs=}")
+        return SarBackscatterArgs(**kwargs)
+
 
 def get_elastic_job_registry(
     requests_session: Optional[requests.Session] = None,
@@ -2387,7 +2402,12 @@ class GpsBatchJobs(backend.BatchJobs):
         )
 
         if api_version:
-            env = env.push({"version": api_version})
+            env = env.push(
+                {
+                    "version": api_version,
+                    "openeo_api_version": api_version,
+                }
+            )
 
         top_level_node = ProcessGraphVisitor.dereference_from_node_arguments(process_graph)
         result_node = process_graph[top_level_node]

@@ -11,6 +11,7 @@ class EVAL_ENV_KEY:
     DO_EXTENT_CHECK = "do_extent_check"
     PARAMETERS = "parameters"
     LOAD_STAC_APPLY_LCFM_IMPROVEMENTS = "load_stac_apply_lcfm_improvements"
+    OPENEO_API_VERSION = "openeo_api_version"
 
 
 JOB_OPTION_LOG_LEVEL = "log_level"
