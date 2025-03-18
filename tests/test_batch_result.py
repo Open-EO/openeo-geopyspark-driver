@@ -2596,6 +2596,7 @@ def test_geotiff_tile_size(tmp_path, window_size, default_tile_size, requested_t
     output_tiff = job_dir / "openEO_2021-01-05Z.tif"
 
     with rasterio.open(output_tiff) as dataset:
+        assert dataset.crs.to_epsg() == 4326
         assert dataset.count == len(bands)
         for block_shape in dataset.block_shapes:
             assert block_shape == (expected_tile_size, expected_tile_size)
