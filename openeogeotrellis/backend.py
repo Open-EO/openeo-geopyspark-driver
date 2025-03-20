@@ -1151,6 +1151,10 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                             summary += "\n" + memory_message
                     elif (
                         "Missing an output location" in root_cause_message
+                        or (  # OOM on YARN
+                            "times, most recent failure:" in root_cause_message
+                            and "ExecutorLostFailure" in root_cause_message
+                        )
                         or "has failed the maximum allowable number of times" in root_cause_message
                     ):
                         summary = f"A part of your process graph failed multiple times. Simply try submitting again, or use batch job logs to find more detailed information in case of persistent failures. Increasing executor memory may help if the root cause is not clear from the logs."
