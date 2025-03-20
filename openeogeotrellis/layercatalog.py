@@ -275,6 +275,11 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             logger.info("Setting NoResampleOnRead to true")
             datacubeParams.setNoResampleOnRead(True)
 
+        if "use_new_feature_extent_intersection" in feature_flags:
+            val = smart_bool(feature_flags.get("use_new_feature_extent_intersection"))
+            logger.info(f"Setting useNewFeatureExtentIntersection to {val}")
+            datacubeParams.setUseNewFeatureExtentIntersection(val)
+
         def metadata_properties(flatten_eqs=True) -> Dict[str, object]:
             layer_properties = metadata.get("_vito", "properties", default={})
             custom_properties = load_params.properties
