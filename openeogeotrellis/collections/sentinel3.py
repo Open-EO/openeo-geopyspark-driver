@@ -326,6 +326,10 @@ def create_s3_toa(product_type, creo_path, band_names, bbox_tile, digital_number
         geofile = 'geo_coordinates.nc'
         lat_band = 'latitude'
         lon_band = 'longitude'
+    elif product_type == "SY_2_AOD___":
+        geofile = 'NTC_AOD.nc'
+        lat_band = 'latitude'
+        lon_band = 'longitude'
     else:
         raise ValueError(product_type)
 
@@ -456,7 +460,7 @@ def do_reproject(product_type, final_grid_resolution, creo_path, band_names,
                     return f"SDR_{band_name.split('_')[1]}"
             if product_type == SLSTR_PRODUCT_TYPE:
                 return band_name
-            if product_type in ["OL_2_LFR___", "OL_2_WFR___"]:
+            if product_type in ["OL_2_LFR___", "OL_2_WFR___", "SY_2_AOD___"]:
                 return band_name
             raise ValueError(band_name)
 
@@ -739,14 +743,14 @@ if __name__ == '__main__':
 
     lat_lon_bbox = [2.535352308127358, 50.57415247573394, 5.713651867060349, 51.718230797191836]
     lat_lon_bbox = [9.944991786580573, 45.99238819027832, 12.146700668591137, 47.27025711819684]
-    lat_lon_bbox = [155.18600169446518, 51.159174317184096, 158.8606611812694, 53.108022104800824]
+    lat_lon_bbox = [129.4502384682777, -18.161201081701407, 138.1236995771855, -10.287173762653026]
     # lat_lon_bbox = [0.0, 50.0, 5.0, 55.0]
     from_date = "2024-01-01T00:00:00Z"
-    to_date = "2024-01-01T01:00:00Z"
-    band_names = ["iwv:IWV"]
+    to_date = "2024-01-01T02:00:00Z"
+    band_names = ["NTC_AOD:Surface_reflectance_440"]
 
-    product_type = "OL_2_WFR___"
-    native_resolution = 0.00297619047619
-    bbox = BoundingBox.from_wsen_tuple(lat_lon_bbox, crs=4326).reproject(32657)
+    product_type = "SY_2_AOD___"
+    native_resolution = 0.040178571
+    bbox = BoundingBox.from_wsen_tuple(lat_lon_bbox, crs=4326).reproject(32753)
 
     main(product_type, native_resolution, bbox, from_date, to_date, band_names)
