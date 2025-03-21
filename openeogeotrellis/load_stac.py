@@ -15,7 +15,8 @@ import pystac
 import pystac_client
 from geopyspark import LayerType, TiledRasterLayer
 from openeo.util import dict_no_none, Rfc3339
-from openeo_driver import filter_properties, backend
+import openeo_driver.backend
+from openeo_driver import filter_properties
 from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.backend import LoadParameters, BatchJobMetadata
 from openeo_driver.errors import (
@@ -50,10 +51,11 @@ REQUESTS_TIMEOUT_SECONDS = 60
 
 def load_stac(
     url: str,
+    *,
     load_params: LoadParameters,
     env: EvalEnv,
-    layer_properties: Dict[str, object],
-    batch_jobs: Optional[backend.BatchJobs],
+    layer_properties: Optional[Dict[str, object]],
+    batch_jobs: Optional[openeo_driver.backend.BatchJobs],
     override_band_names: List[str] = None,
     apply_lcfm_improvements=False,
 ) -> GeopysparkDataCube:
@@ -212,7 +214,14 @@ def load_stac(
     max_poll_time = time.time() + max_poll_delay_seconds
 
     dependency_job_info = (
-        _await_dependency_job(url, user, batch_jobs, poll_interval_seconds, max_poll_delay_seconds, max_poll_time)
+        _await_dependency_job(
+            url=url,
+            user=user,
+            batch_jobs=batch_jobs,
+            poll_interval_seconds=poll_interval_seconds,
+            max_poll_delay_seconds=max_poll_delay_seconds,
+            max_poll_time=max_poll_time,
+        )
         if user
         else None
     )
@@ -258,7 +267,12 @@ def load_stac(
     else:
         logger.info(f"load_stac of arbitrary URL {url}")
 
-        stac_object = _await_stac_object(url, poll_interval_seconds, max_poll_delay_seconds, max_poll_time)
+        stac_object = _await_stac_object(
+            url=url,
+            poll_interval_seconds=poll_interval_seconds,
+            max_poll_delay_seconds=max_poll_delay_seconds,
+            max_poll_time=max_poll_time,
+        )
 
         if isinstance(stac_object, pystac.Item):
             if load_params.properties:
@@ -749,7 +763,10 @@ def get_best_url(asset: pystac.Asset):
     )
 
 
-def _compute_cellsize(proj_bbox, proj_shape) -> (float, float):
+def _compute_cellsize(
+    proj_bbox: Tuple[float, float, float, float],
+    proj_shape: Tuple[float, float],
+) -> Tuple[float, float]:
     xmin, ymin, xmax, ymax = proj_bbox
     rows, cols = proj_shape
     cell_width = (xmax - xmin) / cols
@@ -757,8 +774,10 @@ def _compute_cellsize(proj_bbox, proj_shape) -> (float, float):
     return cell_width, cell_height
 
 
-def extract_own_job_info(url: str, user_id: str, batch_jobs: backend.BatchJobs) -> Optional[BatchJobMetadata]:
-    path_segments = urlparse(url).path.split('/')
+def extract_own_job_info(
+    url: str, user_id: str, batch_jobs: openeo_driver.backend.BatchJobs
+) -> Optional[BatchJobMetadata]:
+    path_segments = urlparse(url).path.split("/")
 
     if len(path_segments) < 3:
         return None
@@ -774,8 +793,15 @@ def extract_own_job_info(url: str, user_id: str, batch_jobs: backend.BatchJobs) 
         return None
 
 
-def _await_dependency_job(url, user, batch_jobs, poll_interval_seconds, max_poll_delay_seconds,
-                          max_poll_time) -> Optional[BatchJobMetadata]:
+def _await_dependency_job(
+    url,
+    *,
+    user: Optional[User],
+    batch_jobs: Optional[openeo_driver.backend.BatchJobs],
+    poll_interval_seconds: float,
+    max_poll_delay_seconds: float,
+    max_poll_time: float,
+) -> Optional[BatchJobMetadata]:
     def get_dependency_job_info() -> Optional[BatchJobMetadata]:
         return (extract_own_job_info(url, user.user_id, batch_jobs) if batch_jobs
                 else None)
@@ -811,7 +837,13 @@ def _await_dependency_job(url, user, batch_jobs, poll_interval_seconds, max_poll
     return dependency_job_info
 
 
-def _await_stac_object(url, poll_interval_seconds, max_poll_delay_seconds, max_poll_time) -> STACObject:
+def _await_stac_object(
+    url: str,
+    *,
+    poll_interval_seconds: float,
+    max_poll_delay_seconds: float,
+    max_poll_time: float,
+) -> STACObject:
     session = requests_with_retry(total=5, backoff_factor=0.1, status_forcelist={500, 502, 503, 504})
 
     while True:
