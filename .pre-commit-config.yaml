@@ -14,3 +14,10 @@ repos:
     rev: v2.1.1
     hooks:
       - id: darker
+  - repo: local
+    hooks:
+      - id: changelog-version-consistency
+        name: "Ensure changelog 'in progress' version matches package version"
+        language: system
+        files: 'CHANGELOG\.md|openeogeotrellis/_version\.py'
+        entry: python ./scripts/changelog-version-consistency.py
