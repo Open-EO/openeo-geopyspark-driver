@@ -21,13 +21,14 @@ from py4j.protocol import Py4JJavaError
 from openeo.metadata import Band
 from openeo.util import TimingLogger, deep_get, str_truncate
 from openeo_driver import filter_properties
-from openeo_driver.backend import CollectionCatalog, LoadParameters
+from openeo_driver.backend import CollectionCatalog, LoadParameters, OpenEoBackendImplementation
 from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.errors import OpenEOApiException, InternalException, ProcessGraphComplexityException
 from openeo_driver.filter_properties import extract_literal_match
 from openeo_driver.util.geometry import reproject_bounding_box
+from openeo_driver.util.logging import just_log_exceptions
 from openeo_driver.util.utm import auto_utm_epsg_for_geometry
 from openeo_driver.util.http import requests_with_retry
 from openeo_driver.utils import read_json, EvalEnv, WhiteListEvalEnv, smart_bool
@@ -35,6 +36,7 @@ from shapely.geometry import box
 from shapely.geometry.base import BaseGeometry
 
 from openeogeotrellis import sentinel_hub, datacube_parameters
+import openeogeotrellis.backend
 from openeogeotrellis.catalogs.creo import CreoCatalogClient
 from openeogeotrellis.collections.s1backscatter_orfeo import get_implementation as get_s1_backscatter_orfeo
 from openeogeotrellis.collections.testing import load_test_collection
@@ -70,6 +72,7 @@ WHITELIST = [
     EVAL_ENV_KEY.DO_EXTENT_CHECK,
     EVAL_ENV_KEY.PARAMETERS,
     EVAL_ENV_KEY.LOAD_STAC_APPLY_LCFM_IMPROVEMENTS,
+    EVAL_ENV_KEY.OPENEO_API_VERSION,
 ]
 LARGE_LAYER_THRESHOLD_IN_PIXELS = pow(10, 11)
 
@@ -272,6 +275,11 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             logger.info("Setting NoResampleOnRead to true")
             datacubeParams.setNoResampleOnRead(True)
 
+        if "use_new_feature_extent_intersection" in feature_flags:
+            val = smart_bool(feature_flags.get("use_new_feature_extent_intersection"))
+            logger.info(f"Setting useNewFeatureExtentIntersection to {val}")
+            datacubeParams.setUseNewFeatureExtentIntersection(val)
+
         def metadata_properties(flatten_eqs=True) -> Dict[str, object]:
             layer_properties = metadata.get("_vito", "properties", default={})
             custom_properties = load_params.properties
@@ -412,8 +420,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
             dependencies = env.get(EVAL_ENV_KEY.DEPENDENCIES, [])
             sar_backscatter_arguments: Optional[SarBackscatterArgs] = (
-                (load_params.sar_backscatter or SarBackscatterArgs()) if sar_backscatter_compatible
-                else None
+                _get_sar_backscatter_arguments(load_params=load_params, env=env) if sar_backscatter_compatible else None
             )
 
             if dependencies:
@@ -670,8 +677,9 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         elif layer_source_type == 'file-oscars'  or layer_source_type == "cgls_oscars":
             pyramid = file_s2_pyramid()
         elif layer_source_type == 'creodias-s1-backscatter':
+            sar_backscatter_arguments = _get_sar_backscatter_arguments(load_params=load_params, env=env)
             #make a copy before modifying: it is used as a cache key
-            sar_backscatter_arguments = deepcopy(load_params.sar_backscatter or SarBackscatterArgs())
+            sar_backscatter_arguments = deepcopy(sar_backscatter_arguments)
             sar_backscatter_arguments.options["resolution"] = (cell_width, cell_height)
             s1_backscatter_orfeo = get_s1_backscatter_orfeo(
                 version=sar_backscatter_arguments.options.get("implementation_version", "2"),
@@ -1463,6 +1471,28 @@ def is_layer_too_large(
         return f"Requested extent is too large to process. Estimated number of pixels: {estimated_pixels:.2e}, " + \
             f"threshold: {threshold_pixels:.2e}."
     return None
+
+
+def _get_sar_backscatter_arguments(load_params: LoadParameters, env: EvalEnv) -> SarBackscatterArgs:
+    """
+    Get SarBackscatterArgs from LoadParameters if available,
+    otherwise: look in process registry schema to pick defaults that
+    are possibly overridden in deployment configuration.
+    """
+    if load_params.sar_backscatter:
+        sar_backscatter_arguments = load_params.sar_backscatter
+    else:
+        try:
+            # TODO: is it possible to avoid hardcoding `GpsProcessing` here?
+            #       Note that `env.get("backend_implementation").processing` is not available here anymore
+            #       because of that WhiteListEvalEnv caching business.
+            processing = openeogeotrellis.backend.GpsProcessing()
+            api_version = env.openeo_api_version()
+            sar_backscatter_arguments = processing.get_default_sar_backscatter_arguments(api_version=api_version)
+        except Exception as e:
+            logger.warning(f"_get_sar_backscatter_arguments failed: {e!r}")
+            sar_backscatter_arguments = SarBackscatterArgs()
+    return sar_backscatter_arguments
 
 
 if __name__ == "__main__":

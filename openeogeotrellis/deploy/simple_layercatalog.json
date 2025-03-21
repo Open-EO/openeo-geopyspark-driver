@@ -1,0 +1,40 @@
+[
+  {
+    "id": "EXAMPLE_STAC_CATALOG",
+    "experimental": true,
+    "title": "example_stac_catalog.",
+    "description": "Simple Sentinel-2 based stac catalog that is hosted on Github.",
+    "license": "unknown",
+    "summaries": {
+      "eo:bands": [
+        {
+          "name": "B04",
+          "common_name": null,
+          "wavelength_um": null,
+          "aliases": null,
+          "gsd": null
+        },
+        {
+          "name": "B03",
+          "common_name": null,
+          "wavelength_um": null,
+          "aliases": null,
+          "gsd": null
+        },
+        {
+          "name": "B02",
+          "common_name": null,
+          "wavelength_um": null,
+          "aliases": null,
+          "gsd": null
+        }
+      ]
+    },
+    "_vito": {
+      "data_source": {
+        "type": "stac",
+        "url": "https://raw.githubusercontent.com/Open-EO/openeo-geopyspark-driver/refs/heads/master/docker/local_batch_job/example_stac_catalog/collection.json"
+      }
+    }
+  }
+]

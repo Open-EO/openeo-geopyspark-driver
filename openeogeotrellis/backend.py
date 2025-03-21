@@ -38,6 +38,7 @@ import openeo_driver.util.changelog
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 from openeo.metadata import Band, BandDimension, Dimension, SpatialDimension, TemporalDimension
 from openeo.util import TimingLogger, deep_get, dict_no_none, repr_truncate, rfc3339, str_truncate
+from openeo.utils.version import ComparableVersion
 from openeo_driver import backend
 from openeo_driver.backend import (
     BatchJobMetadata,
@@ -383,6 +384,19 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         return {
             "currency": "credits",
         }
+
+    def postprocess_capabilities(self, capabilities: dict) -> dict:
+        extras = get_backend_config().capabilities_extras
+        if extras:
+            for key, value in extras.items():
+                if key not in capabilities:
+                    capabilities[key] = value
+                elif key == "links":
+                    capabilities["links"] += value
+                else:
+                    # TODO: handle more merging cases
+                    logger.warning(f"postprocess_capabilities: unsupported merging of {key=}")
+        return capabilities
 
     def health_check(self, options: Optional[dict] = None) -> dict:
         mode = (options or {}).get("mode", "spark")
@@ -1137,6 +1151,10 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                             summary += "\n" + memory_message
                     elif (
                         "Missing an output location" in root_cause_message
+                        or (  # OOM on YARN
+                            "times, most recent failure:" in root_cause_message
+                            and "ExecutorLostFailure" in root_cause_message
+                        )
                         or "has failed the maximum allowable number of times" in root_cause_message
                     ):
                         summary = f"A part of your process graph failed multiple times. Simply try submitting again, or use batch job logs to find more detailed information in case of persistent failures. Increasing executor memory may help if the root cause is not clear from the logs."
@@ -1363,6 +1381,20 @@ class GpsProcessing(ConcreteProcessing):
         if not len(result) == 1:
             raise InternalException(message=f"run_udf result RDD with 1 element expected but got {len(result)}")
         return result[0]
+
+    def get_default_sar_backscatter_arguments(self, api_version: Union[str, ComparableVersion]) -> SarBackscatterArgs:
+        """
+        Get default `sar_backscatter` arguments based on actual `sar_backscatter` spec in
+        process registry (which might be deployment-specific).
+        """
+        kwargs = {}
+        process_registry = self.get_process_registry(api_version=api_version)
+        if process_registry.contains("sar_backscatter"):
+            process_spec = process_registry.get_spec("sar_backscatter")
+            [coefficient_param] = (p for p in process_spec["parameters"] if p["name"] == "coefficient")
+            kwargs["coefficient"] = coefficient_param["default"]
+        logger.info(f"get_default_sar_backscatter_arguments: {kwargs=}")
+        return SarBackscatterArgs(**kwargs)
 
 
 def get_elastic_job_registry(
@@ -2031,15 +2063,20 @@ class GpsBatchJobs(backend.BatchJobs):
 
             # Check concurrent_pod_limit constraints.
             concurrent_pod_limit = ConfigParams().concurrent_pod_limit
-            try:
-                with zk_client(hosts=ConfigParams().zookeepernodes) as zk:
-                    zk_path = f"{get_backend_config().zookeeper_root_path}/config/users/{user_id}/concurrent_pod_limit"
-                    concurrent_pod_limit = int(zk.get(zk_path)[0])
-                    log.info(f"Concurrent job limit for user {user_id} found: {concurrent_pod_limit}")
-            except kazoo.exceptions.NoNodeError:
-                pass
-            except Exception:
-                log.warning(f"Failed to get user specific concurrent_pod_limit", exc_info=True)
+            if not get_backend_config().yunikorn_user_specific_queues:
+                try:
+                    with zk_client(hosts=ConfigParams().zookeepernodes) as zk:
+                        zk_path = f"{get_backend_config().zookeeper_root_path}/config/users/{user_id}/concurrent_pod_limit"
+                        concurrent_pod_limit = int(zk.get(zk_path)[0])
+                        log.info(f"Concurrent job limit for user {user_id} found: {concurrent_pod_limit}")
+                except kazoo.exceptions.NoNodeError:
+                    pass
+                except Exception:
+                    log.warning(f"Failed to get user specific concurrent_pod_limit", exc_info=True)
+                limitting_state = "RUNNING"
+            else:
+                limitting_state = "SUBMITTED"
+
             if concurrent_pod_limit != 0:
                 label_selector = f"user={user_id}"
                 try:
@@ -2051,12 +2088,12 @@ class GpsBatchJobs(backend.BatchJobs):
                     log.info("Exception when calling CustomObjectsApi->list_namespaced_custom_object: %s\n" % e)
                     result = {'items': []}
 
-                running_count = 0
+                limit_count = 0
                 for app in result['items']:
-                    if 'status' not in app or app['status']['applicationState']['state'] == 'RUNNING':
-                        running_count += 1
-                log.debug(f"concurrent_pod_limit check: {concurrent_pod_limit=} {running_count=}")
-                if running_count >= concurrent_pod_limit:
+                    if 'status' not in app or app['status']['applicationState']['state'] == limitting_state:
+                        limit_count += 1
+                log.debug(f"concurrent_pod_limit check: {concurrent_pod_limit=} {limit_count=}")
+                if limit_count >= concurrent_pod_limit:
                     raise OpenEOApiException(
                         code="ConcurrentJobLimit",
                         message=f"Job was not started because concurrent job limit ({concurrent_pod_limit}) is reached.",
@@ -2387,7 +2424,12 @@ class GpsBatchJobs(backend.BatchJobs):
         )
 
         if api_version:
-            env = env.push({"version": api_version})
+            env = env.push(
+                {
+                    "version": api_version,
+                    "openeo_api_version": api_version,
+                }
+            )
 
         top_level_node = ProcessGraphVisitor.dereference_from_node_arguments(process_graph)
         result_node = process_graph[top_level_node]

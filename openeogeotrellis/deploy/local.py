@@ -163,7 +163,7 @@ def setup_environment(log_dir: Path = Path.cwd()):
         os.environ["GEOPYSPARK_JARS_PATH"] = str(repository_root / "jars") + previous
 
     if "OPENEO_CATALOG_FILES" not in os.environ:
-        os.environ["OPENEO_CATALOG_FILES"] = str(repository_root / "openeogeotrellis/deploy/empty_layercatalog.json")
+        os.environ["OPENEO_CATALOG_FILES"] = str(repository_root / "openeogeotrellis/deploy/simple_layercatalog.json")
     os.environ["PYTEST_CONFIGURE"] = ""  # to enable is_ci_context
     os.environ["FLASK_DEBUG"] = "1"
 

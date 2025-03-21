@@ -322,7 +322,7 @@ def load_stac(
                 limit=20,
                 datetime=(
                     None
-                    if temporal_extent is (DEFAULT_TEMPORAL_EXTENT or netcdf_with_time_dimension)
+                    if ((temporal_extent is DEFAULT_TEMPORAL_EXTENT) or netcdf_with_time_dimension)
                     else f"{from_date.isoformat().replace('+00:00', 'Z')}/"
                     f"{to_date.isoformat().replace('+00:00', 'Z')}"  # end is inclusive
                 ),
