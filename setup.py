@@ -29,6 +29,8 @@ tests_require = [
     "dirty-equals>=0.6",
     "cryptography>=44.0.0",
     "responses",
+    "rio_cogeo",
+    "pydantic~=1.0",
 ]
 
 setup(
