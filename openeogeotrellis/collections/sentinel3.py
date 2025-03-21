@@ -322,7 +322,7 @@ def create_s3_toa(product_type, creo_path, band_names, bbox_tile, digital_number
         geofile = 'geodetic_in.nc'
         lat_band = 'latitude_in'
         lon_band = 'longitude_in'
-    elif product_type == "OL_2_LFR___":
+    elif product_type in ["OL_2_LFR___", "OL_2_WFR___"]:
         geofile = 'geo_coordinates.nc'
         lat_band = 'latitude'
         lon_band = 'longitude'
@@ -456,7 +456,7 @@ def do_reproject(product_type, final_grid_resolution, creo_path, band_names,
                     return f"SDR_{band_name.split('_')[1]}"
             if product_type == SLSTR_PRODUCT_TYPE:
                 return band_name
-            if product_type == "OL_2_LFR___":
+            if product_type in ["OL_2_LFR___", "OL_2_WFR___"]:
                 return band_name
             raise ValueError(band_name)
 
@@ -745,7 +745,7 @@ if __name__ == '__main__':
     to_date = "2024-01-01T01:00:00Z"
     band_names = ["iwv:IWV"]
 
-    product_type = "OL_2_LFR___"
+    product_type = "OL_2_WFR___"
     native_resolution = 0.00297619047619
     bbox = BoundingBox.from_wsen_tuple(lat_lon_bbox, crs=4326).reproject(32657)
 
