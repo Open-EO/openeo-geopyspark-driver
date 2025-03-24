@@ -1423,7 +1423,7 @@ class GeopysparkDataCube(DriverDataCube):
         height = extent.ymax - extent.ymin
 
         currentResolutionX = width / (currentTileCols * currentTileLayout.layoutCols)
-        currentResolutionY = width / (currentTileRows * currentTileLayout.layoutRows)
+        currentResolutionY = height / (currentTileRows * currentTileLayout.layoutRows)
         if projection == None and abs(currentResolutionX - target_resolution) / target_resolution < 0.00001:
             _log.info(f"Resampling datacube not necessary, resolution already at {target_resolution}")
             return None
