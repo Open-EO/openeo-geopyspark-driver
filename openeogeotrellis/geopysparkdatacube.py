@@ -638,13 +638,13 @@ class GeopysparkDataCube(DriverDataCube):
 
         if isinstance(reducer, dict):
             reducer = GeoPySparkBackendImplementation.accept_process_graph(reducer)
-
         if isinstance(chunks, Polygon):
             chunks = [chunks]
         elif isinstance(chunks, MultiPolygon):
             chunks: List[Polygon] = chunks.geoms
         else:
             raise ValueError(f"Invalid type for `chunks`: {type(chunks)}")
+        mask_value = float(mask_value)
 
         jvm = get_jvm()
 
