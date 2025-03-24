@@ -644,7 +644,8 @@ class GeopysparkDataCube(DriverDataCube):
             chunks: List[Polygon] = chunks.geoms
         else:
             raise ValueError(f"Invalid type for `chunks`: {type(chunks)}")
-        mask_value = float(mask_value)
+        if mask_value is not None:
+            mask_value = float(mask_value)
 
         jvm = get_jvm()
 
