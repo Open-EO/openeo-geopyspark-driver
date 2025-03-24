@@ -228,6 +228,78 @@ RuntimeError: Calculated padded input size per channel: (3 x 66 x 66). Kernel si
     assert ("Kernel size can't be greater than actual input size" in error_summary.summary)
 
 
+def test_summarize_bad_alloc(caplog):
+    caplog.set_level("DEBUG")
+
+    jvm = get_jvm()
+
+    # does not have a root cause attached
+    spark_exception = jvm.org.apache.spark.SparkException(
+        """Traceback (most recent call last):
+  File "/opt/openeo/lib/python3.8/site-packages/openeogeotrellis/deploy/batch_job.py", line 790, in start_main
+    main(sys.argv)
+  File "/opt/openeo/lib/python3.8/site-packages/openeogeotrellis/deploy/batch_job.py", line 246, in main
+    run_driver()
+  File "/opt/openeo/lib/python3.8/site-packages/openeogeotrellis/deploy/batch_job.py", line 207, in run_driver
+    run_job(
+  File "/opt/openeo/lib/python3.8/site-packages/openeogeotrellis/utils.py", line 64, in memory_logging_wrapper
+    return function(*args, **kwargs)
+  File "/opt/openeo/lib/python3.8/site-packages/openeogeotrellis/deploy/batch_job.py", line 395, in run_job
+    assets_metadata = list(map(result_write_assets, results))
+  File "/opt/openeo/lib/python3.8/site-packages/openeogeotrellis/deploy/batch_job.py", line 391, in result_write_assets
+    return result_arg.write_assets(str(output_file))
+  File "/opt/openeo/lib/python3.8/site-packages/openeo_driver/save_result.py", line 170, in write_assets
+    return self.cube.write_assets(filename=directory, format=self.format, format_options=self.options)
+  File "/opt/openeo/lib/python3.8/site-packages/openeogeotrellis/geopysparkdatacube.py", line 2195, in write_assets
+    asset_paths = get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.writeRasters(
+  File "/usr/local/spark/python/lib/py4j-0.10.9.7-src.zip/py4j/java_gateway.py", line 1322, in __call__
+    return_value = get_return_value(
+  File "/usr/local/spark/python/lib/py4j-0.10.9.7-src.zip/py4j/protocol.py", line 326, in get_return_value
+    raise Py4JJavaError(
+py4j.protocol.Py4JJavaError: An error occurred while calling z:org.openeo.geotrellis.netcdf.NetCDFRDDWriter.writeRasters.
+: org.apache.spark.SparkException: Job aborted due to stage failure: Task 64 in stage 16.0 failed 4 times, most recent failure: Lost task 64.3 in stage 16.0 (TID 391) (10.42.120.241 executor 4): org.apache.spark.api.python.PythonException: Traceback (most recent call last):
+  File "/usr/local/spark/python/lib/pyspark.zip/pyspark/worker.py", line 1247, in main
+    process()
+  File "/usr/local/spark/python/lib/pyspark.zip/pyspark/worker.py", line 1239, in process
+    serializer.dump_stream(out_iter, outfile)
+  File "/usr/local/spark/python/lib/pyspark.zip/pyspark/serializers.py", line 146, in dump_stream
+    for obj in iterator:
+  File "/usr/local/spark/python/lib/pyspark.zip/pyspark/util.py", line 83, in wrapper
+    return f(*args, **kwargs)
+  File "/opt/openeo/lib/python3.8/site-packages/openeogeotrellis/utils.py", line 64, in memory_logging_wrapper
+    return function(*args, **kwargs)
+  File "/opt/openeo/lib/python3.8/site-packages/epsel.py", line 44, in wrapper
+    return _FUNCTION_POINTERS[key](*args, **kwargs)
+  File "/opt/openeo/lib/python3.8/site-packages/epsel.py", line 37, in first_time
+    return f(*args, **kwargs)
+  File "/opt/openeo/lib/python3.8/site-packages/openeogeotrellis/geopysparkdatacube.py", line 571, in tile_function
+    result_data = run_udf_code(code=udf_code, data=data)
+  File "/opt/openeo/lib/python3.8/site-packages/epsel.py", line 44, in wrapper
+    return _FUNCTION_POINTERS[key](*args, **kwargs)
+  File "/opt/openeo/lib/python3.8/site-packages/epsel.py", line 37, in first_time
+    return f(*args, **kwargs)
+  File "/opt/openeo/lib/python3.8/site-packages/openeogeotrellis/udf.py", line 67, in run_udf_code
+    return openeo.udf.run_udf_code(code=code, data=data)
+  File "/opt/openeo/lib/python3.8/site-packages/openeo/udf/run_code.py", line 195, in run_udf_code
+    result_cube: xarray.DataArray = func(cube=data.get_datacube_list()[0].get_array(), context=data.user_context)
+  File "<string>", line 160, in apply_datacube
+  File "<string>", line 54, in process_window_onnx
+  File "<string>", line 29, in load_ort_sessions
+  File "<string>", line 30, in <listcomp>
+  File "onnx_deps/onnxruntime/capi/onnxruntime_inference_collection.py", line 360, in __init__
+    self._create_inference_session(providers, provider_options, disabled_optimizers)
+  File "onnx_deps/onnxruntime/capi/onnxruntime_inference_collection.py", line 408, in _create_inference_session
+    sess.initialize_session(providers, provider_options, disabled_optimizers)
+onnxruntime.capi.onnxruntime_pybind11_state.RuntimeException: [ONNXRuntimeError] : 6 : RUNTIME_EXCEPTION : Exception during initialization: std::bad_alloc
+"""
+    )
+    py4j_error: Exception = Py4JJavaError(msg="", java_exception=spark_exception)
+
+    error_summary = GeoPySparkBackendImplementation.summarize_exception_static(py4j_error)
+
+    assert "python-memory" in error_summary.summary  # Check if instructions are displayed
+
+
 def test_summarize_big_error_syntetic(caplog):
     caplog.set_level("DEBUG")
 

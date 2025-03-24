@@ -1137,9 +1137,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                             logger.warning(f"StackTraceButNotPythonException: {root_cause_class_name}")
 
                         summary = f"UDF exception while evaluating processing graph. Please check your user defined functions. stacktrace:\n{udf_stacktrace}"
-                        if udf_stacktrace.endswith("MemoryError") or udf_stacktrace.endswith(
-                            "MemoryError: std::bad_alloc"
-                        ):
+                        if udf_stacktrace.endswith("MemoryError") or udf_stacktrace.endswith("std::bad_alloc"):
                             summary += "\n" + memory_message
                         return ErrorSummary(error, is_client_error, summary)
 
