@@ -2371,7 +2371,10 @@ class GpsBatchJobs(backend.BatchJobs):
 
                 with self._double_job_registry as dbl_registry:
                     dbl_registry.set_application_id(job_id, user_id, application_id)
-                    dbl_registry.set_status(job_id, user_id, JOB_STATUS.QUEUED)
+                    try:
+                        dbl_registry.set_status(job_id, user_id, JOB_STATUS.QUEUED)
+                    except Exception:
+                        log.warning("Failed to set job status to QUEUED. The job still started so we continue anyway.")
 
             except _BatchJobError:
                 traceback.print_exc(file=sys.stderr)
