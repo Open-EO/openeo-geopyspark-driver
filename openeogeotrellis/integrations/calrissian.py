@@ -54,6 +54,13 @@ class CalrissianS3Result:
             content = content.decode(encoding)
         return content
 
+    def generate_presigned_url(self, expiration=3600) -> str:
+        return s3_client().generate_presigned_url(
+            ClientMethod="get_object",
+            Params={"Bucket": self.s3_bucket, "Key": self.s3_key},
+            ExpiresIn=expiration,
+        )
+
 
 class CwLSource:
     """

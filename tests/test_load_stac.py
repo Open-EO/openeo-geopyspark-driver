@@ -184,7 +184,7 @@ def test_lcfm_improvements(  # resolution and offset behind a feature flag; alph
     feature_builder.addLink.return_value = feature_builder
 
     data_cube = load_stac(
-        stac_collection_url,
+        url=stac_collection_url,
         load_params=LoadParameters(bands=band_names),
         env=EvalEnv(dict(enable_by_eval_env, pyramid_levels="highest")),
         layer_properties={},
@@ -261,7 +261,7 @@ def test_world_oom(requests_mock):
     requests_mock.get(stac_item_url, text=stac_item)
 
     load_stac(
-        stac_item_url,
+        url=stac_item_url,
         load_params=LoadParameters(),
         env=EvalEnv({"pyramid_levels": "highest"}),
         layer_properties={},
@@ -298,7 +298,7 @@ def test_empty_cube_from_stac_api(requests_mock, featureflags, env, expectation)
 
     with expectation:
         data_cube = load_stac(
-            stac_collection_url,
+            url=stac_collection_url,
             load_params=LoadParameters(
                 spatial_extent={"west": 0.0, "south": 50.0, "east": 1.0, "north": 51.0},
                 temporal_extent=DEFAULT_TEMPORAL_EXTENT,
@@ -335,7 +335,7 @@ def test_empty_cube_from_non_intersecting_item(requests_mock, featureflags, env,
 
     with expectation:
         data_cube = load_stac(
-            stac_item_url,
+            url=stac_item_url,
             load_params=LoadParameters(
                 spatial_extent={"west": 0.0, "south": 50.0, "east": 1.0, "north": 51.0},
                 temporal_extent=DEFAULT_TEMPORAL_EXTENT,

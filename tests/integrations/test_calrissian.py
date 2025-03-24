@@ -269,6 +269,14 @@ class TestCalrissianS3Result:
         result = CalrissianS3Result(s3_bucket=bucket, s3_key=key)
         assert result.read(encoding="utf-8") == "Howdy, Earth!"
 
+    def test_generate_presigned_url(self, s3_output, monkeypatch):
+        monkeypatch.setenv("SWIFT_URL", "https://s3.example.com")
+        bucket, key = s3_output
+        result = CalrissianS3Result(s3_bucket=bucket, s3_key=key)
+        assert result.generate_presigned_url() == dirty_equals.IsStr(
+            regex=r"https://s3.example.com/the-bucket/path/to/output.txt\?AWSAccessKeyId=.*"
+        )
+
 
 class TestCwlSource:
     def test_from_string(self):

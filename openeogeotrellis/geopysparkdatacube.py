@@ -638,13 +638,13 @@ class GeopysparkDataCube(DriverDataCube):
 
         if isinstance(reducer, dict):
             reducer = GeoPySparkBackendImplementation.accept_process_graph(reducer)
-
         if isinstance(chunks, Polygon):
             chunks = [chunks]
         elif isinstance(chunks, MultiPolygon):
             chunks: List[Polygon] = chunks.geoms
         else:
             raise ValueError(f"Invalid type for `chunks`: {type(chunks)}")
+        mask_value = float(mask_value)
 
         jvm = get_jvm()
 
@@ -1423,7 +1423,7 @@ class GeopysparkDataCube(DriverDataCube):
         height = extent.ymax - extent.ymin
 
         currentResolutionX = width / (currentTileCols * currentTileLayout.layoutCols)
-        currentResolutionY = width / (currentTileRows * currentTileLayout.layoutRows)
+        currentResolutionY = height / (currentTileRows * currentTileLayout.layoutRows)
         if projection == None and abs(currentResolutionX - target_resolution) / target_resolution < 0.00001:
             _log.info(f"Resampling datacube not necessary, resolution already at {target_resolution}")
             return None
