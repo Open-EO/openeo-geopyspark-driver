@@ -1166,8 +1166,11 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             summary = str_truncate(summary, width=width)
         else:
             is_client_error = False  # Give user the benefit of doubt.
+            import urllib
             if isinstance(error, FileNotFoundError):
                 summary = repr_truncate(str(error), width=width)
+            elif isinstance(error, urllib.error.HTTPError):
+                summary = repr_truncate(str(error) + ": " + error.filename, width=width)
             elif isinstance(error, AssertionError) and str(error) == "":
                 tb = error.__traceback__
                 tb_info = traceback.extract_tb(tb)
