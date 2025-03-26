@@ -20,6 +20,7 @@ without compromising stable operations.
 - Add `CalrissianS3Result.generate_presigned_url` ([#937](https://github.com/Open-EO/openeo-geopyspark-driver/issues/937))
 - Restore COG layout for `GTiff` output format ([Open-EO/openeo-geotrellis-extensions#393](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/393))
 - Add `CalrissianS3Result.download` ([#937](https://github.com/Open-EO/openeo-geopyspark-driver/issues/937))
+- Support additional Sentinel 3 collections ([eu-cdse/openeo-cdse-infra#380](https://github.com/eu-cdse/openeo-cdse-infra/issues/380))
 
 
 ## 0.64.1
