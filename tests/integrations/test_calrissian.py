@@ -278,6 +278,12 @@ class TestCalrissianS3Result:
             regex=r"https://s3.example.com/the-bucket/path/to/output.txt\?AWSAccessKeyId=.*"
         )
 
+    def test_generate_public_url(self, s3_output, monkeypatch):
+        monkeypatch.setenv("SWIFT_URL", "https://s3.example.com")
+        bucket, key = s3_output
+        result = CalrissianS3Result(s3_bucket=bucket, s3_key=key)
+        assert result.generate_public_url() == "https://s3.example.com/the-bucket/path/to/output.txt"
+
     def test_download(self, s3_output, tmp_path):
         bucket, key = s3_output
         result = CalrissianS3Result(s3_bucket=bucket, s3_key=key)

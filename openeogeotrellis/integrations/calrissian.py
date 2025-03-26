@@ -61,6 +61,12 @@ class CalrissianS3Result:
             ExpiresIn=expiration,
         )
 
+    def generate_public_url(self) -> str:
+        """Assuming the object (or its bucket) is public: generate a public URL"""
+        # TODO: is there a better way than just chopping off the query string from a presigned URL?
+        url = self.generate_presigned_url()
+        return url.split("?", maxsplit=1)[0]
+
     def download(self, target: Union[str, Path]) -> Path:
         target = Path(target)
         if target.is_dir():
