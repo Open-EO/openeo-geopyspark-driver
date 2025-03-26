@@ -1,6 +1,7 @@
 import json
 import os
 import sys
+from datetime import datetime
 from pathlib import Path
 
 
@@ -11,6 +12,7 @@ from openeo.util import ensure_dir
 
 def run_graph_locally(process_graph, output_dir):
     files_orig = set(output_dir.rglob("*"))
+    process_start = datetime.now()
     output_dir = ensure_dir(output_dir)
     setup_environment(output_dir)
     # Can only import after setup_environment:
@@ -31,7 +33,8 @@ def run_graph_locally(process_graph, output_dir):
     )
     # Set the permissions so any user can read and delete the files:
     # For when running inside a docker container.
-    files_new = set(output_dir.rglob("*")) - files_orig
+    files_now = set(output_dir.rglob("*"))
+    files_new = filter(lambda f: f not in files_orig or f.stat().st_mtime > process_start.timestamp(), files_now)
     for file in files_new:
         if file.is_file():
             os.chmod(file, 0o666)

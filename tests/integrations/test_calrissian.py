@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Dict
 from unittest import mock
 
@@ -276,6 +277,22 @@ class TestCalrissianS3Result:
         assert result.generate_presigned_url() == dirty_equals.IsStr(
             regex=r"https://s3.example.com/the-bucket/path/to/output.txt\?AWSAccessKeyId=.*"
         )
+
+    def test_download(self, s3_output, tmp_path):
+        bucket, key = s3_output
+        result = CalrissianS3Result(s3_bucket=bucket, s3_key=key)
+        path = tmp_path / "result.data"
+        result.download(path)
+        assert path.read_bytes() == b"Howdy, Earth!"
+
+    def test_download_to_dir(self, s3_output, tmp_path):
+        bucket, key = s3_output
+        result = CalrissianS3Result(s3_bucket=bucket, s3_key=key)
+        folder = tmp_path / "data"
+        folder.mkdir(parents=True)
+        path = result.download(target=folder)
+        assert path.relative_to(folder) == Path("output.txt")
+        assert path.read_bytes() == b"Howdy, Earth!"
 
 
 class TestCwlSource:
