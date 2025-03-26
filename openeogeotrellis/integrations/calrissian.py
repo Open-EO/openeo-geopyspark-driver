@@ -61,6 +61,15 @@ class CalrissianS3Result:
             ExpiresIn=expiration,
         )
 
+    def download(self, target: Union[str, Path]) -> Path:
+        target = Path(target)
+        if target.is_dir():
+            target = target / Path(self.s3_key).name
+        _log.info(f"Downloading from S3: {self.s3_bucket=} {self.s3_key=} to {target=}")
+        with target.open(mode="wb") as f:
+            s3_client().download_fileobj(Bucket=self.s3_bucket, Key=self.s3_key, Fileobj=f)
+        return target
+
 
 class CwLSource:
     """
@@ -349,7 +358,7 @@ class CalrissianJobLauncher:
         with ContextTimer() as timer:
             while timer.elapsed() < timeout:
                 job: kubernetes.client.V1Job = k8s_batch.read_namespaced_job(name=job_name, namespace=self._namespace)
-                _log.info(f"CWL job {job_name=} {timer.elapsed()=:.2f} {job.status.to_dict()=}")
+                _log.info(f"CWL job poll loop: {job_name=} {timer.elapsed()=:.2f} {job.status.to_dict()=}")
                 if job.status.conditions:
                     if any(c.type == "Failed" and c.status == "True" for c in job.status.conditions):
                         final_status = "failed"
@@ -359,7 +368,7 @@ class CalrissianJobLauncher:
                         break
                 time.sleep(sleep)
 
-        _log.info(f"CWL job {job_name=} {timer.elapsed()=:.2f} {final_status=}")
+        _log.info(f"CWL job poll loop done: {job_name=} {timer.elapsed()=:.2f} {final_status=}")
         if final_status == "complete":
             pass
         elif final_status is None:
