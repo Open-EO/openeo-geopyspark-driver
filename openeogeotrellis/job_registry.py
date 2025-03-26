@@ -682,7 +682,7 @@ class InMemoryJobRegistry(JobRegistryInterface):
 
     def set_usage(self, job_id: str, costs: float, usage: dict) -> JobDict:
         input_pixel = 0
-        if "input_pixel" in usage and "value" in usage["input_pixel"] and (
+        if "input_pixel" in usage and isinstance(usage["input_pixel"], dict) and "value" in usage["input_pixel"] and (
                 isinstance(input_pixel, int) or isinstance(input_pixel, float)):
             input_pixel = usage["input_pixel"]["value"]
         return self._update(job_id=job_id, costs=costs, usage=usage, input_pixel=input_pixel)
