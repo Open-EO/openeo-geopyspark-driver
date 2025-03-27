@@ -202,7 +202,12 @@ class TestOrfeoPipeline:
         )
         target_location = r"s1_grd"
         TestOrfeoPipeline.extract_product(input, target_location)
-        extent = {"xmin": 697534, "ymin": 5865437 - 80000, "xmax": 697534 + 10000, "ymax": 5865437 - 40000}
+        extent = {'xmin': 837703.6259948454,
+                  'ymin': 5767680.665770726,
+                  'xmax': 838703.6259948454,
+                  'ymax': 5768680.665770726}
+        extent_width_px = int((extent["xmax"] - extent["xmin"]) / target_resolution[0])
+        extent_height_px = int((extent["ymax"] - extent["ymin"]) / target_resolution[1])
         data, nodata = S1BackscatterOrfeoV2._orfeo_pipeline(
             input_tiff=Path(
                 "s1_grd/S1B_IW_GRDH_1SDV_20210517T054123_20210517T054148_026940_0337F2_2CE0.SAFE/measurement/s1b-iw-grd-vh-20210517t054123-20210517t054148-026940-0337f2-002.tiff"
@@ -210,8 +215,8 @@ class TestOrfeoPipeline:
             extent=extent,
             extent_epsg=32631,
             dem_dir=None,
-            extent_width_px=100,
-            extent_height_px=120,
+            extent_width_px=extent_width_px,
+            extent_height_px=extent_height_px,
             sar_calibration_lut="gamma",
             noise_removal=True,
             elev_geoid=None,
@@ -223,8 +228,9 @@ class TestOrfeoPipeline:
             target_resolution=target_resolution
         )
         # orfeo data is returned (y,x)
-        assert isinstance(data, np.ndarray)
-        assert (120, 100) == data.shape
+        assert isinstance(data, np.ndarray), f"Expected numpy array, got {type(data)}"
+        assert (extent_width_px, extent_height_px) == data.shape
+        assert_allclose([np.mean(data)], [0.02247126], atol=1e-4)
 
     def orfeo_failed_run(self, trackers, max_soft_errors_ratio, target_resolution: Tuple[float, float]):
         extent = {"xmin": 697534, "ymin": 5865437 - 80000, "xmax": 697534 + 10000, "ymax": 5865437 - 40000}
