@@ -66,6 +66,7 @@ config = GpsBackendConfig(
     id="gps-test-dummy",
     capabilities_title="Dummy GeoPysSpark Backend",
     capabilities_description="Dummy GeoPysSpark Backend",
+    layer_catalog_files=[str(Path(__file__).parent / "layercatalog.json")],
     opensearch_enrich=False,
     # TODO: avoid hardcoded reference to VITO/Terrascope resource
     default_opensearch_endpoint="https://services.terrascope.be/catalogue/",

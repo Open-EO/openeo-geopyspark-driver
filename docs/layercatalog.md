@@ -7,7 +7,7 @@ Data processing in openEO starts from loading EO data.
 Originally, openEO just provided the `load_collection` process to load EO data sets,
 called **collections** in the openEO API,
 which are "predefined" by the openEO backend provider
-(e.g. listed and documented at the `/collections` endpoint).
+(e.g. listed and documented under the `GET /collections` endpoint).
 Later, the `load_stac` process was added, with the ambitious aim to load data
 from any static STAC catalog or a STAC API Collection,
 without the requirement that they have to be known in advance by the openEO backend provider.
@@ -22,13 +22,19 @@ The openEO GeoPySpark driver allows to configure the available collections throu
 a "layer catalog" configuration file as follows:
 
 - Create a JSON file, e.g. `layercatalog.json` to define the collections (see lower).
-  If desired, it is also possible to work with multiple files.
+  If desired, it is also possible to work with multiple files, which will be merged automatically.
 
-- On launching the application,
-  point the environment variable `OPENEO_CATALOG_FILES` to the path of this file
-  (or space separated list of paths to multiple files).
+- Point to the layer configuration file(s), in one of the following ways:
+
+  - Set the environment variable `OPENEO_CATALOG_FILES` to the path of this file
+    (or comma separated sequence of paths to multiple files).
+  - Set the `layer_catalog_files` config field
+    in your `GpsBackendConfig` [configuration](./configuration.md) object
+    to a list of (absolute) paths to the layer catalog files.
+
   By default, `layercatalog.json` in the current working directory is assumed,
   but it is recommended to use absolute paths to avoid any confusion.
+
 
 ### JSON structure
 

@@ -40,8 +40,6 @@ from .datacube_fixtures import (
     imagecollection_with_two_bands_spatial_only,
 )
 
-os.environ["OPENEO_CATALOG_FILES"] = str(Path(__file__).parent / "layercatalog.json")
-
 _BACKEND_CONFIG_PATH = Path(__file__).parent / "backend_config.py"
 
 
