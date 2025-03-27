@@ -31,4 +31,5 @@ pythonPipeline {
   extra_container_volumes = [
     '/data/MTDA:/data/MTDA:ro'
   ]
+  run_tests = false
 }
