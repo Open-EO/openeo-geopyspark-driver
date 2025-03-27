@@ -2605,27 +2605,26 @@ def test_geotiff_tile_size(tmp_path, window_size, default_tile_size, requested_t
     assert is_valid_cog, str(errors)
 
 
-def test_export_workspace_merge_derived_from(tmp_path):
+def test_export_workspace_merge_derived_from(tmp_path, mock_s3_bucket):
     job_dir = tmp_path
+    test_workspace = "s3_workspace"
 
-    process_graph = {
-        "loadcollection1": {
-            "process_id": "load_collection",
-            "arguments": {
-                "id": "SENTINEL1_GLOBAL_MOSAICS",
-                "spatial_extent": {
-                    "west": 510459.01916547277,
-                    "south": 4439119.5168826785,
-                    "east": 516956.0911427693,
-                    "north": 4444223.531192046,
-                    "crs": "EPSG:32629",
-                },
-                "temporal_extent": ["2019-12-31T23:59:59Z", "2020-02-01T00:00:00Z"],
-                "bands": ["VV", "VH"],
-            },
-            "result": True,
-        }
+    with open(
+        "/home/bossie/Documents/VITO/openeo-geopyspark-driver/save_result+export_workspace: correctly handle derived-from links #1050/j-2502131919384d77ab37566a57065693_process_graph.json"
+    ) as f:
+        process_graph = json.load(f)["process_graph"]
+
+    process_graph["loadcollection1"]["arguments"]["temporal_extent"][1] = "2020-02-01T00:00:00Z"
+    process_graph["loadcollection1"]["arguments"]["spatial_extent"] = {
+        "west": 510459.01916547277,
+        "south": 4439119.5168826785,
+        "east": 516956.0911427693,
+        "north": 4444223.531192046,
+        "crs": "EPSG:32629",
     }
+
+    process_graph["exportworkspace1"]["arguments"]["workspace"] = test_workspace
+    process_graph["exportworkspace2"]["arguments"]["workspace"] = test_workspace
 
     process = {
         "process_graph": process_graph,
@@ -2640,4 +2639,7 @@ def test_export_workspace_merge_derived_from(tmp_path):
         dependencies=[],
     )
 
-    assert "openEO_2020-01-01Z.tif" in os.listdir(job_dir)
+    assert {
+        "LCFM_LSF-ANNUAL-S1_V100_2020_29TNE_GAMMA0-OBS-NB.tif",
+        "LCFM_LSF-ANNUAL-S1_V100_2020_29TNE_GAMMA0-VH-P90.tif",
+    } <= set(os.listdir(job_dir))

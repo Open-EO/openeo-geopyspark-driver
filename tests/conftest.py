@@ -44,9 +44,7 @@ os.environ["OPENEO_CATALOG_FILES"] = (
     "/home/bossie/PycharmProjects/openeo/os_creodias_openeo_k8s/kube_resources/applications/openeo_config/layercatalog.json"
 )
 
-_BACKEND_CONFIG_PATH = Path(
-    "/home/bossie/PycharmProjects/openeo/os_creodias_openeo_k8s/kube_resources/applications/openeo_config/backendconfig_dev.py"
-)
+_BACKEND_CONFIG_PATH = Path(__file__).parent / "backend_config.py"
 
 
 pytest_plugins = "pytester"
