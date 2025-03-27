@@ -1,4 +1,5 @@
 import textwrap
+import urllib
 from unittest import mock
 
 import pytest
@@ -646,6 +647,17 @@ def test_empty_assert_message():
 
     msg = GeoPySparkBackendImplementation.summarize_exception_static(e_info.value).summary
     assert 'srs == "EPSG:4326"' in str(msg)  # assert message should be in the summary
+
+
+def test_HTTPError_404(urllib_mock):
+    fake_url = "http://a.test/404"
+    urllib_mock.get(fake_url, data="404", code=404)
+    from urllib.error import HTTPError
+
+    with pytest.raises(HTTPError) as e_info:
+        urllib.request.urlopen(fake_url)
+    msg = GeoPySparkBackendImplementation.summarize_exception_static(e_info.value).summary
+    assert fake_url in str(msg)
 
 
 @pytest.fixture

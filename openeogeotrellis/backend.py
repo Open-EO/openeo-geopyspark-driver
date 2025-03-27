@@ -13,6 +13,7 @@ import sys
 import tempfile
 import time
 import traceback
+import urllib
 import uuid
 import importlib.metadata
 from copy import deepcopy
@@ -1168,6 +1169,8 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             is_client_error = False  # Give user the benefit of doubt.
             if isinstance(error, FileNotFoundError):
                 summary = repr_truncate(str(error), width=width)
+            elif isinstance(error, urllib.error.HTTPError):
+                summary = repr_truncate(str(error) + ": " + error.filename, width=width)
             elif isinstance(error, AssertionError) and str(error) == "":
                 tb = error.__traceback__
                 tb_info = traceback.extract_tb(tb)
