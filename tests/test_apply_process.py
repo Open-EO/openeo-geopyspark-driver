@@ -154,7 +154,6 @@ def create_spacetime_layer_singleband() -> TiledRasterLayer:
     cells = np.array([first], dtype='int')
     return _create_spacetime_layer(cells)
 
-
 def test_point_series():
     input = create_spacetime_layer()
     cube = GeopysparkDataCube(pyramid=gps.Pyramid({0: input}))
@@ -167,6 +166,20 @@ def test_point_series():
         result = transformed_collection.timeseries(p.x, p.y)
         assert result == {"2017-09-25T11:37:00+00:00": [pytest.approx(math.cos(10)), pytest.approx(math.cos(5))]}
 
+def test_apply_band(udf_noop):
+    # cube.band("B02").apply(udf)
+    input = create_spacetime_layer()
+    cube = GeopysparkDataCube(pyramid=gps.Pyramid({0: input}))
+    metadata = cube.metadata
+    assert metadata.has_band_dimension() == False
+    # No error should be raised when applying an UDF without a band dimension.
+    res = cube.apply(
+        process=udf_noop,
+        env=EvalEnv(),
+    )
+    res_data = res.pyramid.levels[0].to_spatial_layer().stitch().cells
+    input_data = input.to_spatial_layer().stitch().cells
+    np.testing.assert_array_equal(res_data, input_data)
 
 def test_apply_cos():
     input = create_spacetime_layer()
@@ -178,7 +191,6 @@ def test_apply_cos():
     data = res.pyramid.levels[0].to_spatial_layer().stitch().cells
     np.testing.assert_array_almost_equal(data[0, 2:6, 2:6], np.cos(first[0]))
     np.testing.assert_array_almost_equal(data[1, 2:6, 2:6], np.cos(second[0]))
-
 
 def test_apply_complex_graph():
     graph = {
@@ -209,7 +221,6 @@ def test_apply_complex_graph():
     data = res.pyramid.levels[0].to_spatial_layer().stitch().cells
     np.testing.assert_array_almost_equal(data[0, 2:6, 2:6], 5.0*np.sin(first[0]))
     np.testing.assert_array_almost_equal(data[1, 2:6, 2:6], 5.0*np.sin(second[0]))
-
 
 def test_reduce_bands():
     input = create_spacetime_layer()
@@ -497,7 +508,6 @@ def test_linear_scale_range():
     expected[0][0]=255.0
     np.testing.assert_array_almost_equal(cells, expected.astype(np.uint8))
 
-
 def test_linear_scale_range_reduce():
     imagecollection = create_red_nir_layer()
 
@@ -589,8 +599,6 @@ def test_merge_cubes_exception_if_levels_do_not_match():
     with pytest.raises(OpenEOApiException) as excinfo:
         res = cube1.merge_cubes(cube2, 'sum')
 
-
-
 def test_merge_cubes_into_separate_bands():
     red_ramp, nir_ramp = np.mgrid[0:4, 0:4]
     layer1 = _create_spacetime_layer(cells=np.array([[red_ramp]]))
@@ -606,7 +614,6 @@ def test_merge_cubes_into_separate_bands():
     assert stitched.cells.shape[0] == 2
     np.testing.assert_array_equal(red_ramp, stitched.cells[0, 0:4, 0:4])
     np.testing.assert_array_equal(nir_ramp, stitched.cells[1, 0:4, 0:4])
-
 
 def test_merge_cubes_error():
     with pytest.raises(OpenEOApiException):
