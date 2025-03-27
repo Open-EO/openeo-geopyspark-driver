@@ -40,9 +40,13 @@ from .datacube_fixtures import (
     imagecollection_with_two_bands_spatial_only,
 )
 
-os.environ["OPENEO_CATALOG_FILES"] = str(Path(__file__).parent / "layercatalog.json")
+os.environ["OPENEO_CATALOG_FILES"] = (
+    "/home/bossie/PycharmProjects/openeo/os_creodias_openeo_k8s/kube_resources/applications/openeo_config/layercatalog.json"
+)
 
-_BACKEND_CONFIG_PATH = Path(__file__).parent / "backend_config.py"
+_BACKEND_CONFIG_PATH = Path(
+    "/home/bossie/PycharmProjects/openeo/os_creodias_openeo_k8s/kube_resources/applications/openeo_config/backendconfig_dev.py"
+)
 
 
 pytest_plugins = "pytester"

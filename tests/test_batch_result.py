@@ -2603,3 +2603,41 @@ def test_geotiff_tile_size(tmp_path, window_size, default_tile_size, requested_t
 
     is_valid_cog, errors, _ = cog_validate(output_tiff)
     assert is_valid_cog, str(errors)
+
+
+def test_export_workspace_merge_derived_from(tmp_path):
+    job_dir = tmp_path
+
+    process_graph = {
+        "loadcollection1": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "SENTINEL1_GLOBAL_MOSAICS",
+                "spatial_extent": {
+                    "west": 510459.01916547277,
+                    "south": 4439119.5168826785,
+                    "east": 516956.0911427693,
+                    "north": 4444223.531192046,
+                    "crs": "EPSG:32629",
+                },
+                "temporal_extent": ["2019-12-31T23:59:59Z", "2020-02-01T00:00:00Z"],
+                "bands": ["VV", "VH"],
+            },
+            "result": True,
+        }
+    }
+
+    process = {
+        "process_graph": process_graph,
+    }
+
+    run_job(
+        process,
+        output_file=job_dir / "out",
+        metadata_file=job_dir / "job_metadata.json",
+        api_version="2.0.0",
+        job_dir=job_dir,
+        dependencies=[],
+    )
+
+    assert "openEO_2020-01-01Z.tif" in os.listdir(job_dir)
