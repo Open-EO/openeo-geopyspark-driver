@@ -6,12 +6,10 @@ from openeogeotrellis.config.s3_config import S3Config, AwsProfileDetails, AWSCo
 from configparser import ConfigParser
 
 
-def test_rendered_config_is_parseable(monkeypatch):
+def test_rendered_config_is_parseable(monkeypatch, sts_endpoint_on_driver):
     # Given S3Proxy endpoints
-    sts_endpoint = "my-sts.example.com"
     s3_endpoint = "s3.example.com"
     monkeypatch.setenv(AWSConfig.S3PROXY_S3_ENDPOINT_URL, s3_endpoint)
-    monkeypatch.setenv(AWSConfig.S3PROXY_STS_ENDPOINT_URL, sts_endpoint)
 
     # Given profile details
     test_profile_name = "test"
@@ -48,7 +46,7 @@ def test_rendered_config_is_parseable(monkeypatch):
     # Then services section must be there
     services_section_name = f"services {AWSConfig.S3PROXY_SERVICES}"
     assert "\nendpoint_url" in cp.get(services_section_name, "sts")
-    assert sts_endpoint in cp.get(services_section_name, "sts")
+    assert sts_endpoint_on_driver in cp.get(services_section_name, "sts")
     assert "\nendpoint_url" in cp.get(services_section_name, "s3")
     assert s3_endpoint in cp.get(services_section_name, "s3")
 
