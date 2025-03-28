@@ -572,9 +572,9 @@ def _read_latlonfile(bbox, latlon_file, lat_band="latitude", lon_band="longitude
     lon_offset = lat_lon_ds[lon_band].attrs.get('add_offset', 0.0)
 
     # lat_lon_ds is scaled, so we need to inverse scale the bbox as well.
-    xmin_s, ymin_s, xmax_s, ymax_s = bbox[0]*(1/lon_scale)-lon_offset, bbox[1]*(1/lat_scale)-lat_offset, bbox[2]*(1/lon_scale)-lon_offset, bbox[3]*(1/lat_scale)-lat_offset
-    interpolation_margin_lat = interpolation_margin*(1/lat_scale)-lat_offset
-    interpolation_margin_lon = interpolation_margin*(1/lon_scale)-lon_offset
+    xmin_s, ymin_s, xmax_s, ymax_s = (bbox[0]/lon_scale)-lon_offset, (bbox[1]/lat_scale)-lat_offset, (bbox[2]/lon_scale)-lon_offset, (bbox[3]/lat_scale)-lat_offset
+    interpolation_margin_lat = (interpolation_margin/lat_scale)-lat_offset
+    interpolation_margin_lon = (interpolation_margin/lon_scale)-lon_offset
 
     lat_mask = xr.apply_ufunc(lambda lat: (lat >= ymin_s - interpolation_margin_lat) & (lat <= ymax_s + interpolation_margin_lat), lat_lon_ds[lat_band])
     lon_mask = xr.apply_ufunc(lambda lon: (lon >= xmin_s - interpolation_margin_lon) & (lon <= xmax_s + interpolation_margin_lon), lat_lon_ds[lon_band])
