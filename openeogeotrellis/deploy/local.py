@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 Script to start a local server. This script can serve as the entry-point for doing spark-submit.
 """
