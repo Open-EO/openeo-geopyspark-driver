@@ -14,6 +14,7 @@ from unittest import mock
 import boto3
 import kazoo.exceptions
 import pytest
+import requests
 import time_machine
 from elasticsearch.exceptions import ConnectionTimeout
 from openeo.util import deep_get
@@ -31,6 +32,7 @@ from openeo_driver.testing import (
 
 import openeogeotrellis.job_registry
 import openeogeotrellis.sentinel_hub.batchprocessing
+from openeogeotrellis.asset_urls import PresignedS3AssetUrls
 from openeogeotrellis.backend import JOB_METADATA_FILENAME, GpsBatchJobs
 from openeogeotrellis.job_registry import DoubleJobRegistry, ZkJobRegistry
 from openeogeotrellis.testing import KazooClientMock, gps_config_overrides
@@ -840,6 +842,159 @@ class TestBatchJobs:
                 res = api.client.get(download_url, headers=TEST_USER_AUTH_HEADER)
                 assert res.status_code == 200
                 assert res.data == TIFF_DUMMY_DATA
+
+    @mock.patch(
+        "openeogeotrellis.configparams.ConfigParams.use_object_storage",
+        new_callable=mock.PropertyMock,
+    )
+    @pytest.mark.parametrize(
+        "config_overrides,idp_enabled,auth_header,expected_code", [
+            # When using the new PresignedS3AssetUrls with required config in place we should never fail
+            [
+                {
+                    "asset_url": PresignedS3AssetUrls()
+                }, True, False, 200
+            ],
+            [
+                {
+                    "asset_url": PresignedS3AssetUrls()
+                }, True, True, 200
+            ],
+            # When using the new PresignedS3AssetUrls without having the required config in place for IDP
+            # we should not fail so if request occur like before (auth header present) it works, without if fails
+            [
+                {
+                    "asset_url": PresignedS3AssetUrls(),
+                }, False, True, 200
+            ],
+            [
+                {
+                    "asset_url": PresignedS3AssetUrls(),
+                }, False, False, 401
+            ],
+            # When using the new PresignedS3AssetUrls without having the required config in place we should not fail
+            # so if request occur like before (auth header present) it works, without if fails
+            [
+                {
+                    "asset_url": PresignedS3AssetUrls(),
+                    "s3_region_proxy_endpoints": {},  # Mimic no proxy configured
+                }, False, True, 200
+            ],
+            [
+                {
+                    "asset_url": PresignedS3AssetUrls(),
+                    "s3_region_proxy_endpoints": {},  # Mimic no proxy configured
+                }, False, False, 401
+            ],
+            [{}, False, True, 200],  # Old signer works if auth header is used
+            [{}, False, False, 401],  # Old signer fails if auth header not used for retrieval
+        ]
+
+    )
+    def test_download_from_object_storage_via_proxy(
+        self, mock_config_use_object_storage, moto_server, batch_job_output_root, mock_s3_bucket, mock_sts_client,
+        sts_endpoint_on_driver, api, config_overrides, idp_enabled, auth_header: bool, expected_code: int
+    ):
+        """Test the scenario where the result files we want to download are stored on the objects storage,
+        but they are not present in the container that receives the download request.
+
+        Namely: the pod/container that ran the job has been replaced => new container, no files there.
+        Because there is an S3 proxy it will be downloaded straight.
+        """
+
+        mock_config_use_object_storage.return_value = True
+        job_id = "6d11e901-bb5d-4589-b600-8dfb50524740"
+        job_dir: pathlib.Path = batch_job_output_root / job_id
+        output_dir_s3_url = to_s3_url(job_dir)
+        job_metadata = (job_dir / JOB_METADATA_FILENAME)
+
+        job_metadata_contents = {
+            'geometry': {
+                'type':
+                'Polygon',
+                'coordinates': [[[2.0, 51.0], [2.0, 52.0], [3.0, 52.0],
+                                 [3.0, 51.0], [2.0, 51.0]]]
+            },
+            'bbox': [2, 51, 3, 52],
+            'start_datetime': '2017-11-21T00:00:00Z',
+            'end_datetime': '2017-11-21T00:00:00Z',
+            'links': [],
+            'assets': {
+                'openEO_2017-11-21Z.tif': {
+                    'href': f'{output_dir_s3_url}/openEO_2017-11-21Z.tif',
+                    'output_dir': output_dir_s3_url,  # Will not exist on the local file system at download time.
+                    'type': 'image/tiff; application=geotiff',
+                    'roles': ['data'],
+                    'bands': [{
+                        'name': 'ndvi',
+                        'common_name': None,
+                        'wavelength_um': None
+                    }],
+                    'nodata': 255
+                }
+            },
+            'epsg': 4326,
+            'instruments': [],
+            'processing:facility': 'VITO - SPARK',
+            'processing:software': 'openeo-geotrellis-0.3.3a1'
+        }
+
+        mock_s3_bucket.put_object(Key=str(job_metadata).strip("/"), Body=json.dumps(job_metadata_contents))
+        output_file = str(job_dir / "openEO_2017-11-21Z.tif")
+        mock_s3_bucket.put_object(Key=output_file.lstrip("/"), Body=TIFF_DUMMY_DATA)
+
+        # Do a pre-test check: Make sure we are testing that it works when the job_dir is **not** present.
+        # Otherwise the test may pass but it passes for the wrong reasons.
+        assert not job_dir.exists()
+
+        with self._mock_kazoo_client() as zk:
+            # where to import dict_no_none from
+            data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH, title="Dummy")
+            job_options = {}
+
+            # TODO #236/#498/#632 eliminate direct dependency on deprecated ZkJobRegistry and related mocking (e.g. `self._mock_kazoo_client()` above)
+            with ZkJobRegistry() as registry:
+                registry.register(
+                    job_id=job_id,
+                    user_id=TEST_USER,
+                    api_version="1.0.0",
+                    specification=dict(
+                        process_graph=data,
+                        job_options=job_options,
+                    ),
+                    title="Fake Test Job",
+                    description="Fake job for the purpose of testing"
+                )
+                registry.set_status(job_id=job_id, user_id=TEST_USER, status=JOB_STATUS.FINISHED)
+
+                # Download
+                res = api.get(
+                    '/jobs/{j}/results'.format(j=job_id), headers=TEST_USER_AUTH_HEADER
+                ).assert_status_code(200).json
+                if api.api_version_compare.at_least("1.0.0"):
+                    assert "openEO_2017-11-21Z.tif" in res["assets"]
+                    download_url = res["assets"]["openEO_2017-11-21Z.tif"]["href"]
+                else:
+                    download_url = res["links"][0]["href"]
+
+                retrieve_url = api.client.get
+                if download_url.startswith("http://127.0.0.1:"):
+                    # pre-signed urls don't woark with flask retriever
+                    def retrieve_url_and_set_data(*args, **kwargs):
+                        result = requests.get(*args, **kwargs)
+                        setattr(result, "data", result.text.encode("utf-8"))
+                        return result
+                    retrieve_url = retrieve_url_and_set_data
+
+                if auth_header:
+                    res = retrieve_url(download_url, headers=TEST_USER_AUTH_HEADER)
+                else:
+                    res = retrieve_url(download_url)
+
+                assert res.status_code == expected_code
+                if 200 <= expected_code < 300:
+                    # For succesfull api requests check response data
+                    assert res.data == TIFF_DUMMY_DATA
 
     @mock.patch(
         "openeogeotrellis.configparams.ConfigParams.use_object_storage",
