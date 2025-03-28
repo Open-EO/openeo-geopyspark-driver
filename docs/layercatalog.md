@@ -62,6 +62,9 @@ roughly following the STAC Collection schema:
 ]
 ```
 
+Also see the [layercatalog.json](https://github.com/Open-EO/openeo-geopyspark-driver/blob/master/tests/layercatalog.json)
+used in the unit tests for more inspiration.
+
 ### Data source type
 
 The openEO GeoPySpark driver supports different types of data sources,
