@@ -76,6 +76,13 @@ class IDPTokenIssuer:
         else:
             return cls()
 
+    def _hard_reset(self) -> None:
+        """
+        This is only for testing purpose because different tests can actually require different idp config.
+        """
+        self._IDP_DETAILS = None
+        self._reload_idp_details_if_needed()
+
     def _reload_idp_details_if_needed(self) -> None:
         idp_details_file = get_backend_config().openeo_idp_details_file
         register_reload = self.watcher.get_file_reload_register_func_if_changed(idp_details_file)
@@ -132,7 +139,7 @@ def main():
     aws_token_filename = os.environ.get("AWS_TOKEN_FILENAME", "token")
     aws_config_path.mkdir(parents=True, exist_ok=True)
     with open(aws_config_path.joinpath(aws_token_filename), 'w') as token_file:
-        token_file.write(IDP_TOKEN_ISSUER.get_job_token("0", "none"))
+        token_file.write(IDP_TOKEN_ISSUER.get_job_token("0", "none", "j-0"))
 
 
 if __name__ == '__main__':
