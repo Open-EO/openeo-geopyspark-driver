@@ -849,7 +849,21 @@ class TestBatchJobs:
     )
     @pytest.mark.parametrize(
         "config_overrides,idp_enabled,auth_header,expected_code", [
-            # When using the new PresignedS3AssetUrls with required config in place we should never fail
+            # When using the new PresignedS3AssetUrls with ipd in place but not required config in place we should
+            # be on old behavior
+            [
+                {
+                    "asset_url": PresignedS3AssetUrls(),
+                    "s3_region_proxy_endpoints": {},  # Mimic no proxy configured => missing required config
+                }, True, False, 401
+            ],
+            [
+                {
+                    "asset_url": PresignedS3AssetUrls(),
+                    "s3_region_proxy_endpoints": {},  # Mimic no proxy configured => missing required config
+                }, True, True, 200
+            ],
+            # When using the new PresignedS3AssetUrls with ipd & required config in place we should never fail
             [
                 {
                     "asset_url": PresignedS3AssetUrls()
