@@ -1,5 +1,5 @@
 
-# GeoPyspark Documentation
+# GeoPySpark Documentation
 
 ## Table of Contents
 

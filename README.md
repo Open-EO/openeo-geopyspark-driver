@@ -15,8 +15,8 @@ to handle the heavy duty geospatial (raster) processing.
 
 ## Documentation
 
-See [docs/](./docs) for more information about requirements, configuration, development setup,
-user facing features, etc.
+See the [documentation](./docs/README.md) for more information about
+requirements, configuration, development setup, user facing features, etc.
 
 ## Technology stack
 
