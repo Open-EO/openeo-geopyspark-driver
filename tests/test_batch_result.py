@@ -2605,9 +2605,10 @@ def test_geotiff_tile_size(tmp_path, window_size, default_tile_size, requested_t
     assert is_valid_cog, str(errors)
 
 
-def test_export_workspace_merge_derived_from(tmp_path, mock_s3_bucket):
+def test_export_workspace_merge_derived_from(tmp_path, mock_s3_bucket, mock_s3_client):
     job_dir = tmp_path
-    test_workspace = "s3_workspace"
+    workspace_id = "s3_workspace"
+    merge = "test/products/LSF-ANNUAL-S1/v100/tiles_utm/29/T/NE/2020/collection.json"
 
     with open(
         "/home/bossie/Documents/VITO/openeo-geopyspark-driver/save_result+export_workspace: correctly handle derived-from links #1050/j-2502131919384d77ab37566a57065693_process_graph.json"
@@ -2623,11 +2624,16 @@ def test_export_workspace_merge_derived_from(tmp_path, mock_s3_bucket):
         "crs": "EPSG:32629",
     }
 
-    process_graph["exportworkspace1"]["arguments"]["workspace"] = test_workspace
-    process_graph["exportworkspace2"]["arguments"]["workspace"] = test_workspace
+    process_graph["exportworkspace1"]["arguments"]["workspace"] = workspace_id
+    process_graph["exportworkspace1"]["arguments"]["merge"] = merge
+    process_graph["exportworkspace2"]["arguments"]["workspace"] = workspace_id
+    process_graph["exportworkspace2"]["arguments"]["merge"] = merge
 
     process = {
         "process_graph": process_graph,
+        "job_options": {
+            "export-workspace-enable-merge": True,
+        },
     }
 
     run_job(
@@ -2643,3 +2649,18 @@ def test_export_workspace_merge_derived_from(tmp_path, mock_s3_bucket):
         "LCFM_LSF-ANNUAL-S1_V100_2020_29TNE_GAMMA0-OBS-NB.tif",
         "LCFM_LSF-ANNUAL-S1_V100_2020_29TNE_GAMMA0-VH-P90.tif",
     } <= set(os.listdir(job_dir))
+
+    object_workspace_keys = [PurePath(obj.key) for obj in mock_s3_bucket.objects.all()]
+
+    for key in object_workspace_keys:
+        print(key)
+
+    stac_collection_json = _get_object_contents(mock_s3_client, mock_s3_bucket.name, key=merge).decode("utf-8")
+
+    assert "LCFM_LSF-ANNUAL-S1_V100_2020_29TNE_GAMMA0-OBS-NB.tif" in stac_collection_json, stac_collection_json
+    assert "LCFM_LSF-ANNUAL-S1_V100_2020_29TNE_GAMMA0-VH-P90.tif" in stac_collection_json, stac_collection_json
+
+
+def _get_object_contents(s3_client, bucket: str, key: str) -> bytes:
+    obj = s3_client.get_object(Bucket=bucket, Key=key)
+    return obj["Body"].read()
