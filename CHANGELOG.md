@@ -23,6 +23,7 @@ without compromising stable operations.
 - Support additional Sentinel 3 collections ([eu-cdse/openeo-cdse-infra#380](https://github.com/eu-cdse/openeo-cdse-infra/issues/380))
 - Add `CalrissianS3Result.generate_public_url()` ([#937](https://github.com/Open-EO/openeo-geopyspark-driver/issues/937))
 - Replace `ConfigParams.layer_catalog_metadata_files` with `GpsBackendConfig.layer_catalog_files` ([#285](https://github.com/Open-EO/openeo-geopyspark-driver/issues/285), [#1084](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1084))
+- `StacApiWorkspace`: log body of error response from STAC API for better root cause analysis ([#1116](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1116))
 
 
 ## 0.64.1
