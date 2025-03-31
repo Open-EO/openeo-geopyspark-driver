@@ -650,7 +650,7 @@ class InMemoryJobRegistry(JobRegistryInterface):
         updated: Optional[str] = None,
         started: Optional[str] = None,
         finished: Optional[str] = None,
-    ) -> JobDict:
+    ) -> None:
         self._update(
             job_id=job_id,
             status=status,
@@ -660,27 +660,24 @@ class InMemoryJobRegistry(JobRegistryInterface):
             self._update(job_id=job_id, started=rfc3339.datetime(started))
         if finished:
             self._update(job_id=job_id, finished=rfc3339.datetime(finished))
-        return self.db[job_id]
 
-    def set_dependencies(
-        self, job_id: str, dependencies: List[Dict[str, str]]
-    ) -> JobDict:
-        return self._update(job_id=job_id, dependencies=dependencies)
+    def set_dependencies(self, job_id: str, dependencies: List[Dict[str, str]]) -> None:
+        self._update(job_id=job_id, dependencies=dependencies)
 
-    def remove_dependencies(self, job_id: str) -> JobDict:
-        return self._update(job_id=job_id, dependencies=None, dependency_status=None)
+    def remove_dependencies(self, job_id: str) -> None:
+        self._update(job_id=job_id, dependencies=None, dependency_status=None)
 
-    def set_dependency_status(self, job_id: str, dependency_status: str) -> JobDict:
-        return self._update(job_id=job_id, dependency_status=dependency_status)
+    def set_dependency_status(self, job_id: str, dependency_status: str) -> None:
+        self._update(job_id=job_id, dependency_status=dependency_status)
 
-    def set_dependency_usage(self, job_id: str, dependency_usage: Decimal) -> JobDict:
-        return self._update(job_id, dependency_usage=str(dependency_usage))
+    def set_dependency_usage(self, job_id: str, dependency_usage: Decimal) -> None:
+        self._update(job_id, dependency_usage=str(dependency_usage))
 
-    def set_proxy_user(self, job_id: str, proxy_user: str) -> JobDict:
-        return self._update(job_id=job_id, proxy_user=proxy_user)
+    def set_proxy_user(self, job_id: str, proxy_user: str) -> None:
+        self._update(job_id=job_id, proxy_user=proxy_user)
 
-    def set_application_id(self, job_id: str, application_id: str) -> JobDict:
-        return self._update(job_id=job_id, application_id=application_id)
+    def set_application_id(self, job_id: str, application_id: str) -> None:
+        self._update(job_id=job_id, application_id=application_id)
 
     def set_usage(self, job_id: str, costs: float, usage: dict) -> JobDict:
         input_pixel = 0
@@ -689,9 +686,10 @@ class InMemoryJobRegistry(JobRegistryInterface):
             input_pixel = usage["input_pixel"]["value"]
         return self._update(job_id=job_id, costs=costs, usage=usage, input_pixel=input_pixel)
 
-    def set_results_metadata(self, job_id: str, costs: Optional[float], usage: dict,
-                             results_metadata: Dict[str, Any]) -> JobDict:
-        return self._update(job_id=job_id, costs=costs, usage=usage, results_metadata=results_metadata)
+    def set_results_metadata(
+        self, job_id: str, costs: Optional[float], usage: dict, results_metadata: Dict[str, Any]
+    ) -> None:
+        self._update(job_id=job_id, costs=costs, usage=usage, results_metadata=results_metadata)
 
     def list_user_jobs(
         self,
@@ -872,9 +870,9 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
         elif zk_job_info is None and ejr_job_info is None:
             raise JobNotFoundException(job_id=job_id)
 
-    def set_status(self, job_id: str, user_id: str, status: str,
-                   started: Optional[str] = None, finished: Optional[str] = None,
-                   ) -> None:
+    def set_status(
+        self, job_id: str, user_id: str, status: str, started: Optional[str] = None, finished: Optional[str] = None
+    ) -> None:
         if self.zk_job_registry:
             self.zk_job_registry.set_status(job_id=job_id, user_id=user_id, status=status, started=started,
                                             finished=finished)
@@ -891,9 +889,7 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
     # Legacy alias
     delete = delete_job
 
-    def set_dependencies(
-        self, job_id: str, user_id: str, dependencies: List[Dict[str, str]]
-    ):
+    def set_dependencies(self, job_id: str, user_id: str, dependencies: List[Dict[str, str]]) -> None:
         if self.zk_job_registry:
             self.zk_job_registry.set_dependencies(job_id=job_id, user_id=user_id, dependencies=dependencies)
         if self.elastic_job_registry:
@@ -901,7 +897,7 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
                 job_id=job_id, dependencies=dependencies
             )
 
-    def remove_dependencies(self, job_id: str, user_id: str):
+    def remove_dependencies(self, job_id: str, user_id: str) -> None:
         if self.zk_job_registry:
             self.zk_job_registry.remove_dependencies(job_id=job_id, user_id=user_id)
         if self.elastic_job_registry:
@@ -919,9 +915,7 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
                 job_id=job_id, dependency_status=dependency_status
             )
 
-    def set_dependency_usage(
-        self, job_id: str, user_id: str, dependency_usage: Decimal
-    ):
+    def set_dependency_usage(self, job_id: str, user_id: str, dependency_usage: Decimal) -> None:
         if self.zk_job_registry:
             self.zk_job_registry.set_dependency_usage(job_id=job_id, user_id=user_id, processing_units=dependency_usage)
         if self.elastic_job_registry:
@@ -929,7 +923,7 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
                 job_id=job_id, dependency_usage=dependency_usage
             )
 
-    def set_proxy_user(self, job_id: str, user_id: str, proxy_user: str):
+    def set_proxy_user(self, job_id: str, user_id: str, proxy_user: str) -> None:
         # TODO: add dedicated method
         if self.zk_job_registry:
             self.zk_job_registry.patch(job_id=job_id, user_id=user_id, proxy_user=proxy_user)
@@ -1032,8 +1026,9 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
                 require_application_id=True,
             )
 
-    def set_results_metadata(self, job_id, user_id, costs: Optional[float], usage: dict,
-                             results_metadata: Dict[str, Any]):
+    def set_results_metadata(
+        self, job_id: str, user_id: str, costs: Optional[float], usage: dict, results_metadata: Dict[str, Any]
+    ) -> None:
         if self.zk_job_registry:
             self.zk_job_registry.patch(job_id=job_id, user_id=user_id,
                                        **dict(results_metadata, costs=costs, usage=usage))
