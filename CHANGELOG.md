@@ -15,6 +15,7 @@ without compromising stable operations.
 ## In progress: 0.65.0
 
 - `save_result`: write GeoTiff assets with valid tile size; override with `tile_size` format option. ([#1083](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1083))
+- `write_assets`: support zarr format (experimental)
 
 ## 0.64.1
 
