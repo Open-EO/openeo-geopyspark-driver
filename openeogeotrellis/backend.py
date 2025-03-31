@@ -1822,7 +1822,7 @@ class GpsBatchJobs(backend.BatchJobs):
         log = logging.LoggerAdapter(logger, extra={'job_id': job_id, 'user_id': user_id})
 
         with self._double_job_registry as dbl_registry:
-            job_info = dbl_registry.get_job(job_id, user_id)
+            job_info = dbl_registry.get_job(job_id=job_id, user_id=user_id)
             api_version = job_info.get('api_version')
 
             if dependencies is None:
