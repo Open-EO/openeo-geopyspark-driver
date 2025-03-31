@@ -2636,10 +2636,12 @@ def test_export_workspace_merge_derived_from(tmp_path, mock_s3_bucket, mock_s3_c
         },
     }
 
+    metadata_file = job_dir / "job_metadata.json"
+
     run_job(
         process,
         output_file=job_dir / "out",
-        metadata_file=job_dir / "job_metadata.json",
+        metadata_file=metadata_file,
         api_version="2.0.0",
         job_dir=job_dir,
         dependencies=[],
@@ -2657,8 +2659,18 @@ def test_export_workspace_merge_derived_from(tmp_path, mock_s3_bucket, mock_s3_c
 
     stac_collection_json = _get_object_contents(mock_s3_client, mock_s3_bucket.name, key=merge).decode("utf-8")
 
-    assert "LCFM_LSF-ANNUAL-S1_V100_2020_29TNE_GAMMA0-OBS-NB.tif" in stac_collection_json, stac_collection_json
-    assert "LCFM_LSF-ANNUAL-S1_V100_2020_29TNE_GAMMA0-VH-P90.tif" in stac_collection_json, stac_collection_json
+    assert "LCFM_LSF-ANNUAL-S1_V100_2020_29TNE_GAMMA0-OBS-NB.tif" in stac_collection_json
+    assert "LCFM_LSF-ANNUAL-S1_V100_2020_29TNE_GAMMA0-VH-P90.tif" in stac_collection_json
+
+    with open(metadata_file) as f:
+        job_metadata = json.load(f)
+    job_metadata_derived_from_links = [link for link in job_metadata["links"] if link["rel"] == "derived_from"]
+    assert job_metadata_derived_from_links  # set e.g. OPENEO_BATCH_JOB_ID to enable global tracker
+
+    stac_collection = json.loads(stac_collection_json)
+    stac_collection_derived_from_links = [link for link in stac_collection["links"] if link["rel"] == "derived_from"]
+
+    assert stac_collection_derived_from_links == job_metadata_derived_from_links
 
 
 def _get_object_contents(s3_client, bucket: str, key: str) -> bytes:
