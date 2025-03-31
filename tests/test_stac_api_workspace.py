@@ -189,13 +189,11 @@ def test_error_details(tmp_path, requests_mock):
     _mock_stac_api_root_catalog(requests_mock, stac_api_workspace.root_url)
     requests_mock.get(f"{stac_api_workspace.root_url}/collections/{target}", status_code=404)
 
-    (
-        requests_mock.post(
-            f"{stac_api_workspace.root_url}/collections",
-            status_code=400,
-            reason="Bad Request",
-            json={"detail": "Invalid collection authorizations"},
-        )
+    requests_mock.post(
+        f"{stac_api_workspace.root_url}/collections",
+        status_code=400,
+        reason="Bad Request",
+        json={"detail": "Invalid collection authorizations"},
     )
 
     collection1 = _collection(root_path=tmp_path / "collection1", collection_id="collection1", asset_path=asset_path)
