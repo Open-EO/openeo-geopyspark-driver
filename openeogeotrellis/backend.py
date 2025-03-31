@@ -2969,7 +2969,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
     def cancel_job(self, job_id: str, user_id: str):
         with self._double_job_registry as registry:
-            job_info = registry.get_job(job_id, user_id)
+            job_info = registry.get_job(job_id=job_id, user_id=user_id)
 
         if job_info["status"] in [
             JOB_STATUS.CREATED,
