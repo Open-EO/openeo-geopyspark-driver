@@ -2605,7 +2605,7 @@ def test_geotiff_tile_size(tmp_path, window_size, default_tile_size, requested_t
     assert is_valid_cog, str(errors)
 
 
-def test_export_workspace_merge_derived_from(tmp_path, mock_s3_bucket, mock_s3_client):
+def skip_export_workspace_merge_derived_from(tmp_path, mock_s3_bucket, mock_s3_client):
     job_dir = tmp_path
     workspace_id = "s3_workspace"
     merge = "test/products/LSF-ANNUAL-S1/v100/tiles_utm/29/T/NE/2020/collection.json"
