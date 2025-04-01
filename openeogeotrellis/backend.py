@@ -3106,7 +3106,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 raise
 
         with self._double_job_registry as registry:
-            job_info = registry.get_job(job_id, user_id)
+            job_info = registry.get_job(job_id=job_id, user_id=user_id)
         dependency_sources = get_deletable_dependency_sources(job_info)
 
         if dependency_sources:
