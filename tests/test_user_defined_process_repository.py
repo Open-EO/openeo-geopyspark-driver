@@ -1,7 +1,6 @@
-from typing import Iterator
-
 import collections
 import json
+from typing import Iterator
 from unittest import mock
 
 import pytest
