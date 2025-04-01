@@ -927,12 +927,16 @@ def _get_layer_catalog(
     if opensearch_enrich is None:
         opensearch_enrich = get_backend_config().opensearch_enrich
     if catalog_files is None:
-        catalog_files = ConfigParams().layer_catalog_metadata_files
+        catalog_files = get_backend_config().layer_catalog_files
 
     metadata: CatalogDict = {}
 
     def read_catalog_file(catalog_file) -> CatalogDict:
-        return {coll["id"]: coll for coll in read_json(catalog_file)}
+        try:
+            return {coll["id"]: coll for coll in read_json(catalog_file)}
+        except Exception as e:
+            raise ValueError(f"Failed to read/parse {catalog_file=}: {e=}") from e
+
 
     logger.debug(f"_get_layer_catalog: {catalog_files=}")
     for path in catalog_files:

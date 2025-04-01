@@ -493,7 +493,7 @@ def run_job(
             result=result,
             output_file=output_file,
             unique_process_ids=unique_process_ids,
-            apply_gdal=True,
+            apply_gdal=job_options.get("detailed_asset_metadata", True),
             asset_metadata={
                 # TODO: flattened instead of per-result, clean this up?
                 asset_key: asset_metadata

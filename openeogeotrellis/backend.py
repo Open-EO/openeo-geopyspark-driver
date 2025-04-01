@@ -1822,7 +1822,7 @@ class GpsBatchJobs(backend.BatchJobs):
         log = logging.LoggerAdapter(logger, extra={'job_id': job_id, 'user_id': user_id})
 
         with self._double_job_registry as dbl_registry:
-            job_info = dbl_registry.get_job(job_id, user_id)
+            job_info = dbl_registry.get_job(job_id=job_id, user_id=user_id)
             api_version = job_info.get('api_version')
 
             if dependencies is None:
@@ -2969,7 +2969,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
     def cancel_job(self, job_id: str, user_id: str):
         with self._double_job_registry as registry:
-            job_info = registry.get_job(job_id, user_id)
+            job_info = registry.get_job(job_id=job_id, user_id=user_id)
 
         if job_info["status"] in [
             JOB_STATUS.CREATED,

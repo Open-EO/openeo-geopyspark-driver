@@ -56,7 +56,7 @@ os.makedirs("/tmp/workspace", exist_ok=True)
 workspaces = {
     "tmp_workspace": DiskWorkspace(root_directory=Path("/tmp/workspace")),
     "tmp": DiskWorkspace(root_directory=Path("/tmp")),
-    "s3_workspace": ObjectStorageWorkspace(bucket="openeo-fake-bucketname"),
+    "s3_workspace": ObjectStorageWorkspace(bucket="openeo-fake-bucketname", region="waw3-1"),
     "s3_workspace_region": ObjectStorageWorkspace(bucket="openeo-fake-eu-nl", region="eu-nl"),
     "stac_api_workspace": _stac_api_workspace(),
 }
@@ -66,6 +66,9 @@ config = GpsBackendConfig(
     id="gps-test-dummy",
     capabilities_title="Dummy GeoPysSpark Backend",
     capabilities_description="Dummy GeoPysSpark Backend",
+    layer_catalog_files=[
+        "/home/bossie/PycharmProjects/openeo/os_creodias_openeo_k8s/kube_resources/applications/openeo_config/layercatalog.json"
+    ],
     opensearch_enrich=False,
     # TODO: avoid hardcoded reference to VITO/Terrascope resource
     default_opensearch_endpoint="https://services.terrascope.be/catalogue/",

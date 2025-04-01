@@ -24,6 +24,7 @@ from openeogeotrellis.layercatalog import (
     _merge_layers_with_common_name,
     get_layer_catalog,
 )
+from openeogeotrellis.testing import gps_config_overrides
 from openeogeotrellis.vault import Vault
 
 
@@ -76,11 +77,12 @@ def test_layer_metadata(id, layer):
 
 
 def test_get_layer_catalog_with_updates(vault):
-    with mock.patch("openeogeotrellis.layercatalog.ConfigParams") as ConfigParams:
-        ConfigParams.return_value.layer_catalog_metadata_files = [
+    with gps_config_overrides(
+        layer_catalog_files=[
             "tests/data/layercatalog01.json",
             "tests/data/layercatalog02.json",
         ]
+    ):
         catalog = get_layer_catalog(vault)
         assert sorted(l["id"] for l in catalog.get_all_metadata()) == ["BAR", "BZZ", "FOO", "QUU"]
         foo = catalog.get_collection_metadata("FOO")
@@ -108,14 +110,13 @@ def skip_sentinelhub_layer(vault):
 
 def test_get_layer_catalog_opensearch_enrich_oscars(requests_mock, vault):
     test_root = Path(__file__).parent / "data"
-    with mock.patch("openeogeotrellis.layercatalog.ConfigParams") as ConfigParams:
-        ConfigParams.return_value.layer_catalog_metadata_files = [
+    with gps_config_overrides(
+        layer_catalog_files=[
             test_root / "layercatalog01.json",
             test_root / "layercatalog02.json",
-            test_root / "layercatalog03_oscars.json"
+            test_root / "layercatalog03_oscars.json",
         ]
-
-
+    ):
         collections_response = read_json(test_root / "collections_oscars01.json")
         requests_mock.get("https://services.terrascope.test/catalogue/collections", json=collections_response)
 
@@ -210,11 +211,12 @@ def test_get_layer_catalog_opensearch_enrich_oscars(requests_mock, vault):
 
 
 def test_get_layer_catalog_opensearch_enrich_creodias(requests_mock, vault):
-    with mock.patch("openeogeotrellis.layercatalog.ConfigParams") as ConfigParams:
-        ConfigParams.return_value.layer_catalog_metadata_files = [
+    with gps_config_overrides(
+        layer_catalog_files=[
             "tests/data/layercatalog01.json",
-            "tests/data/layercatalog04_creodias.json"
+            "tests/data/layercatalog04_creodias.json",
         ]
+    ):
         collections_response = read_json("tests/data/collections_creodias01.json")
         requests_mock.get("https://finder.creodias.test/resto/collections.json", json=collections_response)
 
@@ -245,10 +247,11 @@ def test_get_layer_catalog_opensearch_enrich_creodias(requests_mock, vault):
 
 
 def test_layer_catalog_step_resolution(vault):
-    with mock.patch("openeogeotrellis.layercatalog.ConfigParams") as ConfigParams:
-        ConfigParams.return_value.layer_catalog_metadata_files = [
+    with gps_config_overrides(
+        layer_catalog_files=[
             str(Path(__file__).parent / "layercatalog.json"),
         ]
+    ):
         catalog = get_layer_catalog(vault, opensearch_enrich=True)
         all_metadata = catalog.get_all_metadata()
 
@@ -274,10 +277,11 @@ def test_layer_catalog_step_resolution(vault):
 
 
 def test_get_layer_native_extent_specific(vault):
-    with mock.patch("openeogeotrellis.layercatalog.ConfigParams") as ConfigParams:
-        ConfigParams.return_value.layer_catalog_metadata_files = [
+    with gps_config_overrides(
+        layer_catalog_files=[
             str(Path(__file__).parent / "layercatalog.json"),
         ]
+    ):
         catalog = get_layer_catalog(vault, opensearch_enrich=True)
         metadata = GeopysparkCubeMetadata(catalog.get_collection_metadata(collection_id="SENTINEL1_CARD4L"))
         assert metadata.get_layer_native_extent() == BoundingBox(
@@ -286,10 +290,11 @@ def test_get_layer_native_extent_specific(vault):
 
 
 def test_get_layer_native_extent_all(vault):
-    with mock.patch("openeogeotrellis.layercatalog.ConfigParams") as ConfigParams:
-        ConfigParams.return_value.layer_catalog_metadata_files = [
+    with gps_config_overrides(
+        layer_catalog_files=[
             str(Path(__file__).parent / "layercatalog.json"),
         ]
+    ):
         catalog = get_layer_catalog(vault, opensearch_enrich=True)
     all_metadata = catalog.get_all_metadata()
     for layer in all_metadata:

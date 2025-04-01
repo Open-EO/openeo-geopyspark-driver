@@ -1,3 +1,4 @@
+import json
 import logging
 import re
 from pathlib import PurePath, Path
@@ -10,11 +11,16 @@ import pystac_client
 from pystac_client import ConformanceClasses, stac_api_io
 import requests
 import requests.adapters
+from requests import JSONDecodeError
 from urllib3 import Retry
 
 from openeogeotrellis.integrations.stac import ResilientStacIO
 
 _log = logging.getLogger(__name__)
+
+
+class StacApiResponseError(Exception):
+    pass
 
 
 class StacApiWorkspace(Workspace):
@@ -174,9 +180,14 @@ class StacApiWorkspace(Workspace):
         try:
             resp.raise_for_status()
         except requests.HTTPError as e:
+            # ignore error response to POST that was retried because of a transient (network) error
             if e.response.status_code != 409:
-                # ignore error response to POST that was retried because of a transient (network) error
-                raise
+                try:
+                    body = json.dumps(e.response.json(), separators=(",", ":"))  # ensure minified
+                except JSONDecodeError:
+                    body = e.response.text  # best effort
+
+                raise StacApiResponseError(f"{e} with response body: {body}") from e
 
     def _assert_catalog_supports_necessary_api(self):
         # TODO: reduce code duplication with openeo_driver.util.http.requests_with_retry

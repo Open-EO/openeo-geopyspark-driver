@@ -19,7 +19,7 @@ def test_import_file(tmp_path, mock_s3_client, mock_s3_bucket, remove_original):
 
     merge = "some/target"
 
-    workspace = ObjectStorageWorkspace(bucket="openeo-fake-bucketname")
+    workspace = ObjectStorageWorkspace(bucket="openeo-fake-bucketname", region="waw3-1")
     workspace_uri = workspace.import_file(
         common_path=source_directory, file=source_file, merge=merge, remove_original=remove_original
     )
@@ -46,7 +46,7 @@ def test_import_object(tmp_path, mock_s3_client, mock_s3_bucket, remove_original
 
     assert _workspace_keys(mock_s3_client, source_bucket, prefix=source_key) == {source_key}
 
-    workspace = ObjectStorageWorkspace(bucket=target_bucket)
+    workspace = ObjectStorageWorkspace(bucket=target_bucket, region="eu-nl")
     workspace_uri = workspace.import_object(
         common_path="some/source/",
         s3_uri=f"s3://{source_bucket}/{source_key}",
@@ -86,7 +86,7 @@ def test_merge_new(mock_s3_client, mock_s3_bucket, tmp_path, remove_original: bo
         s3_client=mock_s3_client,
     )
 
-    workspace = ObjectStorageWorkspace(bucket=target_bucket)
+    workspace = ObjectStorageWorkspace(bucket=target_bucket, region="eu-nl")
     imported_collection = workspace.merge(new_collection, merge, remove_original)
 
     assert isinstance(imported_collection, Collection)
@@ -172,7 +172,7 @@ def test_merge_into_existing(tmp_path, mock_s3_client, mock_s3_bucket, remove_or
         s3_client=mock_s3_client,
     )
 
-    workspace = ObjectStorageWorkspace(target_bucket)
+    workspace = ObjectStorageWorkspace(target_bucket, region="waw3-1")
     workspace.merge(existing_collection, target=merge, remove_original=remove_original)
     imported_collection = workspace.merge(new_collection, target=merge, remove_original=remove_original)
 

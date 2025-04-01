@@ -54,10 +54,10 @@ def load_stac(
     *,
     load_params: LoadParameters,
     env: EvalEnv,
-    layer_properties: Optional[Dict[str, object]],
-    batch_jobs: Optional[openeo_driver.backend.BatchJobs],
-    override_band_names: List[str] = None,
-    apply_lcfm_improvements=False,
+    layer_properties: Optional[Dict[str, object]] = None,
+    batch_jobs: Optional[openeo_driver.backend.BatchJobs] = None,
+    override_band_names: Optional[List[str]] = None,
+    apply_lcfm_improvements: bool = False,
 ) -> GeopysparkDataCube:
     if override_band_names is None:
         override_band_names = []
@@ -794,17 +794,16 @@ def extract_own_job_info(
 
 
 def _await_dependency_job(
-    url,
+    url: str,
     *,
-    user: Optional[User],
-    batch_jobs: Optional[openeo_driver.backend.BatchJobs],
+    user: Optional[User] = None,
+    batch_jobs: Optional[openeo_driver.backend.BatchJobs] = None,
     poll_interval_seconds: float,
     max_poll_delay_seconds: float,
     max_poll_time: float,
 ) -> Optional[BatchJobMetadata]:
     def get_dependency_job_info() -> Optional[BatchJobMetadata]:
-        return (extract_own_job_info(url, user.user_id, batch_jobs) if batch_jobs
-                else None)
+        return extract_own_job_info(url, user.user_id, batch_jobs) if user and batch_jobs else None
 
     dependency_job_info = get_dependency_job_info()
     if not dependency_job_info:

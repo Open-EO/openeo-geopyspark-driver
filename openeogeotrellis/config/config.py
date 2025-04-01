@@ -79,6 +79,8 @@ class GpsBackendConfig(OpenEoBackendConfig):
 
     oidc_providers: List[OidcProvider] = attrs.Factory(list)
 
+    layer_catalog_files: List[str] = os.environ.get("OPENEO_CATALOG_FILES", "layercatalog.json").split(",")
+
     # Temporary feature flag for preventing to run UDFs in driver process (https://github.com/Open-EO/openeo-geopyspark-driver/issues/404)
     # TODO: remove this temporary feature flag
     allow_run_udf_in_driver: bool = False

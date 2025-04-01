@@ -1,7 +1,7 @@
 import logging
 import os
 from pathlib import Path, PurePath
-from typing import Union, Optional
+from typing import Union
 from urllib.parse import urlparse
 
 import botocore.exceptions
@@ -22,7 +22,7 @@ class ObjectStorageWorkspace(Workspace):
 
     MULTIPART_THRESHOLD_IN_MB = 50
 
-    def __init__(self, bucket: str, region: Optional[str] = None):
+    def __init__(self, bucket: str, region: str):
         self.bucket = bucket
         self.region = region
         self._stac_io = CustomStacIO()
