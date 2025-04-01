@@ -117,6 +117,8 @@ class GpsBackendConfig(OpenEoBackendConfig):
     use_zk_job_registry: bool = True
     zk_job_registry_max_specification_size: Optional[int] = None
 
+    udp_registry_zookeeper_client_reuse: bool = False
+
     ejr_api: Optional[str] = os.environ.get("OPENEO_EJR_API")
     ejr_backend_id: str = "unknown"
     ejr_credentials_vault_path: Optional[str] = os.environ.get("OPENEO_EJR_CREDENTIALS_VAULT_PATH")
