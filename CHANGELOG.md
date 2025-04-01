@@ -24,6 +24,7 @@ without compromising stable operations.
 - Add `CalrissianS3Result.generate_public_url()` ([#937](https://github.com/Open-EO/openeo-geopyspark-driver/issues/937))
 - Replace `ConfigParams.layer_catalog_metadata_files` with `GpsBackendConfig.layer_catalog_files` ([#285](https://github.com/Open-EO/openeo-geopyspark-driver/issues/285), [#1084](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1084))
 - `StacApiWorkspace`: log body of error response from STAC API for better root cause analysis ([#1116](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1116))
+- `export_workspace`: add `"derived_from"` links to STAC Collection ([#1050](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1050))
 
 
 ## 0.64.1
