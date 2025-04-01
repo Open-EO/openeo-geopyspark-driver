@@ -5,7 +5,7 @@ from typing import Dict
 
 import pytest
 import responses
-from pystac import Collection, Extent, SpatialExtent, TemporalExtent, Item, Asset
+from pystac import Collection, Extent, SpatialExtent, TemporalExtent, Item, Asset, Link, RelType
 
 from openeogeotrellis.workspace import StacApiWorkspace
 from openeogeotrellis.workspace.stac_api_workspace import StacApiResponseError
@@ -44,7 +44,16 @@ def test_merge_new(requests_mock, tmp_path):
 
     assert create_collection_mock.called_once
     assert create_collection_mock.last_request.headers["Authorization"] == "Bearer s3cr3t"
-    assert create_collection_mock.last_request.json() == dict(collection1.to_dict(), id=str(target), links=[])
+    assert create_collection_mock.last_request.json() == dict(
+        collection1.to_dict(),
+        id=str(target),
+        links=[
+            {
+                "rel": "derived_from",
+                "href": "https://src.test/asset1.tif",
+            }
+        ],
+    )
 
     assert create_item_mock.called_once
     assert create_item_mock.last_request.headers["Authorization"] == "Bearer s3cr3t"
@@ -106,7 +115,16 @@ def test_merge_into_existing(requests_mock, tmp_path):
         new_collection.to_dict(),
         id=str(target),
         description=str(target),
-        links=[],
+        links=[
+            {
+                "rel": "derived_from",
+                "href": "https://src.test/asset1.tif",
+            },
+            {
+                "rel": "derived_from",
+                "href": "https://src.test/asset2.tif",
+            },
+        ],
         extent=Extent(
             SpatialExtent([[0, 50, 3, 53]]),
             TemporalExtent([[
@@ -283,6 +301,8 @@ def _collection(
 
     item.add_asset(asset_key, asset)
     collection.add_item(item)
+
+    collection.add_link(Link(rel=RelType.DERIVED_FROM, target=f"https://src.test/{asset_path.name}"))
 
     collection.normalize_and_save(root_href=str(root_path))
     assert collection.validate_all() == (1 if item_id else 0)
