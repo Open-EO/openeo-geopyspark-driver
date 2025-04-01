@@ -337,11 +337,11 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             else ZooKeeperServiceRegistry()
         )
 
+        # TODO #283 #285: eliminate is_ci_context, use some kind of config structure
         if not use_zookeeper or ConfigParams().is_ci_context:
-            # TODO #283 #285: eliminate is_ci_context, use some kind of config structure
-            InMemoryUserDefinedProcessRepository()
+            user_defined_processes = InMemoryUserDefinedProcessRepository()
         else:
-            ZooKeeperUserDefinedProcessRepository(
+            user_defined_processes = ZooKeeperUserDefinedProcessRepository(
                 hosts=ConfigParams().zookeepernodes,
                 zk_client_reuse=get_backend_config().udp_registry_zookeeper_client_reuse,
             )
