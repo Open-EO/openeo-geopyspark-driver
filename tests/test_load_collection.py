@@ -527,7 +527,9 @@ def test_load_stac_collection_with_property_filters(catalog, tmp_path, requests_
 
     with rasterio.open(output_file) as ds:
         assert ds.count == len(expected_bands)
-        assert list(ds.descriptions) == expected_bands
+        assert (list(ds.descriptions) == expected_bands) or (
+            [ds.tags(bidx=i + 1)["DESCRIPTION"] for i in range(ds.count)] == expected_bands
+        )
 
 
 def test_property_filter_from_parameter(catalog):
