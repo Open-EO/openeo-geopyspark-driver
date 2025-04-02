@@ -24,7 +24,6 @@ from openeo_driver.util.geometry import validate_geojson_coordinates
 from openeo_driver.utils import EvalEnv
 from openeo_driver.workspace import DiskWorkspace
 from osgeo import gdal
-from rio_cogeo import cog_validate
 from shapely.geometry import Point, Polygon, shape
 
 from openeogeotrellis.testing import gps_config_overrides
@@ -37,6 +36,7 @@ from openeogeotrellis.deploy.batch_job_metadata import extract_result_metadata
 from openeogeotrellis.utils import s3_client, GDALINFO_SUFFIX
 from openeogeotrellis.workspace import ObjectStorageWorkspace
 from openeogeotrellis.workspace.custom_stac_io import CustomStacIO
+from . import assert_cog
 from .conftest import force_stop_spark_context, _setup_local_spark
 
 from .data import TEST_DATA_ROOT, get_test_data_file
@@ -2262,6 +2262,8 @@ def test_custom_geotiff_tags(tmp_path):
     band_metadata = band.GetMetadata()
     assert band_metadata["ARBITRARY"] == "value"
 
+    assert_cog(output_tiff)
+
 
 @pytest.mark.parametrize("remove_original", [False, True])
 def test_export_to_multiple_workspaces(tmp_path, remove_original):
@@ -2601,5 +2603,4 @@ def test_geotiff_tile_size(tmp_path, window_size, default_tile_size, requested_t
         for block_shape in dataset.block_shapes:
             assert block_shape == (expected_tile_size, expected_tile_size)
 
-    is_valid_cog, errors, _ = cog_validate(output_tiff)
-    assert is_valid_cog, str(errors)
+    assert_cog(output_tiff)
