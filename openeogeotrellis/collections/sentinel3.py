@@ -562,19 +562,30 @@ def _read_latlonfile(bbox, latlon_file, lat_band="latitude", lon_band="longitude
                            ]
     to_drop = [x for x in potential_variables if x != lat_band and x != lon_band]  # saves memory
     # `open_dataarray` could allow for lazy loading, but is more complex and saves the same amount of memory
-    lat_lon_ds = xr.open_dataset(latlon_file, drop_variables=to_drop).astype("float32")
+    # decode_cf=True forces lat/lon bands from int32 to float64 by filling nans, scaling, and offsetting. This causes OOM errors.
+    # Instead, we do the scaling ourselves. Filling nans is not required for coordinates.
+    # Note that float32 causes us to lose precision, so we stick to int32.
+    lat_lon_ds = xr.open_dataset(latlon_file, drop_variables=to_drop, decode_cf=False)
+    lat_scale = lat_lon_ds[lat_band].attrs.get('scale_factor', 1.0)
+    lat_offset = lat_lon_ds[lat_band].attrs.get('add_offset', 0.0)
+    lon_scale = lat_lon_ds[lon_band].attrs.get('scale_factor', 1.0)
+    lon_offset = lat_lon_ds[lon_band].attrs.get('add_offset', 0.0)
 
-    xmin, ymin, xmax, ymax = bbox
+    # lat_lon_ds is scaled, so we need to inverse scale the bbox as well.
+    xmin_s, ymin_s, xmax_s, ymax_s = (bbox[0]/lon_scale)-lon_offset, (bbox[1]/lat_scale)-lat_offset, (bbox[2]/lon_scale)-lon_offset, (bbox[3]/lat_scale)-lat_offset
+    interpolation_margin_lat = (interpolation_margin/lat_scale)-lat_offset
+    interpolation_margin_lon = (interpolation_margin/lon_scale)-lon_offset
 
-    lat_mask = xr.apply_ufunc(lambda lat: (lat >= ymin - interpolation_margin) & (lat <= ymax + interpolation_margin), lat_lon_ds[lat_band])
-    lon_mask = xr.apply_ufunc(lambda lon: (lon >= xmin - interpolation_margin) & (lon <= xmax + interpolation_margin), lat_lon_ds[lon_band])
+    lat_mask = xr.apply_ufunc(lambda lat: (lat >= ymin_s - interpolation_margin_lat) & (lat <= ymax_s + interpolation_margin_lat), lat_lon_ds[lat_band])
+    lon_mask = xr.apply_ufunc(lambda lon: (lon >= xmin_s - interpolation_margin_lon) & (lon <= xmax_s + interpolation_margin_lon), lat_lon_ds[lon_band])
     data_mask = lat_mask & lon_mask
 
 
     # Create the coordinate arrays for latitude and longitude
     ## Coordinated referring to the CENTER of the pixel
-    lat_orig = lat_lon_ds[lat_band].where(data_mask,drop=True).values
-    lon_orig = lat_lon_ds[lon_band].where(data_mask,drop=True).values
+    # We can rescale to float64 from this point since we are working with smaller arrays.
+    lat_orig = lat_lon_ds[lat_band].where(data_mask, drop=True).values*lat_scale+lat_offset
+    lon_orig = lat_lon_ds[lon_band].where(data_mask, drop=True).values*lon_scale+lon_offset
     lat_lon_ds.close()
 
     if lat_orig.size == 0 or lon_orig.size == 0:
@@ -587,8 +598,8 @@ def _read_latlonfile(bbox, latlon_file, lat_band="latitude", lon_band="longitude
         passing_date_line = True
         # self.lon_orig=np.where(self.lon_orig<0, self.lon_orig+360, self.lon_orig) #change grid from -180->180 to 0->360
 
-    x_min, x_max = np.min(lon_orig), np.max(lon_orig)
-    y_min, y_max = np.min(lat_orig), np.max(lat_orig)
+    x_min, x_max = np.nanmin(lon_orig), np.nanmax(lon_orig)
+    y_min, y_max = np.nanmin(lat_orig), np.nanmax(lat_orig)
     bbox_original = [x_min, y_min, x_max, y_max]
     lon_flat = lon_orig.flatten()
     lat_flat = lat_orig.flatten()
