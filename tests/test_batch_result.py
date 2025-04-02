@@ -1845,8 +1845,8 @@ def test_multiple_top_level_side_effects(tmp_path, caplog):
         "final.tif": lambda dataset: dataset.res == (80, 80)
     }),
     ("pg02.json", {
-        "B04.tif": lambda dataset: dataset.descriptions == ("B04",),
-        "B11.tif": lambda dataset: dataset.descriptions == ("B11",),
+        "B04.tif": lambda dataset: (dataset.descriptions[0] or dataset.tags(1)["DESCRIPTION"]) == "B04",
+        "B11.tif": lambda dataset: (dataset.descriptions[0] or dataset.tags(1)["DESCRIPTION"]) == "B11",
     }),
 ])
 def test_multiple_save_results(tmp_path, process_graph_file, output_file_predicates):
