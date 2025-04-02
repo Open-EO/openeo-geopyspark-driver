@@ -4519,7 +4519,7 @@ class TestLoadStac:
         assert raster.RasterCount == 1
 
         only_band = raster.GetRasterBand(1)
-        assert only_band.GetDescription() == "B02"
+        assert (only_band.GetDescription() or only_band.GetMetadata()["DESCRIPTION"]) == "B02"
 
 
     def test_empty_data_cube(self, api110, requests_mock):
