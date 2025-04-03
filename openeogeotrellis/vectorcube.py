@@ -82,7 +82,7 @@ class AggregateSpatialResultCSV(AggregatePolygonResultCSV, SupportsRunUdf):
             result.insert(0, 'feature_index', result.pop('feature_index'))
             return result.to_dict(orient='tight')
 
-        csv_as_list = df.rdd.map(list).map(lambda x: (x[id_index],x)).groupByKey().map(mapTimeseriesRows)
+        csv_as_list = df.rdd.map(list).map(lambda x: (x[id_index],x)).groupByKey().map(map_timeseries_rows)
 
         output = csv_as_list.collect()
 
