@@ -70,7 +70,7 @@ class AggregateSpatialResultCSV(AggregatePolygonResultCSV, SupportsRunUdf):
 
         id_index = columns.index("feature_index")
 
-        def mapTimeseriesRows(id_bands):
+        def map_timeseries_rows(id_bands):
 
 
             result = callback(id_bands)
