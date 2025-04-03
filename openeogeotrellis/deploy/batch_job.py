@@ -493,7 +493,7 @@ def run_job(
             result=result,
             output_file=output_file,
             unique_process_ids=unique_process_ids,
-            apply_gdal=True,
+            apply_gdal=job_options.get("detailed_asset_metadata", True),
             asset_metadata={
                 # TODO: flattened instead of per-result, clean this up?
                 asset_key: asset_metadata
@@ -713,7 +713,10 @@ def _write_exported_stac_collection(
             "spatial": {"bbox": [result_metadata.get("bbox", [-180, -90, 180, 90])]},
             "temporal": {"interval": [[result_metadata.get("start_datetime"), result_metadata.get("end_datetime")]]},
         },
-        "links": [item_link(item_file) for item_file in item_files],
+        "links": (
+            [item_link(item_file) for item_file in item_files]
+            + [link for link in _get_tracker_metadata("").get("links", []) if link["rel"] == "derived_from"]
+        ),
     }
 
     collection_file = job_dir / "collection.json"  # TODO: file is reused for each result

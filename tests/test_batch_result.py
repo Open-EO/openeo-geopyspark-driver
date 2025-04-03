@@ -36,6 +36,7 @@ from openeogeotrellis.deploy.batch_job_metadata import extract_result_metadata
 from openeogeotrellis.utils import s3_client, GDALINFO_SUFFIX
 from openeogeotrellis.workspace import ObjectStorageWorkspace
 from openeogeotrellis.workspace.custom_stac_io import CustomStacIO
+from . import assert_cog
 from .conftest import force_stop_spark_context, _setup_local_spark
 
 from .data import TEST_DATA_ROOT, get_test_data_file
@@ -1844,8 +1845,8 @@ def test_multiple_top_level_side_effects(tmp_path, caplog):
         "final.tif": lambda dataset: dataset.res == (80, 80)
     }),
     ("pg02.json", {
-        "B04.tif": lambda dataset: dataset.descriptions == ("B04",),
-        "B11.tif": lambda dataset: dataset.descriptions == ("B11",),
+        "B04.tif": lambda dataset: (dataset.descriptions[0] or dataset.tags(1)["DESCRIPTION"]) == "B04",
+        "B11.tif": lambda dataset: (dataset.descriptions[0] or dataset.tags(1)["DESCRIPTION"]) == "B11",
     }),
 ])
 def test_multiple_save_results(tmp_path, process_graph_file, output_file_predicates):
@@ -2261,6 +2262,8 @@ def test_custom_geotiff_tags(tmp_path):
     band_metadata = band.GetMetadata()
     assert band_metadata["ARBITRARY"] == "value"
 
+    assert_cog(output_tiff)
+
 
 @pytest.mark.parametrize("remove_original", [False, True])
 def test_export_to_multiple_workspaces(tmp_path, remove_original):
@@ -2592,7 +2595,12 @@ def test_geotiff_tile_size(tmp_path, window_size, default_tile_size, requested_t
             dependencies=[],
         )
 
-    with rasterio.open(job_dir / "openEO_2021-01-05Z.tif") as dataset:
+    output_tiff = job_dir / "openEO_2021-01-05Z.tif"
+
+    with rasterio.open(output_tiff) as dataset:
+        assert dataset.crs.to_epsg() == 4326
         assert dataset.count == len(bands)
         for block_shape in dataset.block_shapes:
             assert block_shape == (expected_tile_size, expected_tile_size)
+
+    assert_cog(output_tiff)

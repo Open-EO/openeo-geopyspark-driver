@@ -1,56 +1,23 @@
-## OpenEO Geopyspark Driver
+# openEO GeoPySpark Driver
 
-[![Status](https://img.shields.io/badge/Status-proof--of--concept-yellow.svg)]()
+This project implements a GeoPySpark powered [openEO](https://openeo.org/) backend.
 
-Python version: at least 3.8
+It builds on [openeo-python-driver](https://github.com/Open-EO/openeo-python-driver) to take care of the
+generic REST aspect of openEO
+and leverages [GeoPySpark](https://github.com/locationtech-labs/geopyspark/)
+and [GeoTrellis](https://geotrellis.io/) (through [openeo-geotrellis-extensions](https://github.com/Open-EO/openeo-geotrellis-extensions))
+to handle the heavy duty geospatial (raster) processing.
 
-This driver implements the GeoPySpark/Geotrellis specific backend for OpenEO.
+## Public endpoints
 
-It does this by implementing a direct (non-REST) version of the OpenEO client API on top
-of [GeoPySpark](https://github.com/locationtech-labs/geopyspark/).
+- VITO/Terrascope openEO backend: https://openeo.vito.be/openeo/
+- Copernicus Data Space Ecosystem: https://openeo.dataspace.copernicus.eu/
 
-A REST service based on Flask translates incoming calls to this local API.
+## Documentation
 
-![Technology stack](openeo-geotrellis-techstack.png?raw=true "Technology stack")
+See the [documentation](./docs/README.md) for more information about
+requirements, configuration, development setup, user facing features, etc.
 
-### Operating environment dependencies
-This backend has been tested with:
-- Something that runs Spark: Kubernetes or YARN (Hadoop), standalone or on your laptop
-- Accumulo as the tile storage backend for Geotrellis
-- Reading GeoTiff files directly from disk or object storage
+## Technology stack
 
-### Public endpoint
-https://openeo.vito.be/openeo/
-
-### Running locally
-
-Set up your (virtual) environment with necessary dependencies:
-
-    # Install Python package and its depdendencies
-    pip install . --extra-index-url https://artifactory.vgt.vito.be/artifactory/api/pypi/python-openeo/simple
-
-    # Get necessary JAR dependency files for running Geopyspark driver
-    python scripts/get-jars.py
-
-
-For development, refer to [docs/development](./docs/development.md) for more information.
-You can run the service with:
-
-    export SPARK_HOME=$(find_spark_home.py)
-    export HADOOP_CONF_DIR=/etc/hadoop/conf
-    export FLASK_DEBUG=1
-    python openeogeotrellis/deploy/local.py
-
-
-For production, a gunicorn server script is available:
-PYTHONPATH=. python openeogeotrellis/server.py
-
-### Running locally with Docker
-
-This will set up the environment (Java/Python with dependencies) and makes it possible to run simple process graphs.
-For more information, see: [docker/local_batch_job/](./docker/local_batch_job/README.md)
-
-### Running on the Proba-V MEP
-The web application can be deployed by running:
-sh scripts/submit.sh
-This will package the application and it's dependencies from source, and submit it on the cluster. The application will register itself with an NginX reverse proxy using Zookeeper.
+![Technology stack](docs/img/openeo-geotrellis-techstack.png)

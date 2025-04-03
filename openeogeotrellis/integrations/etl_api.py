@@ -144,7 +144,7 @@ class EtlApi:
                 "metrics": metrics,
             }
             if organization_id:
-                _log.debug(f"EtlApi.log_resource_usage: custom {organization_id=} for {execution_id=}")
+                log.info(f"EtlApi.log_resource_usage: custom {organization_id=} for {execution_id=}")
                 data["orgId"] = int(organization_id)
 
             log.debug(f"EtlApi.log_resource_usage: POST {data=} at {self._endpoint!r}")

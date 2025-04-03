@@ -1,19 +1,24 @@
+import logging
+
 import os
+from typing import Union
 
 import dirty_equals
 import mock
 import pytest
 import shapely
-
+from openeo.utils.version import ComparableVersion
 from openeo_driver.config.load import ConfigGetter
 from openeo_driver.datacube import DriverVectorCube
+from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.delayed_vector import DelayedVector
+from openeo_driver.processes import ProcessRegistry
 from openeo_driver.ProcessGraphDeserializer import ENV_SOURCE_CONSTRAINTS
+from openeo_driver.specs import read_spec
 from openeo_driver.users import User
 from openeo_driver.utils import EvalEnv
 
 from openeogeotrellis.backend import (
-    GeoPySparkBackendImplementation,
     GpsBatchJobs,
     GpsProcessing,
 )
@@ -21,7 +26,7 @@ from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.config.s3_config import S3Config
 from openeogeotrellis.integrations.kubernetes import k8s_render_manifest_template
 from openeogeotrellis.testing import gps_config_overrides
-from openeogeotrellis.utils import utcnow, UtcNowClock
+from openeogeotrellis.utils import UtcNowClock, utcnow
 
 
 def test_extract_application_id():
@@ -495,6 +500,46 @@ def test_extra_validation_layer_too_large_resample_spatial_zero(backend_implemen
     )
     errors = list(processing.extra_validation({}, env, None, env_source_constraints))
     assert len(errors) == 0
+
+
+class TestGpsProcessing:
+    # TODO: move all these test_extra_validation_* inhere too.
+
+    @pytest.mark.parametrize(
+        ["sar_backscatter_spec", "expected"],
+        [
+            (
+                None,
+                {"coefficient": "gamma0-terrain"},
+            ),
+            (
+                read_spec("openeo-processes/2.x/proposals/sar_backscatter.json"),
+                {"coefficient": "gamma0-terrain"},
+            ),
+            (
+                {"id": "sar_backscatter", "parameters": [{"name": "coefficient", "default": "omega666"}]},
+                {"coefficient": "omega666"},
+            ),
+        ],
+    )
+    def test_get_default_sar_backscatter_arguments(self, sar_backscatter_spec, expected, caplog):
+        caplog.set_level(logging.WARNING)
+
+        class MyGpsProcessing(GpsProcessing):
+            def __init__(self):
+                self.process_registry = ProcessRegistry()
+
+            def get_process_registry(self, api_version: Union[str, ComparableVersion]) -> ProcessRegistry:
+                return self.process_registry
+
+        my_processing = MyGpsProcessing()
+        if sar_backscatter_spec:
+            my_processing.process_registry.add_spec(sar_backscatter_spec)
+
+        sar_backscatter_arguments = my_processing.get_default_sar_backscatter_arguments(api_version="1.2.0")
+        assert isinstance(sar_backscatter_arguments, SarBackscatterArgs)
+        assert sar_backscatter_arguments._asdict() == dirty_equals.IsPartialDict(expected)
+        assert caplog.text == ""
 
 
 @pytest.mark.parametrize("success, state, status",

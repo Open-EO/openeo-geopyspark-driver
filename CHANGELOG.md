@@ -15,11 +15,22 @@ without compromising stable operations.
 ## In progress: 0.65.0
 
 - `save_result`: write GeoTiff assets with valid tile size; override with `tile_size` format option. ([#1083](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1083))
+- `sar_backscatter` support: automatically use backend-specific `coefficient` default even if there is no explicit `sar_backscatter` in the process graph ([Open-EO/openeo-python-driver#376](https://github.com/Open-EO/openeo-python-driver/issues/376))
+- Add `capabilities_extras` config to easily extend capabilities document ([Open-EO/openeo-python-driver#384](https://github.com/Open-EO/openeo-python-driver/issues/384))
+- Add `CalrissianS3Result.generate_presigned_url()` ([#937](https://github.com/Open-EO/openeo-geopyspark-driver/issues/937))
+- Restore COG layout for `GTiff` output format ([Open-EO/openeo-geotrellis-extensions#393](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/393))
+- Add `CalrissianS3Result.download()` ([#937](https://github.com/Open-EO/openeo-geopyspark-driver/issues/937))
+- Support additional Sentinel 3 collections ([eu-cdse/openeo-cdse-infra#380](https://github.com/eu-cdse/openeo-cdse-infra/issues/380))
+- Add `CalrissianS3Result.generate_public_url()` ([#937](https://github.com/Open-EO/openeo-geopyspark-driver/issues/937))
+- Replace `ConfigParams.layer_catalog_metadata_files` with `GpsBackendConfig.layer_catalog_files` ([#285](https://github.com/Open-EO/openeo-geopyspark-driver/issues/285), [#1084](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1084))
+- `StacApiWorkspace`: log body of error response from STAC API for better root cause analysis ([#1116](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1116))
+- `export_workspace`: add `"derived_from"` links to STAC Collection ([#1050](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1050))
 - `write_assets`: support zarr format (experimental)
 
 ## 0.64.1
 
 - `load_custom_processes`: allow specifying path directly
+
 
 ## 0.63.0
 

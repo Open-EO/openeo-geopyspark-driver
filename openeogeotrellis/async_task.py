@@ -257,7 +257,7 @@ def main():
                     time.sleep(backend_config.job_dependencies_poll_interval_seconds)
 
                     with double_job_registry as registry:
-                        job_info = registry.get_job(batch_job_id, user_id)
+                        job_info = registry.get_job(job_id=batch_job_id, user_id=user_id)
 
                     if job_info.get("dependency_status") not in [
                         DEPENDENCY_STATUS.AWAITING,

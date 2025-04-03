@@ -5,9 +5,10 @@ from typing import Dict
 
 import pytest
 import responses
-from pystac import Collection, Extent, SpatialExtent, TemporalExtent, Item, Asset
+from pystac import Collection, Extent, SpatialExtent, TemporalExtent, Item, Asset, Link, RelType
 
 from openeogeotrellis.workspace import StacApiWorkspace
+from openeogeotrellis.workspace.stac_api_workspace import StacApiResponseError
 
 
 def test_merge_new(requests_mock, tmp_path):
@@ -43,7 +44,16 @@ def test_merge_new(requests_mock, tmp_path):
 
     assert create_collection_mock.called_once
     assert create_collection_mock.last_request.headers["Authorization"] == "Bearer s3cr3t"
-    assert create_collection_mock.last_request.json() == dict(collection1.to_dict(), id=str(target), links=[])
+    assert create_collection_mock.last_request.json() == dict(
+        collection1.to_dict(),
+        id=str(target),
+        links=[
+            {
+                "rel": "derived_from",
+                "href": "https://src.test/asset1.tif",
+            }
+        ],
+    )
 
     assert create_item_mock.called_once
     assert create_item_mock.last_request.headers["Authorization"] == "Bearer s3cr3t"
@@ -105,7 +115,16 @@ def test_merge_into_existing(requests_mock, tmp_path):
         new_collection.to_dict(),
         id=str(target),
         description=str(target),
-        links=[],
+        links=[
+            {
+                "rel": "derived_from",
+                "href": "https://src.test/asset1.tif",
+            },
+            {
+                "rel": "derived_from",
+                "href": "https://src.test/asset2.tif",
+            },
+        ],
         extent=Extent(
             SpatialExtent([[0, 50, 3, 53]]),
             TemporalExtent([[
@@ -173,6 +192,36 @@ def test_merge_resilience(tmp_path):
 
     assert create_item_error_resp.call_count == 1
     assert create_item_conflict_resp.call_count == 1
+
+
+def test_error_details(tmp_path, requests_mock):
+    stac_api_workspace = StacApiWorkspace(
+        root_url="https://stacapi.test",
+        export_asset=_export_asset,
+        asset_alternate_id="file",
+    )
+
+    target = PurePath("new_collection")
+    asset_path = Path("/path") / "to" / "asset1.tif"
+
+    _mock_stac_api_root_catalog(requests_mock, stac_api_workspace.root_url)
+    requests_mock.get(f"{stac_api_workspace.root_url}/collections/{target}", status_code=404)
+
+    requests_mock.post(
+        f"{stac_api_workspace.root_url}/collections",
+        status_code=400,
+        reason="Bad Request",
+        json={"detail": "Invalid collection authorizations"},
+    )
+
+    collection1 = _collection(root_path=tmp_path / "collection1", collection_id="collection1", asset_path=asset_path)
+
+    with pytest.raises(
+        StacApiResponseError,
+        match="400 Client Error: Bad Request for url: https://stacapi.test/collections"
+        ' with response body: {"detail":"Invalid collection authorizations"}',
+    ):
+        stac_api_workspace.merge(collection1, target)
 
 
 def test_validate_collection_id(requests_mock, tmp_path):
@@ -252,6 +301,8 @@ def _collection(
 
     item.add_asset(asset_key, asset)
     collection.add_item(item)
+
+    collection.add_link(Link(rel=RelType.DERIVED_FROM, target=f"https://src.test/{asset_path.name}"))
 
     collection.normalize_and_save(root_href=str(root_path))
     assert collection.validate_all() == (1 if item_id else 0)

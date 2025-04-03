@@ -1,19 +1,30 @@
+import logging
 import unittest.mock as mock
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Tuple, Union
 
+import dirty_equals
 import pytest
 import schema
 from openeo.util import deep_get
+from openeo.utils.version import ComparableVersion
+from openeo_driver.backend import LoadParameters
+from openeo_driver.datastructs import SarBackscatterArgs
+from openeo_driver.processes import ProcessRegistry
+from openeo_driver.specs import read_spec
 from openeo_driver.util.geometry import BoundingBox
-from openeo_driver.utils import read_json
+from openeo_driver.utils import EvalEnv, read_json
+from openeo_driver.views import OPENEO_API_VERSION_DEFAULT
 
+from openeogeotrellis.backend import GpsProcessing
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.geopysparkdatacube import GeopysparkCubeMetadata
 from openeogeotrellis.layercatalog import (
+    _get_sar_backscatter_arguments,
     _merge_layers_with_common_name,
     get_layer_catalog,
 )
+from openeogeotrellis.testing import gps_config_overrides
 from openeogeotrellis.vault import Vault
 
 
@@ -66,11 +77,12 @@ def test_layer_metadata(id, layer):
 
 
 def test_get_layer_catalog_with_updates(vault):
-    with mock.patch("openeogeotrellis.layercatalog.ConfigParams") as ConfigParams:
-        ConfigParams.return_value.layer_catalog_metadata_files = [
+    with gps_config_overrides(
+        layer_catalog_files=[
             "tests/data/layercatalog01.json",
             "tests/data/layercatalog02.json",
         ]
+    ):
         catalog = get_layer_catalog(vault)
         assert sorted(l["id"] for l in catalog.get_all_metadata()) == ["BAR", "BZZ", "FOO", "QUU"]
         foo = catalog.get_collection_metadata("FOO")
@@ -98,14 +110,13 @@ def skip_sentinelhub_layer(vault):
 
 def test_get_layer_catalog_opensearch_enrich_oscars(requests_mock, vault):
     test_root = Path(__file__).parent / "data"
-    with mock.patch("openeogeotrellis.layercatalog.ConfigParams") as ConfigParams:
-        ConfigParams.return_value.layer_catalog_metadata_files = [
+    with gps_config_overrides(
+        layer_catalog_files=[
             test_root / "layercatalog01.json",
             test_root / "layercatalog02.json",
-            test_root / "layercatalog03_oscars.json"
+            test_root / "layercatalog03_oscars.json",
         ]
-
-
+    ):
         collections_response = read_json(test_root / "collections_oscars01.json")
         requests_mock.get("https://services.terrascope.test/catalogue/collections", json=collections_response)
 
@@ -200,11 +211,12 @@ def test_get_layer_catalog_opensearch_enrich_oscars(requests_mock, vault):
 
 
 def test_get_layer_catalog_opensearch_enrich_creodias(requests_mock, vault):
-    with mock.patch("openeogeotrellis.layercatalog.ConfigParams") as ConfigParams:
-        ConfigParams.return_value.layer_catalog_metadata_files = [
+    with gps_config_overrides(
+        layer_catalog_files=[
             "tests/data/layercatalog01.json",
-            "tests/data/layercatalog04_creodias.json"
+            "tests/data/layercatalog04_creodias.json",
         ]
+    ):
         collections_response = read_json("tests/data/collections_creodias01.json")
         requests_mock.get("https://finder.creodias.test/resto/collections.json", json=collections_response)
 
@@ -235,10 +247,11 @@ def test_get_layer_catalog_opensearch_enrich_creodias(requests_mock, vault):
 
 
 def test_layer_catalog_step_resolution(vault):
-    with mock.patch("openeogeotrellis.layercatalog.ConfigParams") as ConfigParams:
-        ConfigParams.return_value.layer_catalog_metadata_files = [
+    with gps_config_overrides(
+        layer_catalog_files=[
             str(Path(__file__).parent / "layercatalog.json"),
         ]
+    ):
         catalog = get_layer_catalog(vault, opensearch_enrich=True)
         all_metadata = catalog.get_all_metadata()
 
@@ -264,10 +277,11 @@ def test_layer_catalog_step_resolution(vault):
 
 
 def test_get_layer_native_extent_specific(vault):
-    with mock.patch("openeogeotrellis.layercatalog.ConfigParams") as ConfigParams:
-        ConfigParams.return_value.layer_catalog_metadata_files = [
+    with gps_config_overrides(
+        layer_catalog_files=[
             str(Path(__file__).parent / "layercatalog.json"),
         ]
+    ):
         catalog = get_layer_catalog(vault, opensearch_enrich=True)
         metadata = GeopysparkCubeMetadata(catalog.get_collection_metadata(collection_id="SENTINEL1_CARD4L"))
         assert metadata.get_layer_native_extent() == BoundingBox(
@@ -276,10 +290,11 @@ def test_get_layer_native_extent_specific(vault):
 
 
 def test_get_layer_native_extent_all(vault):
-    with mock.patch("openeogeotrellis.layercatalog.ConfigParams") as ConfigParams:
-        ConfigParams.return_value.layer_catalog_metadata_files = [
+    with gps_config_overrides(
+        layer_catalog_files=[
             str(Path(__file__).parent / "layercatalog.json"),
         ]
+    ):
         catalog = get_layer_catalog(vault, opensearch_enrich=True)
     all_metadata = catalog.get_all_metadata()
     for layer in all_metadata:
@@ -481,3 +496,62 @@ def test_merge_layers_with_common_name_cube_dimensions_merging():
             },
         },
     }
+
+
+@pytest.mark.parametrize(
+    ["load_params", "sar_backscatter_spec", "expected"],
+    [
+        (
+            # No user-specified sar_backscatter, no backend sar_backscatter spec override
+            LoadParameters(),
+            None,
+            {"coefficient": "gamma0-terrain"},
+        ),
+        (
+            # No user-specified sar_backscatter, no backend sar_backscatter spec override
+            LoadParameters(),
+            read_spec("openeo-processes/2.x/proposals/sar_backscatter.json"),
+            {"coefficient": "gamma0-terrain"},
+        ),
+        (
+            # User specified sar_backscatter arguments, no backend sar_backscatter spec override
+            LoadParameters(sar_backscatter=SarBackscatterArgs(coefficient="omega3")),
+            None,
+            {"coefficient": "omega3"},
+        ),
+        (
+            # Backend-defined default coefficient, no user specified coefficient
+            LoadParameters(),
+            {"id": "sar_backscatter", "parameters": [{"name": "coefficient", "default": "omega666"}]},
+            {"coefficient": "omega666"},
+        ),
+        (
+            # Backend-defined default coefficient and user specified coefficient
+            LoadParameters(sar_backscatter=SarBackscatterArgs(coefficient="omega3")),
+            {"id": "sar_backscatter", "parameters": [{"name": "coefficient", "default": "omega666"}]},
+            {"coefficient": "omega3"},
+        ),
+    ],
+)
+def test_get_sar_backscatter_arguments(load_params: LoadParameters, sar_backscatter_spec: dict, expected, caplog):
+    caplog.set_level(level=logging.WARNING)
+
+    class MyProcessing(GpsProcessing):
+        def __init__(self):
+            self.process_registry = ProcessRegistry()
+
+        def get_process_registry(self, api_version: Union[str, ComparableVersion]) -> ProcessRegistry:
+            return self.process_registry
+
+    processing_impl = MyProcessing()
+    if sar_backscatter_spec:
+        processing_impl.process_registry.add_spec(sar_backscatter_spec)
+    env = EvalEnv({"openeo_api_version": OPENEO_API_VERSION_DEFAULT})
+
+    # TODO: unfortunately we have to use mocking here because proper injection
+    #       through env.backend_implementation is ruined by WhiteListEvalEnv caching business.
+    with mock.patch("openeogeotrellis.backend.GpsProcessing", return_value=processing_impl):
+        sar_backscatter_arguments = _get_sar_backscatter_arguments(load_params=load_params, env=env)
+    assert isinstance(sar_backscatter_arguments, SarBackscatterArgs)
+    assert sar_backscatter_arguments._asdict() == dirty_equals.IsPartialDict(expected)
+    assert caplog.text == ""

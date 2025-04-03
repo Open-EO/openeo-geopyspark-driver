@@ -1,3 +1,4 @@
+from __future__ import annotations
 import contextlib
 import datetime as dt
 import json
@@ -596,6 +597,7 @@ class InMemoryJobRegistry(JobRegistryInterface):
 
     def create_job(
         self,
+        *,
         process: dict,
         user_id: str,
         job_id: Optional[str] = None,
@@ -623,7 +625,7 @@ class InMemoryJobRegistry(JobRegistryInterface):
         }
         return self.db[job_id]
 
-    def get_job(self, job_id: str, user_id: Optional[str] = None) -> JobDict:
+    def get_job(self, job_id: str, *, user_id: Optional[str] = None) -> JobDict:
         job = self.db.get(job_id)
 
         if not job or (user_id is not None and job['user_id'] != user_id):
@@ -631,7 +633,7 @@ class InMemoryJobRegistry(JobRegistryInterface):
 
         return job
 
-    def delete_job(self, job_id: str, user_id: Optional[str] = None) -> None:
+    def delete_job(self, job_id: str, *, user_id: Optional[str] = None) -> None:
         self.get_job(job_id=job_id, user_id=user_id)  # will raise on job not found
         del self.db[job_id]
 
@@ -681,7 +683,11 @@ class InMemoryJobRegistry(JobRegistryInterface):
         return self._update(job_id=job_id, application_id=application_id)
 
     def set_usage(self, job_id: str, costs: float, usage: dict) -> JobDict:
-        return self._update(job_id=job_id, costs=costs, usage=usage)
+        input_pixel = 0
+        if "input_pixel" in usage and isinstance(usage["input_pixel"], dict) and "value" in usage["input_pixel"] and (
+                isinstance(input_pixel, int) or isinstance(input_pixel, float)):
+            input_pixel = usage["input_pixel"]["value"]
+        return self._update(job_id=job_id, costs=costs, usage=usage, input_pixel=input_pixel)
 
     def set_results_metadata(self, job_id: str, costs: Optional[float], usage: dict,
                              results_metadata: Dict[str, Any]) -> JobDict:
@@ -784,9 +790,10 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
 
     def create_job(
         self,
-        job_id: str,
-        user_id: str,
+        *,
         process: dict,
+        user_id: str,
+        job_id: str,
         api_version: Optional[str] = None,
         job_options: Optional[dict] = None,
         title: Optional[str] = None,
@@ -820,10 +827,11 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
             raise DoubleJobRegistryException(f"None of ZK/EJR registered {job_id=}")
         return zk_job_info or ejr_job_info
 
-    def get_job(self, job_id: str, user_id: str) -> dict:
+    def get_job(self, job_id: str, *, user_id: Optional[str] = None) -> dict:
         # TODO: eliminate get_job/get_job_metadata duplication?
         zk_job = ejr_job = None
         if self.zk_job_registry:
+            assert user_id
             with contextlib.suppress(JobNotFoundException, ZkStrippedSpecification):
                 zk_job = self.zk_job_registry.get_job(
                     job_id=job_id, user_id=user_id, parse_specification=True, omit_raw_specification=True
@@ -873,8 +881,9 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
         if self.elastic_job_registry:
             self.elastic_job_registry.set_status(job_id=job_id, status=status, started=started, finished=finished)
 
-    def delete_job(self, job_id: str, user_id: str) -> None:
+    def delete_job(self, job_id: str, *, user_id: Optional[str] = None) -> None:
         if self.zk_job_registry:
+            assert user_id
             self.zk_job_registry.delete(job_id=job_id, user_id=user_id)
         if self.elastic_job_registry:
             self.elastic_job_registry.delete_job(job_id=job_id, user_id=user_id)
