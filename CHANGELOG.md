@@ -25,6 +25,7 @@ without compromising stable operations.
 - Replace `ConfigParams.layer_catalog_metadata_files` with `GpsBackendConfig.layer_catalog_files` ([#285](https://github.com/Open-EO/openeo-geopyspark-driver/issues/285), [#1084](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1084))
 - `StacApiWorkspace`: log body of error response from STAC API for better root cause analysis ([#1116](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1116))
 - `export_workspace`: add `"derived_from"` links to STAC Collection ([#1050](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1050))
+- Calrissian: avoid unnecessary pulls of `alpine` image ([#1132]https://github.com/Open-EO/openeo-geopyspark-driver/issues/1132)
 
 
 ## 0.64.1
