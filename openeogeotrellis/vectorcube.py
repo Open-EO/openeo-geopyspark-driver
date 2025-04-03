@@ -1,6 +1,6 @@
 import logging
 from pathlib import Path
-from typing import Optional, Callable, List
+from typing import Optional, Callable, List, Tuple
 
 import pandas
 import pandas as pd
@@ -8,11 +8,9 @@ from pyspark.sql import SparkSession
 
 import openeo.udf
 import openeo.udf.run_code
-from openeo.util import TimingLogger
 from openeo_driver.datacube import SupportsRunUdf
 from openeo_driver.save_result import AggregatePolygonResultCSV, JSONResult
 from openeo_driver.utils import EvalEnv
-from openeogeotrellis.utils import temp_csv_dir
 
 _log = logging.getLogger(__name__)
 
@@ -40,17 +38,13 @@ class AggregateSpatialResultCSV(AggregatePolygonResultCSV, SupportsRunUdf):
         # TODO: leverage `runtime` argument?
         udf_globals = openeo.udf.run_code.load_module_from_string(code=udf)
 
-
-
         csv_paths = list(Path(self._csv_dir).glob("*.csv"))
         _log.info(
             f"{type(self).__name__} run_udf with {self._csv_dir=} ({len(csv_paths)=})"
         )
 
-
         spark = SparkSession.builder.master('local[1]').getOrCreate()
         df = spark.read.csv([f"file://{p}" for p in csv_paths],header=True)
-
 
         columns = df.columns
 
@@ -70,8 +64,7 @@ class AggregateSpatialResultCSV(AggregatePolygonResultCSV, SupportsRunUdf):
 
         id_index = columns.index("feature_index")
 
-        def map_timeseries_rows(id_bands):
-
+        def map_timeseries_rows(id_bands: Tuple[str,List]):
 
             result = callback(id_bands)
             if isinstance(result,pd.Series):
@@ -112,7 +105,7 @@ class AggregateSpatialResultCSV(AggregatePolygonResultCSV, SupportsRunUdf):
             #data has a multiindex, as a result of the 'pivot' operation
             # TODO: also pass feature_index to udf?
             bands = id_bands[1]
-            import pandas as pd
+
             bands_df = pd.DataFrame(bands, columns=columns)
             bands_df.set_index("date", inplace=True)
             bands_df.index = pd.to_datetime(bands_df.index)
@@ -168,15 +161,10 @@ class AggregateSpatialResultCSV(AggregatePolygonResultCSV, SupportsRunUdf):
         import pyspark.pandas
         def callback(id_bands) -> pyspark.pandas.DataFrame:
             # Get current feature index and drop whole column
-            #feature_index = data["feature_index"].iloc[0]
-            #feature_data = data.drop("feature_index", axis=1)
             # TODO: We assume here that the `date` column already has parsed dates (naive, without timezone info).
             #       At the moment `pyspark.pandas.read_csv` seems to parse dates automatically
             #       (as pandas timestamp) even-though the docs states otherwise
             #       also see https://issues.apache.org/jira/browse/SPARK-40934
-            #if "date" in feature_data.columns:
-            #    feature_data = feature_data.set_index("date")
-            #feature_data.index = feature_data.index.strftime("%Y-%m-%dT%H:%M:%SZ")
 
             # Convert to legacy AggregatePolygonResult-style construct:
             #       {datetime: [[float for each band] for each polygon]}
