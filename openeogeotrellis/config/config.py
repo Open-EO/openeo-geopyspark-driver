@@ -14,6 +14,7 @@ from openeo_driver.utils import smart_bool
 
 from openeogeotrellis import get_backend_version
 from openeogeotrellis.config.constants import UDF_DEPENDENCIES_INSTALL_MODE
+from openeogeotrellis.config.integrations.calrissian_config import CalrissianConfig
 from openeogeotrellis.deploy import (
     build_gps_backend_deploy_metadata,
     find_geotrellis_jars,
@@ -254,12 +255,8 @@ class GpsBackendConfig(OpenEoBackendConfig):
     gdalinfo_use_subprocess: bool = False
     gdalinfo_use_python_subprocess: bool = False
 
-    # TODO: replace these temp default with None (or better defaults)
-    calrissian_namespace: Optional[str] = "calrissian-demo-project"
-    # TODO: proper calrissian image? Official one doesn't work due to https://github.com/Duke-GCB/calrissian/issues/124#issuecomment-947008286
-    # calrissian_image: Optional[str] = "ghcr.io/duke-gcb/calrissian/calrissian:0.17.1"
-    calrissian_image: Optional[str] = "registry.stag.warsaw.openeo.dataspace.copernicus.eu/rand/calrissian:latest"
-    calrissian_bucket: Optional[str] = "calrissian"
+    # TODO #1009 make None by default, when appropriate configs are set.
+    calrissian_config: Optional[CalrissianConfig] = CalrissianConfig()
 
     """
     Inject S3 profiles and tokens that allow S3 access scoped to the Job execution.

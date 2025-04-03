@@ -15,8 +15,10 @@ import time
 import yaml
 
 from openeo.util import ContextTimer
+from openeo_driver.config import ConfigException
 from openeo_driver.utils import generate_unique_id
 from openeogeotrellis.config import get_backend_config
+from openeogeotrellis.config.integrations.calrissian_config import CalrissianConfig
 from openeogeotrellis.util.runtime import get_job_id, get_request_id
 from openeogeotrellis.utils import s3_client
 
@@ -130,11 +132,17 @@ class CalrissianJobLauncher:
         name_base: Optional[str] = None,
         s3_bucket: Optional[str] = None,
         backoff_limit: int = 1,
+        # TODO: replace `namespace` and `s3_bucket` with just a `CalrissianConfig` object?
     ):
-        self._namespace = namespace or get_backend_config().calrissian_namespace
+        calrissian_config: CalrissianConfig = get_backend_config().calrissian_config
+        if not calrissian_config:
+            raise ConfigException("No Calrissian (sub)config.")
+
+        self._namespace = namespace or calrissian_config.namespace
         assert self._namespace
         self._name_base = name_base or generate_unique_id(prefix="cal")[:20]
-        self._s3_bucket = s3_bucket or get_backend_config().calrissian_bucket
+        self._s3_bucket = s3_bucket or calrissian_config.s3_bucket
+        self._calrissian_image = calrissian_config.calrissian_image
 
         _log.info(f"CalrissianJobLauncher.__init__: {self._namespace=} {self._name_base=} {self._s3_bucket=}")
         self._backoff_limit = backoff_limit
@@ -257,9 +265,6 @@ class CalrissianJobLauncher:
         name = self._build_unique_name(infix="cal-cwl")
         _log.info(f"Creating CWL job manifest: {name=}")
 
-        container_image = get_backend_config().calrissian_image
-        assert container_image
-
         # Pairs of (volume_info, read_only)
         volumes = [(self._volume_input, True), (self._volume_tmp, False), (self._volume_output, False)]
 
@@ -298,7 +303,7 @@ class CalrissianJobLauncher:
 
         container = kubernetes.client.V1Container(
             name=name,
-            image=container_image,
+            image=self._calrissian_image,
             # TODO #1009 also config to set image_pull_policy here?
             security_context=self._security_context,
             command=["calrissian"],
