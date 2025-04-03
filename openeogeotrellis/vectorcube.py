@@ -1,3 +1,4 @@
+import json
 import logging
 from pathlib import Path
 from typing import Optional, Callable, List, Tuple
@@ -83,7 +84,7 @@ class AggregateSpatialResultCSV(AggregatePolygonResultCSV, SupportsRunUdf):
         result_df = pandas.concat([ pd.DataFrame.from_dict(o,orient="tight") for o in output])
 
         # TODO: return real vector cube instead of adhoc jsonifying the data here
-        return JSONResult(data=result_df.to_dict("split"))
+        return JSONResult(data=json.loads(result_df.to_json(orient="split", date_format="iso", force_ascii=False)))
 
     @staticmethod
     def _get_run_udf_pandas_callback(
