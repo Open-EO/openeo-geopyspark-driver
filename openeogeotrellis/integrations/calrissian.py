@@ -63,7 +63,8 @@ class CalrissianS3Result:
 
     def generate_public_url(self) -> str:
         """Assuming the object (or its bucket) is public: generate a public URL"""
-        # TODO: is there a better way than just chopping off the query string from a presigned URL?
+        # TODO is there a better way than just chopping off the query string
+        #      from a pre-signed URL? (related to eu-cdse/openeo-cdse-infra#479)
         url = self.generate_presigned_url()
         return url.split("?", maxsplit=1)[0]
 
@@ -155,7 +156,7 @@ class CalrissianJobLauncher:
             mount_path="/calrissian/output-data",
         )
 
-        # TODO: config for this?
+        # TODO #1129 config for this?
         self._security_context = kubernetes.client.V1SecurityContext(run_as_user=1000, run_as_group=1000)
 
     @staticmethod
@@ -191,7 +192,7 @@ class CalrissianJobLauncher:
 
         # Serialize CWL content to string that is safe to pass as command line argument
         cwl_serialized = base64.b64encode(cwl_content.encode("utf8")).decode("ascii")
-        # TODO: cleanup procedure of these CWL files?
+        # TODO #1008 cleanup procedure of these CWL files?
         cwl_path = str(Path(self._volume_input.mount_path) / f"{name}.cwl")
         _log.info(
             f"create_input_staging_job_manifest creating {cwl_path=} from {cwl_content[:32]=} through {cwl_serialized[:32]=}"
@@ -199,6 +200,7 @@ class CalrissianJobLauncher:
 
         container = kubernetes.client.V1Container(
             name="calrissian-input-staging",
+            # TODO #1132 config to override this image or docker reg?
             image="alpine:3",
             security_context=self._security_context,
             command=["/bin/sh"],
@@ -269,7 +271,7 @@ class CalrissianJobLauncher:
         calrissian_arguments = [
             # TODO (still) need for this debug flag?
             "--debug",
-            # TODO: better RAM/CPU values than these arbitrary ones?
+            # TODO #1129 better RAM/CPU values than these arbitrary ones?
             "--max-ram",
             "2G",
             "--max-cores",
@@ -384,8 +386,8 @@ class CalrissianJobLauncher:
         else:
             raise ValueError("CWL")
 
-        # TODO: automatic cleanup after success?
-        # TODO: automatic cleanup after fail?
+        # TODO #1008 automatic cleanup after success?
+        # TODO #1008 automatic cleanup after fail?
         return job
 
     def get_output_volume_name(self) -> str:
