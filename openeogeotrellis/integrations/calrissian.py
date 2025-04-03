@@ -199,7 +199,7 @@ class CalrissianJobLauncher:
 
         container = kubernetes.client.V1Container(
             name="calrissian-input-staging",
-            image="alpine:3",
+            image="docker-upstream.artifactory.vgt.vito.be/alpine:3.17.0",
             security_context=self._security_context,
             command=["/bin/sh"],
             args=["-c", f"set -euxo pipefail; echo '{cwl_serialized}' | base64 -d > {cwl_path}"],
