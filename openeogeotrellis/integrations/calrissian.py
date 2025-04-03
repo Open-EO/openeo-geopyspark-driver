@@ -63,8 +63,7 @@ class CalrissianS3Result:
 
     def generate_public_url(self) -> str:
         """Assuming the object (or its bucket) is public: generate a public URL"""
-        # TODO is there a better way than just chopping off the query string
-        #      from a pre-signed URL? (related to eu-cdse/openeo-cdse-infra#479)
+        # TODO (#1133 related) is there a better way than just chopping off the query string from a pre-signed URL?
         url = self.generate_presigned_url()
         return url.split("?", maxsplit=1)[0]
 
@@ -156,7 +155,7 @@ class CalrissianJobLauncher:
             mount_path="/calrissian/output-data",
         )
 
-        # TODO #1129 config for this?
+        # TODO #1009 config for this?
         self._security_context = kubernetes.client.V1SecurityContext(run_as_user=1000, run_as_group=1000)
 
     @staticmethod
@@ -200,7 +199,7 @@ class CalrissianJobLauncher:
 
         container = kubernetes.client.V1Container(
             name="calrissian-input-staging",
-            # TODO #1132 config to override this image or docker reg?
+            # TODO #1009/#1132 config to override this image or docker reg?
             image="registry.stag.warsaw.openeo.dataspace.copernicus.eu/rand/alpine:3",
             image_pull_policy="IfNotPresent",
             security_context=self._security_context,
@@ -272,7 +271,7 @@ class CalrissianJobLauncher:
         calrissian_arguments = [
             # TODO (still) need for this debug flag?
             "--debug",
-            # TODO #1129 better RAM/CPU values than these arbitrary ones?
+            # TODO #1009 better RAM/CPU values than these arbitrary ones?
             "--max-ram",
             "2G",
             "--max-cores",
