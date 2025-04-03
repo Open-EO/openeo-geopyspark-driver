@@ -201,7 +201,7 @@ class CalrissianJobLauncher:
         container = kubernetes.client.V1Container(
             name="calrissian-input-staging",
             # TODO #1132 config to override this image or docker reg?
-            image="alpine:3",
+            image="registry.stag.warsaw.openeo.dataspace.copernicus.eu/rand/alpine:3",
             security_context=self._security_context,
             command=["/bin/sh"],
             args=["-c", f"set -euxo pipefail; echo '{cwl_serialized}' | base64 -d > {cwl_path}"],
