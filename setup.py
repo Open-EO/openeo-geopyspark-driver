@@ -33,6 +33,11 @@ tests_require = [
     "pydantic~=1.0",
 ]
 
+typing_require = [
+    'mypy-boto3-sts',
+    'mypy-boto3-s3',
+]
+
 setup(
     name='openeo-geopyspark',
     version=version,
@@ -107,7 +112,7 @@ setup(
         "importlib_resources; python_version<'3.9'",  # #1060 on python 3.8 we need importlib_resources backport
     ],
     extras_require={
-        "dev": tests_require,
+        "dev": tests_require + typing_require,
         "k8s": [
             "kubernetes",
             "PyYAML",
