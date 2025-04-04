@@ -55,7 +55,7 @@ kubectl \
     --namespace="$NAMESPACE_NAME" \
     create role \
     job-manager-role \
-    --verb=create,delete,list \
+    --verb=create,list,get,delete \
     --resource=jobs
 
 kubectl \
