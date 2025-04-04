@@ -8,6 +8,7 @@ import kubernetes.client
 import moto
 import pytest
 
+from openeogeotrellis.config.integrations.calrissian_config import CalrissianConfig
 from openeogeotrellis.integrations.calrissian import (
     CalrissianJobLauncher,
     CalrissianS3Result,
@@ -57,7 +58,8 @@ class TestCalrissianJobLauncher:
                     dirty_equals.IsPartialDict(
                         {
                             "name": "r-1234-cal-inp-01234567",
-                            "image": "registry.stag.warsaw.openeo.dataspace.copernicus.eu/rand/alpine:3",
+                            "image": "alpine:3",
+                            "image_pull_policy": "IfNotPresent",
                             "command": ["/bin/sh"],
                             "args": [
                                 "-c",
@@ -116,6 +118,8 @@ class TestCalrissianJobLauncher:
                     dirty_equals.IsPartialDict(
                         {
                             "name": "r-123-cal-cwl-01234567",
+                            "image": "ghcr.io/duke-gcb/calrissian/calrissian:0.17.1",
+                            "image_pull_policy": "IfNotPresent",
                             "command": ["calrissian"],
                             "args": dirty_equals.Contains(
                                 "--tmp-outdir-prefix",
