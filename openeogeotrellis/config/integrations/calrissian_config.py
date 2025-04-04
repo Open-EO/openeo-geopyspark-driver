@@ -21,16 +21,30 @@ class CalrissianConfig:
     Intended as sub-config of GpsBackendConfig
     """
 
+    """
+    Kubernetes namespace to use for Calrissian jobs.
+    """
     namespace: str = DEFAULT_NAMESPACE
 
+    """
+    Docker image to use for the input staging step of the Calrissian workflow.
+    Should be a small image providing basic shell utilities (e.g. alpine).
+    """
     # TODO #1009/#1132 revert default to DEFAULT_INPUT_STAGING_IMAGE once custom image is in appropriate configs
     # input_staging_image: str = DEFAULT_INPUT_STAGING_IMAGE
     input_staging_image: str = "registry.stag.warsaw.openeo.dataspace.copernicus.eu/rand/alpine:3"
 
+    """
+    Docker image providing the Calrissian tool
+    """
     # TODO #1007 proper calrissian image? Official one doesn't work due to https://github.com/Duke-GCB/calrissian/issues/124#issuecomment-947008286
     # calrissian_image: str = DEFAULT_CALRISSIAN_IMAGE
     calrissian_image: str = "registry.stag.warsaw.openeo.dataspace.copernicus.eu/rand/calrissian:latest"
 
+    """
+    S3 bucket associated with `StorageClass` that is used for the `PersistentVolumeClaim`s
+    used by the Calrissian jobs.
+    """
     s3_bucket: str = DEFAULT_CALRISSIAN_S3_BUCKET
 
     security_context: dict = attrs.Factory(DEFAULT_SECURITY_CONTEXT.copy)
