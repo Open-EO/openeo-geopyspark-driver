@@ -265,7 +265,7 @@ class CalrissianJobLauncher:
         cwl_path: str,
         cwl_arguments: List[str],
         env_vars: Optional[Dict[str, str]] = None,
-    ) -> Tuple[kubernetes.client.V1Job, str]:
+    ) -> Tuple[kubernetes.client.V1Job, str, str]:
         """
         Create a k8s manifest for a Calrissian CWL job.
 
@@ -275,6 +275,7 @@ class CalrissianJobLauncher:
         :return: Tuple of
             - k8s job manifest
             - relative output directory (inside the output volume)
+            - relative path to the CWL outputs listing (JSON dump inside the output volume)
         """
         name = self._build_unique_name(infix="cal-cwl")
         _log.info(f"Creating CWL job manifest: {name=}")
@@ -285,7 +286,9 @@ class CalrissianJobLauncher:
         # Ensure trailing "/" so that `tmp-outdir-prefix` is handled as a root directory.
         tmp_dir = self._volume_tmp.mount_path.rstrip("/") + "/"
         relative_output_dir = name
+        relative_cwl_outputs_listing = f"{name}.cwl-outputs.json"
         output_dir = str(Path(self._volume_output.mount_path) / relative_output_dir)
+        cwl_outputs_listing = str(Path(self._volume_output.mount_path) / relative_cwl_outputs_listing)
 
         calrissian_arguments = (
             self._calrissian_base_arguments
@@ -294,6 +297,8 @@ class CalrissianJobLauncher:
                 tmp_dir,
                 "--outdir",
                 output_dir,
+                "--stdout",
+                cwl_outputs_listing,
                 cwl_path,
             ]
             + cwl_arguments
@@ -352,7 +357,7 @@ class CalrissianJobLauncher:
                 backoff_limit=self._backoff_limit,
             ),
         )
-        return manifest, relative_output_dir
+        return manifest, relative_output_dir, relative_cwl_outputs_listing
 
     def launch_job_and_wait(
         self,
@@ -420,6 +425,7 @@ class CalrissianJobLauncher:
         self,
         cwl_source: CwLSource,
         cwl_arguments: List[str],
+        # TODO #1126 eliminate need to list expected output paths, leverage CWL outputs listing
         output_paths: List[str],
         env_vars: Optional[Dict[str, str]] = None,
     ) -> Dict[str, CalrissianS3Result]:
@@ -435,7 +441,7 @@ class CalrissianJobLauncher:
         input_staging_job = self.launch_job_and_wait(manifest=input_staging_manifest)
 
         # CWL job
-        cwl_manifest, relative_output_dir = self.create_cwl_job_manifest(
+        cwl_manifest, relative_output_dir, relative_cwl_outputs_listing = self.create_cwl_job_manifest(
             cwl_path=cwl_path,
             cwl_arguments=cwl_arguments,
             env_vars=env_vars,
@@ -443,6 +449,9 @@ class CalrissianJobLauncher:
         cwl_job = self.launch_job_and_wait(manifest=cwl_manifest)
 
         # Collect results
+        # TODO #1126 leverage relative_cwl_outputs_listing to collect results (instead of hardcoding output_paths)
+        _log.info(f"run_cwl_workflow: building S3 references to output files from {output_paths}")
+        _log.info(f"run_cwl_workflow: {relative_cwl_outputs_listing}")
         output_volume_name = self.get_output_volume_name()
         s3_bucket = self._s3_bucket
         results = {

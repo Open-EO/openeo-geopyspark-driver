@@ -93,12 +93,13 @@ class TestCalrissianJobLauncher:
     def test_create_cwl_job_manifest(self, generate_unique_id_mock):
         launcher = CalrissianJobLauncher(namespace=self.NAMESPACE, name_base="r-123")
 
-        manifest, output_dir = launcher.create_cwl_job_manifest(
+        manifest, output_dir, cwl_outputs_listing = launcher.create_cwl_job_manifest(
             cwl_path="/calrissian/input-data/r-1234-cal-inp-01234567.cwl",
             cwl_arguments=["--message", "Howdy Earth!"],
         )
 
         assert output_dir == "r-123-cal-cwl-01234567"
+        assert cwl_outputs_listing == "r-123-cal-cwl-01234567.cwl-outputs.json"
 
         assert isinstance(manifest, kubernetes.client.V1Job)
         manifest_dict = manifest.to_dict()
@@ -128,6 +129,8 @@ class TestCalrissianJobLauncher:
                                 "/calrissian/tmpout/",
                                 "--outdir",
                                 "/calrissian/output-data/r-123-cal-cwl-01234567",
+                                "--stdout",
+                                "/calrissian/output-data/r-123-cal-cwl-01234567.cwl-outputs.json",
                                 "/calrissian/input-data/r-1234-cal-inp-01234567.cwl",
                                 "--message",
                                 "Howdy Earth!",
@@ -188,7 +191,7 @@ class TestCalrissianJobLauncher:
             calrissian_base_arguments=["--max-ram", "64kB", "--max-cores", "42", "--flavor", "chocolate"],
         )
 
-        manifest, output_dir = launcher.create_cwl_job_manifest(
+        manifest, output_dir, cwl_outputs_listing = launcher.create_cwl_job_manifest(
             cwl_path="/calrissian/input-data/r-1234-cal-inp-01234567.cwl",
             cwl_arguments=["--message", "Howdy Earth!"],
         )
@@ -212,6 +215,8 @@ class TestCalrissianJobLauncher:
                         "/calrissian/tmpout/",
                         "--outdir",
                         "/calrissian/output-data/r-123-cal-cwl-01234567",
+                        "--stdout",
+                        "/calrissian/output-data/r-123-cal-cwl-01234567.cwl-outputs.json",
                         "/calrissian/input-data/r-1234-cal-inp-01234567.cwl",
                         "--message",
                         "Howdy Earth!",
