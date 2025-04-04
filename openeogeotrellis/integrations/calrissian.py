@@ -206,7 +206,7 @@ class CalrissianJobLauncher:
         )
 
         container = kubernetes.client.V1Container(
-            name="calrissian-input-staging",
+            name=name,
             # TODO #1009/#1132 config to override this image or docker reg?
             image="registry.stag.warsaw.openeo.dataspace.copernicus.eu/rand/alpine:3",
             image_pull_policy="IfNotPresent",

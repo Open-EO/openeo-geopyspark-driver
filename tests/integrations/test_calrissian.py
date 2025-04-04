@@ -56,7 +56,7 @@ class TestCalrissianJobLauncher:
                 "containers": [
                     dirty_equals.IsPartialDict(
                         {
-                            "name": "calrissian-input-staging",
+                            "name": "r-1234-cal-inp-01234567",
                             "image": "registry.stag.warsaw.openeo.dataspace.copernicus.eu/rand/alpine:3",
                             "command": ["/bin/sh"],
                             "args": [
