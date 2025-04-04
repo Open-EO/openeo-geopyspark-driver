@@ -1,25 +1,31 @@
 from __future__ import annotations
 
-import textwrap
-
 import base64
 import dataclasses
 import logging
-import requests
+import textwrap
+import time
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 import kubernetes.client
-import time
-
+import requests
 import yaml
-
 from openeo.util import ContextTimer
+from openeo_driver.config import ConfigException
 from openeo_driver.utils import generate_unique_id
+
 from openeogeotrellis.config import get_backend_config
+from openeogeotrellis.config.integrations.calrissian_config import (
+    DEFAULT_CALRISSIAN_BASE_ARGUMENTS,
+    DEFAULT_CALRISSIAN_IMAGE,
+    DEFAULT_CALRISSIAN_S3_BUCKET,
+    DEFAULT_INPUT_STAGING_IMAGE,
+    DEFAULT_SECURITY_CONTEXT,
+    CalrissianConfig,
+)
 from openeogeotrellis.util.runtime import get_job_id, get_request_id
 from openeogeotrellis.utils import s3_client
-
 
 try:
     # TODO #1060 importlib.resources on Python 3.8 is pretty limited so we need backport
@@ -63,8 +69,7 @@ class CalrissianS3Result:
 
     def generate_public_url(self) -> str:
         """Assuming the object (or its bucket) is public: generate a public URL"""
-        # TODO is there a better way than just chopping off the query string
-        #      from a pre-signed URL? (related to eu-cdse/openeo-cdse-infra#479)
+        # TODO (#1133 related) is there a better way than just chopping off the query string from a pre-signed URL?
         url = self.generate_presigned_url()
         return url.split("?", maxsplit=1)[0]
 
@@ -127,18 +132,24 @@ class CalrissianJobLauncher:
     def __init__(
         self,
         *,
-        namespace: Optional[str] = None,
+        namespace: str,
         name_base: Optional[str] = None,
-        s3_bucket: Optional[str] = None,
+        s3_bucket: str = DEFAULT_CALRISSIAN_S3_BUCKET,
+        calrissian_image: str = DEFAULT_CALRISSIAN_IMAGE,
+        input_staging_image: str = DEFAULT_INPUT_STAGING_IMAGE,
+        security_context: Optional[dict] = None,
         backoff_limit: int = 1,
+        calrissian_base_arguments: Sequence[str] = DEFAULT_CALRISSIAN_BASE_ARGUMENTS,
     ):
-        self._namespace = namespace or get_backend_config().calrissian_namespace
-        assert self._namespace
+        self._namespace = namespace
         self._name_base = name_base or generate_unique_id(prefix="cal")[:20]
-        self._s3_bucket = s3_bucket or get_backend_config().calrissian_bucket
-
+        self._s3_bucket = s3_bucket
         _log.info(f"CalrissianJobLauncher.__init__: {self._namespace=} {self._name_base=} {self._s3_bucket=}")
+
+        self._calrissian_image = calrissian_image
+        self._input_staging_image = input_staging_image
         self._backoff_limit = backoff_limit
+        self._calrissian_base_arguments = list(calrissian_base_arguments)
 
         self._volume_input = VolumeInfo(
             name="calrissian-input-data",
@@ -156,8 +167,7 @@ class CalrissianJobLauncher:
             mount_path="/calrissian/output-data",
         )
 
-        # TODO #1129 config for this?
-        self._security_context = kubernetes.client.V1SecurityContext(run_as_user=1000, run_as_group=1000)
+        self._security_context = kubernetes.client.V1SecurityContext(**(security_context or DEFAULT_SECURITY_CONTEXT))
 
     @staticmethod
     def from_context() -> CalrissianJobLauncher:
@@ -167,7 +177,19 @@ class CalrissianJobLauncher:
         """
         correlation_id = get_job_id(default=None) or get_request_id(default=None)
         name_base = correlation_id[:20] if correlation_id else None
-        return CalrissianJobLauncher(name_base=name_base)
+
+        config: CalrissianConfig = get_backend_config().calrissian_config
+        if not config:
+            raise ConfigException("No calrissian (sub)config.")
+
+        return CalrissianJobLauncher(
+            namespace=config.namespace,
+            name_base=name_base,
+            s3_bucket=config.s3_bucket,
+            security_context=config.security_context,
+            calrissian_image=config.calrissian_image,
+            input_staging_image=config.input_staging_image,
+        )
 
     def _build_unique_name(self, infix: str) -> str:
         """Build unique name from base name, an infix and something random, to be used for k8s resources"""
@@ -199,9 +221,8 @@ class CalrissianJobLauncher:
         )
 
         container = kubernetes.client.V1Container(
-            name="calrissian-input-staging",
-            # TODO #1132 config to override this image or docker reg?
-            image="registry.stag.warsaw.openeo.dataspace.copernicus.eu/rand/alpine:3",
+            name=name,
+            image=self._input_staging_image,
             image_pull_policy="IfNotPresent",
             security_context=self._security_context,
             command=["/bin/sh"],
@@ -258,9 +279,6 @@ class CalrissianJobLauncher:
         name = self._build_unique_name(infix="cal-cwl")
         _log.info(f"Creating CWL job manifest: {name=}")
 
-        container_image = get_backend_config().calrissian_image
-        assert container_image
-
         # Pairs of (volume_info, read_only)
         volumes = [(self._volume_input, True), (self._volume_tmp, False), (self._volume_output, False)]
 
@@ -269,20 +287,17 @@ class CalrissianJobLauncher:
         relative_output_dir = name
         output_dir = str(Path(self._volume_output.mount_path) / relative_output_dir)
 
-        calrissian_arguments = [
-            # TODO (still) need for this debug flag?
-            "--debug",
-            # TODO #1129 better RAM/CPU values than these arbitrary ones?
-            "--max-ram",
-            "2G",
-            "--max-cores",
-            "1",
-            "--tmp-outdir-prefix",
-            tmp_dir,
-            "--outdir",
-            output_dir,
-            cwl_path,
-        ] + cwl_arguments
+        calrissian_arguments = (
+            self._calrissian_base_arguments
+            + [
+                "--tmp-outdir-prefix",
+                tmp_dir,
+                "--outdir",
+                output_dir,
+                cwl_path,
+            ]
+            + cwl_arguments
+        )
 
         _log.info(f"create_cwl_job_manifest {calrissian_arguments=}")
 
@@ -299,8 +314,8 @@ class CalrissianJobLauncher:
 
         container = kubernetes.client.V1Container(
             name=name,
-            image=container_image,
-            # TODO #1009 also config to set image_pull_policy here?
+            image=self._calrissian_image,
+            image_pull_policy="IfNotPresent",
             security_context=self._security_context,
             command=["calrissian"],
             args=calrissian_arguments,
