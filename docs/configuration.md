@@ -15,11 +15,11 @@ and the current implementation uses a mix of configuration approaches of varying
   This allows for some basic flexibility, but
   the configuration option is hidden deep in the code and cumbersome to maintain
   (duplication, management of fallback values, ...)
-- The **`ConfirParams` class** (in `openeogeotrellis/configparams.py`) was the first approach
+- The **`ConfigParams` class** (in `openeogeotrellis/configparams.py`) was the first approach
   to have a **centralized** place for configuration parameters
   and improve the maintenance and overview challenges.
 
-`ConfirParams` is mostly still based on reading and parsing environment variables.
+`ConfigParams` is mostly still based on reading and parsing environment variables.
 This is fine for basic things like the URL of some service or database,
 but it doesn't scale very well:
 
@@ -49,7 +49,7 @@ It also allows to derive parameters dynamically,
 for example based on environment variables or other contextual information.
 
 Note that this file based configuration system is introduced gradually
-and the original `ConfirParams` is largely kept untouched.
+and the original `ConfigParams` is largely kept untouched.
 
 
 ### Usage
