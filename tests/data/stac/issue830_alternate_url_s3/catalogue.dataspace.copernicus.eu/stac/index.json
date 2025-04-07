@@ -1,0 +1,55 @@
+{
+  "stac_version": "1.0.0",
+  "type": "Catalog",
+  "id": "Catalogue",
+  "description": "Catalogue of data available in the platform",
+  "conformsTo": [
+    "https://api.stacspec.org/v1.0.0/core",
+    "https://api.stacspec.org/v1.0.0/collections",
+    "https://api.stacspec.org/v1.0.0/ogcapi-features",
+    "https://api.stacspec.org/v1.0.0/item-search",
+    "https://www.opengis.net/spec/ogcapi-features-1/1.0/conf/core",
+    "https://www.opengis.net/spec/ogcapi-features-1/1.0/conf/geojson"
+  ],
+  "links": [
+    {
+      "href": "https://catalogue.dataspace.copernicus.eu/stac",
+      "rel": "root",
+      "type": "application/json"
+    },
+    {
+      "href": "https://catalogue.dataspace.copernicus.eu/stac",
+      "rel": "self",
+      "type": "application/json"
+    },
+    {
+      "href": "https://catalogue.dataspace.copernicus.eu/stac/api",
+      "rel": "service-desc",
+      "type": "application/vnd.oai.openapi"
+    },
+    {
+      "href": "https://catalogue.dataspace.copernicus.eu/stac/conformance",
+      "rel": "conformance",
+      "type": "application/json"
+    },
+    {
+      "href": "https://catalogue.dataspace.copernicus.eu/stac/collections",
+      "rel": "data",
+      "type": "application/json"
+    },
+    {
+      "href": "https://catalogue.dataspace.copernicus.eu/stac/search",
+      "title": "STAC search",
+      "rel": "search",
+      "type": "application/json",
+      "method": "GET"
+    },
+    {
+      "href": "https://catalogue.dataspace.copernicus.eu/stac/search",
+      "title": "STAC search",
+      "rel": "search",
+      "type": "application/json",
+      "method": "POST"
+    }
+  ]
+}

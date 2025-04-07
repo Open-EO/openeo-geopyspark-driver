@@ -1,0 +1,41 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "first",
+        "pop": 1234
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [1, 1],
+            [3, 1],
+            [2, 3],
+            [1, 1]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "second",
+        "pop": 5678
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [4, 2],
+            [5, 4],
+            [3, 4],
+            [4, 2]
+          ]
+        ]
+      }
+    }
+  ]
+}

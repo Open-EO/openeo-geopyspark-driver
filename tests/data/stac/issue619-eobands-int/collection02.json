@@ -1,0 +1,47 @@
+{
+  "stac_version": "1.0.0",
+  "type": "Collection",
+  "stac_extensions": [
+    "https://stac-extensions.github.io/storage/v1.0.0/schema.json"
+  ],
+  "id": "S2",
+  "description": "S2",
+  "license": "proprietary",
+  "extent": {
+    "spatial": {
+      "bbox": [
+        [
+          -180,
+          -90,
+          180,
+          90
+        ]
+      ]
+    },
+    "temporal": {
+      "interval": [
+        [
+          "2015-06-23T00:00:00Z",
+          "2023-12-15T00:00:00Z"
+        ]
+      ]
+    }
+  },
+  "summaries": {
+    "eo:bands": [
+      {
+        "name": "B02",
+        "common_name": "blue"
+      },
+      {
+        "name": "B03",
+        "common_name": "green"
+      },
+      {
+        "name": "B04",
+        "common_name": "red"
+      }
+    ]
+  },
+  "links": []
+}

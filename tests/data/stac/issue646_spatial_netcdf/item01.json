@@ -1,0 +1,132 @@
+{
+  "assets": {
+    "openEO_0.nc": {
+      "eo:bands": [
+        {
+          "center_wavelength": 0.6646,
+          "name": "B04"
+        },
+        {
+          "center_wavelength": 0.5598,
+          "name": "B03"
+        },
+        {
+          "center_wavelength": 0.4924,
+          "name": "B02"
+        }
+      ],
+      "file:nodata": [
+        "nan"
+      ],
+      "file:size": 119015,
+      "href": "asset01.nc",
+      "proj:bbox": [
+        701040,
+        5625050,
+        702330,
+        5626340
+      ],
+      "proj:epsg": 32631,
+      "proj:shape": [
+        129,
+        129
+      ],
+      "raster:bands": [
+        {
+          "name": "B04",
+          "statistics": {
+            "maximum": 4756.181640625,
+            "mean": 3963.8233204942,
+            "minimum": 3433.9167480469,
+            "stddev": 224.14451082989,
+            "valid_percent": 77.17
+          }
+        },
+        {
+          "name": "B03",
+          "statistics": {
+            "maximum": 4821.75,
+            "mean": 4137.2229702374,
+            "minimum": 3595.9167480469,
+            "stddev": 208.33114849268,
+            "valid_percent": 77.17
+          }
+        },
+        {
+          "name": "B02",
+          "statistics": {
+            "maximum": 5116.3334960938,
+            "mean": 4453.3180043236,
+            "minimum": 3936.8332519531,
+            "stddev": 218.03089377868,
+            "valid_percent": 77.17
+          }
+        }
+      ],
+      "roles": [
+        "data"
+      ],
+      "title": "openEO_0.nc",
+      "type": "application/x-netcdf"
+    }
+  },
+  "bbox": [
+    5.849671579633674,
+    50.74197777957908,
+    5.868493161194815,
+    50.753918948623735
+  ],
+  "collection": "j-2402094545c945c09e1307503aa58a3a",
+  "epsg": 32631,
+  "geometry": {
+    "coordinates": [
+      [
+        [
+          5.849671579633674,
+          50.74197777957908
+        ],
+        [
+          5.849671579633674,
+          50.753918948623735
+        ],
+        [
+          5.868493161194815,
+          50.753918948623735
+        ],
+        [
+          5.868493161194815,
+          50.74197777957908
+        ],
+        [
+          5.849671579633674,
+          50.74197777957908
+        ]
+      ]
+    ],
+    "type": "Polygon"
+  },
+  "id": "openEO_0.nc",
+  "links": [
+    {
+      "href": "https://openeo-dev.vito.be/openeo/1.1/jobs/j-2402094545c945c09e1307503aa58a3a/results/items/openEO_0.nc",
+      "rel": "self",
+      "type": "application/geo+json"
+    },
+    {
+      "href": "https://openeo-dev.vito.be/openeo/1.1/jobs/j-2402094545c945c09e1307503aa58a3a/results",
+      "rel": "collection",
+      "type": "application/json"
+    }
+  ],
+  "properties": {
+    "datetime": null,
+    "end_datetime": "2022-02-01T00:00:00Z",
+    "start_datetime": "2022-01-01T00:00:00Z"
+  },
+  "stac_extensions": [
+    "https://stac-extensions.github.io/eo/v1.1.0/schema.json",
+    "https://stac-extensions.github.io/file/v2.1.0/schema.json"
+  ],
+  "stac_version": "0.9.0",
+  "type": "Feature"
+}

@@ -1,0 +1,91 @@
+{
+  "stac_version": "1.0.0",
+  "type": "Feature",
+  "id": "issue619",
+  "collection": "i619",
+  "stac_extensions": [
+    "https://stac-extensions.github.io/eo/v1.1.0/schema.json"
+  ],
+  "bbox": [
+    9.831776345947729,
+    50.23804708435827,
+    9.845824108087408,
+    50.24705765771707
+  ],
+  "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+      [
+        [
+          9.831776345947729,
+          50.23804708435827
+        ],
+        [
+          9.831776345947729,
+          50.24705765771707
+        ],
+        [
+          9.845824108087408,
+          50.24705765771707
+        ],
+        [
+          9.845824108087408,
+          50.23804708435827
+        ],
+        [
+          9.831776345947729,
+          50.23804708435827
+        ]
+      ]
+    ]
+  },
+  "properties": {
+    "datetime": "2021-02-03T00:00:00Z",
+    "proj:epsg": 3035,
+    "proj:bbox": [
+      4309000,
+      3014000,
+      4310000,
+      3015000
+    ],
+    "proj:shape": [
+      100,
+      100
+    ]
+  },
+  "assets": {
+    "red": {
+      "href": "asset_red.tiff",
+      "type": "image/tiff; application=geotiff",
+      "eo:bands": [
+        2
+      ]
+    },
+    "blue": {
+      "href": "asset_blue.tiff",
+      "type": "image/tiff; application=geotiff",
+      "eo:bands": [
+        0
+      ]
+    },
+    "green": {
+      "href": "asset_green.tiff",
+      "type": "image/tiff; application=geotiff",
+      "eo:bands": [
+        1
+      ]
+    }
+  },
+  "links": [
+    {
+      "href": "item02.json",
+      "rel": "self",
+      "type": "application/json"
+    },
+    {
+      "href": "collection02.json",
+      "rel": "collection",
+      "type": "application/json"
+    }
+  ]
+}

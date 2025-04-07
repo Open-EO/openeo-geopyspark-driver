@@ -1,0 +1,18 @@
+{
+  "id": "catalog",
+  "type": "Catalog",
+  "description": "description",
+  "conformsTo": ["https://api.stacspec.org/v1.0.0-rc.1/item-search"],
+  "stac_version": "1.0.0",
+  "links": [
+    {
+      "rel": "child",
+      "href": "$CATALOG_URL/collections/collection"
+    },
+    {
+      "rel": "search",
+      "href": "search",
+      "method": "POST"
+    }
+  ]
+}

@@ -1,0 +1,82 @@
+{
+  "type": "FeatureCollection",
+  "id": "https://services.terrascope.be/catalogue/collections",
+  "properties": {
+    "title": "Product Search result",
+    "creator": "VITO OpenSearch Service",
+    "updated": "2021-02-05T13:24:33Z",
+    "lang": "en"
+  },
+  "features": [
+    {
+      "id": "urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1",
+      "bbox": [
+        -1.05893,
+        47.66031,
+        11.6781,
+        53.67487
+      ],
+      "properties": {
+        "title": "SENTINEL-1 Level-1 Ground Range Detected (GRD) SIGMA0 products",
+        "abstract": "The Sigma0 product describes how much of the radar signal that was sent out by Sentinel-1 is reflected back to the sensor...",
+        "keyword": [
+          "VITO",
+          "C-SAR",
+          "Orthoimagery",
+          "SENTINEL-1A",
+          "SENTINEL-1",
+          "SENTINEL-1B",
+          "RADAR BACKSCATTER",
+          "RADAR"
+        ],
+        "links": {
+          "describedby": [
+            {
+              "href": "https://docs.terrascope.be/#/DataProducts/Sentinel-1/ProductsOverview",
+              "type": "text/html",
+              "title": "Online User Documentation"
+            },
+            {
+              "href": "https://www.vito-eodata.be/collections/srv/eng/main.home?uuid=urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1",
+              "type": "text/html"
+            }
+          ],
+          "search": [
+            {
+              "href": "http://oscars-01.vgt.vito.be:8080/description.geojson?collection=urn:eop:VITO:CGS_S1_GRD_SIGMA0_L1",
+              "type": "application/geo+json",
+              "title": "OpenSearch entry point"
+            }
+          ]
+        },
+        "acquisitionInformation": [
+          {
+            "acquisitionParameters": {
+              "beginningDateTime": "2014-10-23T00:00:00Z"
+            },
+            "instrument": {
+              "instrumentShortName": "MSI"
+            }
+          },
+          {
+            "acquisitionParameters": {
+              "beginningDateTime": "2014-10-24T00:00:00Z"
+            },
+            "instrument": {
+              "instrumentShortName": "MSI"
+            }
+          }
+        ],
+        "bands": [
+          {
+            "description": "Calibrated radar backscattering coefficient (unitless), describing the returned radar signal strength in the cross-polarized channel (V transmit, H receive). Values are stored as floats.",
+            "type": "VH",
+            "title": "VH",
+            "resolution": 10,
+            "bitPerValue": 32
+          }
+        ]
+      }
+    }
+  ]
+}

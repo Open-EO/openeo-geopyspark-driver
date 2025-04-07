@@ -1,0 +1,51 @@
+{
+    "stac_version": "1.0.0",
+    "stac_extensions": [],
+    "id": "GLOBAL-MOSAICS",
+    "title": "GLOBAL-MOSAICS",
+    "description": null,
+    "type": "Collection",
+    "license": "proprietary",
+    "extent": {
+        "spatial": {
+            "bbox": [
+                [
+                    -180.0,
+                    -90.0,
+                    180.0,
+                    90.0
+                ]
+            ]
+        },
+        "temporal": {
+            "interval": [
+                [
+                    "2020-01-01T00:00:00Z",
+                    null
+                ]
+            ]
+        }
+    },
+    "links": [
+        {
+            "rel": "root",
+            "type": "application/json",
+            "href": "https://catalogue.dataspace.copernicus.eu/stac"
+        },
+        {
+            "rel": "parent",
+            "type": "application/json",
+            "href": "https://catalogue.dataspace.copernicus.eu/stac"
+        },
+        {
+            "rel": "self",
+            "type": "application/json",
+            "href": "https://catalogue.dataspace.copernicus.eu/stac/collections/GLOBAL-MOSAICS"
+        },
+        {
+            "rel": "items",
+            "type": "application/json",
+            "href": "https://catalogue.dataspace.copernicus.eu/stac/collections/GLOBAL-MOSAICS/items"
+        }
+    ]
+}

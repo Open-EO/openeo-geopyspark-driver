@@ -1,0 +1,444 @@
+---
+apiVersion: "sparkoperator.k8s.io/v1beta2"
+kind: SparkApplication
+metadata:
+{%- block metadata %}
+  name: {{ job_name }}
+  namespace: {{ job_namespace }}
+  labels:
+    user: {{ user_id }}
+{%- endblock %}
+spec:
+{%- block spec_options %}
+  type: Python
+  pythonVersion: "3"
+  mode: cluster
+{%- if batch_scheduler != 'default-scheduler' %}
+  batchScheduler: {{ batch_scheduler }}
+{%- if batch_scheduler == 'yunikorn' %}
+  batchSchedulerOptions:
+  {%- if yunikorn_user_specific_queues is sameas true %}
+    queue: {{ yunikorn_queue }}.{{ user_id_short }}
+  {%- else %}
+    queue: {{ yunikorn_queue }}
+  {%- endif %}
+{%- endif %}
+{%- endif %}
+  image: {{ image_name }}
+  imagePullPolicy: Always
+  timeToLiveSeconds: 172800
+  mainApplicationFile: local:///opt/openeo/bin/openeo_batch.py
+{%- endblock %}
+  arguments:
+{%- block arguments %}
+    - "{{ job_specification }}"
+    - "{{ output_dir }}"
+    - "{{ output_file }}"
+    - "{{ metadata_file }}"
+    - "{{ api_version }}"
+    - "{{ dependencies }}"
+    - "{{ user_id }}"
+    - "{{ max_soft_errors_ratio }}"
+{%- endblock %}
+  dynamicAllocation:
+{%- block dynamicAllocation %}
+    enabled: true
+    initialExecutors: 2
+    minExecutors: 2
+    maxExecutors: {{ max_executors }}
+{%- endblock %}
+  sparkConf:
+{%- block sparkConf %}
+    "spark.executor.pyspark.memory": "{{ python_max_memory }}b"
+    "spark.network.timeout": "300s"
+    "spark.rpc.message.maxSize": "200"
+    "spark.rdd.compress": "true"
+    "spark.driver.maxResultSize": "5g"
+    "spark.excludeOnFailure.enabled": "false"
+    "spark.excludeOnFailure.killExcludedExecutors": "true"
+    "spark.speculation": "true"
+    "spark.speculation.interval": "5000ms"
+    "spark.speculation.multiplier": "4"
+    "spark.kryoserializer.buffer.max": "1g"
+    "spark.kryo.classesToRegister": "org.openeo.geotrellis.layers.BandCompositeRasterSource,geotrellis.raster.RasterRegion,geotrellis.raster.geotiff.GeoTiffResampleRasterSource,geotrellis.raster.RasterSource,geotrellis.raster.SourceName,geotrellis.raster.geotiff.GeoTiffPath"
+    "spark.serializer": "org.apache.spark.serializer.KryoSerializer"
+    "spark.extraListeners": "org.openeo.sparklisteners.LogErrorSparkListener,org.openeo.sparklisteners.BatchJobProgressListener"
+    "spark.dynamicAllocation.enabled": "true"
+    "spark.dynamicAllocation.shuffleTracking.enabled": "true"
+    "spark.dynamicAllocation.executorIdleTimeout": "240s"
+    "spark.decommission.enabled": "true"
+    "spark.storage.decommission.enabled": "true"
+    "spark.storage.decommission.rddBlocks.enabled": "true"
+    "spark.storage.decommission.shuffleBlocks.enabled": "true"
+    "spark.kubernetes.decommission.script": "/opt/decom.sh"
+    "spark.stage.ignoreDecommissionFetchFailure": "true"
+    "spark.executor.processTreeMetrics.enabled": "true"
+    "spark.eventLog.logStageExecutorMetrics": "true"
+    "spark.python.profile": "{{ profile }}"
+    "spark.eventLog.dir": "s3a://spark-history/history_prod"
+    "spark.hadoop.fs.s3a.endpoint": {{ swift_url }}
+    "spark.hadoop.fs.s3a.path.style.access": "true"
+    "spark.hadoop.fs.s3a.access.key": {{ swift_access_key_id }}
+    "spark.hadoop.fs.s3a.secret.key": {{ swift_secret_access_key }}
+    "spark.hadoop.fs.s3a.aws.credentials.provider": "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider"
+    "spark.eventLog.enabled": "true"
+    "spark.kubernetes.allocation.batch.size": "4"
+    "spark.kubernetes.allocation.batch.delay": "15s"
+    "spark.kubernetes.driver.ownPersistentVolumeClaim": "true"
+    "spark.kubernetes.driver.reusePersistentVolumeClaim": "true"
+    "spark.kubernetes.allocation.maxPendingPods": "8"
+    "spark.task.cpus": "{{ task_cpus }}"
+    "spark.archives": "{{ archives }}"
+    "spark.openeo.access_token": "{{ access_token }}"
+{%- if use_pvc %}
+    spark.kubernetes.executor.volumes.persistentVolumeClaim.spark-local-dir-1.options.claimName: "OnDemand"
+    spark.kubernetes.executor.volumes.persistentVolumeClaim.spark-local-dir-1.options.storageClass: "csi-cinder-sc-delete"
+    spark.kubernetes.executor.volumes.persistentVolumeClaim.spark-local-dir-1.options.sizeLimit: "20Gi"
+    spark.kubernetes.executor.volumes.persistentVolumeClaim.spark-local-dir-1.mount.path: "/spark_tmp"
+    spark.kubernetes.executor.volumes.persistentVolumeClaim.spark-local-dir-1.mount.readOnly: "false"
+{%- endif %}
+{%- endblock %}
+  sparkVersion: "3.2.0"
+  restartPolicy:
+{%- block restartPolicy %}
+    type: OnFailure
+    onFailureRetries: 0
+    onFailureRetryInterval: 10
+    onSubmissionFailureRetries: 5
+    onSubmissionFailureRetryInterval: 20
+{%- endblock %}
+  volumes:
+{%- block volumes %}
+    - name: "eodata"
+      hostPath:
+        path: {{eodata_mount}}
+        type: DirectoryOrCreate
+    - name: "shared-pod-volume"
+      hostPath:
+        path: "/shared_pod_volume"
+        type: "DirectoryOrCreate"
+{%- if mount_tmp %}
+    - name: "spark-local-dir-1"
+      hostPath:
+        path: "/opt/spark_tmp/{{ job_id_short }}"
+        type: "DirectoryOrCreate"
+{%- endif %}
+{%- if fuse_mount_batchjob_s3_bucket is sameas true %}
+    - name: "batch-job-results"
+      persistentVolumeClaim:
+        claimName: {{ job_name }}
+        readOnly: false
+{%- endif %}
+{%- if provide_s3_profiles_and_tokens is sameas true %}
+    - name: "batch-job-cfg"
+      secret:
+        secretName: {{ batch_job_cfg_secret_name }}
+{%- endif %}
+{%- endblock %}
+  driver:
+{%- if batch_scheduler == 'yunikorn' %}
+    annotations:
+      yunikorn.apache.org/schedulingPolicyParameters: "placeholderTimeoutInSeconds={{ yunikorn_scheduling_timeout }} gangSchedulingStyle=Hard"
+      yunikorn.apache.org/allow-preemption: "false"
+{%- endif %}
+{%- block driver_options %}
+    cores: {{ driver_cores }}
+    javaOptions: "-Dscala.concurrent.context.maxThreads=2 -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/data/projects/OpenEO/{{ current_time }}.hprof -Dlog4j2.configurationFile=file:/opt/batch_job_log4j2.xml -Dpixels.treshold=1000000 -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.apache.ApacheSdkHttpService -Dopeneo.logging.threshold={{ logging_threshold }} -Dhttp.credentials.file=/opt/http_credentials/http_credentials.json -Dsun.net.client.defaultReadTimeout=60000"
+    memory: "{{ driver_memory }}"
+    memoryOverhead: "{{ driver_memory_overhead }}"
+    serviceAccount: batch-jobs
+{%- endblock %}
+    initContainers:
+{%- if mount_tmp %}
+{%- block driver_initContainers %}
+      - name: init-tmp-dir
+        image: busybox:1.28
+        command: ['sh', '-c', 'chown 18585:18585 /spark_tmp && echo "[SUCCESS]: Changed ownership of the temp job_dir"']
+        volumeMounts:
+          - name: "spark-local-dir-1"
+            mountPath: "/spark_tmp"
+{%- endblock %}
+{%- endif %}
+{%- block driver_lifecycle %}
+    lifecycle:
+      preStop:
+        exec:
+          command: ['sh', '-c', 'rm -r /spark_tmp/{{ job_id_short }}/* && echo "[SUCCESS]: Deleted the temp job_dir"']
+{%- endblock %}
+    podSecurityContext:
+{%- block driver_podSecurityContext %}
+      fsGroup: 18585
+{%- endblock %}
+    env:
+{%- block driver_env %}
+      - name: OPENEO_BACKEND_CONFIG
+        value: {{ openeo_backend_config }}
+      - name: OPENEO_BATCH_JOB_ID
+        value: {{ job_id_full }}
+      - name: OPENEO_USER_ID
+        value: {{ user_id }}
+      - name: OPENEO_LOGGING_THRESHOLD
+        value: {{ logging_threshold }}
+      - name: OPENEO_CATALOG_FILES
+        value: "/opt/layercatalog.json"
+      - name: KUBE
+        value: "true"
+      - name: AWS_ACCESS_KEY_ID
+        value: {{ aws_access_key_id }}
+      - name: AWS_SECRET_ACCESS_KEY
+        value: {{ aws_secret_access_key }}
+      - name: SWIFT_ACCESS_KEY_ID
+        value: {{ swift_access_key_id }}
+      - name: SWIFT_SECRET_ACCESS_KEY
+        value: {{ swift_secret_access_key }}
+      - name: AWS_S3_ENDPOINT
+        value: "{{aws_endpoint}}"
+      - name: AWS_DEFAULT_REGION
+        value: "{{aws_region}}"
+      - name: AWS_REGION
+        value: "{{aws_region}}"
+      - name: AWS_HTTPS
+        value: "{{aws_https}}"
+      - name: AWS_VIRTUAL_HOSTING
+        value: "FALSE"
+      - name: AWS_DIRECT
+        value: "TRUE"
+      - name: SWIFT_URL
+        value: {{ swift_url }}
+      - name: SWIFT_BUCKET
+        value: {{ swift_bucket }}
+      - name: ZOOKEEPERNODES
+        value: {{ zookeeper_nodes }}
+      - name: OPENEO_S1BACKSCATTER_ELEV_GEOID
+        value: "/opt/openeo-vito-aux-data/egm96.tif"
+      - name: OTB_HOME
+        value: "/usr"
+      - name: OTB_APPLICATION_PATH
+        value: "/usr/lib/otb/applications"
+      - name: GDAL_NUM_THREADS
+        value: "2"
+      - name: GDAL_DATASET_CACHE_SIZE
+        value: "12"
+      - name: GDAL_CACHEMAX
+        value: "100"
+      - name: GDAL_HTTP_MAX_RETRY
+        value: "10"
+      - name: GDAL_DISABLE_READDIR_ON_OPEN
+        value: "EMPTY_DIR"
+      - name: GDAL_HTTP_MERGE_CONSECUTIVE_RANGES
+        value: "YES"
+      - name: PYTHONPATH
+        value: "$PYTHONPATH:/opt/openeo/lib/python3.8/site-packages/{% if udf_python_dependencies_folder_path %}:{{ udf_python_dependencies_folder_path }}{% endif %}"
+      - name: UDF_PYTHON_DEPENDENCIES_FOLDER_PATH
+        value: "{{ udf_python_dependencies_folder_path }}"
+      - name: UDF_PYTHON_DEPENDENCIES_ARCHIVE_PATH
+        value: "{{ udf_python_dependencies_archive_path }}"
+      - name: VSI_CACHE
+        value: "TRUE"
+      - name: FUSE_MOUNT_BATCHJOB_S3_BUCKET
+        value: "{{fuse_mount_batchjob_s3_bucket}}"
+      - name: OPENEO_EJR_API
+        value: {{ openeo_ejr_api }}
+      - name: OPENEO_EJR_BACKEND_ID
+        value: {{ openeo_ejr_backend_id }}
+      - name: OPENEO_EJR_OIDC_CLIENT_CREDENTIALS
+        value: {{ openeo_ejr_oidc_client_credentials }}
+{%- if separate_asset_per_band_new_partitioner is defined and separate_asset_per_band_new_partitioner is not none %}
+      - name: SEPARATE_ASSET_PER_BAND_NEW_PARTITIONER
+        value: "{{ separate_asset_per_band_new_partitioner }}"
+{%- endif %}
+{%- for envar, value in propagatable_web_app_driver_envars.items() %}
+      - name: {{ envar }}
+        value: {{ value }}
+{%- endfor %}
+{%- endblock %}
+    labels:
+{%- block driver_labels %}
+      version: 3.2.0
+      name: {{ job_id_short }}-driver
+      openeo-role: "batch-driver"
+      job_id: {{ job_id_full }}
+      user_id: {{user_id}}
+{%- endblock %}
+    volumeMounts:
+{%- block driver_volumeMounts %}
+      - name: "eodata"
+        mountPath: "/eodata"
+      - name: "eodata"
+        mountPath: "/vsis3/eodata"
+      - name: "shared-pod-volume"
+        mountPath: "/shared_pod_volume"
+{%- if fuse_mount_batchjob_s3_bucket is sameas true %}
+      - name: "batch-job-results"
+        mountPath: /batch_jobs/{{ job_id_full }}
+{%- endif %}
+{%- if provide_s3_profiles_and_tokens is sameas true %}
+      - name: "batch-job-cfg"
+        mountPath: {{ batch_job_config_dir }}
+        readOnly: true
+{%- endif %}
+{%- if mount_tmp %}
+      - name: "spark-local-dir-1"
+        mountPath: "/spark_tmp"
+{%- endif %}
+{%- endblock %}
+  executor:
+{%- block executor_options %}
+    deleteOnTermination: true
+    terminationGracePeriodSeconds: 300
+    cores: {{ executor_cores }}
+    coreRequest: {{ executor_corerequest }}
+    memory: "{{ executor_memory }}"
+    memoryOverhead: "{{ executor_memory_overhead }}"
+    javaOptions: "-Dlog4j2.configurationFile=file:/opt/batch_job_log4j2.xml -Dscala.concurrent.context.numThreads={{ executor_threads_jvm }} -Dscala.concurrent.context.maxThreads={{ executor_threads_jvm }} -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.apache.ApacheSdkHttpService -Dopeneo.logging.threshold={{ logging_threshold }} -Dhttp.credentials.file=/opt/http_credentials/http_credentials.json -Dsun.net.client.defaultReadTimeout=60000"
+{%- endblock %}
+{%- if mount_tmp %}
+    initContainers:
+{%- block executor_initContainers %}
+      - name: init-tmp-dir
+        image: busybox:1.28
+        command: ['sh', '-c', 'chown 18585:18585 /spark_tmp && echo "[SUCCESS]: Changed ownership of the temp job_dir"']
+        volumeMounts:
+          - name: "spark-local-dir-1"
+            mountPath: "/spark_tmp"
+{%- endblock %}
+{%- endif %}
+    lifecycle:
+      preStop:
+        exec:
+          command: ['/bin/bash', '-c', '/opt/decom.sh']
+    podSecurityContext:
+{%- block executor_podSecurityContext %}
+      fsGroup: 18585
+{%- endblock %}
+    env:
+{%- block executor_env %}
+      - name: OPENEO_BACKEND_CONFIG
+        value: {{ openeo_backend_config }}
+      - name: OPENEO_BATCH_JOB_ID
+        value: {{ job_id_full }}
+      - name: OPENEO_USER_ID
+        value: {{ user_id }}
+      - name: OPENEO_LOGGING_THRESHOLD
+        value: {{ logging_threshold }}
+      - name: OPENEO_CATALOG_FILES
+        value: "/opt/layercatalog.json"
+      - name: KUBE
+        value: "true"
+      - name: AWS_ACCESS_KEY_ID
+        value: {{ aws_access_key_id }}
+      - name: AWS_SECRET_ACCESS_KEY
+        value: {{ aws_secret_access_key }}
+      - name: AWS_S3_ENDPOINT
+        value: "{{aws_endpoint}}"
+      - name: AWS_DEFAULT_REGION
+        value: "{{aws_region}}"
+      - name: AWS_REGION
+        value: "{{aws_region}}"
+      - name: AWS_HTTPS
+        value: "{{aws_https}}"
+      - name: AWS_VIRTUAL_HOSTING
+        value: "FALSE"
+      - name: AWS_DIRECT
+        value: "TRUE"
+      - name: SWIFT_URL
+        value: {{ swift_url }}
+      - name: SWIFT_BUCKET
+        value: {{ swift_bucket }}
+      - name: SWIFT_ACCESS_KEY_ID
+        value: {{ swift_access_key_id }}
+      - name: SWIFT_SECRET_ACCESS_KEY
+        value: {{ swift_secret_access_key }}
+      - name: ZOOKEEPERNODES
+        value: {{ zookeeper_nodes }}
+      - name: OPENEO_S1BACKSCATTER_ELEV_GEOID
+        value: "/opt/openeo-vito-aux-data/egm96.tif"
+      - name: OTB_HOME
+        value: "/usr"
+      - name: OTB_APPLICATION_PATH
+        value: "/usr/lib/otb/applications"
+      - name: GDAL_NUM_THREADS
+        value: "2"
+      - name: GDAL_DATASET_CACHE_SIZE
+        value: "{{gdal_dataset_cache_size}}"
+      - name: GDAL_CACHEMAX
+        value: "{{gdal_cachemax}}"
+      - name: GDAL_DISABLE_READDIR_ON_OPEN
+        value: "EMPTY_DIR"
+      - name: GDAL_HTTP_MERGE_CONSECUTIVE_RANGES
+        value: "YES"
+      - name: CPL_VSIL_CURL_CHUNK_SIZE
+        value: "10485760"
+      - name: GDAL_HTTP_TCP_KEEPALIVE
+        value: "YES"
+      - name: GDAL_HTTP_MAX_RETRY
+        value: "20"
+      - name: GDAL_HTTP_RETRY_DELAY
+        value: "10"
+      - name: PYTHONPATH
+        value: "$PYTHONPATH:/opt/openeo/lib/python3.8/site-packages/{% if udf_python_dependencies_folder_path %}:{{ udf_python_dependencies_folder_path }}{% endif %}"
+      - name: UDF_PYTHON_DEPENDENCIES_FOLDER_PATH
+        value: "{{ udf_python_dependencies_folder_path }}"
+      - name: UDF_PYTHON_DEPENDENCIES_ARCHIVE_PATH
+        value: "{{ udf_python_dependencies_archive_path }}"
+      - name: VSI_CACHE
+        value: "TRUE"
+      - name: SPARK_USER
+        value: "spark"
+      - name: PYTHON_MAX_MEMORY
+        value: "{{ python_max_memory }}"
+      - name: CPL_DEBUG
+        value: "OFF"
+{%- if separate_asset_per_band_new_partitioner is defined and separate_asset_per_band_new_partitioner is not none %}
+      - name: SEPARATE_ASSET_PER_BAND_NEW_PARTITIONER
+        value: "{{ separate_asset_per_band_new_partitioner }}"
+{%- endif %}
+{%- endblock %}
+    labels:
+{%- block executor_labels %}
+      version: 3.2.0
+      openeo-role: "executor"
+      job_id: {{ job_id_full }}
+      user_id: {{user_id}}
+{%- endblock %}
+    volumeMounts:
+{%- block executor_volumeMounts %}
+      - name: "eodata"
+        mountPath: "/eodata"
+      - name: "eodata"
+        mountPath: "/vsis3/eodata"
+      - name: "shared-pod-volume"
+        mountPath: "/shared_pod_volume"
+{%- if mount_tmp %}
+      - name: "spark-local-dir-1"
+        mountPath: "/spark_tmp"
+{%- endif %}
+{%- if fuse_mount_batchjob_s3_bucket is sameas true %}
+      - name: "batch-job-results"
+        mountPath: /batch_jobs/{{ job_id_full }}
+{%- endif %}
+{%- if provide_s3_profiles_and_tokens is sameas true %}
+      - name: "batch-job-cfg"
+        mountPath: {{batch_job_config_dir}}
+        readOnly: true
+{%- endif %}
+{%- endblock %}
+  deps:
+{%- block deps %}
+    jars:
+      - 'local:///opt/geotrellis-extensions-static.jar'
+      - 'local:///opt/openeo-logging-static.jar'
+    files:
+      - 'local:///opt/layercatalog.json'
+      {%- for line in py_files %}
+      - {{ line -}}
+      {% endfor %}
+{%- endblock %}
+  monitoring:
+{%- block monitoring %}
+    exposeDriverMetrics: true
+    exposeExecutorMetrics: true
+    prometheus:
+      jmxExporterJar: "/opt/jmx_prometheus_javaagent-0.13.0.jar"
+      port: 8090
+{%- endblock %}

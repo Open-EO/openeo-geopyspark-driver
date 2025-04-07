@@ -1,0 +1,88 @@
+{
+    "type": "Feature",
+    "stac_version": "1.0.0",
+    "stac_extensions": [
+        "https://stac-extensions.github.io/file/v2.1.0/schema.json",
+        "https://stac-extensions.github.io/raster/v1.1.0/schema.json",
+        "https://stac-extensions.github.io/projection/v1.1.0/schema.json",
+        "https://stac-extensions.github.io/eo/v1.1.0/schema.json",
+        "https://stac-extensions.github.io/classification/v1.0.0/schema.json",
+        "https://stac-extensions.github.io/alternate-assets/v1.1.0/schema.json"
+    ],
+    "id": "SCF_20230120000000",
+    "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+            [
+                [11.035879559539548, 46.64474318306361],
+                [11.041470996849343, 46.79313598724818],
+                [10.727154646162814, 46.798312551732984],
+                [10.722422964228954, 46.64989313110407],
+                [11.035879559539548, 46.64474318306361]
+            ]
+        ]
+    },
+    "bbox": [
+        10.722422964228954,
+        46.64474318306361,
+        11.041470996849343,
+        46.798312551732984
+    ],
+    "properties": {
+        "product_version": "1.0.0",
+        "start_datetime": "2023-01-20T00:00:00Z",
+        "end_datetime": "2023-01-31T23:59:59Z",
+        "description": "SCF",
+        "created": "2024-11-20T17:50:30.740693Z",
+        "proj:epsg": 32632,
+        "proj:bbox": [631800.0, 5167700.0, 655800.0, 5184200.0],
+        "proj:geometry": {
+            "type": "Polygon",
+            "coordinates": [
+                [
+                    [655800.0, 5167700.0],
+                    [655800.0, 5184200.0],
+                    [631800.0, 5184200.0],
+                    [631800.0, 5167700.0],
+                    [655800.0, 5167700.0]
+                ]
+            ]
+        },
+        "proj:transform": [500.0, 0.0, 631800.0, 0.0, -500.0, 5184200.0],
+        "proj:shape": [33, 48],
+        "eo:bands": [{"name": "SCF", "description": "SCF"}],
+        "datetime": "2023-01-20T00:00:00Z"
+    },
+    "links": [
+        {
+            "rel": "root",
+            "href": "./collection.json",
+            "type": "application/json",
+            "title": "SCF"
+        },
+        {
+            "rel": "collection",
+            "href": "./collection.json",
+            "type": "application/json",
+            "title": "SCF"
+        },
+        {
+            "rel": "parent",
+            "href": "./collection.json",
+            "type": "application/json",
+            "title": "SCF"
+        }
+    ],
+    "assets": {
+        "SCF": {
+            "href": "./SCF_20230120000000.tif",
+            "title": "SCF",
+            "description": "SCF",
+            "eo:bands": [{"name": "SCF", "description": "SCF"}],
+            "file:size": 7013,
+            "raster:bands": [{"data_type": "float32"}],
+            "roles": ["data"]
+        }
+    },
+    "collection": "SCF"
+}

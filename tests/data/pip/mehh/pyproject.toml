@@ -1,0 +1,11 @@
+[project]
+name = "mehh"
+version = "1.2.3"
+readme = "README.md"
+
+[build-system]
+requires = ["setuptools >= 40.9.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+py-modules = ["mehh"]

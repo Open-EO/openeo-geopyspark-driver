@@ -1,0 +1,16 @@
+[
+  {
+    "id": "FOO",
+    "license": "mit"
+  },
+  {
+    "id": "BAR",
+    "description": "bar",
+    "links": [
+      "example.com/bar"
+    ]
+  },
+  {
+    "id": "BZZ"
+  }
+]
