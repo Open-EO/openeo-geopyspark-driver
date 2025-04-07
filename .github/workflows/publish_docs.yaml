@@ -1,7 +1,7 @@
 name: Publish content to GitHub pages
 on:
   push:
-    branches: [main]
+    branches: [master]
   pull_request:
     branches: [master]
 concurrency: publish_docs
