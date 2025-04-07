@@ -19,7 +19,7 @@ website:
     style: "floating"
     collapse-level: 2
     contents:
-      - href: ../README.md
+      - href: README.md
         text: Welcome
       - href: development.md
         text: Development

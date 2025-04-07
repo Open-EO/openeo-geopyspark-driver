@@ -1,4 +1,4 @@
-# Layer Catalog Configuration
+# Collection Configuration
 
 
 ## Background
