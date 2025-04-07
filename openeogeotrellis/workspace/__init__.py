@@ -1,2 +1,0 @@
-from .object_storage_workspace import ObjectStorageWorkspace
-from .stac_api_workspace import StacApiWorkspace

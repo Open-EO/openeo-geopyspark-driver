@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.5.57">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+
+<title>geotrellis_processing – openEO Geotrellis documentation</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+</style>
+
+
+<script src="site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="site_libs/clipboard/clipboard.min.js"></script>
+<script src="site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="site_libs/quarto-search/fuse.min.js"></script>
+<script src="site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="./">
+<link href="./performance_debug.html" rel="next">
+<link href="./development.html" rel="prev">
+<script src="site_libs/quarto-html/quarto.js"></script>
+<script src="site_libs/quarto-html/popper.min.js"></script>
+<script src="site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="site_libs/quarto-html/anchor.min.js"></script>
+<link href="site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="site_libs/bootstrap/bootstrap.min.css" rel="stylesheet" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "sidebar",
+  "copy-button": true,
+  "collapse-after": 3,
+  "panel-placement": "start",
+  "type": "textbox",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+
+
+</head>
+
+<body class="nav-sidebar floating nav-fixed fullcontent">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a class="navbar-brand" href="./index.html">
+    <span class="navbar-title">openEO Geotrellis documentation</span>
+    </a>
+  </div>
+        <div class="quarto-navbar-tools tools-end">
+</div>
+      </div> <!-- /container-fluid -->
+    </nav>
+  <nav class="quarto-secondary-nav">
+    <div class="container-fluid d-flex">
+      <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        <i class="bi bi-layout-text-sidebar-reverse"></i>
+      </button>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="./geotrellis_processing.html">Geotrellis Processing</a></li></ol></nav>
+        <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
+        </a>
+      <button type="button" class="btn quarto-search-button" aria-label="Search" onclick="window.quartoOpenSearch();">
+        <i class="bi bi-search"></i>
+      </button>
+    </div>
+  </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
+        <div class="mt-2 flex-shrink-0 align-items-center">
+        <div class="sidebar-search">
+        <div id="quarto-search" class="" title="Search"></div>
+        </div>
+        </div>
+    <div class="sidebar-menu-container"> 
+    <ul class="list-unstyled mt-1">
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./development.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Development</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./geotrellis_processing.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">Geotrellis Processing</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./performance_debug.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Performance Debugging</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./vectorcube-run_udf.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Running UDF on vector cube</span></a>
+  </div>
+</li>
+    </ul>
+    </div>
+</nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
+<!-- margin-sidebar -->
+    
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+
+
+
+<section id="geotrellis-openeo-processing" class="level1">
+<h1>Geotrellis openEO processing</h1>
+<p>This page describes some implementation details about the openEO processing based on Geotrellis.</p>
+<section id="overview" class="level2">
+<h2 class="anchored" data-anchor-id="overview">Overview</h2>
+<p>The core of the implementation is written in Scala, and can be found in the <a href="https://github.com/Open-EO/openeo-geotrellis-extensions">openeo-geotrellis-extensions</a> repository.</p>
+<p>The following image shows the mapping between key openEO concepts, and classes in the implementation:</p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="img/openeo_geotrellis_mapping.svg" class="img-fluid figure-img"></p>
+<figcaption>openEO Geotrellis mapping</figcaption>
+</figure>
+</div>
+</section>
+<section id="general-processing-strategy" class="level2">
+<h2 class="anchored" data-anchor-id="general-processing-strategy">General processing strategy</h2>
+<p>By design, the Geotrellis implementation relies on distributed processing via the <a href="https://spark.apache.org">Apache Spark</a> library. Spark gives us a framework to describe and execute distributed processing workflows that transform arbitrary collections of objects. In Spark, these are called resilient distributed datasets, or RDDs.</p>
+<p>Geotrellis is a framework that helps with representing georeferenced raster and vector data and also supports Spark. Hence, the objects in our Spark collections (RDD), are key-value pairs where the key contains a timestamp and a row and column in a spatial grid. The value is multiband raster tile. Such a tile contains chunks of a fixed size, by default 256x256 pixels, for each band in the openEO data cube.</p>
+<p>So let’s take the example of an ‘apply’ process in openEO, with the process set to ‘abs’. In this case, Spark can simply apply the absolute value process to each 2D tile in parallel. If a chain of processes is applied, Spark and Geotrellis functionality is used to make sure that this all happens as efficiently as possible.</p>
+<p>An important feature of Spark is that intermediate results are kept in memory whenever possible and only spilled to disk when needed. Writing to disk is entirely hidden for the actual processing workflow. This is quite different from more traditional batch processing workflows that commonly write a lot of intermediate results to disk.</p>
+<p>Other aspects covered by the combination of Spark and Geotrellis are complex operations such as merging data cubes, resampling or applying functions over the complete timeseries for a given pixel. In these cases, it is often needed to reorganize the the dataset in various ways. The Geotrellis openEO implementation tries to optimize all these cases.</p>
+<p>For UDF’s, where user-provided Python code is executed, we similarly reorganize the dataset, depending on what spatiotemporal subset of the datacube can be processed in parallel. Then the data is converted into a Python XArray object which is passed on to the user code for transformation.</p>
+</section>
+<section id="data-cubes" class="level2">
+<h2 class="anchored" data-anchor-id="data-cubes">Data Cubes</h2>
+<p>The main openEO concept implemented by this library is the <code>Raster data cube</code>, which is a multi-dimensional array of raster data.</p>
+<p>This library does not support arbitrary multidimensional cubes, but rather focuses on the type of cubes that are most commonly encountered in earth observation. The most complex type that we can represent is the 4-dimensional space-time-bands cube.</p>
+<p>This cube is mapped to a Geotrellis <a href="https://geotrellis.github.io/scaladocs/latest/geotrellis/spark/index.html#MultibandTileLayerRDD%5BK%5D=org.apache.spark.rdd.RDD%5B(K,geotrellis.raster.MultibandTile)%5Dwithgeotrellis.layer.Metadata%5Bgeotrellis.layer.TileLayerMetadata%5BK%5D%5D"><code>MultibandTileLayerRDD</code></a></p>
+<p>For cubes with a temporal dimension, a <code>SpacetimeKey</code> is used, while spatial cubes use the <code>SpatialKey</code>.</p>
+<p>Geotrellis documents this class and its associated metadata <a href="https://geotrellis.readthedocs.io/en/latest/guide/core-concepts.html#layouts-and-tile-layers">here</a>.</p>
+<p>The key class describing the spatial layout of a cube is the <code>LayoutDefinition</code>, which combines an arbitrary spatial extent with a regular tile grid (<code>TileLayout</code>). This also defines the pixel size, which is fixed for the entire cube.</p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="img/layoutdefinition.png" class="img-fluid figure-img"></p>
+<figcaption>Layout Definition</figcaption>
+</figure>
+</div>
+<p>To be able to understand how these cubes work and behave, or how to correctly manipulate them, knowledge of the <a href="https://spark.apache.org/docs/latest/rdd-programming-guide.html">Spark RDD concept</a> is essential. These are distributed datasets that (in production) live on multiple machines in a cluster, allowing openEO to effectively scale out computations.</p>
+<section id="data-cube-loading-load_collection-load_stac" class="level3">
+<h3 class="anchored" data-anchor-id="data-cube-loading-load_collection-load_stac">Data cube loading: <code>load_collection</code> &amp; <code>load_stac</code></h3>
+<p>Loading large EO datasets into a Spark RDD is complex, mainly due to the variety in data formats, but also because IO is often a performance &amp; stability bottleneck. Depending on the characteristics of the underlying storage system, the optimal loading strategy may also differ, which is why we support multiple code paths.</p>
+<p>The main class for loading data from POSIX or Object Storage type of systems is the <code>FileLayerProvider</code>.</p>
+<p>This <code>load_collection</code> implementation supports a number of features:</p>
+<ul>
+<li><em>Resampling at load time</em>, improving both performance and correctness.</li>
+<li>Loading of <em>GDAL</em> supported formats</li>
+<li>Loading of Geotiff using a <em>native</em> implementation</li>
+<li>Applying <em>masks at load time</em>, reducing the amount of data to read</li>
+<li>Applying <em>polygonal filtering</em> at load time</li>
+</ul>
+</section>
+<section id="data-cube-organization-partitioners" class="level3">
+<h3 class="anchored" data-anchor-id="data-cube-organization-partitioners">Data cube organization: partitioners</h3>
+<p>As mentioned, Spark will distribute data cubes over a cluster, into groups of data called <code>partitions</code>. A partition needs to fit into memory for processing, so the size matters, and Spark is not able to know the optimal partitioning for any given problem.</p>
+<p>Depending on procesess that are used, the optimal partitioning scheme can also change: for time series analysis, it would be optimal to group data for the same location with multiple observations in the same group. For other processes, like <code>resample_spatial</code>, it may be needed to have information from neighbouring tiles, so a grouping per observation would be more optimal. As a rule of thumb it is up to the process to check the partitioner, and change it if needed.</p>
+<p>Whenever a partitioner is changed, the data will be shuffled, which is a costly operation. This is why the code often tries to cleverly avoid this where possible.</p>
+<p>Assigning keys to partitions happens based on an indexing scheme. Usually, it is recommended to consider the spatiotemporal nature of the data to select the optimal scheme. Geotrellis explains a few potential schemes <a href="https://geotrellis.readthedocs.io/en/latest/guide/core-concepts.html#key-indexes">here</a>.</p>
+<p>The default scheme in openEO is the <code>Z-curve</code>. The 2D variant is shown below, for cubes with a time dimension, the 3D variant is used.</p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="img/z_curve.png" class="img-fluid figure-img"></p>
+<figcaption>Z-curve</figcaption>
+</figure>
+</div>
+<section id="sparse-partitioners" class="level4">
+<h4 class="anchored" data-anchor-id="sparse-partitioners">Sparse partitioners</h4>
+<p>Data cubes can be sparse because openEO supports operations on polygons, that are not necessarily spatially adjacent. Examples include the use of <code>aggregate_spatial</code> on a vector cube or the <code>filter_spatial</code> process on a vector cube.</p>
+<p>When this case occurs, regular Geotrellis spatial partitioners tend to create too many partitions, because they consider the full bounding box instead of the more detailed geometry locations. The same can occur for data which is irregular in the temporal dimension.</p>
+<p>The effect of having too many partitions, is huge numbers of Spark tasks that do not do anything, but still consume resources as they are nevertheless scheduled. This becomes especially noticeable when the actual work that needs to be done is small.</p>
+<p>Sparse partitioners avoid this problem by determining all of the SpacetimeKeys up front. We also store the list of keys in the partitioner itself, allowing certain operations to be implemented more efficiently.</p>
+</section>
+</section>
+</section>
+<section id="openeo-processes" class="level2">
+<h2 class="anchored" data-anchor-id="openeo-processes">openEO processes</h2>
+<p>This library implements a large part of the openEO process specification, mainly by using Geotrellis functionality.</p>
+<p>Depending on the type of process, the implementations can be found in 2 main locations: OpenEOProcesses and OpenEOProcessScriptBuilder.</p>
+<p><code>OpenEOProcesses</code> implements the Scala part of predefined processes that operate on full data cubes. This Scala code is usually invoked by a Python counterpart in <a href="https://github.com/Open-EO/openeo-geopyspark-driver/blob/master/openeogeotrellis/geopysparkdatacube.py"><code>GeopysparkDataCube</code></a>. Some of this Scala code may be used by multiple openEO process implementations. For instance, openEO <code>reduce_dimension</code> and <code>apply_dimension</code> can in some cases use the same code.</p>
+<p><code>OpenEOProcessScriptBuilder</code> supports openEO processes that operate on arrays of numbers, which are often encountered in openEO <code>child processes</code>, as explained <a href="https://api.openeo.org/#section/Processes/Process-Graphs">here</a>. This part of the work is not distributed on Spark, so operates on chunks of data that fit in memory. It does use Geotrellis which generally has quite well performing implementations for most basic processes.</p>
+</section>
+<section id="specific-properties-of-the-geotrellis-implementation" class="level2">
+<h2 class="anchored" data-anchor-id="specific-properties-of-the-geotrellis-implementation">Specific properties of the Geotrellis implementation</h2>
+<section id="only-up-to-4d-cubes-supported" class="level3">
+<h3 class="anchored" data-anchor-id="only-up-to-4d-cubes-supported">Only up to 4D cubes supported</h3>
+<p>A Geotrellis cube has fixed dimensions, in this order: time, y, x, and bands. This does not prevent us from advertising certain operations on dimensions at the metadata level, but does imply some limitations. In practice, this limitation has little impact on most real-world use cases.</p>
+</section>
+<section id="the-bands-dimension-is-a-single-array" class="level3">
+<h3 class="anchored" data-anchor-id="the-bands-dimension-is-a-single-array">The bands dimension is a single array</h3>
+<p>Bands are represented by a single array, and thus needs to fit in memory. Some applications require more than 100 bands, and thus either need to increase memory, or decrease the chunk size.</p>
+</section>
+</section>
+<section id="tunables" class="level2">
+<h2 class="anchored" data-anchor-id="tunables">Tunables</h2>
+<p>The Geotrellis implementation has a number of tunables that can be used to configure a specific backend for an environment, or that can be set per batch job. Most of them can be found in <a href="https://github.com/Open-EO/openeo-geopyspark-driver/blob/c0a949ac875ea3a983a1738d52aa1fb1af810a19/openeogeotrellis/config/config.py#L65"><code>openeogeotrellis.config.config.GpsBackendConfig</code></a>.</p>
+<ul>
+<li><code>tile_size</code> is the size in pixels of a single tile, as returned by <code>load_collection</code>. Large tiles benefit operations on spatial neighborhoods, but may require memory or cause jobs to fail. Small tiles may create more overhead from parallellization or task scheduling.</li>
+<li><code>executor_threads_jvm</code> is the number of worker threads given to the Java/Scala part of the processing. This only helps if operations effectively use parallel processing. In specific combinations it can cause crashes due to threading issues.</li>
+<li>GDAL has various caching related settings that may impact IO performance, but also increase memory usage throughout the lifetime of the job.</li>
+</ul>
+</section>
+<section id="runtime-properties-of-a-typical-cloud-setup" class="level2">
+<h2 class="anchored" data-anchor-id="runtime-properties-of-a-typical-cloud-setup">Runtime properties of a typical cloud setup</h2>
+<p>The behaviour and configuration of an openEO backend heavily depends on the performance characteristics of the environment in which it is deployed.</p>
+<p>A very common one is a ‘cloud’ environment, which we define as having the following characteristics:</p>
+<ul>
+<li>A cpu to memory ratio of about 4GB per cpu, where requesting more memory is possible but will increase costs, while reducing memory is also possible, but may not necessarily free up the cpu, even though overcommitting cpu is possible.</li>
+<li>Object storage access for data, with relatively high latency per request, but good throughput. Supports many requests in parallel.</li>
+</ul>
+
+
+</section>
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+window.document.addEventListener("DOMContentLoaded", function (event) {
+  const toggleBodyColorMode = (bsSheetEl) => {
+    const mode = bsSheetEl.getAttribute("data-mode");
+    const bodyEl = window.document.querySelector("body");
+    if (mode === "dark") {
+      bodyEl.classList.add("quarto-dark");
+      bodyEl.classList.remove("quarto-light");
+    } else {
+      bodyEl.classList.add("quarto-light");
+      bodyEl.classList.remove("quarto-dark");
+    }
+  }
+  const toggleBodyColorPrimary = () => {
+    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
+    if (bsSheetEl) {
+      toggleBodyColorMode(bsSheetEl);
+    }
+  }
+  toggleBodyColorPrimary();  
+  const icon = "";
+  const anchorJS = new window.AnchorJS();
+  anchorJS.options = {
+    placement: 'right',
+    icon: icon
+  };
+  anchorJS.add('.anchored');
+  const isCodeAnnotation = (el) => {
+    for (const clz of el.classList) {
+      if (clz.startsWith('code-annotation-')) {                     
+        return true;
+      }
+    }
+    return false;
+  }
+  const onCopySuccess = function(e) {
+    // button target
+    const button = e.trigger;
+    // don't keep focus
+    button.blur();
+    // flash "checked"
+    button.classList.add('code-copy-button-checked');
+    var currentTitle = button.getAttribute("title");
+    button.setAttribute("title", "Copied!");
+    let tooltip;
+    if (window.bootstrap) {
+      button.setAttribute("data-bs-toggle", "tooltip");
+      button.setAttribute("data-bs-placement", "left");
+      button.setAttribute("data-bs-title", "Copied!");
+      tooltip = new bootstrap.Tooltip(button, 
+        { trigger: "manual", 
+          customClass: "code-copy-button-tooltip",
+          offset: [0, -8]});
+      tooltip.show();    
+    }
+    setTimeout(function() {
+      if (tooltip) {
+        tooltip.hide();
+        button.removeAttribute("data-bs-title");
+        button.removeAttribute("data-bs-toggle");
+        button.removeAttribute("data-bs-placement");
+      }
+      button.setAttribute("title", currentTitle);
+      button.classList.remove('code-copy-button-checked');
+    }, 1000);
+    // clear code selection
+    e.clearSelection();
+  }
+  const getTextToCopy = function(trigger) {
+      const codeEl = trigger.previousElementSibling.cloneNode(true);
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+  }
+  const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+    text: getTextToCopy
+  });
+  clipboard.on('success', onCopySuccess);
+  if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+    // For code content inside modals, clipBoardJS needs to be initialized with a container option
+    // TODO: Check when it could be a function (https://github.com/zenorocha/clipboard.js/issues/860)
+    const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+      text: getTextToCopy,
+      container: window.document.getElementById('quarto-embedded-source-code-modal')
+    });
+    clipboardModal.on('success', onCopySuccess);
+  }
+    var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+    var mailtoRegex = new RegExp(/^mailto:/);
+      var filterRegex = new RegExp('/' + window.location.host + '/');
+    var isInternal = (href) => {
+        return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+    }
+    // Inspect non-navigation links and adorn them if external
+ 	var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+    for (var i=0; i<links.length; i++) {
+      const link = links[i];
+      if (!isInternal(link.href)) {
+        // undo the damage that might have been done by quarto-nav.js in the case of
+        // links that we want to consider external
+        if (link.dataset.originalHref !== undefined) {
+          link.href = link.dataset.originalHref;
+        }
+      }
+    }
+  function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+    const config = {
+      allowHTML: true,
+      maxWidth: 500,
+      delay: 100,
+      arrow: false,
+      appendTo: function(el) {
+          return el.parentElement;
+      },
+      interactive: true,
+      interactiveBorder: 10,
+      theme: 'quarto',
+      placement: 'bottom-start',
+    };
+    if (contentFn) {
+      config.content = contentFn;
+    }
+    if (onTriggerFn) {
+      config.onTrigger = onTriggerFn;
+    }
+    if (onUntriggerFn) {
+      config.onUntrigger = onUntriggerFn;
+    }
+    window.tippy(el, config); 
+  }
+  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+  for (var i=0; i<noterefs.length; i++) {
+    const ref = noterefs[i];
+    tippyHover(ref, function() {
+      // use id or data attribute instead here
+      let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+      try { href = new URL(href).hash; } catch {}
+      const id = href.replace(/^#\/?/, "");
+      const note = window.document.getElementById(id);
+      if (note) {
+        return note.innerHTML;
+      } else {
+        return "";
+      }
+    });
+  }
+  const xrefs = window.document.querySelectorAll('a.quarto-xref');
+  const processXRef = (id, note) => {
+    // Strip column container classes
+    const stripColumnClz = (el) => {
+      el.classList.remove("page-full", "page-columns");
+      if (el.children) {
+        for (const child of el.children) {
+          stripColumnClz(child);
+        }
+      }
+    }
+    stripColumnClz(note)
+    if (id === null || id.startsWith('sec-')) {
+      // Special case sections, only their first couple elements
+      const container = document.createElement("div");
+      if (note.children && note.children.length > 2) {
+        container.appendChild(note.children[0].cloneNode(true));
+        for (let i = 1; i < note.children.length; i++) {
+          const child = note.children[i];
+          if (child.tagName === "P" && child.innerText === "") {
+            continue;
+          } else {
+            container.appendChild(child.cloneNode(true));
+            break;
+          }
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(container);
+        }
+        return container.innerHTML
+      } else {
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        return note.innerHTML;
+      }
+    } else {
+      // Remove any anchor links if they are present
+      const anchorLink = note.querySelector('a.anchorjs-link');
+      if (anchorLink) {
+        anchorLink.remove();
+      }
+      if (window.Quarto?.typesetMath) {
+        window.Quarto.typesetMath(note);
+      }
+      // TODO in 1.5, we should make sure this works without a callout special case
+      if (note.classList.contains("callout")) {
+        return note.outerHTML;
+      } else {
+        return note.innerHTML;
+      }
+    }
+  }
+  for (var i=0; i<xrefs.length; i++) {
+    const xref = xrefs[i];
+    tippyHover(xref, undefined, function(instance) {
+      instance.disable();
+      let url = xref.getAttribute('href');
+      let hash = undefined; 
+      if (url.startsWith('#')) {
+        hash = url;
+      } else {
+        try { hash = new URL(url).hash; } catch {}
+      }
+      if (hash) {
+        const id = hash.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note !== null) {
+          try {
+            const html = processXRef(id, note.cloneNode(true));
+            instance.setContent(html);
+          } finally {
+            instance.enable();
+            instance.show();
+          }
+        } else {
+          // See if we can fetch this
+          fetch(url.split('#')[0])
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.getElementById(id);
+            if (note !== null) {
+              const html = processXRef(id, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      } else {
+        // See if we can fetch a full url (with no hash to target)
+        // This is a special case and we should probably do some content thinning / targeting
+        fetch(url)
+        .then(res => res.text())
+        .then(html => {
+          const parser = new DOMParser();
+          const htmlDoc = parser.parseFromString(html, "text/html");
+          const note = htmlDoc.querySelector('main.content');
+          if (note !== null) {
+            // This should only happen for chapter cross references
+            // (since there is no id in the URL)
+            // remove the first header
+            if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+              note.children[0].remove();
+            }
+            const html = processXRef(null, note);
+            instance.setContent(html);
+          } 
+        }).finally(() => {
+          instance.enable();
+          instance.show();
+        });
+      }
+    }, function(instance) {
+    });
+  }
+      let selectedAnnoteEl;
+      const selectorForAnnotation = ( cell, annotation) => {
+        let cellAttr = 'data-code-cell="' + cell + '"';
+        let lineAttr = 'data-code-annotation="' +  annotation + '"';
+        const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+        return selector;
+      }
+      const selectCodeLines = (annoteEl) => {
+        const doc = window.document;
+        const targetCell = annoteEl.getAttribute("data-target-cell");
+        const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+        const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+        const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+        const lineIds = lines.map((line) => {
+          return targetCell + "-" + line;
+        })
+        let top = null;
+        let height = null;
+        let parent = null;
+        if (lineIds.length > 0) {
+            //compute the position of the single el (top and bottom and make a div)
+            const el = window.document.getElementById(lineIds[0]);
+            top = el.offsetTop;
+            height = el.offsetHeight;
+            parent = el.parentElement.parentElement;
+          if (lineIds.length > 1) {
+            const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+            const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+            height = bottom - top;
+          }
+          if (top !== null && height !== null && parent !== null) {
+            // cook up a div (if necessary) and position it 
+            let div = window.document.getElementById("code-annotation-line-highlight");
+            if (div === null) {
+              div = window.document.createElement("div");
+              div.setAttribute("id", "code-annotation-line-highlight");
+              div.style.position = 'absolute';
+              parent.appendChild(div);
+            }
+            div.style.top = top - 2 + "px";
+            div.style.height = height + 4 + "px";
+            div.style.left = 0;
+            let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+            if (gutterDiv === null) {
+              gutterDiv = window.document.createElement("div");
+              gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+              gutterDiv.style.position = 'absolute';
+              const codeCell = window.document.getElementById(targetCell);
+              const gutter = codeCell.querySelector('.code-annotation-gutter');
+              gutter.appendChild(gutterDiv);
+            }
+            gutterDiv.style.top = top - 2 + "px";
+            gutterDiv.style.height = height + 4 + "px";
+          }
+          selectedAnnoteEl = annoteEl;
+        }
+      };
+      const unselectCodeLines = () => {
+        const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+        elementsIds.forEach((elId) => {
+          const div = window.document.getElementById(elId);
+          if (div) {
+            div.remove();
+          }
+        });
+        selectedAnnoteEl = undefined;
+      };
+        // Handle positioning of the toggle
+    window.addEventListener(
+      "resize",
+      throttle(() => {
+        elRect = undefined;
+        if (selectedAnnoteEl) {
+          selectCodeLines(selectedAnnoteEl);
+        }
+      }, 10)
+    );
+    function throttle(fn, ms) {
+    let throttle = false;
+    let timer;
+      return (...args) => {
+        if(!throttle) { // first call gets through
+            fn.apply(this, args);
+            throttle = true;
+        } else { // all the others get throttled
+            if(timer) clearTimeout(timer); // cancel #2
+            timer = setTimeout(() => {
+              fn.apply(this, args);
+              timer = throttle = false;
+            }, ms);
+        }
+      };
+    }
+      // Attach click handler to the DT
+      const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+      for (const annoteDlNode of annoteDls) {
+        annoteDlNode.addEventListener('click', (event) => {
+          const clickedEl = event.target;
+          if (clickedEl !== selectedAnnoteEl) {
+            unselectCodeLines();
+            const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+            if (activeEl) {
+              activeEl.classList.remove('code-annotation-active');
+            }
+            selectCodeLines(clickedEl);
+            clickedEl.classList.add('code-annotation-active');
+          } else {
+            // Unselect the line
+            unselectCodeLines();
+            clickedEl.classList.remove('code-annotation-active');
+          }
+        });
+      }
+  const findCites = (el) => {
+    const parentEl = el.parentElement;
+    if (parentEl) {
+      const cites = parentEl.dataset.cites;
+      if (cites) {
+        return {
+          el,
+          cites: cites.split(' ')
+        };
+      } else {
+        return findCites(el.parentElement)
+      }
+    } else {
+      return undefined;
+    }
+  };
+  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+  for (var i=0; i<bibliorefs.length; i++) {
+    const ref = bibliorefs[i];
+    const citeInfo = findCites(ref);
+    if (citeInfo) {
+      tippyHover(citeInfo.el, function() {
+        var popup = window.document.createElement('div');
+        citeInfo.cites.forEach(function(cite) {
+          var citeDiv = window.document.createElement('div');
+          citeDiv.classList.add('hanging-indent');
+          citeDiv.classList.add('csl-entry');
+          var biblioDiv = window.document.getElementById('ref-' + cite);
+          if (biblioDiv) {
+            citeDiv.innerHTML = biblioDiv.innerHTML;
+          }
+          popup.appendChild(citeDiv);
+        });
+        return popup.innerHTML;
+      });
+    }
+  }
+});
+</script>
+<nav class="page-navigation">
+  <div class="nav-page nav-page-previous">
+      <a href="./development.html" class="pagination-link" aria-label="Development">
+        <i class="bi bi-arrow-left-short"></i> <span class="nav-page-text">Development</span>
+      </a>          
+  </div>
+  <div class="nav-page nav-page-next">
+      <a href="./performance_debug.html" class="pagination-link" aria-label="Performance Debugging">
+        <span class="nav-page-text">Performance Debugging</span> <i class="bi bi-arrow-right-short"></i>
+      </a>
+  </div>
+</nav>
+</div> <!-- /content -->
+
+
+
+
+</body></html>

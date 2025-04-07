@@ -1,2 +1,0 @@
-def mehh():
-    print("mehh")

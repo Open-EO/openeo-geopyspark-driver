@@ -1,3 +1,0 @@
-include openeogeotrellis/**/*.sh
-include openeogeotrellis/**/*.j2
-include openeogeotrellis/integrations/cwl/*.cwl
