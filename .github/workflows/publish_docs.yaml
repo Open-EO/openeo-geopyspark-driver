@@ -3,8 +3,8 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
-concurrency: publish-docs
+    branches: [master]
+concurrency: publish_docs
 
 jobs:
   build-documentation:
@@ -42,7 +42,7 @@ jobs:
   deploy-documentation-ghpages:
     runs-on: ubuntu-latest
     needs: build-documentation
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     permissions:
       pages: write
       id-token: write
