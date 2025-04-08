@@ -388,7 +388,12 @@ def run_job(
                 logger.info("Extracted ml model metadata from %s" % output_file)
 
         def result_write_assets(result_arg) -> dict:
-            return result_arg.write_assets(str(output_file))
+            items = result_arg.write_assets(str(output_file))
+            assets = {
+                asset_key: asset for item in items.values() for asset_key, asset in item.get("assets", {}).items()
+            }
+            # TODO: write items to job_metadata.json
+            return assets
 
         concurrent_save_results = int(job_options.get("concurrent-save-results", 1))
         if concurrent_save_results == 1:

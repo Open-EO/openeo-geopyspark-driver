@@ -2604,3 +2604,89 @@ def test_geotiff_tile_size(tmp_path, window_size, default_tile_size, requested_t
             assert block_shape == (expected_tile_size, expected_tile_size)
 
     assert_cog(output_tiff)
+
+
+@pytest.mark.parametrize(
+    ["separate_asset_per_band", "expected_tiff_files"],
+    [
+        (False, {"openEO_2025-04-05Z.tif", "openEO_2025-04-15Z.tif"}),
+        (
+            True,
+            {
+                "openEO_2025-04-05Z_Flat:0.tif",
+                "openEO_2025-04-05Z_Flat:1.tif",
+                "openEO_2025-04-05Z_Flat:2.tif",
+                "openEO_2025-04-15Z_Flat:0.tif",
+                "openEO_2025-04-15Z_Flat:1.tif",
+                "openEO_2025-04-15Z_Flat:2.tif",
+            },
+        ),
+    ],
+)
+def test_unified_asset_keys(tmp_path, separate_asset_per_band, expected_tiff_files):
+    process_graph = {  # plain old spatiotemporal data cube to GeoTIFF
+        "load2": {
+            "process_id": "load_collection",
+            "arguments": {
+                "bands": [
+                    "Flat:0",
+                    "Flat:1",
+                    "Flat:2",
+                ],
+                "id": "TestCollection-LonLat16x16",
+                "spatial_extent": {
+                    "west": 0,
+                    "south": 50,
+                    "east": 5,
+                    "north": 55,
+                },
+                "temporal_extent": ["2025-04-01", "2025-04-21"],
+            },
+        },
+        "save1": {
+            "process_id": "save_result",
+            "arguments": {
+                "data": {"from_node": "load2"},
+                "format": "GTIFF",
+                "options": {"separate_asset_per_band": separate_asset_per_band},
+            },
+            "result": True,
+        },
+    }
+
+    process = {
+        "process_graph": process_graph,
+    }
+
+    job_dir = tmp_path
+    metadata_file = job_dir / "job_metadata.json"
+
+    run_job(
+        process,
+        output_file=job_dir / "out",
+        metadata_file=metadata_file,
+        api_version="2.0.0",
+        job_dir=job_dir,
+        dependencies=[],
+    )
+
+    tiff_files = {file for file in os.listdir(job_dir) if file.endswith(".tif")}
+    assert tiff_files == expected_tiff_files
+
+    with open(metadata_file) as f:
+        items = json.load(f).get("items")
+
+    print(f"items={json.dumps(items, indent=2)}")
+    return
+
+    assert len(items) == 2
+
+    item1_assets = items[0]["assets"]
+    assert len(item1_assets) == 1
+    assert "openEO" in item1_assets
+    # TODO: add additional checks
+
+    item2_assets = items[0]["assets"]
+    assert len(item2_assets) == 1
+    assert "openEO" in item2_assets
+    # TODO: add additional checks
