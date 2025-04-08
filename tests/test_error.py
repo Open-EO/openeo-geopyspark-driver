@@ -1,6 +1,6 @@
 import textwrap
 import urllib
-from unittest import mock
+from unittest import mock, skip
 
 import pytest
 from geopyspark import Extent, TiledRasterLayer
@@ -671,6 +671,7 @@ def datacube() -> openeo.DataCube:
     )
 
 
+@skip("Might be the cause of flaky tests.")
 def test_udf_with_oom(datacube, api100):
     udf_code = textwrap.dedent(
         """

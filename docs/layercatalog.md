@@ -1,4 +1,4 @@
-# Layer Catalog Configuration
+# Collection Configuration
 
 
 ## Background
@@ -140,15 +140,14 @@ included in the `openeo-geopyspark-driver` repository:
 
 ## More advanced data source types
 
-TODO
+More advanced data sources exist, and are documented in [the code](https://github.com/Open-EO/openeo-geopyspark-driver/blob/master/openeogeotrellis/layercatalog.py).
 
-- "file-s2",
-- "file-s3",
+- "file-s2"
+- "file-s3"
 - "file-s1-coherence"
 - "file-agera5"
 - "file-cgls2"
 - "file-globspatialonly"
 - "file-oscars"
-- "file-probav"
 - "sentinel-hub"
 - "creodias-s1-backscatter"

@@ -1,4 +1,4 @@
- # CWL based openEO processing using Calrissian
+# CWL based openEO processing using Calrissian
 
 This document describes how CWL based processing is implemented
 in the openEO GeoPySpark driver when running on a Kubernetes cluster.
@@ -55,7 +55,7 @@ kubectl \
     --namespace="$NAMESPACE_NAME" \
     create role \
     job-manager-role \
-    --verb=create,delete,list \
+    --verb=create,list,get,delete \
     --resource=jobs
 
 kubectl \
@@ -183,3 +183,15 @@ spec:
       storage: 1Gi
   storageClassName: csi-s3-calrissian
 ```
+
+
+
+## Further openeo-geopyspark-driver configuration
+
+Further configuration of the openeo-geopyspark-driver application
+is done through the `calrissian_config` field of `GpsBackendConfig`
+(also see the general [configuration docs](./configuration.md)).
+This field expects (unless no Calrissian integration is necessary) a
+`CalrissianConfig` sub-configuration object
+(defined at `openeogeotrellis.config.integrations.calrissian_config`),
+which allows to configure various aspects of the Calrissian integration.

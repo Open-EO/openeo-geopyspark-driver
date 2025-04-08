@@ -1,21 +1,17 @@
 
-# GeoPySpark Documentation
+# openEO Geotrellis Documentation
+
+These pages document the [Geotrellis](https://geotrellis.io/)-based openEO backend.
+This documentation is intended for backend developers, who wish to learn about the internals and architecture.
+It is not suitable or intended for learning about [openEO](https://openeo.org/) itself.
+
+This backend is deployed as part of the [Copernicus Dataspace Ecosystem](https://documentation.dataspace.copernicus.eu/APIs/openEO/openEO.html).
+
+For information on deploying to Kubernetes, visit our [dedicated repository](https://github.com/Open-EO/openeo-geotrellis-kubernetes).
+
 
 ## Table of Contents
 
-<!--[[[cog
-# Auto-generation of table of contents, using [cog](https://cog.readthedocs.io/en/latest/)
-# Run/update with:
-#     cog -r README.md
-from pathlib import Path
-import cog
-this = Path(cog.inFile)
-root = this.parent
-for path in sorted(root.glob("*.md")):
-    if path == this:
-        continue
-    cog.outl(f"- [{path.name}]({path.relative_to(root)!s})")
-]]]-->
 - [calrissian-cwl.md](calrissian-cwl.md)
 - [configuration.md](configuration.md)
 - [development.md](development.md)
@@ -28,4 +24,3 @@ for path in sorted(root.glob("*.md")):
 - [testing.md](testing.md)
 - [udf-deps.md](udf-deps.md)
 - [vectorcube-run_udf.md](vectorcube-run_udf.md)
-<!--[[[end]]] -->

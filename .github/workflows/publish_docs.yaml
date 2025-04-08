@@ -1,0 +1,55 @@
+name: Publish content to GitHub pages
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+concurrency: publish_docs
+
+jobs:
+  build-documentation:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./docs
+    permissions:
+      pages: write
+      contents: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v3
+        with:
+          submodules: true
+      - name: Set up Quarto
+        uses: quarto-dev/quarto-actions/setup@v2
+        with:
+          tinytex: true
+          version: '1.6.43'
+      - name: Render documentation pages
+        run: quarto render --output-dir _build
+      - name: Setup GitHub pages
+        uses: actions/configure-pages@v5
+      - name: Upload build artifacts
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: "docs/_build"
+      - name: Upload build folder
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-folder
+          path: "docs/_build"
+
+  deploy-documentation-ghpages:
+    runs-on: ubuntu-latest
+    needs: build-documentation
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub pages
+        id: deployment
+        uses: actions/deploy-pages@v4

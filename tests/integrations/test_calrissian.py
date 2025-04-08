@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Iterator
 from unittest import mock
 
 import boto3
@@ -8,15 +8,18 @@ import kubernetes.client
 import moto
 import pytest
 
+from openeogeotrellis.config.integrations.calrissian_config import CalrissianConfig
 from openeogeotrellis.integrations.calrissian import (
     CalrissianJobLauncher,
     CalrissianS3Result,
     CwLSource,
 )
+from openeogeotrellis.testing import gps_config_overrides
+from openeogeotrellis.util.runtime import ENV_VAR_OPENEO_BATCH_JOB_ID
 
 
 @pytest.fixture
-def generate_unique_id_mock() -> str:
+def generate_unique_id_mock() -> Iterator[str]:
     """Fixture to fix the UUID used in `generate_unique_id`"""
     # TODO: move this mock fixture to a more generic place
     with mock.patch("openeo_driver.utils.uuid") as uuid:
@@ -56,8 +59,9 @@ class TestCalrissianJobLauncher:
                 "containers": [
                     dirty_equals.IsPartialDict(
                         {
-                            "name": "calrissian-input-staging",
+                            "name": "r-1234-cal-inp-01234567",
                             "image": "alpine:3",
+                            "image_pull_policy": "IfNotPresent",
                             "command": ["/bin/sh"],
                             "args": [
                                 "-c",
@@ -89,12 +93,13 @@ class TestCalrissianJobLauncher:
     def test_create_cwl_job_manifest(self, generate_unique_id_mock):
         launcher = CalrissianJobLauncher(namespace=self.NAMESPACE, name_base="r-123")
 
-        manifest, output_dir = launcher.create_cwl_job_manifest(
+        manifest, output_dir, cwl_outputs_listing = launcher.create_cwl_job_manifest(
             cwl_path="/calrissian/input-data/r-1234-cal-inp-01234567.cwl",
             cwl_arguments=["--message", "Howdy Earth!"],
         )
 
         assert output_dir == "r-123-cal-cwl-01234567"
+        assert cwl_outputs_listing == "r-123-cal-cwl-01234567.cwl-outputs.json"
 
         assert isinstance(manifest, kubernetes.client.V1Job)
         manifest_dict = manifest.to_dict()
@@ -116,12 +121,16 @@ class TestCalrissianJobLauncher:
                     dirty_equals.IsPartialDict(
                         {
                             "name": "r-123-cal-cwl-01234567",
+                            "image": "ghcr.io/duke-gcb/calrissian/calrissian:0.17.1",
+                            "image_pull_policy": "IfNotPresent",
                             "command": ["calrissian"],
                             "args": dirty_equals.Contains(
                                 "--tmp-outdir-prefix",
                                 "/calrissian/tmpout/",
                                 "--outdir",
                                 "/calrissian/output-data/r-123-cal-cwl-01234567",
+                                "--stdout",
+                                "/calrissian/output-data/r-123-cal-cwl-01234567.cwl-outputs.json",
                                 "/calrissian/input-data/r-1234-cal-inp-01234567.cwl",
                                 "--message",
                                 "Howdy Earth!",
@@ -174,6 +183,47 @@ class TestCalrissianJobLauncher:
                 ],
             }
         )
+
+    def test_create_cwl_job_manifest_base_arguments(self, generate_unique_id_mock):
+        launcher = CalrissianJobLauncher(
+            namespace=self.NAMESPACE,
+            name_base="r-123",
+            calrissian_base_arguments=["--max-ram", "64kB", "--max-cores", "42", "--flavor", "chocolate"],
+        )
+
+        manifest, output_dir, cwl_outputs_listing = launcher.create_cwl_job_manifest(
+            cwl_path="/calrissian/input-data/r-1234-cal-inp-01234567.cwl",
+            cwl_arguments=["--message", "Howdy Earth!"],
+        )
+
+        assert isinstance(manifest, kubernetes.client.V1Job)
+        manifest_dict = manifest.to_dict()
+
+        assert manifest_dict["spec"]["template"]["spec"]["containers"] == [
+            dirty_equals.IsPartialDict(
+                {
+                    "name": "r-123-cal-cwl-01234567",
+                    "command": ["calrissian"],
+                    "args": [
+                        "--max-ram",
+                        "64kB",
+                        "--max-cores",
+                        "42",
+                        "--flavor",
+                        "chocolate",
+                        "--tmp-outdir-prefix",
+                        "/calrissian/tmpout/",
+                        "--outdir",
+                        "/calrissian/output-data/r-123-cal-cwl-01234567",
+                        "--stdout",
+                        "/calrissian/output-data/r-123-cal-cwl-01234567.cwl-outputs.json",
+                        "/calrissian/input-data/r-1234-cal-inp-01234567.cwl",
+                        "--message",
+                        "Howdy Earth!",
+                    ],
+                }
+            )
+        ]
 
     @pytest.fixture()
     def k8_pvc_api(self):
@@ -247,6 +297,42 @@ class TestCalrissianJobLauncher:
                 s3_key="1234-abcd-5678-efgh/r-456-cal-cwl-01234567/output.txt",
             ),
         }
+
+    def test_from_context(self, monkeypatch, generate_unique_id_mock):
+        monkeypatch.setenv(ENV_VAR_OPENEO_BATCH_JOB_ID, "j-hello123")
+        calrissian_config = CalrissianConfig(
+            namespace="namezpace",
+            input_staging_image="albino:3.14",
+        )
+
+        with gps_config_overrides(calrissian_config=calrissian_config):
+            launcher = CalrissianJobLauncher.from_context()
+            manifest, cwl_path = launcher.create_input_staging_job_manifest(
+                cwl_source=CwLSource.from_string("class: Dummy")
+            )
+
+        assert cwl_path == "/calrissian/input-data/j-hello123-cal-inp-01234567.cwl"
+
+        assert isinstance(manifest, kubernetes.client.V1Job)
+        manifest_dict = manifest.to_dict()
+        assert manifest_dict["metadata"] == dirty_equals.IsPartialDict(
+            {
+                "name": "j-hello123-cal-inp-01234567",
+                "namespace": "namezpace",
+            }
+        )
+        assert manifest_dict["spec"]["template"]["spec"] == dirty_equals.IsPartialDict(
+            {
+                "containers": [
+                    dirty_equals.IsPartialDict(
+                        {
+                            "name": "j-hello123-cal-inp-01234567",
+                            "image": "albino:3.14",
+                        }
+                    )
+                ]
+            }
+        )
 
 
 class TestCalrissianS3Result:

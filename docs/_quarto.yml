@@ -4,6 +4,8 @@ project:
     port: 4200
 
 website:
+  repo-url: "https://github.com/Open-EO/openeo-geopyspark-driver"
+  repo-branch: "master"
   search:
     location: sidebar
     type: textbox
@@ -17,6 +19,8 @@ website:
     style: "floating"
     collapse-level: 2
     contents:
+      - href: README.md
+        text: Welcome
       - href: development.md
         text: Development
       - href: geotrellis_processing.md
@@ -25,3 +29,13 @@ website:
         text: Performance Debugging
       - href: vectorcube-run_udf.md
         text: Running UDF on vector cube
+      - href: calrissian-cwl.md
+        text: Calrissian CWL
+      - href: job_options.md
+        text: Job options
+      - href: layercatalog.md
+        text: Collection configuration
+      - href: configuration.md
+        text: Configuration
+      - href: testing.md
+        text: Testing

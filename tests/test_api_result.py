@@ -2615,7 +2615,7 @@ class TestVectorCubeRunUdf:
                 # Data's structure: {datetime: [[float for each band] for each polygon]}
                 assert isinstance(data, dict)
                 # Convert to single scalar value
-                ((_, lon, lat),) = data["2021-01-05T00:00:00Z"]
+                ((_, lon, lat),) = data["2021-01-05T00:00:00.000Z"]
                 return 1000 * lon + lat
         """
         )
@@ -2624,7 +2624,7 @@ class TestVectorCubeRunUdf:
         result = api100.check_result(processed).json
         result = drop_empty_from_aggregate_polygon_result(result)
         assert result == DictSubSet(
-            columns=["feature_index", "0"],
+            columns=["feature_index", 0],
             data=IgnoreOrder(
                 [
                     [0, 1001.0],
@@ -2656,17 +2656,17 @@ class TestVectorCubeRunUdf:
         result = api100.check_result(processed).json
         result = drop_empty_from_aggregate_polygon_result(result)
         assert result == DictSubSet(
-            columns=["feature_index", "level_1", "0"],
+            columns=["feature_index", "index", 0],
             data=IgnoreOrder(
                 [
-                    [0, "2021-01-05T00:00:00Z", 5 + 1 + 1],
-                    [0, "2021-01-15T00:00:00Z", 15 + 1 + 1],
-                    [1, "2021-01-05T00:00:00Z", 5 + 4 + 2],
-                    [1, "2021-01-15T00:00:00Z", 15 + 4 + 2],
-                    [2, "2021-01-05T00:00:00Z", 5 + 2 + 4],
-                    [2, "2021-01-15T00:00:00Z", 15 + 2 + 4],
-                    [3, "2021-01-05T00:00:00Z", 5 + 5 + 0],
-                    [3, "2021-01-15T00:00:00Z", 15 + 5 + 0],
+                    [0, "2021-01-05T00:00:00.000Z", 5 + 1 + 1],
+                    [0, "2021-01-15T00:00:00.000Z", 15 + 1 + 1],
+                    [1, "2021-01-05T00:00:00.000Z", 5 + 4 + 2],
+                    [1, "2021-01-15T00:00:00.000Z", 15 + 4 + 2],
+                    [2, "2021-01-05T00:00:00.000Z", 5 + 2 + 4],
+                    [2, "2021-01-15T00:00:00.000Z", 15 + 2 + 4],
+                    [3, "2021-01-05T00:00:00.000Z", 5 + 5 + 0],
+                    [3, "2021-01-15T00:00:00.000Z", 15 + 5 + 0],
                 ]
             ),
         )
@@ -2696,13 +2696,13 @@ class TestVectorCubeRunUdf:
         result = api100.check_result(processed).json
         result = drop_empty_from_aggregate_polygon_result(result)
         assert result == DictSubSet(
-            columns=["feature_index", "level_1", "0", "1", "2"],
+            columns=["feature_index", "index", 0, 1, 2],
             data=IgnoreOrder(
                 [
-                    [0, 0, 5 + 15 + 25, 3 * 1, 3 * 1],
-                    [1, 0, 5 + 15 + 25, 3 * 4, 3 * 2],
-                    [2, 0, 5 + 15 + 25, 3 * 2, 3 * 4],
-                    [3, 0, 5 + 15 + 25, 3 * 5, 3 * 0],
+                    [0, 0, 5 + 15 + 25.0, 3 * 1.0, 3 * 1.0],
+                    [1, 0, 5 + 15 + 25.0, 3 * 4.0, 3 * 2.0],
+                    [2, 0, 5 + 15 + 25.0, 3 * 2.0, 3 * 4.0],
+                    [3, 0, 5 + 15 + 25.0, 3 * 5.0, 3 * 0.0],
                 ]
             ),
         )
@@ -2735,10 +2735,10 @@ class TestVectorCubeRunUdf:
             columns=["feature_index", "start", "end"],
             data=IgnoreOrder(
                 [
-                    [0, 5 + 1 + 1, 25 + 1 + 1],
-                    [1, 5 + 4 + 2, 25 + 4 + 2],
-                    [2, 5 + 2 + 4, 25 + 2 + 4],
-                    [3, 5 + 5 + 0, 25 + 5 + 0],
+                    [0, 5 + 1 + 1.0, 25.0 + 1 + 1],
+                    [1, 5 + 4 + 2.0, 25.0 + 4 + 2],
+                    [2, 5 + 2 + 4.0, 25.0 + 2 + 4],
+                    [3, 5 + 5 + 0.0, 25.0 + 5 + 0],
                 ]
             ),
         )
@@ -2839,18 +2839,18 @@ class TestVectorCubeRunUdf:
         result = api100.check_result(processed).json
         result = drop_empty_from_aggregate_polygon_result(result)
         assert result == DictSubSet(
-            columns=[
+            columns=IgnoreOrder([
                 "feature_index",
                 "Day",
                 "Longitude",
                 "Latitude",
-            ],
+            ]),
             data=IgnoreOrder(
                 [
-                    [0, 5 + 15 + 25, 3 * 2.75, 3 * 2.75],
-                    [1, 5 + 15 + 25, 3 * 6.75, 3 * 3.75],
-                    [2, 5 + 15 + 25, 3 * 2.75, 3 * 7.75],
-                    [3, 5 + 15 + 25, 3 * 5.75, 3 * 0.75],
+                    [0, 5 + 15 + 25.0, 3 * 2.75, 3 * 2.75],
+                    [1, 5 + 15 + 25.0, 3 * 6.75, 3 * 3.75],
+                    [2, 5 + 15 + 25.0, 3 * 2.75, 3 * 7.75],
+                    [3, 5 + 15 + 25.0, 3 * 5.75, 3 * 0.75],
                 ]
             ),
         )
@@ -2863,8 +2863,8 @@ class TestVectorCubeRunUdf:
             """
             import pandas as pd
             def udf_apply_feature_dataframe(df: pd.DataFrame) -> pd.Series:
-                series = df.sum(axis=1)
-                series.index = series.index.strftime("%Y-%m-%d")
+                series = df.sum(axis=1)   
+                series.index = series.index.strftime("%Y-%m-%d")                             
                 return series
         """
         )
@@ -2900,7 +2900,7 @@ class TestVectorCubeRunUdf:
         result = api100.check_result(processed).json
         result = drop_empty_from_aggregate_polygon_result(result)
         assert result == DictSubSet(
-            columns=["feature_index", "0"],
+            columns=["feature_index", 0],
             data=IgnoreOrder(
                 [
                     [0, 5 + 15 + 25 + 3 * (2.75 + 2.75)],

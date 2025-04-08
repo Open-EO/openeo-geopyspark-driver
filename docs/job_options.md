@@ -1,6 +1,6 @@
 # Tweak batch jobs with `job_options`
 
-The VITO/Terrascope openEO back-end supports passing additional options at job creation time to tweak batch jobs:
+The Geotrellis openEO back-end supports passing additional options at job creation time to tweak batch jobs:
 
 ```python
 connection.create_job(process_graph, additional={

@@ -320,7 +320,7 @@ def _convert_asset_outputs_to_s3_urls(job_metadata: dict) -> dict:
 
     out_assets = job_metadata.get("assets", {})
     for asset in out_assets.values():
-        if "href" in asset and not asset["href"].startswith("s3://"):
+        if "href" in asset and not str(asset["href"]).startswith("s3://"):
             asset["href"] = to_s3_url(asset["href"])
 
     return job_metadata
