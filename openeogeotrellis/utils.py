@@ -18,7 +18,7 @@ import tempfile
 import time
 from functools import partial
 from pathlib import Path
-from typing import Callable, Iterable, Optional, Tuple, Union, Dict, Any, TypeVar
+from typing import Callable, Iterable, Optional, Tuple, Union, Dict, Any, TypeVar, Iterator
 
 import dateutil.parser
 import pyproj
@@ -893,3 +893,8 @@ class FileChangeWatcher:
 
 def to_tuple(scala_tuple):
     return tuple(scala_tuple.productElement(i) for i in range(scala_tuple.productArity()))
+
+
+def unzip(*iterables: Iterable) -> Iterator:
+    # iterables are typically of equal length
+    return zip(*iterables)
