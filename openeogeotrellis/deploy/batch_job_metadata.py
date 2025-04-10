@@ -41,9 +41,9 @@ def _assemble_result_metadata(
 ) -> dict:
     metadata = extract_result_metadata(tracer)
 
-    def epsg_code(gps_crs) -> Optional[int]:
-        crs = get_jvm().geopyspark.geotrellis.TileLayer.getCRS(gps_crs)
-        return crs.get().epsgCode().getOrElse(None) if crs.isDefined() else None
+    def epsg_code(geotrellis_proj4_crs) -> Optional[int]:
+        # We have to use the original geotrellis.proj4.CRS to avoid proj4 conversion issues.
+        return geotrellis_proj4_crs.epsgCode().getOrElse(None)
 
     bands = []
     if isinstance(result, GeopysparkDataCube):
@@ -51,14 +51,14 @@ def _assemble_result_metadata(
             bands = result.metadata.bands
         max_level = result.pyramid.levels[result.pyramid.max_zoom]
         nodata = max_level.layer_metadata.no_data_value
-        epsg = epsg_code(max_level.layer_metadata.crs)
+        epsg = epsg_code(max_level.srdd.rdd().metadata().crs())
         instruments = result.metadata.get("summaries", "instruments", default=[])
     elif isinstance(result, ImageCollectionResult) and isinstance(result.cube, GeopysparkDataCube):
         if result.cube.metadata.has_band_dimension():
             bands = result.cube.metadata.bands
         max_level = result.cube.pyramid.levels[result.cube.pyramid.max_zoom]
         nodata = max_level.layer_metadata.no_data_value
-        epsg = epsg_code(max_level.layer_metadata.crs)
+        epsg = epsg_code(max_level.srdd.rdd().metadata().crs())
         instruments = result.cube.metadata.get("summaries", "instruments", default=[])
     else:
         bands = []
