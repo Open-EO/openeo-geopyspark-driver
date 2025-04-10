@@ -2674,12 +2674,12 @@ def test_unified_asset_keys(tmp_path, separate_asset_per_band, expected_tiff_fil
     assert tiff_files == expected_tiff_files
 
     with open(metadata_file) as f:
-        items = json.load(f).get("items")
+        items = json.load(f)["items"]
 
     print(f"items={json.dumps(items, indent=2)}")
-    return
 
     assert len(items) == 2
+    return
 
     item1_assets = items[0]["assets"]
     assert len(item1_assets) == 1
