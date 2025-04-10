@@ -2607,9 +2607,9 @@ def test_geotiff_tile_size(tmp_path, window_size, default_tile_size, requested_t
 
 
 @pytest.mark.parametrize(
-    ["separate_asset_per_band", "expected_tiff_files"],
+    ["separate_asset_per_band", "expected_tiff_files", "expected_asset_keys"],
     [
-        (False, {"openEO_2025-04-05Z.tif", "openEO_2025-04-15Z.tif"}),
+        (False, {"openEO_2025-04-05Z.tif", "openEO_2025-04-15Z.tif"}, {"openEO"}),
         (
             True,
             {
@@ -2620,10 +2620,11 @@ def test_geotiff_tile_size(tmp_path, window_size, default_tile_size, requested_t
                 "openEO_2025-04-15Z_Flat:1.tif",
                 "openEO_2025-04-15Z_Flat:2.tif",
             },
+            {"openEO_Flat:0", "openEO_Flat:1", "openEO_Flat:2"},
         ),
     ],
 )
-def test_unified_asset_keys(tmp_path, separate_asset_per_band, expected_tiff_files):
+def test_unified_asset_keys(tmp_path, separate_asset_per_band, expected_tiff_files, expected_asset_keys):
     process_graph = {  # plain old spatiotemporal data cube to GeoTIFF
         "load2": {
             "process_id": "load_collection",
@@ -2679,14 +2680,7 @@ def test_unified_asset_keys(tmp_path, separate_asset_per_band, expected_tiff_fil
     print(f"items={json.dumps(items, indent=2)}")
 
     assert len(items) == 2
-    return
+    assert {item["properties"]["datetime"] for item in items} == {"2025-04-05T00:00:00Z", "2025-04-15T00:00:00Z"}
 
-    item1_assets = items[0]["assets"]
-    assert len(item1_assets) == 1
-    assert "openEO" in item1_assets
-    # TODO: add additional checks
-
-    item2_assets = items[0]["assets"]
-    assert len(item2_assets) == 1
-    assert "openEO" in item2_assets
-    # TODO: add additional checks
+    for item in items:
+        assert set(item["assets"].keys()) == expected_asset_keys

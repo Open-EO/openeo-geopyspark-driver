@@ -2053,7 +2053,7 @@ class GeopysparkDataCube(DriverDataCube):
                         for java_item in java_items:
                             assets = {}
 
-                            timestamp = java_item.timestamp()
+                            stac_datetime = java_item.datetime()
                             bbox = java_item.bbox()
 
                             for asset_key, asset in java_item.assets().items():
@@ -2069,7 +2069,7 @@ class GeopysparkDataCube(DriverDataCube):
                                         else bands
                                     ),
                                     "nodata": nodata,
-                                    "datetime": timestamp,
+                                    "datetime": stac_datetime,
                                     "bbox": to_latlng_bbox(bbox),
                                     "geometry": mapping(Polygon.from_bounds(*to_latlng_bbox(bbox))),
                                 }
@@ -2077,6 +2077,7 @@ class GeopysparkDataCube(DriverDataCube):
 
                             item = {
                                 "id": java_item.id(),
+                                "properties": {"datetime": stac_datetime},
                                 "geometry": mapping(Polygon.from_bounds(*to_latlng_bbox(bbox))),
                                 "bbox": to_latlng_bbox(bbox),
                                 "assets": assets,
