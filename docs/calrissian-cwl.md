@@ -1,4 +1,4 @@
- # CWL based openEO processing using Calrissian
+# CWL based openEO processing using Calrissian
 
 This document describes how CWL based processing is implemented
 in the openEO GeoPySpark driver when running on a Kubernetes cluster.
