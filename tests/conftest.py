@@ -1,19 +1,28 @@
 import contextlib
 import importlib
+import json
 import os
 import shutil
 import sys
 import typing
-import urllib
 from datetime import datetime
 from pathlib import Path
-from typing import Union
+from typing import Optional
 from unittest import mock
 
 import boto3
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives import serialization
 import flask
 import moto
 import moto.server
+import openeo_driver
+from openeo_driver.config import OpenEoBackendConfig
+from openeogeotrellis.integrations.identity import IDPTokenIssuer
+
+from openeogeotrellis.config.s3_config import AWSConfig
+
+import openeogeotrellis
 import pytest
 import requests_mock
 import time_machine
@@ -24,7 +33,8 @@ from openeo_driver.testing import ApiTester, ephemeral_fileserver, UrllibMocker
 from openeo_driver.utils import smart_bool
 from openeo_driver.views import build_app
 
-from openeogeotrellis.config import get_backend_config
+from openeogeotrellis.integrations.s3proxy.sts import _STSClient
+from openeogeotrellis.config import get_backend_config, GpsBackendConfig
 from openeogeotrellis.job_registry import InMemoryJobRegistry
 from openeogeotrellis.testing import gps_config_overrides
 from openeogeotrellis.vault import Vault
@@ -300,14 +310,64 @@ def job_registry() -> InMemoryJobRegistry:
 
 
 @pytest.fixture
-def backend_implementation(batch_job_output_root, job_registry) -> "GeoPySparkBackendImplementation":
+def _dynamic_overrides(idp_config_file) -> typing.Generator[dict, None, None]:
+    """
+    Some overrides are generated files and need to be in config. Those will require handling in here
+    """
+    overrides = {}
+    if idp_config_file is not None:
+        overrides["openeo_idp_details_file"] = idp_config_file
+    if moto_server_address is not None:
+        overrides["s3_region_proxy_endpoints"] = {
+            "eu-central-1": moto_server_address
+        }
+    yield overrides
+
+
+@pytest.fixture
+def config_overrides() -> dict:
+    # Default implementation does not have overrides
+    return {}
+
+
+@pytest.fixture
+def _config_overrides(config_overrides, _dynamic_overrides) -> dict:
+    # use config_overrides to set manual overrides for your test
+    return {
+        **_dynamic_overrides,
+        **config_overrides
+    }
+
+
+@pytest.fixture
+def set_config_overrides(_config_overrides) -> typing.Generator[GpsBackendConfig, None, None]:
+    openeo_driver_overrides = {}
+    for config_key, config_override_value in _config_overrides.items():
+        if hasattr(OpenEoBackendConfig, config_key):
+            openeo_driver_overrides[config_key] = config_override_value
+
+    geopyspark_driver_overrides = {}
+    for config_key, config_override_value in _config_overrides.items():
+        if hasattr(OpenEoBackendConfig, config_key):
+            openeo_driver_overrides[config_key] = config_override_value
+        elif hasattr(openeogeotrellis.config.GpsBackendConfig, config_key):
+            geopyspark_driver_overrides[config_key] = config_override_value
+        else:
+            raise ValueError(f"config value {config_key} cannot be attributed to a config")
+    with openeo_driver.testing.config_overrides(**openeo_driver_overrides):
+        with openeogeotrellis.testing.gps_config_overrides(**geopyspark_driver_overrides, **openeo_driver_overrides):
+            yield get_backend_config()
+
+
+@pytest.fixture
+def backend_implementation(batch_job_output_root, job_registry, set_config_overrides) -> "GeoPySparkBackendImplementation":
     from openeogeotrellis.backend import GeoPySparkBackendImplementation
 
     backend = GeoPySparkBackendImplementation(
         batch_job_output_root=batch_job_output_root,
         elastic_job_registry=job_registry,
     )
-    return backend
+    yield backend
 
 
 @pytest.fixture
@@ -391,14 +451,40 @@ def aws_credentials(monkeypatch):
 
 @pytest.fixture(scope="function")
 def mock_s3_resource(aws_credentials):
-    with moto.mock_aws():
-        yield boto3.resource("s3", region_name=TEST_AWS_REGION_NAME)
-
+    if moto_server_address is None:
+        with moto.mock_aws():
+            yield boto3.resource("s3", region_name=TEST_AWS_REGION_NAME)
+    else:
+        yield boto3.resource("s3", region_name=TEST_AWS_REGION_NAME, endpoint_url=moto_server_address)
 
 @pytest.fixture(scope="function")
 def mock_s3_client(aws_credentials):
-    with moto.mock_aws():
-        yield boto3.client("s3", region_name=TEST_AWS_REGION_NAME)
+    if moto_server_address is None:
+        with moto.mock_aws():
+            yield boto3.client("s3", region_name=TEST_AWS_REGION_NAME)
+    else:
+        yield boto3.client("s3", region_name=TEST_AWS_REGION_NAME, endpoint_url=moto_server_address)
+
+@pytest.fixture(scope="function")
+def mock_sts_client(monkeypatch):
+    # Because moto does not support custom endpoints for sts we need to monkeypatch
+    if moto_server_address is None:
+        with moto.mock_aws():
+            sts_client = boto3.client("sts")
+
+            def getter(*_, **_2):
+                return sts_client
+
+            monkeypatch.setattr(_STSClient, "get", getter)
+            yield sts_client
+    else:
+        sts_client = boto3.client("sts", endpoint_url=moto_server_address)
+
+        def getter(*args, **kwargs):
+            return sts_client
+
+        monkeypatch.setattr(_STSClient, "get", getter)
+        yield sts_client
 
 
 @pytest.fixture(scope="function")
@@ -414,8 +500,11 @@ def mock_s3_bucket(mock_s3_resource, monkeypatch):
         yield bucket
 
 
-@pytest.fixture
-def moto_server(monkeypatch) -> str:
+moto_server_address: Optional[str] = None
+
+
+@pytest.fixture(scope="function")
+def moto_server(monkeypatch) -> typing.Generator[str, None, None]:
     """
     Fixture to run Moto in server mode,
     so that subprocesses also can access mocked services
@@ -426,10 +515,28 @@ def moto_server(monkeypatch) -> str:
         port=0,
     )
     server.start()
+    global moto_server_address
+    old_moto_server_address = moto_server_address
     endpoint_url = f"http://{server._server.server_address[0]}:{server._server.server_port}"
     monkeypatch.setenv("SWIFT_URL", endpoint_url)
+    moto_server_address = endpoint_url.replace("0.0.0.0", "127.0.0.1")
     yield endpoint_url
+    # moto_server cleanup is not reliable if in single process
+    _destroy_all_s3_resources(moto_server_address)
+    moto_server_address = old_moto_server_address
     server.stop()
+
+
+def _destroy_all_s3_resources(endpoint):
+    assert "http://127.0.0.1:" in endpoint, "We are not going S3 resource not on localhost"
+    c = boto3.client("s3", region_name=TEST_AWS_REGION_NAME, endpoint_url=endpoint)
+    try:
+        for bucket in c.list_buckets()["Buckets"]:
+            b = boto3.resource("s3", region_name=TEST_AWS_REGION_NAME, endpoint_url=endpoint).Bucket(bucket["Name"])
+            b.objects.all().delete()
+            b.delete()
+    except KeyError:
+        print("Nothing to cleanup")
 
 
 @pytest.fixture
@@ -482,3 +589,59 @@ def unload_dummy_packages():
         if package in sys.modules:
             del sys.modules[package]
     importlib.invalidate_caches()
+
+
+@pytest.fixture
+def sts_endpoint_on_driver(monkeypatch) -> typing.Generator[str, None, None]:
+    """Make sure the driver is configured for using proxy STS endpoint"""
+    sts_endpoint = "https://sts.oeo.net"
+    monkeypatch.setenv(AWSConfig.S3PROXY_STS_ENDPOINT_URL, sts_endpoint)
+    yield sts_endpoint
+
+
+@pytest.fixture
+def idp_enabled() -> bool:
+    """By default we do not have IDP config available"""
+    return False
+
+
+def create_test_idp_config() -> typing.Dict[str, str]:
+    private_key = rsa.generate_private_key(
+        public_exponent=65537,
+        key_size=2048
+    )
+
+    pem_private_key = private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.TraditionalOpenSSL,
+        encryption_algorithm=serialization.NoEncryption()
+    )
+
+    pem_public_key = private_key.public_key().public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.PKCS1
+    )
+
+    return {
+        "issuer": "ipd.oeo.net",
+        "private_key": pem_private_key.decode("utf-8"),
+        "public_key": pem_public_key.decode("utf-8")
+    }
+
+
+@pytest.fixture
+def idp_config_file(idp_enabled, tmp_path) -> typing.Generator[Optional[Path], None, None]:
+    """
+    This fixture is called automatically and if idp_enabled is set to true then it will create a IDP config file
+    and make sure the backend_config finds the config file.
+    """
+    if not idp_enabled:
+        # The default does not have config anyway
+        IDPTokenIssuer.instance()._hard_reset()
+        yield None
+    else:
+        idp_file = tmp_path / "idp_details.json"
+        with open(idp_file, "w") as outf:
+            outf.write(json.dumps(create_test_idp_config()))
+        IDPTokenIssuer.instance()._hard_reset()
+        yield idp_file
