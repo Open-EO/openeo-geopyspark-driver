@@ -2016,11 +2016,14 @@ class GeopysparkDataCube(DriverDataCube):
                         compression = get_jvm().geotrellis.raster.io.geotiff.compression.DeflateCompression(
                             zlevel)
 
-                        band_indices_per_file = None
                         if tile_grid:
-                            timestamped_paths = (get_jvm()
-                                .org.openeo.geotrellis.geotiff.package.saveStitchedTileGridTemporal(
-                                max_level_rdd, save_directory, tile_grid, compression, filename_prefix))
+                            java_items = get_jvm().org.openeo.geotrellis.geotiff.package.saveStitchedTileGridTemporal(
+                                max_level_rdd,
+                                save_directory,
+                                tile_grid,
+                                compression,
+                                filename_prefix,
+                            )
                         elif sample_by_feature:
                             if separate_asset_per_band:
                                 raise OpenEOApiException(
@@ -2033,11 +2036,11 @@ class GeopysparkDataCube(DriverDataCube):
                                 geometries = GeometryCollection(geometries.geoms)
                             projected_polygons = to_projected_polygons(get_jvm(), geometries)
                             labels = self.get_labels(geometries,feature_id_property)
-                            timestamped_paths = get_jvm().org.openeo.geotrellis.geotiff.package.saveSamples(
+                            java_items = get_jvm().org.openeo.geotrellis.geotiff.package.saveSamples(
                                 max_level_rdd, save_directory, projected_polygons, labels, compression,
                                 filename_prefix)
                         else:
-                            timestamped_paths = (
+                            java_items = (
                                 get_jvm().org.openeo.geotrellis.geotiff.package.saveRDDTemporalAllowAssetPerBand(
                                     max_level_rdd,
                                     save_directory,
@@ -2046,30 +2049,46 @@ class GeopysparkDataCube(DriverDataCube):
                                     gtiff_options,
                                 )
                             )
-                            band_indices_per_file = [tup._4() for tup in timestamped_paths]
 
-                        assets = {}
+                        # TODO: introduce feature flag
+                        items = {}
 
-                        # noinspection PyProtectedMember
-                        # TODO: contains a bbox so rename
-                        timestamped_paths = [(timestamped_path._1(), timestamped_path._2(), timestamped_path._3())
-                                             for timestamped_path in timestamped_paths]
-                        for index, (path, timestamp, bbox) in enumerate(timestamped_paths):
-                            assets[str(pathlib.Path(path).name)] = {
-                                "href": str(path),
-                                "type": "image/tiff; application=geotiff",
-                                "roles": ["data"],
-                                "bands": (
-                                    [band for i, band in enumerate(bands) if i in band_indices_per_file[index]]
-                                    if band_indices_per_file
-                                    else bands
-                                ),
-                                "nodata": nodata,
-                                "datetime": timestamp,
-                                "bbox": to_latlng_bbox(bbox),
+                        for java_item in java_items:
+                            assets = {}
+
+                            stac_datetime = java_item.datetime()
+                            bbox = java_item.bbox()
+
+                            for asset_key, asset in java_item.assets().items():
+                                path = asset.path()
+                                band_indices = asset.bandIndices()
+                                assets[asset_key] = {
+                                    "href": str(path),
+                                    "type": "image/tiff; application=geotiff",
+                                    "roles": ["data"],
+                                    "bands": (
+                                        [band for i, band in enumerate(bands) if i in band_indices]
+                                        if band_indices
+                                        else bands
+                                    ),
+                                    "nodata": nodata,
+                                    "datetime": stac_datetime,
+                                    "bbox": to_latlng_bbox(bbox),
+                                    "geometry": mapping(Polygon.from_bounds(*to_latlng_bbox(bbox))),
+                                }
+                            assets = add_gdalinfo_objects(assets)
+
+                            item = {
+                                "id": java_item.id(),
+                                "properties": {"datetime": stac_datetime},
                                 "geometry": mapping(Polygon.from_bounds(*to_latlng_bbox(bbox))),
+                                "bbox": to_latlng_bbox(bbox),
+                                "assets": assets,
                             }
-                        return add_gdalinfo_objects(assets)
+
+                            items[java_item.id()] = item
+
+                        return items  # TODO: retain backwards compatibility
                     else:
                         if tile_grid:
                             tiles = self._save_stitched_tile_grid(max_level, str(save_filename), tile_grid, crop_bounds,
