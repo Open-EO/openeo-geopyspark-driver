@@ -2016,11 +2016,14 @@ class GeopysparkDataCube(DriverDataCube):
                         compression = get_jvm().geotrellis.raster.io.geotiff.compression.DeflateCompression(
                             zlevel)
 
-                        band_indices_per_file = None
                         if tile_grid:
-                            timestamped_paths = (get_jvm()
-                                .org.openeo.geotrellis.geotiff.package.saveStitchedTileGridTemporal(
-                                max_level_rdd, save_directory, tile_grid, compression, filename_prefix))
+                            java_items = get_jvm().org.openeo.geotrellis.geotiff.package.saveStitchedTileGridTemporal(
+                                max_level_rdd,
+                                save_directory,
+                                tile_grid,
+                                compression,
+                                filename_prefix,
+                            )
                         elif sample_by_feature:
                             if separate_asset_per_band:
                                 raise OpenEOApiException(
@@ -2033,7 +2036,7 @@ class GeopysparkDataCube(DriverDataCube):
                                 geometries = GeometryCollection(geometries.geoms)
                             projected_polygons = to_projected_polygons(get_jvm(), geometries)
                             labels = self.get_labels(geometries,feature_id_property)
-                            timestamped_paths = get_jvm().org.openeo.geotrellis.geotiff.package.saveSamples(
+                            java_items = get_jvm().org.openeo.geotrellis.geotiff.package.saveSamples(
                                 max_level_rdd, save_directory, projected_polygons, labels, compression,
                                 filename_prefix)
                         else:

@@ -271,6 +271,7 @@ def run_job(
     access_token: str = None,
 ):
     result_metadata = {}
+    items = []
 
     try:
         # We actually expect type Path, but in reality paths as strings tend to
@@ -368,7 +369,6 @@ def run_job(
         )
         # perform a first metadata write _before_ actually computing the result. This provides a bit more info, even if the job fails.
         write_metadata({**result_metadata, **_get_tracker_metadata("")}, metadata_file)
-        items = {}
 
         for result in results:
             result.options["batch_mode"] = True
