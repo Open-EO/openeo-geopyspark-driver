@@ -2203,40 +2203,38 @@ class GpsBatchJobs(backend.BatchJobs):
                 batch_job_config_dir=get_backend_config().batch_job_config_dir
             )
 
-            if get_backend_config().provide_s3_profiles_and_tokens:
-                # For now we cannot access the subject of the initial access token but generally it is the user_id
-                token_path = get_backend_config().batch_job_config_dir / "token"
-                s3_profiles_cfg_batch_secret = k8s_render_manifest_template(
-                    "batch_job_cfg_secret.yaml.j2",
-                    secret_name=batch_job_cfg_secret_name,
-                    job_id=job_id,
-                    token=IDP_TOKEN_ISSUER.get_job_token(sub_id=user_id, user_id=user_id, job_id=job_id),
-                    profile_file_content=S3Config.from_backend_config(job_id, str(token_path))
-                )
-
-            if get_backend_config().fuse_mount_batchjob_s3_bucket:
-                persistentvolume_batch_job_results_dict = k8s_render_manifest_template(
-                    "persistentvolume_batch_job_results.yaml.j2",
-                    job_name=spark_app_id,
-                    job_namespace=pod_namespace,
-                    mounter=get_backend_config().fuse_mount_batchjob_s3_mounter,
-                    mount_options=get_backend_config().fuse_mount_batchjob_s3_mount_options,
-                    storage_class=get_backend_config().fuse_mount_batchjob_s3_storage_class,
-                    output_dir=output_dir,
-                    swift_bucket=bucket,
-                )
-
-                persistentvolumeclaim_batch_job_results_dict = k8s_render_manifest_template(
-                    "persistentvolumeclaim_batch_job_results.yaml.j2",
-                    job_name=spark_app_id,
-                )
-
             with self._double_job_registry as dbl_registry:
                 try:
                     if get_backend_config().fuse_mount_batchjob_s3_bucket:
+                        persistentvolume_batch_job_results_dict = k8s_render_manifest_template(
+                            "persistentvolume_batch_job_results.yaml.j2",
+                            job_name=spark_app_id,
+                            job_namespace=pod_namespace,
+                            mounter=get_backend_config().fuse_mount_batchjob_s3_mounter,
+                            mount_options=get_backend_config().fuse_mount_batchjob_s3_mount_options,
+                            storage_class=get_backend_config().fuse_mount_batchjob_s3_storage_class,
+                            output_dir=output_dir,
+                            swift_bucket=bucket,
+                        )
+
+                        persistentvolumeclaim_batch_job_results_dict = k8s_render_manifest_template(
+                            "persistentvolumeclaim_batch_job_results.yaml.j2",
+                            job_name=spark_app_id,
+                        )
+
                         api_instance_core.create_persistent_volume(persistentvolume_batch_job_results_dict, pretty=True)
                         api_instance_core.create_namespaced_persistent_volume_claim(pod_namespace, persistentvolumeclaim_batch_job_results_dict, pretty=True)
                     if get_backend_config().provide_s3_profiles_and_tokens:
+                        # For now we cannot access the subject of the initial access token but generally it is the user_id
+                        token_path = get_backend_config().batch_job_config_dir / "token"
+                        s3_profiles_cfg_batch_secret = k8s_render_manifest_template(
+                            "batch_job_cfg_secret.yaml.j2",
+                            secret_name=batch_job_cfg_secret_name,
+                            job_id=job_id,
+                            token=IDP_TOKEN_ISSUER.get_job_token(sub_id=user_id, user_id=user_id, job_id=job_id),
+                            profile_file_content=S3Config.from_backend_config(job_id, str(token_path)),
+                        )
+
                         api_instance_core.create_namespaced_secret(
                             pod_namespace, s3_profiles_cfg_batch_secret, pretty=True
                         )
