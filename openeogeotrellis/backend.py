@@ -2237,27 +2237,41 @@ class GpsBatchJobs(backend.BatchJobs):
                         api_instance_core.create_persistent_volume(persistentvolume_batch_job_results_dict, pretty=True)
                         api_instance_core.create_namespaced_persistent_volume_claim(pod_namespace, persistentvolumeclaim_batch_job_results_dict, pretty=True)
                     if get_backend_config().provide_s3_profiles_and_tokens:
-                        api_instance_core.create_namespaced_secret(pod_namespace, s3_profiles_cfg_batch_secret, pretty=True)
-                    submit_response_sparkapplication = api_instance_custom_object.create_namespaced_custom_object("sparkoperator.k8s.io", "v1beta2", pod_namespace, "sparkapplications", sparkapplication_dict, pretty=True)
+                        api_instance_core.create_namespaced_secret(
+                            pod_namespace, s3_profiles_cfg_batch_secret, pretty=True
+                        )
+                    api_instance_custom_object.create_namespaced_custom_object(
+                        "sparkoperator.k8s.io",
+                        "v1beta2",
+                        pod_namespace,
+                        "sparkapplications",
+                        sparkapplication_dict,
+                        pretty=True,
+                    )
                     log.info(f"mapped job_id {job_id} to application ID {spark_app_id}")
                     dbl_registry.set_application_id(job_id, user_id, spark_app_id)
                     status_response = {}
-                    retry=0
-                    while('status' not in status_response and retry<10):
-                        retry+=1
+                    retry = 0
+                    while "status" not in status_response and retry < 10:
+                        retry += 1
                         time.sleep(10)
                         try:
-                            status_response = api_instance_custom_object.get_namespaced_custom_object("sparkoperator.k8s.io", "v1beta2", pod_namespace, "sparkapplications",
-                                                                                        spark_app_id)
-                        except ApiException as e:
-                            log.info("Exception when calling CustomObjectsApi->list_custom_object: %s\n" % e)
+                            status_response = api_instance_custom_object.get_namespaced_custom_object(
+                                "sparkoperator.k8s.io", "v1beta2", pod_namespace, "sparkapplications", spark_app_id
+                            )
+                        except ApiException:
+                            log.warning(
+                                f"failed to fetch status of Spark application at {pod_namespace}:{spark_app_id}",
+                                exc_info=True,
+                            )
 
-                    if('status' not in status_response):
-                        log.warning(f"invalid status response: {status_response}, assuming it is queued.")
+                    if "status" not in status_response:
+                        log.warning(
+                            f"invalid status response of Spark application at {pod_namespace}:{spark_app_id}: {status_response}, assuming it is queued."
+                        )
                         dbl_registry.set_status(job_id, user_id, JOB_STATUS.QUEUED)
-
                 except ApiException as e:
-                    log.error("Exception when calling CustomObjectsApi->list_custom_object: %s\n" % e)
+                    log.error("failed to submit Spark application", exc_info=True)
                     if "AlreadyExists" in e.body:
                         raise OpenEOApiException(message=f"Your job {job_id} was already started.",status_code=400)
                     dbl_registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
