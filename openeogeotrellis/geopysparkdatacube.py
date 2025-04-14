@@ -2108,7 +2108,7 @@ class GeopysparkDataCube(DriverDataCube):
                                 }
                             )
                         else:
-                            paths_tuples = get_jvm().org.openeo.geotrellis.geotiff.package.saveRDDAllowAssetPerBand(
+                            java_items = get_jvm().org.openeo.geotrellis.geotiff.package.saveRDDAllowAssetPerBand(
                                 max_level_rdd,
                                 band_count,
                                 str(save_filename),
@@ -2117,21 +2117,40 @@ class GeopysparkDataCube(DriverDataCube):
                                 gtiff_options,
                             )
 
-                            assets = {}
-                            for path, bbox, band_indices in map(to_tuple, paths_tuples):
-                                file_name = str(pathlib.Path(path).relative_to(save_directory))
-                                assets[file_name] = {
-                                    "href": str(path),
-                                    "type": "image/tiff; application=geotiff",
-                                    "roles": ["data"],
-                                    "bands": [band for i, band in enumerate(bands) if i in band_indices],
-                                    "nodata": nodata,
-                                }
-                                if bbox:
-                                    assets[file_name]["bbox"] = to_latlng_bbox(bbox)
-                                    assets[file_name]["geometry"] = mapping(Polygon.from_bounds(*to_latlng_bbox(bbox)))
+                            items = {}
+                            for java_item in java_items:
+                                assets = {}
 
-                            return add_gdalinfo_objects(assets)
+                                bbox = java_item.bbox()
+
+                                for asset_key, asset in java_item.assets().items():
+                                    path = asset.path()
+                                    band_indices = asset.bandIndices()
+
+                                    assets[asset_key] = {
+                                        "href": str(path),
+                                        "type": "image/tiff; application=geotiff",
+                                        "roles": ["data"],
+                                        "bands": [band for i, band in enumerate(bands) if i in band_indices],
+                                        "nodata": nodata,
+                                    }
+                                    if bbox:
+                                        assets[asset_key]["bbox"] = to_latlng_bbox(bbox)
+                                        assets[asset_key]["geometry"] = mapping(
+                                            Polygon.from_bounds(*to_latlng_bbox(bbox))
+                                        )
+
+                                assets = add_gdalinfo_objects(assets)
+                                item = {
+                                    "id": java_item.id(),
+                                    "geometry": mapping(Polygon.from_bounds(*to_latlng_bbox(bbox))),
+                                    "bbox": to_latlng_bbox(bbox),
+                                    "assets": assets,
+                                }
+
+                                items[java_item.id()] = item
+
+                            return items
 
             else:
                 if not save_filename.endswith(".png"):
