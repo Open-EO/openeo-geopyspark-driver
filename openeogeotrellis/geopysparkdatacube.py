@@ -1919,22 +1919,43 @@ class GeopysparkDataCube(DriverDataCube):
                 elif stitch:
                     if tile_grid:
                         _log.info("save_result save_stitched_tile_grid")
-                        tiles = self._save_stitched_tile_grid(max_level, save_filename, tile_grid, crop_bounds,
-                                                              zlevel=zlevel, filename_prefix=filename_prefix)
+                        java_items = self._save_stitched_tile_grid(
+                            max_level,
+                            save_filename,
+                            tile_grid,
+                            crop_bounds,
+                            zlevel=zlevel,
+                            filename_prefix=filename_prefix,
+                        )
 
-                        # noinspection PyProtectedMember
-                        return add_gdalinfo_objects(
-                            {
-                                str(pathlib.Path(tile._1()).name): {
-                                    "href": tile._1(),
-                                    "bbox": to_latlng_bbox(tile._2()),
-                                    "geometry": mapping(Polygon.from_bounds(*to_latlng_bbox(tile._2()))),
+                        items = {}
+
+                        for java_item in java_items:
+                            bbox = java_item.bbox()
+                            assets = {}
+
+                            for asset_key, asset in java_item.assets().items():
+                                assets[asset_key] = {
+                                    "href": asset.path(),
+                                    "bbox": to_latlng_bbox(bbox),
+                                    "geometry": mapping(Polygon.from_bounds(*to_latlng_bbox(bbox))),
                                     "type": "image/tiff; application=geotiff",
                                     "roles": ["data"],
                                 }
-                                for tile in tiles
+
+                            assets = add_gdalinfo_objects(assets)
+
+                            item = {
+                                "id": java_item.id(),
+                                "properties": {"datetime": java_item.datetime()},
+                                "geometry": mapping(Polygon.from_bounds(*to_latlng_bbox(bbox))),
+                                "bbox": to_latlng_bbox(bbox),
+                                "assets": assets,
                             }
-                        )
+
+                            items[java_item.id()] = item
+
+                        return items
                     else:
                         _log.info("save_result save_stitched")
                         java_item = self._save_stitched(max_level, save_filename, crop_bounds, zlevel=zlevel)
