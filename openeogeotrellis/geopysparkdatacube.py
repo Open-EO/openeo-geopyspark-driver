@@ -1937,18 +1937,31 @@ class GeopysparkDataCube(DriverDataCube):
                         )
                     else:
                         _log.info("save_result save_stitched")
-                        bbox = self._save_stitched(max_level, save_filename, crop_bounds, zlevel=zlevel)
-                        return add_gdalinfo_objects(
-                            {
-                                str(pathlib.Path(filename).name): {
-                                    "href": save_filename,
-                                    "bbox": to_latlng_bbox(bbox),
-                                    "geometry": mapping(Polygon.from_bounds(*to_latlng_bbox(bbox))),
-                                    "type": "image/tiff; application=geotiff",
-                                    "roles": ["data"],
-                                }
+                        java_item = self._save_stitched(max_level, save_filename, crop_bounds, zlevel=zlevel)
+
+                        bbox = java_item.bbox()
+                        assets = {}
+
+                        for asset_key, asset in java_item.assets().items():
+                            assets[asset_key] = {
+                                "href": save_filename,
+                                "bbox": to_latlng_bbox(bbox),
+                                "geometry": mapping(Polygon.from_bounds(*to_latlng_bbox(bbox))),
+                                "type": "image/tiff; application=geotiff",
+                                "roles": ["data"],
                             }
-                        )
+
+                        assets = add_gdalinfo_objects(assets)
+
+                        item = {
+                            "id": java_item.id(),
+                            "properties": {"datetime": java_item.datetime()},
+                            "geometry": mapping(Polygon.from_bounds(*to_latlng_bbox(bbox))),
+                            "bbox": to_latlng_bbox(bbox),
+                            "assets": assets,
+                        }
+
+                        return {java_item.id(): item}
                 else:
                     _log.info("save_result: saveRDD")
                     gtiff_options = get_jvm().org.openeo.geotrellis.geotiff.GTiffOptions()
