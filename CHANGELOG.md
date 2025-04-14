@@ -27,6 +27,7 @@ without compromising stable operations.
 - `export_workspace`: add `"derived_from"` links to STAC Collection ([#1050](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1050))
 - Calrissian integration: avoid unnecessary pulls of `alpine` image ([#1132]https://github.com/Open-EO/openeo-geopyspark-driver/issues/1132)
 - Calrissian integration: refactor config to a `CalrissianConfig` sub-config ([#1009](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1009))
+- `save_result`: allow non-string values in `GTiff` `file_metadata` ([#1142](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1142))
 
 
 ## 0.64.1

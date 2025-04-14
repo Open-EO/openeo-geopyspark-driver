@@ -509,6 +509,10 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                             "description": "Overrides tile size; typically a multiple of 16.",
                             "default": None,
                         },
+                        "file_metadata": {
+                            "type": ["object"],
+                            "description": "Sets file-level GDAL metadata (key-value).",
+                        },
                     },
                 },
                 "PNG": {
