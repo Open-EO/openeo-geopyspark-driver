@@ -893,9 +893,6 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
         if self.elastic_job_registry:
             self.elastic_job_registry.delete_job(job_id=job_id, user_id=user_id)
 
-    # Legacy alias
-    delete = delete_job
-
     def set_dependencies(
         self, job_id: str, user_id: str, dependencies: List[Dict[str, str]]
     ):
