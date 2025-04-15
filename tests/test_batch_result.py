@@ -3026,7 +3026,7 @@ def test_unified_asset_keys_spatial_geotiff(
     # single item ID can be anything (no spatial or temporal references)
 
     # at job-level rather than on Item
-    assert items[0]["properties"].get("datetime") is None
+    assert items[0].get("properties", {}).get("datetime") is None
     assert job_metadata["start_datetime"] == "2025-04-01T00:00:00Z"
     assert job_metadata["end_datetime"] == "2025-04-21T00:00:00Z"
 
@@ -3092,7 +3092,7 @@ def test_unified_asset_keys_stitch_geotiff(tmp_path):
     # single item ID can be anything (no spatial or temporal references)
 
     # at job-level rather than on Item
-    assert items[0]["properties"].get("datetime") is None
+    assert items[0].get("properties", {}).get("datetime") is None
     assert job_metadata["start_datetime"] == "2025-04-01T00:00:00Z"
     assert job_metadata["end_datetime"] == "2025-04-21T00:00:00Z"
 
@@ -3165,7 +3165,7 @@ def test_unified_asset_keys_stitch_tile_grid(tmp_path):
     assert len({item["id"] for item in items}) == 2
 
     # at job-level rather than on Item
-    assert {item["properties"].get("datetime") for item in items} == {None}
+    assert {item.get("properties", {}).get("datetime") for item in items} == {None}
     assert job_metadata["start_datetime"] == "2025-04-01T00:00:00Z"
     assert job_metadata["end_datetime"] == "2025-04-21T00:00:00Z"
 
@@ -3235,7 +3235,7 @@ def test_unified_asset_keys_catalog(tmp_path):
     item = items[0]
 
     # at job-level rather than on Item
-    assert item["properties"].get("datetime") == None
+    assert item.get("properties", {}).get("datetime") == None
     assert job_metadata["start_datetime"] == "2025-04-01T00:00:00Z"
     assert job_metadata["end_datetime"] == "2025-04-21T00:00:00Z"
 
