@@ -682,13 +682,6 @@ class InMemoryJobRegistry(JobRegistryInterface):
     def set_application_id(self, job_id: str, application_id: str) -> JobDict:
         return self._update(job_id=job_id, application_id=application_id)
 
-    def set_usage(self, job_id: str, costs: float, usage: dict) -> JobDict:
-        input_pixel = 0
-        if "input_pixel" in usage and isinstance(usage["input_pixel"], dict) and "value" in usage["input_pixel"] and (
-                isinstance(input_pixel, int) or isinstance(input_pixel, float)):
-            input_pixel = usage["input_pixel"]["value"]
-        return self._update(job_id=job_id, costs=costs, usage=usage, input_pixel=input_pixel)
-
     def set_results_metadata(self, job_id: str, costs: Optional[float], usage: dict,
                              results_metadata: Dict[str, Any]) -> JobDict:
         return self._update(job_id=job_id, costs=costs, usage=usage, results_metadata=results_metadata)
