@@ -1749,7 +1749,8 @@ class GeopysparkDataCube(DriverDataCube):
     @callsite
     def save_result(self, filename: Union[str, pathlib.Path], format: str, format_options: dict = None) -> str:
         result = self.write_assets(filename, format, format_options)
-        return result.popitem()[1]['href']
+        assets = [asset for item in result.values() for asset in item["assets"].values()]
+        return assets[0]["href"]
 
     def write_assets(self, filename: Union[str, pathlib.Path], format: str, format_options: dict = None) -> Dict:
         """
