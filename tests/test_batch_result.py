@@ -2757,6 +2757,93 @@ def test_unified_asset_keys_tile_grid(tmp_path):
         assert set(item["assets"].keys()) == {"openEO"}
 
 
+def test_unified_asset_keys_tile_grid_spatial(tmp_path):
+    process_graph = {
+        "load2": {
+            "process_id": "load_collection",
+            "arguments": {
+                "bands": [
+                    "Flat:0",
+                    "Flat:1",
+                    "Flat:2",
+                ],
+                "id": "TestCollection-LonLat16x16",
+                "spatial_extent": {
+                    "west": 0,
+                    "south": 50,
+                    "east": 2,
+                    "north": 51,
+                },
+                "temporal_extent": ["2025-04-01", "2025-04-21"],
+            },
+        },
+        "reducedimension1": {
+            "process_id": "reduce_dimension",
+            "arguments": {
+                "data": {"from_node": "load2"},
+                "dimension": "t",
+                "reducer": {
+                    "process_graph": {
+                        "first1": {
+                            "process_id": "first",
+                            "arguments": {"data": {"from_parameter": "data"}},
+                            "result": True,
+                        }
+                    }
+                },
+            },
+        },
+        "save1": {
+            "process_id": "save_result",
+            "arguments": {
+                "data": {"from_node": "reducedimension1"},
+                "format": "GTIFF",
+                "options": {"tile_grid": "wgs84-1degree"},
+            },
+            "result": True,
+        },
+    }
+
+    process = {
+        "process_graph": process_graph,
+    }
+
+    job_dir = tmp_path
+    metadata_file = job_dir / "job_metadata.json"
+
+    run_job(
+        process,
+        output_file=job_dir / "out",
+        metadata_file=metadata_file,
+        api_version="2.0.0",
+        job_dir=job_dir,
+        dependencies=[],
+    )
+
+    tiff_files = {file for file in os.listdir(job_dir) if file.endswith(".tiff")}
+    assert tiff_files == {
+        "openEO-N50E000.tiff",
+        "openEO-N50E001.tiff",
+    }
+
+    with open(metadata_file) as f:
+        job_metadata = json.load(f)
+
+    items = job_metadata["items"]
+    print(f"items={json.dumps(items, indent=2)}")
+
+    assert len(items) == 2
+    assert len({item["id"] for item in items}) == 2
+
+    # at job-level rather than on Item
+    assert {item.get("properties", {}).get("datetime") for item in items} == {None}
+    assert job_metadata["start_datetime"] == "2025-04-01T00:00:00Z"
+    assert job_metadata["end_datetime"] == "2025-04-21T00:00:00Z"
+
+    for item in items:
+        assert set(item["assets"].keys()) == {"openEO"}
+
+
 def test_unified_asset_keys_sample_by_feature(tmp_path):
     process_graph = {
         "load2": {

@@ -2126,21 +2126,13 @@ class GeopysparkDataCube(DriverDataCube):
                         return items  # TODO: retain backwards compatibility
                     else:
                         if tile_grid:
-                            tiles = self._save_stitched_tile_grid(max_level, str(save_filename), tile_grid, crop_bounds,
-                                                                  zlevel=zlevel, filename_prefix=filename_prefix)
-
-                            # noinspection PyProtectedMember
-                            return add_gdalinfo_objects(
-                                {
-                                    str(pathlib.Path(tile._1()).name): {
-                                        "href": tile._1(),
-                                        "bbox": to_latlng_bbox(tile._2()),
-                                        "geometry": mapping(Polygon.from_bounds(*to_latlng_bbox(tile._2()))),
-                                        "type": "image/tiff; application=geotiff",
-                                        "roles": ["data"],
-                                    }
-                                    for tile in tiles
-                                }
+                            java_items = self._save_stitched_tile_grid(
+                                max_level,
+                                str(save_filename),
+                                tile_grid,
+                                crop_bounds,
+                                zlevel=zlevel,
+                                filename_prefix=filename_prefix,
                             )
                         else:
                             java_items = get_jvm().org.openeo.geotrellis.geotiff.package.saveRDDAllowAssetPerBand(
@@ -2152,41 +2144,41 @@ class GeopysparkDataCube(DriverDataCube):
                                 gtiff_options,
                             )
 
-                            items = {}
-                            for java_item in java_items:
-                                assets = {}
+                        items = {}
+                        for java_item in java_items:
+                            assets = {}
 
-                                bbox = java_item.bbox()
+                            bbox = java_item.bbox()
 
-                                for asset_key, asset in java_item.assets().items():
-                                    path = asset.path()
-                                    band_indices = asset.bandIndices()
+                            for asset_key, asset in java_item.assets().items():
+                                path = asset.path()
+                                band_indices = asset.bandIndices()
 
-                                    assets[asset_key] = {
-                                        "href": str(path),
-                                        "type": "image/tiff; application=geotiff",
-                                        "roles": ["data"],
-                                        "bands": [band for i, band in enumerate(bands) if i in band_indices],
-                                        "nodata": nodata,
-                                    }
-                                    if bbox:
-                                        assets[asset_key]["bbox"] = to_latlng_bbox(bbox)
-                                        assets[asset_key]["geometry"] = mapping(
-                                            Polygon.from_bounds(*to_latlng_bbox(bbox))
-                                        )
-
-                                assets = add_gdalinfo_objects(assets)
-                                item = {
-                                    "id": java_item.id(),
-                                    "geometry": mapping(Polygon.from_bounds(*to_latlng_bbox(bbox))),
-                                    "bbox": to_latlng_bbox(bbox),
-                                    "assets": assets,
+                                assets[asset_key] = {
+                                    "href": str(path),
+                                    "type": "image/tiff; application=geotiff",
+                                    "roles": ["data"],
+                                    "nodata": nodata,
                                 }
+                                if band_indices is not None:
+                                    assets[asset_key]["bands"] = [
+                                        band for i, band in enumerate(bands) if i in band_indices
+                                    ],
+                                if bbox:
+                                    assets[asset_key]["bbox"] = to_latlng_bbox(bbox)
+                                    assets[asset_key]["geometry"] = mapping(Polygon.from_bounds(*to_latlng_bbox(bbox)))
 
-                                items[java_item.id()] = item
+                            assets = add_gdalinfo_objects(assets)
+                            item = {
+                                "id": java_item.id(),
+                                "geometry": mapping(Polygon.from_bounds(*to_latlng_bbox(bbox))),
+                                "bbox": to_latlng_bbox(bbox),
+                                "assets": assets,
+                            }
 
-                            return items
+                            items[java_item.id()] = item
 
+                        return items
             else:
                 if not save_filename.endswith(".png"):
                     save_filename = save_filename + ".png"
