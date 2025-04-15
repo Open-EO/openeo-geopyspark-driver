@@ -74,6 +74,18 @@ def test_apply_dimension_invalid_dimension(imagecollection_with_two_bands_and_th
         )
 
 
+def test_add_dimension_spatial(imagecollection_with_two_bands_spatial_only):
+    cube = imagecollection_with_two_bands_spatial_only
+    assert cube.metadata.has_temporal_dimension()==False
+    result = cube.add_dimension("t","2011-12-03T10:00:00Z","temporal")
+    assert cube.metadata.spatial_dimensions == result.metadata.spatial_dimensions
+    assert result.metadata.has_temporal_dimension()
+    assert result.metadata.temporal_dimension.name=="t"
+    assert len(result.metadata.temporal_dimension.extent) == 2
+    assert result.metadata.temporal_dimension.extent[0]=="2011-12-03T10:00:00Z"
+    assert result.metadata.temporal_dimension.extent[1] == "2011-12-03T10:00:00Z"
+
+
 true = True
 
 #

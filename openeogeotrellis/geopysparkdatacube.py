@@ -365,16 +365,13 @@ class GeopysparkDataCube(DriverDataCube):
         cube = self
         if type== "temporal":
             if cube.metadata.has_temporal_dimension():
-                raise OpenEOApiException(status_code=400, code="DimensionAlreadyExist", message=
-                """Temporal dimension can only be added if temporal dimension does not exist""")
-            jvm = get_jvm()
-            label_as_zoneddatetime = jvm.java.time.ZonedDateTime.apply()
-            temporal_key = jvm.geotrellis.layer.TemporalKey.apply(label_as_zoneddatetime)
-
-            def to_temporal_layer(rdd):
-                return rdd.toTemporalLayer(temporal_key)
-
-            cube = cube._apply_to_levels_geotrellis_rdd(to_temporal_layer)
+                #TODO change to error
+                _log.warning("Temporal dimension can only be added if temporal dimension does not exist")
+            else:
+                jvm = get_jvm()
+                label_as_zoneddatetime = jvm.java.time.ZonedDateTime.parse(label)
+                temporal_key = jvm.geotrellis.layer.TemporalKey.apply(label_as_zoneddatetime)
+                cube = cube.apply_to_levels(lambda rdd: rdd.srdd.toTemporalLayer(temporal_key))
         return GeopysparkDataCube(
             pyramid=cube.pyramid,
             metadata=cube.metadata.add_dimension(name=name, label=label, type=type)
