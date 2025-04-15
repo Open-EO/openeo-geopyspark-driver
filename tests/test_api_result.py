@@ -4962,6 +4962,7 @@ def test_custom_geotiff_tags(api110, tmp_path):
                         "file_metadata": {
                             "product_tile": "29TNE",
                             "product_type": "LSF monthly median composite for band B02",
+                            "year": 2021,
                         },
                     },
                 },
@@ -4982,6 +4983,7 @@ def test_custom_geotiff_tags(api110, tmp_path):
         "PROCESSING_SOFTWARE": __version__,
         "product_tile": "29TNE",
         "product_type": "LSF monthly median composite for band B02",
+        "year": "2021",
     })
 
     band_count = raster.RasterCount

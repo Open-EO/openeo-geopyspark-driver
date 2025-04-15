@@ -1998,7 +1998,7 @@ class GeopysparkDataCube(DriverDataCube):
                     if description != "":
                         gtiff_options.addHeadTag("ImageDescription", description)
                     for file_metadata_key, file_metadata_value in file_metadata.items():
-                        gtiff_options.addHeadTag(file_metadata_key, file_metadata_value)
+                        gtiff_options.addHeadTag(file_metadata_key, str(file_metadata_value))
                     gtiff_options.setResampleMethod(overview_resample)
                     getattr(gtiff_options, "overviews_$eq")(overviews)
                     color_cmap = get_color_cmap()
