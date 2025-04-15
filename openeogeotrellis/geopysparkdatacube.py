@@ -7,6 +7,7 @@ import os
 import pathlib
 import subprocess
 import tempfile
+import uuid
 from datetime import datetime, date
 from functools import partial
 from typing import Dict, List, Union, Tuple, Iterable, Callable, Optional
@@ -2317,7 +2318,22 @@ class GeopysparkDataCube(DriverDataCube):
                 message="Format {f!r} is not supported".format(f=format),
                 code="FormatUnsupported", status_code=400
             )
-        return {str(os.path.basename(filename)): {"href": filename, "roles": ["data"]}}
+
+        item_id = str(uuid.uuid4())
+        return {
+            item_id: {
+                "id": item_id,
+                "properties": {"datetime": None},
+                "geometry": None,
+                "bbox": None,
+                "assets": {
+                    "openEO": {
+                        "href": filename,
+                        "roles": ["data"],
+                    },
+                },
+            },
+        }
 
     def get_labels(self, geometries, feature_id_property=None):
         # TODO: return more descriptive labels/ids than these autoincrement strings (when possible)?

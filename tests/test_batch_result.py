@@ -3084,3 +3084,72 @@ def test_unified_asset_keys_stitch_tile_grid(tmp_path):
 
     for item in items:
         assert set(item["assets"].keys()) == {"openEO"}
+
+
+def test_unified_asset_keys_catalog(tmp_path):
+    process_graph = {
+        "load2": {
+            "process_id": "load_collection",
+            "arguments": {
+                "bands": [
+                    "Flat:0",
+                    "Flat:1",
+                    "Flat:2",
+                ],
+                "id": "TestCollection-LonLat16x16",
+                "spatial_extent": {
+                    "west": 0,
+                    "south": 50,
+                    "east": 2,
+                    "north": 51,
+                },
+                "temporal_extent": ["2025-04-01", "2025-04-21"],
+            },
+        },
+        "save1": {
+            "process_id": "save_result",
+            "arguments": {
+                "data": {"from_node": "load2"},
+                "format": "GTIFF",
+                "options": {
+                    "parameters": {"catalog": True},
+                },
+            },
+            "result": True,
+        },
+    }
+
+    process = {
+        "process_graph": process_graph,
+    }
+
+    job_dir = tmp_path
+    metadata_file = job_dir / "job_metadata.json"
+
+    run_job(
+        process,
+        output_file=job_dir / "catalog.tiff",
+        metadata_file=metadata_file,
+        api_version="2.0.0",
+        job_dir=job_dir,
+        dependencies=[],
+    )
+
+    tiff_files = {file for file in os.listdir(job_dir) if file.endswith(".tiff")}
+    assert tiff_files == {"catalog.tiff"}
+
+    with open(metadata_file) as f:
+        job_metadata = json.load(f)
+
+    items = job_metadata["items"]
+    print(f"items={json.dumps(items, indent=2)}")
+
+    assert len(items) == 1
+    item = items[0]
+
+    # at job-level rather than on Item
+    assert item["properties"].get("datetime") == None
+    assert job_metadata["start_datetime"] == "2025-04-01T00:00:00Z"
+    assert job_metadata["end_datetime"] == "2025-04-21T00:00:00Z"
+
+    assert set(item["assets"].keys()) == {"openEO"}
