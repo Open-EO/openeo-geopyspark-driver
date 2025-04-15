@@ -2192,11 +2192,18 @@ class GeopysparkDataCube(DriverDataCube):
                     get_jvm().org.openeo.geotrellis.png.package.saveStitched(max_level.srdd.rdd(), save_filename, crop_extent, png_options)
                 else:
                     get_jvm().org.openeo.geotrellis.png.package.saveStitched(max_level.srdd.rdd(), save_filename, png_options)
+
+                item_id = str(uuid.uuid4())
                 return {
-                    str(pathlib.Path(save_filename).name): {
-                        "href": save_filename,
-                        "type": "image/png",
-                        "roles": ["data"]
+                    item_id: {
+                        "id": item_id,
+                        "assets": {
+                            "openEO": {
+                                "href": save_filename,
+                                "type": "image/png",
+                                "roles": ["data"]
+                            }
+                        }
                     }
                 }
 

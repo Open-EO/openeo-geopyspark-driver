@@ -78,7 +78,7 @@ def test_png_export(tmp_path):
     assert metadata["start_datetime"] == "2021-01-05T00:00:00Z"
     assets = metadata["assets"]
     assert len(assets) == 1
-    assert assets["out.png"]
+    assert assets["openEO"]
     for asset in assets:
         theAsset = assets[asset]
 
