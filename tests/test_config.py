@@ -1,8 +1,11 @@
+import re
 import textwrap
 from pathlib import Path
 
 import attrs
 import pytest
+
+from openeo_driver.config import ConfigException
 from openeo_driver.config.config import check_config_definition
 
 from openeogeotrellis.config import GpsBackendConfig, get_backend_config
@@ -105,6 +108,28 @@ class TestGetGpsBackendConfig:
         monkeypatch.delenv("OPENEO_BACKEND_CONFIG")
         config = get_backend_config()
         assert config.id == "gps-default"
+
+    @pytest.mark.parametrize(
+        ["strictness_mode", "expected"],
+        [
+            (None, ["Ignoring invalid config arguments: {'invalid_config_field'}"]),
+            ("warning", ["Ignoring invalid config arguments: {'invalid_config_field'}"]),
+            ("ignore", []),
+        ],
+    )
+    def test_strictness_mode_pass(self, strictness_mode, expected, monkeypatch, caplog):
+        if strictness_mode:
+            monkeypatch.setenv("OPENEO_CONFIG_STRICTNESS_MODE", strictness_mode)
+
+        config = GpsBackendConfig(invalid_config_field="ignore me please")
+
+        assert caplog.messages == expected
+
+    def test_strictness_mode_strict(self, monkeypatch, caplog):
+        monkeypatch.setenv("OPENEO_CONFIG_STRICTNESS_MODE", "strict")
+
+        with pytest.raises(ConfigException, match=re.escape("Invalid config arguments: {'invalid_config_field'}")):
+            _ = GpsBackendConfig(invalid_config_field="ignore me please")
 
 
 class TestConfigValues:
