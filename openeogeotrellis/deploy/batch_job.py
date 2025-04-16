@@ -488,7 +488,7 @@ def run_job(
 
         tracker_metadata = _get_tracker_metadata("")
         if "sar_backscatter_soft_errors" in tracker_metadata["usage"]:
-            soft_errors = tracker_metadata["usage"]["sar_backscatter_soft_errors"]
+            soft_errors = tracker_metadata["usage"]["sar_backscatter_soft_errors"]["value"]
             if soft_errors > max_soft_errors_ratio:
                 raise ValueError(
                     f"sar_backscatter: Too many soft errors ({soft_errors} > {max_soft_errors_ratio})"
