@@ -363,9 +363,19 @@ class GeopysparkDataCube(DriverDataCube):
 
     @callsite
     def add_dimension(self, name: str, label: str, type: str = None):
+        cube = self
+        if type== "temporal":
+            if cube.metadata.has_temporal_dimension():
+                #TODO change to error
+                _log.warning("Temporal dimension can only be added if temporal dimension does not exist")
+            else:
+                jvm = get_jvm()
+                label_as_zoneddatetime = jvm.java.time.ZonedDateTime.parse(label)
+                temporal_key = jvm.geotrellis.layer.TemporalKey.apply(label_as_zoneddatetime)
+                cube = cube.apply_to_levels(lambda rdd: rdd.srdd.toTemporalLayer(temporal_key))
         return GeopysparkDataCube(
-            pyramid=self.pyramid,
-            metadata=self.metadata.add_dimension(name=name, label=label, type=type)
+            pyramid=cube.pyramid,
+            metadata=cube.metadata.add_dimension(name=name, label=label, type=type)
         )
 
     @callsite
