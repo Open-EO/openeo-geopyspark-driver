@@ -486,7 +486,14 @@ def run_job(
             ml_model_metadata=ml_model_metadata,
         )
 
-        write_metadata({**result_metadata, **_get_tracker_metadata("")}, metadata_file)
+        tracker_metadata = _get_tracker_metadata("")
+        if "sar_backscatter_soft_errors" in tracker_metadata["usage"]:
+            soft_errors = tracker_metadata["usage"]["sar_backscatter_soft_errors"]
+            if soft_errors > max_soft_errors_ratio:
+                raise ValueError(
+                    f"sar_backscatter: Too many soft errors ({soft_errors} > {max_soft_errors_ratio})"
+                )
+        write_metadata({**result_metadata, **tracker_metadata}, metadata_file)
         logger.debug("Starting GDAL-based retrieval of asset metadata")
         result_metadata = _assemble_result_metadata(
             tracer=tracer,
@@ -514,7 +521,7 @@ def run_job(
                 enable_merge=job_options.get("export-workspace-enable-merge", False),
             )
     finally:
-        write_metadata({**result_metadata, **_get_tracker_metadata("")}, metadata_file)
+        write_metadata({**result_metadata, **tracker_metadata}, metadata_file)
 
 
 def write_metadata(metadata: dict, metadata_file: Path):
