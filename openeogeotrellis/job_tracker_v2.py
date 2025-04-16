@@ -511,7 +511,7 @@ class JobTracker:
             stats[f"reached final status {job_metadata.status}"] += 1
             result_metadata = self._batch_jobs.load_results_metadata(job_id, user_id)
 
-            double_job_registry.remove_dependencies(job_id, user_id)
+            double_job_registry.remove_dependencies(job_id=job_id, user_id=user_id)
 
             # there can be duplicates if batch processes are recycled
             dependency_sources = list(set(get_deletable_dependency_sources(job_info)))

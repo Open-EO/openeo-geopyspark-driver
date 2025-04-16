@@ -14,6 +14,7 @@ without compromising stable operations.
 
 ## In progress: 0.65.0
 
+- `sar_backscatter`: soft-errors can now be a fraction, allowing to tolerate a certain failure percentage provided as a number between 0 and 1. ([#443](https://github.com/Open-EO/openeo-geopyspark-driver/issues/443))
 - `save_result`: write GeoTiff assets with valid tile size; override with `tile_size` format option. ([#1083](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1083))
 - `sar_backscatter` support: automatically use backend-specific `coefficient` default even if there is no explicit `sar_backscatter` in the process graph ([Open-EO/openeo-python-driver#376](https://github.com/Open-EO/openeo-python-driver/issues/376))
 - Add `capabilities_extras` config to easily extend capabilities document ([Open-EO/openeo-python-driver#384](https://github.com/Open-EO/openeo-python-driver/issues/384))
@@ -27,8 +28,10 @@ without compromising stable operations.
 - `export_workspace`: add `"derived_from"` links to STAC Collection ([#1050](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1050))
 - Calrissian integration: avoid unnecessary pulls of `alpine` image ([#1132]https://github.com/Open-EO/openeo-geopyspark-driver/issues/1132)
 - Calrissian integration: refactor config to a `CalrissianConfig` sub-config ([#1009](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1009))
+- `save_result`: support zarr format (experimental)
 - `save_result`: allow non-string values in `GTiff` `file_metadata` ([#1142](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1142))
 - Add `udp_registry_zookeeper_client_reuse` config for `KazooClient` reuse in `ZooKeeperUserDefinedProcessRepository` ([#1037](https://github.com/Open-EO/openeo-geopyspark-driver/pull/1037))
+- `GpsBackendConfig`: be more forgiving about unknown config keys to better support use cases that involve backward/forward incompatible configurations ([Open-EO/openeo-python-driver#322](https://github.com/Open-EO/openeo-python-driver/issues/322))
 
 
 ## 0.64.1

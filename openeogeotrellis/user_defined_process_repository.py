@@ -24,6 +24,7 @@ class ZooKeeperUserDefinedProcessRepository(UserDefinedProcesses):
         self._root = root
         self._zk_client_reuse = zk_client_reuse
         self._zk_client_cache = None
+        self._log.info(f"ZooKeeperUserDefinedProcessRepository with {self._root=} {self._zk_client_reuse=}")
 
     @staticmethod
     def _serialize(spec: dict) -> bytes:
@@ -84,6 +85,7 @@ class ZooKeeperUserDefinedProcessRepository(UserDefinedProcesses):
         create_new_client = (not self._zk_client_reuse) or (self._zk_client_cache is None)
         if create_new_client:
             kz_retry = KazooRetry(max_tries=10, delay=0.5, backoff=2)
+            self._log.info(f"ZooKeeperUserDefinedProcessRepository: creating KazooClient ({self._zk_client_reuse=})")
             zk = KazooClient(
                 hosts=self._hosts,
                 connection_retry=kz_retry,

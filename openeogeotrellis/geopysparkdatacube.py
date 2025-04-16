@@ -364,9 +364,19 @@ class GeopysparkDataCube(DriverDataCube):
 
     @callsite
     def add_dimension(self, name: str, label: str, type: str = None):
+        cube = self
+        if type== "temporal":
+            if cube.metadata.has_temporal_dimension():
+                #TODO change to error
+                _log.warning("Temporal dimension can only be added if temporal dimension does not exist")
+            else:
+                jvm = get_jvm()
+                label_as_zoneddatetime = jvm.java.time.ZonedDateTime.parse(label)
+                temporal_key = jvm.geotrellis.layer.TemporalKey.apply(label_as_zoneddatetime)
+                cube = cube.apply_to_levels(lambda rdd: rdd.srdd.toTemporalLayer(temporal_key))
         return GeopysparkDataCube(
-            pyramid=self.pyramid,
-            metadata=self.metadata.add_dimension(name=name, label=label, type=type)
+            pyramid=cube.pyramid,
+            metadata=cube.metadata.add_dimension(name=name, label=label, type=type)
         )
 
     @callsite
@@ -1483,7 +1493,8 @@ class GeopysparkDataCube(DriverDataCube):
     def timeseries(self, x, y, srs="EPSG:4326") -> Dict:
         # TODO #421 drop old unsued "point timeseries" feature
         max_level = self.get_max_level()
-        transformer = pyproj.Transformer.from_crs(pyproj.crs.CRS(init=srs), max_level.layer_metadata.crs)
+        proj4_crs = pyproj.CRS.from_string(max_level.layer_metadata.crs).to_proj4()
+        transformer = pyproj.Transformer.from_crs(pyproj.crs.CRS(init=srs), proj4_crs)
         (x_layer, y_layer) = transformer.transform(x, y)
         points = [
             Point(x_layer, y_layer),
@@ -1761,6 +1772,7 @@ class GeopysparkDataCube(DriverDataCube):
         * PNG: 8-bit grayscale or RGB raster with the limitation that it only export bands at a single (random) date
         * NetCDF: raster, currently using h5NetCDF
         * JSON: the json serialization of the underlying xarray, with extra attributes such as value/coord dtypes, crs, nodata value
+        * ZARR: chunked, compressed, N-dimensional arrays (experimental)
 
         :return: STAC assets dictionary: https://github.com/radiantearth/stac-spec/blob/master/item-spec/item-spec.md#assets
         """
@@ -2324,6 +2336,19 @@ class GeopysparkDataCube(DriverDataCube):
 
             XarrayIO.to_json_file(array=result, path=filename)
 
+        elif format == "ZARR":
+            band_names = None
+            number_bands = 1
+            if self.metadata.has_band_dimension():
+                band_names = self.metadata.band_names
+                number_bands = len(band_names)
+
+            zarr_options = get_jvm().org.openeo.geotrellis.zarr.ZarrOptions()
+            zarr_options.setBands(number_bands,band_names)
+
+            self._save_zarr_executors(max_level,filename,zarr_options)
+
+
         else:
             raise OpenEOApiException(
                 message="Format {f!r} is not supported".format(f=format),
@@ -2503,14 +2528,14 @@ class GeopysparkDataCube(DriverDataCube):
             result = xr.DataArray(collection[0][1], dims=dims, coords=coords)
 
         # add some metadata
+        projCRS = pyproj.CRS.from_string(rdd.layer_metadata.crs)
         result=result.assign_attrs(dict(
             # TODO: layer_metadata is always 255, regardless of dtype, only correct inside the rdd-s
             nodata=rdd.layer_metadata.no_data_value,
             # TODO: crs seems to be recognized when saving to netcdf and loading with gdalinfo/qgis, but yet projection is incorrect https://github.com/pydata/xarray/issues/2288
-            crs=rdd.layer_metadata.crs
+            crs=projCRS.to_proj4()
         ))
 
-        projCRS = pyproj.CRS.from_proj4(rdd.layer_metadata.crs)
         # Some things we need to do to make GDAL
         # and other software recognize the CRS
         # cfr: https://github.com/pydata/xarray/issues/2288
@@ -2599,6 +2624,10 @@ class GeopysparkDataCube(DriverDataCube):
         else:
             return jvm.org.openeo.geotrellis.geotiff.package.saveStitchedTileGrid(spatial_rdd.srdd.rdd(), path,
                                                                                   tile_grid, max_compression)
+
+    def _save_zarr_executors(self,spatial_rdd, path, number_bands):
+        jvm = get_jvm()
+        jvm.org.openeo.geotrellis.zarr.zarrWriter.saveZarr(spatial_rdd,path,number_bands)
 
     @callsite
     def ndvi(self, **kwargs) -> 'GeopysparkDataCube':

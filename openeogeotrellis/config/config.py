@@ -7,6 +7,7 @@ from typing import List, Optional, Union
 
 import attrs
 from openeo_driver.config import OpenEoBackendConfig, from_env_as_list
+from openeo_driver.config.base import openeo_backend_config_class
 from openeo_driver.users import User
 from openeo_driver.users.oidc import OidcProvider
 from openeo_driver.util.auth import ClientCredentials
@@ -62,7 +63,7 @@ class EtlApiConfig(metaclass=abc.ABCMeta):
         return None
 
 
-@attrs.frozen(kw_only=True)
+@openeo_backend_config_class
 class GpsBackendConfig(OpenEoBackendConfig):
     """
     Configuration for GeoPySpark backend.
