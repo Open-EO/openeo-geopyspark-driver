@@ -336,13 +336,12 @@ def test_separate_asset_per_band(tmp_path, from_node, expected_filenames):
     with metadata_file.open() as f:
         metadata = json.load(f)
     assert metadata["start_datetime"] == "2021-06-01T00:00:00Z"
-    assets = metadata["assets"]
+    assets = [(asset_key, asset) for item in metadata["items"] for asset_key, asset in item["assets"].items()]
     # get file names as set:
-    asset_filenames = [Path(asset["href"]).name for _, asset in assets]
+    asset_filenames = {Path(asset["href"]).name for _, asset in assets}
     assert asset_filenames == expected_filenames
 
-    for asset_key in assets:
-        asset = assets[asset_key]
+    for _, asset in assets:
         assert len(asset["bands"]) == 1
         assert len(asset["raster:bands"]) == 1
         assert asset["bands"][0]["name"] == asset["raster:bands"][0]["name"]
