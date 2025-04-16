@@ -177,11 +177,9 @@ def test_ep3899_netcdf_no_bands(tmp_path):
     with metadata_file.open() as f:
         metadata = json.load(f)
     assert metadata["start_datetime"] == "2021-01-01T00:00:00Z"
-    assets = metadata["assets"]
+    assets = [asset for item in metadata["items"] for asset in item["assets"].values()]
     assert len(assets) == 1
-    for asset in assets:
-        theAsset = assets[asset]
-
+    for theAsset in assets:
         assert 'application/x-netcdf' == theAsset['type']
         href = theAsset['href']
         from osgeo.gdal import Info
@@ -194,7 +192,6 @@ def test_ep3899_netcdf_no_bands(tmp_path):
 
 @pytest.mark.parametrize("prefix", [None, "prefixTest"])
 def test_ep3874_sample_by_feature_filter_spatial_inline_geojson(prefix, tmp_path):
-    print("tmp_path: ", tmp_path)
     job_spec = {"process_graph":{
         "lc": {
             "process_id": "load_collection",
@@ -237,30 +234,32 @@ def test_ep3874_sample_by_feature_filter_spatial_inline_geojson(prefix, tmp_path
             "result": True,
         }
     }}
-    metadata_file = tmp_path / "metadata.json"
+    job_dir = tmp_path
+    metadata_file = job_dir / "metadata.json"
     run_job(
         job_spec,
-        output_file=tmp_path / "out",
+        output_file=job_dir / "out",
         metadata_file=metadata_file,
         api_version="1.0.0",
-        job_dir=ensure_dir(tmp_path / "job_dir"),
+        job_dir=job_dir,
         dependencies={},
         user_id="jenkins",
     )
     with metadata_file.open() as f:
         metadata = json.load(f)
     assert metadata["start_datetime"] == "2021-01-04T00:00:00Z"
-    assets = metadata["assets"]
+    assets = [(asset_key, asset) for item in metadata["items"] for asset_key, asset in item["assets"].items()]
     assert len(assets) == 2
+    assert assets[0][0] == assets[1][0] == "openEO"
+    asset_filenames = [Path(asset["href"]).name for _, asset in assets]
     if prefix:
-        assert assets[prefix + "_22.nc"]
-        assert assets[prefix + "_myTextId.nc"]
+        assert f"{prefix}_22.nc" in asset_filenames
+        assert f"{prefix}_myTextId.nc" in asset_filenames
     else:
-        assert assets["openEO_22.nc"]
-        assert assets["openEO_myTextId.nc"]
+        assert "openEO_22.nc" in asset_filenames
+        assert "openEO_myTextId.nc" in asset_filenames
 
-    for asset in assets:
-        theAsset = assets[asset]
+    for _, theAsset in assets:
         bands = [Band(**b) for b in theAsset["bands"]]
         assert len(bands) == 1
         da = xarray.open_dataset(theAsset['href'], engine='h5netcdf')
@@ -269,7 +268,7 @@ def test_ep3874_sample_by_feature_filter_spatial_inline_geojson(prefix, tmp_path
 
 
 @pytest.mark.parametrize(
-    ["from_node", "expected_names"],
+    ["from_node", "expected_filenames"],
     [
         (
             "loadcollection_sentinel2",
@@ -283,7 +282,7 @@ def test_ep3874_sample_by_feature_filter_spatial_inline_geojson(prefix, tmp_path
         ("reducedimension_temporal", {"openEO_TileRow.tif", "openEO_TileCol.tif"}),
     ],
 )
-def test_separate_asset_per_band(tmp_path, from_node, expected_names):
+def test_separate_asset_per_band(tmp_path, from_node, expected_filenames):
     job_spec = {
         "process_graph": {
             "loadcollection_sentinel2": {
@@ -339,8 +338,8 @@ def test_separate_asset_per_band(tmp_path, from_node, expected_names):
     assert metadata["start_datetime"] == "2021-06-01T00:00:00Z"
     assets = metadata["assets"]
     # get file names as set:
-    asset_names = set(assets.keys())
-    assert asset_names == expected_names
+    asset_filenames = [Path(asset["href"]).name for _, asset in assets]
+    assert asset_filenames == expected_filenames
 
     for asset_key in assets:
         asset = assets[asset_key]
@@ -375,7 +374,9 @@ def test_separate_asset_per_band_throw(tmp_path):
         "parameters": [],
     }
     metadata_file = tmp_path / "metadata.json"
-    with pytest.raises(OpenEOApiException):
+    with pytest.raises(
+        OpenEOApiException, match="separate_asset_per_band is only supported with format GTIFF. Was: NETCDF"
+    ):
         run_job(
             job_spec,
             output_file=tmp_path / "out",
@@ -442,15 +443,15 @@ def test_sample_by_feature_filter_spatial_vector_cube_from_load_url(tmp_path):
     # Check result metadata
     with metadata_file.open() as f:
         result_metadata = json.load(f)
-    assets = result_metadata["assets"]
+    assets = [asset for item in result_metadata["items"] for asset in item["assets"].values()]
     assert len(assets) == 4
 
     # Check asset contents
     asset_minima = {}
-    for name, asset_metadata in assets.items():
+    for asset_metadata in assets:
         assert asset_metadata["bands"] == [{"name": "Longitude"}]
         ds = xarray.open_dataset(asset_metadata["href"])
-        asset_minima[name] = ds["Longitude"].min().item()
+        asset_minima[Path(asset_metadata["href"]).name] = ds["Longitude"].min().item()
 
     assert asset_minima == {
         "openEO_0.nc": 1.0,
@@ -790,17 +791,20 @@ def test_spatial_cube_to_netcdf_sample_by_feature(tmp_path):
     assert metadata["start_datetime"] == "2021-01-04T00:00:00Z"
     assert metadata["end_datetime"] == "2021-01-06T00:00:00Z"
 
-    # expected: 2 assets with bboxes that correspond to the input features
-    assets = metadata["assets"]
-    assert len(assets) == 2
+    # expected: 2 items with bboxes that correspond to the input features
+    items = metadata["items"]
+    assert len(items) == 2
 
-    assert assets["openEO_0.nc"]["bbox"] == [0.1, 0.1, 1.8, 1.8]
-    assert (shape(assets["openEO_0.nc"]["geometry"]).normalize()
-            .almost_equals(Polygon.from_bounds(0.1, 0.1, 1.8, 1.8).normalize()))
+    item0 = [item for item in items for asset in item["assets"].values() if asset["href"].endswith("/openEO_0.nc")][0]
 
-    assert assets["openEO_1.nc"]["bbox"] == [0.725, -1.29, 2.99, 1.724]
-    assert (shape(assets["openEO_1.nc"]["geometry"]).normalize()
-            .almost_equals(Polygon.from_bounds(0.725, -1.29, 2.99, 1.724).normalize()))
+    assert item0["bbox"] == [0.1, 0.1, 1.8, 1.8]
+    assert shape(item0["geometry"]).normalize().almost_equals(Polygon.from_bounds(0.1, 0.1, 1.8, 1.8).normalize())
+
+    item1 = [item for item in items for asset in item["assets"].values() if asset["href"].endswith("/openEO_1.nc")][0]
+    assert item1["bbox"] == [0.725, -1.29, 2.99, 1.724]
+    assert (
+        shape(item1["geometry"]).normalize().almost_equals(Polygon.from_bounds(0.725, -1.29, 2.99, 1.724).normalize())
+    )
 
 
 def test_multiple_time_series_results(tmp_path):
