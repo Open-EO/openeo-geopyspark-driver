@@ -1595,7 +1595,9 @@ class GpsBatchJobs(backend.BatchJobs):
 
         def fail_job():
             with self._double_job_registry as registry:
-                registry.set_dependency_status(job_id, user_id, DEPENDENCY_STATUS.ERROR)
+                registry.set_dependency_status(
+                    job_id=job_id, user_id=user_id, dependency_status=DEPENDENCY_STATUS.ERROR
+                )
                 registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
 
             job_info["status"] = JOB_STATUS.ERROR  # TODO: avoid mutation
@@ -1633,7 +1635,9 @@ class GpsBatchJobs(backend.BatchJobs):
                 job_info.get("dependency_status") != DEPENDENCY_STATUS.AWAITING_RETRY
             ):  # haven't retried yet: retry
                 with self._double_job_registry as registry:
-                    registry.set_dependency_status(job_id, user_id, DEPENDENCY_STATUS.AWAITING_RETRY)
+                    registry.set_dependency_status(
+                        job_id=job_id, user_id=user_id, dependency_status=DEPENDENCY_STATUS.AWAITING_RETRY
+                    )
 
                 retries = [retry for details, _, retry in batch_processes.values() if details.status() == "PARTIAL"]
 
@@ -1742,11 +1746,15 @@ class GpsBatchJobs(backend.BatchJobs):
                 logger.debug(f"Total cost of Sentinel Hub batch processes: {batch_process_processing_units} PU",
                              extra={'job_id': job_id, 'user_id': user_id})
 
-                registry.set_dependencies(job_id, user_id, dependencies)
-                registry.set_dependency_status(job_id, user_id, DEPENDENCY_STATUS.AVAILABLE)
+                registry.set_dependencies(job_id=job_id, user_id=user_id, dependencies=dependencies)
+                registry.set_dependency_status(
+                    job_id=job_id, user_id=user_id, dependency_status=DEPENDENCY_STATUS.AVAILABLE
+                )
 
                 if batch_process_processing_units:
-                    registry.set_dependency_usage(job_id, user_id, batch_process_processing_units)
+                    registry.set_dependency_usage(
+                        job_id=job_id, user_id=user_id, dependency_usage=batch_process_processing_units
+                    )
 
             self._start_job(job_id, User(user_id=user_id), lambda _: vault_token, dependencies)
         else:  # still some running: continue polling
@@ -1897,7 +1905,7 @@ class GpsBatchJobs(backend.BatchJobs):
                         else get_vault_token(sentinel_hub_client_alias),
                     )
                     dbl_registry.set_dependency_status(
-                        job_id, user_id, DEPENDENCY_STATUS.AWAITING
+                        job_id=job_id, user_id=user_id, dependency_status=DEPENDENCY_STATUS.AWAITING
                     )
                     dbl_registry.set_status(job_id, user_id, JOB_STATUS.QUEUED)
 
@@ -3091,7 +3099,7 @@ class GpsBatchJobs(backend.BatchJobs):
                         registry.set_status(job_id, user_id, JOB_STATUS.CANCELED)
         else:
             with self._double_job_registry as registry:
-                registry.remove_dependencies(job_id, user_id)
+                registry.remove_dependencies(job_id=job_id, user_id=user_id)
                 registry.set_status(job_id, user_id, JOB_STATUS.CANCELED)
 
     def delete_job(self, job_id: str, user_id: str):
