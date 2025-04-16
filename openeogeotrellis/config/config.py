@@ -7,6 +7,7 @@ from typing import List, Optional, Union
 
 import attrs
 from openeo_driver.config import OpenEoBackendConfig, from_env_as_list
+from openeo_driver.config.base import openeo_backend_config_class
 from openeo_driver.users import User
 from openeo_driver.users.oidc import OidcProvider
 from openeo_driver.util.auth import ClientCredentials
@@ -62,7 +63,7 @@ class EtlApiConfig(metaclass=abc.ABCMeta):
         return None
 
 
-@attrs.frozen(kw_only=True)
+@openeo_backend_config_class
 class GpsBackendConfig(OpenEoBackendConfig):
     """
     Configuration for GeoPySpark backend.
@@ -116,6 +117,8 @@ class GpsBackendConfig(OpenEoBackendConfig):
     # TODO #236/#498/#632 long term goal is to fully disable ZK job registry, but for now it's configurable.
     use_zk_job_registry: bool = True
     zk_job_registry_max_specification_size: Optional[int] = None
+
+    udp_registry_zookeeper_client_reuse: bool = False
 
     ejr_api: Optional[str] = os.environ.get("OPENEO_EJR_API")
     ejr_backend_id: str = "unknown"

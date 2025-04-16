@@ -337,11 +337,14 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             else ZooKeeperServiceRegistry()
         )
 
-        user_defined_processes = (
-            # TODO #283 #285: eliminate is_ci_context, use some kind of config structure
-            InMemoryUserDefinedProcessRepository() if not use_zookeeper or ConfigParams().is_ci_context
-            else ZooKeeperUserDefinedProcessRepository(hosts=ConfigParams().zookeepernodes)
-        )
+        # TODO #283 #285: eliminate is_ci_context, use some kind of config structure
+        if not use_zookeeper or ConfigParams().is_ci_context:
+            user_defined_processes = InMemoryUserDefinedProcessRepository()
+        else:
+            user_defined_processes = ZooKeeperUserDefinedProcessRepository(
+                hosts=ConfigParams().zookeepernodes,
+                zk_client_reuse=get_backend_config().udp_registry_zookeeper_client_reuse,
+            )
 
         requests_session = requests_with_retry(total=3, backoff_factor=2)
         vault = Vault(ConfigParams().vault_addr, requests_session)
@@ -508,6 +511,10 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                             "type": ["integer", "null"],
                             "description": "Overrides tile size; typically a multiple of 16.",
                             "default": None,
+                        },
+                        "file_metadata": {
+                            "type": ["object"],
+                            "description": "Sets file-level GDAL metadata (key-value).",
                         },
                     },
                 },
@@ -2203,61 +2210,73 @@ class GpsBatchJobs(backend.BatchJobs):
                 batch_job_config_dir=get_backend_config().batch_job_config_dir
             )
 
-            if get_backend_config().provide_s3_profiles_and_tokens:
-                # For now we cannot access the subject of the initial access token but generally it is the user_id
-                token_path = get_backend_config().batch_job_config_dir / "token"
-                s3_profiles_cfg_batch_secret = k8s_render_manifest_template(
-                    "batch_job_cfg_secret.yaml.j2",
-                    secret_name=batch_job_cfg_secret_name,
-                    job_id=job_id,
-                    token=IDP_TOKEN_ISSUER.get_job_token(sub_id=user_id, user_id=user_id, job_id=job_id),
-                    profile_file_content=S3Config.from_backend_config(job_id, str(token_path))
-                )
-
-            if get_backend_config().fuse_mount_batchjob_s3_bucket:
-                persistentvolume_batch_job_results_dict = k8s_render_manifest_template(
-                    "persistentvolume_batch_job_results.yaml.j2",
-                    job_name=spark_app_id,
-                    job_namespace=pod_namespace,
-                    mounter=get_backend_config().fuse_mount_batchjob_s3_mounter,
-                    mount_options=get_backend_config().fuse_mount_batchjob_s3_mount_options,
-                    storage_class=get_backend_config().fuse_mount_batchjob_s3_storage_class,
-                    output_dir=output_dir,
-                    swift_bucket=bucket,
-                )
-
-                persistentvolumeclaim_batch_job_results_dict = k8s_render_manifest_template(
-                    "persistentvolumeclaim_batch_job_results.yaml.j2",
-                    job_name=spark_app_id,
-                )
-
             with self._double_job_registry as dbl_registry:
                 try:
                     if get_backend_config().fuse_mount_batchjob_s3_bucket:
+                        persistentvolume_batch_job_results_dict = k8s_render_manifest_template(
+                            "persistentvolume_batch_job_results.yaml.j2",
+                            job_name=spark_app_id,
+                            job_namespace=pod_namespace,
+                            mounter=get_backend_config().fuse_mount_batchjob_s3_mounter,
+                            mount_options=get_backend_config().fuse_mount_batchjob_s3_mount_options,
+                            storage_class=get_backend_config().fuse_mount_batchjob_s3_storage_class,
+                            output_dir=output_dir,
+                            swift_bucket=bucket,
+                        )
+
+                        persistentvolumeclaim_batch_job_results_dict = k8s_render_manifest_template(
+                            "persistentvolumeclaim_batch_job_results.yaml.j2",
+                            job_name=spark_app_id,
+                        )
+
                         api_instance_core.create_persistent_volume(persistentvolume_batch_job_results_dict, pretty=True)
                         api_instance_core.create_namespaced_persistent_volume_claim(pod_namespace, persistentvolumeclaim_batch_job_results_dict, pretty=True)
                     if get_backend_config().provide_s3_profiles_and_tokens:
-                        api_instance_core.create_namespaced_secret(pod_namespace, s3_profiles_cfg_batch_secret, pretty=True)
-                    submit_response_sparkapplication = api_instance_custom_object.create_namespaced_custom_object("sparkoperator.k8s.io", "v1beta2", pod_namespace, "sparkapplications", sparkapplication_dict, pretty=True)
+                        # For now we cannot access the subject of the initial access token but generally it is the user_id
+                        token_path = get_backend_config().batch_job_config_dir / "token"
+                        s3_profiles_cfg_batch_secret = k8s_render_manifest_template(
+                            "batch_job_cfg_secret.yaml.j2",
+                            secret_name=batch_job_cfg_secret_name,
+                            job_id=job_id,
+                            token=IDP_TOKEN_ISSUER.get_job_token(sub_id=user_id, user_id=user_id, job_id=job_id),
+                            profile_file_content=S3Config.from_backend_config(job_id, str(token_path)),
+                        )
+
+                        api_instance_core.create_namespaced_secret(
+                            pod_namespace, s3_profiles_cfg_batch_secret, pretty=True
+                        )
+                    api_instance_custom_object.create_namespaced_custom_object(
+                        "sparkoperator.k8s.io",
+                        "v1beta2",
+                        pod_namespace,
+                        "sparkapplications",
+                        sparkapplication_dict,
+                        pretty=True,
+                    )
                     log.info(f"mapped job_id {job_id} to application ID {spark_app_id}")
                     dbl_registry.set_application_id(job_id, user_id, spark_app_id)
                     status_response = {}
-                    retry=0
-                    while('status' not in status_response and retry<10):
-                        retry+=1
+                    retry = 0
+                    while "status" not in status_response and retry < 10:
+                        retry += 1
                         time.sleep(10)
                         try:
-                            status_response = api_instance_custom_object.get_namespaced_custom_object("sparkoperator.k8s.io", "v1beta2", pod_namespace, "sparkapplications",
-                                                                                        spark_app_id)
-                        except ApiException as e:
-                            log.info("Exception when calling CustomObjectsApi->list_custom_object: %s\n" % e)
+                            status_response = api_instance_custom_object.get_namespaced_custom_object(
+                                "sparkoperator.k8s.io", "v1beta2", pod_namespace, "sparkapplications", spark_app_id
+                            )
+                        except ApiException:
+                            log.warning(
+                                f"failed to fetch status of Spark application at {pod_namespace}:{spark_app_id}",
+                                exc_info=True,
+                            )
 
-                    if('status' not in status_response):
-                        log.warning(f"invalid status response: {status_response}, assuming it is queued.")
+                    if "status" not in status_response:
+                        log.warning(
+                            f"invalid status response of Spark application at {pod_namespace}:{spark_app_id}: {status_response}, assuming it is queued."
+                        )
                         dbl_registry.set_status(job_id, user_id, JOB_STATUS.QUEUED)
-
                 except ApiException as e:
-                    log.error("Exception when calling CustomObjectsApi->list_custom_object: %s\n" % e)
+                    log.error("failed to submit Spark application", exc_info=True)
                     if "AlreadyExists" in e.body:
                         raise OpenEOApiException(message=f"Your job {job_id} was already started.",status_code=400)
                     dbl_registry.set_status(job_id, user_id, JOB_STATUS.ERROR)

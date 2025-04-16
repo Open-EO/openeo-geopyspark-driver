@@ -682,13 +682,6 @@ class InMemoryJobRegistry(JobRegistryInterface):
     def set_application_id(self, job_id: str, application_id: str) -> JobDict:
         return self._update(job_id=job_id, application_id=application_id)
 
-    def set_usage(self, job_id: str, costs: float, usage: dict) -> JobDict:
-        input_pixel = 0
-        if "input_pixel" in usage and isinstance(usage["input_pixel"], dict) and "value" in usage["input_pixel"] and (
-                isinstance(input_pixel, int) or isinstance(input_pixel, float)):
-            input_pixel = usage["input_pixel"]["value"]
-        return self._update(job_id=job_id, costs=costs, usage=usage, input_pixel=input_pixel)
-
     def set_results_metadata(self, job_id: str, costs: Optional[float], usage: dict,
                              results_metadata: Dict[str, Any]) -> JobDict:
         return self._update(job_id=job_id, costs=costs, usage=usage, results_metadata=results_metadata)
@@ -793,12 +786,16 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
         *,
         process: dict,
         user_id: str,
-        job_id: str,
-        api_version: Optional[str] = None,
-        job_options: Optional[dict] = None,
+        job_id: Optional[str] = None,
         title: Optional[str] = None,
         description: Optional[str] = None,
-    ) -> dict:
+        parent_id: Optional[str] = None,
+        api_version: Optional[str] = None,
+        job_options: Optional[dict] = None,
+    ) -> JobDict:
+        if not job_id:
+            job_id = JobRegistryInterface.generate_job_id()
+
         zk_job_info = None
         ejr_job_info = None
         if self.zk_job_registry:
@@ -822,6 +819,7 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
                 description=description,
                 api_version=api_version,
                 job_options=job_options,
+                parent_id=parent_id,
             )
         if zk_job_info is None and ejr_job_info is None:
             raise DoubleJobRegistryException(f"None of ZK/EJR registered {job_id=}")
@@ -887,9 +885,6 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
             self.zk_job_registry.delete(job_id=job_id, user_id=user_id)
         if self.elastic_job_registry:
             self.elastic_job_registry.delete_job(job_id=job_id, user_id=user_id)
-
-    # Legacy alias
-    delete = delete_job
 
     def set_dependencies(
         self, job_id: str, user_id: str, dependencies: List[Dict[str, str]]

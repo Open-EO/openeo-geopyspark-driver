@@ -42,7 +42,7 @@ from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.constants import EVAL_ENV_KEY
 from openeogeotrellis.geopysparkcubemetadata import GeopysparkCubeMetadata
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
-from openeogeotrellis.utils import normalize_temporal_extent, get_jvm, to_projected_polygons, map_optional
+from openeogeotrellis.utils import normalize_temporal_extent, get_jvm, to_projected_polygons, map_optional, unzip
 from openeogeotrellis.integrations.stac import ResilientStacIO
 
 logger = logging.getLogger(__name__)
@@ -557,7 +557,7 @@ def load_stac(
 
         if len(unique_epsgs) == 1 and requested_band_cell_sizes:  # exact resolution
             target_epsg = unique_epsgs.pop()
-            cell_widths, cell_heights = zip(*requested_band_cell_sizes)  # unzip
+            cell_widths, cell_heights = unzip(*requested_band_cell_sizes)
             cell_width = min(cell_widths)
             cell_height = min(cell_heights)
         elif len(unique_epsgs) == 1:  # about 10m in given CRS

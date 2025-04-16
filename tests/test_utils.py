@@ -31,6 +31,7 @@ from openeogeotrellis.utils import (
     FileChangeWatcher,
     get_jvm,
     to_tuple,
+    unzip,
 )
 
 
@@ -459,3 +460,16 @@ def test_to_tuple():
     scala_tuple = get_jvm().scala.Tuple3(1, 2, 3)
 
     assert to_tuple(scala_tuple) == (1, 2, 3)
+
+
+def test_unzip():
+    pairs = [
+        (1, "one"),
+        (2, "two"),
+        (3, "three"),
+    ]
+
+    digits, words = list(unzip(*pairs))
+
+    assert digits == (1, 2, 3)
+    assert words == ("one", "two", "three")
