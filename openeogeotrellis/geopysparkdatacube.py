@@ -1794,27 +1794,31 @@ class GeopysparkDataCube(DriverDataCube):
 
             return latlng_extent.xmin, latlng_extent.ymin, latlng_extent.xmax, latlng_extent.ymax
 
-        def return_netcdf_assets(asset_paths, bands, nodata):
-            assets = {}
-            for asset in asset_paths:
-                if isinstance(asset, str):  # TODO: for backwards compatibility, remove eventually (#646)
-                    path = asset
-                    extent = None
-                else:
-                    path = asset._1()
-                    extent = asset._2()
-                name = os.path.basename(path)
-                assets[name] = {
-                    "href": str(path),
-                    "type": "application/x-netcdf",
-                    "roles": ["data"],
+        def return_netcdf_items(java_items, bands, nodata) -> dict:
+            items = {}
+
+            for java_item in java_items:
+                assets = {}
+                extent = java_item.bbox()
+
+                for asset_key, asset in java_item.assets().items():
+                    assets[asset_key] = {
+                        "href": asset.path(),
+                        "type": "application/x-netcdf",
+                        "roles": ["data"],
+                        "nodata": nodata,
+                    }
+                    if bands is not None:
+                        assets[asset_key]["bands"] = bands
+
+                items[java_item.id()] = {
+                    "id": java_item.id(),
                     "bbox": to_latlng_bbox(extent) if extent else None,
                     "geometry": mapping(Polygon.from_bounds(*to_latlng_bbox(extent))) if extent else None,
-                    "nodata": nodata,
+                    "assets": assets,
                 }
-                if bands is not None:
-                    assets[name]["bands"] = bands
-            return assets
+
+            return items
 
         if self.metadata.spatial_extent and strict_cropping:
             bbox = self.metadata.spatial_extent
@@ -2229,9 +2233,9 @@ class GeopysparkDataCube(DriverDataCube):
                     geometries = GeometryCollection(geometries.geoms)
                 projected_polygons = to_projected_polygons(get_jvm(), geometries)
                 labels = self.get_labels(geometries,feature_id_property)
-                if(max_level.layer_type != gps.LayerType.SPATIAL):
+                if max_level.layer_type != gps.LayerType.SPATIAL:
                     _log.debug(f"projected_polygons carries {len(projected_polygons.polygons())} polygons")
-                    asset_paths = get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.saveSamples(
+                    java_items = get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.saveSamples(
                         max_level.srdd.rdd(),
                         save_directory,
                         projected_polygons,
@@ -2242,7 +2246,7 @@ class GeopysparkDataCube(DriverDataCube):
                         filename_prefix,
                     )
                 else:
-                    asset_paths = get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.saveSamplesSpatial(
+                    java_items = get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.saveSamplesSpatial(
                         max_level.srdd.rdd(),
                         save_directory,
                         projected_polygons,
@@ -2253,7 +2257,7 @@ class GeopysparkDataCube(DriverDataCube):
                         filename_prefix,
                     )
 
-                return return_netcdf_assets(asset_paths, bands, nodata)
+                return return_netcdf_items(java_items, bands, nodata)
             else:
                 originalName = pathlib.Path(filename)
                 filename_tmp = format_options.get("filename_prefix", "openEO") + ".nc" if originalName.name == "out" else originalName.name
@@ -2266,27 +2270,25 @@ class GeopysparkDataCube(DriverDataCube):
                         options.setAttributes(global_metadata)
                         options.setZLevel(zlevel)
                         options.setCropBounds(crop_extent)
-                        asset_paths = get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.writeRasters(
+                        java_items = get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.writeRasters(
                             max_level.srdd.rdd(),
                             filename,options
                         )
                     else:
-                        if(max_level.layer_type != gps.LayerType.SPATIAL):
-                            asset_paths = get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.saveSingleNetCDF(max_level.srdd.rdd(),
-                                filename,
-                                band_names,
-                                dim_names,global_metadata,zlevel
+                        if max_level.layer_type != gps.LayerType.SPATIAL:
+                            java_items = get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.saveSingleNetCDF(
+                                max_level.srdd.rdd(), filename, band_names, dim_names, global_metadata, zlevel
                             )
                         else:
-                            asset_paths = get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.saveSingleNetCDFSpatial(
+                            java_items = get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.saveSingleNetCDFSpatial(
                                 max_level.srdd.rdd(),
                                 filename,
                                 band_names,
                                 dim_names, global_metadata, zlevel
                                 )
-                    return return_netcdf_assets(asset_paths, bands, nodata)
+                    return return_netcdf_items(java_items, bands, nodata)
 
-                else:
+                else:  # TODO: return items from this code path
                     if not tiled:
                         result=self._collect_as_xarray(max_level, crop_bounds, crop_dates)
                     else:
