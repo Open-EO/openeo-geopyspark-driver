@@ -269,7 +269,7 @@ def run_job(
     vault_token: str = None,
     access_token: str = None,
 ):
-    result_metadata = {}
+    result_metadata = None
 
     tracker_metadata = {}
 
@@ -523,6 +523,8 @@ def run_job(
                 enable_merge=job_options.get("export-workspace-enable-merge", False),
             )
     finally:
+        if tracker_metadata is None:
+            tracker_metadata = _get_tracker_metadata("")
         write_metadata({**result_metadata, **tracker_metadata}, metadata_file)
 
 
