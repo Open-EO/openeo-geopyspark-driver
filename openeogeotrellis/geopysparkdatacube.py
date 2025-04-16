@@ -2288,7 +2288,7 @@ class GeopysparkDataCube(DriverDataCube):
                                 )
                     return return_netcdf_items(java_items, bands, nodata)
 
-                else:  # TODO: return items from this code path
+                else:
                     if not tiled:
                         result=self._collect_as_xarray(max_level, crop_bounds, crop_dates)
                     else:
@@ -2299,11 +2299,20 @@ class GeopysparkDataCube(DriverDataCube):
                         asset = {
                             "href": filename,
                             "roles": ["data"],
-                            "type": "application/x-netcdf"
+                            "type": "application/x-netcdf",
                         }
                         if bands is not None:
                             asset["bands"] = bands
-                        return {filename_tmp: asset}
+
+                        item_id = str(uuid.uuid4())
+                        return {
+                            item_id: {
+                                "id": item_id,
+                                "assets": {
+                                    "openEO": asset,
+                                },
+                            }
+                        }
 
         elif format == "JSON":
             # saving to json, this is potentially big in memory
