@@ -271,6 +271,8 @@ def run_job(
 ):
     result_metadata = {}
 
+    tracker_metadata = {}
+
     try:
         # We actually expect type Path, but in reality paths as strings tend to
         # slip in anyway, so we better catch them and convert them.
