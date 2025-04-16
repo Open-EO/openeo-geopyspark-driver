@@ -1760,6 +1760,7 @@ class GeopysparkDataCube(DriverDataCube):
         * PNG: 8-bit grayscale or RGB raster with the limitation that it only export bands at a single (random) date
         * NetCDF: raster, currently using h5NetCDF
         * JSON: the json serialization of the underlying xarray, with extra attributes such as value/coord dtypes, crs, nodata value
+        * ZARR: chunked, compressed, N-dimensional arrays (experimental)
 
         :return: STAC assets dictionary: https://github.com/radiantearth/stac-spec/blob/master/item-spec/item-spec.md#assets
         """
@@ -2241,6 +2242,19 @@ class GeopysparkDataCube(DriverDataCube):
 
             XarrayIO.to_json_file(array=result, path=filename)
 
+        elif format == "ZARR":
+            band_names = None
+            number_bands = 1
+            if self.metadata.has_band_dimension():
+                band_names = self.metadata.band_names
+                number_bands = len(band_names)
+
+            zarr_options = get_jvm().org.openeo.geotrellis.zarr.ZarrOptions()
+            zarr_options.setBands(number_bands,band_names)
+
+            self._save_zarr_executors(max_level,filename,zarr_options)
+
+
         else:
             raise OpenEOApiException(
                 message="Format {f!r} is not supported".format(f=format),
@@ -2501,6 +2515,10 @@ class GeopysparkDataCube(DriverDataCube):
         else:
             return jvm.org.openeo.geotrellis.geotiff.package.saveStitchedTileGrid(spatial_rdd.srdd.rdd(), path,
                                                                                   tile_grid, max_compression)
+
+    def _save_zarr_executors(self,spatial_rdd, path, number_bands):
+        jvm = get_jvm()
+        jvm.org.openeo.geotrellis.zarr.zarrWriter.saveZarr(spatial_rdd,path,number_bands)
 
     @callsite
     def ndvi(self, **kwargs) -> 'GeopysparkDataCube':
