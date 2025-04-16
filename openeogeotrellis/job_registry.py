@@ -678,8 +678,8 @@ class InMemoryJobRegistry(JobRegistryInterface):
     def set_proxy_user(self, job_id: str, proxy_user: str) -> None:
         self._update(job_id=job_id, proxy_user=proxy_user)
 
-    def set_application_id(self, job_id: str, application_id: str) -> JobDict:
-        return self._update(job_id=job_id, application_id=application_id)
+    def set_application_id(self, job_id: str, application_id: str) -> None:
+        self._update(job_id=job_id, application_id=application_id)
 
     def set_results_metadata(
         self, job_id: str, costs: Optional[float], usage: dict, results_metadata: Dict[str, Any]
@@ -1025,8 +1025,9 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
                 require_application_id=True,
             )
 
-    def set_results_metadata(self, job_id, user_id, costs: Optional[float], usage: dict,
-                             results_metadata: Dict[str, Any]):
+    def set_results_metadata(
+        self, job_id, user_id, costs: Optional[float], usage: dict, results_metadata: Dict[str, Any]
+    ) -> None:
         if self.zk_job_registry:
             self.zk_job_registry.patch(job_id=job_id, user_id=user_id,
                                        **dict(results_metadata, costs=costs, usage=usage))
