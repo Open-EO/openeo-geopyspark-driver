@@ -1482,7 +1482,8 @@ class GeopysparkDataCube(DriverDataCube):
     def timeseries(self, x, y, srs="EPSG:4326") -> Dict:
         # TODO #421 drop old unsued "point timeseries" feature
         max_level = self.get_max_level()
-        transformer = pyproj.Transformer.from_crs(pyproj.crs.CRS(init=srs), max_level.layer_metadata.crs)
+        proj4_crs = pyproj.CRS.from_string(max_level.layer_metadata.crs).to_proj4()
+        transformer = pyproj.Transformer.from_crs(pyproj.crs.CRS(init=srs), proj4_crs)
         (x_layer, y_layer) = transformer.transform(x, y)
         points = [
             Point(x_layer, y_layer),
@@ -2404,14 +2405,14 @@ class GeopysparkDataCube(DriverDataCube):
             result = xr.DataArray(collection[0][1], dims=dims, coords=coords)
 
         # add some metadata
+        projCRS = pyproj.CRS.from_string(rdd.layer_metadata.crs)
         result=result.assign_attrs(dict(
             # TODO: layer_metadata is always 255, regardless of dtype, only correct inside the rdd-s
             nodata=rdd.layer_metadata.no_data_value,
             # TODO: crs seems to be recognized when saving to netcdf and loading with gdalinfo/qgis, but yet projection is incorrect https://github.com/pydata/xarray/issues/2288
-            crs=rdd.layer_metadata.crs
+            crs=projCRS.to_proj4()
         ))
 
-        projCRS = pyproj.CRS.from_proj4(rdd.layer_metadata.crs)
         # Some things we need to do to make GDAL
         # and other software recognize the CRS
         # cfr: https://github.com/pydata/xarray/issues/2288

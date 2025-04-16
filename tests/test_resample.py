@@ -23,7 +23,7 @@ def test_resample__spatial_single_level(imagecollection_with_two_bands_and_three
     #print(imagecollection_with_two_bands_and_three_dates.pyramid.levels[0].to_spatial_layer(datetime.datetime(2017, 9, 25, 11, 37)).stitch())
     resampled = imagecollection_with_two_bands_and_three_dates.resample_spatial(resolution=100000,projection=3857)
     crs:str = resampled.pyramid.levels[0].layer_metadata.crs
-    assert crs.startswith('+proj=merc +a=6378137 +b=6378137 +lat_ts=0.0 +lon_0=0.0 +x_0=0.0 +y_0=0 +k=1.0 +units=m')
+    assert crs == 'EPSG:3857'
 
     path = tmp_path / "resampled.tiff"
     resampled.save_result(path, format="GTIFF")

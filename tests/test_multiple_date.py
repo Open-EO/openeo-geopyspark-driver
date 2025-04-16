@@ -162,7 +162,7 @@ class TestMultipleDates(TestCase):
         resampled = imagecollection.resample_spatial(resolution=0,projection="EPSG:3395",method="max")
         metadata = resampled.pyramid.levels[0].layer_metadata
         print(metadata)
-        self.assertTrue("proj=merc" in metadata.crs)
+        self.assertTrue(metadata.crs == 'EPSG:3395')
         path = str(self.temp_folder / "reprojected.nc")
         res = resampled.reduce_dimension(reducer=reducer("max"), dimension="t", env=EvalEnv())
         res.save_result(path, format="netCDF")
