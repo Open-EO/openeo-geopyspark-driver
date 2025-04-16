@@ -1958,3 +1958,67 @@ class TestUdfDependenciesHandling:
 
         assert deps_archive.exists()
         assert "mehh.py" in zipfile.ZipFile(deps_archive).namelist()
+
+
+@mock.patch("time.sleep")
+@mock.patch("openeo_driver.ProcessGraphDeserializer.evaluate")
+def test_run_job_backscatter_soft_error_failure(evaluate, time_sleep_mock):
+    cube_mock = MagicMock()
+    time_sleep_mock.return_value = None  # Avoid waiting
+    # job dir should be a relative path,
+    # We still want the test data to be cleaned up though, so we need to use
+    # tempfile instead of pytest's tmp_path.
+    with tempfile.TemporaryDirectory(
+        dir=".", suffix="job-test-proj-metadata"
+    ) as job_dir:
+        job_dir = Path(job_dir)
+
+        # Note that batch_job's main() interprets its output_file and metadata_file
+        # arguments as relative to job_dir, but run_job does not!
+        output_file = job_dir / "out"
+        metadata_file = job_dir / "metadata.json"
+
+        asset_meta = {
+            "my_asset": {
+                "href": "not/used.tif",  # A path relative to the job dir must work.
+                "roles": "data",
+            },
+            # The second file does not exist on the filesystem.
+            # This triggers that the projection extension metadata is put on the
+            # bands, for the remaining assets (Here there is only 1 other asset off course).
+            "openEO01-05.tif": {"href": "openEO01-05.tif", "roles": "data"},
+        }
+        cube_mock.write_assets.return_value = asset_meta
+        evaluate.return_value = ImageCollectionResult(
+            cube=cube_mock, format="GTiff", options={"multidate": True}
+        )
+
+        # tracker reset, so get it again
+        t = global_tracker()
+        ERROR_COUNTER = "orfeo_backscatter_soft_errors"
+        EXECUTION_COUNTER = "orfeo_backscatter_execution_counter"
+        t.register_counter(ERROR_COUNTER)
+        t.register_counter(EXECUTION_COUNTER)
+        t.add(ERROR_COUNTER, 1)
+        t.add(EXECUTION_COUNTER, 1)
+        t.add(EXECUTION_COUNTER, 1)
+
+        with pytest.raises(ValueError) as e_info:
+            run_job(
+                job_specification={
+                    "process_graph": {
+                        "nop": {"process_id": "discard_result", "result": True}
+                    }
+                },
+                output_file=output_file,
+                metadata_file=metadata_file,
+                api_version="1.0.0",
+                job_dir=job_dir,
+                dependencies={},
+                user_id="jenkins",
+                max_soft_errors_ratio=0.1
+            )
+
+        assert e_info.value.args[0] == "sar_backscatter: Too many soft errors (0.5 > 0.1)"
+        t.clear()
+
