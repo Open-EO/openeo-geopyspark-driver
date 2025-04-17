@@ -683,7 +683,13 @@ class InMemoryJobRegistry(JobRegistryInterface):
         self._update(job_id=job_id, application_id=application_id)
 
     def set_results_metadata(
-        self, job_id: str, costs: Optional[float], usage: dict, results_metadata: Dict[str, Any]
+        self,
+        job_id: str,
+        *,
+        user_id: Optional[str] = None,
+        costs: Optional[float],
+        usage: dict,
+        results_metadata: Dict[str, Any],
     ) -> None:
         self._update(job_id=job_id, costs=costs, usage=usage, results_metadata=results_metadata)
 
@@ -1033,12 +1039,20 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
             )
 
     def set_results_metadata(
-        self, job_id, user_id, costs: Optional[float], usage: dict, results_metadata: Dict[str, Any]
+        self,
+        job_id: str,
+        *,
+        user_id: Optional[str] = None,
+        costs: Optional[float],
+        usage: dict,
+        results_metadata: Dict[str, Any],
     ) -> None:
         if self.zk_job_registry:
+            assert user_id, "user_id is required in ZkJobRegistry"
             self.zk_job_registry.patch(job_id=job_id, user_id=user_id,
                                        **dict(results_metadata, costs=costs, usage=usage))
 
         if self.elastic_job_registry:
-            self.elastic_job_registry.set_results_metadata(job_id=job_id, costs=costs, usage=usage,
-                                                           results_metadata=results_metadata)
+            self.elastic_job_registry.set_results_metadata(
+                job_id=job_id, user_id=user_id, costs=costs, usage=usage, results_metadata=results_metadata
+            )

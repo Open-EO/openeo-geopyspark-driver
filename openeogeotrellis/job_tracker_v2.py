@@ -571,8 +571,8 @@ class JobTracker:
 
             total_usage = dict_merge_recursive(job_metadata.usage.to_dict(), result_metadata.get("usage", {}))
             double_job_registry.set_results_metadata(
-                job_id,
-                user_id,
+                job_id=job_id,
+                user_id=user_id,
                 costs=job_costs,
                 usage=to_jsonable(dict(total_usage)),
                 results_metadata=to_jsonable(result_metadata),
