@@ -32,6 +32,7 @@ without compromising stable operations.
 - `save_result`: allow non-string values in `GTiff` `file_metadata` ([#1142](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1142))
 - Add `udp_registry_zookeeper_client_reuse` config for `KazooClient` reuse in `ZooKeeperUserDefinedProcessRepository` ([#1037](https://github.com/Open-EO/openeo-geopyspark-driver/pull/1037))
 - `GpsBackendConfig`: be more forgiving about unknown config keys to better support use cases that involve backward/forward incompatible configurations ([Open-EO/openeo-python-driver#322](https://github.com/Open-EO/openeo-python-driver/issues/322))
+- Improved API alignment between `DoubleJobRegistry` and `JobRegistryInterface`/`ElasticJobRegistry` ([#863](https://github.com/Open-EO/openeo-geopyspark-driver/issues/863), [#1123](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1123))
 
 
 ## 0.64.1
