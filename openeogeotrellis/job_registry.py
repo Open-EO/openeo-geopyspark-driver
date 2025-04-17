@@ -645,8 +645,9 @@ class InMemoryJobRegistry(JobRegistryInterface):
     def set_status(
         self,
         job_id: str,
-        status: str,
         *,
+        user_id: Optional[str] = None,
+        status: str,
         updated: Optional[str] = None,
         started: Optional[str] = None,
         finished: Optional[str] = None,
@@ -870,14 +871,24 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
         elif zk_job_info is None and ejr_job_info is None:
             raise JobNotFoundException(job_id=job_id)
 
-    def set_status(self, job_id: str, user_id: str, status: str,
-                   started: Optional[str] = None, finished: Optional[str] = None,
-                   ) -> None:
+    def set_status(
+        self,
+        job_id: str,
+        *,
+        user_id: Optional[str] = None,
+        status: str,
+        updated: Optional[str] = None,
+        started: Optional[str] = None,
+        finished: Optional[str] = None,
+    ) -> None:
         if self.zk_job_registry:
+            assert user_id, "user_id is required in ZkJobRegistry"
             self.zk_job_registry.set_status(job_id=job_id, user_id=user_id, status=status, started=started,
                                             finished=finished)
         if self.elastic_job_registry:
-            self.elastic_job_registry.set_status(job_id=job_id, status=status, started=started, finished=finished)
+            self.elastic_job_registry.set_status(
+                job_id=job_id, user_id=user_id, status=status, updated=updated, started=started, finished=finished
+            )
 
     def delete_job(self, job_id: str, *, user_id: Optional[str] = None) -> None:
         if self.zk_job_registry:
