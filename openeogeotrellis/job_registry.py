@@ -678,7 +678,7 @@ class InMemoryJobRegistry(JobRegistryInterface):
     def set_proxy_user(self, job_id: str, proxy_user: str) -> None:
         self._update(job_id=job_id, proxy_user=proxy_user)
 
-    def set_application_id(self, job_id: str, application_id: str) -> None:
+    def set_application_id(self, job_id: str, *, user_id: Optional[str] = None, application_id: str) -> None:
         self._update(job_id=job_id, application_id=application_id)
 
     def set_results_metadata(
@@ -931,15 +931,12 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
                 job_id=job_id, proxy_user=proxy_user
             )
 
-    def set_application_id(
-        self, job_id: str, user_id: str, application_id: str
-    ) -> None:
+    def set_application_id(self, job_id: str, *, user_id: Optional[str] = None, application_id: str) -> None:
         if self.zk_job_registry:
+            assert user_id, "user_id is required in ZkJobRegistry"
             self.zk_job_registry.set_application_id(job_id=job_id, user_id=user_id, application_id=application_id)
         if self.elastic_job_registry:
-            self.elastic_job_registry.set_application_id(
-                job_id=job_id, application_id=application_id
-            )
+            self.elastic_job_registry.set_application_id(job_id=job_id, user_id=user_id, application_id=application_id)
 
     def mark_ongoing(self, job_id: str, user_id: str) -> None:
         if self.zk_job_registry:

@@ -1848,7 +1848,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     return
                 elif current_status != JOB_STATUS.CREATED:  # TODO: not in line with the current spec (it must first be canceled)
                     dbl_registry.mark_ongoing(job_id, user_id)
-                    dbl_registry.set_application_id(job_id, user_id, None)
+                    dbl_registry.set_application_id(job_id=job_id, user_id=user_id, application_id=None)
                     dbl_registry.set_status(job_id, user_id, JOB_STATUS.CREATED)
 
         if "specification" in job_info:
@@ -2262,7 +2262,7 @@ class GpsBatchJobs(backend.BatchJobs):
                         pretty=True,
                     )
                     log.info(f"mapped job_id {job_id} to application ID {spark_app_id}")
-                    dbl_registry.set_application_id(job_id, user_id, spark_app_id)
+                    dbl_registry.set_application_id(job_id=job_id, user_id=user_id, application_id=spark_app_id)
                     status_response = {}
                     retry = 0
                     while "status" not in status_response and retry < 10:
@@ -2400,7 +2400,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 log.info("mapped job_id %s to application ID %s" % (job_id, application_id))
 
                 with self._double_job_registry as dbl_registry:
-                    dbl_registry.set_application_id(job_id, user_id, application_id)
+                    dbl_registry.set_application_id(job_id=job_id, user_id=user_id, application_id=application_id)
                     dbl_registry.set_status(job_id, user_id, JOB_STATUS.QUEUED)
 
             except _BatchJobError:
