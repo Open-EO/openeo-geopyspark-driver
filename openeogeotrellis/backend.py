@@ -1846,8 +1846,16 @@ class GpsBatchJobs(backend.BatchJobs):
 
                 if current_status in [JOB_STATUS.QUEUED, JOB_STATUS.RUNNING]:
                     return
-                elif current_status != JOB_STATUS.CREATED:  # TODO: not in line with the current spec (it must first be canceled)
+                elif current_status == JOB_STATUS.CREATED:
+                    pass
+                else:
+                    # TODO: not in line with the current spec (it must first be canceled)
+                    # TODO: this code path is ill-defined (also on level of openEO API)
+                    logger.warning(
+                        f"GpsBatchJobs._start_job: ill-defined job status transition from {current_status!r} to {JOB_STATUS.CREATED!r}"
+                    )
                     dbl_registry.mark_ongoing(job_id, user_id)
+                    # TODO: do we really want to reset the application id?
                     dbl_registry.set_application_id(job_id=job_id, user_id=user_id, application_id=None)
                     dbl_registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.CREATED)
 

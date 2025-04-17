@@ -955,6 +955,7 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
             self.elastic_job_registry.set_application_id(job_id=job_id, user_id=user_id, application_id=application_id)
 
     def mark_ongoing(self, job_id: str, user_id: str) -> None:
+        # TODO #863/#1123 can this method be eliminated (e.g. integrate it directly in ZkJobRegistry.set_status)?
         if self.zk_job_registry:
             self.zk_job_registry.mark_ongoing(job_id=job_id, user_id=user_id)
 
