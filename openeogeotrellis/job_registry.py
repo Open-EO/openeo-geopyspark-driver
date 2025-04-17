@@ -675,7 +675,7 @@ class InMemoryJobRegistry(JobRegistryInterface):
     def set_dependency_usage(self, job_id: str, *, user_id: Optional[str] = None, dependency_usage: Decimal) -> None:
         self._update(job_id, dependency_usage=str(dependency_usage))
 
-    def set_proxy_user(self, job_id: str, proxy_user: str) -> None:
+    def set_proxy_user(self, job_id: str, *, user_id: Optional[str] = None, proxy_user: str) -> None:
         self._update(job_id=job_id, proxy_user=proxy_user)
 
     def set_application_id(self, job_id: str, *, user_id: Optional[str] = None, application_id: str) -> None:
@@ -922,14 +922,13 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
                 job_id=job_id, user_id=user_id, dependency_usage=dependency_usage
             )
 
-    def set_proxy_user(self, job_id: str, user_id: str, proxy_user: str) -> None:
+    def set_proxy_user(self, job_id: str, *, user_id: Optional[str] = None, proxy_user: str) -> None:
         # TODO: add dedicated method
         if self.zk_job_registry:
+            assert user_id, "user_id is required in ZkJobRegistry"
             self.zk_job_registry.patch(job_id=job_id, user_id=user_id, proxy_user=proxy_user)
         if self.elastic_job_registry:
-            self.elastic_job_registry.set_proxy_user(
-                job_id=job_id, proxy_user=proxy_user
-            )
+            self.elastic_job_registry.set_proxy_user(job_id=job_id, user_id=user_id, proxy_user=proxy_user)
 
     def set_application_id(self, job_id: str, *, user_id: Optional[str] = None, application_id: str) -> None:
         if self.zk_job_registry:
