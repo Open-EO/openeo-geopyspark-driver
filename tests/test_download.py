@@ -232,11 +232,10 @@ class TestDownload:
     @pytest.mark.parametrize("space_type", ["spacetime", "spatial"])
     @pytest.mark.parametrize("stitch", [False, True])
     @pytest.mark.parametrize("catalog", [False, True])
-    @pytest.mark.parametrize("sample_by_feature", [False, True])
     @pytest.mark.parametrize("format_arg", ["netCDF"])  # "GTIFF" behaves different from "netCDF", so not testing now
     def test_write_assets_parameterize_batch(self, tmp_path, imagecollection_with_two_bands_and_three_dates,
                                              imagecollection_with_two_bands_spatial_only,
-                                             format_arg, sample_by_feature, catalog, stitch, space_type,
+                                             format_arg, catalog, stitch, space_type,
                                              tile_grid, filename_prefix):
         d = locals()
         d = {i: d[i] for i in d if i != 'self' and i != "tmp_path" and i != "d"}
@@ -248,7 +247,7 @@ class TestDownload:
             imagecollection = imagecollection_with_two_bands_spatial_only
 
         geometries = geojson_to_geometry(self.features)
-        assets = imagecollection.write_assets(
+        items = imagecollection.write_assets(
             str(tmp_path / "ignored<\0>.extension"),  # null byte to cause error if filename would be written to fs
             format=format_arg,
             format_options={
@@ -261,6 +260,8 @@ class TestDownload:
                 "tile_grid": tile_grid,
             }
         )
+
+        assets = [(asset_key, asset) for item in items.values() for asset_key, asset in item["assets"].items()]
         with open(self.test_write_assets_parameterize_batch_path + test_name + ".json", 'w') as fp:
             json.dump(assets, fp, indent=2)
 
@@ -269,13 +270,15 @@ class TestDownload:
         else:
             extension = ".tif"
         assert len(assets) >= 3
-        assert len(assets) <= geometries.length
+        assert len(assets) <= geometries.length  # a netCDF asset contains all dates
+        assert {asset_key for asset_key, _ in assets} == {"openEO"}
+        asset_filenames = {Path(asset["href"]).name for _, asset in assets}
         if format_arg == "netCDF":
             if filename_prefix:
-                assert assets[filename_prefix + "_0" + extension]
+                assert filename_prefix + "_0" + extension in asset_filenames
             else:
-                assert assets["openEO_0" + extension]
-        name, asset = next(iter(assets.items()))
+                assert "openEO_0" + extension in asset_filenames
+        _, asset = assets[0]
         assert Path(asset['href']).parent == tmp_path
         if filename_prefix:
             assert filename_prefix in asset['href']
@@ -340,7 +343,7 @@ class TestDownload:
             assert False
         filename = "test_download_result" + extension
         geometries = geojson_to_geometry(self.features)
-        assets_all = imagecollection.write_assets(
+        items_all = imagecollection.write_assets(
             str(tmp_path / filename),
             format=format_arg,
             format_options={
@@ -365,10 +368,11 @@ class TestDownload:
         # with open(self.test_write_assets_parameterize_path + test_name + ".json", 'w') as fp:
         #     json.dump(assets, fp, indent=2)
 
-        assets_data = {k: v for (k, v) in assets_all.items() if "data" in v["roles"]}
-        name, asset = next(iter(assets_data.items()))
+        assets_all = [(asset_key, asset) for item in items_all.values() for asset_key, asset in item["assets"].items()]
+        assets_data = [(asset_key, asset) for asset_key, asset in assets_all if "data" in asset["roles"]]
+        name, asset = assets_data[0]
         print("href of first asset: " + asset["href"])
-        assets_metadata = {k: v for (k, v) in assets_all.items() if "data" not in v["roles"]}
+        assets_metadata = [(asset_key, asset) for asset_key, asset in assets_all if "data" not in asset["roles"]]
         if format_arg == "GTIFF" and not catalog:
             if attach_gdalinfo_assets:
                 assert len(assets_metadata) == len(assets_data)
@@ -376,7 +380,7 @@ class TestDownload:
                 assert len(assets_metadata) == 0
 
         if len(assets_data) == 1:
-            assert assets_data[filename]
+            assert assets_data[0][0] == "openEO"
             assert filename in asset['href']
         else:
             if filename_prefix:
