@@ -3,7 +3,7 @@ from __future__ import annotations
 import abc
 import os
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Dict
 
 import attrs
 from openeo_driver.config import OpenEoBackendConfig, from_env_as_list
@@ -275,3 +275,8 @@ class GpsBackendConfig(OpenEoBackendConfig):
     Directory where config specific to job execution will be mounted for batch jobs.
     """
     batch_job_config_dir: Path = Path("/opt/job_config")
+
+    """
+    A mapping of region names to proxy endpoints
+    """
+    s3_region_proxy_endpoints: Dict[str, str] = attrs.Factory(dict)
