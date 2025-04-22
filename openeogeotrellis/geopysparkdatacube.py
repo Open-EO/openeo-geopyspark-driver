@@ -2160,6 +2160,9 @@ class GeopysparkDataCube(DriverDataCube):
             nodata = max_level.layer_metadata.no_data_value
             global_metadata = format_options.get("file_metadata",{})
             zlevel = format_options.get("ZLEVEL", 6)
+            for band_name, band_metadata in bands_metadata.items():
+                for tag, value in band_metadata.items():
+                    bands_metadata[band_name][tag] = str(value)
 
             if batch_mode and sample_by_feature:
                 _log.info("Output one netCDF file per feature.")
@@ -2178,6 +2181,7 @@ class GeopysparkDataCube(DriverDataCube):
                         band_names,
                         dim_names,
                         global_metadata,
+                        bands_metadata,
                         filename_prefix,
                     )
                 else:
@@ -2189,6 +2193,7 @@ class GeopysparkDataCube(DriverDataCube):
                         band_names,
                         dim_names,
                         global_metadata,
+                        bands_metadata,
                         filename_prefix,
                     )
 
@@ -2203,6 +2208,7 @@ class GeopysparkDataCube(DriverDataCube):
                         options.setBandNames(band_names)
                         options.setDimensionNames(dim_names)
                         options.setAttributes(global_metadata)
+                        options.setBandsMetadata(bands_metadata)
                         options.setZLevel(zlevel)
                         options.setCropBounds(crop_extent)
                         asset_paths = get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.writeRasters(
@@ -2214,14 +2220,14 @@ class GeopysparkDataCube(DriverDataCube):
                             asset_paths = get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.saveSingleNetCDF(max_level.srdd.rdd(),
                                 filename,
                                 band_names,
-                                dim_names,global_metadata,zlevel
+                                dim_names,global_metadata, bands_metadata,zlevel
                             )
                         else:
                             asset_paths = get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.saveSingleNetCDFSpatial(
                                 max_level.srdd.rdd(),
                                 filename,
                                 band_names,
-                                dim_names, global_metadata, zlevel
+                                dim_names, global_metadata, bands_metadata, zlevel
                                 )
                     return return_netcdf_assets(asset_paths, bands, nodata)
 
