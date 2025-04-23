@@ -10,8 +10,9 @@ from typing import Literal, Optional
 
 import jwt
 
+from openeo_driver.util.date_math import now_utc
 from openeogeotrellis.config import get_backend_config
-from openeogeotrellis.utils import FileChangeWatcher, utcnow
+from openeogeotrellis.utils import FileChangeWatcher
 
 logger = logging.getLogger(__name__)
 
@@ -99,7 +100,7 @@ class IDPTokenIssuer:
             return None
         else:
             idp_details = self._IDP_DETAILS
-            now = utcnow()
+            now = now_utc()
             return jwt.encode(
                 {
                     "sub": sub_id,
