@@ -64,6 +64,7 @@ from openeo_driver.ProcessGraphDeserializer import ENV_FINAL_RESULT, ENV_SAVE_RE
     _extract_load_parameters, ENV_MAX_BUFFER
 from openeo_driver.save_result import ImageCollectionResult
 from openeo_driver.users import User
+from openeo_driver.util.date_math import now_utc
 from openeo_driver.util.geometry import BoundingBox
 from openeo_driver.util.http import requests_with_retry
 from openeo_driver.util.utm import area_in_square_meters
@@ -220,18 +221,22 @@ class GpsSecondaryServices(backend.SecondaryServices):
             logger.info("Can not create service for: " + str(image_collection))
             raise OpenEOApiException("Can not create service for: " + str(image_collection))
 
+        wmts_base_url = os.getenv("WMTS_BASE_URL_PATTERN", "http://openeo.vgt.vito.be/openeo/services/%s") % service_id
 
-        wmts_base_url = os.getenv('WMTS_BASE_URL_PATTERN', 'http://openeo.vgt.vito.be/openeo/services/%s') % service_id
-
-        self.service_registry.persist(user_id, ServiceMetadata(
-            id=service_id,
-            process={"process_graph": process_graph},
-            url=wmts_base_url + "/service/wmts",
-            type=service_type,
-            enabled=True,
-            attributes={},
-            configuration=configuration,
-            created=dt.datetime.utcnow()), api_version)
+        self.service_registry.persist(
+            user_id,
+            ServiceMetadata(
+                id=service_id,
+                process={"process_graph": process_graph},
+                url=wmts_base_url + "/service/wmts",
+                type=service_type,
+                enabled=True,
+                attributes={},
+                configuration=configuration,
+                created=now_utc(),
+            ),
+            api_version,
+        )
 
         secondary_service = self._wmts_service(image_collection, configuration, wmts_base_url)
 

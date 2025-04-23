@@ -7,6 +7,7 @@ import pytest
 from openeo_driver.ProcessGraphDeserializer import DEFAULT_TEMPORAL_EXTENT
 from openeo_driver.backend import BatchJobMetadata, BatchJobs, LoadParameters
 from openeo_driver.errors import OpenEOApiException
+from openeo_driver.util.date_math import now_utc
 from openeo_driver.utils import EvalEnv
 
 from openeogeotrellis.load_stac import extract_own_job_info, load_stac
@@ -25,8 +26,11 @@ def test_extract_own_job_info(url, user_id, job_info_id):
     batch_jobs = mock.Mock(spec=BatchJobs)
 
     def alices_single_job(job_id, user_id):
-        return (BatchJobMetadata(id=job_id, status='finished', created=dt.datetime.utcnow())
-                if job_id == 'j-20240201abc123' and user_id == 'alice' else None)
+        return (
+            BatchJobMetadata(id=job_id, status="finished", created=now_utc())
+            if job_id == "j-20240201abc123" and user_id == "alice"
+            else None
+        )
 
     batch_jobs.get_job_info.side_effect = alices_single_job
 

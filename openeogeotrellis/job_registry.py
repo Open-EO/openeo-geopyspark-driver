@@ -100,8 +100,8 @@ class ZkJobRegistry:
             'api_version': api_version,
             "specification": specification_blob,
             "application_id": None,
-            "created": rfc3339.utcnow(),
-            "updated": rfc3339.utcnow(),
+            "created": rfc3339.now_utc(),
+            "updated": rfc3339.now_utc(),
             "title": title,
             "description": description,
         }
@@ -120,7 +120,7 @@ class ZkJobRegistry:
         """Updates a registered batch job with its status. Additionally, updates its "updated" property."""
         kwargs = {
             "status": status,
-            "updated": rfc3339.utcnow(),
+            "updated": rfc3339.now_utc(),
         }
 
         if started:
@@ -608,7 +608,7 @@ class InMemoryJobRegistry(JobRegistryInterface):
         job_options: Optional[dict] = None,
     ) -> JobDict:
         assert job_id not in self.db
-        created = rfc3339.utcnow()
+        created = rfc3339.now_utc()
         self.db[job_id] = {
             "job_id": job_id,
             "user_id": user_id,
@@ -655,7 +655,7 @@ class InMemoryJobRegistry(JobRegistryInterface):
         self._update(
             job_id=job_id,
             status=status,
-            updated=rfc3339.datetime(updated) if updated else rfc3339.utcnow(),
+            updated=rfc3339.datetime(updated) if updated else rfc3339.now_utc(),
         )
         if started:
             self._update(job_id=job_id, started=rfc3339.datetime(started))

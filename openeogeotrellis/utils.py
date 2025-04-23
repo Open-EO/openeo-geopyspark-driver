@@ -25,6 +25,8 @@ import pyproj
 import pytz
 from epsel import on_first_time
 from kazoo.client import KazooClient
+
+from openeo.util import rfc3339
 from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.util.geometry import GeometryBufferer, reproject_bounding_box
@@ -128,43 +130,8 @@ def normalize_temporal_extent(temporal_extent: Tuple[Union[str, None], Union[str
     start, end = temporal_extent
     return (
         normalize_date(start or "2000-01-01"),  # TODO: better fallback start date?
-        normalize_date(end or utcnow().isoformat())
+        normalize_date(end or rfc3339.now_utc()),
     )
-
-
-class UtcNowClock:
-    """
-    Helper class to have a mockable wrapper for datetime.datetime.utcnow
-    (which is not straightforward to mock directly).
-    """
-
-    # TODO: just start using `time_machine` module for time mocking
-
-    _utcnow = _utcnow_orig = datetime.datetime.utcnow
-
-    @classmethod
-    def utcnow(cls) -> datetime.datetime:
-        return cls._utcnow()
-
-    @classmethod
-    @contextlib.contextmanager
-    def mock(cls, now: Union[datetime.datetime, str]):
-        """Context manager to mock the return value of `utcnow()`."""
-        if isinstance(now, str):
-            now = dateutil.parser.parse(now)
-        cls._utcnow = lambda: now
-        try:
-            yield
-        finally:
-            cls._utcnow = cls._utcnow_orig
-
-
-# Alias for general usage
-utcnow = UtcNowClock.utcnow
-
-
-def utcnow_epoch() -> float:
-    return utcnow().timestamp()
 
 
 def describe_path(path: Union[Path, str]) -> dict:
