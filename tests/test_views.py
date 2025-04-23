@@ -1003,7 +1003,7 @@ class TestBatchJobs:
 
                 assert res.status_code == expected_code
                 if 200 <= expected_code < 300:
-                    # For succesfull api requests check response data
+                    # For successfull api requests check response data
                     assert res.data == TIFF_DUMMY_DATA
 
     @mock.patch(

@@ -14,7 +14,7 @@ class PresignedS3AssetUrls(AssetUrl):
     def __init__(self, expiration: int = 24 * 3600):
         self._expiration = expiration
 
-    def get(self, asset_metadata: dict, asset_name: str, job_id: str, user_id: str) -> str:
+    def build_url(self, *, asset_metadata: dict, asset_name: str, job_id: str, user_id: str) -> str:
         href = asset_metadata.get("href")
         if isinstance(href, str) and href.startswith("s3://"):
             try:
@@ -22,7 +22,7 @@ class PresignedS3AssetUrls(AssetUrl):
                 return self._get_presigned_url_against_proxy(bucket, key, job_id, user_id)
             except (ValueError, ProxyException) as e:
                 logging.debug(f"Falling back to default asset getter because: {e}")
-        return super().get(asset_metadata, asset_name, job_id, user_id)
+        return super().build_url(asset_metadata=asset_metadata, asset_name=asset_name, job_id=job_id, user_id=user_id)
 
     @staticmethod
     def get_bucket_key_from_uri(s3_uri: str) -> Tuple[str, str]:
