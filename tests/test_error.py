@@ -671,7 +671,7 @@ def datacube() -> openeo.DataCube:
     )
 
 
-@skip("Might be the cause of flaky tests.")
+@skip("Disabled because it is flaky on CI")
 def test_udf_with_oom(datacube, api100):
     udf_code = textwrap.dedent(
         """
