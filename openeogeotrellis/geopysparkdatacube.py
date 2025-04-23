@@ -1141,6 +1141,27 @@ class GeopysparkDataCube(DriverDataCube):
                 lambda rdd, level: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().apply_kernel_spatial(rdd,geotrellis_tile))
         return result_collection
 
+
+    def apply_metadata(self,udf_code,context):
+
+        pysc = gps.get_spark_context()
+
+        metadata = self.metadata
+        def get_metadata(x):
+
+            from openeo.udf.run_code import load_module_from_string
+            import inspect
+            module = load_module_from_string(udf_code)
+            functions = list([(k, v) for (k, v) in module.items() if callable(v) and k == "apply_metadata"])
+            if len(functions)>=1:
+                apply_metadata_func = functions[0][1]
+                transformed_metadata = apply_metadata_func(metadata,context)
+                return transformed_metadata
+            else:
+                raise ValueError("run_udf: apply_metadata function not found in the provided code.")
+        metadata_list = pysc.parallelize([0]).map(get_metadata).collect()
+        return metadata_list[0]
+
     @callsite
     def apply_neighborhood(
         self, process: dict, *, size: List[dict], overlap: List[dict], context: Optional[dict] = None, env: EvalEnv
@@ -1189,10 +1210,15 @@ class GeopysparkDataCube(DriverDataCube):
             temporal_size = size_dict.get(self.metadata.temporal_dimension.name,None)
             temporal_overlap = overlap_dict.get(self.metadata.temporal_dimension.name, None)
 
+        updated_cube_metadata = self.metadata
         result_collection = None
         if isinstance(process, SingleNodeUDFProcessGraphVisitor):
             runtime = process.udf_args.get('runtime', 'Python')
             udf, udf_context = self._extract_udf_code_and_context(process=process, context=context, env=env)
+
+            if("apply_metadata" in udf):
+                updated_cube_metadata = self.apply_metadata(udf,context)
+
 
             if sizeX < 32 or sizeY < 32:
                 raise ProcessParameterInvalidException(
@@ -1254,7 +1280,7 @@ class GeopysparkDataCube(DriverDataCube):
                                                                                       overlap_x,
                                                                                       overlap_y))
 
-        return result_collection
+        return GeopysparkDataCube(pyramid=result_collection.pyramid, metadata=updated_cube_metadata)
 
     @callsite
     def resample_cube_spatial(self, target: 'GeopysparkDataCube', method: str = 'near') -> 'GeopysparkDataCube':

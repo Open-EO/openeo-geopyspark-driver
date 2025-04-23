@@ -12,7 +12,11 @@ without compromising stable operations.
 
 <!-- start-of-changelog -->
 
-## In progress: 0.65.0
+## 0.66.0
+
+- `apply_neighborhood`: support changing band names via apply_metadata ([#1155](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1155))
+
+## 0.65.0
 
 - `sar_backscatter`: soft-errors can now be a fraction, allowing to tolerate a certain failure percentage provided as a number between 0 and 1. ([#443](https://github.com/Open-EO/openeo-geopyspark-driver/issues/443))
 - `save_result`: write GeoTiff assets with valid tile size; override with `tile_size` format option. ([#1083](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1083))
