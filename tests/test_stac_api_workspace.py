@@ -1,10 +1,10 @@
 import datetime as dt
-import re
 from pathlib import PurePath, Path
 from typing import Dict
 
 import pytest
 import responses
+from mock import ANY, MagicMock
 from pystac import Collection, Extent, SpatialExtent, TemporalExtent, Item, Asset, Link, RelType
 
 from openeogeotrellis.workspace import StacApiWorkspace
@@ -224,27 +224,30 @@ def test_error_details(tmp_path, requests_mock):
         stac_api_workspace.merge(collection1, target)
 
 
-def test_validate_collection_id(requests_mock, tmp_path):
+def test_merge_target_supports_path(requests_mock, tmp_path):
     asset_path = Path("asset.tif")
     collection = _collection(root_path=tmp_path / "collection", collection_id="collection", asset_path=asset_path)
 
+    export_asset_mock = MagicMock(wraps=_export_asset)
+
     stac_api_workspace = StacApiWorkspace(
         root_url="https://stacapi.test",
-        export_asset=_export_asset,
+        export_asset=export_asset_mock,
         asset_alternate_id="file",
     )
 
-    target = PurePath("test/collection_id")
+    target = PurePath("path/to/collection_id")
 
     _mock_stac_api_root_catalog(requests_mock, stac_api_workspace.root_url)
-    requests_mock.get(f"{stac_api_workspace.root_url}/collections/{target}", status_code=404)
-    requests_mock.post(f"{stac_api_workspace.root_url}/collections")
-    requests_mock.post(f"{stac_api_workspace.root_url}/collections/{target}/items")
+    requests_mock.get(f"{stac_api_workspace.root_url}/collections/{target.name}", status_code=404)
+    create_collection_mock = requests_mock.post(f"{stac_api_workspace.root_url}/collections")
+    create_item_mock = requests_mock.post(f"{stac_api_workspace.root_url}/collections/{target.name}/items")
 
-    with pytest.raises(
-        ValueError, match=re.escape(r"merge argument does not match pattern /^[\w\-]+$/, got: test/collection_id")
-    ):
-        stac_api_workspace.merge(collection, target)
+    stac_api_workspace.merge(collection, target)
+
+    assert create_collection_mock.called_once
+    assert create_item_mock.called_once
+    export_asset_mock.assert_called_once_with(ANY, target, ANY, ANY)
 
 
 def _mock_stac_api_root_catalog(requests_mock, root_url: str):
@@ -266,7 +269,10 @@ def _mock_stac_api_root_catalog(requests_mock, root_url: str):
 
 
 
-def _export_asset(asset: Asset, collection_id: str, relative_asset_path: PurePath, remove_original: bool) -> str:
+def _export_asset(asset: Asset, merge: PurePath, relative_asset_path: PurePath, remove_original: bool) -> str:
+    assert isinstance(merge, PurePath)
+    assert isinstance(relative_asset_path, PurePath)
+    assert isinstance(remove_original, bool)
     # actual copying behaviour is the responsibility of the workspace creator
     return asset.get_absolute_href()
 
