@@ -66,6 +66,17 @@ def test_apply_dimension_bands_udf(imagecollection_with_two_bands_and_three_date
     assert_array_almost_equal(input, subresult)
 
 
+def test_apply_metadata(imagecollection_with_two_bands_and_three_dates, identity_udf_rename_bands):
+
+    result = imagecollection_with_two_bands_and_three_dates.apply_dimension(
+        process=identity_udf_rename_bands, dimension="bands", target_dimension=None, context={}, env=EvalEnv()
+    )
+
+    assert result.metadata.band_names == ["computed_band_1", "computed_band_2"]
+    result_xarray = result._to_xarray()
+    assert list(result_xarray.bands.values) == ["computed_band_1", "computed_band_2"]
+
+
 def test_apply_dimension_invalid_dimension(imagecollection_with_two_bands_and_three_dates,udf_noop):
     the_date = datetime.datetime(2017, 9, 25, 11, 37)
     with pytest.raises(FeatureUnsupportedException):

@@ -828,8 +828,11 @@ class GeopysparkDataCube(DriverDataCube):
                 metadata = GeopysparkDataCube._transform_metadata(rdd.layer_metadata, cellType=CellType.FLOAT32)
                 return gps.TiledRasterLayer.from_numpy_rdd(rdd.layer_type, numpy_rdd, metadata)
 
+        updated_cube_metadata = self.metadata
+        if ("apply_metadata" in udf_code):
+            updated_cube_metadata = self.apply_metadata(udf_code, context)
         # Apply the UDF to every tile for every zoom level of the pyramid.
-        return self.apply_to_levels(partial(rdd_function, self.metadata))
+        return self.apply_to_levels(partial(rdd_function, self.metadata),updated_cube_metadata)
 
     def aggregate_time(self, temporal_window, aggregationfunction) -> Series :
         #group keys

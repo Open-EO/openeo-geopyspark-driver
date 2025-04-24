@@ -62,37 +62,12 @@ def test_apply_neighborhood_overlap_udf(imagecollection_with_two_bands_and_three
     assert_array_almost_equal(input, subresult)
 
 
-def test_apply_metadata(imagecollection_with_two_bands_and_three_dates):
-    udf_code = """
-from openeo.metadata import CollectionMetadata
-from xarray import DataArray
+def test_apply_metadata(imagecollection_with_two_bands_and_three_dates, identity_udf_rename_bands):
 
-def apply_metadata(metadata: CollectionMetadata, context: dict) -> CollectionMetadata:
-     return metadata.rename_labels(
-         dimension="bands",
-         target=["computed_band_1", "computed_band_2"]
-     )
-
-def apply_datacube(cube: DataArray, context: dict) -> DataArray:
-    return cube
-"""
-
-    udf_process = {
-        "udf_process": {
-            "process_id": "run_udf",
-            "arguments": {
-                "data": {
-                    "from_parameter": "data"
-                },
-                "udf": udf_code
-            },
-            "result": True
-        },
-    }
     the_date = datetime.datetime(2017, 9, 25, 11, 37)
 
     result = imagecollection_with_two_bands_and_three_dates.apply_neighborhood(
-        process=udf_process,
+        process=identity_udf_rename_bands,
         size=[{'dimension': 'x', 'unit': 'px', 'value': 32}, {'dimension': 'y', 'unit': 'px', 'value': 32}],
         overlap=[{'dimension': 'x', 'unit': 'px', 'value': 8}, {'dimension': 'y', 'unit': 'px', 'value': 8}],
         context={},
