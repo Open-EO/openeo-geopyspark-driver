@@ -1148,12 +1148,10 @@ class GeopysparkDataCube(DriverDataCube):
     def apply_metadata(self,udf_code,context):
 
         pysc = gps.get_spark_context()
-
         metadata = self.metadata
+        _log.info(f"run_udf: detected use of apply_metadata to transform: {self.metadata}")
         def get_metadata(x):
-
             from openeo.udf.run_code import load_module_from_string
-            import inspect
             module = load_module_from_string(udf_code)
             functions = list([(k, v) for (k, v) in module.items() if callable(v) and k == "apply_metadata"])
             if len(functions)>=1:
@@ -1163,7 +1161,16 @@ class GeopysparkDataCube(DriverDataCube):
             else:
                 raise ValueError("run_udf: apply_metadata function not found in the provided code.")
         metadata_list = pysc.parallelize([0]).map(get_metadata).collect()
-        return metadata_list[0]
+        result_metadata: GeopysparkCubeMetadata = metadata_list[0]
+
+        _log.info(f"run_udf: apply_metadata resulted in {result_metadata}")
+        if not result_metadata.has_band_dimension():
+            raise ValueError(f"run_udf: apply_metadata function should not remove the band dimension, received metadata: {result_metadata}.")
+        if not isinstance(result_metadata, GeopysparkCubeMetadata):
+            raise ValueError(f"run_udf: apply_metadata function should retain the type of the input metadata object, received: {result_metadata}.")
+
+        return result_metadata
+
 
     @callsite
     def apply_neighborhood(
