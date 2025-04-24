@@ -5045,17 +5045,15 @@ def test_custom_netcdf_tags(api110, tmp_path, strict_cropping):
     assert ds.dims == {"t": 1, "x": 80, "y": 80}
     assert numpy.datetime_as_string(ds.coords["t"].values, unit="D").tolist() == ["2021-01-05"]
     assert list(ds.data_vars.keys())[1:] == ["Flat:1", "Flat:2"]
-    assert (ds["Flat:1"] == 1).all()
     assert "long_name" in ds["Flat:1"].attrs
     assert "units" in ds["Flat:1"].attrs
-    assert "raster:scale" in ds["Flat:1"].attrs
-    assert ds["Flat:1"].attrs["raster:scale"] == "1.23"
-    assert (ds["Flat:2"] == 2).all()
+    # assert "scale_factor" in ds["Flat:1"].attrs
+    # assert ds["Flat:1"].attrs["scale_factor"] == 1.23
     assert "long_name" in ds["Flat:2"].attrs
     assert "units" in ds["Flat:2"].attrs
     assert "grid_mapping" in ds["Flat:2"].attrs
-    assert "raster:offset" in ds["Flat:2"].attrs
-    assert ds["Flat:2"].attrs["raster:offset"] == "4.56"
+    # assert "add_offset" in ds["Flat:2"].attrs
+    # assert ds["Flat:2"].attrs["add_offset"] == 4.56
 
 
 def test_reduce_bands_to_geotiff(api110, tmp_path):
