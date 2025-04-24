@@ -630,7 +630,10 @@ class GeopysparkDataCube(DriverDataCube):
             _log.info(f"apply_neighborhood created datacube {metadata}")
             return gps.TiledRasterLayer.from_numpy_rdd(gps.LayerType.SPACETIME, numpy_rdd, metadata)
 
-        return self.apply_to_levels(partial(rdd_function, self.metadata))
+        updated_cube_metadata = self.metadata
+        if ("apply_metadata" in udf_code and runtime.lower() is not "python-jep"):
+            updated_cube_metadata = self.apply_metadata(udf_code, udf_context)
+        return self.apply_to_levels(partial(rdd_function, self.metadata), updated_cube_metadata)
 
     @callsite
     def chunk_polygon(
@@ -1220,15 +1223,10 @@ class GeopysparkDataCube(DriverDataCube):
             temporal_size = size_dict.get(self.metadata.temporal_dimension.name,None)
             temporal_overlap = overlap_dict.get(self.metadata.temporal_dimension.name, None)
 
-        updated_cube_metadata = self.metadata
         result_collection = None
         if isinstance(process, SingleNodeUDFProcessGraphVisitor):
             runtime = process.udf_args.get('runtime', 'Python')
             udf, udf_context = self._extract_udf_code_and_context(process=process, context=context, env=env)
-
-            if("apply_metadata" in udf):
-                updated_cube_metadata = self.apply_metadata(udf,context)
-
 
             if sizeX < 32 or sizeY < 32:
                 raise ProcessParameterInvalidException(
@@ -1290,7 +1288,7 @@ class GeopysparkDataCube(DriverDataCube):
                                                                                       overlap_x,
                                                                                       overlap_y))
 
-        return GeopysparkDataCube(pyramid=result_collection.pyramid, metadata=updated_cube_metadata)
+        return result_collection
 
     @callsite
     def resample_cube_spatial(self, target: 'GeopysparkDataCube', method: str = 'near') -> 'GeopysparkDataCube':
