@@ -5,9 +5,11 @@ from typing import Dict
 import pytest
 import responses
 from mock import ANY, MagicMock
+from openeo_driver.testing import DictSubSet
 from pystac import Collection, Extent, SpatialExtent, TemporalExtent, Item, Asset, Link, RelType
 
 from openeogeotrellis.workspace import StacApiWorkspace
+from openeogeotrellis.workspace.helpers import vito_stac_api_workspace
 from openeogeotrellis.workspace.stac_api_workspace import StacApiResponseError
 
 
@@ -225,7 +227,7 @@ def test_error_details(tmp_path, requests_mock):
 
 
 def test_merge_target_supports_path(requests_mock, tmp_path):
-    asset_path = Path("asset.tif")
+    asset_path = Path("/path") / "to" / "asset.tif"
     collection = _collection(root_path=tmp_path / "collection", collection_id="collection", asset_path=asset_path)
 
     export_asset_mock = MagicMock(wraps=_export_asset)
@@ -248,6 +250,63 @@ def test_merge_target_supports_path(requests_mock, tmp_path):
     assert create_collection_mock.called_once
     assert create_item_mock.called_once
     export_asset_mock.assert_called_once_with(ANY, target, ANY, ANY)
+
+
+def test_vito_stac_api_workspace_helper(tmp_path, requests_mock, mock_s3_bucket, mock_s3_client):
+    asset_path = tmp_path / "asset.tif"
+    with open(asset_path, "w") as f:
+        f.write(str(asset_path))
+
+    collection = _collection(root_path=tmp_path / "collection", collection_id="collection", asset_path=asset_path)
+
+    oidc_issuer = "https://auth.test/realms/test"
+
+    stac_api_workspace = vito_stac_api_workspace(
+        root_url="https://stacapi.test",
+        oidc_issuer=oidc_issuer,
+        oidc_client_id="abc123",
+        oidc_client_secret="s3cr3t",
+        asset_bucket=mock_s3_bucket.name,
+        asset_prefix=lambda merge: f"assets/{merge}",
+        additional_collection_properties={
+            "_auth": {
+                "read": ["anonymous"],
+                "write": ["editor"],
+            },
+        },
+    )
+
+    target = PurePath("path/to/collection")
+
+    # mock OIDC provider
+    requests_mock.get(
+        f"{oidc_issuer}/.well-known/openid-configuration",
+        json={
+            "token_endpoint": f"{oidc_issuer}/protocol/openid-connect/token",
+        },
+    )
+    requests_mock.post(f"{oidc_issuer}/protocol/openid-connect/token", json={"access_token": "4cc3ss_t0k3n"})
+
+    # mock STAC API
+    _mock_stac_api_root_catalog(requests_mock, stac_api_workspace.root_url)
+    requests_mock.get(f"{stac_api_workspace.root_url}/collections/{target.name}", status_code=404)
+    create_collection_mock = requests_mock.post(f"{stac_api_workspace.root_url}/collections")
+    create_item_mock = requests_mock.post(f"{stac_api_workspace.root_url}/collections/{target.name}/items")
+
+    stac_api_workspace.merge(collection, target)
+
+    assert create_collection_mock.called_once
+    assert create_collection_mock.last_request.json() == DictSubSet(
+        id=target.name,
+        _auth={
+            "read": ["anonymous"],
+            "write": ["editor"],
+        },
+    )
+    assert create_item_mock.called_once
+    object_keys = {obj["Key"] for obj in mock_s3_client.list_objects_v2(Bucket=mock_s3_bucket.name).get("Contents", [])}
+
+    assert object_keys == {"assets/path/to/collection/asset.tif"}
 
 
 def _mock_stac_api_root_catalog(requests_mock, root_url: str):
