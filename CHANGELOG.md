@@ -12,8 +12,10 @@ without compromising stable operations.
 
 <!-- start-of-changelog -->
 
+
 ## In progress: 0.66.0
 
+- `apply_neighborhood`/`apply_dimension`: support changing band names via apply_metadata ([#1155](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1155))
 
 ## 0.65.0
 

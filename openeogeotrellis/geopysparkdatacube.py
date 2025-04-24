@@ -630,7 +630,10 @@ class GeopysparkDataCube(DriverDataCube):
             _log.info(f"apply_neighborhood created datacube {metadata}")
             return gps.TiledRasterLayer.from_numpy_rdd(gps.LayerType.SPACETIME, numpy_rdd, metadata)
 
-        return self.apply_to_levels(partial(rdd_function, self.metadata))
+        updated_cube_metadata = self.metadata
+        if ("apply_metadata" in udf_code and runtime.lower() is not "python-jep"):
+            updated_cube_metadata = self.apply_metadata(udf_code, udf_context)
+        return self.apply_to_levels(partial(rdd_function, self.metadata), updated_cube_metadata)
 
     @callsite
     def chunk_polygon(
@@ -828,8 +831,11 @@ class GeopysparkDataCube(DriverDataCube):
                 metadata = GeopysparkDataCube._transform_metadata(rdd.layer_metadata, cellType=CellType.FLOAT32)
                 return gps.TiledRasterLayer.from_numpy_rdd(rdd.layer_type, numpy_rdd, metadata)
 
+        updated_cube_metadata = self.metadata
+        if ("apply_metadata" in udf_code):
+            updated_cube_metadata = self.apply_metadata(udf_code, context)
         # Apply the UDF to every tile for every zoom level of the pyramid.
-        return self.apply_to_levels(partial(rdd_function, self.metadata))
+        return self.apply_to_levels(partial(rdd_function, self.metadata),updated_cube_metadata)
 
     def aggregate_time(self, temporal_window, aggregationfunction) -> Series :
         #group keys
@@ -1140,6 +1146,34 @@ class GeopysparkDataCube(DriverDataCube):
             result_collection = self._apply_to_levels_geotrellis_rdd(
                 lambda rdd, level: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().apply_kernel_spatial(rdd,geotrellis_tile))
         return result_collection
+
+
+    def apply_metadata(self,udf_code,context):
+
+        pysc = gps.get_spark_context()
+        metadata = self.metadata
+        _log.info(f"run_udf: detected use of apply_metadata to transform: {self.metadata}")
+        def get_metadata(x):
+            from openeo.udf.run_code import load_module_from_string
+            module = load_module_from_string(udf_code)
+            functions = list([(k, v) for (k, v) in module.items() if callable(v) and k == "apply_metadata"])
+            if len(functions)>=1:
+                apply_metadata_func = functions[0][1]
+                transformed_metadata = apply_metadata_func(metadata,context)
+                return transformed_metadata
+            else:
+                raise ValueError("run_udf: apply_metadata function not found in the provided code.")
+        metadata_list = pysc.parallelize([0]).map(get_metadata).collect()
+        result_metadata: GeopysparkCubeMetadata = metadata_list[0]
+
+        _log.info(f"run_udf: apply_metadata resulted in {result_metadata}")
+        if not result_metadata.has_band_dimension():
+            raise ValueError(f"run_udf: apply_metadata function should not remove the band dimension, received metadata: {result_metadata}.")
+        if not isinstance(result_metadata, GeopysparkCubeMetadata):
+            raise ValueError(f"run_udf: apply_metadata function should retain the type of the input metadata object, received: {result_metadata}.")
+
+        return result_metadata
+
 
     @callsite
     def apply_neighborhood(
