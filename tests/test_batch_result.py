@@ -1579,11 +1579,16 @@ def test_export_workspace_merge_filepath_per_band(tmp_path, mock_s3_bucket):
 
 
 @pytest.mark.parametrize("kube", [False])  # kube==True will not run on Jenkins
+@pytest.mark.parametrize("merge", [
+    PurePath("collection1"),
+    PurePath("path/to/assets/collection1")
+])
 def test_export_workspace_merge_into_stac_api(
     tmp_path,
     mock_s3_bucket,
     requests_mock,
     kube,
+    merge,
     moto_server,
     monkeypatch,
 ):
@@ -1607,7 +1612,7 @@ def test_export_workspace_merge_into_stac_api(
     assert isinstance(stac_api_workspace, StacApiWorkspace)
 
     enable_merge = True
-    collection_id = "collection1"
+    collection_id = merge.name
 
     # the root Catalog
     requests_mock.get(stac_api_workspace.root_url, json={
@@ -1674,7 +1679,7 @@ def test_export_workspace_merge_into_stac_api(
             "arguments": {
                 "data": {"from_node": "saveresult1"},
                 "workspace": stac_api_workspace_id,
-                "merge": collection_id,
+                "merge": str(merge),
             },
             "result": True,
         },
@@ -1701,21 +1706,21 @@ def test_export_workspace_merge_into_stac_api(
 
     assert create_item.request_history[0].json()["assets"] == {
         "lat.tif": DictSubSet({
-            "href": f"s3://openeo-fake-bucketname/{collection_id}/lat.tif"
+            "href": f"s3://openeo-fake-bucketname/{merge}/lat.tif"
         })
     }
 
     assert create_item.request_history[1].json()["assets"] == {
         "some/deeply/nested/folder/lon.tif": DictSubSet({
-            "href": f"s3://openeo-fake-bucketname/{collection_id}/some/deeply/nested/folder/lon.tif"
+            "href": f"s3://openeo-fake-bucketname/{merge}/some/deeply/nested/folder/lon.tif"
         })
     }
 
     exported_asset_keys = [PurePath(obj.key) for obj in mock_s3_bucket.objects.all()]
 
     assert exported_asset_keys == ListSubSet([
-        Path(collection_id) / "some/deeply/nested/folder/lon.tif",
-        Path(collection_id) / "lat.tif",
+        merge / "some/deeply/nested/folder/lon.tif",
+        merge / "lat.tif",
     ])
 
 
