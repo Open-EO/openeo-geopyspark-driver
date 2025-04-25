@@ -2325,8 +2325,10 @@ class GeopysparkDataCube(DriverDataCube):
                     _log.warning(f"save_result: a feature_id_property '{feature_id_property}' was specified, but could not find  labels in the vector cube: {geometries}.")
 
             return [str(i) for i in range(geometries.geometry_count())]
-        elif isinstance(geometries, collections.abc.Sized):
-            return [str(x) for x in range(len(geometries))]
+        elif isinstance(geometries, BaseMultipartGeometry):
+            return [str(i) for i in range(len(geometries.geoms))]
+        elif isinstance(geometries, BaseGeometry):
+            return ["0"]
         else:
             _log.warning(f"get_labels: unhandled geometries type {type(geometries)}")
             return ["0"]
