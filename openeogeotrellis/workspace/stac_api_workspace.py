@@ -62,22 +62,22 @@ class StacApiWorkspace(Workspace):
         raise NotImplementedError
 
     def merge(self, stac_resource: STACObject, target: PurePath, remove_original: bool = False) -> STACObject:
-        collection_id = target.name
-
         self._assert_catalog_supports_necessary_api()
 
         stac_resource = stac_resource.full_copy()
 
         if isinstance(stac_resource, Collection):
             new_collection = stac_resource
-
-            existing_collection = None
+            del stac_resource
 
             with requests_with_retry(
                 total=3,
                 backoff_factor=2,
                 allowed_methods=Retry.DEFAULT_ALLOWED_METHODS.union({"POST"}),
             ) as session:
+                collection_id = target.name
+                existing_collection = None
+
                 try:
                     stac_io = ResilientStacIO(session=session)
                     existing_collection = Collection.from_file(
