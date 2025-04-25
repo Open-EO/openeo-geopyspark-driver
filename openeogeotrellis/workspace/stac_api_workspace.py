@@ -33,7 +33,7 @@ class StacApiWorkspace(Workspace):
             str,  #  workspace URI
         ],
         asset_alternate_id: str,
-        additional_collection_properties=None,
+        additional_collection_properties: dict = None,
         get_access_token: Callable[[], str] = None,
     ):
         """

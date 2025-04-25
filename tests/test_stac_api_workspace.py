@@ -9,7 +9,7 @@ from openeo_driver.testing import DictSubSet
 from pystac import Collection, Extent, SpatialExtent, TemporalExtent, Item, Asset, Link, RelType
 
 from openeogeotrellis.workspace import StacApiWorkspace
-from openeogeotrellis.workspace.helpers import vito_stac_api_workspace
+from openeogeotrellis.workspace import vito_stac_api_workspace
 from openeogeotrellis.workspace.stac_api_workspace import StacApiResponseError
 
 

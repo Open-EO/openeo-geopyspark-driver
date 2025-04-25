@@ -9,22 +9,30 @@ from .stac_api_workspace import StacApiWorkspace
 from openeogeotrellis.utils import s3_client
 
 
-def vito_stac_api_workspace(  # TODO: improve name
+def vito_stac_api_workspace(  # for lack of a better name, can still be aliased
     root_url: str,
     oidc_issuer: str,
     oidc_client_id: str,
     oidc_client_secret: str,
     asset_bucket: str,
     asset_prefix: Callable[[PurePath], str] = lambda merge: str(merge).lstrip("/"),
-    additional_collection_properties=None,
+    additional_collection_properties: dict = None,
 ) -> StacApiWorkspace:
-    """Returns a StacApiWorkspace that:
+    """
+    Returns a ``StacApiWorkspace`` that:
     - uses OIDC client credentials to obtain an access token for the STAC API;
     - exports assets to a particular bucket/prefix in object storage.
+
+    :param root_url: root URL of the STAC API
+    :param oidc_issuer: URL of the OIDC issuer
+    :param oidc_client_id: OIDC client ID
+    :param oidc_client_secret: OIDC client secret
+    :param asset_bucket: name of the object storage bucket to export assets to
+    :param asset_prefix: customize the object storage prefix assets are stored at; defaults to the ``merge`` argument passed to ``export_workspace``.
+    :param additional_collection_properties: top-level Collection properties to include in the STAC API request for e.g. authorization
     """
 
     def export_asset(asset: pystac.Asset, merge: PurePath, relative_asset_path: PurePath, remove_original: bool) -> str:
-        # TODO: remove code duplication with ObjectStorageWorkspace?
         asset_uri = asset.get_absolute_href()
         source_uri_parts = urlparse(asset_uri)
         source_path = Path(source_uri_parts.path)
@@ -52,6 +60,7 @@ def vito_stac_api_workspace(  # TODO: improve name
         return workspace_uri
 
     def get_access_token() -> str:
+        # intentionally lazily instantiated
         access_token_helper = ClientCredentialsAccessTokenHelper(
             credentials=ClientCredentials(
                 oidc_issuer=oidc_issuer,
