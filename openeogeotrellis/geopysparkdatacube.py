@@ -2243,16 +2243,15 @@ class GeopysparkDataCube(DriverDataCube):
             XarrayIO.to_json_file(array=result, path=filename)
 
         elif format == "ZARR":
-            band_names = None
-            number_bands = 1
+            zarr_options = get_jvm().org.openeo.geotrellis.zarr.ZarrOptions()
             if self.metadata.has_band_dimension():
                 band_names = self.metadata.band_names
                 number_bands = len(band_names)
+                zarr_options.setBands(number_bands, band_names)
+            else:
+                zarr_options.setBands(1)
 
-            zarr_options = get_jvm().org.openeo.geotrellis.zarr.ZarrOptions()
-            zarr_options.setBands(number_bands,band_names)
-
-            self._save_zarr_executors(max_level,filename,zarr_options)
+            self._save_zarr_executors(max_level.srdd.rdd(),filename,zarr_options)
 
 
         else:
@@ -2516,9 +2515,12 @@ class GeopysparkDataCube(DriverDataCube):
             return jvm.org.openeo.geotrellis.geotiff.package.saveStitchedTileGrid(spatial_rdd.srdd.rdd(), path,
                                                                                   tile_grid, max_compression)
 
-    def _save_zarr_executors(self,spatial_rdd, path, number_bands):
+    def _save_zarr_executors(self,spatial_rdd, path, zarr_options):
         jvm = get_jvm()
-        jvm.org.openeo.geotrellis.zarr.zarrWriter.saveZarr(spatial_rdd,path,number_bands)
+        if (spatial_rdd.layer_type != gps.LayerType.SPATIAL):
+            jvm.org.openeo.geotrellis.zarr.ZarrWriter.saveZarr(spatial_rdd,path,zarr_options)
+        else:
+            jvm.org.openeo.geotrellis.zarr.ZarrWriter.saveZarrSpatial(spatial_rdd,path,zarr_options)
 
     @callsite
     def ndvi(self, **kwargs) -> 'GeopysparkDataCube':

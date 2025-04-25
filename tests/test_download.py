@@ -9,6 +9,7 @@ import pytest
 from openeo.metadata import Band
 from openeo_driver.util.geometry import geojson_to_geometry
 from shapely import geometry
+from zarr import storage
 
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from .data import get_test_data_file
@@ -398,3 +399,12 @@ class TestDownload:
 
         imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input_layer}))
         imagecollection.save_result("catalogresult.tiff", format="GTIFF", format_options={"parameters": {"catalog": True}})
+
+
+    def test_zarr(self,tmp_path):
+        input_layer = layer_with_two_bands_and_one_date()
+        imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input_layer}))
+        imagecollection.metadata = imagecollection.metadata.add_dimension('band_one', 'band_one', 'bands')
+        imagecollection.metadata = imagecollection.metadata.append_band(Band('band_two', '', ''))
+        file_Path = str(tmp_path / "res.zarr")
+        imagecollection.write_assets(file_Path, format="ZARR")
