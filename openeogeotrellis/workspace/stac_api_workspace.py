@@ -1,6 +1,5 @@
 import json
 import logging
-import re
 from pathlib import PurePath, Path
 from typing import Union, Callable
 
@@ -25,14 +24,16 @@ class StacApiResponseError(Exception):
 
 class StacApiWorkspace(Workspace):
     REQUESTS_TIMEOUT_SECONDS = 60
-    TARGET_PATTERN = re.compile(r"^[\w\-]+$")
 
     def __init__(
         self,
         root_url: str,
-        export_asset: Callable[[Asset, str, PurePath, bool], str],  # asset, collection_id, relative_asset_path, remove_original
+        export_asset: Callable[
+            [Asset, PurePath, PurePath, bool],  # asset, merge, relative_asset_path, remove_original
+            str,  #  workspace URI
+        ],
         asset_alternate_id: str,
-        additional_collection_properties=None,
+        additional_collection_properties: dict = None,
         get_access_token: Callable[[], str] = None,
     ):
         """
@@ -61,23 +62,22 @@ class StacApiWorkspace(Workspace):
         raise NotImplementedError
 
     def merge(self, stac_resource: STACObject, target: PurePath, remove_original: bool = False) -> STACObject:
-        collection_id = self._validate_collection_id(target)
-        del target
-
         self._assert_catalog_supports_necessary_api()
 
         stac_resource = stac_resource.full_copy()
 
         if isinstance(stac_resource, Collection):
             new_collection = stac_resource
-
-            existing_collection = None
+            del stac_resource
 
             with requests_with_retry(
                 total=3,
                 backoff_factor=2,
                 allowed_methods=Retry.DEFAULT_ALLOWED_METHODS.union({"POST"}),
             ) as session:
+                collection_id = target.name
+                existing_collection = None
+
                 try:
                     stac_io = ResilientStacIO(session=session)
                     existing_collection = Collection.from_file(
@@ -117,7 +117,7 @@ class StacApiWorkspace(Workspace):
                         # client takes care of copying asset and returns its workspace URI
                         workspace_uri = self._export_asset(
                             asset,
-                            collection_id,
+                            target,
                             relative_asset_path,
                             remove_original,
                         )
@@ -223,15 +223,3 @@ class StacApiWorkspace(Workspace):
         return (isinstance(e, requests.HTTPError) and e.response.status_code == 404) or (
             e.__cause__ is not None and self._is_not_found_error(e.__cause__)
         )
-
-    @staticmethod
-    def _validate_collection_id(target: PurePath) -> str:
-        collection_id = str(target)
-
-        if not StacApiWorkspace.TARGET_PATTERN.fullmatch(collection_id):
-            raise ValueError(
-                f"merge argument does not match pattern /{StacApiWorkspace.TARGET_PATTERN.pattern}/,"
-                f" got: {collection_id}"
-            )
-
-        return collection_id

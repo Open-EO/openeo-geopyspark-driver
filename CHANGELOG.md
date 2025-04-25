@@ -16,6 +16,7 @@ without compromising stable operations.
 ## In progress: 0.66.0
 
 - `apply_neighborhood`/`apply_dimension`: support changing band names via apply_metadata ([#1155](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1155))
+- `StacApiWorkspace`: support arbitrary paths in `merge`; the last part of a path becomes the collection ID in the STAC API ([#1074](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1074))
 
 ## 0.65.0
 
