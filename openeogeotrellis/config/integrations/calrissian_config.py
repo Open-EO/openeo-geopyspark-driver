@@ -30,16 +30,13 @@ class CalrissianConfig:
     Docker image to use for the input staging step of the Calrissian workflow.
     Should be a small image providing basic shell utilities (e.g. alpine).
     """
-    # TODO #1009/#1132 revert default to DEFAULT_INPUT_STAGING_IMAGE once custom image is in appropriate configs
-    # input_staging_image: str = DEFAULT_INPUT_STAGING_IMAGE
-    input_staging_image: str = "registry.stag.warsaw.openeo.dataspace.copernicus.eu/rand/alpine:3"
+    input_staging_image: str = DEFAULT_INPUT_STAGING_IMAGE
 
     """
     Docker image providing the Calrissian tool
     """
     # TODO #1007 proper calrissian image? Official one doesn't work due to https://github.com/Duke-GCB/calrissian/issues/124#issuecomment-947008286
-    # calrissian_image: str = DEFAULT_CALRISSIAN_IMAGE
-    calrissian_image: str = "registry.stag.warsaw.openeo.dataspace.copernicus.eu/rand/calrissian:latest"
+    calrissian_image: str = DEFAULT_CALRISSIAN_IMAGE
 
     """
     S3 bucket associated with `StorageClass` that is used for the `PersistentVolumeClaim`s
