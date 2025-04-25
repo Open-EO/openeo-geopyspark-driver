@@ -4,6 +4,7 @@ import shutil
 from pathlib import Path
 from unittest import skip
 
+import dirty_equals
 import geopyspark as gps
 import pytest
 from openeo.metadata import Band
@@ -156,24 +157,44 @@ class TestDownload:
         format = 'GTiff'
 
         geometries = geojson_to_geometry(self.features)
-        res = imagecollection.write_assets(str(tmp_path / "ignored.tiff"), format=format, format_options={
-            "multidate": True,
-            "batch_mode": True,
-            "geometries": geometries,
-            "sample_by_feature": True,
-            "feature_id_property": 'id',
-            "filename_prefix": "filenamePrefixTest",
-        })
-        assert len(res) >= 3
-        assert len(res) <= geometries.length
-        name, asset = next(iter(res.items()))
-        assert Path(asset['href']).parent == tmp_path
-        assert asset['nodata'] == -1
-        assert asset['roles'] == ['data']
-        assert 2 == len(asset['bands'])
-        assert "filenamePrefixTest" in asset['href']
-        assert 'image/tiff; application=geotiff' == asset['type']
-        assert asset['datetime'] == "2017-09-25T11:37:00Z"
+        res = imagecollection.write_assets(
+            str(tmp_path / "ignored.tiff"),
+            format=format,
+            format_options={
+                "multidate": True,
+                "batch_mode": True,
+                "geometries": geometries,
+                "sample_by_feature": True,
+                "feature_id_property": "id",
+                "filename_prefix": "filenamePrefixTest",
+            },
+        )
+
+        expected = {
+            name: {
+                "bands": [
+                    dirty_equals.IsPartialDict(name="band_one"),
+                    dirty_equals.IsPartialDict(name="band_two"),
+                ],
+                "bbox": dirty_equals.IsListOrTuple(length=4),
+                "datetime": date,
+                "geometry": dirty_equals.IsPartialDict(type="Polygon"),
+                "href": str(tmp_path / name),
+                "nodata": -1,
+                "roles": ["data"],
+                "type": "image/tiff; application=geotiff",
+            }
+            for (name, date) in [
+                ("filenamePrefixTest_2017-09-25Z_0.tif", "2017-09-25T11:37:00Z"),
+                ("filenamePrefixTest_2017-09-25Z_1.tif", "2017-09-25T11:37:00Z"),
+                ("filenamePrefixTest_2017-09-25Z_2.tif", "2017-09-25T11:37:00Z"),
+                ("filenamePrefixTest_2017-09-25Z_3.tif", "2017-09-25T11:37:00Z"),
+                ("filenamePrefixTest_2017-09-25Z_4.tif", "2017-09-25T11:37:00Z"),
+            ]
+        }
+
+        assert res == expected
+
 
     def test_write_assets_samples_tile_grid(self, tmp_path):
         input_layer = layer_with_two_bands_and_one_date()
