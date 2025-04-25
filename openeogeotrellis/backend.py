@@ -2161,6 +2161,7 @@ class GpsBatchJobs(backend.BatchJobs):
             running_image = api_instance_core.read_namespaced_pod(name=os.environ.get("POD_NAME"), namespace=os.environ.get("POD_NAMESPACE")).spec.containers[0].image
 
             image_name = job_options.get("image-name", running_image)
+            image_name = get_backend_config().batch_runtime_to_image.get(image_name.lower(), image_name)
 
             batch_job_cfg_secret_name = k8s_get_batch_job_cfg_secret_name(spark_app_id)
 

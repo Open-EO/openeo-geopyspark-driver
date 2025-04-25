@@ -238,6 +238,14 @@ class GpsBackendConfig(OpenEoBackendConfig):
     )
 
     """
+    Maps the name of a UDF runtime to the image to use for the batch job.
+    Also used to map image-name job option to batch job image.
+    """
+    batch_runtime_to_image: dict = {
+        "python311" : "vito-docker.artifactory.vgt.vito.be/openeo-geotrellis-kube-python311:latest"
+    }
+
+    """
     Only used by YARN, allows to specify paths to mount in batch job docker containers.
     """
     batch_docker_mounts: str = (
