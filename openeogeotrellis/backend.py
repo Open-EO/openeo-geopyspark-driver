@@ -522,7 +522,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                             "description": "Sets file-level GDAL metadata (key-value).",
                         },
                         "bands_metadata": {
-                            "type": ["object"],
+                            "type": ["object", "null"],
                             "description": "Specifies band-level metadata for each band (band-(key-value)).",
                             "default": None,
                         },
