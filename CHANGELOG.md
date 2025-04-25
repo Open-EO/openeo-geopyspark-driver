@@ -12,8 +12,14 @@ without compromising stable operations.
 
 <!-- start-of-changelog -->
 
-## In progress: 0.65.0
 
+## In progress: 0.66.0
+
+- `apply_neighborhood`/`apply_dimension`: support changing band names via apply_metadata ([#1155](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1155))
+
+## 0.65.0
+
+- `sar_backscatter`: soft-errors can now be a fraction, allowing to tolerate a certain failure percentage provided as a number between 0 and 1. ([#443](https://github.com/Open-EO/openeo-geopyspark-driver/issues/443))
 - `save_result`: write GeoTiff assets with valid tile size; override with `tile_size` format option. ([#1083](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1083))
 - `sar_backscatter` support: automatically use backend-specific `coefficient` default even if there is no explicit `sar_backscatter` in the process graph ([Open-EO/openeo-python-driver#376](https://github.com/Open-EO/openeo-python-driver/issues/376))
 - Add `capabilities_extras` config to easily extend capabilities document ([Open-EO/openeo-python-driver#384](https://github.com/Open-EO/openeo-python-driver/issues/384))
@@ -31,6 +37,8 @@ without compromising stable operations.
 - `save_result`: allow non-string values in `GTiff` `file_metadata` ([#1142](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1142))
 - Add `udp_registry_zookeeper_client_reuse` config for `KazooClient` reuse in `ZooKeeperUserDefinedProcessRepository` ([#1037](https://github.com/Open-EO/openeo-geopyspark-driver/pull/1037))
 - `GpsBackendConfig`: be more forgiving about unknown config keys to better support use cases that involve backward/forward incompatible configurations ([Open-EO/openeo-python-driver#322](https://github.com/Open-EO/openeo-python-driver/issues/322))
+- Improved API alignment between `DoubleJobRegistry` and `JobRegistryInterface`/`ElasticJobRegistry` ([#863](https://github.com/Open-EO/openeo-geopyspark-driver/issues/863), [#1123](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1123))
+- Add `use_new_feature_extent_intersection_2` option to `load_collection`: To use new intersection code to work with products crossing the antimeridian. ([#1072](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1072))
 
 
 ## 0.64.1

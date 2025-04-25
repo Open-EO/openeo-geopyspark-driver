@@ -1,13 +1,14 @@
 from __future__ import annotations
+
 import re
 from configparser import ConfigParser
 from io import StringIO
 import os
 from dataclasses import dataclass
 from typing import Optional
+import time
 
 from openeogeotrellis.config import get_backend_config
-from openeogeotrellis.utils import utcnow_epoch
 from openeogeotrellis.workspace import ObjectStorageWorkspace
 
 
@@ -117,5 +118,5 @@ class S3Config:
         """
         sanitized = re.sub(r"[^\w+=,.@-]", "", session_name)
         if len(sanitized) < 2:
-            sanitized += str(f"-{utcnow_epoch()}")
+            sanitized += str(f"-{time.time()}")
         return sanitized[0:64]

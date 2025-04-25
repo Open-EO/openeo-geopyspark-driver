@@ -181,7 +181,7 @@ def test_apply_complex_graph():
     }
 
     input = create_spacetime_layer()
-    cube = GeopysparkDataCube(gps.Pyramid({0: input}), InMemoryServiceRegistry())
+    cube = GeopysparkDataCube(gps.Pyramid({0: input}))
     res = cube.apply(process=graph, env=EvalEnv())
     data = res.pyramid.levels[0].to_spatial_layer().stitch().cells
     np.testing.assert_array_almost_equal(data[0, 2:6, 2:6], 5.0 * np.sin(first[0]))

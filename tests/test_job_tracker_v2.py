@@ -267,7 +267,7 @@ class KubernetesAppInfo:
 
     def set_submitted(self):
         if not self.start_time:
-            self.start_time = rfc3339.datetime(dt.datetime.utcnow())
+            self.start_time = rfc3339.now_utc()
         self.state = K8S_SPARK_APP_STATE.SUBMITTED
 
     def set_running(self):
@@ -283,7 +283,7 @@ class KubernetesAppInfo:
 
     def set_finish_time(self, force: bool = False):
         if not self.finish_time or force:
-            self.finish_time = rfc3339.datetime(dt.datetime.utcnow())
+            self.finish_time = rfc3339.now_utc()
 
 
 class KubernetesMock:
@@ -1625,8 +1625,8 @@ class TestK8sStatusGetter:
         k8s_mock.get_namespaced_custom_object.return_value = {
             "status": {
                 "applicationState": {"state": K8S_SPARK_APP_STATE.COMPLETED},
-                "lastSubmissionAttemptTime": rfc3339.datetime(dt.datetime.utcnow()),
-                "terminationTime": rfc3339.datetime(dt.datetime.utcnow()),
+                "lastSubmissionAttemptTime": rfc3339.now_utc(),
+                "terminationTime": rfc3339.now_utc(),
             }
         }
 

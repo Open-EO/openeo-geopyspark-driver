@@ -5,12 +5,13 @@ import base64
 import logging
 import os
 import pkg_resources
+import time
 
 from jinja2 import Environment, FileSystemLoader
+
 from openeo_driver.jobregistry import JOB_STATUS
 from openeo_driver.utils import generate_unique_id
 
-from openeogeotrellis.utils import utcnow_epoch
 
 _log = logging.getLogger(__name__)
 
@@ -97,8 +98,9 @@ def k8s_render_manifest_template(template, **kwargs) -> dict:
             input_str = str(input_str)
         return base64.b64encode(input_str.encode("utf-8")).decode("utf-8")
 
-    jinja_env.filters['b64encode'] = base64encode
-    jinja_env.globals['utcnow_epoch'] = utcnow_epoch
+    jinja_env.filters["b64encode"] = base64encode
+    jinja_env.globals["utcnow_epoch"] = time.time  # TODO: remove this deprecated/unused utility
+    jinja_env.globals["unix_time"] = time.time
     jinja_template = jinja_env.from_string(open(jinja_path).read())
 
     rendered = jinja_template.render(**kwargs)

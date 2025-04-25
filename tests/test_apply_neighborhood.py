@@ -62,6 +62,23 @@ def test_apply_neighborhood_overlap_udf(imagecollection_with_two_bands_and_three
     assert_array_almost_equal(input, subresult)
 
 
+def test_apply_metadata(imagecollection_with_two_bands_and_three_dates, identity_udf_rename_bands):
+
+    the_date = datetime.datetime(2017, 9, 25, 11, 37)
+
+    result = imagecollection_with_two_bands_and_three_dates.apply_neighborhood(
+        process=identity_udf_rename_bands,
+        size=[{'dimension': 'x', 'unit': 'px', 'value': 32}, {'dimension': 'y', 'unit': 'px', 'value': 32}],
+        overlap=[{'dimension': 'x', 'unit': 'px', 'value': 8}, {'dimension': 'y', 'unit': 'px', 'value': 8}],
+        context={},
+        env=EvalEnv()
+    )
+    assert result.metadata.band_names == ["computed_band_1", "computed_band_2"]
+    result_xarray = result._to_xarray()
+    assert list(result_xarray.bands.values) == ["computed_band_1", "computed_band_2"]
+
+
+
 def test_apply_neighborhood_on_timeseries(imagecollection_with_two_bands_and_three_dates):
     the_date = datetime.datetime(2017, 9, 25, 11, 37)
     graph = {

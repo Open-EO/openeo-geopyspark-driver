@@ -64,7 +64,6 @@ from openeogeotrellis.config.config import EtlApiConfig
 from openeogeotrellis.job_registry import ZkJobRegistry
 from openeogeotrellis.testing import KazooClientMock, gps_config_overrides, random_name
 from openeogeotrellis.utils import (
-    UtcNowClock,
     drop_empty_from_aggregate_polygon_result,
     get_jvm,
     is_package_available,
@@ -2015,9 +2014,10 @@ def test_extra_validation_unlimited_extent(api100, lc_args):
     (("2020-01-01", None), ("2020-01-05 00:00:00", "2020-02-15 00:00:00")),
     ((None, "2019-01-10"), ("2000-01-05 00:00:00", "2019-01-05 00:00:00")),
 ])
-def test_load_collection_open_temporal_extent(api100, temporal_extent, expected):
-    with UtcNowClock.mock(now="2020-02-20"):
-        response = api100.check_result({
+def test_load_collection_open_temporal_extent(api100, temporal_extent, expected, time_machine):
+    time_machine.move_to("2020-02-20")
+    response = api100.check_result(
+        {
             "lc": {
                 "process_id": "load_collection",
                 "arguments": {

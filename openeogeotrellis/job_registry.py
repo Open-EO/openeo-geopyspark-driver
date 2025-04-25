@@ -100,8 +100,8 @@ class ZkJobRegistry:
             'api_version': api_version,
             "specification": specification_blob,
             "application_id": None,
-            "created": rfc3339.utcnow(),
-            "updated": rfc3339.utcnow(),
+            "created": rfc3339.now_utc(),
+            "updated": rfc3339.now_utc(),
             "title": title,
             "description": description,
         }
@@ -120,7 +120,7 @@ class ZkJobRegistry:
         """Updates a registered batch job with its status. Additionally, updates its "updated" property."""
         kwargs = {
             "status": status,
-            "updated": rfc3339.utcnow(),
+            "updated": rfc3339.now_utc(),
         }
 
         if started:
@@ -608,7 +608,7 @@ class InMemoryJobRegistry(JobRegistryInterface):
         job_options: Optional[dict] = None,
     ) -> JobDict:
         assert job_id not in self.db
-        created = rfc3339.utcnow()
+        created = rfc3339.now_utc()
         self.db[job_id] = {
             "job_id": job_id,
             "user_id": user_id,
@@ -645,46 +645,53 @@ class InMemoryJobRegistry(JobRegistryInterface):
     def set_status(
         self,
         job_id: str,
-        status: str,
         *,
+        user_id: Optional[str] = None,
+        status: str,
         updated: Optional[str] = None,
         started: Optional[str] = None,
         finished: Optional[str] = None,
-    ) -> JobDict:
+    ) -> None:
         self._update(
             job_id=job_id,
             status=status,
-            updated=rfc3339.datetime(updated) if updated else rfc3339.utcnow(),
+            updated=rfc3339.datetime(updated) if updated else rfc3339.now_utc(),
         )
         if started:
             self._update(job_id=job_id, started=rfc3339.datetime(started))
         if finished:
             self._update(job_id=job_id, finished=rfc3339.datetime(finished))
-        return self.db[job_id]
 
     def set_dependencies(
-        self, job_id: str, dependencies: List[Dict[str, str]]
-    ) -> JobDict:
-        return self._update(job_id=job_id, dependencies=dependencies)
+        self, job_id: str, *, user_id: Optional[str] = None, dependencies: List[Dict[str, str]]
+    ) -> None:
+        self._update(job_id=job_id, dependencies=dependencies)
 
-    def remove_dependencies(self, job_id: str) -> JobDict:
-        return self._update(job_id=job_id, dependencies=None, dependency_status=None)
+    def remove_dependencies(self, job_id: str, *, user_id: Optional[str] = None) -> None:
+        self._update(job_id=job_id, dependencies=None, dependency_status=None)
 
-    def set_dependency_status(self, job_id: str, dependency_status: str) -> JobDict:
-        return self._update(job_id=job_id, dependency_status=dependency_status)
+    def set_dependency_status(self, job_id: str, *, user_id: Optional[str] = None, dependency_status: str) -> None:
+        self._update(job_id=job_id, dependency_status=dependency_status)
 
-    def set_dependency_usage(self, job_id: str, dependency_usage: Decimal) -> JobDict:
-        return self._update(job_id, dependency_usage=str(dependency_usage))
+    def set_dependency_usage(self, job_id: str, *, user_id: Optional[str] = None, dependency_usage: Decimal) -> None:
+        self._update(job_id, dependency_usage=str(dependency_usage))
 
-    def set_proxy_user(self, job_id: str, proxy_user: str) -> JobDict:
-        return self._update(job_id=job_id, proxy_user=proxy_user)
+    def set_proxy_user(self, job_id: str, *, user_id: Optional[str] = None, proxy_user: str) -> None:
+        self._update(job_id=job_id, proxy_user=proxy_user)
 
-    def set_application_id(self, job_id: str, application_id: str) -> JobDict:
-        return self._update(job_id=job_id, application_id=application_id)
+    def set_application_id(self, job_id: str, *, user_id: Optional[str] = None, application_id: str) -> None:
+        self._update(job_id=job_id, application_id=application_id)
 
-    def set_results_metadata(self, job_id: str, costs: Optional[float], usage: dict,
-                             results_metadata: Dict[str, Any]) -> JobDict:
-        return self._update(job_id=job_id, costs=costs, usage=usage, results_metadata=results_metadata)
+    def set_results_metadata(
+        self,
+        job_id: str,
+        *,
+        user_id: Optional[str] = None,
+        costs: Optional[float],
+        usage: dict,
+        results_metadata: Dict[str, Any],
+    ) -> None:
+        self._update(job_id=job_id, costs=costs, usage=usage, results_metadata=results_metadata)
 
     def list_user_jobs(
         self,
@@ -825,11 +832,11 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
             raise DoubleJobRegistryException(f"None of ZK/EJR registered {job_id=}")
         return zk_job_info or ejr_job_info
 
-    def get_job(self, job_id: str, *, user_id: Optional[str] = None) -> dict:
+    def get_job(self, job_id: str, *, user_id: Optional[str] = None) -> JobDict:
         # TODO: eliminate get_job/get_job_metadata duplication?
         zk_job = ejr_job = None
         if self.zk_job_registry:
-            assert user_id
+            assert user_id, "user_id is required in ZkJobRegistry"
             with contextlib.suppress(JobNotFoundException, ZkStrippedSpecification):
                 zk_job = self.zk_job_registry.get_job(
                     job_id=job_id, user_id=user_id, parse_specification=True, omit_raw_specification=True
@@ -870,80 +877,85 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
         elif zk_job_info is None and ejr_job_info is None:
             raise JobNotFoundException(job_id=job_id)
 
-    def set_status(self, job_id: str, user_id: str, status: str,
-                   started: Optional[str] = None, finished: Optional[str] = None,
-                   ) -> None:
+    def set_status(
+        self,
+        job_id: str,
+        *,
+        user_id: Optional[str] = None,
+        status: str,
+        updated: Optional[str] = None,
+        started: Optional[str] = None,
+        finished: Optional[str] = None,
+    ) -> None:
         if self.zk_job_registry:
+            assert user_id, "user_id is required in ZkJobRegistry"
             self.zk_job_registry.set_status(job_id=job_id, user_id=user_id, status=status, started=started,
                                             finished=finished)
         if self.elastic_job_registry:
-            self.elastic_job_registry.set_status(job_id=job_id, status=status, started=started, finished=finished)
+            self.elastic_job_registry.set_status(
+                job_id=job_id, user_id=user_id, status=status, updated=updated, started=started, finished=finished
+            )
 
     def delete_job(self, job_id: str, *, user_id: Optional[str] = None) -> None:
         if self.zk_job_registry:
-            assert user_id
+            assert user_id, "user_id is required in ZkJobRegistry"
             self.zk_job_registry.delete(job_id=job_id, user_id=user_id)
         if self.elastic_job_registry:
             self.elastic_job_registry.delete_job(job_id=job_id, user_id=user_id)
 
     def set_dependencies(
-        self, job_id: str, user_id: str, dependencies: List[Dict[str, str]]
-    ):
-        if self.zk_job_registry:
-            self.zk_job_registry.set_dependencies(job_id=job_id, user_id=user_id, dependencies=dependencies)
-        if self.elastic_job_registry:
-            self.elastic_job_registry.set_dependencies(
-                job_id=job_id, dependencies=dependencies
-            )
-
-    def remove_dependencies(self, job_id: str, user_id: str):
-        if self.zk_job_registry:
-            self.zk_job_registry.remove_dependencies(job_id=job_id, user_id=user_id)
-        if self.elastic_job_registry:
-            self.elastic_job_registry.remove_dependencies(job_id=job_id)
-
-    def set_dependency_status(
-        self, job_id: str, user_id: str, dependency_status: str
+        self, job_id: str, *, user_id: Optional[str] = None, dependencies: List[Dict[str, str]]
     ) -> None:
         if self.zk_job_registry:
+            assert user_id, "user_id is required in ZkJobRegistry"
+            self.zk_job_registry.set_dependencies(job_id=job_id, user_id=user_id, dependencies=dependencies)
+        if self.elastic_job_registry:
+            self.elastic_job_registry.set_dependencies(job_id=job_id, user_id=user_id, dependencies=dependencies)
+
+    def remove_dependencies(self, job_id: str, *, user_id: Optional[str] = None) -> None:
+        if self.zk_job_registry:
+            assert user_id, "user_id is required in ZkJobRegistry"
+            self.zk_job_registry.remove_dependencies(job_id=job_id, user_id=user_id)
+        if self.elastic_job_registry:
+            self.elastic_job_registry.remove_dependencies(job_id=job_id, user_id=user_id)
+
+    def set_dependency_status(self, job_id: str, *, user_id: Optional[str] = None, dependency_status: str) -> None:
+        if self.zk_job_registry:
+            assert user_id, "user_id is required in ZkJobRegistry"
             self.zk_job_registry.set_dependency_status(
                 job_id=job_id, user_id=user_id, dependency_status=dependency_status
             )
         if self.elastic_job_registry:
             self.elastic_job_registry.set_dependency_status(
-                job_id=job_id, dependency_status=dependency_status
+                job_id=job_id, user_id=user_id, dependency_status=dependency_status
             )
 
-    def set_dependency_usage(
-        self, job_id: str, user_id: str, dependency_usage: Decimal
-    ):
+    def set_dependency_usage(self, job_id: str, *, user_id: Optional[str] = None, dependency_usage: Decimal) -> None:
         if self.zk_job_registry:
+            assert user_id, "user_id is required in ZkJobRegistry"
             self.zk_job_registry.set_dependency_usage(job_id=job_id, user_id=user_id, processing_units=dependency_usage)
         if self.elastic_job_registry:
             self.elastic_job_registry.set_dependency_usage(
-                job_id=job_id, dependency_usage=dependency_usage
+                job_id=job_id, user_id=user_id, dependency_usage=dependency_usage
             )
 
-    def set_proxy_user(self, job_id: str, user_id: str, proxy_user: str):
+    def set_proxy_user(self, job_id: str, *, user_id: Optional[str] = None, proxy_user: str) -> None:
         # TODO: add dedicated method
         if self.zk_job_registry:
+            assert user_id, "user_id is required in ZkJobRegistry"
             self.zk_job_registry.patch(job_id=job_id, user_id=user_id, proxy_user=proxy_user)
         if self.elastic_job_registry:
-            self.elastic_job_registry.set_proxy_user(
-                job_id=job_id, proxy_user=proxy_user
-            )
+            self.elastic_job_registry.set_proxy_user(job_id=job_id, user_id=user_id, proxy_user=proxy_user)
 
-    def set_application_id(
-        self, job_id: str, user_id: str, application_id: str
-    ) -> None:
+    def set_application_id(self, job_id: str, *, user_id: Optional[str] = None, application_id: str) -> None:
         if self.zk_job_registry:
+            assert user_id, "user_id is required in ZkJobRegistry"
             self.zk_job_registry.set_application_id(job_id=job_id, user_id=user_id, application_id=application_id)
         if self.elastic_job_registry:
-            self.elastic_job_registry.set_application_id(
-                job_id=job_id, application_id=application_id
-            )
+            self.elastic_job_registry.set_application_id(job_id=job_id, user_id=user_id, application_id=application_id)
 
     def mark_ongoing(self, job_id: str, user_id: str) -> None:
+        # TODO #863/#1123 can this method be eliminated (e.g. integrate it directly in ZkJobRegistry.set_status)?
         if self.zk_job_registry:
             self.zk_job_registry.mark_ongoing(job_id=job_id, user_id=user_id)
 
@@ -1027,12 +1039,21 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
                 require_application_id=True,
             )
 
-    def set_results_metadata(self, job_id, user_id, costs: Optional[float], usage: dict,
-                             results_metadata: Dict[str, Any]):
+    def set_results_metadata(
+        self,
+        job_id: str,
+        *,
+        user_id: Optional[str] = None,
+        costs: Optional[float],
+        usage: dict,
+        results_metadata: Dict[str, Any],
+    ) -> None:
         if self.zk_job_registry:
+            assert user_id, "user_id is required in ZkJobRegistry"
             self.zk_job_registry.patch(job_id=job_id, user_id=user_id,
                                        **dict(results_metadata, costs=costs, usage=usage))
 
         if self.elastic_job_registry:
-            self.elastic_job_registry.set_results_metadata(job_id=job_id, costs=costs, usage=usage,
-                                                           results_metadata=results_metadata)
+            self.elastic_job_registry.set_results_metadata(
+                job_id=job_id, user_id=user_id, costs=costs, usage=usage, results_metadata=results_metadata
+            )

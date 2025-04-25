@@ -482,3 +482,33 @@ def unload_dummy_packages():
         if package in sys.modules:
             del sys.modules[package]
     importlib.invalidate_caches()
+
+
+@pytest.fixture
+def identity_udf_rename_bands():
+    udf_code = """
+from openeo.metadata import CollectionMetadata
+from xarray import DataArray
+
+def apply_metadata(metadata: CollectionMetadata, context: dict) -> CollectionMetadata:
+     return metadata.rename_labels(
+         dimension="bands",
+         target=["computed_band_1", "computed_band_2"]
+     )
+
+def apply_datacube(cube: DataArray, context: dict) -> DataArray:
+    return cube
+"""
+    udf_process = {
+        "udf_process": {
+            "process_id": "run_udf",
+            "arguments": {
+                "data": {
+                    "from_parameter": "data"
+                },
+                "udf": udf_code
+            },
+            "result": True
+        },
+    }
+    return udf_process

@@ -273,7 +273,7 @@ def main():
                             log.exception("failed to handle polling job dependencies")
 
                             with double_job_registry as registry:
-                                registry.set_status(batch_job_id, user_id, JOB_STATUS.ERROR)
+                                registry.set_status(job_id=batch_job_id, user_id=user_id, status=JOB_STATUS.ERROR)
 
                             raise  # TODO: this will get caught by the exception handler below which will just log it again  # 141
 
@@ -284,7 +284,7 @@ def main():
                         log.error(max_poll_delay_reached_error)
 
                         with double_job_registry as registry:
-                            registry.set_status(batch_job_id, user_id, JOB_STATUS.ERROR)
+                            registry.set_status(job_id=batch_job_id, user_id=user_id, status=JOB_STATUS.ERROR)
 
                         raise Exception(max_poll_delay_reached_error)
             else:
