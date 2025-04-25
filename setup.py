@@ -83,7 +83,7 @@ setup(
         'xarray~=0.16.2; python_version<"3.9"',
         'xarray~=2024.7.0; python_version>="3.9"',
         "netcdf4",
-        'Shapely<2.0',
+        "shapely>=1.8.5",  # TODO #1161 bump requirement to at least 2.0.0 for simplicity (once compatibility is verified on all deployments)
         'epsel~=1.0.0',
         'numbagg==0.1',
         'Bottleneck~=1.3.2; python_version<"3.9"',
