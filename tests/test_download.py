@@ -234,10 +234,11 @@ class TestDownload:
     @pytest.mark.parametrize("catalog", [False, True])
     @pytest.mark.parametrize("sample_by_feature", [False, True])
     @pytest.mark.parametrize("format_arg", ["netCDF"])  # "GTIFF" behaves different from "netCDF", so not testing now
+    @pytest.mark.parametrize("bands_metadata", [{},"s","so"])
     def test_write_assets_parameterize_batch(self, tmp_path, imagecollection_with_two_bands_and_three_dates,
                                              imagecollection_with_two_bands_spatial_only,
                                              format_arg, sample_by_feature, catalog, stitch, space_type,
-                                             tile_grid, filename_prefix):
+                                             tile_grid, filename_prefix,bands_metadata):
         d = locals()
         d = {i: d[i] for i in d if i != 'self' and i != "tmp_path" and i != "d"}
         test_name = "-".join(map(str, list(d.values())))  # a bit like how pytest names it
@@ -247,6 +248,10 @@ class TestDownload:
         else:
             imagecollection = imagecollection_with_two_bands_spatial_only
 
+        if bands_metadata == "s":
+            bands_metadata = {"red":{"SCALE":1.23}}
+        elif bands_metadata == "so":
+            bands_metadata = {"red": {"SCALE": 1.23,"OFFSET":4.56}}
         geometries = geojson_to_geometry(self.features)
         assets = imagecollection.write_assets(
             str(tmp_path / "ignored<\0>.extension"),  # null byte to cause error if filename would be written to fs
@@ -259,6 +264,7 @@ class TestDownload:
                 "filename_prefix": filename_prefix,
                 "stitch": stitch,
                 "tile_grid": tile_grid,
+                "bands_metadata": bands_metadata
             }
         )
         with open(self.test_write_assets_parameterize_batch_path + test_name + ".json", 'w') as fp:

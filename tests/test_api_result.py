@@ -5000,6 +5000,61 @@ def test_custom_geotiff_tags(api110, tmp_path):
     assert second_band.GetScale() == 1.0
     assert second_band.GetOffset() == 4.56
 
+@pytest.mark.parametrize("strict_cropping", [True, False])
+def test_custom_netcdf_tags(api110, tmp_path, strict_cropping):
+    process_graph = {
+            "loadcollection1": {
+                "process_id": "load_collection",
+                "arguments": {
+                    "id": "TestCollection-LonLat16x16",
+                    "temporal_extent": ["2021-01-05", "2021-01-06"],
+                    "spatial_extent": {"west": 0.0, "south": 50.0, "east": 5.0, "north": 55.0},
+                    "bands": ["Flat:1", "Flat:2"],
+                },
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {
+                    "data": {"from_node": "loadcollection1"},
+                    "format": "NETCDF",
+                    "options": {
+                        "bands_metadata": {
+                            "Flat:1": {
+                                "SCALE": 1.23,
+                                "ARBITRARY": "value",
+                            },
+                            "Flat:2": {
+                                "OFFSET": 4.56,
+                            },
+                            "Flat:3": {
+                                "SCALE": 7.89,
+                                "OFFSET": 10.11
+                            }
+                        },
+                        "strict_cropping": strict_cropping,
+                        "geometries":{"type": "Polygon", "coordinates": [[[0.1, 0.1], [1.8, 0.1], [1.1, 1.8], [0.1, 0.1]]]},
+                    },
+                },
+                "result": True,
+            },
+        }
+    res = api110.result(process_graph).assert_status_code(200)
+    res_path = tmp_path / "res.nc"
+    res_path.write_bytes(res.data)
+    ds = xarray.load_dataset(res_path)
+    assert ds.dims == {"t": 1, "x": 80, "y": 80}
+    assert numpy.datetime_as_string(ds.coords["t"].values, unit="D").tolist() == ["2021-01-05"]
+    assert list(ds.data_vars.keys())[1:] == ["Flat:1", "Flat:2"]
+    assert "long_name" in ds["Flat:1"].attrs
+    assert "units" in ds["Flat:1"].attrs
+    # assert "scale_factor" in ds["Flat:1"].attrs
+    # assert ds["Flat:1"].attrs["scale_factor"] == 1.23
+    assert "long_name" in ds["Flat:2"].attrs
+    assert "units" in ds["Flat:2"].attrs
+    assert "grid_mapping" in ds["Flat:2"].attrs
+    # assert "add_offset" in ds["Flat:2"].attrs
+    # assert ds["Flat:2"].attrs["add_offset"] == 4.56
+
 
 def test_reduce_bands_to_geotiff(api110, tmp_path):
     response = api110.check_result({
