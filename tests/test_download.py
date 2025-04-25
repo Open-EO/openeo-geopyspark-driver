@@ -9,7 +9,6 @@ import pytest
 from openeo.metadata import Band
 from openeo_driver.util.geometry import geojson_to_geometry
 from shapely import geometry
-from zarr import storage
 
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from .data import get_test_data_file
