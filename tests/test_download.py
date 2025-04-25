@@ -244,10 +244,6 @@ class TestDownload:
         assert 'image/tiff; application=geotiff' == asset['type']
         assert asset['datetime'] == "2017-09-25T11:37:00Z"
 
-    test_write_assets_parameterize_batch_path = "tmp/test_write_assets_parameterize_batch/"
-    shutil.rmtree(test_write_assets_parameterize_batch_path, ignore_errors=True)
-    os.makedirs(test_write_assets_parameterize_batch_path)
-
     @pytest.mark.parametrize("filename_prefix", [None, "prefixTest"])
     @pytest.mark.parametrize("tile_grid", [None, "100km"])
     @pytest.mark.parametrize("space_type", ["spacetime", "spatial"])
@@ -260,10 +256,6 @@ class TestDownload:
                                              imagecollection_with_two_bands_spatial_only,
                                              format_arg, sample_by_feature, catalog, stitch, space_type,
                                              tile_grid, filename_prefix,bands_metadata):
-        d = locals()
-        d = {i: d[i] for i in d if i != 'self' and i != "tmp_path" and i != "d"}
-        test_name = "-".join(map(str, list(d.values())))  # a bit like how pytest names it
-
         if space_type == "spacetime":
             imagecollection = imagecollection_with_two_bands_and_three_dates
         else:
@@ -288,8 +280,6 @@ class TestDownload:
                 "bands_metadata": bands_metadata
             }
         )
-        with open(self.test_write_assets_parameterize_batch_path + test_name + ".json", 'w') as fp:
-            json.dump(assets, fp, indent=2)
 
         if format_arg == "netCDF":
             extension = ".nc"
@@ -313,10 +303,6 @@ class TestDownload:
             assert 'application/x-netcdf' == asset['type']
         else:
             assert 'image/tiff; application=geotiff' == asset['type']
-
-    test_write_assets_parameterize_path = "tmp/test_write_assets_parameterize/"
-    shutil.rmtree(test_write_assets_parameterize_path, ignore_errors=True)
-    os.makedirs(test_write_assets_parameterize_path)
 
     # Parameters found inside 'write_assets'. If all parameters are tested: 768 cases that take 2min to run.
     @pytest.mark.parametrize("tiled", [True])  # Specify [True, False] to run more tests
@@ -342,9 +328,6 @@ class TestDownload:
                                        space_type,
                                        format_arg,
                                        ):
-        d = locals()
-        d = {i: d[i] for i in d if i != 'self' and i != "tmp_path" and i != "d"}
-        test_name = "-".join(map(str, list(d.values())))  # a bit like how pytest names it
         if batch_mode and sample_by_feature:
             # 'sample_by_feature' is only relevant in 'batch_mode'
             return
@@ -389,8 +372,6 @@ class TestDownload:
                 "ZLEVEL": 6,
             }
         )
-        # with open(self.test_write_assets_parameterize_path + test_name + ".json", 'w') as fp:
-        #     json.dump(assets, fp, indent=2)
 
         assets_data = {k: v for (k, v) in assets_all.items() if "data" in v["roles"]}
         name, asset = next(iter(assets_data.items()))
