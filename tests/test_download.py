@@ -177,24 +177,22 @@ class TestDownload:
                     dirty_equals.IsPartialDict(name="band_two"),
                 ],
                 "bbox": dirty_equals.IsListOrTuple(length=4),
-                "datetime": date,
+                "datetime": "2017-09-25T11:37:00Z",
                 "geometry": dirty_equals.IsPartialDict(type="Polygon"),
                 "href": str(tmp_path / name),
                 "nodata": -1,
                 "roles": ["data"],
                 "type": "image/tiff; application=geotiff",
             }
-            for (name, date) in [
-                ("filenamePrefixTest_2017-09-25Z_0.tif", "2017-09-25T11:37:00Z"),
-                ("filenamePrefixTest_2017-09-25Z_1.tif", "2017-09-25T11:37:00Z"),
-                ("filenamePrefixTest_2017-09-25Z_2.tif", "2017-09-25T11:37:00Z"),
-                ("filenamePrefixTest_2017-09-25Z_3.tif", "2017-09-25T11:37:00Z"),
-                ("filenamePrefixTest_2017-09-25Z_4.tif", "2017-09-25T11:37:00Z"),
+            for name in [
+                "filenamePrefixTest_2017-09-25Z_0.tif",
+                "filenamePrefixTest_2017-09-25Z_1.tif",
+                "filenamePrefixTest_2017-09-25Z_2.tif",
+                "filenamePrefixTest_2017-09-25Z_3.tif",
+                "filenamePrefixTest_2017-09-25Z_4.tif",
             ]
         }
-
         assert res == expected
-
 
     def test_write_assets_samples_tile_grid(self, tmp_path):
         input_layer = layer_with_two_bands_and_one_date()
@@ -281,28 +279,30 @@ class TestDownload:
             }
         )
 
-        if format_arg == "netCDF":
-            extension = ".nc"
+        if format_arg.lower() in {"netcdf"}:
+            expected_extension, expected_type = ".nc", "application/x-netcdf"
+        elif format_arg.lower() in {"gtiff"}:
+            expected_extension, expected_type = ".tif", "image/tiff; application=geotiff"
         else:
-            extension = ".tif"
-        assert len(assets) >= 3
-        assert len(assets) <= geometries.length
-        if format_arg == "netCDF":
-            if filename_prefix:
-                assert assets[filename_prefix + "_0" + extension]
-            else:
-                assert assets["openEO_0" + extension]
-        name, asset = next(iter(assets.items()))
-        assert Path(asset['href']).parent == tmp_path
-        if filename_prefix:
-            assert filename_prefix in asset['href']
-        assert asset['nodata'] == -1
-        assert asset['roles'] == ['data']
-        assert 2 == len(asset['bands'])
-        if format_arg == "netCDF":
-            assert 'application/x-netcdf' == asset['type']
-        else:
-            assert 'image/tiff; application=geotiff' == asset['type']
+            raise ValueError(format_arg)
+
+        expected_filenames = [f"{filename_prefix or 'openEO'}_{i}{expected_extension}" for i in range(5)]
+        expected = {
+            name: {
+                "bands": [
+                    dirty_equals.IsPartialDict(name="red"),
+                    dirty_equals.IsPartialDict(name="nir"),
+                ],
+                "bbox": dirty_equals.IsListOrTuple(length=4),
+                "geometry": dirty_equals.IsPartialDict(type="Polygon"),
+                "href": str(tmp_path / name),
+                "nodata": -1,
+                "roles": ["data"],
+                "type": expected_type,
+            }
+            for name in expected_filenames
+        }
+        assert assets == expected
 
     # Parameters found inside 'write_assets'. If all parameters are tested: 768 cases that take 2min to run.
     @pytest.mark.parametrize("tiled", [True])  # Specify [True, False] to run more tests
