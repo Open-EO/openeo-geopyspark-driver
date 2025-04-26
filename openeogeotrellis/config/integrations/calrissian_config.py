@@ -11,7 +11,6 @@ DEFAULT_CALRISSIAN_BASE_ARGUMENTS = (
     "2G",
     "--max-cores",
     "1",
-    "--force-docker-pull",
 )
 
 
