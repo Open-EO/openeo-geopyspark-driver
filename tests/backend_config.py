@@ -73,6 +73,7 @@ config = GpsBackendConfig(
     oidc_providers=oidc_providers,
     zookeeper_hosts=["zk.test"],
     zookeeper_root_path="/openeo-test",
+    use_zk_job_registry=True,  # TODO #632 #863 #1165 eliminate dependency on ZkJobRegistry
     etl_api="https://etl-api.test",
     etl_source_id="openeo-gps-tests",
     vault_addr="https://vault.test",
