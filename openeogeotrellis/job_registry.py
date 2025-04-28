@@ -1001,6 +1001,7 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
         include_done: bool = True,
         user_limit: Optional[int] = 1000,
     ) -> List[dict]:
+        # TODO #632 #863 #1123 #1165 remove this dead code path?
         if not self.zk_job_registry:
             raise NotImplementedError("only necessary for ZK cleaner script")
 

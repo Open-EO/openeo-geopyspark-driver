@@ -82,6 +82,7 @@ def prune(
     include_done: bool = True,
     include_ongoing: bool = False,
 ):
+    # TODO #632 #863 #1123 #1165 remove this dead code path?
     with StatsReporter(report=_log.info) as stats, zk_job_registry:
         with TimingLogger(title="Collect jobs", logger=_log):
             jobs = zk_job_registry.get_all_jobs_before(

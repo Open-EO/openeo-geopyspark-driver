@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# TODO #632 #863 #1123 #1165 remove this dead code path?
 
 set -eo pipefail
 
