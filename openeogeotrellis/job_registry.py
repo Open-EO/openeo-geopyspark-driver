@@ -1014,28 +1014,6 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
         )
         return jobs
 
-    def get_active_jobs(
-        self,
-        max_age: Optional[int] = None,
-        max_updated_ago: Optional[int] = None,
-    ) -> Iterator[Dict]:
-        yield from self.list_active_jobs(
-            fields=[
-                "job_id",
-                "user_id",
-                "application_id",
-                "status",
-                "created",
-                "title",
-                "job_options",
-                "dependencies",
-                "dependency_usage",
-            ],
-            max_age=max_age,
-            max_updated_ago=max_updated_ago,
-            require_application_id=True,
-        )
-
     def list_active_jobs(
         self,
         *,
