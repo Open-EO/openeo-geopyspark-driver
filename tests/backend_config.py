@@ -32,9 +32,9 @@ def _stac_api_workspace() -> StacApiWorkspace:
     from pathlib import Path
     from openeogeotrellis.utils import s3_client
 
-    def export_asset(
-        asset: pystac.Asset, collection_id: str, relative_asset_path: PurePath, remove_original: bool
-    ) -> str:
+    def export_asset(asset: pystac.Asset, merge: PurePath, relative_asset_path: PurePath, remove_original: bool) -> str:
+        assert isinstance(merge, PurePath)
+
         if remove_original:
             raise NotImplementedError
 
@@ -43,7 +43,7 @@ def _stac_api_workspace() -> StacApiWorkspace:
 
         source_path = Path(asset.get_absolute_href())
         target_bucket = "openeo-fake-bucketname"
-        target_key = f"{collection_id}/{relative_asset_path}"
+        target_key = str(merge / relative_asset_path)
 
         s3_client().upload_file(str(source_path), target_bucket, target_key)
 

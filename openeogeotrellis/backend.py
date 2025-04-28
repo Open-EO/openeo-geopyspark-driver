@@ -64,6 +64,7 @@ from openeo_driver.ProcessGraphDeserializer import ENV_FINAL_RESULT, ENV_SAVE_RE
     _extract_load_parameters, ENV_MAX_BUFFER
 from openeo_driver.save_result import ImageCollectionResult
 from openeo_driver.users import User
+from openeo_driver.util.date_math import now_utc
 from openeo_driver.util.geometry import BoundingBox
 from openeo_driver.util.http import requests_with_retry
 from openeo_driver.util.utm import area_in_square_meters
@@ -220,18 +221,22 @@ class GpsSecondaryServices(backend.SecondaryServices):
             logger.info("Can not create service for: " + str(image_collection))
             raise OpenEOApiException("Can not create service for: " + str(image_collection))
 
+        wmts_base_url = os.getenv("WMTS_BASE_URL_PATTERN", "http://openeo.vgt.vito.be/openeo/services/%s") % service_id
 
-        wmts_base_url = os.getenv('WMTS_BASE_URL_PATTERN', 'http://openeo.vgt.vito.be/openeo/services/%s') % service_id
-
-        self.service_registry.persist(user_id, ServiceMetadata(
-            id=service_id,
-            process={"process_graph": process_graph},
-            url=wmts_base_url + "/service/wmts",
-            type=service_type,
-            enabled=True,
-            attributes={},
-            configuration=configuration,
-            created=dt.datetime.utcnow()), api_version)
+        self.service_registry.persist(
+            user_id,
+            ServiceMetadata(
+                id=service_id,
+                process={"process_graph": process_graph},
+                url=wmts_base_url + "/service/wmts",
+                type=service_type,
+                enabled=True,
+                attributes={},
+                configuration=configuration,
+                created=now_utc(),
+            ),
+            api_version,
+        )
 
         secondary_service = self._wmts_service(image_collection, configuration, wmts_base_url)
 
@@ -515,6 +520,11 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                         "file_metadata": {
                             "type": ["object"],
                             "description": "Sets file-level GDAL metadata (key-value).",
+                        },
+                        "bands_metadata": {
+                            "type": ["object", "null"],
+                            "description": "Specifies band-level metadata for each band (band-(key-value)).",
+                            "default": None,
                         },
                     },
                 },
@@ -1598,7 +1608,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 registry.set_dependency_status(
                     job_id=job_id, user_id=user_id, dependency_status=DEPENDENCY_STATUS.ERROR
                 )
-                registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
+                registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.ERROR)
 
             job_info["status"] = JOB_STATUS.ERROR  # TODO: avoid mutation
 
@@ -1846,10 +1856,18 @@ class GpsBatchJobs(backend.BatchJobs):
 
                 if current_status in [JOB_STATUS.QUEUED, JOB_STATUS.RUNNING]:
                     return
-                elif current_status != JOB_STATUS.CREATED:  # TODO: not in line with the current spec (it must first be canceled)
+                elif current_status == JOB_STATUS.CREATED:
+                    pass
+                else:
+                    # TODO: not in line with the current spec (it must first be canceled)
+                    # TODO: this code path is ill-defined (also on level of openEO API)
+                    logger.warning(
+                        f"GpsBatchJobs._start_job: ill-defined job status transition from {current_status!r} to {JOB_STATUS.CREATED!r}"
+                    )
                     dbl_registry.mark_ongoing(job_id, user_id)
-                    dbl_registry.set_application_id(job_id, user_id, None)
-                    dbl_registry.set_status(job_id, user_id, JOB_STATUS.CREATED)
+                    # TODO: do we really want to reset the application id?
+                    dbl_registry.set_application_id(job_id=job_id, user_id=user_id, application_id=None)
+                    dbl_registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.CREATED)
 
         if "specification" in job_info:
             # This is old-style (ZK based) job info with "specification" being a JSON string.
@@ -1907,7 +1925,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     dbl_registry.set_dependency_status(
                         job_id=job_id, user_id=user_id, dependency_status=DEPENDENCY_STATUS.AWAITING
                     )
-                    dbl_registry.set_status(job_id, user_id, JOB_STATUS.QUEUED)
+                    dbl_registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.QUEUED)
 
                     return
 
@@ -2262,7 +2280,7 @@ class GpsBatchJobs(backend.BatchJobs):
                         pretty=True,
                     )
                     log.info(f"mapped job_id {job_id} to application ID {spark_app_id}")
-                    dbl_registry.set_application_id(job_id, user_id, spark_app_id)
+                    dbl_registry.set_application_id(job_id=job_id, user_id=user_id, application_id=spark_app_id)
                     status_response = {}
                     retry = 0
                     while "status" not in status_response and retry < 10:
@@ -2282,12 +2300,12 @@ class GpsBatchJobs(backend.BatchJobs):
                         log.warning(
                             f"invalid status response of Spark application at {pod_namespace}:{spark_app_id}: {status_response}, assuming it is queued."
                         )
-                        dbl_registry.set_status(job_id, user_id, JOB_STATUS.QUEUED)
+                        dbl_registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.QUEUED)
                 except ApiException as e:
                     log.error("failed to submit Spark application", exc_info=True)
                     if "AlreadyExists" in e.body:
-                        raise OpenEOApiException(message=f"Your job {job_id} was already started.",status_code=400)
-                    dbl_registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
+                        raise OpenEOApiException(message=f"Your job {job_id} was already started.", status_code=400)
+                    dbl_registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.ERROR)
 
         else:
             submit_script = "submit_batch_job_spark3.sh"
@@ -2400,8 +2418,8 @@ class GpsBatchJobs(backend.BatchJobs):
                 log.info("mapped job_id %s to application ID %s" % (job_id, application_id))
 
                 with self._double_job_registry as dbl_registry:
-                    dbl_registry.set_application_id(job_id, user_id, application_id)
-                    dbl_registry.set_status(job_id, user_id, JOB_STATUS.QUEUED)
+                    dbl_registry.set_application_id(job_id=job_id, user_id=user_id, application_id=application_id)
+                    dbl_registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.QUEUED)
 
             except _BatchJobError:
                 traceback.print_exc(file=sys.stderr)
@@ -3076,7 +3094,7 @@ class GpsBatchJobs(backend.BatchJobs):
                             )
 
                 with self._double_job_registry:
-                    registry.set_status(job_id, user_id, JOB_STATUS.CANCELED)
+                    registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.CANCELED)
             else:
                 try:
                     kill_spark_job = subprocess.run(
@@ -3096,11 +3114,11 @@ class GpsBatchJobs(backend.BatchJobs):
                                    exc_info=True, extra={'job_id': job_id})
                 finally:
                     with self._double_job_registry as registry:
-                        registry.set_status(job_id, user_id, JOB_STATUS.CANCELED)
+                        registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.CANCELED)
         else:
             with self._double_job_registry as registry:
                 registry.remove_dependencies(job_id=job_id, user_id=user_id)
-                registry.set_status(job_id, user_id, JOB_STATUS.CANCELED)
+                registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.CANCELED)
 
     def delete_job(self, job_id: str, user_id: str):
         self._delete_job(job_id, user_id, propagate_errors=False)

@@ -4,6 +4,7 @@ import shutil
 from pathlib import Path
 from unittest import skip
 
+import dirty_equals
 import geopyspark as gps
 import pytest
 from openeo.metadata import Band
@@ -156,24 +157,42 @@ class TestDownload:
         format = 'GTiff'
 
         geometries = geojson_to_geometry(self.features)
-        res = imagecollection.write_assets(str(tmp_path / "ignored.tiff"), format=format, format_options={
-            "multidate": True,
-            "batch_mode": True,
-            "geometries": geometries,
-            "sample_by_feature": True,
-            "feature_id_property": 'id',
-            "filename_prefix": "filenamePrefixTest",
-        })
-        assert len(res) >= 3
-        assert len(res) <= geometries.length
-        name, asset = next(iter(res.items()))
-        assert Path(asset['href']).parent == tmp_path
-        assert asset['nodata'] == -1
-        assert asset['roles'] == ['data']
-        assert 2 == len(asset['bands'])
-        assert "filenamePrefixTest" in asset['href']
-        assert 'image/tiff; application=geotiff' == asset['type']
-        assert asset['datetime'] == "2017-09-25T11:37:00Z"
+        res = imagecollection.write_assets(
+            str(tmp_path / "ignored.tiff"),
+            format=format,
+            format_options={
+                "multidate": True,
+                "batch_mode": True,
+                "geometries": geometries,
+                "sample_by_feature": True,
+                "feature_id_property": "id",
+                "filename_prefix": "filenamePrefixTest",
+            },
+        )
+
+        expected = {
+            name: {
+                "bands": [
+                    dirty_equals.IsPartialDict(name="band_one"),
+                    dirty_equals.IsPartialDict(name="band_two"),
+                ],
+                "bbox": dirty_equals.IsListOrTuple(length=4),
+                "datetime": "2017-09-25T11:37:00Z",
+                "geometry": dirty_equals.IsPartialDict(type="Polygon"),
+                "href": str(tmp_path / name),
+                "nodata": -1,
+                "roles": ["data"],
+                "type": "image/tiff; application=geotiff",
+            }
+            for name in [
+                "filenamePrefixTest_2017-09-25Z_0.tif",
+                "filenamePrefixTest_2017-09-25Z_1.tif",
+                "filenamePrefixTest_2017-09-25Z_2.tif",
+                "filenamePrefixTest_2017-09-25Z_3.tif",
+                "filenamePrefixTest_2017-09-25Z_4.tif",
+            ]
+        }
+        assert res == expected
 
     def test_write_assets_samples_tile_grid(self, tmp_path):
         input_layer = layer_with_two_bands_and_one_date()
@@ -223,29 +242,26 @@ class TestDownload:
         assert 'image/tiff; application=geotiff' == asset['type']
         assert asset['datetime'] == "2017-09-25T11:37:00Z"
 
-    test_write_assets_parameterize_batch_path = "tmp/test_write_assets_parameterize_batch/"
-    shutil.rmtree(test_write_assets_parameterize_batch_path, ignore_errors=True)
-    os.makedirs(test_write_assets_parameterize_batch_path)
-
     @pytest.mark.parametrize("filename_prefix", [None, "prefixTest"])
     @pytest.mark.parametrize("tile_grid", [None, "100km"])
     @pytest.mark.parametrize("space_type", ["spacetime", "spatial"])
     @pytest.mark.parametrize("stitch", [False, True])
     @pytest.mark.parametrize("catalog", [False, True])
     @pytest.mark.parametrize("format_arg", ["netCDF"])  # "GTIFF" behaves different from "netCDF", so not testing now
+    @pytest.mark.parametrize("bands_metadata", [{},"s","so"])
     def test_write_assets_parameterize_batch(self, tmp_path, imagecollection_with_two_bands_and_three_dates,
                                              imagecollection_with_two_bands_spatial_only,
                                              format_arg, catalog, stitch, space_type,
-                                             tile_grid, filename_prefix):
-        d = locals()
-        d = {i: d[i] for i in d if i != 'self' and i != "tmp_path" and i != "d"}
-        test_name = "-".join(map(str, list(d.values())))  # a bit like how pytest names it
-
+                                             tile_grid, filename_prefix,bands_metadata):
         if space_type == "spacetime":
             imagecollection = imagecollection_with_two_bands_and_three_dates
         else:
             imagecollection = imagecollection_with_two_bands_spatial_only
 
+        if bands_metadata == "s":
+            bands_metadata = {"red":{"SCALE":1.23}}
+        elif bands_metadata == "so":
+            bands_metadata = {"red": {"SCALE": 1.23,"OFFSET":4.56}}
         geometries = geojson_to_geometry(self.features)
         items = imagecollection.write_assets(
             str(tmp_path / "ignored<\0>.extension"),  # null byte to cause error if filename would be written to fs
@@ -258,41 +274,41 @@ class TestDownload:
                 "filename_prefix": filename_prefix,
                 "stitch": stitch,
                 "tile_grid": tile_grid,
+                "bands_metadata": bands_metadata
             }
         )
 
-        assets = [(asset_key, asset) for item in items.values() for asset_key, asset in item["assets"].items()]
-        with open(self.test_write_assets_parameterize_batch_path + test_name + ".json", 'w') as fp:
-            json.dump(assets, fp, indent=2)
-
-        if format_arg == "netCDF":
-            extension = ".nc"
+        if format_arg.lower() in {"netcdf"}:
+            expected_extension, expected_type = ".nc", "application/x-netcdf"
+        elif format_arg.lower() in {"gtiff"}:
+            expected_extension, expected_type = ".tif", "image/tiff; application=geotiff"
         else:
-            extension = ".tif"
-        assert len(assets) >= 3
-        assert len(assets) <= geometries.length  # a netCDF asset contains all dates
-        assert {asset_key for asset_key, _ in assets} == {"openEO"}
-        asset_filenames = {Path(asset["href"]).name for _, asset in assets}
-        if format_arg == "netCDF":
-            if filename_prefix:
-                assert filename_prefix + "_0" + extension in asset_filenames
-            else:
-                assert "openEO_0" + extension in asset_filenames
-        _, asset = assets[0]
-        assert Path(asset['href']).parent == tmp_path
-        if filename_prefix:
-            assert filename_prefix in asset['href']
-        assert asset['nodata'] == -1
-        assert asset['roles'] == ['data']
-        assert 2 == len(asset['bands'])
-        if format_arg == "netCDF":
-            assert 'application/x-netcdf' == asset['type']
-        else:
-            assert 'image/tiff; application=geotiff' == asset['type']
+            raise ValueError(format_arg)
 
-    test_write_assets_parameterize_path = "tmp/test_write_assets_parameterize/"
-    shutil.rmtree(test_write_assets_parameterize_path, ignore_errors=True)
-    os.makedirs(test_write_assets_parameterize_path)
+        expected_filenames = [f"{filename_prefix or 'openEO'}_{i}{expected_extension}" for i in range(5)]
+
+        expected = [
+            {
+                "id": dirty_equals.IsStr(),
+                "bbox": dirty_equals.IsListOrTuple(length=4),
+                "geometry": dirty_equals.IsPartialDict(type="Polygon"),
+                "assets": {
+                    "openEO": {
+                        "bands": [
+                            dirty_equals.IsPartialDict(name="red"),
+                            dirty_equals.IsPartialDict(name="nir"),
+                        ],
+                        "href": str(tmp_path / name),
+                        "nodata": -1,
+                        "roles": ["data"],
+                        "type": expected_type,
+                    }
+                }
+            }
+            for name in expected_filenames
+        ]
+
+        assert sorted(items.values(), key=lambda item: item["assets"]["openEO"]["href"]) == expected
 
     # Parameters found inside 'write_assets'. If all parameters are tested: 768 cases that take 2min to run.
     @pytest.mark.parametrize("tiled", [True])  # Specify [True, False] to run more tests
@@ -318,9 +334,6 @@ class TestDownload:
                                        space_type,
                                        format_arg,
                                        ):
-        d = locals()
-        d = {i: d[i] for i in d if i != 'self' and i != "tmp_path" and i != "d"}
-        test_name = "-".join(map(str, list(d.values())))  # a bit like how pytest names it
         if batch_mode and sample_by_feature:
             # 'sample_by_feature' is only relevant in 'batch_mode'
             return
@@ -365,8 +378,6 @@ class TestDownload:
                 "ZLEVEL": 6,
             }
         )
-        # with open(self.test_write_assets_parameterize_path + test_name + ".json", 'w') as fp:
-        #     json.dump(assets, fp, indent=2)
 
         assets_all = [(asset_key, asset) for item in items_all.values() for asset_key, asset in item["assets"].items()]
         assets_data = [(asset_key, asset) for asset_key, asset in assets_all if "data" in asset["roles"]]

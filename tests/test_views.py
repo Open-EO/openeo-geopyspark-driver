@@ -395,17 +395,6 @@ class TestBatchJobs:
 
     @staticmethod
     @contextlib.contextmanager
-    def _mock_utcnow():
-        now = datetime.datetime(2020, 4, 20, 16, 4, 3)
-        with mock.patch(
-            "openeogeotrellis.job_registry.datetime",
-            new=mock.Mock(wraps=datetime.datetime),
-        ) as dt, time_machine.travel(now.replace(tzinfo=datetime.timezone.utc)):
-            dt.utcnow.return_value = now
-            yield dt.utcnow
-
-    @staticmethod
-    @contextlib.contextmanager
     def _mock_sentinelhub_batch_processing_service():
         service = mock.Mock()
         with mock.patch.object(
@@ -423,8 +412,9 @@ class TestBatchJobs:
             result = api.get('/jobs', headers=TEST_USER_AUTH_HEADER).assert_status_code(200).json
             assert result == {"jobs": [], "links": []}
 
-    def test_create_job(self, api):
-        with self._mock_kazoo_client() as zk, self._mock_utcnow() as un:
+    def test_create_job(self, api, time_machine):
+        time_machine.move_to("2020-04-20T16:04:03Z")
+        with self._mock_kazoo_client() as zk:
             data = api.get_process_graph_dict(
                 self.DUMMY_PROCESS_GRAPH, title="Dummy", description="Dummy job!"
             )
@@ -444,8 +434,9 @@ class TestBatchJobs:
             assert meta_data["title"] == "Dummy"
             assert meta_data["description"] == "Dummy job!"
 
-    def test_create_and_get(self, api):
-        with self._mock_kazoo_client() as zk, self._mock_utcnow() as un:
+    def test_create_and_get(self, api, time_machine):
+        time_machine.move_to("2020-04-20T16:04:03Z")
+        with self._mock_kazoo_client() as zk:
             data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH, title="Dummy")
             res = api.post('/jobs', json=data, headers=TEST_USER_AUTH_HEADER).assert_status_code(201)
             job_id = res.headers['OpenEO-Identifier']
@@ -470,8 +461,9 @@ class TestBatchJobs:
             })
         assert res == expected
 
-    def test_create_and_get_user_jobs(self, api):
-        with self._mock_kazoo_client() as zk, self._mock_utcnow() as un:
+    def test_create_and_get_user_jobs(self, api, time_machine):
+        time_machine.move_to("2020-04-20T16:04:03Z")
+        with self._mock_kazoo_client() as zk:
             data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH, title="Dummy")
             res = api.post('/jobs', json=data, headers=TEST_USER_AUTH_HEADER).assert_status_code(201)
             job_id = res.headers['OpenEO-Identifier']
@@ -491,10 +483,12 @@ class TestBatchJobs:
             }
 
     @mock.patch("openeogeotrellis.logs.Elasticsearch.search")
-    def test_create_and_start_and_download(self, mock_search, api, tmp_path, monkeypatch, batch_job_output_root,
-                                           job_registry):
+    def test_create_and_start_and_download(
+        self, mock_search, api, tmp_path, monkeypatch, batch_job_output_root, job_registry, time_machine
+    ):
+        time_machine.move_to("2020-04-20T16:04:03Z")
+
         with self._mock_kazoo_client() as zk, \
-                self._mock_utcnow() as un, \
                 mock.patch.dict("os.environ", {"OPENEO_SPARK_SUBMIT_PY_FILES": "data/deps/custom_processes.py,data/deps/foolib.whl"}):
 
             openeo_flask_dir = tmp_path / "openeo-flask"
@@ -656,8 +650,10 @@ class TestBatchJobs:
 
             assert res["logs"] == expected_log_entries
 
-    def test_providers_present(self, api, tmp_path, monkeypatch, batch_job_output_root, job_registry):
-        with self._mock_kazoo_client() as zk, self._mock_utcnow() as un, mock.patch.dict(
+    def test_providers_present(self, api, tmp_path, monkeypatch, batch_job_output_root, job_registry, time_machine):
+        time_machine.move_to("2020-04-20T16:04:03Z")
+
+        with self._mock_kazoo_client() as zk, mock.patch.dict(
             "os.environ", {"OPENEO_SPARK_SUBMIT_PY_FILES": "data/deps/custom_processes.py,data/deps/foolib.whl"}
         ):
             openeo_flask_dir = tmp_path / "openeo-flask"
@@ -949,9 +945,10 @@ class TestBatchJobs:
                     assert res.status_code == 200
                     assert res.data == TIFF_DUMMY_DATA
 
-    def test_create_and_start_job_options(self, api, tmp_path, monkeypatch, batch_job_output_root):
+    def test_create_and_start_job_options(self, api, tmp_path, monkeypatch, batch_job_output_root, time_machine):
+        time_machine.move_to("2020-04-20T16:04:03Z")
+
         with self._mock_kazoo_client() as zk, \
-                self._mock_utcnow() as un, \
                 mock.patch.dict("os.environ", {"OPENEO_SPARK_SUBMIT_PY_FILES": "data/deps/custom_processes.py,data/deps/foolib.whl"}):
 
             openeo_flask_dir = tmp_path / "openeo-flask"

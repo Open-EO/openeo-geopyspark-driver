@@ -26,7 +26,6 @@ from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.config.s3_config import S3Config
 from openeogeotrellis.integrations.kubernetes import k8s_render_manifest_template
 from openeogeotrellis.testing import gps_config_overrides
-from openeogeotrellis.utils import UtcNowClock, utcnow
 
 
 def test_extract_application_id():
@@ -674,28 +673,31 @@ def test_k8s_s3_profiles_and_token():
     )
 
 
-def test_k8s_s3_profiles_and_token_must_be_cleanable(backend_config_path, fast_sleep):
-    # GIVEN a specific time
-    test_timestamp = utcnow()
-    test_timestamp_epoch = test_timestamp.timestamp()
-
-    # GIVEN the green infinity stone (to control the time dimension)
-    with UtcNowClock.mock(now=test_timestamp):
-        # WHEN we render the kubernetes manifest for s3 access
-        token_path = get_backend_config().batch_job_config_dir / "token"
-        app_dict = k8s_render_manifest_template(
-            "batch_job_cfg_secret.yaml.j2",
-            secret_name="my-app",
-            job_id="test_id",
-            token="test",
-            profile_file_content=S3Config.from_backend_config("j-any", str(token_path))
-        )
+def test_k8s_s3_profiles_and_token_must_be_cleanable(backend_config_path, fast_sleep, time_machine):
+    time_machine.move_to(1745410732)  # Wed 2025-04-23 12:18:52 UTC)
+    # WHEN we render the kubernetes manifest for s3 access
+    token_path = get_backend_config().batch_job_config_dir / "token"
+    app_dict = k8s_render_manifest_template(
+        "batch_job_cfg_secret.yaml.j2",
+        secret_name="my-app",
+        job_id="test_id",
+        token="test",
+        profile_file_content=S3Config.from_backend_config("j-any", str(token_path)),
+    )
     # THEN we expect it to be cleanable by having a starttime set to the time it was created.
     # We can only clean files if we know they are stale
     assert app_dict == dirty_equals.IsPartialDict(
-        metadata=dirty_equals.IsPartialDict(
-            annotations=dirty_equals.IsPartialDict(created_at=str(test_timestamp_epoch))
-        ),
+        {
+            "apiVersion": "v1",
+            "kind": "Secret",
+            "metadata": dirty_equals.IsPartialDict(
+                {
+                    "labels": {"job_id": "test_id"},
+                    "name": "my-app",
+                    "annotations": {"created_at": "1745410732.0"},
+                }
+            ),
+        }
     )
 
 

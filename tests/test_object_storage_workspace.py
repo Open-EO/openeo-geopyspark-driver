@@ -6,6 +6,7 @@ from urllib.parse import urlparse
 from pystac import Collection, Extent, SpatialExtent, TemporalExtent, Item, CatalogType, Asset
 import pytest
 
+from openeo_driver.util.date_math import now_utc
 from openeogeotrellis.workspace import ObjectStorageWorkspace
 from openeogeotrellis.workspace.custom_stac_io import CustomStacIO
 
@@ -237,7 +238,7 @@ def _collection(
         asset_href_parts = urlparse(asset_href)
         asset_filename = asset_href_parts.path.split("/")[-1]
 
-        item = Item(id=asset_filename, geometry=None, bbox=None, datetime=dt.datetime.utcnow(), properties={})
+        item = Item(id=asset_filename, geometry=None, bbox=None, datetime=now_utc(), properties={})
         asset = Asset(href=asset_href)
 
         item.add_asset(key=asset_filename, asset=asset)

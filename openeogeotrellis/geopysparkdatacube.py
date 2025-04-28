@@ -631,7 +631,10 @@ class GeopysparkDataCube(DriverDataCube):
             _log.info(f"apply_neighborhood created datacube {metadata}")
             return gps.TiledRasterLayer.from_numpy_rdd(gps.LayerType.SPACETIME, numpy_rdd, metadata)
 
-        return self.apply_to_levels(partial(rdd_function, self.metadata))
+        updated_cube_metadata = self.metadata
+        if ("apply_metadata" in udf_code and runtime.lower() is not "python-jep"):
+            updated_cube_metadata = self.apply_metadata(udf_code, udf_context)
+        return self.apply_to_levels(partial(rdd_function, self.metadata), updated_cube_metadata)
 
     @callsite
     def chunk_polygon(
@@ -829,8 +832,11 @@ class GeopysparkDataCube(DriverDataCube):
                 metadata = GeopysparkDataCube._transform_metadata(rdd.layer_metadata, cellType=CellType.FLOAT32)
                 return gps.TiledRasterLayer.from_numpy_rdd(rdd.layer_type, numpy_rdd, metadata)
 
+        updated_cube_metadata = self.metadata
+        if ("apply_metadata" in udf_code):
+            updated_cube_metadata = self.apply_metadata(udf_code, context)
         # Apply the UDF to every tile for every zoom level of the pyramid.
-        return self.apply_to_levels(partial(rdd_function, self.metadata))
+        return self.apply_to_levels(partial(rdd_function, self.metadata),updated_cube_metadata)
 
     def aggregate_time(self, temporal_window, aggregationfunction) -> Series :
         #group keys
@@ -1141,6 +1147,34 @@ class GeopysparkDataCube(DriverDataCube):
             result_collection = self._apply_to_levels_geotrellis_rdd(
                 lambda rdd, level: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().apply_kernel_spatial(rdd,geotrellis_tile))
         return result_collection
+
+
+    def apply_metadata(self,udf_code,context):
+
+        pysc = gps.get_spark_context()
+        metadata = self.metadata
+        _log.info(f"run_udf: detected use of apply_metadata to transform: {self.metadata}")
+        def get_metadata(x):
+            from openeo.udf.run_code import load_module_from_string
+            module = load_module_from_string(udf_code)
+            functions = list([(k, v) for (k, v) in module.items() if callable(v) and k == "apply_metadata"])
+            if len(functions)>=1:
+                apply_metadata_func = functions[0][1]
+                transformed_metadata = apply_metadata_func(metadata,context)
+                return transformed_metadata
+            else:
+                raise ValueError("run_udf: apply_metadata function not found in the provided code.")
+        metadata_list = pysc.parallelize([0]).map(get_metadata).collect()
+        result_metadata: GeopysparkCubeMetadata = metadata_list[0]
+
+        _log.info(f"run_udf: apply_metadata resulted in {result_metadata}")
+        if not result_metadata.has_band_dimension():
+            raise ValueError(f"run_udf: apply_metadata function should not remove the band dimension, received metadata: {result_metadata}.")
+        if not isinstance(result_metadata, GeopysparkCubeMetadata):
+            raise ValueError(f"run_udf: apply_metadata function should retain the type of the input metadata object, received: {result_metadata}.")
+
+        return result_metadata
+
 
     @callsite
     def apply_neighborhood(
@@ -2237,6 +2271,9 @@ class GeopysparkDataCube(DriverDataCube):
             nodata = max_level.layer_metadata.no_data_value
             global_metadata = format_options.get("file_metadata",{})
             zlevel = format_options.get("ZLEVEL", 6)
+            for band_name, band_metadata in bands_metadata.items():
+                for tag, value in band_metadata.items():
+                    bands_metadata[band_name][tag] = str(value)
 
             if batch_mode and sample_by_feature:
                 _log.info("Output one netCDF file per feature.")
@@ -2255,6 +2292,7 @@ class GeopysparkDataCube(DriverDataCube):
                         band_names,
                         dim_names,
                         global_metadata,
+                        bands_metadata,
                         filename_prefix,
                     )
                 else:
@@ -2266,6 +2304,7 @@ class GeopysparkDataCube(DriverDataCube):
                         band_names,
                         dim_names,
                         global_metadata,
+                        bands_metadata,
                         filename_prefix,
                     )
 
@@ -2280,6 +2319,7 @@ class GeopysparkDataCube(DriverDataCube):
                         options.setBandNames(band_names)
                         options.setDimensionNames(dim_names)
                         options.setAttributes(global_metadata)
+                        options.setBandsMetadata(bands_metadata)
                         options.setZLevel(zlevel)
                         options.setCropBounds(crop_extent)
                         java_items = get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.writeRasters(
@@ -2289,15 +2329,24 @@ class GeopysparkDataCube(DriverDataCube):
                     else:
                         if max_level.layer_type != gps.LayerType.SPATIAL:
                             java_items = get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.saveSingleNetCDF(
-                                max_level.srdd.rdd(), filename, band_names, dim_names, global_metadata, zlevel
+                                max_level.srdd.rdd(),
+                                filename,
+                                band_names,
+                                dim_names,
+                                global_metadata,
+                                bands_metadata,
+                                zlevel,
                             )
                         else:
                             java_items = get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.saveSingleNetCDFSpatial(
                                 max_level.srdd.rdd(),
                                 filename,
                                 band_names,
-                                dim_names, global_metadata, zlevel
-                                )
+                                dim_names,
+                                global_metadata,
+                                bands_metadata,
+                                zlevel,
+                            )
                     return return_netcdf_items(java_items, bands, nodata)
 
                 else:
@@ -2384,8 +2433,10 @@ class GeopysparkDataCube(DriverDataCube):
                     _log.warning(f"save_result: a feature_id_property '{feature_id_property}' was specified, but could not find  labels in the vector cube: {geometries}.")
 
             return [str(i) for i in range(geometries.geometry_count())]
-        elif isinstance(geometries, collections.abc.Sized):
-            return [str(x) for x in range(len(geometries))]
+        elif isinstance(geometries, BaseMultipartGeometry):
+            return [str(i) for i in range(len(geometries.geoms))]
+        elif isinstance(geometries, BaseGeometry):
+            return ["0"]
         else:
             _log.warning(f"get_labels: unhandled geometries type {type(geometries)}")
             return ["0"]
