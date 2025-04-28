@@ -269,8 +269,6 @@ def read_product(product, product_type, band_names, tile_size, limit_python_memo
                 logger.error(msg, exc_info=True)
                 raise InternalException(msg)
 
-            debug_mode = True
-
             # Split output in tiles
             logger.info(f"{log_prefix} Split {orfeo_bands.shape} in tiles of {tile_size}")
             if not digital_numbers:
@@ -299,8 +297,7 @@ def read_product(product, product_type, band_names, tile_size, limit_python_memo
                 key = geopyspark.SpaceTimeKey(col=col, row=row, instant=_instant_ms_to_minute(instant))
                 tile = orfeo_bands[:, r * tile_size:(r + 1) * tile_size, c * tile_size:(c + 1) * tile_size]
                 if not (tile == nodata).all():
-                    if debug_mode:
-                        logger.info(f"{log_prefix} Create Tile for key {key} from {tile.shape}")
+                    logger.debug(f"{log_prefix} Create Tile for key {key} from {tile.shape}")
                     tile = geopyspark.Tile(tile, cell_type, no_data_value=nodata)
                     tiles.append((key, tile))
 
