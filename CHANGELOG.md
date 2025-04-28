@@ -18,6 +18,7 @@ without compromising stable operations.
 - `apply_neighborhood`/`apply_dimension`: support changing band names via apply_metadata ([#1155](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1155))
 - `StacApiWorkspace`: support arbitrary paths in `merge`; the last part of a path becomes the collection ID in the STAC API ([#1074](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1074))
 - Fix compatibility with Shapely 2 ([#1161](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1161))
+- Change default `use_zk_job_registry` config to `False` ([#632](https://github.com/Open-EO/openeo-geopyspark-driver/issues/632), [#863](https://github.com/Open-EO/openeo-geopyspark-driver/issues/863), [#1165](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1165))
 
 ## 0.65.0
 
