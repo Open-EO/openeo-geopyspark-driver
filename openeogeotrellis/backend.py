@@ -1074,7 +1074,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         return self.summarize_exception_static(error, 2000)
 
     @staticmethod
-    def summarize_exception_static(error: Exception, width=2000) -> Union[ErrorSummary, Exception]:
+    def summarize_exception_static(error: Exception, width=2000) -> ErrorSummary:
         if "Container killed on request. Exit code is 143" in str(error):
             is_client_error = False  # Give user the benefit of doubt.
             summary = "Your batch job failed because workers used too much memory. The same task was attempted multiple times. Consider increasing executor-memory, python-memory or executor-memoryOverhead or contact the developers to investigate."
@@ -1170,7 +1170,10 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                         "Missing an output location" in root_cause_message
                         or (  # OOM on YARN
                             "times, most recent failure:" in root_cause_message
-                            and "ExecutorLostFailure" in root_cause_message
+                            and (
+                                "ExecutorLostFailure" in root_cause_message
+                                or "exited unexpectedly" in root_cause_message
+                            )
                         )
                         or "has failed the maximum allowable number of times" in root_cause_message
                     ):
