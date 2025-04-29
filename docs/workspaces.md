@@ -1,4 +1,4 @@
-# Configuring an OpenEO workspace
+# Configuring an OpenEO Workspace
 
 This describes the configuration of an OpenEO workspace, to be used with the `export_workspace` process.
 
@@ -13,7 +13,7 @@ The `merge` argument of `export_workspace` (a path) determines where in the work
 Currently, there is no API yet to let a user define a workspace; instead they have to be added as part of the
 `GpsBackendConfig` as described in [configuration.md](configuration.md).
 
-## Workspace types
+## Workspace Types
 
 There are currently three types of workspaces:
  - `openeo_driver.workspace.DiskWorkspace`: exports assets and writes a STAC Collection to disk;
@@ -21,3 +21,12 @@ There are currently three types of workspaces:
 Collection to object storage;
  - `openeogeotrellis.workspace.stac_api_workspace.StacApiWorkspace`: creates a STAC Collection in a particular STAC API;
 the destination of the assets is configurable.
+
+**TODO**: elaborate on configuration
+
+
+## Job Options
+
+**TODO**: `remove-exported-assets`
+
+**TODO**: `export-workspace-enable-merge`
