@@ -16,14 +16,51 @@ Currently, there is no API yet to let a user define a workspace; instead they ha
 ## Workspace Types
 
 There are currently three types of workspaces:
- - `openeo_driver.workspace.DiskWorkspace`: exports assets and writes a STAC Collection to disk;
- - `openeogeotrellis.workspace.object_storage_workspace.ObjectStorageWorkspace`: exports assets and writes a STAC
+ - `DiskWorkspace`: exports assets and writes a STAC Collection to disk;
+ - `ObjectStorageWorkspace`: exports assets and writes a STAC
 Collection to object storage;
- - `openeogeotrellis.workspace.stac_api_workspace.StacApiWorkspace`: creates a STAC Collection in a particular STAC API;
+ - `StacApiWorkspace`: merges a STAC Collection in a particular STAC API;
 the destination of the assets is configurable.
 
-**TODO**: elaborate on configuration
+### Diskworkspace
 
+**TODO**: document `openeo_driver.workspace.DiskWorkspace`
+
+### ObjectStorageWorkspace
+
+**TODO**: document `openeogeotrellis.workspace.object_storage_workspace.ObjectStorageWorkspace`
+
+### StacApiWorkspace
+
+This is an instance of `openeogeotrellis.workspace.stac_api_workspace.StacApiWorkspace`.
+
+This workspace implementation will merge a STAC Collection into a new or existing STAC API; therefore, it requires the
+root URL of this STAC API (`root_url`).
+
+Updating a STAC API typically requires authentication. A call to `get_access_token` should return a
+valid access token; it will be included in requests towards the STAC API (the `Authorization` header). Some STAC APIs
+allow access control (read/write) at the Collection level; this could involve passing additional properties in the
+Collection document upon creation of this Collection: `additional_collection_properties`.
+
+The `export_workspace` process typically exports (copies) assets as well. In the case of `StacApiWorkspace`, how this is
+accomplished is configurable by means the `export_asset` argument. This method is called for every asset that is to be
+exported and takes a couple of arguments itself:
+- the asset object as a `pystac.asset.Asset`;
+- the `merge` argument passed to `export_workspace`: this allows the client to write assets to different locations
+within the workspace;
+- a relative asset path to properly support `filepath_per_band`;
+- a flag that determines that exported assets are to be moved (`True`) or simply copied (`False`).
+
+To be clear: `export_asset` receives (a URI to) the original asset and should take care of actually copying this asset
+to the workspace. It should also return a URI to this asset as it appears in the workspace so it can be included as a
+link in the original [OpenEO batch job results document](https://openeo.org/documentation/1.0/developers/api/reference.html#tag/Batch-Jobs/operation/list-results);
+in this case, `asset_alternate_id` is used as a key for an `alternate` `href` to this asset.
+
+Because this requires a lot of ceremony and a pattern emerged from the currently configured `StacApiWorkspace`s,
+the helper function [`openeogeotrellis.workspace.vito_stac_api_workspace`](https://github.com/Open-EO/openeo-geopyspark-driver/blob/master/openeogeotrellis/workspace/helpers.py)
+was introduced to make configuration easier if:
+- the STAC API uses OIDC client credentials for access and,
+- assets are copied to object storage.
 
 ## Job Options
 
