@@ -11,7 +11,18 @@ The `merge` argument of `export_workspace` (a path) determines where in the work
 `export_workspace` will also create a STAC Collection that references these assets.
 
 Currently, there is no API yet to let a user define a workspace; instead they have to be added as part of the
-`GpsBackendConfig` as described in [configuration.md](configuration.md).
+`GpsBackendConfig` as described in [configuration.md](configuration.md). For example, a `DiskWorkspace` that is referenced by
+workspace ID `disk_workspace_id` might look like this:
+
+```python
+from openeo_driver.workspace import DiskWorkspace
+
+config = GpsBackendConfig(
+    workspaces={
+        "disk_workspace_id": DiskWorkspace(root_directory=Path("/path/to/workspace/root")),
+    },
+)
+```
 
 ## Workspace Types
 
@@ -61,6 +72,30 @@ the helper function [`openeogeotrellis.workspace.vito_stac_api_workspace`](https
 was introduced to make configuration easier if:
 - the STAC API uses OIDC client credentials for access and,
 - assets are copied to object storage.
+
+Example:
+
+```python
+from openeogeotrellis.workspace import vito_stac_api_workspace
+
+config = GpsBackendConfig(
+    workspaces={
+        "stac_api_workspace_id": vito_stac_api_workspace(
+            root_url="https://stac.test",
+            oidc_issuer="https://sso.test/auth/realms/test",
+            oidc_client_id="client_id",
+            oidc_client_secret="cl13nt_s3cr3t",
+            asset_bucket="bucket_name",
+            additional_collection_properties={
+                "_auth": {
+                    "read": ["anonymous"],
+                    "write": ["admin", "editor"],
+                }
+            }
+        ),
+    },
+)
+```
 
 ## Job Options
 
