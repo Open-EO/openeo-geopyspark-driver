@@ -146,7 +146,7 @@ def test_merge_into_existing(requests_mock, tmp_path):
 
 
 @responses.activate(registry=responses.registries.OrderedRegistry)
-def test_merge_resilience(tmp_path):
+def test_merge_resilience(tmp_path, caplog):
     stac_api_workspace = StacApiWorkspace(
         root_url="https://stacapi.test",
         export_asset=_export_asset,
@@ -175,10 +175,22 @@ def test_merge_resilience(tmp_path):
     get_collection_not_found_resp = responses.get(f"{stac_api_workspace.root_url}/collections/{target}", status=404)
 
     create_collection_error_resp = responses.post(f"{stac_api_workspace.root_url}/collections", status=500)
-    create_collection_conflict_resp = responses.post(f"{stac_api_workspace.root_url}/collections", status=409)
+    create_collection_conflict_resp = responses.post(
+        f"{stac_api_workspace.root_url}/collections",
+        status=409,
+        json={
+            "error": "collection already exists",
+        },
+    )
 
     create_item_error_resp = responses.post(f"{stac_api_workspace.root_url}/collections/{target}/items", status=500)
-    create_item_conflict_resp = responses.post(f"{stac_api_workspace.root_url}/collections/{target}/items", status=409)
+    create_item_conflict_resp = responses.post(
+        f"{stac_api_workspace.root_url}/collections/{target}/items",
+        status=409,
+        json={
+            "error": "item already exists",
+        },
+    )
 
     collection1 = _collection(root_path=tmp_path / "collection1", collection_id="collection1", asset_path=asset_path)
     stac_api_workspace.merge(stac_resource=collection1, target=target)
@@ -194,6 +206,18 @@ def test_merge_resilience(tmp_path):
 
     assert create_item_error_resp.call_count == 1
     assert create_item_conflict_resp.call_count == 1
+
+    warn_logs = [r.message for r in caplog.records if r.levelname == "WARNING"]
+    assert (
+        "ignoring error response to POST that was retried because of a transient (network) error: "
+        "409 Client Error: Conflict for url: https://stacapi.test/collections "
+        'with response body: {"error":"collection already exists"}'
+    ) in warn_logs
+    assert (
+        "ignoring error response to POST that was retried because of a transient (network) error: "
+        "409 Client Error: Conflict for url: https://stacapi.test/collections/new_collection/items"
+        ' with response body: {"error":"item already exists"}'
+    ) in warn_logs
 
 
 def test_error_details(tmp_path, requests_mock):

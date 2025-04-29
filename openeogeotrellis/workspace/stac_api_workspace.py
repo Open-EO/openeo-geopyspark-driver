@@ -180,14 +180,19 @@ class StacApiWorkspace(Workspace):
         try:
             resp.raise_for_status()
         except requests.HTTPError as e:
-            # ignore error response to POST that was retried because of a transient (network) error
-            if e.response.status_code != 409:
-                try:
-                    body = json.dumps(e.response.json(), separators=(",", ":"))  # ensure minified
-                except JSONDecodeError:
-                    body = e.response.text  # best effort
+            try:
+                error_body = json.dumps(e.response.json(), separators=(",", ":"))  # ensure minified
+            except JSONDecodeError:
+                error_body = e.response.text  # best effort
 
-                raise StacApiResponseError(f"{e} with response body: {body}") from e
+            if e.response.status_code == 409:
+                _log.warning(
+                    f"ignoring error response to POST that was retried because of a "
+                    f"transient (network) error: {e} with response body: {error_body}",
+                    exc_info=True,
+                )
+            else:
+                raise StacApiResponseError(f"{e} with response body: {error_body}") from e
 
     def _assert_catalog_supports_necessary_api(self):
         # TODO: reduce code duplication with openeo_driver.util.http.requests_with_retry
