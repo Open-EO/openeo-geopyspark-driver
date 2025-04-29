@@ -443,4 +443,3 @@ class TestDownload:
         assert (ds_netcdf.y.data == ds.y.values).all()
         assert (ds_netcdf.band_one.data==res.data[0]).all()
         assert (ds_netcdf.band_two.data == res.data[1]).all()
-        assert 1 == 1

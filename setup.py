@@ -105,6 +105,7 @@ setup(
         "PyJWT[crypto]>=2.9.0",  # For identity tokens
         "urllib3>=1.26.20",
         "importlib_resources; python_version<'3.9'",  # #1060 on python 3.8 we need importlib_resources backport
+        "zarr"
     ],
     extras_require={
         "dev": tests_require,
