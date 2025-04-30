@@ -18,7 +18,7 @@ def test_merge_new(requests_mock, tmp_path):
         root_url="https://stacapi.test",
         export_asset=_export_asset,
         asset_alternate_id="file",
-        get_access_token=lambda: "s3cr3t",
+        get_access_token=lambda _: "s3cr3t",
     )
     target = PurePath("new_collection")
     asset_path = Path("/path") / "to" / "asset1.tif"
@@ -69,7 +69,7 @@ def test_merge_into_existing(requests_mock, tmp_path):
         root_url="https://stacapi.test",
         export_asset=_export_asset,
         asset_alternate_id="file",
-        get_access_token=lambda: "s3cr3t",
+        get_access_token=lambda _: "s3cr3t",
     )
     target = PurePath("existing_collection")
     asset_path = Path("/path") / "to" / "asset2.tif"
@@ -318,11 +318,17 @@ def test_vito_stac_api_workspace_helper(tmp_path, requests_mock, mock_s3_bucket,
     _mock_stac_api_root_catalog(requests_mock, stac_api_workspace.root_url)
     requests_mock.get(f"{stac_api_workspace.root_url}/collections/{target.name}", status_code=404)
     create_collection_mock = requests_mock.post(f"{stac_api_workspace.root_url}/collections")
-    create_item_mock = requests_mock.post(f"{stac_api_workspace.root_url}/collections/{target.name}/items")
+    create_item_mock = requests_mock.post(
+        f"{stac_api_workspace.root_url}/collections/{target.name}/items",
+        [
+            {"status_code": 401},
+            {"status_code": 201},
+        ],
+    )
 
     stac_api_workspace.merge(collection, target)
 
-    assert get_access_token_mock.called_once
+    assert get_access_token_mock.call_count == 2  # fetches new access_token upon 401 response
     assert create_collection_mock.called_once
     assert create_collection_mock.last_request.json() == DictSubSet(
         id=target.name,
@@ -331,7 +337,7 @@ def test_vito_stac_api_workspace_helper(tmp_path, requests_mock, mock_s3_bucket,
             "write": ["editor"],
         },
     )
-    assert create_item_mock.called_once
+    assert create_item_mock.call_count == 2  # single item is retried with new access_token
     object_keys = {obj["Key"] for obj in mock_s3_client.list_objects_v2(Bucket=mock_s3_bucket.name).get("Contents", [])}
 
     assert object_keys == {"assets/path/to/collection/asset.tif"}
