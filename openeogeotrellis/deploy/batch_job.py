@@ -533,12 +533,13 @@ def write_metadata(metadata: dict, metadata_file: Path):
         logger.info(f"{context} asset hrefs: {asset_hrefs!r}")
 
     log_asset_hrefs("input")
+    out_metadata = metadata
     if ConfigParams().is_kube_deploy:
-        metadata = _convert_asset_outputs_to_s3_urls(metadata)
+        out_metadata = _convert_asset_outputs_to_s3_urls(metadata)
     log_asset_hrefs("output")
 
     with open(metadata_file, 'w') as f:
-        json.dump(metadata, f, default=json_default)
+        json.dump(out_metadata, f, default=json_default)
     add_permissions(metadata_file, stat.S_IWGRP)
     logger.info("wrote metadata to %s" % metadata_file)
 
@@ -550,6 +551,17 @@ def write_metadata(metadata: dict, metadata_file: Path):
 
         # asset files are already uploaded by Scala code
         s3_instance.upload_file(str(metadata_file), bucket, str(metadata_file).strip("/"))
+
+        # hack to work around missing timeseries files in output bucket
+        out_assets = out_metadata.get("assets", {})
+        input_assets = metadata.get("assets", {})
+        for (key,asset) in out_assets.items():
+            if "href" in asset and str(asset["href"]).startswith("s3://"):
+                if("timeseries" in asset["href"]):
+                    in_asset = input_assets.get(key, {})
+                    full_path = str(in_asset.absolute())
+                    s3_instance.upload_file(full_path, bucket, full_path.strip("/"))
+
 
 
 def _export_to_workspaces(
