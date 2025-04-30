@@ -146,15 +146,23 @@ class StacApiWorkspace(Workspace):
         request_json = bare_collection.to_dict(include_self_link=False)
 
         if modify_existing:
+            update_collection_url = f"{self.root_url}/collections/{collection_id}"
+
+            _log.debug(f"updating existing collection at {update_collection_url}: {self._dumps_minified(request_json)}")
+
             resp = session.put(
-                f"{self.root_url}/collections/{collection_id}",
+                update_collection_url,
                 json=request_json,
                 timeout=self.REQUESTS_TIMEOUT_SECONDS,
                 headers=headers,
             )
         else:
+            create_collection_url = f"{self.root_url}/collections"
+
+            _log.debug(f"creating new collection at {create_collection_url}: {self._dumps_minified(request_json)}")
+
             resp = session.post(
-                f"{self.root_url}/collections",
+                create_collection_url,
                 json=request_json,
                 timeout=self.REQUESTS_TIMEOUT_SECONDS,
                 headers=headers,
@@ -166,9 +174,14 @@ class StacApiWorkspace(Workspace):
         item.remove_hierarchical_links()
         item.collection_id = collection_id
 
+        create_item_url = f"{self.root_url}/collections/{collection_id}/items"
+        request_json = item.to_dict(include_self_link=False)
+
+        _log.debug(f"creating new item at {create_item_url}: {self._dumps_minified(request_json)}")
+
         resp = session.post(
-            f"{self.root_url}/collections/{collection_id}/items",
-            json=item.to_dict(include_self_link=False),
+            create_item_url,
+            json=request_json,
             timeout=self.REQUESTS_TIMEOUT_SECONDS,
             headers=headers,
         )
@@ -181,7 +194,7 @@ class StacApiWorkspace(Workspace):
             resp.raise_for_status()
         except requests.HTTPError as e:
             try:
-                error_body = json.dumps(e.response.json(), separators=(",", ":"))  # ensure minified
+                error_body = StacApiWorkspace._dumps_minified(e.response.json())
             except JSONDecodeError:
                 error_body = e.response.text  # best effort
 
@@ -228,3 +241,7 @@ class StacApiWorkspace(Workspace):
         return (isinstance(e, requests.HTTPError) and e.response.status_code == 404) or (
             e.__cause__ is not None and self._is_not_found_error(e.__cause__)
         )
+
+    @staticmethod
+    def _dumps_minified(obj) -> str:
+        return json.dumps(obj, separators=(",", ":"))
