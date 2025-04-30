@@ -552,16 +552,6 @@ def write_metadata(metadata: dict, metadata_file: Path):
         # asset files are already uploaded by Scala code
         s3_instance.upload_file(str(metadata_file), bucket, str(metadata_file).strip("/"))
 
-        # hack to work around missing timeseries files in output bucket
-        out_assets = out_metadata.get("assets", {})
-        input_assets = metadata.get("assets", {})
-        for (key,asset) in out_assets.items():
-            if "href" in asset and str(asset["href"]).startswith("s3://"):
-                if("timeseries" in asset["href"]):
-                    in_asset = input_assets.get(key, {})
-                    full_path = str(in_asset.absolute())
-                    s3_instance.upload_file(full_path, bucket, full_path.strip("/"))
-
 
 
 def _export_to_workspaces(
