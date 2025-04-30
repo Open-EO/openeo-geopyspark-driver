@@ -309,7 +309,10 @@ def test_vito_stac_api_workspace_helper(tmp_path, requests_mock, mock_s3_bucket,
             "token_endpoint": f"{oidc_issuer}/protocol/openid-connect/token",
         },
     )
-    requests_mock.post(f"{oidc_issuer}/protocol/openid-connect/token", json={"access_token": "4cc3ss_t0k3n"})
+    get_access_token_mock = requests_mock.post(
+        f"{oidc_issuer}/protocol/openid-connect/token",
+        json={"access_token": "4cc3ss_t0k3n"},
+    )
 
     # mock STAC API
     _mock_stac_api_root_catalog(requests_mock, stac_api_workspace.root_url)
@@ -319,6 +322,7 @@ def test_vito_stac_api_workspace_helper(tmp_path, requests_mock, mock_s3_bucket,
 
     stac_api_workspace.merge(collection, target)
 
+    assert get_access_token_mock.called_once
     assert create_collection_mock.called_once
     assert create_collection_mock.last_request.json() == DictSubSet(
         id=target.name,
