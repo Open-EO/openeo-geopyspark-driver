@@ -31,6 +31,7 @@ tests_require = [
     "responses",
     "rio_cogeo",
     "pydantic~=1.0",
+    "zarr",
 ]
 
 setup(
