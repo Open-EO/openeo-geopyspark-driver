@@ -19,6 +19,7 @@ without compromising stable operations.
 - `StacApiWorkspace`: support arbitrary paths in `merge`; the last part of a path becomes the collection ID in the STAC API ([#1074](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1074))
 - Fix compatibility with Shapely 2 ([#1161](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1161))
 - Change default `use_zk_job_registry` config to `False` ([#632](https://github.com/Open-EO/openeo-geopyspark-driver/issues/632), [#863](https://github.com/Open-EO/openeo-geopyspark-driver/issues/863), [#1165](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1165))
+- Add timeout to metadata request on "stac" data sources in layer catalog ([eu-cdse/openeo-cdse-infra#525](https://github.com/eu-cdse/openeo-cdse-infra/issues/525))
 
 ## 0.65.0
 
