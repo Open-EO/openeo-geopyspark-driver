@@ -30,6 +30,7 @@ workspaces = {"tmp_workspace": DiskWorkspace(root_directory=Path("/tmp/workspace
 
 config = GpsBackendConfig(
     id="gps-local",
+    layer_catalog_files=[str(Path(__file__).parent / "simple_layercatalog.json")],
     capabilities_title="Local GeoPySpark openEO Backend",
     capabilities_description="Local GeoPySpark openEO Backend",
     oidc_providers=oidc_providers,
