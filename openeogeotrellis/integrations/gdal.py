@@ -30,6 +30,7 @@ def poorly_log(message: str, level=logging.INFO):
     # TODO: fix logging in combination with multiprocessing (#906)
     log_entry = dict_no_none(
         levelname=logging.getLevelName(level),
+        name=__name__,
         message=message,
         created=time.time(),
         filename=Path(__file__).name,
