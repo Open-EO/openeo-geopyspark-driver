@@ -2293,6 +2293,11 @@ class GeopysparkDataCube(DriverDataCube):
             XarrayIO.to_json_file(array=result, path=filename)
 
         elif format == "ZARR":
+            zarr_file = save_filename
+            if filename_prefix.isDefined():
+                zarr_file = filename_prefix.get() + zarr_file
+            if not zarr_file.endswith(".zarr"):
+                zarr_file = zarr_file + ".zarr"
             zarr_options = get_jvm().org.openeo.geotrellis.zarr.ZarrOptions()
             if self.metadata.has_band_dimension():
                 band_names = self.metadata.band_names
@@ -2301,7 +2306,7 @@ class GeopysparkDataCube(DriverDataCube):
             else:
                 zarr_options.setBands(1)
 
-            self._save_zarr_executors(max_level.srdd.rdd(),filename,zarr_options)
+            self._save_zarr_executors(max_level.srdd.rdd(),zarr_file,zarr_options)
 
 
         else:
