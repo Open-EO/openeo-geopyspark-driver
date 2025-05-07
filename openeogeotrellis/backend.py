@@ -2410,6 +2410,8 @@ class GpsBatchJobs(backend.BatchJobs):
                     log.info(f"Submitting job with command {args!r}")
                     d = dict(**os.environ)
                     d["YARN_CONTAINER_RUNTIME_DOCKER_IMAGE"] = image_name
+                    if "openeo-jar-path" in job_options and job_options["openeo-jar-path"].startswith("https://artifactory.vgt.vito.be"):
+                        d["OPENEO_GEOTRELLIS_JAR"] = job_options["openeo-jar-path"]
                     script_output = subprocess.check_output(args, stderr=subprocess.STDOUT, universal_newlines=True, env=d)
                     log.info(f"Submitted job, output was: {script_output}")
                 except CalledProcessError as e:

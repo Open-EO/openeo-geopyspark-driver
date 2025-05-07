@@ -74,7 +74,7 @@ if [ -n "$udf_python_dependencies_folder_path" ]; then
   export PYTHONPATH="$PYTHONPATH:$udf_python_dependencies_folder_path"
 fi
 
-extensions="geotrellis-extensions-static.jar"
+extensions=${OPENEO_GEOTRELLIS_JAR:-geotrellis-extensions-static.jar}
 backend_assembly="geotrellis-backend-assembly-static.jar"
 logging_jar=$(ls openeo-logging-static.jar) || true
 
