@@ -412,8 +412,7 @@ class CalrissianJobLauncher:
             pods = kubernetes.client.CoreV1Api().list_namespaced_pod(
                 namespace=self._namespace, label_selector=f"job-name={job_name}", watch=False
             )
-            last_pod = sorted(pods.items, key=lambda p: p.metadata.creation_timestamp, reverse=True)[0]
-            # get logs from pod:
+            last_pod = max(pods.items, key=lambda p: p.metadata.creation_timestamp)
             logs = kubernetes.client.CoreV1Api().read_namespaced_pod_log(
                 name=last_pod.metadata.name,
                 namespace=self._namespace,
