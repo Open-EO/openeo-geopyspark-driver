@@ -26,21 +26,31 @@ class JobOptions:
     executor_memory: str = field(
         default=get_backend_config().default_executor_memory,
         metadata={
-            "description": "Memory allocated to the workers for the JVM that executes most predefined processes."})
+            "name": "executor-memory",
+            "description": "Memory allocated to the workers for the JVM that executes most predefined processes."
+        })
     executor_memory_overhead: str = field(
         default=get_backend_config().default_executor_memoryOverhead,
-        metadata={"description": "Allocated in addition to the JVM, for example, to run UDFs."})
+        metadata={
+            "name": "executor-memoryOverhead",
+            "description": "Allocated in addition to the JVM, for example, to run UDFs."
+        })
     python_memory: str = field(
         default=get_backend_config().default_python_memory,
-        metadata={"description": "Memory assigned to Python UDFs, sar_backscatter or Sentinel-3 data loading tasks."})
+        metadata={
+            "description": "Memory assigned to Python UDFs, sar_backscatter or Sentinel-3 data loading tasks."
+        })
     executor_cores: str = field(
         default=get_backend_config().default_executor_cores,
         metadata={
-        "description": "Number of CPUs per worker (executor). The number of parallel tasks is calculated as executor-cores / task-cpus. Setting this value equal to task-cpus is recommended to avoid potential GDAL reading errors."})
+            "name": "executor-cores",
+            "description": "Number of CPUs per worker (executor). The number of parallel tasks is calculated as executor-cores / task-cpus. Setting this value equal to task-cpus is recommended to avoid potential GDAL reading errors."
+        })
     task_cpus: str = field(
         default=1,
         metadata={
-        "description": "CPUs assigned to a single task. UDFs using libraries like Tensorflow can benefit from further parallelization at the individual task level."})
+            "description": "CPUs assigned to a single task. UDFs using libraries like Tensorflow can benefit from further parallelization at the individual task level."
+        })
     executor_corerequest: str = field(
         default="",
         metadata={
@@ -53,7 +63,8 @@ class JobOptions:
     logging_threshold: str = field(
         default="INFO",
         metadata={
-        "description": "The threshold for logging, set to ‘info’ by default, can be set to ‘debug’ to generate much more logging."})
+            "description": "The threshold for logging, set to ‘info’ by default, can be set to ‘debug’ to generate much more logging."
+        })
     udf_dependency_archives: List[str] = field(
         default = None,
         metadata={"description": "An array of URLs pointing to zip files with extra dependencies; see below."})
@@ -63,7 +74,25 @@ class JobOptions:
 
         init_kwargs = {}
         for field in fields(cls):
-            field_name = field.metadata.get("name", field.name)  # Use "name" from metadata or default to field name
+            field_name = field.metadata.get("name", field.name.replace("_","-"))  # Use "name" from metadata or default to field name
             init_kwargs[field.name] = data.get(field_name, field.default)
 
         return cls(**init_kwargs)
+
+
+    @classmethod
+    def list_options(cls, public_only=True):
+        """
+        List all available options and their descriptions.
+        """
+        options = []
+        for field in fields(cls):
+            if public_only and field.metadata.get("public", False):
+                continue
+            options.append({
+                "name": field.metadata.get("name", field.name.replace("_","-")),
+                "description": field.metadata.get("description", ""),
+                "optional": True,
+                "default": field.default,
+            })
+        return options
