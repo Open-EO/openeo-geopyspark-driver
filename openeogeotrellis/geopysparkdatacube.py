@@ -1178,7 +1178,13 @@ class GeopysparkDataCube(DriverDataCube):
 
     @callsite
     def apply_neighborhood(
-        self, process: dict, *, size: List[dict], overlap: List[dict], context: Optional[dict] = None, env: EvalEnv
+        self,
+        process: dict,
+        *,
+        size: List[dict],
+        overlap: Optional[List[dict]] = None,
+        context: Optional[dict] = None,
+        env: EvalEnv,
     ) -> "GeopysparkDataCube":
         spatial_dims = self.metadata.spatial_dimensions
         if len(spatial_dims) != 2:
@@ -1186,9 +1192,9 @@ class GeopysparkDataCube(DriverDataCube):
                                              " expecting exactly 2 spatial dimensions: %s" % str(spatial_dims))
         x = spatial_dims[0]
         y = spatial_dims[1]
-        size_dict = {e['dimension']:e for e in size}
-        overlap_dict = {e['dimension']: e for e in overlap} if overlap is not None else {}
-        if size_dict.get(x.name, {}).get('unit', None) != 'px' or size_dict.get(y.name, {}).get('unit', None) != 'px':
+        size_dict = {e["dimension"]: e for e in size}
+        overlap_dict = {e["dimension"]: e for e in (overlap or [])}
+        if size_dict.get(x.name, {}).get("unit", None) != "px" or size_dict.get(y.name, {}).get("unit", None) != "px":
             raise ProcessParameterInvalidException(
                 parameter="size",
                 process="apply_neighborhood",
