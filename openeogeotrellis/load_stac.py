@@ -655,41 +655,48 @@ def load_stac(
     if tilesize:
         getattr(data_cube_parameters, "tileSize_$eq")(tilesize)
 
-    if netcdf_with_time_dimension:
-        pyramid = pyramid_factory.datacube_seq(projected_polygons, from_date.isoformat(), to_date.isoformat(),
-                                               metadata_properties, correlation_id, data_cube_parameters,
-                                               opensearch_client)
-    elif single_level:
-        if not items_found and allow_empty_cubes:
-            pyramid = pyramid_factory.empty_datacube_seq(
-                projected_polygons,
-                from_date.isoformat(),
-                to_date.isoformat(),
-                data_cube_parameters,
-            )
+    try:
+        if netcdf_with_time_dimension:
+            pyramid = pyramid_factory.datacube_seq(projected_polygons, from_date.isoformat(), to_date.isoformat(),
+                                                   metadata_properties, correlation_id, data_cube_parameters,
+                                                   opensearch_client)
+        elif single_level:
+            if not items_found and allow_empty_cubes:
+                pyramid = pyramid_factory.empty_datacube_seq(
+                    projected_polygons,
+                    from_date.isoformat(),
+                    to_date.isoformat(),
+                    data_cube_parameters,
+                )
+            else:
+                pyramid = pyramid_factory.datacube_seq(
+                    projected_polygons,
+                    from_date.isoformat(),
+                    to_date.isoformat(),
+                    metadata_properties,
+                    correlation_id,
+                    data_cube_parameters,
+                )
         else:
-            pyramid = pyramid_factory.datacube_seq(
-                projected_polygons,
-                from_date.isoformat(),
-                to_date.isoformat(),
-                metadata_properties,
-                correlation_id,
-                data_cube_parameters,
-            )
-    else:
-        if requested_bbox:
-            extent = jvm.geotrellis.vector.Extent(*map(float, requested_bbox.as_wsen_tuple()))
-            extent_crs = requested_bbox.crs
-        else:
-            extent = jvm.geotrellis.vector.Extent(-180.0, -90.0, 180.0, 90.0)
-            extent_crs = "EPSG:4326"
+            if requested_bbox:
+                extent = jvm.geotrellis.vector.Extent(*map(float, requested_bbox.as_wsen_tuple()))
+                extent_crs = requested_bbox.crs
+            else:
+                extent = jvm.geotrellis.vector.Extent(-180.0, -90.0, 180.0, 90.0)
+                extent_crs = "EPSG:4326"
 
-        if not items_found and allow_empty_cubes:
-            pyramid = pyramid_factory.empty_pyramid_seq(extent, extent_crs, from_date.isoformat(), to_date.isoformat())
-        else:
-            pyramid = pyramid_factory.pyramid_seq(
-                extent, extent_crs, from_date.isoformat(), to_date.isoformat(), metadata_properties, correlation_id
-            )
+            if not items_found and allow_empty_cubes:
+                pyramid = pyramid_factory.empty_pyramid_seq(extent, extent_crs, from_date.isoformat(), to_date.isoformat())
+            else:
+                pyramid = pyramid_factory.pyramid_seq(
+                    extent, extent_crs, from_date.isoformat(), to_date.isoformat(), metadata_properties, correlation_id
+                )
+    except Exception as e:
+        raise OpenEOApiException(
+            message=f"Error when constructing layer from {url}: {e}",
+            status_code=500,
+        ) from e
+
 
     metadata = metadata.filter_temporal(from_date.isoformat(), to_date.isoformat())
 
