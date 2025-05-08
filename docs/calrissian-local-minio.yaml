@@ -1,0 +1,75 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: csi-s3
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: csi-s3-secret
+  namespace: csi-s3  # This must match what is in the StorageClass
+stringData:
+  accessKeyID: "minioadmin"
+  secretAccessKey: "minioadmin"
+  endpoint: "http://minio-service.calrissian-demo-project.svc.cluster.local:9000"
+  #region: "your-region"
+  # Optional parameters:
+  #storageClass: "STANDARD"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: minio
+  namespace: calrissian-demo-project
+  labels:
+    app: minio
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: minio
+  template:
+    metadata:
+      labels:
+        app: minio
+    spec:
+      containers:
+      - name: minio
+        image: quay.io/minio/minio
+        args:
+        - server
+        - /data
+        - "--console-address=:9001"
+        env:
+        - name: MINIO_ACCESS_KEY
+          value: "minioadmin"
+        - name: MINIO_SECRET_KEY
+          value: "minioadmin"
+        ports:
+        - containerPort: 9000
+        - containerPort: 9001
+        volumeMounts:
+        - name: storage
+          mountPath: "/data"
+      volumes:
+      - name: storage
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio-service
+  namespace: calrissian-demo-project
+spec:
+  type: NodePort
+  ports:
+    - port: 9000
+      targetPort: 9000
+      nodePort: 30000
+      name: minio-service-port1
+    - port: 9001
+      targetPort: 9001
+      nodePort: 30001
+      name: minio-service-port2
+  selector:
+    app: minio

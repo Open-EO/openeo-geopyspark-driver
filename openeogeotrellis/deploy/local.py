@@ -172,6 +172,13 @@ def setup_environment(log_dir: Path = Path.cwd()):
 
     setup_local_spark(log_dir=log_dir)
 
+    # Configure access to local minio to ease testing with calrissian:
+    os.environ["SWIFT_URL"] = "http://192.168.49.2:30000/"  # $(minikube ip)
+    os.environ.setdefault("AWS_ACCESS_KEY_ID", "minioadmin")
+    os.environ.setdefault("AWS_SECRET_ACCESS_KEY", "minioadmin")
+    os.environ.setdefault("SWIFT_ACCESS_KEY_ID", "minioadmin")
+    os.environ.setdefault("SWIFT_SECRET_ACCESS_KEY", "minioadmin")
+
     os.environ.setdefault(
         openeo_driver.config.load.ConfigGetter.OPENEO_BACKEND_CONFIG,
         str(Path(__file__).parent / "local_backend_config.py"),
