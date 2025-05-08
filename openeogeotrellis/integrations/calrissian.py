@@ -312,6 +312,10 @@ class CalrissianJobLauncher:
                 value_from=kubernetes.client.V1EnvVarSource(
                     field_ref=kubernetes.client.V1ObjectFieldSelector(field_path="metadata.name")
                 ),
+            ),
+            kubernetes.client.V1EnvVar(
+                name="RETRY_ATTEMPTS",  # Otherwise calrissian retry backoff till take 2400sec (40min)
+                value="3",
             )
         ]
         if env_vars:
