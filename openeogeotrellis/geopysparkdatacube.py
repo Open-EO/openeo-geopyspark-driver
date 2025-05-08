@@ -632,7 +632,7 @@ class GeopysparkDataCube(DriverDataCube):
             return gps.TiledRasterLayer.from_numpy_rdd(gps.LayerType.SPACETIME, numpy_rdd, metadata)
 
         updated_cube_metadata = self.metadata
-        if re.match(r"^def\s+apply_metadata\s*\(", udf_code, re.MULTILINE) and runtime.lower() != "python-jep":
+        if re.search(r"^def\s+apply_metadata\s*\(", udf_code, re.MULTILINE) and runtime.lower() != "python-jep":
             updated_cube_metadata = self.apply_metadata(udf_code, udf_context)
         return self.apply_to_levels(partial(rdd_function, self.metadata), updated_cube_metadata)
 
