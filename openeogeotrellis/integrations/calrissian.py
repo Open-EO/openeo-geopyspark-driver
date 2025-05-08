@@ -408,7 +408,22 @@ class CalrissianJobLauncher:
         elif final_status is None:
             raise TimeoutError(f"CWL Job {job_name} did not finish within {timeout}s")
         elif final_status != "complete":
-            raise RuntimeError(f"CWL Job {job_name} failed with {final_status=} after {timer.elapsed()=:.2f}s")
+            # get logs from latest pod in job:
+            pods = kubernetes.client.CoreV1Api().list_namespaced_pod(
+                namespace=self._namespace, label_selector=f"job-name={job_name}", watch=False
+            )
+            last_pod = sorted(pods.items, key=lambda p: p.metadata.creation_timestamp, reverse=True)[0]
+            # get logs from pod:
+            logs = kubernetes.client.CoreV1Api().read_namespaced_pod_log(
+                name=last_pod.metadata.name,
+                namespace=self._namespace,
+                container=last_pod.spec.containers[0].name,
+                follow=False,
+            )
+            logs = "\n".join(logs.splitlines()[-5:])
+            raise RuntimeError(
+                f"CWL Job {job_name} failed with {final_status=} after {timer.elapsed()=:.2f}s and last lines of failed pod: {logs}"
+            )
         else:
             raise ValueError("CWL")
 
