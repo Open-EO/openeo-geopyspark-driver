@@ -1,7 +1,7 @@
 import os
 from typing import Callable
 
-from openeogeotrellis.integrations.s3.providers import CF, OTC, get_s3_provider, EODATA
+from openeogeotrellis.integrations.s3_client.providers import CF, OTC, get_s3_provider, EODATA
 
 
 def get_cf_endpoint(region_name: str) -> str:

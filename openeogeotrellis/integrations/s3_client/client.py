@@ -2,8 +2,8 @@ from __future__ import annotations
 import boto3
 
 from typing import TYPE_CHECKING
-from openeogeotrellis.integrations.s3.endpoint import get_endpoint
-from openeogeotrellis.integrations.s3.credentials import get_credentials
+from openeogeotrellis.integrations.s3_client.endpoint import get_endpoint
+from openeogeotrellis.integrations.s3_client.credentials import get_credentials
 
 
 if TYPE_CHECKING:

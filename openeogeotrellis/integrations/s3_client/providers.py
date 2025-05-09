@@ -1,8 +1,8 @@
 """
 This file ties regions to cloud providers.
-
 """
 
+# Providers
 CF = "cf"  # CloudFerro
 OTC = "otc"  # Open Telekom cloud
 EODATA = "eodata"  # eodata is considered a separate cloud provider stack

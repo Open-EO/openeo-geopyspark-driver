@@ -12,7 +12,7 @@ from openeo_driver.workspace import Workspace, _merge_collection_metadata
 from pystac import STACObject, Collection, CatalogType, Item, Asset
 from pystac.layout import HrefLayoutStrategy, CustomLayoutStrategy
 
-from openeogeotrellis.integrations.s3 import get_s3_client
+from openeogeotrellis.integrations.s3_client import get_s3_client
 from .custom_stac_io import CustomStacIO
 
 _log = logging.getLogger(__name__)

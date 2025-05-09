@@ -1,7 +1,7 @@
-from openeogeotrellis.integrations.s3 import get_s3_client
+from openeogeotrellis.integrations.s3_client import get_s3_client
 import pytest
 
-from openeogeotrellis.integrations.s3.credentials import get_credentials
+from openeogeotrellis.integrations.s3_client.credentials import get_credentials
 
 
 eodata_test_endpoint = "eodata.oeo.test"
