@@ -451,7 +451,7 @@ def aws_credentials(monkeypatch):
 
 
 @pytest.fixture(scope="function")
-def mock_s3_resource(aws_credentials):
+def mock_s3_resource(aws_credentials, mock_s3_client):
     if moto_server_address is None:
         with moto.mock_aws():
             yield boto3.resource("s3", region_name=TEST_AWS_REGION_NAME)
