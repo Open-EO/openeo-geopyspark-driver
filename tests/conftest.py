@@ -459,7 +459,7 @@ def mock_s3_resource(aws_credentials, mock_s3_client):
         yield boto3.resource("s3", region_name=TEST_AWS_REGION_NAME, endpoint_url=moto_server_address)
 
 @pytest.fixture(scope="function")
-def get_mock_s3_client(aws_credentials):
+def mocked_s3_client(aws_credentials):
     if moto_server_address is None:
         with moto.mock_aws():
             yield boto3.client("s3", region_name=TEST_AWS_REGION_NAME)
@@ -468,12 +468,13 @@ def get_mock_s3_client(aws_credentials):
 
 
 @pytest.fixture(scope="function")
-def mock_s3_client(get_mock_s3_client, monkeypatch):
+def mock_s3_client(mocked_s3_client, monkeypatch):
     def _get_client(*args, **kwargs):
-        return get_mock_s3_client
+        return mocked_s3_client
 
+    # monkeypatch in case motoserver runs standalone
     monkeypatch.setattr(S3ClientBuilder, "from_region", _get_client)
-    yield get_mock_s3_client
+    yield mocked_s3_client
 
 @pytest.fixture(scope="function")
 def mock_sts_client(monkeypatch):
