@@ -17,14 +17,14 @@ def get_credentials(region_name: str) -> Boto3CredentialsTypeDef:
     """
     Credential resolving should always go from most specific to least specific. So let's say we are checking region
     waw3-1 of the cloudferro cloud we must check in order:
-    - CF_WAW3_1_ACCESS_KEY_ID && CF_WAW3_1_SECRET_ACCESS_KEY
+    - WAW3_1_ACCESS_KEY_ID && WAW3_1_SECRET_ACCESS_KEY
     - CF_ACCESS_KEY_ID && CF_SECRET_ACCESS_KEY
     - SWIFT_ACCESS_KEY_ID && SWIFT_SECRET_ACCESS_KEY  # for backwards compatibility
     - AWS_ACCESS_KEY_ID && AWS_SECRET_ACCESS_KEY
     """
     provider_name = get_s3_provider(region_name)
 
-    for prefix in [f"{provider_name}_{region_name}", f"{provider_name}", "SWIFT", "AWS"]:
+    for prefix in [f"{region_name}", f"{provider_name}", "SWIFT", "AWS"]:
         credential_candidate = get_credential_for_prefix(prefix)
         if credential_candidate is not None:
             return credential_candidate

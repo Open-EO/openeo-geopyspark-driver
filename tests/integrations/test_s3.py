@@ -138,8 +138,8 @@ def test_s3_client_prefered_eodata_config(
         pytest.param(
             "waw3-1",
             {
-                "CF_WAW3_1_ACCESS_KEY_ID": "cfaccesswaw31",
-                "CF_WAW3_1_SECRET_ACCESS_KEY": "csecretwaw31",
+                "WAW3_1_ACCESS_KEY_ID": "cfaccesswaw31",
+                "WAW3_1_SECRET_ACCESS_KEY": "csecretwaw31",
                 "CF_ACCESS_KEY_ID": "cfaccess",
                 "CF_SECRET_ACCESS_KEY": "csecret",
                 "SWIFT_ACCESS_KEY_ID": "swiftkey",
@@ -154,8 +154,8 @@ def test_s3_client_prefered_eodata_config(
         pytest.param(
             "eodata",
             {
-                "CF_WAW3_1_ACCESS_KEY_ID": "cfaccesswaw31",
-                "CF_WAW3_1_SECRET_ACCESS_KEY": "csecretwaw31",
+                "WAW3_1_ACCESS_KEY_ID": "cfaccesswaw31",
+                "WAW3_1_SECRET_ACCESS_KEY": "csecretwaw31",
                 "CF_ACCESS_KEY_ID": "cfaccess",
                 "CF_SECRET_ACCESS_KEY": "csecret",
                 "EODATA_ACCESS_KEY_ID": "eodataaccess",
