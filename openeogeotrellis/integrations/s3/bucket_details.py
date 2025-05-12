@@ -2,7 +2,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 from openeogeotrellis.config import get_backend_config
-from openeogeotrellis.workspace.object_storage_workspace import ObjectStorageWorkspace
 
 
 _BUCKET_TYPE_UNKNOWN = "UNKNOWN"
@@ -19,6 +18,8 @@ class BucketDetails:
 
     @classmethod
     def from_name(cls, bucket_name: str) -> BucketDetails:
+        from openeogeotrellis.workspace.object_storage_workspace import ObjectStorageWorkspace
+
         for ws_name, ws_details in get_backend_config().workspaces.items():
             if isinstance(ws_details, ObjectStorageWorkspace):
                 if ws_details.bucket == bucket_name:

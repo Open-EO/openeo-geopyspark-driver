@@ -1,7 +1,7 @@
-from openeogeotrellis.integrations.s3_client import S3ClientBuilder
+from openeogeotrellis.integrations.s3 import S3ClientBuilder
 import pytest
 
-from openeogeotrellis.integrations.s3_client.credentials import get_credentials
+from openeogeotrellis.integrations.s3.credentials import get_credentials
 
 
 # Without protocol because legacy eodata config did not have protocol in endpoint

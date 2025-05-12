@@ -3,7 +3,7 @@ import os
 from typing import TypedDict, Optional
 
 
-from openeogeotrellis.integrations.s3_client.providers import get_s3_provider
+from openeogeotrellis.integrations.s3.providers import get_s3_provider
 
 _log = logging.getLogger(__name__)
 
