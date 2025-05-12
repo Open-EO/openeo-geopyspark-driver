@@ -1,4 +1,4 @@
-from openeogeotrellis.integrations.s3_client import get_s3_client
+from openeogeotrellis.integrations.s3_client import S3ClientBuilder
 import pytest
 
 from openeogeotrellis.integrations.s3_client.credentials import get_credentials
@@ -59,7 +59,7 @@ def test_s3_client_has_expected_endpoint_and_region(
     region_name: str,
     expected_endpoint: str,
 ):
-    c = get_s3_client(region_name)
+    c = S3ClientBuilder.from_region(region_name)
     assert region_name == c.meta.region_name
     assert expected_endpoint == c.meta.endpoint_url
 
@@ -77,7 +77,7 @@ def test_s3_client_prefered_eodata_config(
     region_name: str,
     expected_endpoint: str,
 ):
-    c = get_s3_client(region_name)
+    c = S3ClientBuilder.from_region(region_name)
     assert region_name == c.meta.region_name
     assert expected_endpoint == c.meta.endpoint_url
 
@@ -183,4 +183,4 @@ def test_exception_when_not_having_legacy_config_and_unsupported_region(
     historic_eodata_endpoint_env_config, swift_credentials
 ):
     with pytest.raises(EnvironmentError):
-        get_s3_client("eu-faketest-central")
+        S3ClientBuilder.from_region("eu-faketest-central")
