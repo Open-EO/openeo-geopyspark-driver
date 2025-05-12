@@ -6,6 +6,7 @@ This file ties regions to cloud providers.
 CF = "cf"  # CloudFerro
 OTC = "otc"  # Open Telekom cloud
 EODATA = "eodata"  # eodata is considered a separate cloud provider stack
+UNKNOWN = "unknown"  # unknown provider uses the legacy behavior
 
 
 def get_s3_provider(region_name: str) -> str:
@@ -15,4 +16,5 @@ def get_s3_provider(region_name: str) -> str:
         return OTC
     elif region_name in ["eodata"]:
         return EODATA
-    raise NotImplementedError(f"Unsupported region {region_name}")
+    else:
+        return UNKNOWN

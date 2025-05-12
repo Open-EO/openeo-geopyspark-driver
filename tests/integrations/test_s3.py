@@ -4,7 +4,14 @@ import pytest
 from openeogeotrellis.integrations.s3_client.credentials import get_credentials
 
 
+# Without protocol because legacy eodata config did not have protocol in endpoint
 eodata_test_endpoint = "eodata.oeo.test"
+legacy_test_endpoint = "https://customs3.oeo.test"
+
+
+@pytest.fixture
+def legacy_fallback_endpoint(monkeypatch):
+    monkeypatch.setenv("SWIFT_URL", legacy_test_endpoint)
 
 
 @pytest.fixture
@@ -42,10 +49,15 @@ def swift_credentials(monkeypatch):
         pytest.param("eu-nl", "https://obs.eu-nl.otc.t-systems.com"),
         pytest.param("eu-de", "https://obs.eu-de.otc.t-systems.com"),
         pytest.param("eodata", f"http://{eodata_test_endpoint}"),
+        pytest.param("eu-faketest-central", legacy_test_endpoint),
     ],
 )
 def test_s3_client_has_expected_endpoint_and_region(
-    historic_eodata_endpoint_env_config, swift_credentials, region_name: str, expected_endpoint: str
+    historic_eodata_endpoint_env_config,
+    swift_credentials,
+    legacy_fallback_endpoint,
+    region_name: str,
+    expected_endpoint: str,
 ):
     c = get_s3_client(region_name)
     assert region_name == c.meta.region_name
@@ -165,3 +177,10 @@ def test_s3_credentials_retrieval_from_env(monkeypatch, region_name: str, env: d
     creds = get_credentials(region_name)
     assert exp_akid == creds["aws_access_key_id"]
     assert exp_secret == creds["aws_secret_access_key"]
+
+
+def test_exception_when_not_having_legacy_config_and_unsupported_region(
+    historic_eodata_endpoint_env_config, swift_credentials
+):
+    with pytest.raises(EnvironmentError):
+        get_s3_client("eu-faketest-central")

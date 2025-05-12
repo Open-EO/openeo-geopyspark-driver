@@ -1,7 +1,7 @@
 import os
 from typing import Callable
 
-from openeogeotrellis.integrations.s3_client.providers import CF, OTC, get_s3_provider, EODATA
+from openeogeotrellis.integrations.s3_client.providers import CF, OTC, get_s3_provider, EODATA, UNKNOWN
 
 
 def get_cf_endpoint(region_name: str) -> str:
@@ -31,6 +31,18 @@ def get_eodata_endpoint(_: str) -> str:
             raise EnvironmentError("No valid config for eodata access.") from ke
 
 
+def get_legacy_default_endpoint(region_name: str) -> str:
+    """
+    This is a fallback function for when the geopyspark-driver is not aware of the cloud region nor provider.
+    It falls back to legacy behavior of using a pre-defined SWIFT_URL as long as that one is not empty since
+    that would mean a misconfigurations and leave to more obscure errors during execution.
+    """
+    legacy_fallback = os.environ.get("SWIFT_URL")
+    if legacy_fallback is None:
+        raise EnvironmentError(f"Unsupported region {region_name} and no fallback via SWIFT_URL")
+    return legacy_fallback
+
+
 def get_endpoint_builder(provider_name: str) -> Callable[[str], str]:
     if provider_name == CF:
         return get_cf_endpoint
@@ -38,6 +50,8 @@ def get_endpoint_builder(provider_name: str) -> Callable[[str], str]:
         return get_otc_endpoint
     elif provider_name == EODATA:
         return get_eodata_endpoint
+    elif provider_name == UNKNOWN:
+        return get_legacy_default_endpoint
     raise NotImplementedError(f"Unsupported provider {provider_name}")
 
 
