@@ -74,6 +74,9 @@ def pytest_configure(config):
     os.environ["VAULT_ADDR"] = "https://vault.test"
     os.environ["ASYNC_TASKS_KAFKA_BOOTSTRAP_SERVERS"] = "kafka01.test:6668"
 
+    # Default backend used for S3 client
+    os.environ["SWIFT_URL"] = "https://s3.oeo.test:443"
+
     terminal_reporter = config.pluginmanager.get_plugin("terminalreporter")
     _ensure_geopyspark(terminal_reporter)
     if smart_bool(os.environ.get("OPENEO_TESTING_SETUP_SPARK", "yes")):
