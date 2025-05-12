@@ -26,8 +26,19 @@ NAMESPACE_NAME=calrissian-demo-project
 kubectl create namespace "$NAMESPACE_NAME"
 helm install csi-s3 yandex-s3/csi-s3 -n calrissian-demo-project
 kubectl apply -f docs/calrissian-local-minio.yaml
-sleep 10  # TODO: Use kubectl wait instead
+kubectl wait -n calrissian-demo-project --for=condition=available --timeout=300s deployment/minio
 AWS_ACCESS_KEY_ID=minioadmin AWS_SECRET_ACCESS_KEY=minioadmin aws --endpoint-url http://$(minikube ip):30000 s3 mb s3://calrissian
+AWS_ACCESS_KEY_ID=minioadmin AWS_SECRET_ACCESS_KEY=minioadmin aws --endpoint-url http://$(minikube ip):30000 s3api put-bucket-policy --bucket calrissian --policy '{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": "*",
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::calrissian/*"
+    }
+  ]
+}'
 open http://$(minikube ip):30001
 minikube dashboard
 ```
