@@ -1,1 +1,1 @@
-from openeogeotrellis.integrations.s3_client.client import get_s3_client
+from openeogeotrellis.integrations.s3_client.client import S3ClientBuilder

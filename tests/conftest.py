@@ -21,6 +21,7 @@ from openeo_driver.config import OpenEoBackendConfig
 from openeogeotrellis.integrations.identity import IDPTokenIssuer
 
 from openeogeotrellis.config.s3_config import AWSConfig
+from openeogeotrellis.integrations.s3_client import S3ClientBuilder
 
 import openeogeotrellis
 import pytest
@@ -73,9 +74,6 @@ def pytest_configure(config):
     os.environ["BATCH_JOBS_ZOOKEEPER_ROOT_PATH"] = "/openeo.test/jobs"
     os.environ["VAULT_ADDR"] = "https://vault.test"
     os.environ["ASYNC_TASKS_KAFKA_BOOTSTRAP_SERVERS"] = "kafka01.test:6668"
-
-    # Default backend used for S3 client
-    os.environ["SWIFT_URL"] = "https://s3.oeo.test:443"
 
     terminal_reporter = config.pluginmanager.get_plugin("terminalreporter")
     _ensure_geopyspark(terminal_reporter)
@@ -461,12 +459,21 @@ def mock_s3_resource(aws_credentials):
         yield boto3.resource("s3", region_name=TEST_AWS_REGION_NAME, endpoint_url=moto_server_address)
 
 @pytest.fixture(scope="function")
-def mock_s3_client(aws_credentials):
+def get_mock_s3_client(aws_credentials):
     if moto_server_address is None:
         with moto.mock_aws():
             yield boto3.client("s3", region_name=TEST_AWS_REGION_NAME)
     else:
         yield boto3.client("s3", region_name=TEST_AWS_REGION_NAME, endpoint_url=moto_server_address)
+
+
+@pytest.fixture(scope="function")
+def mock_s3_client(get_mock_s3_client, monkeypatch):
+    def _get_client(*args, **kwargs):
+        return get_mock_s3_client
+
+    monkeypatch.setattr(S3ClientBuilder, "from_region", _get_client)
+    yield get_mock_s3_client
 
 @pytest.fixture(scope="function")
 def mock_sts_client(monkeypatch):

@@ -10,7 +10,9 @@ if TYPE_CHECKING:
     from mypy_boto3_s3.client import S3Client
 
 
-def get_s3_client(region_name: str) -> S3Client:
-    return boto3.client(
-        "s3", region_name=region_name, endpoint_url=get_endpoint(region_name), **get_credentials(region_name)
-    )
+class S3ClientBuilder:
+    @classmethod
+    def from_region(cls, region_name: str) -> S3Client:
+        return boto3.client(
+            "s3", region_name=region_name, endpoint_url=get_endpoint(region_name), **get_credentials(region_name)
+        )
