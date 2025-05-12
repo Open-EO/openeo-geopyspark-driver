@@ -1,4 +1,4 @@
-from openeogeotrellis.integrations.s3 import S3ClientBuilder
+from openeogeotrellis.integrations.s3.client import S3ClientBuilder
 import pytest
 
 from openeogeotrellis.integrations.s3.credentials import get_credentials

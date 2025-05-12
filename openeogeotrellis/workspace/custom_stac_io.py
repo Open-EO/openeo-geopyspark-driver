@@ -5,7 +5,7 @@ from urllib.parse import urlparse
 from pystac import Link
 from pystac.stac_io import DefaultStacIO
 
-from openeogeotrellis.integrations.s3 import S3ClientBuilder
+from openeogeotrellis.integrations.s3.client import S3ClientBuilder
 from openeogeotrellis.utils import s3_client
 
 
