@@ -5,7 +5,7 @@ from urllib.parse import urlparse
 from openeo_driver.asset_urls import AssetUrl
 from openeogeotrellis.integrations.s3proxy.exceptions import ProxyException
 from openeogeotrellis.integrations.s3proxy.s3 import get_proxy_s3_client_for_job
-from openeogeotrellis.integrations.s3 import create_presigned_url
+from openeogeotrellis.integrations.s3.presigned_url import create_presigned_url
 
 _log = logging.getLogger(__name__)
 
