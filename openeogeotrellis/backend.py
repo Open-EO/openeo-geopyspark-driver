@@ -2311,6 +2311,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     dbl_registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.ERROR)
 
         else:
+            ########"
             submit_script = "submit_batch_job_spark3.sh"
             script_location = pkg_resources.resource_filename("openeogeotrellis.deploy", submit_script)
 
@@ -2410,7 +2411,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     log.info(f"Submitting job with command {args!r}")
                     d = dict(**os.environ)
                     d["YARN_CONTAINER_RUNTIME_DOCKER_IMAGE"] = image_name
-                    if "openeo-jar-path" in job_options and job_options["openeo-jar-path"].startswith("https://artifactory.vgt.vito.be"):
+                    if "openeo-jar-path" in job_options and job_options["openeo-jar-path"].startswith("https://artifactory.vgt.vito.be/artifactory/libs-release-public/org/openeo/geotrellis-extensions"):
                         d["OPENEO_GEOTRELLIS_JAR"] = job_options["openeo-jar-path"]
                     script_output = subprocess.check_output(args, stderr=subprocess.STDOUT, universal_newlines=True, env=d)
                     log.info(f"Submitted job, output was: {script_output}")
@@ -2422,6 +2423,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 application_id = self._extract_application_id(script_output)
                 log.info("mapped job_id %s to application ID %s" % (job_id, application_id))
 
+                #########
                 with self._double_job_registry as dbl_registry:
                     dbl_registry.set_application_id(job_id=job_id, user_id=user_id, application_id=application_id)
                     dbl_registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.QUEUED)
