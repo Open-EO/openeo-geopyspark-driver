@@ -8,7 +8,7 @@ import kubernetes.client
 import moto
 import pytest
 
-from openeogeotrellis.config.integrations.calrissian_config import CalrissianConfig
+from openeogeotrellis.config.integrations.calrissian_config import CalrissianConfig, DEFAULT_CALRISSIAN_IMAGE
 from openeogeotrellis.integrations.calrissian import (
     CalrissianJobLauncher,
     CalrissianS3Result,
