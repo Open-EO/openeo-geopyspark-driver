@@ -408,7 +408,9 @@ class CalrissianJobLauncher:
         elif final_status is None:
             raise TimeoutError(f"CWL Job {job_name} did not finish within {timeout}s")
         elif final_status != "complete":
-            raise RuntimeError(f"CWL Job {job_name} failed with {final_status=} after {timer.elapsed()=:.2f}s")
+            raise RuntimeError(
+                f"CWL Job {job_name} failed with {final_status=} after {timer.elapsed()=:.2f}s. Messages: {set(c.message for c in job.status.conditions)}"
+            )
         else:
             raise ValueError("CWL")
 

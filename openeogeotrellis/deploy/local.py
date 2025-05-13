@@ -5,9 +5,12 @@ Script to start a local server. This script can serve as the entry-point for doi
 
 import logging
 import os
+import socket
+import subprocess
 import sys
 from glob import glob
 from pathlib import Path
+from typing import Optional
 
 import openeo_driver.config.load
 from openeo_driver.server import run_gunicorn
@@ -157,6 +160,16 @@ def on_started() -> None:
     show_log_level(logging.getLogger("werkzeug"))
 
 
+def get_minikube_ip() -> Optional[str]:
+    try:
+        # throw exception if minikube is not configured
+        minikube_ip = subprocess.run(["minikube", "ip"], stdout=subprocess.PIPE, text=True).stdout.strip()
+        socket.inet_aton(minikube_ip)  # throw exception if not a valid IP address
+        return minikube_ip
+    except Exception as e:
+        _log.warning(f"Failed to get minikube IP: {e}")
+        return None
+
 def setup_environment(log_dir: Path = Path.cwd()):
     repository_root = Path(__file__).parent.parent.parent
     if os.path.exists(repository_root / "jars"):
@@ -172,12 +185,14 @@ def setup_environment(log_dir: Path = Path.cwd()):
 
     setup_local_spark(log_dir=log_dir)
 
-    # Configure access to local minio to ease testing with calrissian:
-    os.environ["SWIFT_URL"] = "http://192.168.49.2:30000/"  # $(minikube ip)
-    os.environ.setdefault("AWS_ACCESS_KEY_ID", "minioadmin")
-    os.environ.setdefault("AWS_SECRET_ACCESS_KEY", "minioadmin")
-    os.environ.setdefault("SWIFT_ACCESS_KEY_ID", "minioadmin")
-    os.environ.setdefault("SWIFT_SECRET_ACCESS_KEY", "minioadmin")
+    # Configure access to local minio to ease testing with calrissian: (Documented here: docs/calrissian-cwl.md)
+    minikube_ip = get_minikube_ip()
+    if minikube_ip:
+        os.environ.setdefault("SWIFT_URL", f"http://{minikube_ip}:30000/")
+        os.environ.setdefault("AWS_ACCESS_KEY_ID", "minioadmin")
+        os.environ.setdefault("AWS_SECRET_ACCESS_KEY", "minioadmin")
+        os.environ.setdefault("SWIFT_ACCESS_KEY_ID", "minioadmin")
+        os.environ.setdefault("SWIFT_SECRET_ACCESS_KEY", "minioadmin")
 
     os.environ.setdefault(
         openeo_driver.config.load.ConfigGetter.OPENEO_BACKEND_CONFIG,

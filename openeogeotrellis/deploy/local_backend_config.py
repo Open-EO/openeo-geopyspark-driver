@@ -4,7 +4,7 @@ from pathlib import Path
 from openeo_driver.users.oidc import OidcProvider
 from openeo_driver.workspace import DiskWorkspace
 from openeogeotrellis.config import GpsBackendConfig
-
+from openeogeotrellis.config.integrations.calrissian_config import CalrissianConfig
 
 oidc_default_client_egi = {
     "id": "vito-default-client",
@@ -37,4 +37,10 @@ config = GpsBackendConfig(
     opensearch_enrich=False,
     use_zk_job_registry=False,
     workspaces=workspaces,
+    calrissian_config=CalrissianConfig(
+        namespace="calrissian-demo-project",
+        input_staging_image="registry.stag.waw3-1.openeo-int.v1.dataspace.copernicus.eu/rand/alpine:3",
+        calrissian_image="registry.stag.waw3-1.openeo-int.v1.dataspace.copernicus.eu/rand/calrissian:latest",
+        s3_bucket="calrissian",
+    ),
 )
