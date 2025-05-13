@@ -121,7 +121,7 @@ class TestCalrissianJobLauncher:
                     dirty_equals.IsPartialDict(
                         {
                             "name": "r-123-cal-cwl-01234567",
-                            "image": "ghcr.io/duke-gcb/calrissian/calrissian:0.17.1",
+                            "image": DEFAULT_CALRISSIAN_IMAGE,
                             "image_pull_policy": "IfNotPresent",
                             "command": ["calrissian"],
                             "args": dirty_equals.Contains(
