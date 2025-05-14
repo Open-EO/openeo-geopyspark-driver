@@ -200,7 +200,7 @@ def setup_environment(log_dir: Path = Path.cwd()):
     )
 
 
-if __name__ == "__main__":
+def main():
     root_handlers = [LOG_HANDLER_STDERR_JSON]
     if smart_bool(os.environ.get("OPENEO_DRIVER_SIMPLE_LOGGING")):
         root_handlers = None
@@ -242,3 +242,7 @@ if __name__ == "__main__":
     host = os.environ.get("OPENEO_DEV_GUNICORN_HOST", "127.0.0.1")
 
     run_gunicorn(app, threads=4, host=host, port=8080, on_started=on_started)
+
+
+if __name__ == "__main__":
+    main()
