@@ -8,7 +8,11 @@ import kubernetes.client
 import moto
 import pytest
 
-from openeogeotrellis.config.integrations.calrissian_config import CalrissianConfig, DEFAULT_CALRISSIAN_IMAGE
+from openeogeotrellis.config.integrations.calrissian_config import (
+    CalrissianConfig,
+    DEFAULT_CALRISSIAN_IMAGE,
+    DEFAULT_CALRISSIAN_S3_BUCKET,
+)
 from openeogeotrellis.integrations.calrissian import (
     CalrissianJobLauncher,
     CalrissianS3Result,
@@ -31,8 +35,16 @@ def generate_unique_id_mock() -> Iterator[str]:
 class TestCalrissianJobLauncher:
     NAMESPACE = "test-calrissian"
 
-    def test_create_input_staging_job_manifest(self, generate_unique_id_mock):
-        launcher = CalrissianJobLauncher(namespace=self.NAMESPACE, name_base="r-1234")
+    @pytest.fixture
+    def s3_calrissian_bucket(self):
+        with moto.mock_aws():
+            s3 = boto3.client("s3")
+            bucket = "test-calrissian-bucket"
+            s3.create_bucket(Bucket=bucket)
+            yield bucket
+
+    def test_create_input_staging_job_manifest(self, generate_unique_id_mock, s3_calrissian_bucket):
+        launcher = CalrissianJobLauncher(namespace=self.NAMESPACE, name_base="r-1234", s3_bucket=s3_calrissian_bucket)
 
         manifest, cwl_path = launcher.create_input_staging_job_manifest(
             cwl_source=CwLSource.from_string("class: Dummy")
@@ -284,8 +296,10 @@ class TestCalrissianJobLauncher:
 
         assert caplog.messages[-1] == dirty_equals.IsStr(regex=".*job_name='cal-123'.*final_status='complete'.*")
 
-    def test_run_cwl_workflow_basic(self, k8_pvc_api, k8s_batch_api, generate_unique_id_mock, caplog):
-        launcher = CalrissianJobLauncher(namespace=self.NAMESPACE, name_base="r-456", s3_bucket="test-bucket")
+    def test_run_cwl_workflow_basic(
+        self, k8_pvc_api, k8s_batch_api, generate_unique_id_mock, caplog, s3_calrissian_bucket
+    ):
+        launcher = CalrissianJobLauncher(namespace=self.NAMESPACE, name_base="r-456", s3_bucket=s3_calrissian_bucket)
         res = launcher.run_cwl_workflow(
             cwl_source=CwLSource.from_string("class: Dummy"),
             cwl_arguments=["--message", "Howdy Earth!"],
@@ -293,16 +307,17 @@ class TestCalrissianJobLauncher:
         )
         assert res == {
             "output.txt": CalrissianS3Result(
-                s3_bucket="test-bucket",
+                s3_bucket=s3_calrissian_bucket,
                 s3_key="1234-abcd-5678-efgh/r-456-cal-cwl-01234567/output.txt",
             ),
         }
 
-    def test_from_context(self, monkeypatch, generate_unique_id_mock):
+    def test_from_context(self, monkeypatch, generate_unique_id_mock, s3_calrissian_bucket):
         monkeypatch.setenv(ENV_VAR_OPENEO_BATCH_JOB_ID, "j-hello123")
         calrissian_config = CalrissianConfig(
             namespace="namezpace",
             input_staging_image="albino:3.14",
+            s3_bucket=s3_calrissian_bucket,
         )
 
         with gps_config_overrides(calrissian_config=calrissian_config):
