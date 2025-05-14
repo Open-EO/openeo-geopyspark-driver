@@ -220,6 +220,8 @@ class CalrissianJobLauncher:
             f"create_input_staging_job_manifest creating {cwl_path=} from {cwl_content[:32]=} through {cwl_serialized[:32]=}"
         )
 
+        s3_client().head_bucket(Bucket=self._s3_bucket)  # check if the bucket exists
+
         container = kubernetes.client.V1Container(
             name=name,
             image=self._input_staging_image,
