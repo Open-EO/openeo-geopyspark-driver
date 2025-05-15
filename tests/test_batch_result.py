@@ -37,7 +37,7 @@ from openeogeotrellis.utils import s3_client, GDALINFO_SUFFIX
 from openeogeotrellis.workspace import ObjectStorageWorkspace
 from openeogeotrellis.workspace.custom_stac_io import CustomStacIO
 from . import assert_cog
-from .conftest import force_stop_spark_context, _setup_local_spark
+from .conftest import force_stop_spark_context, _setup_local_spark, TEST_AWS_REGION_NAME
 
 from .data import TEST_DATA_ROOT, get_test_data_file
 
@@ -1552,7 +1552,7 @@ def test_export_workspace_merge_filepath_per_band(tmp_path, mock_s3_bucket):
         def load_exported_collection(collection_href: str):
             assets_in_object_storage = collection_href.startswith("s3://")
 
-            stac_collection = pystac.Collection.from_file(collection_href, stac_io=CustomStacIO())
+            stac_collection = pystac.Collection.from_file(collection_href, stac_io=CustomStacIO(TEST_AWS_REGION_NAME))
             assert stac_collection.validate_all() == 2
 
             assets = [

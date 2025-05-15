@@ -21,6 +21,7 @@ from openeo_driver.config import OpenEoBackendConfig
 from openeogeotrellis.integrations.identity import IDPTokenIssuer
 
 from openeogeotrellis.config.s3_config import AWSConfig
+from openeogeotrellis.integrations.s3.client import S3ClientBuilder
 
 import openeogeotrellis
 import pytest
@@ -450,7 +451,7 @@ def aws_credentials(monkeypatch):
 
 
 @pytest.fixture(scope="function")
-def mock_s3_resource(aws_credentials):
+def mock_s3_resource(aws_credentials, mock_s3_client):
     if moto_server_address is None:
         with moto.mock_aws():
             yield boto3.resource("s3", region_name=TEST_AWS_REGION_NAME)
@@ -458,12 +459,22 @@ def mock_s3_resource(aws_credentials):
         yield boto3.resource("s3", region_name=TEST_AWS_REGION_NAME, endpoint_url=moto_server_address)
 
 @pytest.fixture(scope="function")
-def mock_s3_client(aws_credentials):
+def mocked_s3_client(aws_credentials):
     if moto_server_address is None:
         with moto.mock_aws():
             yield boto3.client("s3", region_name=TEST_AWS_REGION_NAME)
     else:
         yield boto3.client("s3", region_name=TEST_AWS_REGION_NAME, endpoint_url=moto_server_address)
+
+
+@pytest.fixture(scope="function")
+def mock_s3_client(mocked_s3_client, monkeypatch):
+    def _get_client(*args, **kwargs):
+        return mocked_s3_client
+
+    # monkeypatch in case motoserver runs standalone
+    monkeypatch.setattr(S3ClientBuilder, "from_region", _get_client)
+    yield mocked_s3_client
 
 @pytest.fixture(scope="function")
 def mock_sts_client(monkeypatch):
