@@ -54,12 +54,12 @@ class StacApiWorkspace(Workspace):
         self._asset_alternate_id = asset_alternate_id
 
     def import_file(self, common_path: Union[str, Path], file: Path, merge: str, remove_original: bool = False) -> str:
-        raise NotImplementedError
+        raise NotImplementedError(f"export_workspace: import_file to {self.root_url} not implemented {common_path}")
 
     def import_object(
         self, common_path: Union[str, Path], s3_uri: str, merge: str, remove_original: bool = False
     ) -> str:
-        raise NotImplementedError
+        raise NotImplementedError(f"export_workspace: import_file to {self.root_url} not implemented {common_path}")
 
     def merge(self, stac_resource: STACObject, target: PurePath, remove_original: bool = False) -> STACObject:
         self._assert_catalog_supports_necessary_api()
