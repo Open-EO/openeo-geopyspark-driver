@@ -1468,7 +1468,7 @@ class GeopysparkDataCube(DriverDataCube):
 
     @staticmethod
     def _layout_for_resolution(extent, currentTileLayout, projection, target_resolution):
-        if type(target_resolution) is list or type(target_resolution) is tuple:
+        if isinstance(resolution, (list, tuple)):
             targetX,targetY = target_resolution[0], target_resolution[1]
         else:
             targetX, targetY = (target_resolution,target_resolution)
