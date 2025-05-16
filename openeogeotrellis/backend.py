@@ -2979,7 +2979,9 @@ class GpsBatchJobs(backend.BatchJobs):
         """
         try:
             with self._double_job_registry as registry:
-                return registry.get_job(job_id=job_id, user_id=user_id)
+                job_dict = registry.elastic_job_registry.get_job()
+                if "results_metadata" in job_dict:
+                    return job_dict["results_metadata"]
         except Exception as e:
             logger.warning(
                 "Could not retrieve result metadata from job tracker %s", e, exc_info=True, extra={"job_id": job_id}
