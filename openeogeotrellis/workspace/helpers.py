@@ -1,9 +1,11 @@
+import time
 from pathlib import PurePath, Path
 from typing import Callable
 from urllib.parse import urlparse
 
 import pystac
-from openeo_driver.util.auth import ClientCredentialsAccessTokenHelper, ClientCredentials
+from openeo_driver.util.auth import _AccessTokenCache
+from openeo.rest.auth.oidc import OidcClientCredentialsAuthenticator, OidcClientInfo, OidcProviderInfo
 
 from .stac_api_workspace import StacApiWorkspace
 from openeogeotrellis.utils import s3_client
@@ -59,17 +61,38 @@ def vito_stac_api_workspace(  # for lack of a better name, can still be aliased
         workspace_uri = f"s3://{asset_bucket}/{target_key}"
         return workspace_uri
 
-    def get_access_token() -> str:
-        # intentionally lazily instantiated
-        access_token_helper = ClientCredentialsAccessTokenHelper(
-            credentials=ClientCredentials(
-                oidc_issuer=oidc_issuer,
-                client_id=oidc_client_id,
-                client_secret=oidc_client_secret,
-            ),
+    # TODO: move to ClientCredentialsAccessTokenHelper?
+    access_token_cache = _AccessTokenCache(access_token="", expires_at=0)  # one cache per StacApiWorkspace
+
+    def get_access_token(fresh: bool) -> str:
+        nonlocal access_token_cache
+
+        if fresh or time.time() > access_token_cache.expires_at:
+            access_token = _fetch_access_token()
+            # TODO: get expiry from access token itself?
+            access_token_cache = _AccessTokenCache(access_token, time.time() + 5 * 60)
+        return access_token_cache.access_token
+
+    def _fetch_access_token() -> str:
+        session = None  # TODO: use Session with retries
+
+        oidc_provider = OidcProviderInfo(
+            issuer=oidc_issuer,
+            requests_session=None,
         )
 
-        return access_token_helper.get_access_token()
+        client_info = OidcClientInfo(
+            client_id=oidc_client_id,
+            provider=oidc_provider,
+            client_secret=oidc_client_secret,
+        )
+
+        authenticator = OidcClientCredentialsAuthenticator(
+            client_info,
+            session,
+        )
+
+        return authenticator.get_tokens().access_token
 
     return StacApiWorkspace(
         root_url=root_url,

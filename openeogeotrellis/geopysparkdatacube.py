@@ -5,6 +5,7 @@ import logging
 import math
 import os
 import pathlib
+import re
 import subprocess
 import tempfile
 from datetime import datetime, date
@@ -631,7 +632,7 @@ class GeopysparkDataCube(DriverDataCube):
             return gps.TiledRasterLayer.from_numpy_rdd(gps.LayerType.SPACETIME, numpy_rdd, metadata)
 
         updated_cube_metadata = self.metadata
-        if ("apply_metadata" in udf_code and runtime.lower() is not "python-jep"):
+        if re.search(r"^def\s+apply_metadata\s*\(", udf_code, re.MULTILINE) and runtime.lower() != "python-jep":
             updated_cube_metadata = self.apply_metadata(udf_code, udf_context)
         return self.apply_to_levels(partial(rdd_function, self.metadata), updated_cube_metadata)
 
@@ -1080,6 +1081,8 @@ class GeopysparkDataCube(DriverDataCube):
             rasterMask = gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses().rasterMask_spatial_spatial
         elif mask._is_spatial():
             rasterMask = gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses().rasterMask_spacetime_spatial
+        elif self._is_spatial():
+            raise ProcessParameterInvalidException(process="mask",parameter="data",reason="Dimensions in the mask have to be available in datacube, missing the temporal dimension. You can solve this by reducing the temporal dimension of your data cube.")
         else:
             rasterMask = gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses().rasterMask
 
@@ -1177,7 +1180,13 @@ class GeopysparkDataCube(DriverDataCube):
 
     @callsite
     def apply_neighborhood(
-        self, process: dict, *, size: List[dict], overlap: List[dict], context: Optional[dict] = None, env: EvalEnv
+        self,
+        process: dict,
+        *,
+        size: List[dict],
+        overlap: Optional[List[dict]] = None,
+        context: Optional[dict] = None,
+        env: EvalEnv,
     ) -> "GeopysparkDataCube":
         spatial_dims = self.metadata.spatial_dimensions
         if len(spatial_dims) != 2:
@@ -1185,9 +1194,9 @@ class GeopysparkDataCube(DriverDataCube):
                                              " expecting exactly 2 spatial dimensions: %s" % str(spatial_dims))
         x = spatial_dims[0]
         y = spatial_dims[1]
-        size_dict = {e['dimension']:e for e in size}
-        overlap_dict = {e['dimension']: e for e in overlap} if overlap is not None else {}
-        if size_dict.get(x.name, {}).get('unit', None) != 'px' or size_dict.get(y.name, {}).get('unit', None) != 'px':
+        size_dict = {e["dimension"]: e for e in size}
+        overlap_dict = {e["dimension"]: e for e in (overlap or [])}
+        if size_dict.get(x.name, {}).get("unit", None) != "px" or size_dict.get(y.name, {}).get("unit", None) != "px":
             raise ProcessParameterInvalidException(
                 parameter="size",
                 process="apply_neighborhood",
@@ -2768,3 +2777,7 @@ class GeopysparkDataCube(DriverDataCube):
             )
         )
         return merged
+
+    def __str__(self):
+        super_str = super().__str__()
+        return f"{super_str} data type: {self.get_max_level().layer_metadata.cell_type}"

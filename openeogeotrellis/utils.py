@@ -259,7 +259,8 @@ def set_max_memory(max_total_memory_in_bytes: int):
 
 
 def s3_client():
-    # TODO: move this to openeogeotrellis.integrations.s3?
+    # TODO: replace all use cases with openeogeotrellis.integrations.s3.get_s3_client because all remaining calls
+    # imply a region dependency
     import boto3
 
     # TODO: Get these credentials/secrets from VITO TAP vault instead of os.environ

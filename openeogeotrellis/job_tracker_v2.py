@@ -432,6 +432,7 @@ class JobTracker:
                 ],
                 max_age=3 * 30,
                 max_updated_ago=14,
+                require_application_id=True,
             )
 
             for job_info in jobs_to_track:

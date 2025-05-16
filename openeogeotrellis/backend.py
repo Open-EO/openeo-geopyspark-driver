@@ -2088,6 +2088,12 @@ class GpsBatchJobs(backend.BatchJobs):
                 status_code=400,
             )
 
+        user_provided_jar_path = None
+        if "openeo-jar-path" in job_options and (
+                job_options["openeo-jar-path"].startswith("https://artifactory.vgt.vito.be/artifactory/libs-release-public/org/openeo/geotrellis-extensions")
+                or job_options["openeo-jar-path"].startswith("https://artifactory.vgt.vito.be/artifactory/libs-snapshot-public/org/openeo/geotrellis-extensions/") ) :
+            user_provided_jar_path = job_options["openeo-jar-path"]
+
         if isKube:
             # TODO: get rid of this "isKube" anti-pattern, it makes testing of this whole code path practically impossible
 
@@ -2169,6 +2175,7 @@ class GpsBatchJobs(backend.BatchJobs):
             running_image = api_instance_core.read_namespaced_pod(name=os.environ.get("POD_NAME"), namespace=os.environ.get("POD_NAMESPACE")).spec.containers[0].image
 
             image_name = job_options.get("image-name", running_image)
+            image_name = get_backend_config().batch_runtime_to_image.get(image_name.lower(), image_name)
 
             batch_job_cfg_secret_name = k8s_get_batch_job_cfg_secret_name(spark_app_id)
 
@@ -2236,7 +2243,8 @@ class GpsBatchJobs(backend.BatchJobs):
                 propagatable_web_app_driver_envars=propagatable_web_app_driver_envars,
                 provide_s3_profiles_and_tokens=get_backend_config().provide_s3_profiles_and_tokens,
                 batch_job_cfg_secret_name=batch_job_cfg_secret_name,
-                batch_job_config_dir=get_backend_config().batch_job_config_dir
+                batch_job_config_dir=get_backend_config().batch_job_config_dir,
+                openeo_jar_path=user_provided_jar_path or 'local:///opt/geotrellis-extensions-static.jar'
             )
 
             with self._double_job_registry as dbl_registry:
@@ -2411,7 +2419,8 @@ class GpsBatchJobs(backend.BatchJobs):
                     log.info(f"Submitting job with command {args!r}")
                     d = dict(**os.environ)
                     d["YARN_CONTAINER_RUNTIME_DOCKER_IMAGE"] = image_name
-                    if "openeo-jar-path" in job_options and job_options["openeo-jar-path"].startswith("https://artifactory.vgt.vito.be/artifactory/libs-release-public/org/openeo/geotrellis-extensions"):
+
+                    if user_provided_jar_path is not None:
                         d["OPENEO_GEOTRELLIS_JAR"] = job_options["openeo-jar-path"]
                     script_output = subprocess.check_output(args, stderr=subprocess.STDOUT, universal_newlines=True, env=d)
                     log.info(f"Submitted job, output was: {script_output}")
