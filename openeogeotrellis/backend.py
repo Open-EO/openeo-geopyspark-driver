@@ -2899,7 +2899,18 @@ class GpsBatchJobs(backend.BatchJobs):
 
         job_dir = self.get_job_output_dir(job_id=job_id)
 
-        results_metadata = self.load_results_metadata(job_id, user_id)
+        results_metadata = None
+        try:
+            with self._double_job_registry as registry:
+                job_dict = registry.elastic_job_registry.get_job(job_id, user_id=user_id)
+                if "results_metadata" in job_dict:
+                    results_metadata = job_dict["results_metadata"]
+        except Exception as e:
+            logger.warning(
+                "Could not retrieve result metadata from job tracker %s", e, exc_info=True, extra={"job_id": job_id}
+            )
+        if results_metadata is None or len(results_metadata) == 0:
+            results_metadata = self.load_results_metadata(job_id, user_id)
         out_assets = results_metadata.get("assets", {})
         out_metadata = out_assets.get("out", {})
         bands = [Band(*properties) for properties in out_metadata.get("bands", [])]
@@ -2977,15 +2988,6 @@ class GpsBatchJobs(backend.BatchJobs):
         """
         Reads the metadata json file from the job directory and returns it.
         """
-        try:
-            with self._double_job_registry as registry:
-                job_dict = registry.elastic_job_registry.get_job(job_id, user_id=user_id)
-                if "results_metadata" in job_dict:
-                    return job_dict["results_metadata"]
-        except Exception as e:
-            logger.warning(
-                "Could not retrieve result metadata from job tracker %s", e, exc_info=True, extra={"job_id": job_id}
-            )
 
         metadata_file = self.get_results_metadata_path(job_id=job_id)
 
