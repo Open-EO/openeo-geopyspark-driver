@@ -426,7 +426,7 @@ spec:
   deps:
 {%- block deps %}
     jars:
-      - 'local:///opt/geotrellis-extensions-static.jar'
+      - "{{ openeo_jar_path }}"
       - 'local:///opt/openeo-logging-static.jar'
     files:
       - 'local:///opt/layercatalog.json'
