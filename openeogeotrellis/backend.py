@@ -2319,7 +2319,6 @@ class GpsBatchJobs(backend.BatchJobs):
                     dbl_registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.ERROR)
 
         else:
-            ########"
             submit_script = "submit_batch_job_spark3.sh"
             script_location = pkg_resources.resource_filename("openeogeotrellis.deploy", submit_script)
 
