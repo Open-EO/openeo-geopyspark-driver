@@ -1077,14 +1077,28 @@ class GeopysparkDataCube(DriverDataCube):
              replacement=None) -> 'GeopysparkDataCube':
 
         replacement = float(replacement) if replacement is not None else None
-        if self._is_spatial() and mask._is_spatial():
-            rasterMask = gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses().rasterMask_spatial_spatial
-        elif mask._is_spatial():
-            rasterMask = gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses().rasterMask_spacetime_spatial
-        elif self._is_spatial():
-            raise ProcessParameterInvalidException(process="mask",parameter="data",reason="Dimensions in the mask have to be available in datacube, missing the temporal dimension. You can solve this by reducing the temporal dimension of your data cube.")
+
+        jvm = gps.get_spark_context()._jvm
+        if self._is_spatial():
+            if mask._is_spatial():
+                # Both data and mask are spatial
+                rasterMask = jvm.org.openeo.geotrellis.OpenEOProcesses().rasterMask_spatial_spatial
+            else:
+                # Data is spatial, but mask is spacetime: dimension mismatch
+                raise OpenEOApiException(
+                    status_code=400,
+                    # TODO: standard error code for this case? https://github.com/Open-EO/openeo-processes/issues/538
+                    code="DimensionMismatch",
+                    message="A cube without time dimension cannot be masked with a cube that does have time dimension. You can resolve this by reducing the temporal dimension of your mask.",
+                )
         else:
-            rasterMask = gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses().rasterMask
+            if mask._is_spatial():
+                # Data is spacetime, but mask is spatial: broadcast mask along time dimension
+                rasterMask = jvm.org.openeo.geotrellis.OpenEOProcesses().rasterMask_spacetime_spatial
+            else:
+                # Both data and mask are spacetime
+                # TODO: to verify: time dimension (and other dimensions) must be fully aligned to the label level according to the spec
+                rasterMask = jvm.org.openeo.geotrellis.OpenEOProcesses().rasterMask
 
         return self._apply_to_levels_geotrellis_rdd(
             lambda rdd, level: rasterMask(rdd, mask.pyramid.levels[level].srdd.rdd(), replacement)
