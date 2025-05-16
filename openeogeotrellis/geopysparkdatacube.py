@@ -1081,6 +1081,8 @@ class GeopysparkDataCube(DriverDataCube):
             rasterMask = gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses().rasterMask_spatial_spatial
         elif mask._is_spatial():
             rasterMask = gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses().rasterMask_spacetime_spatial
+        elif self._is_spatial():
+            raise ProcessParameterInvalidException(process="mask",parameter="data",reason="Dimensions in the mask have to be available in datacube, missing the temporal dimension. You can solve this by reducing the temporal dimension of your data cube.")
         else:
             rasterMask = gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses().rasterMask
 
