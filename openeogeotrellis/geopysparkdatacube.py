@@ -1402,7 +1402,7 @@ class GeopysparkDataCube(DriverDataCube):
                 return self
 
             cellsize_before = self.get_cellsize()
-            if not isinstance(resolution, tuple):
+            if not isinstance(resolution, (list, tuple)):
                 resolution = (resolution, resolution)
 
             if projection is not None:
@@ -1484,6 +1484,11 @@ class GeopysparkDataCube(DriverDataCube):
 
     @staticmethod
     def _layout_for_resolution(extent, currentTileLayout, projection, target_resolution):
+        if isinstance(resolution, (list, tuple)):
+            targetX,targetY = target_resolution[0], target_resolution[1]
+        else:
+            targetX, targetY = (target_resolution,target_resolution)
+
         currentTileCols = currentTileLayout.tileCols
         currentTileRows = currentTileLayout.tileRows
 
@@ -1492,19 +1497,19 @@ class GeopysparkDataCube(DriverDataCube):
 
         currentResolutionX = width / (currentTileCols * currentTileLayout.layoutCols)
         currentResolutionY = height / (currentTileRows * currentTileLayout.layoutRows)
-        if projection == None and abs(currentResolutionX - target_resolution) / target_resolution < 0.00001:
-            _log.info(f"Resampling datacube not necessary, resolution already at {target_resolution}")
+        if projection == None and abs(currentResolutionX - targetX) / targetX < 0.00001:
+            _log.info(f"Resampling datacube not necessary, resolution already at {targetX}")
             return None
 
-        newPixelCountX = math.ceil(width /target_resolution)
-        newPixelCountY = math.ceil(height / target_resolution)
+        newPixelCountX = math.ceil(width / targetX)
+        newPixelCountY = math.ceil(height / targetY)
 
         #keep tile cols constant
         nbTilesX = math.ceil(newPixelCountX / currentTileCols)
         nbTilesY = math.ceil(newPixelCountY / currentTileRows)
 
-        newWidth = nbTilesX*currentTileCols*target_resolution
-        newHeight = nbTilesY * currentTileRows * target_resolution
+        newWidth = nbTilesX * currentTileCols * targetX
+        newHeight = nbTilesY * currentTileRows * targetY
 
         newExtent = Extent(extent.xmin, extent.ymin,extent.xmin+newWidth,extent.ymin+newHeight)
 
