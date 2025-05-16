@@ -1386,7 +1386,7 @@ class GeopysparkDataCube(DriverDataCube):
                 return self
 
             cellsize_before = self.get_cellsize()
-            if not type(resolution) is list and not type(resolution) is tuple:
+            if not isinstance(resolution, (list, tuple)):
                 resolution = (resolution, resolution)
 
             if projection is not None:
