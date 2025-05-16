@@ -2777,3 +2777,7 @@ class GeopysparkDataCube(DriverDataCube):
             )
         )
         return merged
+
+    def __str__(self):
+        super_str = super().__str__()
+        return f"{super_str} data type: {self.get_max_level().layer_metadata.cell_type}"
