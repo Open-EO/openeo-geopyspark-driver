@@ -7,12 +7,21 @@ if TYPE_CHECKING:
     from mypy_boto3_sts.type_defs import CredentialsTypeDef
 
 import os
+import logging
 import boto3
+from botocore.config import Config
 from openeogeotrellis.integrations.identity import IDP_TOKEN_ISSUER
-from openeogeotrellis.integrations.s3proxy.exceptions import S3ProxyDisabled, DriverCannotIssueTokens
+from openeogeotrellis.integrations.s3proxy.exceptions import (
+    S3ProxyDisabled,
+    DriverCannotIssueTokens,
+    CredentialsException,
+)
 from openeogeotrellis.config.s3_config import AWSConfig
 from dataclasses import dataclass
 from datetime import datetime
+
+
+_log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -43,6 +52,9 @@ class _STSClient:
     """Because moto does not support custom endpoints"""
     @classmethod
     def get(cls, *args, **kwargs) -> STSClient:
+        if "config" not in kwargs:
+            strict_timeouts = Config(connect_timeout=1, read_timeout=1)
+            kwargs["config"] = strict_timeouts
         return boto3.client("sts", *args, **kwargs)
 
 def _get_environment_sts_endpoint() -> str:
@@ -72,8 +84,8 @@ def get_job_aws_credentials_for_proxy(
     token = IDP_TOKEN_ISSUER.get_job_token(sub_id="openeo-driver", user_id=user_id, job_id=job_id)
     if token is None:
         raise DriverCannotIssueTokens()
-    return _get_aws_credentials_for_proxy(
-        token=token,
-        role_arn=role_arn,
-        session_name=session_name
-    )
+    try:
+        return _get_aws_credentials_for_proxy(token=token, role_arn=role_arn, session_name=session_name)
+    except Exception as e:
+        _log.debug("Could not get credentials from proxy", exc_info=e)
+        raise CredentialsException() from e
