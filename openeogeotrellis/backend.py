@@ -2979,7 +2979,7 @@ class GpsBatchJobs(backend.BatchJobs):
         """
         try:
             with self._double_job_registry as registry:
-                job_dict = registry.elastic_job_registry.get_job()
+                job_dict = registry.elastic_job_registry.get_job(job_id, user_id=user_id)
                 if "results_metadata" in job_dict:
                     return job_dict["results_metadata"]
         except Exception as e:
