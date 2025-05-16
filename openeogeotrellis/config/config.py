@@ -217,6 +217,14 @@ class GpsBackendConfig(OpenEoBackendConfig):
     """
     default_tile_size:Optional[int] = None
 
+    """
+    Default for the maximum partition size to target when repartitioning data cubes.
+    This default is not necessarily used everywhere, but can be used by the backend in locations where an optimal partition
+    size is needed.
+    The size is provided in megabytes.
+    """
+    default_max_partition_size: Optional[int] = None
+
     job_dependencies_poll_interval_seconds: float = 60  # poll every x seconds
     job_dependencies_max_poll_delay_seconds: float = 60 * 60 * 24 * 7  # for a maximum delay of y seconds
 
