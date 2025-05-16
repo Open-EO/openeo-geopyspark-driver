@@ -80,6 +80,7 @@ from openeogeotrellis.utils import (
     log_memory,
     to_jsonable,
     wait_till_path_available,
+    unzip,
 )
 
 logger = logging.getLogger('openeogeotrellis.deploy.batch_job')
@@ -271,6 +272,7 @@ def run_job(
 ):
     result_metadata = {}
     tracker_metadata = {}
+    items = []
 
     try:
         # We actually expect type Path, but in reality paths as strings tend to
@@ -388,12 +390,16 @@ def run_job(
                 ml_model_metadata = result.get_model_metadata(str(output_file))
                 logger.info("Extracted ml model metadata from %s" % output_file)
 
-        def result_write_assets(result_arg) -> dict:
-            return result_arg.write_assets(str(output_file))
+        def result_write_assets(result_arg) -> (dict, dict):
+            items = result_arg.write_assets(str(output_file))
+            assets = {
+                asset_key: asset for item in items.values() for asset_key, asset in item.get("assets", {}).items()
+            }
+            return assets, items
 
         concurrent_save_results = int(job_options.get("concurrent-save-results", 1))
         if concurrent_save_results == 1:
-            assets_metadata = list(map(result_write_assets, results))
+            assets_metadata, results_items = unzip(*map(result_write_assets, results))
         elif concurrent_save_results > 1:
             with concurrent.futures.ThreadPoolExecutor(max_workers=concurrent_save_results) as executor:
                 futures = []
@@ -402,9 +408,13 @@ def run_job(
 
                 for _ in concurrent.futures.as_completed(futures):
                     continue
-            assets_metadata = list(map(lambda f: f.result(), futures))
+            assets_metadata, results_items = unzip(*map(lambda f: f.result(), futures))
         else:
             raise ValueError(f"Invalid concurrent_save_results: {concurrent_save_results}")
+        assets_metadata = list(assets_metadata)
+
+        # flattens items for each results into one list
+        items = [item for result in results_items for item in result.values()]
 
         for the_assets_metadata in assets_metadata:
             for name, asset in the_assets_metadata.items():
@@ -494,7 +504,7 @@ def run_job(
                 raise ValueError(
                     f"sar_backscatter: Too many soft errors ({soft_errors} > {max_soft_errors_ratio})"
                 )
-        write_metadata({**result_metadata, **tracker_metadata}, metadata_file)
+        write_metadata({**result_metadata, **tracker_metadata, **{"items": items}}, metadata_file)
         logger.debug("Starting GDAL-based retrieval of asset metadata")
         result_metadata = _assemble_result_metadata(
             tracer=tracer,
@@ -524,7 +534,7 @@ def run_job(
     finally:
         if len(tracker_metadata) == 0:
             tracker_metadata = _get_tracker_metadata("")
-        write_metadata({**result_metadata, **tracker_metadata}, metadata_file)
+        write_metadata({**result_metadata, **tracker_metadata, **{"items": items}}, metadata_file)
 
 
 def write_metadata(metadata: dict, metadata_file: Path):
