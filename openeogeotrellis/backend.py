@@ -97,6 +97,7 @@ from openeogeotrellis.integrations.kubernetes import (
 )
 from openeogeotrellis.integrations.stac import ResilientStacIO
 from openeogeotrellis.integrations.traefik import Traefik
+from openeogeotrellis.job_options import JobOptions
 from openeogeotrellis.job_registry import (
     DoubleJobRegistry,
     ZkJobRegistry,
@@ -594,6 +595,9 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 },
             }
         }
+
+    def processing_parameters(self) -> list:
+        return JobOptions.list_options()
 
     def load_disk_data(
             self, format: str, glob_pattern: str, options: dict, load_params: LoadParameters, env: EvalEnv
