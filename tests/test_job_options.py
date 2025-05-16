@@ -41,11 +41,20 @@ def test_from_dict_with_missing_values():
 
 
 def test_list_options():
-    options = JobOptions.list_options()
+    options = JobOptions.list_options(public_only=False)
     assert isinstance(options, list)
     assert any(option["name"] == "driver-memory" for option in options)
     assert any(option["name"] == "executor-memory" for option in options)
     assert any(option["name"] == "logging-threshold" for option in options)
+    assert any(option["name"] == "udf-dependency-archives" for option in options)
+    print(options)
+    for opt in options:
+        assert "name" in opt
+        assert "schema" in opt
+        assert "description" in opt
+        assert "default" in opt
+        if "udf-dependency-archives" == opt["name"]:
+            assert opt["schema"] == {"type": "array", "items": {"type":"string"}}
 
 
 def test_list_options_with_public_only():
