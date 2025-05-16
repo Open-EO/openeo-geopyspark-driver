@@ -2431,7 +2431,6 @@ class GpsBatchJobs(backend.BatchJobs):
                 application_id = self._extract_application_id(script_output)
                 log.info("mapped job_id %s to application ID %s" % (job_id, application_id))
 
-                #########
                 with self._double_job_registry as dbl_registry:
                     dbl_registry.set_application_id(job_id=job_id, user_id=user_id, application_id=application_id)
                     dbl_registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.QUEUED)
