@@ -1241,7 +1241,15 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             start_index = full_stacktrace.rfind("\n", 0, needle_index) + 1
             if start_index == -1:
                 start_index = 0
-            udf_stacktrace = full_stacktrace[start_index:].rstrip()
+
+            # No need for the Java stack trace if we found UDF stack trace.
+            # Triggering an exception in the UDF code with
+            #   jvm.org.openeo.dumpGeoJson("", jvm.scala.Some(""))
+            # will not add a jvm stacktrace. Instead, it wil give a connection lost error.
+            end_index = full_stacktrace.find("\n\tat ", start_index)
+            if end_index == -1:
+                end_index = len(full_stacktrace)
+            udf_stacktrace = full_stacktrace[start_index:end_index].rstrip()
             udf_stacktrace = GeoPySparkBackendImplementation.collapse_stack_strace(udf_stacktrace, width)
             return udf_stacktrace
         return None
