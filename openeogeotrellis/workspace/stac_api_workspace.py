@@ -137,6 +137,9 @@ class StacApiWorkspace(Workspace):
         bare_collection = collection.clone()
         bare_collection.id = collection_id
         bare_collection.remove_hierarchical_links()
+        bare_collection.remove_links("queryables")
+        bare_collection.remove_links("aggregations")
+        bare_collection.remove_links("aggregate")
         bare_collection.extra_fields.update(self._additional_collection_properties)
 
         request_json = bare_collection.to_dict(include_self_link=False)
