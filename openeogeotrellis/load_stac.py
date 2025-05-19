@@ -16,6 +16,7 @@ import pystac_client
 import pystac_client.exceptions
 from geopyspark import LayerType, TiledRasterLayer
 from openeo.util import dict_no_none, Rfc3339
+import openeo.metadata
 import openeo_driver.backend
 from openeo_driver import filter_properties
 from openeo_driver.datacube import DriverVectorCube
@@ -133,7 +134,7 @@ def load_stac(
             or "bands" in asset.extra_fields  # TODO: built-in "bands" support seems to be scheduled for pystac V2
         ) and (asset.media_type is None or is_supported_raster_mime_type(asset.media_type))
 
-    def get_band_names(itm: pystac.Item, asset: pystac.Asset) -> List[str]:
+    def get_band_names(item: pystac.Item, asset: pystac.Asset) -> List[str]:
         def get_band_name(eo_band) -> str:
             if isinstance(eo_band, dict):
                 return eo_band["name"]
@@ -146,20 +147,16 @@ def load_stac(
             assert isinstance(eo_band, int)
             eo_band_index = eo_band
 
-            eo_bands_location = (itm.properties if "eo:bands" in itm.properties
-                                 else itm.get_collection().summaries.to_dict())
+            eo_bands_location = (
+                item.properties if "eo:bands" in item.properties else item.get_collection().summaries.to_dict()
+            )
             return get_band_name(eo_bands_location["eo:bands"][eo_band_index])
 
         if "eo:bands" in asset.extra_fields:
+            # TODO: eliminate this special case for that deprecated integer index hack above
             return [get_band_name(eo_band) for eo_band in asset.extra_fields["eo:bands"]]
-        elif "bands" in asset.extra_fields:
-            # TODO: only do this in STAC 1.1 mode?
-            # TODO: built-in "bands" support seems to be scheduled for pystac V2
-            # TODO: priority of "bands" over "eo:bands"?
-            return [b["name"] for b in asset.extra_fields["bands"]]
-        else:
-            logger.warning("load_stac-get_band_names: no band name source found")
-            return []
+
+        return [b.name for b in _StacMetadataParser().bands_from_stac_asset(asset=asset)]
 
     def get_proj_metadata(itm: pystac.Item, asst: pystac.Asset) -> (Optional[int],
                                                                     Optional[Tuple[float, float, float, float]],
@@ -278,8 +275,13 @@ def load_stac(
                                           }))
 
                 if intersects_spatiotemporally(pystac_item) and "data" in asset.get("roles", []):
-                    eo_bands = [{"name": b.name} for b in asset["bands"]]
-                    pystac_asset = pystac.Asset(href=asset["href"], extra_fields={"eo:bands": eo_bands})
+                    pystac_asset = pystac.Asset(
+                        href=asset["href"],
+                        extra_fields={
+                            "eo:bands": [{"name": b.name} for b in asset["bands"]]
+                            # TODO #1109 #1015 also add common "bands"?
+                        },
+                    )
                     pystac_item.add_asset(asset_id, pystac_asset)
                     intersecting_items.append(pystac_item)
 
@@ -299,17 +301,7 @@ def load_stac(
                     raise properties_unsupported_exception  # as dictated by the load_stac spec
 
                 item = stac_object
-
-                if "eo:bands" in item.properties:
-                    eo_bands_location = item.properties
-                elif item.get_collection() is not None:
-                    collection = item.get_collection()
-                    eo_bands_location = item.get_collection().summaries.lists
-                else:
-                    # TODO: band order is not "stable" here, see https://github.com/Open-EO/openeo-processes/issues/488
-                    eo_bands_location = {}
-                band_names = [b["name"] for b in eo_bands_location.get("eo:bands", [])]
-
+                band_names = [b.name for b in _StacMetadataParser().bands_from_stac_item(item=item)]
                 intersecting_items = [item] if intersects_spatiotemporally(item) else []
             elif isinstance(stac_object, pystac.Collection) and supports_item_search(stac_object):
                 collection = stac_object
@@ -320,7 +312,7 @@ def load_stac(
                 )
                 root_catalog = collection.get_root()
 
-                band_names = [b["name"] for b in collection.summaries.lists.get("eo:bands", [])]
+                band_names = [b.name for b in _StacMetadataParser().bands_from_stac_collection(collection=collection)]
 
                 if root_catalog.get_self_href().startswith("https://planetarycomputer.microsoft.com/api/stac/v1"):
                     modifier = planetary_computer.sign_inplace
@@ -385,8 +377,14 @@ def load_stac(
                     collection = catalog
                     netcdf_with_time_dimension = contains_netcdf_with_time_dimension(collection)
 
-                band_names = [b["name"] for b in (catalog.summaries.lists if isinstance(catalog, pystac.Collection)
-                                                  else catalog.extra_fields.get("summaries", {})).get("eo:bands", [])]
+                if isinstance(catalog, pystac.Collection):
+                    band_names = [
+                        b.name for b in _StacMetadataParser().bands_from_stac_collection(collection=collection)
+                    ]
+                elif isinstance(catalog, pystac.Catalog):
+                    band_names = [b.name for b in _StacMetadataParser().bands_from_stac_catalog(catalog=catalog)]
+                else:
+                    raise ValueError(catalog)
 
                 def intersecting_catalogs(root: pystac.Catalog) -> Iterable[pystac.Catalog]:
                     def intersects_spatiotemporally(coll: pystac.Collection) -> bool:
@@ -475,7 +473,7 @@ def load_stac(
                        .withNominalDate(itm.properties.get("datetime") or itm.properties["start_datetime"]))
 
             for asset_id, asset in band_assets.items():
-                asset_band_names = get_band_names(itm, asset) or [asset_id]
+                asset_band_names = get_band_names(item=itm, asset=asset) or [asset_id]
                 proj_epsg, proj_bbox, proj_shape = get_proj_metadata(itm, asset)
 
                 for asset_band_name in asset_band_names:
@@ -993,3 +991,80 @@ def _cql2_json_filter(literal_matches: Dict[str, Dict[str, Any]]) -> Optional[di
         "op": "and",
         "args": filters,
     }
+
+
+class _StacMetadataParser:
+    """
+    Helper to extract openEO metadata from STAC metadata resource
+    """
+
+    # TODO: better, more compact name: StacMetadata is a bit redundant, technically we're also not "parsing" here either
+    # TODO merge with implementation in openeo-python-client
+
+    def __init__(self):
+        # TODO: toggles for how to handle strictness, warnings, logging, etc
+        pass
+
+    def _band_from_eo_bands_metadata(self, data: dict) -> openeo.metadata.Band:
+        """Construct band from metadata dict in eo v1.1 style"""
+        return openeo.metadata.Band(
+            name=data["name"],
+            common_name=data.get("common_name"),
+            wavelength_um=data.get("center_wavelength"),
+        )
+
+    def _band_from_common_bands_metadata(self, data: dict) -> openeo.metadata.Band:
+        """Construct band from metadata dict in STAC 1.1 + eo v2 style metadata"""
+        return openeo.metadata.Band(
+            name=data["name"],
+            common_name=data.get("eo:common_name"),
+            wavelength_um=data.get("eo:center_wavelength"),
+        )
+
+    def bands_from_stac_catalog(self, catalog: pystac.Catalog) -> List[openeo.metadata.Band]:
+        # TODO: "eo:bands" vs "bands" priority based on STAC and EO extension version information
+        summaries = catalog.extra_fields.get("summaries", {})
+        if "eo:bands" in summaries:
+            return [self._band_from_eo_bands_metadata(b) for b in summaries["eo:bands"]]
+        elif "bands" in summaries:
+            return [self._band_from_common_bands_metadata(b) for b in summaries["bands"]]
+
+        # TODO: instead of warning: exception, or return None?
+        logger.warning("_StacMetadataParser.bands_from_stac_catalog no band name source found")
+        return []
+
+    def bands_from_stac_collection(self, collection: pystac.Collection) -> List[openeo.metadata.Band]:
+        # TODO: "eo:bands" vs "bands" priority based on STAC and EO extension version information
+        if "eo:bands" in collection.summaries.lists:
+            return [self._band_from_eo_bands_metadata(b) for b in collection.summaries.lists["eo:bands"]]
+        elif "bands" in collection.summaries.lists:
+            return [self._band_from_common_bands_metadata(b) for b in collection.summaries.lists["bands"]]
+
+        # TODO: instead of warning: exception, or return None?
+        logger.warning("_StacMetadataParser.bands_from_stac_collection no band name source found")
+        return []
+
+    def bands_from_stac_item(self, item: pystac.Item) -> List[openeo.metadata.Band]:
+        # TODO: "eo:bands" vs "bands" priority based on STAC and EO extension version information
+        if "eo:bands" in item.properties:
+            return [self._band_from_eo_bands_metadata(b) for b in item.properties["eo:bands"]]
+        elif "bands" in item.properties:
+            return [self._band_from_common_bands_metadata(b) for b in item.properties["bands"]]
+        elif (parent_collection := item.get_collection()) is not None:
+            return self.bands_from_stac_collection(collection=parent_collection)
+
+        # TODO: instead of warning: exception, or return None?
+        logger.warning("_StacMetadataParser.bands_from_stac_item no band name source found")
+        return []
+
+    def bands_from_stac_asset(self, asset: pystac.Asset) -> List[openeo.metadata.Band]:
+        # TODO: "eo:bands" vs "bands" priority based on STAC and EO extension version information
+        if "eo:bands" in asset.extra_fields:
+            return [self._band_from_eo_bands_metadata(b) for b in asset.extra_fields["eo:bands"]]
+        elif "bands" in asset.extra_fields:
+            # TODO: avoid extra_fields, but built-in "bands" support seems to be scheduled for pystac V2
+            return [self._band_from_common_bands_metadata(b) for b in asset.extra_fields["bands"]]
+
+        # TODO: instead of warning: exception, or return None?
+        logger.warning("_StacMetadataParser.bands_from_stac_asset no band name source found")
+        return []
