@@ -1,16 +1,19 @@
 import datetime as dt
 import json
+import pystac
 from contextlib import nullcontext
 
 import mock
 import pytest
+
+import openeo.metadata
 from openeo_driver.ProcessGraphDeserializer import DEFAULT_TEMPORAL_EXTENT
 from openeo_driver.backend import BatchJobMetadata, BatchJobs, LoadParameters
 from openeo_driver.errors import OpenEOApiException
 from openeo_driver.util.date_math import now_utc
 from openeo_driver.utils import EvalEnv
 
-from openeogeotrellis.load_stac import extract_own_job_info, load_stac
+from openeogeotrellis.load_stac import extract_own_job_info, load_stac, _StacMetadataParser
 
 
 @pytest.mark.parametrize("url, user_id, job_info_id",
@@ -357,3 +360,51 @@ def test_empty_cube_from_non_intersecting_item(requests_mock, test_data, feature
         assert data_cube.metadata.band_names == ["A1"]
         for level in data_cube.pyramid.levels.values():
             assert level.count() == 0
+
+
+class TestStacMetadataParser:
+    def test_band_from_eo_bands_metadata(self):
+        assert _StacMetadataParser()._band_from_eo_bands_metadata(
+            {"name": "B04"},
+        ) == openeo.metadata.Band(name="B04")
+        assert _StacMetadataParser()._band_from_eo_bands_metadata(
+            {"name": "B04", "common_name": "red", "center_wavelength": 0.665}
+        ) == openeo.metadata.Band(name="B04", common_name="red", wavelength_um=0.665)
+
+    def test_band_from_common_bands_metadata(self):
+        assert _StacMetadataParser()._band_from_common_bands_metadata(
+            {"name": "B04"},
+        ) == openeo.metadata.Band(name="B04")
+        assert _StacMetadataParser()._band_from_common_bands_metadata(
+            {"name": "B04", "eo:common_name": "red", "eo:center_wavelength": 0.665}
+        ) == openeo.metadata.Band(name="B04", common_name="red", wavelength_um=0.665)
+
+    def test_bands_from_stac_item_eo_bands(self):
+        item = pystac.Item.from_dict(
+            {
+                "stac_version": "1.0.0",
+                "stac_extensions": ["https://stac-extensions.github.io/eo/v1.1.0/schema.json"],
+                "id": "test123",
+                "type": "Feature",
+                "properties": {
+                    "datetime": "2023-10-01T00:00:00Z",
+                    "eo:bands": [{"name": "B04"}, {"name": "B03"}],
+                },
+            }
+        )
+        assert _StacMetadataParser().bands_from_stac_item(item=item).band_names() == ["B04", "B03"]
+
+    def test_bands_from_stac_item_common_bands(self):
+        item = pystac.Item.from_dict(
+            {
+                "stac_version": "1.0.0",
+                "stac_extensions": ["https://stac-extensions.github.io/eo/v1.1.0/schema.json"],
+                "id": "test123",
+                "type": "Feature",
+                "properties": {
+                    "datetime": "2023-10-01T00:00:00Z",
+                    "bands": [{"name": "B04"}, {"name": "B03"}],
+                },
+            }
+        )
+        assert _StacMetadataParser().bands_from_stac_item(item=item).band_names() == ["B04", "B03"]
