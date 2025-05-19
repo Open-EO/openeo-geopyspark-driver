@@ -27,6 +27,7 @@ without compromising stable operations.
 - Remove outdated and defunct ZooKeeper "cleaner" scripts and code paths ([#1219](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1219), [#1123](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1123))
 - Move `integrations.s3` to Python driver [#1195](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1195)
 - Add config `ejr_preserialize_process` to enable process graph pre-serialization when storing new jobs in EJR ([#1232](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1232))
+- `load_stac` start supporting STAC 1.1 style "common" bands" metadata (in addition to legacy "eo:bands") ([#1015](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1015))
 
 
 ## 0.65.0
