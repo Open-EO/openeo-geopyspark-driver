@@ -92,7 +92,8 @@ def test_property_filter_from_parameter(requests_mock):
 @pytest.mark.parametrize(
     ["item_path"],
     [
-        ("stac/issue609-api-temporal-bound-exclusive/item01.json",),
+        ("stac/issue609-api-temporal-bound-exclusive-eobands/item01.json",),
+        ("stac/issue609-api-temporal-bound-exclusive-commonbands/item01.json",),
     ],
 )
 def test_stac_api_dimensions(requests_mock, test_data, item_path):
@@ -212,7 +213,7 @@ def test_lcfm_improvements(  # resolution and offset behind a feature flag; alph
         "/eodata/Sentinel-2/MSI/L2A_N0500/2020/03/22/S2B_MSIL2A_20200322T074609_N0500_R135_T36NYH_20230612T214223.SAFE/GRANULE/L2A_T36NYH_A015891_20200322T075811/IMG_DATA/R60m/T36NYH_20200322T074609_B01_60m.jp2",
         "B01_60m",
         -1000.0,  # has "raster:scale": 0.0001 and "raster:offset": -0.1
-        ["B01_60m"],
+        ["B01"],
     )
 
     feature_builder.addLink.assert_any_call(

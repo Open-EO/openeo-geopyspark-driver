@@ -3885,7 +3885,7 @@ class TestLoadStac:
         assert ds.dims["y"] == 58
 
     @pytest.mark.parametrize(
-        "lower_temporal_bound, upper_temporal_bound, expected_timestamps",
+        ["lower_temporal_bound", "upper_temporal_bound", "expected_timestamps"],
         [
             ("2021-02-03", "2021-02-03", ["2021-02-03"]),  # for backwards compatibility
             ("2021-02-03", "2021-02-04", ["2021-02-03"]),
@@ -3894,9 +3894,25 @@ class TestLoadStac:
             ("2021-02-03T00:00:00Z", "2021-02-04T00:00:01Z", ["2021-02-03", "2021-02-04"]),
         ],
     )
-    def test_load_stac_from_stac_api_upper_temporal_bound(self, api110, urllib_and_request_mock, requests_mock, tmp_path,
-                                                          lower_temporal_bound, upper_temporal_bound,
-                                                          expected_timestamps):
+    @pytest.mark.parametrize(
+        "test_data_root",
+        [
+            "stac/issue609-api-temporal-bound-exclusive-eobands",
+            "stac/issue609-api-temporal-bound-exclusive-commonbands",
+        ],
+    )
+    def test_load_stac_from_stac_api_upper_temporal_bound(
+        self,
+        api110,
+        urllib_and_request_mock,
+        requests_mock,
+        tmp_path,
+        lower_temporal_bound,
+        upper_temporal_bound,
+        expected_timestamps,
+        test_data,
+        test_data_root,
+    ):
         """load_stac from a STAC API with two items that have different timestamps"""
 
         def feature_collection(request, _) -> dict:
@@ -3905,17 +3921,15 @@ class TestLoadStac:
             datetime_from, datetime_to = map(dt.datetime.fromisoformat, request.qs["datetime"][0].upper().replace("Z","+00:00").split("/"))
 
             def item(path) -> dict:
-                return json.loads(
-                    get_test_data_file(path).read_text()
-                    .replace(
+                return test_data.load_json(
+                    path,
+                    preprocess=lambda s: s.replace(
                         "asset01.tiff",
                         f"file://{get_test_data_file('binary/load_stac/collection01/asset01.tif').absolute()}"
                     )
                 )
 
-            items = [item(path) for path in ["stac/issue609-api-temporal-bound-exclusive/item01.json",
-                                             "stac/issue609-api-temporal-bound-exclusive/item02.json",
-                                             ]]
+            items = [item(path) for path in [f"{test_data_root}/item01.json", f"{test_data_root}/item02.json"]]
 
             intersecting_items = [item for item in items if
                                   datetime_from <=
@@ -3927,12 +3941,14 @@ class TestLoadStac:
                 "features": intersecting_items,
             }
 
-        urllib_and_request_mock.get("https://stac.test/collections/collection",
-                        data=get_test_data_file("stac/issue609-api-temporal-bound-exclusive/collection.json").read_text())
-        urllib_and_request_mock.get("https://stac.test",
-                        data=get_test_data_file("stac/issue609-api-temporal-bound-exclusive/catalog.json").read_text())
-        requests_mock.get("https://stac.test/search",
-                          json=feature_collection)
+        urllib_and_request_mock.get(
+            "https://stac.test/collections/collection",
+            data=get_test_data_file(f"{test_data_root}/collection.json").read_text(encoding="utf8"),
+        )
+        urllib_and_request_mock.get(
+            "https://stac.test", data=get_test_data_file(f"{test_data_root}/catalog.json").read_text(encoding="utf8")
+        )
+        requests_mock.get("https://stac.test/search", json=feature_collection)
 
         process_graph = {
             "loadstac1": {
