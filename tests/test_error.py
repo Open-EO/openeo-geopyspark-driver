@@ -96,7 +96,7 @@ def test_summarize_sentinel1_band_not_present_exception(caplog):
 
 def test_summarize_eofexception():
     jvm = get_jvm()
-    # This exception has no message. It needs to be handled fine too.
+    # This exception has no message. Typically it means OOM
     java_exception = jvm.java.io.EOFException()
     spark_exception = jvm.org.apache.spark.SparkException("Job aborted due to stage failure ...", java_exception)
     py4j_error: Exception = Py4JJavaError(msg="An error occur...", java_exception=spark_exception)
@@ -104,7 +104,7 @@ def test_summarize_eofexception():
 
     assert "null" not in error_summary
     assert "None" not in error_summary
-    assert "EOFException" in error_summary
+    assert "try submitting again" in error_summary
 
 
 def test_summarize_sentinel1_band_not_present_exception_workaround_for_root_cause_missing(caplog):

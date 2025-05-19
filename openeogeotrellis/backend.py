@@ -1126,6 +1126,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             elif "outofmemoryerror" in root_cause_class_name.lower():
                 summary = "Your batch job failed because the 'driver' used too much java memory. Consider increasing driver-memory or contact the developers to investigate."
             elif is_spark_exception:
+                retry_message = "Simply try submitting again, or use batch job logs to find more detailed information in case of persistent failures. Increasing executor memory may help if the root cause is not clear from the logs."
                 if missing_sentinel1_band:
                     summary = (f"Requested band '{missing_sentinel1_band}' is not present in Sentinel 1 tile;"
                                f' try specifying a "polarization" property filter according to the table at'
@@ -1177,11 +1178,14 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                         )
                         or "has failed the maximum allowable number of times" in root_cause_message
                     ):
-                        summary = f"A part of your process graph failed multiple times. Simply try submitting again, or use batch job logs to find more detailed information in case of persistent failures. Increasing executor memory may help if the root cause is not clear from the logs."
+                        summary = f"A part of your process graph failed multiple times. " + retry_message
                     else:
                         summary = f"Exception during Spark execution: {root_cause_class_name}: {root_cause_message}"
                 else:
-                    summary = f"Exception during Spark execution: {root_cause_class_name}"
+                    if root_cause_class_name == "java.io.EOFException":
+                        summary = f"Exception during Spark execution. " + retry_message
+                    else:
+                        summary = f"Exception during Spark execution: {root_cause_class_name}"
             else:
                 summary = f"{root_cause_class_name}: {root_cause_message}"
             summary = str_truncate(summary, width=width)
