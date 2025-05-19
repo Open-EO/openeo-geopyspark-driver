@@ -24,6 +24,7 @@ without compromising stable operations.
 - Add timeout to metadata request on "stac" data sources in layer catalog ([eu-cdse/openeo-cdse-infra#525](https://github.com/eu-cdse/openeo-cdse-infra/issues/525))
 - Improve detection of `apply_metadata` function in UDF code (related to [#1182](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1182))
 - Fix `require_application_id` filter of `list_active_jobs` in job tracker ([#1197](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1197))
+- `load_stac` start supporting STAC 1.1 style "common" bands" metadata (in addition to legacy "eo:bands") ([#1015](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1015))
 
 
 ## 0.65.0
