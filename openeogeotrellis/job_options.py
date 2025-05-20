@@ -11,9 +11,12 @@ class JobOptions:
 
     """
 
-    driver_memory: str = field(default=get_backend_config().default_driver_memory , metadata={
-        "description": "Memory allocated to the Spark ‘driver’ JVM, which manages the execution of the batch job."
-    })
+    driver_memory: str = field(
+        default=get_backend_config().default_driver_memory,
+        metadata={
+            "description": "Memory allocated to the Spark ‘driver’ JVM, which manages the execution and metadata of the batch job."
+        },
+    )
 
     driver_memory_overhead: str = field(
         default=get_backend_config().default_driver_memoryOverhead,
@@ -31,12 +34,15 @@ class JobOptions:
         default=get_backend_config().default_executor_memoryOverhead,
         metadata={
             "name": "executor-memoryOverhead",
-            "description": "Allocated in addition to the JVM, for example, to run UDFs."
+            "description": "Memory allocated to the workers in addition to the JVM, for example, to run UDFs. "
+            "The total available memory of an executor is equal to executor-memory + executor-memoryOverhead [+ python-memory].",
         })
     python_memory: str = field(
         default=get_backend_config().default_python_memory,
         metadata={
-            "description": "Memory assigned to Python UDFs, sar_backscatter or Sentinel-3 data loading tasks."
+            "description": "Setting to specifically limit the memory used by python on a worker. "
+            "Typical processes that use python-memory are UDF's, sar_backscatter or Sentinel 3 data loading. "
+            "Leaving this setting empty will allow python to use almost all of the executor-memoryOverhead, but will result in hard to unclear errors when this limit is reached."
         })
     executor_cores: int = field(
         default=get_backend_config().default_executor_cores,
@@ -47,7 +53,8 @@ class JobOptions:
         default=1,
         metadata={
             "description": "CPUs assigned to a single task. UDFs using libraries like Tensorflow can benefit from further parallelization at the individual task level."
-        })
+        },
+    )  # TODO add description on how this increses requested memory
     executor_corerequest: str = field(
         default="",
         metadata={
@@ -55,11 +62,15 @@ class JobOptions:
     max_executors: int = field(
         default=get_backend_config().default_max_executors,
         metadata={
-
-        "description": "The maximum number of workers assigned to the job. The maximum number of parallel tasks is max-executors*executor-cores/task-cpus. Increasing this can inflate costs, while not necessarily improving performance!"})
+            "description": "The maximum number of workers assigned to the job. The maximum number of parallel tasks is max-executors*executor-cores/task-cpus. "
+            "Increasing this can inflate costs, while not necessarily improving performance! "
+            "Decreasing this can increase cost efficiency but will make your job slower."
+        },
+    )
     udf_dependency_archives: List[str] = field(
-        default = None,
-        metadata={"description": "An array of URLs pointing to zip files with extra dependencies; see below."})
+        default=None,
+        metadata={"description": "An array of URLs pointing to zip files with extra dependencies to be used in UDF's."},
+    )
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "JobOptions":
