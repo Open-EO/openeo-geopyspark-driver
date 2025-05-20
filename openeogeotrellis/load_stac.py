@@ -1044,6 +1044,7 @@ class _StacMetadataParser:
     def bands_from_stac_catalog(self, catalog: pystac.Catalog) -> _Bands:
         # TODO: "eo:bands" vs "bands" priority based on STAC and EO extension version information
         summaries = catalog.extra_fields.get("summaries", {})
+        logger.info(f"bands_from_stac_catalog with {summaries.keys()=}")
         if "eo:bands" in summaries:
             return self._Bands(self._band_from_eo_bands_metadata(b) for b in summaries["eo:bands"])
         elif "bands" in summaries:
@@ -1055,6 +1056,7 @@ class _StacMetadataParser:
 
     def bands_from_stac_collection(self, collection: pystac.Collection) -> _Bands:
         # TODO: "eo:bands" vs "bands" priority based on STAC and EO extension version information
+        logger.info(f"bands_from_stac_collection with {collection.summaries.lists.keys()=}")
         if "eo:bands" in collection.summaries.lists:
             return self._Bands(self._band_from_eo_bands_metadata(b) for b in collection.summaries.lists["eo:bands"])
         elif "bands" in collection.summaries.lists:
@@ -1066,6 +1068,7 @@ class _StacMetadataParser:
 
     def bands_from_stac_item(self, item: pystac.Item) -> _Bands:
         # TODO: "eo:bands" vs "bands" priority based on STAC and EO extension version information
+        logger.info(f"bands_from_stac_item with {item.properties.keys()=}")
         if "eo:bands" in item.properties:
             return self._Bands(self._band_from_eo_bands_metadata(b) for b in item.properties["eo:bands"])
         elif "bands" in item.properties:
@@ -1079,6 +1082,7 @@ class _StacMetadataParser:
 
     def bands_from_stac_asset(self, asset: pystac.Asset) -> _Bands:
         # TODO: "eo:bands" vs "bands" priority based on STAC and EO extension version information
+        logger.info(f"bands_from_stac_asset with {asset.extra_fields.keys()=}")
         if "eo:bands" in asset.extra_fields:
             return self._Bands(self._band_from_eo_bands_metadata(b) for b in asset.extra_fields["eo:bands"])
         elif "bands" in asset.extra_fields:
