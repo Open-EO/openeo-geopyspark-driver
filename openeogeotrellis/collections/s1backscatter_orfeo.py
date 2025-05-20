@@ -34,7 +34,7 @@ from openeo_driver.utils import smart_bool
 from openeogeotrellis.collections import convert_scala_metadata
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.util.runtime import in_batch_job_context
-from openeogeotrellis.utils import lonlat_to_mercator_tile_indices, nullcontext, get_jvm, set_max_memory, \
+from openeogeotrellis.utils import lonlat_to_mercator_tile_indices, nullcontext, get_jvm, \
     ensure_executor_logging
 
 logger = logging.getLogger(__name__)
@@ -283,9 +283,6 @@ class S1BackscatterOrfeo:
     ):
         logger.info(f"{log_prefix} Input tiff {input_tiff}")
         logger.info(f"{log_prefix} extent {extent} EPSG {extent_epsg})")
-        max_total_memory_in_bytes = os.environ.get('PYTHON_MAX_MEMORY')
-        if max_total_memory_in_bytes:
-            set_max_memory(int(max_total_memory_in_bytes))
 
         if trackers is not None:
             trackers[0].add(1)
