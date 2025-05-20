@@ -1990,23 +1990,20 @@ class GpsBatchJobs(backend.BatchJobs):
             )
 
         isKube = ConfigParams().is_kube_deploy
-        driver_memory = job_options.get("driver-memory", get_backend_config().default_driver_memory )
-        driver_memory_overhead = job_options.get("driver-memoryOverhead", get_backend_config().default_driver_memoryOverhead)
-        executor_memory = job_options.get("executor-memory", get_backend_config().default_executor_memory)
-        executor_memory_overhead = job_options.get("executor-memoryOverhead", get_backend_config().default_executor_memoryOverhead )
+
+        options = JobOptions.from_dict(job_options)
+
         driver_cores = str(job_options.get("driver-cores", 1 if isKube else 5))
-        executor_cores = str(job_options.get("executor-cores", 1 if isKube else 2))
         executor_corerequest = job_options.get("executor-request-cores", "NONE")
         if executor_corerequest == "NONE":
-            executor_corerequest = str(int(executor_cores)/2*1000)+"m"
-        max_executors = str(job_options.get("max-executors", get_backend_config().default_max_executors))
+            executor_corerequest = str(int(options.executor_cores)/2*1000)+"m"
+        max_executors = str(options.max_executors)
         executor_threads_jvm = str(job_options.get("executor-threads-jvm", get_backend_config().default_executor_threads_jvm))
         gdal_dataset_cache_size = str(job_options.get("gdal-dataset-cache-size", get_backend_config().default_gdal_dataset_cache_size))
         gdal_cachemax = str(job_options.get("gdal-cachemax", get_backend_config().default_gdal_cachemax ))
         queue = job_options.get("queue", "default")
         profile = as_boolean_arg("profile", default_value="false")
         max_soft_errors_ratio = as_max_soft_errors_ratio_arg()
-        task_cpus = str(job_options.get("task-cpus", 1))
         archives = ",".join(job_options.get("udf-dependency-archives", []))
         py_files = job_options.get("udf-dependency-files", [])
         use_goofys = as_boolean_arg("goofys", default_value="false") != "false"
@@ -2020,20 +2017,20 @@ class GpsBatchJobs(backend.BatchJobs):
 
         as_bytes = self._jvm.org.apache.spark.util.Utils.byteStringAsBytes
 
-        if as_bytes(executor_memory) + as_bytes(executor_memory_overhead) > as_bytes(get_backend_config().max_executor_or_driver_memory):
+        if as_bytes(options.executor_memory) + as_bytes(options.executor_memory_overhead) > as_bytes(get_backend_config().max_executor_or_driver_memory):
             raise OpenEOApiException(
-                message=f"Requested too much executor memory: {executor_memory} + {executor_memory_overhead}, the max for this instance is: {get_backend_config().max_executor_or_driver_memory}",
+                message=f"Requested too much executor memory: {options.executor_memory} + {options.executor_memory_overhead}, the max for this instance is: {get_backend_config().max_executor_or_driver_memory}",
                 status_code=400)
-        if as_bytes(driver_memory) + as_bytes(driver_memory_overhead) > as_bytes(get_backend_config().max_executor_or_driver_memory):
+        if as_bytes(options.driver_memory) + as_bytes(options.driver_memory_overhead) > as_bytes(get_backend_config().max_executor_or_driver_memory):
             raise OpenEOApiException(
-                message=f"Requested too much driver memory: {driver_memory} + {driver_memory_overhead}, the max for this instance is: {get_backend_config().max_executor_or_driver_memory}",
+                message=f"Requested too much driver memory: {options.driver_memory} + {options.driver_memory_overhead}, the max for this instance is: {get_backend_config().max_executor_or_driver_memory}",
                 status_code=400)
 
         if isKube:
             max_cores = 4
-            if int(executor_cores) > max_cores:
+            if int(options.executor_cores) > max_cores:
                 raise OpenEOApiException(
-                    message=f"Requested too many executor cores: {executor_cores} , the max for this instance is: {max_cores}",
+                    message=f"Requested too many executor cores: {options.executor_cores} , the max for this instance is: {max_cores}",
                     status_code=400)
             if int(driver_cores) > max_cores:
                 raise OpenEOApiException(
@@ -2062,12 +2059,12 @@ class GpsBatchJobs(backend.BatchJobs):
         if get_backend_config().setup_kerberos_auth:
             setup_kerberos_auth(self._principal, self._key_tab, self._jvm)
 
-        memOverheadBytes = as_bytes(executor_memory_overhead)
+        memOverheadBytes = as_bytes(options.executor_memory_overhead)
         jvmOverheadBytes = as_bytes("128m")
 
         # By default, Python uses the space reserved by `spark.executor.memoryOverhead` but no limit is enforced.
         # When `spark.executor.pyspark.memory` is specified, Python will only use this memory and no more.
-        python_max = job_options.get("python-memory", get_backend_config().default_python_memory)
+        python_max = options.python_memory
         if python_max is not None:
             python_max = as_bytes(python_max)
             if "executor-memoryOverhead" not in job_options:
@@ -2082,12 +2079,12 @@ class GpsBatchJobs(backend.BatchJobs):
                 python_max = -1
             executor_memory_overhead = f"{memOverheadBytes // (1024 ** 2)}m"
 
-        if as_bytes(executor_memory) + as_bytes(executor_memory_overhead) + python_max > as_bytes(
+        if as_bytes(options.executor_memory) + as_bytes(options.executor_memory_overhead) + python_max > as_bytes(
                 get_backend_config().max_executor_or_driver_memory
         ):
             raise OpenEOApiException(
                 message=f"Requested too much executor memory: "
-                        + f"{executor_memory} + {executor_memory_overhead} + {python_max // (1024 ** 2)}m, "
+                        + f"{options.executor_memory} + {options.executor_memory_overhead} + {python_max // (1024 ** 2)}m, "
                         + f"the max for this instance is: {get_backend_config().max_executor_or_driver_memory}",
                 status_code=400,
             )
@@ -2194,12 +2191,12 @@ class GpsBatchJobs(backend.BatchJobs):
                 job_id_short=truncate_job_id_k8s(job_id),
                 job_id_full=job_id,
                 driver_cores=driver_cores,
-                driver_memory=driver_memory,
-                driver_memory_overhead=driver_memory_overhead,
-                executor_cores=executor_cores,
+                driver_memory=options.driver_memory,
+                driver_memory_overhead=options.driver_memory_overhead,
+                executor_cores=options.executor_cores,
                 executor_corerequest=executor_corerequest,
-                executor_memory=executor_memory,
-                executor_memory_overhead=executor_memory_overhead,
+                executor_memory=options.executor_memory,
+                executor_memory_overhead=options.executor_memory_overhead,
                 executor_threads_jvm=executor_threads_jvm,
                 python_max_memory = python_max,
                 max_executors=max_executors,
@@ -2208,7 +2205,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 user_id=user_id,
                 user_id_short=truncate_user_id_k8s(user_id),
                 max_soft_errors_ratio=max_soft_errors_ratio,
-                task_cpus=task_cpus,
+                task_cpus=options.task_cpus,
                 gdal_dataset_cache_size=gdal_dataset_cache_size,
                 gdal_cachemax=gdal_cachemax,
                 current_time=int(time.time()),
@@ -2381,11 +2378,11 @@ class GpsBatchJobs(backend.BatchJobs):
                 else:
                     args.append("0.4.0")
 
-                args.append(driver_memory)
-                args.append(executor_memory)
-                args.append(executor_memory_overhead)
+                args.append(options.driver_memory)
+                args.append(options.executor_memory)
+                args.append(options.executor_memory_overhead)
                 args.append(driver_cores)
-                args.append(executor_cores)
+                args.append(options.executor_cores)
                 args.append(driver_memory_overhead)
                 args.append(queue)
                 args.append(profile)
@@ -2395,7 +2392,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 args.append(user_id)
                 args.append(job_id)
                 args.append(max_soft_errors_ratio)
-                args.append(task_cpus)
+                args.append(options.task_cpus)
                 args.append(sentinel_hub_client_alias)
                 args.append(temp_properties_file.name)
                 args.append(archives)
