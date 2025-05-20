@@ -241,6 +241,8 @@ class CalrissianJobLauncher:
                 namespace=self._namespace,
             ),
             spec=kubernetes.client.V1JobSpec(
+                active_deadline_seconds=300,  # could be because target bucket does not exist
+                ttl_seconds_after_finished=300,  # can get stuck in "Terminating" state
                 template=kubernetes.client.V1PodTemplateSpec(
                     spec=kubernetes.client.V1PodSpec(
                         containers=[container],

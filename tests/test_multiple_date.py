@@ -523,21 +523,7 @@ def rct_savitzky_golay(udf_data:UdfData):
         assert stitched.cells[0][0][1] == 8.0
         assert stitched.cells[0][1][1] == 10.0
 
-    def test_resample_spatial(self):
-        input = Pyramid({0: layer_with_one_band_and_three_dates()})
 
-        imagecollection = GeopysparkDataCube(pyramid=input, metadata=self.collection_metadata)
-
-        resampled = imagecollection.resample_spatial(resolution=0.05)
-
-        path = str(self.temp_folder / "resampled.tiff")
-        res = resampled.reduce_dimension(reducer('max'), dimension="t", env=EvalEnv())
-        res.save_result(path, format="GTIFF")
-
-        import rasterio
-        with rasterio.open(path) as ds:
-            print(ds.profile)
-            self.assertAlmostEqual(0.05, ds.res[0], 3)
 
     def test_resample_spatial_reproject(self):
         input = Pyramid({0: layer_with_one_band_and_three_dates()})
@@ -639,3 +625,21 @@ def test_apply_spatiotemporal(udf_code):
     assert stitched.cells[0][0][0] == 2
     assert stitched.cells[0][0][5] == 6
     assert stitched.cells[0][5][6] == 4
+
+@pytest.mark.parametrize("target_resolution", [(0.05),([0.05,0.06])])
+def test_resample_spatial(imagecollection_with_two_bands_and_one_date, tmp_path ,target_resolution):
+    resampled = imagecollection_with_two_bands_and_one_date.resample_spatial(resolution=target_resolution)
+
+    path = str(tmp_path / "resampled.tiff")
+    res = resampled.reduce_dimension(reducer('max'), dimension="t", env=EvalEnv())
+    res.save_result(path, format="GTIFF")
+
+    import rasterio
+    with rasterio.open(path) as ds:
+        print(ds.profile)
+        if isinstance(target_resolution,list):
+            assert pytest.approx(target_resolution[0]) == ds.res[0]
+            assert pytest.approx(target_resolution[1]) == ds.res[1]
+        else:
+            assert pytest.approx(target_resolution) == ds.res[0]
+            assert pytest.approx(target_resolution) == ds.res[1]

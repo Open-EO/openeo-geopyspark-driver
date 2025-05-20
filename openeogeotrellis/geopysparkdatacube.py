@@ -1077,14 +1077,28 @@ class GeopysparkDataCube(DriverDataCube):
              replacement=None) -> 'GeopysparkDataCube':
 
         replacement = float(replacement) if replacement is not None else None
-        if self._is_spatial() and mask._is_spatial():
-            rasterMask = gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses().rasterMask_spatial_spatial
-        elif mask._is_spatial():
-            rasterMask = gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses().rasterMask_spacetime_spatial
-        elif self._is_spatial():
-            raise ProcessParameterInvalidException(process="mask",parameter="data",reason="Dimensions in the mask have to be available in datacube, missing the temporal dimension. You can solve this by reducing the temporal dimension of your data cube.")
+
+        jvm = gps.get_spark_context()._jvm
+        if self._is_spatial():
+            if mask._is_spatial():
+                # Both data and mask are spatial
+                rasterMask = jvm.org.openeo.geotrellis.OpenEOProcesses().rasterMask_spatial_spatial
+            else:
+                # Data is spatial, but mask is spacetime: dimension mismatch
+                raise OpenEOApiException(
+                    status_code=400,
+                    # TODO: standard error code for this case? https://github.com/Open-EO/openeo-processes/issues/538
+                    code="DimensionMismatch",
+                    message="A cube without time dimension cannot be masked with a cube that does have time dimension. You can resolve this by reducing the temporal dimension of your mask.",
+                )
         else:
-            rasterMask = gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses().rasterMask
+            if mask._is_spatial():
+                # Data is spacetime, but mask is spatial: broadcast mask along time dimension
+                rasterMask = jvm.org.openeo.geotrellis.OpenEOProcesses().rasterMask_spacetime_spatial
+            else:
+                # Both data and mask are spacetime
+                # TODO: to verify: time dimension (and other dimensions) must be fully aligned to the label level according to the spec
+                rasterMask = jvm.org.openeo.geotrellis.OpenEOProcesses().rasterMask
 
         return self._apply_to_levels_geotrellis_rdd(
             lambda rdd, level: rasterMask(rdd, mask.pyramid.levels[level].srdd.rdd(), replacement)
@@ -1388,7 +1402,7 @@ class GeopysparkDataCube(DriverDataCube):
                 return self
 
             cellsize_before = self.get_cellsize()
-            if not isinstance(resolution, tuple):
+            if not isinstance(resolution, (list, tuple)):
                 resolution = (resolution, resolution)
 
             if projection is not None:
@@ -1470,6 +1484,11 @@ class GeopysparkDataCube(DriverDataCube):
 
     @staticmethod
     def _layout_for_resolution(extent, currentTileLayout, projection, target_resolution):
+        if isinstance(target_resolution, (list, tuple)):
+            targetX,targetY = target_resolution[0], target_resolution[1]
+        else:
+            targetX, targetY = (target_resolution,target_resolution)
+
         currentTileCols = currentTileLayout.tileCols
         currentTileRows = currentTileLayout.tileRows
 
@@ -1478,19 +1497,19 @@ class GeopysparkDataCube(DriverDataCube):
 
         currentResolutionX = width / (currentTileCols * currentTileLayout.layoutCols)
         currentResolutionY = height / (currentTileRows * currentTileLayout.layoutRows)
-        if projection == None and abs(currentResolutionX - target_resolution) / target_resolution < 0.00001:
-            _log.info(f"Resampling datacube not necessary, resolution already at {target_resolution}")
+        if projection == None and abs(currentResolutionX - targetX) / targetX < 0.00001:
+            _log.info(f"Resampling datacube not necessary, resolution already at {targetX}")
             return None
 
-        newPixelCountX = math.ceil(width /target_resolution)
-        newPixelCountY = math.ceil(height / target_resolution)
+        newPixelCountX = math.ceil(width / targetX)
+        newPixelCountY = math.ceil(height / targetY)
 
         #keep tile cols constant
         nbTilesX = math.ceil(newPixelCountX / currentTileCols)
         nbTilesY = math.ceil(newPixelCountY / currentTileRows)
 
-        newWidth = nbTilesX*currentTileCols*target_resolution
-        newHeight = nbTilesY * currentTileRows * target_resolution
+        newWidth = nbTilesX * currentTileCols * targetX
+        newHeight = nbTilesY * currentTileRows * targetY
 
         newExtent = Extent(extent.xmin, extent.ymin,extent.xmin+newWidth,extent.ymin+newHeight)
 

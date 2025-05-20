@@ -1130,6 +1130,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             elif "outofmemoryerror" in root_cause_class_name.lower():
                 summary = "Your batch job failed because the 'driver' used too much java memory. Consider increasing driver-memory or contact the developers to investigate."
             elif is_spark_exception:
+                retry_message = "Simply try submitting again, or use batch job logs to find more detailed information in case of persistent failures. Increasing executor memory may help if the root cause is not clear from the logs."
                 if missing_sentinel1_band:
                     summary = (f"Requested band '{missing_sentinel1_band}' is not present in Sentinel 1 tile;"
                                f' try specifying a "polarization" property filter according to the table at'
@@ -1181,11 +1182,14 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                         )
                         or "has failed the maximum allowable number of times" in root_cause_message
                     ):
-                        summary = f"A part of your process graph failed multiple times. Simply try submitting again, or use batch job logs to find more detailed information in case of persistent failures. Increasing executor memory may help if the root cause is not clear from the logs."
+                        summary = f"A part of your process graph failed multiple times. " + retry_message
                     else:
                         summary = f"Exception during Spark execution: {root_cause_class_name}: {root_cause_message}"
                 else:
-                    summary = f"Exception during Spark execution: {root_cause_class_name}"
+                    if root_cause_class_name == "java.io.EOFException":
+                        summary = f"Exception during Spark execution. " + retry_message
+                    else:
+                        summary = f"Exception during Spark execution: {root_cause_class_name}"
             else:
                 summary = f"{root_cause_class_name}: {root_cause_message}"
             summary = str_truncate(summary, width=width)
@@ -1237,7 +1241,15 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             start_index = full_stacktrace.rfind("\n", 0, needle_index) + 1
             if start_index == -1:
                 start_index = 0
-            udf_stacktrace = full_stacktrace[start_index:].rstrip()
+
+            # No need for the Java stack trace if we found UDF stack trace.
+            # Triggering an exception in the UDF code with
+            #   jvm.org.openeo.dumpGeoJson("", jvm.scala.Some(""))
+            # will not add a jvm stacktrace. Instead, it wil give a connection lost error.
+            end_index = full_stacktrace.find("\n\tat ", start_index)
+            if end_index == -1:
+                end_index = len(full_stacktrace)
+            udf_stacktrace = full_stacktrace[start_index:end_index].rstrip()
             udf_stacktrace = GeoPySparkBackendImplementation.collapse_stack_strace(udf_stacktrace, width)
             return udf_stacktrace
         return None
@@ -2905,7 +2917,18 @@ class GpsBatchJobs(backend.BatchJobs):
 
         job_dir = self.get_job_output_dir(job_id=job_id)
 
-        results_metadata = self.load_results_metadata(job_id, user_id)
+        results_metadata = None
+        try:
+            with self._double_job_registry as registry:
+                job_dict = registry.elastic_job_registry.get_job(job_id, user_id=user_id)
+                if "results_metadata" in job_dict:
+                    results_metadata = job_dict["results_metadata"]
+        except Exception as e:
+            logger.warning(
+                "Could not retrieve result metadata from job tracker %s", e, exc_info=True, extra={"job_id": job_id}
+            )
+        if results_metadata is None or len(results_metadata) == 0:
+            results_metadata = self.load_results_metadata(job_id, user_id)
         out_assets = results_metadata.get("assets", {})
         out_metadata = out_assets.get("out", {})
         bands = [Band(*properties) for properties in out_metadata.get("bands", [])]
@@ -2983,6 +3006,7 @@ class GpsBatchJobs(backend.BatchJobs):
         """
         Reads the metadata json file from the job directory and returns it.
         """
+
         metadata_file = self.get_results_metadata_path(job_id=job_id)
 
         if ConfigParams().use_object_storage:

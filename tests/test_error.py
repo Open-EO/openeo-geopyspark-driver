@@ -96,7 +96,7 @@ def test_summarize_sentinel1_band_not_present_exception(caplog):
 
 def test_summarize_eofexception():
     jvm = get_jvm()
-    # This exception has no message. It needs to be handled fine too.
+    # This exception has no message. Typically it means OOM
     java_exception = jvm.java.io.EOFException()
     spark_exception = jvm.org.apache.spark.SparkException("Job aborted due to stage failure ...", java_exception)
     py4j_error: Exception = Py4JJavaError(msg="An error occur...", java_exception=spark_exception)
@@ -104,7 +104,7 @@ def test_summarize_eofexception():
 
     assert "null" not in error_summary
     assert "None" not in error_summary
-    assert "EOFException" in error_summary
+    assert "try submitting again" in error_summary
 
 
 def test_summarize_sentinel1_band_not_present_exception_workaround_for_root_cause_missing(caplog):
@@ -390,6 +390,155 @@ Exception: This error message should be visible to user
  File "<string>", line 7, in function_in_transform
  File "<string>", line 4, in function_in_root
 Exception: This error message should be visible to user"""
+    )
+
+
+def test_extract_udf_stacktrace_excludeonfailure():
+    summarized = GeoPySparkBackendImplementation.extract_udf_stacktrace(
+        """
+Traceback (most recent call last):
+  File "/opt/openeo/lib/python3.8/site-packages/openeogeotrellis/deploy/batch_job.py", line 805, in start_main
+    main(sys.argv)
+  File "/opt/openeo/lib/python3.8/site-packages/openeogeotrellis/deploy/batch_job.py", line 246, in main
+    run_driver()
+  File "/opt/openeo/lib/python3.8/site-packages/openeogeotrellis/deploy/batch_job.py", line 207, in run_driver
+    run_job(
+  File "/opt/openeo/lib/python3.8/site-packages/openeogeotrellis/utils.py", line 66, in memory_logging_wrapper
+    return function(*args, **kwargs)
+  File "/opt/openeo/lib/python3.8/site-packages/openeogeotrellis/deploy/batch_job.py", line 396, in run_job
+    assets_metadata = list(map(result_write_assets, results))
+  File "/opt/openeo/lib/python3.8/site-packages/openeogeotrellis/deploy/batch_job.py", line 392, in result_write_assets
+    return result_arg.write_assets(str(output_file))
+  File "/opt/openeo/lib/python3.8/site-packages/openeo_driver/save_result.py", line 170, in write_assets
+    return self.cube.write_assets(filename=directory, format=self.format, format_options=self.options)
+  File "/opt/openeo/lib/python3.8/site-packages/openeogeotrellis/geopysparkdatacube.py", line 2115, in write_assets
+    get_jvm().org.openeo.geotrellis.geotiff.package.saveRDDTemporalAllowAssetPerBand(
+  File "/usr/local/spark/python/lib/py4j-0.10.9.7-src.zip/py4j/java_gateway.py", line 1322, in __call__
+    return_value = get_return_value(
+  File "/usr/local/spark/python/lib/py4j-0.10.9.7-src.zip/py4j/protocol.py", line 326, in get_return_value
+    raise Py4JJavaError(
+py4j.protocol.Py4JJavaError: An error occurred while calling z:org.openeo.geotrellis.geotiff.package.saveRDDTemporalAllowAssetPerBand.
+: org.apache.spark.SparkException: Job aborted due to stage failure: 
+Aborting TaskSet 5.0 because task 0 (partition 0)
+cannot run anywhere due to node and executor excludeOnFailure.
+Most recent failure:
+Lost task 1.2 in stage 5.0 (TID 13) (10.42.158.11 executor 3): org.apache.spark.api.python.PythonException: Traceback (most recent call last):
+  File "/usr/local/spark/python/lib/pyspark.zip/pyspark/worker.py", line 1247, in main
+    process()
+  File "/usr/local/spark/python/lib/pyspark.zip/pyspark/worker.py", line 1239, in process
+    serializer.dump_stream(out_iter, outfile)
+  File "/usr/local/spark/python/lib/pyspark.zip/pyspark/serializers.py", line 146, in dump_stream
+    for obj in iterator:
+  File "/usr/local/spark/python/lib/pyspark.zip/pyspark/util.py", line 83, in wrapper
+    return f(*args, **kwargs)
+  File "/opt/openeo/lib/python3.8/site-packages/openeogeotrellis/utils.py", line 66, in memory_logging_wrapper
+    return function(*args, **kwargs)
+  File "/opt/openeo/lib/python3.8/site-packages/epsel.py", line 44, in wrapper
+    return _FUNCTION_POINTERS[key](*args, **kwargs)
+  File "/opt/openeo/lib/python3.8/site-packages/epsel.py", line 37, in first_time
+    return f(*args, **kwargs)
+  File "/opt/openeo/lib/python3.8/site-packages/openeogeotrellis/geopysparkdatacube.py", line 805, in tile_function
+    result_data = run_udf_code(code=udf_code, data=data)
+  File "/opt/openeo/lib/python3.8/site-packages/epsel.py", line 44, in wrapper
+    return _FUNCTION_POINTERS[key](*args, **kwargs)
+  File "/opt/openeo/lib/python3.8/site-packages/epsel.py", line 37, in first_time
+    return f(*args, **kwargs)
+  File "/opt/openeo/lib/python3.8/site-packages/openeogeotrellis/udf.py", line 67, in run_udf_code
+    return openeo.udf.run_udf_code(code=code, data=data)
+  File "/opt/openeo/lib/python3.8/site-packages/openeo/udf/run_code.py", line 180, in run_udf_code
+    result_cube = func(cube=data.get_datacube_list()[0], context=data.user_context)
+  File "<string>", line 3, in apply_datacube
+  File "<string>", line 3, in <listcomp>
+MemoryError
+
+	at org.apache.spark.api.python.BasePythonRunner$ReaderIterator.handlePythonException(PythonRunner.scala:572)
+	at org.apache.spark.api.python.PythonRunner$$anon$3.read(PythonRunner.scala:784)
+	at org.apache.spark.api.python.PythonRunner$$anon$3.read(PythonRunner.scala:766)
+	at org.apache.spark.api.python.BasePythonRunner$ReaderIterator.hasNext(PythonRunner.scala:525)
+	at org.apache.spark.InterruptibleIterator.hasNext(InterruptibleIterator.scala:37)
+	at scala.collection.Iterator$$anon$10.hasNext(Iterator.scala:460)
+	at scala.collection.Iterator$$anon$12.hasNext(Iterator.scala:513)
+	at scala.collection.Iterator$$anon$11.hasNext(Iterator.scala:491)
+	at scala.collection.Iterator$$anon$10.hasNext(Iterator.scala:460)
+	at scala.collection.Iterator$$anon$11.hasNext(Iterator.scala:491)
+	at org.apache.spark.storage.memory.MemoryStore.putIterator(MemoryStore.scala:223)
+	at org.apache.spark.storage.memory.MemoryStore.putIteratorAsValues(MemoryStore.scala:302)
+	at org.apache.spark.storage.BlockManager.$anonfun$doPutIterator$1(BlockManager.scala:1597)
+	at org.apache.spark.storage.BlockManager.org$apache$spark$storage$BlockManager$$doPut(BlockManager.scala:1524)
+	at org.apache.spark.storage.BlockManager.doPutIterator(BlockManager.scala:1588)
+	at org.apache.spark.storage.BlockManager.getOrElseUpdate(BlockManager.scala:1389)
+	at org.apache.spark.storage.BlockManager.getOrElseUpdateRDDBlock(BlockManager.scala:1343)
+	at org.apache.spark.rdd.RDD.getOrCompute(RDD.scala:379)
+	at org.apache.spark.rdd.RDD.iterator(RDD.scala:329)
+	at org.apache.spark.rdd.MapPartitionsRDD.compute(MapPartitionsRDD.scala:52)
+	at org.apache.spark.rdd.RDD.computeOrReadCheckpoint(RDD.scala:367)
+	at org.apache.spark.rdd.RDD.iterator(RDD.scala:331)
+	at org.apache.spark.rdd.MapPartitionsRDD.compute(MapPartitionsRDD.scala:52)
+	at org.apache.spark.rdd.RDD.computeOrReadCheckpoint(RDD.scala:367)
+	at org.apache.spark.rdd.RDD.iterator(RDD.scala:331)
+	at org.apache.spark.shuffle.ShuffleWriteProcessor.write(ShuffleWriteProcessor.scala:59)
+	at org.apache.spark.scheduler.ShuffleMapTask.runTask(ShuffleMapTask.scala:104)
+	at org.apache.spark.scheduler.ShuffleMapTask.runTask(ShuffleMapTask.scala:54)
+	at org.apache.spark.TaskContext.runTaskWithListeners(TaskContext.scala:166)
+	at org.apache.spark.scheduler.Task.run(Task.scala:141)
+	at org.apache.spark.executor.Executor$TaskRunner.$anonfun$run$4(Executor.scala:620)
+	at org.apache.spark.util.SparkErrorUtils.tryWithSafeFinally(SparkErrorUtils.scala:64)
+	at org.apache.spark.util.SparkErrorUtils.tryWithSafeFinally$(SparkErrorUtils.scala:61)
+	at org.apache.spark.util.Utils$.tryWithSafeFinally(Utils.scala:94)
+	at org.apache.spark.executor.Executor$TaskRunner.run(Executor.scala:623)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1128)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:628)
+	at java.base/java.lang.Thread.run(Thread.java:829)
+
+
+ExcludeOnFailure behavior can be configured via spark.excludeOnFailure.*.
+
+	at org.apache.spark.scheduler.DAGScheduler.failJobAndIndependentStages(DAGScheduler.scala:2856)
+	at org.apache.spark.scheduler.DAGScheduler.$anonfun$abortStage$2(DAGScheduler.scala:2792)
+	at org.apache.spark.scheduler.DAGScheduler.$anonfun$abortStage$2$adapted(DAGScheduler.scala:2791)
+	at scala.collection.mutable.ResizableArray.foreach(ResizableArray.scala:62)
+	at scala.collection.mutable.ResizableArray.foreach$(ResizableArray.scala:55)
+	at scala.collection.mutable.ArrayBuffer.foreach(ArrayBuffer.scala:49)
+	at org.apache.spark.scheduler.DAGScheduler.abortStage(DAGScheduler.scala:2791)
+	at org.apache.spark.scheduler.DAGScheduler.$anonfun$handleTaskSetFailed$1(DAGScheduler.scala:1247)
+	at org.apache.spark.scheduler.DAGScheduler.$anonfun$handleTaskSetFailed$1$adapted(DAGScheduler.scala:1247)
+	at scala.Option.foreach(Option.scala:407)
+	at org.apache.spark.scheduler.DAGScheduler.handleTaskSetFailed(DAGScheduler.scala:1247)
+	at org.apache.spark.scheduler.DAGSchedulerEventProcessLoop.doOnReceive(DAGScheduler.scala:3060)
+	at org.apache.spark.scheduler.DAGSchedulerEventProcessLoop.onReceive(DAGScheduler.scala:2994)
+	at org.apache.spark.scheduler.DAGSchedulerEventProcessLoop.onReceive(DAGScheduler.scala:2983)
+	at org.apache.spark.util.EventLoop$$anon$1.run(EventLoop.scala:49)
+	at org.apache.spark.scheduler.DAGScheduler.runJob(DAGScheduler.scala:989)
+	at org.apache.spark.SparkContext.runJob(SparkContext.scala:2393)
+	at org.apache.spark.SparkContext.runJob(SparkContext.scala:2414)
+	at org.apache.spark.SparkContext.runJob(SparkContext.scala:2433)
+	at org.apache.spark.SparkContext.runJob(SparkContext.scala:2458)
+	at org.apache.spark.rdd.RDD.$anonfun$collect$1(RDD.scala:1049)
+	at org.apache.spark.rdd.RDDOperationScope$.withScope(RDDOperationScope.scala:151)
+	at org.apache.spark.rdd.RDDOperationScope$.withScope(RDDOperationScope.scala:112)
+	at org.apache.spark.rdd.RDD.withScope(RDD.scala:410)
+	at org.apache.spark.rdd.RDD.collect(RDD.scala:1048)
+	at org.openeo.geotrellis.geotiff.package$.saveRDDTemporalAllowAssetPerBand(package.scala:254)
+	at org.openeo.geotrellis.geotiff.package.saveRDDTemporalAllowAssetPerBand(package.scala)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)
+	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:566)
+	at py4j.reflection.MethodInvoker.invoke(MethodInvoker.java:244)
+	at py4j.reflection.ReflectionEngine.invoke(ReflectionEngine.java:374)
+	at py4j.Gateway.invoke(Gateway.java:282)
+	at py4j.commands.AbstractCommand.invokeMethod(AbstractCommand.java:132)
+	at py4j.commands.CallCommand.execute(CallCommand.java:79)
+	at py4j.ClientServerConnection.waitForCommands(ClientServerConnection.java:182)
+	at py4j.ClientServerConnection.run(ClientServerConnection.java:106)
+	at java.base/java.lang.Thread.run(Thread.java:829)
+"""
+    )
+    assert (
+            summarized
+            == """  File "<string>", line 3, in apply_datacube
+  File "<string>", line 3, in <listcomp>
+MemoryError"""
     )
 
 
