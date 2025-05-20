@@ -19,7 +19,7 @@ from pyspark import SparkContext, find_spark_home
 from scipy.spatial import cKDTree  # used for tuning the griddata interpolation settings
 
 from openeogeotrellis.collections import convert_scala_metadata
-from openeogeotrellis.utils import ensure_executor_logging, get_jvm, set_max_memory
+from openeogeotrellis.utils import ensure_executor_logging, get_jvm
 
 OLCI_PRODUCT_TYPE = "OL_1_EFR___"
 SYNERGY_PRODUCT_TYPE = "SY_2_SYN___"
@@ -78,7 +78,6 @@ def main(product_type, native_resolution, bbox, from_date, to_date, band_names):
 
 def pyramid(metadata_properties, projected_polygons_native_crs, from_date, to_date, band_names, data_cube_parameters,
             native_cell_size, feature_flags, jvm):
-    limit_executor_python_memory = feature_flags.get("limit_executor_python_memory", False)
 
     opensearch_client = jvm.org.openeo.opensearch.OpenSearchClient.apply(
         "https://catalogue.dataspace.copernicus.eu/resto", False, "", [], "",
@@ -147,7 +146,6 @@ def pyramid(metadata_properties, projected_polygons_native_crs, from_date, to_da
             product_type=product_type,
             band_names=band_names,
             tile_size=tile_size,
-            limit_python_memory=limit_executor_python_memory,
             resolution=native_cell_size.width(),
         )
     )
@@ -190,13 +188,8 @@ def _instant_ms_to_minute(instant: int) -> datetime:
 
 
 @ensure_executor_logging
-def read_product(product, product_type, band_names, tile_size, limit_python_memory, resolution):
+def read_product(product, product_type, band_names, tile_size, resolution):
     from openeogeotrellis.collections.s1backscatter_orfeo import get_total_extent
-
-    if limit_python_memory:
-        max_total_memory_in_bytes = os.environ.get('PYTHON_MAX_MEMORY')
-        if max_total_memory_in_bytes:
-            set_max_memory(int(max_total_memory_in_bytes))
 
     creo_path, features = product  # better: "tiles"
     log_prefix = ""
