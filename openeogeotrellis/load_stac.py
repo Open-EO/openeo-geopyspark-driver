@@ -1044,7 +1044,7 @@ class _StacMetadataParser:
     def bands_from_stac_catalog(self, catalog: pystac.Catalog) -> _Bands:
         # TODO: "eo:bands" vs "bands" priority based on STAC and EO extension version information
         summaries = catalog.extra_fields.get("summaries", {})
-        logger.info(f"bands_from_stac_catalog with {summaries.keys()=}")
+        logger.warning(f"bands_from_stac_catalog with {summaries.keys()=} (which is non-standard)")
         if "eo:bands" in summaries:
             return self._Bands(self._band_from_eo_bands_metadata(b) for b in summaries["eo:bands"])
         elif "bands" in summaries:
