@@ -42,7 +42,7 @@ class JobOptions:
         metadata={
             "description": "Setting to specifically limit the memory used by python on a worker. "
             "Typical processes that use python-memory are UDF's, sar_backscatter or Sentinel 3 data loading. "
-            "Leaving this setting empty will allow python to use almost all of the executor-memoryOverhead, but will result in hard to unclear errors when this limit is reached."
+            "Leaving this setting empty will allow Python to use almost all of the executor-memoryOverhead, but may lead to unclear error messages when the memory limit is reached."
         })
     executor_cores: int = field(
         default=get_backend_config().default_executor_cores,
@@ -54,7 +54,7 @@ class JobOptions:
         metadata={
             "description": "CPUs assigned to a single task. UDFs using libraries like Tensorflow can benefit from further parallelization at the individual task level."
         },
-    )  # TODO add description on how this increses requested memory
+    )  # TODO add description on how this increases requested memory
     executor_corerequest: str = field(
         default="",
         metadata={
