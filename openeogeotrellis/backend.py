@@ -2005,6 +2005,8 @@ class GpsBatchJobs(backend.BatchJobs):
 
         options = JobOptions.from_dict(job_options)
 
+        executor_memory_overhead = options.executor_memory_overhead
+
         driver_cores = str(job_options.get("driver-cores", 1 if isKube else 5))
         executor_corerequest = job_options.get("executor-request-cores", "NONE")
         if executor_corerequest == "NONE":
@@ -2091,12 +2093,12 @@ class GpsBatchJobs(backend.BatchJobs):
                 python_max = -1
             executor_memory_overhead = f"{memOverheadBytes // (1024 ** 2)}m"
 
-        if as_bytes(options.executor_memory) + as_bytes(options.executor_memory_overhead) + python_max > as_bytes(
+        if as_bytes(options.executor_memory) + as_bytes(executor_memory_overhead) + python_max > as_bytes(
                 get_backend_config().max_executor_or_driver_memory
         ):
             raise OpenEOApiException(
                 message=f"Requested too much executor memory: "
-                        + f"{options.executor_memory} + {options.executor_memory_overhead} + {python_max // (1024 ** 2)}m, "
+                        + f"{options.executor_memory} + {executor_memory_overhead} + {python_max // (1024 ** 2)}m, "
                         + f"the max for this instance is: {get_backend_config().max_executor_or_driver_memory}",
                 status_code=400,
             )
@@ -2395,7 +2397,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 args.append(options.executor_memory_overhead)
                 args.append(driver_cores)
                 args.append(options.executor_cores)
-                args.append(driver_memory_overhead)
+                args.append(options.driver_memory_overhead)
                 args.append(queue)
                 args.append(profile)
                 args.append(serialize_dependencies())
