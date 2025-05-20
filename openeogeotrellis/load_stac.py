@@ -380,12 +380,7 @@ def load_stac(
                     collection = catalog
                     netcdf_with_time_dimension = contains_netcdf_with_time_dimension(collection)
 
-                if isinstance(catalog, pystac.Collection):
-                    band_names = _StacMetadataParser().bands_from_stac_collection(collection=collection).band_names()
-                elif isinstance(catalog, pystac.Catalog):
-                    band_names = _StacMetadataParser().bands_from_stac_catalog(catalog=catalog).band_names()
-                else:
-                    raise ValueError(catalog)
+                band_names = _StacMetadataParser().bands_from_stac_object(obj=stac_object).band_names()
 
                 def intersecting_catalogs(root: pystac.Catalog) -> Iterable[pystac.Catalog]:
                     def intersects_spatiotemporally(coll: pystac.Collection) -> bool:
@@ -1030,6 +1025,21 @@ class _StacMetadataParser:
             common_name=data.get("eo:common_name"),
             wavelength_um=data.get("eo:center_wavelength"),
         )
+
+    def bands_from_stac_object(
+        self, obj: Union[pystac.Catalog, pystac.Collection, pystac.Item, pystac.Asset]
+    ) -> _Bands:
+        # Note: first check for Collection, as it is a subclass of Catalog
+        if isinstance(obj, pystac.Collection):
+            return self.bands_from_stac_collection(collection=obj)
+        elif isinstance(obj, pystac.Catalog):
+            return self.bands_from_stac_catalog(catalog=obj)
+        elif isinstance(obj, pystac.Item):
+            return self.bands_from_stac_item(item=obj)
+        elif isinstance(obj, pystac.Asset):
+            return self.bands_from_stac_asset(asset=obj)
+        else:
+            raise ValueError(obj)
 
     def bands_from_stac_catalog(self, catalog: pystac.Catalog) -> _Bands:
         # TODO: "eo:bands" vs "bands" priority based on STAC and EO extension version information
