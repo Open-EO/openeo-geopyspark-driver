@@ -547,7 +547,12 @@ class S1BackscatterOrfeo:
         # Tile size to use in the TiledRasterLayer.
         tile_size = sar_backscatter_arguments.options.get("tile_size", self._DEFAULT_TILE_SIZE)
 
-        geopyspark.get_spark_context().setLocalProperty("callSite.short", f"load_collection: SENTINEL1_GRD {from_date}-{to_date} Area: {projected_polygons.areaInSquareMeters()/(1000.0*1000.0)}km²")
+        try:
+            area_to_display = projected_polygons.areaInSquareMeters() / (1000.0 * 1000.0)
+        except Exception as e:
+            logger.error("Error while calculating areaInSquareMeters: " + str(e))
+            area_to_display = "unknown "
+        geopyspark.get_spark_context().setLocalProperty("callSite.short", f"load_collection: SENTINEL1_GRD {from_date}-{to_date} Area: {area_to_display}km²")
 
         debug_mode = smart_bool(sar_backscatter_arguments.options.get("debug"))
 
