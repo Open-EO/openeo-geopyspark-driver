@@ -31,5 +31,5 @@ pythonPipeline {
   extra_container_volumes = [
     '/data/MTDA:/data/MTDA:ro'
   ]
-  enable_uv = true
+  enable_caching = true
 }
