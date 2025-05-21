@@ -550,7 +550,7 @@ class S1BackscatterOrfeo:
         try:
             area_to_display = projected_polygons.areaInSquareMeters() / (1000.0 * 1000.0)
         except Exception as e:
-            logger.error("Error while calculating areaInSquareMeters: " + str(e))
+            logger.error("sar_backscatter: Error while calculating areaInSquareMeters: " + str(e))
             area_to_display = "unknown "
         geopyspark.get_spark_context().setLocalProperty("callSite.short", f"load_collection: SENTINEL1_GRD {from_date}-{to_date} Area: {area_to_display}km²")
 
