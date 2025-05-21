@@ -97,8 +97,8 @@ def test_property_filter_from_parameter(requests_mock):
 @pytest.mark.parametrize(
     "item_path",
     [
-        "stac/issue609-api-temporal-bound-exclusive-eobands/item01.json",
-        "stac/issue609-api-temporal-bound-exclusive-commonbands/item01.json",
+        "stac/issue609-api-temporal-bound-exclusive-eo-bands/item01.json",
+        "stac/issue609-api-temporal-bound-exclusive-common-bands/item01.json",
     ],
 )
 def test_stac_api_dimensions(requests_mock, test_data, item_path):
@@ -107,9 +107,9 @@ def test_stac_api_dimensions(requests_mock, test_data, item_path):
 
     stac_item = test_data.load_json(
         item_path,
-        preprocess=lambda s: s.replace(
-            "asset01.tiff", f"file://{test_data.get_path('binary/load_stac/collection01/asset01.tif').absolute()}"
-        ),
+        preprocess={
+            "asset01.tiff": f"file://{test_data.get_path('binary/load_stac/collection01/asset01.tif').absolute()}"
+        },
     )
 
     _mock_stac_api(
@@ -283,6 +283,7 @@ def test_world_oom(requests_mock):
         layer_properties={},
         batch_jobs=None,
     )
+    # TODO: add assertions about outcome
 
 
 @pytest.mark.parametrize(
@@ -344,10 +345,17 @@ def test_empty_cube_from_stac_api(requests_mock, featureflags, env, expectation)
         ({}, EvalEnv({"allow_empty_cubes": True}), nullcontext()),  # pyramid_seq
     ],
 )
-def test_empty_cube_from_non_intersecting_item(requests_mock, featureflags, env, expectation):
+@pytest.mark.parametrize(
+    "item_path",
+    [
+        "stac/item01-eo-bands.json",
+        "stac/item01-common-bands.json",
+    ],
+)
+def test_empty_cube_from_non_intersecting_item(requests_mock, featureflags, env, expectation, item_path, test_data):
     stac_item_url = "https://stac.test/item.json"
 
-    requests_mock.get(stac_item_url, text=get_test_data_file("stac/item01.json").read_text())
+    requests_mock.get(stac_item_url, json=test_data.load_json(item_path))
 
     with expectation:
         data_cube = load_stac(
