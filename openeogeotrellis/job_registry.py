@@ -314,6 +314,7 @@ class ZkJobRegistry:
         per_user_limit: Optional[int] = 1000,
         field_whitelist: Optional[List[str]] = None,
     ) -> List[Dict]:
+        # TODO #632 #863 #1123 #1165 #1219 remove this dead code path
         def get_jobs_in(
             get_path: Callable[[Union[str, None], Union[str, None]], str],
             user_ids: Optional[List[str]] = None,
@@ -1001,7 +1002,7 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
         include_done: bool = True,
         user_limit: Optional[int] = 1000,
     ) -> List[dict]:
-        # TODO #632 #863 #1123 #1165 remove this dead code path?
+        # TODO #632 #863 #1123 #1165 #1219 remove this dead code path
         if not self.zk_job_registry:
             raise NotImplementedError("only necessary for ZK cleaner script")
 

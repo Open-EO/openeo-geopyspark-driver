@@ -2,6 +2,8 @@
 
 # Nightly cleaner script for deployments in k8s.
 
+# TODO #632 #863 #1123 #1165 #1219 remove this now-defunct cleaner workflow
+
 set -eo pipefail
 
 fail_if_not_set () {

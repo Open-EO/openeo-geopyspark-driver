@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# TODO #632 #863 #1123 #1165 remove this dead code path?
+# TODO #632 #863 #1123 #1165 #1219 remove this now-defunct cleaner workflow
 
 set -eo pipefail
 

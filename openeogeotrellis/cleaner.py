@@ -1,3 +1,5 @@
+# TODO #1219 remove this now-defunct cleaner workflow
+
 import argparse
 import logging
 from datetime import datetime, timedelta
@@ -28,7 +30,7 @@ def remove_batch_jobs_before(
     include_done: bool = True,
     user_limit: Optional[int] = 1000,
 ) -> None:
-    # TODO #632 #863 #1123 #1165 remove this dead code path?
+    # TODO #632 #863 #1123 #1165 #1219 remove this dead code path
     with TimingLogger(title=f"Removing batch jobs before {upper}", logger=_log):
         # TODO: how to cope with unneeded arguments?
         batch_jobs = GpsBatchJobs(

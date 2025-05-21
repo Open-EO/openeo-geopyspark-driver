@@ -3,7 +3,7 @@ Some tools for inspection and management of the ZooKeeper job registry.
 These are just ad-hoc, short-term stop-gap measures to implement some quick wins
 trying to fight the ZooKeeper load issue.
 
-TODO #236/#498/#632 remove when not necessary anymore (ZkJobRegistry is gone).
+TODO #632 #863 #1123 #1165 #1219 remove this dead code
 
 
 Usage instructions:
@@ -54,6 +54,7 @@ def stats(zk_job_registry: ZkJobRegistry):
     """
     Collect ZkJobRegistry stats: count users and jobs under "ongoing" and "done" paths.
     """
+    # TODO #632 #863 #1123 #1165 remove this dead code?
     with StatsReporter(report=_log.info) as stats, zk_job_registry:
         for mode, path_builder in [
             ("ongoing", zk_job_registry._ongoing),
@@ -82,7 +83,7 @@ def prune(
     include_done: bool = True,
     include_ongoing: bool = False,
 ):
-    # TODO #632 #863 #1123 #1165 remove this dead code path?
+    # TODO #632 #863 #1123 #1165 #1219 remove this dead code?
     with StatsReporter(report=_log.info) as stats, zk_job_registry:
         with TimingLogger(title="Collect jobs", logger=_log):
             jobs = zk_job_registry.get_all_jobs_before(

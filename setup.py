@@ -52,7 +52,7 @@ setup(
             "scripts/submit_batch_job_log4j.properties",
             "scripts/submit_batch_job_log4j2.xml",
             "scripts/batch_job_log4j2.xml",
-            "scripts/cleaner-entrypoint.sh",  # TODO #632 #863 #1123 #1165 remove this dead code path?
+            "scripts/cleaner-entrypoint.sh",  # TODO #632 #863 #1123 #1165 #1219 remove this now-defunct cleaner workflow
             "scripts/job_tracker-entrypoint.sh",
             "scripts/async_task-entrypoint.sh",
             "scripts/async_task_log4j2.xml",

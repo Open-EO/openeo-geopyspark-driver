@@ -3279,7 +3279,7 @@ class GpsBatchJobs(backend.BatchJobs):
         include_done: bool = True,
         user_limit: Optional[int] = 1000,
     ) -> None:
-        # TODO #632 #863 #1123 #1165 remove this dead code path?
+        # TODO #632 #863 #1123 #1165 #1219 remove this dead code path
         with self._double_job_registry as registry, TimingLogger(
             title=f"Collecting jobs to delete: {upper=} {user_ids=} {include_ongoing=} {include_done=}",
             logger=logger,
