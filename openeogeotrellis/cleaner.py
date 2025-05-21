@@ -8,9 +8,8 @@ from py4j.java_gateway import JavaGateway, JVMView, find_jar_path
 
 import openeogeotrellis.backend
 from openeo.util import TimingLogger
-from openeogeotrellis.backend import GpsBatchJobs, GpsSecondaryServices
+from openeogeotrellis.backend import GpsBatchJobs
 from openeogeotrellis.configparams import ConfigParams
-from openeogeotrellis.service_registry import ZooKeeperServiceRegistry
 
 logging.basicConfig(level=logging.INFO)
 openeogeotrellis.backend.logger.setLevel(logging.DEBUG)
@@ -44,11 +43,6 @@ def remove_batch_jobs_before(
             user_limit=user_limit,
         )
 
-
-def remove_secondary_services_before(upper: datetime) -> None:
-    with TimingLogger(title=f"Removing secondary services before {upper}", logger=_log):
-        secondary_services = GpsSecondaryServices(ZooKeeperServiceRegistry())
-        secondary_services.remove_services_before(upper)
 
 
 def main():
@@ -123,7 +117,6 @@ def main():
         include_done=not args.skip_done,
         user_limit=args.jobs_per_user_limit,
     )
-    remove_secondary_services_before(max_date)
 
 
 if __name__ == '__main__':
