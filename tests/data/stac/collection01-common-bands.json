@@ -3,10 +3,7 @@
   "type": "Collection",
   "description": "description",
   "license": "proprietary",
-  "stac_version": "1.0.0",
-    "stac_extensions": [
-    "https://stac-extensions.github.io/eo/v1.1.0/schema.json"
-  ],
+  "stac_version": "1.1.0",
   "extent": {
     "spatial": {
       "bbox": [
@@ -27,16 +24,17 @@
       ]
     }
   },
-  "links": [
-    {
-      "rel": "root",
-      "href": "https://stac.test"
-    }
-  ],
+  "links": [],
   "summaries": {
-    "eo:bands": [
+    "bands": [
+        {
+          "name": "band5"
+        },
         {
           "name": "band1"
+        },
+        {
+          "name": "band4"
         },
         {
           "name": "band2"

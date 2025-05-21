@@ -1,6 +1,8 @@
 {
   "stac_version": "1.0.0",
-  "stac_extensions": [],
+  "stac_extensions": [
+    "https://stac-extensions.github.io/eo/v1.1.0/schema.json"
+  ],
   "type": "Feature",
   "id": "item",
   "bbox": [
@@ -37,7 +39,7 @@
     ]
   },
   "properties": {
-    "datetime": "2021-02-04T00:00:00Z",
+    "datetime": "2021-02-03T00:00:00Z",
     "proj:epsg": 4326,
     "proj:bbox": [
       5.0,
@@ -53,7 +55,7 @@
   "links": [
     {
       "rel": "collection",
-      "href": "collection.json"
+      "href": "collection01-eo-bands.json"
     }
   ],
   "assets": {
@@ -69,6 +71,18 @@
         },
         {
           "name": "band3"
+        }
+      ]
+    },
+    "asset2": {
+      "href": "asset02.tiff",
+      "type": "image/tiff; application=geotiff",
+      "eo:bands": [
+        {
+          "name": "band4"
+        },
+        {
+          "name": "band5"
         }
       ]
     }

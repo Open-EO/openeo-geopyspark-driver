@@ -96,8 +96,8 @@ def test_property_filter_from_parameter(requests_mock):
 @pytest.mark.parametrize(
     ["item_path"],
     [
-        ("stac/issue609-api-temporal-bound-exclusive-eobands/item01.json",),
-        ("stac/issue609-api-temporal-bound-exclusive-commonbands/item01.json",),
+        ("stac/issue609-api-temporal-bound-exclusive-eo-bands/item01.json",),
+        ("stac/issue609-api-temporal-bound-exclusive-common-bands/item01.json",),
     ],
 )
 def test_stac_api_dimensions(requests_mock, test_data, item_path):
@@ -340,10 +340,17 @@ def test_empty_cube_from_stac_api(requests_mock, featureflags, env, expectation)
         ({}, EvalEnv({"allow_empty_cubes": True}), nullcontext()),  # pyramid_seq
     ],
 )
-def test_empty_cube_from_non_intersecting_item(requests_mock, test_data, featureflags, env, expectation):
+@pytest.mark.parametrize(
+    "item_path",
+    [
+        "stac/item01-eo-bands.json",
+        "stac/item01-common-bands.json",
+    ],
+)
+def test_empty_cube_from_non_intersecting_item(requests_mock, test_data, featureflags, env, expectation, item_path):
     stac_item_url = "https://stac.test/item.json"
 
-    requests_mock.get(stac_item_url, json=test_data.load_json("stac/item01.json"))
+    requests_mock.get(stac_item_url, json=test_data.load_json(item_path))
 
     with expectation:
         data_cube = load_stac(
