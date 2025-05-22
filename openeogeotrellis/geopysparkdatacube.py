@@ -1996,6 +1996,8 @@ class GeopysparkDataCube(DriverDataCube):
                         gtiff_options.setFilenamePrefix(filename_prefix.get())
                     gtiff_options.setResampleMethod(overview_resample)
                     getattr(gtiff_options, "overviews_$eq")(overviews)
+                    if tile_size:
+                        gtiff_options.setTileSize(tile_size)
                     if tile_grid:
                         _log.info("save_result save_stitched_tile_grid")
                         tiles = self._save_stitched_tile_grid(max_level, save_filename, tile_grid, gtiff_options, crop_bounds,
@@ -2049,6 +2051,8 @@ class GeopysparkDataCube(DriverDataCube):
                     color_cmap = get_color_cmap()
                     if color_cmap is not None:
                         gtiff_options.setColorMap(color_cmap)
+                    if tile_size:
+                        gtiff_options.setTileSize(tile_size)
                     band_count = -1
                     if self.metadata.has_band_dimension():
                         band_count = len(self.metadata.band_dimension.band_names)
