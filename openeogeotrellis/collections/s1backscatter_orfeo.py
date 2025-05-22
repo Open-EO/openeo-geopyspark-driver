@@ -13,7 +13,7 @@ import types
 import zipfile
 from datetime import datetime
 from multiprocessing import Process
-from typing import Dict, Tuple, Union, List
+from typing import Dict, Tuple, Union, List, Any
 
 import geopyspark
 import numpy
@@ -96,6 +96,16 @@ def get_total_extent(features):
     ymax_max = max(f["key_extent"]["ymax"] for f in features)
     layout_extent = {"xmin": xmin_min, "xmax": xmax_max, "ymin": ymin_min, "ymax": ymax_max}
     return layout_extent
+
+
+def get_area_in_square_kilometers(projected_polygons: any) -> str:
+    try:
+        area_to_display = projected_polygons.areaInSquareMeters() / (1000.0 * 1000.0)
+    except Exception as e:
+        logger.error("sar_backscatter: Error while calculating areaInSquareMeters: " + str(e))
+        area_to_display = "unknown "
+    return f"{area_to_display}km²"
+
 
 class S1BackscatterOrfeo:
     """
@@ -547,12 +557,10 @@ class S1BackscatterOrfeo:
         # Tile size to use in the TiledRasterLayer.
         tile_size = sar_backscatter_arguments.options.get("tile_size", self._DEFAULT_TILE_SIZE)
 
-        try:
-            area_to_display = projected_polygons.areaInSquareMeters() / (1000.0 * 1000.0)
-        except Exception as e:
-            logger.error("sar_backscatter: Error while calculating areaInSquareMeters: " + str(e))
-            area_to_display = "unknown "
-        geopyspark.get_spark_context().setLocalProperty("callSite.short", f"load_collection: SENTINEL1_GRD {from_date}-{to_date} Area: {area_to_display}km²")
+        geopyspark.get_spark_context().setLocalProperty(
+            "callSite.short",
+            f"load_collection: SENTINEL1_GRD {from_date}-{to_date} Area: {get_area_in_square_kilometers(projected_polygons)}",
+        )
 
         debug_mode = smart_bool(sar_backscatter_arguments.options.get("debug"))
 
@@ -591,9 +599,10 @@ class S1BackscatterOrfeo:
                 return hashPartitioner(tuple)
         grouped = per_product.partitionBy(per_product.count(),partitionByPath)
 
-        geopyspark.get_spark_context().setLocalProperty("callSite.short",
-                                                        f"sar_backscatter: {sar_backscatter_arguments.coefficient} {from_date}-{to_date} Area: {projected_polygons.areaInSquareMeters() / (1000.0 * 1000.0)}km²")
-
+        geopyspark.get_spark_context().setLocalProperty(
+            "callSite.short",
+            f"sar_backscatter: {sar_backscatter_arguments.coefficient} {from_date}-{to_date} Area: {get_area_in_square_kilometers(projected_polygons)}",
+        )
         #local = grouped.collect()
 
         #print(local)
@@ -831,8 +840,10 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
         noise_removal = bool(sar_backscatter_arguments.noise_removal)
         debug_mode = smart_bool(sar_backscatter_arguments.options.get("debug"))
 
-        geopyspark.get_spark_context().setLocalProperty("callSite.short",
-                                                        f"load_collection: SENTINEL1_GRD {from_date}-{to_date} Area: {projected_polygons.areaInSquareMeters() / (1000.0 * 1000.0)}km²")
+        geopyspark.get_spark_context().setLocalProperty(
+            "callSite.short",
+            f"load_collection: SENTINEL1_GRD {from_date}-{to_date} Area: {get_area_in_square_kilometers(projected_polygons)}",
+        )
 
         # an RDD of Python objects (basically SpaceTimeKey + feature) with gps.Metadata
         target_resolution = sar_backscatter_arguments.options.get("resolution", (10.0, 10.0))
@@ -1037,9 +1048,11 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
                 hashPartitioner = pyspark.rdd.portable_hash
                 return hashPartitioner(tuple)
 
-        grouped = per_product.partitionBy(per_product.count(),partitionByPath)
-        geopyspark.get_spark_context().setLocalProperty("callSite.short",
-                                                        f"sar_backscatter: {sar_backscatter_arguments.coefficient} {from_date}-{to_date} Area: {projected_polygons.areaInSquareMeters() / (1000.0 * 1000.0)}km²")
+        grouped = per_product.partitionBy(per_product.count(), partitionByPath)
+        geopyspark.get_spark_context().setLocalProperty(
+            "callSite.short",
+            f"sar_backscatter: {sar_backscatter_arguments.coefficient} {from_date}-{to_date} Area: {get_area_in_square_kilometers(projected_polygons)}",
+        )
         tile_rdd = grouped.flatMap(process_product)
         if result_dtype:
             layer_metadata_py.cell_type = geopyspark.CellType.create_user_defined_celltype(result_dtype,0)
