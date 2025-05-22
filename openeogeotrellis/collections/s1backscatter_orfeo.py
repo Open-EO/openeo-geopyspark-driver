@@ -104,7 +104,7 @@ def get_area_in_square_kilometers(projected_polygons: any) -> str:
     except Exception as e:
         logger.error("sar_backscatter: Error while calculating areaInSquareMeters: " + str(e))
         area_to_display = "unknown "
-    return area_to_display + "km²"
+    return f"{area_to_display}km²"
 
 
 class S1BackscatterOrfeo:
