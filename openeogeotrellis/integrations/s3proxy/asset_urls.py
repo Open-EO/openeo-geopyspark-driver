@@ -31,9 +31,9 @@ class PresignedS3AssetUrls(AssetUrl):
             raise ValueError(f"Input {s3_uri} is not a valid S3 URI should be of form s3://<bucket>/<key>")
         bucket = _parsed.netloc
         if _parsed.query:
-            key = _parsed.path.lstrip('/') + '?' + _parsed.query
+            key = _parsed.path.lstrip("/") + "?" + _parsed.query
         else:
-            key = _parsed.path.lstrip('/')
+            key = _parsed.path.lstrip("/")
         return bucket, key
 
     def _get_presigned_url_against_proxy(self, bucket: str, key: str, job_id: str, user_id: str) -> str:
