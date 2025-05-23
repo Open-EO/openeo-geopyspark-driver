@@ -25,6 +25,13 @@ class JobOptions:
             "description": "Memory assigned to the Spark ‘driver’ on top of JVM memory for Python processes."
         })
 
+    driver_cores: int = field(
+        default=1,
+        metadata={
+            "description": "Number of CPUs per driver, normally not needed.",
+            "public": False
+        })
+
     executor_memory: str = field(
         default=get_backend_config().default_executor_memory,
         metadata={
@@ -55,10 +62,7 @@ class JobOptions:
             "description": "CPUs assigned to a single task. UDFs using libraries like Tensorflow can benefit from further parallelization at the individual task level."
         },
     )  # TODO add description on how this increases requested memory
-    executor_corerequest: str = field(
-        default="",
-        metadata={
-            "description": "This setting is only relevant for Kubernetes-based backends, allows overcommitting CPU."})
+
     max_executors: int = field(
         default=get_backend_config().default_max_executors,
         metadata={
@@ -67,9 +71,25 @@ class JobOptions:
             "Decreasing this can increase cost efficiency but will make your job slower."
         },
     )
+    executor_threads_jvm: int = field(
+        default=get_backend_config().default_executor_threads_jvm,
+        metadata={
+            "description": "Number of threads to allocate for the default jvm worker. Certain openEO processes can benefit of additional local parallelism on top of the distributed processing performed by Spark."
+        },
+    )
+    gdal_dataset_cache_size: int = field(
+        default=get_backend_config().default_gdal_dataset_cache_size,
+        metadata={
+            "description": "The default number of datasets that will be cached in batch jobs. A large cache will increase memory usage."
+        },
+    )
     udf_dependency_archives: List[str] = field(
         default=None,
         metadata={"description": "An array of URLs pointing to zip files with extra dependencies to be used in UDF's."},
+    )
+    udf_dependency_files: List[str] = field(
+        default=None,
+        metadata={"description": "An array of URLs pointing to files to be used in UDF's."},
     )
 
     @classmethod
@@ -135,3 +155,35 @@ class JobOptions:
         else:
             # Handle instances
             return cls.python_type_to_json_schema(type(python_type))
+
+@dataclass
+class K8SOptions(JobOptions):
+    driver_cores: int = field(
+        default=5,
+        metadata={
+            "description": "Number of CPUs per driver, normally not needed.",
+            "public": False
+        })
+
+    executor_request_cores: int = field(
+        default="NONE",
+        metadata={
+            "description": "Fraction of CPUs to actually request, expressed as 'milli-cpus', for instance '600m' for 0.6 of 1 cpu unit.",
+            "public": False
+        })
+    goofys:bool = field(default=False,
+        metadata={
+        "description": "Deprecated, use goofys or not",
+        "public": False
+    })
+    mount_tmp: bool = field(default=False,
+         metadata={
+             "description": "Deprecated, mounted tmp or not",
+             "public": False
+         })
+    spark_pvc: bool = field(default=False,
+         metadata={
+             "description": "Deprecated, use spark pvcs or not",
+             "public": False
+         })
+
