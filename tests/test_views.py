@@ -839,7 +839,6 @@ class TestBatchJobs:
                 assert res.status_code == 200
                 assert res.data == TIFF_DUMMY_DATA
 
-    @pytest.mark.skip(reason="Tests don't work properly on CI/CD #1183")
     @mock.patch(
         "openeogeotrellis.configparams.ConfigParams.use_object_storage",
         new_callable=mock.PropertyMock,
