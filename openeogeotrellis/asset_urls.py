@@ -5,7 +5,7 @@ from urllib.parse import urlparse
 from openeo_driver.asset_urls import AssetUrl
 from openeogeotrellis.integrations.s3proxy.exceptions import ProxyException
 from openeogeotrellis.integrations.s3proxy.s3 import get_proxy_s3_client_for_job
-from openeogeotrellis.integrations.s3.presigned_url import create_presigned_url
+from openeo_driver.integrations.s3.presigned_url import create_presigned_url
 
 _log = logging.getLogger(__name__)
 
@@ -38,4 +38,9 @@ class PresignedS3AssetUrls(AssetUrl):
 
     def _get_presigned_url_against_proxy(self, bucket: str, key: str, job_id: str, user_id: str) -> str:
         s3_client = get_proxy_s3_client_for_job(bucket, job_id, user_id)
-        return create_presigned_url(s3_client, bucket_name=bucket, object_name=key, expiration=self._expiration)
+        url = create_presigned_url(
+            s3_client, bucket_name=bucket, object_name=key, expiration=self._expiration, default=None
+        )
+        if url is None:
+            raise ValueError(f"Could not create a presigned url for s3://{bucket}/{key} job_id={job_id} user={user_id}")
+        return url

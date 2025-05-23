@@ -21,7 +21,7 @@ from openeo_driver.config import OpenEoBackendConfig
 from openeogeotrellis.integrations.identity import IDPTokenIssuer
 
 from openeogeotrellis.config.s3_config import AWSConfig
-from openeogeotrellis.integrations.s3.client import S3ClientBuilder
+from openeo_driver.integrations.s3.client import S3ClientBuilder
 
 import openeogeotrellis
 import pytest
