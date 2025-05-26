@@ -528,7 +528,8 @@ class TestBatchJobs:
             assert batch_job_args[5] == job_metadata.name
             assert batch_job_args[8] == TEST_USER
             assert batch_job_args[9] == api.api_version
-            assert batch_job_args[10:16] == ['8G', '2G', '3072m', '5', '2', '2G']
+
+            assert batch_job_args[10:16] == ['8G', '2G', '3G', '5', '2', '2G']
             assert batch_job_args[16:21] == [
                 'default', 'false', '[]',
                 "__pyfiles__/custom_processes.py,foolib.whl", '100'
@@ -1130,7 +1131,7 @@ class TestBatchJobs:
 
             # Create job
             data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH, title="Dummy")
-            data["job_options"] = {"driver-memory": "3g", "executor-memory": "11g","executor-cores":"4","queue":"somequeue","driver-memoryOverhead":"10G"}
+            data["job_options"] = {"driver-memory": "3g", "executor-memory": "11g","executor-cores":"4","queue":"somequeue","driver-memoryOverhead":"10G", "soft-errors":"false", "udf-dependency-archives":["https://host.com/my.jar"]}
             res = api.post('/jobs', json=data, headers=TEST_USER_AUTH_HEADER).assert_status_code(201)
             job_id = res.headers['OpenEO-Identifier']
             # Start job
@@ -1154,13 +1155,14 @@ class TestBatchJobs:
             assert batch_job_args[5] == job_metadata.name
             assert batch_job_args[8] == TEST_USER
             assert batch_job_args[9] == api.api_version
-            assert batch_job_args[10:16] == ['3g', '11g', '3072m', '5', '4', '10G']
+            assert batch_job_args[10:16] == ['3g', '11g', '3G', '5', '4', '10G']
             assert batch_job_args[16:21] == [
                 'somequeue', 'false', '[]',
                 '__pyfiles__/custom_processes.py,foolib.whl', '100'
             ]
             assert batch_job_args[21:23] == [TEST_USER, job_id]
-            assert batch_job_args[23] == '0.1'
+            assert batch_job_args[23] == '0.0'
+            assert batch_job_args[27] == 'https://host.com/my.jar'
 
     @pytest.mark.parametrize(["boost"], [
         [("driver-memory", "99999g")],
