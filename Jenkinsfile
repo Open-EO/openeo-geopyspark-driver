@@ -32,4 +32,5 @@ pythonPipeline {
     '/data/MTDA:/data/MTDA:ro'
   ]
   enable_caching = true
+  enable_uv = true
 }
