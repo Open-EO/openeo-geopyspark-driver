@@ -28,7 +28,7 @@ def _default_capabilities_deploy_metadata() -> dict:
             "openeo",
             "openeo_driver",
             "openeo-geopyspark",
-            "geopyspark",
+            "geopyspark-openeo",
         ],
         jar_paths=find_geotrellis_jars(),
     )
