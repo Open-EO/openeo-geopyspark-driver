@@ -66,7 +66,7 @@ setup(
         'pyspark>=2.3.1,<2.4.0; python_version<"3.8"',
         # TODO #1220 the +openeo suffix to point to this fork of geopyspark seems to cause trouble in some newer build contexts
         #      move to a more explicit forked project, e.g. `geopyspark-openeo`?
-        'geopyspark==0.4.9+openeo',
+        'geopyspark_openeo==0.4.3.post1',
         # rasterio is an undeclared but required dependency for geopyspark
         # (see https://github.com/locationtech-labs/geopyspark/issues/683 https://github.com/locationtech-labs/geopyspark/pull/706)
         'rasterio~=1.2.0; python_version<"3.9"',
