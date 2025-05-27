@@ -274,6 +274,9 @@ def run_job(
     tracker_metadata = {}
     items = []
 
+    job_options = job_specification.get("job_options", {})
+    is_stac11 = job_options.get("stac-version", "1.0") == "1.1"
+
     try:
         # We actually expect type Path, but in reality paths as strings tend to
         # slip in anyway, so we better catch them and convert them.
@@ -284,7 +287,6 @@ def run_job(
         logger.info(f"Job spec: {json.dumps(job_specification,indent=1)}")
         logger.debug(f"{job_dir=}, {job_dir=}, {output_file=}, {metadata_file=}")
         process_graph = job_specification['process_graph']
-        job_options = job_specification.get("job_options", {})
 
         try:
             _extract_and_install_udf_dependencies(process_graph=process_graph)
@@ -504,7 +506,7 @@ def run_job(
                 raise ValueError(
                     f"sar_backscatter: Too many soft errors ({soft_errors} > {max_soft_errors_ratio})"
                 )
-        is_stac11 = job_options.get("stac-version", "1.0") == "1.1"
+
         meta = {**result_metadata, **tracker_metadata, **{"items": items}} if is_stac11 else {**result_metadata,
                                                                                               **tracker_metadata}
         write_metadata(meta, metadata_file)
