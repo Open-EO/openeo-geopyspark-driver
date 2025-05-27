@@ -258,11 +258,11 @@ class K8SOptions(JobOptions):
 
     def validate(self):
         max_cores = 4
-        if self.executor_cores > max_cores:
+        if int(self.executor_cores) > max_cores:
             raise OpenEOApiException(
                 message=f"Requested too many executor cores: {self.executor_cores} , the max for this instance is: {max_cores}",
                 status_code=400)
-        if self.driver_cores > max_cores:
+        if int(self.driver_cores) > max_cores:
             raise OpenEOApiException(
                 message=f"Requested too many driver cores: {self.driver_cores} , the max for this instance is: {max_cores}",
                 status_code=400)

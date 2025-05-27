@@ -10,7 +10,7 @@ def test_initialization_with_defaults():
     assert job_options.driver_memory == backend_config.default_driver_memory
     assert job_options.executor_memory == backend_config.default_executor_memory
     assert job_options.executor_cores == backend_config.default_executor_cores
-    assert job_options.udf_dependency_archives is None
+    assert job_options.udf_dependency_archives == []
 
 
 def test_from_dict():
