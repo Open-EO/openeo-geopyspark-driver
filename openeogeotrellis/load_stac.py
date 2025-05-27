@@ -482,7 +482,7 @@ def load_stac(
                 proj_epsg, proj_bbox, proj_shape = get_proj_metadata(itm, asset)
 
                 asset_band_names_from_metadata = get_band_names(item=itm, asset=asset)
-                if load_params.bands is None:
+                if not load_params.bands:
                     # No user-specified band filtering: follow band names from metadata (if possible)
                     asset_band_names = asset_band_names_from_metadata or [asset_id]
                 elif asset_id in load_params.bands:
@@ -498,7 +498,6 @@ def load_stac(
                 if band_names_tracker.already_seen(sorted(asset_band_names)):
                     # We've already seen these bands (e.g. at finer GSD), so skip this asset.
                     continue
-
 
                 for asset_band_name in asset_band_names:
                     if asset_band_name not in band_names:
