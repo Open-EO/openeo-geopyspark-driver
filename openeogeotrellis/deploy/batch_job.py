@@ -504,7 +504,10 @@ def run_job(
                 raise ValueError(
                     f"sar_backscatter: Too many soft errors ({soft_errors} > {max_soft_errors_ratio})"
                 )
-        write_metadata({**result_metadata, **tracker_metadata, **{"items": items}}, metadata_file)
+        is_stac11 = job_options.get("stac-version", "1.0") == "1.1"
+        meta = {**result_metadata, **tracker_metadata, **{"items": items}} if is_stac11 else {**result_metadata,
+                                                                                              **tracker_metadata}
+        write_metadata(meta, metadata_file)
         logger.debug("Starting GDAL-based retrieval of asset metadata")
         result_metadata = _assemble_result_metadata(
             tracer=tracer,
@@ -534,7 +537,8 @@ def run_job(
     finally:
         if len(tracker_metadata) == 0:
             tracker_metadata = _get_tracker_metadata("")
-        write_metadata({**result_metadata, **tracker_metadata, **{"items": items}}, metadata_file)
+        meta =  {**result_metadata, **tracker_metadata, **{"items": items}} if is_stac11 else {**result_metadata, **tracker_metadata}
+        write_metadata(meta, metadata_file)
 
 
 def write_metadata(metadata: dict, metadata_file: Path):
