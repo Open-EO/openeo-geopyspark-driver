@@ -3234,43 +3234,6 @@ class GpsBatchJobs(backend.BatchJobs):
             logger.info("Deleted Sentinel Hub assembled folder(s) {fs} for batch job {j}"
                         .format(fs=assembled_folders, j=job_id), extra={'job_id': job_id})
 
-    def delete_jobs_before(
-        self,
-        upper: dt.datetime,
-        *,
-        user_ids: Optional[List[str]] = None,
-        dry_run: bool = True,
-        include_ongoing: bool = True,
-        include_done: bool = True,
-        user_limit: Optional[int] = 1000,
-    ) -> None:
-        # TODO #632 #863 #1123 #1165 remove this dead code path?
-        with self._double_job_registry as registry, TimingLogger(
-            title=f"Collecting jobs to delete: {upper=} {user_ids=} {include_ongoing=} {include_done=}",
-            logger=logger,
-        ):
-            jobs_before = registry.get_all_jobs_before(
-                upper,
-                user_ids=user_ids,
-                include_ongoing=include_ongoing,
-                include_done=include_done,
-                user_limit=user_limit,
-            )
-        logger.info(f"Collected {len(jobs_before)} jobs to delete")
-
-        with TimingLogger(title=f"Deleting {len(jobs_before)} jobs", logger=logger):
-
-            for job_info in jobs_before:
-                job_id = job_info["job_id"]
-                user_id = job_info["user_id"]
-                if not dry_run:
-                    logger.info(f"Deleting {job_id=} from {user_id=}")
-                    self._delete_job(
-                        job_id=job_id, user_id=user_id, propagate_errors=True
-                    )
-                else:
-                    logger.info(f"Dry run: not deleting {job_id=} from {user_id=}")
-
 
 
 class _BatchJobError(Exception):

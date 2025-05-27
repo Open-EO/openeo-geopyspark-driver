@@ -8,7 +8,7 @@ import boto3
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.integrations.s3proxy.exceptions import S3ProxyDisabled, S3ProxyUnsupportedBucketType
 from openeogeotrellis.integrations.s3proxy.sts import get_job_aws_credentials_for_proxy
-from openeogeotrellis.integrations.s3.bucket_details import BucketDetails, is_workspace_bucket
+from openeo_driver.integrations.s3.bucket_details import BucketDetails, is_workspace_bucket
 
 
 def _get_role_arn(bucket_details: BucketDetails) -> str:

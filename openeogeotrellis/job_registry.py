@@ -992,28 +992,6 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
 
         return zk_jobs or ejr_jobs or []
 
-    def get_all_jobs_before(
-        self,
-        upper: dt.datetime,
-        *,
-        user_ids: Optional[List[str]] = None,
-        include_ongoing: bool = True,
-        include_done: bool = True,
-        user_limit: Optional[int] = 1000,
-    ) -> List[dict]:
-        # TODO #632 #863 #1123 #1165 remove this dead code path?
-        if not self.zk_job_registry:
-            raise NotImplementedError("only necessary for ZK cleaner script")
-
-        jobs = self.zk_job_registry.get_all_jobs_before(
-            upper=upper,
-            user_ids=user_ids,
-            include_ongoing=include_ongoing,
-            include_done=include_done,
-            per_user_limit=user_limit,
-        )
-        return jobs
-
     def list_active_jobs(
         self,
         *,

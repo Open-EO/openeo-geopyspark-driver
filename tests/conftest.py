@@ -21,7 +21,7 @@ from openeo_driver.config import OpenEoBackendConfig
 from openeogeotrellis.integrations.identity import IDPTokenIssuer
 
 from openeogeotrellis.config.s3_config import AWSConfig
-from openeogeotrellis.integrations.s3.client import S3ClientBuilder
+from openeo_driver.integrations.s3.client import S3ClientBuilder
 
 import openeogeotrellis
 import pytest
@@ -332,23 +332,15 @@ def config_overrides() -> dict:
 
 
 @pytest.fixture
-def _config_overrides(config_overrides, _dynamic_overrides) -> dict:
-    # use config_overrides to set manual overrides for your test
-    return {
-        **_dynamic_overrides,
-        **config_overrides
-    }
-
-
-@pytest.fixture
-def set_config_overrides(_config_overrides) -> typing.Generator[GpsBackendConfig, None, None]:
+def _set_config_overrides(config_overrides, _dynamic_overrides) -> typing.Iterator[GpsBackendConfig]:
+    all_config_overrides = {**_dynamic_overrides, **config_overrides}
     openeo_driver_overrides = {}
-    for config_key, config_override_value in _config_overrides.items():
+    for config_key, config_override_value in all_config_overrides.items():
         if hasattr(OpenEoBackendConfig, config_key):
             openeo_driver_overrides[config_key] = config_override_value
 
     geopyspark_driver_overrides = {}
-    for config_key, config_override_value in _config_overrides.items():
+    for config_key, config_override_value in all_config_overrides.items():
         if hasattr(OpenEoBackendConfig, config_key):
             openeo_driver_overrides[config_key] = config_override_value
         elif hasattr(openeogeotrellis.config.GpsBackendConfig, config_key):
@@ -361,7 +353,9 @@ def set_config_overrides(_config_overrides) -> typing.Generator[GpsBackendConfig
 
 
 @pytest.fixture
-def backend_implementation(batch_job_output_root, job_registry, set_config_overrides) -> "GeoPySparkBackendImplementation":
+def backend_implementation(
+    batch_job_output_root, job_registry, _set_config_overrides
+) -> "GeoPySparkBackendImplementation":
     from openeogeotrellis.backend import GeoPySparkBackendImplementation
 
     backend = GeoPySparkBackendImplementation(

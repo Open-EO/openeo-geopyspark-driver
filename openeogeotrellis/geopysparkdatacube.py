@@ -1991,9 +1991,16 @@ class GeopysparkDataCube(DriverDataCube):
                     _log.info("save_result (catalog) save_on_executors")
                     self._save_on_executors(max_level, filename, zlevel, filename_prefix=filename_prefix)
                 elif stitch:
+                    gtiff_options = get_jvm().org.openeo.geotrellis.geotiff.GTiffOptions()
+                    if filename_prefix.isDefined():
+                        gtiff_options.setFilenamePrefix(filename_prefix.get())
+                    gtiff_options.setResampleMethod(overview_resample)
+                    getattr(gtiff_options, "overviews_$eq")(overviews)
+                    if tile_size:
+                        gtiff_options.setTileSize(tile_size)
                     if tile_grid:
                         _log.info("save_result save_stitched_tile_grid")
-                        tiles = self._save_stitched_tile_grid(max_level, save_filename, tile_grid, crop_bounds,
+                        tiles = self._save_stitched_tile_grid(max_level, save_filename, tile_grid, gtiff_options, crop_bounds,
                                                               zlevel=zlevel, filename_prefix=filename_prefix)
 
                         # noinspection PyProtectedMember
@@ -2011,7 +2018,7 @@ class GeopysparkDataCube(DriverDataCube):
                         )
                     else:
                         _log.info("save_result save_stitched")
-                        bbox = self._save_stitched(max_level, save_filename, crop_bounds, zlevel=zlevel)
+                        bbox = self._save_stitched(max_level, save_filename, gtiff_options, crop_bounds, zlevel=zlevel)
                         return add_gdalinfo_objects(
                             {
                                 str(pathlib.Path(filename).name): {
@@ -2044,6 +2051,8 @@ class GeopysparkDataCube(DriverDataCube):
                     color_cmap = get_color_cmap()
                     if color_cmap is not None:
                         gtiff_options.setColorMap(color_cmap)
+                    if tile_size:
+                        gtiff_options.setTileSize(tile_size)
                     band_count = -1
                     if self.metadata.has_band_dimension():
                         band_count = len(self.metadata.band_dimension.band_names)
@@ -2094,7 +2103,7 @@ class GeopysparkDataCube(DriverDataCube):
                         if tile_grid:
                             timestamped_paths = (get_jvm()
                                 .org.openeo.geotrellis.geotiff.package.saveStitchedTileGridTemporal(
-                                max_level_rdd, save_directory, tile_grid, compression, filename_prefix))
+                                max_level_rdd, save_directory, tile_grid, compression, gtiff_options))
                         elif sample_by_feature:
                             if separate_asset_per_band:
                                 raise OpenEOApiException(
@@ -2109,7 +2118,7 @@ class GeopysparkDataCube(DriverDataCube):
                             labels = self.get_labels(geometries,feature_id_property)
                             timestamped_paths = get_jvm().org.openeo.geotrellis.geotiff.package.saveSamples(
                                 max_level_rdd, save_directory, projected_polygons, labels, compression,
-                                filename_prefix)
+                                gtiff_options)
                         else:
                             timestamped_paths = (
                                 get_jvm().org.openeo.geotrellis.geotiff.package.saveRDDTemporalAllowAssetPerBand(
@@ -2146,7 +2155,7 @@ class GeopysparkDataCube(DriverDataCube):
                         return add_gdalinfo_objects(assets)
                     else:
                         if tile_grid:
-                            tiles = self._save_stitched_tile_grid(max_level, str(save_filename), tile_grid, crop_bounds,
+                            tiles = self._save_stitched_tile_grid(max_level, str(save_filename), tile_grid, gtiff_options, crop_bounds,
                                                                   zlevel=zlevel, filename_prefix=filename_prefix)
 
                             # noinspection PyProtectedMember
@@ -2570,18 +2579,18 @@ class GeopysparkDataCube(DriverDataCube):
         subprocess.run(['xargs', '-0', 'gdal_merge.py'], input='\0'.join(merge_args), universal_newlines=True)
 
 
-    def _save_stitched(self, spatial_rdd, path, crop_bounds=None,zlevel=6) -> 'Extent':
+    def _save_stitched(self, spatial_rdd, path, gtiff_options, crop_bounds=None, zlevel=6) -> 'Extent':
         jvm = get_jvm()
 
         max_compression = jvm.geotrellis.raster.io.geotiff.compression.DeflateCompression(zlevel)
 
         if crop_bounds:
             return jvm.org.openeo.geotrellis.geotiff.package.saveStitched(spatial_rdd.srdd.rdd(), path, crop_bounds._asdict(),
-                                                                   max_compression)
+                                                                          max_compression, gtiff_options)
         else:
-            return jvm.org.openeo.geotrellis.geotiff.package.saveStitched(spatial_rdd.srdd.rdd(), path, max_compression)
+            return jvm.org.openeo.geotrellis.geotiff.package.saveStitched(spatial_rdd.srdd.rdd(), path, max_compression, gtiff_options)
 
-    def _save_stitched_tile_grid(self, spatial_rdd, path, tile_grid, crop_bounds=None, zlevel=6,
+    def _save_stitched_tile_grid(self, spatial_rdd, path, tile_grid, gtiff_options, crop_bounds=None, zlevel=6,
                                  filename_prefix=None):
         jvm = get_jvm()
 
@@ -2595,10 +2604,10 @@ class GeopysparkDataCube(DriverDataCube):
         if crop_bounds:
             return jvm.org.openeo.geotrellis.geotiff.package.saveStitchedTileGrid(spatial_rdd.srdd.rdd(), path,
                                                                                   tile_grid, crop_bounds._asdict(),
-                                                                                  max_compression)
+                                                                                  max_compression, gtiff_options)
         else:
             return jvm.org.openeo.geotrellis.geotiff.package.saveStitchedTileGrid(spatial_rdd.srdd.rdd(), path,
-                                                                                  tile_grid, max_compression)
+                                                                                  tile_grid, max_compression, gtiff_options)
 
     def _save_zarr_executors(self,spatial_rdd, path, zarr_options):
         jvm = get_jvm()

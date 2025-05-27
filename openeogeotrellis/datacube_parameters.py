@@ -73,4 +73,6 @@ def create(load_params: LoadParameters, env: EvalEnv, jvm: JVMView):
             load_params.filter_temporal_labels["process_graph"]
         )
         datacubeParams.setTimeDimensionFilter(labels_filter.builder)
+
+    datacubeParams.setRetainNoDataTiles(feature_flags.get("retain_nodata_tiles", False))
     return datacubeParams, single_level

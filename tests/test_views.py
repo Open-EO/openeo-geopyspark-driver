@@ -32,7 +32,7 @@ from openeo_driver.testing import (
 
 import openeogeotrellis.job_registry
 import openeogeotrellis.sentinel_hub.batchprocessing
-from openeogeotrellis.asset_urls import PresignedS3AssetUrls
+from openeogeotrellis.integrations.s3proxy.asset_urls import PresignedS3AssetUrls
 from openeogeotrellis.backend import JOB_METADATA_FILENAME, GpsBatchJobs
 from openeogeotrellis.job_registry import DoubleJobRegistry, ZkJobRegistry
 from openeogeotrellis.testing import KazooClientMock, gps_config_overrides
@@ -840,7 +840,6 @@ class TestBatchJobs:
                 assert res.status_code == 200
                 assert res.data == TIFF_DUMMY_DATA
 
-    @pytest.mark.skip(reason="Tests don't work properly on CI/CD #1183")
     @mock.patch(
         "openeogeotrellis.configparams.ConfigParams.use_object_storage",
         new_callable=mock.PropertyMock,

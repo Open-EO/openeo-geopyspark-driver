@@ -52,20 +52,20 @@ setup(
             "scripts/submit_batch_job_log4j.properties",
             "scripts/submit_batch_job_log4j2.xml",
             "scripts/batch_job_log4j2.xml",
-            "scripts/cleaner-entrypoint.sh",  # TODO #632 #863 #1123 #1165 remove this dead code path?
             "scripts/job_tracker-entrypoint.sh",
             "scripts/async_task-entrypoint.sh",
             "scripts/async_task_log4j2.xml",
-            "scripts/kleaner-entrypoint.sh",
             "scripts/zookeeper_set.py",
         ]),
     ],
     tests_require=tests_require,
     install_requires=[
         "openeo>=0.33.0",
-        "openeo_driver>=0.134.0.dev",
+        "openeo_driver>=0.135.0a2.dev",
         'pyspark==3.5.3; python_version>="3.8"',
         'pyspark>=2.3.1,<2.4.0; python_version<"3.8"',
+        # TODO #1220 the +openeo suffix to point to this fork of geopyspark seems to cause trouble in some newer build contexts
+        #      move to a more explicit forked project, e.g. `geopyspark-openeo`?
         'geopyspark==0.4.9+openeo',
         # rasterio is an undeclared but required dependency for geopyspark
         # (see https://github.com/locationtech-labs/geopyspark/issues/683 https://github.com/locationtech-labs/geopyspark/pull/706)

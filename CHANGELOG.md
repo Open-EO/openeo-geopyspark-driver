@@ -24,6 +24,8 @@ without compromising stable operations.
 - Add timeout to metadata request on "stac" data sources in layer catalog ([eu-cdse/openeo-cdse-infra#525](https://github.com/eu-cdse/openeo-cdse-infra/issues/525))
 - Improve detection of `apply_metadata` function in UDF code (related to [#1182](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1182))
 - Fix `require_application_id` filter of `list_active_jobs` in job tracker ([#1197](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1197))
+- Remove outdated and defunct ZooKeeper "cleaner" scripts and code paths ([#1219](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1219), [#1123](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1123))
+- Move `integrations.s3` to Python driver [#1195](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1195)
 
 
 ## 0.65.0
