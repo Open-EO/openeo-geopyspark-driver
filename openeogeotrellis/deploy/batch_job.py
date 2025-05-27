@@ -275,7 +275,7 @@ def run_job(
     items = []
 
     job_options = job_specification.get("job_options", {})
-    is_stac11 = job_options.get("stac-version", "1.0") == "1.1"
+    is_stac11 = job_options.get("stac-version", "1.0") is "1.1"
 
     try:
         # We actually expect type Path, but in reality paths as strings tend to
@@ -394,8 +394,23 @@ def run_job(
 
         def result_write_assets(result_arg) -> (dict, dict):
             items = result_arg.write_assets(str(output_file))
+            keys = set()
+            def unique_key(asset_id,href):
+                if href is not None:
+                    url = urlparse(str(href))
+                    temp_key = url.path.split("/")[-1]  # use the last part of the path as key
+                else:
+                    temp_key = asset_id
+                counter = 0
+                while temp_key in keys:
+                    temp_key = f"{asset_id}_{counter}"
+                    counter += 1
+                keys.add(temp_key)
+                return temp_key
+
+
             assets = {
-                asset_key: asset for item in items.values() for asset_key, asset in item.get("assets", {}).items()
+                unique_key(asset_key, asset.get("href",None)): asset for item in items.values() for asset_key, asset in item.get("assets", {}).items()
             }
             return assets, items
 
