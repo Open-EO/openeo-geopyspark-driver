@@ -1,3 +1,4 @@
+import abc
 import datetime as dt
 import io
 import json
@@ -97,7 +98,7 @@ from openeogeotrellis.integrations.kubernetes import (
 )
 from openeogeotrellis.integrations.stac import ResilientStacIO
 from openeogeotrellis.integrations.traefik import Traefik
-from openeogeotrellis.job_options import JobOptions
+from openeogeotrellis.job_options import JobOptions, K8SOptions
 from openeogeotrellis.job_registry import (
     DoubleJobRegistry,
     ZkJobRegistry,
@@ -1960,24 +1961,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
             raise OpenEOApiException(f"invalid value {value} for job_option {job_option_key}")
 
-        def as_max_soft_errors_ratio_arg() -> str:
-            value = job_options.get("soft-errors")
 
-            if value == "false":
-                return "0.0"
-            elif value == None:
-                return str(get_backend_config().default_soft_errors)
-            elif value == "true":
-                return "1.0"
-            elif isinstance(value, bool):
-                return "1.0" if value else "0.0"
-            elif isinstance(value, (int, float)) and 0.0 <= value <= 1.0:
-                return str(value)
-
-            raise OpenEOApiException(message=f"invalid value {value} for job_option soft-errors; "
-                                             f"supported values include false/true and values in the "
-                                             f"interval [0.0, 1.0]",
-                                     status_code=400)
 
         def as_logging_threshold_arg() -> str:
             if JOB_OPTION_LOGGING_THRESHOLD in job_options:
@@ -2002,55 +1986,25 @@ class GpsBatchJobs(backend.BatchJobs):
             )
 
         isKube = ConfigParams().is_kube_deploy
-        driver_memory = job_options.get("driver-memory", get_backend_config().default_driver_memory )
-        driver_memory_overhead = job_options.get("driver-memoryOverhead", get_backend_config().default_driver_memoryOverhead)
-        executor_memory = job_options.get("executor-memory", get_backend_config().default_executor_memory)
-        executor_memory_overhead = job_options.get("executor-memoryOverhead", get_backend_config().default_executor_memoryOverhead )
-        driver_cores = str(job_options.get("driver-cores", 1 if isKube else 5))
-        executor_cores = str(job_options.get("executor-cores", 1 if isKube else 2))
-        executor_corerequest = job_options.get("executor-request-cores", "NONE")
-        if executor_corerequest == "NONE":
-            executor_corerequest = str(int(executor_cores)/2*1000)+"m"
-        max_executors = str(job_options.get("max-executors", get_backend_config().default_max_executors))
-        executor_threads_jvm = str(job_options.get("executor-threads-jvm", get_backend_config().default_executor_threads_jvm))
-        gdal_dataset_cache_size = str(job_options.get("gdal-dataset-cache-size", get_backend_config().default_gdal_dataset_cache_size))
-        gdal_cachemax = str(job_options.get("gdal-cachemax", get_backend_config().default_gdal_cachemax ))
+
+        if isKube:
+            options = K8SOptions.from_dict(job_options)
+        else:
+            options = JobOptions.from_dict(job_options)
+
+        executor_memory_overhead = options.executor_memory_overhead
+
         queue = job_options.get("queue", "default")
         profile = as_boolean_arg("profile", default_value="false")
-        max_soft_errors_ratio = as_max_soft_errors_ratio_arg()
-        task_cpus = str(job_options.get("task-cpus", 1))
-        archives = ",".join(job_options.get("udf-dependency-archives", []))
-        py_files = job_options.get("udf-dependency-files", [])
-        use_goofys = as_boolean_arg("goofys", default_value="false") != "false"
-        mount_tmp = as_boolean_arg("mount_tmp", default_value="false") != "false"
-        use_pvc = as_boolean_arg("spark_pvc", default_value="false") != "false"
+
         logging_threshold = as_logging_threshold_arg()
         propagatable_web_app_driver_envars = {
             envar: os.environ.get(envar, "")
             for envar in os.environ.get("OPENEO_PROPAGATABLE_WEB_APP_DRIVER_ENVARS", "").split()
         }
 
-        as_bytes = self._jvm.org.apache.spark.util.Utils.byteStringAsBytes
+        options.validate()
 
-        if as_bytes(executor_memory) + as_bytes(executor_memory_overhead) > as_bytes(get_backend_config().max_executor_or_driver_memory):
-            raise OpenEOApiException(
-                message=f"Requested too much executor memory: {executor_memory} + {executor_memory_overhead}, the max for this instance is: {get_backend_config().max_executor_or_driver_memory}",
-                status_code=400)
-        if as_bytes(driver_memory) + as_bytes(driver_memory_overhead) > as_bytes(get_backend_config().max_executor_or_driver_memory):
-            raise OpenEOApiException(
-                message=f"Requested too much driver memory: {driver_memory} + {driver_memory_overhead}, the max for this instance is: {get_backend_config().max_executor_or_driver_memory}",
-                status_code=400)
-
-        if isKube:
-            max_cores = 4
-            if int(executor_cores) > max_cores:
-                raise OpenEOApiException(
-                    message=f"Requested too many executor cores: {executor_cores} , the max for this instance is: {max_cores}",
-                    status_code=400)
-            if int(driver_cores) > max_cores:
-                raise OpenEOApiException(
-                    message=f"Requested too many driver cores: {driver_cores} , the max for this instance is: {max_cores}",
-                    status_code=400)
 
 
         def serialize_dependencies() -> str:
@@ -2074,12 +2028,13 @@ class GpsBatchJobs(backend.BatchJobs):
         if get_backend_config().setup_kerberos_auth:
             setup_kerberos_auth(self._principal, self._key_tab, self._jvm)
 
-        memOverheadBytes = as_bytes(executor_memory_overhead)
+        as_bytes = self._jvm.org.apache.spark.util.Utils.byteStringAsBytes
+        memOverheadBytes = as_bytes(options.executor_memory_overhead)
         jvmOverheadBytes = as_bytes("128m")
 
         # By default, Python uses the space reserved by `spark.executor.memoryOverhead` but no limit is enforced.
         # When `spark.executor.pyspark.memory` is specified, Python will only use this memory and no more.
-        python_max = job_options.get("python-memory", get_backend_config().default_python_memory)
+        python_max = options.python_memory
         if python_max is not None:
             python_max = as_bytes(python_max)
             if "executor-memoryOverhead" not in job_options:
@@ -2094,12 +2049,12 @@ class GpsBatchJobs(backend.BatchJobs):
                 python_max = -1
             executor_memory_overhead = f"{memOverheadBytes // (1024 ** 2)}m"
 
-        if as_bytes(executor_memory) + as_bytes(executor_memory_overhead) + python_max > as_bytes(
+        if as_bytes(options.executor_memory) + as_bytes(executor_memory_overhead) + python_max > as_bytes(
                 get_backend_config().max_executor_or_driver_memory
         ):
             raise OpenEOApiException(
                 message=f"Requested too much executor memory: "
-                        + f"{executor_memory} + {executor_memory_overhead} + {python_max // (1024 ** 2)}m, "
+                        + f"{options.executor_memory} + {executor_memory_overhead} + {python_max // (1024 ** 2)}m, "
                         + f"the max for this instance is: {get_backend_config().max_executor_or_driver_memory}",
                 status_code=400,
             )
@@ -2115,6 +2070,16 @@ class GpsBatchJobs(backend.BatchJobs):
 
             # TODO: eliminate these local imports
             from kubernetes.client.rest import ApiException
+
+            use_goofys = as_boolean_arg("goofys", default_value="false") != "false"
+            mount_tmp = as_boolean_arg("mount_tmp", default_value="false") != "false"
+            use_pvc = as_boolean_arg("spark_pvc", default_value="false") != "false"
+
+            executor_corerequest = job_options.get("executor-request-cores", "NONE")
+            if executor_corerequest == "NONE":
+                executor_corerequest = str(int(options.executor_cores) / 2 * 1000) + "m"
+
+            gdal_cachemax = str(job_options.get("gdal-cachemax", get_backend_config().default_gdal_cachemax))
 
 
             api_instance_custom_object = kube_client("CustomObject")
@@ -2205,23 +2170,23 @@ class GpsBatchJobs(backend.BatchJobs):
                 metadata_file=JOB_METADATA_FILENAME,
                 job_id_short=truncate_job_id_k8s(job_id),
                 job_id_full=job_id,
-                driver_cores=driver_cores,
-                driver_memory=driver_memory,
-                driver_memory_overhead=driver_memory_overhead,
-                executor_cores=executor_cores,
+                driver_cores=str(options.driver_cores),
+                driver_memory=options.driver_memory,
+                driver_memory_overhead=options.driver_memory_overhead,
+                executor_cores=options.executor_cores,
                 executor_corerequest=executor_corerequest,
-                executor_memory=executor_memory,
-                executor_memory_overhead=executor_memory_overhead,
-                executor_threads_jvm=executor_threads_jvm,
+                executor_memory=options.executor_memory,
+                executor_memory_overhead=options.executor_memory_overhead,
+                executor_threads_jvm=str(options.executor_threads_jvm),
                 python_max_memory = python_max,
-                max_executors=max_executors,
+                max_executors=options.max_executors,
                 api_version=api_version,
                 dependencies="[]",  # TODO: use `serialize_dependencies()` here instead? It's probably messy to get that JSON string correctly encoded in the rendered YAML.
                 user_id=user_id,
                 user_id_short=truncate_user_id_k8s(user_id),
-                max_soft_errors_ratio=max_soft_errors_ratio,
-                task_cpus=task_cpus,
-                gdal_dataset_cache_size=gdal_dataset_cache_size,
+                max_soft_errors_ratio=options.soft_errors_arg(),
+                task_cpus=options.task_cpus,
+                gdal_dataset_cache_size=str(options.gdal_dataset_cache_size),
                 gdal_cachemax=gdal_cachemax,
                 current_time=int(time.time()),
                 aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID"),
@@ -2237,8 +2202,8 @@ class GpsBatchJobs(backend.BatchJobs):
                 swift_bucket=bucket,
                 zookeeper_nodes=os.environ.get("ZOOKEEPERNODES"),
                 eodata_mount=eodata_mount,
-                archives=archives,
-                py_files = py_files,
+                archives=",".join(options.udf_dependency_archives),
+                py_files = options.udf_dependency_files,
                 logging_threshold=logging_threshold,
                 mount_tmp=mount_tmp,
                 use_pvc=use_pvc,
@@ -2260,7 +2225,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 provide_s3_profiles_and_tokens=get_backend_config().provide_s3_profiles_and_tokens,
                 batch_job_cfg_secret_name=batch_job_cfg_secret_name,
                 batch_job_config_dir=get_backend_config().batch_job_config_dir,
-                openeo_jar_path=user_provided_jar_path or 'local:///opt/geotrellis-extensions-static.jar'
+                openeo_jar_path=options.openeo_jar_path or 'local:///opt/geotrellis-extensions-static.jar'
             )
 
             with self._double_job_registry as dbl_registry:
@@ -2341,8 +2306,8 @@ class GpsBatchJobs(backend.BatchJobs):
             image_name = job_options.get("image-name", os.environ.get("YARN_CONTAINER_RUNTIME_DOCKER_IMAGE"))
 
             extra_py_files=""
-            if len(py_files)>0:
-                extra_py_files = "," + py_files.join(",")
+            if options.udf_dependency_files is not None and len(options.udf_dependency_files)>0:
+                extra_py_files = ",".join(options.udf_dependency_files)
 
             job_work_dir = self.get_job_work_dir(job_id=job_id)
 
@@ -2393,24 +2358,24 @@ class GpsBatchJobs(backend.BatchJobs):
                 else:
                     args.append("0.4.0")
 
-                args.append(driver_memory)
-                args.append(executor_memory)
-                args.append(executor_memory_overhead)
-                args.append(driver_cores)
-                args.append(executor_cores)
-                args.append(driver_memory_overhead)
+                args.append(options.driver_memory)
+                args.append(options.executor_memory)
+                args.append(options.executor_memory_overhead)
+                args.append(str(options.driver_cores))
+                args.append(str(options.executor_cores))
+                args.append(options.driver_memory_overhead)
                 args.append(queue)
                 args.append(profile)
                 args.append(serialize_dependencies())
                 args.append(self.get_submit_py_files()+extra_py_files)
-                args.append(max_executors)
+                args.append(str(options.max_executors))
                 args.append(user_id)
                 args.append(job_id)
-                args.append(max_soft_errors_ratio)
-                args.append(task_cpus)
+                args.append(options.soft_errors_arg())
+                args.append(options.task_cpus)
                 args.append(sentinel_hub_client_alias)
                 args.append(temp_properties_file.name)
-                args.append(archives)
+                args.append(",".join(options.udf_dependency_archives))
                 args.append(logging_threshold)
                 args.append(os.environ.get(ConfigGetter.OPENEO_BACKEND_CONFIG, ""))
                 args.append(str(job_work_dir / UDF_PYTHON_DEPENDENCIES_FOLDER_NAME))
@@ -2434,8 +2399,8 @@ class GpsBatchJobs(backend.BatchJobs):
                     log.info(f"Submitting job with command {args!r}")
                     d = dict(**os.environ)
                     d["YARN_CONTAINER_RUNTIME_DOCKER_IMAGE"] = image_name
-                    if user_provided_jar_path is not None:
-                        d["OPENEO_GEOTRELLIS_JAR"] = job_options["openeo-jar-path"]
+                    if options.openeo_jar_path is not None:
+                        d["OPENEO_GEOTRELLIS_JAR"] = options.openeo_jar_path
                     script_output = subprocess.check_output(args, stderr=subprocess.STDOUT, universal_newlines=True, env=d)
                     log.info(f"Submitted job, output was: {script_output}")
                 except CalledProcessError as e:
