@@ -468,21 +468,40 @@ def load_stac(
                        .withId(itm.id)
                        .withNominalDate(itm.properties.get("datetime") or itm.properties["start_datetime"]))
 
-            for asset_id, asset in band_assets.items():
-                asset_band_names = get_band_names(item=itm, asset=asset) or [asset_id]
+            band_names_tracker = NoveltyTracker()
+            for asset_id, asset in sorted(
+                # Go through assets ordered by asset GSD (from finer to coarser) if possible,
+                # falling back on deterministic alphabetical asset_id order.
+                # see https://github.com/Open-EO/openeo-geopyspark-driver/pull/1213#discussion_r2107353442
+                band_assets.items(),
+                key=lambda kv: (
+                    float(kv[1].extra_fields.get("gsd") or itm.properties.get("gsd") or 40e6),
+                    kv[0],
+                ),
+            ):
                 proj_epsg, proj_bbox, proj_shape = get_proj_metadata(itm, asset)
 
-                for asset_band_name in asset_band_names:
-                    if asset_band_name not in band_names:
-                        band_names.append(asset_band_name)
+                for asset_band_names in [
+                    # Band names extracted from assets metadata (e.g. "eo:bands" or "bands")
+                    get_band_names(item=itm, asset=asset),
+                    # Legacy fallback: use asset id as band name
+                    [asset_id],
+                ]:
+                    # Skip empty or already known band name lists
+                    if not asset_band_names or not band_names_tracker.is_new(asset_band_names):
+                        continue
 
-                    if proj_bbox and proj_shape:
-                        band_cell_size[asset_band_name] = _compute_cellsize(proj_bbox, proj_shape)
-                    if proj_epsg:
-                        band_epsgs.setdefault(asset_band_name, set()).add(proj_epsg)
+                    for asset_band_name in asset_band_names:
+                        if asset_band_name not in band_names:
+                            band_names.append(asset_band_name)
 
-                pixel_value_offset = get_pixel_value_offset(itm, asset) if apply_lcfm_improvements else 0.0
-                builder = builder.addLink(get_best_url(asset), asset_id, pixel_value_offset, asset_band_names)
+                        if proj_bbox and proj_shape:
+                            band_cell_size[asset_band_name] = _compute_cellsize(proj_bbox, proj_shape)
+                        if proj_epsg:
+                            band_epsgs.setdefault(asset_band_name, set()).add(proj_epsg)
+
+                    pixel_value_offset = get_pixel_value_offset(itm, asset) if apply_lcfm_improvements else 0.0
+                    builder = builder.addLink(get_best_url(asset), asset_id, pixel_value_offset, asset_band_names)
 
             if proj_epsg:
                 builder = builder.withCRS(f"EPSG:{proj_epsg}")
@@ -1092,3 +1111,25 @@ class _StacMetadataParser:
         # TODO: instead of warning: exception, or return None?
         logger.warning("_StacMetadataParser.bands_from_stac_asset no band name source found")
         return self._Bands([])
+
+
+class NoveltyTracker:
+    """Utility to detect new things."""
+
+    # TODO: move to more general utility module
+
+    def __init__(self):
+        self._seen: set = set()
+
+    def is_new(self, x) -> bool:
+        """Check if the item is new (not seen before)."""
+        if isinstance(x, list):
+            key = tuple(x)
+        else:
+            # TODO: wider coverage to make the thing hashable
+            key = x
+        if key in self._seen:
+            return False
+        else:
+            self._seen.add(key)
+            return True

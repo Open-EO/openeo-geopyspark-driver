@@ -213,19 +213,41 @@ def test_lcfm_improvements(  # resolution and offset behind a feature flag; alph
     cellsize_mock.assert_called_once_with(resolution, resolution)
     assert data_cube.metadata.spatial_extent["crs"] == "EPSG:32636"
 
-    feature_builder.addLink.assert_any_call(
-        "/eodata/Sentinel-2/MSI/L2A_N0500/2020/03/22/S2B_MSIL2A_20200322T074609_N0500_R135_T36NYH_20230612T214223.SAFE/GRANULE/L2A_T36NYH_A015891_20200322T075811/IMG_DATA/R60m/T36NYH_20200322T074609_B01_60m.jp2",
-        "B01_60m",
-        -1000.0,  # has "raster:scale": 0.0001 and "raster:offset": -0.1
-        ["B01"],
-    )
+    assert [c for c in feature_builder.addLink.call_args_list if "B01" in c.args[1]] == [
+        mock.call(
+            "/eodata/Sentinel-2/MSI/L2A_N0500/2020/03/22/S2B_MSIL2A_20200322T074609_N0500_R135_T36NYH_20230612T214223.SAFE/GRANULE/L2A_T36NYH_A015891_20200322T075811/IMG_DATA/R20m/T36NYH_20200322T074609_B01_20m.jp2",
+            "B01_20m",
+            -1000.0,
+            ["B01"],
+        ),
+        mock.call(
+            "/eodata/Sentinel-2/MSI/L2A_N0500/2020/03/22/S2B_MSIL2A_20200322T074609_N0500_R135_T36NYH_20230612T214223.SAFE/GRANULE/L2A_T36NYH_A015891_20200322T075811/IMG_DATA/R20m/T36NYH_20200322T074609_B01_20m.jp2",
+            "B01_20m",
+            -1000.0,
+            ["B01_20m"],
+        ),
+        mock.call(
+            "/eodata/Sentinel-2/MSI/L2A_N0500/2020/03/22/S2B_MSIL2A_20200322T074609_N0500_R135_T36NYH_20230612T214223.SAFE/GRANULE/L2A_T36NYH_A015891_20200322T075811/IMG_DATA/R60m/T36NYH_20200322T074609_B01_60m.jp2",
+            "B01_60m",
+            -1000.0,  # has "raster:scale": 0.0001 and "raster:offset": -0.1
+            ["B01_60m"],
+        ),
+    ]
 
-    feature_builder.addLink.assert_any_call(
-        "/eodata/Sentinel-2/MSI/L2A_N0500/2020/03/22/S2B_MSIL2A_20200322T074609_N0500_R135_T36NYH_20230612T214223.SAFE/GRANULE/L2A_T36NYH_A015891_20200322T075811/IMG_DATA/R20m/T36NYH_20200322T074609_SCL_20m.jp2",
-        "SCL_20m",
-        0.0,  # has neither "raster:scale" nor "raster:offset"
-        ["SCL_20m"],
-    )
+    assert [c for c in feature_builder.addLink.call_args_list if "SCL" in c.args[1]] == [
+        mock.call(
+            "/eodata/Sentinel-2/MSI/L2A_N0500/2020/03/22/S2B_MSIL2A_20200322T074609_N0500_R135_T36NYH_20230612T214223.SAFE/GRANULE/L2A_T36NYH_A015891_20200322T075811/IMG_DATA/R20m/T36NYH_20200322T074609_SCL_20m.jp2",
+            "SCL_20m",
+            0.0,  # has neither "raster:scale" nor "raster:offset"
+            ["SCL_20m"],
+        ),
+        mock.call(
+            "/eodata/Sentinel-2/MSI/L2A_N0500/2020/03/22/S2B_MSIL2A_20200322T074609_N0500_R135_T36NYH_20230612T214223.SAFE/GRANULE/L2A_T36NYH_A015891_20200322T075811/IMG_DATA/R60m/T36NYH_20200322T074609_SCL_60m.jp2",
+            "SCL_60m",
+            0.0,
+            ["SCL_60m"],
+        ),
+    ]
 
 
 def _mock_stac_api(requests_mock, stac_api_root_url, stac_collection_url, feature_collection):
