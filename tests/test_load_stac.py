@@ -1,4 +1,5 @@
 import datetime as dt
+import dirty_equals
 import json
 import pystac
 from contextlib import nullcontext
@@ -161,12 +162,63 @@ def jvm_mock():
     ],
 )
 @pytest.mark.parametrize(
-    ["band_names", "resolution"],
+    ["band_names", "resolution", "expected_add_links"],
     [
-        (["AOT_10m"], 10.0),
-        (["WVP_20m"], 20.0),
-        (["WVP_60m"], 60.0),
-        (["AOT_10m", "WVP_20m"], 10.0)
+        (
+            ["AOT_10m"],
+            10.0,
+            [(dirty_equals.IsStr(regex=".*_AOT_10m.jp2"), "AOT_10m", -1000.0, ["AOT_10m"])],
+        ),
+        (
+            ["B01_60m"],
+            60.0,
+            [
+                (
+                    dirty_equals.IsStr(regex=".*_B01_60m.jp2"),
+                    "B01_60m",
+                    # has "raster:scale": 0.0001 and "raster:offset": -0.1
+                    -1000.0,
+                    ["B01_60m"],
+                )
+            ],
+        ),
+        (
+            ["B01"],
+            20.0,
+            [(dirty_equals.IsStr(regex=".*_B01_20m.jp2"), "B01_20m", -1000.0, ["B01"])],
+        ),
+        (
+            ["WVP_20m"],
+            20.0,
+            [(dirty_equals.IsStr(regex=".*_WVP_20m.jp2"), "WVP_20m", -1000.0, ["WVP_20m"])],
+        ),
+        (
+            ["WVP_60m"],
+            60.0,
+            [(dirty_equals.IsStr(regex=".*_WVP_60m.jp2"), "WVP_60m", -1000.0, ["WVP_60m"])],
+        ),
+        (
+            ["AOT_10m", "WVP_20m"],
+            10.0,
+            [
+                (dirty_equals.IsStr(regex=".*_AOT_10m.jp2"), "AOT_10m", -1000.0, ["AOT_10m"]),
+                (dirty_equals.IsStr(regex=".*_WVP_20m.jp2"), "WVP_20m", -1000.0, ["WVP_20m"]),
+            ],
+        ),
+        (
+            ["B01_20m", "SCL_20m"],
+            20.0,
+            [
+                (dirty_equals.IsStr(regex=".*_B01_20m.jp2"), "B01_20m", -1000.0, ["B01_20m"]),
+                (
+                    dirty_equals.IsStr(regex=".*_SCL_20m.jp2"),
+                    "SCL_20m",
+                    # has neither "raster:scale" nor "raster:offset"
+                    0.0,
+                    ["SCL_20m"],
+                ),
+            ],
+        ),
     ],
 )
 def test_lcfm_improvements(  # resolution and offset behind a feature flag; alphabetical head tags are tested elsewhere
@@ -177,6 +229,7 @@ def test_lcfm_improvements(  # resolution and offset behind a feature flag; alph
     resolution,
     enable_by_catalog,
     enable_by_eval_env,
+    expected_add_links,
 ):
     stac_api_root_url = "https://stac.test"
     stac_collection_url = f"{stac_api_root_url}/collections/collection"
@@ -213,19 +266,7 @@ def test_lcfm_improvements(  # resolution and offset behind a feature flag; alph
     cellsize_mock.assert_called_once_with(resolution, resolution)
     assert data_cube.metadata.spatial_extent["crs"] == "EPSG:32636"
 
-    feature_builder.addLink.assert_any_call(
-        "/eodata/Sentinel-2/MSI/L2A_N0500/2020/03/22/S2B_MSIL2A_20200322T074609_N0500_R135_T36NYH_20230612T214223.SAFE/GRANULE/L2A_T36NYH_A015891_20200322T075811/IMG_DATA/R60m/T36NYH_20200322T074609_B01_60m.jp2",
-        "B01_60m",
-        -1000.0,  # has "raster:scale": 0.0001 and "raster:offset": -0.1
-        ["B01"],
-    )
-
-    feature_builder.addLink.assert_any_call(
-        "/eodata/Sentinel-2/MSI/L2A_N0500/2020/03/22/S2B_MSIL2A_20200322T074609_N0500_R135_T36NYH_20230612T214223.SAFE/GRANULE/L2A_T36NYH_A015891_20200322T075811/IMG_DATA/R20m/T36NYH_20200322T074609_SCL_20m.jp2",
-        "SCL_20m",
-        0.0,  # has neither "raster:scale" nor "raster:offset"
-        ["SCL_20m"],
-    )
+    assert [c.args for c in feature_builder.addLink.call_args_list] == expected_add_links
 
 
 def _mock_stac_api(requests_mock, stac_api_root_url, stac_collection_url, feature_collection):

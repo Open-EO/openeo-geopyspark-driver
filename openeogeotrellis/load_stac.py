@@ -468,9 +468,38 @@ def load_stac(
                        .withId(itm.id)
                        .withNominalDate(itm.properties.get("datetime") or itm.properties["start_datetime"]))
 
-            for asset_id, asset in band_assets.items():
-                asset_band_names = get_band_names(item=itm, asset=asset) or [asset_id]
+            band_names_tracker = NoveltyTracker()
+            for asset_id, asset in sorted(
+                # Go through assets ordered by asset GSD (from finer to coarser) if possible,
+                # falling back on deterministic alphabetical asset_id order.
+                # see https://github.com/Open-EO/openeo-geopyspark-driver/pull/1213#discussion_r2107353442
+                band_assets.items(),
+                key=lambda kv: (
+                    float(kv[1].extra_fields.get("gsd") or itm.properties.get("gsd") or 40e6),
+                    kv[0],
+                ),
+            ):
                 proj_epsg, proj_bbox, proj_shape = get_proj_metadata(itm, asset)
+
+                asset_band_names_from_metadata = get_band_names(item=itm, asset=asset)
+                logger.info(f"from intersecting_items: {itm.id=} {asset_id=} {asset_band_names_from_metadata=}")
+
+                if not load_params.bands:
+                    # No user-specified band filtering: follow band names from metadata (if possible)
+                    asset_band_names = asset_band_names_from_metadata or [asset_id]
+                elif isinstance(load_params.bands, list) and asset_id in load_params.bands:
+                    # User-specified asset_id as band name: use that directly
+                    asset_band_names = [asset_id]
+                elif set(asset_band_names_from_metadata).intersection(load_params.bands or []):
+                    # User-specified bands match with band names in metadata
+                    asset_band_names = asset_band_names_from_metadata
+                else:
+                    # No match with load_params.bands in some way -> skip this asset
+                    continue
+
+                if band_names_tracker.already_seen(sorted(asset_band_names)):
+                    # We've already seen these bands (e.g. at finer GSD), so skip this asset.
+                    continue
 
                 for asset_band_name in asset_band_names:
                     if asset_band_name not in band_names:
@@ -482,6 +511,9 @@ def load_stac(
                         band_epsgs.setdefault(asset_band_name, set()).add(proj_epsg)
 
                 pixel_value_offset = get_pixel_value_offset(itm, asset) if apply_lcfm_improvements else 0.0
+                logger.info(
+                    f"FeatureBuilder.addlink {itm.id=} {asset_id=} {asset_band_names_from_metadata=} {asset_band_names=}"
+                )
                 builder = builder.addLink(get_best_url(asset), asset_id, pixel_value_offset, asset_band_names)
 
             if proj_epsg:
@@ -1092,3 +1124,29 @@ class _StacMetadataParser:
         # TODO: instead of warning: exception, or return None?
         logger.warning("_StacMetadataParser.bands_from_stac_asset no band name source found")
         return self._Bands([])
+
+
+class NoveltyTracker:
+    """Utility to detect new things."""
+
+    # TODO: move to more general utility module
+
+    def __init__(self):
+        self._seen: set = set()
+
+    def is_new(self, x) -> bool:
+        """Check if the item is new (not seen before)."""
+        if isinstance(x, list):
+            key = tuple(x)
+        else:
+            # TODO: wider coverage to make the thing hashable
+            key = x
+        if key in self._seen:
+            return False
+        else:
+            self._seen.add(key)
+            return True
+
+    def already_seen(self, x) -> bool:
+        """Check if the item was seen before."""
+        return not self.is_new(x)

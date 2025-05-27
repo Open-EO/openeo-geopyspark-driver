@@ -492,6 +492,7 @@ def test_load_stac_pixel_shift(api110, tmp_path, flask_app):
 
 
 @pytest.mark.parametrize(["bands", "expected_bands"], [
+    (None, ["SPROD", "TPROD", "QFLAG"]),  # ordered as specified in layercatalog.json
     ([], ["SPROD", "TPROD", "QFLAG"]),  # ordered as specified in layercatalog.json
     (["TPROD", "QFLAG", "SPROD"], ["TPROD", "QFLAG", "SPROD"])  # override order
 ])
