@@ -481,27 +481,36 @@ def load_stac(
             ):
                 proj_epsg, proj_bbox, proj_shape = get_proj_metadata(itm, asset)
 
-                for asset_band_names in [
-                    # Band names extracted from assets metadata (e.g. "eo:bands" or "bands")
-                    get_band_names(item=itm, asset=asset),
-                    # Legacy fallback: use asset id as band name
-                    [asset_id],
-                ]:
-                    # Skip empty or already known band name lists
-                    if not asset_band_names or not band_names_tracker.is_new(asset_band_names):
-                        continue
+                asset_band_names_from_metadata = get_band_names(item=itm, asset=asset)
+                if load_params.bands is None:
+                    # No user-specified band filtering: follow band names from metadata (if possible)
+                    asset_band_names = asset_band_names_from_metadata or [asset_id]
+                elif asset_id in load_params.bands:
+                    # User-specified asset_id as band name: use that directly
+                    asset_band_names = [asset_id]
+                elif set(asset_band_names_from_metadata).intersection(load_params.bands or []):
+                    # User-specified bands match with band names in metadata
+                    asset_band_names = asset_band_names_from_metadata
+                else:
+                    # No match with load_params.bands in some way -> skip this asset
+                    continue
 
-                    for asset_band_name in asset_band_names:
-                        if asset_band_name not in band_names:
-                            band_names.append(asset_band_name)
+                if band_names_tracker.already_seen(sorted(asset_band_names)):
+                    # We've already seen these bands (e.g. at finer GSD), so skip this asset.
+                    continue
 
-                        if proj_bbox and proj_shape:
-                            band_cell_size[asset_band_name] = _compute_cellsize(proj_bbox, proj_shape)
-                        if proj_epsg:
-                            band_epsgs.setdefault(asset_band_name, set()).add(proj_epsg)
 
-                    pixel_value_offset = get_pixel_value_offset(itm, asset) if apply_lcfm_improvements else 0.0
-                    builder = builder.addLink(get_best_url(asset), asset_id, pixel_value_offset, asset_band_names)
+                for asset_band_name in asset_band_names:
+                    if asset_band_name not in band_names:
+                        band_names.append(asset_band_name)
+
+                    if proj_bbox and proj_shape:
+                        band_cell_size[asset_band_name] = _compute_cellsize(proj_bbox, proj_shape)
+                    if proj_epsg:
+                        band_epsgs.setdefault(asset_band_name, set()).add(proj_epsg)
+
+                pixel_value_offset = get_pixel_value_offset(itm, asset) if apply_lcfm_improvements else 0.0
+                builder = builder.addLink(get_best_url(asset), asset_id, pixel_value_offset, asset_band_names)
 
             if proj_epsg:
                 builder = builder.withCRS(f"EPSG:{proj_epsg}")
@@ -1133,3 +1142,7 @@ class NoveltyTracker:
         else:
             self._seen.add(key)
             return True
+
+    def already_seen(self, x) -> bool:
+        """Check if the item was seen before."""
+        return not self.is_new(x)
