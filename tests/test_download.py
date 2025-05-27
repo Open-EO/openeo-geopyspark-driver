@@ -417,22 +417,35 @@ class TestDownload:
         file_path = str(tmp_path / "res.zarr")
         imagecollection.write_assets(file_path, format="ZARR")
         ds = xr.open_zarr(file_path)
-        assert len(ds.variables) == 4
-        assert "res" in ds.variables
-        res = ds.res
-        assert len(res.dims) == 4
-        assert res.dims == ("Band","time","y","x")
-        assert len(res.attrs) == 3
-        assert "_CRS" in res.attrs
-        assert "wkt" in res.attrs.get("_CRS")
-        assert "extent" in res.attrs
-        assert "COLOR_INTERPRETATION" in res.attrs
-        assert ["band_one","band_two"] == res.attrs.get("COLOR_INTERPRETATION")
-        assert len(res.extent) == 2
-        assert "spatial" in res.extent
-        assert res.extent.get("spatial").get("bbox") == [[0.0,0.0,4.0,4.0]]
-        assert "temporal" in res.extent
-        assert res.extent.get("temporal").get("interval") == [['2017-09-25T11:37:00Z', '2017-09-25T11:37:00Z']]
+        assert len(ds.variables) == 5
+        assert "band_one" in ds.variables
+        band1 = ds.band_one
+        assert len(band1.dims) == 3
+        assert band1.dims == ("time","y","x")
+        assert len(band1.attrs) == 2
+        assert "_CRS" in band1.attrs
+        assert "wkt" in band1.attrs.get("_CRS")
+        assert "extent" in band1.attrs
+        assert len(band1.extent) == 2
+        assert "spatial" in band1.extent
+        assert band1.extent.get("spatial").get("bbox") == [[0.0,0.0,4.0,4.0]]
+        assert "temporal" in band1.extent
+        assert band1.extent.get("temporal").get("interval") == [['2017-09-25T11:37:00Z', '2017-09-25T11:37:00Z']]
+
+        assert "band_two" in ds.variables
+        band2 = ds.band_two
+        assert len(band2.dims) == 3
+        assert band2.dims == ("time","y","x")
+        assert len(band2.attrs) == 2
+        assert "_CRS" in band2.attrs
+        assert "wkt" in band2.attrs.get("_CRS")
+        assert "extent" in band2.attrs
+        assert len(band2.extent) == 2
+        assert "spatial" in band2.extent
+        assert band2.extent.get("spatial").get("bbox") == [[0.0,0.0,4.0,4.0]]
+        assert "temporal" in band2.extent
+        assert band2.extent.get("temporal").get("interval") == [['2017-09-25T11:37:00Z', '2017-09-25T11:37:00Z']]
+
         assert "x" in ds.variables
         x = ds.x
         assert x.dims == ("x",)
@@ -449,5 +462,5 @@ class TestDownload:
         assert (ds_netcdf.t.data == ds.time.values).all()
         assert (ds_netcdf.x.data == ds.x.values).all()
         assert (ds_netcdf.y.data == ds.y.values).all()
-        assert (ds_netcdf.band_one.data==res.data[0]).all()
-        assert (ds_netcdf.band_two.data == res.data[1]).all()
+        assert (ds_netcdf.band_one.data==band1.data[0]).all()
+        assert (ds_netcdf.band_two.data == band2.data[0]).all()
