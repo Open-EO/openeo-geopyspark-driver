@@ -2685,7 +2685,7 @@ def test_unified_asset_keys_spatiotemporal_geotiff(
 
     process = {
         "process_graph": process_graph,
-        "stac-version": "1.1"
+        "job_options": {"stac-version": "1.1"},
     }
 
     job_dir = tmp_path
@@ -2749,7 +2749,7 @@ def test_unified_asset_keys_tile_grid(tmp_path):
 
     process = {
         "process_graph": process_graph,
-        "stac-version": "1.1"
+        "job_options": {"stac-version": "1.1"},
     }
 
     job_dir = tmp_path
@@ -2834,7 +2834,7 @@ def test_unified_asset_keys_tile_grid_spatial(tmp_path):
 
     process = {
         "process_graph": process_graph,
-        "stac-version": "1.1"
+        "job_options": {"stac-version": "1.1"},
     }
 
     job_dir = tmp_path
@@ -2927,7 +2927,7 @@ def test_unified_asset_keys_sample_by_feature(tmp_path):
 
     process = {
         "process_graph": process_graph,
-        "stac-version": "1.1"
+        "job_options": {"stac-version": "1.1"},
     }
 
     job_dir = tmp_path
@@ -3029,7 +3029,7 @@ def test_unified_asset_keys_spatial_geotiff(
 
     process = {
         "process_graph": process_graph,
-        "stac-version": "1.1"
+        "job_options": {"stac-version": "1.1"},
     }
 
     job_dir = tmp_path
@@ -3097,7 +3097,7 @@ def test_unified_asset_keys_stitch_geotiff(tmp_path):
 
     process = {
         "process_graph": process_graph,
-        "stac-version": "1.1"
+        "job_options": {"stac-version": "1.1"},
     }
 
     job_dir = tmp_path
@@ -3167,7 +3167,7 @@ def test_unified_asset_keys_stitch_tile_grid(tmp_path):
 
     process = {
         "process_graph": process_graph,
-        "stac-version": "1.1"
+        "job_options": {"stac-version": "1.1"},
     }
 
     job_dir = tmp_path
@@ -3241,7 +3241,7 @@ def test_unified_asset_keys_catalog(tmp_path):
 
     process = {
         "process_graph": process_graph,
-        "stac-version": "1.1"
+        "job_options": {"stac-version": "1.1"},
     }
 
     job_dir = tmp_path
