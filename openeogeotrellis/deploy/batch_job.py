@@ -394,6 +394,19 @@ def run_job(
 
         def result_write_assets(result_arg) -> (dict, dict):
             items = result_arg.write_assets(str(output_file))
+            if( len(items)>0  and "assets" not in next(iter(items.values())) ):
+                logger.warning(f"save_result: got an 'assets' object instead of items for {result_arg}")
+                #TODO: this is here to avoid having to sync changes with openeo-python-driver
+                #it can and should be removed as soon as we have introduced returning items in all SaveResult subclasses
+                import uuid
+                item_id = str(uuid.uuid4())
+                items =  {
+                    item_id: {
+                        "id": item_id,
+                        "assets": items
+                    }
+                }
+
             keys = set()
             def unique_key(asset_id,href):
                 if href is not None:
