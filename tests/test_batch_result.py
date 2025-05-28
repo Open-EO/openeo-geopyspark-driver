@@ -1702,7 +1702,7 @@ def test_export_workspace_merge_into_stac_api(
     process = {
         "process_graph": process_graph,
         "job_options": {
-            "stac-version": "1.1",
+           # "stac-version": "1.1",
             "export-workspace-enable-merge": enable_merge,
         },
     }
@@ -1719,13 +1719,13 @@ def test_export_workspace_merge_into_stac_api(
     assert create_collection.called_once
     assert create_item.call_count == 2
 
-    assert create_item.request_history[0].json()["assets"] == {
+    assert create_item.request_history[1].json()["assets"] == {
         "lat.tif": DictSubSet({
             "href": f"s3://openeo-fake-bucketname/{merge}/lat.tif"
         })
     }
 
-    assert create_item.request_history[1].json()["assets"] == {
+    assert create_item.request_history[0].json()["assets"] == {
         "some/deeply/nested/folder/lon.tif": DictSubSet({
             "href": f"s3://openeo-fake-bucketname/{merge}/some/deeply/nested/folder/lon.tif"
         })
