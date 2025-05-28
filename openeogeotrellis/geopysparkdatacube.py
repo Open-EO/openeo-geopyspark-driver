@@ -1799,7 +1799,7 @@ class GeopysparkDataCube(DriverDataCube):
 
     def write_assets(self, filename: Union[str, pathlib.Path], format: str, format_options: dict = None) -> Dict:
         """
-        Save cube to disk
+        Save cube to disk, returns the resulting items, which can have multiple assets.
 
         Supported formats:
         * GeoTIFF: raster with the limitation that it only export bands at a single (random) date
@@ -1808,7 +1808,7 @@ class GeopysparkDataCube(DriverDataCube):
         * JSON: the json serialization of the underlying xarray, with extra attributes such as value/coord dtypes, crs, nodata value
         * ZARR: chunked, compressed, N-dimensional arrays (experimental)
 
-        :return: STAC assets dictionary: https://github.com/radiantearth/stac-spec/blob/master/item-spec/item-spec.md#assets
+        :return: STAC items dictionary: https://github.com/radiantearth/stac-spec/blob/master/item-spec/item-spec.md
         """
         bucket = str(get_backend_config().s3_bucket_name)
         filename = str(filename)

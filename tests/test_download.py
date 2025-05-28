@@ -136,7 +136,7 @@ class TestDownload:
             "filename_prefix": "filenamePrefixTest"
         })
         assert 1 == len(res)
-        name, asset = next(iter(res.items()))
+        name, asset = next(iter(res.popitem()[1]['assets'].items()))
         assert Path(asset['href']).parent == tmp_path
         assert asset['nodata'] == -1
         assert asset['roles'] == ['data']
@@ -144,12 +144,18 @@ class TestDownload:
         assert "filenamePrefixTest" in asset['href']
         assert 'image/tiff; application=geotiff' == asset['type']
         assert asset['datetime'] == "2017-09-25T11:37:00Z"
-        assert "filenamePrefixTest" in name
+        assert "openEO" in name
 
     with get_test_data_file("geometries/polygons02.geojson").open() as f:
         features = json.load(f)
 
     def test_write_assets_samples(self, tmp_path):
+        """
+
+        See also:
+            tests.test_batch_result.test_spatial_cube_to_netcdf_sample_by_feature
+            tests.test_batch_result.test_unified_asset_keys_sample_by_feature
+        """
         input_layer = layer_with_two_bands_and_one_date()
         imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input_layer}))
         imagecollection.metadata = imagecollection.metadata.add_dimension('band_one', 'band_one', 'bands')
@@ -170,8 +176,12 @@ class TestDownload:
             },
         )
 
+        assert len(res) == 5 #one item per date
+
+        assets = {asset[1]["href"]: asset[1] for item in res.values() for asset in item['assets'].items()}
+
         expected = {
-            name: {
+            str(tmp_path / name): {
                 "bands": [
                     dirty_equals.IsPartialDict(name="band_one"),
                     dirty_equals.IsPartialDict(name="band_two"),
@@ -192,9 +202,13 @@ class TestDownload:
                 "filenamePrefixTest_2017-09-25Z_4.tif",
             ]
         }
-        assert res == expected
+        assert assets == expected
 
     def test_write_assets_samples_tile_grid(self, tmp_path):
+        """
+        See also: tests.test_batch_result.test_unified_asset_keys_tile_grid
+
+        """
         input_layer = layer_with_two_bands_and_one_date()
         imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input_layer}))
         imagecollection.metadata = imagecollection.metadata.add_dimension('band_one', 'band_one', 'bands')
@@ -217,6 +231,9 @@ class TestDownload:
         assert 'image/tiff; application=geotiff' == asset['type']
 
     def test_write_assets_samples_tile_grid_batch(self, tmp_path):
+        """
+        See also this test: tests.test_batch_result.test_unified_asset_keys_tile_grid
+        """
         input_layer = layer_with_two_bands_and_one_date()
         imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input_layer}))
         imagecollection.metadata = imagecollection.metadata.add_dimension('band_one', 'band_one', 'bands')
@@ -233,7 +250,8 @@ class TestDownload:
             "tile_grid": "100km",
         })
         assert len(res) == 30
-        name, asset = next(iter(res.items()))
+        name, item = next(iter(res.items()))
+        asset = next(iter(item['assets'].values()))
         assert Path(asset['href']).parent == tmp_path
         assert asset['nodata'] == -1
         assert asset['roles'] == ['data']
