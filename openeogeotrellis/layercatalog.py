@@ -17,6 +17,7 @@ import pyproj
 import pyspark.sql.utils
 import pytz
 from py4j.protocol import Py4JJavaError
+import requests
 
 from openeo.metadata import Band
 from openeo.util import TimingLogger, deep_get, str_truncate
@@ -983,9 +984,8 @@ def _get_layer_catalog(
             elif data_source.get("type") == "stac":
                 url = data_source.get("url")
                 logger.debug(f"Getting collection metadata from {url}")
-                import requests
                 try:
-                    resp = requests.get(url=url)
+                    resp = requests.get(url=url, timeout=10)
                     resp.raise_for_status()
                     opensearch_metadata[cid] = resp.json()
                 except Exception as e:

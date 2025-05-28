@@ -578,12 +578,13 @@ def write_metadata(metadata: dict, metadata_file: Path):
         logger.info(f"{context} asset hrefs: {asset_hrefs!r}")
 
     log_asset_hrefs("input")
+    out_metadata = metadata
     if ConfigParams().is_kube_deploy:
-        metadata = _convert_asset_outputs_to_s3_urls(metadata)
+        out_metadata = _convert_asset_outputs_to_s3_urls(metadata)
     log_asset_hrefs("output")
 
     with open(metadata_file, 'w') as f:
-        json.dump(metadata, f, default=json_default)
+        json.dump(out_metadata, f, default=json_default)
     add_permissions(metadata_file, stat.S_IWGRP)
     logger.info("wrote metadata to %s" % metadata_file)
 
@@ -595,6 +596,7 @@ def write_metadata(metadata: dict, metadata_file: Path):
 
         # asset files are already uploaded by Scala code
         s3_instance.upload_file(str(metadata_file), bucket, str(metadata_file).strip("/"))
+
 
 
 def _export_to_workspaces(

@@ -13,7 +13,7 @@ import types
 import zipfile
 from datetime import datetime
 from multiprocessing import Process
-from typing import Dict, Tuple, Union, List
+from typing import Dict, Tuple, Union, List, Any
 
 import geopyspark
 import numpy
@@ -34,7 +34,7 @@ from openeo_driver.utils import smart_bool
 from openeogeotrellis.collections import convert_scala_metadata
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.util.runtime import in_batch_job_context
-from openeogeotrellis.utils import lonlat_to_mercator_tile_indices, nullcontext, get_jvm, set_max_memory, \
+from openeogeotrellis.utils import lonlat_to_mercator_tile_indices, nullcontext, get_jvm, \
     ensure_executor_logging
 
 logger = logging.getLogger(__name__)
@@ -96,6 +96,16 @@ def get_total_extent(features):
     ymax_max = max(f["key_extent"]["ymax"] for f in features)
     layout_extent = {"xmin": xmin_min, "xmax": xmax_max, "ymin": ymin_min, "ymax": ymax_max}
     return layout_extent
+
+
+def get_area_in_square_kilometers(projected_polygons: any) -> str:
+    try:
+        area_to_display = projected_polygons.areaInSquareMeters() / (1000.0 * 1000.0)
+    except Exception as e:
+        logger.error("sar_backscatter: Error while calculating areaInSquareMeters: " + str(e))
+        area_to_display = "unknown "
+    return f"{area_to_display}km²"
+
 
 class S1BackscatterOrfeo:
     """
@@ -283,9 +293,6 @@ class S1BackscatterOrfeo:
     ):
         logger.info(f"{log_prefix} Input tiff {input_tiff}")
         logger.info(f"{log_prefix} extent {extent} EPSG {extent_epsg})")
-        max_total_memory_in_bytes = os.environ.get('PYTHON_MAX_MEMORY')
-        if max_total_memory_in_bytes:
-            set_max_memory(int(max_total_memory_in_bytes))
 
         if trackers is not None:
             trackers[0].add(1)
@@ -550,7 +557,10 @@ class S1BackscatterOrfeo:
         # Tile size to use in the TiledRasterLayer.
         tile_size = sar_backscatter_arguments.options.get("tile_size", self._DEFAULT_TILE_SIZE)
 
-        geopyspark.get_spark_context().setLocalProperty("callSite.short", f"load_collection: SENTINEL1_GRD {from_date}-{to_date} Area: {projected_polygons.areaInSquareMeters()/(1000.0*1000.0)}km²")
+        geopyspark.get_spark_context().setLocalProperty(
+            "callSite.short",
+            f"load_collection: SENTINEL1_GRD {from_date}-{to_date} Area: {get_area_in_square_kilometers(projected_polygons)}",
+        )
 
         debug_mode = smart_bool(sar_backscatter_arguments.options.get("debug"))
 
@@ -589,9 +599,10 @@ class S1BackscatterOrfeo:
                 return hashPartitioner(tuple)
         grouped = per_product.partitionBy(per_product.count(),partitionByPath)
 
-        geopyspark.get_spark_context().setLocalProperty("callSite.short",
-                                                        f"sar_backscatter: {sar_backscatter_arguments.coefficient} {from_date}-{to_date} Area: {projected_polygons.areaInSquareMeters() / (1000.0 * 1000.0)}km²")
-
+        geopyspark.get_spark_context().setLocalProperty(
+            "callSite.short",
+            f"sar_backscatter: {sar_backscatter_arguments.coefficient} {from_date}-{to_date} Area: {get_area_in_square_kilometers(projected_polygons)}",
+        )
         #local = grouped.collect()
 
         #print(local)
@@ -829,8 +840,10 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
         noise_removal = bool(sar_backscatter_arguments.noise_removal)
         debug_mode = smart_bool(sar_backscatter_arguments.options.get("debug"))
 
-        geopyspark.get_spark_context().setLocalProperty("callSite.short",
-                                                        f"load_collection: SENTINEL1_GRD {from_date}-{to_date} Area: {projected_polygons.areaInSquareMeters() / (1000.0 * 1000.0)}km²")
+        geopyspark.get_spark_context().setLocalProperty(
+            "callSite.short",
+            f"load_collection: SENTINEL1_GRD {from_date}-{to_date} Area: {get_area_in_square_kilometers(projected_polygons)}",
+        )
 
         # an RDD of Python objects (basically SpaceTimeKey + feature) with gps.Metadata
         target_resolution = sar_backscatter_arguments.options.get("resolution", (10.0, 10.0))
@@ -1035,9 +1048,11 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
                 hashPartitioner = pyspark.rdd.portable_hash
                 return hashPartitioner(tuple)
 
-        grouped = per_product.partitionBy(per_product.count(),partitionByPath)
-        geopyspark.get_spark_context().setLocalProperty("callSite.short",
-                                                        f"sar_backscatter: {sar_backscatter_arguments.coefficient} {from_date}-{to_date} Area: {projected_polygons.areaInSquareMeters() / (1000.0 * 1000.0)}km²")
+        grouped = per_product.partitionBy(per_product.count(), partitionByPath)
+        geopyspark.get_spark_context().setLocalProperty(
+            "callSite.short",
+            f"sar_backscatter: {sar_backscatter_arguments.coefficient} {from_date}-{to_date} Area: {get_area_in_square_kilometers(projected_polygons)}",
+        )
         tile_rdd = grouped.flatMap(process_product)
         if result_dtype:
             layer_metadata_py.cell_type = geopyspark.CellType.create_user_defined_celltype(result_dtype,0)

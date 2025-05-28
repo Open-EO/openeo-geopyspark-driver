@@ -220,6 +220,8 @@ class CalrissianJobLauncher:
             f"create_input_staging_job_manifest creating {cwl_path=} from {cwl_content[:32]=} through {cwl_serialized[:32]=}"
         )
 
+        s3_client().head_bucket(Bucket=self._s3_bucket)  # check if the bucket exists
+
         container = kubernetes.client.V1Container(
             name=name,
             image=self._input_staging_image,
@@ -239,6 +241,8 @@ class CalrissianJobLauncher:
                 namespace=self._namespace,
             ),
             spec=kubernetes.client.V1JobSpec(
+                active_deadline_seconds=300,  # could be because target bucket does not exist
+                ttl_seconds_after_finished=300,  # can get stuck in "Terminating" state
                 template=kubernetes.client.V1PodTemplateSpec(
                     spec=kubernetes.client.V1PodSpec(
                         containers=[container],
@@ -312,6 +316,10 @@ class CalrissianJobLauncher:
                 value_from=kubernetes.client.V1EnvVarSource(
                     field_ref=kubernetes.client.V1ObjectFieldSelector(field_path="metadata.name")
                 ),
+            ),
+            kubernetes.client.V1EnvVar(
+                name="RETRY_ATTEMPTS",  # Otherwise calrissian retry backoff till take 2400sec (40min)
+                value="3",
             )
         ]
         if env_vars:
@@ -364,7 +372,7 @@ class CalrissianJobLauncher:
         manifest: kubernetes.client.V1Job,
         *,
         sleep: float = 5,
-        timeout: float = 900,
+        timeout: float = 3600,
     ) -> kubernetes.client.V1Job:
         """
         Launch a k8s job and wait (with active polling) for it to finish.
@@ -404,7 +412,9 @@ class CalrissianJobLauncher:
         elif final_status is None:
             raise TimeoutError(f"CWL Job {job_name} did not finish within {timeout}s")
         elif final_status != "complete":
-            raise RuntimeError(f"CWL Job {job_name} failed with {final_status=} after {timer.elapsed()=:.2f}s")
+            raise RuntimeError(
+                f"CWL Job {job_name} failed with {final_status=} after {timer.elapsed()=:.2f}s. Messages: {set(c.message for c in job.status.conditions)}"
+            )
         else:
             raise ValueError("CWL")
 

@@ -97,6 +97,7 @@ from openeogeotrellis.integrations.kubernetes import (
 )
 from openeogeotrellis.integrations.stac import ResilientStacIO
 from openeogeotrellis.integrations.traefik import Traefik
+from openeogeotrellis.job_options import JobOptions
 from openeogeotrellis.job_registry import (
     DoubleJobRegistry,
     ZkJobRegistry,
@@ -595,6 +596,9 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             }
         }
 
+    def processing_parameters(self) -> list:
+        return JobOptions.list_options()
+
     def load_disk_data(
             self, format: str, glob_pattern: str, options: dict, load_params: LoadParameters, env: EvalEnv
     ) -> GeopysparkDataCube:
@@ -1074,7 +1078,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         return self.summarize_exception_static(error, 2000)
 
     @staticmethod
-    def summarize_exception_static(error: Exception, width=2000) -> Union[ErrorSummary, Exception]:
+    def summarize_exception_static(error: Exception, width=2000) -> ErrorSummary:
         if "Container killed on request. Exit code is 143" in str(error):
             is_client_error = False  # Give user the benefit of doubt.
             summary = "Your batch job failed because workers used too much memory. The same task was attempted multiple times. Consider increasing executor-memory, python-memory or executor-memoryOverhead or contact the developers to investigate."
@@ -1126,6 +1130,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             elif "outofmemoryerror" in root_cause_class_name.lower():
                 summary = "Your batch job failed because the 'driver' used too much java memory. Consider increasing driver-memory or contact the developers to investigate."
             elif is_spark_exception:
+                retry_message = "Simply try submitting again, or use batch job logs to find more detailed information in case of persistent failures. Increasing executor memory may help if the root cause is not clear from the logs."
                 if missing_sentinel1_band:
                     summary = (f"Requested band '{missing_sentinel1_band}' is not present in Sentinel 1 tile;"
                                f' try specifying a "polarization" property filter according to the table at'
@@ -1170,15 +1175,21 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                         "Missing an output location" in root_cause_message
                         or (  # OOM on YARN
                             "times, most recent failure:" in root_cause_message
-                            and "ExecutorLostFailure" in root_cause_message
+                            and (
+                                "ExecutorLostFailure" in root_cause_message
+                                or "exited unexpectedly" in root_cause_message
+                            )
                         )
                         or "has failed the maximum allowable number of times" in root_cause_message
                     ):
-                        summary = f"A part of your process graph failed multiple times. Simply try submitting again, or use batch job logs to find more detailed information in case of persistent failures. Increasing executor memory may help if the root cause is not clear from the logs."
+                        summary = f"A part of your process graph failed multiple times. " + retry_message
                     else:
                         summary = f"Exception during Spark execution: {root_cause_class_name}: {root_cause_message}"
                 else:
-                    summary = f"Exception during Spark execution: {root_cause_class_name}"
+                    if root_cause_class_name == "java.io.EOFException":
+                        summary = f"Exception during Spark execution. " + retry_message
+                    else:
+                        summary = f"Exception during Spark execution: {root_cause_class_name}"
             else:
                 summary = f"{root_cause_class_name}: {root_cause_message}"
             summary = str_truncate(summary, width=width)
@@ -1230,7 +1241,15 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             start_index = full_stacktrace.rfind("\n", 0, needle_index) + 1
             if start_index == -1:
                 start_index = 0
-            udf_stacktrace = full_stacktrace[start_index:].rstrip()
+
+            # No need for the Java stack trace if we found UDF stack trace.
+            # Triggering an exception in the UDF code with
+            #   jvm.org.openeo.dumpGeoJson("", jvm.scala.Some(""))
+            # will not add a jvm stacktrace. Instead, it wil give a connection lost error.
+            end_index = full_stacktrace.find("\n\tat ", start_index)
+            if end_index == -1:
+                end_index = len(full_stacktrace)
+            udf_stacktrace = full_stacktrace[start_index:end_index].rstrip()
             udf_stacktrace = GeoPySparkBackendImplementation.collapse_stack_strace(udf_stacktrace, width)
             return udf_stacktrace
         return None
@@ -2085,6 +2104,12 @@ class GpsBatchJobs(backend.BatchJobs):
                 status_code=400,
             )
 
+        user_provided_jar_path = None
+        if "openeo-jar-path" in job_options and (
+                job_options["openeo-jar-path"].startswith("https://artifactory.vgt.vito.be/artifactory/libs-release-public/org/openeo/geotrellis-extensions")
+                or job_options["openeo-jar-path"].startswith("https://artifactory.vgt.vito.be/artifactory/libs-snapshot-public/org/openeo/geotrellis-extensions/") ) :
+            user_provided_jar_path = job_options["openeo-jar-path"]
+
         if isKube:
             # TODO: get rid of this "isKube" anti-pattern, it makes testing of this whole code path practically impossible
 
@@ -2166,6 +2191,7 @@ class GpsBatchJobs(backend.BatchJobs):
             running_image = api_instance_core.read_namespaced_pod(name=os.environ.get("POD_NAME"), namespace=os.environ.get("POD_NAMESPACE")).spec.containers[0].image
 
             image_name = job_options.get("image-name", running_image)
+            image_name = get_backend_config().batch_runtime_to_image.get(image_name.lower(), image_name)
 
             batch_job_cfg_secret_name = k8s_get_batch_job_cfg_secret_name(spark_app_id)
 
@@ -2233,7 +2259,8 @@ class GpsBatchJobs(backend.BatchJobs):
                 propagatable_web_app_driver_envars=propagatable_web_app_driver_envars,
                 provide_s3_profiles_and_tokens=get_backend_config().provide_s3_profiles_and_tokens,
                 batch_job_cfg_secret_name=batch_job_cfg_secret_name,
-                batch_job_config_dir=get_backend_config().batch_job_config_dir
+                batch_job_config_dir=get_backend_config().batch_job_config_dir,
+                openeo_jar_path=user_provided_jar_path or 'local:///opt/geotrellis-extensions-static.jar'
             )
 
             with self._double_job_registry as dbl_registry:
@@ -2407,6 +2434,8 @@ class GpsBatchJobs(backend.BatchJobs):
                     log.info(f"Submitting job with command {args!r}")
                     d = dict(**os.environ)
                     d["YARN_CONTAINER_RUNTIME_DOCKER_IMAGE"] = image_name
+                    if user_provided_jar_path is not None:
+                        d["OPENEO_GEOTRELLIS_JAR"] = job_options["openeo-jar-path"]
                     script_output = subprocess.check_output(args, stderr=subprocess.STDOUT, universal_newlines=True, env=d)
                     log.info(f"Submitted job, output was: {script_output}")
                 except CalledProcessError as e:
@@ -2891,7 +2920,18 @@ class GpsBatchJobs(backend.BatchJobs):
 
         job_dir = self.get_job_output_dir(job_id=job_id)
 
-        results_metadata = self.load_results_metadata(job_id, user_id)
+        results_metadata = None
+        try:
+            with self._double_job_registry as registry:
+                job_dict = registry.elastic_job_registry.get_job(job_id, user_id=user_id)
+                if "results_metadata" in job_dict:
+                    results_metadata = job_dict["results_metadata"]
+        except Exception as e:
+            logger.warning(
+                "Could not retrieve result metadata from job tracker %s", e, exc_info=True, extra={"job_id": job_id}
+            )
+        if results_metadata is None or len(results_metadata) == 0:
+            results_metadata = self.load_results_metadata(job_id, user_id)
         out_assets = results_metadata.get("assets", {})
         out_metadata = out_assets.get("out", {})
         bands = [Band(*properties) for properties in out_metadata.get("bands", [])]
@@ -2969,6 +3009,7 @@ class GpsBatchJobs(backend.BatchJobs):
         """
         Reads the metadata json file from the job directory and returns it.
         """
+
         metadata_file = self.get_results_metadata_path(job_id=job_id)
 
         if ConfigParams().use_object_storage:
@@ -3227,42 +3268,6 @@ class GpsBatchJobs(backend.BatchJobs):
         if assembled_folders:
             logger.info("Deleted Sentinel Hub assembled folder(s) {fs} for batch job {j}"
                         .format(fs=assembled_folders, j=job_id), extra={'job_id': job_id})
-
-    def delete_jobs_before(
-        self,
-        upper: dt.datetime,
-        *,
-        user_ids: Optional[List[str]] = None,
-        dry_run: bool = True,
-        include_ongoing: bool = True,
-        include_done: bool = True,
-        user_limit: Optional[int] = 1000,
-    ) -> None:
-        with self._double_job_registry as registry, TimingLogger(
-            title=f"Collecting jobs to delete: {upper=} {user_ids=} {include_ongoing=} {include_done=}",
-            logger=logger,
-        ):
-            jobs_before = registry.get_all_jobs_before(
-                upper,
-                user_ids=user_ids,
-                include_ongoing=include_ongoing,
-                include_done=include_done,
-                user_limit=user_limit,
-            )
-        logger.info(f"Collected {len(jobs_before)} jobs to delete")
-
-        with TimingLogger(title=f"Deleting {len(jobs_before)} jobs", logger=logger):
-
-            for job_info in jobs_before:
-                job_id = job_info["job_id"]
-                user_id = job_info["user_id"]
-                if not dry_run:
-                    logger.info(f"Deleting {job_id=} from {user_id=}")
-                    self._delete_job(
-                        job_id=job_id, user_id=user_id, propagate_errors=True
-                    )
-                else:
-                    logger.info(f"Dry run: not deleting {job_id=} from {user_id=}")
 
 
 

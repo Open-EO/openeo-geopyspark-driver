@@ -31,6 +31,12 @@ tests_require = [
     "responses",
     "rio_cogeo",
     "pydantic~=1.0",
+    "zarr",
+]
+
+typing_require = [
+    'mypy-boto3-sts',
+    'mypy-boto3-s3',
 ]
 
 setup(
@@ -46,20 +52,20 @@ setup(
             "scripts/submit_batch_job_log4j.properties",
             "scripts/submit_batch_job_log4j2.xml",
             "scripts/batch_job_log4j2.xml",
-            "scripts/cleaner-entrypoint.sh",
             "scripts/job_tracker-entrypoint.sh",
             "scripts/async_task-entrypoint.sh",
             "scripts/async_task_log4j2.xml",
-            "scripts/kleaner-entrypoint.sh",
             "scripts/zookeeper_set.py",
         ]),
     ],
     tests_require=tests_require,
     install_requires=[
         "openeo>=0.33.0",
-        "openeo_driver>=0.134.0.dev",
+        "openeo_driver>=0.135.0a2.dev",
         'pyspark==3.5.3; python_version>="3.8"',
         'pyspark>=2.3.1,<2.4.0; python_version<"3.8"',
+        # TODO #1220 the +openeo suffix to point to this fork of geopyspark seems to cause trouble in some newer build contexts
+        #      move to a more explicit forked project, e.g. `geopyspark-openeo`?
         'geopyspark==0.4.9+openeo',
         # rasterio is an undeclared but required dependency for geopyspark
         # (see https://github.com/locationtech-labs/geopyspark/issues/683 https://github.com/locationtech-labs/geopyspark/pull/706)
@@ -107,7 +113,7 @@ setup(
         "importlib_resources; python_version<'3.9'",  # #1060 on python 3.8 we need importlib_resources backport
     ],
     extras_require={
-        "dev": tests_require,
+        "dev": tests_require + typing_require,
         "k8s": [
             "kubernetes",
             "PyYAML",
@@ -121,6 +127,7 @@ setup(
         "console_scripts": [
             "openeo_kube.py = openeogeotrellis.deploy.kube:main",
             "openeo_batch.py = openeogeotrellis.deploy.batch_job:start_main",
+            "openeo_local.py = openeogeotrellis.deploy.local:main",
             "run_graph_locally.py = openeogeotrellis.deploy.run_graph_locally:main",
         ]
     }

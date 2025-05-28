@@ -43,7 +43,6 @@ def test_read_single():
         SLSTR_PRODUCT_TYPE,
         ["LST_in:LST"],
         tile_size=1024,
-        limit_python_memory=True,
         resolution=0.008928571428571,
     )
 
@@ -90,7 +89,6 @@ def test_read_single_edge():
         SLSTR_PRODUCT_TYPE,
         ["LST_in:LST", "geometry_tn:solar_zenith_tn"],
         tile_size=1024,
-        limit_python_memory=True,
         resolution=0.008928571428571,
     )
 
@@ -113,7 +111,7 @@ def test_read_single_edge_with_some_data():
     ]
     product_dir = Path(
         __file__).parent.parent / "data/binary/Sentinel-3/S3A_SL_2_LST____20240129T100540_20240129T100840_20240129T121848_0179_108_236_2160_PS1_O_NR_004.SEN3"
-    result = read_product((product_dir, tiles), SLSTR_PRODUCT_TYPE, ["LST_in:LST",  "geometry_tn:solar_zenith_tn"], 1024, True, 0.008928571428571)
+    result = read_product((product_dir, tiles), SLSTR_PRODUCT_TYPE, ["LST_in:LST",  "geometry_tn:solar_zenith_tn"], 1024, 0.008928571428571)
 
     assert len(result) == 1
 

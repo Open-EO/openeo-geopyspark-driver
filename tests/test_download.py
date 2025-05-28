@@ -7,6 +7,7 @@ from unittest import skip
 import dirty_equals
 import geopyspark as gps
 import pytest
+import xarray as xr
 from openeo.metadata import Band
 from openeo_driver.util.geometry import geojson_to_geometry
 from shapely import geometry
@@ -431,3 +432,60 @@ class TestDownload:
 
         imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input_layer}))
         imagecollection.save_result("catalogresult.tiff", format="GTIFF", format_options={"parameters": {"catalog": True}})
+
+
+    def test_zarr(self,tmp_path):
+        input_layer = layer_with_two_bands_and_one_date()
+        imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input_layer}))
+        imagecollection.metadata = imagecollection.metadata.add_dimension('band_one', 'band_one', 'bands')
+        imagecollection.metadata = imagecollection.metadata.append_band(Band('band_two', '', ''))
+        file_path = str(tmp_path / "res.zarr")
+        imagecollection.write_assets(file_path, format="ZARR")
+        ds = xr.open_zarr(file_path)
+        assert len(ds.variables) == 5
+        assert "band_one" in ds.variables
+        band1 = ds.band_one
+        assert len(band1.dims) == 3
+        assert band1.dims == ("time","y","x")
+        assert len(band1.attrs) == 2
+        assert "_CRS" in band1.attrs
+        assert "wkt" in band1.attrs.get("_CRS")
+        assert "extent" in band1.attrs
+        assert len(band1.extent) == 2
+        assert "spatial" in band1.extent
+        assert band1.extent.get("spatial").get("bbox") == [[0.0,0.0,4.0,4.0]]
+        assert "temporal" in band1.extent
+        assert band1.extent.get("temporal").get("interval") == [['2017-09-25T11:37:00Z', '2017-09-25T11:37:00Z']]
+
+        assert "band_two" in ds.variables
+        band2 = ds.band_two
+        assert len(band2.dims) == 3
+        assert band2.dims == ("time","y","x")
+        assert len(band2.attrs) == 2
+        assert "_CRS" in band2.attrs
+        assert "wkt" in band2.attrs.get("_CRS")
+        assert "extent" in band2.attrs
+        assert len(band2.extent) == 2
+        assert "spatial" in band2.extent
+        assert band2.extent.get("spatial").get("bbox") == [[0.0,0.0,4.0,4.0]]
+        assert "temporal" in band2.extent
+        assert band2.extent.get("temporal").get("interval") == [['2017-09-25T11:37:00Z', '2017-09-25T11:37:00Z']]
+
+        assert "x" in ds.variables
+        x = ds.x
+        assert x.dims == ("x",)
+        assert "y" in ds.variables
+        y = ds.y
+        assert y.dims == ("y",)
+        assert "time" in ds.variables
+        time = ds.time
+        assert time.dims == ("time",)
+
+        file_path_netcdf = str(tmp_path / "res.nc")
+        imagecollection.write_assets(file_path_netcdf,format="NETCDF")
+        ds_netcdf = xr.open_dataset(file_path_netcdf)
+        assert (ds_netcdf.t.data == ds.time.values).all()
+        assert (ds_netcdf.x.data == ds.x.values).all()
+        assert (ds_netcdf.y.data == ds.y.values).all()
+        assert (ds_netcdf.band_one.data==band1.data[0]).all()
+        assert (ds_netcdf.band_two.data == band2.data[0]).all()

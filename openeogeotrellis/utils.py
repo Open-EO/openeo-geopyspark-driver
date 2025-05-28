@@ -259,7 +259,8 @@ def set_max_memory(max_total_memory_in_bytes: int):
 
 
 def s3_client():
-    # TODO: move this to openeogeotrellis.integrations.s3?
+    # TODO: replace all use cases with openeodriver.integrations.s3.get_s3_client because all remaining calls
+    # imply a region dependency
     import boto3
 
     # TODO: Get these credentials/secrets from VITO TAP vault instead of os.environ
@@ -278,7 +279,7 @@ def get_s3_file_contents(filename: Union[os.PathLike,str]) -> str:
 
         The bucket is set in ConfigParams().s3_bucket_name
     """
-    # TODO: move this to openeogeotrellis.integrations.s3?
+    # TODO: move this to openeodriver.integrations.s3?
     s3_instance = s3_client()
     s3_file_object = s3_instance.get_object(
         Bucket=get_backend_config().s3_bucket_name,
@@ -290,7 +291,7 @@ def get_s3_file_contents(filename: Union[os.PathLike,str]) -> str:
 
 def stream_s3_binary_file_contents(s3_url: str) -> Iterable[bytes]:
     """Get contents of a binary file from the S3 bucket."""
-    # TODO: move this to openeogeotrellis.integrations.s3?
+    # TODO: move this to openeodriver.integrations.s3?
 
     # This only supports S3 URLs, does not support filenames with the
     # S3 bucket set in ConfigParams().
@@ -337,7 +338,7 @@ def download_s3_directory(s3_url: str, output_dir: str):
 
 def to_s3_url(file_or_dir_name: Union[os.PathLike,str], bucketname: str = None) -> str:
     """Get a URL for S3 to the file or directory, in the correct format."""
-    # TODO: move this to openeogeotrellis.integrations.s3?
+    # TODO: move this to openeodriver.integrations.s3?
 
     bucketname = bucketname or get_backend_config().s3_bucket_name
 

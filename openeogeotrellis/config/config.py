@@ -3,7 +3,7 @@ from __future__ import annotations
 import abc
 import os
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Dict
 
 import attrs
 from openeo_driver.config import OpenEoBackendConfig, from_env_as_list
@@ -115,7 +115,7 @@ class GpsBackendConfig(OpenEoBackendConfig):
     )
 
     # TODO #236/#498/#632 long term goal is to fully disable ZK job registry, but for now it's configurable.
-    use_zk_job_registry: bool = True
+    use_zk_job_registry: bool = False
     zk_job_registry_max_specification_size: Optional[int] = None
 
     udp_registry_zookeeper_client_reuse: bool = False
@@ -217,6 +217,14 @@ class GpsBackendConfig(OpenEoBackendConfig):
     """
     default_tile_size:Optional[int] = None
 
+    """
+    Default for the maximum partition size to target when repartitioning data cubes.
+    This default is not necessarily used everywhere, but can be used by the backend in locations where an optimal partition
+    size is needed.
+    The size is provided in megabytes.
+    """
+    default_max_partition_size: Optional[int] = None
+
     job_dependencies_poll_interval_seconds: float = 60  # poll every x seconds
     job_dependencies_max_poll_delay_seconds: float = 60 * 60 * 24 * 7  # for a maximum delay of y seconds
 
@@ -236,6 +244,14 @@ class GpsBackendConfig(OpenEoBackendConfig):
             ]
         ),
     )
+
+    """
+    Maps the name of a UDF runtime to the image to use for the batch job.
+    Also used to map image-name job option to batch job image.
+    """
+    batch_runtime_to_image: dict = {
+        "python311" : "vito-docker.artifactory.vgt.vito.be/openeo-geotrellis-kube-python311:latest"
+    }
 
     """
     Only used by YARN, allows to specify paths to mount in batch job docker containers.
@@ -275,3 +291,8 @@ class GpsBackendConfig(OpenEoBackendConfig):
     Directory where config specific to job execution will be mounted for batch jobs.
     """
     batch_job_config_dir: Path = Path("/opt/job_config")
+
+    """
+    A mapping of region names to proxy endpoints
+    """
+    s3_region_proxy_endpoints: Dict[str, str] = attrs.Factory(dict)

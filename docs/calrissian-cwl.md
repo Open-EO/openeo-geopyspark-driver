@@ -17,28 +17,44 @@ designed to run inside a Kubernetes cluster.
 
 ## Kubernetes setup
 
+If running on minikube, first run this:
+
+```bash
+minikube delete # clean up previous sessions
+minikube start
+NAMESPACE_NAME=calrissian-demo-project
+kubectl create namespace "$NAMESPACE_NAME"
+helm install csi-s3 yandex-s3/csi-s3 -n calrissian-demo-project
+kubectl apply -f docs/calrissian-local-minio.yaml
+kubectl wait -n calrissian-demo-project --for=condition=available --timeout=300s deployment/minio
+AWS_ACCESS_KEY_ID=minioadmin AWS_SECRET_ACCESS_KEY=minioadmin aws --endpoint-url http://$(minikube ip):30000 s3 mb s3://calrissian
+AWS_ACCESS_KEY_ID=minioadmin AWS_SECRET_ACCESS_KEY=minioadmin aws --endpoint-url http://$(minikube ip):30000 s3api put-bucket-policy --bucket calrissian --policy '{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": "*",
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::calrissian/*"
+    }
+  ]
+}'
+open http://$(minikube ip):30001
+minikube dashboard
+```
 
 Note: this is an extension to the Kubernetes setup discussed
 in the [Calrissian cluster configuration docs](https://duke-gcb.github.io/calrissian/cluster-configuration/).
 
-### Namespace
-
-Create a namespace for the Calrissian service:
-
 ```bash
+# Create a namespace for the Calrissian service:
+
 NAMESPACE_NAME=calrissian-demo-project
 kubectl create namespace "$NAMESPACE_NAME"
-```
 
-
-### Roles and permissions
-
-
-Create roles:
-
-```bash
+# Roles and permissions
 kubectl \
-    --namespace="$NAMESPACE" \
+    --namespace="$NAMESPACE_NAME" \
     create role \
     pod-manager-role \
     --verb=create,patch,delete,list,watch \
@@ -64,11 +80,10 @@ kubectl \
     pvc-reader-role \
     --verb=list,get \
     --resource=persistentvolumeclaims
-```
 
-And attach roles to the service account in that namespace:
 
-```bash
+# And attach roles to the service account in that namespace:
+
 kubectl \
     --namespace="$NAMESPACE_NAME" \
     create rolebinding \
@@ -82,11 +97,10 @@ kubectl \
     log-reader-default-binding \
     --role=log-reader-role \
     --serviceaccount=${NAMESPACE_NAME}:default
-```
 
-Also attach roles to the appropriate service accounts (in other namespaces)
 
-```bash
+# Also attach roles to the appropriate service accounts (in other namespaces)
+
 ENV=dev
 # ENV=staging
 # ENV=prod
@@ -108,23 +122,20 @@ do
         --role=pvc-reader-role \
         --serviceaccount=${OTHER_NAMESPACE_NAME}:${SERVICE_ACCOUNT_NAME}
 done
-```
 
-### Storage
-
-Create a `StorageClass` `csi-s3-calrissian` for the volumes used by Calrissian.
-For example with `geesefs` from `ru.yandex.s3.csi`:
-
-```yaml
+# Create a `StorageClass` `csi-s3-calrissian` for the volumes used by Calrissian.
+# For example with `geesefs` from `ru.yandex.s3.csi`:
+cat <<EOF | kubectl create -f -
 kind: StorageClass
 apiVersion: storage.k8s.io/v1
 metadata:
   name: csi-s3-calrissian
 provisioner: ru.yandex.s3.csi
+volumeBindingMode: Immediate
 parameters:
   mounter: geesefs
   # you can set mount options here, for example limit memory cache size (recommended)
-  options: "--memory-limit 1000 --dir-mode 0777 --file-mode 0666 --no-systemd"
+  options: "--memory-limit 1000 --dir-mode 0777 --file-mode 0666 --no-systemd --fsync-on-close --stat-cache-ttl 0"
   # to use an existing bucket, specify it here:
   bucket: calrissian
   csi.storage.k8s.io/provisioner-secret-name: csi-s3-secret
@@ -135,14 +146,12 @@ parameters:
   csi.storage.k8s.io/node-stage-secret-namespace: csi-s3
   csi.storage.k8s.io/node-publish-secret-name: csi-s3-secret
   csi.storage.k8s.io/node-publish-secret-namespace: csi-s3
-```
-
-Create the `PersistentVolumeClaim`s for the input, tmp and output volumes.
-For example, with namespace `calrissian-demo-project` and
-storage class `csi-s3-calrissian` as defined above:
+EOF
 
 
-```yaml
+# For storage, create the `PersistentVolumeClaim`s for the input, tmp and output volumes.
+
+cat <<EOF | kubectl create -f -
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -182,8 +191,9 @@ spec:
     requests:
       storage: 1Gi
   storageClassName: csi-s3-calrissian
-```
+EOF
 
+```
 
 
 ## Further openeo-geopyspark-driver configuration

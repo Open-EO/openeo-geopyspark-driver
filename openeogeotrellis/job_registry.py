@@ -992,51 +992,23 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
 
         return zk_jobs or ejr_jobs or []
 
-    def get_all_jobs_before(
+    def list_active_jobs(
         self,
-        upper: dt.datetime,
         *,
-        user_ids: Optional[List[str]] = None,
-        include_ongoing: bool = True,
-        include_done: bool = True,
-        user_limit: Optional[int] = 1000,
-    ) -> List[dict]:
-        if not self.zk_job_registry:
-            raise NotImplementedError("only necessary for ZK cleaner script")
-
-        jobs = self.zk_job_registry.get_all_jobs_before(
-            upper=upper,
-            user_ids=user_ids,
-            include_ongoing=include_ongoing,
-            include_done=include_done,
-            per_user_limit=user_limit,
-        )
-        return jobs
-
-    def get_active_jobs(
-        self,
+        fields: Optional[List[str]] = None,
         max_age: Optional[int] = None,
         max_updated_ago: Optional[int] = None,
-    ) -> Iterator[Dict]:
+        require_application_id: bool = False,
+    ) -> List[JobDict]:
         if self.zk_job_registry:
             # Note: `parse_specification` is enabled here because the jobtracker needs job_options (e.g. to determine target ETL)
-            yield from self.zk_job_registry.get_running_jobs(parse_specification=True)
+            return list(self.zk_job_registry.get_running_jobs(parse_specification=True))
         elif self.elastic_job_registry:
-            yield from self.elastic_job_registry.list_active_jobs(
-                fields=[
-                    "job_id",
-                    "user_id",
-                    "application_id",
-                    "status",
-                    "created",
-                    "title",
-                    "job_options",
-                    "dependencies",
-                    "dependency_usage",
-                ],
+            return self.elastic_job_registry.list_active_jobs(
+                fields=fields,
                 max_age=max_age,
                 max_updated_ago=max_updated_ago,
-                require_application_id=True,
+                require_application_id=require_application_id,
             )
 
     def set_results_metadata(

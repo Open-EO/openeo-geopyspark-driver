@@ -56,7 +56,7 @@ os.makedirs("/tmp/workspace", exist_ok=True)
 workspaces = {
     "tmp_workspace": DiskWorkspace(root_directory=Path("/tmp/workspace")),
     "tmp": DiskWorkspace(root_directory=Path("/tmp")),
-    "s3_workspace": ObjectStorageWorkspace(bucket="openeo-fake-bucketname", region="waw3-1"),
+    "s3_workspace": ObjectStorageWorkspace(bucket="openeo-fake-bucketname", region="eu-central-1"),
     "s3_workspace_region": ObjectStorageWorkspace(bucket="openeo-fake-eu-nl", region="eu-nl"),
     "stac_api_workspace": _stac_api_workspace(),
 }
@@ -73,6 +73,7 @@ config = GpsBackendConfig(
     oidc_providers=oidc_providers,
     zookeeper_hosts=["zk.test"],
     zookeeper_root_path="/openeo-test",
+    use_zk_job_registry=True,  # TODO #632 #863 #1165 eliminate dependency on ZkJobRegistry
     etl_api="https://etl-api.test",
     etl_source_id="openeo-gps-tests",
     vault_addr="https://vault.test",

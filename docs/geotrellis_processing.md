@@ -154,6 +154,33 @@ Small tiles may create more overhead from parallellization or task scheduling.
 - `executor_threads_jvm` is the number of worker threads given to the Java/Scala part of the processing. This only helps if operations effectively use parallel processing. In specific combinations it can cause crashes due to threading issues.
 - GDAL has various caching related settings that may impact IO performance, but also increase memory usage throughout the lifetime of the job.
 
+### Tunables at job level
+
+A number of options can be configured via 'feature flags' on load_collection level. This allows a per-load_collection config.
+These tunables allow to easily run performs experiments.
+By default, the strategy should be for the backend to select the most optimal value dynamically or by configuring a fixed value
+in the backend config. 
+
+There is not necessarily a single optimal value: for instance if a processing cluster has a high memory per cpu ratio, it
+may be better to create larger partitions.
+
+```python
+cube = c.load_collection("SENTINEL2_L2A", bands=["B02","SCL"], max_cloud_cover=75)
+
+temporal_partition_options = {
+    "tilesize": 512
+}
+
+cube.result_node().update_arguments(featureflags=temporal_partition_options)
+
+```
+
+- `tilesize` e.g. 128, 256, 512 
+- `load_per_product` boolean, set to true to read all chunks of the same asset on a single executor
+- `temporalresolution` can be `ByDay`, `ByMonth`, used to configure partitioner
+- `indexreduction` usually between 3 and 10, a higher reduction reduces the number of partitions, so more memory per partition
+- `no_resample_on_read` allows to disable resamplilng at load time
+- `allow_empty_cube`: do not raise exception if cube will be empty
 
 ## Runtime properties of a typical cloud setup
 

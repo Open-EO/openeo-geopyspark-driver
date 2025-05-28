@@ -59,6 +59,11 @@ def create(load_params: LoadParameters, env: EvalEnv, jvm: JVMView):
         if "tilesize" not in feature_flags:
             getattr(datacubeParams, "tileSize_$eq")(get_backend_config().default_tile_size)
 
+    if "max_partition_size" in feature_flags:
+        datacubeParams.setMaxPartitionSize(int(feature_flags["max_partition_size"]))
+    elif get_backend_config().default_max_partition_size is not None:
+        datacubeParams.setMaxPartitionSize(get_backend_config().default_max_partition_size)
+
     datacubeParams.setResampleMethod(GeopysparkDataCube._get_resample_method(load_params.resample_method))
 
     if load_params.filter_temporal_labels is not None:
@@ -68,4 +73,6 @@ def create(load_params: LoadParameters, env: EvalEnv, jvm: JVMView):
             load_params.filter_temporal_labels["process_graph"]
         )
         datacubeParams.setTimeDimensionFilter(labels_filter.builder)
+
+    datacubeParams.setRetainNoDataTiles(feature_flags.get("retain_nodata_tiles", False))
     return datacubeParams, single_level

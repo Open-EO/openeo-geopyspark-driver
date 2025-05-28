@@ -2,15 +2,17 @@ import attrs
 
 DEFAULT_NAMESPACE = "calrissian-demo-project"
 DEFAULT_INPUT_STAGING_IMAGE = "alpine:3"
+# TODO #1007 proper calrissian image? Official one doesn't work due to https://github.com/Duke-GCB/calrissian/issues/124#issuecomment-947008286
 DEFAULT_CALRISSIAN_IMAGE = "ghcr.io/duke-gcb/calrissian/calrissian:0.17.1"
 DEFAULT_SECURITY_CONTEXT = dict(run_as_user=1000, run_as_group=1000)
 DEFAULT_CALRISSIAN_S3_BUCKET = "calrissian"
 DEFAULT_CALRISSIAN_BASE_ARGUMENTS = (
     "--debug",
     "--max-ram",
-    "2G",
+    "15G",  # TODO: Use max_executor_or_driver_memory ?
     "--max-cores",
-    "1",
+    "4",
+    "--force-docker-pull",
 )
 
 
@@ -35,7 +37,6 @@ class CalrissianConfig:
     """
     Docker image providing the Calrissian tool
     """
-    # TODO #1007 proper calrissian image? Official one doesn't work due to https://github.com/Duke-GCB/calrissian/issues/124#issuecomment-947008286
     calrissian_image: str = DEFAULT_CALRISSIAN_IMAGE
 
     """

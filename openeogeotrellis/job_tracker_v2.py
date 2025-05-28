@@ -418,7 +418,22 @@ class JobTracker:
         with self._double_job_registry as double_job_registry, StatsReporter(
             name="JobTracker.update_statuses stats", report=_log.info
         ) as stats, TimingLogger("JobTracker.update_statuses", logger=_log.info):
-            jobs_to_track = double_job_registry.get_active_jobs(max_age=3 * 30, max_updated_ago=14)
+            jobs_to_track = double_job_registry.list_active_jobs(
+                fields=[
+                    "job_id",
+                    "user_id",
+                    "application_id",
+                    "status",
+                    "created",
+                    "title",
+                    "job_options",
+                    "dependencies",
+                    "dependency_usage",
+                ],
+                max_age=3 * 30,
+                max_updated_ago=14,
+                require_application_id=True,
+            )
 
             for job_info in jobs_to_track:
                 stats["collected jobs"] += 1
