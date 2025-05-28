@@ -485,7 +485,7 @@ def load_stac(
                 if not load_params.bands:
                     # No user-specified band filtering: follow band names from metadata (if possible)
                     asset_band_names = asset_band_names_from_metadata or [asset_id]
-                elif asset_id in load_params.bands:
+                elif isinstance(load_params.bands, list) and asset_id in load_params.bands:
                     # User-specified asset_id as band name: use that directly
                     asset_band_names = [asset_id]
                 elif set(asset_band_names_from_metadata).intersection(load_params.bands or []):
