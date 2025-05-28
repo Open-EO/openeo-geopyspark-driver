@@ -409,8 +409,17 @@ def run_job(
 
             keys = set()
             def unique_key(asset_id,href):
+                #try to make the key unique, and backwards compatible if possible
                 if href is not None:
-                    temp_key = str(Path(str(href)).relative_to(Path(str(output_file)).parent))
+                    try:
+                        hrefPath = Path(str(href))
+                        if hrefPath.is_absolute():
+                            temp_key = str(hrefPath.relative_to(Path(str(output_file)).parent))
+                        else:
+                            temp_key = str(hrefPath)
+                    except ValueError as e:
+                        url = urlparse(str(href))
+                        temp_key = url.path.split("/")[-1]
                 else:
                     temp_key = asset_id
                 counter = 0
