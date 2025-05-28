@@ -11,6 +11,7 @@ import zipfile
 from pathlib import Path
 from unittest import mock
 
+import dirty_equals
 import pytest
 from mock import MagicMock
 from openeo_driver.delayed_vector import DelayedVector
@@ -423,8 +424,27 @@ def test_log_lock(tmp_path):
 def test_run_job(evaluate, time_sleep_mock, tmp_path):
     cube_mock = MagicMock()
     time_sleep_mock.return_value = None  # Avoid waiting
-    asset_meta = {"openEO01-01.tif": {"href": "tmp/openEO01-01.tif", "roles": "data"},"openEO01-05.tif": {"href": "tmp/openEO01-05.tif", "roles": "data"}}
-    cube_mock.write_assets.return_value = asset_meta
+
+    item_meta ={"myItem":{
+        "id": "myItem",
+        "bbox": dirty_equals.IsListOrTuple(length=4),
+        "geometry": dirty_equals.IsPartialDict(type="Polygon"),
+        "assets": {
+            "openEO01-01.tif": {
+                "href": "openEO01-01.tif",
+                "roles": ["data"],
+
+            },
+            "openEO01-05.tif": {
+                "href": "openEO01-05.tif",
+                "roles": ["data"],
+            }
+        }
+    }}
+
+    #asset_meta is how it previously looked like
+    asset_meta = {"openEO01-01.tif": {"href": "openEO01-01.tif", "roles": ["data"]},"openEO01-05.tif": {"href": "openEO01-05.tif", "roles": ["data"]}}
+    cube_mock.write_assets.return_value = item_meta
     evaluate.return_value = ImageCollectionResult(cube=cube_mock, format="GTiff", options={"multidate":True})
     global_tracker().clear()
     t = _get_tracker()
@@ -533,7 +553,11 @@ def test_run_job_get_projection_extension_metadata(evaluate, time_sleep_mock, tm
         # bands, for the remaining assets (Here there is only 1 other asset off course).
         "openEO01-05.tif": {"href": "openEO01-05.tif", "roles": "data"},
     }
-    cube_mock.write_assets.return_value = asset_meta
+    item_meta = {"myItem": {
+        "id": "myItem",
+        "assets": asset_meta
+    }}
+    cube_mock.write_assets.return_value = item_meta
     evaluate.return_value = ImageCollectionResult(
         cube=cube_mock, format="GTiff", options={"multidate": True}
     )
@@ -674,7 +698,12 @@ def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox
         },
     }
 
-    cube_mock.write_assets.return_value = asset_meta
+    item_meta = {"myItem": {
+        "id": "myItem",
+        "assets": asset_meta
+    }}
+
+    cube_mock.write_assets.return_value = item_meta
     evaluate.return_value = ImageCollectionResult(
         cube=cube_mock, format="GTiff", options={"multidate": True}
     )
@@ -854,7 +883,12 @@ def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox
         },
     }
 
-    cube_mock.write_assets.return_value = asset_meta
+    item_meta = {"myItem": {
+        "id": "myItem",
+        "assets": asset_meta
+    }}
+
+    cube_mock.write_assets.return_value = item_meta
     evaluate.return_value = ImageCollectionResult(cube=cube_mock, format="GTiff", options={"multidate": True})
 
     run_job(
@@ -959,7 +993,14 @@ def test_run_job_get_projection_extension_metadata_assets_with_different_epsg(
         },
     }
 
-    cube_mock.write_assets.return_value = asset_meta
+    item_meta = {"myItem": {
+        "id": "myItem",
+        "bbox": None,
+        "geometry": None,
+        "assets": asset_meta
+    }}
+
+    cube_mock.write_assets.return_value = item_meta
     evaluate.return_value = ImageCollectionResult(
         cube=cube_mock, format="GTiff", options={"multidate": True}
     )
@@ -1118,7 +1159,14 @@ def test_run_job_get_projection_extension_metadata_job_dir_is_relative_path(eval
             # bands, for the remaining assets (Here there is only 1 other asset off course).
             "openEO01-05.tif": {"href": "openEO01-05.tif", "roles": "data"},
         }
-        cube_mock.write_assets.return_value = asset_meta
+
+        item_meta = {"myItem": {
+            "id": "myItem",
+            "bbox": None,
+            "geometry": None,
+            "assets": asset_meta
+        }}
+        cube_mock.write_assets.return_value = item_meta
         evaluate.return_value = ImageCollectionResult(
             cube=cube_mock, format="GTiff", options={"multidate": True}
         )
@@ -1254,7 +1302,14 @@ def test_run_job_get_projection_extension_metadata_assets_in_s3(
         }
     }
 
-    cube_mock.write_assets.return_value = asset_meta
+    item_meta = {"myItem": {
+        "id": "myItem",
+        "bbox": None,
+        "geometry": None,
+        "assets": asset_meta
+    }}
+
+    cube_mock.write_assets.return_value = item_meta
     evaluate.return_value = ImageCollectionResult(cube=cube_mock, format="GTiff", options={"multidate": True})
 
     # The asset file should not be available in the local job_dir before
@@ -1365,7 +1420,12 @@ def test_run_job_get_projection_extension_metadata_assets_in_s3_multiple_assets(
         },
     }
 
-    cube_mock.write_assets.return_value = asset_meta
+    item_meta = {"myItem": {
+        "id": "myItem",
+        "assets": asset_meta
+    }}
+
+    cube_mock.write_assets.return_value = item_meta
     evaluate.return_value = ImageCollectionResult(cube=cube_mock, format="GTiff", options={"multidate": True})
 
     # The asset files should not be available in the local job_dir before

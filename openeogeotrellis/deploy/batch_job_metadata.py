@@ -36,7 +36,7 @@ def _assemble_result_metadata(
     output_file: Path,
     unique_process_ids: Set[str],
     apply_gdal,
-    asset_metadata: Dict = None,
+    asset_metadata: Dict = None,  # TODO: include "items" instead of "assets"
     ml_model_metadata: Dict = None,
 ) -> dict:
     metadata = extract_result_metadata(tracer)
