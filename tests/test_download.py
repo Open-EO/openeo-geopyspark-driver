@@ -226,8 +226,9 @@ class TestDownload:
             "tile_grid": "100km",
         })
         assert len(res) == 30
-        name, asset = next(iter(res.items()))
-        assert Path(asset['href']).parent == tmp_path
+        assets = {asset[1]["href"]: asset[1] for item in res.values() for asset in item['assets'].items()}
+        asset = list(assets.values())[0]
+        assert Path(asset["href"]).parent == tmp_path
         assert asset['roles'] == ['data']
         assert 'image/tiff; application=geotiff' == asset['type']
 
