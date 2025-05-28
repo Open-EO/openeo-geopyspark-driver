@@ -410,8 +410,7 @@ def run_job(
             keys = set()
             def unique_key(asset_id,href):
                 if href is not None:
-                    url = urlparse(str(href))
-                    temp_key = url.path.split("/")[-1]  # use the last part of the path as key
+                    temp_key = str(Path(str(href)).relative_to(Path(str(output_file)).parent))
                 else:
                     temp_key = asset_id
                 counter = 0
