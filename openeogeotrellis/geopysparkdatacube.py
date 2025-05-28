@@ -1875,8 +1875,8 @@ class GeopysparkDataCube(DriverDataCube):
                 src_crs=CRS.from_user_input(crs), dst_crs=max_level.layer_metadata.crs,
                 xmin=bbox["west"], ymin=bbox["south"], xmax=bbox["east"], ymax=bbox["north"]
             )
-            crop_extent = get_jvm().geotrellis.vector.Extent(crop_bounds.xmin, crop_bounds.ymin,
-                                                                   crop_bounds.xmax, crop_bounds.ymax)
+            crop_extent = get_jvm().geotrellis.vector.Extent(float(crop_bounds.xmin), float(crop_bounds.ymin),
+                                                                   float(crop_bounds.xmax), float(crop_bounds.ymax))
         else:
             crop_bounds = None
             crop_extent = None
@@ -2214,7 +2214,7 @@ class GeopysparkDataCube(DriverDataCube):
                                 if band_indices is not None:
                                     assets[asset_key]["bands"] = [
                                         band for i, band in enumerate(bands) if i in band_indices
-                                    ],
+                                    ]
                                 if bbox:
                                     assets[asset_key]["bbox"] = to_latlng_bbox(bbox)
                                     assets[asset_key]["geometry"] = mapping(Polygon.from_bounds(*to_latlng_bbox(bbox)))
