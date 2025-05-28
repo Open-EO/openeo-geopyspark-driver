@@ -2350,7 +2350,8 @@ class GeopysparkDataCube(DriverDataCube):
             to_zip = format_options.get("to_zip", True)
             if to_zip:
                 shutil.make_archive(zarr_file, 'zip', zarr_file)
-
+                return {str(os.path.basename(zarr_file)):{"href": zarr_file + ".zip", "roles": ["data"]}}
+            return {str(os.path.basename(zarr_file)):{"href": zarr_file, "roles": ["data"]}}
 
         else:
             raise OpenEOApiException(
