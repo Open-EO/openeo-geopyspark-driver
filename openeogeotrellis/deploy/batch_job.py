@@ -555,11 +555,12 @@ def run_job(
         )
 
         assert len(results) == len(assets_metadata)
-        for result, result_assets_metadata in zip(results, assets_metadata):
+        for result, result_assets_metadata, result_items_metadata in zip(results, assets_metadata, results_items):
             _export_to_workspaces(
                 result,
                 result_metadata,
                 result_assets_metadata=result_assets_metadata,
+                result_items_metadata = result_items_metadata if is_stac11 else None,
                 job_dir=job_dir,
                 remove_exported_assets=job_options.get("remove-exported-assets", False),
                 enable_merge=job_options.get("export-workspace-enable-merge", False),
@@ -600,6 +601,7 @@ def _export_to_workspaces(
     result: SaveResult,
     result_metadata: dict,
     result_assets_metadata: dict,
+    result_items_metadata: dict,
     job_dir: Path,
     remove_exported_assets: bool,
     enable_merge: bool,
@@ -613,10 +615,19 @@ def _export_to_workspaces(
     if not workspace_exports:
         return
 
-    stac_hrefs = [
-        f"file:{path}"
-        for path in _write_exported_stac_collection(job_dir, result_metadata, list(result_assets_metadata.keys()))
-    ]
+    if result_items_metadata is not None:
+        #TODO #402 add a function that serializes result_items_metadata and creates the collection, like for asses in the 'else' branch
+        #placeholder code below is a copy of the 'assets' case, should be replaced with call to new function
+        stac_hrefs = [
+            f"file:{path}"
+            for path in _write_exported_stac_collection(job_dir, result_metadata, list(result_assets_metadata.keys()))
+        ]
+    else:
+
+        stac_hrefs = [
+            f"file:{path}"
+            for path in _write_exported_stac_collection(job_dir, result_metadata, list(result_assets_metadata.keys()))
+        ]
 
     # TODO: assemble pystac.STACObject and avoid file altogether?
     collection_href = [href for href in stac_hrefs if "collection.json" in href][0]
@@ -727,7 +738,7 @@ def _write_exported_stac_collection(
             "assets": {
                 asset_id: dict_no_none(
                     **{
-                        "href": f"{Path(asset['href']).name}",
+                        "href": f"{Path(asset['href']).relative_to(item_file.parent)}",
                         "roles": asset.get("roles"),
                         "type": asset.get("type"),
                         "eo:bands": asset.get("bands"),
