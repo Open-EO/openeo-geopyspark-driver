@@ -1145,6 +1145,7 @@ def _merge_layers_with_common_name(metadata: CatalogDict):
         if band_dims:
             (band_dim,) = band_dims
             merged["summaries"]["eo:bands"] = [eo_bands[b] for b in merged["cube:dimensions"][band_dim]["values"]]
+            # TODO #1109 also merge/handle "common" bands under summaries (instead of legacy eo:bands)
 
         metadata[common_name] = merged
 
