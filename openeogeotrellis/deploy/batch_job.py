@@ -417,6 +417,14 @@ def run_job(
                             temp_key = str(hrefPath.relative_to(Path(str(output_file)).parent))
                         else:
                             temp_key = str(hrefPath)
+                        if href.startswith("s3://"):
+                            url = urlparse(str(href))
+                        else:
+                            hrefPath = Path(str(href))
+                            if hrefPath.is_absolute():
+                                temp_key = str(hrefPath.relative_to(Path(str(output_file)).parent))
+                            else:
+                                temp_key = str(hrefPath)
                     except ValueError as e:
                         url = urlparse(str(href))
                         temp_key = url.path.split("/")[-1]
