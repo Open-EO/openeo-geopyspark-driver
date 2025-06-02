@@ -2065,7 +2065,7 @@ class GeopysparkDataCube(DriverDataCube):
 
                     bands = []
                     if self.metadata.has_band_dimension():
-                        bands = [b._asdict() for b in self.metadata.bands]
+                        bands = [{k:v for k,v in b._asdict().items() if v is not None} for b in self.metadata.bands]
                     nodata = max_level.layer_metadata.no_data_value
 
                     max_level_rdd = max_level.srdd.rdd()
