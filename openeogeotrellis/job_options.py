@@ -1,8 +1,10 @@
+import logging
 from dataclasses import dataclass, field, fields
 from typing import Any, Dict, List
 
+from openeo_driver.errors import OpenEOApiException
 from openeogeotrellis.config import get_backend_config
-
+from openeogeotrellis.utils import get_jvm
 
 @dataclass
 class JobOptions:
@@ -10,6 +12,8 @@ class JobOptions:
     This class represents the available job options for openEO Geotrellis.
 
     """
+
+    _log = logging.getLogger(__name__)
 
     driver_memory: str = field(
         default=get_backend_config().default_driver_memory,
@@ -23,6 +27,13 @@ class JobOptions:
         metadata={
             "name": "driver-memoryOverhead",
             "description": "Memory assigned to the Spark ‘driver’ on top of JVM memory for Python processes."
+        })
+
+    driver_cores: int = field(
+        default=5,
+        metadata={
+            "description": "Number of CPUs per driver, normally not needed.",
+            "public": False
         })
 
     executor_memory: str = field(
@@ -55,10 +66,13 @@ class JobOptions:
             "description": "CPUs assigned to a single task. UDFs using libraries like Tensorflow can benefit from further parallelization at the individual task level."
         },
     )  # TODO add description on how this increases requested memory
-    executor_corerequest: str = field(
-        default="",
+
+    soft_errors: str = field(
+        default=get_backend_config().default_soft_errors,
         metadata={
-            "description": "This setting is only relevant for Kubernetes-based backends, allows overcommitting CPU."})
+            "description": "Ratio of soft-errors to allow in load_collection/load_stac and sar_backscatter. Reading errors can occur due to corrupted files or intermittent cloud issues."
+        },
+    )
     max_executors: int = field(
         default=get_backend_config().default_max_executors,
         metadata={
@@ -67,20 +81,95 @@ class JobOptions:
             "Decreasing this can increase cost efficiency but will make your job slower."
         },
     )
+    executor_threads_jvm: int = field(
+        default=get_backend_config().default_executor_threads_jvm,
+        metadata={
+            "description": "Number of threads to allocate for the default jvm worker. Certain openEO processes can benefit of additional local parallelism on top of the distributed processing performed by Spark."
+        },
+    )
+    gdal_dataset_cache_size: int = field(
+        default=get_backend_config().default_gdal_dataset_cache_size,
+        metadata={
+            "description": "The default number of datasets that will be cached in batch jobs. A large cache will increase memory usage."
+        },
+    )
     udf_dependency_archives: List[str] = field(
-        default=None,
+        default_factory=list,
         metadata={"description": "An array of URLs pointing to zip files with extra dependencies to be used in UDF's."},
     )
+    udf_dependency_files: List[str] = field(
+        default_factory=list,
+        metadata={"description": "An array of URLs pointing to files to be used in UDF's."},
+    )
+    openeo_jar_path: str = field(
+        default=None,
+        metadata={"description": "Custom jar path.", "public":False},
+    )
+
+    def validate(self):
+
+        as_bytes = get_jvm().org.apache.spark.util.Utils.byteStringAsBytes
+
+        if as_bytes(self.executor_memory) + as_bytes(self.executor_memory_overhead) > as_bytes(
+                get_backend_config().max_executor_or_driver_memory):
+            raise OpenEOApiException(
+                message=f"Requested too much executor memory: {self.executor_memory} + {self.executor_memory_overhead}, the max for this instance is: {get_backend_config().max_executor_or_driver_memory}",
+                status_code=400)
+        if as_bytes(self.driver_memory) + as_bytes(self.driver_memory_overhead) > as_bytes(
+                get_backend_config().max_executor_or_driver_memory):
+            raise OpenEOApiException(
+                message=f"Requested too much driver memory: {self.driver_memory} + {self.driver_memory_overhead}, the max for this instance is: {get_backend_config().max_executor_or_driver_memory}",
+                status_code=400)
+
+        if (self.openeo_jar_path is not None and not self.openeo_jar_path.startswith("https://artifactory.vgt.vito.be/artifactory/libs-release-public/org/openeo/geotrellis-extensions")
+                and not self.openeo_jar_path.startswith("https://artifactory.vgt.vito.be/artifactory/libs-snapshot-public/org/openeo/geotrellis-extensions/") )  :
+            raise OpenEOApiException(
+                message=f"Requested invalid openeo jar path {self.openeo_jar_path}",
+                status_code=400)
+
+    def soft_errors_arg(self) -> str:
+        value = self.soft_errors
+
+        if value == "false":
+            return "0.0"
+        elif value == None:
+            return str(get_backend_config().default_soft_errors)
+        elif value == "true":
+            return "1.0"
+        elif isinstance(value, bool):
+            return "1.0" if value else "0.0"
+        elif isinstance(value, (int, float)) and 0.0 <= value <= 1.0:
+            return str(value)
+
+        raise OpenEOApiException(message=f"invalid value {value} for job_option soft-errors; "
+                                         f"supported values include false/true and values in the "
+                                         f"interval [0.0, 1.0]",
+                                 status_code=400)
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "JobOptions":
 
         init_kwargs = {}
         for field in fields(cls):
-            field_name = field.metadata.get("name", field.name.replace("_","-"))  # Use "name" from metadata or default to field name
-            init_kwargs[field.name] = data.get(field_name, field.default)
+            job_option_name = field.metadata.get("name", field.name.replace("_","-"))  # Use "name" from metadata or default to field name
+            if job_option_name in data:
+
+                value = data.get(job_option_name)
+                cls.validate_type(value,field.type)
+                init_kwargs[field.name] = value
 
         return cls(**init_kwargs)
+
+
+    @classmethod
+    def validate_type(cls, arg, type):
+        try:
+            if not isinstance(arg,type):
+                cls._log.warning(f"Job option with unexpected type: {arg}, expected type {cls.python_type_to_json_schema(type)}")
+        except TypeError:
+            pass
+
+
 
 
     @classmethod
@@ -135,3 +224,49 @@ class JobOptions:
         else:
             # Handle instances
             return cls.python_type_to_json_schema(type(python_type))
+
+@dataclass
+class K8SOptions(JobOptions):
+    driver_cores: int = field(
+        default=1,
+        metadata={
+            "description": "Number of CPUs per driver, normally not needed.",
+            "public": False
+        })
+
+    executor_request_cores: int = field(
+        default="NONE",
+        metadata={
+            "description": "Fraction of CPUs to actually request, expressed as 'milli-cpus', for instance '600m' for 0.6 of 1 cpu unit.",
+            "public": False
+        })
+    goofys:bool = field(default=False,
+        metadata={
+        "description": "Deprecated, use goofys or not",
+        "public": False
+    })
+    mount_tmp: bool = field(default=False,
+         metadata={
+             "description": "Deprecated, mounted tmp or not",
+             "public": False
+         })
+    spark_pvc: bool = field(default=False,
+         metadata={
+             "description": "Deprecated, use spark pvcs or not",
+             "public": False
+         })
+
+    def validate(self):
+        max_cores = 4
+        if int(self.executor_cores) > max_cores:
+            raise OpenEOApiException(
+                message=f"Requested too many executor cores: {self.executor_cores} , the max for this instance is: {max_cores}",
+                status_code=400)
+        if int(self.driver_cores) > max_cores:
+            raise OpenEOApiException(
+                message=f"Requested too many driver cores: {self.driver_cores} , the max for this instance is: {max_cores}",
+                status_code=400)
+        return super().validate()
+
+
+
