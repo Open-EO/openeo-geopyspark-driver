@@ -2334,7 +2334,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 temp_properties_file.flush()
 
                 job_name = "openEO batch_{title}_{j}_user {u}".format(title=job_title, j=job_id, u=user_id)
-                args = [
+                args: list[str] = [
                     script_location,
                     job_name,
                     job_specification_file.name,
@@ -2372,7 +2372,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 args.append(user_id)
                 args.append(job_id)
                 args.append(options.soft_errors_arg())
-                args.append(options.task_cpus)
+                args.append(str(options.task_cpus))
                 args.append(sentinel_hub_client_alias)
                 args.append(temp_properties_file.name)
                 args.append(",".join(options.udf_dependency_archives))
