@@ -412,13 +412,9 @@ def run_job(
                 #try to make the key unique, and backwards compatible if possible
                 if href is not None:
                     try:
-                        hrefPath = Path(str(href))
-                        if hrefPath.is_absolute():
-                            temp_key = str(hrefPath.relative_to(Path(str(output_file)).parent))
-                        else:
-                            temp_key = str(hrefPath)
-                        if href.startswith("s3://"):
+                        if str(href).startswith("s3://"):
                             url = urlparse(str(href))
+                            temp_key = url.path.split("/")[-1]
                         else:
                             hrefPath = Path(str(href))
                             if hrefPath.is_absolute():
