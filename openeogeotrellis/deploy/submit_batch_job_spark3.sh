@@ -219,6 +219,6 @@ spark-submit \
  --py-files "${pyfiles}" \
  --conf spark.hadoop.security.authentication=kerberos --conf spark.yarn.maxAppAttempts=1 \
  --conf spark.yarn.tags=openeo \
- --jars "${extensions},local://${SPARK_HOME}/jars/geotrellis-dependencies-splitjar.jar" \
+ --jars "${extensions},local://${SPARK_HOME}/jars/geotrellis-dependencies-static.jar" \
  --name "${jobName}" \
  "${main_py_file}" "$(basename "${processGraphFile}")" "${outputDir}" "${outputFileName}" "${metadataFileName}" "${apiVersion}" "${dependencies}" "${userId}" "${maxSoftErrorsRatio}" "${sentinelHubClientAlias}"
