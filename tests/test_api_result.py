@@ -3821,27 +3821,27 @@ class TestLoadStac:
             return text
 
         urllib_and_request_mock.get(
-            "https://stac.terrascope.be/", data=get_test_data_file("stac/issue830_alternate_url/root.json").read_text()
+            "https://stac.test/", data=get_test_data_file("stac/issue830_alternate_url/root.json").read_text()
         )
         urllib_and_request_mock.get(
-            "https://stac.terrascope.be/collections/sentinel-2-l2a",
+            "https://stac.test/collections/sentinel-2-l2a",
             data=get_test_data_file("stac/issue830_alternate_url/collections_sentinel-2-l2a.json").read_text(),
         )
         urllib_and_request_mock.get(
-            "https://stac.terrascope.be/search", data=item_json("stac/issue830_alternate_url/search.json")
+            "https://stac.test/search", data=item_json("stac/issue830_alternate_url/search.json")
         )
         urllib_and_request_mock.get(
-            "https://stac.terrascope.be/search?limit=20&bbox=5.07%2C51.215%2C5.08%2C51.22&datetime=2024-06-23T00%3A00%3A00Z%2F2024-06-23T23%3A59%3A59.999000Z&collections=sentinel-2-l2a&fields=%2Bproperties.proj%3Abbox%2C%2Bproperties.proj%3Aepsg%2C%2Bproperties.proj%3Ashape",
+            "https://stac.test/search?limit=20&bbox=5.07%2C51.215%2C5.08%2C51.22&datetime=2024-06-23T00%3A00%3A00Z%2F2024-06-23T23%3A59%3A59.999000Z&collections=sentinel-2-l2a&fields=%2Bproperties.proj%3Abbox%2C%2Bproperties.proj%3Aepsg%2C%2Bproperties.proj%3Ashape",
             data=item_json("stac/issue830_alternate_url/search_queried.json"))
         urllib_and_request_mock.get(
-            "https://stac.terrascope.be/search?limit=20&bbox=5.07%2C51.215%2C5.08%2C51.22&datetime=2024-06-16T00%3A00%3A00Z%2F2024-06-23T23%3A59%3A59.999000Z&collections=sentinel-2-l2a&fields=%2Bproperties.proj%3Abbox%2C%2Bproperties.proj%3Ashape%2C%2Bproperties.proj%3Aepsg&token=MTcxOTEzOTU3OTAyNCxTMkJfTVNJTDJBXzIwMjQwNjIzVDEwNDYxOV9OMDUxMF9SMDUxX1QzMVVGU18yMDI0MDYyM1QxMjIxNTYsc2VudGluZWwtMi1sMmE%3D",
+            "https://stac.test/search?limit=20&bbox=5.07%2C51.215%2C5.08%2C51.22&datetime=2024-06-16T00%3A00%3A00Z%2F2024-06-23T23%3A59%3A59.999000Z&collections=sentinel-2-l2a&fields=%2Bproperties.proj%3Abbox%2C%2Bproperties.proj%3Ashape%2C%2Bproperties.proj%3Aepsg&token=MTcxOTEzOTU3OTAyNCxTMkJfTVNJTDJBXzIwMjQwNjIzVDEwNDYxOV9OMDUxMF9SMDUxX1QzMVVGU18yMDI0MDYyM1QxMjIxNTYsc2VudGluZWwtMi1sMmE%3D",
             data=item_json("stac/issue830_alternate_url/search_queried_page2.json"))
         urllib_and_request_mock.get(
-            "https://stac.terrascope.be/search?limit=20&bbox=5.07%2C51.215%2C5.08%2C51.22&datetime=2024-06-23T00%3A00%3A00Z%2F2024-06-23T23%3A59%3A59.999000Z&collections=sentinel-2-l2a&fields=%2Btype%2C%2Bgeometry%2C%2Bproperties%2C%2Bid%2C%2Bbbox%2C%2Bstac_version%2C%2Bassets%2C%2Blinks%2C%2Bcollection",
+            "https://stac.test/search?limit=20&bbox=5.07%2C51.215%2C5.08%2C51.22&datetime=2024-06-23T00%3A00%3A00Z%2F2024-06-23T23%3A59%3A59.999000Z&collections=sentinel-2-l2a&fields=%2Btype%2C%2Bgeometry%2C%2Bproperties%2C%2Bid%2C%2Bbbox%2C%2Bstac_version%2C%2Bassets%2C%2Blinks%2C%2Bcollection",
             data=item_json("stac/issue830_alternate_url/search_queried.json"),
         )
         urllib_and_request_mock.get(
-            "https://stac.terrascope.be/search?limit=20&bbox=5.07%2C51.215%2C5.08%2C51.22&datetime=2024-06-23T00%3A00%3A00Z%2F2024-06-23T23%3A59%3A59.999000Z&collections=sentinel-2-l2a",
+            "https://stac.test/search?limit=20&bbox=5.07%2C51.215%2C5.08%2C51.22&datetime=2024-06-23T00%3A00%3A00Z%2F2024-06-23T23%3A59%3A59.999000Z&collections=sentinel-2-l2a",
             data=item_json("stac/issue830_alternate_url/search_queried.json"),
         )
 
@@ -3854,13 +3854,13 @@ class TestLoadStac:
                             "east": 5.08,
                             "north": 51.22,
                             "south": 51.215,
-                            "west": 5.07
+                            "west": 5.07,
                         },
                         "temporal_extent": [
                             "2024-06-23",
-                            "2024-06-24"
+                            "2024-06-24",
                         ],
-                        "url": "https://stac.terrascope.be/collections/sentinel-2-l2a"
+                        "url": "https://stac.test/collections/sentinel-2-l2a",
                     },
                     "result": False,
                 },
