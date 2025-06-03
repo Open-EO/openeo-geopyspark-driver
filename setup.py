@@ -61,7 +61,7 @@ setup(
     tests_require=tests_require,
     install_requires=[
         "openeo>=0.33.0",
-        "openeo_driver>=0.135.0a2.dev",
+        "openeo_driver>=0.135.0a3.dev",
         'pyspark==3.5.3; python_version>="3.8"',
         'pyspark>=2.3.1,<2.4.0; python_version<"3.8"',
         # TODO #1220 the +openeo suffix to point to this fork of geopyspark seems to cause trouble in some newer build contexts

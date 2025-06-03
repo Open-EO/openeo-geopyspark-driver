@@ -1446,6 +1446,7 @@ def get_elastic_job_registry(
         api_url=config.ejr_api,
         backend_id=config.ejr_backend_id,
         session=requests_session,
+        preserialize_process=config.ejr_preserialize_process,
     )
     # Get credentials from env (preferably) or vault (as fallback).
     ejr_creds = get_ejr_credentials_from_env(strict=False)
