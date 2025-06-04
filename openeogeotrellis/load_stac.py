@@ -123,26 +123,33 @@ def load_stac(
         )
 
     def is_band_asset(asset: pystac.Asset) -> bool:
+        # TODO: what does this function actually detect?
+        #       Name seems to suggest that it's about having necessary band metadata (e.g. a band name)
+        #       but implementation also seems to be happy with just being loadable as raster data in some sense.
         roles_with_bands = ["data", "data-mask", "snow-ice", "land-water", "water-mask"]
         return (any(asset.has_role(role) for role in roles_with_bands) or "eo:bands" in asset.extra_fields) and (
             asset.media_type is None or is_supported_raster_mime_type(asset.media_type)
         )
 
-    def get_band_names(itm: pystac.Item, asst: pystac.Asset) -> List[str]:
+    def get_band_names(item: pystac.Item, asset: pystac.Asset) -> List[str]:
         def get_band_name(eo_band) -> str:
             if isinstance(eo_band, dict):
                 return eo_band["name"]
 
             # can also be an index into a list of bands elsewhere.
             # TODO: still necessary to support this? See https://github.com/Open-EO/openeo-geopyspark-driver/issues/619
+            logger.warning(
+                "load_stac:get_band_names: eo:bands with integer indices. This is deprecated and support will be removed in the future."
+            )
             assert isinstance(eo_band, int)
             eo_band_index = eo_band
 
-            eo_bands_location = (itm.properties if "eo:bands" in itm.properties
-                                 else itm.get_collection().summaries.to_dict())
+            eo_bands_location = (
+                item.properties if "eo:bands" in item.properties else item.get_collection().summaries.to_dict()
+            )
             return get_band_name(eo_bands_location["eo:bands"][eo_band_index])
 
-        return [get_band_name(eo_band) for eo_band in asst.extra_fields.get("eo:bands", [])]
+        return [get_band_name(eo_band) for eo_band in asset.extra_fields.get("eo:bands", [])]
 
     def get_proj_metadata(itm: pystac.Item, asst: pystac.Asset) -> (Optional[int],
                                                                     Optional[Tuple[float, float, float, float]],
