@@ -431,19 +431,19 @@ def test_run_job(evaluate, time_sleep_mock, tmp_path):
         "geometry": dirty_equals.IsPartialDict(type="Polygon"),
         "assets": {
             "openEO01-01.tif": {
-                "href": "tmp/openEO01-01.tif",
+                "href": "openEO01-01.tif",
                 "roles": ["data"],
 
             },
             "openEO01-05.tif": {
-                "href": "tmp/openEO01-05.tif",
+                "href": "openEO01-05.tif",
                 "roles": ["data"],
             }
         }
     }}
 
     #asset_meta is how it previously looked like
-    asset_meta = {"openEO01-01.tif": {"href": "tmp/openEO01-01.tif", "roles": ["data"]},"openEO01-05.tif": {"href": "tmp/openEO01-05.tif", "roles": ["data"]}}
+    asset_meta = {"openEO01-01.tif": {"href": "openEO01-01.tif", "roles": ["data"]},"openEO01-05.tif": {"href": "openEO01-05.tif", "roles": ["data"]}}
     cube_mock.write_assets.return_value = item_meta
     evaluate.return_value = ImageCollectionResult(cube=cube_mock, format="GTiff", options={"multidate":True})
     global_tracker().clear()
