@@ -666,13 +666,8 @@ def _write_exported_stac_collection(
 
         if properties["datetime"] is None:
             start_datetime = asset.get("start_datetime") or result_metadata.get("start_datetime")
-            end_datetime = asset.get("end_datetime") or result_metadata.get("end_datetime")
+            properties["datetime"] = start_datetime
 
-            if start_datetime == end_datetime:
-                properties["datetime"] = start_datetime
-            else:
-                properties["start_datetime"] = start_datetime
-                properties["end_datetime"] = end_datetime
 
         stac_item = {
             "type": "Feature",
