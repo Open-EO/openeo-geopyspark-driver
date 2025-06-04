@@ -372,7 +372,7 @@ class CalrissianJobLauncher:
         manifest: kubernetes.client.V1Job,
         *,
         sleep: float = 5,
-        timeout: float = 3600,
+        timeout: float = 7200,  # insar_interferogram_coherence takes about 1 hour, so 2 hours should be enough
     ) -> kubernetes.client.V1Job:
         """
         Launch a k8s job and wait (with active polling) for it to finish.
