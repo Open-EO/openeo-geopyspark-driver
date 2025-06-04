@@ -3875,11 +3875,32 @@ class TestLoadStac:
         res = api110.result(process_graph).assert_status_code(200)
         res_path = tmp_path / "res.nc"
         res_path.write_bytes(res.data)
-        ds = xarray.load_dataset(res_path)
         # if the process graph did not throw an error, this test is already fine.
-        assert ds.to_dataframe().values[0][1] == 4.0
-        assert ds.dims["x"] == 13
-        assert ds.dims["y"] == 10
+        cube: xarray.DataArray = _load_cube_from_netcdf(res_path)
+        assert cube.sizes == {"t": 1, "x": 73, "y": 58, "bands": 20}
+        assert sorted(cube.coords["bands"].values) == [
+            "AOT_10m",
+            "AOT_20m",
+            "AOT_60m",
+            "B01",
+            "B02",
+            "B03",
+            "B04",
+            "B05",
+            "B06",
+            "B07",
+            "B08",
+            "B09",
+            "B11",
+            "B12",
+            "B8A",
+            "SCL_20m",
+            "SCL_60m",
+            "WVP_10m",
+            "WVP_20m",
+            "WVP_60m",
+        ]
+        assert cube.isel(t=0, x=1, y=2, bands=4).item() == 4.0
 
     def test_load_stac_issue830_alternate_url_s3(self, api110, urllib_and_request_mock, tmp_path):
         def item_json(path):
