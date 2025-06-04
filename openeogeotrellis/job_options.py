@@ -4,7 +4,7 @@ from typing import Any, Dict, List
 
 from openeo_driver.errors import OpenEOApiException
 from openeogeotrellis.config import get_backend_config
-from openeogeotrellis.utils import get_jvm
+from openeogeotrellis.util.byteunit import byte_string_as
 
 @dataclass
 class JobOptions:
@@ -108,14 +108,13 @@ class JobOptions:
 
     def validate(self):
 
-        as_bytes = get_jvm().org.apache.spark.util.Utils.byteStringAsBytes
 
-        if as_bytes(self.executor_memory) + as_bytes(self.executor_memory_overhead) > as_bytes(
+        if byte_string_as(self.executor_memory) + byte_string_as(self.executor_memory_overhead) > byte_string_as(
                 get_backend_config().max_executor_or_driver_memory):
             raise OpenEOApiException(
                 message=f"Requested too much executor memory: {self.executor_memory} + {self.executor_memory_overhead}, the max for this instance is: {get_backend_config().max_executor_or_driver_memory}",
                 status_code=400)
-        if as_bytes(self.driver_memory) + as_bytes(self.driver_memory_overhead) > as_bytes(
+        if byte_string_as(self.driver_memory) + byte_string_as(self.driver_memory_overhead) > byte_string_as(
                 get_backend_config().max_executor_or_driver_memory):
             raise OpenEOApiException(
                 message=f"Requested too much driver memory: {self.driver_memory} + {self.driver_memory_overhead}, the max for this instance is: {get_backend_config().max_executor_or_driver_memory}",
