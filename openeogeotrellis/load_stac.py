@@ -127,12 +127,27 @@ def load_stac(
         # TODO: what does this function actually detect?
         #       Name seems to suggest that it's about having necessary band metadata (e.g. a band name)
         #       but implementation also seems to be happy with just being loadable as raster data in some sense.
-        roles_with_bands = ["data", "data-mask", "snow-ice", "land-water", "water-mask"]
+
+        # Skip unsupported media types (if known)
+        if asset.media_type and not is_supported_raster_mime_type(asset.media_type):
+            return False
+
+        # Decide based on role (if known)
+        if asset.roles is not None:
+            roles_with_bands = {
+                "data",
+                "data-mask",
+                "snow-ice",
+                "land-water",
+                "water-mask",
+            }
+            return bool(roles_with_bands.intersection(asset.roles))
+
+        # Fallback based on presence of any band metadata
         return (
-            any(asset.has_role(role) for role in roles_with_bands)
-            or "eo:bands" in asset.extra_fields
+            "eo:bands" in asset.extra_fields
             or "bands" in asset.extra_fields  # TODO: built-in "bands" support seems to be scheduled for pystac V2
-        ) and (asset.media_type is None or is_supported_raster_mime_type(asset.media_type))
+        )
 
     def get_band_names(item: pystac.Item, asset: pystac.Asset) -> List[str]:
         # TODO: this whole function can be replaced with
