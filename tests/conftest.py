@@ -18,6 +18,7 @@ import moto
 import moto.server
 import openeo_driver
 from openeo_driver.config import OpenEoBackendConfig
+from openeo.testing.io import TestDataLoader
 from openeogeotrellis.integrations.identity import IDPTokenIssuer
 
 from openeogeotrellis.config.s3_config import AWSConfig
@@ -262,6 +263,11 @@ class _Sleeper:
 
     def did_sleep(self) -> bool:
         return len(self.history) > 0
+
+
+@pytest.fixture
+def test_data() -> TestDataLoader:
+    return TestDataLoader(root=TEST_DATA_ROOT)
 
 
 @pytest.fixture
