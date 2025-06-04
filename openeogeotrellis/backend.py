@@ -39,7 +39,7 @@ from geopyspark import LayerType, Pyramid, TiledRasterLayer
 import openeo_driver.util.changelog
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 from openeo.metadata import Band, BandDimension, Dimension, SpatialDimension, TemporalDimension
-from openeo.util import TimingLogger, deep_get, dict_no_none, repr_truncate, rfc3339, str_truncate
+from openeo.util import TimingLogger, deep_get, dict_no_none, repr_truncate, rfc3339, str_truncate, ensure_dir
 from openeo.utils.version import ComparableVersion
 from openeo_driver import backend
 from openeo_driver.backend import (
@@ -2311,6 +2311,16 @@ class GpsBatchJobs(backend.BatchJobs):
                 extra_py_files = ",".join(options.udf_dependency_files)
 
             job_work_dir = self.get_job_work_dir(job_id=job_id)
+            # Create the job work dir and set permissions.
+            ensure_dir(job_work_dir)
+            try:
+                shutil.chown(job_work_dir, user=None, group="openeo_results")
+            except LookupError as e:
+                logger.warning(f"Could not change group of {job_work_dir} to openeo_results.")
+            except PermissionError as e:
+                logger.warning(f"Could not change group of {job_work_dir} to openeo_results, no permissions.")
+            # Ensure others can read/write so that the batch job driver and executors can write to it.
+            add_permissions(job_work_dir, stat.S_IRWXO)
 
             # TODO: use different root dir for these temp input files than self._output_root_dir (which is for output files)?
             with tempfile.NamedTemporaryFile(
