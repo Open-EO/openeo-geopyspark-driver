@@ -634,7 +634,7 @@ def _export_to_workspaces(
         #placeholder code below is a copy of the 'assets' case, should be replaced with call to new function
         stac_hrefs = [
             f"file:{path}"
-            for path in _write_exported_stac_collection(job_dir, result_metadata,result_items_metadata)
+            for path in _write_exported_stac_collection_from_item(job_dir, result_metadata,result_items_metadata)
         ]
     else:
 
@@ -805,7 +805,7 @@ def _write_exported_stac_collection(
     return item_files + [collection_file]
 
 
-def _write_exported_stac_collection(
+def _write_exported_stac_collection_from_item(
     job_dir: Path,
     result_metadata: dict,
     item_metadata: dict
