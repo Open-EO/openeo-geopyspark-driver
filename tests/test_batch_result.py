@@ -1068,6 +1068,122 @@ def test_export_workspace(tmp_path, remove_original, attach_gdalinfo_assets):
         shutil.rmtree(workspace_dir)
 
 
+
+@pytest.mark.parametrize("remove_original", [False, True])
+@pytest.mark.parametrize("attach_gdalinfo_assets", [False, True])
+def test_export_workspace_asset(tmp_path, remove_original, attach_gdalinfo_assets):
+    workspace_id = "tmp"
+    merge = _random_merge()
+
+    process_graph = {
+        "loadcollection1": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "TestCollection-LonLat16x16",
+                "temporal_extent": ["2021-01-05", "2021-01-16"],
+                "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 2.0},
+                "bands": ["Flat:2"]
+            }
+        },
+        "saveresult1": {
+            "process_id": "save_result",
+            "arguments": {
+                "data": {"from_node": "loadcollection1"},
+                "options": {
+                    "attach_gdalinfo_assets": attach_gdalinfo_assets,
+                },
+                "format": "GTiff"
+            },
+        },
+        "exportworkspace1": {
+            "process_id": "export_workspace",
+            "arguments": {
+                "data": {"from_node": "saveresult1"},
+                "workspace": workspace_id,
+                "merge": str(merge),
+            },
+            "result": True
+        }
+    }
+
+    process = {
+        "process_graph": process_graph,
+        "job_options": {
+            "stac-version": "1.1",
+            "remove-exported-assets": remove_original,
+        },
+    }
+
+    # TODO: avoid depending on `/tmp` for test output, make sure to leverage `tmp_path` fixture (https://github.com/Open-EO/openeo-python-driver/issues/265)
+    workspace: DiskWorkspace = get_backend_config().workspaces[workspace_id]
+    workspace_dir = workspace.root_directory / merge
+
+    try:
+        metadata_file = tmp_path / "job_metadata.json"
+
+        run_job(
+            process,
+            output_file=tmp_path / "out.tif",
+            metadata_file=metadata_file,
+            api_version="2.0.0",
+            job_dir=tmp_path,
+            dependencies=[],
+        )
+
+        job_dir_files = set(os.listdir(tmp_path))
+        assert len(job_dir_files) > 0
+
+        if remove_original:
+            assert "openEO_2021-01-05Z.tif" not in job_dir_files
+            assert "openEO_2021-01-15Z.tif" not in job_dir_files
+        else:
+            assert "openEO_2021-01-05Z.tif" in job_dir_files
+            assert "openEO_2021-01-15Z.tif" in job_dir_files
+
+        assert len(_paths_relative_to(workspace_dir)) == 7 if attach_gdalinfo_assets else 5
+        assert {Path("collection.json"), Path("openEO_2021-01-05Z.tif"), Path("openEO_2021-01-15Z.tif")}.issubset(_paths_relative_to(workspace_dir))
+
+        stac_collection = pystac.Collection.from_file(str(workspace_dir / "collection.json"))
+        stac_collection.validate_all()
+
+        assert stac_collection.extent.spatial.bboxes == [[0.0, 0.0, 1.0, 2.0]]
+        assert stac_collection.extent.temporal.intervals == [
+            [dt.datetime(2021, 1, 5, tzinfo=dt.timezone.utc), dt.datetime(2021, 1, 16, tzinfo=dt.timezone.utc)]
+        ]
+
+        item_links = [item_link for item_link in stac_collection.links if item_link.rel == "item"]
+        assert len(item_links) == 2
+
+        refs = set()
+        for item in item_links:
+            refs.add(Path(item.href))
+        assert len(refs) == 2
+        assert refs.issubset(_paths_relative_to(workspace_dir))
+
+        items = list(stac_collection.get_items())
+
+        for item in items:
+            assert item.bbox == [0.0,0.0,1.0,2.0]
+            assets = item.assets
+            assert len(assets) == 2 if attach_gdalinfo_assets else 1
+            assert "openEO" in assets
+            asset_fields = assets["openEO"].extra_fields
+            assert "bands" in asset_fields
+            bands = asset_fields["bands"]
+            assert len(bands) == 1
+            assert len(bands[0]) == 2
+            assert "name" in bands[0]
+            assert bands[0]["name"] == "Flat:2"
+            assert "statistics" in bands[0]
+            assert len(bands[0]["statistics"]) == 5
+            assert "bbox" in asset_fields
+            assert asset_fields["bbox"] == [0.0,0.0,1.0,2.0]
+            assert "geometry" in asset_fields
+
+    finally:
+       shutil.rmtree(workspace_dir)
+
+
 def test_export_workspace_with_asset_per_band(tmp_path):
     workspace_id = "tmp"
     merge = _random_merge()

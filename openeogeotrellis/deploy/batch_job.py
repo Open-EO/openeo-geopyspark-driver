@@ -622,7 +622,7 @@ def _export_to_workspaces(
         #placeholder code below is a copy of the 'assets' case, should be replaced with call to new function
         stac_hrefs = [
             f"file:{path}"
-            for path in _write_exported_stac_collection(job_dir, result_metadata, list(result_assets_metadata.keys()))
+            for path in _write_exported_stac_collection(job_dir, result_metadata,result_items_metadata)
         ]
     else:
 
@@ -773,6 +773,91 @@ def _write_exported_stac_collection(
     stac_collection = {
         "type": "Collection",
         "stac_version": "1.0.0",
+        "id": job_id,
+        "description": f"This is the STAC metadata for the openEO job {job_id!r}",  # TODO
+        "license": "unknown",  # TODO
+        "extent": {
+            "spatial": {"bbox": [result_metadata.get("bbox", [-180, -90, 180, 90])]},
+            "temporal": {"interval": [[result_metadata.get("start_datetime"), result_metadata.get("end_datetime")]]},
+        },
+        "links": (
+            [item_link(item_file) for item_file in item_files]
+            + [link for link in _get_tracker_metadata("").get("links", []) if link["rel"] == "derived_from"]
+        ),
+    }
+
+    collection_file = job_dir / "collection.json"  # TODO: file is reused for each result
+    with open(collection_file, "wt") as fc:
+        json.dump(stac_collection, fc)
+
+    return item_files + [collection_file]
+
+
+def _write_exported_stac_collection(
+    job_dir: Path,
+    result_metadata: dict,
+    item_metadata: dict
+) -> List[Path]:  # TODO: change to Set?
+    def write_stac_item_file(asset_id: str, item: dict) -> Path:
+        assets = dict()
+        for (asset_key,asset) in item.get("assets").items():
+            asset_bands = None
+            if "bands" in asset:
+                bands = asset.get("bands")
+                raster_bands = asset.get("raster:bands")
+                asset_bands = list()
+                for band in bands:
+                    name = band["name"]
+                    asset_band = dict_no_none(band)
+                    for raster_band in raster_bands:
+                        if raster_band["name"] == name:
+                            asset_band.update(raster_band)
+                            asset_bands.append(asset_band)
+            assets[asset_key] = dict_no_none({
+                "href": asset.get("href"),
+                "type": asset.get("type"),
+                "roles": asset.get("roles"),
+                "bands": asset_bands,
+                # "nodata": asset.get("nodata"),
+                "datatime": asset.get("datetime"),
+                "bbox": asset.get("bbox"),
+                "geometry": asset.get("geometry"),
+            })
+        stac_item = {
+            "type": "Feature",
+            "stac_version": "1.1.0",
+            "id": item.get("id"),
+            "geometry": item.get("geometry"),
+            "bbox":item.get("bbox"),
+            "properties":item["properties"],
+            "links":[],
+            "assets":assets
+        }
+
+        item_file = get_abs_path_of_asset(Path(f"{asset_id}.json"), job_dir)
+        item_file.parent.mkdir(parents=True, exist_ok=True)
+        with open(item_file, "wt") as fi:
+            json.dump(stac_item, fi, allow_nan=False)
+
+        return item_file
+
+    item_files = [
+        write_stac_item_file(item_key, item) for (item_key,item) in item_metadata.items()
+    ]
+
+    def item_link(item_file: Path) -> dict:
+        relative_path = item_file.relative_to(job_dir)
+        return {
+            "href": f"./{relative_path}",
+            "rel": "item",
+            "type": "application/geo+json",
+        }
+
+    job_id = get_job_id(default="unknown-job")
+
+    stac_collection = {
+        "type": "Collection",
+        "stac_version": "1.1.0",
         "id": job_id,
         "description": f"This is the STAC metadata for the openEO job {job_id!r}",  # TODO
         "license": "unknown",  # TODO
