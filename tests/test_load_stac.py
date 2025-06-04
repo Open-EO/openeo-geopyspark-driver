@@ -1,16 +1,21 @@
 import datetime as dt
+import dirty_equals
 import json
+import pystac
 from contextlib import nullcontext
 
 import mock
 import pytest
+
+import openeo.metadata
+from openeo.testing.stac import StacDummyBuilder
 from openeo_driver.ProcessGraphDeserializer import DEFAULT_TEMPORAL_EXTENT
 from openeo_driver.backend import BatchJobMetadata, BatchJobs, LoadParameters
 from openeo_driver.errors import OpenEOApiException
 from openeo_driver.util.date_math import now_utc
 from openeo_driver.utils import EvalEnv
 
-from openeogeotrellis.load_stac import extract_own_job_info, load_stac
+from openeogeotrellis.load_stac import extract_own_job_info, load_stac, _StacMetadataParser
 
 
 @pytest.mark.parametrize("url, user_id, job_info_id",
@@ -92,7 +97,8 @@ def test_property_filter_from_parameter(requests_mock):
 @pytest.mark.parametrize(
     ["item_path"],
     [
-        ("stac/issue609-api-temporal-bound-exclusive/item01.json",),
+        ("stac/issue609-api-temporal-bound-exclusive-eo-bands/item01.json",),
+        ("stac/issue609-api-temporal-bound-exclusive-common-bands/item01.json",),
     ],
 )
 def test_stac_api_dimensions(requests_mock, test_data, item_path):
@@ -156,12 +162,63 @@ def jvm_mock():
     ],
 )
 @pytest.mark.parametrize(
-    ["band_names", "resolution"],
+    ["band_names", "resolution", "expected_add_links"],
     [
-        (["AOT_10m"], 10.0),
-        (["WVP_20m"], 20.0),
-        (["WVP_60m"], 60.0),
-        (["AOT_10m", "WVP_20m"], 10.0)
+        (
+            ["AOT_10m"],
+            10.0,
+            [(dirty_equals.IsStr(regex=".*_AOT_10m.jp2"), "AOT_10m", -1000.0, ["AOT_10m"])],
+        ),
+        (
+            ["B01_60m"],
+            60.0,
+            [
+                (
+                    dirty_equals.IsStr(regex=".*_B01_60m.jp2"),
+                    "B01_60m",
+                    # has "raster:scale": 0.0001 and "raster:offset": -0.1
+                    -1000.0,
+                    ["B01_60m"],
+                )
+            ],
+        ),
+        (
+            ["B01"],
+            20.0,
+            [(dirty_equals.IsStr(regex=".*_B01_20m.jp2"), "B01_20m", -1000.0, ["B01"])],
+        ),
+        (
+            ["WVP_20m"],
+            20.0,
+            [(dirty_equals.IsStr(regex=".*_WVP_20m.jp2"), "WVP_20m", -1000.0, ["WVP_20m"])],
+        ),
+        (
+            ["WVP_60m"],
+            60.0,
+            [(dirty_equals.IsStr(regex=".*_WVP_60m.jp2"), "WVP_60m", -1000.0, ["WVP_60m"])],
+        ),
+        (
+            ["AOT_10m", "WVP_20m"],
+            10.0,
+            [
+                (dirty_equals.IsStr(regex=".*_AOT_10m.jp2"), "AOT_10m", -1000.0, ["AOT_10m"]),
+                (dirty_equals.IsStr(regex=".*_WVP_20m.jp2"), "WVP_20m", -1000.0, ["WVP_20m"]),
+            ],
+        ),
+        (
+            ["B01_20m", "SCL_20m"],
+            20.0,
+            [
+                (dirty_equals.IsStr(regex=".*_B01_20m.jp2"), "B01_20m", -1000.0, ["B01_20m"]),
+                (
+                    dirty_equals.IsStr(regex=".*_SCL_20m.jp2"),
+                    "SCL_20m",
+                    # has neither "raster:scale" nor "raster:offset"
+                    0.0,
+                    ["SCL_20m"],
+                ),
+            ],
+        ),
     ],
 )
 def test_lcfm_improvements(  # resolution and offset behind a feature flag; alphabetical head tags are tested elsewhere
@@ -172,6 +229,7 @@ def test_lcfm_improvements(  # resolution and offset behind a feature flag; alph
     resolution,
     enable_by_catalog,
     enable_by_eval_env,
+    expected_add_links,
 ):
     stac_api_root_url = "https://stac.test"
     stac_collection_url = f"{stac_api_root_url}/collections/collection"
@@ -208,19 +266,7 @@ def test_lcfm_improvements(  # resolution and offset behind a feature flag; alph
     cellsize_mock.assert_called_once_with(resolution, resolution)
     assert data_cube.metadata.spatial_extent["crs"] == "EPSG:32636"
 
-    feature_builder.addLink.assert_any_call(
-        "/eodata/Sentinel-2/MSI/L2A_N0500/2020/03/22/S2B_MSIL2A_20200322T074609_N0500_R135_T36NYH_20230612T214223.SAFE/GRANULE/L2A_T36NYH_A015891_20200322T075811/IMG_DATA/R60m/T36NYH_20200322T074609_B01_60m.jp2",
-        "B01_60m",
-        -1000.0,  # has "raster:scale": 0.0001 and "raster:offset": -0.1
-        ["B01_60m"],
-    )
-
-    feature_builder.addLink.assert_any_call(
-        "/eodata/Sentinel-2/MSI/L2A_N0500/2020/03/22/S2B_MSIL2A_20200322T074609_N0500_R135_T36NYH_20230612T214223.SAFE/GRANULE/L2A_T36NYH_A015891_20200322T075811/IMG_DATA/R20m/T36NYH_20200322T074609_SCL_20m.jp2",
-        "SCL_20m",
-        0.0,  # has neither "raster:scale" nor "raster:offset"
-        ["SCL_20m"],
-    )
+    assert [c.args for c in feature_builder.addLink.call_args_list] == expected_add_links
 
 
 def _mock_stac_api(requests_mock, stac_api_root_url, stac_collection_url, feature_collection):
@@ -335,10 +381,17 @@ def test_empty_cube_from_stac_api(requests_mock, featureflags, env, expectation)
         ({}, EvalEnv({"allow_empty_cubes": True}), nullcontext()),  # pyramid_seq
     ],
 )
-def test_empty_cube_from_non_intersecting_item(requests_mock, test_data, featureflags, env, expectation):
+@pytest.mark.parametrize(
+    "item_path",
+    [
+        "stac/item01-eo-bands.json",
+        "stac/item01-common-bands.json",
+    ],
+)
+def test_empty_cube_from_non_intersecting_item(requests_mock, test_data, featureflags, env, expectation, item_path):
     stac_item_url = "https://stac.test/item.json"
 
-    requests_mock.get(stac_item_url, json=test_data.load_json("stac/item01.json"))
+    requests_mock.get(stac_item_url, json=test_data.load_json(item_path))
 
     with expectation:
         data_cube = load_stac(
@@ -356,3 +409,156 @@ def test_empty_cube_from_non_intersecting_item(requests_mock, test_data, feature
         assert data_cube.metadata.band_names == ["A1"]
         for level in data_cube.pyramid.levels.values():
             assert level.count() == 0
+
+
+class TestStacMetadataParser:
+    def test_band_from_eo_bands_metadata(self):
+        assert _StacMetadataParser()._band_from_eo_bands_metadata(
+            {"name": "B04"},
+        ) == openeo.metadata.Band(name="B04")
+        assert _StacMetadataParser()._band_from_eo_bands_metadata(
+            {"name": "B04", "common_name": "red", "center_wavelength": 0.665}
+        ) == openeo.metadata.Band(name="B04", common_name="red", wavelength_um=0.665)
+
+    def test_band_from_common_bands_metadata(self):
+        assert _StacMetadataParser()._band_from_common_bands_metadata(
+            {"name": "B04"},
+        ) == openeo.metadata.Band(name="B04")
+        assert _StacMetadataParser()._band_from_common_bands_metadata(
+            {"name": "B04", "eo:common_name": "red", "eo:center_wavelength": 0.665}
+        ) == openeo.metadata.Band(name="B04", common_name="red", wavelength_um=0.665)
+
+    @pytest.mark.parametrize(
+        ["data", "expected"],
+        [
+            (
+                {
+                    "type": "Catalog",
+                    "id": "catalog123",
+                    "description": "Catalog 123",
+                    "stac_version": "1.0.0",
+                    "stac_extensions": ["https://stac-extensions.github.io/eo/v1.1.0/schema.json"],
+                    "summaries": {
+                        "eo:bands": [
+                            {"name": "B04", "common_name": "red", "center_wavelength": 0.665},
+                            {"name": "B03", "common_name": "green", "center_wavelength": 0.560},
+                        ],
+                    },
+                    "links": [],
+                },
+                ["B04", "B03"],
+            ),
+            (
+                {
+                    "type": "Catalog",
+                    "id": "catalog123",
+                    "description": "Catalog 123",
+                    "stac_version": "1.1.0",
+                    "summaries": {
+                        "bands": [
+                            {"name": "B04"},
+                            {"name": "B03"},
+                        ],
+                    },
+                    "links": [],
+                },
+                ["B04", "B03"],
+            ),
+        ],
+    )
+    def test_bands_from_stac_catatlog(self, data, expected):
+        catalog = pystac.Catalog.from_dict(data)
+        assert _StacMetadataParser().bands_from_stac_catalog(catalog=catalog).band_names() == expected
+
+    @pytest.mark.parametrize(
+        ["data", "expected"],
+        [
+            (
+                StacDummyBuilder.collection(
+                    stac_version="1.0.0",
+                    stac_extensions=["https://stac-extensions.github.io/eo/v1.1.0/schema.json"],
+                    summaries={
+                        "eo:bands": [
+                            {"name": "B04", "common_name": "red", "center_wavelength": 0.665},
+                            {"name": "B03", "common_name": "green", "center_wavelength": 0.560},
+                        ],
+                    },
+                ),
+                ["B04", "B03"],
+            ),
+            (
+                StacDummyBuilder.collection(
+                    stac_version="1.1.0",
+                    summaries={
+                        "bands": [
+                            {"name": "B04"},
+                            {"name": "B03"},
+                        ],
+                    },
+                ),
+                ["B04", "B03"],
+            ),
+        ],
+    )
+    def test_bands_from_stac_collection(self, data, expected):
+        collection = pystac.Collection.from_dict(data)
+        assert _StacMetadataParser().bands_from_stac_collection(collection=collection).band_names() == expected
+
+    @pytest.mark.parametrize(
+        ["data", "expected"],
+        [
+            (
+                StacDummyBuilder.item(
+                    stac_version="1.0.0",
+                    stac_extensions=["https://stac-extensions.github.io/eo/v1.1.0/schema.json"],
+                    properties={
+                        "datetime": "2023-10-01T00:00:00Z",
+                        "eo:bands": [{"name": "B04"}, {"name": "B03"}],
+                    },
+                ),
+                ["B04", "B03"],
+            ),
+            (
+                StacDummyBuilder.item(
+                    stac_version="1.1.0",
+                    properties={
+                        "datetime": "2023-10-01T00:00:00Z",
+                        "bands": [{"name": "B04"}, {"name": "B03"}],
+                    },
+                ),
+                ["B04", "B03"],
+            ),
+        ],
+    )
+    def test_bands_from_stac_item(self, data, expected):
+        item = pystac.Item.from_dict(data)
+        assert _StacMetadataParser().bands_from_stac_item(item=item).band_names() == expected
+
+    @pytest.mark.parametrize(
+        ["data", "expected"],
+        [
+            (
+                {
+                    "href": "https://stac.test/asset.tif",
+                    "eo:bands": [
+                        {"name": "B04"},
+                        {"name": "B03"},
+                    ],
+                },
+                ["B04", "B03"],
+            ),
+            (
+                {
+                    "href": "https://stac.test/asset.tif",
+                    "bands": [
+                        {"name": "B04"},
+                        {"name": "B03"},
+                    ],
+                },
+                ["B04", "B03"],
+            ),
+        ],
+    )
+    def test_bands_from_stac_asset(self, data, expected):
+        asset = pystac.Asset.from_dict(data)
+        assert _StacMetadataParser().bands_from_stac_asset(asset=asset).band_names() == expected

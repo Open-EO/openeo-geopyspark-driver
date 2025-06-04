@@ -7,27 +7,27 @@
     {
       "rel": "self",
       "type": "application/json",
-      "href": "https://stac.terrascope.be/collections/sentinel-2-l2a"
+      "href": "https://stac.test/collections/sentinel-2-l2a"
     },
     {
       "rel": "parent",
       "type": "application/json",
-      "href": "https://stac.terrascope.be/"
+      "href": "https://stac.test/"
     },
     {
       "rel": "items",
       "type": "application/geo+json",
-      "href": "https://stac.terrascope.be/collections/sentinel-2-l2a/items"
+      "href": "https://stac.test/collections/sentinel-2-l2a/items"
     },
     {
       "rel": "root",
       "type": "application/json",
-      "href": "https://stac.terrascope.be/"
+      "href": "https://stac.test/"
     },
     {
       "rel": "items",
       "type": "application/geo+json",
-      "href": "https://stac.terrascope.be/collections/sentinel-2-l2a/items"
+      "href": "https://stac.test/collections/sentinel-2-l2a/items"
     }
   ],
   "stac_extensions": [
@@ -663,14 +663,6 @@
         "producer"
       ],
       "url": "https://earth.esa.int/"
-    },
-    {
-      "name": "VITO",
-      "roles": [
-        "processor",
-        "host"
-      ],
-      "url": "https://terrascope.be/"
     }
   ],
   "summaries": {
@@ -692,7 +684,7 @@
   },
   "assets": {
     "thumbnail": {
-      "href": "https://services.terrascope.be/collectioncatalogue/images/quicklooks/SENTINEL2_TOC_V2_QL.JPG",
+      "href": "https://data.test/collectioncatalogue/images/quicklooks/SENTINEL2_TOC_V2_QL.JPG",
       "type": "image/jpeg",
       "title": "sentinel-2-l2a",
       "roles": [
