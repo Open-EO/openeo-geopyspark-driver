@@ -1111,38 +1111,42 @@ def test_export_workspace_with_asset_per_band(tmp_path):
         assert "openEO_2021-01-05Z_Longitude.tif" in job_dir_files
         assert "openEO_2021-01-05Z_Latitude.tif" in job_dir_files
 
-        assert _paths_relative_to(workspace_dir) == {
+        assert {
             Path("collection.json"),
             Path("openEO_2021-01-05Z_Longitude.tif"),
-            Path("openEO_2021-01-05Z_Longitude.tif.json"),
             Path("openEO_2021-01-05Z_Latitude.tif"),
-            Path("openEO_2021-01-05Z_Latitude.tif.json"),
-        }
+        }.issubset(_paths_relative_to(workspace_dir))
+
+        assert 4 == len(_paths_relative_to(workspace_dir))
 
         stac_collection = pystac.Collection.from_file(str(workspace_dir / "collection.json"))
         stac_collection.validate_all()
 
         item_links = [item_link for item_link in stac_collection.links if item_link.rel == "item"]
-        assert len(item_links) == 2
+        assert len(item_links) == 1
         item_link = item_links[0]
 
         assert item_link.media_type == "application/geo+json"
-        assert item_link.href == "./openEO_2021-01-05Z_Latitude.tif.json"
+        link_id = item_link.target.id
+        assert item_link.href == "./" + link_id + ".json"
 
         items = list(stac_collection.get_items())
-        assert len(items) == 2
+        assert len(items) == 1
 
         item = items[0]
-        assert item.id == "openEO_2021-01-05Z_Latitude.tif"
         assert item.bbox == [0.0, 0.0, 1.0, 2.0]
         assert shape(item.geometry).normalize().almost_equals(Polygon.from_bounds(0.0, 0.0, 1.0, 2.0).normalize())
 
-        geotiff_asset = item.get_assets()["openEO_2021-01-05Z_Latitude.tif"]
+        assets = item.get_assets()
+        assert len(assets) == 2
+        assert "openEO_Latitude" in assets
+        assert "openEO_Longitude" in assets
+        geotiff_asset = assets["openEO_Latitude"]
         assert "data" in geotiff_asset.roles
-        assert geotiff_asset.href == "./openEO_2021-01-05Z_Latitude.tif"
+        assert geotiff_asset.href.endswith("/openEO_2021-01-05Z_Latitude.tif")
         assert geotiff_asset.media_type == "image/tiff; application=geotiff"
-        assert geotiff_asset.extra_fields["eo:bands"] == [DictSubSet({"name": "Latitude"})]
-        assert geotiff_asset.extra_fields["raster:bands"] == [
+        assert "bands" in geotiff_asset.extra_fields
+        assert geotiff_asset.extra_fields["bands"] == [
             {
                 "name": "Latitude",
                 "statistics": {
