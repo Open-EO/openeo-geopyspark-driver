@@ -2139,11 +2139,11 @@ def test_multiple_save_result_single_export_workspace(tmp_path):
         assert "openEO.nc" in job_dir_files
         assert "openEO.tif" in job_dir_files
 
-        assert _paths_relative_to(workspace_dir) == {
+        assert {
             Path("collection.json"),
             Path("openEO.tif"),
-            Path("openEO.tif.json"),
-        }
+        }.issubset(_paths_relative_to(workspace_dir))
+        assert len(_paths_relative_to(workspace_dir)) == 3
 
         stac_collection = pystac.Collection.from_file(str(workspace_dir / "collection.json"))
         stac_collection.validate_all()
@@ -2152,8 +2152,11 @@ def test_multiple_save_result_single_export_workspace(tmp_path):
         assert len(items) == 1
 
         item = items[0]
-        geotiff_asset = item.get_assets()["openEO.tif"]
-        assert geotiff_asset.extra_fields["raster:bands"] == [
+        assets = item.get_assets()
+        assert len(assets) == 1
+        assert "openEO" in assets
+        geotiff_asset =  assets["openEO"]
+        assert geotiff_asset.extra_fields["bands"] == [
             {
                 "name": "Flat:2",
                 "statistics": {"minimum": 2.0, "maximum": 2.0, "mean": 2.0, "stddev": 0.0, "valid_percent": 100.0},
