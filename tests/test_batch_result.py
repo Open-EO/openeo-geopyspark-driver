@@ -997,149 +997,6 @@ def test_export_workspace(tmp_path, remove_original, attach_gdalinfo_assets):
             assert "openEO_2021-01-05Z.tif" in job_dir_files
             assert "openEO_2021-01-15Z.tif" in job_dir_files
 
-        expected_paths = {
-            Path("collection.json"),
-            Path("openEO_2021-01-05Z.tif"),
-            Path("openEO_2021-01-05Z.tif.json"),
-            Path("openEO_2021-01-15Z.tif"),
-            Path("openEO_2021-01-15Z.tif.json"),
-        }
-        if attach_gdalinfo_assets:
-            expected_paths |= {
-                Path(f"openEO_2021-01-05Z.tif{GDALINFO_SUFFIX}"),
-                Path(f"openEO_2021-01-05Z.tif{GDALINFO_SUFFIX}.json"),
-                Path(f"openEO_2021-01-15Z.tif{GDALINFO_SUFFIX}"),
-                Path(f"openEO_2021-01-15Z.tif{GDALINFO_SUFFIX}.json"),
-            }
-        assert _paths_relative_to(workspace_dir) == expected_paths
-
-        stac_collection = pystac.Collection.from_file(str(workspace_dir / "collection.json"))
-        stac_collection.validate_all()
-
-        assert stac_collection.extent.spatial.bboxes == [[0.0, 0.0, 1.0, 2.0]]
-        assert stac_collection.extent.temporal.intervals == [
-            [dt.datetime(2021, 1, 5, tzinfo=dt.timezone.utc), dt.datetime(2021, 1, 16, tzinfo=dt.timezone.utc)]
-        ]
-
-        item_links = [item_link for item_link in stac_collection.links if item_link.rel == "item"]
-        assert len(item_links) == 4 if attach_gdalinfo_assets else 2
-        item_link = [item_link for item_link in item_links if "openEO_2021-01-05Z.tif" in item_link.href][0]
-
-        assert item_link.media_type == "application/geo+json"
-        assert item_link.href == "./openEO_2021-01-05Z.tif.json"
-
-        items = list(stac_collection.get_items())
-        items = list(filter(lambda x: "data" in x.assets[x.id].roles, items))
-        assert len(items) == 2
-
-        item = [item for item in items if item.id == "openEO_2021-01-05Z.tif"][0]
-        assert item.bbox == [0.0, 0.0, 1.0, 2.0]
-        assert (shape(item.geometry).normalize()
-                .almost_equals(Polygon.from_bounds(0.0, 0.0, 1.0, 2.0).normalize()))
-
-        geotiff_asset = item.get_assets()["openEO_2021-01-05Z.tif"]
-        assert "data" in geotiff_asset.roles
-        assert geotiff_asset.href == "./openEO_2021-01-05Z.tif"
-        assert geotiff_asset.media_type == "image/tiff; application=geotiff"
-        assert geotiff_asset.extra_fields["eo:bands"] == [DictSubSet({"name": "Flat:2"})]
-        assert geotiff_asset.extra_fields["raster:bands"] == [
-            {
-                "name": "Flat:2",
-                "statistics": {"minimum": 2.0, "maximum": 2.0, "mean": 2.0, "stddev": 0.0, "valid_percent": 100.0},
-            }
-        ]
-
-        geotiff_asset_copy_path = tmp_path / "openEO_2021-01-05Z.tif.copy"
-        geotiff_asset.copy(str(geotiff_asset_copy_path))  # downloads the asset file
-        with rasterio.open(geotiff_asset_copy_path) as dataset:
-            assert dataset.driver == "GTiff"
-
-        # TODO: check other things e.g. proj:
-        with open(metadata_file) as f:
-            job_metadata = json.load(f)
-
-        assert job_metadata["assets"]["openEO_2021-01-05Z.tif"]["href"] == str(tmp_path / "openEO_2021-01-05Z.tif")
-
-        assert not remove_original or (
-            job_metadata["assets"]["openEO_2021-01-05Z.tif"]["public_href"]
-            == f"file:{workspace_dir / 'openEO_2021-01-05Z.tif'}"
-        )
-    finally:
-        shutil.rmtree(workspace_dir)
-
-
-
-@pytest.mark.parametrize("remove_original", [False, True])
-@pytest.mark.parametrize("attach_gdalinfo_assets", [False, True])
-def test_export_workspace_asset(tmp_path, remove_original, attach_gdalinfo_assets):
-    workspace_id = "tmp"
-    merge = _random_merge()
-
-    process_graph = {
-        "loadcollection1": {
-            "process_id": "load_collection",
-            "arguments": {
-                "id": "TestCollection-LonLat16x16",
-                "temporal_extent": ["2021-01-05", "2021-01-16"],
-                "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 2.0},
-                "bands": ["Flat:2"]
-            }
-        },
-        "saveresult1": {
-            "process_id": "save_result",
-            "arguments": {
-                "data": {"from_node": "loadcollection1"},
-                "options": {
-                    "attach_gdalinfo_assets": attach_gdalinfo_assets,
-                },
-                "format": "GTiff"
-            },
-        },
-        "exportworkspace1": {
-            "process_id": "export_workspace",
-            "arguments": {
-                "data": {"from_node": "saveresult1"},
-                "workspace": workspace_id,
-                "merge": str(merge),
-            },
-            "result": True
-        }
-    }
-
-    process = {
-        "process_graph": process_graph,
-        "job_options": {
-            "stac-version": "1.1",
-            "remove-exported-assets": remove_original,
-        },
-    }
-
-    # TODO: avoid depending on `/tmp` for test output, make sure to leverage `tmp_path` fixture (https://github.com/Open-EO/openeo-python-driver/issues/265)
-    workspace: DiskWorkspace = get_backend_config().workspaces[workspace_id]
-    workspace_dir = workspace.root_directory / merge
-
-    try:
-        metadata_file = tmp_path / "job_metadata.json"
-
-        run_job(
-            process,
-            output_file=tmp_path / "out.tif",
-            metadata_file=metadata_file,
-            api_version="2.0.0",
-            job_dir=tmp_path,
-            dependencies=[],
-        )
-
-        job_dir_files = set(os.listdir(tmp_path))
-        assert len(job_dir_files) > 0
-
-        if remove_original:
-            assert "openEO_2021-01-05Z.tif" not in job_dir_files
-            assert "openEO_2021-01-15Z.tif" not in job_dir_files
-        else:
-            assert "openEO_2021-01-05Z.tif" in job_dir_files
-            assert "openEO_2021-01-15Z.tif" in job_dir_files
-
         assert len(_paths_relative_to(workspace_dir)) == 7 if attach_gdalinfo_assets else 5
         assert {Path("collection.json"), Path("openEO_2021-01-05Z.tif"), Path("openEO_2021-01-15Z.tif")}.issubset(_paths_relative_to(workspace_dir))
 
@@ -1155,16 +1012,20 @@ def test_export_workspace_asset(tmp_path, remove_original, attach_gdalinfo_asset
         assert len(item_links) == 2
 
         refs = set()
-        for item in item_links:
-            refs.add(Path(item.href))
+        for item_link in item_links:
+            assert item_link.media_type == "application/geo+json"
+            refs.add(Path(item_link.href))
         assert len(refs) == 2
         assert refs.issubset(_paths_relative_to(workspace_dir))
 
         items = list(stac_collection.get_items())
+        assert len(items) == 2
 
         for item in items:
             assert item.bbox == [0.0,0.0,1.0,2.0]
-            assets = item.assets
+            assert (shape(item.geometry).normalize()
+                    .almost_equals(Polygon.from_bounds(0.0, 0.0, 1.0, 2.0).normalize()))
+            assets = item.get_assets()
             assert len(assets) == 2 if attach_gdalinfo_assets else 1
             assert "openEO" in assets
             asset_fields = assets["openEO"].extra_fields
@@ -1179,6 +1040,15 @@ def test_export_workspace_asset(tmp_path, remove_original, attach_gdalinfo_asset
             assert "bbox" in asset_fields
             assert asset_fields["bbox"] == [0.0,0.0,1.0,2.0]
             assert "geometry" in asset_fields
+
+        with open(metadata_file) as f:
+            job_metadata = json.load(f)
+
+        assert job_metadata["assets"]["openEO_2021-01-05Z.tif"]["href"] == str(tmp_path / "openEO_2021-01-05Z.tif")
+        assert not remove_original or (
+                job_metadata["assets"]["openEO_2021-01-05Z.tif"]["public_href"]
+                == f"file:{workspace_dir / 'openEO_2021-01-05Z.tif'}"
+        )
 
     finally:
        shutil.rmtree(workspace_dir)
