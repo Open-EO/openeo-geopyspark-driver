@@ -1,5 +1,6 @@
+from dataclasses import fields
 
-from openeogeotrellis.job_options import JobOptions
+from openeogeotrellis.job_options import JobOptions, K8SOptions
 from openeogeotrellis.config import get_backend_config
 
 
@@ -9,7 +10,7 @@ def test_initialization_with_defaults():
     assert job_options.driver_memory == backend_config.default_driver_memory
     assert job_options.executor_memory == backend_config.default_executor_memory
     assert job_options.executor_cores == backend_config.default_executor_cores
-    assert job_options.udf_dependency_archives is None
+    assert job_options.udf_dependency_archives == []
 
 
 def test_from_dict():
@@ -39,6 +40,10 @@ def test_from_dict_with_missing_values():
 
 def test_list_options():
     options = JobOptions.list_options(public_only=False)
+    assert_listing_shared_options(options)
+
+
+def assert_listing_shared_options(options):
     assert isinstance(options, list)
     assert any(option["name"] == "driver-memory" for option in options)
     assert any(option["name"] == "executor-memory" for option in options)
@@ -50,7 +55,14 @@ def test_list_options():
         assert "description" in opt
         assert "default" in opt
         if "udf-dependency-archives" == opt["name"]:
-            assert opt["schema"] == {"type": "array", "items": {"type":"string"}}
+            assert opt["schema"] == {"type": "array", "items": {"type": "string"}}
+
+
+def test_list_options_k8s():
+    options = K8SOptions.list_options(public_only=False)
+    assert_listing_shared_options(options)
+    assert any(option["name"] == "executor-request-cores" for option in options)
+
 
 
 def test_list_options_with_public_only():

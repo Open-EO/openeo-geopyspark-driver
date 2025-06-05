@@ -11,7 +11,6 @@ from openeo_driver.util.date_math import now_utc
 from openeo_driver.utils import EvalEnv
 
 from openeogeotrellis.load_stac import extract_own_job_info, load_stac
-from tests.data import get_test_data_file
 
 
 @pytest.mark.parametrize("url, user_id, job_info_id",
@@ -90,14 +89,21 @@ def test_property_filter_from_parameter(requests_mock):
     assert search_mock.called
 
 
-def test_dimensions(requests_mock):
+@pytest.mark.parametrize(
+    ["item_path"],
+    [
+        ("stac/issue609-api-temporal-bound-exclusive/item01.json",),
+    ],
+)
+def test_stac_api_dimensions(requests_mock, test_data, item_path):
     stac_api_root_url = "https://stac.test"
     stac_collection_url = f"{stac_api_root_url}/collections/collection"
 
-    stac_item = json.loads(
-        get_test_data_file("stac/issue609-api-temporal-bound-exclusive/item01.json")
-        .read_text()
-        .replace("asset01.tiff", f"file://{get_test_data_file('binary/load_stac/collection01/asset01.tif').absolute()}")
+    stac_item = test_data.load_json(
+        filename=item_path,
+        preprocess={
+            "asset01.tiff": f"file://{test_data.get_path('binary/load_stac/collection01/asset01.tif').absolute()}"
+        },
     )
 
     _mock_stac_api(
@@ -160,6 +166,7 @@ def jvm_mock():
 )
 def test_lcfm_improvements(  # resolution and offset behind a feature flag; alphabetical head tags are tested elsewhere
     requests_mock,
+    test_data,
     jvm_mock,
     band_names,
     resolution,
@@ -169,7 +176,7 @@ def test_lcfm_improvements(  # resolution and offset behind a feature flag; alph
     stac_api_root_url = "https://stac.test"
     stac_collection_url = f"{stac_api_root_url}/collections/collection"
 
-    features = json.loads(get_test_data_file("stac/issue1043-api-proj-code/FeatureCollection.json").read_text())
+    features = test_data.load_json("stac/issue1043-api-proj-code/FeatureCollection.json")
 
     _mock_stac_api(
         requests_mock,
@@ -256,14 +263,9 @@ def _mock_stac_api(requests_mock, stac_api_root_url, stac_collection_url, featur
     return search_mock
 
 
-def test_world_oom(requests_mock):
-    stac_item_url = (
-        "https://earthengine.openeo.org/v1.0/results/c08dc17428fde51ea7e1332eec2abd06e74188924e6c773257b4fb00aee0a308"
-    )
-    stac_item = get_test_data_file("stac/issue1055-world-oom/result_item.json").read_text()
-
-    requests_mock.get(stac_item_url, text=stac_item)
-
+def test_world_oom(requests_mock, test_data):
+    stac_item_url = "https://oeo.test/b4fb00aee0a308"
+    requests_mock.get(stac_item_url, json=test_data.load_json("stac/issue1055-world-oom/result_item.json"))
     load_stac(
         url=stac_item_url,
         load_params=LoadParameters(),
@@ -271,6 +273,7 @@ def test_world_oom(requests_mock):
         layer_properties={},
         batch_jobs=None,
     )
+    # TODO: assertions?
 
 
 @pytest.mark.parametrize(
@@ -332,10 +335,10 @@ def test_empty_cube_from_stac_api(requests_mock, featureflags, env, expectation)
         ({}, EvalEnv({"allow_empty_cubes": True}), nullcontext()),  # pyramid_seq
     ],
 )
-def test_empty_cube_from_non_intersecting_item(requests_mock, featureflags, env, expectation):
+def test_empty_cube_from_non_intersecting_item(requests_mock, test_data, featureflags, env, expectation):
     stac_item_url = "https://stac.test/item.json"
 
-    requests_mock.get(stac_item_url, text=get_test_data_file("stac/item01.json").read_text())
+    requests_mock.get(stac_item_url, json=test_data.load_json("stac/item01.json"))
 
     with expectation:
         data_cube = load_stac(

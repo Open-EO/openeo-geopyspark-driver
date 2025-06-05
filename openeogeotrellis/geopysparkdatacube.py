@@ -6,6 +6,7 @@ import math
 import os
 import pathlib
 import re
+import shutil
 import subprocess
 import tempfile
 import uuid
@@ -2104,7 +2105,7 @@ class GeopysparkDataCube(DriverDataCube):
 
                     bands = []
                     if self.metadata.has_band_dimension():
-                        bands = [b._asdict() for b in self.metadata.bands]
+                        bands = [{k:v for k,v in b._asdict().items() if v is not None} for b in self.metadata.bands]
                     nodata = max_level.layer_metadata.no_data_value
 
                     max_level_rdd = max_level.srdd.rdd()
@@ -2420,10 +2421,12 @@ class GeopysparkDataCube(DriverDataCube):
 
         elif format == "ZARR":
             zarr_file = save_filename
-            if filename_prefix.isDefined():
-                zarr_file = filename_prefix.get() + zarr_file
             if not zarr_file.endswith(".zarr"):
                 zarr_file = zarr_file + ".zarr"
+            if filename_prefix and filename_prefix.isDefined():
+                p = pathlib.Path(save_filename)
+                ext = p.name[p.name.index("."):]
+                zarr_file = str(p.parent / (filename_prefix.get() + ext))
             zarr_options = get_jvm().org.openeo.geotrellis.zarr.ZarrOptions()
             if self.metadata.has_band_dimension():
                 band_names = self.metadata.band_names
@@ -2433,7 +2436,11 @@ class GeopysparkDataCube(DriverDataCube):
                 zarr_options.setBands(1)
 
             self._save_zarr_executors(max_level.srdd.rdd(),zarr_file,zarr_options)
-
+            to_zip = format_options.get("to_zip", True)
+            if to_zip:
+                shutil.make_archive(zarr_file, 'zip', zarr_file)
+                return {str(os.path.basename(zarr_file + ".zip")):{"href": zarr_file + ".zip", "roles": ["data"]}}
+            return {str(os.path.basename(zarr_file)):{"href": zarr_file, "roles": ["data"]}}
 
         else:
             raise OpenEOApiException(
