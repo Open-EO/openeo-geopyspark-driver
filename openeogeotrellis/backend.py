@@ -2893,7 +2893,8 @@ class GpsBatchJobs(backend.BatchJobs):
 
         if "items" in results_metadata:
             return BatchJobResultMetadata(
-                items=results_metadata["items"],
+                items={ i['id'] : i for i in results_metadata["items"]},
+                assets=self._results_metadata_to_assets(results_metadata, job_id),
                 links=[],
                 providers=self._get_providers(job_id=job_id, user_id=user_id),
             )
