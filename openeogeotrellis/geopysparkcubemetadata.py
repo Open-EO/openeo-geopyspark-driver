@@ -164,6 +164,8 @@ class GeopysparkCubeMetadata(CollectionMetadata):
         }.get(self.provider_backend(), 0)
 
     def get_nodata_value(self, requested_bands, default_value) -> float:
+        # TODO #1109 upgrade this implementation to "common" bands metadata
+        #      instead of (soon to be) outdated STAC extension patterns like "eo:bands" and "raster:bands"
         bands_metadata = self.get("summaries", "eo:bands",
                                   default=self.get("summaries", "raster:bands", default=[]))
         no_data_value = "undefined"
@@ -225,6 +227,8 @@ class GeopysparkCubeMetadata(CollectionMetadata):
         )
 
     def get_GSD_in_meters(self) -> Union[tuple, dict, None]:
+        # TODO #1109 upgrade this implementation to "common" bands metadata
+        #      instead of (soon to be) outdated STAC extension patterns like "eo:bands" and "raster:bands"
         bands_metadata = self.get("summaries", "eo:bands",
                                   default=self.get("summaries", "raster:bands", default=[]))
         band_to_gsd = {}

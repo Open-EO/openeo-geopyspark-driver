@@ -428,6 +428,7 @@ spec:
     jars:
       - "{{ openeo_jar_path }}"
       - 'local:///opt/openeo-logging-static.jar'
+      - 'local:///opt/geotrellis-dependencies-static.jar'
     files:
       - 'local:///opt/layercatalog.json'
       {%- for line in py_files %}

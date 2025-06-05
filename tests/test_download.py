@@ -434,14 +434,15 @@ class TestDownload:
         imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input_layer}))
         imagecollection.save_result("catalogresult.tiff", format="GTIFF", format_options={"parameters": {"catalog": True}})
 
-
-    def test_zarr(self,tmp_path):
+    @pytest.mark.parametrize("to_zip", [True, False])
+    def test_zarr(self,tmp_path,to_zip):
         input_layer = layer_with_two_bands_and_one_date()
         imagecollection = GeopysparkDataCube(pyramid=gps.Pyramid({0: input_layer}))
         imagecollection.metadata = imagecollection.metadata.add_dimension('band_one', 'band_one', 'bands')
         imagecollection.metadata = imagecollection.metadata.append_band(Band('band_two', '', ''))
         file_path = str(tmp_path / "res.zarr")
-        imagecollection.write_assets(file_path, format="ZARR")
+        zarr_options = {"toZip":to_zip}
+        imagecollection.write_assets(file_path, format="ZARR",format_options=zarr_options)
         ds = xr.open_zarr(file_path)
         assert len(ds.variables) == 5
         assert "band_one" in ds.variables
@@ -490,3 +491,6 @@ class TestDownload:
         assert (ds_netcdf.y.data == ds.y.values).all()
         assert (ds_netcdf.band_one.data==band1.data[0]).all()
         assert (ds_netcdf.band_two.data == band2.data[0]).all()
+
+        if to_zip:
+            Path(file_path + ".zip").exists()

@@ -1794,22 +1794,22 @@
       },
       "links": [
         {
-          "href": "https://stac.terrascope.be/collections/sentinel-2-l2a/items/S2B_MSIL2A_20240623T104619_N0510_R051_T31UFS_20240623T122156",
+          "href": "https://stac.test/collections/sentinel-2-l2a/items/S2B_MSIL2A_20240623T104619_N0510_R051_T31UFS_20240623T122156",
           "rel": "self",
           "type": "application/geo+json"
         },
         {
-          "href": "https://stac.terrascope.be/collections/sentinel-2-l2a",
+          "href": "https://stac.test/collections/sentinel-2-l2a",
           "rel": "parent",
           "type": "application/json"
         },
         {
-          "href": "https://stac.terrascope.be/collections/sentinel-2-l2a",
+          "href": "https://stac.test/collections/sentinel-2-l2a",
           "rel": "collection",
           "type": "application/json"
         },
         {
-          "href": "https://stac.terrascope.be/",
+          "href": "https://stac.test/",
           "rel": "root",
           "type": "application/json"
         }
@@ -1822,17 +1822,17 @@
       "rel": "next",
       "type": "application/json",
       "method": "GET",
-      "href": "https://stac.terrascope.be/search?limit=20&bbox=5.07%2C51.215%2C5.08%2C51.22&datetime=2024-06-16T00%3A00%3A00Z%2F2024-06-23T23%3A59%3A59.999000Z&collections=sentinel-2-l2a&fields=%2Bproperties.proj%3Abbox%2C%2Bproperties.proj%3Ashape%2C%2Bproperties.proj%3Aepsg&token=MTcxOTEzOTU3OTAyNCxTMkJfTVNJTDJBXzIwMjQwNjIzVDEwNDYxOV9OMDUxMF9SMDUxX1QzMVVGU18yMDI0MDYyM1QxMjIxNTYsc2VudGluZWwtMi1sMmE%3D"
+      "href": "https://stac.test/search?limit=20&bbox=5.07%2C51.215%2C5.08%2C51.22&datetime=2024-06-16T00%3A00%3A00Z%2F2024-06-23T23%3A59%3A59.999000Z&collections=sentinel-2-l2a&fields=%2Bproperties.proj%3Abbox%2C%2Bproperties.proj%3Ashape%2C%2Bproperties.proj%3Aepsg&token=MTcxOTEzOTU3OTAyNCxTMkJfTVNJTDJBXzIwMjQwNjIzVDEwNDYxOV9OMDUxMF9SMDUxX1QzMVVGU18yMDI0MDYyM1QxMjIxNTYsc2VudGluZWwtMi1sMmE%3D"
     },
     {
       "rel": "root",
       "type": "application/json",
-      "href": "https://stac.terrascope.be/"
+      "href": "https://stac.test/"
     },
     {
       "rel": "self",
       "type": "application/json",
-      "href": "https://stac.terrascope.be/search?limit=20&bbox=5.07%2C51.215%2C5.08%2C51.22&datetime=2024-06-16T00%3A00%3A00Z%2F2024-06-23T23%3A59%3A59.999000Z&collections=sentinel-2-l2a&fields=%2Bproperties.proj%3Abbox%2C%2Bproperties.proj%3Ashape%2C%2Bproperties.proj%3Aepsg"
+      "href": "https://stac.test/search?limit=20&bbox=5.07%2C51.215%2C5.08%2C51.22&datetime=2024-06-16T00%3A00%3A00Z%2F2024-06-23T23%3A59%3A59.999000Z&collections=sentinel-2-l2a&fields=%2Bproperties.proj%3Abbox%2C%2Bproperties.proj%3Ashape%2C%2Bproperties.proj%3Aepsg"
     }
   ],
   "context": {

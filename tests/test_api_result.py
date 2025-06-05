@@ -2863,8 +2863,8 @@ class TestVectorCubeRunUdf:
             """
             import pandas as pd
             def udf_apply_feature_dataframe(df: pd.DataFrame) -> pd.Series:
-                series = df.sum(axis=1)   
-                series.index = series.index.strftime("%Y-%m-%d")                             
+                series = df.sum(axis=1)
+                series.index = series.index.strftime("%Y-%m-%d")
                 return series
         """
         )
@@ -3367,6 +3367,15 @@ class TestLoadResult:
         assert data.shape == expected["shape"]
 
 
+def _load_cube_from_netcdf(path) -> xarray.DataArray:
+    """
+    Load a cube as xarray DataArray from a netCDF file.
+    Including moving the "bands" from variables to a DataArray dimension
+    """
+    ds: xarray.Dataset = xarray.load_dataset(path)
+    da = ds.drop_vars(k for k, v in ds.data_vars.items() if not v.coords).to_array("bands")
+    return da
+
 class TestLoadStac:
     def test_stac_api_item_search_bbox_is_epsg_4326(self, api110):
         process_graph = {
@@ -3537,19 +3546,20 @@ class TestLoadStac:
     @pytest.mark.parametrize(
         "item_path",
         [
-            "stac/item01.json",
-            "stac/item02.json",
+            "stac/item01-eo-bands.json",
+            "stac/item01-common-bands.json",
+            "stac/item02-eo-bands.json",
+            "stac/item02-common-bands.json",
         ],
     )
-    def test_load_stac_with_stac_item_json(self, item_path, api110, requests_mock, tmp_path):
+    def test_load_stac_with_stac_item_json(self, item_path, api110, requests_mock, tmp_path, test_data):
         """load_stac with a simple STAC item (as JSON file)"""
-        item_json = (
-            get_test_data_file(item_path).read_text()
-            # It's apparently pretty hard to get tests working with HTTP served assets, so we workaround it with a `file://` reference for now
-            .replace(
-                # TODO: better tiff file to inject here?
-                "asset01.tiff", f"file://{get_test_data_file('binary/load_stac/BVL_v1/BVL_v1_2021.tif').absolute()}"
-            )
+        item_json = test_data.load_text(
+            item_path,
+            preprocess={
+                # It's apparently pretty hard to get tests working with HTTP served assets, so we workaround it with a `file://` reference for now
+                "asset01.tiff": f"file://{test_data.get_path('binary/load_stac/BVL_v1/BVL_v1_2021.tif').absolute()}"
+            },
         )
         requests_mock.get("https://stac.test/item.json", text=item_json)
 
@@ -3568,12 +3578,20 @@ class TestLoadStac:
         res = api110.result(process_graph).assert_status_code(200)
         res_path = tmp_path / "res.nc"
         res_path.write_bytes(res.data)
-        ds = xarray.load_dataset(res_path)
-        # TODO: why are these values not exactly 100?
-        assert ds.dims == {"t": 1, "x": pytest.approx(100, abs=1), "y": pytest.approx(100, abs=1)}
-        assert numpy.datetime_as_string(ds.coords["t"].values, unit="D").tolist() == ["2021-02-03"]
-        assert ds.coords["x"].values.min() == pytest.approx(4309000, abs=10)
-        assert ds.coords["y"].values.min() == pytest.approx(3014000, abs=10)
+
+        cube: xarray.DataArray = _load_cube_from_netcdf(res_path)
+
+        assert cube.sizes == {
+            "t": 1,
+            "bands": 1,
+            # TODO: why are these values not exactly 100?
+            "x": pytest.approx(100, abs=1),
+            "y": pytest.approx(100, abs=1),
+        }
+        assert numpy.datetime_as_string(cube.coords["t"].values, unit="D").tolist() == ["2021-02-03"]
+        assert cube.coords["x"].values.min() == pytest.approx(4309000, abs=10)
+        assert cube.coords["y"].values.min() == pytest.approx(3014000, abs=10)
+        assert cube.coords["bands"].values.tolist() == ["A1"]
 
     def test_load_stac_with_stac_item_issue619_non_standard_int_eobands_item_properties(
         self, api110, requests_mock, tmp_path
@@ -3583,6 +3601,7 @@ class TestLoadStac:
 
         STAC Item following outdated STAC version with "eo:bands" being integer indices into item properties
         """
+        # TODO: drop support for this outdated integer index use case https://github.com/Open-EO/openeo-geopyspark-driver/issues/619
         tiff_path = get_test_data_file("binary/load_stac/BVL_v1/BVL_v1_2021.tif").absolute()
         item_json = (
             get_test_data_file("stac/issue619-eobands-int/item01.json")
@@ -3625,6 +3644,7 @@ class TestLoadStac:
 
         STAC Item following outdated STAC version with "eo:bands" being integer indices into parent collection "eo:bands" summaries
         """
+        # TODO: drop support for this outdated integer index use case https://github.com/Open-EO/openeo-geopyspark-driver/issues/619
         tiff_path = get_test_data_file("binary/load_stac/BVL_v1/BVL_v1_2021.tif").absolute()
         item_json = (
             get_test_data_file("stac/issue619-eobands-int/item02.json")
@@ -3663,27 +3683,36 @@ class TestLoadStac:
         assert ds.coords["x"].values.min() == pytest.approx(4309000, abs=10)
         assert ds.coords["y"].values.min() == pytest.approx(3014000, abs=10)
 
-    def test_load_stac_from_stac_item_respects_collection_bands_order(self, api110, urllib_and_request_mock, tmp_path):
+    @pytest.mark.parametrize(
+        ["item_path", "collection_path"],
+        [
+            ("stac/item03-eo-bands.json", "stac/collection01-eo-bands.json"),
+            ("stac/item03-common-bands.json", "stac/collection01-common-bands.json"),
+        ],
+    )
+    def test_load_stac_from_stac_item_respects_collection_bands_order(
+        self, api110, urllib_and_request_mock, tmp_path, test_data, item_path, collection_path
+    ):
         """load_stac with a STAC item that lacks "properties"/"eo:bands" and therefore falls back to its
         collection's "summaries"/"eo:bands"
         """
-        item_json = (
-            get_test_data_file("stac/item03.json").read_text()
-            .replace(
-                "asset01.tiff", f"file://{get_test_data_file('binary/load_stac/collection01/asset01.tif').absolute()}"
-            )
-            .replace(
-                "asset02.tiff", f"file://{get_test_data_file('binary/load_stac/collection01/asset02.tif').absolute()}"
-            )
+        item_url = f"https://stac.test/{Path(item_path).name}"
+        item_json = test_data.load_text(
+            item_path,
+            preprocess={
+                "asset01.tiff": f"file://{test_data.get_path('binary/load_stac/collection01/asset01.tif').absolute()}",
+                "asset02.tiff": f"file://{test_data.get_path('binary/load_stac/collection01/asset02.tif').absolute()}",
+            },
         )
-        urllib_and_request_mock.get("https://stac.test/item.json", data=item_json)
-        urllib_and_request_mock.get("https://stac.test/collection01.json",
-                        data=get_test_data_file("stac/collection01.json").read_text())
+        urllib_and_request_mock.get(item_url, data=item_json)
+
+        collection_url = f"https://stac.test/{Path(collection_path).name}"
+        urllib_and_request_mock.get(collection_url, data=test_data.load_text(collection_path))
 
         process_graph = {
             "loadstac1": {
                 "process_id": "load_stac",
-                "arguments": {"url": "https://stac.test/item.json"},
+                "arguments": {"url": item_url},
             },
             "saveresult1": {
                 "process_id": "save_result",
@@ -3695,17 +3724,17 @@ class TestLoadStac:
         res = api110.result(process_graph).assert_status_code(200)
         res_path = tmp_path / "res.nc"
         res_path.write_bytes(res.data)
-        ds = xarray.load_dataset(res_path)
-        assert ds.dims == {"t": 1, "x": 10, "y": 10}
-        assert numpy.datetime_as_string(ds.coords["t"].values, unit="D").tolist() == ["2021-02-03"]
-        assert ds.coords["x"].values.min() == pytest.approx(5.05)
-        assert ds.coords["y"].values.min() == pytest.approx(50.05)
-        assert list(ds.data_vars.keys())[1:] == ["band5", "band1", "band4", "band2", "band3"]
-        assert (ds["band1"] == 1).all()
-        assert (ds["band2"] == 2).all()
-        assert (ds["band3"] == 3).all()
-        assert (ds["band4"] == 4).all()
-        assert (ds["band5"] == 5).all()
+        cube: xarray.DataArray = _load_cube_from_netcdf(res_path)
+        assert cube.sizes == {"t": 1, "x": 10, "y": 10, "bands": 5}
+        assert numpy.datetime_as_string(cube.coords["t"].values, unit="D").tolist() == ["2021-02-03"]
+        assert cube.coords["x"].values.min() == pytest.approx(5.05)
+        assert cube.coords["y"].values.min() == pytest.approx(50.05)
+        assert cube.coords["bands"].values.tolist() == ["band5", "band1", "band4", "band2", "band3"]
+        assert (cube.sel(bands="band1") == 1).all()
+        assert (cube.sel(bands="band2") == 2).all()
+        assert (cube.sel(bands="band3") == 3).all()
+        assert (cube.sel(bands="band4") == 4).all()
+        assert (cube.sel(bands="band5") == 5).all()
 
     @pytest.mark.parametrize(
         "lower_temporal_bound, upper_temporal_bound, expected_timestamps",
@@ -3717,26 +3746,46 @@ class TestLoadStac:
             ("2021-02-03T00:00:00Z", "2021-02-04T00:00:01Z", ["2021-02-03", "2021-02-04"]),
         ],
     )
-    def test_load_stac_from_stac_collection_upper_temporal_bound(self, api110, urllib_and_request_mock, tmp_path,
-                                                                 lower_temporal_bound, upper_temporal_bound,
-                                                                 expected_timestamps):
+    @pytest.mark.parametrize(
+        "test_data_dir",
+        [
+            Path("stac/issue609-collection-temporal-bound-exclusive-eo-bands"),
+            Path("stac/issue609-collection-temporal-bound-exclusive-common-bands"),
+        ],
+    )
+    def test_load_stac_from_stac_collection_upper_temporal_bound(
+        self,
+        api110,
+        urllib_and_request_mock,
+        tmp_path,
+        lower_temporal_bound,
+        upper_temporal_bound,
+        expected_timestamps,
+        test_data,
+        test_data_dir,
+    ):
         """load_stac from a STAC Collection with two items that have different timestamps"""
 
-        def item_json(path):
-            return (
-                get_test_data_file(path).read_text()
-                .replace(
-                    "asset01.tiff",
-                    f"file://{get_test_data_file('binary/load_stac/collection01/asset01.tif').absolute()}"
-                )
-            )
+        asset_path = test_data.get_path("binary/load_stac/collection01/asset01.tif").absolute()
 
-        urllib_and_request_mock.get("https://stac.test/collection.json",
-                        data=get_test_data_file("stac/issue609-collection-temporal-bound-exclusive/collection.json").read_text())
-        urllib_and_request_mock.get("https://stac.test/item01.json",
-                        data=item_json("stac/issue609-collection-temporal-bound-exclusive/item01.json"))
-        urllib_and_request_mock.get("https://stac.test/item02.json",
-                        data=item_json("stac/issue609-collection-temporal-bound-exclusive/item02.json"))
+        urllib_and_request_mock.get(
+            "https://stac.test/collection.json",
+            data=test_data.load_text(test_data_dir / "collection.json"),
+        )
+        urllib_and_request_mock.get(
+            "https://stac.test/item01.json",
+            data=test_data.load_text(
+                test_data_dir / "item01.json",
+                preprocess={"asset01.tiff": f"file://{asset_path}"},
+            ),
+        )
+        urllib_and_request_mock.get(
+            "https://stac.test/item02.json",
+            data=test_data.load_text(
+                test_data_dir / "item02.json",
+                preprocess={"asset01.tiff": f"file://{asset_path}"},
+            ),
+        )
 
         process_graph = {
             "loadstac1": {
@@ -3756,13 +3805,13 @@ class TestLoadStac:
         res = api110.result(process_graph).assert_status_code(200)
         res_path = tmp_path / "res.nc"
         res_path.write_bytes(res.data)
-        ds = xarray.load_dataset(res_path)
-        assert ds.dims == {"t": len(expected_timestamps), "x": 10, "y": 10}
-        assert numpy.datetime_as_string(ds.coords["t"].values, unit="D").tolist() == expected_timestamps
-        assert list(ds.data_vars.keys())[1:] == ["band1", "band2", "band3"]
-        assert (ds["band1"] == 1).all()
-        assert (ds["band2"] == 2).all()
-        assert (ds["band3"] == 3).all()
+        cube: xarray.DataArray = _load_cube_from_netcdf(res_path)
+        assert cube.sizes == {"t": len(expected_timestamps), "x": 10, "y": 10, "bands": 3}
+        assert numpy.datetime_as_string(cube.coords["t"].values, unit="D").tolist() == expected_timestamps
+        assert cube.coords["bands"].values.tolist() == ["band1", "band2", "band3"]
+        assert (cube.sel(bands="band1") == 1).all()
+        assert (cube.sel(bands="band2") == 2).all()
+        assert (cube.sel(bands="band3") == 3).all()
 
     def test_load_stac_issue830_alternate_url(self, api110, urllib_and_request_mock, tmp_path):
         def item_json(path):
@@ -3772,27 +3821,27 @@ class TestLoadStac:
             return text
 
         urllib_and_request_mock.get(
-            "https://stac.terrascope.be/", data=get_test_data_file("stac/issue830_alternate_url/root.json").read_text()
+            "https://stac.test/", data=get_test_data_file("stac/issue830_alternate_url/root.json").read_text()
         )
         urllib_and_request_mock.get(
-            "https://stac.terrascope.be/collections/sentinel-2-l2a",
+            "https://stac.test/collections/sentinel-2-l2a",
             data=get_test_data_file("stac/issue830_alternate_url/collections_sentinel-2-l2a.json").read_text(),
         )
         urllib_and_request_mock.get(
-            "https://stac.terrascope.be/search", data=item_json("stac/issue830_alternate_url/search.json")
+            "https://stac.test/search", data=item_json("stac/issue830_alternate_url/search.json")
         )
         urllib_and_request_mock.get(
-            "https://stac.terrascope.be/search?limit=20&bbox=5.07%2C51.215%2C5.08%2C51.22&datetime=2024-06-23T00%3A00%3A00Z%2F2024-06-23T23%3A59%3A59.999000Z&collections=sentinel-2-l2a&fields=%2Bproperties.proj%3Abbox%2C%2Bproperties.proj%3Aepsg%2C%2Bproperties.proj%3Ashape",
+            "https://stac.test/search?limit=20&bbox=5.07%2C51.215%2C5.08%2C51.22&datetime=2024-06-23T00%3A00%3A00Z%2F2024-06-23T23%3A59%3A59.999000Z&collections=sentinel-2-l2a&fields=%2Bproperties.proj%3Abbox%2C%2Bproperties.proj%3Aepsg%2C%2Bproperties.proj%3Ashape",
             data=item_json("stac/issue830_alternate_url/search_queried.json"))
         urllib_and_request_mock.get(
-            "https://stac.terrascope.be/search?limit=20&bbox=5.07%2C51.215%2C5.08%2C51.22&datetime=2024-06-16T00%3A00%3A00Z%2F2024-06-23T23%3A59%3A59.999000Z&collections=sentinel-2-l2a&fields=%2Bproperties.proj%3Abbox%2C%2Bproperties.proj%3Ashape%2C%2Bproperties.proj%3Aepsg&token=MTcxOTEzOTU3OTAyNCxTMkJfTVNJTDJBXzIwMjQwNjIzVDEwNDYxOV9OMDUxMF9SMDUxX1QzMVVGU18yMDI0MDYyM1QxMjIxNTYsc2VudGluZWwtMi1sMmE%3D",
+            "https://stac.test/search?limit=20&bbox=5.07%2C51.215%2C5.08%2C51.22&datetime=2024-06-16T00%3A00%3A00Z%2F2024-06-23T23%3A59%3A59.999000Z&collections=sentinel-2-l2a&fields=%2Bproperties.proj%3Abbox%2C%2Bproperties.proj%3Ashape%2C%2Bproperties.proj%3Aepsg&token=MTcxOTEzOTU3OTAyNCxTMkJfTVNJTDJBXzIwMjQwNjIzVDEwNDYxOV9OMDUxMF9SMDUxX1QzMVVGU18yMDI0MDYyM1QxMjIxNTYsc2VudGluZWwtMi1sMmE%3D",
             data=item_json("stac/issue830_alternate_url/search_queried_page2.json"))
         urllib_and_request_mock.get(
-            "https://stac.terrascope.be/search?limit=20&bbox=5.07%2C51.215%2C5.08%2C51.22&datetime=2024-06-23T00%3A00%3A00Z%2F2024-06-23T23%3A59%3A59.999000Z&collections=sentinel-2-l2a&fields=%2Btype%2C%2Bgeometry%2C%2Bproperties%2C%2Bid%2C%2Bbbox%2C%2Bstac_version%2C%2Bassets%2C%2Blinks%2C%2Bcollection",
+            "https://stac.test/search?limit=20&bbox=5.07%2C51.215%2C5.08%2C51.22&datetime=2024-06-23T00%3A00%3A00Z%2F2024-06-23T23%3A59%3A59.999000Z&collections=sentinel-2-l2a&fields=%2Btype%2C%2Bgeometry%2C%2Bproperties%2C%2Bid%2C%2Bbbox%2C%2Bstac_version%2C%2Bassets%2C%2Blinks%2C%2Bcollection",
             data=item_json("stac/issue830_alternate_url/search_queried.json"),
         )
         urllib_and_request_mock.get(
-            "https://stac.terrascope.be/search?limit=20&bbox=5.07%2C51.215%2C5.08%2C51.22&datetime=2024-06-23T00%3A00%3A00Z%2F2024-06-23T23%3A59%3A59.999000Z&collections=sentinel-2-l2a",
+            "https://stac.test/search?limit=20&bbox=5.07%2C51.215%2C5.08%2C51.22&datetime=2024-06-23T00%3A00%3A00Z%2F2024-06-23T23%3A59%3A59.999000Z&collections=sentinel-2-l2a",
             data=item_json("stac/issue830_alternate_url/search_queried.json"),
         )
 
@@ -3805,13 +3854,13 @@ class TestLoadStac:
                             "east": 5.08,
                             "north": 51.22,
                             "south": 51.215,
-                            "west": 5.07
+                            "west": 5.07,
                         },
                         "temporal_extent": [
                             "2024-06-23",
-                            "2024-06-24"
+                            "2024-06-24",
                         ],
-                        "url": "https://stac.terrascope.be/collections/sentinel-2-l2a"
+                        "url": "https://stac.test/collections/sentinel-2-l2a",
                     },
                     "result": False,
                 },
@@ -3826,11 +3875,32 @@ class TestLoadStac:
         res = api110.result(process_graph).assert_status_code(200)
         res_path = tmp_path / "res.nc"
         res_path.write_bytes(res.data)
-        ds = xarray.load_dataset(res_path)
         # if the process graph did not throw an error, this test is already fine.
-        assert ds.to_dataframe().values[0][1] == 4.0
-        assert ds.dims["x"] == 13
-        assert ds.dims["y"] == 10
+        cube: xarray.DataArray = _load_cube_from_netcdf(res_path)
+        assert cube.sizes == {"t": 1, "x": 73, "y": 58, "bands": 20}
+        assert sorted(cube.coords["bands"].values) == [
+            "AOT_10m",
+            "AOT_20m",
+            "AOT_60m",
+            "B01",
+            "B02",
+            "B03",
+            "B04",
+            "B05",
+            "B06",
+            "B07",
+            "B08",
+            "B09",
+            "B11",
+            "B12",
+            "B8A",
+            "SCL_20m",
+            "SCL_60m",
+            "WVP_10m",
+            "WVP_20m",
+            "WVP_60m",
+        ]
+        assert cube.isel(t=0, x=1, y=2, bands=4).item() == 4.0
 
     def test_load_stac_issue830_alternate_url_s3(self, api110, urllib_and_request_mock, tmp_path):
         def item_json(path):
@@ -3885,7 +3955,7 @@ class TestLoadStac:
         assert ds.dims["y"] == 58
 
     @pytest.mark.parametrize(
-        "lower_temporal_bound, upper_temporal_bound, expected_timestamps",
+        ["lower_temporal_bound", "upper_temporal_bound", "expected_timestamps"],
         [
             ("2021-02-03", "2021-02-03", ["2021-02-03"]),  # for backwards compatibility
             ("2021-02-03", "2021-02-04", ["2021-02-03"]),
@@ -3894,9 +3964,25 @@ class TestLoadStac:
             ("2021-02-03T00:00:00Z", "2021-02-04T00:00:01Z", ["2021-02-03", "2021-02-04"]),
         ],
     )
-    def test_load_stac_from_stac_api_upper_temporal_bound(self, api110, urllib_and_request_mock, requests_mock, tmp_path,
-                                                          lower_temporal_bound, upper_temporal_bound,
-                                                          expected_timestamps):
+    @pytest.mark.parametrize(
+        "test_data_dir",
+        [
+            Path("stac/issue609-api-temporal-bound-exclusive-eo-bands"),
+            Path("stac/issue609-api-temporal-bound-exclusive-common-bands"),
+        ],
+    )
+    def test_load_stac_from_stac_api_upper_temporal_bound(
+        self,
+        api110,
+        urllib_and_request_mock,
+        requests_mock,
+        tmp_path,
+        lower_temporal_bound,
+        upper_temporal_bound,
+        expected_timestamps,
+        test_data,
+        test_data_dir,
+    ):
         """load_stac from a STAC API with two items that have different timestamps"""
 
         def feature_collection(request, _) -> dict:
@@ -3904,18 +3990,12 @@ class TestLoadStac:
             # replace of Z is needed on python3.8, from 3.11 onwards should no longer be needed
             datetime_from, datetime_to = map(dt.datetime.fromisoformat, request.qs["datetime"][0].upper().replace("Z","+00:00").split("/"))
 
-            def item(path) -> dict:
-                return json.loads(
-                    get_test_data_file(path).read_text()
-                    .replace(
-                        "asset01.tiff",
-                        f"file://{get_test_data_file('binary/load_stac/collection01/asset01.tif').absolute()}"
-                    )
-                )
 
-            items = [item(path) for path in ["stac/issue609-api-temporal-bound-exclusive/item01.json",
-                                             "stac/issue609-api-temporal-bound-exclusive/item02.json",
-                                             ]]
+            asset_path = test_data.get_path("binary/load_stac/collection01/asset01.tif").absolute()
+            items = [
+                test_data.load_json(test_data_dir / "item01.json", preprocess={"asset01.tiff": f"file://{asset_path}"}),
+                test_data.load_json(test_data_dir / "item02.json", preprocess={"asset01.tiff": f"file://{asset_path}"}),
+            ]
 
             intersecting_items = [item for item in items if
                                   datetime_from <=
@@ -3927,12 +4007,12 @@ class TestLoadStac:
                 "features": intersecting_items,
             }
 
-        urllib_and_request_mock.get("https://stac.test/collections/collection",
-                        data=get_test_data_file("stac/issue609-api-temporal-bound-exclusive/collection.json").read_text())
-        urllib_and_request_mock.get("https://stac.test",
-                        data=get_test_data_file("stac/issue609-api-temporal-bound-exclusive/catalog.json").read_text())
-        requests_mock.get("https://stac.test/search",
-                          json=feature_collection)
+        urllib_and_request_mock.get(
+            "https://stac.test/collections/collection",
+            data=test_data.load_text(test_data_dir / "collection.json"),
+        )
+        urllib_and_request_mock.get("https://stac.test", data=test_data.load_text(test_data_dir / "catalog.json"))
+        requests_mock.get("https://stac.test/search", json=feature_collection)
 
         process_graph = {
             "loadstac1": {
@@ -3952,30 +4032,37 @@ class TestLoadStac:
         res = api110.result(process_graph).assert_status_code(200)
         res_path = tmp_path / "res.nc"
         res_path.write_bytes(res.data)
-        ds = xarray.load_dataset(res_path)
-        assert ds.dims == {"t": len(expected_timestamps), "x": 10, "y": 10}
-        assert numpy.datetime_as_string(ds.coords["t"].values, unit="D").tolist() == expected_timestamps
-        assert list(ds.data_vars.keys())[1:] == ["band1", "band2", "band3"]
-        assert (ds["band1"] == 1).all()
-        assert (ds["band2"] == 2).all()
-        assert (ds["band3"] == 3).all()
+        cube: xarray.DataArray = _load_cube_from_netcdf(res_path)
+        assert cube.sizes == {"t": len(expected_timestamps), "x": 10, "y": 10, "bands": 3}
+        assert numpy.datetime_as_string(cube.coords["t"].values, unit="D").tolist() == expected_timestamps
+        assert cube.coords["bands"].values.tolist() == ["band1", "band2", "band3"]
+        assert (cube.sel(bands="band1") == 1).all()
+        assert (cube.sel(bands="band2") == 2).all()
+        assert (cube.sel(bands="band3") == 3).all()
 
-    def test_load_stac_from_stac_collection_item_start_datetime_zulu(self, api110, urllib_and_request_mock, tmp_path):
+    @pytest.mark.parametrize(
+        "test_data_dir",
+        [
+            Path("stac/issue646_start_datetime_zulu-eo-bands"),
+            Path("stac/issue646_start_datetime_zulu-common-bands"),
+        ],
+    )
+    def test_load_stac_from_stac_collection_item_start_datetime_zulu(
+        self, api110, urllib_and_request_mock, tmp_path, test_data, test_data_dir
+    ):
         """load_stac from a STAC Collection with an item that has a start_datetime in Zulu time (time zone 'Z')"""
 
-        def item_json(path):
-            return (
-                get_test_data_file(path).read_text()
-                .replace(
-                    "asset01.tiff",
-                    f"file://{get_test_data_file('binary/load_stac/collection01/asset01.tif').absolute()}"
-                )
-            )
-
-        urllib_and_request_mock.get("https://stac.test/collection.json",
-                        data=get_test_data_file("stac/issue646_start_datetime_zulu/collection.json").read_text())
-        urllib_and_request_mock.get("https://stac.test/item01.json",
-                        data=item_json("stac/issue646_start_datetime_zulu/item01.json"))
+        urllib_and_request_mock.get(
+            "https://stac.test/collection.json",
+            data=test_data.load_text(test_data_dir / "collection.json"),
+        )
+        asset_path = test_data.get_path("binary/load_stac/collection01/asset01.tif").absolute()
+        urllib_and_request_mock.get(
+            "https://stac.test/item01.json",
+            data=test_data.load_text(
+                test_data_dir / "item01.json", preprocess={"asset01.tiff": f"file://{asset_path}"}
+            ),
+        )
 
         process_graph = {
             "loadstac1": {
@@ -3994,26 +4081,45 @@ class TestLoadStac:
         res = api110.result(process_graph).assert_status_code(200)
         res_path = tmp_path / "res.nc"
         res_path.write_bytes(res.data)
-        ds = xarray.load_dataset(res_path)
-        assert ds.dims == {"t": 1, "x": 10, "y": 10}
-        assert numpy.datetime_as_string(ds.coords["t"].values, unit='h', timezone='UTC').tolist() == ["2022-03-04T00Z"]
+        cube: xarray.DataArray = _load_cube_from_netcdf(res_path)
+        assert cube.sizes == {"t": 1, "x": 10, "y": 10, "bands": 3}
+        assert numpy.datetime_as_string(cube.coords["t"].values, unit="h", timezone="UTC").tolist() == [
+            "2022-03-04T00Z"
+        ]
+        assert cube.coords["bands"].values.tolist() == ["band1", "band2", "band3"]
 
-    def test_load_stac_from_spatial_netcdf_job_results(self, api110, urllib_and_request_mock, tmp_path):
-        def item_json(path):
-            return (
-                get_test_data_file(path).read_text()
-                .replace("asset01.nc",
-                         f"{get_test_data_file('binary/load_stac/spatial_netcdf/openEO_0.nc').absolute()}")
-                .replace("asset02.nc",
-                         f"{get_test_data_file('binary/load_stac/spatial_netcdf/openEO_1.nc').absolute()}")
-            )
-
-        urllib_and_request_mock.get("https://openeo.test/openeo/jobs/j-2402094545c945c09e1307503aa58a3a/results",
-                        data=get_test_data_file("stac/issue646_spatial_netcdf/collection.json").read_text())
-        urllib_and_request_mock.get("https://openeo.test/openeo/jobs/j-2402094545c945c09e1307503aa58a3a/results/items/openEO_0.nc",
-                        data=item_json("stac/issue646_spatial_netcdf/item01.json"))
-        urllib_and_request_mock.get("https://openeo.test/openeo/jobs/j-2402094545c945c09e1307503aa58a3a/results/items/openEO_1.nc",
-                        data=item_json("stac/issue646_spatial_netcdf/item02.json"))
+    @pytest.mark.parametrize(
+        "test_data_dir",
+        [
+            Path("stac/issue646_spatial_netcdf-eo-bands"),
+            Path("stac/issue646_spatial_netcdf-common-bands"),
+        ],
+    )
+    def test_load_stac_from_spatial_netcdf_job_results(
+        self, api110, urllib_and_request_mock, tmp_path, test_data, test_data_dir
+    ):
+        urllib_and_request_mock.get(
+            "https://openeo.test/openeo/jobs/j-2402094545c945c09e1307503aa58a3a/results",
+            data=test_data.load_text(test_data_dir / "collection.json"),
+        )
+        urllib_and_request_mock.get(
+            "https://openeo.test/openeo/jobs/j-2402094545c945c09e1307503aa58a3a/results/items/openEO_0.nc",
+            data=test_data.load_text(
+                test_data_dir / "item01.json",
+                preprocess={
+                    "asset01.nc": f"{test_data.get_path('binary/load_stac/spatial_netcdf/openEO_0.nc').absolute()}",
+                },
+            ),
+        )
+        urllib_and_request_mock.get(
+            "https://openeo.test/openeo/jobs/j-2402094545c945c09e1307503aa58a3a/results/items/openEO_1.nc",
+            data=test_data.load_text(
+                test_data_dir / "item02.json",
+                preprocess={
+                    "asset02.nc": f"{test_data.get_path('binary/load_stac/spatial_netcdf/openEO_1.nc').absolute()}",
+                },
+            ),
+        )
 
         process_graph = {
             "loadstac1": {
@@ -4031,17 +4137,14 @@ class TestLoadStac:
 
         res_path = tmp_path / "res.nc"
         res_path.write_bytes(res.data)
-
-        ds = xarray.load_dataset(res_path)
-
-        assert ds.dims["x"] == 12987
-        assert ds.dims["y"] == 767
+        cube: xarray.DataArray = _load_cube_from_netcdf(res_path)
+        assert cube.sizes == {"t": 1, "x": 12987, "y": 767, "bands": 3}
         # TODO: there's a "t" dimension that corresponds to the start_datetime of the two items; is this right?
-        assert list(ds.data_vars.keys())[1:] == ["B04", "B03", "B02"]
-        assert ds.coords["x"].values.min() == pytest.approx(572465.000, abs=10)
-        assert ds.coords["y"].values.min() == pytest.approx(5618675.000, abs=10)
-        assert ds.coords["x"].values.max() == pytest.approx(702325.000, abs=10)
-        assert ds.coords["y"].values.max() == pytest.approx(5626335.000, abs=10)
+        assert cube.coords["bands"].values.tolist() == ["B04", "B03", "B02"]
+        assert cube.coords["x"].values.min() == pytest.approx(572465.000, abs=10)
+        assert cube.coords["y"].values.min() == pytest.approx(5618675.000, abs=10)
+        assert cube.coords["x"].values.max() == pytest.approx(702325.000, abs=10)
+        assert cube.coords["y"].values.max() == pytest.approx(5626335.000, abs=10)
 
     def test_load_stac_from_spatiotemporal_netcdf_job_results(self, api110, tmp_path):
 

@@ -3,7 +3,7 @@
   "type": "Collection",
   "description": "description",
   "license": "proprietary",
-  "stac_version": "1.0.0",
+  "stac_version": "1.1.0",
   "extent": {
     "spatial": {
       "bbox": [
@@ -24,16 +24,17 @@
       ]
     }
   },
-  "links": [
-    {
-      "rel": "item",
-      "href": "item01.json"
-    }
-  ],
+  "links": [],
   "summaries": {
-    "eo:bands": [
+    "bands": [
+        {
+          "name": "band5"
+        },
         {
           "name": "band1"
+        },
+        {
+          "name": "band4"
         },
         {
           "name": "band2"
