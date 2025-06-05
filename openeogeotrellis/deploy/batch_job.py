@@ -816,7 +816,7 @@ def _write_exported_stac_collection_from_item(
             asset_bands = None
             if "bands" in asset:
                 bands = asset.get("bands")
-                raster_bands = asset.get("raster:bands")
+                raster_bands = asset.get("raster:bands",[])
                 asset_bands = list()
                 for band in bands:
                     name = band["name"]
@@ -841,7 +841,7 @@ def _write_exported_stac_collection_from_item(
             "id": item.get("id"),
             "geometry": item.get("geometry"),
             "bbox":item.get("bbox"),
-            "properties":item["properties"],
+            "properties":item.get("properties",{"datetime": result_metadata.get("start_datetime")}),
             "links":[],
             "assets":assets
         }
