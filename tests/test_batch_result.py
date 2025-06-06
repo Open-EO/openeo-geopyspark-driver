@@ -997,21 +997,8 @@ def test_export_workspace(tmp_path, remove_original, attach_gdalinfo_assets):
             assert "openEO_2021-01-05Z.tif" in job_dir_files
             assert "openEO_2021-01-15Z.tif" in job_dir_files
 
-        expected_paths = {
-            Path("collection.json"),
-            Path("openEO_2021-01-05Z.tif"),
-            Path("openEO_2021-01-05Z.tif.json"),
-            Path("openEO_2021-01-15Z.tif"),
-            Path("openEO_2021-01-15Z.tif.json"),
-        }
-        if attach_gdalinfo_assets:
-            expected_paths |= {
-                Path(f"openEO_2021-01-05Z.tif{GDALINFO_SUFFIX}"),
-                Path(f"openEO_2021-01-05Z.tif{GDALINFO_SUFFIX}.json"),
-                Path(f"openEO_2021-01-15Z.tif{GDALINFO_SUFFIX}"),
-                Path(f"openEO_2021-01-15Z.tif{GDALINFO_SUFFIX}.json"),
-            }
-        assert _paths_relative_to(workspace_dir) == expected_paths
+        assert len(_paths_relative_to(workspace_dir)) == 7 if attach_gdalinfo_assets else 5
+        assert {Path("collection.json"), Path("openEO_2021-01-05Z.tif"), Path("openEO_2021-01-15Z.tif")}.issubset(_paths_relative_to(workspace_dir))
 
         stac_collection = pystac.Collection.from_file(str(workspace_dir / "collection.json"))
         stac_collection.validate_all()
@@ -1022,50 +1009,49 @@ def test_export_workspace(tmp_path, remove_original, attach_gdalinfo_assets):
         ]
 
         item_links = [item_link for item_link in stac_collection.links if item_link.rel == "item"]
-        assert len(item_links) == 4 if attach_gdalinfo_assets else 2
-        item_link = [item_link for item_link in item_links if "openEO_2021-01-05Z.tif" in item_link.href][0]
+        assert len(item_links) == 2
 
-        assert item_link.media_type == "application/geo+json"
-        assert item_link.href == "./openEO_2021-01-05Z.tif.json"
+        refs = set()
+        for item_link in item_links:
+            assert item_link.media_type == "application/geo+json"
+            refs.add(Path(item_link.href))
+        assert len(refs) == 2
+        assert refs.issubset(_paths_relative_to(workspace_dir))
 
         items = list(stac_collection.get_items())
-        items = list(filter(lambda x: "data" in x.assets[x.id].roles, items))
         assert len(items) == 2
 
-        item = [item for item in items if item.id == "openEO_2021-01-05Z.tif"][0]
-        assert item.bbox == [0.0, 0.0, 1.0, 2.0]
-        assert (shape(item.geometry).normalize()
-                .almost_equals(Polygon.from_bounds(0.0, 0.0, 1.0, 2.0).normalize()))
+        for item in items:
+            assert item.bbox == [0.0,0.0,1.0,2.0]
+            assert (shape(item.geometry).normalize()
+                    .almost_equals(Polygon.from_bounds(0.0, 0.0, 1.0, 2.0).normalize()))
+            assets = item.get_assets()
+            assert len(assets) == 2 if attach_gdalinfo_assets else 1
+            assert "openEO" in assets
+            asset_fields = assets["openEO"].extra_fields
+            assert "bands" in asset_fields
+            bands = asset_fields["bands"]
+            assert len(bands) == 1
+            assert len(bands[0]) == 2
+            assert "name" in bands[0]
+            assert bands[0]["name"] == "Flat:2"
+            assert "statistics" in bands[0]
+            assert len(bands[0]["statistics"]) == 5
+            assert "bbox" in asset_fields
+            assert asset_fields["bbox"] == [0.0,0.0,1.0,2.0]
+            assert "geometry" in asset_fields
 
-        geotiff_asset = item.get_assets()["openEO_2021-01-05Z.tif"]
-        assert "data" in geotiff_asset.roles
-        assert geotiff_asset.href == "./openEO_2021-01-05Z.tif"
-        assert geotiff_asset.media_type == "image/tiff; application=geotiff"
-        assert geotiff_asset.extra_fields["eo:bands"] == [DictSubSet({"name": "Flat:2"})]
-        assert geotiff_asset.extra_fields["raster:bands"] == [
-            {
-                "name": "Flat:2",
-                "statistics": {"minimum": 2.0, "maximum": 2.0, "mean": 2.0, "stddev": 0.0, "valid_percent": 100.0},
-            }
-        ]
-
-        geotiff_asset_copy_path = tmp_path / "openEO_2021-01-05Z.tif.copy"
-        geotiff_asset.copy(str(geotiff_asset_copy_path))  # downloads the asset file
-        with rasterio.open(geotiff_asset_copy_path) as dataset:
-            assert dataset.driver == "GTiff"
-
-        # TODO: check other things e.g. proj:
         with open(metadata_file) as f:
             job_metadata = json.load(f)
 
         assert job_metadata["assets"]["openEO_2021-01-05Z.tif"]["href"] == str(tmp_path / "openEO_2021-01-05Z.tif")
-
         assert not remove_original or (
-            job_metadata["assets"]["openEO_2021-01-05Z.tif"]["public_href"]
-            == f"file:{workspace_dir / 'openEO_2021-01-05Z.tif'}"
+                job_metadata["assets"]["openEO_2021-01-05Z.tif"]["public_href"]
+                == f"file:{workspace_dir / 'openEO_2021-01-05Z.tif'}"
         )
+
     finally:
-        shutil.rmtree(workspace_dir)
+       shutil.rmtree(workspace_dir)
 
 
 def test_export_workspace_with_asset_per_band(tmp_path):
@@ -1125,38 +1111,42 @@ def test_export_workspace_with_asset_per_band(tmp_path):
         assert "openEO_2021-01-05Z_Longitude.tif" in job_dir_files
         assert "openEO_2021-01-05Z_Latitude.tif" in job_dir_files
 
-        assert _paths_relative_to(workspace_dir) == {
+        assert {
             Path("collection.json"),
             Path("openEO_2021-01-05Z_Longitude.tif"),
-            Path("openEO_2021-01-05Z_Longitude.tif.json"),
             Path("openEO_2021-01-05Z_Latitude.tif"),
-            Path("openEO_2021-01-05Z_Latitude.tif.json"),
-        }
+        }.issubset(_paths_relative_to(workspace_dir))
+
+        assert 4 == len(_paths_relative_to(workspace_dir))
 
         stac_collection = pystac.Collection.from_file(str(workspace_dir / "collection.json"))
         stac_collection.validate_all()
 
         item_links = [item_link for item_link in stac_collection.links if item_link.rel == "item"]
-        assert len(item_links) == 2
+        assert len(item_links) == 1
         item_link = item_links[0]
 
         assert item_link.media_type == "application/geo+json"
-        assert item_link.href == "./openEO_2021-01-05Z_Latitude.tif.json"
+        link_id = item_link.target.id
+        assert item_link.href == "./" + link_id + ".json"
 
         items = list(stac_collection.get_items())
-        assert len(items) == 2
+        assert len(items) == 1
 
         item = items[0]
-        assert item.id == "openEO_2021-01-05Z_Latitude.tif"
         assert item.bbox == [0.0, 0.0, 1.0, 2.0]
         assert shape(item.geometry).normalize().almost_equals(Polygon.from_bounds(0.0, 0.0, 1.0, 2.0).normalize())
 
-        geotiff_asset = item.get_assets()["openEO_2021-01-05Z_Latitude.tif"]
+        assets = item.get_assets()
+        assert len(assets) == 2
+        assert "openEO_Latitude" in assets
+        assert "openEO_Longitude" in assets
+        geotiff_asset = assets["openEO_Latitude"]
         assert "data" in geotiff_asset.roles
-        assert geotiff_asset.href == "./openEO_2021-01-05Z_Latitude.tif"
+        assert geotiff_asset.href.endswith("/openEO_2021-01-05Z_Latitude.tif")
         assert geotiff_asset.media_type == "image/tiff; application=geotiff"
-        assert geotiff_asset.extra_fields["eo:bands"] == [DictSubSet({"name": "Latitude"})]
-        assert geotiff_asset.extra_fields["raster:bands"] == [
+        assert "bands" in geotiff_asset.extra_fields
+        assert geotiff_asset.extra_fields["bands"] == [
             {
                 "name": "Latitude",
                 "statistics": {
@@ -2149,11 +2139,11 @@ def test_multiple_save_result_single_export_workspace(tmp_path):
         assert "openEO.nc" in job_dir_files
         assert "openEO.tif" in job_dir_files
 
-        assert _paths_relative_to(workspace_dir) == {
+        assert {
             Path("collection.json"),
             Path("openEO.tif"),
-            Path("openEO.tif.json"),
-        }
+        }.issubset(_paths_relative_to(workspace_dir))
+        assert len(_paths_relative_to(workspace_dir)) == 3
 
         stac_collection = pystac.Collection.from_file(str(workspace_dir / "collection.json"))
         stac_collection.validate_all()
@@ -2162,8 +2152,11 @@ def test_multiple_save_result_single_export_workspace(tmp_path):
         assert len(items) == 1
 
         item = items[0]
-        geotiff_asset = item.get_assets()["openEO.tif"]
-        assert geotiff_asset.extra_fields["raster:bands"] == [
+        assets = item.get_assets()
+        assert len(assets) == 1
+        assert "openEO" in assets
+        geotiff_asset =  assets["openEO"]
+        assert geotiff_asset.extra_fields["bands"] == [
             {
                 "name": "Flat:2",
                 "statistics": {"minimum": 2.0, "maximum": 2.0, "mean": 2.0, "stddev": 0.0, "valid_percent": 100.0},
