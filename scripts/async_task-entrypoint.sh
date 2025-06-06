@@ -35,7 +35,7 @@ export PYARROW_IGNORE_TIMEZONE=1
 
 kinit -kt $keytab openeo@VGT.VITO.BE
 
-classpath="geotrellis-extensions-static.jar:openeo-logging-static.jar:$(find $SPARK_HOME/jars -name '*.jar' | tr '\n' ':')"
+classpath="geotrellis-dependencies-static.jar:geotrellis-extensions-static.jar:openeo-logging-static.jar:$(find $SPARK_HOME/jars -name '*.jar' | tr '\n' ':')"
 py4j_jarpath="$(find venv/share/py4j -name 'py4j*.jar')"
 
 /opt/venv/bin/python -m openeogeotrellis.async_task --py4j-classpath "$classpath" --py4j-jarpath "$py4j_jarpath" --keytab "$keytab" --task "$task_json"

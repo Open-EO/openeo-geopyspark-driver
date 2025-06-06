@@ -80,6 +80,7 @@ from openeogeotrellis.utils import (
     log_memory,
     to_jsonable,
     wait_till_path_available,
+    unzip,
 )
 
 logger = logging.getLogger('openeogeotrellis.deploy.batch_job')
@@ -271,6 +272,10 @@ def run_job(
 ):
     result_metadata = {}
     tracker_metadata = {}
+    items = []
+
+    job_options = job_specification.get("job_options", {})
+    is_stac11 = job_options.get("stac-version", "1.0") == "1.1"
 
     try:
         # We actually expect type Path, but in reality paths as strings tend to
@@ -282,7 +287,6 @@ def run_job(
         logger.info(f"Job spec: {json.dumps(job_specification,indent=1)}")
         logger.debug(f"{job_dir=}, {job_dir=}, {output_file=}, {metadata_file=}")
         process_graph = job_specification['process_graph']
-        job_options = job_specification.get("job_options", {})
 
         try:
             _extract_and_install_udf_dependencies(process_graph=process_graph)
@@ -388,12 +392,56 @@ def run_job(
                 ml_model_metadata = result.get_model_metadata(str(output_file))
                 logger.info("Extracted ml model metadata from %s" % output_file)
 
-        def result_write_assets(result_arg) -> dict:
-            return result_arg.write_assets(str(output_file))
+        def result_write_assets(result_arg) -> (dict, dict):
+            items = result_arg.write_assets(str(output_file))
+            if( len(items)>0  and "assets" not in next(iter(items.values())) ):
+                logger.warning(f"save_result: got an 'assets' object instead of items for {result_arg}")
+                #TODO: this is here to avoid having to sync changes with openeo-python-driver
+                #it can and should be removed as soon as we have introduced returning items in all SaveResult subclasses
+                import uuid
+                item_id = str(uuid.uuid4())
+                items =  {
+                    item_id: {
+                        "id": item_id,
+                        "assets": items
+                    }
+                }
+
+            keys = set()
+            def unique_key(asset_id,href):
+                #try to make the key unique, and backwards compatible if possible
+                if href is not None:
+                    try:
+                        if str(href).startswith("s3://"):
+                            url = urlparse(str(href))
+                            temp_key = url.path.split("/")[-1]
+                        else:
+                            hrefPath = Path(str(href))
+                            if hrefPath.is_absolute():
+                                temp_key = str(hrefPath.relative_to(Path(str(output_file)).parent))
+                            else:
+                                temp_key = str(hrefPath)
+                    except ValueError as e:
+                        url = urlparse(str(href))
+                        temp_key = url.path.split("/")[-1]
+                else:
+                    temp_key = asset_id
+                counter = 0
+                while temp_key in keys:
+                    temp_key = f"{asset_id}_{counter}"
+                    counter += 1
+                keys.add(temp_key)
+                return temp_key
+
+
+            assets = {
+                unique_key(asset_key, asset.get("href",None)): asset for item in items.values() for asset_key, asset in item.get("assets", {}).items()
+            }
+            return assets, items
 
         concurrent_save_results = int(job_options.get("concurrent-save-results", 1))
         if concurrent_save_results == 1:
-            assets_metadata = list(map(result_write_assets, results))
+            assets_metadata, results_items = unzip(*map(result_write_assets, results))
         elif concurrent_save_results > 1:
             with concurrent.futures.ThreadPoolExecutor(max_workers=concurrent_save_results) as executor:
                 futures = []
@@ -402,9 +450,13 @@ def run_job(
 
                 for _ in concurrent.futures.as_completed(futures):
                     continue
-            assets_metadata = list(map(lambda f: f.result(), futures))
+            assets_metadata, results_items = unzip(*map(lambda f: f.result(), futures))
         else:
             raise ValueError(f"Invalid concurrent_save_results: {concurrent_save_results}")
+        assets_metadata = list(assets_metadata)
+
+        # flattens items for each results into one list
+        items = [item for result in results_items for item in result.values()]
 
         for the_assets_metadata in assets_metadata:
             for name, asset in the_assets_metadata.items():
@@ -494,7 +546,10 @@ def run_job(
                 raise ValueError(
                     f"sar_backscatter: Too many soft errors ({soft_errors} > {max_soft_errors_ratio})"
                 )
-        write_metadata({**result_metadata, **tracker_metadata}, metadata_file)
+
+        meta = {**result_metadata, **tracker_metadata, **{"items": items}} if is_stac11 else {**result_metadata,
+                                                                                              **tracker_metadata}
+        write_metadata(meta, metadata_file)
         logger.debug("Starting GDAL-based retrieval of asset metadata")
         result_metadata = _assemble_result_metadata(
             tracer=tracer,
@@ -512,11 +567,12 @@ def run_job(
         )
 
         assert len(results) == len(assets_metadata)
-        for result, result_assets_metadata in zip(results, assets_metadata):
+        for result, result_assets_metadata, result_items_metadata in zip(results, assets_metadata, results_items):
             _export_to_workspaces(
                 result,
                 result_metadata,
                 result_assets_metadata=result_assets_metadata,
+                result_items_metadata = result_items_metadata if is_stac11 else None,
                 job_dir=job_dir,
                 remove_exported_assets=job_options.get("remove-exported-assets", False),
                 enable_merge=job_options.get("export-workspace-enable-merge", False),
@@ -524,7 +580,8 @@ def run_job(
     finally:
         if len(tracker_metadata) == 0:
             tracker_metadata = _get_tracker_metadata("")
-        write_metadata({**result_metadata, **tracker_metadata}, metadata_file)
+        meta =  {**result_metadata, **tracker_metadata, **{"items": items}} if is_stac11 else {**result_metadata, **tracker_metadata}
+        write_metadata(meta, metadata_file)
 
 
 def write_metadata(metadata: dict, metadata_file: Path):
@@ -558,6 +615,7 @@ def _export_to_workspaces(
     result: SaveResult,
     result_metadata: dict,
     result_assets_metadata: dict,
+    result_items_metadata: dict,
     job_dir: Path,
     remove_exported_assets: bool,
     enable_merge: bool,
@@ -571,10 +629,19 @@ def _export_to_workspaces(
     if not workspace_exports:
         return
 
-    stac_hrefs = [
-        f"file:{path}"
-        for path in _write_exported_stac_collection(job_dir, result_metadata, list(result_assets_metadata.keys()))
-    ]
+    if result_items_metadata is not None:
+        #TODO #402 add a function that serializes result_items_metadata and creates the collection, like for asses in the 'else' branch
+        #placeholder code below is a copy of the 'assets' case, should be replaced with call to new function
+        stac_hrefs = [
+            f"file:{path}"
+            for path in _write_exported_stac_collection(job_dir, result_metadata, list(result_assets_metadata.keys()))
+        ]
+    else:
+
+        stac_hrefs = [
+            f"file:{path}"
+            for path in _write_exported_stac_collection(job_dir, result_metadata, list(result_assets_metadata.keys()))
+        ]
 
     # TODO: assemble pystac.STACObject and avoid file altogether?
     collection_href = [href for href in stac_hrefs if "collection.json" in href][0]
@@ -666,13 +733,8 @@ def _write_exported_stac_collection(
 
         if properties["datetime"] is None:
             start_datetime = asset.get("start_datetime") or result_metadata.get("start_datetime")
-            end_datetime = asset.get("end_datetime") or result_metadata.get("end_datetime")
+            properties["datetime"] = start_datetime
 
-            if start_datetime == end_datetime:
-                properties["datetime"] = start_datetime
-            else:
-                properties["start_datetime"] = start_datetime
-                properties["end_datetime"] = end_datetime
 
         stac_item = {
             "type": "Feature",
@@ -685,7 +747,7 @@ def _write_exported_stac_collection(
             "assets": {
                 asset_id: dict_no_none(
                     **{
-                        "href": f"{Path(asset['href']).name}",
+                        "href": f"{Path(asset['href']).relative_to(item_file.parent)}",
                         "roles": asset.get("roles"),
                         "type": asset.get("type"),
                         "eo:bands": asset.get("bands"),
