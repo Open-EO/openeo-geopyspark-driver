@@ -199,8 +199,9 @@ def test_fit_class_random_forest_model():
 
 @mock.patch("openeo_driver.ProcessGraphDeserializer.evaluate")
 @mock.patch("openeogeotrellis.backend.GpsBatchJobs.get_job_info")
+@mock.patch('openeogeotrellis.job_registry.DoubleJobRegistry.get_job')
 @mock.patch("openeogeotrellis.backend.GpsBatchJobs.get_job_output_dir")
-def test_fit_class_random_forest_batch_job_metadata(get_job_output_dir, get_job_info, evaluate, tmp_path, client):
+def test_fit_class_random_forest_batch_job_metadata(get_job_output_dir, get_job, get_job_info, evaluate, tmp_path, client):
     # 1. Run a batch job, which will create a job_metadata.json file.
     random_forest_model: GeopySparkRandomForestModel = train_simple_random_forest_model(3, 42)
     evaluate.return_value = MlModelResult(random_forest_model)
@@ -273,6 +274,7 @@ def test_fit_class_random_forest_batch_job_metadata(get_job_output_dir, get_job_
     # 3. Check the actual result returned by the /jobs/{j}/results endpoint.
     # It uses the job_metadata file as a basis to fill in the ml_model metadata fields.
     get_job_info.return_value = BatchJobMetadata(id=job_id, status="finished", created=datetime.now())
+    get_job.return_value = {'status': 'finished', 'id': 'job_id'}
     api = ApiTester(api_version="1.1.0", client=client, data_root=TEST_DATA_ROOT)
     res = api.get("/jobs/{j}/results".format(j=job_id), headers=TEST_USER_AUTH_HEADER).assert_status_code(200).json
     assert res["assets"] == DictSubSet(
