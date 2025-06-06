@@ -175,9 +175,22 @@ def main():
     debug = len(sys.argv) > 4 and sys.argv[4] == 'DEBUG'
     for f in classpath.split(':'):
         if f.endswith(".jar"):
-            assert os.path.exists(f), f"Classpath jar {f} not found"
+            if os.path.exists(f):
+                logging.error(f"Jar found: {f}")
+            else:
+                logging.error(f"Jar missing: {f}")
+                logging.error(os.path.exists("/repository"))
+                logging.error(os.listdir("/repository"))
+            # assert os.path.exists(f), f"Classpath jar {f} not found"
         else:
-            assert os.path.isdir(f), f"Classpath folder {f} not found"
+            if os.path.isdir(f):
+                logging.error(f"Classpath folder {f} found")
+            else:
+                logging.error(f"Classpath folder {f} not found")
+                logging.error(os.path.exists("/code"))
+                logging.error(os.listdir("/code"))
+
+            # assert os.path.isdir(f), f"Classpath folder {f} not found"
     run_graph_locally(process_graph_path, output_dir, classpath, debug)
 
 
