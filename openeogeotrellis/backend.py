@@ -123,7 +123,8 @@ from openeogeotrellis.service_registry import (
     ServiceEntity,
     ZooKeeperServiceRegistry,
 )
-from openeogeotrellis.udf import run_udf_code, UDF_PYTHON_DEPENDENCIES_FOLDER_NAME, UDF_PYTHON_DEPENDENCIES_ARCHIVE_NAME
+from openeogeotrellis.udf import run_udf_code, UDF_PYTHON_DEPENDENCIES_FOLDER_NAME, \
+    UDF_PYTHON_DEPENDENCIES_ARCHIVE_NAME, collect_udfs
 from openeogeotrellis.user_defined_process_repository import (
     InMemoryUserDefinedProcessRepository,
     ZooKeeperUserDefinedProcessRepository,
@@ -1906,6 +1907,16 @@ class GpsBatchJobs(backend.BatchJobs):
         sentinel_hub_client_alias = deep_get(job_options, 'sentinel-hub', 'client-alias', default="default")
 
         log.debug(f"_start_job {job_options=}")
+
+        udf_runtimes = set([ (udf[1],udf[2]) for udf in collect_udfs(job_process_graph)])
+
+        if len(udf_runtimes) == 1:
+            udf_runtime = udf_runtimes.pop()
+            if(udf_runtime is not None and "image-name" not in job_options):
+                job_options["image-name"] = udf_runtime[0] + udf_runtime[1].replace(".","")
+        elif len(udf_runtimes) > 1:
+            log.warning(f"Multiple UDF runtimes detected in the process graph: {udf_runtimes}. Running with default environment.")
+
 
         if (dependencies is None
             and job_info.get("dependency_status")
