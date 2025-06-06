@@ -4,7 +4,6 @@ from typing import Any, Dict, List
 
 from openeo_driver.constants import DEFAULT_LOG_LEVEL_PROCESSING
 from openeo_driver.errors import OpenEOApiException
-from openeo_driver.util.byteunit import byte_string_as
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.constants import JOB_OPTION_LOG_LEVEL, JOB_OPTION_LOGGING_THRESHOLD
 from openeogeotrellis.util.byteunit import byte_string_as

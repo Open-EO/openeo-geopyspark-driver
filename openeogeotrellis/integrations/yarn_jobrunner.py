@@ -12,15 +12,16 @@ from typing import Union, Optional
 import pkg_resources
 
 from openeo.util import deep_get
-from openeo_driver.config import get_backend_config
 from openeo_driver.config.load import ConfigGetter
 from openeo_driver.constants import JOB_STATUS
 from openeo_driver.errors import InternalException, OpenEOApiException
 from openeogeotrellis import sentinel_hub
-from openeogeotrellis.backend import JOB_METADATA_FILENAME
+from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.job_options import JobOptions
 from openeogeotrellis.udf import UDF_PYTHON_DEPENDENCIES_FOLDER_NAME, UDF_PYTHON_DEPENDENCIES_ARCHIVE_NAME
 
+
+JOB_METADATA_FILENAME = "job_metadata.json"
 
 class YARNBatchJobRunner():
 
@@ -34,7 +35,7 @@ class YARNBatchJobRunner():
         self._default_sentinel_hub_client_id = client_id
         self._default_sentinel_hub_client_secret = client_secret
 
-    def serialize_dependencies(self,dependencies,job_info) -> str:
+    def serialize_dependencies(self,job_info, dependencies = None) -> str:
         batch_process_dependencies = [dependency for dependency in
                                       (dependencies or job_info.get('dependencies') or [])
                                       if 'collection_id' in dependency]
@@ -52,8 +53,8 @@ class YARNBatchJobRunner():
 
         return json.dumps([as_arg_element(dependency) for dependency in batch_process_dependencies])
 
-    @staticmethod
-    def _write_sensitive_values( output_file, vault_token: Optional[str]):
+
+    def _write_sensitive_values(self, output_file, vault_token: Optional[str]):
         output_file.write(f"spark.openeo.sentinelhub.client.id.default={self._default_sentinel_hub_client_id}\n")
         output_file.write(f"spark.openeo.sentinelhub.client.secret.default={self._default_sentinel_hub_client_secret}\n")
 
@@ -131,13 +132,13 @@ class YARNBatchJobRunner():
         with tempfile.NamedTemporaryFile(
                 mode="wt",
                 encoding="utf-8",
-                dir=job_work_dir,
+                dir=job_work_dir.parent,
                 prefix=f"{job_id}_",
                 suffix=".in",
         ) as job_specification_file, tempfile.NamedTemporaryFile(
             mode="wt",
             encoding="utf-8",
-            dir=job_work_dir,
+            dir=job_work_dir.parent,
             prefix=f"{job_id}_",
             suffix=".properties",
         ) as temp_properties_file:
@@ -180,7 +181,7 @@ class YARNBatchJobRunner():
             args.append(options.driver_memory_overhead)
             args.append(queue)
             args.append(profile)
-            args.append(self.serialize_dependencies())
+            args.append(self.serialize_dependencies(job_info=job_info))
             args.append(self.get_submit_py_files(log=log) + extra_py_files)
             args.append(str(options.max_executors))
             args.append(user_id)
