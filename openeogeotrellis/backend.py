@@ -2876,7 +2876,7 @@ class GpsBatchJobs(backend.BatchJobs):
         job_status = "unknown"
         try:
             with self._double_job_registry as registry:
-                job_dict = registry.elastic_job_registry.get_job(job_id, user_id=user_id)
+                job_dict = registry.get_job(job_id, user_id=user_id)
                 if "results_metadata" in job_dict:
                     results_metadata = job_dict["results_metadata"]
                 job_status = job_dict.get("status", "unknown")
