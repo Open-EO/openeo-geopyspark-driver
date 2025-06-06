@@ -84,7 +84,7 @@ class YARNBatchJobRunner():
                     found.append(filename)
                 elif (cwd / "__pyfiles__" / filename).exists():
                     found.append("__pyfiles__/" + filename)
-                else:
+                elif log is not None:
                     log.warning(f"Could not find 'py-file' {filename}: skipping")
             py_files = ",".join(found)
         return py_files
