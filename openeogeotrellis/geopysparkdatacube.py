@@ -1185,7 +1185,7 @@ class GeopysparkDataCube(DriverDataCube):
         result_metadata: GeopysparkCubeMetadata = metadata_list[0]
 
         _log.info(f"run_udf: apply_metadata resulted in {result_metadata}")
-        if not result_metadata.has_band_dimension():
+        if metadata.has_band_dimension() and not result_metadata.has_band_dimension():
             raise ValueError(f"run_udf: apply_metadata function should not remove the band dimension, received metadata: {result_metadata}.")
         if not isinstance(result_metadata, GeopysparkCubeMetadata):
             raise ValueError(f"run_udf: apply_metadata function should retain the type of the input metadata object, received: {result_metadata}.")
