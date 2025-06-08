@@ -299,6 +299,6 @@ class GpsBackendConfig(OpenEoBackendConfig):
     s3_region_proxy_endpoints: Dict[str, str] = attrs.Factory(dict)
 
     """
-    The group ID for the non-kube batch job results directory.
+    The group ID for the batch job results directory (in non-kubernetes deployments).
     """
     non_kube_batch_job_results_dir_group: str = "openeo_results"
