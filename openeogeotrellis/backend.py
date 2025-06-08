@@ -2313,7 +2313,8 @@ class GpsBatchJobs(backend.BatchJobs):
             job_work_dir = self.get_job_work_dir(job_id=job_id)
             ensure_dir(job_work_dir)
             # Ensure others can read/write so that the batch job driver and executors can write to it.
-            add_permissions(job_work_dir, stat.S_IRWXO, None, "openeo_results")
+            # The intention is that a cronjob will later only allow the webapp driver to read the results.
+            add_permissions(job_work_dir, stat.S_IRWXO, None, get_backend_config().non_kube_batch_job_results_dir_group)
 
             # TODO: use different root dir for these temp input files than self._output_root_dir (which is for output files)?
             with tempfile.NamedTemporaryFile(
