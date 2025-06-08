@@ -2311,16 +2311,9 @@ class GpsBatchJobs(backend.BatchJobs):
                 extra_py_files = ",".join(options.udf_dependency_files)
 
             job_work_dir = self.get_job_work_dir(job_id=job_id)
-            # Create the job work dir and set permissions.
             ensure_dir(job_work_dir)
-            try:
-                shutil.chown(job_work_dir, user=None, group="openeo_results")
-            except LookupError as e:
-                logger.warning(f"Could not change group of {job_work_dir} to openeo_results.")
-            except PermissionError as e:
-                logger.warning(f"Could not change group of {job_work_dir} to openeo_results, no permissions.")
             # Ensure others can read/write so that the batch job driver and executors can write to it.
-            add_permissions(job_work_dir, stat.S_IRWXO)
+            add_permissions(job_work_dir, stat.S_IRWXO, None, "openeo_results")
 
             # TODO: use different root dir for these temp input files than self._output_root_dir (which is for output files)?
             with tempfile.NamedTemporaryFile(
