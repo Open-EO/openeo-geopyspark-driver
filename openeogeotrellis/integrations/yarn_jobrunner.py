@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import stat
 import subprocess
 import sys
 import tempfile
@@ -11,7 +12,7 @@ from typing import Union, Optional
 
 import pkg_resources
 
-from openeo.util import deep_get
+from openeo.util import deep_get, ensure_dir
 from openeo_driver.config.load import ConfigGetter
 from openeo_driver.constants import JOB_STATUS
 from openeo_driver.errors import InternalException, OpenEOApiException
@@ -19,6 +20,7 @@ from openeogeotrellis import sentinel_hub
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.job_options import JobOptions
 from openeogeotrellis.udf import UDF_PYTHON_DEPENDENCIES_FOLDER_NAME, UDF_PYTHON_DEPENDENCIES_ARCHIVE_NAME
+from openeogeotrellis.utils import add_permissions
 
 
 JOB_METADATA_FILENAME = "job_metadata.json"
@@ -100,6 +102,10 @@ class YARNBatchJobRunner():
         job_title = job_info.get('title', '')
         options = JobOptions.from_dict(job_options)
 
+        ensure_dir(job_work_dir)
+        # Ensure others can read/write so that the batch job driver and executors can write to it.
+        # The intention is that a cronjob will later only allow the webapp driver to read the results.
+        add_permissions(job_work_dir, stat.S_IRWXO, None, get_backend_config().non_kube_batch_job_results_dir_group)
 
         def as_boolean_arg(job_option_key: str, default_value: str) -> str:
             value = job_options.get(job_option_key)
