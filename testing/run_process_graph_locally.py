@@ -182,8 +182,7 @@ def main():
                 logging.error(f"Jar is missing: {f}")
                 pathlist = Path('/repository').rglob('*.jar')
                 for path in pathlist:
-                    # because path is object not string
-                    print(f"under /repository : {str(path)}")
+                    logging.error(f"under /repository : {str(path)}")
             # assert os.path.exists(f), f"Classpath jar {f} not found"
         else:
             if os.path.isdir(f):
