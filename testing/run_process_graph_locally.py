@@ -177,11 +177,13 @@ def main():
     for f in classpath.split(':'):
         if f.endswith(".jar"):
             if os.path.exists(f):
-                logging.error(f"Jar found: {f}")
+                logging.error(f"Jar is found: {f}")
             else:
                 logging.error(f"Jar is missing: {f}")
-                for rf in os.scandir("/repository"):
-                    print(f"under /repository : {rf}")
+                pathlist = Path('/repository').rglob('*.jar')
+                for path in pathlist:
+                    # because path is object not string
+                    print(f"under /repository : {str(path)}")
             # assert os.path.exists(f), f"Classpath jar {f} not found"
         else:
             if os.path.isdir(f):
