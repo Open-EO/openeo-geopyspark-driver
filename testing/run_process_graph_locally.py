@@ -180,8 +180,8 @@ def main():
                 logging.error(f"Jar found: {f}")
             else:
                 logging.error(f"Jar missing: {f}")
-                logging.error(os.path.exists("/repository"))
-                logging.error(os.listdir("/repository"))
+                for rf in os.scandir("/repository"):
+                    print(f"under /repository : {rf}")
             # assert os.path.exists(f), f"Classpath jar {f} not found"
         else:
             if os.path.isdir(f):
