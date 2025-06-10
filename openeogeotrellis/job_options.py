@@ -2,8 +2,10 @@ import logging
 from dataclasses import dataclass, field, fields
 from typing import Any, Dict, List
 
+from openeo_driver.constants import DEFAULT_LOG_LEVEL_PROCESSING
 from openeo_driver.errors import OpenEOApiException
 from openeogeotrellis.config import get_backend_config
+from openeogeotrellis.constants import JOB_OPTION_LOG_LEVEL, JOB_OPTION_LOGGING_THRESHOLD
 from openeogeotrellis.util.byteunit import byte_string_as
 
 @dataclass
@@ -106,14 +108,35 @@ class JobOptions:
         metadata={"description": "Custom jar path.", "public":False},
     )
 
+    log_level:str = field(
+        default=DEFAULT_LOG_LEVEL_PROCESSING,
+        metadata={"name":"log_level","description": "log level, can be 'debug', 'info', 'warning' or 'error'", "public":True},
+    )
+
+    @staticmethod
+    def as_logging_threshold_arg(value) -> str:
+        value = value.upper()
+        if value == "WARNING":
+            value = "WARN"  # Log4j only accepts WARN whereas Python logging accepts WARN as well as WARNING
+
+        return value
+
     def validate(self):
 
 
-        if byte_string_as(self.executor_memory) + byte_string_as(self.executor_memory_overhead) > byte_string_as(
+        if self.log_level not in ["DEBUG", "INFO", "WARN", "ERROR"]:
+            raise OpenEOApiException(
+                code="InvalidLogLevel",
+                status_code=400,
+                message=f"Invalid log level {self.log_level}. Should be one of 'debug', 'info', 'warning' or 'error'.",
+            )
+
+        if byte_string_as(self.executor_memory) + byte_string_as(self.executor_memory_overhead) + self.python_memory > byte_string_as(
                 get_backend_config().max_executor_or_driver_memory):
             raise OpenEOApiException(
                 message=f"Requested too much executor memory: {self.executor_memory} + {self.executor_memory_overhead}, the max for this instance is: {get_backend_config().max_executor_or_driver_memory}",
                 status_code=400)
+
         if byte_string_as(self.driver_memory) + byte_string_as(self.driver_memory_overhead) > byte_string_as(
                 get_backend_config().max_executor_or_driver_memory):
             raise OpenEOApiException(
@@ -156,6 +179,36 @@ class JobOptions:
                 value = data.get(job_option_name)
                 cls.validate_type(value,field.type)
                 init_kwargs[field.name] = value
+
+        if JOB_OPTION_LOG_LEVEL not in init_kwargs and JOB_OPTION_LOGGING_THRESHOLD in data:
+            init_kwargs[JOB_OPTION_LOG_LEVEL] = data[JOB_OPTION_LOGGING_THRESHOLD]
+        if JOB_OPTION_LOG_LEVEL in init_kwargs:
+            init_kwargs[JOB_OPTION_LOG_LEVEL] = JobOptions.as_logging_threshold_arg(init_kwargs[JOB_OPTION_LOG_LEVEL])
+
+
+        jvmOverheadBytes = byte_string_as("128m")
+
+        # By default, Python uses the space reserved by `spark.executor.memoryOverhead` but no limit is enforced.
+        # When `spark.executor.pyspark.memory` is specified, Python will only use this memory and no more.
+        python_mem = data.get("python-memory",None)
+        python_max = -1
+        noExplicitOverhead = "executor-memoryOverhead" not in data
+        if python_mem is not None:
+            python_max = byte_string_as(python_mem)
+
+            if noExplicitOverhead:
+                memOverheadBytes = jvmOverheadBytes
+                init_kwargs["executor_memory_overhead"] = f"{memOverheadBytes // (1024 ** 2)}m"
+
+        elif not noExplicitOverhead:
+            # If python-memory is not set, we convert most of the overhead memory to python memory
+            # this in fact duplicates the overhead memory, we should migrate away from this approach
+            if cls == K8SOptions:
+                memOverheadBytes = byte_string_as(data["executor-memoryOverhead"])
+                python_max = memOverheadBytes - jvmOverheadBytes
+
+        init_kwargs["python_memory"] = python_max
+
 
         return cls(**init_kwargs)
 
