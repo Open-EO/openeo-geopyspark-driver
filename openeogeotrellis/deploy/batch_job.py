@@ -91,16 +91,15 @@ GlobalExtraLoggingFilter.set("job_id", get_job_id(default="unknown-job"))
 
 
 def _create_job_dir(job_dir: Path):
+    if not ConfigParams().is_kube_deploy:
+        if not job_dir.exists():
+            logger.error("Expected job dir to exist {j!r} (parent dir: {p}))".format(j=job_dir, p=describe_path(job_dir.parent)))
+            # Create the directory with read/write/execute permissions for everyone as a fallback.
+            ensure_dir(job_dir)
+            add_permissions(job_dir, stat.S_IRWXO)
+        return
     logger.debug("creating job dir {j!r} (parent dir: {p}))".format(j=job_dir, p=describe_path(job_dir.parent)))
     ensure_dir(job_dir)
-    if not ConfigParams().is_kube_deploy:
-        try:
-            shutil.chown(job_dir, user=None, group='eodata')
-        except LookupError as e:
-            logger.warning(f"Could not change group of {job_dir} to eodata.")
-        except PermissionError as e:
-            logger.warning(f"Could not change group of {job_dir} to eodata, no permissions.")
-
     if not get_backend_config().fuse_mount_batchjob_s3_bucket:
         add_permissions(job_dir, stat.S_ISGID | stat.S_IWGRP)  # make children inherit this group
 

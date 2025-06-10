@@ -1920,7 +1920,6 @@ class GeopysparkDataCube(DriverDataCube):
 
         tiled = format_options.get("tiled", False)
         stitch = format_options.get("stitch", False)
-        catalog = format_options.get("parameters", {}).get("catalog", False)
         tile_grid = format_options.get("tile_grid", None)
         sample_by_feature = format_options.get("sample_by_feature", False)
         feature_id_property = format_options.get("feature_id_property", None)
@@ -1966,7 +1965,7 @@ class GeopysparkDataCube(DriverDataCube):
                     return gpsColormap.cmap
                 return None
 
-            if max_level.layer_type != gps.LayerType.SPATIAL and (not batch_mode or catalog or stitch or format=="PNG") :
+            if max_level.layer_type != gps.LayerType.SPATIAL and (not batch_mode or stitch or format=="PNG") :
                 max_level = max_level.to_spatial_layer()
 
             if format == "GTIFF":
@@ -1994,10 +1993,7 @@ class GeopysparkDataCube(DriverDataCube):
                                 assets_to_add[name_key] = obj
                     return {**assets_original, **assets_to_add}
 
-                if catalog:
-                    _log.info("save_result (catalog) save_on_executors")
-                    self._save_on_executors(max_level, filename, zlevel, filename_prefix=filename_prefix)
-                elif stitch:
+                if stitch:
                     gtiff_options = get_jvm().org.openeo.geotrellis.geotiff.GTiffOptions()
                     if filename_prefix.isDefined():
                         gtiff_options.setFilenamePrefix(filename_prefix.get())
@@ -2658,36 +2654,6 @@ class GeopysparkDataCube(DriverDataCube):
             Extent(xmin=min(reprojected_xmin1,reprojected_xmin2), ymin=min(reprojected_ymin1,reprojected_ymin2),
                    xmax=max(reprojected_xmax1,reprojected_xmax2), ymax=max(reprojected_ymax1,reprojected_ymax2))
         return crop_bounds
-
-    def _save_on_executors(self, spatial_rdd: gps.TiledRasterLayer, path, zlevel=6,
-                           filename_prefix=None):
-        geotiff_rdd = spatial_rdd.to_geotiff_rdd(
-            storage_method=gps.StorageMethod.TILED,
-            compression=gps.Compression.DEFLATE_COMPRESSION
-        )
-
-        basedir = pathlib.Path(str(path) + '.catalogresult')
-        basedir.mkdir(parents=True, exist_ok=True)
-
-        pre = ""
-        if filename_prefix and filename_prefix.isDefined():
-            pre = filename_prefix.get() + "_"
-
-        def write_tiff(item):
-            key, data = item
-            tiffPath = basedir / (pre + '{c}-{r}.tiff'.format(c=key.col, r=key.row))
-            with tiffPath.open('wb') as f:
-                f.write(data)
-
-        geotiff_rdd.foreach(write_tiff)
-        tiffs = [str(path.absolute()) for path in basedir.glob('*.tiff')]
-
-        _log.info("Merging results {t!r}".format(t=tiffs))
-        merge_args = [ "-o", path, "-of", "GTiff", "-co", "COMPRESS=DEFLATE", "-co", "TILED=TRUE","-co","ZLEVEL=%s"%zlevel]
-        merge_args += tiffs
-        _log.info("Executing: {a!r}".format(a=merge_args))
-        #xargs avoids issues with too many args
-        subprocess.run(['xargs', '-0', 'gdal_merge.py'], input='\0'.join(merge_args), universal_newlines=True)
 
 
     def _save_stitched(self, spatial_rdd, path, gtiff_options, crop_bounds=None, zlevel=6) -> 'Extent':

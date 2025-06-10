@@ -24,3 +24,4 @@ For information on deploying to Kubernetes, visit our [dedicated repository](htt
 - [testing.md](testing.md)
 - [udf-deps.md](udf-deps.md)
 - [vectorcube-run_udf.md](vectorcube-run_udf.md)
+- [workspaces.md](workspaces.md)

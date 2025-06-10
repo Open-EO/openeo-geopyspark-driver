@@ -100,7 +100,7 @@ class TestCapabilities:
                 "openeo": semver_alike,
                 "openeo_driver": semver_alike,
                 "openeo-geopyspark": semver_alike,
-                "geopyspark": semver_alike,
+                "geopyspark-openeo": semver_alike,
                 "geotrellis-extensions": semver_alike,
             },
         }
@@ -108,7 +108,7 @@ class TestCapabilities:
             "openeo": semver_alike,
             "openeo_driver": semver_alike,
             "openeo-geopyspark": semver_alike,
-            "geopyspark": semver_alike,
+            "geopyspark-openeo": semver_alike,
             "geotrellis-extensions": semver_alike,
         }
 

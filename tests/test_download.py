@@ -333,7 +333,6 @@ class TestDownload:
     # Parameters found inside 'write_assets'. If all parameters are tested: 768 cases that take 2min to run.
     @pytest.mark.parametrize("tiled", [True])  # Specify [True, False] to run more tests
     @pytest.mark.parametrize("stitch", [True])  # Specify [True, False] to run more tests
-    @pytest.mark.parametrize("catalog", [True, False])
     @pytest.mark.parametrize("tile_grid", [None, "100km"])
     @pytest.mark.parametrize("sample_by_feature", [True, False])
     @pytest.mark.parametrize("batch_mode", [True, False])
@@ -345,7 +344,6 @@ class TestDownload:
                                        imagecollection_with_two_bands_spatial_only,
                                        tiled,
                                        stitch,
-                                       catalog,
                                        tile_grid,
                                        sample_by_feature,
                                        batch_mode,
@@ -382,9 +380,6 @@ class TestDownload:
             format_options={
                 "tiled": tiled,
                 "stitch": stitch,
-                "parameters": {
-                    "catalog": catalog,
-                },
                 "tile_grid": tile_grid,
                 "sample_by_feature": sample_by_feature,
                 "batch_mode": batch_mode,
@@ -404,7 +399,7 @@ class TestDownload:
         name, asset = assets_data[0]
         print("href of first asset: " + asset["href"])
         assets_metadata = [(asset_key, asset) for asset_key, asset in assets_all if "data" not in asset["roles"]]
-        if format_arg == "GTIFF" and not catalog:
+        if format_arg == "GTIFF":
             if attach_gdalinfo_assets:
                 assert len(assets_metadata) == len(assets_data)
             else:
@@ -417,8 +412,8 @@ class TestDownload:
             if filename_prefix:
                 assert filename_prefix in asset['href']
             else:
-                if (tile_grid and stitch and not catalog and format_arg == "GTIFF") \
-                        or (tile_grid and not (batch_mode and space_type != "spatial") and not stitch and not catalog
+                if (tile_grid and stitch and format_arg == "GTIFF") \
+                        or (tile_grid and not (batch_mode and space_type != "spatial") and not stitch
                             and format_arg == "GTIFF"):
                     # special case for _save_stitched_tile_grid
                     assert "/test_download_result" in asset['href']
