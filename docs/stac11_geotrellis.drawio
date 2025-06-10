@@ -1,6 +1,6 @@
 <mxfile host="app.diagrams.net" agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36" version="26.1.1">
   <diagram name="Pagina-1" id="goe-oXB3VCyJgH8RvOtW">
-    <mxGraphModel dx="2901" dy="1136" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+    <mxGraphModel dx="3036" dy="1256" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
@@ -11,10 +11,10 @@
           <mxGeometry x="414" y="250" width="150" height="75" as="geometry" />
         </mxCell>
         <mxCell id="rLJY375tBITqcNEiM_px-3" value="Zarr read support" style="html=1;outlineConnect=0;whiteSpace=wrap;fillColor=#CCCCFF;shape=mxgraph.archimate3.application;appType=goal;archiType=oct;" vertex="1" parent="1">
-          <mxGeometry x="610" y="250" width="150" height="75" as="geometry" />
+          <mxGeometry x="960" y="247.5" width="150" height="75" as="geometry" />
         </mxCell>
         <mxCell id="rLJY375tBITqcNEiM_px-4" value="Make codebase easier to test" style="html=1;outlineConnect=0;whiteSpace=wrap;fillColor=#CCCCFF;shape=mxgraph.archimate3.application;appType=goal;archiType=oct;" vertex="1" parent="1">
-          <mxGeometry x="810" y="250" width="150" height="75" as="geometry" />
+          <mxGeometry x="590" y="250" width="150" height="75" as="geometry" />
         </mxCell>
         <mxCell id="rLJY375tBITqcNEiM_px-8" value="generates" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="rLJY375tBITqcNEiM_px-5" target="rLJY375tBITqcNEiM_px-7">
           <mxGeometry relative="1" as="geometry" />
@@ -101,14 +101,23 @@
         <mxCell id="rLJY375tBITqcNEiM_px-39" value="tracks" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="rLJY375tBITqcNEiM_px-36" target="rLJY375tBITqcNEiM_px-17">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
+        <mxCell id="rLJY375tBITqcNEiM_px-63" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="rLJY375tBITqcNEiM_px-36" target="rLJY375tBITqcNEiM_px-62">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
         <mxCell id="rLJY375tBITqcNEiM_px-36" value="DriverDataCube" style="html=1;outlineConnect=0;whiteSpace=wrap;fillColor=#99ffff;shape=mxgraph.archimate3.application;appType=comp;archiType=square;" vertex="1" parent="1">
           <mxGeometry x="1200" y="631.25" width="140" height="50" as="geometry" />
         </mxCell>
         <mxCell id="rLJY375tBITqcNEiM_px-40" value="At end of job,&lt;br&gt;track metadata via &#39;derived-from&#39;&lt;br&gt;Our own static STAC items can link to online item." style="html=1;outlineConnect=0;whiteSpace=wrap;fillColor=#CCCCFF;shape=mxgraph.archimate3.application;appType=requirement;archiType=oct;" vertex="1" parent="1">
-          <mxGeometry x="1160" y="760" width="150" height="75" as="geometry" />
+          <mxGeometry x="1390" y="460" width="150" height="75" as="geometry" />
         </mxCell>
-        <mxCell id="rLJY375tBITqcNEiM_px-41" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.25;entryY=1;entryDx=0;entryDy=0;entryPerimeter=0;" edge="1" parent="1" source="rLJY375tBITqcNEiM_px-40" target="rLJY375tBITqcNEiM_px-36">
-          <mxGeometry relative="1" as="geometry" />
+        <mxCell id="rLJY375tBITqcNEiM_px-41" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;entryPerimeter=0;" edge="1" parent="1" source="rLJY375tBITqcNEiM_px-40" target="rLJY375tBITqcNEiM_px-36">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1365" y="498" />
+              <mxPoint x="1365" y="580" />
+              <mxPoint x="1270" y="580" />
+            </Array>
+          </mxGeometry>
         </mxCell>
         <mxCell id="rLJY375tBITqcNEiM_px-43" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="rLJY375tBITqcNEiM_px-42" target="rLJY375tBITqcNEiM_px-13">
           <mxGeometry relative="1" as="geometry" />
@@ -155,13 +164,25 @@
           </mxGeometry>
         </mxCell>
         <mxCell id="rLJY375tBITqcNEiM_px-59" value="Support complex Item&lt;br&gt;filters" style="html=1;outlineConnect=0;whiteSpace=wrap;fillColor=#CCCCFF;shape=mxgraph.archimate3.application;appType=goal;archiType=oct;" vertex="1" parent="1">
-          <mxGeometry x="1000" y="250" width="150" height="75" as="geometry" />
+          <mxGeometry x="785" y="247.5" width="150" height="75" as="geometry" />
         </mxCell>
         <mxCell id="rLJY375tBITqcNEiM_px-60" value="New feature:&lt;br&gt;STAC Item filtering&lt;br&gt;e.g. retain at most 1 item per 10 dates" style="html=1;outlineConnect=0;whiteSpace=wrap;fillColor=#CCCCFF;shape=mxgraph.archimate3.application;appType=requirement;archiType=oct;" vertex="1" parent="1">
           <mxGeometry x="80" y="912.5" width="150" height="75" as="geometry" />
         </mxCell>
         <mxCell id="rLJY375tBITqcNEiM_px-61" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;entryPerimeter=0;" edge="1" parent="1" source="rLJY375tBITqcNEiM_px-60" target="rLJY375tBITqcNEiM_px-53">
           <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rLJY375tBITqcNEiM_px-65" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="rLJY375tBITqcNEiM_px-62" target="rLJY375tBITqcNEiM_px-64">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rLJY375tBITqcNEiM_px-62" value="save_result&lt;br&gt;export_workspace" style="html=1;outlineConnect=0;whiteSpace=wrap;fillColor=#99ffff;shape=mxgraph.archimate3.application;appType=comp;archiType=square;" vertex="1" parent="1">
+          <mxGeometry x="1195" y="730" width="150" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="rLJY375tBITqcNEiM_px-66" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="rLJY375tBITqcNEiM_px-64" target="rLJY375tBITqcNEiM_px-14">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rLJY375tBITqcNEiM_px-64" value="Generate STAC Output" style="html=1;outlineConnect=0;whiteSpace=wrap;fillColor=#99ffff;shape=mxgraph.archimate3.application;appType=proc;archiType=rounded;" vertex="1" parent="1">
+          <mxGeometry x="1195" y="845" width="150" height="55" as="geometry" />
         </mxCell>
       </root>
     </mxGraphModel>
