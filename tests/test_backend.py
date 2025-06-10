@@ -120,7 +120,7 @@ def test_get_submit_py_files_basic(tmp_path, caplog):
     (tmp_path / "__pyfiles__").mkdir()
     (tmp_path / "__pyfiles__" / "stuff.py").touch()
     env = {"OPENEO_SPARK_SUBMIT_PY_FILES": "stuff.py,lib.whl,foo.py"}
-    py_files = YARNBatchJobRunner.get_submit_py_files(env=env, cwd=tmp_path)
+    py_files = YARNBatchJobRunner.get_submit_py_files(env=env, cwd=tmp_path, log = logging.getLogger("openeogeotrellis"))
     assert py_files == "__pyfiles__/stuff.py,lib.whl"
     warn_logs = [r.message for r in caplog.records if r.levelname == "WARNING"]
     assert warn_logs == ["Could not find 'py-file' foo.py: skipping"]
