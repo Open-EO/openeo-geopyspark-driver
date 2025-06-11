@@ -174,15 +174,15 @@ def main():
     output_dir = Path(sys.argv[2])
     classpath = sys.argv[3]
     debug = len(sys.argv) > 4 and sys.argv[4] == 'DEBUG'
+    pathlist = Path('/m2repo').rglob('*.jar')
+    for path in pathlist:
+        logging.error(f"under /m2repo : {str(path)}")
     for f in classpath.split(':'):
         if f.endswith(".jar"):
             if os.path.exists(f):
                 logging.error(f"Jar is found: {f}")
             else:
                 logging.error(f"Jar is missing: {f}")
-                pathlist = Path('/repository').rglob('*.jar')
-                for path in pathlist:
-                    logging.error(f"under /repository : {str(path)}")
             # assert os.path.exists(f), f"Classpath jar {f} not found"
         else:
             if os.path.isdir(f):
