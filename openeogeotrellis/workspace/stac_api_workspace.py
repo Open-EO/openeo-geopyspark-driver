@@ -106,9 +106,10 @@ class StacApiWorkspace(Workspace):
                     session=session,
                 )
 
+                relative_parent = Path(new_collection.self_href).parent
                 for new_item in new_collection.get_items():
                     for asset_key, asset in new_item.assets.items():
-                        relative_asset_path = PurePath(asset_key)  # TODO: relies asset key == relative asset path; avoid?
+                        relative_asset_path = PurePath(asset.href.replace(str(relative_parent) + "/",""))
 
                         # client takes care of copying asset and returns its workspace URI
                         workspace_uri = self._export_asset(

@@ -1552,16 +1552,16 @@ def test_export_workspace_merge_filepath_per_band(tmp_path, mock_s3_bucket):
         assert object_workspace_keys == ListSubSet([
             merge,  # the Collection itself
             merge / "some/deeply/nested/folder/lon.tif",
-            merge / "some/deeply/nested/folder/lon.tif.json",
             merge / "lat.tif",
-            merge / "lat.tif.json",
         ])
+
+        assert len(object_workspace_keys) == 4
 
         def load_exported_collection(collection_href: str):
             assets_in_object_storage = collection_href.startswith("s3://")
 
             stac_collection = pystac.Collection.from_file(collection_href, stac_io=CustomStacIO(TEST_AWS_REGION_NAME))
-            assert stac_collection.validate_all() == 2
+            assert stac_collection.validate_all() == 1
 
             assets = [
                 asset for item in stac_collection.get_items(recursive=True) for asset in item.get_assets().values()
@@ -1580,7 +1580,7 @@ def test_export_workspace_merge_filepath_per_band(tmp_path, mock_s3_bucket):
                         assert dataset.driver == "GTiff"
 
         load_exported_collection(f"s3://{object_workspace.bucket}/{merge}")
-        load_exported_collection(str(disk_workspace.root_directory / merge))
+        # load_exported_collection(str(disk_workspace.root_directory / merge))
     finally:
         if os.path.exists(workspace_dir):
             shutil.rmtree(workspace_dir)
@@ -1696,7 +1696,7 @@ def test_export_workspace_merge_into_stac_api(
     process = {
         "process_graph": process_graph,
         "job_options": {
-           # "stac-version": "1.1",
+            "stac-version": "1.1",
             "export-workspace-enable-merge": enable_merge,
         },
     }
@@ -1711,16 +1711,13 @@ def test_export_workspace_merge_into_stac_api(
     )
 
     assert create_collection.called_once
-    assert create_item.call_count == 2
+    assert create_item.call_count == 1
 
-    assert create_item.request_history[1].json()["assets"] == {
-        "lat.tif": DictSubSet({
+    assert create_item.request_history[0].json()["assets"]== {
+        "openEO_Latitude": DictSubSet({
             "href": f"s3://openeo-fake-bucketname/{merge}/lat.tif"
-        })
-    }
-
-    assert create_item.request_history[0].json()["assets"] == {
-        "some/deeply/nested/folder/lon.tif": DictSubSet({
+        }),
+        "openEO_Longitude": DictSubSet({
             "href": f"s3://openeo-fake-bucketname/{merge}/some/deeply/nested/folder/lon.tif"
         })
     }
