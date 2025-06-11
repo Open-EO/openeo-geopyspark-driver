@@ -1896,7 +1896,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
         if len(udf_runtimes) == 1:
             udf_runtime = udf_runtimes.pop()
-            if(udf_runtime is not None and "image-name" not in job_options):
+            if(udf_runtime is not None and "image-name" not in job_options and len(udf_runtime) == 2):
                 job_options["image-name"] = udf_runtime[0] + udf_runtime[1].replace(".","")
         elif len(udf_runtimes) > 1:
             log.warning(f"Multiple UDF runtimes detected in the process graph: {udf_runtimes}. Running with default environment.")
