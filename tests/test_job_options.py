@@ -36,9 +36,9 @@ def test_from_dict():
 @pytest.mark.parametrize(
     "in_python, in_overhead, expected_python, expected_overhead",
     [
-        (None, None, -1, "3G"),  # on yarn, no python-memory set => stick to using memoryOverhead?
+        (None, None, None, "3G"),  # on yarn, no python-memory set => stick to using memoryOverhead?
         ("2G", None, 2147483648, "128m"),  # Custom Python memory
-        (None, "1G", -1, "1G"), #respect overhead on yarn
+        (None, "1G", None, "1G"), #respect overhead on yarn
         ("2G", "1G", 2147483648, "1G")      # Custom both
     ])
 def test_from_dict_python_memory(in_python, in_overhead, expected_python, expected_overhead):
@@ -54,7 +54,7 @@ def test_from_dict_python_memory(in_python, in_overhead, expected_python, expect
 @pytest.mark.parametrize(
     "in_python, in_overhead, expected_python, expected_overhead",
     [
-        (None, None, -1, "3G"),  # on yarn, no python-memory set => stick to using memoryOverhead?
+        (None, None, None, "3G"),  # on yarn, no python-memory set => stick to using memoryOverhead?
         ("2G", None, 2147483648, "128m"),  # Custom Python memory
         (None, "1G", 939524096, "1G"), # automatically convert memOverhead to python memory on kubernetes
         ("2G", "1G", 2147483648, "1G")      # Custom both

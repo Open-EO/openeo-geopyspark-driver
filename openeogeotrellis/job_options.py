@@ -207,7 +207,8 @@ class JobOptions:
                 memOverheadBytes = byte_string_as(data["executor-memoryOverhead"])
                 python_max = memOverheadBytes - jvmOverheadBytes
 
-        init_kwargs["python_memory"] = python_max
+        if python_max is not None and python_max > 0:
+            init_kwargs["python_memory"] = python_max
 
 
         return cls(**init_kwargs)
