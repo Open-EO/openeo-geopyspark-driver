@@ -85,14 +85,19 @@ class ObjectStorageWorkspace(Workspace):
 
             return CustomLayoutStrategy(collection_func=collection_func, item_func=item_func)
 
-        def replace_asset_href(asset_key: str, asset: Asset, relative_asset_path:str ="") -> Asset:
+        def replace_asset_href(asset_key: str, asset: Asset, relative_collection_path:Path) -> Asset:
             if urlparse(asset.href).scheme not in ["", "file", "s3"]:  # TODO: convenient place; move elsewhere?
                 raise ValueError(asset.href)
 
             # TODO: crummy way to export assets after STAC Collection has been written to disk with new asset hrefs;
             #  it ends up in the asset metadata on disk
-            asset.extra_fields["_original_absolute_href"] = asset.get_absolute_href()
-            asset.href = asset.get_absolute_href().replace(relative_asset_path + "/","")
+            original_absolute_href = asset.get_absolute_href()
+            asset.extra_fields["_original_absolute_href"] = original_absolute_href
+            if original_absolute_href.startswith("s3"):
+                asset.href = Path(original_absolute_href).name
+            else:
+                common_path = os.path.commonpath([original_absolute_href, relative_collection_path])
+                asset.href = original_absolute_href.replace(common_path + "/","")
             return asset
 
         if isinstance(stac_resource, Collection):
@@ -104,23 +109,23 @@ class ObjectStorageWorkspace(Workspace):
             except botocore.exceptions.ClientError as e:
                 if e.response["Error"]["Code"] != "NoSuchKey":
                     raise
-            relative_asset_path = Path(stac_resource.self_href).parent
+            relative_collection_path = Path(new_collection.self_href).parent
             if not existing_collection:
                 new_collection.normalize_hrefs(
                     root_href=f"s3://{self.bucket}/{target.parent}", strategy=href_layout_strategy()
                 )
-                new_collection = new_collection.map_assets(lambda k,v:replace_asset_href(k,v,str(relative_asset_path)))
+                new_collection = new_collection.map_assets(lambda k,v:replace_asset_href(k,v,relative_collection_path))
                 new_collection.save(CatalogType.SELF_CONTAINED, stac_io=self._stac_io)
 
                 for new_item in new_collection.get_items():
                     for asset in new_item.assets.values():
                         workspace_uri = self._copy(
-                            asset.extra_fields["_original_absolute_href"], new_item.get_self_href(), remove_original, str(relative_asset_path)
+                            asset.extra_fields["_original_absolute_href"], new_item.get_self_href(), remove_original, relative_collection_path
                         )
                         asset.extra_fields["alternate"] = {"s3": workspace_uri}
             else:
                 merged_collection = _merge_collection_metadata(existing_collection, new_collection)
-                new_collection = new_collection.map_assets(lambda k,v:replace_asset_href(k,v,str(relative_asset_path)))
+                new_collection = new_collection.map_assets(lambda k,v:replace_asset_href(k,v,relative_collection_path))
 
                 for new_item in new_collection.get_items():
                     new_item.clear_links()  # sever ties with previous collection
@@ -134,7 +139,7 @@ class ObjectStorageWorkspace(Workspace):
                 for new_item in new_collection.get_items():
                     for asset in new_item.assets.values():
                         workspace_uri = self._copy(
-                            asset.extra_fields["_original_absolute_href"], new_item.get_self_href(), remove_original, str(relative_asset_path)
+                            asset.extra_fields["_original_absolute_href"], new_item.get_self_href(), remove_original, relative_collection_path
                         )
                         asset.extra_fields["alternate"] = {"s3": workspace_uri}
 
@@ -142,13 +147,17 @@ class ObjectStorageWorkspace(Workspace):
         else:
             raise NotImplementedError(stac_resource)
 
-    def _copy(self, asset_uri: str, item_s3_uri: str, remove_original: bool, job_dir:str) -> str:
+    def _copy(self, asset_uri: str, item_s3_uri: str, remove_original: bool, job_dir:Path) -> str:
         source_uri_parts = urlparse(asset_uri)
         source_path = Path(source_uri_parts.path)
 
         item_uri_parts = urlparse(item_s3_uri)
         target_prefix = "/".join(item_uri_parts.path[1:].split("/")[:-1])
-        target_name = asset_uri.replace(job_dir + "/","")
+        if asset_uri.startswith("s3"):
+            target_name = Path(asset_uri).name
+        else:
+            common_path =os.path.commonpath([job_dir,asset_uri])
+            target_name = asset_uri.replace(common_path + "/","")
         target_key = f"{target_prefix}/{target_name}"
 
         workspace_uri = f"s3://{self.bucket}/{target_key}"
