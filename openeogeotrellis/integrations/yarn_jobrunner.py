@@ -20,6 +20,7 @@ from openeogeotrellis import sentinel_hub
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.job_options import JobOptions
 from openeogeotrellis.udf import UDF_PYTHON_DEPENDENCIES_FOLDER_NAME, UDF_PYTHON_DEPENDENCIES_ARCHIVE_NAME
+from openeogeotrellis.util.byteunit import byte_string_as
 from openeogeotrellis.utils import add_permissions
 
 
@@ -212,7 +213,7 @@ class YARNBatchJobRunner():
             args.append(str(job_work_dir / UDF_PYTHON_DEPENDENCIES_ARCHIVE_NAME))
             args.append(os.environ.get("OPENEO_PROPAGATABLE_WEB_APP_DRIVER_ENVARS", ""))
 
-            args.append(str(options.python_memory))
+            args.append(str(byte_string_as(options.python_memory)))
 
             # TODO: this positional `args` handling is getting out of hand, leverage _write_sensitive_values?
 
