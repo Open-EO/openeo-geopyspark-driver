@@ -131,7 +131,7 @@ class JobOptions:
                 message=f"Invalid log level {self.log_level}. Should be one of 'debug', 'info', 'warning' or 'error'.",
             )
 
-        if byte_string_as(self.executor_memory) + byte_string_as(self.executor_memory_overhead) + byte_string_as(self.python_memory) > byte_string_as(
+        if byte_string_as(self.executor_memory) + byte_string_as(self.executor_memory_overhead) + byte_string_as(self.python_memory or "0b") > byte_string_as(
                 get_backend_config().max_executor_or_driver_memory):
             raise OpenEOApiException(
                 message=f"Requested too much executor memory: {self.executor_memory} + {self.executor_memory_overhead}, the max for this instance is: {get_backend_config().max_executor_or_driver_memory}",

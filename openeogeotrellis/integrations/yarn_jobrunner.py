@@ -213,7 +213,7 @@ class YARNBatchJobRunner():
             args.append(str(job_work_dir / UDF_PYTHON_DEPENDENCIES_ARCHIVE_NAME))
             args.append(os.environ.get("OPENEO_PROPAGATABLE_WEB_APP_DRIVER_ENVARS", ""))
 
-            args.append(str(byte_string_as(options.python_memory)))
+            args.append(str(byte_string_as(options.python_memory)) if options.python_memory else "-1")
 
             # TODO: this positional `args` handling is getting out of hand, leverage _write_sensitive_values?
 
