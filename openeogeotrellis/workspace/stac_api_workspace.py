@@ -112,10 +112,10 @@ class StacApiWorkspace(Workspace):
                     for asset_key, asset in new_item.assets.items():
                         asset_href = asset.href
                         if asset_href.startswith("s3"):
-                            relative_asset_path = Path(asset_href).name
+                            relative_asset_path = PurePath(Path(asset_href).name)
                         else:
                             common_path = os.path.commonpath([asset_href, relative_parent])
-                            relative_asset_path = asset_href.replace(common_path + "/", "")
+                            relative_asset_path = PurePath(asset_href.replace(common_path + "/", ""))
 
                         # client takes care of copying asset and returns its workspace URI
                         workspace_uri = self._export_asset(
