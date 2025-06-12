@@ -130,6 +130,7 @@ from openeogeotrellis.user_defined_process_repository import (
     InMemoryUserDefinedProcessRepository,
     ZooKeeperUserDefinedProcessRepository,
 )
+from openeogeotrellis.util.byteunit import byte_string_as
 from openeogeotrellis.utils import (
     add_permissions,
     dict_merge_recursive,
@@ -2096,7 +2097,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 executor_memory=options.executor_memory,
                 executor_memory_overhead=options.executor_memory_overhead,
                 executor_threads_jvm=str(options.executor_threads_jvm),
-                python_max_memory = options.python_memory,
+                python_max_memory = byte_string_as(options.python_memory),
                 max_executors=options.max_executors,
                 api_version=api_version,
                 dependencies="[]",  # TODO: use `serialize_dependencies()` here instead? It's probably messy to get that JSON string correctly encoded in the rendered YAML.
