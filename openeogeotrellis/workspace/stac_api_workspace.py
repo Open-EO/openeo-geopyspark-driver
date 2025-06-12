@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 from pathlib import PurePath, Path
 from typing import Union, Callable, Optional
 
@@ -109,7 +110,12 @@ class StacApiWorkspace(Workspace):
                 relative_parent = Path(new_collection.self_href).parent
                 for new_item in new_collection.get_items():
                     for asset_key, asset in new_item.assets.items():
-                        relative_asset_path = PurePath(asset.href.replace(str(relative_parent) + "/",""))
+                        asset_href = asset.href
+                        if asset_href.startswith("s3"):
+                            relative_asset_path = Path(asset_href).name
+                        else:
+                            common_path = os.path.commonpath([asset_href, relative_parent])
+                            relative_asset_path = asset_href.replace(common_path + "/", "")
 
                         # client takes care of copying asset and returns its workspace URI
                         workspace_uri = self._export_asset(
