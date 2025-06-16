@@ -184,6 +184,8 @@ def main():
         else:
             if os.path.isdir(f):
                 logging.error(f"Classpath folder is found:{f}")
+                for (root,dirs,files) in os.walk(f):
+                    logging.error(f"{root}/{dirs}/{files}")
             else:
                 logging.error(f"Classpath folder is missing: {f}")
             # assert os.path.isdir(f), f"Classpath folder {f} not found"
