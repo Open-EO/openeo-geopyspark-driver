@@ -460,15 +460,9 @@ def test_stac_api_POST_item_search_resilience():
 
     responses.get(stac_api_root_url, json=catalog_response)
 
-    feature_collection = {
-        "type": "FeatureCollection",
-        "features": [],
-    }
-
-    # a ConnectionResetError seems to behave differently in unit tests so raise a different one
-    search_transient_error_resp1 = responses.post(stac_search_url, status=500, body="some transient error")
-    search_transient_error_resp2 = responses.post(stac_search_url, status=500, body="some transient error")
-    search_ok_resp = responses.post(stac_search_url, json=feature_collection)
+    search_transient_error_resps = [
+        responses.post(stac_search_url, status=500, body="some transient error") for _ in range(4)
+    ]
 
     # force a POST search
     properties = {
@@ -486,16 +480,15 @@ def test_stac_api_POST_item_search_resilience():
         }
     }
 
-    with pytest.raises(OpenEOApiException, match="There is no data available for the given extents."):  # expected
+    with pytest.raises(OpenEOApiException, match=r".*some transient error.*"):
         load_stac(
             "https://stac.test/collections/collection",
             load_params=LoadParameters(properties=properties),
             env=EvalEnv({"pyramid_levels": "highest"}),
         )
 
-    assert search_transient_error_resp1.call_count == 1
-    assert search_transient_error_resp2.call_count == 1
-    assert search_ok_resp.call_count == 1
+    for resp in search_transient_error_resps:
+        assert resp.call_count == 1
 
 
 class TestStacMetadataParser:

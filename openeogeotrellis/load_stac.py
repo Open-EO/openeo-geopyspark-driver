@@ -359,6 +359,7 @@ def load_stac(
                     backoff_factor=2,
                     status_forcelist=frozenset([429, 500, 502, 503, 504]),
                     allowed_methods=Retry.DEFAULT_ALLOWED_METHODS.union({"POST"}),
+                    raise_on_status=False,  # otherwise StacApiIO will catch this and lose the response body
                 )
 
                 stac_io = pystac_client.stac_api_io.StacApiIO(timeout=REQUESTS_TIMEOUT_SECONDS, max_retries=retry)
