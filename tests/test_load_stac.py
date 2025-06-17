@@ -1,4 +1,3 @@
-import datetime as dt
 import dirty_equals
 import pystac
 from contextlib import nullcontext
@@ -468,9 +467,9 @@ def test_stac_api_POST_item_search_resilience(caplog):
         "features": [],
     }
 
-    # TODO: first response should be a transient error, preferably a ConnectionResetError (see issue)
-    search_error_resp = responses.post(stac_search_url, status=500, body="Internal Server Error")
-    search_error_ok_resp = responses.post(stac_search_url, json=feature_collection)
+    # a ConnectionResetError seems to behave differently in unit tests so raise a different one
+    search_transient_error_resp = responses.post(stac_search_url, status=500, body="Internal Server Error")
+    search_ok_resp = responses.post(stac_search_url, json=feature_collection)
 
     # force a POST search
     properties = {
@@ -488,15 +487,15 @@ def test_stac_api_POST_item_search_resilience(caplog):
         }
     }
 
-    with pytest.raises(OpenEOApiException, match="There is no data available for the given extents."):
+    with pytest.raises(OpenEOApiException, match="There is no data available for the given extents."):  # expected
         load_stac(
             "https://stac.test/collections/collection",
             load_params=LoadParameters(properties=properties),
             env=EvalEnv({"pyramid_levels": "highest"}),
         )
 
-    assert search_error_resp.call_count == 1
-    assert search_error_ok_resp.call_count == 1
+    assert search_transient_error_resp.call_count == 1
+    assert search_ok_resp.call_count == 1
 
     # sanity check
     retry_logs = [

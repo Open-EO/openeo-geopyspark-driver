@@ -574,7 +574,7 @@ def load_stac(
         if isinstance(e, OpenEOApiException):
             raise e
         elif isinstance(e, pystac_client.exceptions.APIError):
-            if( remote_request_info is not None):
+            if remote_request_info is not None:
                 raise OpenEOApiException(
                     message=f"load_stac: error when constructing datacube from {remote_request_info}: {e}.",
                     status_code=400,
