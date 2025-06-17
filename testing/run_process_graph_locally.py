@@ -168,7 +168,7 @@ def main():
     for setup.py entry_points
     """
     if len(sys.argv) < 4:
-        print("Usage: run_process_graph_locally.py path/to/process_graph.json path/to/output/ colon_separated_classpath")
+        print("Usage: run_process_graph_locally.py path/to/process_graph.json path/to/output/ <colon_separated_classpath>")
         sys.exit(1)
     process_graph_path = Path(sys.argv[1])
     output_dir = Path(sys.argv[2])
@@ -176,19 +176,11 @@ def main():
     debug = len(sys.argv) > 4 and sys.argv[4] == 'DEBUG'
     for f in classpath.split(':'):
         if f.endswith(".jar"):
-            if os.path.exists(f):
-                logging.error(f"Jar is found: {f}")
-            else:
+            if not os.path.exists(f):
                 logging.error(f"Jar is missing: {f}")
-            # assert os.path.exists(f), f"Classpath jar {f} not found"
         else:
-            if os.path.isdir(f):
-                logging.error(f"Classpath folder is found:{f}")
-                for (root,dirs,files) in os.walk(f):
-                    logging.error(f"{root}/{dirs}/{files}")
-            else:
+            if not os.path.isdir(f):
                 logging.error(f"Classpath folder is missing: {f}")
-            # assert os.path.isdir(f), f"Classpath folder {f} not found"
     run_graph_locally(process_graph_path, output_dir, classpath, debug)
 
 
