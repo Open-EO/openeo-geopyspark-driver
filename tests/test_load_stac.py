@@ -411,9 +411,7 @@ def test_empty_cube_from_non_intersecting_item(requests_mock, test_data, feature
 
 
 @responses.activate
-def test_stac_api_POST_item_search_resilience(caplog):
-    caplog.set_level("DEBUG")
-
+def test_stac_api_POST_item_search_resilience():
     stac_api_root_url = "https://stac.test"
     stac_collection_url = f"{stac_api_root_url}/collections/collection"
     stac_search_url = f"{stac_api_root_url}/search"
@@ -468,7 +466,8 @@ def test_stac_api_POST_item_search_resilience(caplog):
     }
 
     # a ConnectionResetError seems to behave differently in unit tests so raise a different one
-    search_transient_error_resp = responses.post(stac_search_url, status=500, body="Internal Server Error")
+    search_transient_error_resp1 = responses.post(stac_search_url, status=500, body="some transient error")
+    search_transient_error_resp2 = responses.post(stac_search_url, status=500, body="some transient error")
     search_ok_resp = responses.post(stac_search_url, json=feature_collection)
 
     # force a POST search
@@ -494,16 +493,9 @@ def test_stac_api_POST_item_search_resilience(caplog):
             env=EvalEnv({"pyramid_levels": "highest"}),
         )
 
-    assert search_transient_error_resp.call_count == 1
+    assert search_transient_error_resp1.call_count == 1
+    assert search_transient_error_resp2.call_count == 1
     assert search_ok_resp.call_count == 1
-
-    # sanity check
-    retry_logs = [
-        r.message
-        for r in caplog.records
-        if r.levelname == "DEBUG" and "Incremented Retry for (url='https://stac.test/search')" in r.message
-    ]
-    assert len(retry_logs) == 1, "expected 1 retry log in: {}".format("\n".join(r.message for r in caplog.records))
 
 
 class TestStacMetadataParser:
