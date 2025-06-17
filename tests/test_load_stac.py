@@ -503,7 +503,7 @@ def test_stac_api_POST_item_search_resilience(caplog):
         for r in caplog.records
         if r.levelname == "DEBUG" and "Incremented Retry for (url='https://stac.test/search')" in r.message
     ]
-    assert len(retry_logs) == 1, f"expected 1 retry but got {len(retry_logs)}"
+    assert len(retry_logs) == 1, "expected 1 retry log in: {}".format("\n".join(r.message for r in caplog.records))
 
 
 class TestStacMetadataParser:
