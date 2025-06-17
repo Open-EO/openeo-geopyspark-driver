@@ -297,8 +297,3 @@ class GpsBackendConfig(OpenEoBackendConfig):
     A mapping of region names to proxy endpoints
     """
     s3_region_proxy_endpoints: Dict[str, str] = attrs.Factory(dict)
-
-    """
-    The group ID for the batch job results directory (in non-kubernetes deployments).
-    """
-    non_kube_batch_job_results_dir_group: str = "openeo_results"

@@ -106,7 +106,7 @@ class YARNBatchJobRunner():
         ensure_dir(job_work_dir)
         # Ensure others can read/write so that the batch job driver and executors can write to it.
         # The intention is that a cronjob will later only allow the webapp driver to read the results.
-        add_permissions(job_work_dir, stat.S_IRWXO | stat.S_IWGRP, None, get_backend_config().non_kube_batch_job_results_dir_group)
+        add_permissions(job_work_dir, stat.S_IRWXO | stat.S_IWGRP)
 
         def as_boolean_arg(job_option_key: str, default_value: str) -> str:
             value = job_options.get(job_option_key)
