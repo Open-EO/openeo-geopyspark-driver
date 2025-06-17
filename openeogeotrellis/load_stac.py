@@ -13,7 +13,8 @@ import planetary_computer
 import pyproj
 import pystac
 import pystac_client
-import pystac_client.exceptions
+import requests.adapters
+from pystac_client import exceptions, stac_api_io
 from geopyspark import LayerType, TiledRasterLayer
 from openeo.util import dict_no_none, Rfc3339
 import openeo.metadata
@@ -38,6 +39,7 @@ from openeo_driver.utils import EvalEnv
 from pathlib import Path
 from pystac import STACObject
 from shapely.geometry import Polygon, shape
+from urllib3 import Retry
 
 from openeogeotrellis import datacube_parameters
 from openeogeotrellis.config import get_backend_config
@@ -351,7 +353,16 @@ def load_stac(
                     # https://stac.openeo.vito.be/ and https://stac.terrascope.be
                     fields = None
 
-                client = pystac_client.Client.open(root_catalog.get_self_href(), modifier=modifier)
+                retry = requests.adapters.Retry(
+                    total=3,
+                    backoff_factor=2,
+                    status_forcelist=frozenset([429, 500, 502, 503, 504]),
+                    allowed_methods=Retry.DEFAULT_ALLOWED_METHODS.union({"POST"}),
+                    raise_on_status=False,  # otherwise StacApiIO will catch this and lose the response body
+                )
+
+                stac_io = pystac_client.stac_api_io.StacApiIO(timeout=REQUESTS_TIMEOUT_SECONDS, max_retries=retry)
+                client = pystac_client.Client.open(root_catalog.get_self_href(), modifier=modifier, stac_io=stac_io)
 
                 cql2_filter = _cql2_filter(
                     client,
@@ -563,7 +574,7 @@ def load_stac(
         if isinstance(e, OpenEOApiException):
             raise e
         elif isinstance(e, pystac_client.exceptions.APIError):
-            if( remote_request_info is not None):
+            if remote_request_info is not None:
                 raise OpenEOApiException(
                     message=f"load_stac: error when constructing datacube from {remote_request_info}: {e}.",
                     status_code=400,
