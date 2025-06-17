@@ -126,10 +126,6 @@ def _setup_local_spark(classpath: str, debug: bool):
     if debug:
         context.setLogLevel("DEBUG")
     print("Validating the Spark context")
-    dummy = context._jvm.org.openeo.geotrellis.OpenEOProcesses()
-    answer = context.parallelize([9, 10, 11, 12]).sum()
-    print(repr((answer, dummy)))
-
     return context
 
 
