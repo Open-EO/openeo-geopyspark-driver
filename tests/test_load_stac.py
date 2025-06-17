@@ -1,6 +1,5 @@
 import datetime as dt
 import dirty_equals
-import json
 import pystac
 from contextlib import nullcontext
 
@@ -8,6 +7,7 @@ import mock
 import pytest
 
 import openeo.metadata
+import responses
 from openeo.testing.stac import StacDummyBuilder
 from openeo_driver.ProcessGraphDeserializer import DEFAULT_TEMPORAL_EXTENT
 from openeo_driver.backend import BatchJobMetadata, BatchJobs, LoadParameters
@@ -409,6 +409,94 @@ def test_empty_cube_from_non_intersecting_item(requests_mock, test_data, feature
         assert data_cube.metadata.band_names == ["A1"]
         for level in data_cube.pyramid.levels.values():
             assert level.count() == 0
+
+
+@responses.activate
+def test_stac_api_POST_item_search_resilience():
+    stac_api_root_url = "https://stac.test"
+    stac_collection_url = f"{stac_api_root_url}/collections/collection"
+    stac_search_url = f"{stac_api_root_url}/search"
+
+    # TODO: reduce code duplication with _mock_stac_api
+    responses.get(
+        stac_collection_url,
+        json={
+            "type": "Collection",
+            "stac_version": "1.0.0",
+            "id": "collection",
+            "description": "collection",
+            "license": "unknown",
+            "extent": {
+                "spatial": {"bbox": [[-180, -90, 180, 90]]},
+                "temporal": {"interval": [[None, None]]},
+            },
+            "links": [
+                {
+                    "rel": "root",
+                    "href": stac_api_root_url,
+                }
+            ],
+        },
+    )
+
+    catalog_response = {
+        "type": "Catalog",
+        "stac_version": "1.0.0",
+        "id": "stac.test",
+        "description": "stac.test",
+        "links": [
+            {
+                "rel": "search",
+                "type": "application/geo+json",
+                "title": "STAC search",
+                "href": stac_search_url,
+                "method": "POST",
+            },
+        ],
+        "conformsTo": [
+            "https://api.stacspec.org/v1.0.0-rc.1/item-search",
+            "https://api.stacspec.org/v1.0.0-rc.3/item-search#filter",
+        ],
+    }
+
+    responses.get(stac_api_root_url, json=catalog_response)
+
+    feature_collection = {
+        "type": "FeatureCollection",
+        "features": [],
+    }
+
+    # TODO: first response should be a transient error, preferably a ConnectionResetError (see issue)
+    search_error_resp = responses.post(stac_search_url, status=500, body="Internal Server Error")
+    search_error_ok_resp = responses.post(stac_search_url, json=feature_collection)
+
+    # force a POST search
+    properties = {
+        "product_tile": {
+            "process_graph": {
+                "eq1": {
+                    "process_id": "eq",
+                    "arguments": {
+                        "x": {"from_parameter": "value"},
+                        "y": "31UFS",
+                    },
+                    "result": True,
+                }
+            }
+        }
+    }
+
+    with pytest.raises(OpenEOApiException, match="There is no data available for the given extents."):
+        load_stac(
+            "https://stac.test/collections/collection",
+            load_params=LoadParameters(properties=properties),
+            env=EvalEnv({"pyramid_levels": "highest"}),
+        )
+
+    assert search_error_resp.call_count == 1
+    assert search_error_ok_resp.call_count == 1
+
+    # TODO: check retry logs as a sanity check
 
 
 class TestStacMetadataParser:
