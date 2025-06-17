@@ -353,7 +353,6 @@ def load_stac(
                     # https://stac.openeo.vito.be/ and https://stac.terrascope.be
                     fields = None
 
-                # TODO: reduce code duplication with openeo_driver.util.http.requests_with_retry
                 retry = requests.adapters.Retry(
                     total=3,
                     backoff_factor=2,

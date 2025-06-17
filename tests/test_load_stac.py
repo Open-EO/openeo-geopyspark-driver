@@ -416,7 +416,6 @@ def test_stac_api_POST_item_search_resilience():
     stac_collection_url = f"{stac_api_root_url}/collections/collection"
     stac_search_url = f"{stac_api_root_url}/search"
 
-    # TODO: reduce code duplication with _mock_stac_api
     responses.get(
         stac_collection_url,
         json={
@@ -438,33 +437,34 @@ def test_stac_api_POST_item_search_resilience():
         },
     )
 
-    catalog_response = {
-        "type": "Catalog",
-        "stac_version": "1.0.0",
-        "id": "stac.test",
-        "description": "stac.test",
-        "links": [
-            {
-                "rel": "search",
-                "type": "application/geo+json",
-                "title": "STAC search",
-                "href": stac_search_url,
-                "method": "POST",
-            },
-        ],
-        "conformsTo": [
-            "https://api.stacspec.org/v1.0.0-rc.1/item-search",
-            "https://api.stacspec.org/v1.0.0-rc.3/item-search#filter",
-        ],
-    }
-
-    responses.get(stac_api_root_url, json=catalog_response)
+    responses.get(
+        stac_api_root_url,
+        json={
+            "type": "Catalog",
+            "stac_version": "1.0.0",
+            "id": "stac.test",
+            "description": "stac.test",
+            "links": [
+                {
+                    "rel": "search",
+                    "type": "application/geo+json",
+                    "title": "STAC search",
+                    "href": stac_search_url,
+                    "method": "POST",
+                },
+            ],
+            "conformsTo": [
+                "https://api.stacspec.org/v1.0.0-rc.1/item-search",
+                "https://api.stacspec.org/v1.0.0-rc.3/item-search#filter",
+            ],
+        },
+    )
 
     search_transient_error_resps = [
-        responses.post(stac_search_url, status=500, body="some transient error") for _ in range(4)
+        responses.post(stac_search_url, status=500, body="some transient error") for _ in range(4)  # does 4 attempts
     ]
 
-    # force a POST search
+    # pass a property filter to do a POST item search like the API advertises above
     properties = {
         "product_tile": {
             "process_graph": {
@@ -482,7 +482,7 @@ def test_stac_api_POST_item_search_resilience():
 
     with pytest.raises(OpenEOApiException, match=r".*some transient error.*"):
         load_stac(
-            "https://stac.test/collections/collection",
+            stac_collection_url,
             load_params=LoadParameters(properties=properties),
             env=EvalEnv({"pyramid_levels": "highest"}),
         )
