@@ -100,7 +100,7 @@ class TestCapabilities:
                 "openeo": semver_alike,
                 "openeo_driver": semver_alike,
                 "openeo-geopyspark": semver_alike,
-                "geopyspark": semver_alike,
+                "geopyspark-openeo": semver_alike,
                 "geotrellis-extensions": semver_alike,
             },
         }
@@ -108,7 +108,7 @@ class TestCapabilities:
             "openeo": semver_alike,
             "openeo_driver": semver_alike,
             "openeo-geopyspark": semver_alike,
-            "geopyspark": semver_alike,
+            "geopyspark-openeo": semver_alike,
             "geotrellis-extensions": semver_alike,
         }
 
@@ -383,6 +383,45 @@ class TestBatchJobs:
             "arguments": {
                 "id": "BIOPAR_FAPAR_V1_GLOBAL"
             },
+            "result": True
+        }
+    }
+
+
+    DUMMY_PROCESS_GRAPH_WITH_UDF = {
+        "loadcollection1": {
+            "arguments": {
+                "id": "BIOPAR_FAPAR_V1_GLOBAL",
+                "callback": {
+                    "process_graph": {
+                        "deep_udf": {
+                            "arguments": {
+                                "udf": "some code",
+                                "runtime": "python",
+                                "version": "3.11"
+                            },
+                            "process_id": "run_udf",
+                            "result": True
+                        }
+                    }
+                },
+
+                "temporal_extent": [
+                    "2017-03-01",
+                    "2017-03-15"
+                ]
+            },
+            "process_id": "load_collection"
+        },
+        "saveresult1": {
+            "arguments": {
+                "data": {
+                    "from_node": "loadcollection1"
+                },
+                "format": "GTiff",
+                "options": {}
+            },
+            "process_id": "save_result",
             "result": True
         }
     }
@@ -1131,18 +1170,7 @@ class TestBatchJobs:
             # Create job
             data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH, title="Dummy")
             data["job_options"] = {"driver-memory": "3g", "executor-memory": "11g","executor-cores":"4","queue":"somequeue","driver-memoryOverhead":"10G", "soft-errors":"false", "udf-dependency-archives":["https://host.com/my.jar"]}
-            res = api.post('/jobs', json=data, headers=TEST_USER_AUTH_HEADER).assert_status_code(201)
-            job_id = res.headers['OpenEO-Identifier']
-            # Start job
-            with mock.patch('subprocess.run') as run:
-                stdout = api.read_file("spark-submit-stdout.txt")
-                run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout=stdout, stderr="")
-                # Trigger job start
-                api.post(
-                    f"/jobs/{job_id}/results", json={}, headers=TEST_USER_AUTH_HEADER
-                ).assert_status_code(202)
-                run.assert_called_once()
-                batch_job_args = run.call_args[0][0]
+            batch_job_args, job_id, env = self._create_and_start_yarn_job(data, api)
 
             # Check batch in/out files
             job_dir = batch_job_output_root / job_id
@@ -1162,6 +1190,49 @@ class TestBatchJobs:
             assert batch_job_args[21:23] == [TEST_USER, job_id]
             assert batch_job_args[23] == '0.0'
             assert batch_job_args[27] == 'https://host.com/my.jar'
+
+    def _create_and_start_yarn_job(self, job_data, api):
+        res = api.post('/jobs', json=job_data, headers=TEST_USER_AUTH_HEADER).assert_status_code(201)
+        job_id = res.headers['OpenEO-Identifier']
+        # Start job
+        with mock.patch('subprocess.run') as run:
+            stdout = api.read_file("spark-submit-stdout.txt")
+            run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout=stdout, stderr="")
+            # Trigger job start
+            api.post(
+                f"/jobs/{job_id}/results", json={}, headers=TEST_USER_AUTH_HEADER
+            ).assert_status_code(202)
+            run.assert_called_once()
+            batch_job_args = run.call_args[0][0]
+            env = run.call_args[1]['env']
+        return batch_job_args, job_id,env
+
+    def test_start_custom_udf_runtime(
+            self,
+            api,
+            job_registry,
+            time_machine,
+            batch_job_output_root,
+    ):
+        time_machine.move_to("2020-04-20T12:01:01Z")
+        true = True
+        null = None
+
+        job_data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH_WITH_UDF, title="Dummy")
+        batch_job_args, job_id,env = self._create_and_start_yarn_job(job_data, api)
+
+
+        # Check batch in/out files
+        job_dir = batch_job_output_root / job_id
+        job_output = job_dir / "out"
+        job_metadata = job_dir / JOB_METADATA_FILENAME
+        assert batch_job_args[2].endswith(".in")
+        assert batch_job_args[3] == str(job_dir)
+        assert batch_job_args[4] == job_output.name
+        assert batch_job_args[5] == job_metadata.name
+        assert batch_job_args[8] == TEST_USER
+        assert env['YARN_CONTAINER_RUNTIME_DOCKER_IMAGE'] == "python311"
+
 
     @pytest.mark.parametrize(["boost"], [
         [("driver-memory", "99999g")],

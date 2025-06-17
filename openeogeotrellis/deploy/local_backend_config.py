@@ -28,9 +28,14 @@ oidc_providers = [
 os.makedirs("/tmp/workspace", exist_ok=True)
 workspaces = {"tmp_workspace": DiskWorkspace(root_directory=Path("/tmp/workspace"))}
 
+if "OPENEO_CATALOG_FILES" in os.environ:
+    layer_catalog_files = os.environ["OPENEO_CATALOG_FILES"].split(",")
+else:
+    layer_catalog_files = [str(Path(__file__).parent / "simple_layercatalog.json")]
+
 config = GpsBackendConfig(
     id="gps-local",
-    layer_catalog_files=[str(Path(__file__).parent / "simple_layercatalog.json")],
+    layer_catalog_files=layer_catalog_files,
     capabilities_title="Local GeoPySpark openEO Backend",
     capabilities_description="Local GeoPySpark openEO Backend",
     oidc_providers=oidc_providers,

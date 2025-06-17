@@ -131,6 +131,7 @@ def test_simple_math(tmp_path):
 def test_ep3899_netcdf_no_bands(tmp_path):
 
     job_spec = {
+        "job_options": {"stac-version":"1.1"},
         "title": "my job",
         "description": "*minimum band*",
         "process_graph":{
@@ -177,11 +178,9 @@ def test_ep3899_netcdf_no_bands(tmp_path):
     with metadata_file.open() as f:
         metadata = json.load(f)
     assert metadata["start_datetime"] == "2021-01-01T00:00:00Z"
-    assets = metadata["assets"]
+    assets = [asset for item in metadata["items"] for asset in item["assets"].values()]
     assert len(assets) == 1
-    for asset in assets:
-        theAsset = assets[asset]
-
+    for theAsset in assets:
         assert 'application/x-netcdf' == theAsset['type']
         href = theAsset['href']
         from osgeo.gdal import Info
@@ -194,8 +193,9 @@ def test_ep3899_netcdf_no_bands(tmp_path):
 
 @pytest.mark.parametrize("prefix", [None, "prefixTest"])
 def test_ep3874_sample_by_feature_filter_spatial_inline_geojson(prefix, tmp_path):
-    print("tmp_path: ", tmp_path)
-    job_spec = {"process_graph":{
+    job_spec = {
+        "job_options": {"stac-version": "1.1"},
+        "process_graph":{
         "lc": {
             "process_id": "load_collection",
             "arguments": {
@@ -237,30 +237,32 @@ def test_ep3874_sample_by_feature_filter_spatial_inline_geojson(prefix, tmp_path
             "result": True,
         }
     }}
-    metadata_file = tmp_path / "metadata.json"
+    job_dir = tmp_path
+    metadata_file = job_dir / "metadata.json"
     run_job(
         job_spec,
-        output_file=tmp_path / "out",
+        output_file=job_dir / "out",
         metadata_file=metadata_file,
         api_version="1.0.0",
-        job_dir=ensure_dir(tmp_path / "job_dir"),
+        job_dir=job_dir,
         dependencies={},
         user_id="jenkins",
     )
     with metadata_file.open() as f:
         metadata = json.load(f)
     assert metadata["start_datetime"] == "2021-01-04T00:00:00Z"
-    assets = metadata["assets"]
+    assets = [(asset_key, asset) for item in metadata["items"] for asset_key, asset in item["assets"].items()]
     assert len(assets) == 2
+    assert assets[0][0] == assets[1][0] == "openEO"
+    asset_filenames = [Path(asset["href"]).name for _, asset in assets]
     if prefix:
-        assert assets[prefix + "_22.nc"]
-        assert assets[prefix + "_myTextId.nc"]
+        assert f"{prefix}_22.nc" in asset_filenames
+        assert f"{prefix}_myTextId.nc" in asset_filenames
     else:
-        assert assets["openEO_22.nc"]
-        assert assets["openEO_myTextId.nc"]
+        assert "openEO_22.nc" in asset_filenames
+        assert "openEO_myTextId.nc" in asset_filenames
 
-    for asset in assets:
-        theAsset = assets[asset]
+    for _, theAsset in assets:
         bands = [Band(**b) for b in theAsset["bands"]]
         assert len(bands) == 1
         da = xarray.open_dataset(theAsset['href'], engine='h5netcdf')
@@ -269,7 +271,7 @@ def test_ep3874_sample_by_feature_filter_spatial_inline_geojson(prefix, tmp_path
 
 
 @pytest.mark.parametrize(
-    ["from_node", "expected_names"],
+    ["from_node", "expected_filenames"],
     [
         (
             "loadcollection_sentinel2",
@@ -283,8 +285,9 @@ def test_ep3874_sample_by_feature_filter_spatial_inline_geojson(prefix, tmp_path
         ("reducedimension_temporal", {"openEO_TileRow.tif", "openEO_TileCol.tif"}),
     ],
 )
-def test_separate_asset_per_band(tmp_path, from_node, expected_names):
+def test_separate_asset_per_band(tmp_path, from_node, expected_filenames):
     job_spec = {
+        "job_options": {"stac-version": "1.1"},
         "process_graph": {
             "loadcollection_sentinel2": {
                 "process_id": "load_collection",
@@ -337,13 +340,12 @@ def test_separate_asset_per_band(tmp_path, from_node, expected_names):
     with metadata_file.open() as f:
         metadata = json.load(f)
     assert metadata["start_datetime"] == "2021-06-01T00:00:00Z"
-    assets = metadata["assets"]
+    assets = [(asset_key, asset) for item in metadata["items"] for asset_key, asset in item["assets"].items()]
     # get file names as set:
-    asset_names = set(assets.keys())
-    assert asset_names == expected_names
+    asset_filenames = {Path(asset["href"]).name for _, asset in assets}
+    assert asset_filenames == expected_filenames
 
-    for asset_key in assets:
-        asset = assets[asset_key]
+    for _, asset in assets:
         assert len(asset["bands"]) == 1
         assert len(asset["raster:bands"]) == 1
         assert asset["bands"][0]["name"] == asset["raster:bands"][0]["name"]
@@ -375,7 +377,9 @@ def test_separate_asset_per_band_throw(tmp_path):
         "parameters": [],
     }
     metadata_file = tmp_path / "metadata.json"
-    with pytest.raises(OpenEOApiException):
+    with pytest.raises(
+        OpenEOApiException, match="separate_asset_per_band is only supported with format GTIFF. Was: NETCDF"
+    ):
         run_job(
             job_spec,
             output_file=tmp_path / "out",
@@ -394,6 +398,7 @@ def test_sample_by_feature_filter_spatial_vector_cube_from_load_url(tmp_path):
     """
     with ephemeral_fileserver(TEST_DATA_ROOT) as fileserver_root:
         job_spec = {
+            "job_options": {"stac-version": "1.1"},
             "process_graph": {
                 "lc": {
                     "process_id": "load_collection",
@@ -442,15 +447,15 @@ def test_sample_by_feature_filter_spatial_vector_cube_from_load_url(tmp_path):
     # Check result metadata
     with metadata_file.open() as f:
         result_metadata = json.load(f)
-    assets = result_metadata["assets"]
+    assets = [asset for item in result_metadata["items"] for asset in item["assets"].values()]
     assert len(assets) == 4
 
     # Check asset contents
     asset_minima = {}
-    for name, asset_metadata in assets.items():
+    for asset_metadata in assets:
         assert asset_metadata["bands"] == [{"name": "Longitude"}]
         ds = xarray.open_dataset(asset_metadata["href"])
-        asset_minima[name] = ds["Longitude"].min().item()
+        asset_minima[Path(asset_metadata["href"]).name] = ds["Longitude"].min().item()
 
     assert asset_minima == {
         "openEO_0.nc": 1.0,
@@ -705,7 +710,9 @@ def test_spatial_geoparquet(tmp_path):
 
 
 def test_spatial_cube_to_netcdf_sample_by_feature(tmp_path):
-    job_spec = {"process_graph": {
+    job_spec = {
+        "job_options": {"stac-version": "1.1"},
+        "process_graph": {
         "loadcollection1": {
             "process_id": "load_collection",
             "arguments": {
@@ -790,17 +797,20 @@ def test_spatial_cube_to_netcdf_sample_by_feature(tmp_path):
     assert metadata["start_datetime"] == "2021-01-04T00:00:00Z"
     assert metadata["end_datetime"] == "2021-01-06T00:00:00Z"
 
-    # expected: 2 assets with bboxes that correspond to the input features
-    assets = metadata["assets"]
-    assert len(assets) == 2
+    # expected: 2 items with bboxes that correspond to the input features
+    items = metadata["items"]
+    assert len(items) == 2
 
-    assert assets["openEO_0.nc"]["bbox"] == [0.1, 0.1, 1.8, 1.8]
-    assert (shape(assets["openEO_0.nc"]["geometry"]).normalize()
-            .almost_equals(Polygon.from_bounds(0.1, 0.1, 1.8, 1.8).normalize()))
+    item0 = [item for item in items for asset in item["assets"].values() if asset["href"].endswith("/openEO_0.nc")][0]
 
-    assert assets["openEO_1.nc"]["bbox"] == [0.725, -1.29, 2.99, 1.724]
-    assert (shape(assets["openEO_1.nc"]["geometry"]).normalize()
-            .almost_equals(Polygon.from_bounds(0.725, -1.29, 2.99, 1.724).normalize()))
+    assert item0["bbox"] == [0.1, 0.1, 1.8, 1.8]
+    assert shape(item0["geometry"]).normalize().almost_equals(Polygon.from_bounds(0.1, 0.1, 1.8, 1.8).normalize())
+
+    item1 = [item for item in items for asset in item["assets"].values() if asset["href"].endswith("/openEO_1.nc")][0]
+    assert item1["bbox"] == [0.725, -1.29, 2.99, 1.724]
+    assert (
+        shape(item1["geometry"]).normalize().almost_equals(Polygon.from_bounds(0.725, -1.29, 2.99, 1.724).normalize())
+    )
 
 
 def test_multiple_time_series_results(tmp_path):
@@ -956,6 +966,7 @@ def test_export_workspace(tmp_path, remove_original, attach_gdalinfo_assets):
     process = {
         "process_graph": process_graph,
         "job_options": {
+            "stac-version": "1.1",
             "remove-exported-assets": remove_original,
         },
     }
@@ -1091,6 +1102,7 @@ def test_export_workspace_with_asset_per_band(tmp_path):
     }
 
     process = {
+        "job_options": {"stac-version": "1.1"},
         "process_graph": process_graph,
     }
 
@@ -1397,6 +1409,7 @@ def test_export_workspace_merge_into_existing(tmp_path, mock_s3_bucket):
             "process_graph": process_graph,
             "job_options": {
                 "export-workspace-enable-merge": enable_merge,
+                "stac-version": "1.1"
             },
         }
 
@@ -1511,6 +1524,7 @@ def test_export_workspace_merge_filepath_per_band(tmp_path, mock_s3_bucket):
     process = {
         "process_graph": process_graph,
         "job_options": {
+            "stac-version": "1.1",
             "export-workspace-enable-merge": enable_merge,
             "concurrent-save-results": 4,  # TODO: Make this the default
         },
@@ -1688,6 +1702,7 @@ def test_export_workspace_merge_into_stac_api(
     process = {
         "process_graph": process_graph,
         "job_options": {
+           # "stac-version": "1.1",
             "export-workspace-enable-merge": enable_merge,
         },
     }
@@ -1704,13 +1719,13 @@ def test_export_workspace_merge_into_stac_api(
     assert create_collection.called_once
     assert create_item.call_count == 2
 
-    assert create_item.request_history[0].json()["assets"] == {
+    assert create_item.request_history[1].json()["assets"] == {
         "lat.tif": DictSubSet({
             "href": f"s3://openeo-fake-bucketname/{merge}/lat.tif"
         })
     }
 
-    assert create_item.request_history[1].json()["assets"] == {
+    assert create_item.request_history[0].json()["assets"] == {
         "some/deeply/nested/folder/lon.tif": DictSubSet({
             "href": f"s3://openeo-fake-bucketname/{merge}/some/deeply/nested/folder/lon.tif"
         })
@@ -1917,6 +1932,7 @@ def test_results_geometry_from_load_collection_with_crs_not_wgs84(tmp_path):
 
 def test_load_ml_model_via_jobid(tmp_path):
     job_spec = {
+      "job_options": {"stac-version": "1.1"},
       "process_graph": {
         "loadmlmodel1": {
           "process_id": "load_ml_model",
@@ -2036,6 +2052,8 @@ def test_load_stac_temporal_extent_in_result_metadata(tmp_path, requests_mock):
 
     requests_mock.get(geoparquet_url, content=geoparquet_content)
 
+    process["job_options"] = {"stac-version":"1.1"}
+
     run_job(
         process,
         output_file=tmp_path / "out",
@@ -2108,6 +2126,7 @@ def test_multiple_save_result_single_export_workspace(tmp_path):
     }
 
     process = {
+        "job_options": {"stac-version": "1.1"},
         "process_graph": process_graph,
     }
 
@@ -2317,6 +2336,7 @@ def test_export_to_multiple_workspaces(tmp_path, remove_original):
         "process_graph": process_graph,
         "job_options": {
             "remove-exported-assets": remove_original,
+            "stac-version": "1.1"
         },
     }
 
@@ -2486,6 +2506,7 @@ def test_spatial_geotiff_metadata(tmp_path):
     }
 
     process = {
+        "job_options": {"stac-version": "1.1"},
         "process_graph": process_graph,
     }
 
@@ -2609,3 +2630,578 @@ def test_geotiff_tile_size(tmp_path, window_size, default_tile_size, requested_t
             assert block_shape == (expected_tile_size, expected_tile_size)
 
     assert_cog(output_tiff)
+
+
+@pytest.mark.parametrize(
+    ["separate_asset_per_band", "expected_tiff_files", "expected_asset_keys"],
+    [
+        (False, {"openEO_2025-04-05Z.tif", "openEO_2025-04-15Z.tif"}, {"openEO"}),
+        (
+            True,
+            {
+                "openEO_2025-04-05Z_Flat:0.tif",
+                "openEO_2025-04-05Z_Flat:1.tif",
+                "openEO_2025-04-05Z_Flat:2.tif",
+                "openEO_2025-04-15Z_Flat:0.tif",
+                "openEO_2025-04-15Z_Flat:1.tif",
+                "openEO_2025-04-15Z_Flat:2.tif",
+            },
+            {"openEO_Flat:0", "openEO_Flat:1", "openEO_Flat:2"},
+        ),
+    ],
+)
+def test_unified_asset_keys_spatiotemporal_geotiff(
+    tmp_path, separate_asset_per_band, expected_tiff_files, expected_asset_keys
+):
+    process_graph = {
+        "load2": {
+            "process_id": "load_collection",
+            "arguments": {
+                "bands": [
+                    "Flat:0",
+                    "Flat:1",
+                    "Flat:2",
+                ],
+                "id": "TestCollection-LonLat16x16",
+                "spatial_extent": {
+                    "west": 0,
+                    "south": 50,
+                    "east": 5,
+                    "north": 55,
+                },
+                "temporal_extent": ["2025-04-01", "2025-04-21"],
+            },
+        },
+        "save1": {
+            "process_id": "save_result",
+            "arguments": {
+                "data": {"from_node": "load2"},
+                "format": "GTIFF",
+                "options": {"separate_asset_per_band": separate_asset_per_band},
+            },
+            "result": True,
+        },
+    }
+
+    process = {
+        "process_graph": process_graph,
+        "job_options": {"stac-version": "1.1"},
+    }
+
+    job_dir = tmp_path
+    metadata_file = job_dir / "job_metadata.json"
+
+    run_job(
+        process,
+        output_file=job_dir / "out",
+        metadata_file=metadata_file,
+        api_version="2.0.0",
+        job_dir=job_dir,
+        dependencies=[],
+    )
+
+    tiff_files = {file for file in os.listdir(job_dir) if file.endswith(".tif")}
+    assert tiff_files == expected_tiff_files
+
+    with open(metadata_file) as f:
+        items = json.load(f)["items"]
+
+    print(f"items={json.dumps(items, indent=2)}")
+
+    assert len(items) == 2
+    assert len({item["id"] for item in items}) == 2
+    assert {item["properties"]["datetime"] for item in items} == {"2025-04-05T00:00:00Z", "2025-04-15T00:00:00Z"}
+
+    for item in items:
+        assert set(item["assets"].keys()) == expected_asset_keys
+
+
+def test_unified_asset_keys_tile_grid(tmp_path):
+    process_graph = {
+        "load2": {
+            "process_id": "load_collection",
+            "arguments": {
+                "bands": [
+                    "Flat:0",
+                    "Flat:1",
+                    "Flat:2",
+                ],
+                "id": "TestCollection-LonLat16x16",
+                "spatial_extent": {
+                    "west": 0,
+                    "south": 50,
+                    "east": 2,
+                    "north": 51,
+                },
+                "temporal_extent": ["2025-04-01", "2025-04-21"],
+            },
+        },
+        "save1": {
+            "process_id": "save_result",
+            "arguments": {
+                "data": {"from_node": "load2"},
+                "format": "GTIFF",
+                "options": {"tile_grid": "wgs84-1degree"},
+            },
+            "result": True,
+        },
+    }
+
+    process = {
+        "process_graph": process_graph,
+        "job_options": {"stac-version": "1.1"},
+    }
+
+    job_dir = tmp_path
+    metadata_file = job_dir / "job_metadata.json"
+
+    run_job(
+        process,
+        output_file=job_dir / "out",
+        metadata_file=metadata_file,
+        api_version="2.0.0",
+        job_dir=job_dir,
+        dependencies=[],
+    )
+
+    tiff_files = {file for file in os.listdir(job_dir) if file.endswith(".tif")}
+    assert tiff_files == {
+        "openEO_2025-04-05Z_N50E000.tif",
+        "openEO_2025-04-05Z_N50E001.tif",
+        "openEO_2025-04-15Z_N50E000.tif",
+        "openEO_2025-04-15Z_N50E001.tif",
+    }
+
+    with open(metadata_file) as f:
+        items = json.load(f)["items"]
+
+    print(f"items={json.dumps(items, indent=2)}")
+
+    assert len(items) == 4
+    assert len({item["id"] for item in items}) == 4
+    assert {item["properties"]["datetime"] for item in items} == {"2025-04-05T00:00:00Z", "2025-04-15T00:00:00Z"}
+
+    for item in items:
+        assert set(item["assets"].keys()) == {"openEO"}
+
+
+def test_unified_asset_keys_tile_grid_spatial(tmp_path):
+    process_graph = {
+        "load2": {
+            "process_id": "load_collection",
+            "arguments": {
+                "bands": [
+                    "Flat:0",
+                    "Flat:1",
+                    "Flat:2",
+                ],
+                "id": "TestCollection-LonLat16x16",
+                "spatial_extent": {
+                    "west": 0,
+                    "south": 50,
+                    "east": 2,
+                    "north": 51,
+                },
+                "temporal_extent": ["2025-04-01", "2025-04-21"],
+            },
+        },
+        "reducedimension1": {
+            "process_id": "reduce_dimension",
+            "arguments": {
+                "data": {"from_node": "load2"},
+                "dimension": "t",
+                "reducer": {
+                    "process_graph": {
+                        "first1": {
+                            "process_id": "first",
+                            "arguments": {"data": {"from_parameter": "data"}},
+                            "result": True,
+                        }
+                    }
+                },
+            },
+        },
+        "save1": {
+            "process_id": "save_result",
+            "arguments": {
+                "data": {"from_node": "reducedimension1"},
+                "format": "GTIFF",
+                "options": {"tile_grid": "wgs84-1degree"},
+            },
+            "result": True,
+        },
+    }
+
+    process = {
+        "process_graph": process_graph,
+        "job_options": {"stac-version": "1.1"},
+    }
+
+    job_dir = tmp_path
+    metadata_file = job_dir / "job_metadata.json"
+
+    run_job(
+        process,
+        output_file=job_dir / "out",
+        metadata_file=metadata_file,
+        api_version="2.0.0",
+        job_dir=job_dir,
+        dependencies=[],
+    )
+
+    tiff_files = {file for file in os.listdir(job_dir) if file.endswith(".tiff")}
+    assert tiff_files == {
+        "openEO-N50E000.tiff",
+        "openEO-N50E001.tiff",
+    }
+
+    with open(metadata_file) as f:
+        job_metadata = json.load(f)
+
+    items = job_metadata["items"]
+    print(f"items={json.dumps(items, indent=2)}")
+
+    assert len(items) == 2
+    assert len({item["id"] for item in items}) == 2
+
+    # at job-level rather than on Item
+    assert {item.get("properties", {}).get("datetime") for item in items} == {None}
+    assert job_metadata["start_datetime"] == "2025-04-01T00:00:00Z"
+    assert job_metadata["end_datetime"] == "2025-04-21T00:00:00Z"
+
+    for item in items:
+        assert set(item["assets"].keys()) == {"openEO"}
+
+
+def test_unified_asset_keys_sample_by_feature(tmp_path):
+    process_graph = {
+        "load2": {
+            "process_id": "load_collection",
+            "arguments": {
+                "bands": [
+                    "Flat:0",
+                    "Flat:1",
+                    "Flat:2",
+                ],
+                "id": "TestCollection-LonLat16x16",
+                "temporal_extent": ["2025-04-01", "2025-04-21"],
+            },
+        },
+        "filterspatial1": {
+            "process_id": "filter_spatial",
+            "arguments": {
+                "data": {"from_node": "load2"},
+                "geometries": {
+                    "type": "FeatureCollection",
+                    "features": [
+                        {
+                            "type": "Feature",
+                            "properties": {},
+                            "geometry": {
+                                "type": "Polygon",
+                                "coordinates": [[[0, 50], [0, 51], [1, 51], [1, 50], [0, 50]]],
+                            },
+                        },
+                        {
+                            "type": "Feature",
+                            "properties": {},
+                            "geometry": {
+                                "type": "Polygon",
+                                "coordinates": [[[1, 50], [1, 51], [2, 51], [2, 50], [1, 50]]],
+                            },
+                        },
+                    ],
+                },
+            },
+        },
+        "save1": {
+            "process_id": "save_result",
+            "arguments": {
+                "data": {"from_node": "filterspatial1"},
+                "format": "GTIFF",
+                "options": {"sample_by_feature": True},
+            },
+            "result": True,
+        },
+    }
+
+    process = {
+        "process_graph": process_graph,
+        "job_options": {"stac-version": "1.1"},
+    }
+
+    job_dir = tmp_path
+    metadata_file = job_dir / "job_metadata.json"
+
+    run_job(
+        process,
+        output_file=job_dir / "out",
+        metadata_file=metadata_file,
+        api_version="2.0.0",
+        job_dir=job_dir,
+        dependencies=[],
+    )
+
+    tiff_files = {file for file in os.listdir(job_dir) if file.endswith(".tif")}
+    assert tiff_files == {
+        "openEO_2025-04-05Z_0.tif",
+        "openEO_2025-04-05Z_1.tif",
+        "openEO_2025-04-15Z_0.tif",
+        "openEO_2025-04-15Z_1.tif",
+    }
+
+    with open(metadata_file) as f:
+        items = json.load(f)["items"]
+
+    print(f"items={json.dumps(items, indent=2)}")
+
+    assert len(items) == 4
+    assert len({item["id"] for item in items}) == 4
+    assert {item["properties"]["datetime"] for item in items} == {"2025-04-05T00:00:00Z", "2025-04-15T00:00:00Z"}
+
+    for item in items:
+        assert set(item["assets"].keys()) == {"openEO"}
+
+
+@pytest.mark.parametrize(
+    ["separate_asset_per_band", "expected_tiff_files", "expected_asset_keys"],
+    [
+        (False, {"openEO.tif"}, {"openEO"}),
+        (
+            True,
+            {
+                "openEO_Flat:0.tif",
+                "openEO_Flat:1.tif",
+                "openEO_Flat:2.tif",
+            },
+            {"openEO_Flat:0", "openEO_Flat:1", "openEO_Flat:2"},
+        ),
+    ],
+)
+def test_unified_asset_keys_spatial_geotiff(
+    tmp_path, separate_asset_per_band, expected_tiff_files, expected_asset_keys
+):
+    process_graph = {
+        "load2": {
+            "process_id": "load_collection",
+            "arguments": {
+                "bands": [
+                    "Flat:0",
+                    "Flat:1",
+                    "Flat:2",
+                ],
+                "id": "TestCollection-LonLat16x16",
+                "spatial_extent": {
+                    "west": 0,
+                    "south": 50,
+                    "east": 5,
+                    "north": 55,
+                },
+                "temporal_extent": ["2025-04-01", "2025-04-21"],
+            },
+        },
+        "reducedimension1": {
+            "process_id": "reduce_dimension",
+            "arguments": {
+                "data": {"from_node": "load2"},
+                "dimension": "t",
+                "reducer": {
+                    "process_graph": {
+                        "first1": {
+                            "process_id": "first",
+                            "arguments": {"data": {"from_parameter": "data"}},
+                            "result": True,
+                        }
+                    }
+                },
+            },
+        },
+        "save1": {
+            "process_id": "save_result",
+            "arguments": {
+                "data": {"from_node": "reducedimension1"},
+                "format": "GTIFF",
+                "options": {"separate_asset_per_band": separate_asset_per_band},
+            },
+            "result": True,
+        },
+    }
+
+    process = {
+        "process_graph": process_graph,
+        "job_options": {"stac-version": "1.1"},
+    }
+
+    job_dir = tmp_path
+    metadata_file = job_dir / "job_metadata.json"
+
+    run_job(
+        process,
+        output_file=job_dir / "out",
+        metadata_file=metadata_file,
+        api_version="2.0.0",
+        job_dir=job_dir,
+        dependencies=[],
+    )
+
+    tiff_files = {file for file in os.listdir(job_dir) if file.endswith(".tif")}
+    assert tiff_files == expected_tiff_files
+
+    with open(metadata_file) as f:
+        job_metadata = json.load(f)
+
+    items = job_metadata["items"]
+    print(f"items={json.dumps(items, indent=2)}")
+
+    assert len(items) == 1
+    # single item ID can be anything (no spatial or temporal references)
+
+    # at job-level rather than on Item
+    assert items[0].get("properties", {}).get("datetime") is None
+    assert job_metadata["start_datetime"] == "2025-04-01T00:00:00Z"
+    assert job_metadata["end_datetime"] == "2025-04-21T00:00:00Z"
+
+    assert set(items[0]["assets"].keys()) == expected_asset_keys
+
+
+def test_unified_asset_keys_stitch_geotiff(tmp_path):
+    process_graph = {
+        "load2": {
+            "process_id": "load_collection",
+            "arguments": {
+                "bands": [
+                    "Flat:0",
+                    "Flat:1",
+                    "Flat:2",
+                ],
+                "id": "TestCollection-LonLat16x16",
+                "spatial_extent": {
+                    "west": 0,
+                    "south": 50,
+                    "east": 5,
+                    "north": 55,
+                },
+                "temporal_extent": ["2025-04-01", "2025-04-21"],
+            },
+        },
+        "save1": {
+            "process_id": "save_result",
+            "arguments": {
+                "data": {"from_node": "load2"},
+                "format": "GTIFF",
+                "options": {"stitch": True},
+            },
+            "result": True,
+        },
+    }
+
+    process = {
+        "process_graph": process_graph,
+        "job_options": {"stac-version": "1.1"},
+    }
+
+    job_dir = tmp_path
+    metadata_file = job_dir / "job_metadata.json"
+
+    run_job(
+        process,
+        output_file=job_dir / "out",
+        metadata_file=metadata_file,
+        api_version="2.0.0",
+        job_dir=job_dir,
+        dependencies=[],
+    )
+
+    assert "out" in os.listdir(job_dir)
+
+    with open(metadata_file) as f:
+        job_metadata = json.load(f)
+
+    items = job_metadata["items"]
+    print(f"items={json.dumps(items, indent=2)}")
+
+    assert len(items) == 1
+    # single item ID can be anything (no spatial or temporal references)
+
+    # at job-level rather than on Item
+    assert items[0].get("properties", {}).get("datetime") is None
+    assert job_metadata["start_datetime"] == "2025-04-01T00:00:00Z"
+    assert job_metadata["end_datetime"] == "2025-04-21T00:00:00Z"
+
+    assert set(items[0]["assets"].keys()) == {"openEO"}
+
+
+def test_unified_asset_keys_stitch_tile_grid(tmp_path):
+    process_graph = {
+        "load2": {
+            "process_id": "load_collection",
+            "arguments": {
+                "bands": [
+                    "Flat:0",
+                    "Flat:1",
+                    "Flat:2",
+                ],
+                "id": "TestCollection-LonLat16x16",
+                "spatial_extent": {
+                    "west": 0,
+                    "south": 50,
+                    "east": 2,
+                    "north": 51,
+                },
+                "temporal_extent": ["2025-04-01", "2025-04-21"],
+            },
+        },
+        "save1": {
+            "process_id": "save_result",
+            "arguments": {
+                "data": {"from_node": "load2"},
+                "format": "GTIFF",
+                "options": {
+                    "stitch": True,
+                    "tile_grid": "wgs84-1degree",
+                },
+            },
+            "result": True,
+        },
+    }
+
+    process = {
+        "process_graph": process_graph,
+        "job_options": {"stac-version": "1.1"},
+    }
+
+    job_dir = tmp_path
+    metadata_file = job_dir / "job_metadata.json"
+
+    run_job(
+        process,
+        output_file=job_dir / "out",
+        metadata_file=metadata_file,
+        api_version="2.0.0",
+        job_dir=job_dir,
+        dependencies=[],
+    )
+
+    tiff_files = {file for file in os.listdir(job_dir) if file.endswith(".tiff")}
+    assert tiff_files == {
+        "openEO-N50E000.tiff",
+        "openEO-N50E001.tiff",
+    }
+
+    with open(metadata_file) as f:
+        job_metadata = json.load(f)
+
+    items = job_metadata["items"]
+    print(f"items={json.dumps(items, indent=2)}")
+
+    assert len(items) == 2
+    assert len({item["id"] for item in items}) == 2
+
+    # at job-level rather than on Item
+    assert {item.get("properties", {}).get("datetime") for item in items} == {None}
+    assert job_metadata["start_datetime"] == "2025-04-01T00:00:00Z"
+    assert job_metadata["end_datetime"] == "2025-04-21T00:00:00Z"
+
+    for item in items:
+        assert set(item["assets"].keys()) == {"openEO"}
+

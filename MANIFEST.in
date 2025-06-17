@@ -1,3 +1,4 @@
 include openeogeotrellis/**/*.sh
 include openeogeotrellis/**/*.j2
+include openeogeotrellis/**/*.json
 include openeogeotrellis/integrations/cwl/*.cwl

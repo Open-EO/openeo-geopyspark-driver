@@ -21,6 +21,10 @@ website:
     contents:
       - href: README.md
         text: Welcome
+      - text: Backend setup
+        contents:
+            - href: backend_setup.md
+              text: Single machine
       - href: development.md
         text: Development
       - href: geotrellis_processing.md

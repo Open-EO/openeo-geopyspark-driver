@@ -158,6 +158,7 @@ spark-submit \
  --conf spark.executor.memoryOverhead=${executormemoryoverhead} \
  ${python_max_conf} \
  --conf spark.excludeOnFailure.enabled=true \
+ --conf spark.excludeOnFailure.task.maxTaskAttemptsPerExecutor=2 \
  --conf spark.speculation=true \
  --conf spark.speculation.interval=5000ms \
  --conf spark.speculation.multiplier=8 \

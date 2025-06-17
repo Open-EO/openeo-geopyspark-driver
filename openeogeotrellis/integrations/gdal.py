@@ -171,7 +171,7 @@ def _extract_gdal_asset_raster_metadata(
             asset_md,
             job_dir,
         )
-        for asset_path, asset_md in asset_metadata.items()
+        for asset_path, asset_md in asset_metadata.items()  # FIXME: this is asset key rather than asset path
         if "roles" not in asset_md or "data" in asset_md.get("roles")
     ]
     results = exec_parallel_with_fallback(_get_metadata_callback, argument_tuples)

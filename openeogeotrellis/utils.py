@@ -13,6 +13,7 @@ import os
 import pkgutil
 import pwd
 import resource
+import shutil
 import stat
 import tempfile
 import time
@@ -418,7 +419,7 @@ def single_value(xs):
     raise ValueError(f"distinct values in {xs}")
 
 
-def add_permissions(path: Path, mode: int):
+def add_permissions(path: Path, mode: int, user=None, group=None):
     # TODO: accept PathLike etc as well
     # TODO: maybe umask is a better/cleaner option
     # TODO: Don't change permissions on s3 urls?
@@ -427,6 +428,13 @@ def add_permissions(path: Path, mode: int):
     if path.exists():
         current_permission_bits = os.stat(path).st_mode
         os.chmod(path, current_permission_bits | mode)
+        if user is not None or group is not None:
+            try:
+                shutil.chown(path, user=user, group=group)
+            except LookupError as e:
+                logger.warning(f"Could not change user/group of {path} to {user}/{group}.")
+            except PermissionError as e:
+                logger.warning(f"Could not change user/group of {path} to {user}/{group}, no permissions.")
     else:
         for p in path.parent.glob('*'):
             current_permission_bits = os.stat(p).st_mode
