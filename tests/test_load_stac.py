@@ -412,7 +412,9 @@ def test_empty_cube_from_non_intersecting_item(requests_mock, test_data, feature
 
 
 @responses.activate
-def test_stac_api_POST_item_search_resilience():
+def test_stac_api_POST_item_search_resilience(caplog):
+    caplog.set_level("DEBUG")
+
     stac_api_root_url = "https://stac.test"
     stac_collection_url = f"{stac_api_root_url}/collections/collection"
     stac_search_url = f"{stac_api_root_url}/search"
@@ -496,7 +498,13 @@ def test_stac_api_POST_item_search_resilience():
     assert search_error_resp.call_count == 1
     assert search_error_ok_resp.call_count == 1
 
-    # TODO: check retry logs as a sanity check
+    # sanity check
+    retry_logs = [
+        r.message
+        for r in caplog.records
+        if r.levelname == "DEBUG" and "Incremented Retry for (url='https://stac.test/search')" in r.message
+    ]
+    assert len(retry_logs) == 1, f"expected 1 retry but got {len(retry_logs)}"
 
 
 class TestStacMetadataParser:
