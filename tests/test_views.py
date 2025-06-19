@@ -1231,7 +1231,7 @@ class TestBatchJobs:
         assert batch_job_args[4] == job_output.name
         assert batch_job_args[5] == job_metadata.name
         assert batch_job_args[8] == TEST_USER
-        assert env['YARN_CONTAINER_RUNTIME_DOCKER_IMAGE'] == "python311"
+        assert env['YARN_CONTAINER_RUNTIME_DOCKER_IMAGE'] == "vito-docker.artifactory.vgt.vito.be/openeo-geotrellis-kube-python311:latest"
 
 
     @pytest.mark.parametrize(["boost"], [
