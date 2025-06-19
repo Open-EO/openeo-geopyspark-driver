@@ -64,15 +64,10 @@ def _setup_local_spark(classpath: str, debug: bool):
 
     conf = geopyspark_conf(
         master=master_str,
-        appName="OpenEO-GeoPySpark-Driver-Tests",
+        appName="OpenEO-Processgraph-Test",
         additional_jar_dirs=[],
     )
-
-    spark_jars = conf.get("spark.jars").split(",")
-    logging.error(f"SPARK JARS {spark_jars}")
-    # geotrellis-extensions needs to be loaded first to avoid "java.lang.NoClassDefFoundError: shapeless/lazily$"
-    spark_jars.sort(key=lambda x: "geotrellis-extensions" not in x)
-    conf.set(key="spark.jars", value=",".join(spark_jars))
+    conf.set(key="spark.jars", value="")
     # Use UTC timezone by default when formatting/parsing dates (e.g. CSV export of timeseries)
     conf.set("spark.sql.session.timeZone", "UTC")
     conf.set("spark.kryoserializer.buffer.max", value="1G")
@@ -90,18 +85,6 @@ def _setup_local_spark(classpath: str, debug: bool):
     conf.set("spark.driver.extraClassPath", classpath)
     conf.set("spark.executor.extraClassPath", classpath)
 
-    spark_submit_log4j_configuration_file = Path(__file__).parent.parent / "scripts/batch_job_log4j2.xml"
-    with open(spark_submit_log4j_configuration_file, "r") as read_file:
-        content = read_file.read()
-        spark_submit_log4j_configuration_file = "/tmp/sparkSubmitLog4jConfigurationFile.xml"
-        with open(spark_submit_log4j_configuration_file, "w") as write_file:
-            # There could be a more elegant way to fill in this variable during testing:
-            write_file.write(
-                content.replace("${sys:spark.yarn.app.container.log.dir}/", "").replace(
-                    "${sys:openeo.logging.threshold}", "DEBUG"
-                )
-            )
-    # got some options from 'sparkDriverJavaOptions'
     spark_driver_java_options = f"-Dscala.concurrent.context.numThreads=6 \
     -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService\
     -Dtsservice.layersConfigClass=ProdLayersConfiguration -Dtsservice.sparktasktimeout=600"
