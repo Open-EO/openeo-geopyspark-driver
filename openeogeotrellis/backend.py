@@ -2680,18 +2680,22 @@ class GpsBatchJobs(backend.BatchJobs):
 
         job_dir = self.get_job_output_dir(job_id=job_id)
 
+        # TODO: get results_metadata from job_info.results_metadata_uri and log
+
         results_metadata = None
         try:
+            # TODO: log
             with self._double_job_registry as registry:
                 job_dict = registry.elastic_job_registry.get_job(job_id, user_id=user_id)
                 if "results_metadata" in job_dict:
                     results_metadata = job_dict["results_metadata"]
         except Exception as e:
             logger.warning(
-                "Could not retrieve result metadata from job tracker %s", e, exc_info=True, extra={"job_id": job_id}
+                "Could not retrieve result metadata from job registry %s", e, exc_info=True, extra={"job_id": job_id}
             )
-        if results_metadata is None or len(results_metadata) == 0:
+        if not results_metadata:
             results_metadata = self.load_results_metadata(job_id, user_id)
+
         out_assets = results_metadata.get("assets", {})
         out_metadata = out_assets.get("out", {})
         bands = [Band(*properties) for properties in out_metadata.get("bands", [])]
@@ -2774,7 +2778,8 @@ class GpsBatchJobs(backend.BatchJobs):
 
         if ConfigParams().use_object_storage:
             try:
-                contents = get_s3_file_contents(str(metadata_file))
+                # TODO: log
+                contents = get_s3_file_contents(path=str(metadata_file))
                 return json.loads(contents)
             except Exception:
                 logger.warning(
@@ -2783,12 +2788,14 @@ class GpsBatchJobs(backend.BatchJobs):
                     extra={'job_id': job_id})
 
         try:
+            # TODO: log
             with open(metadata_file) as f:
                 return json.load(f)
         except FileNotFoundError:
             logger.warning("Could not derive result metadata from %s", metadata_file, exc_info=True,
                            extra={'job_id': job_id})
 
+        # TODO: log
         return {}
 
     def _get_providers(self, job_id: str, user_id: str) -> List[dict]:
@@ -3028,7 +3035,3 @@ class GpsBatchJobs(backend.BatchJobs):
         if assembled_folders:
             logger.info("Deleted Sentinel Hub assembled folder(s) {fs} for batch job {j}"
                         .format(fs=assembled_folders, j=job_id), extra={'job_id': job_id})
-
-
-
-
