@@ -76,29 +76,87 @@ def test_bin_to_five_times_coarser_grid(test_input_ds, input_grid_edges, aoi_siz
     assert np.allclose(binned.band1.values, expected, 1e-3)
 
 
-def test_bin_to_five_times_finer_grid(test_input_ds, input_grid_edges, aoi_size_degrees, num_rows_global):
+def test_bin_to_five_times_finer_grid_no_supersampling(test_input_ds, input_grid_edges, aoi_size_degrees, num_rows_global):
     lat_edges, lon_edges = input_grid_edges
-    expected = None
+    expected = test_input_ds.band1.values
+    finite_values_mask = np.zeros((test_input_ds["band1"].shape[0] * 5, test_input_ds["band1"].shape[1] * 5), dtype=bool)
+    finite_values_mask[2::5, 2::5] = 1
 
-    binned = binning.bin_to_grid(test_input_ds, ["band1"], binning._super_sample_1d(lat_edges, 5), binning._super_sample_1d(lon_edges, 5), super_sampling=2)
+    binned = binning.bin_to_grid(test_input_ds, ["band1"], binning._super_sample_1d(lat_edges, 5, kind="linear")[2:-2], binning._super_sample_1d(lon_edges, 5, kind="linear")[2:-2], super_sampling=1)
 
-    assert np.allclose(binned.band1.values, expected, 1e-3)
+    assert np.allclose(binned.band1.values[finite_values_mask], expected.ravel(), 1e-3)
+    assert np.isnan(binned.band1.values[~finite_values_mask]).all()
 
 
-@pytest.mark.parametrize("factor", [2, 3, 4])
+def test_bin_to_five_times_finer_grid_with_supersampling(test_input_ds, input_grid_edges, aoi_size_degrees, num_rows_global):
+    lat_edges, lon_edges = input_grid_edges
+    original_values_mask = np.zeros((test_input_ds["band1"].shape[0] * 5, test_input_ds["band1"].shape[1] * 5), dtype=bool)
+    original_values_mask[2::5, 2::5] = 1
+    expected = test_input_ds.band1.values.ravel()
+
+    binned = binning.bin_to_grid(test_input_ds, ["band1"], binning._super_sample_1d(lat_edges, 5, kind="linear")[2:-2], binning._super_sample_1d(lon_edges, 5, kind="linear")[2:-2], super_sampling=5)
+
+    assert np.allclose(binned.band1.values[original_values_mask], expected, 1e-3)
+    assert np.logical_not(np.isnan(binned.band1.values).any())
+
+
+@pytest.mark.parametrize("factor", [2, 3, 4, 5])
 def test_super_sample_1d_linear(factor):
     x = np.arange(10)
-    expected = (np.arange(10 * factor) / factor)[:-(factor-1)]
+    if factor & 1: # odd
+        shift = 1 / factor * (factor // 2)
+    else:
+        shift = 1 / factor * ((factor // 2) - 0.5)
+    expected = np.linspace(x[0]-shift, x[-1]+shift, factor * x.shape[0])
 
     super_sampled = binning._super_sample_1d(x, factor, kind="linear")
 
+    assert super_sampled.shape[0] == factor * x.shape[0]
     assert np.allclose(super_sampled, expected, EPS)
 
-def test_super_sample_2d_linear():
-    factor = 2
-    x = np.arange(25).reshape(5, 5) * 2
-    expected = np.arange(9)[np.newaxis, :].repeat(9, axis=0) + np.arange(0, 45, 5)[:, np.newaxis]
+@pytest.mark.parametrize("factor", [2, 3])
+def test_super_sample_2d_linear(factor):
+    x = np.arange(9).reshape(3, 3) * factor
+    expected_y = binning._super_sample_1d(x[:, 0], factor, kind="linear")
+    expected_x = binning._super_sample_1d(x[0, :], factor, kind="linear")
+    expected = expected_y[:, np.newaxis] + expected_x[np.newaxis, :]
 
     super_sampled = binning._super_sample_2d(x, factor, kind="linear")
 
     assert np.allclose(super_sampled, expected, EPS)
+
+def test_extrapolate_edges_2d():
+    arr = np.array([
+        [1, 2, 3],
+        [5, 6, 7],
+    ], dtype=np.float64)
+
+    expected_1 = np.array([
+        [-4, -3, -2, -1,  0],
+        [ 0,  1,  2,  3,  4],
+        [ 4,  5,  6,  7,  8],
+        [ 8,  9, 10, 11, 12]
+    ], dtype=np.float64)
+
+    expected_2 = np.array([
+        [-9, -8, -7, -6, -5, -4, -3],
+        [-5, -4, -3, -2, -1,  0,  1],
+        [-1,  0,  1,  2,  3,  4,  5],
+        [ 3,  4,  5,  6,  7,  8,  9],
+        [ 7,  8,  9, 10, 11, 12, 13],
+        [11, 12, 13, 14, 15, 16, 17]
+    ], dtype=np.float64)
+
+    inp_1 = np.pad(arr, pad_width=1, mode="constant", constant_values=np.nan)
+    inp_2 = np.pad(arr, pad_width=2, mode="constant", constant_values=np.nan)
+
+    res_1 = binning._extrapolate_edges_2d(inp_1.copy(), 1)
+    res_2 = binning._extrapolate_edges_2d(inp_2.copy(), 2)
+
+    inp_1_2 = np.pad(res_1, pad_width=1, mode="constant", constant_values=np.nan)
+
+    res_1_2 = binning._extrapolate_edges_2d(inp_1_2.copy(), 1)
+
+    assert np.allclose(res_1, expected_1)
+    assert np.allclose(res_2, expected_2)
+    assert np.allclose(res_1_2, expected_2)
