@@ -21,6 +21,7 @@ from openeogeotrellis.load_stac import (
     _is_supported_raster_mime_type,
     _is_band_asset,
     _supports_item_search,
+    _get_proj_metadata,
 )
 
 
@@ -701,3 +702,18 @@ def test_supports_item_search(tmp_path, catalog, expected):
 
     collection = pystac.Collection.from_dict(StacDummyBuilder.collection(links=links))
     assert _supports_item_search(collection) == expected
+
+
+def test_get_proj_metadata_minimal():
+    asset = pystac.Asset(href="https://example.com/asset.tif")
+    item = pystac.Item.from_dict(StacDummyBuilder.item())
+    assert _get_proj_metadata(asset, item=item) == (None, None, None)
+
+
+def test_get_proj_metadata_from_asset():
+    asset = pystac.Asset(
+        href="https://example.com/asset.tif",
+        extra_fields={"proj:epsg": 32631, "proj:shape": [12, 34], "proj:bbox": [12, 34, 56, 78]},
+    )
+    item = pystac.Item.from_dict(StacDummyBuilder.item())
+    assert _get_proj_metadata(asset, item=item) == (32631, (12.0, 34.0, 56.0, 78.0), (12, 34))

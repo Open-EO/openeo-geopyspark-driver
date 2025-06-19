@@ -108,30 +108,6 @@ def load_stac(
 
         return intersects_temporally() and intersects_spatially()
 
-    def get_proj_metadata(itm: pystac.Item, asst: pystac.Asset) -> (Optional[int],
-                                                                    Optional[Tuple[float, float, float, float]],
-                                                                    Optional[Tuple[int, int]]):
-        """Returns EPSG code, bbox (in that EPSG) and number of pixels (rows, cols), if available."""
-
-        def to_epsg(proj_code: str) -> Optional[int]:
-            prefix = "EPSG:"
-            return int(proj_code[len(prefix):]) if proj_code.upper().startswith(prefix) else None
-
-        code = (
-            asst.extra_fields.get("proj:code") or itm.properties.get("proj:code") if apply_lcfm_improvements
-            else None
-        )
-        epsg = map_optional(to_epsg, code) or asst.extra_fields.get("proj:epsg") or itm.properties.get("proj:epsg")
-        bbox = asst.extra_fields.get("proj:bbox") or itm.properties.get("proj:bbox")
-
-        if not bbox and epsg == 4326:
-            bbox = itm.bbox
-
-        shape = asst.extra_fields.get("proj:shape") or itm.properties.get("proj:shape")
-
-        return (epsg,
-                tuple(map(float, bbox)) if bbox else None,
-                tuple(shape) if shape else None)
 
     def get_pixel_value_offset(itm: pystac.Item, asst: pystac.Asset) -> float:
         raster_scale = asst.extra_fields.get("raster:scale", itm.properties.get("raster:scale", 1.0))
@@ -435,7 +411,9 @@ def load_stac(
                     kv[0],
                 ),
             ):
-                proj_epsg, proj_bbox, proj_shape = get_proj_metadata(itm, asset)
+                proj_epsg, proj_bbox, proj_shape = _get_proj_metadata(
+                    asset=asset, item=itm, apply_lcfm_improvements=apply_lcfm_improvements
+                )
 
                 asset_band_names_from_metadata = _get_band_names(item=itm, asset=asset)
                 logger.info(f"from intersecting_items: {itm.id=} {asset_id=} {asset_band_names_from_metadata=}")
@@ -810,6 +788,33 @@ def _get_band_names(*, item: pystac.Item, asset: pystac.Asset) -> List[str]:
         return [get_band_name(eo_band) for eo_band in asset.extra_fields["eo:bands"]]
 
     return _StacMetadataParser().bands_from_stac_asset(asset=asset).band_names()
+
+
+def _get_proj_metadata(
+    asset: pystac.Asset, *, item: pystac.Item, apply_lcfm_improvements: bool = False
+) -> Tuple[Optional[int], Optional[Tuple[float, float, float, float]], Optional[Tuple[int, int]]]:
+    """Returns EPSG code, bbox (in that EPSG) and number of pixels (rows, cols), if available."""
+    # TODO: possible to avoid item argument and just use asset.owner?
+    # TODO: why does this depend on "apply_lcfm_improvements"?
+
+    def to_epsg(proj_code: str) -> Optional[int]:
+        prefix = "EPSG:"
+        return int(proj_code[len(prefix) :]) if proj_code.upper().startswith(prefix) else None
+
+    code = asset.extra_fields.get("proj:code") or item.properties.get("proj:code") if apply_lcfm_improvements else None
+    epsg = map_optional(to_epsg, code) or asset.extra_fields.get("proj:epsg") or item.properties.get("proj:epsg")
+    bbox = asset.extra_fields.get("proj:bbox") or item.properties.get("proj:bbox")
+
+    if not bbox and epsg == 4326:
+        bbox = item.bbox
+
+    shape = asset.extra_fields.get("proj:shape") or item.properties.get("proj:shape")
+
+    return (
+        epsg,
+        tuple(map(float, bbox)) if bbox else None,
+        tuple(shape) if shape else None,
+    )
 
 
 def _supports_item_search(collection: pystac.Collection) -> bool:
