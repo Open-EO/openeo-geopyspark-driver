@@ -14,7 +14,13 @@ from openeo_driver.errors import OpenEOApiException
 from openeo_driver.util.date_math import now_utc
 from openeo_driver.utils import EvalEnv
 
-from openeogeotrellis.load_stac import extract_own_job_info, load_stac, _StacMetadataParser
+from openeogeotrellis.load_stac import (
+    extract_own_job_info,
+    load_stac,
+    _StacMetadataParser,
+    _is_supported_raster_mime_type,
+    _is_band_asset,
+)
 
 
 @pytest.mark.parametrize("url, user_id, job_info_id",
@@ -642,3 +648,30 @@ class TestStacMetadataParser:
     def test_bands_from_stac_asset(self, data, expected):
         asset = pystac.Asset.from_dict(data)
         assert _StacMetadataParser().bands_from_stac_asset(asset=asset).band_names() == expected
+
+
+def test_is_supported_raster_mime_type():
+    assert _is_supported_raster_mime_type("image/tiff; application=geotiff")
+    assert _is_supported_raster_mime_type("image/tiff; application=geotiff; profile=cloud-optimized")
+    assert _is_supported_raster_mime_type("image/jp2")
+    assert _is_supported_raster_mime_type("application/x-hdf5")
+    assert _is_supported_raster_mime_type("application/x-hdf")
+    assert not _is_supported_raster_mime_type("text/html")
+
+
+@pytest.mark.parametrize(
+    ["data", "expected"],
+    [
+        ({"href": "https://stac.test/asset.tif"}, False),
+        ({"href": "https://stac.test/asset.tif", "roles": ["data"]}, True),
+        ({"href": "https://stac.test/asset.tif", "roles": ["data"], "type": "image/tiff; application=geotiff"}, True),
+        ({"href": "https://stac.test/asset.tif", "type": "image/tiff; application=geotiff"}, False),
+        ({"href": "https://stac.test/asset.html", "roles": ["data"], "type": "text/html"}, False),
+        ({"href": "https://stac.test/asset.png", "roles": ["thumbnail"]}, False),
+        ({"href": "https://stac.test/asset.png", "bands": [{"name": "B02"}]}, True),
+        ({"href": "https://stac.test/asset.png", "eo:bands": [{"name": "B02"}]}, True),
+    ],
+)
+def test_is_band_asset(data, expected):
+    asset = pystac.Asset.from_dict(data)
+    assert _is_band_asset(asset) == expected

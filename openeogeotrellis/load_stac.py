@@ -111,46 +111,6 @@ def load_stac(
         conforms_to = coll.get_root().extra_fields.get("conformsTo", [])
         return any(conformance_class.endswith("/item-search") for conformance_class in conforms_to)
 
-    def is_supported_raster_mime_type(mime_type: str) -> bool:
-        mime_type = mime_type.lower()
-        # https://github.com/radiantearth/stac-spec/blob/master/best-practices.md#common-media-types-in-stac
-        return (
-            mime_type.startswith("image/tiff")  # No 'image/tif', only double 'f' in spec
-            or mime_type.startswith("image/vnd.stac.geotiff")
-            or mime_type.startswith("image/jp2")
-            or mime_type.startswith("image/png")
-            or mime_type.startswith("image/jpeg")
-            or mime_type.startswith("application/x-hdf")  # matches hdf5 and hdf
-            or mime_type.startswith("application/x-netcdf")
-            or mime_type.startswith("application/netcdf")
-        )
-
-    def is_band_asset(asset: pystac.Asset) -> bool:
-        # TODO: what does this function actually detect?
-        #       Name seems to suggest that it's about having necessary band metadata (e.g. a band name)
-        #       but implementation also seems to be happy with just being loadable as raster data in some sense.
-
-        # Skip unsupported media types (if known)
-        if asset.media_type and not is_supported_raster_mime_type(asset.media_type):
-            return False
-
-        # Decide based on role (if known)
-        if asset.roles is not None:
-            roles_with_bands = {
-                "data",
-                "data-mask",
-                "snow-ice",
-                "land-water",
-                "water-mask",
-            }
-            return bool(roles_with_bands.intersection(asset.roles))
-
-        # Fallback based on presence of any band metadata
-        return (
-            "eo:bands" in asset.extra_fields
-            or "bands" in asset.extra_fields  # TODO: built-in "bands" support seems to be scheduled for pystac V2
-        )
-
     def get_band_names(item: pystac.Item, asset: pystac.Asset) -> List[str]:
         # TODO: this whole function can be replaced with
         #       _StacMetadataParser().bands_from_stac_asset(asset=asset).band_names()
@@ -487,7 +447,7 @@ def load_stac(
                 end_datetime = item_end_datetime
 
             band_assets = {
-                asset_id: asset for asset_id, asset in dict(sorted(itm.assets.items())).items() if is_band_asset(asset)
+                asset_id: asset for asset_id, asset in dict(sorted(itm.assets.items())).items() if _is_band_asset(asset)
             }
 
             builder = (jvm.org.openeo.opensearch.OpenSearchResponses.featureBuilder()
@@ -810,6 +770,48 @@ def load_stac(
               range(0, pyramid.size())}
 
     return GeopysparkDataCube(pyramid=gps.Pyramid(levels), metadata=metadata)
+
+
+def _is_supported_raster_mime_type(mime_type: str) -> bool:
+    mime_type = mime_type.lower()
+    # https://github.com/radiantearth/stac-spec/blob/master/best-practices.md#common-media-types-in-stac
+    return (
+        mime_type.startswith("image/tiff")  # No 'image/tif', only double 'f' in spec
+        or mime_type.startswith("image/vnd.stac.geotiff")
+        or mime_type.startswith("image/jp2")
+        or mime_type.startswith("image/png")
+        or mime_type.startswith("image/jpeg")
+        or mime_type.startswith("application/x-hdf")  # matches hdf5 and hdf
+        or mime_type.startswith("application/x-netcdf")
+        or mime_type.startswith("application/netcdf")
+    )
+
+
+def _is_band_asset(asset: pystac.Asset) -> bool:
+    # TODO: what does this function actually detect?
+    #       Name seems to suggest that it's about having necessary band metadata (e.g. a band name)
+    #       but implementation also seems to be happy with just being loadable as raster data in some sense.
+
+    # Skip unsupported media types (if known)
+    if asset.media_type and not _is_supported_raster_mime_type(asset.media_type):
+        return False
+
+    # Decide based on role (if known)
+    if asset.roles is not None:
+        roles_with_bands = {
+            "data",
+            "data-mask",
+            "snow-ice",
+            "land-water",
+            "water-mask",
+        }
+        return bool(roles_with_bands.intersection(asset.roles))
+
+    # Fallback based on presence of any band metadata
+    return (
+        "eo:bands" in asset.extra_fields
+        or "bands" in asset.extra_fields  # TODO: built-in "bands" support seems to be scheduled for pystac V2
+    )
 
 
 def contains_netcdf_with_time_dimension(collection):
