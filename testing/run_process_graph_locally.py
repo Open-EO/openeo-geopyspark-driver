@@ -9,8 +9,6 @@ from openeo.internal.graph_building import as_flat_graph
 _BACKEND_CONFIG_PATH = Path(__file__).parent / "backend_config.py"
 
 def setup_environment(classpath: str, debug: bool):
-    """Pytest configuration hook"""
-    os.environ["PYTEST_CONFIGURE"] = (os.environ.get("PYTEST_CONFIGURE", "") + ":" + __file__).lstrip(":")
 
     # Load test GpsBackendConfig by default
     os.environ["OPENEO_BACKEND_CONFIG"] = str(_BACKEND_CONFIG_PATH)
@@ -67,7 +65,12 @@ def _setup_local_spark(classpath: str, debug: bool):
         appName="OpenEO-Processgraph-Test",
         additional_jar_dirs=[],
     )
-    conf.set(key="spark.jars", value="")
+
+    spark_jars = conf.get("spark.jars").split(",")
+    logging.error(f"SPARK JARS {spark_jars}")
+    # geotrellis-extensions needs to be loaded first to avoid "java.lang.NoClassDefFoundError: shapeless/lazily$"
+    spark_jars.sort(key=lambda x: "geotrellis-extensions" not in x)
+    conf.set(key="spark.jars", value=",".join(spark_jars))
     # Use UTC timezone by default when formatting/parsing dates (e.g. CSV export of timeseries)
     conf.set("spark.sql.session.timeZone", "UTC")
     conf.set("spark.kryoserializer.buffer.max", value="1G")
