@@ -128,6 +128,7 @@ class YARNBatchJobRunner():
         script_location = pkg_resources.resource_filename("openeogeotrellis.deploy", submit_script)
 
         image_name = job_options.get("image-name", os.environ.get("YARN_CONTAINER_RUNTIME_DOCKER_IMAGE"))
+        image_name = get_backend_config().batch_runtime_to_image.get(image_name.lower(), image_name)
 
         extra_py_files = ""
         if options.udf_dependency_files is not None and len(options.udf_dependency_files) > 0:
