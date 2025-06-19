@@ -2192,6 +2192,12 @@ class GpsBatchJobs(backend.BatchJobs):
                     )
                     log.info(f"mapped job_id {job_id} to application ID {spark_app_id}")
                     dbl_registry.set_application_id(job_id=job_id, user_id=user_id, application_id=spark_app_id)
+
+                    # TODO:
+                    #  dbl_registry.set_results_metadata_uri(
+                    #      f"s3://{bucket}/{str(job_work_dir).strip('/')}/{JOB_METADATA_FILENAME}"
+                    #  )
+
                     status_response = {}
                     retry = 0
                     while "status" not in status_response and retry < 10:
@@ -2222,9 +2228,20 @@ class GpsBatchJobs(backend.BatchJobs):
             runner = YARNBatchJobRunner(principal=self._principal, key_tab=self._key_tab)
             runner.set_default_sentinel_hub_credentials(self._default_sentinel_hub_client_id,self._default_sentinel_hub_client_secret)
             vault_token = None if sentinel_hub_client_alias == 'default' else get_vault_token(sentinel_hub_client_alias)
-            application_id = runner.run_job(job_info, job_id, job_work_dir = self.get_job_work_dir(job_id=job_id), log=log, user_id=user_id, api_version=api_version,proxy_user=proxy_user or job_info.get('proxy_user',None), vault_token=vault_token)
+            job_work_dir = self.get_job_work_dir(job_id=job_id)
+            application_id = runner.run_job(
+                job_info,
+                job_id,
+                job_work_dir=job_work_dir,
+                log=log,
+                user_id=user_id,
+                api_version=api_version,
+                proxy_user=proxy_user or job_info.get("proxy_user", None),
+                vault_token=vault_token,
+            )
             with self._double_job_registry as dbl_registry:
                 dbl_registry.set_application_id(job_id=job_id, user_id=user_id, application_id=application_id)
+                # TODO: dbl_registry.set_results_metadata_uri(f"file:{job_work_dir}/{JOB_METADATA_FILENAME}")
                 dbl_registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.QUEUED)
 
 
