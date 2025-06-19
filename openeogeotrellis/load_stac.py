@@ -111,33 +111,6 @@ def load_stac(
         conforms_to = coll.get_root().extra_fields.get("conformsTo", [])
         return any(conformance_class.endswith("/item-search") for conformance_class in conforms_to)
 
-    def get_band_names(item: pystac.Item, asset: pystac.Asset) -> List[str]:
-        # TODO: this whole function can be replaced with
-        #       _StacMetadataParser().bands_from_stac_asset(asset=asset).band_names()
-        #       once the legacy eo:bands integer index support can be dropped
-        #       See https://github.com/Open-EO/openeo-geopyspark-driver/issues/619
-        def get_band_name(eo_band) -> str:
-            if isinstance(eo_band, dict):
-                return eo_band["name"]
-
-            # can also be an index into a list of bands elsewhere.
-            logger.warning(
-                "load_stac-get_band_names: eo:bands with integer indices. This is deprecated and support will be removed in the future."
-            )
-            assert isinstance(eo_band, int)
-            eo_band_index = eo_band
-
-            eo_bands_location = (
-                item.properties if "eo:bands" in item.properties else item.get_collection().summaries.to_dict()
-            )
-            return get_band_name(eo_bands_location["eo:bands"][eo_band_index])
-
-        if "eo:bands" in asset.extra_fields:
-            # TODO: eliminate this special case for that deprecated integer index hack above
-            return [get_band_name(eo_band) for eo_band in asset.extra_fields["eo:bands"]]
-
-        return _StacMetadataParser().bands_from_stac_asset(asset=asset).band_names()
-
     def get_proj_metadata(itm: pystac.Item, asst: pystac.Asset) -> (Optional[int],
                                                                     Optional[Tuple[float, float, float, float]],
                                                                     Optional[Tuple[int, int]]):
@@ -467,7 +440,7 @@ def load_stac(
             ):
                 proj_epsg, proj_bbox, proj_shape = get_proj_metadata(itm, asset)
 
-                asset_band_names_from_metadata = get_band_names(item=itm, asset=asset)
+                asset_band_names_from_metadata = _get_band_names(item=itm, asset=asset)
                 logger.info(f"from intersecting_items: {itm.id=} {asset_id=} {asset_band_names_from_metadata=}")
 
                 if not load_params.bands:
@@ -812,6 +785,34 @@ def _is_band_asset(asset: pystac.Asset) -> bool:
         "eo:bands" in asset.extra_fields
         or "bands" in asset.extra_fields  # TODO: built-in "bands" support seems to be scheduled for pystac V2
     )
+
+
+def _get_band_names(*, item: pystac.Item, asset: pystac.Asset) -> List[str]:
+    # TODO: this whole function can be replaced with
+    #       _StacMetadataParser().bands_from_stac_asset(asset=asset).band_names()
+    #       once the legacy eo:bands integer index support can be dropped
+    #       See https://github.com/Open-EO/openeo-geopyspark-driver/issues/619
+    def get_band_name(eo_band) -> str:
+        if isinstance(eo_band, dict):
+            return eo_band["name"]
+
+        # can also be an index into a list of bands elsewhere.
+        logger.warning(
+            "load_stac-get_band_names: eo:bands with integer indices. This is deprecated and support will be removed in the future."
+        )
+        assert isinstance(eo_band, int)
+        eo_band_index = eo_band
+
+        eo_bands_location = (
+            item.properties if "eo:bands" in item.properties else item.get_collection().summaries.to_dict()
+        )
+        return get_band_name(eo_bands_location["eo:bands"][eo_band_index])
+
+    if "eo:bands" in asset.extra_fields:
+        # TODO: eliminate this special case for that deprecated integer index hack above
+        return [get_band_name(eo_band) for eo_band in asset.extra_fields["eo:bands"]]
+
+    return _StacMetadataParser().bands_from_stac_asset(asset=asset).band_names()
 
 
 def contains_netcdf_with_time_dimension(collection):
