@@ -3,7 +3,7 @@ while preserving physical spectra"""
 from collections.abc import Iterable, Mapping
 from typing import Tuple
 
-from scipy.interpolate import griddata
+from scipy.interpolate import griddata, make_interp_spline
 from numpy import floating
 from numpy.typing import NDArray
 import xarray as xr
@@ -30,11 +30,12 @@ def _bin_with_mean_statistic(ds: xr.Dataset, bands: Iterable[str], lat_edges, lo
     """
     # TODO describe what properties ds should have
 
+    assert super_sampling > 0, "Super sampling must be greater than 0 (1 means no super sampling)"
     lat2d = ds["lat"].data
     lon2d = ds["lon"].data
 
-    lat = _super_sample_2d(lat2d, super_sampling).ravel()
-    lon = _super_sample_2d(lon2d, super_sampling).ravel()
+    lat = _super_sample_2d(lat2d, super_sampling, kind="linear").ravel()
+    lon = _super_sample_2d(lon2d, super_sampling, kind="linear").ravel()
 
     width = lon_edges.shape[0] - 1
     height = lat_edges.shape[0] - 1
@@ -96,7 +97,7 @@ def _compute_bin_index(input_pixel_centers_lat: NDArray[float], input_pixel_cent
 
     :param input_pixel_centers_lat: Array of pixel **center** latitudes to be binned to the target grid.
     :param input_pixel_centers_lon: Array of pixel **center** longitudes to be binned to the target grid.
-    :param output_grid_edges: Pixel *edges** (lat, lon) of the lowest value in the target grid.
+    :param output_grid_edges: Pixel **edges** (lat, lon) of the lowest value in the target grid.
     :param output_grid_pixel_size: Pixel size of the target grid.
     :param output_grid_height: Number of latitude values of the target grid.
     :param output_grid_width: Number of longitude values of the target grid.
@@ -131,8 +132,9 @@ def _super_sample_2d(arr, factor, *, kind="nearest"):
         rows = np.arange(arr.shape[0])
         xp_x, xp_y = np.meshgrid(cols, rows)
         x_x, x_y = np.meshgrid(_super_sample_1d(cols, factor, kind=kind), _super_sample_1d(rows, factor, kind=kind))
-        res = griddata((xp_y.ravel(), xp_x.ravel()), arr.reshape(-1), (x_y.ravel(), x_x.ravel()), method=kind).reshape((arr.shape[0] - 1) * factor + 1, -1)
-        return res
+        interpolated = griddata((xp_y.ravel(), xp_x.ravel()), arr.reshape(-1), (x_y.ravel(), x_x.ravel()), method=kind).reshape(arr.shape[0] * factor, -1)
+        extrapolated = _extrapolate_edges_2d(interpolated, factor // 2)
+        return extrapolated
     else:
         raise ValueError(f"Super sampling kind must be 'nearest' or 'linear', found {kind}")
 
@@ -146,9 +148,16 @@ def _super_sample_1d(arr, factor, *, kind="nearest"):
     if kind == "nearest":
         return arr.repeat(factor)
     elif kind == "linear":
-        xp = np.arange(0, len(arr)) * factor
-        x = np.arange(0, (len(arr) - 1) * factor + 1)
-        return np.interp(x, xp, arr)
+        xp = np.arange(0, len(arr))
+        if factor & 1: # odd
+            shift = 1 / factor * (factor // 2)
+        else:
+            shift = 1 / factor * ((factor // 2) - 0.5)
+        x = np.linspace(xp[0]-shift, xp[-1]+shift, factor * xp.shape[0])
+        spl = make_interp_spline(xp, arr, k=1) # linear
+        return spl(x)
+
+        #return np.interp(x, xp, arr)
     else:
         raise ValueError(f"Unknown kind: {kind}")
 
@@ -177,3 +186,32 @@ def _compute_grid_bin_edges(bbox: Mapping[str, float], num_rows: int) -> Tuple[N
 
 def _compute_pixel_centers_from_edges(edges, pixel_size):
     return edges[:-1] + 0.5 * pixel_size
+
+
+def _extrapolate_edges_2d(arr: NDArray, border: int) -> NDArray:
+    """
+    In-place extrapolation of interpolated results
+
+    arr should already contain the border with values that will be overwritten
+    border is an int, used for all dimensions
+    """
+    # TODO doc string
+    assert (arr.shape[0] > border * 2) and (arr.shape[1] > border * 2), (
+        "The border must be fully contained in the array (no overlap). Found "
+        f"shape {arr.shape} and border size {border}."
+        )
+
+    for i in range(border, 0, -1):
+        # border = 1: i = 1
+        # top
+        #  [0, :] =    [1,   :] -    [2, :]
+        arr[i-1, :] = 2 * arr[i, :] - arr[i+1, :]
+        # bottom
+        #  [-1, :] =        [-2,   :] -    [-3, :]
+        arr[-i, :] = 2 * arr[-(i+1), :] - arr[-(i+2), :]
+        # left
+        arr[:, i-1] = 2 * arr[:, i] - arr[:, i+1]
+        # right
+        arr[:, -i] = 2 * arr[:, -(i+1)] - arr[:, -(i+2)]
+
+    return arr
