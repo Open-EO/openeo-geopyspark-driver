@@ -13,28 +13,20 @@
 name: dkrcmps-openeo-geopyspark-driver
 services:
   web:
-    build:
-      context: ..
-      dockerfile: docker/minimal.dockerfile
-      target: final
+    image: vito-docker.artifactory.vgt.vito.be/openeo-base:latest
     environment:
-      - OPENEO_CATALOG_FILES=${OPENEO_CATALOG_FILES:-/src/docker/example_layercatalog.json}
-    volumes:
-      - type: bind
-        source: ..
-        target: /src
-      - type: bind
-        # The default data dir is in the project dir ./container-data
-        # Keep this a safe default: avoid writing in pre-existing dirs such as /data
-        # instead keep the default a local subfolder that your have to explicitly create
-        # because you can not know if different users/organisations use /data or alike
-        # for a different purpose.
-        source:  ${DATA_PATH_ON_HOST:-./container-data}
-        target: /data
+      - PYTHONPATH=/usr/local/spark/python/lib/py4j-0.10.9.7-src.zip:/usr/local/spark/python
+      - GEOPYSPARK_JARS_PATH=/opt
+      - OPENEO_LOCAL_DEBUGGING="false"
+      - GDAL_PAM_ENABLED=NO
+      - PYTHON_EGG_CACHE=./
+      - WMTS_BASE_URL_PATTERN=http://localhost:8082/openeo/services/%s
+      - FLASK_DEBUG=0
+      - OPENEO_DEV_GUNICORN_HOST=0.0.0.0
     ports:
       - "4040:4040"
       - "8080:8080"
-    command: ["python", "openeogeotrellis/deploy/local.py"]
+    command: ["/opt/venv/bin/python", "/opt/venv/bin/openeo_local.py"]
     profiles:
       - webapp
       - all

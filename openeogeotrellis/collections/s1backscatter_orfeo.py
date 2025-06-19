@@ -217,7 +217,7 @@ class S1BackscatterOrfeo:
             # We expect the desired geotiff files under `creo_path` at location like
             #       measurements/s1a-iw-grd-vh-20200606t063717-20200606t063746-032893-03cf5f-002.tiff
             # TODO Get tiff path from manifest instead of assuming this `measurement` file structure?
-            band_regex = re.compile(r"^s1[ab]-iw-grd-([hv]{2})-", flags=re.IGNORECASE)
+            band_regex = re.compile(r"^s1[abcdefgh]-iw-grd-([hv]{2})-", flags=re.IGNORECASE)
             band_tiffs = {}
             for tiff in creo_path.glob("measurement/*.tiff"):
                 match = band_regex.match(tiff.name)

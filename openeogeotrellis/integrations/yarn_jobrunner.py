@@ -106,7 +106,7 @@ class YARNBatchJobRunner():
         ensure_dir(job_work_dir)
         # Ensure others can read/write so that the batch job driver and executors can write to it.
         # The intention is that a cronjob will later only allow the webapp driver to read the results.
-        add_permissions(job_work_dir, stat.S_IRWXO | stat.S_IWGRP, None, get_backend_config().non_kube_batch_job_results_dir_group)
+        add_permissions(job_work_dir, stat.S_IRWXO | stat.S_IWGRP)
 
         def as_boolean_arg(job_option_key: str, default_value: str) -> str:
             value = job_options.get(job_option_key)
@@ -128,6 +128,7 @@ class YARNBatchJobRunner():
         script_location = pkg_resources.resource_filename("openeogeotrellis.deploy", submit_script)
 
         image_name = job_options.get("image-name", os.environ.get("YARN_CONTAINER_RUNTIME_DOCKER_IMAGE"))
+        image_name = get_backend_config().batch_runtime_to_image.get(image_name.lower(), image_name)
 
         extra_py_files = ""
         if options.udf_dependency_files is not None and len(options.udf_dependency_files) > 0:
