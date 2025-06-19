@@ -1,3 +1,5 @@
+import re
+
 import datetime as dt
 import json
 import time
@@ -105,11 +107,6 @@ def load_stac(
             )
 
         return intersects_temporally() and intersects_spatially()
-
-    def supports_item_search(coll: pystac.Collection) -> bool:
-        # TODO: use pystac_client instead?
-        conforms_to = coll.get_root().extra_fields.get("conformsTo", [])
-        return any(conformance_class.endswith("/item-search") for conformance_class in conforms_to)
 
     def get_proj_metadata(itm: pystac.Item, asst: pystac.Asset) -> (Optional[int],
                                                                     Optional[Tuple[float, float, float, float]],
@@ -256,7 +253,7 @@ def load_stac(
                 item = stac_object
                 band_names = _StacMetadataParser().bands_from_stac_item(item=item).band_names()
                 intersecting_items = [item] if intersects_spatiotemporally(item) else []
-            elif isinstance(stac_object, pystac.Collection) and supports_item_search(stac_object):
+            elif isinstance(stac_object, pystac.Collection) and _supports_item_search(stac_object):
                 collection = stac_object
                 netcdf_with_time_dimension = contains_netcdf_with_time_dimension(collection)
                 collection_id = collection.id
@@ -813,6 +810,15 @@ def _get_band_names(*, item: pystac.Item, asset: pystac.Asset) -> List[str]:
         return [get_band_name(eo_band) for eo_band in asset.extra_fields["eo:bands"]]
 
     return _StacMetadataParser().bands_from_stac_asset(asset=asset).band_names()
+
+
+def _supports_item_search(collection: pystac.Collection) -> bool:
+    # TODO: use pystac_client instead?
+    catalog = collection.get_root()
+    if catalog:
+        conforms_to = catalog.extra_fields.get("conformsTo", [])
+        return any(re.match(r"^https://api\.stacspec\.org/v1\..*/item-search$", c) for c in conforms_to)
+    return False
 
 
 def contains_netcdf_with_time_dimension(collection):

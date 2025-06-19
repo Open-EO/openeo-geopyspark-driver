@@ -20,6 +20,7 @@ from openeogeotrellis.load_stac import (
     _StacMetadataParser,
     _is_supported_raster_mime_type,
     _is_band_asset,
+    _supports_item_search,
 )
 
 
@@ -675,3 +676,28 @@ def test_is_supported_raster_mime_type():
 def test_is_band_asset(data, expected):
     asset = pystac.Asset.from_dict(data)
     assert _is_band_asset(asset) == expected
+
+
+@pytest.mark.parametrize(
+    ["catalog", "expected"],
+    [
+        (None, False),
+        (
+            pystac.Catalog(
+                id="catalog123",
+                description="Test Catalog",
+                extra_fields={"conformsTo": ["https://api.stacspec.org/v1.0.0/item-search"]},
+            ),
+            True,
+        ),
+    ],
+)
+def test_supports_item_search(tmp_path, catalog, expected):
+    links = []
+    if catalog:
+        catalog_path = tmp_path / "catalog.json"
+        pystac.write_file(catalog, dest_href=catalog_path)
+        links.append({"rel": "root", "href": str(catalog_path)})
+
+    collection = pystac.Collection.from_dict(StacDummyBuilder.collection(links=links))
+    assert _supports_item_search(collection) == expected
