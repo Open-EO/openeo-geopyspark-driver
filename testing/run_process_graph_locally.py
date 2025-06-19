@@ -69,6 +69,7 @@ def _setup_local_spark(classpath: str, debug: bool):
     )
 
     spark_jars = conf.get("spark.jars").split(",")
+    logging.error(f"SPARK JARS {spark_jars}")
     # geotrellis-extensions needs to be loaded first to avoid "java.lang.NoClassDefFoundError: shapeless/lazily$"
     spark_jars.sort(key=lambda x: "geotrellis-extensions" not in x)
     conf.set(key="spark.jars", value=",".join(spark_jars))
@@ -80,8 +81,6 @@ def _setup_local_spark(classpath: str, debug: bool):
         key="spark.kryo.classesToRegister",
         value="ar.com.hjg.pngj.ImageInfo,ar.com.hjg.pngj.ImageLineInt,geotrellis.raster.RasterRegion$GridBoundsRasterRegion",
     )
-    # Only show spark progress bars for high verbosity levels
-    conf.set("spark.ui.showConsoleProgress", False)
 
     conf.set(key="spark.executor.pyspark.memory", value="3G")
     conf.set(key="spark.driver.memory", value="2G")
@@ -103,8 +102,7 @@ def _setup_local_spark(classpath: str, debug: bool):
                 )
             )
     # got some options from 'sparkDriverJavaOptions'
-    spark_driver_java_options = f"-Dlog4j2.configurationFile=file:{spark_submit_log4j_configuration_file}\
-    -Dscala.concurrent.context.numThreads=6 \
+    spark_driver_java_options = f"-Dscala.concurrent.context.numThreads=6 \
     -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService\
     -Dtsservice.layersConfigClass=ProdLayersConfiguration -Dtsservice.sparktasktimeout=600"
     if debug:
@@ -116,8 +114,7 @@ def _setup_local_spark(classpath: str, debug: bool):
                 break
     conf.set("spark.driver.extraJavaOptions", spark_driver_java_options)
 
-    spark_executor_java_options = f"-Dlog4j2.configurationFile=file:{spark_submit_log4j_configuration_file}\
-     -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService\
+    spark_executor_java_options = f"-Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService\
      -Dscala.concurrent.context.numThreads=8"
     conf.set("spark.executor.extraJavaOptions", spark_executor_java_options)
 
@@ -125,7 +122,6 @@ def _setup_local_spark(classpath: str, debug: bool):
     context = SparkContext.getOrCreate(conf)
     if debug:
         context.setLogLevel("DEBUG")
-    print("Validating the Spark context")
     return context
 
 
