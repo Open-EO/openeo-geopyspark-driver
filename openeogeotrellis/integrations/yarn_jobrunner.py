@@ -106,15 +106,19 @@ class YARNBatchJobRunner():
         returns the user_id if it is valid, otherwise an empty string.
         """
         try:
-            ipa_client = openeogeotrellis.integrations.freeipa.FreeIpaClient(
-                ipa_server=openeogeotrellis.integrations.freeipa.get_freeipa_server_from_env() or "ipa01.vgt.vito.be",
-                verify_tls=False,  # TODO?
+            ipa_server = (
+                get_backend_config().freeipa_server
+                or openeogeotrellis.integrations.freeipa.get_freeipa_server_from_env()
             )
-            if ipa_client.user_find(user):
-                return user
+            if ipa_server:
+                ipa_client = openeogeotrellis.integrations.freeipa.FreeIpaClient(
+                    ipa_server=ipa_server,
+                    verify_tls=False,  # TODO?
+                )
+                if ipa_client.user_find(user):
+                    return user
         except Exception as e:
             _log.warning(f"Failed to verify whether {user!r} can be used as proxy user: {e!r}")
-
         return ""
 
     def run_job(self,job_info:dict,job_id:str,job_work_dir, log,user_id ="", api_version="1.0.0",proxy_user:str=None, vault_token: Optional[str] = None):

@@ -565,7 +565,6 @@ class TestBatchJobs:
             assert batch_job_args[3] == str(job_dir)
             assert batch_job_args[4] == job_output.name
             assert batch_job_args[5] == job_metadata.name
-            assert batch_job_args[8] == TEST_USER
             assert batch_job_args[9] == api.api_version
 
             assert batch_job_args[10:16] == ['8G', '2G', '3G', '5', '2', '2G']
@@ -691,6 +690,53 @@ class TestBatchJobs:
             )
 
             assert res["logs"] == expected_log_entries
+
+    @pytest.mark.parametrize(
+        ["freeipa_response", "expected_proxy_user"],
+        [
+            ((200, []), ""),
+            ((200, [{"uid": TEST_USER}]), TEST_USER),
+            ((500, []), ""),
+        ],
+    )
+    def test_create_and_start_proxy_user(
+        self,
+        api,
+        tmp_path,
+        batch_job_output_root,
+        job_registry,
+        requests_mock,
+        freeipa_response,
+        expected_proxy_user,
+    ):
+        def freeipa_user_find_handler(request, context):
+            request_data = request.json()
+            assert request_data.get("method") == "user_find"
+            status_code, result = freeipa_response
+            context.status_code = status_code
+            return {
+                "id": request_data["id"],
+                "result": {"result": result},
+            }
+
+        requests_mock.post("https://freeipa.test/ipa/json", json=freeipa_user_find_handler)
+
+        # Create job
+        data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH, title="Dummy")
+        res = api.post("/jobs", json=data, headers=TEST_USER_AUTH_HEADER).assert_status_code(201)
+        job_id = res.headers["OpenEO-Identifier"]
+
+        # Start job
+        with mock.patch("subprocess.run") as run:
+            os.mkdir(batch_job_output_root / job_id)
+            stdout = api.read_file("spark-submit-stdout.txt")
+            run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout=stdout, stderr="")
+            # Trigger job start
+            api.post(f"/jobs/{job_id}/results", json={}, headers=TEST_USER_AUTH_HEADER).assert_status_code(202)
+        run.assert_called_once()
+        batch_job_args = run.call_args[0][0]
+
+        assert batch_job_args[8] == expected_proxy_user
 
     def test_providers_present(self, api, tmp_path, monkeypatch, batch_job_output_root, job_registry, time_machine):
         time_machine.move_to("2020-04-20T16:04:03Z")
@@ -1180,7 +1226,6 @@ class TestBatchJobs:
             assert batch_job_args[3] == str(job_dir)
             assert batch_job_args[4] == job_output.name
             assert batch_job_args[5] == job_metadata.name
-            assert batch_job_args[8] == TEST_USER
             assert batch_job_args[9] == api.api_version
             assert batch_job_args[10:16] == ['3g', '11g', '3G', '5', '4', '10G']
             assert batch_job_args[16:21] == [
@@ -1215,8 +1260,6 @@ class TestBatchJobs:
             batch_job_output_root,
     ):
         time_machine.move_to("2020-04-20T12:01:01Z")
-        true = True
-        null = None
 
         job_data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH_WITH_UDF, title="Dummy")
         batch_job_args, job_id,env = self._create_and_start_yarn_job(job_data, api)
@@ -1230,7 +1273,6 @@ class TestBatchJobs:
         assert batch_job_args[3] == str(job_dir)
         assert batch_job_args[4] == job_output.name
         assert batch_job_args[5] == job_metadata.name
-        assert batch_job_args[8] == TEST_USER
         assert env['YARN_CONTAINER_RUNTIME_DOCKER_IMAGE'] == "vito-docker.artifactory.vgt.vito.be/openeo-geotrellis-kube-python311:latest"
 
 
@@ -1877,7 +1919,6 @@ class TestSentinelHubBatchJobs:
         assert args[3] == str(job_dir)
         assert args[4] == job_output.name
         assert args[5] == job_metadata.name
-        assert args[8] == TEST_USER
         assert args[16] == "default"
         assert args[18] == expected_dependencies
         assert args[21:23] == [TEST_USER, job_id]
