@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import re
 import stat
@@ -16,6 +17,7 @@ from openeo.util import deep_get, ensure_dir
 from openeo_driver.config.load import ConfigGetter
 from openeo_driver.constants import JOB_STATUS
 from openeo_driver.errors import InternalException, OpenEOApiException
+import openeogeotrellis.integrations.freeipa
 from openeogeotrellis import sentinel_hub
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.job_options import JobOptions
@@ -24,7 +26,11 @@ from openeogeotrellis.util.byteunit import byte_string_as
 from openeogeotrellis.utils import add_permissions
 
 
+_log = logging.getLogger(__name__)
+
 JOB_METADATA_FILENAME = "job_metadata.json"
+
+
 
 class YARNBatchJobRunner():
 
@@ -92,7 +98,24 @@ class YARNBatchJobRunner():
             py_files = ",".join(found)
         return py_files
 
+    def _verify_proxy_user(self, user: str) -> str:
+        """
+        Helper to verify if given user id/name is valid
+        (to be used with `--proxy-user` option in YARN submit script).
 
+        returns the user_id if it is valid, otherwise an empty string.
+        """
+        try:
+            ipa_client = openeogeotrellis.integrations.freeipa.FreeIpaClient(
+                ipa_server=openeogeotrellis.integrations.freeipa.get_freeipa_server_from_env() or "ipa01.vgt.vito.be",
+                verify_tls=False,  # TODO?
+            )
+            if ipa_client.user_find(user):
+                return user
+        except Exception as e:
+            _log.warning(f"Failed to verify whether {user!r} can be used as proxy user: {e!r}")
+
+        return ""
 
     def run_job(self,job_info:dict,job_id:str,job_work_dir, log,user_id ="", api_version="1.0.0",proxy_user:str=None, vault_token: Optional[str] = None):
 
@@ -175,7 +198,7 @@ class YARNBatchJobRunner():
                 args.append("no_principal")
                 args.append("no_keytab")
 
-            args.append(proxy_user or user_id)
+            args.append(self._verify_proxy_user(proxy_user or user_id))
 
             if api_version:
                 args.append(api_version)
