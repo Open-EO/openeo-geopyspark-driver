@@ -301,45 +301,8 @@ def load_stac(
                 band_names = _StacMetadataParser().bands_from_stac_object(obj=stac_object).band_names()
 
                 def intersecting_catalogs(root: pystac.Catalog) -> Iterable[pystac.Catalog]:
-                    def intersects_spatiotemporally(coll: pystac.Collection) -> bool:
-                        def intersects_spatially(bbox) -> bool:
-                            if not requested_bbox:
-                                return True
-
-                            requested_bbox_lonlat = requested_bbox.reproject("EPSG:4326")
-                            return requested_bbox_lonlat.as_polygon().intersects(
-                                Polygon.from_bounds(*bbox)
-                            )
-
-                        def intersects_temporally(interval) -> bool:
-                            start, end = interval
-
-                            if start is not None and end is not None:
-                                return to_date >= start and from_date <= end
-                            if start is not None:
-                                return to_date >= start
-                            if end is not None:
-                                return from_date <= end
-                            return True
-
-                        bboxes = coll.extent.spatial.bboxes
-                        intervals = coll.extent.temporal.intervals
-
-                        if len(bboxes) > 1 and not any(intersects_spatially(bbox) for bbox in bboxes[1:]):
-                            return False
-                        if len(bboxes) == 1 and not intersects_spatially(bboxes[0]):
-                            return False
-
-                        if len(intervals) > 1 and not any(intersects_temporally(interval)
-                                                          for interval in intervals[1:]):
-                            return False
-                        if len(intervals) == 1 and not intersects_temporally(intervals[0]):
-                            return False
-
-                        return True
-
-                    if isinstance(root, pystac.Collection) and not intersects_spatiotemporally(root):
-                        return []
+                    if isinstance(root, pystac.Collection) and not spatiotemporal_extent.collection_intersects(root):
+                        return
 
                     yield root
                     for child in root.get_children():
@@ -709,7 +672,7 @@ def load_stac(
 class _SpatioTemporalExtent:
     def __init__(self, *, bbox: Union[BoundingBox, None], from_date: dt.datetime, to_date: dt.datetime):
         self.bbox = bbox
-        self.bbox_lonlat_shape = self.bbox.reproject("EPSG:4326").as_polygon() if self.bbox else None
+        self._bbox_lonlat_shape = self.bbox.reproject("EPSG:4326").as_polygon() if self.bbox else None
         self.from_date = from_date
         self.to_date = to_date
 
@@ -721,9 +684,42 @@ class _SpatioTemporalExtent:
         def intersects_spatially() -> bool:
             if not self.bbox or item.bbox is None:
                 return True
-            return self.bbox_lonlat_shape.intersects(Polygon.from_bounds(*item.bbox))
+            return self._bbox_lonlat_shape.intersects(Polygon.from_bounds(*item.bbox))
 
         return intersects_temporally() and intersects_spatially()
+
+    def collection_intersects(self, collection: pystac.Collection) -> bool:
+        def intersects_spatially(bbox: List[float]) -> bool:
+            if not self.bbox:
+                return True
+
+            return self._bbox_lonlat_shape.intersects(Polygon.from_bounds(*bbox))
+
+        def intersects_temporally(interval) -> bool:
+            start, end = interval
+
+            if start is not None and end is not None:
+                return self.to_date >= start and self.from_date <= end
+            if start is not None:
+                return self.to_date >= start
+            if end is not None:
+                return self.from_date <= end
+            return True
+
+        bboxes = collection.extent.spatial.bboxes
+        intervals = collection.extent.temporal.intervals
+
+        if len(bboxes) > 1 and not any(intersects_spatially(bbox) for bbox in bboxes[1:]):
+            return False
+        if len(bboxes) == 1 and not intersects_spatially(bboxes[0]):
+            return False
+
+        if len(intervals) > 1 and not any(intersects_temporally(interval) for interval in intervals[1:]):
+            return False
+        if len(intervals) == 1 and not intersects_temporally(intervals[0]):
+            return False
+
+        return True
 
 
 def _is_supported_raster_mime_type(mime_type: str) -> bool:
