@@ -96,6 +96,7 @@ from openeogeotrellis.integrations.kubernetes import (
     k8s_get_batch_job_cfg_secret_name,
     truncate_user_id_k8s,
 )
+from openeogeotrellis.integrations.s3proxy.asset_urls import PresignedS3AssetUrls
 from openeogeotrellis.integrations.stac import ResilientStacIO
 from openeogeotrellis.integrations.traefik import Traefik
 from openeogeotrellis.integrations.yarn_jobrunner import YARNBatchJobRunner
@@ -2192,11 +2193,11 @@ class GpsBatchJobs(backend.BatchJobs):
                     )
                     log.info(f"mapped job_id {job_id} to application ID {spark_app_id}")
                     dbl_registry.set_application_id(job_id=job_id, user_id=user_id, application_id=spark_app_id)
-
-                    # TODO:
-                    #  dbl_registry.set_results_metadata_uri(
-                    #      f"s3://{bucket}/{str(job_work_dir).strip('/')}/{JOB_METADATA_FILENAME}"
-                    #  )
+                    dbl_registry.set_results_metadata_uri(
+                        job_id=job_id,
+                        user_id=user_id,
+                        results_metadata_uri=f"s3://{bucket}/{str(job_work_dir).strip('/')}/{JOB_METADATA_FILENAME}",
+                    )
 
                     status_response = {}
                     retry = 0
@@ -2241,7 +2242,9 @@ class GpsBatchJobs(backend.BatchJobs):
             )
             with self._double_job_registry as dbl_registry:
                 dbl_registry.set_application_id(job_id=job_id, user_id=user_id, application_id=application_id)
-                # TODO: dbl_registry.set_results_metadata_uri(f"file:{job_work_dir}/{JOB_METADATA_FILENAME}")
+                dbl_registry.set_results_metadata_uri(
+                    job_id=job_id, user_id=user_id, results_metadata_uri=f"file:{job_work_dir}/{JOB_METADATA_FILENAME}"
+                )
                 dbl_registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.QUEUED)
 
 
@@ -2697,19 +2700,18 @@ class GpsBatchJobs(backend.BatchJobs):
 
         job_dir = self.get_job_output_dir(job_id=job_id)
 
-        # TODO: get results_metadata from job_info.results_metadata_uri and log
-
-        results_metadata = None
-        try:
-            # TODO: log
-            with self._double_job_registry as registry:
-                job_dict = registry.elastic_job_registry.get_job(job_id, user_id=user_id)  # TODO: is it possible to drop .elastic_job_registry?
-                if "results_metadata" in job_dict:
-                    results_metadata = job_dict["results_metadata"]
-        except Exception as e:
-            logger.warning(
-                "Could not retrieve result metadata from job registry %s", e, exc_info=True, extra={"job_id": job_id}
-            )
+        results_metadata = self._load_results_metadata_from_uri(job_info.results_metadata_uri)
+        if not results_metadata:
+            try:
+                logger.debug(f"Loading results metadata from job registry")
+                with self._double_job_registry as registry:
+                    job_dict = registry.elastic_job_registry.get_job(job_id, user_id=user_id)  # TODO: is it possible to drop .elastic_job_registry?
+                    if "results_metadata" in job_dict:
+                        results_metadata = job_dict["results_metadata"]
+            except Exception as e:
+                logger.warning(
+                    "Could not retrieve result metadata from job registry %s", e, exc_info=True, extra={"job_id": job_id}
+                )
         if not results_metadata:
             results_metadata = self.load_results_metadata(job_id, user_id)
 
@@ -2795,7 +2797,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
         if ConfigParams().use_object_storage:
             try:
-                # TODO: log
+                logger.debug(f"Loading results metadata from object storage at {metadata_file}")
                 contents = get_s3_file_contents(path=str(metadata_file))
                 return json.loads(contents)
             except Exception:
@@ -2805,18 +2807,37 @@ class GpsBatchJobs(backend.BatchJobs):
                     extra={'job_id': job_id})
 
         try:
-            # TODO: log
+            logger.debug(f"Loading results metadata from file at {metadata_file}")
             with open(metadata_file) as f:
                 return json.load(f)
         except FileNotFoundError:
             logger.warning("Could not derive result metadata from %s", metadata_file, exc_info=True,
                            extra={'job_id': job_id})
 
-        # TODO: log
         return {}
 
+    @staticmethod
+    def _load_results_metadata_from_uri(results_metadata_uri: Optional[str]) -> Optional[dict]:
+        # TODO: reduce code duplication with load_results_metadata
+        if results_metadata_uri is None:
+            return None
+
+        logger.debug(f"Loading results metadata from URI {results_metadata_uri}")
+
+        file_prefix = "file:"
+        if results_metadata_uri.startswith(file_prefix):
+            file_path = results_metadata_uri[len(file_prefix):]
+            with open(file_path) as f:
+                return json.load(f)
+
+        if results_metadata_uri.startswith("s3://"):
+            bucket, key = PresignedS3AssetUrls.get_bucket_key_from_uri(results_metadata_uri)
+            return json.loads(get_s3_file_contents(key, bucket))
+
+        raise ValueError(f"Unsupported results metadata URI: {results_metadata_uri}")
+
     def _get_providers(self, job_id: str, user_id: str) -> List[dict]:
-        results_metadata = self.load_results_metadata(job_id, user_id)
+        results_metadata = self.load_results_metadata(job_id, user_id)  # TODO: adapt this as well?
         return results_metadata.get("providers", [])
 
     def get_log_entries(
