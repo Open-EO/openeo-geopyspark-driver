@@ -92,22 +92,8 @@ def load_stac(
     to_date = (dt.datetime.combine(until_date, dt.time.max, until_date.tzinfo) if from_date == until_date
                else until_date - dt.timedelta(milliseconds=1))
 
-    def intersects_spatiotemporally(itm: pystac.Item) -> bool:
-        def intersects_temporally() -> bool:
-            nominal_date = itm.datetime or dateutil.parser.parse(itm.properties["start_datetime"])
-            return from_date <= nominal_date <= to_date
-
-        def intersects_spatially() -> bool:
-            if not requested_bbox or itm.bbox is None:
-                return True
-
-            requested_bbox_lonlat = requested_bbox.reproject("EPSG:4326")
-            return requested_bbox_lonlat.as_polygon().intersects(
-                Polygon.from_bounds(*itm.bbox)
-            )
-
-        return intersects_temporally() and intersects_spatially()
-
+    # TODO: move date preparation to __init__ of _SpatioTemporalExtent
+    spatiotemporal_extent = _SpatioTemporalExtent(bbox=requested_bbox, from_date=from_date, to_date=to_date)
 
     def get_pixel_value_offset(itm: pystac.Item, asst: pystac.Asset) -> float:
         raster_scale = asst.extra_fields.get("raster:scale", itm.properties.get("raster:scale", 1.0))
@@ -200,7 +186,7 @@ def load_stac(
                                               "proj:shape": asset.get("proj:shape"),
                                           }))
 
-                if intersects_spatiotemporally(pystac_item) and "data" in asset.get("roles", []):
+                if spatiotemporal_extent.item_intersects(pystac_item) and "data" in asset.get("roles", []):
                     pystac_asset = pystac.Asset(
                         href=asset["href"],
                         extra_fields={
@@ -228,7 +214,7 @@ def load_stac(
 
                 item = stac_object
                 band_names = _StacMetadataParser().bands_from_stac_item(item=item).band_names()
-                intersecting_items = [item] if intersects_spatiotemporally(item) else []
+                intersecting_items = [item] if spatiotemporal_extent.item_intersects(item) else []
             elif isinstance(stac_object, pystac.Collection) and _supports_item_search(stac_object):
                 collection = stac_object
                 netcdf_with_time_dimension = contains_netcdf_with_time_dimension(collection)
@@ -363,7 +349,7 @@ def load_stac(
                     itm
                     for intersecting_catalog in intersecting_catalogs(root=catalog)
                     for itm in intersecting_catalog.get_items()
-                    if intersects_spatiotemporally(itm)
+                    if spatiotemporal_extent.item_intersects(itm)
                 )
 
         jvm = get_jvm()
@@ -718,6 +704,26 @@ def load_stac(
               range(0, pyramid.size())}
 
     return GeopysparkDataCube(pyramid=gps.Pyramid(levels), metadata=metadata)
+
+
+class _SpatioTemporalExtent:
+    def __init__(self, *, bbox: Union[BoundingBox, None], from_date: dt.datetime, to_date: dt.datetime):
+        self.bbox = bbox
+        self.bbox_lonlat_shape = self.bbox.reproject("EPSG:4326").as_polygon() if self.bbox else None
+        self.from_date = from_date
+        self.to_date = to_date
+
+    def item_intersects(self, item: pystac.Item) -> bool:
+        def intersects_temporally() -> bool:
+            nominal_date = item.datetime or dateutil.parser.parse(item.properties["start_datetime"])
+            return self.from_date <= nominal_date <= self.to_date
+
+        def intersects_spatially() -> bool:
+            if not self.bbox or item.bbox is None:
+                return True
+            return self.bbox_lonlat_shape.intersects(Polygon.from_bounds(*item.bbox))
+
+        return intersects_temporally() and intersects_spatially()
 
 
 def _is_supported_raster_mime_type(mime_type: str) -> bool:
