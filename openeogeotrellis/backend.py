@@ -2703,7 +2703,7 @@ class GpsBatchJobs(backend.BatchJobs):
         try:
             # TODO: log
             with self._double_job_registry as registry:
-                job_dict = registry.elastic_job_registry.get_job(job_id, user_id=user_id)
+                job_dict = registry.elastic_job_registry.get_job(job_id, user_id=user_id)  # TODO: is it possible to drop .elastic_job_registry?
                 if "results_metadata" in job_dict:
                     results_metadata = job_dict["results_metadata"]
         except Exception as e:

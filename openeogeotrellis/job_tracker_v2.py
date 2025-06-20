@@ -578,6 +578,7 @@ class JobTracker:
                 _log.debug(f"job_costs: calculated {job_costs}")
                 stats["job_costs: calculated"] += 1
                 stats[f"job_costs: nonzero={isinstance(job_costs, float) and job_costs>0}"] += 1
+                # TODO: address this TODO?
                 # TODO: skip patching the job znode and read from this file directly?
             except Exception as e:
                 log.exception(f"Failed to calculate job costs: {e}")
