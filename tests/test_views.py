@@ -1075,12 +1075,14 @@ class TestBatchJobs:
 
                 retrieve_url = api.client.get
                 if download_url.startswith("http://127.0.0.1:"):
-                    # pre-signed urls don't woark with flask retriever
+                    # pre-signed urls don't work with flask retriever
                     def retrieve_url_and_set_data(*args, **kwargs):
                         result = requests.get(*args, **kwargs)
                         setattr(result, "data", result.text.encode("utf-8"))
                         return result
                     retrieve_url = retrieve_url_and_set_data
+                    # Proxy should allow Head requests which requires extra header.
+                    assert "X-Proxy-Head-As-Get=true" in download_url
 
                 if auth_header:
                     res = retrieve_url(download_url, headers=TEST_USER_AUTH_HEADER)
