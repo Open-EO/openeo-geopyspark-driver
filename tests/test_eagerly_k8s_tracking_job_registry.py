@@ -25,13 +25,12 @@ def backend_implementation(job_registry) -> GeoPySparkBackendImplementation:
 
 
 @pytest.fixture
-def kube(monkeypatch):
-    with gps_config_overrides(setup_kerberos_auth=False):
+def kube_no_zk(monkeypatch):
+    with gps_config_overrides(setup_kerberos_auth=False, use_zk_job_registry=False):
         monkeypatch.setenv("KUBE", "TRUE")
         yield
 
 
-# TODO: disable config.use_zk_job_registry
 @mock.patch("kubernetes.config.load_incluster_config", return_value=mock.MagicMock())
 @mock.patch("kubernetes.client.CoreV1Api.read_namespaced_pod", return_value=mock.MagicMock())
 @mock.patch("kubernetes.client.CustomObjectsApi.create_namespaced_custom_object", return_value=mock.MagicMock())
@@ -39,15 +38,15 @@ def kube(monkeypatch):
     "kubernetes.client.CustomObjectsApi.get_namespaced_custom_object", return_value={"status": "does not matter"}
 )
 def test_basic(
-    mock_k8s_config,
-    mock_get_pod_image,
+    mock_get_spark_pod_status,  # mock arguments in reverse order of patch decorators, as per the docs
     mock_create_spark_pod,
-    mock_get_spark_pod_status,
+    mock_get_pod_image,
+    mock_k8s_config,
+    kube_no_zk,
     backend_implementation,
     job_registry,
     mock_s3_bucket,
     fast_sleep,
-    kube,
 ):
     user = User(user_id="test_user", internal_auth_data={"access_token": "4cc3ss_t0k3n"})
 
