@@ -8,6 +8,7 @@ from openeo_driver.users import User
 
 from openeogeotrellis.backend import GeoPySparkBackendImplementation
 from openeogeotrellis.job_registry import InMemoryJobRegistry
+from openeogeotrellis.testing import gps_config_overrides
 
 
 @pytest.fixture()
@@ -21,6 +22,13 @@ def backend_implementation(job_registry) -> GeoPySparkBackendImplementation:
         use_zookeeper=False,
         elastic_job_registry=job_registry,
     )
+
+
+@pytest.fixture
+def kube(monkeypatch):
+    with gps_config_overrides(setup_kerberos_auth=False):
+        monkeypatch.setenv("KUBE", "TRUE")
+        yield
 
 
 # TODO: disable config.use_zk_job_registry
@@ -39,9 +47,8 @@ def test_basic(
     job_registry,
     mock_s3_bucket,
     fast_sleep,
+    kube,
 ):
-    assert "KUBE" in os.environ  # TODO: set in code
-
     user = User(user_id="test_user", internal_auth_data={"access_token": "4cc3ss_t0k3n"})
 
     # 1: create job
