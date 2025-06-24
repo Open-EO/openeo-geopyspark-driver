@@ -1040,32 +1040,7 @@ class EagerlyK8sTrackingJobRegistry(JobRegistryInterface):
     def __init__(self, job_registry: JobRegistryInterface):
         self._job_registry = job_registry
 
-    # TODO: use __getattr__ to delegate all methods to the underlying _job_registry?
-    def create_job(
-        self,
-        *,
-        process: dict,
-        user_id: str,
-        job_id: Optional[str] = None,
-        title: Optional[str] = None,
-        description: Optional[str] = None,
-        parent_id: Optional[str] = None,
-        api_version: Optional[str] = None,
-        job_options: Optional[dict] = None,
-    ) -> JobDict:
-        return self._job_registry.create_job(
-            process=process,
-            user_id=user_id,
-            job_id=job_id,
-            title=title,
-            description=description,
-            parent_id=parent_id,
-            api_version=api_version,
-            job_options=job_options,
-        )
+    def __getattr__(self, name):
+        return getattr(self._job_registry, name)
 
-    def get_job(self, job_id: str, *, user_id: Optional[str] = None) -> JobDict:
-        return self._job_registry.get_job(job_id=job_id, user_id=user_id)
-
-    def set_application_id(self, job_id: str, *, user_id: Optional[str] = None, application_id: str) -> None:
-        self._job_registry.set_application_id(job_id=job_id, user_id=user_id, application_id=application_id)
+    # TODO: call k8s API for some methods

@@ -1,5 +1,3 @@
-import os
-
 import pytest
 from mock import mock
 from openeo_driver.constants import JOB_STATUS
