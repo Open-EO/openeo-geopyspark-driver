@@ -104,17 +104,14 @@ sparkExecutorJavaOptions="-Dlog4j2.configurationFile=file:/opt/venv/openeo-geopy
  -Dscala.concurrent.context.numThreads=8 -Djava.library.path=/opt/venv/lib/python3.8/site-packages/jep\
  -Dopeneo.logging.threshold=$logging_threshold"
 
-# TODO: reuse FreeIpaClient here for better decoupling, logging, observability, ...
-ipa_request='{"id": 0, "method": "user_find", "params": [["'${proxyUser}'"], {"all": false, "no_members": true, "sizelimit": 40000, "whoami": false}]}'
-ipa_response=$(curl --negotiate -u : --insecure -X POST https://ipa01.vgt.vito.be/ipa/session/json   -H 'Content-Type: application/json' -H 'referer: https://ipa01.vgt.vito.be/ipa'  -d "${ipa_request}")
-# TODO: fail early instead of trying to parse an IPA error page as JSON
-echo "${ipa_response}"
-ipa_user_count=$(echo "${ipa_response}" | python3 -c 'import json,sys;obj=json.load(sys.stdin);print(obj["result"]["count"])')
-if [ "${ipa_user_count}" != "0" ]; then
-  run_as="--proxy-user ${proxyUser}"
-else
+
+
+if [ -z "$proxyUser" ]; then
   run_as="--principal ${principal} --keytab ${keyTab}"
+else
+  run_as="--proxy-user ${proxyUser}"
 fi
+
 
 python_max_conf=""
 if [ "${python_max_memory}" != "-1" ]; then

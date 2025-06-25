@@ -1,6 +1,4 @@
-import datetime as dt
 import dirty_equals
-import json
 import pystac
 from contextlib import nullcontext
 
@@ -8,6 +6,7 @@ import mock
 import pytest
 
 import openeo.metadata
+import responses
 from openeo.testing.stac import StacDummyBuilder
 from openeo_driver.ProcessGraphDeserializer import DEFAULT_TEMPORAL_EXTENT
 from openeo_driver.backend import BatchJobMetadata, BatchJobs, LoadParameters
@@ -15,7 +14,15 @@ from openeo_driver.errors import OpenEOApiException
 from openeo_driver.util.date_math import now_utc
 from openeo_driver.utils import EvalEnv
 
-from openeogeotrellis.load_stac import extract_own_job_info, load_stac, _StacMetadataParser
+from openeogeotrellis.load_stac import (
+    extract_own_job_info,
+    load_stac,
+    _StacMetadataParser,
+    _is_supported_raster_mime_type,
+    _is_band_asset,
+    _supports_item_search,
+    _get_proj_metadata,
+)
 
 
 @pytest.mark.parametrize("url, user_id, job_info_id",
@@ -411,6 +418,87 @@ def test_empty_cube_from_non_intersecting_item(requests_mock, test_data, feature
             assert level.count() == 0
 
 
+@responses.activate
+def test_stac_api_POST_item_search_resilience():
+    stac_api_root_url = "https://stac.test"
+    stac_collection_url = f"{stac_api_root_url}/collections/collection"
+    stac_search_url = f"{stac_api_root_url}/search"
+
+    responses.get(
+        stac_collection_url,
+        json={
+            "type": "Collection",
+            "stac_version": "1.0.0",
+            "id": "collection",
+            "description": "collection",
+            "license": "unknown",
+            "extent": {
+                "spatial": {"bbox": [[-180, -90, 180, 90]]},
+                "temporal": {"interval": [[None, None]]},
+            },
+            "links": [
+                {
+                    "rel": "root",
+                    "href": stac_api_root_url,
+                }
+            ],
+        },
+    )
+
+    responses.get(
+        stac_api_root_url,
+        json={
+            "type": "Catalog",
+            "stac_version": "1.0.0",
+            "id": "stac.test",
+            "description": "stac.test",
+            "links": [
+                {
+                    "rel": "search",
+                    "type": "application/geo+json",
+                    "title": "STAC search",
+                    "href": stac_search_url,
+                    "method": "POST",
+                },
+            ],
+            "conformsTo": [
+                "https://api.stacspec.org/v1.0.0-rc.1/item-search",
+                "https://api.stacspec.org/v1.0.0-rc.3/item-search#filter",
+            ],
+        },
+    )
+
+    search_transient_error_resps = [
+        responses.post(stac_search_url, status=500, body="some transient error") for _ in range(4)  # does 4 attempts
+    ]
+
+    # pass a property filter to do a POST item search like the API advertises above
+    properties = {
+        "product_tile": {
+            "process_graph": {
+                "eq1": {
+                    "process_id": "eq",
+                    "arguments": {
+                        "x": {"from_parameter": "value"},
+                        "y": "31UFS",
+                    },
+                    "result": True,
+                }
+            }
+        }
+    }
+
+    with pytest.raises(OpenEOApiException, match=r".*some transient error.*"):
+        load_stac(
+            stac_collection_url,
+            load_params=LoadParameters(properties=properties),
+            env=EvalEnv({"pyramid_levels": "highest"}),
+        )
+
+    for resp in search_transient_error_resps:
+        assert resp.call_count == 1
+
+
 class TestStacMetadataParser:
     def test_band_from_eo_bands_metadata(self):
         assert _StacMetadataParser()._band_from_eo_bands_metadata(
@@ -562,3 +650,70 @@ class TestStacMetadataParser:
     def test_bands_from_stac_asset(self, data, expected):
         asset = pystac.Asset.from_dict(data)
         assert _StacMetadataParser().bands_from_stac_asset(asset=asset).band_names() == expected
+
+
+def test_is_supported_raster_mime_type():
+    assert _is_supported_raster_mime_type("image/tiff; application=geotiff")
+    assert _is_supported_raster_mime_type("image/tiff; application=geotiff; profile=cloud-optimized")
+    assert _is_supported_raster_mime_type("image/jp2")
+    assert _is_supported_raster_mime_type("application/x-hdf5")
+    assert _is_supported_raster_mime_type("application/x-hdf")
+    assert not _is_supported_raster_mime_type("text/html")
+
+
+@pytest.mark.parametrize(
+    ["data", "expected"],
+    [
+        ({"href": "https://stac.test/asset.tif"}, False),
+        ({"href": "https://stac.test/asset.tif", "roles": ["data"]}, True),
+        ({"href": "https://stac.test/asset.tif", "roles": ["data"], "type": "image/tiff; application=geotiff"}, True),
+        ({"href": "https://stac.test/asset.tif", "type": "image/tiff; application=geotiff"}, False),
+        ({"href": "https://stac.test/asset.html", "roles": ["data"], "type": "text/html"}, False),
+        ({"href": "https://stac.test/asset.png", "roles": ["thumbnail"]}, False),
+        ({"href": "https://stac.test/asset.png", "bands": [{"name": "B02"}]}, True),
+        ({"href": "https://stac.test/asset.png", "eo:bands": [{"name": "B02"}]}, True),
+    ],
+)
+def test_is_band_asset(data, expected):
+    asset = pystac.Asset.from_dict(data)
+    assert _is_band_asset(asset) == expected
+
+
+@pytest.mark.parametrize(
+    ["catalog", "expected"],
+    [
+        (None, False),
+        (
+            pystac.Catalog(
+                id="catalog123",
+                description="Test Catalog",
+                extra_fields={"conformsTo": ["https://api.stacspec.org/v1.0.0/item-search"]},
+            ),
+            True,
+        ),
+    ],
+)
+def test_supports_item_search(tmp_path, catalog, expected):
+    links = []
+    if catalog:
+        catalog_path = tmp_path / "catalog.json"
+        pystac.write_file(catalog, dest_href=catalog_path)
+        links.append({"rel": "root", "href": str(catalog_path)})
+
+    collection = pystac.Collection.from_dict(StacDummyBuilder.collection(links=links))
+    assert _supports_item_search(collection) == expected
+
+
+def test_get_proj_metadata_minimal():
+    asset = pystac.Asset(href="https://example.com/asset.tif")
+    item = pystac.Item.from_dict(StacDummyBuilder.item())
+    assert _get_proj_metadata(asset, item=item) == (None, None, None)
+
+
+def test_get_proj_metadata_from_asset():
+    asset = pystac.Asset(
+        href="https://example.com/asset.tif",
+        extra_fields={"proj:epsg": 32631, "proj:shape": [12, 34], "proj:bbox": [12, 34, 56, 78]},
+    )
+    item = pystac.Item.from_dict(StacDummyBuilder.item())
+    assert _get_proj_metadata(asset, item=item) == (32631, (12.0, 34.0, 56.0, 78.0), (12, 34))

@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import re
 import stat
@@ -16,6 +17,7 @@ from openeo.util import deep_get, ensure_dir
 from openeo_driver.config.load import ConfigGetter
 from openeo_driver.constants import JOB_STATUS
 from openeo_driver.errors import InternalException, OpenEOApiException
+import openeogeotrellis.integrations.freeipa
 from openeogeotrellis import sentinel_hub
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.job_options import JobOptions
@@ -24,7 +26,11 @@ from openeogeotrellis.util.byteunit import byte_string_as
 from openeogeotrellis.utils import add_permissions
 
 
+_log = logging.getLogger(__name__)
+
 JOB_METADATA_FILENAME = "job_metadata.json"
+
+
 
 class YARNBatchJobRunner():
 
@@ -92,7 +98,28 @@ class YARNBatchJobRunner():
             py_files = ",".join(found)
         return py_files
 
+    def _verify_proxy_user(self, user: str) -> str:
+        """
+        Helper to verify if given user id/name is valid
+        (to be used with `--proxy-user` option in YARN submit script).
 
+        returns the user_id if it is valid, otherwise an empty string.
+        """
+        try:
+            ipa_server = (
+                get_backend_config().freeipa_server
+                or openeogeotrellis.integrations.freeipa.get_freeipa_server_from_env()
+            )
+            if ipa_server:
+                ipa_client = openeogeotrellis.integrations.freeipa.FreeIpaClient(
+                    ipa_server=ipa_server,
+                    verify_tls=False,  # TODO?
+                )
+                if ipa_client.user_find(user):
+                    return user
+        except Exception as e:
+            _log.warning(f"Failed to verify whether {user!r} can be used as proxy user: {e!r}")
+        return ""
 
     def run_job(self,job_info:dict,job_id:str,job_work_dir, log,user_id ="", api_version="1.0.0",proxy_user:str=None, vault_token: Optional[str] = None):
 
@@ -106,7 +133,7 @@ class YARNBatchJobRunner():
         ensure_dir(job_work_dir)
         # Ensure others can read/write so that the batch job driver and executors can write to it.
         # The intention is that a cronjob will later only allow the webapp driver to read the results.
-        add_permissions(job_work_dir, stat.S_IRWXO | stat.S_IWGRP, None, get_backend_config().non_kube_batch_job_results_dir_group)
+        add_permissions(job_work_dir, stat.S_IRWXO | stat.S_IWGRP)
 
         def as_boolean_arg(job_option_key: str, default_value: str) -> str:
             value = job_options.get(job_option_key)
@@ -128,6 +155,8 @@ class YARNBatchJobRunner():
         script_location = pkg_resources.resource_filename("openeogeotrellis.deploy", submit_script)
 
         image_name = job_options.get("image-name", os.environ.get("YARN_CONTAINER_RUNTIME_DOCKER_IMAGE"))
+        if image_name:
+            image_name = get_backend_config().batch_runtime_to_image.get(image_name.lower(), image_name)
 
         extra_py_files = ""
         if options.udf_dependency_files is not None and len(options.udf_dependency_files) > 0:
@@ -173,7 +202,7 @@ class YARNBatchJobRunner():
                 args.append("no_principal")
                 args.append("no_keytab")
 
-            args.append(proxy_user or user_id)
+            args.append(self._verify_proxy_user(proxy_user or user_id))
 
             if api_version:
                 args.append(api_version)

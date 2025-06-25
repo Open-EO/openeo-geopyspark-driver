@@ -23,8 +23,10 @@ website:
         text: Welcome
       - text: Backend setup
         contents:
-            - href: backend_setup.md
-              text: Single machine
+            - href: deployment/local_batch_job.md
+              text: Single machine batch job
+            - href: deployment/local_web_service.md
+              text: Local web service
       - href: development.md
         text: Development
       - href: geotrellis_processing.md
