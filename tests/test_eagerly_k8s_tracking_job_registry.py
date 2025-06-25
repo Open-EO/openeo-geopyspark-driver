@@ -1,6 +1,7 @@
 import pytest
 from mock import mock
 from openeo_driver.constants import JOB_STATUS
+from openeo_driver.errors import JobNotFinishedException
 
 from openeo_driver.users import User
 
@@ -78,6 +79,7 @@ def test_basic(
 
     job_id, job = next(iter(job_registry.db.items()))
     assert job["status"] == JOB_STATUS.CREATED
+    assert job.get("application_id") is None
 
     # 2: start job
     backend_implementation.batch_jobs.start_job(job_id, user)
@@ -85,5 +87,15 @@ def test_basic(
     assert mock_create_spark_pod.called
     assert mock_get_spark_pod_status.called
 
-    # TODO: 3: poll job
-    # TODO: 4: download job results
+    job_id, job = next(iter(job_registry.db.items()))
+    assert job["status"] == JOB_STATUS.CREATED  # there's no job tracker to update job status
+    assert job["application_id"].startswith("a-")
+
+    # 3: poll job
+    job_metadata = backend_implementation.batch_jobs.get_job_info(job_id, user.user_id)
+    assert job_metadata.id == job_id
+    assert job_metadata.status == JOB_STATUS.CREATED
+
+    # 4: download job results
+    with pytest.raises(JobNotFinishedException):
+        backend_implementation.batch_jobs.get_result_assets(job_id, user.user_id)
