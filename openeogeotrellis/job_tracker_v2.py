@@ -595,12 +595,11 @@ class JobTracker:
                 )
             except EjrApiResponseError as e:
                 if e.status_code == 413:
-                    # Results metadata too large, so we remove the derived_from links
-                    log.info(
-                        f"Results metadata for {job_id} is too large to store in the job registry, "
-                        f"removing derived_from links."
+                    log.warning(
+                        "Results metadata is too large to store in the job registry, removing links.",
+                        exc_info=True,
                     )
-                    result_metadata["links"] = []
+                    result_metadata.pop("links", None)  # safe delete
                     double_job_registry.set_results_metadata(
                         job_id=job_id,
                         user_id=user_id,
