@@ -1037,10 +1037,69 @@ class EagerlyK8sTrackingJobRegistry(JobRegistryInterface):
     Delegates to underlying job registry for persistence.
     """
 
-    def __init__(self, job_registry: JobRegistryInterface):
+    def __init__(self, job_registry: JobRegistryInterface, kubernetes_api):
         self._job_registry = job_registry
+        self._kubernetes_api = kubernetes_api
 
-    def __getattr__(self, name):
-        return getattr(self._job_registry, name)
+    def create_job(
+        self,
+        *,
+        process: dict,
+        user_id: str,
+        job_id: Optional[str] = None,
+        title: Optional[str] = None,
+        description: Optional[str] = None,
+        parent_id: Optional[str] = None,
+        api_version: Optional[str] = None,
+        job_options: Optional[dict] = None,
+    ) -> JobDict:
+        return self._job_registry.create_job(
+            process=process,
+            user_id=user_id,
+            job_id=job_id,
+            title=title,
+            description=description,
+            parent_id=parent_id,
+            api_version=api_version,
+            job_options=job_options,
+        )
 
-    # TODO: call k8s API for some methods
+    def get_job(self, job_id: str, *, user_id: Optional[str] = None) -> JobDict:
+        import kubernetes.client.exceptions
+
+        job = self._job_registry.get_job(job_id=job_id, user_id=user_id)
+        application_id = job.get("application_id")
+
+        if application_id:
+            try:
+                current_status = self._get_openeo_status(application_id)
+                self._job_registry.set_status(job_id, user_id=user_id, status=current_status)
+                job["status"] = current_status
+            except kubernetes.client.exceptions.ApiException as e:
+                if e.status == 404:
+                    # app is gone, retain old status
+                    _log.warning(f"App {application_id} not found, retaining status {job['status']}", exc_info=True)
+
+        return job
+
+    def _get_openeo_status(self, application_id: str) -> str:
+        # TODO: reduce code duplication with openeogeotrellis.job_tracker_v2.K8sStatusGetter?
+        from openeogeotrellis.integrations.kubernetes import K8S_SPARK_APP_STATE, k8s_state_to_openeo_job_status
+
+        metadata = self._kubernetes_api.get_namespaced_custom_object(
+            group="sparkoperator.k8s.io",
+            version="v1beta2",
+            # TODO: this namespace should come from job metadata, not config
+            namespace=ConfigParams().pod_namespace,
+            plural="sparkapplications",
+            name=application_id,
+        )
+
+        if not "status" in metadata:
+            return K8S_SPARK_APP_STATE.NEW
+
+        app_state = metadata["status"]["applicationState"]["state"]
+        return k8s_state_to_openeo_job_status(app_state)
+
+    def set_application_id(self, job_id: str, *, user_id: Optional[str] = None, application_id: str) -> None:
+        self._job_registry.set_application_id(job_id=job_id, user_id=user_id, application_id=application_id)

@@ -6,26 +6,39 @@ from openeo_driver.errors import JobNotFinishedException
 from openeo_driver.users import User
 
 from openeogeotrellis.backend import GeoPySparkBackendImplementation
-from openeogeotrellis.job_registry import InMemoryJobRegistry
+from openeogeotrellis.integrations.kubernetes import K8S_SPARK_APP_STATE, kube_client
+from openeogeotrellis.job_registry import InMemoryJobRegistry, EagerlyK8sTrackingJobRegistry
 from openeogeotrellis.testing import gps_config_overrides
 
 
-@pytest.fixture()
-def job_registry() -> InMemoryJobRegistry:
-    return InMemoryJobRegistry()  # TODO: replace with EagerlyK8sTrackingJobRegistry
+@pytest.fixture
+def in_memory_job_registry() -> InMemoryJobRegistry:
+    return InMemoryJobRegistry()
 
 
 @pytest.fixture
-def backend_implementation(job_registry) -> GeoPySparkBackendImplementation:
+def kubernetes_api():
+    # TODO: avoid duplicate load_incluster_config mock (see below)?
+    with mock.patch("kubernetes.config.load_incluster_config", return_value=mock.MagicMock()):
+        return kube_client("CustomObject")
+
+
+@pytest.fixture
+def tracking_job_registry(in_memory_job_registry, kubernetes_api) -> EagerlyK8sTrackingJobRegistry:
+    return EagerlyK8sTrackingJobRegistry(job_registry=in_memory_job_registry, kubernetes_api=kubernetes_api)
+
+
+@pytest.fixture
+def backend_implementation(tracking_job_registry) -> GeoPySparkBackendImplementation:
     return GeoPySparkBackendImplementation(
         use_zookeeper=False,
-        elastic_job_registry=job_registry,
+        elastic_job_registry=tracking_job_registry,
     )
 
 
 @pytest.fixture
 def kube_no_zk(monkeypatch):
-    with gps_config_overrides(setup_kerberos_auth=False, use_zk_job_registry=False):
+    with gps_config_overrides(setup_kerberos_auth=False, use_zk_job_registry=False, yunikorn_user_specific_queues=True):
         monkeypatch.setenv("KUBE", "TRUE")
         yield
 
@@ -34,7 +47,8 @@ def kube_no_zk(monkeypatch):
 @mock.patch("kubernetes.client.CoreV1Api.read_namespaced_pod", return_value=mock.MagicMock())
 @mock.patch("kubernetes.client.CustomObjectsApi.create_namespaced_custom_object", return_value=mock.MagicMock())
 @mock.patch(
-    "kubernetes.client.CustomObjectsApi.get_namespaced_custom_object", return_value={"status": "does not matter"}
+    "kubernetes.client.CustomObjectsApi.get_namespaced_custom_object",
+    return_value={"status": {"applicationState": {"state": K8S_SPARK_APP_STATE.RUNNING}}},
 )
 def test_basic(
     mock_get_spark_pod_status,  # mock arguments in reverse order of patch decorators, as per the docs
@@ -43,7 +57,8 @@ def test_basic(
     mock_k8s_config,
     kube_no_zk,
     backend_implementation,
-    job_registry,
+    in_memory_job_registry,
+    tracking_job_registry,
     mock_s3_bucket,
     fast_sleep,
 ):
@@ -77,7 +92,7 @@ def test_basic(
         job_options={"log_level": "debug"},
     )
 
-    job_id, job = next(iter(job_registry.db.items()))
+    job_id, job = next(iter(in_memory_job_registry.db.items()))
     assert job["status"] == JOB_STATUS.CREATED
     assert job.get("application_id") is None
 
@@ -87,14 +102,14 @@ def test_basic(
     assert mock_create_spark_pod.called
     assert mock_get_spark_pod_status.called
 
-    job_id, job = next(iter(job_registry.db.items()))
-    assert job["status"] == JOB_STATUS.CREATED  # there's no job tracker to update job status
+    job_id, job = next(iter(in_memory_job_registry.db.items()))
+    assert job["status"] == JOB_STATUS.CREATED
     assert job["application_id"].startswith("a-")
 
     # 3: poll job
     job_metadata = backend_implementation.batch_jobs.get_job_info(job_id, user.user_id)
     assert job_metadata.id == job_id
-    assert job_metadata.status == JOB_STATUS.CREATED
+    assert job_metadata.status == JOB_STATUS.RUNNING
 
     # 4: download job results
     with pytest.raises(JobNotFinishedException):
