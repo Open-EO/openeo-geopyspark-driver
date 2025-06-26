@@ -1036,6 +1036,8 @@ class EagerlyK8sTrackingInMemoryJobRegistry(InMemoryJobRegistry):
     Calls k8s API for application status eagerly, avoiding the need for a separate job_tracker process.
     """
 
+    STATUS_ONGOING = {JOB_STATUS.CREATED, JOB_STATUS.QUEUED, JOB_STATUS.RUNNING}
+
     def __init__(self, kubernetes_api):
         super().__init__()
         self._kubernetes_api = kubernetes_api
@@ -1044,8 +1046,12 @@ class EagerlyK8sTrackingInMemoryJobRegistry(InMemoryJobRegistry):
         import kubernetes.client.exceptions
 
         job = super().get_job(job_id=job_id, user_id=user_id)
-        application_id = job.get("application_id")
 
+        if job["status"] not in self.STATUS_ONGOING:
+            _log.debug(f"Job is done with status {job['status']}, skipping k8s status check")
+            return job
+
+        application_id = job.get("application_id")
         if application_id:
             try:
                 current_status = self._get_openeo_status(application_id)
@@ -1054,9 +1060,17 @@ class EagerlyK8sTrackingInMemoryJobRegistry(InMemoryJobRegistry):
                 super().set_status(job_id, user_id=user_id, status=current_status)
                 job["status"] = current_status
             except kubernetes.client.exceptions.ApiException as e:
-                if e.status == 404:
-                    # app is gone, retain old status
-                    _log.warning(f"App {application_id} not found, retaining status {job['status']}", exc_info=True)
+                if e.status == 404:  # app is gone
+                    if job["status"] in self.STATUS_ONGOING:
+                        # mark as done to avoid endless polling
+                        _log.warning(f"App {application_id} not found, marking job as done", exc_info=True)
+                        super().set_status(job_id, user_id=user_id, status=JOB_STATUS.ERROR)
+                        job["status"] = JOB_STATUS.ERROR
+                    else:
+                        # retain old (done) status
+                        _log.warning(f"App {application_id} not found, retaining status {job['status']}", exc_info=True)
+                else:
+                    raise
 
         return job
 
