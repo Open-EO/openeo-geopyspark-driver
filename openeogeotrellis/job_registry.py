@@ -1031,49 +1031,26 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
             )
 
 
-class EagerlyK8sTrackingJobRegistry(JobRegistryInterface):
+class EagerlyK8sTrackingInMemoryJobRegistry(InMemoryJobRegistry):
     """
     Calls k8s API for application status eagerly, avoiding the need for a separate job_tracker process.
     Delegates to underlying job registry for persistence.
     """
 
-    def __init__(self, job_registry: JobRegistryInterface, kubernetes_api):
-        self._job_registry = job_registry
+    def __init__(self, kubernetes_api):
+        super().__init__()
         self._kubernetes_api = kubernetes_api
-
-    def create_job(
-        self,
-        *,
-        process: dict,
-        user_id: str,
-        job_id: Optional[str] = None,
-        title: Optional[str] = None,
-        description: Optional[str] = None,
-        parent_id: Optional[str] = None,
-        api_version: Optional[str] = None,
-        job_options: Optional[dict] = None,
-    ) -> JobDict:
-        return self._job_registry.create_job(
-            process=process,
-            user_id=user_id,
-            job_id=job_id,
-            title=title,
-            description=description,
-            parent_id=parent_id,
-            api_version=api_version,
-            job_options=job_options,
-        )
 
     def get_job(self, job_id: str, *, user_id: Optional[str] = None) -> JobDict:
         import kubernetes.client.exceptions
 
-        job = self._job_registry.get_job(job_id=job_id, user_id=user_id)
+        job = super().get_job(job_id=job_id, user_id=user_id)
         application_id = job.get("application_id")
 
         if application_id:
             try:
                 current_status = self._get_openeo_status(application_id)
-                self._job_registry.set_status(job_id, user_id=user_id, status=current_status)
+                super().set_status(job_id, user_id=user_id, status=current_status)
                 job["status"] = current_status
             except kubernetes.client.exceptions.ApiException as e:
                 if e.status == 404:
@@ -1100,8 +1077,3 @@ class EagerlyK8sTrackingJobRegistry(JobRegistryInterface):
 
         app_state = metadata["status"]["applicationState"]["state"]
         return k8s_state_to_openeo_job_status(app_state)
-
-    def set_application_id(self, job_id: str, *, user_id: Optional[str] = None, application_id: str) -> None:
-        self._job_registry.set_application_id(job_id=job_id, user_id=user_id, application_id=application_id)
-
-    # TODO: implement remaining methods of JobRegistryInterface by delegating to self._job_registry

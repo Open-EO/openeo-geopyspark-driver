@@ -10,13 +10,8 @@ from openeo_driver.users import User
 
 from openeogeotrellis.backend import GeoPySparkBackendImplementation
 from openeogeotrellis.integrations.kubernetes import K8S_SPARK_APP_STATE, kube_client
-from openeogeotrellis.job_registry import InMemoryJobRegistry, EagerlyK8sTrackingJobRegistry
+from openeogeotrellis.job_registry import EagerlyK8sTrackingInMemoryJobRegistry
 from openeogeotrellis.testing import gps_config_overrides
-
-
-@pytest.fixture
-def in_memory_job_registry() -> InMemoryJobRegistry:
-    return InMemoryJobRegistry()
 
 
 @pytest.fixture
@@ -27,8 +22,8 @@ def kubernetes_api():
 
 
 @pytest.fixture
-def tracking_job_registry(in_memory_job_registry, kubernetes_api) -> EagerlyK8sTrackingJobRegistry:
-    return EagerlyK8sTrackingJobRegistry(job_registry=in_memory_job_registry, kubernetes_api=kubernetes_api)
+def tracking_job_registry(kubernetes_api) -> EagerlyK8sTrackingInMemoryJobRegistry:
+    return EagerlyK8sTrackingInMemoryJobRegistry(kubernetes_api=kubernetes_api)
 
 
 @pytest.fixture
@@ -54,8 +49,8 @@ def kube_no_zk(monkeypatch):
     side_effect=[
         {"status": {"applicationState": {"state": K8S_SPARK_APP_STATE.SUBMITTED}}},  # start job
         {"status": {"applicationState": {"state": K8S_SPARK_APP_STATE.RUNNING}}},  # poll job
-        {"status": {"applicationState": {"state": K8S_SPARK_APP_STATE.RUNNING}}},  # download job results (unfinished)
-        {"status": {"applicationState": {"state": K8S_SPARK_APP_STATE.COMPLETED}}},  # download job results (finished)
+        {"status": {"applicationState": {"state": K8S_SPARK_APP_STATE.RUNNING}}},  # get job results (unfinished)
+        {"status": {"applicationState": {"state": K8S_SPARK_APP_STATE.COMPLETED}}},  # get job results (finished)
     ],
 )
 def test_basic(
@@ -65,7 +60,6 @@ def test_basic(
     mock_k8s_config,
     kube_no_zk,
     backend_implementation,
-    in_memory_job_registry,
     tracking_job_registry,
     mock_s3_bucket,
     mock_s3_client,
@@ -101,7 +95,7 @@ def test_basic(
         job_options={"log_level": "debug"},
     )
 
-    job_id, job = next(iter(in_memory_job_registry.db.items()))
+    job_id, job = next(iter(tracking_job_registry.db.items()))
     assert job["status"] == JOB_STATUS.CREATED
     assert job.get("application_id") is None
 
@@ -111,7 +105,7 @@ def test_basic(
     assert mock_create_spark_pod.called
     assert mock_get_spark_pod_status.called
 
-    job_id, job = next(iter(in_memory_job_registry.db.items()))
+    job_id, job = next(iter(tracking_job_registry.db.items()))
     assert job["status"] == JOB_STATUS.CREATED
     assert job["application_id"].startswith("a-")
 
@@ -120,18 +114,17 @@ def test_basic(
     assert job_metadata.id == job_id
     assert job_metadata.status == JOB_STATUS.RUNNING
 
-    # 4: download job results (unfinished)
+    # 4: get job results (unfinished)
     with pytest.raises(JobNotFinishedException):
         backend_implementation.batch_jobs.get_result_assets(job_id, user.user_id)
 
-    # TODO: put job_metadata.json in s3://fake-bucket/batch_jobs/<job_id>/job_metadata.json
     mock_s3_client.put_object(
         Bucket=mock_s3_bucket.name,
         Key=f"batch_jobs/{job_id}/job_metadata.json",
         Body=json.dumps({"assets": {"openEO": {"href": "s3://bucket/path/to/openEO.tif"}}}).encode("utf-8"),
     )
 
-    # 5: download job results (finished)
+    # 5: get job results (finished)
     asset_key, asset = next(iter(backend_implementation.batch_jobs.get_result_assets(job_id, user.user_id).items()))
     assert asset_key == "openEO"
     assert asset == DictSubSet({"href": "s3://bucket/path/to/openEO.tif"})
