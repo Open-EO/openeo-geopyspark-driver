@@ -1034,7 +1034,6 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
 class EagerlyK8sTrackingInMemoryJobRegistry(InMemoryJobRegistry):
     """
     Calls k8s API for application status eagerly, avoiding the need for a separate job_tracker process.
-    Delegates to underlying job registry for persistence.
     """
 
     def __init__(self, kubernetes_api):
@@ -1050,6 +1049,8 @@ class EagerlyK8sTrackingInMemoryJobRegistry(InMemoryJobRegistry):
         if application_id:
             try:
                 current_status = self._get_openeo_status(application_id)
+                _log.debug(f"App {application_id} status: {current_status}")
+
                 super().set_status(job_id, user_id=user_id, status=current_status)
                 job["status"] = current_status
             except kubernetes.client.exceptions.ApiException as e:
