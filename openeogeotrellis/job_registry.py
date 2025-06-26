@@ -1103,3 +1103,5 @@ class EagerlyK8sTrackingJobRegistry(JobRegistryInterface):
 
     def set_application_id(self, job_id: str, *, user_id: Optional[str] = None, application_id: str) -> None:
         self._job_registry.set_application_id(job_id=job_id, user_id=user_id, application_id=application_id)
+
+    # TODO: implement remaining methods of JobRegistryInterface by delegating to self._job_registry

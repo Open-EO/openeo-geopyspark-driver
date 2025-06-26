@@ -1,7 +1,10 @@
+import json
+
 import pytest
 from mock import mock
 from openeo_driver.constants import JOB_STATUS
 from openeo_driver.errors import JobNotFinishedException
+from openeo_driver.testing import DictSubSet
 
 from openeo_driver.users import User
 
@@ -48,7 +51,12 @@ def kube_no_zk(monkeypatch):
 @mock.patch("kubernetes.client.CustomObjectsApi.create_namespaced_custom_object", return_value=mock.MagicMock())
 @mock.patch(
     "kubernetes.client.CustomObjectsApi.get_namespaced_custom_object",
-    return_value={"status": {"applicationState": {"state": K8S_SPARK_APP_STATE.RUNNING}}},
+    side_effect=[
+        {"status": {"applicationState": {"state": K8S_SPARK_APP_STATE.SUBMITTED}}},  # start job
+        {"status": {"applicationState": {"state": K8S_SPARK_APP_STATE.RUNNING}}},  # poll job
+        {"status": {"applicationState": {"state": K8S_SPARK_APP_STATE.RUNNING}}},  # download job results (unfinished)
+        {"status": {"applicationState": {"state": K8S_SPARK_APP_STATE.COMPLETED}}},  # download job results (finished)
+    ],
 )
 def test_basic(
     mock_get_spark_pod_status,  # mock arguments in reverse order of patch decorators, as per the docs
@@ -60,6 +68,7 @@ def test_basic(
     in_memory_job_registry,
     tracking_job_registry,
     mock_s3_bucket,
+    mock_s3_client,
     fast_sleep,
 ):
     user = User(user_id="test_user", internal_auth_data={"access_token": "4cc3ss_t0k3n"})
@@ -111,6 +120,18 @@ def test_basic(
     assert job_metadata.id == job_id
     assert job_metadata.status == JOB_STATUS.RUNNING
 
-    # 4: download job results
+    # 4: download job results (unfinished)
     with pytest.raises(JobNotFinishedException):
         backend_implementation.batch_jobs.get_result_assets(job_id, user.user_id)
+
+    # TODO: put job_metadata.json in s3://fake-bucket/batch_jobs/<job_id>/job_metadata.json
+    mock_s3_client.put_object(
+        Bucket=mock_s3_bucket.name,
+        Key=f"batch_jobs/{job_id}/job_metadata.json",
+        Body=json.dumps({"assets": {"openEO": {"href": "s3://bucket/path/to/openEO.tif"}}}).encode("utf-8"),
+    )
+
+    # 5: download job results (finished)
+    asset_key, asset = next(iter(backend_implementation.batch_jobs.get_result_assets(job_id, user.user_id).items()))
+    assert asset_key == "openEO"
+    assert asset == DictSubSet({"href": "s3://bucket/path/to/openEO.tif"})
