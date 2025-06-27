@@ -585,7 +585,6 @@ def zk_job_info_to_metadata(job_info: dict) -> BatchJobMetadata:
         costs=job_info.get("costs"),
         proj_shape=job_info.get("proj:shape"),
         proj_bbox=job_info.get("proj:bbox"),
-        results_metadata_uri=job_info.get("results_metadata_uri"),
     )
 
 
@@ -696,6 +695,11 @@ class InMemoryJobRegistry(JobRegistryInterface):
         results_metadata: Dict[str, Any],
     ) -> None:
         self._update(job_id=job_id, costs=costs, usage=usage, results_metadata=results_metadata)
+
+    def set_results_metadata_uri(
+        self, job_id: str, *, user_id: Optional[str] = None, results_metadata_uri: str
+    ) -> None:
+        self._update(job_id=job_id, results_metadata_uri=results_metadata_uri)
 
     def list_user_jobs(
         self,

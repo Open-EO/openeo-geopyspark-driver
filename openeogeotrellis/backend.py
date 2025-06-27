@@ -2694,13 +2694,15 @@ class GpsBatchJobs(backend.BatchJobs):
 
         :return: A mapping between a filename and a dict containing information about that file.
         """
-        job_info = self.get_job_info(job_id=job_id, user_id=user_id)
-        if job_info.status != JOB_STATUS.FINISHED:
+        with self._double_job_registry as registry:
+            job_dict = registry.get_job(job_id=job_id, user_id=user_id)
+
+        if job_dict["status"] != JOB_STATUS.FINISHED:
             raise JobNotFinishedException
 
         job_dir = self.get_job_output_dir(job_id=job_id)
 
-        results_metadata = self._load_results_metadata_from_uri(job_info.results_metadata_uri)
+        results_metadata = self._load_results_metadata_from_uri(job_dict.get("results_metadata_uri"))  # TODO: expose a getter?
         if not results_metadata:
             try:
                 logger.debug(f"Loading results metadata from job registry")
