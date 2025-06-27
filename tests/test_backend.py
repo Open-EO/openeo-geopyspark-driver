@@ -9,6 +9,7 @@ import pytest
 import shapely
 from openeo.utils.version import ComparableVersion
 from openeo_driver.config.load import ConfigGetter
+from openeo_driver.constants import JOB_STATUS
 from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.delayed_vector import DelayedVector
@@ -731,6 +732,8 @@ def test_k8s_sparkapplication_dict_propagatable_web_app_driver_envars(backend_co
 
 
 class TestGpsBatchJobs:
+    _dummy_user = User(user_id="test_user", internal_auth_data={"access_token": "4cc3ss_t0k3n"})
+
     @pytest.fixture
     def job_registry(self) -> InMemoryJobRegistry:
         return InMemoryJobRegistry()
@@ -769,9 +772,52 @@ class TestGpsBatchJobs:
         backend_implementation,
         job_registry,
         mock_s3_bucket,
+        fast_sleep,
     ):
-        user = User(user_id="test_user", internal_auth_data={"access_token": "4cc3ss_t0k3n"})
+        self._create_dummy_batch_job(backend_implementation, self._dummy_user)
 
+        job_id, job = next(iter(job_registry.db.items()))
+        assert job.get("results_metadata_uri") is None
+
+        backend_implementation.batch_jobs.start_job(job_id, self._dummy_user)
+        assert mock_create_spark_pod.called_once
+        assert job.get("results_metadata_uri") == f"s3://{mock_s3_bucket.name}/batch_jobs/{job_id}/job_metadata.json"
+
+        # TODO: check why this test takes so long
+
+    def test_get_result_assets_reads_from_results_metadata_uri(
+        self,
+        kube_no_zk,
+        backend_implementation,
+        job_registry,
+        mock_s3_bucket,
+    ):
+        self._create_dummy_batch_job(backend_implementation, self._dummy_user)
+
+        job_id, job = next(iter(job_registry.db.items()))
+
+        job_metadata_json_key = f"batch_jobs/{job_id}/job_metadata.json"
+        mock_s3_bucket.put_object(
+            Key=job_metadata_json_key,
+            Body=b'{"assets": {"openEO": {"href": "s3://bucket/path/to/openEO.tif"}}}',
+        )
+        job["status"] = JOB_STATUS.FINISHED
+        job["results_metadata_uri"] = f"s3://{mock_s3_bucket.name}/{job_metadata_json_key}"
+        # TODO: test a file: URI as well
+
+        asset_key, asset = next(
+            iter(
+                backend_implementation.batch_jobs.get_result_assets(
+                    job_id=job_id, user_id=self._dummy_user.user_id
+                ).items()
+            )
+        )
+
+        assert asset_key == "openEO"
+        assert asset["href"] == "s3://bucket/path/to/openEO.tif"
+
+    @staticmethod
+    def _create_dummy_batch_job(backend_implementation, user):
         backend_implementation.batch_jobs.create_job(
             user=user,
             process={
@@ -786,13 +832,3 @@ class TestGpsBatchJobs:
             metadata={},
             job_options={"log_level": "info"},
         )
-
-        job_id, job = next(iter(job_registry.db.items()))
-        assert job.get("results_metadata_uri") is None
-
-        backend_implementation.batch_jobs.start_job(job_id, user)
-        assert mock_create_spark_pod.called_once
-        assert job.get("results_metadata_uri") == f"s3://openeo-fake-bucketname/batch_jobs/{job_id}/job_metadata.json"
-
-    def test_get_result_assets(self):
-        raise NotImplementedError("check if the results_metadata_uri (s3://...) is correctly read")
