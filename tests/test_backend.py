@@ -780,7 +780,7 @@ class TestGpsBatchJobs:
         assert job.get("results_metadata_uri") is None
 
         backend_implementation.batch_jobs.start_job(job_id, self._dummy_user)
-        assert mock_create_spark_pod.called_once
+        mock_create_spark_pod.assert_called_once()
         assert job.get("results_metadata_uri") == f"s3://{mock_s3_bucket.name}/batch_jobs/{job_id}/job_metadata.json"
 
         # TODO: check why this test takes so long
