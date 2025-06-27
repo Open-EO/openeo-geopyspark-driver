@@ -62,7 +62,6 @@ def test_basic(
     backend_implementation,
     tracking_job_registry,
     mock_s3_bucket,
-    mock_s3_client,
     fast_sleep,
 ):
     user = User(user_id="test_user", internal_auth_data={"access_token": "4cc3ss_t0k3n"})
@@ -118,8 +117,7 @@ def test_basic(
     with pytest.raises(JobNotFinishedException):
         backend_implementation.batch_jobs.get_result_assets(job_id, user.user_id)
 
-    mock_s3_client.put_object(
-        Bucket=mock_s3_bucket.name,
+    mock_s3_bucket.put_object(
         Key=f"batch_jobs/{job_id}/job_metadata.json",
         Body=json.dumps({"assets": {"openEO": {"href": "s3://bucket/path/to/openEO.tif"}}}).encode("utf-8"),
     )
