@@ -32,6 +32,7 @@ without compromising stable operations.
 - Harden IPA lookup of proxy user in YARN batch job submit code path ([#1261](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1261))
 - Make sure presigned URLs against S3 proxy also allow HEAD requests [#1265](https://github.com/Open-EO/openeo-geopyspark-driver/pull/1265)
 - Work around 413 "Payload Too Large" response from EJR upon job results metadata update ([#1200](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1200))
+- `resample_cube_spatial` avoid going out of memory when resampling from lower to much higher resolution ([Open-EO/openeo-geotrellis-extensions#478](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/478))
 
 ## 0.65.0
 
