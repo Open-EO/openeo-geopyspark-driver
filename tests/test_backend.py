@@ -785,7 +785,7 @@ class TestGpsBatchJobs:
 
         # TODO: check why this test takes so long
 
-    def test_get_result_assets_reads_from_results_metadata_uri(
+    def test_get_result_assets_reads_from_s3_results_metadata_uri(
         self,
         kube_no_zk,
         backend_implementation,
@@ -815,6 +815,43 @@ class TestGpsBatchJobs:
 
         assert asset_key == "openEO"
         assert asset["href"] == "s3://bucket/path/to/openEO.tif"
+
+    @pytest.mark.parametrize(
+        "results_metadata_uri_prefix",
+        [
+            "file:",
+            "file:/",
+            "file://",
+        ],
+    )
+    def test_get_result_assets_reads_from_file_results_metadata_uri(
+        self,
+        kube_no_zk,
+        backend_implementation,
+        job_registry,
+        tmp_path,
+        results_metadata_uri_prefix,
+    ):
+        self._create_dummy_batch_job(backend_implementation, self._dummy_user)
+
+        job_id, job = next(iter(job_registry.db.items()))
+
+        job_metadata_json_path = tmp_path / "job_metadata.json"
+        with open(job_metadata_json_path, "w") as f:
+            f.write('{"assets": {"openEO": {"href": "file:///path/to/openEO.tif"}}}')
+        job["status"] = JOB_STATUS.FINISHED
+        job["results_metadata_uri"] = f"{results_metadata_uri_prefix}{job_metadata_json_path}"
+
+        asset_key, asset = next(
+            iter(
+                backend_implementation.batch_jobs.get_result_assets(
+                    job_id=job_id, user_id=self._dummy_user.user_id
+                ).items()
+            )
+        )
+
+        assert asset_key == "openEO"
+        assert asset["href"] == "file:///path/to/openEO.tif"
 
     @staticmethod
     def _create_dummy_batch_job(backend_implementation, user):

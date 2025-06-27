@@ -2243,7 +2243,9 @@ class GpsBatchJobs(backend.BatchJobs):
             with self._double_job_registry as dbl_registry:
                 dbl_registry.set_application_id(job_id=job_id, user_id=user_id, application_id=application_id)
                 dbl_registry.set_results_metadata_uri(
-                    job_id=job_id, user_id=user_id, results_metadata_uri=f"file:{job_work_dir}/{JOB_METADATA_FILENAME}"
+                    job_id=job_id,
+                    user_id=user_id,
+                    results_metadata_uri=f"file://{job_work_dir}/{JOB_METADATA_FILENAME}",
                 )
                 dbl_registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.QUEUED)
 
