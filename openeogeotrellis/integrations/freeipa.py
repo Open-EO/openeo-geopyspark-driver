@@ -21,15 +21,17 @@ but here are some references that might help:
 """
 from __future__ import annotations
 
+import base64
 import configparser
+import contextlib
 import logging
 import os
+import sys
+import tempfile
 from pathlib import Path
-from typing import Union, Optional, Iterable, Mapping
+from typing import Iterable, Iterator, Mapping, Optional, Union
 
 import requests
-import sys
-
 from openeo_driver.utils import generate_unique_id, smart_bool
 
 try:
@@ -249,6 +251,22 @@ def get_verify_tls_from_env(*, env_var: str = "OPENEO_FREEIPA_VERIFY_TLS") -> Un
         return value
     else:
         return smart_bool(value)
+
+
+@contextlib.contextmanager
+def temp_keytab_from_env(env_var: str = "OPENEO_FREEIPA_KEYTAB_BASE64") -> Iterator[str]:
+    """
+    Setup temporary keytab context from env var (with base64 encoded keytab content)
+
+    :return: path to keytab
+    """
+    with tempfile.NamedTemporaryFile(mode="wb", prefix="kt-openeo-ipa-", delete=True) as temp_keytab:
+        keytab_base64 = os.environ.get(env_var, "")
+        _log.info(f"Setting up temporary keytab {temp_keytab.name!r} from {env_var!r} ({len(keytab_base64)=})")
+        temp_keytab.write(base64.b64decode(keytab_base64))
+        temp_keytab.flush()
+        yield temp_keytab.name
+    _log.debug(f"Temporary keytab {temp_keytab.name!r} still exists: {os.path.exists(temp_keytab.name)!r}")
 
 
 def main():

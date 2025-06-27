@@ -297,3 +297,6 @@ class GpsBackendConfig(OpenEoBackendConfig):
     A mapping of region names to proxy endpoints
     """
     s3_region_proxy_endpoints: Dict[str, str] = attrs.Factory(dict)
+
+    # FreeIPA server to use (for user lookup/creation)
+    freeipa_server: Optional[str] = os.environ.get("OPENEO_FREEIPA_SERVER", None)

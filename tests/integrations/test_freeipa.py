@@ -1,4 +1,6 @@
+import base64
 import textwrap
+from pathlib import Path
 from typing import List, Optional
 
 import dirty_equals
@@ -8,6 +10,7 @@ from openeogeotrellis.integrations.freeipa import (
     FreeIpaClient,
     get_freeipa_server_from_env,
     get_verify_tls_from_env,
+    temp_keytab_from_env,
 )
 
 
@@ -184,3 +187,16 @@ def test_guess_verify_tls(monkeypatch):
     # Custom CA certificate file
     monkeypatch.setenv("OPENEO_FREEIPA_VERIFY_TLS", "/etc/ipa/ca.crt")
     assert get_verify_tls_from_env() == "/etc/ipa/ca.crt"
+
+
+def test_temp_keytab_from_env(monkeypatch):
+    env_var = "OPENEO_FREEIPA_KEYTAB_BASE64"
+    env_val = base64.b64encode("Ola señor".encode("utf8")).decode("ascii")
+    monkeypatch.setenv(env_var, env_val)
+
+    with temp_keytab_from_env(env_var=env_var) as keytab_path:
+        path = Path(keytab_path)
+        assert path.exists() and path.is_file()
+        assert path.read_text(encoding="utf8") == "Ola señor"
+
+    assert not path.exists()

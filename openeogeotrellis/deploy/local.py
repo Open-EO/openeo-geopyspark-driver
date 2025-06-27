@@ -39,6 +39,9 @@ def setup_local_spark(log_dir: Path = Path.cwd(), verbosity=0):
     py4j = glob(os.path.join(spark_python, "lib", "py4j-*.zip"))[0]
     sys.path[:0] = [spark_python, py4j]
     _log.debug("sys.path: {p!r}".format(p=sys.path))
+    from openeogeotrellis import deploy
+
+    deploy.load_custom_processes()
     try:
         # TODO: Find better way to support local_batch_job and @non_standard_process at the same time
         sys.path.append(str(Path(__file__).parent))

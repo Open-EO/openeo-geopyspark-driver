@@ -1,3 +1,4 @@
+import dataclasses
 import logging
 from dataclasses import dataclass, field, fields
 from typing import Any, Dict, List
@@ -231,15 +232,25 @@ class JobOptions:
         List all available options and their descriptions, following the schema defined by openEO parameters extension
         https://github.com/Open-EO/openeo-api/blob/draft/extensions/processing-parameters/openapi.yaml
         """
+
+        def get_default(field):
+            if field.default_factory != dataclasses.MISSING:
+                return field.default_factory()
+            elif field.default != dataclasses.MISSING:
+                return field.default
+            else:
+                return None
+
         options = []
         for field in fields(cls):
             if public_only and field.metadata.get("public", False):
                 continue
+            default = get_default(field)
             options.append({
                 "name": field.metadata.get("name", field.name.replace("_","-")),
                 "description": field.metadata.get("description", ""),
                 "optional": True,
-                "default": field.default,
+                "default": default,
                 "schema": cls.python_type_to_json_schema(field.type)
             })
         return options

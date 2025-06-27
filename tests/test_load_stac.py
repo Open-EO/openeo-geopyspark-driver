@@ -14,7 +14,15 @@ from openeo_driver.errors import OpenEOApiException
 from openeo_driver.util.date_math import now_utc
 from openeo_driver.utils import EvalEnv
 
-from openeogeotrellis.load_stac import extract_own_job_info, load_stac, _StacMetadataParser
+from openeogeotrellis.load_stac import (
+    extract_own_job_info,
+    load_stac,
+    _StacMetadataParser,
+    _is_supported_raster_mime_type,
+    _is_band_asset,
+    _supports_item_search,
+    _get_proj_metadata,
+)
 
 
 @pytest.mark.parametrize("url, user_id, job_info_id",
@@ -642,3 +650,70 @@ class TestStacMetadataParser:
     def test_bands_from_stac_asset(self, data, expected):
         asset = pystac.Asset.from_dict(data)
         assert _StacMetadataParser().bands_from_stac_asset(asset=asset).band_names() == expected
+
+
+def test_is_supported_raster_mime_type():
+    assert _is_supported_raster_mime_type("image/tiff; application=geotiff")
+    assert _is_supported_raster_mime_type("image/tiff; application=geotiff; profile=cloud-optimized")
+    assert _is_supported_raster_mime_type("image/jp2")
+    assert _is_supported_raster_mime_type("application/x-hdf5")
+    assert _is_supported_raster_mime_type("application/x-hdf")
+    assert not _is_supported_raster_mime_type("text/html")
+
+
+@pytest.mark.parametrize(
+    ["data", "expected"],
+    [
+        ({"href": "https://stac.test/asset.tif"}, False),
+        ({"href": "https://stac.test/asset.tif", "roles": ["data"]}, True),
+        ({"href": "https://stac.test/asset.tif", "roles": ["data"], "type": "image/tiff; application=geotiff"}, True),
+        ({"href": "https://stac.test/asset.tif", "type": "image/tiff; application=geotiff"}, False),
+        ({"href": "https://stac.test/asset.html", "roles": ["data"], "type": "text/html"}, False),
+        ({"href": "https://stac.test/asset.png", "roles": ["thumbnail"]}, False),
+        ({"href": "https://stac.test/asset.png", "bands": [{"name": "B02"}]}, True),
+        ({"href": "https://stac.test/asset.png", "eo:bands": [{"name": "B02"}]}, True),
+    ],
+)
+def test_is_band_asset(data, expected):
+    asset = pystac.Asset.from_dict(data)
+    assert _is_band_asset(asset) == expected
+
+
+@pytest.mark.parametrize(
+    ["catalog", "expected"],
+    [
+        (None, False),
+        (
+            pystac.Catalog(
+                id="catalog123",
+                description="Test Catalog",
+                extra_fields={"conformsTo": ["https://api.stacspec.org/v1.0.0/item-search"]},
+            ),
+            True,
+        ),
+    ],
+)
+def test_supports_item_search(tmp_path, catalog, expected):
+    links = []
+    if catalog:
+        catalog_path = tmp_path / "catalog.json"
+        pystac.write_file(catalog, dest_href=catalog_path)
+        links.append({"rel": "root", "href": str(catalog_path)})
+
+    collection = pystac.Collection.from_dict(StacDummyBuilder.collection(links=links))
+    assert _supports_item_search(collection) == expected
+
+
+def test_get_proj_metadata_minimal():
+    asset = pystac.Asset(href="https://example.com/asset.tif")
+    item = pystac.Item.from_dict(StacDummyBuilder.item())
+    assert _get_proj_metadata(asset, item=item) == (None, None, None)
+
+
+def test_get_proj_metadata_from_asset():
+    asset = pystac.Asset(
+        href="https://example.com/asset.tif",
+        extra_fields={"proj:epsg": 32631, "proj:shape": [12, 34], "proj:bbox": [12, 34, 56, 78]},
+    )
+    item = pystac.Item.from_dict(StacDummyBuilder.item())
+    assert _get_proj_metadata(asset, item=item) == (32631, (12.0, 34.0, 56.0, 78.0), (12, 34))

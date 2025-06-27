@@ -1,3 +1,5 @@
+import re
+
 import datetime as dt
 import json
 import time
@@ -106,102 +108,6 @@ def load_stac(
 
         return intersects_temporally() and intersects_spatially()
 
-    def supports_item_search(coll: pystac.Collection) -> bool:
-        # TODO: use pystac_client instead?
-        conforms_to = coll.get_root().extra_fields.get("conformsTo", [])
-        return any(conformance_class.endswith("/item-search") for conformance_class in conforms_to)
-
-    def is_supported_raster_mime_type(mime_type: str) -> bool:
-        mime_type = mime_type.lower()
-        # https://github.com/radiantearth/stac-spec/blob/master/best-practices.md#common-media-types-in-stac
-        return (
-            mime_type.startswith("image/tiff")  # No 'image/tif', only double 'f' in spec
-            or mime_type.startswith("image/vnd.stac.geotiff")
-            or mime_type.startswith("image/jp2")
-            or mime_type.startswith("image/png")
-            or mime_type.startswith("image/jpeg")
-            or mime_type.startswith("application/x-hdf")  # matches hdf5 and hdf
-            or mime_type.startswith("application/x-netcdf")
-            or mime_type.startswith("application/netcdf")
-        )
-
-    def is_band_asset(asset: pystac.Asset) -> bool:
-        # TODO: what does this function actually detect?
-        #       Name seems to suggest that it's about having necessary band metadata (e.g. a band name)
-        #       but implementation also seems to be happy with just being loadable as raster data in some sense.
-
-        # Skip unsupported media types (if known)
-        if asset.media_type and not is_supported_raster_mime_type(asset.media_type):
-            return False
-
-        # Decide based on role (if known)
-        if asset.roles is not None:
-            roles_with_bands = {
-                "data",
-                "data-mask",
-                "snow-ice",
-                "land-water",
-                "water-mask",
-            }
-            return bool(roles_with_bands.intersection(asset.roles))
-
-        # Fallback based on presence of any band metadata
-        return (
-            "eo:bands" in asset.extra_fields
-            or "bands" in asset.extra_fields  # TODO: built-in "bands" support seems to be scheduled for pystac V2
-        )
-
-    def get_band_names(item: pystac.Item, asset: pystac.Asset) -> List[str]:
-        # TODO: this whole function can be replaced with
-        #       _StacMetadataParser().bands_from_stac_asset(asset=asset).band_names()
-        #       once the legacy eo:bands integer index support can be dropped
-        #       See https://github.com/Open-EO/openeo-geopyspark-driver/issues/619
-        def get_band_name(eo_band) -> str:
-            if isinstance(eo_band, dict):
-                return eo_band["name"]
-
-            # can also be an index into a list of bands elsewhere.
-            logger.warning(
-                "load_stac-get_band_names: eo:bands with integer indices. This is deprecated and support will be removed in the future."
-            )
-            assert isinstance(eo_band, int)
-            eo_band_index = eo_band
-
-            eo_bands_location = (
-                item.properties if "eo:bands" in item.properties else item.get_collection().summaries.to_dict()
-            )
-            return get_band_name(eo_bands_location["eo:bands"][eo_band_index])
-
-        if "eo:bands" in asset.extra_fields:
-            # TODO: eliminate this special case for that deprecated integer index hack above
-            return [get_band_name(eo_band) for eo_band in asset.extra_fields["eo:bands"]]
-
-        return _StacMetadataParser().bands_from_stac_asset(asset=asset).band_names()
-
-    def get_proj_metadata(itm: pystac.Item, asst: pystac.Asset) -> (Optional[int],
-                                                                    Optional[Tuple[float, float, float, float]],
-                                                                    Optional[Tuple[int, int]]):
-        """Returns EPSG code, bbox (in that EPSG) and number of pixels (rows, cols), if available."""
-
-        def to_epsg(proj_code: str) -> Optional[int]:
-            prefix = "EPSG:"
-            return int(proj_code[len(prefix):]) if proj_code.upper().startswith(prefix) else None
-
-        code = (
-            asst.extra_fields.get("proj:code") or itm.properties.get("proj:code") if apply_lcfm_improvements
-            else None
-        )
-        epsg = map_optional(to_epsg, code) or asst.extra_fields.get("proj:epsg") or itm.properties.get("proj:epsg")
-        bbox = asst.extra_fields.get("proj:bbox") or itm.properties.get("proj:bbox")
-
-        if not bbox and epsg == 4326:
-            bbox = itm.bbox
-
-        shape = asst.extra_fields.get("proj:shape") or itm.properties.get("proj:shape")
-
-        return (epsg,
-                tuple(map(float, bbox)) if bbox else None,
-                tuple(shape) if shape else None)
 
     def get_pixel_value_offset(itm: pystac.Item, asst: pystac.Asset) -> float:
         raster_scale = asst.extra_fields.get("raster:scale", itm.properties.get("raster:scale", 1.0))
@@ -323,7 +229,7 @@ def load_stac(
                 item = stac_object
                 band_names = _StacMetadataParser().bands_from_stac_item(item=item).band_names()
                 intersecting_items = [item] if intersects_spatiotemporally(item) else []
-            elif isinstance(stac_object, pystac.Collection) and supports_item_search(stac_object):
+            elif isinstance(stac_object, pystac.Collection) and _supports_item_search(stac_object):
                 collection = stac_object
                 netcdf_with_time_dimension = contains_netcdf_with_time_dimension(collection)
                 collection_id = collection.id
@@ -487,7 +393,7 @@ def load_stac(
                 end_datetime = item_end_datetime
 
             band_assets = {
-                asset_id: asset for asset_id, asset in dict(sorted(itm.assets.items())).items() if is_band_asset(asset)
+                asset_id: asset for asset_id, asset in dict(sorted(itm.assets.items())).items() if _is_band_asset(asset)
             }
 
             builder = (jvm.org.openeo.opensearch.OpenSearchResponses.featureBuilder()
@@ -505,9 +411,11 @@ def load_stac(
                     kv[0],
                 ),
             ):
-                proj_epsg, proj_bbox, proj_shape = get_proj_metadata(itm, asset)
+                proj_epsg, proj_bbox, proj_shape = _get_proj_metadata(
+                    asset=asset, item=itm, apply_lcfm_improvements=apply_lcfm_improvements
+                )
 
-                asset_band_names_from_metadata = get_band_names(item=itm, asset=asset)
+                asset_band_names_from_metadata = _get_band_names(item=itm, asset=asset)
                 logger.info(f"from intersecting_items: {itm.id=} {asset_id=} {asset_band_names_from_metadata=}")
 
                 if not load_params.bands:
@@ -810,6 +718,112 @@ def load_stac(
               range(0, pyramid.size())}
 
     return GeopysparkDataCube(pyramid=gps.Pyramid(levels), metadata=metadata)
+
+
+def _is_supported_raster_mime_type(mime_type: str) -> bool:
+    mime_type = mime_type.lower()
+    # https://github.com/radiantearth/stac-spec/blob/master/best-practices.md#common-media-types-in-stac
+    return (
+        mime_type.startswith("image/tiff")  # No 'image/tif', only double 'f' in spec
+        or mime_type.startswith("image/vnd.stac.geotiff")
+        or mime_type.startswith("image/jp2")
+        or mime_type.startswith("image/png")
+        or mime_type.startswith("image/jpeg")
+        or mime_type.startswith("application/x-hdf")  # matches hdf5 and hdf
+        or mime_type.startswith("application/x-netcdf")
+        or mime_type.startswith("application/netcdf")
+    )
+
+
+def _is_band_asset(asset: pystac.Asset) -> bool:
+    # TODO: what does this function actually detect?
+    #       Name seems to suggest that it's about having necessary band metadata (e.g. a band name)
+    #       but implementation also seems to be happy with just being loadable as raster data in some sense.
+
+    # Skip unsupported media types (if known)
+    if asset.media_type and not _is_supported_raster_mime_type(asset.media_type):
+        return False
+
+    # Decide based on role (if known)
+    if asset.roles is not None:
+        roles_with_bands = {
+            "data",
+            "data-mask",
+            "snow-ice",
+            "land-water",
+            "water-mask",
+        }
+        return bool(roles_with_bands.intersection(asset.roles))
+
+    # Fallback based on presence of any band metadata
+    return (
+        "eo:bands" in asset.extra_fields
+        or "bands" in asset.extra_fields  # TODO: built-in "bands" support seems to be scheduled for pystac V2
+    )
+
+
+def _get_band_names(*, item: pystac.Item, asset: pystac.Asset) -> List[str]:
+    # TODO: this whole function can be replaced with
+    #       _StacMetadataParser().bands_from_stac_asset(asset=asset).band_names()
+    #       once the legacy eo:bands integer index support can be dropped
+    #       See https://github.com/Open-EO/openeo-geopyspark-driver/issues/619
+    def get_band_name(eo_band) -> str:
+        if isinstance(eo_band, dict):
+            return eo_band["name"]
+
+        # can also be an index into a list of bands elsewhere.
+        logger.warning(
+            "load_stac-get_band_names: eo:bands with integer indices. This is deprecated and support will be removed in the future."
+        )
+        assert isinstance(eo_band, int)
+        eo_band_index = eo_band
+
+        eo_bands_location = (
+            item.properties if "eo:bands" in item.properties else item.get_collection().summaries.to_dict()
+        )
+        return get_band_name(eo_bands_location["eo:bands"][eo_band_index])
+
+    if "eo:bands" in asset.extra_fields:
+        # TODO: eliminate this special case for that deprecated integer index hack above
+        return [get_band_name(eo_band) for eo_band in asset.extra_fields["eo:bands"]]
+
+    return _StacMetadataParser().bands_from_stac_asset(asset=asset).band_names()
+
+
+def _get_proj_metadata(
+    asset: pystac.Asset, *, item: pystac.Item, apply_lcfm_improvements: bool = False
+) -> Tuple[Optional[int], Optional[Tuple[float, float, float, float]], Optional[Tuple[int, int]]]:
+    """Returns EPSG code, bbox (in that EPSG) and number of pixels (rows, cols), if available."""
+    # TODO: possible to avoid item argument and just use asset.owner?
+    # TODO: why does this depend on "apply_lcfm_improvements"?
+
+    def to_epsg(proj_code: str) -> Optional[int]:
+        prefix = "EPSG:"
+        return int(proj_code[len(prefix) :]) if proj_code.upper().startswith(prefix) else None
+
+    code = asset.extra_fields.get("proj:code") or item.properties.get("proj:code") if apply_lcfm_improvements else None
+    epsg = map_optional(to_epsg, code) or asset.extra_fields.get("proj:epsg") or item.properties.get("proj:epsg")
+    bbox = asset.extra_fields.get("proj:bbox") or item.properties.get("proj:bbox")
+
+    if not bbox and epsg == 4326:
+        bbox = item.bbox
+
+    shape = asset.extra_fields.get("proj:shape") or item.properties.get("proj:shape")
+
+    return (
+        epsg,
+        tuple(map(float, bbox)) if bbox else None,
+        tuple(shape) if shape else None,
+    )
+
+
+def _supports_item_search(collection: pystac.Collection) -> bool:
+    # TODO: use pystac_client instead?
+    catalog = collection.get_root()
+    if catalog:
+        conforms_to = catalog.extra_fields.get("conformsTo", [])
+        return any(re.match(r"^https://api\.stacspec\.org/v1\..*/item-search$", c) for c in conforms_to)
+    return False
 
 
 def contains_netcdf_with_time_dimension(collection):

@@ -1,3 +1,4 @@
+import json
 from dataclasses import fields
 
 import pytest
@@ -89,6 +90,9 @@ def test_list_options():
 
 
 def assert_listing_shared_options(options):
+    #has to be json serializable
+    json.dumps(options)
+
     assert isinstance(options, list)
     assert any(option["name"] == "driver-memory" for option in options)
     assert any(option["name"] == "executor-memory" for option in options)

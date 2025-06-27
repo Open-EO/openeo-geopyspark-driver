@@ -61,7 +61,7 @@ setup(
     tests_require=tests_require,
     install_requires=[
         "openeo>=0.42.0.dev",
-        "openeo_driver>=0.135.0a3.dev",
+        "openeo_driver>=0.135.0a4.dev",
         'pyspark==3.5.3; python_version>="3.8"',
         'pyspark>=2.3.1,<2.4.0; python_version<"3.8"',
         'geopyspark_openeo==0.4.3.post1',
@@ -89,7 +89,7 @@ setup(
         "netcdf4",
         "shapely>=1.8.5",  # TODO #1161 bump requirement to at least 2.0.0 for simplicity (once compatibility is verified on all deployments)
         'epsel~=1.0.0',
-        'numbagg==0.1',
+        'numbagg==0.1; python_version<"3.9"', #leave it to user environment to include this for newer pythons
         'Bottleneck~=1.3.2; python_version<"3.9"',
         'Bottleneck~=1.4.0; python_version>="3.9"',
         "python-json-logger~=2.0",  # Avoid breaking change in 3.1.0 https://github.com/nhairs/python-json-logger/issues/29
