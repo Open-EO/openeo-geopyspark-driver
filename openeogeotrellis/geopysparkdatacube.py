@@ -1331,6 +1331,24 @@ class GeopysparkDataCube(DriverDataCube):
 
         max_level:TiledRasterLayer = self.get_max_level()
         target_max_level:TiledRasterLayer = target.pyramid.levels[target.pyramid.max_zoom]
+
+        target_resolution = target.get_cellsize()
+        target_crs = target.metadata.get_layer_crs()
+
+        proposed_partition_count = self._compute_proposed_partition_count(target_crs, target_resolution)
+        if (  # Only repartition when there would be significantly more
+                max_level.getNumPartitions() * 2 <= proposed_partition_count
+                and max_level.layer_type == gps.LayerType.SPACETIME):
+            if proposed_partition_count < 10000:
+                _log.info(
+                    f"Repartitioning datacube with {max_level.getNumPartitions()} partitions to {proposed_partition_count} before resample_cube_spatial."
+                )
+                #max_level = max_level.repartition(int(proposed_partition_count))
+            else:
+                _log.warning(
+                    f"resample_spatial proposed new partition count {proposed_partition_count} is too high, not repartitioning."
+                )
+
         if self.pyramid.layer_type == gps.LayerType.SPACETIME and target.pyramid.layer_type == gps.LayerType.SPACETIME:
             level_rdd_tuple = get_jvm().org.openeo.geotrellis.OpenEOProcesses().resampleCubeSpatial(max_level.srdd.rdd(),target_max_level.srdd.rdd(),resample_method)
         elif self.pyramid.layer_type == gps.LayerType.SPATIAL:
@@ -1403,37 +1421,10 @@ class GeopysparkDataCube(DriverDataCube):
             if newLayout == None:
                 return self
 
-            cellsize_before = self.get_cellsize()
             if not isinstance(resolution, (list, tuple)):
                 resolution = (resolution, resolution)
 
-            if projection is not None:
-                # reproject to target CRS to make meaningful comparisons
-                e = max_level.layer_metadata.layout_definition.extent
-                e = GeopysparkDataCube._reproject_extent(
-                    cube_crs, "EPSG:4326", e.xmin, e.ymin, e.xmax, e.ymax
-                )
-                extent_dict = {"west": e.xmin, "east": e.xmax,
-                               "south": e.ymin, "north": e.ymax,
-                               "crs": "EPSG:4326"}
-
-                cellsize_before = reproject_cellsize(extent_dict, cellsize_before, cube_crs, projection)
-
-            estimated_size_in_pixels_tup = self.calculate_layer_size_in_pixels()
-
-            resolution_factor = (
-                cellsize_before[0] / resolution[0],
-                cellsize_before[1] / resolution[1]
-            )
-
-            proposed_partition_count_tup = (
-                estimated_size_in_pixels_tup[0] * resolution_factor[0] / currentTileLayout.tileCols,
-                estimated_size_in_pixels_tup[1] * resolution_factor[1] / currentTileLayout.tileRows
-            )
-            # Could also use "currentTileLayout.layoutCols * resolution_factor[0]", but that would be less accurate.
-            # The repartitioning only considers the resolution change. It considers that the partitioning took
-            # already into account band count and the pixel type, sparse/not, ...
-            proposed_partition_count = int(proposed_partition_count_tup[0] * proposed_partition_count_tup[1])
+            proposed_partition_count = self._compute_proposed_partition_count(projection, resolution)
             if (  # Only repartition when there would be significantly more
                     max_level.getNumPartitions() * 2 <= proposed_partition_count
                     and max_level.layer_type == gps.LayerType.SPACETIME):
@@ -1456,6 +1447,42 @@ class GeopysparkDataCube(DriverDataCube):
             return GeopysparkDataCube(pyramid=pyramid, metadata=self.metadata)
             #return self.apply_to_levels(lambda layer: layer.tile_to_layout(projection, resample_method))
         return self
+
+    def _compute_proposed_partition_count(self, target_projection, target_resolution):
+        max_level = self.get_max_level()
+        currentTileLayout: gps.TileLayout = max_level.layer_metadata.tile_layout
+        cellsize_before, max_level = self.cellsize_in_target_crs(target_projection)
+        estimated_size_in_pixels_tup = self.calculate_layer_size_in_pixels()
+        resolution_factor = (
+            cellsize_before[0] / target_resolution[0],
+            cellsize_before[1] / target_resolution[1]
+        )
+        proposed_partition_count_tup = (
+            estimated_size_in_pixels_tup[0] * resolution_factor[0] / currentTileLayout.tileCols,
+            estimated_size_in_pixels_tup[1] * resolution_factor[1] / currentTileLayout.tileRows
+        )
+        # Could also use "currentTileLayout.layoutCols * resolution_factor[0]", but that would be less accurate.
+        # The repartitioning only considers the resolution change. It considers that the partitioning took
+        # already into account band count and the pixel type, sparse/not, ...
+        proposed_partition_count = int(proposed_partition_count_tup[0] * proposed_partition_count_tup[1])
+        return proposed_partition_count
+
+    def cellsize_in_target_crs(self, target_projection):
+        cellsize_before = self.get_cellsize()
+        max_level = self.get_max_level()
+        cube_crs = max_level.layer_metadata.crs
+        if target_projection is not None:
+            # reproject to target CRS to make meaningful comparisons
+            e = max_level.layer_metadata.layout_definition.extent
+            e = GeopysparkDataCube._reproject_extent(
+                cube_crs, "EPSG:4326", e.xmin, e.ymin, e.xmax, e.ymax
+            )
+            extent_dict = {"west": e.xmin, "east": e.xmax,
+                           "south": e.ymin, "north": e.ymax,
+                           "crs": "EPSG:4326"}
+
+            cellsize_before = reproject_cellsize(extent_dict, cellsize_before, cube_crs, target_projection)
+        return cellsize_before, max_level
 
     def get_cellsize(self):
         max_level = self.get_max_level()
