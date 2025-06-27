@@ -19,13 +19,14 @@ from openeo_driver.users import User
 from openeo_driver.utils import EvalEnv
 
 from openeogeotrellis.backend import (
-    GpsBatchJobs,
+    GeoPySparkBackendImplementation,
     GpsProcessing,
 )
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.config.s3_config import S3Config
-from openeogeotrellis.integrations.kubernetes import k8s_render_manifest_template
+from openeogeotrellis.integrations.kubernetes import k8s_render_manifest_template, K8S_SPARK_APP_STATE
 from openeogeotrellis.integrations.yarn_jobrunner import YARNBatchJobRunner
+from openeogeotrellis.job_registry import InMemoryJobRegistry
 from openeogeotrellis.testing import gps_config_overrides
 
 
@@ -727,3 +728,71 @@ def test_k8s_sparkapplication_dict_propagatable_web_app_driver_envars(backend_co
             ),
         )
     )
+
+
+class TestGpsBatchJobs:
+    @pytest.fixture
+    def job_registry(self) -> InMemoryJobRegistry:
+        return InMemoryJobRegistry()
+
+    @pytest.fixture
+    def backend_implementation(self, job_registry) -> GeoPySparkBackendImplementation:
+        return GeoPySparkBackendImplementation(
+            use_zookeeper=False,
+            elastic_job_registry=job_registry,
+        )
+
+    @pytest.fixture
+    def kube_no_zk(self, monkeypatch):
+        with gps_config_overrides(
+            setup_kerberos_auth=False,
+            use_zk_job_registry=False,
+            yunikorn_user_specific_queues=True,  # avoid another call to ZK
+        ):
+            monkeypatch.setenv("KUBE", "TRUE")
+            yield
+
+    @mock.patch("kubernetes.config.load_incluster_config", return_value=mock.MagicMock())
+    @mock.patch("kubernetes.client.CoreV1Api.read_namespaced_pod", return_value=mock.MagicMock())
+    @mock.patch("kubernetes.client.CustomObjectsApi.create_namespaced_custom_object", return_value=mock.MagicMock())
+    @mock.patch(
+        "kubernetes.client.CustomObjectsApi.get_namespaced_custom_object",
+        return_value={"status": {"applicationState": {"state": K8S_SPARK_APP_STATE.SUBMITTED}}},
+    )
+    def test_start_k8s_job_persists_results_metadata_uri(
+        self,
+        mock_get_spark_pod_status,
+        mock_create_spark_pod,
+        mock_get_pod_image,
+        mock_k8s_config,
+        kube_no_zk,
+        backend_implementation,
+        job_registry,
+        mock_s3_bucket,
+    ):
+        user = User(user_id="test_user", internal_auth_data={"access_token": "4cc3ss_t0k3n"})
+
+        backend_implementation.batch_jobs.create_job(
+            user=user,
+            process={
+                "process_graph": {
+                    "pi1": {
+                        "process_id": "pi",
+                        "result": True,
+                    }
+                }
+            },
+            api_version="1.2",
+            metadata={},
+            job_options={"log_level": "info"},
+        )
+
+        job_id, job = next(iter(job_registry.db.items()))
+        assert job.get("results_metadata_uri") is None
+
+        backend_implementation.batch_jobs.start_job(job_id, user)
+        assert mock_create_spark_pod.called_once
+        assert job.get("results_metadata_uri") == f"s3://openeo-fake-bucketname/batch_jobs/{job_id}/job_metadata.json"
+
+    def test_get_result_assets(self):
+        raise NotImplementedError("check if the results_metadata_uri (s3://...) is correctly read")
