@@ -96,6 +96,7 @@ from openeogeotrellis.integrations.kubernetes import (
     k8s_get_batch_job_cfg_secret_name,
     truncate_user_id_k8s,
 )
+from openeogeotrellis.integrations.s3proxy.asset_urls import PresignedS3AssetUrls
 from openeogeotrellis.integrations.stac import ResilientStacIO
 from openeogeotrellis.integrations.traefik import Traefik
 from openeogeotrellis.integrations.yarn_jobrunner import YARNBatchJobRunner
@@ -2192,6 +2193,12 @@ class GpsBatchJobs(backend.BatchJobs):
                     )
                     log.info(f"mapped job_id {job_id} to application ID {spark_app_id}")
                     dbl_registry.set_application_id(job_id=job_id, user_id=user_id, application_id=spark_app_id)
+                    dbl_registry.set_results_metadata_uri(
+                        job_id=job_id,
+                        user_id=user_id,
+                        results_metadata_uri=f"s3://{bucket}/{str(job_work_dir).strip('/')}/{JOB_METADATA_FILENAME}",
+                    )
+
                     status_response = {}
                     retry = 0
                     while "status" not in status_response and retry < 10:
@@ -2222,9 +2229,24 @@ class GpsBatchJobs(backend.BatchJobs):
             runner = YARNBatchJobRunner(principal=self._principal, key_tab=self._key_tab)
             runner.set_default_sentinel_hub_credentials(self._default_sentinel_hub_client_id,self._default_sentinel_hub_client_secret)
             vault_token = None if sentinel_hub_client_alias == 'default' else get_vault_token(sentinel_hub_client_alias)
-            application_id = runner.run_job(job_info, job_id, job_work_dir = self.get_job_work_dir(job_id=job_id), log=log, user_id=user_id, api_version=api_version,proxy_user=proxy_user or job_info.get('proxy_user',None), vault_token=vault_token)
+            job_work_dir = self.get_job_work_dir(job_id=job_id)
+            application_id = runner.run_job(
+                job_info,
+                job_id,
+                job_work_dir=job_work_dir,
+                log=log,
+                user_id=user_id,
+                api_version=api_version,
+                proxy_user=proxy_user or job_info.get("proxy_user", None),
+                vault_token=vault_token,
+            )
             with self._double_job_registry as dbl_registry:
                 dbl_registry.set_application_id(job_id=job_id, user_id=user_id, application_id=application_id)
+                dbl_registry.set_results_metadata_uri(
+                    job_id=job_id,
+                    user_id=user_id,
+                    results_metadata_uri=f"file://{job_work_dir}/{JOB_METADATA_FILENAME}",
+                )
                 dbl_registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.QUEUED)
 
 
@@ -2674,24 +2696,29 @@ class GpsBatchJobs(backend.BatchJobs):
 
         :return: A mapping between a filename and a dict containing information about that file.
         """
-        job_info = self.get_job_info(job_id=job_id, user_id=user_id)
-        if job_info.status != JOB_STATUS.FINISHED:
+        with self._double_job_registry as registry:
+            job_dict = registry.get_job(job_id=job_id, user_id=user_id)
+
+        if job_dict["status"] != JOB_STATUS.FINISHED:
             raise JobNotFinishedException
 
         job_dir = self.get_job_output_dir(job_id=job_id)
 
-        results_metadata = None
-        try:
-            with self._double_job_registry as registry:
-                job_dict = registry.elastic_job_registry.get_job(job_id, user_id=user_id)
-                if "results_metadata" in job_dict:
-                    results_metadata = job_dict["results_metadata"]
-        except Exception as e:
-            logger.warning(
-                "Could not retrieve result metadata from job tracker %s", e, exc_info=True, extra={"job_id": job_id}
-            )
-        if results_metadata is None or len(results_metadata) == 0:
+        results_metadata = self._load_results_metadata_from_uri(job_dict.get("results_metadata_uri"))  # TODO: expose a getter?
+        if not results_metadata:
+            try:
+                logger.debug(f"Loading results metadata from job registry")
+                with self._double_job_registry as registry:
+                    job_dict = registry.elastic_job_registry.get_job(job_id, user_id=user_id)  # TODO: is it possible to drop .elastic_job_registry?
+                    if "results_metadata" in job_dict:
+                        results_metadata = job_dict["results_metadata"]
+            except Exception as e:
+                logger.warning(
+                    "Could not retrieve result metadata from job registry %s", e, exc_info=True, extra={"job_id": job_id}
+                )
+        if not results_metadata:
             results_metadata = self.load_results_metadata(job_id, user_id)
+
         out_assets = results_metadata.get("assets", {})
         out_metadata = out_assets.get("out", {})
         bands = [Band(*properties) for properties in out_metadata.get("bands", [])]
@@ -2774,7 +2801,8 @@ class GpsBatchJobs(backend.BatchJobs):
 
         if ConfigParams().use_object_storage:
             try:
-                contents = get_s3_file_contents(str(metadata_file))
+                logger.debug(f"Loading results metadata from object storage at {metadata_file}")
+                contents = get_s3_file_contents(path=str(metadata_file))
                 return json.loads(contents)
             except Exception:
                 logger.warning(
@@ -2783,6 +2811,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     extra={'job_id': job_id})
 
         try:
+            logger.debug(f"Loading results metadata from file at {metadata_file}")
             with open(metadata_file) as f:
                 return json.load(f)
         except FileNotFoundError:
@@ -2791,8 +2820,28 @@ class GpsBatchJobs(backend.BatchJobs):
 
         return {}
 
+    @staticmethod
+    def _load_results_metadata_from_uri(results_metadata_uri: Optional[str]) -> Optional[dict]:
+        # TODO: reduce code duplication with load_results_metadata
+        if results_metadata_uri is None:
+            return None
+
+        logger.debug(f"Loading results metadata from URI {results_metadata_uri}")
+
+        file_prefix = "file:"
+        if results_metadata_uri.startswith(file_prefix):
+            file_path = results_metadata_uri[len(file_prefix):]
+            with open(file_path) as f:
+                return json.load(f)
+
+        if results_metadata_uri.startswith("s3://"):
+            bucket, key = PresignedS3AssetUrls.get_bucket_key_from_uri(results_metadata_uri)
+            return json.loads(get_s3_file_contents(key, bucket))
+
+        raise ValueError(f"Unsupported results metadata URI: {results_metadata_uri}")
+
     def _get_providers(self, job_id: str, user_id: str) -> List[dict]:
-        results_metadata = self.load_results_metadata(job_id, user_id)
+        results_metadata = self.load_results_metadata(job_id, user_id)  # TODO: adapt this as well?
         return results_metadata.get("providers", [])
 
     def get_log_entries(
@@ -3028,7 +3077,3 @@ class GpsBatchJobs(backend.BatchJobs):
         if assembled_folders:
             logger.info("Deleted Sentinel Hub assembled folder(s) {fs} for batch job {j}"
                         .format(fs=assembled_folders, j=job_id), extra={'job_id': job_id})
-
-
-
-
