@@ -1064,7 +1064,7 @@ class EagerlyK8sTrackingInMemoryJobRegistry(InMemoryJobRegistry):
                     if job["status"] in self.STATUS_ONGOING:
                         # mark as done to avoid endless polling
                         _log.warning(f"App {application_id} not found, marking job as done", exc_info=True)
-                        super().set_status(job_id, user_id=user_id, status=JOB_STATUS.ERROR)
+                        self.set_status(job_id, user_id=user_id, status=JOB_STATUS.ERROR)
                         job["status"] = JOB_STATUS.ERROR
                     else:
                         # retain old (done) status
