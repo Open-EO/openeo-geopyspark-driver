@@ -15,7 +15,8 @@ from openeo_driver.views import build_app
 from openeogeotrellis import deploy
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.deploy import get_socket
-from openeogeotrellis.job_registry import ZkJobRegistry
+from openeogeotrellis.integrations.kubernetes import kube_client
+from openeogeotrellis.job_registry import ZkJobRegistry, EagerlyK8sTrackingInMemoryJobRegistry
 
 log = logging.getLogger(__name__)
 
@@ -58,7 +59,13 @@ def main():
 
     from openeogeotrellis.backend import GeoPySparkBackendImplementation
 
-    backend_implementation = GeoPySparkBackendImplementation(use_job_registry=bool(get_backend_config().ejr_api))
+    backend_implementation = GeoPySparkBackendImplementation(
+        use_job_registry=bool(get_backend_config().ejr_api),
+        elastic_job_registry=(
+            None if get_backend_config().ejr_api  # instantiates an ElasticJobRegistry from the environment
+            else EagerlyK8sTrackingInMemoryJobRegistry(kube_client("CustomObject"))  # an in-memory one for free
+        ),
+    )
     app = build_app(backend_implementation=backend_implementation)
 
     # https://github.com/Open-EO/openeo-python-driver/issues/242

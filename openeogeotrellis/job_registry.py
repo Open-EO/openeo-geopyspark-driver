@@ -1029,3 +1029,64 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
             self.elastic_job_registry.set_results_metadata(
                 job_id=job_id, user_id=user_id, costs=costs, usage=usage, results_metadata=results_metadata
             )
+
+
+class EagerlyK8sTrackingInMemoryJobRegistry(InMemoryJobRegistry):
+    """
+    Calls k8s API for application status eagerly, avoiding the need for a separate job_tracker process.
+    """
+
+    STATUS_ONGOING = {JOB_STATUS.CREATED, JOB_STATUS.QUEUED, JOB_STATUS.RUNNING}
+
+    def __init__(self, kubernetes_api):
+        super().__init__()
+        self._kubernetes_api = kubernetes_api
+
+    def get_job(self, job_id: str, *, user_id: Optional[str] = None) -> JobDict:
+        import kubernetes.client.exceptions
+
+        job = super().get_job(job_id=job_id, user_id=user_id)
+
+        if job["status"] not in self.STATUS_ONGOING:
+            _log.debug(f"Job is done with status {job['status']}, skipping k8s status check")
+            return job
+
+        application_id = job.get("application_id")
+        if application_id:
+            try:
+                new_status = self._get_openeo_status(application_id)
+                _log.debug(f"App {application_id} status: {new_status}")
+
+                self.set_status(job_id, user_id=user_id, status=new_status)
+                job["status"] = new_status
+            except kubernetes.client.exceptions.ApiException as e:
+                if e.status == 404:  # app is gone
+                    if job["status"] in self.STATUS_ONGOING:
+                        # mark as done to avoid endless polling
+                        _log.warning(f"App {application_id} not found, marking job as done", exc_info=True)
+                        new_status = JOB_STATUS.ERROR
+                        self.set_status(job_id, user_id=user_id, status=new_status)
+                        job["status"] = new_status
+                    else:
+                        # retain old (done) status
+                        _log.warning(f"App {application_id} not found, retaining status {job['status']}", exc_info=True)
+                else:
+                    raise
+
+        return job
+
+    def _get_openeo_status(self, application_id: str) -> str:
+        # TODO: reduce code duplication with openeogeotrellis.job_tracker_v2.K8sStatusGetter?
+        from openeogeotrellis.integrations.kubernetes import K8S_SPARK_APP_STATE, k8s_state_to_openeo_job_status
+
+        metadata = self._kubernetes_api.get_namespaced_custom_object(
+            group="sparkoperator.k8s.io",
+            version="v1beta2",
+            # TODO: this namespace should come from job metadata, not config
+            namespace=ConfigParams().pod_namespace,
+            plural="sparkapplications",
+            name=application_id,
+        )
+
+        app_state = metadata["status"]["applicationState"]["state"] if "status" in metadata else K8S_SPARK_APP_STATE.NEW
+        return k8s_state_to_openeo_job_status(app_state)
