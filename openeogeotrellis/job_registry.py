@@ -1054,18 +1054,19 @@ class EagerlyK8sTrackingInMemoryJobRegistry(InMemoryJobRegistry):
         application_id = job.get("application_id")
         if application_id:
             try:
-                current_status = self._get_openeo_status(application_id)
-                _log.debug(f"App {application_id} status: {current_status}")
+                new_status = self._get_openeo_status(application_id)
+                _log.debug(f"App {application_id} status: {new_status}")
 
-                self.set_status(job_id, user_id=user_id, status=current_status)
-                job["status"] = current_status
+                self.set_status(job_id, user_id=user_id, status=new_status)
+                job["status"] = new_status
             except kubernetes.client.exceptions.ApiException as e:
                 if e.status == 404:  # app is gone
                     if job["status"] in self.STATUS_ONGOING:
                         # mark as done to avoid endless polling
                         _log.warning(f"App {application_id} not found, marking job as done", exc_info=True)
-                        self.set_status(job_id, user_id=user_id, status=JOB_STATUS.ERROR)
-                        job["status"] = JOB_STATUS.ERROR
+                        new_status = JOB_STATUS.ERROR
+                        self.set_status(job_id, user_id=user_id, status=new_status)
+                        job["status"] = new_status
                     else:
                         # retain old (done) status
                         _log.warning(f"App {application_id} not found, retaining status {job['status']}", exc_info=True)
