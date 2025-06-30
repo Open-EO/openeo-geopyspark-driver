@@ -1057,7 +1057,7 @@ class EagerlyK8sTrackingInMemoryJobRegistry(InMemoryJobRegistry):
                 current_status = self._get_openeo_status(application_id)
                 _log.debug(f"App {application_id} status: {current_status}")
 
-                super().set_status(job_id, user_id=user_id, status=current_status)
+                self.set_status(job_id, user_id=user_id, status=current_status)
                 job["status"] = current_status
             except kubernetes.client.exceptions.ApiException as e:
                 if e.status == 404:  # app is gone
