@@ -1088,8 +1088,5 @@ class EagerlyK8sTrackingInMemoryJobRegistry(InMemoryJobRegistry):
             name=application_id,
         )
 
-        if not "status" in metadata:
-            return K8S_SPARK_APP_STATE.NEW
-
-        app_state = metadata["status"]["applicationState"]["state"]
+        app_state = metadata["status"]["applicationState"]["state"] if "status" in metadata else K8S_SPARK_APP_STATE.NEW
         return k8s_state_to_openeo_job_status(app_state)
