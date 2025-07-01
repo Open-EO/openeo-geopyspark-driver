@@ -35,8 +35,10 @@ A local service doesn't do much due to lack of data, but you can try a very simp
 
 ```python
 import openeo
-c = openeo.connect("http://localhost:8080/openeo/1.2").authenticate_oidc()
+connection = openeo.connect("http://localhost:8080/")
+connection.authenticate_basic("openeo", "openeo")
 
-result = c.datacube_from_flat_graph({"add":{"process_id":"add","arguments":{"x":3,"y":5},"result":True}}).execute()
+process_graph = {"add": {"process_id": "add", "arguments": {"x": 3,"y": 5}, "result": True}}
+result = connection.execute(process_graph)
 print(result)
 ```

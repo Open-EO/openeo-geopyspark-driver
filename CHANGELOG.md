@@ -32,6 +32,7 @@ without compromising stable operations.
 - Harden IPA lookup of proxy user in YARN batch job submit code path ([#1261](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1261))
 - Make sure presigned URLs against S3 proxy also allow HEAD requests [#1265](https://github.com/Open-EO/openeo-geopyspark-driver/pull/1265)
 - Work around 413 "Payload Too Large" response from EJR upon job results metadata update ([#1200](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1200))
+- Basic support for batch jobs without a job registry or job tracker ([#1005](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1005))
 
 ## 0.65.0
 
