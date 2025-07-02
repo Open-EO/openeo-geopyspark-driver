@@ -1,3 +1,4 @@
+import json
 import logging
 
 import os
@@ -8,6 +9,7 @@ import mock
 import pytest
 import shapely
 from openeo.utils.version import ComparableVersion
+from openeo_driver.backend import BatchJobMetadata
 from openeo_driver.config.load import ConfigGetter
 from openeo_driver.constants import JOB_STATUS
 from openeo_driver.datacube import DriverVectorCube
@@ -785,7 +787,7 @@ class TestGpsBatchJobs:
 
         # TODO: check why this test takes so long
 
-    def test_get_result_assets_reads_from_s3_results_metadata_uri(
+    def test_getters_read_from_s3_results_metadata_uri(
         self,
         kube_no_zk,
         backend_implementation,
@@ -799,11 +801,16 @@ class TestGpsBatchJobs:
         job_metadata_json_key = f"batch_jobs/{job_id}/job_metadata.json"
         mock_s3_bucket.put_object(
             Key=job_metadata_json_key,
-            Body=b'{"assets": {"openEO": {"href": "s3://bucket/path/to/openEO.tif"}}}',
+            Body=json.dumps(
+                {
+                    "assets": {"openEO": {"href": "s3://bucket/path/to/openEO.tif"}},
+                    "epsg": 32631,
+                    "providers": [{"name": "VITO"}],
+                }
+            ).encode("utf-8"),
         )
         job["status"] = JOB_STATUS.FINISHED
         job["results_metadata_uri"] = f"s3://{mock_s3_bucket.name}/{job_metadata_json_key}"
-        # TODO: test a file: URI as well
 
         asset_key, asset = next(
             iter(
@@ -812,9 +819,18 @@ class TestGpsBatchJobs:
                 ).items()
             )
         )
-
         assert asset_key == "openEO"
         assert asset["href"] == "s3://bucket/path/to/openEO.tif"
+
+        metadata: BatchJobMetadata = backend_implementation.batch_jobs.get_job_info(
+            job_id=job_id, user_id=self._dummy_user.user_id
+        )
+        assert metadata.epsg == 32631
+
+        providers = backend_implementation.batch_jobs.get_result_metadata(
+            job_id=job_id, user_id=self._dummy_user.user_id
+        ).providers
+        assert [provider["name"] for provider in providers] == ["VITO"]  # FIXME: false negative, looks in own bucket instead of the one in results_metadata_uri. Use extra fake bucket?
 
     @pytest.mark.parametrize(
         "results_metadata_uri_prefix",
