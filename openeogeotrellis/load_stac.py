@@ -1069,14 +1069,9 @@ class _StacMetadataParser:
     # TODO: better, more compact name: StacMetadata is a bit redundant, technically we're also not "parsing" here either
     # TODO merge with implementation in openeo-python-client
 
-    class _Bands(list):
-        """Internal wrapper for list of ``openeo.metadata.Band`` objects"""
+    # Temporary alias while migrating to openeo.metadata._StacMetadataParser
+    _Bands = openeo.metadata._BandList
 
-        def __init__(self, bands: Iterable[openeo.metadata.Band]):
-            super().__init__(bands)
-
-        def band_names(self) -> List[str]:
-            return [band.name for band in self]
 
     def __init__(self):
         # TODO: toggles for how to handle strictness, warnings, logging, etc
