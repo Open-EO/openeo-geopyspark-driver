@@ -7,7 +7,7 @@
         "spatial_extent": null,
         "temporal_extent": null,
         "bands": [
-          "B02_10m", "B03_10m"
+          "B02", "B03"
         ],
         "featureflags": {
           "allow_empty_cube": true
