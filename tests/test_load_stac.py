@@ -500,6 +500,7 @@ def test_stac_api_POST_item_search_resilience():
 
 
 class TestStacMetadataParser:
+    # TODO: move/integrate these tests into openeo.metadata._StacMetadataParser tests
     def test_band_from_eo_bands_metadata(self):
         assert _StacMetadataParser()._band_from_eo_bands_metadata(
             {"name": "B04"},
