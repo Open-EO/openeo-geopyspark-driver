@@ -1061,7 +1061,7 @@ def _cql2_json_filter(literal_matches: Dict[str, Dict[str, Any]]) -> Optional[di
     }
 
 
-class _StacMetadataParser:
+class _StacMetadataParser(openeo.metadata._StacMetadataParser):
     """
     Helper to extract openEO metadata from STAC metadata resource
     """
@@ -1071,42 +1071,6 @@ class _StacMetadataParser:
 
     # Temporary alias while migrating to openeo.metadata._StacMetadataParser
     _Bands = openeo.metadata._BandList
-
-
-    def __init__(self):
-        # TODO: toggles for how to handle strictness, warnings, logging, etc
-        pass
-
-    def _band_from_eo_bands_metadata(self, data: dict) -> openeo.metadata.Band:
-        """Construct band from metadata dict in eo v1.1 style"""
-        return openeo.metadata.Band(
-            name=data["name"],
-            common_name=data.get("common_name"),
-            wavelength_um=data.get("center_wavelength"),
-        )
-
-    def _band_from_common_bands_metadata(self, data: dict) -> openeo.metadata.Band:
-        """Construct band from metadata dict in STAC 1.1 + eo v2 style metadata"""
-        return openeo.metadata.Band(
-            name=data["name"],
-            common_name=data.get("eo:common_name"),
-            wavelength_um=data.get("eo:center_wavelength"),
-        )
-
-    def bands_from_stac_object(
-        self, obj: Union[pystac.Catalog, pystac.Collection, pystac.Item, pystac.Asset]
-    ) -> _Bands:
-        # Note: first check for Collection, as it is a subclass of Catalog
-        if isinstance(obj, pystac.Collection):
-            return self.bands_from_stac_collection(collection=obj)
-        elif isinstance(obj, pystac.Catalog):
-            return self.bands_from_stac_catalog(catalog=obj)
-        elif isinstance(obj, pystac.Item):
-            return self.bands_from_stac_item(item=obj)
-        elif isinstance(obj, pystac.Asset):
-            return self.bands_from_stac_asset(asset=obj)
-        else:
-            raise ValueError(obj)
 
     def bands_from_stac_catalog(self, catalog: pystac.Catalog) -> _Bands:
         # TODO: "eo:bands" vs "bands" priority based on STAC and EO extension version information
