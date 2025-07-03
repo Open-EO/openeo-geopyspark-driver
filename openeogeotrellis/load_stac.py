@@ -424,6 +424,8 @@ def load_stac(
                     asset_band_names = asset_band_names_from_metadata or [asset_id]
                 elif isinstance(load_params.bands, list) and asset_id in load_params.bands:
                     # User-specified asset_id as band name: use that directly
+                    if asset_id not in band_names:
+                        logger.warning(f"Using asset key {asset_id!r} as band name.")
                     asset_band_names = [asset_id]
                 elif set(asset_band_names_from_metadata).intersection(load_params.bands or []):
                     # User-specified bands match with band names in metadata
