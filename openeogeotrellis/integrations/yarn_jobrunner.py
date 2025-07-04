@@ -114,9 +114,12 @@ class YARNBatchJobRunner:
                     verify_tls=False,  # TODO?
                 )
                 if ipa_client.user_find(user):
+                    _log.info(f"_verify_proxy_user: valid {user!r}")
                     return user
         except Exception as e:
             _log.warning(f"Failed to verify whether {user!r} can be used as proxy user: {e!r}")
+
+        _log.info(f"_verify_proxy_user: invalid {user!r}")
         return ""
 
     def run_job(
