@@ -1,37 +1,32 @@
 import re
 import shutil
-import tempfile
-from datetime import datetime
-from pathlib import Path
 from random import seed, uniform
 from typing import List
-from unittest import TestCase, skip
-from unittest.mock import patch
 
 import geopyspark
 import mock
 import pytest
-import shapely.geometry
-from openeo.metadata import CollectionMetadata, Dimension, TemporalDimension
-from openeo_driver.backend import BatchJobMetadata
+from openeo_driver.constants import JOB_STATUS
 from openeo_driver.save_result import MlModelResult
 from openeo_driver.testing import (
     TEST_USER_AUTH_HEADER,
     ApiTester,
     DictSubSet,
-    RegexMatcher,
+    TEST_USER,
 )
-from openeo_driver.utils import EvalEnv, read_json
-from py4j.java_gateway import JavaObject
+from openeo_driver.utils import read_json
 from pyspark.mllib.tree import RandomForestModel
 from shapely.geometry import GeometryCollection, Point
 
 from openeogeotrellis.backend import JOB_METADATA_FILENAME
 from openeogeotrellis.deploy.batch_job import run_job
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
+from openeogeotrellis.job_registry import DoubleJobRegistry, ZkJobRegistry
 from openeogeotrellis.ml.aggregatespatialvectorcube import AggregateSpatialVectorCube
 from openeogeotrellis.ml.geopysparkrandomforestmodel import GeopySparkRandomForestModel
+from openeogeotrellis.testing import KazooClientMock
 from tests.data import TEST_DATA_ROOT
+
 
 FEATURE_COLLECTION_1 = {
     "type": "FeatureCollection",
@@ -54,6 +49,13 @@ FEATURE_COLLECTION_1 = {
         },
     ],
 }
+
+
+@pytest.fixture
+def zk_client() -> KazooClientMock:
+    zk_client = KazooClientMock()
+    with mock.patch("openeogeotrellis.job_registry.KazooClient", return_value=zk_client):
+        yield zk_client
 
 
 class DummyAggregateSpatialVectorCube(AggregateSpatialVectorCube):
@@ -198,13 +200,13 @@ def test_fit_class_random_forest_model():
 
 
 @mock.patch("openeo_driver.ProcessGraphDeserializer.evaluate")
-@mock.patch("openeogeotrellis.backend.GpsBatchJobs.get_job_info")
 @mock.patch("openeogeotrellis.backend.GpsBatchJobs.get_job_output_dir")
-def test_fit_class_random_forest_batch_job_metadata(get_job_output_dir, get_job_info, evaluate, tmp_path, client):
+def test_fit_class_random_forest_batch_job_metadata(
+    get_job_output_dir, evaluate, tmp_path, api110, job_registry, zk_client
+):
     # 1. Run a batch job, which will create a job_metadata.json file.
     random_forest_model: GeopySparkRandomForestModel = train_simple_random_forest_model(3, 42)
     evaluate.return_value = MlModelResult(random_forest_model)
-    job_id = "jobid"
     get_job_output_dir.return_value = tmp_path
 
     run_job(
@@ -272,14 +274,25 @@ def test_fit_class_random_forest_batch_job_metadata(get_job_output_dir, get_job_
 
     # 3. Check the actual result returned by the /jobs/{j}/results endpoint.
     # It uses the job_metadata file as a basis to fill in the ml_model metadata fields.
-    get_job_info.return_value = BatchJobMetadata(id=job_id, status="finished", created=datetime.now())
-    api = ApiTester(api_version="1.1.0", client=client, data_root=TEST_DATA_ROOT)
-    res = api.get("/jobs/{j}/results".format(j=job_id), headers=TEST_USER_AUTH_HEADER).assert_status_code(200).json
+    res = api110.post(
+        "/jobs", json=api110.get_process_graph_dict({}), headers=TEST_USER_AUTH_HEADER
+    ).assert_status_code(201)
+    job_id = res.headers["OpenEO-Identifier"]
+
+    dbl_job_registry = DoubleJobRegistry(
+        # TODO #236/#498/#632 phase out ZkJobRegistry
+        zk_job_registry_factory=(lambda: ZkJobRegistry(zk_client=zk_client)),
+        elastic_job_registry=job_registry,
+    )
+    with dbl_job_registry:
+        dbl_job_registry.set_status(job_id, user_id=TEST_USER, status=JOB_STATUS.FINISHED)
+
+    res = api110.get("/jobs/{j}/results".format(j=job_id), headers=TEST_USER_AUTH_HEADER).assert_status_code(200).json
     assert res["assets"] == DictSubSet(
         {
             "randomforest.model.tar.gz": {
                 "file:size": size,
-                "href": "http://oeo.net/openeo/1.1.0/jobs/jobid/results/assets/randomforest.model.tar.gz",
+                "href": f"http://oeo.net/openeo/1.1.0/jobs/{job_id}/results/assets/randomforest.model.tar.gz",
                 "roles": ["data"],
                 "title": "randomforest.model.tar.gz",
                 "type": "application/octet-stream",
@@ -302,7 +315,7 @@ def test_fit_class_random_forest_batch_job_metadata(get_job_output_dir, get_job_
     )
 
     item_res = (
-        api.get("/jobs/{j}/results/items/ml_model_metadata.json".format(j=job_id), headers=TEST_USER_AUTH_HEADER)
+        api110.get("/jobs/{j}/results/items/ml_model_metadata.json".format(j=job_id), headers=TEST_USER_AUTH_HEADER)
         .assert_status_code(200)
         .json
     )
