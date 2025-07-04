@@ -173,22 +173,19 @@ class YARNBatchJobRunner:
             extra_py_files = ",".join(options.udf_dependency_files)
 
         # TODO: use different root dir for these temp input files than self._output_root_dir (which is for output files)?
-        with (
-            tempfile.NamedTemporaryFile(
-                mode="wt",
-                encoding="utf-8",
-                dir=job_work_dir.parent,
-                prefix=f"{job_id}_",
-                suffix=".in",
-            ) as job_specification_file,
-            tempfile.NamedTemporaryFile(
-                mode="wt",
-                encoding="utf-8",
-                dir=job_work_dir.parent,
-                prefix=f"{job_id}_",
-                suffix=".properties",
-            ) as temp_properties_file,
-        ):
+        with tempfile.NamedTemporaryFile(
+            mode="wt",
+            encoding="utf-8",
+            dir=job_work_dir.parent,
+            prefix=f"{job_id}_",
+            suffix=".in",
+        ) as job_specification_file, tempfile.NamedTemporaryFile(
+            mode="wt",
+            encoding="utf-8",
+            dir=job_work_dir.parent,
+            prefix=f"{job_id}_",
+            suffix=".properties",
+        ) as temp_properties_file:
             job_specification_file.write(job_specification_json)
             job_specification_file.flush()
 
