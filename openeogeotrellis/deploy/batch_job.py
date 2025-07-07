@@ -393,7 +393,8 @@ def run_job(
 
         def result_write_assets(result_arg) -> (dict, dict):
             items = result_arg.write_assets(str(output_file))
-            if( len(items)>0  and "assets" not in next(iter(items.values())) ):
+            if items and "assets" not in next(iter(items.values())):  # no "assets" property so assets themselves
+                assets = items
                 logger.warning(f"save_result: got an 'assets' object instead of items for {result_arg}")
                 #TODO: this is here to avoid having to sync changes with openeo-python-driver
                 #it can and should be removed as soon as we have introduced returning items in all SaveResult subclasses
@@ -402,7 +403,7 @@ def run_job(
                 items =  {
                     item_id: {
                         "id": item_id,
-                        "assets": items
+                        "assets": assets,
                     }
                 }
 
@@ -680,6 +681,8 @@ def _export_to_workspaces(
             )
 
             for stac_href in stac_hrefs:
+                # FIXME: collection.json for this result will overwrite the one for another result so
+                #  multiple export_workspace to the same workspace and merge within a single process graph will not work
                 export_to_workspace(source_uri=stac_href)
 
             for asset_key, asset in result_assets_metadata.items():
@@ -792,7 +795,7 @@ def _write_exported_stac_collection(
         ),
     }
 
-    collection_file = job_dir / "collection.json"  # TODO: file is reused for each result
+    collection_file = job_dir / "collection.json"
     with open(collection_file, "wt") as fc:
         json.dump(stac_collection, fc)
 
