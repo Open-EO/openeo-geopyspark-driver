@@ -1530,10 +1530,6 @@ def test_export_workspace_merge_filepath_per_band(tmp_path, mock_s3_bucket):
         },
     }
 
-    disk_workspace = get_backend_config().workspaces[disk_workspace_id]
-    assert isinstance(disk_workspace, DiskWorkspace)
-    workspace_dir = (disk_workspace.root_directory / merge).parent
-
     try:
         run_job(
             process,
@@ -1548,6 +1544,18 @@ def test_export_workspace_merge_filepath_per_band(tmp_path, mock_s3_bucket):
             Path("some/deeply/nested/folder/lon.tif"),
             Path("lat.tif"),
         ])
+
+        disk_workspace = get_backend_config().workspaces[disk_workspace_id]
+        assert isinstance(disk_workspace, DiskWorkspace)
+        workspace_dir = (disk_workspace.root_directory / merge).parent
+
+        assert _paths_relative_to(workspace_dir) == {
+            Path("collection.json"),
+            Path("collection.json_items") / "some/deeply/nested/folder" / "lon.tif",
+            Path("collection.json_items") / "some/deeply/nested/folder" / "lon.tif.json",
+            Path("collection.json_items") / "lat.tif",
+            Path("collection.json_items") / "lat.tif.json",
+        }
 
         object_workspace = get_backend_config().workspaces[object_workspace_id]
         assert isinstance(object_workspace, ObjectStorageWorkspace)
