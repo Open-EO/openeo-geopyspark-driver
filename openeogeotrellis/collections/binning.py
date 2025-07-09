@@ -187,6 +187,14 @@ def _compute_grid_bin_edges(bbox: Mapping[str, float], num_rows: int) -> Tuple[N
 def _compute_pixel_centers_from_edges(edges, pixel_size):
     return edges[:-1] + 0.5 * pixel_size
 
+def compute_edges_from_pixel_centers(centers, pixel_size):
+    assert centers.ndim == 1, "only edges for one-dimensional arrays are supported"
+    edges = np.empty(len(centers) + 1, dtype=centers.dtype)
+    np.subtract(centers, 0.5*pixel_size, out=edges[:-1])
+    edges[-1] = edges[-2] + pixel_size
+
+    return edges
+
 
 def _extrapolate_edges_2d(arr: NDArray, border: int) -> NDArray:
     """
