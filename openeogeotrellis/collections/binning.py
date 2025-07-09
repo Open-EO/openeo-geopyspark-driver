@@ -9,12 +9,12 @@ from numpy.typing import NDArray
 import xarray as xr
 import numpy as np
 
-# TODO find out which type ``grid`` should be
+# TODO shift if we cross the antimeridian. Here is a good place, as we wouldn't want to do it multiple times
 def bin_to_grid(ds: xr.Dataset, bands: Iterable[str], lat_edges, lon_edges, *, aggregation="mean", super_sampling: int=1) -> xr.Dataset:
     if aggregation == "mean":
         return  _bin_with_mean_statistic(ds, bands, lat_edges, lon_edges, super_sampling=super_sampling)
     else:
-        raise ValueError("Only mean aggregation is supported")
+        raise NotImplementedError("Only mean aggregation is supported")
 
 
 def _bin_generic():
@@ -60,15 +60,15 @@ def _bin_with_mean_statistic(ds: xr.Dataset, bands: Iterable[str], lat_edges, lo
         else:
             sampled_data = data
 
-        # Promote datatype to avoid overflows
-        if isinstance(sampled_data.dtype, np.integer):
-            if sampled_data.dtype.itemsize < 4:
-                sampled_data = sampled_data.astype(np.int32)
-            elif sampled_data.dtype.itemsize < 8:
-                sampled_data = sampled_data.astype(np.int64)
-        hist, _ = np.histogram(bin_idx, range(width * height + 1), weights=sampled_data.reshape(-1), range=(0, width*height))
-        # TODO what if counts is zero?
-        means = np.divide(hist, counts, out=means)
+        weights = np.where(np.isfinite(sampled_data), sampled_data, 0).astype(np.float64).reshape(-1)
+        hist, _ = np.histogram(bin_idx, range(width * height + 1), weights=weights, range=(0, width*height))
+
+        # to ignore nan values, we subtract the counts of nan pixels.
+        # If there are only nan pixels, we will have a count of 0, dividing by which leads to a nan in the output
+        # as expected. Without this, purely nan inputs will lead to 0 in the binned output, which can't be
+        # distinguished from a natural 0.
+        nancounts, _ = np.histogram(bin_idx[np.isnan(sampled_data).reshape(-1)], width * height, range=(0, width*height))
+        means = np.divide(hist, counts - nancounts, out=means)
         # It is important to make a copy here, event if not scaling.
         # Otherwise, means will be overwritten
         scaled_means = means.reshape(height, width) * 1.0
@@ -77,7 +77,7 @@ def _bin_with_mean_statistic(ds: xr.Dataset, bands: Iterable[str], lat_edges, lo
     lat_centers = _compute_pixel_centers_from_edges(lat_edges, pixel_size)
     lon_centers = _compute_pixel_centers_from_edges(lon_edges, pixel_size)
 
-    binned = xr.Dataset(
+    ds_binned = xr.Dataset(
         data_vars={
             band: (("lat", "lon"), binned[band]) for band in bands
         },
@@ -86,7 +86,7 @@ def _bin_with_mean_statistic(ds: xr.Dataset, bands: Iterable[str], lat_edges, lo
             "lon": lon_centers,
         },
     )
-    return binned
+    return ds_binned
 
 
 def _compute_bin_index(input_pixel_centers_lat: NDArray[float], input_pixel_centers_lon: NDArray[float], output_grid_edges: Tuple[float, float], output_grid_pixel_size: float, output_grid_height: int, output_grid_width: int) -> NDArray[int]:
