@@ -35,6 +35,7 @@ without compromising stable operations.
 - Basic support for batch jobs without a job registry or job tracker ([#1005](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1005))
 - Fix thresholds in `linear_scale_range` to trigger type casting ([#1275](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1275))
 - `load_stac`: fully switch to `_StacMetadataParser` from `openeo.metadata`, which has wider STAC (1.1) support ([#1015](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1015), [#1138](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1138))
+- `load_ml_model`: switch to group `openeo_results` for `ml_models` folder (eu-cdse/openeo-cdse-infra#609)
 
 
 ## 0.65.0
