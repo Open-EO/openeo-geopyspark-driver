@@ -567,6 +567,7 @@ def run_job(
         )
 
         assert len(results) == len(assets_metadata)
+        assert len(results) == len(results_items)
         for result, result_assets_metadata, result_items_metadata in zip(results, assets_metadata, results_items):
             _export_to_workspaces(
                 result,

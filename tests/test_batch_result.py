@@ -1549,27 +1549,24 @@ def test_export_workspace_merge_filepath_per_band(tmp_path, mock_s3_bucket):
             Path("lat.tif"),
         ])
 
-        assert _paths_relative_to(workspace_dir) == {
+        # collection STAC document and assets have to remain in the same place, regardless of "stac-version" job_option
+        assert {
             Path("collection.json"),
             Path("collection.json_items") / "some/deeply/nested/folder" / "lon.tif",
-            Path("collection.json_items") / "some/deeply/nested/folder" / "lon.tif.json",
             Path("collection.json_items") / "lat.tif",
-            Path("collection.json_items") / "lat.tif.json",
-        }
+        } <= _paths_relative_to(workspace_dir)
 
         object_workspace = get_backend_config().workspaces[object_workspace_id]
         assert isinstance(object_workspace, ObjectStorageWorkspace)
         assert object_workspace.bucket == get_backend_config().s3_bucket_name
 
-        object_workspace_keys = [PurePath(obj.key) for obj in mock_s3_bucket.objects.all()]
+        object_workspace_keys = {PurePath(obj.key) for obj in mock_s3_bucket.objects.all()}
 
-        assert object_workspace_keys == ListSubSet([
+        assert {
             merge,  # the Collection itself
             merge / "some/deeply/nested/folder/lon.tif",
-            merge / "some/deeply/nested/folder/lon.tif.json",
             merge / "lat.tif",
-            merge / "lat.tif.json",
-        ])
+        } <= object_workspace_keys
 
         def load_exported_collection(collection_href: str):
             assets_in_object_storage = collection_href.startswith("s3://")
