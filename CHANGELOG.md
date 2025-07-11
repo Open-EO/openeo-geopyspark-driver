@@ -27,7 +27,15 @@ without compromising stable operations.
 - Remove outdated and defunct ZooKeeper "cleaner" scripts and code paths ([#1219](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1219), [#1123](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1123))
 - Move `integrations.s3` to Python driver [#1195](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1195)
 - Add config `ejr_preserialize_process` to enable process graph pre-serialization when storing new jobs in EJR ([#1232](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1232))
-- `load_stac` start supporting STAC 1.1 style "common" bands" metadata (in addition to legacy "eo:bands") ([#1015](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1015))
+- `load_stac`: start supporting STAC 1.1 style "common" bands" metadata (in addition to legacy "eo:bands") ([#1015](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1015))
+- `load_stac`: improve resilience of STAC API item search ([#1096](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1096))
+- Harden IPA lookup of proxy user in YARN batch job submit code path ([#1261](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1261))
+- Make sure presigned URLs against S3 proxy also allow HEAD requests [#1265](https://github.com/Open-EO/openeo-geopyspark-driver/pull/1265)
+- Work around 413 "Payload Too Large" response from EJR upon job results metadata update ([#1200](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1200))
+- Basic support for batch jobs without a job registry or job tracker ([#1005](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1005))
+- Fix thresholds in `linear_scale_range` to trigger type casting ([#1275](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1275))
+- `load_stac`: fully switch to `_StacMetadataParser` from `openeo.metadata`, which has wider STAC (1.1) support ([#1015](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1015), [#1138](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1138))
+- `load_ml_model`: switch to group `openeo_results` for `ml_models` folder (eu-cdse/openeo-cdse-infra#609)
 
 
 ## 0.65.0

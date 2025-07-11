@@ -39,7 +39,7 @@ from geopyspark import LayerType, Pyramid, TiledRasterLayer
 import openeo_driver.util.changelog
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 from openeo.metadata import Band, BandDimension, Dimension, SpatialDimension, TemporalDimension
-from openeo.util import TimingLogger, deep_get, dict_no_none, repr_truncate, rfc3339, str_truncate
+from openeo.util import TimingLogger, deep_get, dict_no_none, repr_truncate, rfc3339, str_truncate, ensure_dir
 from openeo.utils.version import ComparableVersion
 from openeo_driver import backend
 from openeo_driver.backend import (
@@ -98,6 +98,7 @@ from openeogeotrellis.integrations.kubernetes import (
 )
 from openeogeotrellis.integrations.stac import ResilientStacIO
 from openeogeotrellis.integrations.traefik import Traefik
+from openeogeotrellis.integrations.yarn_jobrunner import YARNBatchJobRunner
 from openeogeotrellis.job_options import JobOptions, K8SOptions
 from openeogeotrellis.job_registry import (
     DoubleJobRegistry,
@@ -123,11 +124,13 @@ from openeogeotrellis.service_registry import (
     ServiceEntity,
     ZooKeeperServiceRegistry,
 )
-from openeogeotrellis.udf import run_udf_code, UDF_PYTHON_DEPENDENCIES_FOLDER_NAME, UDF_PYTHON_DEPENDENCIES_ARCHIVE_NAME
+from openeogeotrellis.udf import run_udf_code, UDF_PYTHON_DEPENDENCIES_FOLDER_NAME, \
+    UDF_PYTHON_DEPENDENCIES_ARCHIVE_NAME, collect_udfs
 from openeogeotrellis.user_defined_process_repository import (
     InMemoryUserDefinedProcessRepository,
     ZooKeeperUserDefinedProcessRepository,
 )
+from openeogeotrellis.util.byteunit import byte_string_as
 from openeogeotrellis.utils import (
     add_permissions,
     dict_merge_recursive,
@@ -849,11 +852,13 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             if use_s3:
                 return f"openeo-ml-models-dev/{generate_unique_id(prefix='model')}"
 
-            def _set_permissions(job_dir: Path):
+            def _set_permissions(job_dir: Path, group: str = "openeo_results"):
+                # TODO: avoid hardcoded Terrascope-specific group name
                 try:
-                    shutil.chown(job_dir, user = None, group = 'eodata')
+                    shutil.chown(job_dir, user=None, group=group)
+                # TODO: Why excepting LookupError here, is that something shutil.chown would raise?
                 except LookupError as e:
-                    logger.warning(f"Could not change group of {job_dir} to eodata.")
+                    logger.warning(f"Could not change group of {job_dir} to {group}.")
                 add_permissions(job_dir, stat.S_ISGID | stat.S_IWGRP)  # make children inherit this group
 
             result_dir = gps_batch_jobs.get_job_output_dir("ml_models")
@@ -1822,24 +1827,7 @@ class GpsBatchJobs(backend.BatchJobs):
         """
         return self._output_root_dir / job_id
 
-    @staticmethod
-    def get_submit_py_files(env: dict = None, cwd: Union[str, Path] = ".") -> str:
-        """Get `-py-files` for batch job submit (e.g. based on how flask app was submitted)."""
-        py_files = (env or os.environ).get("OPENEO_SPARK_SUBMIT_PY_FILES", "")
-        cwd = Path(cwd)
-        if py_files:
-            found = []
-            # Spark-submit moves `py-files` directly into job folder (`cwd`),
-            # or under __pyfiles__ subfolder in case of *.py, regardless of original path.
-            for filename in (Path(p).name for p in py_files.split(",")):
-                if (cwd / filename).exists():
-                    found.append(filename)
-                elif (cwd / "__pyfiles__" / filename).exists():
-                    found.append("__pyfiles__/" + filename)
-                else:
-                    logger.warning(f"Could not find 'py-file' {filename}: skipping")
-            py_files = ",".join(found)
-        return py_files
+
 
     def start_job(self, job_id: str, user: User):
         proxy_user = self.get_proxy_user(user)
@@ -1902,10 +1890,20 @@ class GpsBatchJobs(backend.BatchJobs):
             job_specification_json = json.dumps({"process_graph": job_process_graph, "job_options": job_options})
 
 
-        job_title = job_info.get('title', '')
+
         sentinel_hub_client_alias = deep_get(job_options, 'sentinel-hub', 'client-alias', default="default")
 
         log.debug(f"_start_job {job_options=}")
+
+        udf_runtimes = set([ (udf[1],udf[2]) for udf in collect_udfs(job_process_graph)])
+
+        if len(udf_runtimes) == 1:
+            udf_runtime = udf_runtimes.pop()
+            if udf_runtime is not None and "image-name" not in job_options and udf_runtime[1] is not None:
+                job_options["image-name"] = udf_runtime[0].lower() + udf_runtime[1].replace(".","")
+        elif len(udf_runtimes) > 1:
+            log.warning(f"Multiple UDF runtimes detected in the process graph: {udf_runtimes}. Running with default environment.")
+
 
         if (dependencies is None
             and job_info.get("dependency_status")
@@ -1964,28 +1962,6 @@ class GpsBatchJobs(backend.BatchJobs):
 
 
 
-        def as_logging_threshold_arg() -> str:
-            if JOB_OPTION_LOGGING_THRESHOLD in job_options:
-                log.warning(
-                    f"Job option {JOB_OPTION_LOGGING_THRESHOLD!r} is non-standard and deprecated, use the standard job creation parameter 'log_level' instead"
-                )
-                value = job_options[JOB_OPTION_LOGGING_THRESHOLD]
-            else:
-                value = job_options.get(JOB_OPTION_LOG_LEVEL, DEFAULT_LOG_LEVEL_PROCESSING)
-
-            value = value.upper()
-
-            if value == "WARNING":
-                value = "WARN"  # Log4j only accepts WARN whereas Python logging accepts WARN as well as WARNING
-
-            if value in ["DEBUG", "INFO", "WARN", "ERROR"]:
-                return value
-            raise OpenEOApiException(
-                code="InvalidLogLevel",
-                status_code=400,
-                message=f"Invalid log level {value}. Should be one of 'debug', 'info', 'warning' or 'error'.",
-            )
-
         isKube = ConfigParams().is_kube_deploy
 
         if isKube:
@@ -1998,7 +1974,6 @@ class GpsBatchJobs(backend.BatchJobs):
         queue = job_options.get("queue", "default")
         profile = as_boolean_arg("profile", default_value="false")
 
-        logging_threshold = as_logging_threshold_arg()
         propagatable_web_app_driver_envars = {
             envar: os.environ.get(envar, "")
             for envar in os.environ.get("OPENEO_PROPAGATABLE_WEB_APP_DRIVER_ENVARS", "").split()
@@ -2007,64 +1982,9 @@ class GpsBatchJobs(backend.BatchJobs):
         options.validate()
 
 
-
-        def serialize_dependencies() -> str:
-            batch_process_dependencies = [dependency for dependency in
-                                          (dependencies or job_info.get('dependencies') or [])
-                                          if 'collection_id' in dependency]
-
-            def as_arg_element(dependency: dict) -> dict:
-                source_location = (dependency.get('assembled_location')  # cached
-                                   or dependency.get('results_location')  # not cached
-                                   or f"s3://{sentinel_hub.OG_BATCH_RESULTS_BUCKET}"
-                                      f"/{dependency.get('subfolder') or dependency['batch_request_id']}")  # legacy
-
-                return {
-                    'source_location': source_location,
-                    'card4l': dependency.get('card4l', False)
-                }
-
-            return json.dumps([as_arg_element(dependency) for dependency in batch_process_dependencies])
-
         if get_backend_config().setup_kerberos_auth:
             setup_kerberos_auth(self._principal, self._key_tab, self._jvm)
 
-        as_bytes = self._jvm.org.apache.spark.util.Utils.byteStringAsBytes
-        memOverheadBytes = as_bytes(options.executor_memory_overhead)
-        jvmOverheadBytes = as_bytes("128m")
-
-        # By default, Python uses the space reserved by `spark.executor.memoryOverhead` but no limit is enforced.
-        # When `spark.executor.pyspark.memory` is specified, Python will only use this memory and no more.
-        python_max = options.python_memory
-        if python_max is not None:
-            python_max = as_bytes(python_max)
-            if "executor-memoryOverhead" not in job_options:
-                memOverheadBytes = jvmOverheadBytes
-                executor_memory_overhead = f"{memOverheadBytes // (1024 ** 2)}m"
-        else:
-            # If python-memory is not set, we convert most of the overhead memory to python memory
-            # this in fact duplicates the overhead memory, we should migrate away from this appraoch
-            if isKube:
-                python_max = memOverheadBytes - jvmOverheadBytes
-            else:
-                python_max = -1
-            executor_memory_overhead = f"{memOverheadBytes // (1024 ** 2)}m"
-
-        if as_bytes(options.executor_memory) + as_bytes(executor_memory_overhead) + python_max > as_bytes(
-                get_backend_config().max_executor_or_driver_memory
-        ):
-            raise OpenEOApiException(
-                message=f"Requested too much executor memory: "
-                        + f"{options.executor_memory} + {executor_memory_overhead} + {python_max // (1024 ** 2)}m, "
-                        + f"the max for this instance is: {get_backend_config().max_executor_or_driver_memory}",
-                status_code=400,
-            )
-
-        user_provided_jar_path = None
-        if "openeo-jar-path" in job_options and (
-                job_options["openeo-jar-path"].startswith("https://artifactory.vgt.vito.be/artifactory/libs-release-public/org/openeo/geotrellis-extensions")
-                or job_options["openeo-jar-path"].startswith("https://artifactory.vgt.vito.be/artifactory/libs-snapshot-public/org/openeo/geotrellis-extensions/") ) :
-            user_provided_jar_path = job_options["openeo-jar-path"]
 
         if isKube:
             # TODO: get rid of this "isKube" anti-pattern, it makes testing of this whole code path practically impossible
@@ -2179,7 +2099,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 executor_memory=options.executor_memory,
                 executor_memory_overhead=options.executor_memory_overhead,
                 executor_threads_jvm=str(options.executor_threads_jvm),
-                python_max_memory = python_max,
+                python_max_memory = byte_string_as(options.python_memory or "0b"),
                 max_executors=options.max_executors,
                 api_version=api_version,
                 dependencies="[]",  # TODO: use `serialize_dependencies()` here instead? It's probably messy to get that JSON string correctly encoded in the rendered YAML.
@@ -2205,7 +2125,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 eodata_mount=eodata_mount,
                 archives=",".join(options.udf_dependency_archives),
                 py_files = options.udf_dependency_files,
-                logging_threshold=logging_threshold,
+                logging_threshold=options.log_level,
                 mount_tmp=mount_tmp,
                 use_pvc=use_pvc,
                 access_token=user.internal_auth_data["access_token"],
@@ -2213,7 +2133,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 UDF_PYTHON_DEPENDENCIES_FOLDER_NAME=UDF_PYTHON_DEPENDENCIES_FOLDER_NAME,
                 udf_python_dependencies_folder_path=str(job_work_dir / UDF_PYTHON_DEPENDENCIES_FOLDER_NAME),
                 udf_python_dependencies_archive_path=str(job_work_dir / UDF_PYTHON_DEPENDENCIES_ARCHIVE_NAME),
-                openeo_ejr_api=get_backend_config().ejr_api,
+                openeo_ejr_api=get_backend_config().ejr_api or "",
                 openeo_ejr_backend_id=get_backend_config().ejr_backend_id,
                 openeo_ejr_oidc_client_credentials=os.environ.get("OPENEO_EJR_OIDC_CLIENT_CREDENTIALS"),
                 profile=profile,
@@ -2301,141 +2221,17 @@ class GpsBatchJobs(backend.BatchJobs):
                     dbl_registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.ERROR)
 
         else:
-            submit_script = "submit_batch_job_spark3.sh"
-            script_location = pkg_resources.resource_filename("openeogeotrellis.deploy", submit_script)
+            runner = YARNBatchJobRunner(principal=self._principal, key_tab=self._key_tab)
+            runner.set_default_sentinel_hub_credentials(self._default_sentinel_hub_client_id,self._default_sentinel_hub_client_secret)
+            vault_token = None if sentinel_hub_client_alias == 'default' else get_vault_token(sentinel_hub_client_alias)
+            application_id = runner.run_job(job_info, job_id, job_work_dir = self.get_job_work_dir(job_id=job_id), log=log, user_id=user_id, api_version=api_version,proxy_user=proxy_user or job_info.get('proxy_user',None), vault_token=vault_token)
+            with self._double_job_registry as dbl_registry:
+                dbl_registry.set_application_id(job_id=job_id, user_id=user_id, application_id=application_id)
+                dbl_registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.QUEUED)
 
-            image_name = job_options.get("image-name", os.environ.get("YARN_CONTAINER_RUNTIME_DOCKER_IMAGE"))
 
-            extra_py_files=""
-            if options.udf_dependency_files is not None and len(options.udf_dependency_files)>0:
-                extra_py_files = ",".join(options.udf_dependency_files)
 
-            job_work_dir = self.get_job_work_dir(job_id=job_id)
 
-            # TODO: use different root dir for these temp input files than self._output_root_dir (which is for output files)?
-            with tempfile.NamedTemporaryFile(
-                mode="wt",
-                encoding="utf-8",
-                dir=self._output_root_dir,
-                prefix=f"{job_id}_",
-                suffix=".in",
-            ) as job_specification_file, tempfile.NamedTemporaryFile(
-                mode="wt",
-                encoding="utf-8",
-                dir=self._output_root_dir,
-                prefix=f"{job_id}_",
-                suffix=".properties",
-            ) as temp_properties_file:
-                job_specification_file.write(job_specification_json)
-                job_specification_file.flush()
-
-                self._write_sensitive_values(temp_properties_file,
-                                             vault_token=None if sentinel_hub_client_alias == 'default'
-                                             else get_vault_token(sentinel_hub_client_alias))
-                temp_properties_file.flush()
-
-                job_name = "openEO batch_{title}_{j}_user {u}".format(title=job_title, j=job_id, u=user_id)
-                args: list[str] = [
-                    script_location,
-                    job_name,
-                    job_specification_file.name,
-                    str(self.get_job_output_dir(job_id)),
-                    "out",  # TODO: how support multiple output files?
-                    JOB_METADATA_FILENAME,
-                ]
-
-                if self._principal is not None and self._key_tab is not None:
-                    args.append(self._principal)
-                    args.append(self._key_tab)
-                else:
-                    args.append("no_principal")
-                    args.append("no_keytab")
-
-                # due to eventual consistency, job_info does not necessarily have the latest info
-                args.append(proxy_user or job_info.get('proxy_user') or user_id)
-
-                if api_version:
-                    args.append(api_version)
-                else:
-                    args.append("0.4.0")
-
-                args.append(options.driver_memory)
-                args.append(options.executor_memory)
-                args.append(options.executor_memory_overhead)
-                args.append(str(options.driver_cores))
-                args.append(str(options.executor_cores))
-                args.append(options.driver_memory_overhead)
-                args.append(queue)
-                args.append(profile)
-                args.append(serialize_dependencies())
-                args.append(self.get_submit_py_files()+extra_py_files)
-                args.append(str(options.max_executors))
-                args.append(user_id)
-                args.append(job_id)
-                args.append(options.soft_errors_arg())
-                args.append(str(options.task_cpus))
-                args.append(sentinel_hub_client_alias)
-                args.append(temp_properties_file.name)
-                args.append(",".join(options.udf_dependency_archives))
-                args.append(logging_threshold)
-                args.append(os.environ.get(ConfigGetter.OPENEO_BACKEND_CONFIG, ""))
-                args.append(str(job_work_dir / UDF_PYTHON_DEPENDENCIES_FOLDER_NAME))
-                args.append(get_backend_config().ejr_api or "")
-                args.append(get_backend_config().ejr_backend_id)
-                args.append(os.environ.get("OPENEO_EJR_OIDC_CLIENT_CREDENTIALS", ""))
-
-                docker_mounts = get_backend_config().batch_docker_mounts
-                if user_id in get_backend_config().batch_user_docker_mounts:
-                    docker_mounts = docker_mounts + "," + ",".join(get_backend_config().batch_user_docker_mounts[user_id])
-                args.append(docker_mounts)
-
-                args.append(str(job_work_dir / UDF_PYTHON_DEPENDENCIES_ARCHIVE_NAME))
-                args.append(os.environ.get("OPENEO_PROPAGATABLE_WEB_APP_DRIVER_ENVARS", ""))
-
-                args.append(str(python_max))
-
-                # TODO: this positional `args` handling is getting out of hand, leverage _write_sensitive_values?
-
-                try:
-                    log.info(f"Submitting job with command {args!r}")
-                    d = dict(**os.environ)
-                    d["YARN_CONTAINER_RUNTIME_DOCKER_IMAGE"] = image_name
-                    if options.openeo_jar_path is not None:
-                        d["OPENEO_GEOTRELLIS_JAR"] = options.openeo_jar_path
-                    script_output = subprocess.check_output(args, stderr=subprocess.STDOUT, universal_newlines=True, env=d)
-                    log.info(f"Submitted job, output was: {script_output}")
-                except CalledProcessError as e:
-                    log.error(f"Submitting job failed, output was: {e.stdout}", exc_info=True)
-                    raise InternalException(message=f"Failed to start batch job (YARN submit failure).")
-
-            try:
-                application_id = self._extract_application_id(script_output)
-                log.info("mapped job_id %s to application ID %s" % (job_id, application_id))
-
-                with self._double_job_registry as dbl_registry:
-                    dbl_registry.set_application_id(job_id=job_id, user_id=user_id, application_id=application_id)
-                    dbl_registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.QUEUED)
-
-            except _BatchJobError:
-                traceback.print_exc(file=sys.stderr)
-                # TODO: why reraise as CalledProcessError?
-                raise CalledProcessError(1, str(args), output=script_output)
-
-    def _write_sensitive_values(self, output_file, vault_token: Optional[str]):
-        output_file.write(f"spark.openeo.sentinelhub.client.id.default={self._default_sentinel_hub_client_id}\n")
-        output_file.write(f"spark.openeo.sentinelhub.client.secret.default={self._default_sentinel_hub_client_secret}\n")
-
-        if vault_token is not None:
-            output_file.write(f"spark.openeo.vault.token={vault_token}\n")
-
-    @staticmethod
-    def _extract_application_id(script_output: str) -> str:
-        regex = re.compile(r"^.*Application report for (application_\d{13}_\d+)\s\(state:.*", re.MULTILINE)
-        match = regex.search(script_output)
-        if match:
-            return match.group(1)
-        else:
-            raise _BatchJobError(script_output)
 
     # TODO: encapsulate this SHub stuff in a dedicated class?
     def _schedule_and_get_dependencies(  # some we schedule ourselves, some already exist
@@ -3234,8 +3030,3 @@ class GpsBatchJobs(backend.BatchJobs):
         if assembled_folders:
             logger.info("Deleted Sentinel Hub assembled folder(s) {fs} for batch job {j}"
                         .format(fs=assembled_folders, j=job_id), extra={'job_id': job_id})
-
-
-
-class _BatchJobError(Exception):
-    pass

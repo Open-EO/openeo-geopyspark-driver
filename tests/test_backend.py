@@ -25,6 +25,7 @@ from openeogeotrellis.backend import (
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.config.s3_config import S3Config
 from openeogeotrellis.integrations.kubernetes import k8s_render_manifest_template
+from openeogeotrellis.integrations.yarn_jobrunner import YARNBatchJobRunner
 from openeogeotrellis.testing import gps_config_overrides
 
 
@@ -110,7 +111,7 @@ def test_extract_application_id():
 19/07/10 15:58:10 INFO Client: Application report for application_1562328661428_5542 (state: RUNNING)
 19/07/10 15:58:11 INFO Client: Application report for application_1562328661428_5542 (state: RUNNING)
     """
-    assert GpsBatchJobs._extract_application_id(yarn_log) == "application_1562328661428_5542"
+    assert YARNBatchJobRunner._extract_application_id(yarn_log) == "application_1562328661428_5542"
 
 
 def test_get_submit_py_files_basic(tmp_path, caplog):
@@ -119,7 +120,7 @@ def test_get_submit_py_files_basic(tmp_path, caplog):
     (tmp_path / "__pyfiles__").mkdir()
     (tmp_path / "__pyfiles__" / "stuff.py").touch()
     env = {"OPENEO_SPARK_SUBMIT_PY_FILES": "stuff.py,lib.whl,foo.py"}
-    py_files = GpsBatchJobs.get_submit_py_files(env=env, cwd=tmp_path)
+    py_files = YARNBatchJobRunner.get_submit_py_files(env=env, cwd=tmp_path, log = logging.getLogger("openeogeotrellis"))
     assert py_files == "__pyfiles__/stuff.py,lib.whl"
     warn_logs = [r.message for r in caplog.records if r.levelname == "WARNING"]
     assert warn_logs == ["Could not find 'py-file' foo.py: skipping"]
@@ -132,20 +133,20 @@ def test_get_submit_py_files_deep_paths(tmp_path, caplog):
     (tmp_path / "lib.whl").touch()
     (tmp_path / "__pyfiles__").mkdir()
     (tmp_path / "__pyfiles__" / "stuff.py").touch()
-    py_files = GpsBatchJobs.get_submit_py_files(env=env, cwd=tmp_path)
+    py_files = YARNBatchJobRunner.get_submit_py_files(env=env, cwd=tmp_path)
     assert py_files == "__pyfiles__/stuff.py,lib.whl"
     warn_logs = [r.message for r in caplog.records if r.levelname == "WARNING"]
     assert warn_logs == []
 
 
 def test_get_submit_py_files_no_env(tmp_path):
-    py_files = GpsBatchJobs.get_submit_py_files(env={}, cwd=tmp_path)
+    py_files = YARNBatchJobRunner.get_submit_py_files(env={}, cwd=tmp_path)
     assert py_files == ""
 
 
 def test_get_submit_py_files_empty(tmp_path):
     env = {"OPENEO_SPARK_SUBMIT_PY_FILES": ""}
-    py_files = GpsBatchJobs.get_submit_py_files(env=env, cwd=tmp_path)
+    py_files = YARNBatchJobRunner.get_submit_py_files(env=env, cwd=tmp_path)
     assert py_files == ""
 
 

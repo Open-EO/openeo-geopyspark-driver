@@ -537,7 +537,7 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
             end = time.time()
             # This can throw a segfault on empty netcdf bands:
             poorly_log(f"gdal.Info() took {int((end - start) * 1000)}ms for {asset_uri}", level=logging.DEBUG)  # ~10ms
-        except Exception as exc:
+        except Exception as exc:  # TODO: handle more specific exceptions
             poorly_log(
                 f"gdalinfo Exception. Statistics won't be added to STAC metadata. {exc.__class__.__name__}: '{exc}'.",
                 level=logging.WARNING,
@@ -557,7 +557,7 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
                 assert find_gdalinfo_differences(data_gdalinfo_from_subprocess, data_gdalinfo) is None
             else:
                 data_gdalinfo = data_gdalinfo_from_subprocess
-        except Exception as exc:
+        except Exception as exc:  # TODO: handle more specific exceptions
             poorly_log(
                 f"gdalinfo Exception. Statistics won't be added to STAC metadata. {exc.__class__.__name__}: '{exc}'. Command: {subprocess.list2cmdline(cmd)}",
                 level=logging.WARNING,
@@ -581,7 +581,7 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
                 assert find_gdalinfo_differences(data_gdalinfo_from_subprocess, data_gdalinfo) is None
             else:
                 data_gdalinfo = data_gdalinfo_from_subprocess
-        except Exception as exc:
+        except Exception as exc:  # TODO: handle more specific exceptions
             poorly_log(
                 f"gdalinfo Exception. Statistics won't be added to STAC metadata. {exc.__class__.__name__}: '{exc}'. Command: {subprocess.list2cmdline(cmd)}",
                 level=logging.WARNING,

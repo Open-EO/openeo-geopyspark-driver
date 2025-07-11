@@ -25,7 +25,7 @@ except ImportError:
     requests_gssapi = None
 
 from openeo.util import TimingLogger, repr_truncate, Rfc3339, url_join, deep_get
-from openeo_driver.jobregistry import JOB_STATUS, ElasticJobRegistry
+from openeo_driver.jobregistry import JOB_STATUS, ElasticJobRegistry, EjrApiResponseError
 from openeo_driver.util.http import requests_with_retry
 from openeo_driver.util.logging import (
     get_logging_config,
@@ -585,13 +585,36 @@ class JobTracker:
                 job_costs = None
 
             total_usage = dict_merge_recursive(job_metadata.usage.to_dict(), result_metadata.get("usage", {}))
-            double_job_registry.set_results_metadata(
-                job_id=job_id,
-                user_id=user_id,
-                costs=job_costs,
-                usage=to_jsonable(dict(total_usage)),
-                results_metadata=to_jsonable(result_metadata),
-            )
+            try:
+                double_job_registry.set_results_metadata(
+                    job_id=job_id,
+                    user_id=user_id,
+                    costs=job_costs,
+                    usage=to_jsonable(dict(total_usage)),
+                    results_metadata=to_jsonable(result_metadata),
+                )
+            except EjrApiResponseError as e:
+                if e.status_code == 413:
+                    log.warning(
+                        'Results metadata is too large to store in the job registry, removing "derived_from" links.',
+                        exc_info=True,
+                    )
+
+                    result_metadata["links"] = [
+                        link for link in result_metadata.get("links", []) if link.get("rel") != "derived_from"
+                    ]
+                    if not result_metadata["links"]:
+                        del result_metadata["links"]
+
+                    double_job_registry.set_results_metadata(
+                        job_id=job_id,
+                        user_id=user_id,
+                        costs=job_costs,
+                        usage=to_jsonable(dict(total_usage)),
+                        results_metadata=to_jsonable(result_metadata),
+                    )
+                else:
+                    raise
 
         datetime_formatter = Rfc3339(propagate_none=True)
 

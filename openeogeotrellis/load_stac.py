@@ -1,3 +1,5 @@
+import re
+
 import datetime as dt
 import json
 import time
@@ -13,10 +15,11 @@ import planetary_computer
 import pyproj
 import pystac
 import pystac_client
-import pystac_client.exceptions
+import requests.adapters
+from pystac_client import exceptions, stac_api_io
 from geopyspark import LayerType, TiledRasterLayer
 from openeo.util import dict_no_none, Rfc3339
-import openeo.metadata
+from openeo.metadata import _StacMetadataParser
 import openeo_driver.backend
 from openeo_driver import filter_properties
 from openeo_driver.datacube import DriverVectorCube
@@ -38,6 +41,7 @@ from openeo_driver.utils import EvalEnv
 from pathlib import Path
 from pystac import STACObject
 from shapely.geometry import Polygon, shape
+from urllib3 import Retry
 
 from openeogeotrellis import datacube_parameters
 from openeogeotrellis.config import get_backend_config
@@ -104,102 +108,6 @@ def load_stac(
 
         return intersects_temporally() and intersects_spatially()
 
-    def supports_item_search(coll: pystac.Collection) -> bool:
-        # TODO: use pystac_client instead?
-        conforms_to = coll.get_root().extra_fields.get("conformsTo", [])
-        return any(conformance_class.endswith("/item-search") for conformance_class in conforms_to)
-
-    def is_supported_raster_mime_type(mime_type: str) -> bool:
-        mime_type = mime_type.lower()
-        # https://github.com/radiantearth/stac-spec/blob/master/best-practices.md#common-media-types-in-stac
-        return (
-            mime_type.startswith("image/tiff")  # No 'image/tif', only double 'f' in spec
-            or mime_type.startswith("image/vnd.stac.geotiff")
-            or mime_type.startswith("image/jp2")
-            or mime_type.startswith("image/png")
-            or mime_type.startswith("image/jpeg")
-            or mime_type.startswith("application/x-hdf")  # matches hdf5 and hdf
-            or mime_type.startswith("application/x-netcdf")
-            or mime_type.startswith("application/netcdf")
-        )
-
-    def is_band_asset(asset: pystac.Asset) -> bool:
-        # TODO: what does this function actually detect?
-        #       Name seems to suggest that it's about having necessary band metadata (e.g. a band name)
-        #       but implementation also seems to be happy with just being loadable as raster data in some sense.
-
-        # Skip unsupported media types (if known)
-        if asset.media_type and not is_supported_raster_mime_type(asset.media_type):
-            return False
-
-        # Decide based on role (if known)
-        if asset.roles is not None:
-            roles_with_bands = {
-                "data",
-                "data-mask",
-                "snow-ice",
-                "land-water",
-                "water-mask",
-            }
-            return bool(roles_with_bands.intersection(asset.roles))
-
-        # Fallback based on presence of any band metadata
-        return (
-            "eo:bands" in asset.extra_fields
-            or "bands" in asset.extra_fields  # TODO: built-in "bands" support seems to be scheduled for pystac V2
-        )
-
-    def get_band_names(item: pystac.Item, asset: pystac.Asset) -> List[str]:
-        # TODO: this whole function can be replaced with
-        #       _StacMetadataParser().bands_from_stac_asset(asset=asset).band_names()
-        #       once the legacy eo:bands integer index support can be dropped
-        #       See https://github.com/Open-EO/openeo-geopyspark-driver/issues/619
-        def get_band_name(eo_band) -> str:
-            if isinstance(eo_band, dict):
-                return eo_band["name"]
-
-            # can also be an index into a list of bands elsewhere.
-            logger.warning(
-                "load_stac-get_band_names: eo:bands with integer indices. This is deprecated and support will be removed in the future."
-            )
-            assert isinstance(eo_band, int)
-            eo_band_index = eo_band
-
-            eo_bands_location = (
-                item.properties if "eo:bands" in item.properties else item.get_collection().summaries.to_dict()
-            )
-            return get_band_name(eo_bands_location["eo:bands"][eo_band_index])
-
-        if "eo:bands" in asset.extra_fields:
-            # TODO: eliminate this special case for that deprecated integer index hack above
-            return [get_band_name(eo_band) for eo_band in asset.extra_fields["eo:bands"]]
-
-        return _StacMetadataParser().bands_from_stac_asset(asset=asset).band_names()
-
-    def get_proj_metadata(itm: pystac.Item, asst: pystac.Asset) -> (Optional[int],
-                                                                    Optional[Tuple[float, float, float, float]],
-                                                                    Optional[Tuple[int, int]]):
-        """Returns EPSG code, bbox (in that EPSG) and number of pixels (rows, cols), if available."""
-
-        def to_epsg(proj_code: str) -> Optional[int]:
-            prefix = "EPSG:"
-            return int(proj_code[len(prefix):]) if proj_code.upper().startswith(prefix) else None
-
-        code = (
-            asst.extra_fields.get("proj:code") or itm.properties.get("proj:code") if apply_lcfm_improvements
-            else None
-        )
-        epsg = map_optional(to_epsg, code) or asst.extra_fields.get("proj:epsg") or itm.properties.get("proj:epsg")
-        bbox = asst.extra_fields.get("proj:bbox") or itm.properties.get("proj:bbox")
-
-        if not bbox and epsg == 4326:
-            bbox = itm.bbox
-
-        shape = asst.extra_fields.get("proj:shape") or itm.properties.get("proj:shape")
-
-        return (epsg,
-                tuple(map(float, bbox)) if bbox else None,
-                tuple(shape) if shape else None)
 
     def get_pixel_value_offset(itm: pystac.Item, asst: pystac.Asset) -> float:
         raster_scale = asst.extra_fields.get("raster:scale", itm.properties.get("raster:scale", 1.0))
@@ -314,14 +222,15 @@ def load_stac(
                 max_poll_time=max_poll_time,
             )
 
+            stac_metadata_parser = _StacMetadataParser(logger=logger)
             if isinstance(stac_object, pystac.Item):
                 if load_params.properties:
                     raise properties_unsupported_exception  # as dictated by the load_stac spec
 
                 item = stac_object
-                band_names = _StacMetadataParser().bands_from_stac_item(item=item).band_names()
+                band_names = stac_metadata_parser.bands_from_stac_item(item=item).band_names()
                 intersecting_items = [item] if intersects_spatiotemporally(item) else []
-            elif isinstance(stac_object, pystac.Collection) and supports_item_search(stac_object):
+            elif isinstance(stac_object, pystac.Collection) and _supports_item_search(stac_object):
                 collection = stac_object
                 netcdf_with_time_dimension = contains_netcdf_with_time_dimension(collection)
                 collection_id = collection.id
@@ -330,7 +239,7 @@ def load_stac(
                 )
                 root_catalog = collection.get_root()
 
-                band_names = _StacMetadataParser().bands_from_stac_collection(collection=collection).band_names()
+                band_names = stac_metadata_parser.bands_from_stac_collection(collection=collection).band_names()
 
                 if root_catalog.get_self_href().startswith("https://planetarycomputer.microsoft.com/api/stac/v1"):
                     modifier = planetary_computer.sign_inplace
@@ -351,7 +260,16 @@ def load_stac(
                     # https://stac.openeo.vito.be/ and https://stac.terrascope.be
                     fields = None
 
-                client = pystac_client.Client.open(root_catalog.get_self_href(), modifier=modifier)
+                retry = requests.adapters.Retry(
+                    total=3,
+                    backoff_factor=2,
+                    status_forcelist=frozenset([429, 500, 502, 503, 504]),
+                    allowed_methods=Retry.DEFAULT_ALLOWED_METHODS.union({"POST"}),
+                    raise_on_status=False,  # otherwise StacApiIO will catch this and lose the response body
+                )
+
+                stac_io = pystac_client.stac_api_io.StacApiIO(timeout=REQUESTS_TIMEOUT_SECONDS, max_retries=retry)
+                client = pystac_client.Client.open(root_catalog.get_self_href(), modifier=modifier, stac_io=stac_io)
 
                 cql2_filter = _cql2_filter(
                     client,
@@ -395,7 +313,7 @@ def load_stac(
                     collection = catalog
                     netcdf_with_time_dimension = contains_netcdf_with_time_dimension(collection)
 
-                band_names = _StacMetadataParser().bands_from_stac_object(obj=stac_object).band_names()
+                band_names = stac_metadata_parser.bands_from_stac_object(obj=stac_object).band_names()
 
                 def intersecting_catalogs(root: pystac.Catalog) -> Iterable[pystac.Catalog]:
                     def intersects_spatiotemporally(coll: pystac.Collection) -> bool:
@@ -476,7 +394,7 @@ def load_stac(
                 end_datetime = item_end_datetime
 
             band_assets = {
-                asset_id: asset for asset_id, asset in dict(sorted(itm.assets.items())).items() if is_band_asset(asset)
+                asset_id: asset for asset_id, asset in dict(sorted(itm.assets.items())).items() if _is_band_asset(asset)
             }
 
             builder = (jvm.org.openeo.opensearch.OpenSearchResponses.featureBuilder()
@@ -494,9 +412,11 @@ def load_stac(
                     kv[0],
                 ),
             ):
-                proj_epsg, proj_bbox, proj_shape = get_proj_metadata(itm, asset)
+                proj_epsg, proj_bbox, proj_shape = _get_proj_metadata(
+                    asset=asset, item=itm, apply_lcfm_improvements=apply_lcfm_improvements
+                )
 
-                asset_band_names_from_metadata = get_band_names(item=itm, asset=asset)
+                asset_band_names_from_metadata = _get_band_names(item=itm, asset=asset)
                 logger.info(f"from intersecting_items: {itm.id=} {asset_id=} {asset_band_names_from_metadata=}")
 
                 if not load_params.bands:
@@ -504,6 +424,8 @@ def load_stac(
                     asset_band_names = asset_band_names_from_metadata or [asset_id]
                 elif isinstance(load_params.bands, list) and asset_id in load_params.bands:
                     # User-specified asset_id as band name: use that directly
+                    if asset_id not in band_names:
+                        logger.warning(f"Using asset key {asset_id!r} as band name.")
                     asset_band_names = [asset_id]
                 elif set(asset_band_names_from_metadata).intersection(load_params.bands or []):
                     # User-specified bands match with band names in metadata
@@ -563,7 +485,7 @@ def load_stac(
         if isinstance(e, OpenEOApiException):
             raise e
         elif isinstance(e, pystac_client.exceptions.APIError):
-            if( remote_request_info is not None):
+            if remote_request_info is not None:
                 raise OpenEOApiException(
                     message=f"load_stac: error when constructing datacube from {remote_request_info}: {e}.",
                     status_code=400,
@@ -801,6 +723,112 @@ def load_stac(
     return GeopysparkDataCube(pyramid=gps.Pyramid(levels), metadata=metadata)
 
 
+def _is_supported_raster_mime_type(mime_type: str) -> bool:
+    mime_type = mime_type.lower()
+    # https://github.com/radiantearth/stac-spec/blob/master/best-practices.md#common-media-types-in-stac
+    return (
+        mime_type.startswith("image/tiff")  # No 'image/tif', only double 'f' in spec
+        or mime_type.startswith("image/vnd.stac.geotiff")
+        or mime_type.startswith("image/jp2")
+        or mime_type.startswith("image/png")
+        or mime_type.startswith("image/jpeg")
+        or mime_type.startswith("application/x-hdf")  # matches hdf5 and hdf
+        or mime_type.startswith("application/x-netcdf")
+        or mime_type.startswith("application/netcdf")
+    )
+
+
+def _is_band_asset(asset: pystac.Asset) -> bool:
+    # TODO: what does this function actually detect?
+    #       Name seems to suggest that it's about having necessary band metadata (e.g. a band name)
+    #       but implementation also seems to be happy with just being loadable as raster data in some sense.
+
+    # Skip unsupported media types (if known)
+    if asset.media_type and not _is_supported_raster_mime_type(asset.media_type):
+        return False
+
+    # Decide based on role (if known)
+    if asset.roles is not None:
+        roles_with_bands = {
+            "data",
+            "data-mask",
+            "snow-ice",
+            "land-water",
+            "water-mask",
+        }
+        return bool(roles_with_bands.intersection(asset.roles))
+
+    # Fallback based on presence of any band metadata
+    return (
+        "eo:bands" in asset.extra_fields
+        or "bands" in asset.extra_fields  # TODO: built-in "bands" support seems to be scheduled for pystac V2
+    )
+
+
+def _get_band_names(*, item: pystac.Item, asset: pystac.Asset) -> List[str]:
+    # TODO: this whole function can be replaced with
+    #       _StacMetadataParser().bands_from_stac_asset(asset=asset).band_names()
+    #       once the legacy eo:bands integer index support can be dropped
+    #       See https://github.com/Open-EO/openeo-geopyspark-driver/issues/619
+    def get_band_name(eo_band) -> str:
+        if isinstance(eo_band, dict):
+            return eo_band["name"]
+
+        # can also be an index into a list of bands elsewhere.
+        logger.warning(
+            "load_stac-get_band_names: eo:bands with integer indices. This is deprecated and support will be removed in the future."
+        )
+        assert isinstance(eo_band, int)
+        eo_band_index = eo_band
+
+        eo_bands_location = (
+            item.properties if "eo:bands" in item.properties else item.get_collection().summaries.to_dict()
+        )
+        return get_band_name(eo_bands_location["eo:bands"][eo_band_index])
+
+    if "eo:bands" in asset.extra_fields:
+        # TODO: eliminate this special case for that deprecated integer index hack above
+        return [get_band_name(eo_band) for eo_band in asset.extra_fields["eo:bands"]]
+
+    return _StacMetadataParser(logger=logger).bands_from_stac_asset(asset=asset).band_names()
+
+
+def _get_proj_metadata(
+    asset: pystac.Asset, *, item: pystac.Item, apply_lcfm_improvements: bool = False
+) -> Tuple[Optional[int], Optional[Tuple[float, float, float, float]], Optional[Tuple[int, int]]]:
+    """Returns EPSG code, bbox (in that EPSG) and number of pixels (rows, cols), if available."""
+    # TODO: possible to avoid item argument and just use asset.owner?
+    # TODO: why does this depend on "apply_lcfm_improvements"?
+
+    def to_epsg(proj_code: str) -> Optional[int]:
+        prefix = "EPSG:"
+        return int(proj_code[len(prefix) :]) if proj_code.upper().startswith(prefix) else None
+
+    code = asset.extra_fields.get("proj:code") or item.properties.get("proj:code") if apply_lcfm_improvements else None
+    epsg = map_optional(to_epsg, code) or asset.extra_fields.get("proj:epsg") or item.properties.get("proj:epsg")
+    bbox = asset.extra_fields.get("proj:bbox") or item.properties.get("proj:bbox")
+
+    if not bbox and epsg == 4326:
+        bbox = item.bbox
+
+    shape = asset.extra_fields.get("proj:shape") or item.properties.get("proj:shape")
+
+    return (
+        epsg,
+        tuple(map(float, bbox)) if bbox else None,
+        tuple(shape) if shape else None,
+    )
+
+
+def _supports_item_search(collection: pystac.Collection) -> bool:
+    # TODO: use pystac_client instead?
+    catalog = collection.get_root()
+    if catalog:
+        conforms_to = catalog.extra_fields.get("conformsTo", [])
+        return any(re.match(r"^https://api\.stacspec\.org/v1\..*/item-search$", c) for c in conforms_to)
+    return False
+
+
 def contains_netcdf_with_time_dimension(collection):
     """
     Checks if the STAC collection contains netcdf files with multiple time stamps.
@@ -1036,109 +1064,7 @@ def _cql2_json_filter(literal_matches: Dict[str, Dict[str, Any]]) -> Optional[di
     }
 
 
-class _StacMetadataParser:
-    """
-    Helper to extract openEO metadata from STAC metadata resource
-    """
 
-    # TODO: better, more compact name: StacMetadata is a bit redundant, technically we're also not "parsing" here either
-    # TODO merge with implementation in openeo-python-client
-
-    class _Bands(list):
-        """Internal wrapper for list of ``openeo.metadata.Band`` objects"""
-
-        def __init__(self, bands: Iterable[openeo.metadata.Band]):
-            super().__init__(bands)
-
-        def band_names(self) -> List[str]:
-            return [band.name for band in self]
-
-    def __init__(self):
-        # TODO: toggles for how to handle strictness, warnings, logging, etc
-        pass
-
-    def _band_from_eo_bands_metadata(self, data: dict) -> openeo.metadata.Band:
-        """Construct band from metadata dict in eo v1.1 style"""
-        return openeo.metadata.Band(
-            name=data["name"],
-            common_name=data.get("common_name"),
-            wavelength_um=data.get("center_wavelength"),
-        )
-
-    def _band_from_common_bands_metadata(self, data: dict) -> openeo.metadata.Band:
-        """Construct band from metadata dict in STAC 1.1 + eo v2 style metadata"""
-        return openeo.metadata.Band(
-            name=data["name"],
-            common_name=data.get("eo:common_name"),
-            wavelength_um=data.get("eo:center_wavelength"),
-        )
-
-    def bands_from_stac_object(
-        self, obj: Union[pystac.Catalog, pystac.Collection, pystac.Item, pystac.Asset]
-    ) -> _Bands:
-        # Note: first check for Collection, as it is a subclass of Catalog
-        if isinstance(obj, pystac.Collection):
-            return self.bands_from_stac_collection(collection=obj)
-        elif isinstance(obj, pystac.Catalog):
-            return self.bands_from_stac_catalog(catalog=obj)
-        elif isinstance(obj, pystac.Item):
-            return self.bands_from_stac_item(item=obj)
-        elif isinstance(obj, pystac.Asset):
-            return self.bands_from_stac_asset(asset=obj)
-        else:
-            raise ValueError(obj)
-
-    def bands_from_stac_catalog(self, catalog: pystac.Catalog) -> _Bands:
-        # TODO: "eo:bands" vs "bands" priority based on STAC and EO extension version information
-        summaries = catalog.extra_fields.get("summaries", {})
-        logger.warning(f"bands_from_stac_catalog with {summaries.keys()=} (which is non-standard)")
-        if "eo:bands" in summaries:
-            return self._Bands(self._band_from_eo_bands_metadata(b) for b in summaries["eo:bands"])
-        elif "bands" in summaries:
-            return self._Bands(self._band_from_common_bands_metadata(b) for b in summaries["bands"])
-
-        # TODO: instead of warning: exception, or return None?
-        logger.warning("_StacMetadataParser.bands_from_stac_catalog no band name source found")
-        return self._Bands([])
-
-    def bands_from_stac_collection(self, collection: pystac.Collection) -> _Bands:
-        # TODO: "eo:bands" vs "bands" priority based on STAC and EO extension version information
-        logger.info(f"bands_from_stac_collection with {collection.summaries.lists.keys()=}")
-        if "eo:bands" in collection.summaries.lists:
-            return self._Bands(self._band_from_eo_bands_metadata(b) for b in collection.summaries.lists["eo:bands"])
-        elif "bands" in collection.summaries.lists:
-            return self._Bands(self._band_from_common_bands_metadata(b) for b in collection.summaries.lists["bands"])
-
-        # TODO: instead of warning: exception, or return None?
-        logger.warning("_StacMetadataParser.bands_from_stac_collection no band name source found")
-        return self._Bands([])
-
-    def bands_from_stac_item(self, item: pystac.Item) -> _Bands:
-        # TODO: "eo:bands" vs "bands" priority based on STAC and EO extension version information
-        logger.info(f"bands_from_stac_item with {item.properties.keys()=}")
-        if "eo:bands" in item.properties:
-            return self._Bands(self._band_from_eo_bands_metadata(b) for b in item.properties["eo:bands"])
-        elif "bands" in item.properties:
-            return self._Bands(self._band_from_common_bands_metadata(b) for b in item.properties["bands"])
-        elif (parent_collection := item.get_collection()) is not None:
-            return self.bands_from_stac_collection(collection=parent_collection)
-
-        # TODO: instead of warning: exception, or return None?
-        logger.warning("_StacMetadataParser.bands_from_stac_item no band name source found")
-        return self._Bands([])
-
-    def bands_from_stac_asset(self, asset: pystac.Asset) -> _Bands:
-        # TODO: "eo:bands" vs "bands" priority based on STAC and EO extension version information
-        logger.info(f"bands_from_stac_asset with {asset.extra_fields.keys()=}")
-        if "eo:bands" in asset.extra_fields:
-            return self._Bands(self._band_from_eo_bands_metadata(b) for b in asset.extra_fields["eo:bands"])
-        elif "bands" in asset.extra_fields:
-            # TODO: avoid extra_fields, but built-in "bands" support seems to be scheduled for pystac V2
-            return self._Bands(self._band_from_common_bands_metadata(b) for b in asset.extra_fields["bands"])
-
-        # TODO: instead of warning: exception, or return None?
-        logger.warning("_StacMetadataParser.bands_from_stac_asset no band name source found")
-        return self._Bands([])
 
 
 class NoveltyTracker:

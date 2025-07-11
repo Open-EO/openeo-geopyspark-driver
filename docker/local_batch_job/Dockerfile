@@ -3,23 +3,18 @@ FROM vito-docker.artifactory.vgt.vito.be/openeo-base:latest
 # docker build -t openeo_docker_local . -f docker/local_batch_job/Dockerfile
 
 USER root
-# TODO: fix yum installs
-#RUN yum install -y sshfs
 
 # from openeo-deploy/mep/entrypont.sh
 ENV PYTHON_EGG_CACHE=./
-ENV PYSPARK_PYTHON="/opt/venv/bin/python"
 ENV PATH="/opt/venv/bin:$PATH"
 ENV WMTS_BASE_URL_PATTERN=http://openeo.vgt.vito.be/openeo/services/%s
-ENV PYTHONPATH="/opt/venv/lib64/python3.8/site-packages:/opt/venv/lib/python3.8/site-packages:/usr/lib/python3.8/site-packages:/usr/lib64/python3.8/site-packages"
-ENV LD_LIBRARY_PATH="/opt/venv/lib64"
 
 # from jenkinslib/resources/python/test.sh
 ENV PYTHONPATH="$SPARK_HOME/python:$PYTHONPATH"
 ENV PYTHONPATH="$SPARK_HOME/python/lib/py4j-0.10.9.7-src.zip:$PYTHONPATH"
 
 # test python packages:
-RUN python3 -c "import pyspark;import openeo;import otbApplication"
+RUN $PYSPARK_PYTHON -c "import pyspark;import openeo;import otbApplication"
 
 # COPY files to allow building the image with the latest version stored locally:
 # TODO: Disable this by default when a new openeo-base is available.
@@ -41,4 +36,4 @@ ENV GDAL_PAM_ENABLED=NO
 RUN mkdir /opt/docker_mount
 WORKDIR /opt/docker_mount
 # Can't use run_graph_locally.py directly, because it refers to a non-existing Python installation
-ENTRYPOINT ["python3", "-u", "/opt/venv/bin/run_graph_locally.py"]
+ENTRYPOINT  ${PYSPARK_PYTHON} -u /opt/venv/bin/run_graph_locally.py $0 $@

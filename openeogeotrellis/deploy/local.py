@@ -39,6 +39,9 @@ def setup_local_spark(log_dir: Path = Path.cwd(), verbosity=0):
     py4j = glob(os.path.join(spark_python, "lib", "py4j-*.zip"))[0]
     sys.path[:0] = [spark_python, py4j]
     _log.debug("sys.path: {p!r}".format(p=sys.path))
+    from openeogeotrellis import deploy
+
+    deploy.load_custom_processes()
     try:
         # TODO: Find better way to support local_batch_job and @non_standard_process at the same time
         sys.path.append(str(Path(__file__).parent))
@@ -176,8 +179,6 @@ def setup_environment(log_dir: Path = Path.cwd()):
         previous = (":" + os.environ["GEOPYSPARK_JARS_PATH"]) if "GEOPYSPARK_JARS_PATH" in os.environ else ""
         os.environ["GEOPYSPARK_JARS_PATH"] = str(repository_root / "jars") + previous
 
-    if "OPENEO_CATALOG_FILES" not in os.environ:
-        os.environ["OPENEO_CATALOG_FILES"] = str(repository_root / "openeogeotrellis/deploy/simple_layercatalog.json")
     os.environ["PYTEST_CONFIGURE"] = ""  # to enable is_ci_context
     os.environ["FLASK_DEBUG"] = "1"
 
