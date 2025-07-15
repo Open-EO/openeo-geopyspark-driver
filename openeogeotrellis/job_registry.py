@@ -1,6 +1,6 @@
 from __future__ import annotations
 import contextlib
-import datetime as dt
+from copy import deepcopy
 import json
 import logging
 import random
@@ -623,7 +623,7 @@ class InMemoryJobRegistry(JobRegistryInterface):
             "api_version": api_version,
             "job_options": job_options,
         }
-        return self.db[job_id]
+        return deepcopy(self.db[job_id])
 
     def get_job(self, job_id: str, *, user_id: Optional[str] = None) -> JobDict:
         job = self.db.get(job_id)
@@ -631,7 +631,7 @@ class InMemoryJobRegistry(JobRegistryInterface):
         if not job or (user_id is not None and job['user_id'] != user_id):
             raise JobNotFoundException(job_id=job_id)
 
-        return job
+        return deepcopy(job)
 
     def delete_job(self, job_id: str, *, user_id: Optional[str] = None) -> None:
         self.get_job(job_id=job_id, user_id=user_id)  # will raise on job not found
@@ -640,7 +640,7 @@ class InMemoryJobRegistry(JobRegistryInterface):
     def _update(self, job_id: str, **kwargs) -> JobDict:
         assert job_id in self.db
         self.db[job_id].update(**kwargs)
-        return self.db[job_id]
+        return deepcopy(self.db[job_id])
 
     def set_status(
         self,
@@ -702,7 +702,7 @@ class InMemoryJobRegistry(JobRegistryInterface):
         request_parameters: Optional[dict] = None,
         # TODO #959 settle on returning just `JobListing` and eliminate other options/code paths.
     ) -> Union[JobListing, List[JobDict]]:
-        jobs = [job for job in self.db.values() if job["user_id"] == user_id]
+        jobs = [deepcopy(job) for job in self.db.values() if job["user_id"] == user_id]
         if limit:
             pagination_param = "page"
             page_number = int((request_parameters or {}).get(pagination_param, 0))
@@ -729,7 +729,7 @@ class InMemoryJobRegistry(JobRegistryInterface):
         active = [JOB_STATUS.CREATED, JOB_STATUS.QUEUED, JOB_STATUS.RUNNING]
         # TODO: implement support for max_age, max_updated_ago, fields
         return [
-            job
+            deepcopy(job)
             for job in self.db.values()
             if job["status"] in active and (not require_application_id or job.get("application_id") is not None)
         ]
