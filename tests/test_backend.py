@@ -31,6 +31,7 @@ from openeogeotrellis.integrations.kubernetes import k8s_render_manifest_templat
 from openeogeotrellis.integrations.yarn_jobrunner import YARNBatchJobRunner
 from openeogeotrellis.job_registry import InMemoryJobRegistry
 from openeogeotrellis.testing import gps_config_overrides
+from tests.conftest import TEST_AWS_REGION_NAME
 
 
 def test_extract_application_id():
@@ -757,6 +758,13 @@ class TestGpsBatchJobs:
             monkeypatch.setenv("KUBE", "TRUE")
             yield
 
+    @pytest.fixture
+    def mock_non_swift_s3_bucket(self, mock_s3_resource):
+        """A bucket different from the default, configured one."""
+        bucket = mock_s3_resource.Bucket("openeo-non-swift-fake-bucketname")
+        bucket.create(CreateBucketConfiguration={"LocationConstraint": TEST_AWS_REGION_NAME})
+        yield bucket
+
     @mock.patch("kubernetes.config.load_incluster_config", return_value=mock.MagicMock())
     @mock.patch("kubernetes.client.CoreV1Api.read_namespaced_pod", return_value=mock.MagicMock())
     @mock.patch("kubernetes.client.CustomObjectsApi.create_namespaced_custom_object", return_value=mock.MagicMock())
@@ -792,14 +800,14 @@ class TestGpsBatchJobs:
         kube_no_zk,
         backend_implementation,
         job_registry,
-        mock_s3_bucket,
+        mock_non_swift_s3_bucket,
     ):
         self._create_dummy_batch_job(backend_implementation, self._dummy_user)
 
         job_id, job = next(iter(job_registry.db.items()))
 
         job_metadata_json_key = f"batch_jobs/{job_id}/job_metadata.json"
-        mock_s3_bucket.put_object(
+        mock_non_swift_s3_bucket.put_object(
             Key=job_metadata_json_key,
             Body=json.dumps(
                 {
@@ -810,7 +818,7 @@ class TestGpsBatchJobs:
             ).encode("utf-8"),
         )
         job["status"] = JOB_STATUS.FINISHED
-        job["results_metadata_uri"] = f"s3://{mock_s3_bucket.name}/{job_metadata_json_key}"
+        job["results_metadata_uri"] = f"s3://{mock_non_swift_s3_bucket.name}/{job_metadata_json_key}"
 
         asset_key, asset = next(
             iter(
@@ -830,7 +838,7 @@ class TestGpsBatchJobs:
         providers = backend_implementation.batch_jobs.get_result_metadata(
             job_id=job_id, user_id=self._dummy_user.user_id
         ).providers
-        assert [provider["name"] for provider in providers] == ["VITO"]  # FIXME: false negative, looks in own bucket instead of the one in results_metadata_uri. Use extra fake bucket?
+        assert [provider["name"] for provider in providers] == ["VITO"]
 
     @pytest.mark.parametrize(
         "results_metadata_uri_prefix",

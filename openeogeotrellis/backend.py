@@ -2798,6 +2798,12 @@ class GpsBatchJobs(backend.BatchJobs):
         """
         Reads the metadata json file from the job directory and returns it.
         """
+        with self._double_job_registry as registry:
+            job_dict = registry.get_job(job_id=job_id, user_id=user_id)
+
+        results_metadata = self._load_results_metadata_from_uri(job_dict.get("results_metadata_uri"))  # TODO: expose a getter?
+        if results_metadata is not None:
+            return results_metadata
 
         metadata_file = self.get_results_metadata_path(job_id=job_id)
 
