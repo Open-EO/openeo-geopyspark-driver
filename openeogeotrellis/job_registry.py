@@ -871,9 +871,9 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
                     ejr_job_info = self.elastic_job_registry.get_job(job_id=job_id, user_id=user_id)
 
                     # TODO: replace with getter once introduced?
-                    ejr_job_info["results_metadata"] = self._load_results_metadata_from_uri(
-                        ejr_job_info.get("results_metadata_uri")
-                    )
+                    results_metadata = self._load_results_metadata_from_uri(ejr_job_info.get("results_metadata_uri"))
+                    if results_metadata is not None:
+                        ejr_job_info["results_metadata"] = results_metadata
 
         self._check_zk_ejr_job_info(job_id=job_id, zk_job_info=zk_job_info, ejr_job_info=ejr_job_info)
         job_metadata = zk_job_info_to_metadata(zk_job_info) if zk_job_info else ejr_job_info_to_metadata(ejr_job_info)
@@ -884,6 +884,7 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
         # TODO: reduce code duplication with openeogeotrellis.backend.GpsBatchJobs._load_results_metadata_from_uri
         from openeogeotrellis.integrations.s3proxy.asset_urls import PresignedS3AssetUrls
         from openeogeotrellis.utils import get_s3_file_contents
+        import botocore.exceptions
 
         if results_metadata_uri is None:
             return None
@@ -893,12 +894,23 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
         file_prefix = "file:"
         if results_metadata_uri.startswith(file_prefix):
             file_path = results_metadata_uri[len(file_prefix):]
-            with open(file_path) as f:
-                return json.load(f)
+            try:
+                with open(file_path) as f:
+                    return json.load(f)
+            except FileNotFoundError:
+                # TODO: log?
+                return None  # expected, job did not have the chance to write results metadata yet
 
         if results_metadata_uri.startswith("s3://"):
             bucket, key = PresignedS3AssetUrls.get_bucket_key_from_uri(results_metadata_uri)
-            return json.loads(get_s3_file_contents(key, bucket))
+            try:
+                return json.loads(get_s3_file_contents(key, bucket))
+            except botocore.exceptions.ClientError as e:
+                if e.response["Error"]["Code"] != "NoSuchKey":
+                    raise
+
+                # TODO: log?
+                return None  # expected, see above
 
         raise ValueError(f"Unsupported results metadata URI: {results_metadata_uri}")
 
