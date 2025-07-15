@@ -363,11 +363,12 @@ def run_job(
         result_metadata = _assemble_result_metadata(
             tracer=tracer,
             result=results[0],
-            output_file=output_file,
+            job_dir=job_dir,
             unique_process_ids=unique_process_ids,
             apply_gdal=False,
             asset_metadata={},
             ml_model_metadata=ml_model_metadata,
+            is_item=is_stac11,
         )
         # perform a first metadata write _before_ actually computing the result. This provides a bit more info, even if the job fails.
         write_metadata({**result_metadata, **_get_tracker_metadata("")}, metadata_file)
@@ -537,11 +538,12 @@ def run_job(
         result_metadata = _assemble_result_metadata(
             tracer=tracer,
             result=result,
-            output_file=output_file,
+            job_dir=job_dir,
             unique_process_ids=unique_process_ids,
             apply_gdal=False,
             asset_metadata=assets_for_result_metadata,
             ml_model_metadata=ml_model_metadata,
+            is_item=is_stac11,
         )
 
         tracker_metadata = _get_tracker_metadata("")
@@ -570,11 +572,12 @@ def run_job(
         result_metadata = _assemble_result_metadata(
             tracer=tracer,
             result=result,
-            output_file=output_file,
+            job_dir=job_dir,
             unique_process_ids=unique_process_ids,
             apply_gdal=job_options.get("detailed_asset_metadata", True),
             asset_metadata=assets_for_result_metadata,
             ml_model_metadata=ml_model_metadata,
+            is_item=is_stac11,
         )
 
         assert len(results) == len(assets_metadata)
@@ -705,7 +708,7 @@ def _export_to_workspaces_item(
     for (item_key,asset_key), workspace_uris in workspace_uris.items():
         if remove_exported_assets:
             # the last workspace URI becomes the public_href; the rest become "alternate" hrefs
-            result_metadata["assets"][item_key]["assets"][asset_key][BatchJobs.ASSET_PUBLIC_HREF] = workspace_uris[-1][2]
+            result_metadata["items"][item_key]["assets"][asset_key][BatchJobs.ASSET_PUBLIC_HREF] = workspace_uris[-1][2]
             alternate = {
                 f"{workspace_id}/{merge}": {"href": workspace_uri}
                 for workspace_id, merge, workspace_uri in workspace_uris[:-1]
@@ -718,7 +721,7 @@ def _export_to_workspaces_item(
             }
 
         if alternate:
-            result_metadata["assets"][item_key]["assets"][asset_key]["alternate"] = alternate
+            result_metadata["items"][item_key]["assets"][asset_key]["alternate"] = alternate
 
 
 def _export_to_workspaces(
@@ -914,7 +917,7 @@ def _write_exported_stac_collection_from_item(
             asset_bands = None
             if "bands" in asset:
                 bands = asset.get("bands")
-                raster_bands = asset.get("raster:bands",[])
+                raster_bands = to_jsonable(asset.get("raster:bands",[]))
                 asset_bands = list()
                 for band in bands:
                     name = band["name"]

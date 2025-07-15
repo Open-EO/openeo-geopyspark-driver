@@ -1030,11 +1030,11 @@ def test_export_workspace(tmp_path, remove_original, attach_gdalinfo_assets):
             assert "bands" in asset_fields
             bands = asset_fields["bands"]
             assert len(bands) == 1
-            assert len(bands[0]) == 1
+            assert len(bands[0]) == 2
             assert "name" in bands[0]
             assert bands[0]["name"] == "Flat:2"
-            # assert "statistics" in bands[0]
-            # assert len(bands[0]["statistics"]) == 5
+            assert "statistics" in bands[0]
+            assert len(bands[0]["statistics"]) == 5
             assert "bbox" in asset_fields
             assert asset_fields["bbox"] == [0.0,0.0,1.0,2.0]
             assert "geometry" in asset_fields
@@ -1042,11 +1042,11 @@ def test_export_workspace(tmp_path, remove_original, attach_gdalinfo_assets):
         item_id1 = items[1].id
         with open(metadata_file) as f:
             job_metadata = json.load(f)
-        item_assets  = job_metadata["assets"]
+        item_assets  = job_metadata["items"]
         assert len(item_assets) ==  2
-        item_assets0 =item_assets[item_id0]["assets"]
+        item_assets0 =item_assets[0]["assets"]
         assert len(item_assets0) == (2 if attach_gdalinfo_assets else 1)
-        item_assets1 = item_assets[item_id1]["assets"]
+        item_assets1 = item_assets[1]["assets"]
         assert len(item_assets1) == (2 if attach_gdalinfo_assets else 1)
         assert item_assets0["openEO"]["href"] == str(tmp_path / "openEO_2021-01-15Z.tif")
         assert item_assets1["openEO"]["href"] == str(tmp_path / "openEO_2021-01-05Z.tif")
@@ -1158,6 +1158,13 @@ def test_export_workspace_with_asset_per_band(tmp_path):
         assert geotiff_asset.extra_fields["bands"] == [
             {
                 "name": "Latitude",
+                "statistics": {
+                    "maximum": 1.9375,
+                    "mean": 0.96875,
+                    "minimum": 0.0,
+                    "stddev": 0.57706829101936,
+                    "valid_percent": 100.0,
+                },
             }
         ]
 
@@ -1419,9 +1426,9 @@ def test_export_workspace_merge_into_existing(tmp_path, mock_s3_bucket):
         with open(metadata_file) as f:
             job_metadata = json.load(f)
 
-        items = job_metadata["assets"]
+        items = job_metadata["items"]
         assert len(items) == 1
-        for item in items.values():
+        for item in items:
             (asset_alternate,) = item["assets"]["openEO"]["alternate"].values()
             # noinspection PyUnresolvedReferences
             assert asset_alternate["href"] == f"s3://{object_workspace.bucket}/{merge}/{expected_asset_filename}"
@@ -2024,9 +2031,9 @@ def test_load_ml_model_via_jobid(tmp_path):
         )
         with metadata_file.open() as f:
             metadata = json.load(f)
-        item_assets = metadata["assets"]
+        item_assets = metadata["items"]
         assert len(item_assets) == 1
-        assets = list(item_assets.values())[0]["assets"]
+        assets = item_assets[0]["assets"]
         assert "openEO" in assets
 
 
@@ -2171,6 +2178,7 @@ def test_multiple_save_result_single_export_workspace(tmp_path):
         assert geotiff_asset.extra_fields["bands"] == [
             {
                 "name": "Flat:2",
+                "statistics": {"minimum": 2.0, "maximum": 2.0, "mean": 2.0, "stddev": 0.0, "valid_percent": 100.0},
             }
         ]
 
@@ -2361,9 +2369,9 @@ def test_export_to_multiple_workspaces(tmp_path, remove_original):
         with open(metadata_file) as f:
             job_metadata = json.load(f)
 
-        item_assets = job_metadata["assets"]
+        item_assets = job_metadata["items"]
         assert len(item_assets) == 1
-        assets = list(item_assets.values())[0]
+        assets = item_assets[0]
         asset = assets["assets"]["openEO"]
 
         assert asset["href"] == str(tmp_path / "openEO_2021-01-05Z.tif")
@@ -2529,8 +2537,8 @@ def test_spatial_geotiff_metadata(tmp_path):
     )
 
     with open(metadata_file) as f:
-        item_assets = json.load(f)["assets"]
-    for item_asset in item_assets.values():
+        item_assets = json.load(f)["items"]
+    for item_asset in item_assets:
         assets = item_asset["assets"]
         assert set(assets.keys()) == {"openEO"}
         asset = assets["openEO"]

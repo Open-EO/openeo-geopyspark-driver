@@ -167,11 +167,12 @@ def _extract_gdal_asset_raster_metadata(
     # Then it could profit from Sparks parallel processing.
     argument_tuples = [
         (
-            asset_path,
+            os.path.relpath(asset_md["href"],job_dir),
             asset_md,
             job_dir,
+            asset_key,
         )
-        for asset_path, asset_md in asset_metadata.items()  # FIXME: this is asset key rather than asset path
+        for asset_key, asset_md in asset_metadata.items()
         if "roles" not in asset_md or "data" in asset_md.get("roles")
     ]
     results = exec_parallel_with_fallback(_get_metadata_callback, argument_tuples)
@@ -201,7 +202,7 @@ def _extract_gdal_asset_raster_metadata(
     return raster_metadata, is_some_raster_md_missing
 
 
-def _get_metadata_callback(asset_path: str, asset_md: Dict[str, str], job_dir: Path):
+def _get_metadata_callback(asset_path: str, asset_md: Dict[str, str], job_dir: Path, asset_key: str):
 
     mime_type: str = asset_md.get("type", "")
 
@@ -234,7 +235,7 @@ def _get_metadata_callback(asset_path: str, asset_md: Dict[str, str], job_dir: P
     if asset_gdal_metadata.could_not_read_file:
         return None
     else:
-        return (asset_path, asset_gdal_metadata.to_dict())
+        return (asset_key, asset_gdal_metadata.to_dict())
         # TODO: Would make it simpler if we could store the AssetRasterMetadata
         #   and convert it to dict at the end.
         # raster_metadata[asset_path] = asset_gdal_metadata
