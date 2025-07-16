@@ -1343,7 +1343,7 @@ class GeopysparkDataCube(DriverDataCube):
                 _log.info(
                     f"Repartitioning datacube with {max_level.getNumPartitions()} partitions to {proposed_partition_count} before resample_cube_spatial."
                 )
-                #max_level = max_level.repartition(int(proposed_partition_count))
+                max_level = max_level.repartition(int(proposed_partition_count))
             else:
                 _log.warning(
                     f"resample_spatial proposed new partition count {proposed_partition_count} is too high, not repartitioning."
