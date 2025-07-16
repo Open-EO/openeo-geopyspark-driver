@@ -888,23 +888,29 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
         from openeogeotrellis.integrations.s3proxy.asset_urls import PresignedS3AssetUrls
         from openeogeotrellis.utils import get_s3_file_contents
         import botocore.exceptions
+        from urllib.parse import urlparse
 
         if results_metadata_uri is None:
             return None
 
         _log.debug(f"Loading results metadata from URI {results_metadata_uri}")
 
-        file_prefix = "file:"
-        if results_metadata_uri.startswith(file_prefix):
-            file_path = results_metadata_uri[len(file_prefix):]
+        uri_parts = urlparse(results_metadata_uri)
+
+        if uri_parts.scheme == "file":
+            file_path = uri_parts.path
             try:
                 with open(file_path) as f:
                     return json.load(f)
             except FileNotFoundError:
-                # TODO: log?
-                return None  # expected, job did not have the chance to write results metadata yet
+                _log.debug(
+                    f"File with results metadata {file_path} does not exist; this is expected and not "
+                    f"an error if the batch job did not have the chance to write it yet.",
+                    exc_info=True,
+                )
+                return None
 
-        if results_metadata_uri.startswith("s3://"):
+        if uri_parts.scheme == "s3":
             bucket, key = PresignedS3AssetUrls.get_bucket_key_from_uri(results_metadata_uri)
             try:
                 return json.loads(get_s3_file_contents(key, bucket))
@@ -912,8 +918,12 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
                 if e.response["Error"]["Code"] != "NoSuchKey":
                     raise
 
-                # TODO: log?
-                return None  # expected, see above
+                _log.debug(
+                    f"Object with results metadata {key} does not exist in bucket {bucket}; this is "
+                    f"expected and not an error if the batch job did not have the chance to write it yet.",
+                    exc_info=True,
+                )
+                return None
 
         raise ValueError(f"Unsupported results metadata URI: {results_metadata_uri}")
 
