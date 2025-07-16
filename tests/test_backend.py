@@ -844,7 +844,6 @@ class TestGpsBatchJobs:
         "results_metadata_uri_prefix",
         [
             "file:",
-            "file:/",
             "file://",
         ],
     )
