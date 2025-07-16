@@ -690,11 +690,14 @@ class InMemoryJobRegistry(JobRegistryInterface):
         job_id: str,
         *,
         user_id: Optional[str] = None,
+        results_metadata: Dict[str, Any] = None,
         costs: Optional[float],
         usage: dict,
-        results_metadata: Dict[str, Any],
     ) -> None:
-        self._update(job_id=job_id, costs=costs, usage=usage, results_metadata=results_metadata)
+        if results_metadata:
+            self._update(job_id=job_id, costs=costs, usage=usage, results_metadata=results_metadata)
+        else:
+            self._update(job_id=job_id, costs=costs, usage=usage)
 
     def set_results_metadata_uri(
         self, job_id: str, *, user_id: Optional[str] = None, results_metadata_uri: str
@@ -1075,14 +1078,15 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
         job_id: str,
         *,
         user_id: Optional[str] = None,
+        results_metadata: Dict[str, Any] = None,
         costs: Optional[float],
         usage: dict,
-        results_metadata: Dict[str, Any],
     ) -> None:
         if self.zk_job_registry:
             assert user_id, "user_id is required in ZkJobRegistry"
-            self.zk_job_registry.patch(job_id=job_id, user_id=user_id,
-                                       **dict(results_metadata, costs=costs, usage=usage))
+            self.zk_job_registry.patch(
+                job_id=job_id, user_id=user_id, **dict(results_metadata or {}, costs=costs, usage=usage)
+            )
 
         if self.elastic_job_registry:
             self.elastic_job_registry.set_results_metadata(
