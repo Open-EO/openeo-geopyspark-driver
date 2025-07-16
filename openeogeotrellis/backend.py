@@ -2706,10 +2706,10 @@ class GpsBatchJobs(backend.BatchJobs):
 
         job_dir = self.get_job_output_dir(job_id=job_id)
 
-        results_metadata = self._load_results_metadata_from_uri(job_dict.get("results_metadata_uri"))  # TODO: expose a getter?
+        results_metadata = self._load_results_metadata_from_uri(job_dict.get("results_metadata_uri"), job_id)  # TODO: expose a getter?
         if not results_metadata:
             try:
-                logger.debug(f"Loading results metadata from job registry")
+                logger.debug(f"Loading results metadata from job registry", extra={"job_id": job_id})
                 with self._double_job_registry as registry:
                     job_dict = registry.elastic_job_registry.get_job(job_id, user_id=user_id)
                     if "results_metadata" in job_dict:
@@ -2801,7 +2801,7 @@ class GpsBatchJobs(backend.BatchJobs):
         with self._double_job_registry as registry:
             job_dict = registry.get_job(job_id=job_id, user_id=user_id)
 
-        results_metadata = self._load_results_metadata_from_uri(job_dict.get("results_metadata_uri"))  # TODO: expose a getter?
+        results_metadata = self._load_results_metadata_from_uri(job_dict.get("results_metadata_uri"), job_id)  # TODO: expose a getter?
         if results_metadata is not None:
             return results_metadata
 
@@ -2809,7 +2809,9 @@ class GpsBatchJobs(backend.BatchJobs):
 
         if ConfigParams().use_object_storage:
             try:
-                logger.debug(f"Loading results metadata from object storage at {metadata_file}")
+                logger.debug(
+                    f"Loading results metadata from object storage at {metadata_file}", extra={"job_id": job_id}
+                )
                 contents = get_s3_file_contents(path=str(metadata_file))
                 return json.loads(contents)
             except Exception:
@@ -2819,7 +2821,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     extra={'job_id': job_id})
 
         try:
-            logger.debug(f"Loading results metadata from file at {metadata_file}")
+            logger.debug(f"Loading results metadata from file at {metadata_file}", extra={"job_id": job_id})
             with open(metadata_file) as f:
                 return json.load(f)
         except FileNotFoundError:
@@ -2829,14 +2831,14 @@ class GpsBatchJobs(backend.BatchJobs):
         return {}
 
     @staticmethod
-    def _load_results_metadata_from_uri(results_metadata_uri: Optional[str]) -> Optional[dict]:
+    def _load_results_metadata_from_uri(results_metadata_uri: Optional[str], job_id: str) -> Optional[dict]:
         # TODO: reduce code duplication with load_results_metadata
         import botocore.exceptions
 
         if results_metadata_uri is None:
             return None
 
-        logger.debug(f"Loading results metadata from URI {results_metadata_uri}")
+        logger.debug(f"Loading results metadata from URI {results_metadata_uri}", extra={"job_id": job_id})
 
         uri_parts = urlparse(results_metadata_uri)
 
@@ -2850,6 +2852,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     f"File with results metadata {file_path} does not exist; this is expected and not "
                     f"an error if the batch job did not have the chance to write it yet.",
                     exc_info=True,
+                    extra={"job_id": job_id},
                 )
                 return None
 
@@ -2865,6 +2868,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     f"Object with results metadata {key} does not exist in bucket {bucket}; this is "
                     f"expected and not an error if the batch job did not have the chance to write it yet.",
                     exc_info=True,
+                    extra={"job_id": job_id},
                 )
                 return None
 

@@ -874,7 +874,9 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
                     ejr_job_info = self.elastic_job_registry.get_job(job_id=job_id, user_id=user_id)
 
                     # TODO: replace with getter once introduced?
-                    results_metadata = self._load_results_metadata_from_uri(ejr_job_info.get("results_metadata_uri"))
+                    results_metadata = self._load_results_metadata_from_uri(
+                        ejr_job_info.get("results_metadata_uri"), job_id
+                    )
                     if results_metadata is not None:
                         ejr_job_info["results_metadata"] = results_metadata
 
@@ -883,7 +885,7 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
         return job_metadata
 
     @staticmethod
-    def _load_results_metadata_from_uri(results_metadata_uri: Optional[str]) -> Optional[dict]:
+    def _load_results_metadata_from_uri(results_metadata_uri: Optional[str], job_id: str) -> Optional[dict]:
         # TODO: reduce code duplication with openeogeotrellis.backend.GpsBatchJobs._load_results_metadata_from_uri
         from openeogeotrellis.integrations.s3proxy.asset_urls import PresignedS3AssetUrls
         from openeogeotrellis.utils import get_s3_file_contents
@@ -893,7 +895,7 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
         if results_metadata_uri is None:
             return None
 
-        _log.debug(f"Loading results metadata from URI {results_metadata_uri}")
+        _log.debug(f"Loading results metadata from URI {results_metadata_uri}", extra={"job_id": job_id})
 
         uri_parts = urlparse(results_metadata_uri)
 
@@ -907,6 +909,7 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
                     f"File with results metadata {file_path} does not exist; this is expected and not "
                     f"an error if the batch job did not have the chance to write it yet.",
                     exc_info=True,
+                    extra={"job_id": job_id},
                 )
                 return None
 
@@ -922,6 +925,7 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
                     f"Object with results metadata {key} does not exist in bucket {bucket}; this is "
                     f"expected and not an error if the batch job did not have the chance to write it yet.",
                     exc_info=True,
+                    extra={"job_id": job_id},
                 )
                 return None
 
