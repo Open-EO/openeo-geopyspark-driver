@@ -13,7 +13,13 @@ without compromising stable operations.
 <!-- start-of-changelog -->
 
 
-## In progress: 0.66.0
+## In progress: 0.67.0
+
+- Avoid workaround with EJR to obtain job results metadata in the context of a failover ([#1255](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1255))
+- Avoid 413 "Payload Too Large" response from EJR upon job results metadata update ([#1200](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1200))
+
+
+## 0.66.0
 
 - 'Batch job options' are now advertised following the openEO [processing parameters extension](https://github.com/Open-EO/openeo-api/tree/draft/extensions/processing-parameters)  ([Open-EO/openeo-python-driver#307](https://github.com/Open-EO/openeo-python-driver/issues/307))
 - use region specific config for workspace actions
