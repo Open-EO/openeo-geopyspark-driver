@@ -35,6 +35,10 @@ def _default_capabilities_deploy_metadata() -> dict:
     return metadata
 
 
+# TODO: avoid KUBE env var and just default to False in general
+_is_kube_deploy = smart_bool(os.environ.get("KUBE", False))
+
+
 class EtlApiConfig(metaclass=abc.ABCMeta):
     """
     Interface for configuration of ETL API access (possibly dynamic based on user, ...).
@@ -87,8 +91,7 @@ class GpsBackendConfig(OpenEoBackendConfig):
     # TODO: remove this temporary feature flag
     allow_run_udf_in_driver: bool = False
 
-    # TODO: avoid KUBE env var and just default to False in general
-    setup_kerberos_auth: bool = not smart_bool(os.environ.get("KUBE", False))
+    setup_kerberos_auth: bool = not _is_kube_deploy
 
     # TODO: possible to disable enrichment by default?
     opensearch_enrich: bool = True
@@ -300,3 +303,5 @@ class GpsBackendConfig(OpenEoBackendConfig):
 
     # FreeIPA server to use (for user lookup/creation)
     freeipa_server: Optional[str] = os.environ.get("OPENEO_FREEIPA_SERVER", None)
+
+    supports_async_tasks: bool = not _is_kube_deploy

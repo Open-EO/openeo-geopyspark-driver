@@ -1915,7 +1915,7 @@ class GpsBatchJobs(backend.BatchJobs):
             ]
         ):
             job_dependencies = self._schedule_and_get_dependencies(
-                supports_async_tasks=False,
+                supports_async_tasks=get_backend_config().supports_async_tasks,
                 process_graph=job_process_graph,
                 api_version=api_version,
                 user_id=user_id,
