@@ -45,7 +45,10 @@ from shapely.geometry import mapping
 import traceback_with_variables
 
 from openeogeotrellis._version import __version__
-from openeogeotrellis.backend import GeoPySparkBackendImplementation
+from openeogeotrellis.backend import (
+    JOB_METADATA_FILENAME,
+    GeoPySparkBackendImplementation,
+)
 from openeogeotrellis.collect_unique_process_ids_visitor import (
     CollectUniqueProcessIdsVisitor,
 )
