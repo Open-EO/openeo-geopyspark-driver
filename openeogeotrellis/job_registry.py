@@ -1018,7 +1018,7 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
         user_id: Optional[str] = None,
         costs: Optional[float],
         usage: dict,
-        results_metadata: Dict[str, Any],
+        results_metadata: Optional[Dict[str, Any]] = None,
     ) -> None:
         if self.zk_job_registry:
             assert user_id, "user_id is required in ZkJobRegistry"
