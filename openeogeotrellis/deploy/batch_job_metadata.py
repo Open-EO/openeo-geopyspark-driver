@@ -354,11 +354,11 @@ def _transform_stac_metadata(job_dir: Path):
             json.dump(transformed, f, indent=2)
 
 
-def _get_tracker(tracker_id=""):
+def _get_tracker(tracker_id: str = ""):
     return get_jvm().org.openeo.geotrelliscommon.BatchJobMetadataTracker.tracker(tracker_id)
 
 
-def _get_tracker_metadata(tracker_id="") -> dict:
+def _get_tracker_metadata(tracker_id: str = "", *, omit_derived_from_links: bool = False) -> dict:
     tracker = _get_tracker(tracker_id)
     usage = {}
     all_links = []
@@ -374,21 +374,20 @@ def _get_tracker_metadata(tracker_id="") -> dict:
         if pixels is not None:
             usage["input_pixel"] = {"value": pixels / (1024 * 1024), "unit": "mega-pixel"}
 
-        links = tracker_results.get("links", None)
-        all_links = None
-        if links is not None:
-            all_links = list(chain(*links.values()))
+        input_product_links: Dict[str, list] = tracker_results.get("links", None)
+        if not omit_derived_from_links and input_product_links:
             # TODO: when in the future these links point to STAC objects we will need to update the type.
             #   https://github.com/openEOPlatform/architecture-docs/issues/327
-            all_links = [
+            all_links.extend(
                 {
                     "href": link.getSelfUrl(),
                     "rel": "derived_from",
                     "title": f"Derived from {link.getId()}",
                     "type": "application/json",
                 }
-                for link in all_links
-            ]
+                for links in input_product_links.values()
+                for link in links
+            )
 
 
     from openeogeotrellis.metrics_tracking import global_tracker
