@@ -65,6 +65,7 @@ from openeogeotrellis.deploy.batch_job_metadata import (
 )
 from openeogeotrellis.integrations.gdal import get_abs_path_of_asset
 from openeogeotrellis.integrations.hadoop import setup_kerberos_auth
+from openeogeotrellis.job_options import JobOptions
 from openeogeotrellis.udf import (
     build_python_udf_dependencies_archive,
     collect_python_udf_dependencies,
@@ -273,7 +274,10 @@ def run_job(
     tracker_metadata = {}
     items = []
 
+    # TODO: migrate all raw job option usage to parsed job options
     job_options = job_specification.get("job_options", {})
+    parsed_job_options: JobOptions = JobOptions.from_dict(job_options)
+
     is_stac11 = job_options.get("stac-version", "1.0") == "1.1"
 
     try:
@@ -370,7 +374,13 @@ def run_job(
             ml_model_metadata=ml_model_metadata,
         )
         # perform a first metadata write _before_ actually computing the result. This provides a bit more info, even if the job fails.
-        write_metadata({**result_metadata, **_get_tracker_metadata("")}, metadata_file)
+        write_metadata(
+            {
+                **result_metadata,
+                **_get_tracker_metadata("", omit_derived_from_links=parsed_job_options.omit_derived_from_links),
+            },
+            metadata_file,
+        )
 
         for result in results:
             result.options["batch_mode"] = True
@@ -539,7 +549,7 @@ def run_job(
             ml_model_metadata=ml_model_metadata,
         )
 
-        tracker_metadata = _get_tracker_metadata("")
+        tracker_metadata = _get_tracker_metadata("", omit_derived_from_links=parsed_job_options.omit_derived_from_links)
         if "sar_backscatter_soft_errors" in tracker_metadata.get("usage",{}):
             soft_errors = tracker_metadata["usage"]["sar_backscatter_soft_errors"]["value"]
             if soft_errors > max_soft_errors_ratio:
@@ -577,11 +587,18 @@ def run_job(
                 job_dir=job_dir,
                 remove_exported_assets=job_options.get("remove-exported-assets", False),
                 enable_merge=job_options.get("export-workspace-enable-merge", False),
+                omit_derived_from_links=parsed_job_options.omit_derived_from_links,
             )
     finally:
         if len(tracker_metadata) == 0:
-            tracker_metadata = _get_tracker_metadata("")
-        meta =  {**result_metadata, **tracker_metadata, **{"items": items}} if is_stac11 else {**result_metadata, **tracker_metadata}
+            tracker_metadata = _get_tracker_metadata(
+                "", omit_derived_from_links=parsed_job_options.omit_derived_from_links
+            )
+        meta = (
+            {**result_metadata, **tracker_metadata, **{"items": items}}
+            if is_stac11
+            else {**result_metadata, **tracker_metadata}
+        )
         write_metadata(meta, metadata_file)
 
 
@@ -615,11 +632,13 @@ def write_metadata(metadata: dict, metadata_file: Path):
 def _export_to_workspaces(
     result: SaveResult,
     result_metadata: dict,
+    *,
     result_assets_metadata: dict,
     result_items_metadata: dict,
     job_dir: Path,
     remove_exported_assets: bool,
     enable_merge: bool,
+    omit_derived_from_links: bool = False,
 ):
     workspace_repository: WorkspaceRepository = backend_config_workspace_repository
     workspace_exports = sorted(
@@ -635,13 +654,22 @@ def _export_to_workspaces(
         #placeholder code below is a copy of the 'assets' case, should be replaced with call to new function
         stac_hrefs = [
             f"file:{path}"
-            for path in _write_exported_stac_collection(job_dir, result_metadata, list(result_assets_metadata.keys()))
+            for path in _write_exported_stac_collection(
+                job_dir,
+                result_metadata,
+                asset_keys=list(result_assets_metadata.keys()),
+                omit_derived_from_links=omit_derived_from_links,
+            )
         ]
     else:
-
         stac_hrefs = [
             f"file:{path}"
-            for path in _write_exported_stac_collection(job_dir, result_metadata, list(result_assets_metadata.keys()))
+            for path in _write_exported_stac_collection(
+                job_dir,
+                result_metadata,
+                asset_keys=list(result_assets_metadata.keys()),
+                omit_derived_from_links=omit_derived_from_links,
+            )
         ]
 
     # TODO: assemble pystac.STACObject and avoid file altogether?
@@ -727,7 +755,9 @@ def _export_to_workspace(
 def _write_exported_stac_collection(
     job_dir: Path,
     result_metadata: dict,
+    *,
     asset_keys: List[str],
+    omit_derived_from_links: bool = False,
 ) -> List[Path]:  # TODO: change to Set?
     def write_stac_item_file(asset_id: str, asset: dict) -> Path:
         item_file = get_abs_path_of_asset(Path(f"{asset_id}.json"), job_dir)
@@ -792,7 +822,11 @@ def _write_exported_stac_collection(
         },
         "links": (
             [item_link(item_file) for item_file in item_files]
-            + [link for link in _get_tracker_metadata("").get("links", []) if link["rel"] == "derived_from"]
+            + [
+                link
+                for link in _get_tracker_metadata("", omit_derived_from_links=omit_derived_from_links).get("links", [])
+                if link["rel"] == "derived_from"
+            ]
         ),
     }
 

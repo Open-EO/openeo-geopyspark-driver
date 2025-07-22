@@ -114,6 +114,13 @@ class JobOptions:
         metadata={"name":"log_level","description": "log level, can be 'debug', 'info', 'warning' or 'error'", "public":True},
     )
 
+    omit_derived_from_links: bool = field(
+        default=False,
+        metadata={
+            "description": "Whether to omit 'derived_from' links in the batch job results to reduce the batch job result metadata size.",
+        },
+    )
+
     @staticmethod
     def as_logging_threshold_arg(value) -> str:
         value = value.upper()
@@ -331,6 +338,3 @@ class K8SOptions(JobOptions):
                 message=f"Requested too many driver cores: {self.driver_cores} , the max for this instance is: {max_cores}",
                 status_code=400)
         return super().validate()
-
-
-
