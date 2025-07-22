@@ -689,7 +689,7 @@ class InMemoryJobRegistry(JobRegistryInterface):
         user_id: Optional[str] = None,
         costs: Optional[float],
         usage: dict,
-        results_metadata: Dict[str, Any],
+        results_metadata: Optional[Dict[str, Any]] = None,
     ) -> None:
         self._update(job_id=job_id, costs=costs, usage=usage, results_metadata=results_metadata)
 
