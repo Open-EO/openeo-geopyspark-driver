@@ -13,7 +13,6 @@ from typing import Dict, List, Optional, Tuple, Union
 from urllib.parse import urlparse
 
 import pystac
-import traceback_with_variables
 from openeo.util import TimingLogger, dict_no_none, ensure_dir
 from openeo_driver import ProcessGraphDeserializer
 from openeo_driver.backend import BatchJobs
@@ -919,12 +918,6 @@ def start_main():
     except Exception as e:
         error_summary = GeoPySparkBackendImplementation.summarize_exception_static(e)
         logger.exception("OpenEO batch job failed: " + error_summary.summary)
-        if False:  # TODO #939
-            fmt = traceback_with_variables.Format(max_value_str_len=100)
-            logger.info(
-                "Batch job error stack trace with locals",
-                extra={"exc_info_with_locals": traceback_with_variables.format_exc(e, fmt=fmt)},
-            )
         raise
 
 
