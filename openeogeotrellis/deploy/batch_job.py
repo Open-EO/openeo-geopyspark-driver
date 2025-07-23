@@ -1,12 +1,11 @@
 import concurrent
-import time
-
 import json
 import logging
 import os
 import shutil
 import stat
 import sys
+import time
 from copy import deepcopy
 from functools import partial
 from pathlib import Path
@@ -14,6 +13,7 @@ from typing import Dict, List, Optional, Tuple, Union
 from urllib.parse import urlparse
 
 import pystac
+import traceback_with_variables
 from openeo.util import TimingLogger, dict_no_none, ensure_dir
 from openeo_driver import ProcessGraphDeserializer
 from openeo_driver.backend import BatchJobs
@@ -43,11 +43,9 @@ from py4j.protocol import Py4JError, Py4JJavaError
 from pyspark import SparkConf, SparkContext
 from pyspark.profiler import BasicProfiler
 from shapely.geometry import mapping
-import traceback_with_variables
 
 from openeogeotrellis._version import __version__
 from openeogeotrellis.backend import (
-    JOB_METADATA_FILENAME,
     GeoPySparkBackendImplementation,
 )
 from openeogeotrellis.collect_unique_process_ids_visitor import (
@@ -68,10 +66,10 @@ from openeogeotrellis.integrations.gdal import get_abs_path_of_asset
 from openeogeotrellis.integrations.hadoop import setup_kerberos_auth
 from openeogeotrellis.job_options import JobOptions
 from openeogeotrellis.udf import (
+    UdfDependencyHandlingFailure,
     build_python_udf_dependencies_archive,
     collect_python_udf_dependencies,
     install_python_udf_dependencies,
-    UdfDependencyHandlingFailure,
 )
 from openeogeotrellis.util.runtime import get_job_id
 from openeogeotrellis.utils import (
@@ -81,11 +79,11 @@ from openeogeotrellis.utils import (
     json_default,
     log_memory,
     to_jsonable,
-    wait_till_path_available,
     unzip,
+    wait_till_path_available,
 )
 
-logger = logging.getLogger('openeogeotrellis.deploy.batch_job')
+logger = logging.getLogger("openeogeotrellis.deploy.batch_job")
 
 
 OPENEO_LOGGING_THRESHOLD = os.environ.get("OPENEO_LOGGING_THRESHOLD", "INFO")
@@ -95,7 +93,9 @@ GlobalExtraLoggingFilter.set("job_id", get_job_id(default="unknown-job"))
 def _create_job_dir(job_dir: Path):
     if not ConfigParams().is_kube_deploy:
         if not job_dir.exists():
-            logger.error("Expected job dir to exist {j!r} (parent dir: {p}))".format(j=job_dir, p=describe_path(job_dir.parent)))
+            logger.error(
+                "Expected job dir to exist {j!r} (parent dir: {p}))".format(j=job_dir, p=describe_path(job_dir.parent))
+            )
             # Create the directory with read/write/execute permissions for everyone as a fallback.
             ensure_dir(job_dir)
             add_permissions(job_dir, stat.S_IRWXO)
@@ -107,7 +107,7 @@ def _create_job_dir(job_dir: Path):
 
 
 def _parse(job_specification_file: str) -> Dict:
-    with open(job_specification_file, 'rt', encoding='utf-8') as f:
+    with open(job_specification_file, "rt", encoding="utf-8") as f:
         job_specification = json.load(f)
 
     return job_specification
@@ -118,18 +118,18 @@ def _deserialize_dependencies(arg: str) -> List[dict]:
 
 
 def _get_sentinel_hub_credentials_from_spark_conf(conf: SparkConf) -> Optional[Tuple[str, str]]:
-    default_client_id = conf.get('spark.openeo.sentinelhub.client.id.default')
-    default_client_secret = conf.get('spark.openeo.sentinelhub.client.secret.default')
+    default_client_id = conf.get("spark.openeo.sentinelhub.client.id.default")
+    default_client_secret = conf.get("spark.openeo.sentinelhub.client.secret.default")
 
     return (default_client_id, default_client_secret) if default_client_id and default_client_secret else None
 
 
 def _get_vault_token(conf: SparkConf) -> Optional[str]:
-    return conf.get('spark.openeo.vault.token')
+    return conf.get("spark.openeo.vault.token")
 
 
 def _get_access_token(conf: SparkConf) -> Optional[str]:
-    return conf.get('spark.openeo.access_token')
+    return conf.get("spark.openeo.access_token")
 
 
 def main(argv: List[str]) -> None:
@@ -168,18 +168,23 @@ def main(argv: List[str]) -> None:
         if not get_backend_config().fuse_mount_batchjob_s3_bucket:
             from openeogeotrellis.utils import s3_client
 
-            bucket = os.environ.get('SWIFT_BUCKET')
+            bucket = os.environ.get("SWIFT_BUCKET")
             s3_instance = s3_client()
 
-            s3_instance.download_file(bucket, job_specification_file.strip("/"), job_specification_file )
+            s3_instance.download_file(bucket, job_specification_file.strip("/"), job_specification_file)
 
     job_specification = _parse(job_specification_file)
     load_custom_processes()
 
-    conf = (SparkConf()
-            .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
-            .set(key='spark.kryo.registrator', value='geotrellis.spark.store.kryo.KryoRegistrator')
-            .set("spark.kryo.classesToRegister", "ar.com.hjg.pngj.ImageInfo,ar.com.hjg.pngj.ImageLineInt,geotrellis.raster.RasterRegion$GridBoundsRasterRegion"))
+    conf = (
+        SparkConf()
+        .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
+        .set(key="spark.kryo.registrator", value="geotrellis.spark.store.kryo.KryoRegistrator")
+        .set(
+            "spark.kryo.classesToRegister",
+            "ar.com.hjg.pngj.ImageInfo,ar.com.hjg.pngj.ImageLineInt,geotrellis.raster.RasterRegion$GridBoundsRasterRegion",
+        )
+    )
 
     def context_with_retry(conf):
         retry_counter = 0
@@ -191,7 +196,9 @@ def main(argv: List[str]) -> None:
                 if retry_counter == 5:
                     raise
                 else:
-                    logger.info(f"Failed to create SparkContext, retrying {retry_counter} ... {repr(GeoPySparkBackendImplementation.summarize_exception_static(e))}")
+                    logger.info(
+                        f"Failed to create SparkContext, retrying {retry_counter} ... {repr(GeoPySparkBackendImplementation.summarize_exception_static(e))}"
+                    )
 
     with context_with_retry(conf) as sc:
         try:
@@ -290,9 +297,9 @@ def run_job(
         metadata_file = Path(metadata_file).absolute()
         job_dir = Path(job_dir).absolute()
 
-        logger.info(f"Job spec: {json.dumps(job_specification,indent=1)}")
+        logger.info(f"Job spec: {json.dumps(job_specification, indent=1)}")
         logger.debug(f"{job_dir=}, {job_dir=}, {output_file=}, {metadata_file=}")
-        process_graph = job_specification['process_graph']
+        process_graph = job_specification["process_graph"]
 
         try:
             _extract_and_install_udf_dependencies(process_graph=process_graph)
@@ -313,17 +320,16 @@ def run_job(
         correlation_id = get_job_id(default="unknown-job")
         logger.info(f"Correlation id: {correlation_id}")
         env_values = {
-            'version': api_version or "1.0.0",
-            'pyramid_levels': 'highest',
-            'user': User(user_id=user_id,
-                         internal_auth_data=dict_no_none(access_token=access_token)),
-            'require_bounds': True,
-            'correlation_id': correlation_id,
-            'dependencies': dependencies.copy(),  # will be mutated (popped) during evaluation
-            'backend_implementation': backend_implementation,
-            'max_soft_errors_ratio': max_soft_errors_ratio,
-            'sentinel_hub_client_alias': sentinel_hub_client_alias,
-            'vault_token': vault_token
+            "version": api_version or "1.0.0",
+            "pyramid_levels": "highest",
+            "user": User(user_id=user_id, internal_auth_data=dict_no_none(access_token=access_token)),
+            "require_bounds": True,
+            "correlation_id": correlation_id,
+            "dependencies": dependencies.copy(),  # will be mutated (popped) during evaluation
+            "backend_implementation": backend_implementation,
+            "max_soft_errors_ratio": max_soft_errors_ratio,
+            "sentinel_hub_client_alias": sentinel_hub_client_alias,
+            "vault_token": vault_token,
         }
         job_option_whitelist = [
             "data_mask_optimization",
@@ -345,14 +351,14 @@ def run_job(
             result = JSONResult(geojsons)
 
         if isinstance(result, DriverDataCube):
-            format_options = job_specification.get('output', {})
+            format_options = job_specification.get("output", {})
             format_options["batch_mode"] = True
-            result = ImageCollectionResult(cube=result, format='GTiff', options=format_options)
+            result = ImageCollectionResult(cube=result, format="GTiff", options=format_options)
 
         if isinstance(result, DriverVectorCube):
-            format_options = job_specification.get('output', {})
+            format_options = job_specification.get("output", {})
             format_options["batch_mode"] = True
-            result = VectorCubeResult(cube=result, format='GTiff', options=format_options)
+            result = VectorCubeResult(cube=result, format="GTiff", options=format_options)
 
         results = result if isinstance(result, List) else [result]
         results = [result if isinstance(result, SaveResult) else JSONResult(result) for result in results]
@@ -360,7 +366,7 @@ def run_job(
         global_metadata_attributes = {
             "title": job_specification.get("title", ""),
             "description": job_specification.get("description", ""),
-            "institution": f"{get_backend_config().processing_facility} - {get_backend_config().capabilities_backend_version}"
+            "institution": f"{get_backend_config().processing_facility} - {get_backend_config().capabilities_backend_version}",
         }
 
         ml_model_metadata = None
@@ -391,8 +397,10 @@ def run_job(
             if result.options.get("sample_by_feature"):
                 geoms = tracer.get_last_geometry("filter_spatial")
                 if geoms is None:
-                    logger.warning("sample_by_feature enabled, but no geometries found. "
-                                   "They can be specified using filter_spatial.")
+                    logger.warning(
+                        "sample_by_feature enabled, but no geometries found. "
+                        "They can be specified using filter_spatial."
+                    )
                 else:
                     result.options["geometries"] = geoms
                 if result.options.get("geometries") is None:
@@ -409,11 +417,12 @@ def run_job(
             if items and "assets" not in next(iter(items.values())):  # no "assets" property so assets themselves
                 assets = items
                 logger.warning(f"save_result: got an 'assets' object instead of items for {result_arg}")
-                #TODO: this is here to avoid having to sync changes with openeo-python-driver
-                #it can and should be removed as soon as we have introduced returning items in all SaveResult subclasses
+                # TODO: this is here to avoid having to sync changes with openeo-python-driver
+                # it can and should be removed as soon as we have introduced returning items in all SaveResult subclasses
                 import uuid
+
                 item_id = str(uuid.uuid4())
-                items =  {
+                items = {
                     item_id: {
                         "id": item_id,
                         "assets": assets,
@@ -421,8 +430,9 @@ def run_job(
                 }
 
             keys = set()
-            def unique_key(asset_id,href):
-                #try to make the key unique, and backwards compatible if possible
+
+            def unique_key(asset_id, href):
+                # try to make the key unique, and backwards compatible if possible
                 if href is not None:
                     try:
                         if str(href).startswith("s3://"):
@@ -446,9 +456,10 @@ def run_job(
                 keys.add(temp_key)
                 return temp_key
 
-
             assets = {
-                unique_key(asset_key, asset.get("href",None)): asset for item in items.values() for asset_key, asset in item.get("assets", {}).items()
+                unique_key(asset_key, asset.get("href", None)): asset
+                for item in items.values()
+                for asset_key, asset in item.get("assets", {}).items()
             }
             return assets, items
 
@@ -483,7 +494,7 @@ def run_job(
                 add_permissions(Path(asset["href"]), stat.S_IWGRP)
             logger.info(f"wrote {len(the_assets_metadata)} assets to {output_file}")
 
-        if any(dependency['card4l'] for dependency in dependencies):  # TODO: clean this up
+        if any(dependency["card4l"] for dependency in dependencies):  # TODO: clean this up
             logger.debug("awaiting Sentinel Hub CARD4L data...")
 
             s3_service = get_jvm().org.openeo.geotrellissentinelhub.S3Service()
@@ -491,7 +502,9 @@ def run_job(
             poll_interval_secs = 10
             max_delay_secs = 600
 
-            card4l_source_locations = [dependency['source_location'] for dependency in dependencies if dependency['card4l']]
+            card4l_source_locations = [
+                dependency["source_location"] for dependency in dependencies if dependency["card4l"]
+            ]
 
             for source_location in set(card4l_source_locations):
                 uri_parts = urlparse(source_location)
@@ -500,22 +513,28 @@ def run_job(
 
                 try:
                     # TODO: incorporate index to make sure the files don't clash
-                    s3_service.download_stac_data(bucket_name, request_group_id, str(job_dir), poll_interval_secs,
-                                                  max_delay_secs)
-                    logger.info("downloaded CARD4L data in {b}/{g} to {d}"
-                                .format(b=bucket_name, g=request_group_id, d=job_dir))
+                    s3_service.download_stac_data(
+                        bucket_name, request_group_id, str(job_dir), poll_interval_secs, max_delay_secs
+                    )
+                    logger.info(
+                        "downloaded CARD4L data in {b}/{g} to {d}".format(b=bucket_name, g=request_group_id, d=job_dir)
+                    )
                 except Py4JJavaError as e:
                     java_exception = e.java_exception
 
-                    if (java_exception.getClass().getName() ==
-                            'org.openeo.geotrellissentinelhub.S3Service$StacMetadataUnavailableException'):
-                        logger.warning("could not find CARD4L metadata to download from s3://{b}/{r} after {d}s"
-                                       .format(b=bucket_name, r=request_group_id, d=max_delay_secs))
+                    if (
+                        java_exception.getClass().getName()
+                        == "org.openeo.geotrellissentinelhub.S3Service$StacMetadataUnavailableException"
+                    ):
+                        logger.warning(
+                            "could not find CARD4L metadata to download from s3://{b}/{r} after {d}s".format(
+                                b=bucket_name, r=request_group_id, d=max_delay_secs
+                            )
+                        )
                     else:
                         raise e
 
             _transform_stac_metadata(job_dir)
-
 
         # this is subtle: result now points to the last of possibly several results (#295); it corresponds to
         # the terminal save_result node of the process graph
@@ -524,18 +543,12 @@ def run_job(
                 {
                     "name": "VITO",
                     "description": "This data was processed on an openEO backend maintained by VITO.",
-                    "roles": [
-                        "processor"
-                    ],
+                    "roles": ["processor"],
                     "processing:facility": "openEO Geotrellis backend",
-                    "processing:software": {
-                        "Geotrellis backend": __version__
-                    },
-                    "processing:expression": {
-                        "format": "openeo",
-                        "expression": pg_copy
-                    }
-                }]
+                    "processing:software": {"Geotrellis backend": __version__},
+                    "processing:expression": {"format": "openeo", "expression": pg_copy},
+                }
+            ]
 
         result_metadata = _assemble_result_metadata(
             tracer=tracer,
@@ -553,15 +566,16 @@ def run_job(
         )
 
         tracker_metadata = _get_tracker_metadata("", omit_derived_from_links=parsed_job_options.omit_derived_from_links)
-        if "sar_backscatter_soft_errors" in tracker_metadata.get("usage",{}):
+        if "sar_backscatter_soft_errors" in tracker_metadata.get("usage", {}):
             soft_errors = tracker_metadata["usage"]["sar_backscatter_soft_errors"]["value"]
             if soft_errors > max_soft_errors_ratio:
-                raise ValueError(
-                    f"sar_backscatter: Too many soft errors ({soft_errors} > {max_soft_errors_ratio})"
-                )
+                raise ValueError(f"sar_backscatter: Too many soft errors ({soft_errors} > {max_soft_errors_ratio})")
 
-        meta = {**result_metadata, **tracker_metadata, **{"items": items}} if is_stac11 else {**result_metadata,
-                                                                                              **tracker_metadata}
+        meta = (
+            {**result_metadata, **tracker_metadata, **{"items": items}}
+            if is_stac11
+            else {**result_metadata, **tracker_metadata}
+        )
         write_metadata(meta, metadata_file)
         logger.debug("Starting GDAL-based retrieval of asset metadata")
         result_metadata = _assemble_result_metadata(
@@ -586,7 +600,7 @@ def run_job(
                 result,
                 result_metadata,
                 result_assets_metadata=result_assets_metadata,
-                result_items_metadata = result_items_metadata if is_stac11 else None,
+                result_items_metadata=result_items_metadata if is_stac11 else None,
                 job_dir=job_dir,
                 remove_exported_assets=job_options.get("remove-exported-assets", False),
                 enable_merge=job_options.get("export-workspace-enable-merge", False),
@@ -616,7 +630,7 @@ def write_metadata(metadata: dict, metadata_file: Path):
         out_metadata = _convert_asset_outputs_to_s3_urls(metadata)
     log_asset_hrefs("output")
 
-    with open(metadata_file, 'w') as f:
+    with open(metadata_file, "w") as f:
         json.dump(out_metadata, f, default=json_default)
     add_permissions(metadata_file, stat.S_IWGRP)
     logger.info("wrote metadata to %s" % metadata_file)
@@ -629,7 +643,6 @@ def write_metadata(metadata: dict, metadata_file: Path):
 
         # asset files are already uploaded by Scala code TODO: this is not generally true e.g. assets generated by Python
         s3_instance.upload_file(str(metadata_file), bucket, str(metadata_file).strip("/"))
-
 
 
 def _export_to_workspaces(
@@ -653,8 +666,8 @@ def _export_to_workspaces(
         return
 
     if result_items_metadata is not None:
-        #TODO #402 add a function that serializes result_items_metadata and creates the collection, like for asses in the 'else' branch
-        #placeholder code below is a copy of the 'assets' case, should be replaced with call to new function
+        # TODO #402 add a function that serializes result_items_metadata and creates the collection, like for asses in the 'else' branch
+        # placeholder code below is a copy of the 'assets' case, should be replaced with call to new function
         stac_hrefs = [
             f"file:{path}"
             for path in _write_exported_stac_collection(
@@ -770,7 +783,6 @@ def _write_exported_stac_collection(
         if properties["datetime"] is None:
             start_datetime = asset.get("start_datetime") or result_metadata.get("start_datetime")
             properties["datetime"] = start_datetime
-
 
         stac_item = {
             "type": "Feature",
@@ -889,7 +901,6 @@ def _extract_and_install_udf_dependencies(process_graph: dict):
             sleep_after_udf_dep_setup()
         else:
             raise ValueError(f"Unsupported UDF dependencies install mode: {udf_deps_install_mode}")
-
 
 
 def start_main():

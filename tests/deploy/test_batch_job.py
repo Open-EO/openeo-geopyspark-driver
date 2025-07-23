@@ -1,6 +1,5 @@
 import json
 import logging
-import os
 import re
 import shutil
 import subprocess
@@ -9,8 +8,8 @@ import tempfile
 import textwrap
 import zipfile
 from pathlib import Path
-from unittest import mock
 from typing import Iterator
+from unittest import mock
 
 import dirty_equals
 import pytest
@@ -44,26 +43,28 @@ from openeogeotrellis.integrations.gdal import (
     parse_gdal_raster_metadata,
     read_gdal_raster_metadata,
 )
-from openeogeotrellis.metrics_tracking import global_tracker, MetricsTracker
+from openeogeotrellis.metrics_tracking import MetricsTracker, global_tracker
 from openeogeotrellis.testing import gps_config_overrides
-from openeogeotrellis.utils import get_jvm, to_s3_url, s3_client, stream_s3_binary_file_contents
+from openeogeotrellis.utils import get_jvm, s3_client, stream_s3_binary_file_contents, to_s3_url
+from tests.data import get_test_data_file
 
 _log = logging.getLogger(__name__)
 
-EXPECTED_GRAPH = [{"expression": {"nop": {"process_id": "discard_result",
-                                               "result": True}},
-                        "format": "openeo"}]
+EXPECTED_GRAPH = [{"expression": {"nop": {"process_id": "discard_result", "result": True}}, "format": "openeo"}]
 
-EXPECTED_PROVIDERS = [{'description': 'This data was processed on an openEO backend ' \
-                               'maintained by VITO.',
-                'name': 'VITO',
-                'processing:expression': {'expression': {'nop': {'process_id': 'discard_result',
-                                                                   'result': True}},
-                                            'format': 'openeo'},
-                'processing:facility': 'openEO Geotrellis backend',
-                'processing:software': {'Geotrellis backend': __version__},
-                'roles': ['processor']}]
-from tests.data import get_test_data_file
+EXPECTED_PROVIDERS = [
+    {
+        "description": "This data was processed on an openEO backend maintained by VITO.",
+        "name": "VITO",
+        "processing:expression": {
+            "expression": {"nop": {"process_id": "discard_result", "result": True}},
+            "format": "openeo",
+        },
+        "processing:facility": "openEO Geotrellis backend",
+        "processing:software": {"Geotrellis backend": __version__},
+        "roles": ["processor"],
+    }
+]
 
 
 @pytest.fixture
@@ -95,28 +96,37 @@ def metadata_tracker():
 
 def test_extract_result_metadata():
     tracer = DryRunDataTracer()
-    cube = tracer.load_collection(collection_id="Sentinel2", arguments={
-        "temporal_extent": ["2020-02-02", "2020-03-03"],
-    })
+    cube = tracer.load_collection(
+        collection_id="Sentinel2",
+        arguments={
+            "temporal_extent": ["2020-02-02", "2020-03-03"],
+        },
+    )
     cube = cube.filter_bbox(west=4, south=51, east=5, north=52)
 
     metadata = extract_result_metadata(tracer)
     expected = {
         "bbox": [4, 51, 5, 52],
-        "geometry": {"type": "Polygon", "coordinates": (((4.0, 51.0), (4.0, 52.0), (5.0, 52.0), (5.0, 51.0), (4.0, 51.0)),)},
+        "geometry": {
+            "type": "Polygon",
+            "coordinates": (((4.0, 51.0), (4.0, 52.0), (5.0, 52.0), (5.0, 51.0), (4.0, 51.0)),),
+        },
         "area": {"value": approx(7725459381.443416, 0.01), "unit": "square meter"},
         "start_datetime": "2020-02-02T00:00:00Z",
         "end_datetime": "2020-03-03T00:00:00Z",
-        "links":[]
+        "links": [],
     }
     assert metadata == expected
 
 
 def test_extract_result_metadata_aggregate_spatial():
     tracer = DryRunDataTracer()
-    cube = tracer.load_collection(collection_id="Sentinel2", arguments={
-        "temporal_extent": ["2020-02-02", "2020-03-03"],
-    })
+    cube = tracer.load_collection(
+        collection_id="Sentinel2",
+        arguments={
+            "temporal_extent": ["2020-02-02", "2020-03-03"],
+        },
+    )
     cube = cube.filter_bbox(west=4, south=51, east=5, north=52)
 
     geometries = shape(read_json(get_test_data_file("multipolygon01.geojson")))
@@ -126,25 +136,28 @@ def test_extract_result_metadata_aggregate_spatial():
     expected = {
         "bbox": [5.0, 5.0, 45.0, 40.0],
         "geometry": {
-            'type': 'MultiPolygon',
-            'coordinates': [
+            "type": "MultiPolygon",
+            "coordinates": [
                 (((30.0, 20.0), (45.0, 40.0), (10.0, 40.0), (30.0, 20.0)),),
-                (((15.0, 5.0), (40.0, 10.0), (10.0, 20.0), (5.0, 10.0), (15.0, 5.0)),)
+                (((15.0, 5.0), (40.0, 10.0), (10.0, 20.0), (5.0, 10.0), (15.0, 5.0)),),
             ],
         },
         "area": {"value": approx(6797677574525.158, 0.01), "unit": "square meter"},
         "start_datetime": "2020-02-02T00:00:00Z",
         "end_datetime": "2020-03-03T00:00:00Z",
-        "links": []
+        "links": [],
     }
     assert metadata == expected
 
 
 def test_extract_result_metadata_aggregate_spatial_delayed_vector():
     tracer = DryRunDataTracer()
-    cube = tracer.load_collection(collection_id="Sentinel2", arguments={
-        "temporal_extent": ["2020-02-02", "2020-03-03"],
-    })
+    cube = tracer.load_collection(
+        collection_id="Sentinel2",
+        arguments={
+            "temporal_extent": ["2020-02-02", "2020-03-03"],
+        },
+    )
     cube = cube.filter_bbox(west=4, south=51, east=5, north=52)
     geometries = DelayedVector(str(get_test_data_file("multipolygon01.geojson")))
     cube = cube.aggregate_spatial(geometries=geometries, reducer="mean")
@@ -153,13 +166,13 @@ def test_extract_result_metadata_aggregate_spatial_delayed_vector():
     expected = {
         "bbox": [5.0, 5.0, 45.0, 40.0],
         "geometry": {
-            'type': 'Polygon',
-            'coordinates': (((5.0, 5.0), (5.0, 40.0), (45.0, 40.0), (45.0, 5.0), (5.0, 5.0)),),
+            "type": "Polygon",
+            "coordinates": (((5.0, 5.0), (5.0, 40.0), (45.0, 40.0), (45.0, 5.0), (5.0, 5.0)),),
         },
         "area": {"value": approx(6763173869883.0, 1.0), "unit": "square meter"},
         "start_datetime": "2020-02-02T00:00:00Z",
         "end_datetime": "2020-03-03T00:00:00Z",
-        "links": []
+        "links": [],
     }
     assert metadata == expected
 
@@ -176,9 +189,7 @@ def test_extract_result_metadata_aggregate_spatial_delayed_vector():
         (28992, 57624.6287650174, 335406.866285557, 128410.08537081, 445806.50883315),
     ],
 )
-def test_extract_result_metadata_reprojects_bbox_when_bbox_crs_not_epsg4326(
-    crs_epsg, west, south, east, north
-):
+def test_extract_result_metadata_reprojects_bbox_when_bbox_crs_not_epsg4326(crs_epsg, west, south, east, north):
     """When the raster has a different CRS than EPSG:4326 (WGS), then extract_result_metadata
     should convert the bounding box to WGS.
 
@@ -202,9 +213,7 @@ def test_extract_result_metadata_reprojects_bbox_when_bbox_crs_not_epsg4326(
             }
         },
     )
-    cube = cube.filter_bbox(
-        west=west, south=south, east=east, north=north, crs=crs_epsg
-    )
+    cube = cube.filter_bbox(west=west, south=south, east=east, north=north, crs=crs_epsg)
     cube.resample_spatial(resolution=0, projection=crs_epsg)
 
     metadata = extract_result_metadata(tracer)
@@ -236,9 +245,7 @@ def test_extract_result_metadata_reprojects_bbox_when_bbox_crs_not_epsg4326(
         (28992, 57624.6287650174, 335406.866285557, 128410.08537081, 445806.50883315),
     ],
 )
-def test_extract_result_metadata_aggregate_spatial_when_bbox_crs_not_epsg4326(
-    crs_epsg, west, south, east, north
-):
+def test_extract_result_metadata_aggregate_spatial_when_bbox_crs_not_epsg4326(crs_epsg, west, south, east, north):
     """When the raster has a different CRS than EPSG:4326 (WGS), and also
     a spatial aggregation is being done, then extract_result_metadata
     should return the bounding box of the spatial aggregation expressed in EPSG:4326.
@@ -258,9 +265,7 @@ def test_extract_result_metadata_aggregate_spatial_when_bbox_crs_not_epsg4326(
             }
         },
     )
-    cube = cube.filter_bbox(
-        west=west, south=south, east=east, north=north, crs=crs_epsg
-    )
+    cube = cube.filter_bbox(west=west, south=south, east=east, north=north, crs=crs_epsg)
     cube.resample_spatial(resolution=0, projection=crs_epsg)
 
     #
@@ -334,9 +339,7 @@ def test_extract_result_metadata_aggregate_spatial_delayed_vector_when_bbox_crs_
             }
         },
     )
-    cube = cube.filter_bbox(
-        west=west, south=south, east=east, north=north, crs=crs_epsg
-    )
+    cube = cube.filter_bbox(west=west, south=south, east=east, north=north, crs=crs_epsg)
     cube.resample_spatial(resolution=0, projection=crs_epsg)
 
     #
@@ -384,9 +387,9 @@ def test_extract_result_metadata_aggregate_spatial_delayed_vector_when_bbox_crs_
 
 
 def start_log_locker():
-    from threading import Thread
+    from logging.handlers import QueueHandler, QueueListener
     from queue import Queue
-    from logging.handlers import QueueListener, QueueHandler
+    from threading import Thread
 
     # Logs get written to a queue, and then a thread reads
     # from that queue and writes messages to a file:
@@ -454,33 +457,37 @@ def test_run_job(evaluate, time_sleep_mock, tmp_path):
     cube_mock = MagicMock()
     time_sleep_mock.return_value = None  # Avoid waiting
 
-    item_meta ={"myItem":{
-        "id": "myItem",
-        # TODO: dirty_equals is for assertions on output, not for building/mocking input
-        "bbox": dirty_equals.IsListOrTuple(length=4),
-        "geometry": dirty_equals.IsPartialDict(type="Polygon"),
-        "assets": {
-            "openEO01-01.tif": {
-                "href": "openEO01-01.tif",
-                "roles": ["data"],
-
+    item_meta = {
+        "myItem": {
+            "id": "myItem",
+            # TODO: dirty_equals is for assertions on output, not for building/mocking input
+            "bbox": dirty_equals.IsListOrTuple(length=4),
+            "geometry": dirty_equals.IsPartialDict(type="Polygon"),
+            "assets": {
+                "openEO01-01.tif": {
+                    "href": "openEO01-01.tif",
+                    "roles": ["data"],
+                },
+                "openEO01-05.tif": {
+                    "href": "openEO01-05.tif",
+                    "roles": ["data"],
+                },
             },
-            "openEO01-05.tif": {
-                "href": "openEO01-05.tif",
-                "roles": ["data"],
-            }
         }
-    }}
+    }
 
-    #asset_meta is how it previously looked like
-    asset_meta = {"openEO01-01.tif": {"href": "openEO01-01.tif", "roles": ["data"]},"openEO01-05.tif": {"href": "openEO01-05.tif", "roles": ["data"]}}
+    # asset_meta is how it previously looked like
+    asset_meta = {
+        "openEO01-01.tif": {"href": "openEO01-01.tif", "roles": ["data"]},
+        "openEO01-05.tif": {"href": "openEO01-05.tif", "roles": ["data"]},
+    }
     cube_mock.write_assets.return_value = item_meta
-    evaluate.return_value = ImageCollectionResult(cube=cube_mock, format="GTiff", options={"multidate":True})
+    evaluate.return_value = ImageCollectionResult(cube=cube_mock, format="GTiff", options={"multidate": True})
     global_tracker().clear()
     t = _get_tracker()
     t.setGlobalTracking(True)
     t.clearGlobalTracker()
-    #tracker reset, so get it again
+    # tracker reset, so get it again
     t = _get_tracker()
     PU_COUNTER = "Sentinelhub_Processing_Units"
     PIXEL_COUNTER = "InputPixels"
@@ -584,14 +591,9 @@ def test_run_job_get_projection_extension_metadata(evaluate, time_sleep_mock, tm
         # bands, for the remaining assets (Here there is only 1 other asset off course).
         "openEO01-05.tif": {"href": "openEO01-05.tif", "roles": "data"},
     }
-    item_meta = {"myItem": {
-        "id": "myItem",
-        "assets": asset_meta
-    }}
+    item_meta = {"myItem": {"id": "myItem", "assets": asset_meta}}
     cube_mock.write_assets.return_value = item_meta
-    evaluate.return_value = ImageCollectionResult(
-        cube=cube_mock, format="GTiff", options={"multidate": True}
-    )
+    evaluate.return_value = ImageCollectionResult(cube=cube_mock, format="GTiff", options={"multidate": True})
     global_tracker().clear()
 
     t = _get_tracker()
@@ -608,7 +610,7 @@ def test_run_job_get_projection_extension_metadata(evaluate, time_sleep_mock, tm
 
     run_job(
         job_specification={
-            "process_graph": {"nop": {"process_id": "discard_result", "result": True}}
+            "process_graph": {"nop": {"process_id": "discard_result", "result": True}},
         },
         output_file=output_file,
         metadata_file=metadata_file,
@@ -730,15 +732,10 @@ def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox
         },
     }
 
-    item_meta = {"myItem": {
-        "id": "myItem",
-        "assets": asset_meta
-    }}
+    item_meta = {"myItem": {"id": "myItem", "assets": asset_meta}}
 
     cube_mock.write_assets.return_value = item_meta
-    evaluate.return_value = ImageCollectionResult(
-        cube=cube_mock, format="GTiff", options={"multidate": True}
-    )
+    evaluate.return_value = ImageCollectionResult(cube=cube_mock, format="GTiff", options={"multidate": True})
     global_tracker().clear()
     t = _get_tracker()
     t.setGlobalTracking(True)
@@ -755,7 +752,7 @@ def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox
 
     run_job(
         job_specification={
-            "process_graph": {"nop": {"process_id": "discard_result", "result": True}}
+            "process_graph": {"nop": {"process_id": "discard_result", "result": True}},
         },
         output_file=output_file,
         metadata_file=metadata_file,
@@ -916,10 +913,7 @@ def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox
         },
     }
 
-    item_meta = {"myItem": {
-        "id": "myItem",
-        "assets": asset_meta
-    }}
+    item_meta = {"myItem": {"id": "myItem", "assets": asset_meta}}
 
     cube_mock.write_assets.return_value = item_meta
     evaluate.return_value = ImageCollectionResult(cube=cube_mock, format="GTiff", options={"multidate": True})
@@ -982,9 +976,7 @@ def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox
 
 
 @mock.patch("openeo_driver.ProcessGraphDeserializer.evaluate")
-def test_run_job_get_projection_extension_metadata_assets_with_different_epsg(
-    evaluate, tmp_path
-):
+def test_run_job_get_projection_extension_metadata_assets_with_different_epsg(evaluate, tmp_path):
     """When there are two raster assets with the same projection metadata, it should put
     those metadata at the level of the item instead of the individual bands.
     """
@@ -1027,17 +1019,17 @@ def test_run_job_get_projection_extension_metadata_assets_with_different_epsg(
         },
     }
 
-    item_meta = {"myItem": {
-        "id": "myItem",
-        "bbox": None,
-        "geometry": None,
-        "assets": asset_meta
-    }}
+    item_meta = {
+        "myItem": {
+            "id": "myItem",
+            "bbox": None,
+            "geometry": None,
+            "assets": asset_meta,
+        }
+    }
 
     cube_mock.write_assets.return_value = item_meta
-    evaluate.return_value = ImageCollectionResult(
-        cube=cube_mock, format="GTiff", options={"multidate": True}
-    )
+    evaluate.return_value = ImageCollectionResult(cube=cube_mock, format="GTiff", options={"multidate": True})
 
     global_tracker().clear()
     t = _get_tracker()
@@ -1055,7 +1047,7 @@ def test_run_job_get_projection_extension_metadata_assets_with_different_epsg(
 
     run_job(
         job_specification={
-            "process_graph": {"nop": {"process_id": "discard_result", "result": True}}
+            "process_graph": {"nop": {"process_id": "discard_result", "result": True}},
         },
         output_file=output_file,
         metadata_file=metadata_file,
@@ -1164,9 +1156,7 @@ def test_run_job_get_projection_extension_metadata_job_dir_is_relative_path(eval
     # job dir should be a relative path,
     # We still want the test data to be cleaned up though, so we need to use
     # tempfile instead of pytest's tmp_path.
-    with tempfile.TemporaryDirectory(
-        dir=".", suffix="job-test-proj-metadata"
-    ) as job_dir:
+    with tempfile.TemporaryDirectory(dir=".", suffix="job-test-proj-metadata") as job_dir:
         job_dir = Path(job_dir)
         # Emile 2024-10-29: Not sure what the use-case of a relative path is here.
         # STAC metadata uses relative paths internally, but the job_dir is better absolute IMHO
@@ -1195,16 +1185,16 @@ def test_run_job_get_projection_extension_metadata_job_dir_is_relative_path(eval
             "openEO01-05.tif": {"href": "openEO01-05.tif", "roles": "data"},
         }
 
-        item_meta = {"myItem": {
-            "id": "myItem",
-            "bbox": None,
-            "geometry": None,
-            "assets": asset_meta
-        }}
+        item_meta = {
+            "myItem": {
+                "id": "myItem",
+                "bbox": None,
+                "geometry": None,
+                "assets": asset_meta,
+            }
+        }
         cube_mock.write_assets.return_value = item_meta
-        evaluate.return_value = ImageCollectionResult(
-            cube=cube_mock, format="GTiff", options={"multidate": True}
-        )
+        evaluate.return_value = ImageCollectionResult(cube=cube_mock, format="GTiff", options={"multidate": True})
         t = _get_tracker()
         t.setGlobalTracking(True)
         t.clearGlobalTracker()
@@ -1219,11 +1209,7 @@ def test_run_job_get_projection_extension_metadata_job_dir_is_relative_path(eval
         t.add(PU_COUNTER, 0.4)
 
         run_job(
-            job_specification={
-                "process_graph": {
-                    "nop": {"process_id": "discard_result", "result": True}
-                }
-            },
+            job_specification={"process_graph": {"nop": {"process_id": "discard_result", "result": True}}},
             output_file=output_file,
             metadata_file=metadata_file,
             api_version="1.0.0",
@@ -1337,12 +1323,14 @@ def test_run_job_get_projection_extension_metadata_assets_in_s3(
         }
     }
 
-    item_meta = {"myItem": {
-        "id": "myItem",
-        "bbox": None,
-        "geometry": None,
-        "assets": asset_meta
-    }}
+    item_meta = {
+        "myItem": {
+            "id": "myItem",
+            "bbox": None,
+            "geometry": None,
+            "assets": asset_meta,
+        }
+    }
 
     cube_mock.write_assets.return_value = item_meta
     evaluate.return_value = ImageCollectionResult(cube=cube_mock, format="GTiff", options={"multidate": True})
@@ -1455,11 +1443,7 @@ def test_run_job_get_projection_extension_metadata_assets_in_s3_multiple_assets(
         },
     }
 
-    item_meta = {"myItem": {
-        "id": "myItem",
-        "assets": asset_meta
-    }}
-
+    item_meta = {"myItem": {"id": "myItem", "assets": asset_meta}}
     cube_mock.write_assets.return_value = item_meta
     evaluate.return_value = ImageCollectionResult(cube=cube_mock, format="GTiff", options={"multidate": True})
 
@@ -1966,42 +1950,36 @@ def get_job_metadata_without_s3(job_dir: Path) -> dict:
     """Helper function to create test data."""
 
     return {
-        'assets': {
-            'openEO_2017-11-21Z.tif': {
-                'output_dir': str(job_dir),
-                'bands': [{'common_name': None,
-                            'name': 'ndvi',
-                            'wavelength_um': None}],
-                'href': f'{job_dir / "openEO_2017-11-21Z.tif"}',
-                'nodata': 255,
-                'roles': ['data'],
-                'type': 'image/tiff; '
-                        'application=geotiff'},
-            'a-second-asset-file.tif': {
-                'output_dir': str(job_dir),
-                'bands': [{'common_name': None,
-                            'name': 'ndvi',
-                            'wavelength_um': None}],
-                'href': f'{job_dir / "openEO_2017-11-21Z.tif"}',
-                'nodata': 255,
-                'roles': ['data'],
-                'type': 'image/tiff; '
-                        'application=geotiff'}
+        "assets": {
+            "openEO_2017-11-21Z.tif": {
+                "output_dir": str(job_dir),
+                "bands": [{"common_name": None, "name": "ndvi", "wavelength_um": None}],
+                "href": f"{job_dir / 'openEO_2017-11-21Z.tif'}",
+                "nodata": 255,
+                "roles": ["data"],
+                "type": "image/tiff; application=geotiff",
             },
-        'bbox': [2, 51, 3, 52],
-        'end_datetime': '2017-11-21T00:00:00Z',
-        'epsg': 4326,
-        'geometry': {'coordinates': [[[2.0, 51.0],
-                                    [2.0, 52.0],
-                                    [3.0, 52.0],
-                                    [3.0, 51.0],
-                                    [2.0, 51.0]]],
-                    'type': 'Polygon'},
-        'instruments': [],
-        'links': [],
-        'processing:facility': 'VITO - SPARK',
-        'processing:software': 'openeo-geotrellis-0.3.3a1',
-        'start_datetime': '2017-11-21T00:00:00Z'
+            "a-second-asset-file.tif": {
+                "output_dir": str(job_dir),
+                "bands": [{"common_name": None, "name": "ndvi", "wavelength_um": None}],
+                "href": f"{job_dir / 'openEO_2017-11-21Z.tif'}",
+                "nodata": 255,
+                "roles": ["data"],
+                "type": "image/tiff; application=geotiff",
+            },
+        },
+        "bbox": [2, 51, 3, 52],
+        "end_datetime": "2017-11-21T00:00:00Z",
+        "epsg": 4326,
+        "geometry": {
+            "coordinates": [[[2.0, 51.0], [2.0, 52.0], [3.0, 52.0], [3.0, 51.0], [2.0, 51.0]]],
+            "type": "Polygon",
+        },
+        "instruments": [],
+        "links": [],
+        "processing:facility": "VITO - SPARK",
+        "processing:software": "openeo-geotrellis-0.3.3a1",
+        "start_datetime": "2017-11-21T00:00:00Z",
     }
 
 
@@ -2011,8 +1989,8 @@ def test_convert_asset_outputs_to_s3_urls():
     metadata = get_job_metadata_without_s3(Path("/data/projects/OpenEO/6d11e901-bb5d-4589-b600-8dfb50524740/"))
     metadata = _convert_asset_outputs_to_s3_urls(metadata)
 
-    assert metadata['assets']['openEO_2017-11-21Z.tif']["href"].startswith("s3://")
-    assert metadata['assets']['a-second-asset-file.tif']["href"].startswith("s3://")
+    assert metadata["assets"]["openEO_2017-11-21Z.tif"]["href"].startswith("s3://")
+    assert metadata["assets"]["a-second-asset-file.tif"]["href"].startswith("s3://")
 
 
 class TestUdfDependenciesHandling:
@@ -2118,9 +2096,7 @@ def test_run_job_backscatter_soft_error_failure(evaluate, time_sleep_mock):
     # job dir should be a relative path,
     # We still want the test data to be cleaned up though, so we need to use
     # tempfile instead of pytest's tmp_path.
-    with tempfile.TemporaryDirectory(
-        dir=".", suffix="job-test-proj-metadata"
-    ) as job_dir:
+    with tempfile.TemporaryDirectory(dir=".", suffix="job-test-proj-metadata") as job_dir:
         job_dir = Path(job_dir)
 
         # Note that batch_job's main() interprets its output_file and metadata_file
@@ -2139,9 +2115,7 @@ def test_run_job_backscatter_soft_error_failure(evaluate, time_sleep_mock):
             "openEO01-05.tif": {"href": "openEO01-05.tif", "roles": "data"},
         }
         cube_mock.write_assets.return_value = asset_meta
-        evaluate.return_value = ImageCollectionResult(
-            cube=cube_mock, format="GTiff", options={"multidate": True}
-        )
+        evaluate.return_value = ImageCollectionResult(cube=cube_mock, format="GTiff", options={"multidate": True})
 
         # tracker reset, so get it again
         t = global_tracker()
@@ -2156,9 +2130,7 @@ def test_run_job_backscatter_soft_error_failure(evaluate, time_sleep_mock):
         with pytest.raises(ValueError) as e_info:
             run_job(
                 job_specification={
-                    "process_graph": {
-                        "nop": {"process_id": "discard_result", "result": True}
-                    }
+                    "process_graph": {"nop": {"process_id": "discard_result", "result": True}},
                 },
                 output_file=output_file,
                 metadata_file=metadata_file,
@@ -2166,7 +2138,7 @@ def test_run_job_backscatter_soft_error_failure(evaluate, time_sleep_mock):
                 job_dir=job_dir,
                 dependencies=[],
                 user_id="jenkins",
-                max_soft_errors_ratio=0.1
+                max_soft_errors_ratio=0.1,
             )
 
         assert e_info.value.args[0] == "sar_backscatter: Too many soft errors (0.5 > 0.1)"
