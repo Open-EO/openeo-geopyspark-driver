@@ -1,7 +1,9 @@
 import datetime
+from typing import Tuple, List
 
-import numpy as np
 import pytest
+import numpy as np
+import geopyspark as gps
 from numpy.testing import assert_array_almost_equal
 from openeo_driver.errors import FeatureUnsupportedException
 from openeo_driver.utils import EvalEnv
@@ -88,13 +90,19 @@ def test_apply_dimension_invalid_dimension(imagecollection_with_two_bands_and_th
 def test_add_dimension_spatial(imagecollection_with_two_bands_spatial_only):
     cube = imagecollection_with_two_bands_spatial_only
     assert cube.metadata.has_temporal_dimension()==False
-    result = cube.add_dimension("t","2011-12-03T10:00:00Z","temporal")
+    date_str = "2011-12-03T10:00:00Z"
+    result = cube.add_dimension("t",date_str,"temporal")
     assert cube.metadata.spatial_dimensions == result.metadata.spatial_dimensions
     assert result.metadata.has_temporal_dimension()
     assert result.metadata.temporal_dimension.name=="t"
     assert len(result.metadata.temporal_dimension.extent) == 2
-    assert result.metadata.temporal_dimension.extent[0]=="2011-12-03T10:00:00Z"
-    assert result.metadata.temporal_dimension.extent[1] == "2011-12-03T10:00:00Z"
+    assert result.metadata.temporal_dimension.extent[0]== date_str
+    assert result.metadata.temporal_dimension.extent[1] == date_str
+    assert result.get_max_level().layer_type == gps.LayerType.SPACETIME
+    numpy_cube: List[Tuple[gps.SpaceTimeKey, gps.Tile]] = result.get_max_level().to_numpy_rdd().collect()
+    assert isinstance(numpy_cube[0][0], gps.SpaceTimeKey)
+    for tile in numpy_cube:
+        assert tile[0].instant == datetime.datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%SZ")
 
 
 true = True

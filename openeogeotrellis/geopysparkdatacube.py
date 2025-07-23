@@ -375,7 +375,7 @@ class GeopysparkDataCube(DriverDataCube):
                 jvm = get_jvm()
                 label_as_zoneddatetime = jvm.java.time.ZonedDateTime.parse(label)
                 temporal_key = jvm.geotrellis.layer.TemporalKey.apply(label_as_zoneddatetime)
-                cube = cube.apply_to_levels(lambda rdd: rdd.srdd.toTemporalLayer(temporal_key))
+                cube = cube.apply_to_levels(lambda rdd: gps.TiledRasterLayer(gps.LayerType.SPACETIME, srdd=rdd.srdd.toTemporalLayer(temporal_key)))
         return GeopysparkDataCube(
             pyramid=cube.pyramid,
             metadata=cube.metadata.add_dimension(name=name, label=label, type=type)
