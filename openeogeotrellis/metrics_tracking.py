@@ -24,5 +24,6 @@ class MetricsTracker():
 
 _metrics_tracker = MetricsTracker()
 
-def global_tracker():
+
+def global_tracker() -> MetricsTracker:
     return _metrics_tracker

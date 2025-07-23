@@ -37,6 +37,7 @@ from openeo_driver.util.logging import (
     setup_logging,
 )
 from openeo_driver.utils import EvalEnv
+from openeo_driver.views import OPENEO_API_VERSION_DEFAULT
 from openeo_driver.workspacerepository import Workspace, WorkspaceRepository, backend_config_workspace_repository
 from py4j.protocol import Py4JError, Py4JJavaError
 from pyspark import SparkConf, SparkContext
@@ -258,11 +259,12 @@ def main(argv: List[str]) -> None:
 @log_memory
 def run_job(
     job_specification,
+    *,
     output_file: Union[str, Path],
     metadata_file: Union[str, Path],
-    api_version: str,
+    api_version: str = OPENEO_API_VERSION_DEFAULT,
     job_dir: Union[str, Path],
-    dependencies: List[dict],
+    dependencies: Optional[List[dict]] = None,
     user_id: str = None,
     max_soft_errors_ratio: float = 0.0,
     default_sentinel_hub_credentials=None,
@@ -273,6 +275,7 @@ def run_job(
     result_metadata = {}
     tracker_metadata = {}
     items = []
+    dependencies = dependencies or []
 
     # TODO: migrate all raw job option usage to parsed job options
     job_options = job_specification.get("job_options", {})
