@@ -16,6 +16,7 @@ without compromising stable operations.
 ## In progress: 0.67.0
 
 - Configurable usage of `async_task` ([eu-cdse/openeo-cdse-infra#387](https://github.com/eu-cdse/openeo-cdse-infra/issues/387))
+- Add job option "omit-derived-from-links" to omit "derived_from" links in batch job results metadata ([ESA-WEED-project/eo_processing#175](https://github.com/ESA-WEED-project/eo_processing/issues/175))
 
 
 ## 0.66.0
