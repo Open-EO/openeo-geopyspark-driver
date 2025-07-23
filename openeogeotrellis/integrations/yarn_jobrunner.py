@@ -129,7 +129,7 @@ class YARNBatchJobRunner:
         job_work_dir,
         log,
         user_id="",
-        api_version="1.0.0",
+        api_version="1.0.0",  # TODO: this default is probably not correct, use OPENEO_API_VERSION_DEFAULT instead?
         proxy_user: str = None,
         vault_token: Optional[str] = None,
     ):
