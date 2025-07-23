@@ -10,6 +10,7 @@ import textwrap
 import zipfile
 from pathlib import Path
 from unittest import mock
+from typing import Iterator
 
 import dirty_equals
 import pytest
@@ -43,7 +44,7 @@ from openeogeotrellis.integrations.gdal import (
     parse_gdal_raster_metadata,
     read_gdal_raster_metadata,
 )
-from openeogeotrellis.metrics_tracking import global_tracker
+from openeogeotrellis.metrics_tracking import global_tracker, MetricsTracker
 from openeogeotrellis.testing import gps_config_overrides
 from openeogeotrellis.utils import get_jvm, to_s3_url, s3_client, stream_s3_binary_file_contents
 
@@ -63,6 +64,33 @@ EXPECTED_PROVIDERS = [{'description': 'This data was processed on an openEO back
                 'processing:software': {'Geotrellis backend': __version__},
                 'roles': ['processor']}]
 from tests.data import get_test_data_file
+
+
+@pytest.fixture
+def job_dir(tmp_path) -> Path:
+    job_dir = tmp_path / "job-123"
+    job_dir.mkdir(parents=True, exist_ok=True)
+    return job_dir
+
+
+@pytest.fixture
+def metrics_tracker() -> Iterator[MetricsTracker]:
+    tracker = global_tracker()
+    tracker.clear()
+    yield tracker
+    tracker.clear()
+
+
+@pytest.fixture
+def metadata_tracker():
+    # TODO: this is quite messy, involving internal implementation details from another project
+    bootstrap_tracker = _get_tracker()
+    bootstrap_tracker.setGlobalTracking(True)
+    bootstrap_tracker.clearGlobalTracker()
+    # tracker reset, so get it again
+    tracker = _get_tracker()
+    yield tracker
+    tracker.setGlobalTracking(False)
 
 
 def test_extract_result_metadata():
@@ -422,11 +450,13 @@ def test_log_lock(tmp_path):
 @mock.patch("time.sleep")
 @mock.patch("openeo_driver.ProcessGraphDeserializer.evaluate")
 def test_run_job(evaluate, time_sleep_mock, tmp_path):
+    # TODO: eliminate boilerplate with fixtures: metrics_tracker, metadata_tracker, fast_sleep, job_dir, ...
     cube_mock = MagicMock()
     time_sleep_mock.return_value = None  # Avoid waiting
 
     item_meta ={"myItem":{
         "id": "myItem",
+        # TODO: dirty_equals is for assertions on output, not for building/mocking input
         "bbox": dirty_equals.IsListOrTuple(length=4),
         "geometry": dirty_equals.IsPartialDict(type="Polygon"),
         "assets": {
@@ -472,7 +502,7 @@ def test_run_job(evaluate, time_sleep_mock, tmp_path):
         metadata_file=job_dir / "metadata.json",
         api_version="1.0.0",
         job_dir=job_dir,
-        dependencies={},
+        dependencies=[],
         user_id="jenkins",
     )
 
@@ -528,6 +558,7 @@ def test_run_job(evaluate, time_sleep_mock, tmp_path):
 @mock.patch("time.sleep")
 @mock.patch("openeo_driver.ProcessGraphDeserializer.evaluate")
 def test_run_job_get_projection_extension_metadata(evaluate, time_sleep_mock, tmp_path):
+    # TODO: eliminate boilerplate with fixtures: metrics_tracker, metadata_tracker, fast_sleep, job_dir, ...
     cube_mock = MagicMock()
     time_sleep_mock.return_value = None  # Avoid waiting
 
@@ -583,7 +614,7 @@ def test_run_job_get_projection_extension_metadata(evaluate, time_sleep_mock, tm
         metadata_file=metadata_file,
         api_version="1.0.0",
         job_dir=job_dir,
-        dependencies={},
+        dependencies=[],
         user_id="jenkins",
     )
 
@@ -665,6 +696,7 @@ def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox
     """When there are two raster assets with the same projection metadata, it should put
     those metadata at the level of the item instead of the individual bands.
     """
+    # TODO: eliminate boilerplate with fixtures: metrics_tracker, metadata_tracker, fast_sleep, job_dir, ...
     cube_mock = MagicMock()
     time_sleep_mock.return_value = None  # Avoid waiting
 
@@ -729,7 +761,7 @@ def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox
         metadata_file=metadata_file,
         api_version="1.0.0",
         job_dir=job_dir,
-        dependencies={},
+        dependencies=[],
         user_id="jenkins",
     )
 
@@ -845,6 +877,7 @@ def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox
     """When there are two raster assets with the same projection metadata, it should put
     those metadata at the level of the item instead of the individual bands.
     """
+    # TODO: eliminate boilerplate with fixtures: metrics_tracker, metadata_tracker, fast_sleep, job_dir, ...
     cube_mock = MagicMock()
 
     job_dir = tmp_path / "job-706"
@@ -897,7 +930,7 @@ def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox
         metadata_file=metadata_file,
         api_version="1.0.0",
         job_dir=job_dir,
-        dependencies={},
+        dependencies=[],
         user_id="jenkins",
     )
 
@@ -955,6 +988,7 @@ def test_run_job_get_projection_extension_metadata_assets_with_different_epsg(
     """When there are two raster assets with the same projection metadata, it should put
     those metadata at the level of the item instead of the individual bands.
     """
+    # TODO: eliminate boilerplate with fixtures: metrics_tracker, metadata_tracker, fast_sleep, job_dir, ...
     cube_mock = MagicMock()
 
     job_dir = tmp_path / "job-811"
@@ -1027,7 +1061,7 @@ def test_run_job_get_projection_extension_metadata_assets_with_different_epsg(
         metadata_file=metadata_file,
         api_version="1.0.0",
         job_dir=job_dir,
-        dependencies={},
+        dependencies=[],
         user_id="jenkins",
     )
 
@@ -1124,6 +1158,7 @@ def test_run_job_get_projection_extension_metadata_assets_with_different_epsg(
 @mock.patch("time.sleep")
 @mock.patch("openeo_driver.ProcessGraphDeserializer.evaluate")
 def test_run_job_get_projection_extension_metadata_job_dir_is_relative_path(evaluate, time_sleep_mock):
+    # TODO: eliminate boilerplate with fixtures: metrics_tracker, metadata_tracker, fast_sleep, job_dir, ...
     cube_mock = MagicMock()
     time_sleep_mock.return_value = None  # Avoid waiting
     # job dir should be a relative path,
@@ -1193,7 +1228,7 @@ def test_run_job_get_projection_extension_metadata_job_dir_is_relative_path(eval
             metadata_file=metadata_file,
             api_version="1.0.0",
             job_dir=job_dir,
-            dependencies={},
+            dependencies=[],
             user_id="jenkins",
         )
 
@@ -1329,7 +1364,7 @@ def test_run_job_get_projection_extension_metadata_assets_in_s3(
         metadata_file=metadata_file,
         api_version="1.0.0",
         job_dir=job_dir,
-        dependencies={},
+        dependencies=[],
         user_id="jenkins",
     )
 
@@ -1438,7 +1473,7 @@ def test_run_job_get_projection_extension_metadata_assets_in_s3_multiple_assets(
         metadata_file=metadata_file,
         api_version="1.0.0",
         job_dir=job_dir,
-        dependencies={},
+        dependencies=[],
         user_id="jenkins",
     )
 
@@ -1563,6 +1598,61 @@ def test_run_job_to_s3(
     s3_links = [metadata["assets"][a]["href"] for a in metadata["assets"]]
     test = stream_s3_binary_file_contents(s3_links[0])
     print(test)
+
+
+@pytest.mark.parametrize(
+    ["job_options", "expected_derived_from_links"],
+    [
+        ({}, True),
+        ({"omit-derived-from-links": False}, True),
+        ({"omit-derived-from-links": True}, False),
+    ],
+)
+@mock.patch("openeo_driver.ProcessGraphDeserializer.evaluate")
+def test_run_job_omit_derived_from_link(
+    evaluate, fast_sleep, job_dir, metrics_tracker, metadata_tracker, job_options, expected_derived_from_links
+):
+    cube = mock.Mock()
+    cube.write_assets.return_value = {
+        "item01": {"id": "item1", "assets": {"asset01.tif": {"href": "assets/asset01.tif", "roles": ["data"]}}}
+    }
+    evaluate.return_value = ImageCollectionResult(cube=cube, format="GTiff")
+
+    metadata_tracker.addInputProducts("S2", ["http://s2.test/p1", "http://s2.test/p2"])
+    metadata_tracker.addInputProducts("S2", ["http://s2.test/p3"])
+
+    run_job(
+        job_specification={
+            "process_graph": {"nop": {"process_id": "discard_result", "result": True}},
+            "job_options": job_options,
+        },
+        output_file=job_dir / "out",
+        metadata_file=job_dir / "metadata.json",
+        job_dir=job_dir,
+    )
+
+    cube.write_assets.assert_called_once()
+    metadata = read_json(job_dir / "metadata.json")
+
+    if expected_derived_from_links:
+        expected_links = [
+            {
+                "href": f"http://s2.test/p{i}",
+                "rel": "derived_from",
+                "title": f"Derived from http://s2.test/p{i}",
+                "type": "application/json",
+            }
+            for i in [1, 2, 3]
+        ]
+    else:
+        expected_links = []
+
+    assert metadata == dirty_equals.IsPartialDict(
+        {
+            "assets": {"assets/asset01.tif": {"href": "assets/asset01.tif", "roles": ["data"]}},
+            "links": expected_links,
+        }
+    )
 
 
 # TODO: Update this test to include statistics or not? Would need to update the json file.
@@ -2074,11 +2164,10 @@ def test_run_job_backscatter_soft_error_failure(evaluate, time_sleep_mock):
                 metadata_file=metadata_file,
                 api_version="1.0.0",
                 job_dir=job_dir,
-                dependencies={},
+                dependencies=[],
                 user_id="jenkins",
                 max_soft_errors_ratio=0.1
             )
 
         assert e_info.value.args[0] == "sar_backscatter: Too many soft errors (0.5 > 0.1)"
         t.clear()
-
