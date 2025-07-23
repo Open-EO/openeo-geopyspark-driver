@@ -693,6 +693,11 @@ class InMemoryJobRegistry(JobRegistryInterface):
     ) -> None:
         self._update(job_id=job_id, costs=costs, usage=usage, results_metadata=results_metadata)
 
+    def set_results_metadata_uri(
+        self, job_id: str, *, user_id: Optional[str] = None, results_metadata_uri: str
+    ) -> None:
+        self._update(job_id=job_id, results_metadata_uri=results_metadata_uri)
+
     def list_user_jobs(
         self,
         user_id: str,
