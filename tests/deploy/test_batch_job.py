@@ -502,7 +502,7 @@ def test_run_job(evaluate, time_sleep_mock, tmp_path):
         metadata_file=job_dir / "metadata.json",
         api_version="1.0.0",
         job_dir=job_dir,
-        dependencies={},
+        dependencies=[],
         user_id="jenkins",
     )
 
@@ -614,7 +614,7 @@ def test_run_job_get_projection_extension_metadata(evaluate, time_sleep_mock, tm
         metadata_file=metadata_file,
         api_version="1.0.0",
         job_dir=job_dir,
-        dependencies={},
+        dependencies=[],
         user_id="jenkins",
     )
 
@@ -761,7 +761,7 @@ def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox
         metadata_file=metadata_file,
         api_version="1.0.0",
         job_dir=job_dir,
-        dependencies={},
+        dependencies=[],
         user_id="jenkins",
     )
 
@@ -930,7 +930,7 @@ def test_run_job_get_projection_extension_metadata_all_assets_same_epsg_and_bbox
         metadata_file=metadata_file,
         api_version="1.0.0",
         job_dir=job_dir,
-        dependencies={},
+        dependencies=[],
         user_id="jenkins",
     )
 
@@ -1061,7 +1061,7 @@ def test_run_job_get_projection_extension_metadata_assets_with_different_epsg(
         metadata_file=metadata_file,
         api_version="1.0.0",
         job_dir=job_dir,
-        dependencies={},
+        dependencies=[],
         user_id="jenkins",
     )
 
@@ -1228,7 +1228,7 @@ def test_run_job_get_projection_extension_metadata_job_dir_is_relative_path(eval
             metadata_file=metadata_file,
             api_version="1.0.0",
             job_dir=job_dir,
-            dependencies={},
+            dependencies=[],
             user_id="jenkins",
         )
 
@@ -1364,7 +1364,7 @@ def test_run_job_get_projection_extension_metadata_assets_in_s3(
         metadata_file=metadata_file,
         api_version="1.0.0",
         job_dir=job_dir,
-        dependencies={},
+        dependencies=[],
         user_id="jenkins",
     )
 
@@ -1473,7 +1473,7 @@ def test_run_job_get_projection_extension_metadata_assets_in_s3_multiple_assets(
         metadata_file=metadata_file,
         api_version="1.0.0",
         job_dir=job_dir,
-        dependencies={},
+        dependencies=[],
         user_id="jenkins",
     )
 
@@ -2164,7 +2164,7 @@ def test_run_job_backscatter_soft_error_failure(evaluate, time_sleep_mock):
                 metadata_file=metadata_file,
                 api_version="1.0.0",
                 job_dir=job_dir,
-                dependencies={},
+                dependencies=[],
                 user_id="jenkins",
                 max_soft_errors_ratio=0.1
             )
