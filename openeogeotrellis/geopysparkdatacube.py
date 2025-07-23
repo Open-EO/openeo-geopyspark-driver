@@ -1335,18 +1335,18 @@ class GeopysparkDataCube(DriverDataCube):
         target_resolution = target.get_cellsize()
         target_crs = target.metadata.get_layer_crs()
 
-        target_partitions = target.get_max_level().getNumPartitions()
-        if max_level.getNumPartitions() < target_partitions * 0.9:  # allow some margin
-            _log.info(
-                f"Repartitioning datacube with {max_level.getNumPartitions()} partitions to {target_partitions} before resample_cube_spatial."
-            )
-            max_level = max_level.repartition(int(target_partitions))
+        # target_partitions = target.get_max_level().getNumPartitions()
+        # if max_level.getNumPartitions() < target_partitions * 0.9:  # allow some margin
+        #     _log.info(
+        #         f"Repartitioning datacube with {max_level.getNumPartitions()} partitions to {target_partitions} before resample_cube_spatial."
+        #     )
+        #     max_level = max_level.repartition(int(target_partitions))
 
         proposed_partition_count = self._compute_proposed_partition_count(target_crs, target_resolution)
         if (  # Only repartition when there would be significantly more
                 max_level.getNumPartitions() * 2 <= proposed_partition_count
                 and max_level.layer_type == gps.LayerType.SPACETIME):
-            if proposed_partition_count < 10000:
+            if proposed_partition_count < 10000000000:
                 _log.info(
                     f"Repartitioning datacube with {max_level.getNumPartitions()} partitions to {proposed_partition_count} before resample_cube_spatial."
                 )
