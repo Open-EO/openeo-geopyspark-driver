@@ -55,6 +55,10 @@ def create(load_params: LoadParameters, env: EvalEnv, jvm: JVMView):
     elif get_backend_config().default_reading_strategy == "load_per_product":
         datacubeParams.setLoadPerProduct(True)
 
+    synthetic_data_override = feature_flags.get("synthetic_data_override", None)
+    if synthetic_data_override is not None:
+        datacubeParams.setSyntheticDataOverride(synthetic_data_override)
+
     if get_backend_config().default_tile_size is not None:
         if "tilesize" not in feature_flags:
             getattr(datacubeParams, "tileSize_$eq")(get_backend_config().default_tile_size)
