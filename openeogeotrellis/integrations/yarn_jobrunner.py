@@ -104,6 +104,11 @@ class YARNBatchJobRunner:
         returns the user_id if it is valid, otherwise an empty string.
         """
         try:
+            # TODO: get credential pointers from config instead of hardcoding?
+            gssapi_creds = openeogeotrellis.integrations.freeipa.acquire_gssapi_creds(
+                principal="openeo@VGT.VITO.BE",
+                keytab_path="/opt/openeo.keytab",
+            )
             ipa_server = (
                 get_backend_config().freeipa_server
                 or openeogeotrellis.integrations.freeipa.get_freeipa_server_from_env()
@@ -112,6 +117,7 @@ class YARNBatchJobRunner:
                 ipa_client = openeogeotrellis.integrations.freeipa.FreeIpaClient(
                     ipa_server=ipa_server,
                     verify_tls=False,  # TODO?
+                    gssapi_creds=gssapi_creds,
                 )
                 if ipa_client.user_find(user):
                     _log.info(f"_verify_proxy_user: valid {user!r}")
