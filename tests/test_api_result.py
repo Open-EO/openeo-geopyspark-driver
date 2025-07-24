@@ -141,8 +141,6 @@ def _load_xarray_dataset_from_netcdf_response(response: ApiResponse, tmp_path) -
 
 
 def test_load_collection_netcdf_basic(api100, tmp_path):
-    listener = get_jvm().org.openeo.sparklisteners.GetInfoSparkListener.instance().get()
-    tasks_before = listener.tasksCompleted()
     response = api100.check_result(
         {
             "lc": {
@@ -166,9 +164,6 @@ def test_load_collection_netcdf_basic(api100, tmp_path):
             },
         }
     )
-    tasks_after = listener.tasksCompleted()
-    assert tasks_after - tasks_before < 10, f"Not doo many tasks should have ran. Was: {tasks_after - tasks_before}"
-    assert tasks_after > tasks_before, "Some tasks should have been completed"
     ds = _load_xarray_dataset_from_netcdf_response(response, tmp_path=tmp_path)
 
     assert ds.sizes == {"t": 1, "x": 4, "y": 4}

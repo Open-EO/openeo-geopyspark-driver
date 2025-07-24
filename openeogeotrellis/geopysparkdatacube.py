@@ -1335,26 +1335,19 @@ class GeopysparkDataCube(DriverDataCube):
         target_resolution = target.get_cellsize()
         target_crs = target.metadata.get_layer_crs()
 
-        # target_partitions = target.get_max_level().getNumPartitions()
-        # if max_level.getNumPartitions() < target_partitions * 0.9:  # allow some margin
-        #     _log.info(
-        #         f"Repartitioning datacube with {max_level.getNumPartitions()} partitions to {target_partitions} before resample_cube_spatial."
-        #     )
-        #     max_level = max_level.repartition(int(target_partitions))
-
-        # proposed_partition_count = self._compute_proposed_partition_count(target_crs, target_resolution)
-        # if (  # Only repartition when there would be significantly more
-        #         max_level.getNumPartitions() * 2 <= proposed_partition_count
-        #         and max_level.layer_type == gps.LayerType.SPACETIME):
-        #     if proposed_partition_count < 10000000000:
-        #         _log.info(
-        #             f"Repartitioning datacube with {max_level.getNumPartitions()} partitions to {proposed_partition_count} before resample_cube_spatial."
-        #         )
-        #         max_level = max_level.repartition(int(proposed_partition_count))
-        #     else:
-        #         _log.warning(
-        #             f"resample_spatial proposed new partition count {proposed_partition_count} is too high, not repartitioning."
-        #         )
+        proposed_partition_count = self._compute_proposed_partition_count(target_crs, target_resolution)
+        if (  # Only repartition when there would be significantly more
+                max_level.getNumPartitions() * 2 <= proposed_partition_count
+                and max_level.layer_type == gps.LayerType.SPACETIME):
+            if proposed_partition_count < 100000:
+                _log.info(
+                    f"Repartitioning datacube with {max_level.getNumPartitions()} partitions to {proposed_partition_count} before resample_cube_spatial."
+                )
+                max_level = max_level.repartition(int(proposed_partition_count))
+            else:
+                _log.warning(
+                    f"resample_spatial proposed new partition count {proposed_partition_count} is too high, not repartitioning."
+                )
 
         if self.pyramid.layer_type == gps.LayerType.SPACETIME and target.pyramid.layer_type == gps.LayerType.SPACETIME:
             level_rdd_tuple = get_jvm().org.openeo.geotrellis.OpenEOProcesses().resampleCubeSpatial(max_level.srdd.rdd(),target_max_level.srdd.rdd(),resample_method)
@@ -1435,7 +1428,7 @@ class GeopysparkDataCube(DriverDataCube):
             if (  # Only repartition when there would be significantly more
                     max_level.getNumPartitions() * 2 <= proposed_partition_count
                     and max_level.layer_type == gps.LayerType.SPACETIME):
-                if proposed_partition_count < 10000:
+                if proposed_partition_count < 100000:
                     _log.info(
                         f"Repartitioning datacube with {max_level.getNumPartitions()} partitions to {proposed_partition_count} before resample_spatial."
                     )

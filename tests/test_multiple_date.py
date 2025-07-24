@@ -553,22 +553,10 @@ def rct_savitzky_golay(udf_data:UdfData):
             print(ds.profile)
             self.assertAlmostEqual(0.005, ds.res[0], 3)
 
-    def test_resample_spatial_merge(self):
-        # input = Pyramid({0: layer_with_one_band_and_three_dates()})
-        # datacube_raw = GeopysparkDataCube(pyramid=input, metadata=self.collection_metadata)
-        # partitions_raw = datacube_raw.get_max_level().getNumPartitions()
+    def test_resample_cube_spatial_partitions(self):
         from openeogeotrellis.utils import get_jvm
 
         jvm = get_jvm()
-        # extent = jvm.geotrellis.vector.Extent(2.5, 50.5, 6.5, 51.5) # Flanders
-        # extent = jvm.geotrellis.vector.Extent(5.07, 51.215, 5.08, 51.22)  # TAP
-        # extent  = jvm.geotrellis.vector.Extent(-0.643695, 48.479936, 7.001177, 53.141381) # Flanders rounded
-        # ProjectedExtent(Extent(0.0, 5120000.0, 1024000.0, 6144000.0),EPSG:32631)
-
-        # pe = jvm.geotrellis.vector.ProjectedExtent(
-        #     extent,
-        #     jvm.geotrellis.proj4.CRS.fromEpsgCode(4326)
-        # )
         pe = jvm.geotrellis.vector.ProjectedExtent(
             jvm.geotrellis.vector.Extent(266000.0, 5376000.0, 768000.0, 5888000.0),
             jvm.geotrellis.proj4.CRS.fromEpsgCode(32631),
@@ -590,31 +578,30 @@ def rct_savitzky_golay(udf_data:UdfData):
         getattr(data_cube_parameters, "tileSize_$eq")(256)
         getattr(data_cube_parameters, "layoutScheme_$eq")("FloatingLayoutScheme")
 
-        # Test layer has huge GSD, resample to n km
-        rdd_2km = jvm.org.openeo.geotrellis.TestUtils.buildPlainSpatioTemporalDataCube(pe, 1000.0, data_cube_parameters)
-        datacube_2km = GeopysparkDataCube(pyramid=Pyramid({0: rdd_2km}), metadata=m)
-        srdd_2km = datacube_2km._create_tilelayer(rdd_2km, gps.LayerType.SPACETIME, 0)
-        datacube_2km = GeopysparkDataCube(pyramid=Pyramid({0: srdd_2km}), metadata=m)
-        datacube_2km = datacube_2km.resample_spatial(resolution=0, projection="EPSG:32631")
+        def build_plain_spatio_temporal_data_cube(resolution):
+            rdd = jvm.org.openeo.geotrellis.TestUtils.buildPlainSpatioTemporalDataCube(pe, resolution, data_cube_parameters)
+            datacube = GeopysparkDataCube(pyramid=Pyramid({0: rdd}), metadata=m)
+            srdd = datacube._create_tilelayer(rdd, gps.LayerType.SPACETIME, 0)
+            datacube = GeopysparkDataCube(pyramid=Pyramid({0: srdd}), metadata=m)
+            return datacube
+
+        datacube_2km = build_plain_spatio_temporal_data_cube(1000.0)
         partitions_2km = datacube_2km.get_max_level().getNumPartitions()
 
-        rdd_10m = jvm.org.openeo.geotrellis.TestUtils.buildPlainSpatioTemporalDataCube(pe, 10.0, data_cube_parameters)
-        datacube_10m = GeopysparkDataCube(pyramid=Pyramid({0: rdd_10m}), metadata=m)
-        srdd_10m = datacube_10m._create_tilelayer(rdd_10m, gps.LayerType.SPACETIME, 0)
-        datacube_10m = GeopysparkDataCube(pyramid=Pyramid({0: srdd_10m}), metadata=m)
+        datacube_10m = build_plain_spatio_temporal_data_cube(10.0)
         datacube_10m = datacube_10m.rename_labels("bands", ["band1_10m", "band2_10m"])
-        # datacube_10m = datacube_10m.resample_spatial(resolution=0, projection="EPSG:32631")
         partitions_10m = datacube_10m.get_max_level().getNumPartitions()
         print("Partitions: ", partitions_2km, partitions_10m)
 
-        # datacube_merged = datacube_10m.merge_cubes(datacube_2km, overlaps_resolver="max")
-        # datacube_merged = datacube_10m.resample_cube_spatial(datacube_2km)
         datacube_merged = datacube_2km.resample_cube_spatial(datacube_10m)
         partitions_merged = datacube_merged.get_max_level().getNumPartitions()
         print("Partitions after merge: ", partitions_merged)
 
-        path = str(self.temp_folder / "test_resample_spatial_reproject.tiff")
+        path = str(self.temp_folder / "test_resample_cube_spatial_partitions.tiff")
         datacube_merged.save_result(path, format="GTIFF")
+
+        assert partitions_merged > partitions_2km
+        assert partitions_merged < partitions_10m * 1.5
 
         import rasterio
 

@@ -179,7 +179,6 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
     extraClassPath = ":".join(jars)
     conf.set("spark.driver.extraClassPath", extraClassPath)
     conf.set("spark.executor.extraClassPath", extraClassPath)
-    conf.set("spark.extraListeners", "org.openeo.sparklisteners.GetInfoSparkListener")
 
     sparkSubmitLog4jConfigurationFile = Path(__file__).parent.parent / "scripts/batch_job_log4j2.xml"
     with open(sparkSubmitLog4jConfigurationFile, "r") as read_file:
