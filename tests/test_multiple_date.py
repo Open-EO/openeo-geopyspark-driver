@@ -585,23 +585,23 @@ def rct_savitzky_golay(udf_data:UdfData):
             datacube = GeopysparkDataCube(pyramid=Pyramid({0: srdd}), metadata=m)
             return datacube
 
-        datacube_2km = build_plain_spatio_temporal_data_cube(1000.0)
-        partitions_2km = datacube_2km.get_max_level().getNumPartitions()
+        datacube_lores = build_plain_spatio_temporal_data_cube(1000.0)
+        partitions_lores = datacube_lores.get_max_level().getNumPartitions()
 
-        datacube_10m = build_plain_spatio_temporal_data_cube(10.0)
-        datacube_10m = datacube_10m.rename_labels("bands", ["band1_10m", "band2_10m"])
-        partitions_10m = datacube_10m.get_max_level().getNumPartitions()
-        print("Partitions: ", partitions_2km, partitions_10m)
+        datacube_hires = build_plain_spatio_temporal_data_cube(50.0)
+        datacube_hires = datacube_hires.rename_labels("bands", ["band1_hires", "band2_hires"])
+        partitions_hires = datacube_hires.get_max_level().getNumPartitions()
+        print("Partitions: ", partitions_lores, partitions_hires)
 
-        datacube_merged = datacube_2km.resample_cube_spatial(datacube_10m)
-        partitions_merged = datacube_merged.get_max_level().getNumPartitions()
-        print("Partitions after merge: ", partitions_merged)
+        datacube_lores_resampled = datacube_lores.resample_cube_spatial(datacube_hires)
+        partitions_merged = datacube_lores_resampled.get_max_level().getNumPartitions()
+        print("Partitions after resample_cube_spatial: ", partitions_merged)
 
         path = str(self.temp_folder / "test_resample_cube_spatial_partitions.tiff")
-        datacube_merged.save_result(path, format="GTIFF")
+        datacube_lores_resampled.save_result(path, format="GTIFF")
 
-        assert partitions_merged > partitions_2km
-        assert partitions_merged < partitions_10m * 1.5
+        assert partitions_merged > partitions_lores
+        assert partitions_merged < partitions_hires * 1.5  # TODO: make stricter test.
 
         import rasterio
 
