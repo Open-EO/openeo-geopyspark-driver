@@ -1,6 +1,7 @@
 import re
 
 import datetime as dt
+import datetime
 import json
 import time
 from functools import partial
@@ -709,24 +710,118 @@ def load_stac(
     return GeopysparkDataCube(pyramid=gps.Pyramid(levels), metadata=metadata)
 
 
-class _SpatioTemporalExtent:
-    def __init__(self, *, bbox: Union[BoundingBox, None], from_date: dt.datetime, to_date: dt.datetime):
+class _TemporalExtent:
+    """
+    Helper to represent a temporal extent with a from_date and to_date
+    and calculate intersection with STAC entities
+    (nominal datetime or start_datetime+end_datetime).
+    """
+
+    # TODO: move this to a more generic location for better reuse
+    __slots__ = ("from_date", "to_date")
+
+    def __init__(
+        self,
+        from_date: Union[str, datetime.datetime, datetime.date, None],
+        to_date: Union[str, datetime.datetime, datetime.date, None],
+    ):
+        self.from_date: Union[datetime.datetime, None] = self._to_datetime_utc_unless_none(from_date)
+        self.to_date: Union[datetime.datetime, None] = self._to_datetime_utc_unless_none(to_date)
+
+    @staticmethod
+    def _to_datetime_utc(d: Union[str, datetime.datetime, datetime.date]) -> datetime.datetime:
+        """Parse/convert to datetime in UTC."""
+        if isinstance(d, str):
+            d = dateutil.parser.parse(d)
+        elif isinstance(d, datetime.datetime):
+            pass
+        elif isinstance(d, datetime.date):
+            d = datetime.datetime.combine(d, datetime.time.min)
+        else:
+            raise ValueError("Expected str/datetime, but got {type(d)}")
+        if d.tzinfo is None:
+            d = d.replace(tzinfo=dt.timezone.utc)
+        else:
+            d = d.astimezone(dt.timezone.utc)
+        return d
+
+    @classmethod
+    def _to_datetime_utc_unless_none(
+        cls, d: Union[str, datetime.datetime, datetime.date, None]
+    ) -> Union[datetime.datetime, None]:
+        return None if d is None else cls._to_datetime_utc(d)
+
+    def intersects(
+        self,
+        nominal: Union[str, datetime.datetime, datetime.date, None] = None,
+        start_datetime: Union[str, datetime.datetime, datetime.date, None] = None,
+        end_datetime: Union[str, datetime.datetime, datetime.date, None] = None,
+    ) -> bool:
+        """
+        Check if the given datetime/interval intersects with the spatiotemporal extent.
+
+        :param nominal: nominal datetime (e.g. typically the "datetime" property of a STAC Item)
+        :param start_datetime: start of the interval (e.g. "start_datetime" property of a STAC Item)
+        :param end_datetime: end of the interval (e.g. "end_datetime" property of a STAC Item)
+        """
+        start_datetime = self._to_datetime_utc_unless_none(start_datetime)
+        end_datetime = self._to_datetime_utc_unless_none(end_datetime)
+        nominal = self._to_datetime_utc_unless_none(nominal)
+
+        # If available, start+end are preferred (cleanly defined interval)
+        # fall back on nominal otherwise
+        if start_datetime and end_datetime and start_datetime <= end_datetime:
+            pass
+        elif nominal:
+            start_datetime = end_datetime = nominal
+        else:
+            raise ValueError(f"Ill-defined instant/interval {nominal=} {start_datetime=} {end_datetime=}")
+
+        return (self.from_date is None or self.from_date <= end_datetime) and (
+            self.to_date is None or start_datetime < self.to_date
+        )
+
+
+class _SpatialExtent:
+    """
+    Helper to represent a spatial extent with a bounding box
+    and calculate intersection with STAC entities (e.g. bbox of a STAC Item).
+    """
+
+    # TODO: move this to a more generic location for better reuse
+
+    __slots__ = ("bbox", "_bbox_lonlat_shape")
+
+    def __init__(self, *, bbox: Union[BoundingBox, None]):
+        # TODO: support more bbox representations as input
         self.bbox = bbox
-        self.bbox_lonlat_shape = self.bbox.reproject("EPSG:4326").as_polygon() if self.bbox else None
-        self.from_date = from_date
-        self.to_date = to_date
+        self._bbox_lonlat_shape = self.bbox.reproject("EPSG:4326").as_polygon() if self.bbox else None
+
+    def intersects(self, bbox: Union[List[float], Tuple[float, float, float, float], None]):
+        # TODO: this assumes bbox is in lon/lat coordinates, also support other CRSes?
+        if not self.bbox or bbox is None:
+            return True
+        return self._bbox_lonlat_shape.intersects(Polygon.from_bounds(*bbox))
+
+
+class _SpatioTemporalExtent:
+    # TODO: move this to a more generic location for better reuse
+    def __init__(
+        self,
+        *,
+        bbox: Union[BoundingBox, None],
+        from_date: Union[str, datetime.datetime, None],
+        to_date: Union[str, datetime.datetime, None],
+    ):
+        self._spatial_extent = _SpatialExtent(bbox=bbox)
+        self._temporal_extent = _TemporalExtent(from_date=from_date, to_date=to_date)
 
     def item_intersects(self, item: pystac.Item) -> bool:
-        def intersects_temporally() -> bool:
-            nominal_date = item.datetime or dateutil.parser.parse(item.properties["start_datetime"])
-            return self.from_date <= nominal_date <= self.to_date
-
-        def intersects_spatially() -> bool:
-            if not self.bbox or item.bbox is None:
-                return True
-            return self.bbox_lonlat_shape.intersects(Polygon.from_bounds(*item.bbox))
-
-        return intersects_temporally() and intersects_spatially()
+        return self._temporal_extent.intersects(
+            nominal=item.datetime,
+            start_datetime=item.properties.get("start_datetime"),
+            end_datetime=item.properties.get("end_datetime"),
+        ) and self._spatial_extent.intersects(item.bbox)
 
 
 def _is_supported_raster_mime_type(mime_type: str) -> bool:
