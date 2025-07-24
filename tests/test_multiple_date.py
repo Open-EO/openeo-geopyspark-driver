@@ -553,6 +553,61 @@ def rct_savitzky_golay(udf_data:UdfData):
             print(ds.profile)
             self.assertAlmostEqual(0.005, ds.res[0], 3)
 
+    def test_resample_cube_spatial_partitions(self):
+        from openeogeotrellis.utils import get_jvm
+
+        jvm = get_jvm()
+        pe = jvm.geotrellis.vector.ProjectedExtent(
+            jvm.geotrellis.vector.Extent(266000.0, 5376000.0, 768000.0, 5888000.0),
+            jvm.geotrellis.proj4.CRS.fromEpsgCode(32631),
+        )
+        from tests.test_views import TestCollections
+
+        m = GeopysparkCubeMetadata(
+            {
+                "cube:dimensions": {
+                    "x": {"type": "spatial", "axis": "x", "reference_system": TestCollections._CRS_AUTO_42001},
+                    "y": {"type": "spatial", "axis": "y", "reference_system": TestCollections._CRS_AUTO_42001},
+                    "t": {"type": "temporal", "extent": ["2019-01-01T11:37:00Z", "2019-01-01T11:37:00Z"]},
+                    "bands": {"type": "bands", "values": ["band1", "band2"]},
+                }
+            }
+        )
+
+        data_cube_parameters = jvm.org.openeo.geotrelliscommon.DataCubeParameters()
+        getattr(data_cube_parameters, "tileSize_$eq")(256)
+        getattr(data_cube_parameters, "layoutScheme_$eq")("FloatingLayoutScheme")
+
+        def build_plain_spatio_temporal_data_cube(resolution):
+            rdd = jvm.org.openeo.geotrellis.TestUtils.buildPlainSpatioTemporalDataCube(pe, resolution, data_cube_parameters)
+            datacube = GeopysparkDataCube(pyramid=Pyramid({0: rdd}), metadata=m)
+            srdd = datacube._create_tilelayer(rdd, gps.LayerType.SPACETIME, 0)
+            datacube = GeopysparkDataCube(pyramid=Pyramid({0: srdd}), metadata=m)
+            return datacube
+
+        datacube_2km = build_plain_spatio_temporal_data_cube(1000.0)
+        partitions_2km = datacube_2km.get_max_level().getNumPartitions()
+
+        datacube_10m = build_plain_spatio_temporal_data_cube(10.0)
+        datacube_10m = datacube_10m.rename_labels("bands", ["band1_10m", "band2_10m"])
+        partitions_10m = datacube_10m.get_max_level().getNumPartitions()
+        print("Partitions: ", partitions_2km, partitions_10m)
+
+        datacube_merged = datacube_2km.resample_cube_spatial(datacube_10m)
+        partitions_merged = datacube_merged.get_max_level().getNumPartitions()
+        print("Partitions after merge: ", partitions_merged)
+
+        path = str(self.temp_folder / "test_resample_cube_spatial_partitions.tiff")
+        datacube_merged.save_result(path, format="GTIFF")
+
+        assert partitions_merged > partitions_2km
+        assert partitions_merged < partitions_10m * 1.5
+
+        import rasterio
+
+        with rasterio.open(path) as ds:
+            print(ds.profile)
+
     def test_rename_dimension(self):
         imagecollection = GeopysparkDataCube(pyramid=Pyramid({0: self.tiled_raster_rdd}),
                                              metadata=self.collection_metadata)
