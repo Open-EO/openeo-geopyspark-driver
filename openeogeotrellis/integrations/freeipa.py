@@ -39,6 +39,7 @@ try:
     import gssapi
     import requests_gssapi
 except ImportError:
+    gssapi = None
     requests_gssapi = None
 
 _log = logging.getLogger(__name__)

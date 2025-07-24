@@ -104,11 +104,13 @@ class YARNBatchJobRunner:
         returns the user_id if it is valid, otherwise an empty string.
         """
         try:
-            # TODO: get credential pointers from config instead of hardcoding?
-            gssapi_creds = openeogeotrellis.integrations.freeipa.acquire_gssapi_creds(
-                principal="openeo@VGT.VITO.BE",
-                keytab_path="/opt/openeo.keytab",
-            )
+            if cred_info := get_backend_config().freeipa_default_credentials_info:
+                gssapi_creds = openeogeotrellis.integrations.freeipa.acquire_gssapi_creds(
+                    principal=cred_info["principal"],
+                    keytab_path=cred_info["keytab_path"],
+                )
+            else:
+                gssapi_creds = None
             ipa_server = (
                 get_backend_config().freeipa_server
                 or openeogeotrellis.integrations.freeipa.get_freeipa_server_from_env()
