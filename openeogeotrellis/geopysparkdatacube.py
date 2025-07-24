@@ -1574,9 +1574,10 @@ class GeopysparkDataCube(DriverDataCube):
         rescaled = self.apply_to_levels(lambda layer: layer.normalize(output_min, output_max, input_min, input_max))
         output_range = output_max - output_min
         if output_range >1 and type(output_min) == int and type(output_max) == int:
-            if output_range < 254 and output_min >= 0:
-                rescaled = rescaled.apply_to_levels(lambda layer: layer.convert_data_type(gps.CellType.UINT8,255))
-            elif output_range < 65535 and output_min >= 0:
+            if 0 <= output_min and output_max <= 254:
+                # 8 bit unsigned: 0-254 as user values and 255 as no-data value
+                rescaled = rescaled.apply_to_levels(lambda layer: layer.convert_data_type(gps.CellType.UINT8, 255))
+            elif 0 <= output_min and output_max <= 65534:
                 rescaled = rescaled.apply_to_levels(lambda layer: layer.convert_data_type(gps.CellType.UINT16))
         return rescaled
 

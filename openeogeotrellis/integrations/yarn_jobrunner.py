@@ -9,31 +9,27 @@ import tempfile
 import traceback
 from pathlib import Path
 from subprocess import CalledProcessError
-from typing import Union, Optional
+from typing import Optional, Union
 
 import pkg_resources
-
 from openeo.util import deep_get, ensure_dir
 from openeo_driver.config.load import ConfigGetter
-from openeo_driver.constants import JOB_STATUS
 from openeo_driver.errors import InternalException, OpenEOApiException
+
 import openeogeotrellis.integrations.freeipa
 from openeogeotrellis import sentinel_hub
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.job_options import JobOptions
-from openeogeotrellis.udf import UDF_PYTHON_DEPENDENCIES_FOLDER_NAME, UDF_PYTHON_DEPENDENCIES_ARCHIVE_NAME
+from openeogeotrellis.udf import UDF_PYTHON_DEPENDENCIES_ARCHIVE_NAME, UDF_PYTHON_DEPENDENCIES_FOLDER_NAME
 from openeogeotrellis.util.byteunit import byte_string_as
 from openeogeotrellis.utils import add_permissions
-
 
 _log = logging.getLogger(__name__)
 
 JOB_METADATA_FILENAME = "job_metadata.json"
 
 
-
-class YARNBatchJobRunner():
-
+class YARNBatchJobRunner:
     def __init__(self, principal: str = None, key_tab: str = None):
         self._principal = principal
         self._key_tab = key_tab
@@ -44,28 +40,30 @@ class YARNBatchJobRunner():
         self._default_sentinel_hub_client_id = client_id
         self._default_sentinel_hub_client_secret = client_secret
 
-    def serialize_dependencies(self,job_info, dependencies = None) -> str:
-        batch_process_dependencies = [dependency for dependency in
-                                      (dependencies or job_info.get('dependencies') or [])
-                                      if 'collection_id' in dependency]
+    def serialize_dependencies(self, job_info, dependencies=None) -> str:
+        batch_process_dependencies = [
+            dependency
+            for dependency in (dependencies or job_info.get("dependencies") or [])
+            if "collection_id" in dependency
+        ]
 
         def as_arg_element(dependency: dict) -> dict:
-            source_location = (dependency.get('assembled_location')  # cached
-                               or dependency.get('results_location')  # not cached
-                               or f"s3://{sentinel_hub.OG_BATCH_RESULTS_BUCKET}"
-                                  f"/{dependency.get('subfolder') or dependency['batch_request_id']}")  # legacy
+            source_location = (
+                dependency.get("assembled_location")  # cached
+                or dependency.get("results_location")  # not cached
+                or f"s3://{sentinel_hub.OG_BATCH_RESULTS_BUCKET}"
+                f"/{dependency.get('subfolder') or dependency['batch_request_id']}"
+            )  # legacy
 
-            return {
-                'source_location': source_location,
-                'card4l': dependency.get('card4l', False)
-            }
+            return {"source_location": source_location, "card4l": dependency.get("card4l", False)}
 
         return json.dumps([as_arg_element(dependency) for dependency in batch_process_dependencies])
 
-
     def _write_sensitive_values(self, output_file, vault_token: Optional[str]):
         output_file.write(f"spark.openeo.sentinelhub.client.id.default={self._default_sentinel_hub_client_id}\n")
-        output_file.write(f"spark.openeo.sentinelhub.client.secret.default={self._default_sentinel_hub_client_secret}\n")
+        output_file.write(
+            f"spark.openeo.sentinelhub.client.secret.default={self._default_sentinel_hub_client_secret}\n"
+        )
 
         if vault_token is not None:
             output_file.write(f"spark.openeo.vault.token={vault_token}\n")
@@ -80,7 +78,7 @@ class YARNBatchJobRunner():
             raise _BatchJobError(script_output)
 
     @staticmethod
-    def get_submit_py_files(env: dict = None, cwd: Union[str, Path] = ".",log=None) -> str:
+    def get_submit_py_files(env: dict = None, cwd: Union[str, Path] = ".", log=None) -> str:
         """Get `-py-files` for batch job submit (e.g. based on how flask app was submitted)."""
         py_files = (env or os.environ).get("OPENEO_SPARK_SUBMIT_PY_FILES", "")
         cwd = Path(cwd)
@@ -116,18 +114,30 @@ class YARNBatchJobRunner():
                     verify_tls=False,  # TODO?
                 )
                 if ipa_client.user_find(user):
+                    _log.info(f"_verify_proxy_user: valid {user!r}")
                     return user
         except Exception as e:
             _log.warning(f"Failed to verify whether {user!r} can be used as proxy user: {e!r}")
+
+        _log.info(f"_verify_proxy_user: invalid {user!r}")
         return ""
 
-    def run_job(self,job_info:dict,job_id:str,job_work_dir, log,user_id ="", api_version="1.0.0",proxy_user:str=None, vault_token: Optional[str] = None):
-
+    def run_job(
+        self,
+        job_info: dict,
+        job_id: str,
+        job_work_dir,
+        log,
+        user_id="",
+        api_version="1.0.0",
+        proxy_user: str = None,
+        vault_token: Optional[str] = None,
+    ):
         job_process_graph = job_info["process"]["process_graph"]
         job_options = job_info.get("job_options") or {}  # can be None
         job_specification_json = json.dumps({"process_graph": job_process_graph, "job_options": job_options})
 
-        job_title = job_info.get('title', '')
+        job_title = job_info.get("title", "")
         options = JobOptions.from_dict(job_options)
 
         ensure_dir(job_work_dir)
@@ -149,7 +159,7 @@ class YARNBatchJobRunner():
 
         queue = job_options.get("queue", "default")
         profile = as_boolean_arg("profile", default_value="false")
-        sentinel_hub_client_alias = deep_get(job_options, 'sentinel-hub', 'client-alias', default="default")
+        sentinel_hub_client_alias = deep_get(job_options, "sentinel-hub", "client-alias", default="default")
 
         submit_script = "submit_batch_job_spark3.sh"
         script_location = pkg_resources.resource_filename("openeogeotrellis.deploy", submit_script)
@@ -162,15 +172,13 @@ class YARNBatchJobRunner():
         if options.udf_dependency_files is not None and len(options.udf_dependency_files) > 0:
             extra_py_files = ",".join(options.udf_dependency_files)
 
-
-
         # TODO: use different root dir for these temp input files than self._output_root_dir (which is for output files)?
         with tempfile.NamedTemporaryFile(
-                mode="wt",
-                encoding="utf-8",
-                dir=job_work_dir.parent,
-                prefix=f"{job_id}_",
-                suffix=".in",
+            mode="wt",
+            encoding="utf-8",
+            dir=job_work_dir.parent,
+            prefix=f"{job_id}_",
+            suffix=".in",
         ) as job_specification_file, tempfile.NamedTemporaryFile(
             mode="wt",
             encoding="utf-8",
@@ -181,8 +189,7 @@ class YARNBatchJobRunner():
             job_specification_file.write(job_specification_json)
             job_specification_file.flush()
 
-            self._write_sensitive_values(temp_properties_file,
-                                         vault_token=vault_token)
+            self._write_sensitive_values(temp_properties_file, vault_token=vault_token)
             temp_properties_file.flush()
 
             job_name = "openEO batch_{title}_{j}_user {u}".format(title=job_title, j=job_id, u=user_id)
@@ -263,11 +270,11 @@ class YARNBatchJobRunner():
             log.info("mapped job_id %s to application ID %s" % (job_id, application_id))
             return application_id
 
-
         except _BatchJobError:
             traceback.print_exc(file=sys.stderr)
             # TODO: why reraise as CalledProcessError?
             raise CalledProcessError(1, str(args), output=script_output)
+
 
 class _BatchJobError(Exception):
     pass

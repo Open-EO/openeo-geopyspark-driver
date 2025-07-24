@@ -60,8 +60,8 @@ setup(
     ],
     tests_require=tests_require,
     install_requires=[
-        "openeo>=0.42.0.dev",
-        "openeo_driver>=0.135.0a4.dev",
+        "openeo>=0.43.0.dev",
+        "openeo_driver>=0.135.0a5.dev",
         'pyspark==3.5.3; python_version>="3.8"',
         'pyspark>=2.3.1,<2.4.0; python_version<"3.8"',
         'geopyspark_openeo==0.4.3.post1',
@@ -97,6 +97,7 @@ setup(
         'kafka-python==1.4.6',
         'deprecated>=1.2.12',
         'elasticsearch==7.16.3',
+        "pystac>=1.8.4",  # TODO #1060 bump to more recent version (1.8.4 is from Sep 2023) once we can leave Python 3.8 behind
         'pystac_client~=0.7.2',
         'boto3>=1.16.25,<2.0',
         "hvac>=1.0.2",

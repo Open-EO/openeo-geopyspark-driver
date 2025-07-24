@@ -397,6 +397,9 @@ class CalrissianJobLauncher:
             while timer.elapsed() < timeout:
                 job: kubernetes.client.V1Job = k8s_batch.read_namespaced_job(name=job_name, namespace=self._namespace)
                 _log.info(f"CWL job poll loop: {job_name=} {timer.elapsed()=:.2f} {job.status.to_dict()=}")
+                if job.status.failed == 1:
+                    final_status = "failed"
+                    break
                 if job.status.conditions:
                     if any(c.type == "Failed" and c.status == "True" for c in job.status.conditions):
                         final_status = "failed"

@@ -852,11 +852,13 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             if use_s3:
                 return f"openeo-ml-models-dev/{generate_unique_id(prefix='model')}"
 
-            def _set_permissions(job_dir: Path):
+            def _set_permissions(job_dir: Path, group: str = "openeo_results"):
+                # TODO: avoid hardcoded Terrascope-specific group name
                 try:
-                    shutil.chown(job_dir, user = None, group = 'eodata')
+                    shutil.chown(job_dir, user=None, group=group)
+                # TODO: Why excepting LookupError here, is that something shutil.chown would raise?
                 except LookupError as e:
-                    logger.warning(f"Could not change group of {job_dir} to eodata.")
+                    logger.warning(f"Could not change group of {job_dir} to {group}.")
                 add_permissions(job_dir, stat.S_ISGID | stat.S_IWGRP)  # make children inherit this group
 
             result_dir = gps_batch_jobs.get_job_output_dir("ml_models")
@@ -2131,7 +2133,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 UDF_PYTHON_DEPENDENCIES_FOLDER_NAME=UDF_PYTHON_DEPENDENCIES_FOLDER_NAME,
                 udf_python_dependencies_folder_path=str(job_work_dir / UDF_PYTHON_DEPENDENCIES_FOLDER_NAME),
                 udf_python_dependencies_archive_path=str(job_work_dir / UDF_PYTHON_DEPENDENCIES_ARCHIVE_NAME),
-                openeo_ejr_api=get_backend_config().ejr_api,
+                openeo_ejr_api=get_backend_config().ejr_api or "",
                 openeo_ejr_backend_id=get_backend_config().ejr_backend_id,
                 openeo_ejr_oidc_client_credentials=os.environ.get("OPENEO_EJR_OIDC_CLIENT_CREDENTIALS"),
                 profile=profile,
@@ -3028,7 +3030,3 @@ class GpsBatchJobs(backend.BatchJobs):
         if assembled_folders:
             logger.info("Deleted Sentinel Hub assembled folder(s) {fs} for batch job {j}"
                         .format(fs=assembled_folders, j=job_id), extra={'job_id': job_id})
-
-
-
-

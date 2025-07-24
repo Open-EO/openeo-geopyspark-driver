@@ -67,7 +67,7 @@ def _assemble_result_metadata(
         instruments = []
 
     if not isinstance(result, NullResult):
-        if asset_metadata is None:
+        if asset_metadata is None:  # TODO: eliminate dead code path
             # Old approach: need to construct metadata ourselves, from inspecting SaveResult
             metadata['assets'] = {
                 output_file.name: {
