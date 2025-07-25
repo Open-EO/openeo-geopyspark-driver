@@ -1,6 +1,7 @@
 import re
 
 import datetime as dt
+import datetime
 import json
 import time
 from functools import partial
@@ -48,6 +49,7 @@ from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.constants import EVAL_ENV_KEY
 from openeogeotrellis.geopysparkcubemetadata import GeopysparkCubeMetadata
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
+from openeogeotrellis.util.datetime import to_datetime_utc_unless_none
 from openeogeotrellis.utils import normalize_temporal_extent, get_jvm, to_projected_polygons, map_optional, unzip
 from openeogeotrellis.integrations.stac import ResilientStacIO
 
@@ -92,22 +94,7 @@ def load_stac(
     to_date = (dt.datetime.combine(until_date, dt.time.max, until_date.tzinfo) if from_date == until_date
                else until_date - dt.timedelta(milliseconds=1))
 
-    def intersects_spatiotemporally(itm: pystac.Item) -> bool:
-        def intersects_temporally() -> bool:
-            nominal_date = itm.datetime or dateutil.parser.parse(itm.properties["start_datetime"])
-            return from_date <= nominal_date <= to_date
-
-        def intersects_spatially() -> bool:
-            if not requested_bbox or itm.bbox is None:
-                return True
-
-            requested_bbox_lonlat = requested_bbox.reproject("EPSG:4326")
-            return requested_bbox_lonlat.as_polygon().intersects(
-                Polygon.from_bounds(*itm.bbox)
-            )
-
-        return intersects_temporally() and intersects_spatially()
-
+    spatiotemporal_extent = _SpatioTemporalExtent(bbox=requested_bbox, from_date=from_date, to_date=to_date)
 
     def get_pixel_value_offset(itm: pystac.Item, asst: pystac.Asset) -> float:
         raster_scale = asst.extra_fields.get("raster:scale", itm.properties.get("raster:scale", 1.0))
@@ -200,7 +187,7 @@ def load_stac(
                                               "proj:shape": asset.get("proj:shape"),
                                           }))
 
-                if intersects_spatiotemporally(pystac_item) and "data" in asset.get("roles", []):
+                if spatiotemporal_extent.item_intersects(pystac_item) and "data" in asset.get("roles", []):
                     pystac_asset = pystac.Asset(
                         href=asset["href"],
                         extra_fields={
@@ -229,7 +216,7 @@ def load_stac(
 
                 item = stac_object
                 band_names = stac_metadata_parser.bands_from_stac_item(item=item).band_names()
-                intersecting_items = [item] if intersects_spatiotemporally(item) else []
+                intersecting_items = [item] if spatiotemporal_extent.item_intersects(item) else []
             elif isinstance(stac_object, pystac.Collection) and _supports_item_search(stac_object):
                 collection = stac_object
                 netcdf_with_time_dimension = contains_netcdf_with_time_dimension(collection)
@@ -364,7 +351,7 @@ def load_stac(
                     itm
                     for intersecting_catalog in intersecting_catalogs(root=catalog)
                     for itm in intersecting_catalog.get_items()
-                    if intersects_spatiotemporally(itm)
+                    if spatiotemporal_extent.item_intersects(itm)
                 )
 
         jvm = get_jvm()
@@ -721,6 +708,101 @@ def load_stac(
               range(0, pyramid.size())}
 
     return GeopysparkDataCube(pyramid=gps.Pyramid(levels), metadata=metadata)
+
+
+class _TemporalExtent:
+    """
+    Helper to represent a load_collection/load_stac-style temporal extent
+    with a from_date (inclusive) and to_date (exclusive)
+    and calculate intersection with STAC entities
+    based on nominal datetime or start_datetime+end_datetime
+
+    refs:
+    - https://github.com/radiantearth/stac-spec/blob/master/item-spec/item-spec.md#datetime
+    - https://github.com/radiantearth/stac-spec/blob/master/commons/common-metadata.md#date-and-time-range
+    """
+    # TODO: move this to a more generic location for better reuse
+
+    __slots__ = ("from_date", "to_date")
+
+    def __init__(
+        self,
+        from_date: Union[str, datetime.datetime, datetime.date, None],
+        to_date: Union[str, datetime.datetime, datetime.date, None],
+    ):
+        self.from_date: Union[datetime.datetime, None] = to_datetime_utc_unless_none(from_date)
+        self.to_date: Union[datetime.datetime, None] = to_datetime_utc_unless_none(to_date)
+
+    def intersects(
+        self,
+        nominal: Union[str, datetime.datetime, datetime.date, None] = None,
+        start_datetime: Union[str, datetime.datetime, datetime.date, None] = None,
+        end_datetime: Union[str, datetime.datetime, datetime.date, None] = None,
+    ) -> bool:
+        """
+        Check if the given datetime/interval intersects with the spatiotemporal extent.
+
+        :param nominal: nominal datetime (e.g. typically the "datetime" property of a STAC Item)
+        :param start_datetime: start of the interval (e.g. "start_datetime" property of a STAC Item)
+        :param end_datetime: end of the interval (e.g. "end_datetime" property of a STAC Item)
+        """
+        start_datetime = to_datetime_utc_unless_none(start_datetime)
+        end_datetime = to_datetime_utc_unless_none(end_datetime)
+        nominal = to_datetime_utc_unless_none(nominal)
+
+        # If available, start+end are preferred (cleanly defined interval)
+        # fall back on nominal otherwise
+        if start_datetime and end_datetime and start_datetime <= end_datetime:
+            pass
+        elif nominal:
+            start_datetime = end_datetime = nominal
+        else:
+            raise ValueError(f"Ill-defined instant/interval {nominal=} {start_datetime=} {end_datetime=}")
+
+        return (self.from_date is None or self.from_date <= end_datetime) and (
+            self.to_date is None or start_datetime < self.to_date
+        )
+
+
+class _SpatialExtent:
+    """
+    Helper to represent a spatial extent with a bounding box
+    and calculate intersection with STAC entities (e.g. bbox of a STAC Item).
+    """
+    # TODO: move this to a more generic location for better reuse
+
+    __slots__ = ("bbox", "_bbox_lonlat_shape")
+
+    def __init__(self, *, bbox: Union[BoundingBox, None]):
+        # TODO: support more bbox representations as input
+        self.bbox = bbox
+        self._bbox_lonlat_shape = self.bbox.reproject("EPSG:4326").as_polygon() if self.bbox else None
+
+    def intersects(self, bbox: Union[List[float], Tuple[float, float, float, float], None]):
+        # TODO: this assumes bbox is in lon/lat coordinates, also support other CRSes?
+        if not self.bbox or bbox is None:
+            return True
+        return self._bbox_lonlat_shape.intersects(Polygon.from_bounds(*bbox))
+
+
+class _SpatioTemporalExtent:
+    # TODO: move this to a more generic location for better reuse
+    def __init__(
+        self,
+        *,
+        bbox: Union[BoundingBox, None],
+        from_date: Union[str, datetime.datetime, datetime.date, None],
+        to_date: Union[str, datetime.datetime, datetime.date, None],
+    ):
+        self._spatial_extent = _SpatialExtent(bbox=bbox)
+        self._temporal_extent = _TemporalExtent(from_date=from_date, to_date=to_date)
+
+    def item_intersects(self, item: pystac.Item) -> bool:
+        return self._temporal_extent.intersects(
+            nominal=item.datetime,
+            start_datetime=item.properties.get("start_datetime"),
+            end_datetime=item.properties.get("end_datetime"),
+        ) and self._spatial_extent.intersects(item.bbox)
 
 
 def _is_supported_raster_mime_type(mime_type: str) -> bool:
