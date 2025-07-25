@@ -49,6 +49,7 @@ from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.constants import EVAL_ENV_KEY
 from openeogeotrellis.geopysparkcubemetadata import GeopysparkCubeMetadata
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
+from openeogeotrellis.util.datetime import to_datetime_utc_unless_none
 from openeogeotrellis.utils import normalize_temporal_extent, get_jvm, to_projected_polygons, map_optional, unzip
 from openeogeotrellis.integrations.stac import ResilientStacIO
 
@@ -93,7 +94,6 @@ def load_stac(
     to_date = (dt.datetime.combine(until_date, dt.time.max, until_date.tzinfo) if from_date == until_date
                else until_date - dt.timedelta(milliseconds=1))
 
-    # TODO: move date preparation to __init__ of _SpatioTemporalExtent
     spatiotemporal_extent = _SpatioTemporalExtent(bbox=requested_bbox, from_date=from_date, to_date=to_date)
 
     def get_pixel_value_offset(itm: pystac.Item, asst: pystac.Asset) -> float:
@@ -712,12 +712,17 @@ def load_stac(
 
 class _TemporalExtent:
     """
-    Helper to represent a temporal extent with a from_date and to_date
+    Helper to represent a load_collection/load_stac-style temporal extent
+    with a from_date (inclusive) and to_date (exclusive)
     and calculate intersection with STAC entities
-    (nominal datetime or start_datetime+end_datetime).
-    """
+    based on nominal datetime or start_datetime+end_datetime
 
+    refs:
+    - https://github.com/radiantearth/stac-spec/blob/master/item-spec/item-spec.md#datetime
+    - https://github.com/radiantearth/stac-spec/blob/master/commons/common-metadata.md#date-and-time-range
+    """
     # TODO: move this to a more generic location for better reuse
+
     __slots__ = ("from_date", "to_date")
 
     def __init__(
@@ -725,31 +730,8 @@ class _TemporalExtent:
         from_date: Union[str, datetime.datetime, datetime.date, None],
         to_date: Union[str, datetime.datetime, datetime.date, None],
     ):
-        self.from_date: Union[datetime.datetime, None] = self._to_datetime_utc_unless_none(from_date)
-        self.to_date: Union[datetime.datetime, None] = self._to_datetime_utc_unless_none(to_date)
-
-    @staticmethod
-    def _to_datetime_utc(d: Union[str, datetime.datetime, datetime.date]) -> datetime.datetime:
-        """Parse/convert to datetime in UTC."""
-        if isinstance(d, str):
-            d = dateutil.parser.parse(d)
-        elif isinstance(d, datetime.datetime):
-            pass
-        elif isinstance(d, datetime.date):
-            d = datetime.datetime.combine(d, datetime.time.min)
-        else:
-            raise ValueError("Expected str/datetime, but got {type(d)}")
-        if d.tzinfo is None:
-            d = d.replace(tzinfo=dt.timezone.utc)
-        else:
-            d = d.astimezone(dt.timezone.utc)
-        return d
-
-    @classmethod
-    def _to_datetime_utc_unless_none(
-        cls, d: Union[str, datetime.datetime, datetime.date, None]
-    ) -> Union[datetime.datetime, None]:
-        return None if d is None else cls._to_datetime_utc(d)
+        self.from_date: Union[datetime.datetime, None] = to_datetime_utc_unless_none(from_date)
+        self.to_date: Union[datetime.datetime, None] = to_datetime_utc_unless_none(to_date)
 
     def intersects(
         self,
@@ -764,9 +746,9 @@ class _TemporalExtent:
         :param start_datetime: start of the interval (e.g. "start_datetime" property of a STAC Item)
         :param end_datetime: end of the interval (e.g. "end_datetime" property of a STAC Item)
         """
-        start_datetime = self._to_datetime_utc_unless_none(start_datetime)
-        end_datetime = self._to_datetime_utc_unless_none(end_datetime)
-        nominal = self._to_datetime_utc_unless_none(nominal)
+        start_datetime = to_datetime_utc_unless_none(start_datetime)
+        end_datetime = to_datetime_utc_unless_none(end_datetime)
+        nominal = to_datetime_utc_unless_none(nominal)
 
         # If available, start+end are preferred (cleanly defined interval)
         # fall back on nominal otherwise
@@ -787,7 +769,6 @@ class _SpatialExtent:
     Helper to represent a spatial extent with a bounding box
     and calculate intersection with STAC entities (e.g. bbox of a STAC Item).
     """
-
     # TODO: move this to a more generic location for better reuse
 
     __slots__ = ("bbox", "_bbox_lonlat_shape")
@@ -810,8 +791,8 @@ class _SpatioTemporalExtent:
         self,
         *,
         bbox: Union[BoundingBox, None],
-        from_date: Union[str, datetime.datetime, None],
-        to_date: Union[str, datetime.datetime, None],
+        from_date: Union[str, datetime.datetime, datetime.date, None],
+        to_date: Union[str, datetime.datetime, datetime.date, None],
     ):
         self._spatial_extent = _SpatialExtent(bbox=bbox)
         self._temporal_extent = _TemporalExtent(from_date=from_date, to_date=to_date)
