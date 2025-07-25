@@ -79,8 +79,9 @@ def test_fit_class_catboost_model():
 
 @mock.patch('openeo_driver.ProcessGraphDeserializer.evaluate')
 @mock.patch('openeogeotrellis.backend.GpsBatchJobs.get_job_info')
+@mock.patch('openeogeotrellis.job_registry.DoubleJobRegistry.get_job')
 @mock.patch('openeogeotrellis.backend.GpsBatchJobs.get_job_output_dir')
-def test_fit_class_catboost_batch_job_metadata(get_job_output_dir, get_job_info, evaluate, tmp_path: Path, api110):
+def test_fit_class_catboost_batch_job_metadata(get_job_output_dir, get_job, get_job_info, evaluate, tmp_path: Path, api110):
     """
     Test the metadata generation for a CatBoost model trained using a batch job.
     
@@ -144,6 +145,7 @@ def test_fit_class_catboost_batch_job_metadata(get_job_output_dir, get_job_info,
     # 3. Check the actual result returned by the /jobs/{j}/results endpoint.
     # It uses the job_metadata file as a basis to fill in the ml_model metadata fields.
     get_job_info.return_value = BatchJobMetadata(id=job_id, status='finished', created = datetime.now())
+    get_job.return_value = {'status':'finished', 'id':'job_id'}
     api = api110
     res = api.get('/jobs/{j}/results'.format(j = job_id), headers = TEST_USER_AUTH_HEADER).assert_status_code(200).json
 
