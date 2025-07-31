@@ -11,6 +11,9 @@ import numpy as np
 
 # TODO shift if we cross the antimeridian. Here is a good place, as we wouldn't want to do it multiple times
 def bin_to_grid(ds: xr.Dataset, bands: Iterable[str], lat_edges, lon_edges, *, aggregation="mean", super_sampling: int=1) -> xr.Dataset:
+    """
+    assumes strictly increasing lat_edges, lon_edges
+    """
     if aggregation == "mean":
         return  _bin_with_mean_statistic(ds, bands, lat_edges, lon_edges, super_sampling=super_sampling)
     else:
@@ -27,6 +30,8 @@ def _bin_generic():
 def _bin_with_mean_statistic(ds: xr.Dataset, bands: Iterable[str], lat_edges, lon_edges, *, super_sampling: int=1) -> xr.Dataset:
     """
     Optimized implementation of mean binning using ``np.histogram`` to sum the input values in each bin.
+
+    Assumes float32 values (promotes to float64)
     """
     # TODO describe what properties ds should have
 
@@ -50,8 +55,7 @@ def _bin_with_mean_statistic(ds: xr.Dataset, bands: Iterable[str], lat_edges, lo
 
     binned = {}
     means = None
-    # TODO can pre-allocate here for all bands
-    sampled_data = None
+    # TODO sampled_data could be pre-allocated here for all bands
 
     for band in bands:
         data = ds[band].data
