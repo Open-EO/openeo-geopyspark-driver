@@ -81,11 +81,12 @@ class ObjectStorageWorkspace(Workspace):
                 return f"{parent_dir}/{target.name}"
 
             def item_func(item: Item, parent_dir: str) -> str:
-                return f"{parent_dir}/{target.name}/{item.id}.json"  # item ID == asset key == relative asset path
+                unique_item_filename = item.id.replace("/", "_")
+                return f"{parent_dir}/{target.name}/{unique_item_filename}.json"  # item ID == asset key == relative asset path
 
             return CustomLayoutStrategy(collection_func=collection_func, item_func=item_func)
 
-        def replace_asset_href(asset_key: str, asset: Asset, relative_collection_path:Path) -> Asset:
+        def replace_asset_href(asset_key: str, asset: Asset, src_collection_path:Path) -> Asset:
             if urlparse(asset.href).scheme not in ["", "file", "s3"]:  # TODO: convenient place; move elsewhere?
                 raise ValueError(asset.href)
 
@@ -96,7 +97,7 @@ class ObjectStorageWorkspace(Workspace):
             if original_absolute_href.startswith("s3"):
                 asset.href = Path(original_absolute_href).name
             else:
-                common_path = os.path.commonpath([original_absolute_href, relative_collection_path])
+                common_path = os.path.commonpath([original_absolute_href, src_collection_path])
                 asset.href = original_absolute_href.replace(common_path + "/","")
             return asset
 

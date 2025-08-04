@@ -110,7 +110,7 @@ class StacApiWorkspace(Workspace):
                 relative_parent = Path(new_collection.self_href).parent
                 for new_item in new_collection.get_items():
                     for asset_key, asset in new_item.assets.items():
-                        asset_href = asset.href
+                        asset_href = asset.get_absolute_href()
                         if asset_href.startswith("s3"):
                             relative_asset_path = PurePath(Path(asset_href).name)
                         else:

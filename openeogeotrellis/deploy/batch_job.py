@@ -597,7 +597,6 @@ def run_job(
                     result,
                     result_metadata,
                     result_assets_metadata=result_assets_metadata,
-                    result_items_metadata = None,
                     job_dir=job_dir,
                     remove_exported_assets=job_options.get("remove-exported-assets", False),
                     enable_merge=job_options.get("export-workspace-enable-merge", False),
@@ -679,9 +678,9 @@ def _export_to_workspaces_item(
             imported_collection = workspace.merge(collection, target=Path(merge), remove_original=remove_original)
             assert isinstance(imported_collection, pystac.Collection)
 
-            for items in imported_collection.get_items(recursive=True):
-                item_key = items.id
-                for asset_key, asset in items.get_assets().items():
+            for item in imported_collection.get_items(recursive=True):
+                item_key = item.id
+                for asset_key, asset in item.get_assets().items():
                     (workspace_uri,) = asset.extra_fields["alternate"].values()
                     workspace_uris.setdefault((item_key,asset_key), []).append(
                         (workspace_export.workspace_id, workspace_export.merge, workspace_uri)
@@ -728,7 +727,6 @@ def _export_to_workspaces(
     result: SaveResult,
     result_metadata: dict,
     result_assets_metadata: dict,
-    result_items_metadata: dict,
     job_dir: Path,
     remove_exported_assets: bool,
     enable_merge: bool,
@@ -911,7 +909,7 @@ def _write_exported_stac_collection_from_item(
     result_metadata: dict,
     item_metadata: dict
 ) -> List[Path]:  # TODO: change to Set?
-    def write_stac_item_file(asset_id: str, item: dict) -> Path:
+    def write_stac_item_file(item: dict) -> Path:
         assets = dict()
         for (asset_key,asset) in item.get("assets").items():
             asset_bands = None
@@ -946,8 +944,7 @@ def _write_exported_stac_collection_from_item(
             "links":[],
             "assets":assets
         }
-
-        item_file = get_abs_path_of_asset(Path(f"{asset_id}.json"), job_dir)
+        item_file = get_abs_path_of_asset(Path(f"{item['id']}.json"), job_dir)
         item_file.parent.mkdir(parents=True, exist_ok=True)
         with open(item_file, "wt") as fi:
             json.dump(stac_item, fi, allow_nan=False)
@@ -955,7 +952,7 @@ def _write_exported_stac_collection_from_item(
         return item_file
 
     item_files = [
-        write_stac_item_file(item_key, item) for (item_key,item) in item_metadata.items()
+        write_stac_item_file(item) for (_,item) in item_metadata.items()
     ]
 
     def item_link(item_file: Path) -> dict:
