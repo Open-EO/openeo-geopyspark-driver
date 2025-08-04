@@ -1,6 +1,6 @@
 from __future__ import annotations
 import contextlib
-import datetime as dt
+from copy import deepcopy
 import json
 import logging
 import random
@@ -153,6 +153,9 @@ class ZkJobRegistry:
 
     def remove_dependencies(self, job_id: str, user_id: str):
         self.patch(job_id, user_id, dependencies=None, dependency_status=None)
+
+    def set_results_metadata_uri(self, job_id: str, user_id: str, results_metadata_uri: str) -> None:
+        self.patch(job_id, user_id, results_metadata_uri=results_metadata_uri)
 
     def patch(
         self, job_id: str, user_id: str, auto_mark_done: bool = True, **kwargs
@@ -623,7 +626,7 @@ class InMemoryJobRegistry(JobRegistryInterface):
             "api_version": api_version,
             "job_options": job_options,
         }
-        return self.db[job_id]
+        return deepcopy(self.db[job_id])
 
     def get_job(self, job_id: str, *, user_id: Optional[str] = None) -> JobDict:
         job = self.db.get(job_id)
@@ -631,7 +634,7 @@ class InMemoryJobRegistry(JobRegistryInterface):
         if not job or (user_id is not None and job['user_id'] != user_id):
             raise JobNotFoundException(job_id=job_id)
 
-        return job
+        return deepcopy(job)
 
     def delete_job(self, job_id: str, *, user_id: Optional[str] = None) -> None:
         self.get_job(job_id=job_id, user_id=user_id)  # will raise on job not found
@@ -640,7 +643,7 @@ class InMemoryJobRegistry(JobRegistryInterface):
     def _update(self, job_id: str, **kwargs) -> JobDict:
         assert job_id in self.db
         self.db[job_id].update(**kwargs)
-        return self.db[job_id]
+        return deepcopy(self.db[job_id])
 
     def set_status(
         self,
@@ -691,7 +694,10 @@ class InMemoryJobRegistry(JobRegistryInterface):
         usage: dict,
         results_metadata: Optional[Dict[str, Any]] = None,
     ) -> None:
-        self._update(job_id=job_id, costs=costs, usage=usage, results_metadata=results_metadata)
+        if results_metadata:
+            self._update(job_id=job_id, costs=costs, usage=usage, results_metadata=results_metadata)
+        else:
+            self._update(job_id=job_id, costs=costs, usage=usage)
 
     def set_results_metadata_uri(
         self, job_id: str, *, user_id: Optional[str] = None, results_metadata_uri: str
@@ -707,7 +713,7 @@ class InMemoryJobRegistry(JobRegistryInterface):
         request_parameters: Optional[dict] = None,
         # TODO #959 settle on returning just `JobListing` and eliminate other options/code paths.
     ) -> Union[JobListing, List[JobDict]]:
-        jobs = [job for job in self.db.values() if job["user_id"] == user_id]
+        jobs = [deepcopy(job) for job in self.db.values() if job["user_id"] == user_id]
         if limit:
             pagination_param = "page"
             page_number = int((request_parameters or {}).get(pagination_param, 0))
@@ -734,7 +740,7 @@ class InMemoryJobRegistry(JobRegistryInterface):
         active = [JOB_STATUS.CREATED, JOB_STATUS.QUEUED, JOB_STATUS.RUNNING]
         # TODO: implement support for max_age, max_updated_ago, fields
         return [
-            job
+            deepcopy(job)
             for job in self.db.values()
             if job["status"] in active and (not require_application_id or job.get("application_id") is not None)
         ]
@@ -867,9 +873,63 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
                 with contextlib.suppress(JobNotFoundException):
                     ejr_job_info = self.elastic_job_registry.get_job(job_id=job_id, user_id=user_id)
 
+                    # TODO: replace with getter once introduced?
+                    results_metadata = self._load_results_metadata_from_uri(
+                        ejr_job_info.get("results_metadata_uri"), job_id
+                    )
+                    if results_metadata is not None:
+                        ejr_job_info["results_metadata"] = results_metadata
+
         self._check_zk_ejr_job_info(job_id=job_id, zk_job_info=zk_job_info, ejr_job_info=ejr_job_info)
         job_metadata = zk_job_info_to_metadata(zk_job_info) if zk_job_info else ejr_job_info_to_metadata(ejr_job_info)
         return job_metadata
+
+    @staticmethod
+    def _load_results_metadata_from_uri(results_metadata_uri: Optional[str], job_id: str) -> Optional[dict]:
+        # TODO: reduce code duplication with openeogeotrellis.backend.GpsBatchJobs._load_results_metadata_from_uri
+        from openeogeotrellis.integrations.s3proxy.asset_urls import PresignedS3AssetUrls
+        from openeogeotrellis.utils import get_s3_file_contents
+        import botocore.exceptions
+        from urllib.parse import urlparse
+
+        if results_metadata_uri is None:
+            return None
+
+        _log.debug(f"Loading results metadata from URI {results_metadata_uri}", extra={"job_id": job_id})
+
+        uri_parts = urlparse(results_metadata_uri)
+
+        if uri_parts.scheme == "file":
+            file_path = uri_parts.path
+            try:
+                with open(file_path) as f:
+                    return json.load(f)
+            except FileNotFoundError:
+                _log.debug(
+                    f"File with results metadata {file_path} does not exist; this is expected and not "
+                    f"an error if the batch job did not have the chance to write it yet.",
+                    exc_info=True,
+                    extra={"job_id": job_id},
+                )
+                return None
+
+        if uri_parts.scheme == "s3":
+            bucket, key = PresignedS3AssetUrls.get_bucket_key_from_uri(results_metadata_uri)
+            try:
+                return json.loads(get_s3_file_contents(key, bucket))
+            except botocore.exceptions.ClientError as e:
+                if e.response["Error"]["Code"] != "NoSuchKey":
+                    raise
+
+                _log.debug(
+                    f"Object with results metadata {key} does not exist in bucket {bucket}; this is "
+                    f"expected and not an error if the batch job did not have the chance to write it yet.",
+                    exc_info=True,
+                    extra={"job_id": job_id},
+                )
+                return None
+
+        raise ValueError(f"Unsupported results metadata URI: {results_metadata_uri}")
 
     def _check_zk_ejr_job_info(self, job_id: str, zk_job_info: Union[dict, None], ejr_job_info: Union[dict, None]):
         # TODO #236/#498 For now: compare job metadata between Zk and EJR
@@ -959,6 +1019,17 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
         if self.elastic_job_registry:
             self.elastic_job_registry.set_application_id(job_id=job_id, user_id=user_id, application_id=application_id)
 
+    def set_results_metadata_uri(self, job_id: str, *, user_id: Optional[str] = None, results_metadata_uri: str):
+        if self.zk_job_registry:
+            assert user_id, "user_id is required in ZkJobRegistry"
+            self.zk_job_registry.set_results_metadata_uri(
+                job_id=job_id, user_id=user_id, results_metadata_uri=results_metadata_uri
+            )
+        if self.elastic_job_registry:
+            self.elastic_job_registry.set_results_metadata_uri(
+                job_id=job_id, user_id=user_id, results_metadata_uri=results_metadata_uri
+            )
+
     def mark_ongoing(self, job_id: str, user_id: str) -> None:
         # TODO #863/#1123 can this method be eliminated (e.g. integrate it directly in ZkJobRegistry.set_status)?
         if self.zk_job_registry:
@@ -1027,8 +1098,9 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
     ) -> None:
         if self.zk_job_registry:
             assert user_id, "user_id is required in ZkJobRegistry"
-            self.zk_job_registry.patch(job_id=job_id, user_id=user_id,
-                                       **dict(results_metadata, costs=costs, usage=usage))
+            self.zk_job_registry.patch(
+                job_id=job_id, user_id=user_id, **dict(results_metadata or {}, costs=costs, usage=usage)
+            )
 
         if self.elastic_job_registry:
             self.elastic_job_registry.set_results_metadata(
