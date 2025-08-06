@@ -6,6 +6,7 @@ import logging
 import random
 from datetime import datetime, timedelta
 from decimal import Decimal
+from pathlib import Path
 from typing import Any, List, Dict, Callable, Union, Optional, Iterator, Tuple
 
 import kazoo
@@ -900,7 +901,7 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
         uri_parts = urlparse(results_metadata_uri)
 
         if uri_parts.scheme == "file":
-            file_path = uri_parts.path
+            file_path = Path(uri_parts.path)
             try:
                 with open(file_path) as f:
                     return json.load(f)
