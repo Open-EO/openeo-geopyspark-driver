@@ -420,11 +420,14 @@ def single_value(xs):
 
 
 def add_permissions(path: Path, mode: int, user=None, group=None):
+    """
+    Add permissions to a file or directory, and optionally change its ownership.
+    """
     # TODO: accept PathLike etc as well
     # TODO: maybe umask is a better/cleaner option
-    # TODO: Don't change permissions on s3 urls?
-    # if str(path).lower().startswith("s3:/"):
-    #     return
+    if str(path).lower().startswith("s3:/"):
+        logger.warning(f"add_permissions called on S3 path {path!r}, which is not supported.")
+        return
     if path.exists():
         current_permission_bits = os.stat(path).st_mode
         os.chmod(path, current_permission_bits | mode)
@@ -435,7 +438,14 @@ def add_permissions(path: Path, mode: int, user=None, group=None):
                 logger.warning(f"Could not change user/group of {path} to {user}/{group}.")
             except PermissionError as e:
                 logger.warning(f"Could not change user/group of {path} to {user}/{group}, no permissions.")
+
+
+def add_permissions_with_failsafe(path: Path, mode: int, user=None, group=None):
+    if path.exists():
+        add_permissions(path, mode, user=user, group=group)
     else:
+        # If the path does not exist, we set the permissions on all siblings in the parent directory.
+        # TODO: This was originally implemented for tiffs with multiple dates (EP-3800). Check if this can be removed.
         for p in path.parent.glob('*'):
             current_permission_bits = os.stat(p).st_mode
             p.chmod(current_permission_bits | mode)

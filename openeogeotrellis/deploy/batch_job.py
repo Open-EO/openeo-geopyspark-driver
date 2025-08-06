@@ -78,6 +78,7 @@ from openeogeotrellis.utils import (
     to_jsonable,
     unzip,
     wait_till_path_available,
+    add_permissions_with_failsafe,
 )
 
 logger = logging.getLogger("openeogeotrellis.deploy.batch_job")
@@ -488,7 +489,7 @@ def run_job(
                     # fusemount could have some delay to make files accessible, so poll a bit:
                     asset_path = get_abs_path_of_asset(file_path, job_dir)
                     wait_till_path_available(asset_path)
-                add_permissions(Path(asset["href"]), stat.S_IWGRP)
+                add_permissions_with_failsafe(Path(asset["href"]), stat.S_IWGRP)
             logger.info(f"wrote {len(the_assets_metadata)} assets to {output_file}")
 
         if any(dependency["card4l"] for dependency in dependencies):  # TODO: clean this up
