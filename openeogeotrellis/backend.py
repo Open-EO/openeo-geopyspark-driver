@@ -32,6 +32,7 @@ import openeo.udf
 import pkg_resources
 import pystac
 import requests
+import reretry
 import shapely.geometry.base
 from deprecated import deprecated
 from geopyspark import LayerType, Pyramid, TiledRasterLayer
@@ -2831,6 +2832,12 @@ class GpsBatchJobs(backend.BatchJobs):
         return {}
 
     @staticmethod
+    @reretry.retry(exceptions=FileNotFoundError, tries=5, delay=1, backoff=2, logger=logger)
+    def _load_results_metadata_from_file(metadata_file: Path):
+        with open(metadata_file) as f:
+            return json.load(f)
+
+    @staticmethod
     def _load_results_metadata_from_uri(results_metadata_uri: Optional[str], job_id: str) -> Optional[dict]:
         # TODO: reduce code duplication with load_results_metadata
         import botocore.exceptions
@@ -2843,10 +2850,9 @@ class GpsBatchJobs(backend.BatchJobs):
         uri_parts = urlparse(results_metadata_uri)
 
         if uri_parts.scheme == "file":
-            file_path = uri_parts.path
+            file_path = Path(uri_parts.path)
             try:
-                with open(file_path) as f:
-                    return json.load(f)
+                return GpsBatchJobs._load_results_metadata_from_file(file_path)
             except FileNotFoundError:
                 logger.debug(
                     f"File with results metadata {file_path} does not exist; this is expected and not "
