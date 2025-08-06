@@ -114,9 +114,7 @@ from openeogeotrellis.layercatalog import (
     extra_validation_load_collection, WHITELIST,
 )
 from openeogeotrellis.logs import elasticsearch_logs
-from openeogeotrellis.ml.geopysparkcatboostmodel import GeopySparkCatBoostModel
-from openeogeotrellis.ml.geopysparkmlmodel import GeopysparkMlModel
-from openeogeotrellis.ml.geopysparkrandomforestmodel import GeopySparkRandomForestModel
+from openeogeotrellis.ml.geopysparkmlmodel import GeopysparkMlModel, MLModelLoader
 from openeogeotrellis.processgraphvisiting import GeotrellisTileProcessGraphVisitor, SingleNodeUDFProcessGraphVisitor
 from openeogeotrellis.sentinel_hub.batchprocessing import SentinelHubBatchProcessing
 from openeogeotrellis.service_registry import (
@@ -846,132 +844,16 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         )
 
     def load_ml_model(self, model_id: str) -> GeopysparkMlModel:
-
-        # Trick to make sure IDE infers right type of `self.batch_jobs` and can resolve `get_job_output_dir`
-        gps_batch_jobs: GpsBatchJobs = self.batch_jobs
-
-        def _create_model_dir(use_s3=False):
-            if use_s3:
-                return f"openeo-ml-models-dev/{generate_unique_id(prefix='model')}"
-
-            def _set_permissions(job_dir: Path, group: str = "openeo_results"):
-                # TODO: avoid hardcoded Terrascope-specific group name
-                try:
-                    shutil.chown(job_dir, user=None, group=group)
-                # TODO: Why excepting LookupError here, is that something shutil.chown would raise?
-                except LookupError as e:
-                    logger.warning(f"Could not change group of {job_dir} to {group}.")
-                add_permissions(job_dir, stat.S_ISGID | stat.S_IWGRP)  # make children inherit this group
-
-            result_dir = gps_batch_jobs.get_job_output_dir("ml_models")
-            result_path = result_dir / generate_unique_id(prefix="model")
-            result_dir_exists = os.path.exists(result_dir)
-            logger.info("Creating directory: {}".format(result_path))
-            os.makedirs(result_path)
-            if not result_dir_exists:
-                _set_permissions(result_dir)
-            _set_permissions(result_path)
-            return str(result_path)
-
-        if model_id.startswith('http'):
-            # Load the model using its STAC metadata file.
-            with requests.get(model_id) as resp:
-                resp.raise_for_status()
-                metadata = resp.json()
-            if deep_get(metadata, "properties", "ml-model:architecture", default=None) is None:
-                raise OpenEOApiException(
-                    message=f"{model_id} does not specify a model architecture under properties.ml-model:architecture.",
-                    status_code=400)
-            checkpoints = []
-            assets = metadata.get('assets', {})
-            for asset in assets:
-                if "ml-model:checkpoint" in assets[asset].get('roles', []):
-                    checkpoints.append(assets[asset])
-            if len(checkpoints) == 0 or checkpoints[0].get("href", None) is None:
-                raise OpenEOApiException(
-                    message=f"{model_id} does not contain a link to the ml model in its assets section.",
-                    status_code=400)
-            # TODO: How to handle multiple models?
-            if len(checkpoints) > 1:
-                raise OpenEOApiException(
-                    message=f"{model_id} contains multiple checkpoints which is not yet supported.",
-                    status_code=400)
-
-            # Get the url for the actual model from the STAC metadata.
-            model_url = checkpoints[0]["href"]
-            architecture = metadata["properties"]["ml-model:architecture"]
-            # Download the model to the ml_models folder and load it as a java object.
-            use_s3 = ConfigParams().is_kube_deploy
-            model_dir_path = _create_model_dir(use_s3)
-            if architecture == "random-forest":
-                if use_s3:
-                    with tempfile.TemporaryDirectory() as tmp_dir:
-                        # Download to tmp_dir and unpack it there.
-                        tmp_path = Path(tmp_dir + "/randomforest.model.tar.gz")
-                        logger.info(f"Downloading ml_model from {model_url} to {tmp_path}")
-                        with open(tmp_path, 'wb') as f:
-                            f.write(requests.get(model_url).content)
-                        shutil.unpack_archive(tmp_path, extract_dir = tmp_dir, format = 'gztar')
-                        # Upload the unpacked model to s3.
-                        unpacked_model_path = str(tmp_path).replace(".tar.gz", "")
-                        logger.info(f"Uploading ml_model to {model_dir_path}")
-                        path_split = model_dir_path.split("/")
-                        bucket, key = path_split[0], path_split[1]
-                        s3 = s3_client()
-                        for root, dirs, files in os.walk(unpacked_model_path):
-                            for file in files:
-                                relative_filepath = os.path.relpath(os.path.join(root, file), tmp_dir)
-                                s3.upload_file(os.path.join(root, file), bucket, key + "/" + relative_filepath)
-                        # Load the spark model using the new s3 path.
-                        s3_path = f"s3a://{model_dir_path}/randomforest.model/"
-                        logger.info("Loading ml_model using filename: {}".format(s3_path))
-                        model: GeopysparkMlModel = GeopySparkRandomForestModel.from_path(sc=gps.get_spark_context(), path=s3_path)
-                        return model
-                dest_path = Path(model_dir_path + "/randomforest.model.tar.gz")
-                with open(dest_path, 'wb') as f:
-                    f.write(requests.get(model_url).content)
-                shutil.unpack_archive(dest_path, extract_dir=model_dir_path, format='gztar')
-                unpacked_model_path = str(dest_path).replace(".tar.gz", "")
-                logger.info("Loading ml_model using filename: {}".format(unpacked_model_path))
-                model: GeopysparkMlModel = GeopySparkRandomForestModel.from_path(sc=gps.get_spark_context(), path= "file:" + unpacked_model_path)
-                return model
-            elif architecture == "catboost":
-                if use_s3:
-                    # TODO: Verify that local files work. If it does, we can remove the model_dir_path implementation.
-                    # Download the model to the tmp directory and load it as a java object.
-                    with tempfile.TemporaryDirectory() as tmp_dir:
-                        tmp_path = Path(tmp_dir + "/catboost_model.cbm")
-                        logger.info(f"Downloading ml_model from {model_url} to {tmp_path}")
-                        with open(tmp_path, 'wb') as f:
-                            f.write(requests.get(model_url).content)
-                        model: GeopysparkMlModel = GeopySparkCatBoostModel.from_path(tmp_path)
-                        return model
-                filename = Path(model_dir_path + "/catboost_model.cbm")
-                with open(filename, 'wb') as f:
-                    f.write(requests.get(model_url).content)
-                logger.info("Loading ml_model using filename: {}".format(filename))
-                model: GeopysparkMlModel = GeopySparkCatBoostModel.from_path(str(filename))
-            else:
-                raise NotImplementedError("The ml-model architecture is not supported by the backend: " + architecture)
-            return model
+        """Load ML model from URL or batch job ID"""
+        gps_batch_jobs: Optional[GpsBatchJobs] = self.batch_jobs
+        
+        if model_id.startswith("http"):
+            return MLModelLoader.load_from_url(model_id, gps_batch_jobs)
         else:
-            # TODO: Should we still support this, or should only signed urls work?
-            # Load the model using a batch job id.
-            directory = gps_batch_jobs.get_job_output_dir(model_id)
-            # TODO: This can be done by first reading ml_model_metadata.json in the batch job directory.
-            model_path = str(Path(directory) / "randomforest.model")
-            if Path(model_path).exists():
-                logger.info("Loading ml_model using filename: {}".format(model_path))
-                model: GeopysparkMlModel = GeopySparkRandomForestModel.from_path(sc=gps.get_spark_context(), path="file:" + model_path)
-            elif Path(model_path+".tar.gz").exists():
-                packed_model_path = model_path+".tar.gz"
-                shutil.unpack_archive(packed_model_path, extract_dir=directory, format='gztar')
-                unpacked_model_path = str(packed_model_path).replace(".tar.gz", "")
-                model: GeopysparkMlModel = GeopySparkRandomForestModel.from_path(sc=gps.get_spark_context(), path="file:" + unpacked_model_path)
-            else:
-                raise OpenEOApiException(
-                    message=f"No random forest model found for job {model_id}",status_code=400)
-            return model
+            # Load the model using a batch job id
+            batch_job_id = model_id
+            batch_job_dir = gps_batch_jobs.get_job_output_dir(batch_job_id)
+            return MLModelLoader.load_from_batch_job(Path(batch_job_dir) / "randomforest.model")
 
     def vector_to_raster(self, input_vector_cube: DriverVectorCube, target: DriverDataCube) -> DriverDataCube:
         """
