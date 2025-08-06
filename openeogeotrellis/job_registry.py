@@ -11,7 +11,6 @@ from typing import Any, List, Dict, Callable, Union, Optional, Iterator, Tuple
 
 import kazoo
 import kazoo.exceptions
-import reretry
 from kazoo.client import KazooClient
 from kazoo.exceptions import NoNodeError, NodeExistsError
 from kazoo.handlers.threading import KazooTimeoutError
@@ -887,12 +886,6 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
         return job_metadata
 
     @staticmethod
-    @reretry.retry(exceptions=FileNotFoundError, tries=5, delay=1, backoff=2, logger=_log)
-    def _load_results_metadata_from_file(metadata_file: Path):
-        with open(metadata_file) as f:
-            return json.load(f)
-
-    @staticmethod
     def _load_results_metadata_from_uri(results_metadata_uri: Optional[str], job_id: str) -> Optional[dict]:
         # TODO: reduce code duplication with openeogeotrellis.backend.GpsBatchJobs._load_results_metadata_from_uri
         from openeogeotrellis.integrations.s3proxy.asset_urls import PresignedS3AssetUrls
@@ -910,7 +903,8 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
         if uri_parts.scheme == "file":
             file_path = Path(uri_parts.path)
             try:
-                return DoubleJobRegistry._load_results_metadata_from_file(file_path)
+                with open(file_path) as f:
+                    return json.load(f)
             except FileNotFoundError:
                 _log.debug(
                     f"File with results metadata {file_path} does not exist; this is expected and not "
