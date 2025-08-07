@@ -1903,6 +1903,8 @@ class GeopysparkDataCube(DriverDataCube):
             for java_item in java_items:
                 assets = {}
                 extent = java_item.bbox()
+                bbox = to_latlng_bbox(extent) if extent else None
+                geometry = mapping(Polygon.from_bounds(*to_latlng_bbox(extent))) if extent else None
 
                 for asset_key, asset in java_item.assets().items():
                     assets[asset_key] = {
@@ -1910,14 +1912,16 @@ class GeopysparkDataCube(DriverDataCube):
                         "type": "application/x-netcdf",
                         "roles": ["data"],
                         "nodata": nodata,
+                        "bbox": bbox,
+                        "geometry": geometry,
                     }
                     if bands is not None:
                         assets[asset_key]["bands"] = bands
 
                 items[java_item.id()] = {
                     "id": java_item.id(),
-                    "bbox": to_latlng_bbox(extent) if extent else None,
-                    "geometry": mapping(Polygon.from_bounds(*to_latlng_bbox(extent))) if extent else None,
+                    "bbox": bbox,
+                    "geometry": geometry,
                     "assets": assets,
                 }
 

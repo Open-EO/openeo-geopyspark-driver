@@ -318,6 +318,8 @@ class TestDownload:
                             dirty_equals.IsPartialDict(name="red"),
                             dirty_equals.IsPartialDict(name="nir"),
                         ],
+                        "bbox": dirty_equals.IsListOrTuple(length=4),
+                        "geometry": dirty_equals.IsPartialDict(type="Polygon"),
                         "href": str(tmp_path / name),
                         "nodata": -1,
                         "roles": ["data"],
