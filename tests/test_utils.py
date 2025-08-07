@@ -1,4 +1,5 @@
 import collections
+import datetime
 import getpass
 import json
 import logging
@@ -15,7 +16,6 @@ from openeogeotrellis.utils import (
     StatsReporter,
     describe_path,
     dict_merge_recursive,
-    get_s3_file_contents,
     json_default,
     lonlat_to_mercator_tile_indices,
     map_optional,
@@ -246,13 +246,6 @@ def test_get_s3_binary_file_contents(mock_s3_bucket):
         buffer += bytearray(chunk)
 
     assert bytes(buffer) == TIFF_DUMMY_DATA
-
-
-def test_get_s3_file_contents(mock_s3_bucket):
-    text = "some text"
-    mock_s3_bucket.put_object(Key="batch_jobs/j-abc123/text.txt", Body=text.encode("utf-8"))
-
-    assert get_s3_file_contents(Path("/batch_jobs/j-abc123/text.txt")) == text
 
 
 @pytest.mark.parametrize(

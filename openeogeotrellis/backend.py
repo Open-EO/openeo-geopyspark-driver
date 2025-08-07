@@ -32,7 +32,6 @@ import openeo.udf
 import pkg_resources
 import pystac
 import requests
-import reretry
 import shapely.geometry.base
 from deprecated import deprecated
 from geopyspark import LayerType, Pyramid, TiledRasterLayer
@@ -97,7 +96,6 @@ from openeogeotrellis.integrations.kubernetes import (
     k8s_get_batch_job_cfg_secret_name,
     truncate_user_id_k8s,
 )
-from openeogeotrellis.integrations.s3proxy.asset_urls import PresignedS3AssetUrls
 from openeogeotrellis.integrations.stac import ResilientStacIO
 from openeogeotrellis.integrations.traefik import Traefik
 from openeogeotrellis.integrations.yarn_jobrunner import YARNBatchJobRunner
@@ -2079,12 +2077,6 @@ class GpsBatchJobs(backend.BatchJobs):
                     )
                     log.info(f"mapped job_id {job_id} to application ID {spark_app_id}")
                     dbl_registry.set_application_id(job_id=job_id, user_id=user_id, application_id=spark_app_id)
-                    dbl_registry.set_results_metadata_uri(
-                        job_id=job_id,
-                        user_id=user_id,
-                        results_metadata_uri=f"s3://{bucket}/{str(job_work_dir).strip('/')}/{JOB_METADATA_FILENAME}",
-                    )
-
                     status_response = {}
                     retry = 0
                     while "status" not in status_response and retry < 10:
@@ -2115,24 +2107,9 @@ class GpsBatchJobs(backend.BatchJobs):
             runner = YARNBatchJobRunner(principal=self._principal, key_tab=self._key_tab)
             runner.set_default_sentinel_hub_credentials(self._default_sentinel_hub_client_id,self._default_sentinel_hub_client_secret)
             vault_token = None if sentinel_hub_client_alias == 'default' else get_vault_token(sentinel_hub_client_alias)
-            job_work_dir = self.get_job_work_dir(job_id=job_id)
-            application_id = runner.run_job(
-                job_info,
-                job_id,
-                job_work_dir=job_work_dir,
-                log=log,
-                user_id=user_id,
-                api_version=api_version,
-                proxy_user=proxy_user or job_info.get("proxy_user", None),
-                vault_token=vault_token,
-            )
+            application_id = runner.run_job(job_info, job_id, job_work_dir = self.get_job_work_dir(job_id=job_id), log=log, user_id=user_id, api_version=api_version,proxy_user=proxy_user or job_info.get('proxy_user',None), vault_token=vault_token)
             with self._double_job_registry as dbl_registry:
                 dbl_registry.set_application_id(job_id=job_id, user_id=user_id, application_id=application_id)
-                dbl_registry.set_results_metadata_uri(
-                    job_id=job_id,
-                    user_id=user_id,
-                    results_metadata_uri=f"file://{job_work_dir}/{JOB_METADATA_FILENAME}",
-                )
                 dbl_registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.QUEUED)
 
 
@@ -2582,29 +2559,24 @@ class GpsBatchJobs(backend.BatchJobs):
 
         :return: A mapping between a filename and a dict containing information about that file.
         """
-        with self._double_job_registry as registry:
-            job_dict = registry.get_job(job_id=job_id, user_id=user_id)
-
-        if job_dict["status"] != JOB_STATUS.FINISHED:
+        job_info = self.get_job_info(job_id=job_id, user_id=user_id)
+        if job_info.status != JOB_STATUS.FINISHED:
             raise JobNotFinishedException
 
         job_dir = self.get_job_output_dir(job_id=job_id)
 
-        results_metadata = self._load_results_metadata_from_uri(job_dict.get("results_metadata_uri"), job_id)  # TODO: expose a getter?
-        if not results_metadata:
-            try:
-                logger.debug(f"Loading results metadata from job registry", extra={"job_id": job_id})
-                with self._double_job_registry as registry:
-                    job_dict = registry.elastic_job_registry.get_job(job_id, user_id=user_id)
-                    if "results_metadata" in job_dict:
-                        results_metadata = job_dict["results_metadata"]
-            except Exception as e:
-                logger.warning(
-                    "Could not retrieve result metadata from job registry %s", e, exc_info=True, extra={"job_id": job_id}
-                )
-        if not results_metadata:
+        results_metadata = None
+        try:
+            with self._double_job_registry as registry:
+                job_dict = registry.elastic_job_registry.get_job(job_id, user_id=user_id)
+                if "results_metadata" in job_dict:
+                    results_metadata = job_dict["results_metadata"]
+        except Exception as e:
+            logger.warning(
+                "Could not retrieve result metadata from job tracker %s", e, exc_info=True, extra={"job_id": job_id}
+            )
+        if results_metadata is None or len(results_metadata) == 0:
             results_metadata = self.load_results_metadata(job_id, user_id)
-
         out_assets = results_metadata.get("assets", {})
         out_metadata = out_assets.get("out", {})
         bands = [Band(*properties) for properties in out_metadata.get("bands", [])]
@@ -2682,21 +2654,12 @@ class GpsBatchJobs(backend.BatchJobs):
         """
         Reads the metadata json file from the job directory and returns it.
         """
-        with self._double_job_registry as registry:
-            job_dict = registry.get_job(job_id=job_id, user_id=user_id)
-
-        results_metadata = self._load_results_metadata_from_uri(job_dict.get("results_metadata_uri"), job_id)  # TODO: expose a getter?
-        if results_metadata is not None:
-            return results_metadata
 
         metadata_file = self.get_results_metadata_path(job_id=job_id)
 
         if ConfigParams().use_object_storage:
             try:
-                logger.debug(
-                    f"Loading results metadata from object storage at {metadata_file}", extra={"job_id": job_id}
-                )
-                contents = get_s3_file_contents(path=str(metadata_file))
+                contents = get_s3_file_contents(str(metadata_file))
                 return json.loads(contents)
             except Exception:
                 logger.warning(
@@ -2705,7 +2668,6 @@ class GpsBatchJobs(backend.BatchJobs):
                     extra={'job_id': job_id})
 
         try:
-            logger.debug(f"Loading results metadata from file at {metadata_file}", extra={"job_id": job_id})
             with open(metadata_file) as f:
                 return json.load(f)
         except FileNotFoundError:
@@ -2713,55 +2675,6 @@ class GpsBatchJobs(backend.BatchJobs):
                            extra={'job_id': job_id})
 
         return {}
-
-    @staticmethod
-    @reretry.retry(exceptions=FileNotFoundError, tries=5, delay=1, backoff=2, logger=logger)
-    def _load_results_metadata_from_file(metadata_file: Path):
-        with open(metadata_file) as f:
-            return json.load(f)
-
-    @staticmethod
-    def _load_results_metadata_from_uri(results_metadata_uri: Optional[str], job_id: str) -> Optional[dict]:
-        # TODO: reduce code duplication with load_results_metadata
-        import botocore.exceptions
-
-        if results_metadata_uri is None:
-            return None
-
-        logger.debug(f"Loading results metadata from URI {results_metadata_uri}", extra={"job_id": job_id})
-
-        uri_parts = urlparse(results_metadata_uri)
-
-        if uri_parts.scheme == "file":
-            file_path = Path(uri_parts.path)
-            try:
-                return GpsBatchJobs._load_results_metadata_from_file(file_path)
-            except FileNotFoundError:
-                logger.debug(
-                    f"File with results metadata {file_path} does not exist; this is expected and not "
-                    f"an error if the batch job did not have the chance to write it yet.",
-                    exc_info=True,
-                    extra={"job_id": job_id},
-                )
-                return None
-
-        if uri_parts.scheme == "s3":
-            bucket, key = PresignedS3AssetUrls.get_bucket_key_from_uri(results_metadata_uri)
-            try:
-                return json.loads(get_s3_file_contents(key, bucket))
-            except botocore.exceptions.ClientError as e:
-                if e.response["Error"]["Code"] != "NoSuchKey":
-                    raise
-
-                logger.debug(
-                    f"Object with results metadata {key} does not exist in bucket {bucket}; this is "
-                    f"expected and not an error if the batch job did not have the chance to write it yet.",
-                    exc_info=True,
-                    extra={"job_id": job_id},
-                )
-                return None
-
-        raise ValueError(f"Unsupported results metadata URI: {results_metadata_uri}")
 
     def _get_providers(self, job_id: str, user_id: str) -> List[dict]:
         results_metadata = self.load_results_metadata(job_id, user_id)
