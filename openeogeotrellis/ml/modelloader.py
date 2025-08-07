@@ -15,7 +15,7 @@ from openeo_driver.errors import OpenEOApiException, InternalException
 from openeo_driver.utils import generate_unique_id
 
 from openeogeotrellis.configparams import ConfigParams
-from openeogeotrellis.utils import s3_client, add_permissions
+from openeogeotrellis.utils import s3_client, set_permissions
 from .geopysparkmlmodel import GeopysparkMlModel, ModelArchitecture
 from .geopysparkcatboostmodel import GeopySparkCatBoostModel
 from .geopysparkrandomforestmodel import GeopySparkRandomForestModel
@@ -181,9 +181,9 @@ class ModelLoader:
 
             if not ml_models_dir_exists:
                 # Everyone can access the ml_models directory: `drwxrwxrwx user group`
-                add_permissions(ml_models_dir, mode=stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO)
+                set_permissions(ml_models_dir, mode=stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO)
             # Only the user has full access to this directory: `drwx------. user group`
-            add_permissions(result_dir, mode=stat.S_IRWXU, user=None)
+            set_permissions(result_dir, mode=stat.S_IRWXU, user=None)
             return str(result_dir)
 
         except Exception as e:

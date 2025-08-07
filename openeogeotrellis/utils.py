@@ -451,6 +451,25 @@ def add_permissions_with_failsafe(path: Path, mode: int, user=None, group=None):
             p.chmod(current_permission_bits | mode)
 
 
+def set_permissions(path: Path, mode: int, user=None, group=None):
+    """
+    Set permissions to a file or directory, and optionally change its ownership.
+    """
+    if str(path).lower().startswith("s3:/"):
+        logger.warning(f"set_permissions called on S3 path {path!r}, which is not supported.")
+        return
+    if not path.exists():
+        raise FileNotFoundError
+    os.chmod(path, mode)
+    if user is not None or group is not None:
+        try:
+            shutil.chown(path, user=user, group=group)
+        except LookupError as e:
+            logger.warning(f"Could not change user/group of {path} to {user}/{group}.")
+        except PermissionError as e:
+            logger.warning(f"Could not change user/group of {path} to {user}/{group}, no permissions.")
+
+
 def ensure_executor_logging(f) -> Callable:
     def setup_context_aware_logging(user_id: Optional[str], request_id: str):
         job_id = get_job_id()
