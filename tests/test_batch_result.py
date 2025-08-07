@@ -3210,3 +3210,88 @@ def test_unified_asset_keys_stitch_tile_grid(tmp_path):
     for item in items:
         assert set(item["assets"].keys()) == {"openEO"}
 
+
+def test_netcdf_sample_by_feature_asset_bbox_geometry(tmp_path):
+    """
+    An asset's bbox and geometry become those of the corresponding item in the openeo-python-driver
+    (this is pre-"stac-version":"1.1").
+    """
+
+    job_spec = {
+        "process_graph": {
+            "lc": {
+                "process_id": "load_collection",
+                "arguments": {
+                    "id": "TestCollection-LonLat4x4",
+                    "temporal_extent": ["2021-01-04", "2021-01-06"],
+                    "bands": ["Flat:2"],
+                },
+            },
+            "filterspatial1": {
+                "process_id": "filter_spatial",
+                "arguments": {
+                    "data": {"from_node": "lc"},
+                    "geometries": {
+                        "type": "FeatureCollection",
+                        "features": [
+                            {
+                                "type": "Feature",
+                                "properties": {},
+                                "geometry": {
+                                    "type": "Polygon",
+                                    "coordinates": [[[0, 0], [0, 1], [1, 1], [1, 0], [0, 0]]],
+                                },
+                            },
+                            {
+                                "type": "Feature",
+                                "properties": {},
+                                "geometry": {
+                                    "type": "Polygon",
+                                    "coordinates": [[[4, 4], [4, 5], [5, 5], [5, 4], [4, 4]]],
+                                },
+                            },
+                        ],
+                    },
+                },
+            },
+            "save": {
+                "process_id": "save_result",
+                "arguments": {
+                    "data": {"from_node": "filterspatial1"},
+                    "format": "netCDF",
+                    "options": {"sample_by_feature": True},
+                },
+                "result": True,
+            },
+        }
+    }
+
+    job_dir = tmp_path
+    metadata_file = job_dir / "metadata.json"
+
+    run_job(
+        job_spec,
+        output_file=job_dir / "out",
+        metadata_file=metadata_file,
+        api_version="1.0.0",
+        job_dir=job_dir,
+        user_id="jenkins",
+    )
+
+    with metadata_file.open() as f:
+        metadata = json.load(f)
+
+    assets = metadata["assets"]
+    assert len(assets) == 2
+
+    assert assets["openEO_0.nc"]["bbox"] == [0.0, 0.0, 1.0, 1.0]
+    assert assets["openEO_0.nc"]["geometry"] == {
+        "type": "Polygon",
+        "coordinates": [[[0.0, 0.0], [0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]]],
+    }
+
+    assert assets["openEO_1.nc"]["bbox"] == [4.0, 4.0, 5.0, 5.0]
+    assert assets["openEO_1.nc"]["geometry"] == {
+        "type": "Polygon",
+        "coordinates": [[[4.0, 4.0], [4.0, 5.0], [5.0, 5.0], [5.0, 4.0], [4.0, 4.0]]],
+    }
