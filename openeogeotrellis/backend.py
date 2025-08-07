@@ -114,7 +114,8 @@ from openeogeotrellis.layercatalog import (
     extra_validation_load_collection, WHITELIST,
 )
 from openeogeotrellis.logs import elasticsearch_logs
-from openeogeotrellis.ml.geopysparkmlmodel import GeopysparkMlModel, MLModelLoader
+from openeogeotrellis.ml.geopysparkmlmodel import GeopysparkMlModel
+from openeogeotrellis.ml.modelloader import ModelLoader
 from openeogeotrellis.processgraphvisiting import GeotrellisTileProcessGraphVisitor, SingleNodeUDFProcessGraphVisitor
 from openeogeotrellis.sentinel_hub.batchprocessing import SentinelHubBatchProcessing
 from openeogeotrellis.service_registry import (
@@ -848,12 +849,12 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         gps_batch_jobs: Optional[GpsBatchJobs] = self.batch_jobs
         
         if model_id.startswith("http"):
-            return MLModelLoader.load_from_url(model_id, gps_batch_jobs)
+            return ModelLoader.load_from_url(model_id, gps_batch_jobs)
         else:
             # Load the model using a batch job id
             batch_job_id = model_id
             batch_job_dir = gps_batch_jobs.get_job_output_dir(batch_job_id)
-            return MLModelLoader.load_from_batch_job(Path(batch_job_dir) / "randomforest.model")
+            return ModelLoader.load_from_batch_job(Path(batch_job_dir) / "randomforest.model")
 
     def vector_to_raster(self, input_vector_cube: DriverVectorCube, target: DriverDataCube) -> DriverDataCube:
         """
