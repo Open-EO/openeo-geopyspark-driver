@@ -19,7 +19,7 @@ without compromising stable operations.
 - Add job option "omit-derived-from-links" to omit "derived_from" links in batch job results metadata ([ESA-WEED-project/eo_processing#175](https://github.com/ESA-WEED-project/eo_processing/issues/175))
 - Better freeIPA configurability for proxy user lookup ([#1261](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1261), eu-cdse/openeo-cdse-infra#626)
 - `load_stac`: temporal filtering of STAC Items: prefer more descriptive `start_datetime`+`end_datetime` over nominal `datetime` if possible ([#1293](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1293))
-- Restore proper `bbox` and `geometry` for STAC items with netCDF assets ([#1294](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1294)]
+- Restore proper `bbox` and `geometry` for STAC items with netCDF assets ([#1294](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1294))
 
 
 ## 0.66.0
