@@ -49,16 +49,18 @@ class JobOptions:
         metadata={
             "name": "executor-memoryOverhead",
             "description": "Memory allocated to the workers in addition to the JVM. "
-            "The total available memory of an executor is equal to executor-memory + executor-memoryOverhead + python-memory.",
+            "The total available memory of an executor is equal to executor-memory + executor-memoryOverhead + python-memory. "
+            "Therefore this option allows to foresee additional memory for processes other than the JVM or the Python runtime.",
         })
     python_memory: str = field(
         default=get_backend_config().default_python_memory,
         metadata={
             "description": "Setting to specifically limit the memory used by python on a worker. "
             "Leaving this setting empty will enforce the default value of the backend. None will be zero bytes. "
-            "Typical processes that use python-memory are UDF's, sar_backscatter or Sentinel 3 data loading. "
-            "This memory is not a reservation so it can act as executor_memory_overhead but it is enforced as a limit. "
-            "Memory allocation problems with one of aforementioned processes likely warrant an increase of this value."
+            "The total available memory of an executor is equal to executor-memory + executor-memoryOverhead + python-memory. "
+            "Typical processes that use python-memory are UDF's, sar_backscatter or Sentinel 3 data loading "
+            "for these this python_memory limit should be used rather than executor_memory_overhead. "
+            "Memory allocation problems for one of the aforementioned processes likely warrant an increase of this value. "
         })
     executor_cores: int = field(
         default=get_backend_config().default_executor_cores,
