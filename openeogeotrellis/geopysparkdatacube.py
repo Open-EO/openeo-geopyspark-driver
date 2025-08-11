@@ -1401,6 +1401,24 @@ class GeopysparkDataCube(DriverDataCube):
         if projection is not None and CRS.from_user_input(projection).equals(CRS.from_user_input(current_crs_proj4)):
             projection = None
 
+        if method == "geocode":
+            if projection is None:
+                raise ProcessParameterInvalidException(
+                    parameter="projection", process="resample_spatial",
+                    reason="geocode method requires a projection to be set."
+                )
+            scala_crs = get_jvm().geopyspark.geotrellis.TileLayer.getCRS(projection).get()
+            extent = max_level.layer_metadata.layout_definition.extent
+            extent_in_target_projection = GeopysparkDataCube._reproject_extent(
+                cube_crs, projection, extent.xmin, extent.ymin, extent.xmax, extent.ymax
+            )
+            scala_target_extent = get_jvm().geotrellis.vector.Extent(float(extent_in_target_projection.xmin), float(extent_in_target_projection.ymin),
+                                                                   float(extent_in_target_projection.xmax), float(extent_in_target_projection.ymax))
+            return self._apply_to_levels_geotrellis_rdd(lambda rdd,
+                                                               level: get_jvm().org.openeo.geotrellis.geocoding.GeoCodingProcess().geocode(
+                rdd, scala_target_extent, scala_crs
+            ))
+
         #IF projection is defined, we need to warp
         if projection is not None and resolution==0.0:
             reprojected = self.apply_to_levels(lambda layer: gps.TiledRasterLayer(
