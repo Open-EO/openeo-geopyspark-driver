@@ -4208,26 +4208,15 @@ class TestLoadStac:
         print(parsed)
 
     def test_load_stac_from_spatiotemporal_netcdf_mixed_columns(self, api110, tmp_path):
-
         process_graph = {
             "loadstac1": {
                 "process_id": "load_stac",
                 "arguments": {
-                    "url": str(get_test_data_file("binary/load_stac/spatiotemporal_netcdf/collection.json")),
+                    "url": str(get_test_data_file("binary/load_stac/spatiotemporal_netcdf_simple/collection.json")),
                     "bands": [
-                        "S2-SCL",
-                        "S2-B01",
-                        "S2-B02",
-                        "S2-B03",
-                        "S2-B04",
-                        "S2-B05",
-                        "S2-B06",
-                        "S2-B07",
-                        "S2-B08",
-                        "S2-B8A",
-                        "S2-B11",
-                        "S2-B12",
-                        "S2-B09",
+                        "Band11",
+                        "Band9",
+                        "Band10",
                     ],
                 },
             },
@@ -4239,15 +4228,15 @@ class TestLoadStac:
                         "type": "FeatureCollection",
                         "features": [
                             {
-                                "geometry": {"coordinates": [27.1385676752, 57.34267002], "type": "Point"},
+                                "geometry": {"coordinates": [4.0, 50.0], "type": "Point"},
                                 "id": "0",
-                                "properties": {"name": "maize"},
+                                "properties": {},
                                 "type": "Feature",
                             },
                             {
-                                "geometry": {"coordinates": [27.0837739, 57.38799], "type": "Point"},
+                                "geometry": {"coordinates": [5.0, 51.0], "type": "Point"},
                                 "id": "1",
-                                "properties": {"name": "maize"},
+                                "properties": {},
                                 "type": "Feature",
                             },
                         ],
@@ -4265,16 +4254,19 @@ class TestLoadStac:
             },
             "saveresult1": {
                 "process_id": "save_result",
-                "arguments": {"data": {"from_node": "aggregatespatial1"}, "format": "CSV"},
+                "arguments": {"data": {"from_node": "aggregatespatial1"}, "format": "parquet"},
                 "result": True,
             },
         }
 
         res = api110.result(process_graph).assert_status_code(200)
-        print(res.text)
-        parsed = pandas.read_csv(io.StringIO(res.text))
+        # print(res.text)
+        # res_path = tmp_path / "res.nc"
+        # res_path.write_bytes(res.data)
+        # parsed = pandas.read_csv(io.StringIO(res.text))
+        parsed = pandas.read_parquet(io.BytesIO(res.data))
         print(parsed)
-        scl_values = set(parsed["S2-SCL"])
+        scl_values = set(parsed["Band10"])
         scl_values.discard(65535.0)  # discard the "no data" value
         assert all(0 <= v <= 20 for v in scl_values), f"Unexpected SCL values: {scl_values}"
 
