@@ -59,6 +59,7 @@ class ModelLoader:
         """Load ML model from batch job output directory.
         
         Attempts to load model from directory, falling back to packed .tar.gz format.
+        NOTE: Currently only `GeopySparkRandomForestModel` is supported.
         
         :param model_path: Path to model directory or base path for packed model
         :return: Loaded model instance
@@ -78,7 +79,7 @@ class ModelLoader:
 
     @staticmethod
     def _fetch_stac_metadata(model_id: str) -> dict:
-        with requests.get(model_id, timeout=30) as resp:
+        with requests.get(model_id, timeout=60*60*6) as resp:
             resp.raise_for_status()
             return resp.json()
 
