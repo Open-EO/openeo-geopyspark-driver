@@ -105,25 +105,19 @@ class GeopySparkRandomForestModel(GeopysparkMlModel):
             directory = Path(directory).parent
         model_path = Path(directory) / "randomforest.model"
 
-        # Save model to disk or s3 using spark.
-        use_s3 = ConfigParams().is_kube_deploy
+        # Save model to disk.
         spark_path = "file:" + str(model_path)
-        if use_s3:
-            spark_path = to_s3_url(model_path).replace("s3:", 's3a:')
         logging.info(f"Saving GeopySparkRandomForestModel to {spark_path}")
         self._model.save(gps.get_spark_context(), spark_path)
 
         # Archive the saved model.
-        if use_s3 and not model_path.exists():
-            logging.info(f"{model_path} does not exist, downloading it from s3 first.")
-            download_s3_directory(to_s3_url(model_path), "/")
         logging.info(f"Archiving {model_path} to {model_path}.tar.gz")
         shutil.make_archive(base_name=str(model_path), format='gztar', root_dir=directory)
         logging.info(f"Removing original {model_path}")
         shutil.rmtree(model_path)
-        model_path = Path(str(model_path) + '.tar.gz')
-        logging.info(f"GeopySparkRandomForestModel stored as {model_path=}")
-        return {model_path.name: {"href": str(model_path)}}
+        archived_model_path = Path(str(model_path) + '.tar.gz')
+        logging.info(f"GeopySparkRandomForestModel stored as {archived_model_path=}")
+        return {archived_model_path.name: {"href": str(archived_model_path)}}
 
     def get_model(self) -> RandomForestModel:
         return self._model
