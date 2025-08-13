@@ -16,9 +16,9 @@ from openeo_driver.utils import generate_unique_id
 
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.utils import s3_client, set_permissions
-from .geopysparkmlmodel import GeopysparkMlModel, ModelArchitecture
-from .geopysparkcatboostmodel import GeopySparkCatBoostModel
-from .geopysparkrandomforestmodel import GeopySparkRandomForestModel
+from openeogeotrellis.ml.geopysparkmlmodel import GeopysparkMlModel, ModelArchitecture
+from openeogeotrellis.ml.geopysparkcatboostmodel import GeopySparkCatBoostModel
+from openeogeotrellis.ml.geopysparkrandomforestmodel import GeopySparkRandomForestModel
 
 logger = logging.getLogger(__name__)
 
@@ -42,11 +42,7 @@ class ModelLoader:
         try:
             metadata = ModelLoader._fetch_stac_metadata(model_id)
             architecture, model_url = ModelLoader._extract_model_info(metadata, model_id)
-
-            use_s3 = ConfigParams().is_kube_deploy
-            model_dir_path = ModelLoader._create_model_dir(gps_batch_jobs, use_s3)
-            
-            return ModelLoader._load_model_by_architecture(architecture, model_url, model_dir_path, use_s3)
+            return ModelLoader._load_model_by_architecture(architecture, model_url, gps_batch_jobs)
 
         except requests.RequestException as e:
             raise OpenEOApiException(message=f"Failed to fetch model metadata: {str(e)}", status_code=400)
@@ -69,10 +65,11 @@ class ModelLoader:
                 logger.info(f"Loading ml_model using filename: {model_path}")
                 return GeopySparkRandomForestModel.from_path(sc=gps.get_spark_context(), path=f"file:{model_path}")
             packed_path = Path(f"{model_path}.tar.gz")
-            if packed_path.exists():
-                return ModelLoader._load_packed_model(packed_path, model_path.parent)
-            raise OpenEOApiException(message=f"No random forest model found at {model_path}", status_code=400)
-
+            if not packed_path.exists():
+                raise OpenEOApiException(message=f"No random forest model found at {model_path}", status_code=400)
+            shutil.unpack_archive(packed_path, extract_dir=model_path.parent, format="gztar")
+            unpacked_path = str(packed_path).replace(".tar.gz", "")
+            return GeopySparkRandomForestModel.from_path(sc=gps.get_spark_context(), path=f"file:{unpacked_path}")
         except Exception as e:
             logger.error(f"Error loading model from path {model_path}: {str(e)}")
             raise InternalException(f"Failed to load model from path: {str(e)}")
@@ -122,11 +119,13 @@ class ModelLoader:
         return checkpoints
 
     @staticmethod
-    def _load_model_by_architecture(architecture: ModelArchitecture, model_url: str, model_dir_path: str, use_s3: bool) -> GeopysparkMlModel:
+    def _load_model_by_architecture(architecture: ModelArchitecture, model_url: str, gps_batch_jobs: 'GpsBatchJobs') -> GeopysparkMlModel:
         if architecture == ModelArchitecture.RANDOM_FOREST:
+            use_s3 = ConfigParams().is_kube_deploy
+            model_dir_path = ModelLoader._create_model_dir(gps_batch_jobs, use_s3)
             return ModelLoader._load_random_forest_model(model_url, model_dir_path, use_s3)
         elif architecture == ModelArchitecture.CATBOOST:
-            return ModelLoader._load_catboost_model(model_url, model_dir_path, use_s3)
+            return ModelLoader._load_catboost_model(model_url)
         else:
             raise OpenEOApiException(
                 message=f"Unsupported ml-model architecture: {architecture.value}", status_code=400
@@ -212,26 +211,16 @@ class ModelLoader:
             raise InternalException(f"NFS model loading failed: {str(e)}")
 
     @staticmethod
-    def _load_catboost_model(model_url: str, model_dir_path: str, use_s3: bool) -> GeopysparkMlModel:
+    def _load_catboost_model(model_url: str) -> GeopysparkMlModel:
         filename = "catboost_model.cbm"
-
-        if use_s3:
-            # TODO: Verify that local files work. If it does, we can remove the model_dir_path implementation.
-            # Download the model to the tmp directory and load it as a java object.
-            with tempfile.TemporaryDirectory() as tmp_dir:
-                tmp_path = Path(tmp_dir) / filename
-                ModelLoader._download_file(model_url, tmp_path)
-                return GeopySparkCatBoostModel.from_path(tmp_path)
-        else:
-            # Download to NFS directory for executor access
-            file_path = Path(model_dir_path) / filename
-            try:
-                ModelLoader._download_file(model_url, file_path)
-                logger.info(f"Loading ml_model using filename: {file_path}")
-                return GeopySparkCatBoostModel.from_path(str(file_path))
-            except Exception as e:
-                logger.error(f"Failed to load CatBoost model to NFS: {str(e)}")
-                raise InternalException(f"NFS CatBoost loading failed: {str(e)}")
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            packed_path = Path(tmp_dir) / filename
+            ModelLoader._download_file(model_url, packed_path)
+            shutil.unpack_archive(packed_path, extract_dir=packed_path.parent, format="gztar")
+            unpacked_path = str(packed_path).replace(".tar.gz", "")
+            model_path = Path(unpacked_path) / "model"
+            logger.info(f"Loading ml_model using file: {str(model_path)}")
+            return GeopySparkCatBoostModel.from_path(str(model_path))
 
     @staticmethod
     def _download_file(url: str, dest_path: Path) -> None:
@@ -268,15 +257,6 @@ class ModelLoader:
             logger.error(f"Failed to upload to S3: {str(e)}")
             raise InternalException(f"S3 upload failed: {str(e)}")
 
-    @staticmethod
-    def _load_packed_model(packed_path: Path, directory: Path) -> GeopysparkMlModel:
-        try:
-            shutil.unpack_archive(packed_path, extract_dir=directory, format="gztar")
-            unpacked_path = str(packed_path).replace(".tar.gz", "")
-            return GeopySparkRandomForestModel.from_path(sc=gps.get_spark_context(), path=f"file:{unpacked_path}")
-        except Exception as e:
-            logger.error(f"Failed to load packed model: {str(e)}")
-            raise InternalException(f"Packed model loading failed: {str(e)}")
 
     @staticmethod
     def _is_valid_url(url: str) -> bool:
