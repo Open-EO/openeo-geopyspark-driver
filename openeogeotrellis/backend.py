@@ -2566,6 +2566,13 @@ class GpsBatchJobs(backend.BatchJobs):
         job_dir = self.get_job_output_dir(job_id=job_id)
 
         results_metadata = None
+
+        if logger.isEnabledFor(logging.DEBUG) and not ConfigParams().use_object_storage:
+            # debug/assert what looks like some kind of NFS latency on Terrascope
+            debuggable_results_metadata = self.load_results_metadata(job_id=job_id, user_id=user_id)
+            if debuggable_results_metadata:  # otherwise, will have logged a warning elsewhere
+                logger.debug(f"successfully loaded results metadata {debuggable_results_metadata}", extra={"job_id": job_id})
+
         try:
             with self._double_job_registry as registry:
                 job_dict = registry.elastic_job_registry.get_job(job_id, user_id=user_id)
@@ -2672,6 +2679,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 return json.load(f)
         except FileNotFoundError:
             logger.warning("Could not derive result metadata from %s", metadata_file, exc_info=True,
+                           stack_info=True,
                            extra={'job_id': job_id})
 
         return {}
