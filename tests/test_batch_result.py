@@ -1199,7 +1199,7 @@ def test_export_workspace_with_asset_per_band(tmp_path, stac_version, asset_name
             Path("openEO_2021-01-05Z_Latitude.tif"),
         }.issubset(_paths_relative_to(workspace_dir))
 
-        assert len(_paths_relative_to(workspace_dir)) == 4 if stac_version == "1.1" else len(_paths_relative_to(workspace_dir)) ==  5
+        assert len(_paths_relative_to(workspace_dir)) == 4 if stac_version == "1.1" else len(_paths_relative_to(workspace_dir)) ==  5, "STAC item document not found"
 
         stac_collection = pystac.Collection.from_file(str(workspace_dir / "collection.json"))
         stac_collection.validate_all()
@@ -1504,11 +1504,11 @@ def test_export_workspace_merge_into_existing(tmp_path, mock_s3_bucket, stac_ver
 
         items = job_metadata["items"] if stac_version == "1.1" else [job_metadata]
         assert len(items) == 1
-        for item in items:
-            asset_name = "openEO" if stac_version == "1.1" else expected_asset_filename
-            (asset_alternate,) = item["assets"][asset_name]["alternate"].values()
-            # noinspection PyUnresolvedReferences
-            assert asset_alternate["href"] == f"s3://{object_workspace.bucket}/{merge}/{expected_asset_filename}"
+        item = items[0]
+        asset_name = "openEO" if stac_version == "1.1" else expected_asset_filename
+        (asset_alternate,) = item["assets"][asset_name]["alternate"].values()
+        # noinspection PyUnresolvedReferences
+        assert asset_alternate["href"] == f"s3://{object_workspace.bucket}/{merge}/{expected_asset_filename}"
 
     run_merge_job(
         job_dir=tmp_path / "first",
@@ -1646,7 +1646,7 @@ def test_export_workspace_merge_filepath_per_band(tmp_path, mock_s3_bucket, stac
             merge / "lat.tif",
         } <= object_workspace_keys
 
-        assert len(object_workspace_keys) == 4 if stac_version == "1.1" else len(object_workspace_keys) == 5
+        assert len(object_workspace_keys) == 4 if stac_version == "1.1" else len(object_workspace_keys) == 5,  "STAC item document(s) not found"
 
         def load_exported_collection(collection_href: str):
             assets_in_object_storage = collection_href.startswith("s3://")
@@ -2255,7 +2255,7 @@ def test_multiple_save_result_single_export_workspace(tmp_path, stac_version, as
             Path("collection.json"),
             Path("openEO.tif"),
         }.issubset(_paths_relative_to(workspace_dir))
-        assert len(_paths_relative_to(workspace_dir)) == 3
+        assert len(_paths_relative_to(workspace_dir)) == 3, "STAC item document not found"
 
         stac_collection = pystac.Collection.from_file(str(workspace_dir / "collection.json"))
         stac_collection.validate_all()
