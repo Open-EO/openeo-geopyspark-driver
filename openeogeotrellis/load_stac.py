@@ -611,7 +611,7 @@ def load_stac(
                 process="load_stac",
                 parameter="bands",
                 reason=f"Custom band order is not yet supported for a NetCDF STAC-catalog with a time dimension. "
-                f"Use {asset_band_names} instead.",
+                f"Was {band_names}, but should be {asset_band_names} instead.",
             )
         pyramid_factory = jvm.org.openeo.geotrellis.layers.NetCDFCollection
     else:

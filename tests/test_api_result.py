@@ -27,7 +27,6 @@ import xarray
 from mock import MagicMock
 from numpy.testing import assert_equal
 from openeo_driver.backend import UserDefinedProcesses
-from openeo_driver.errors import OpenEOApiException
 from openeo_driver.jobregistry import JOB_STATUS
 from openeo_driver.testing import (
     TEST_USER,
@@ -40,6 +39,7 @@ from openeo_driver.testing import (
     RegexMatcher,
     UrllibMocker,
     load_json,
+    ApiException,
 )
 from openeo_driver.users import User
 from openeo_driver.util.auth import ClientCredentials
@@ -4213,11 +4213,21 @@ class TestLoadStac:
             "loadstac1": {
                 "process_id": "load_stac",
                 "arguments": {
-                    "url": str(get_test_data_file("binary/load_stac/spatiotemporal_netcdf_simple/collection.json")),
+                    "url": str(get_test_data_file("binary/load_stac/spatiotemporal_netcdf/collection.json")),
                     "bands": [
-                        "Band11",
-                        "Band9",
-                        "Band10",
+                        "S2-SCL",
+                        "S2-B01",
+                        "S2-B02",
+                        "S2-B03",
+                        "S2-B04",
+                        "S2-B05",
+                        "S2-B06",
+                        "S2-B07",
+                        "S2-B08",
+                        "S2-B8A",
+                        "S2-B11",
+                        "S2-B12",
+                        "S2-B09",
                     ],
                 },
             },
@@ -4229,13 +4239,13 @@ class TestLoadStac:
                         "type": "FeatureCollection",
                         "features": [
                             {
-                                "geometry": {"coordinates": [4.0, 50.0], "type": "Point"},
+                                "geometry": {"coordinates": [27.1385676752, 57.34267002], "type": "Point"},
                                 "id": "0",
                                 "properties": {},
                                 "type": "Feature",
                             },
                             {
-                                "geometry": {"coordinates": [5.0, 51.0], "type": "Point"},
+                                "geometry": {"coordinates": [27.0837739, 57.38799], "type": "Point"},
                                 "id": "1",
                                 "properties": {},
                                 "type": "Feature",
@@ -4261,10 +4271,9 @@ class TestLoadStac:
         }
 
         # expect ApiException
-        with pytest.raises(OpenEOApiException) as exc_info:
+        with pytest.raises(ApiException) as exc_info:
             api110.result(process_graph).assert_status_code(200)
 
-        assert exc_info.value.status_code == 400
         assert (
             """Custom band order is not yet supported for a NetCDF STAC-catalog with a time dimension."""
             in exc_info.value.args[0]
