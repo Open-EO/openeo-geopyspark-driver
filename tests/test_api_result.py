@@ -4225,9 +4225,9 @@ class TestLoadStac:
                         "S2-B07",
                         "S2-B08",
                         "S2-B8A",
+                        "S2-B09",
                         "S2-B11",
                         "S2-B12",
-                        "S2-B09",
                     ],
                 },
             },
@@ -4270,7 +4270,6 @@ class TestLoadStac:
             },
         }
 
-        # expect ApiException
         with pytest.raises(ApiException) as exc_info:
             api110.result(process_graph).assert_status_code(200)
 
