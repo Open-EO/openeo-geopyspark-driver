@@ -1415,7 +1415,7 @@ class GeopysparkDataCube(DriverDataCube):
             scala_target_extent = get_jvm().geotrellis.vector.Extent(float(extent_in_target_projection.xmin), float(extent_in_target_projection.ymin),
                                                                    float(extent_in_target_projection.xmax), float(extent_in_target_projection.ymax))
             return self._apply_to_levels_geotrellis_rdd(lambda rdd,
-                                                               level: get_jvm().org.openeo.geotrellis.geocoding.GeoCodingProcess().geocode(
+                                                               level: get_jvm().org.openeo.geotrellis.geocoding.GeoCodingProcess().geoCode(
                 rdd, scala_target_extent, scala_crs
             ))
 
