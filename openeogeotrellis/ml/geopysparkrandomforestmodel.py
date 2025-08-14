@@ -113,8 +113,6 @@ class GeopySparkRandomForestModel(GeopysparkMlModel):
         # Archive the saved model.
         logging.info(f"Archiving {model_path} to {model_path}.tar.gz")
         shutil.make_archive(base_name=str(model_path), format='gztar', root_dir=directory)
-        logging.info(f"Removing original {model_path}")
-        shutil.rmtree(model_path)
         archived_model_path = Path(str(model_path) + '.tar.gz')
         logging.info(f"GeopySparkRandomForestModel stored as {archived_model_path=}")
         return {archived_model_path.name: {"href": str(archived_model_path)}}
