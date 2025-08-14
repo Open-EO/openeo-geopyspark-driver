@@ -371,7 +371,7 @@ def run_job(
             is_item=is_stac11,
         )
         # perform a first metadata write _before_ actually computing the result. This provides a bit more info, even if the job fails.
-        write_metadata({**result_metadata, **_get_tracker_metadata("")}, metadata_file)
+        write_metadata({**result_metadata, **_get_tracker_metadata("")}, metadata_file, is_stac11)
 
         for result in results:
             result.options["batch_mode"] = True
@@ -556,7 +556,7 @@ def run_job(
 
         meta = {**result_metadata, **tracker_metadata, **{"items": items}} if is_stac11 else {**result_metadata,
                                                                                               **tracker_metadata}
-        write_metadata(meta, metadata_file)
+        write_metadata(meta, metadata_file, is_stac11)
         logger.debug("Starting GDAL-based retrieval of asset metadata")
 
         assets_for_result_metadata = {
@@ -587,7 +587,7 @@ def run_job(
                 _export_to_workspaces_item(
                     result,
                     result_metadata,
-                    result_items_metadata = result_items_metadata,
+                    result_items_metadata=result_items_metadata,
                     job_dir=job_dir,
                     remove_exported_assets=job_options.get("remove-exported-assets", False),
                     enable_merge=job_options.get("export-workspace-enable-merge", False),
@@ -605,13 +605,18 @@ def run_job(
         if len(tracker_metadata) == 0:
             tracker_metadata = _get_tracker_metadata("")
         meta =  {**result_metadata, **tracker_metadata, **{"items": items}} if is_stac11 else {**result_metadata, **tracker_metadata}
-        write_metadata(meta, metadata_file)
+        write_metadata(meta, metadata_file, is_stac11)
 
 
-def write_metadata(metadata: dict, metadata_file: Path):
+def write_metadata(metadata: dict, metadata_file: Path, is_stac11:bool):
     def log_asset_hrefs(context: str):
-        asset_hrefs = {asset_key: asset.get("href") for asset_key, asset in metadata.get("assets", {}).items()}
-        logger.info(f"{context} asset hrefs: {asset_hrefs!r}")
+        if is_stac11:
+            items = {items["id"]: items for items in metadata.get("items", [])}
+            asset_hrefs =  {item_key + ", " + asset_key: asset.get("href") for item_key, item in items.items() for asset_key, asset in item.get("assets").items() }
+            logger.info(f"{context} asset hrefs: {asset_hrefs!r}")
+        else:
+            asset_hrefs = {asset_key: asset.get("href") for asset_key, asset in metadata.get("assets", {}).items()}
+            logger.info(f"{context} asset hrefs: {asset_hrefs!r}")
 
     log_asset_hrefs("input")
     out_metadata = metadata
@@ -914,7 +919,7 @@ def _write_exported_stac_collection_from_item(
         for (asset_key,asset) in item.get("assets").items():
             asset_bands = None
             if "bands" in asset:
-                bands = asset.get("bands")
+                bands = asset["bands"]
                 raster_bands = to_jsonable(asset.get("raster:bands",[]))
                 asset_bands = list()
                 for band in bands:
@@ -925,7 +930,7 @@ def _write_exported_stac_collection_from_item(
                             asset_band.update(raster_band)
                     asset_bands.append(asset_band)
             assets[asset_key] = dict_no_none({
-                "href": asset.get("href"),
+                "href": f"{Path(asset['href']).relative_to(job_dir)}",
                 "type": asset.get("type"),
                 "roles": asset.get("roles"),
                 "bands": asset_bands,
@@ -937,7 +942,7 @@ def _write_exported_stac_collection_from_item(
         stac_item = {
             "type": "Feature",
             "stac_version": "1.1.0",
-            "id": item.get("id"),
+            "id": item["id"],
             "geometry": item.get("geometry"),
             "bbox":item.get("bbox"),
             "properties":item.get("properties",{"datetime": result_metadata.get("start_datetime")}),
@@ -952,7 +957,7 @@ def _write_exported_stac_collection_from_item(
         return item_file
 
     item_files = [
-        write_stac_item_file(item) for (_,item) in item_metadata.items()
+        write_stac_item_file(item) for item in item_metadata.values()
     ]
 
     def item_link(item_file: Path) -> dict:

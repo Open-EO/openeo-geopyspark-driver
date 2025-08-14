@@ -355,6 +355,7 @@ def test_separate_asset_per_band(tmp_path, from_node, expected_filenames, stac_v
 
     for asset in assets:
         assert len(asset["bands"]) == 1
+        assert asset["bands"][0]["name"] == asset["raster:bands"][0]["name"]
 
 
 def test_separate_asset_per_band_throw(tmp_path):
@@ -1006,10 +1007,31 @@ def test_export_workspace(tmp_path, remove_original, attach_gdalinfo_assets, sta
         else:
             assert "openEO_2021-01-05Z.tif" in job_dir_files
             assert "openEO_2021-01-15Z.tif" in job_dir_files
-        assert len(_paths_relative_to(workspace_dir)) == 7 if (attach_gdalinfo_assets & (stac_version == "1.1")) \
-            else len(_paths_relative_to(workspace_dir)) == 9 if attach_gdalinfo_assets & (stac_version == "1.0") \
-            else len(_paths_relative_to(workspace_dir)) == 5
-        assert {Path("collection.json"), Path("openEO_2021-01-05Z.tif"), Path("openEO_2021-01-15Z.tif")}.issubset(_paths_relative_to(workspace_dir))
+        expected_len = 5
+        expected_paths = {
+            Path("collection.json"),
+            Path("openEO_2021-01-05Z.tif"),
+            Path("openEO_2021-01-15Z.tif"),
+        }
+        if stac_version == "1.0":
+            expected_paths |= {
+                Path("openEO_2021-01-05Z.tif.json"),
+                Path("openEO_2021-01-15Z.tif.json"),
+            }
+        if attach_gdalinfo_assets:
+            expected_paths |= {
+                Path(f"openEO_2021-01-05Z.tif{GDALINFO_SUFFIX}"),
+                Path(f"openEO_2021-01-15Z.tif{GDALINFO_SUFFIX}"),
+            }
+            expected_len+=2
+            if stac_version == "1.0":
+                expected_paths |= {
+                    Path(f"openEO_2021-01-05Z.tif{GDALINFO_SUFFIX}.json"),
+                    Path(f"openEO_2021-01-15Z.tif{GDALINFO_SUFFIX}.json"),
+                }
+                expected_len += 2
+        assert len(_paths_relative_to(workspace_dir)) == expected_len
+        assert expected_paths.issubset(_paths_relative_to(workspace_dir))
 
         stac_collection = pystac.Collection.from_file(str(workspace_dir / "collection.json"))
         stac_collection.validate_all()
@@ -1022,15 +1044,15 @@ def test_export_workspace(tmp_path, remove_original, attach_gdalinfo_assets, sta
         item_links = [item_link for item_link in stac_collection.links if item_link.rel == "item"]
         assert len(item_links) == 4 if (attach_gdalinfo_assets & (stac_version == "1.0")) else len(item_links) == 2
 
-        refs = set()
+        item_refs = set()
         for item_link in item_links:
             assert item_link.media_type == "application/geo+json"
             if "gdalinfo.json" not in item_link.href:
-                refs.add(Path(item_link.href))
-        assert len(refs) == 2
-        assert refs.issubset(_paths_relative_to(workspace_dir))
-
-        items = [item for item in stac_collection.get_items() if "gdalinfo" not in item.id ]
+                item_refs.add(Path(item_link.href))
+        assert len(item_refs) == 2
+        assert item_refs.issubset(_paths_relative_to(workspace_dir))
+        items = list(stac_collection.get_items())
+        items = list(filter(lambda x: "data" in x.assets[x.id if stac_version=="1.0" else "openEO"].roles, items))
         assert len(items) == 2
 
         for item in items:
@@ -1053,8 +1075,37 @@ def test_export_workspace(tmp_path, remove_original, attach_gdalinfo_assets, sta
             assert len(bands[0]["statistics"]) == 5
             if stac_version== "1.1":
                 assert "bbox" in asset_fields
-                assert asset_fields["bbox"] == [0.0,0.0,1.0,2.0]
+                assert asset_fields["bbox"] == [0.0, 0.0, 1.0, 2.0]
                 assert "geometry" in asset_fields
+
+        item = [item for item in items if "2021-01-05" in item.id ][0]
+        assert item.bbox == [0.0, 0.0, 1.0, 2.0]
+        assert (shape(item.geometry).normalize()
+                .almost_equals(Polygon.from_bounds(0.0, 0.0, 1.0, 2.0).normalize()))
+
+        geotiff_asset = item.get_assets()[asset_names[1]]
+        assert "data" in geotiff_asset.roles
+        assert geotiff_asset.href.endswith("/openEO_2021-01-05Z.tif")
+        assert geotiff_asset.media_type == "image/tiff; application=geotiff"
+        if stac_version == "1.0":
+            assert geotiff_asset.extra_fields["eo:bands"] == [DictSubSet({"name": "Flat:2"})]
+            assert geotiff_asset.extra_fields["raster:bands"] == [
+                {
+                    "name": "Flat:2",
+                    "statistics": {"minimum": 2.0, "maximum": 2.0, "mean": 2.0, "stddev": 0.0, "valid_percent": 100.0},
+                }
+            ]
+        else:
+            assert geotiff_asset.extra_fields["bands"] == [
+                {
+                    "name": "Flat:2",
+                    "statistics": {"minimum": 2.0, "maximum": 2.0, "mean": 2.0, "stddev": 0.0, "valid_percent": 100.0},
+                }
+            ]
+        geotiff_asset_copy_path = tmp_path / "openEO_2021-01-05Z.tif.copy"
+        geotiff_asset.copy(str(geotiff_asset_copy_path))  # downloads the asset file
+        with rasterio.open(geotiff_asset_copy_path) as dataset:
+            assert dataset.driver == "GTiff"
         with open(metadata_file) as f:
             job_metadata = json.load(f)
         if stac_version== "1.1":

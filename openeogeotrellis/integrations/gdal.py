@@ -167,7 +167,7 @@ def _extract_gdal_asset_raster_metadata(
     # Then it could profit from Sparks parallel processing.
     argument_tuples = [
         (
-            os.path.relpath(asset_md["href"],job_dir),
+            Path(asset_md["href"]).name if asset_md["href"].startswith("s3:/") else os.path.relpath(asset_md["href"],job_dir) if os.path.isabs(asset_md["href"]) else asset_md["href"],
             asset_md,
             job_dir,
             asset_key,
