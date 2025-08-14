@@ -27,6 +27,7 @@ import xarray
 from mock import MagicMock
 from numpy.testing import assert_equal
 from openeo_driver.backend import UserDefinedProcesses
+from openeo_driver.errors import OpenEOApiException
 from openeo_driver.jobregistry import JOB_STATUS
 from openeo_driver.testing import (
     TEST_USER,
@@ -4259,16 +4260,15 @@ class TestLoadStac:
             },
         }
 
-        res = api110.result(process_graph).assert_status_code(200)
-        # print(res.text)
-        # res_path = tmp_path / "res.nc"
-        # res_path.write_bytes(res.data)
-        # parsed = pandas.read_csv(io.StringIO(res.text))
-        parsed = pandas.read_parquet(io.BytesIO(res.data))
-        print(parsed)
-        scl_values = set(parsed["Band10"])
-        scl_values.discard(65535.0)  # discard the "no data" value
-        assert all(0 <= v <= 20 for v in scl_values), f"Unexpected SCL values: {scl_values}"
+        # expect ApiException
+        with pytest.raises(OpenEOApiException) as exc_info:
+            api110.result(process_graph).assert_status_code(200)
+
+        assert exc_info.value.status_code == 400
+        assert (
+            """Custom band order is not yet supported for a NetCDF STAC-catalog with a time dimension."""
+            in exc_info.value.args[0]
+        )
 
     @pytest.mark.parametrize(
         "catalog_url",
