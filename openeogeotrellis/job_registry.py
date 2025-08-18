@@ -689,9 +689,14 @@ class InMemoryJobRegistry(JobRegistryInterface):
         user_id: Optional[str] = None,
         costs: Optional[float],
         usage: dict,
-        results_metadata: Dict[str, Any],
+        results_metadata: Optional[Dict[str, Any]] = None,
     ) -> None:
         self._update(job_id=job_id, costs=costs, usage=usage, results_metadata=results_metadata)
+
+    def set_results_metadata_uri(
+        self, job_id: str, *, user_id: Optional[str] = None, results_metadata_uri: str
+    ) -> None:
+        self._update(job_id=job_id, results_metadata_uri=results_metadata_uri)
 
     def list_user_jobs(
         self,
@@ -1018,7 +1023,7 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
         user_id: Optional[str] = None,
         costs: Optional[float],
         usage: dict,
-        results_metadata: Dict[str, Any],
+        results_metadata: Optional[Dict[str, Any]] = None,
     ) -> None:
         if self.zk_job_registry:
             assert user_id, "user_id is required in ZkJobRegistry"

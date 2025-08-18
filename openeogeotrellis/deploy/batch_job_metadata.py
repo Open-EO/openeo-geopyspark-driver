@@ -1,31 +1,32 @@
-from copy import deepcopy
 import json
 import logging
 import os
-from itertools import chain
+from copy import deepcopy
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Union
 from urllib.parse import urlparse
 
 import pyproj
 from openeo.util import Rfc3339, dict_no_none
-from shapely.geometry import mapping, Polygon
-from shapely.geometry.base import BaseGeometry
-
 from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import DryRunDataTracer
-from openeo_driver.save_result import (ImageCollectionResult, SaveResult, NullResult, )
-from openeo_driver.util.geometry import spatial_extent_union, reproject_bounding_box
+from openeo_driver.save_result import (
+    ImageCollectionResult,
+    NullResult,
+    SaveResult,
+)
+from openeo_driver.util.geometry import reproject_bounding_box, spatial_extent_union
 from openeo_driver.util.utm import area_in_square_meters
 from openeo_driver.utils import temporal_extent_union
+from shapely.geometry import Polygon, mapping
+from shapely.geometry.base import BaseGeometry
 
 from openeogeotrellis._version import __version__
-from openeogeotrellis.backend import GeoPySparkBackendImplementation, JOB_METADATA_FILENAME
+from openeogeotrellis.backend import JOB_METADATA_FILENAME, GeoPySparkBackendImplementation
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.integrations.gdal import _extract_gdal_asset_raster_metadata
-from openeogeotrellis.utils import get_jvm, _make_set_for_key, to_s3_url
-
+from openeogeotrellis.utils import _make_set_for_key, get_jvm, to_s3_url
 
 logger = logging.getLogger(__name__)
 
@@ -105,12 +106,12 @@ def _assemble_result_metadata(
     metadata["processing:facility"] = "VITO - SPARK"  # TODO make configurable
     metadata["processing:software"] = "openeo-geotrellis-" + __version__
     metadata["unique_process_ids"] = list(unique_process_ids)
-    if isinstance(result,SaveResult):
-        global_metadata = result.options.get("file_metadata",{})
-    metadata["providers"] = global_metadata.get("providers",[])
+    if isinstance(result, SaveResult):
+        global_metadata = result.options.get("file_metadata", {})
+    metadata["providers"] = global_metadata.get("providers", [])
 
     if ml_model_metadata is not None:
-        metadata['ml_model_metadata'] = ml_model_metadata
+        metadata["ml_model_metadata"] = ml_model_metadata
 
     return metadata
 
@@ -123,9 +124,9 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
     source_constraints = tracer.get_source_constraints()
 
     # Take union of extents
-    temporal_extent = temporal_extent_union(*[
-        sc["temporal_extent"] for _, sc in source_constraints if "temporal_extent" in sc
-    ])
+    temporal_extent = temporal_extent_union(
+        *[sc["temporal_extent"] for _, sc in source_constraints if "temporal_extent" in sc]
+    )
     extents = [sc["spatial_extent"] for _, sc in source_constraints if "spatial_extent" in sc]
     # In the result metadata we want the bbox to be in EPSG:4326 (lat-long).
     # Therefore, keep track of the bbox's CRS to convert it to EPSG:4326 at the end, if needed.
@@ -307,9 +308,7 @@ def convert_bbox_to_lat_long(bbox: List[int], bbox_crs: Optional[Union[str, int,
             "north": bbox[3],
             "crs": bbox_crs,
         }
-        latlon_spatial_extent = reproject_bounding_box(
-            latlon_spatial_extent, from_crs=None, to_crs="EPSG:4326"
-        )
+        latlon_spatial_extent = reproject_bounding_box(latlon_spatial_extent, from_crs=None, to_crs="EPSG:4326")
         return [latlon_spatial_extent[b] for b in ["west", "south", "east", "north"]]
 
     return bbox
@@ -331,7 +330,7 @@ def _convert_asset_outputs_to_s3_urls(job_metadata: dict) -> dict:
 def _transform_stac_metadata(job_dir: Path):
     def relativize(assets: dict) -> dict:
         def relativize_href(asset: dict) -> dict:
-            absolute_href = asset['href']
+            absolute_href = asset["href"]
             relative_path = urlparse(absolute_href).path.split("/")[-1]
             return dict(asset, href=relative_path)
 
@@ -339,28 +338,31 @@ def _transform_stac_metadata(job_dir: Path):
 
     def drop_links(metadata: dict) -> dict:
         result = metadata.copy()
-        result.pop('links', None)
+        result.pop("links", None)
         return result
 
-    stac_metadata_files = [job_dir / file_name for file_name in os.listdir(job_dir) if
-                           file_name.endswith("_metadata.json") and file_name != JOB_METADATA_FILENAME]
+    stac_metadata_files = [
+        job_dir / file_name
+        for file_name in os.listdir(job_dir)
+        if file_name.endswith("_metadata.json") and file_name != JOB_METADATA_FILENAME
+    ]
 
     for stac_metadata_file in stac_metadata_files:
-        with open(stac_metadata_file, 'rt', encoding='utf-8') as f:
+        with open(stac_metadata_file, "rt", encoding="utf-8") as f:
             stac_metadata = json.load(f)
 
-        relative_assets = relativize(stac_metadata.get('assets', {}))
+        relative_assets = relativize(stac_metadata.get("assets", {}))
         transformed = dict(drop_links(stac_metadata), assets=relative_assets)
 
-        with open(stac_metadata_file, 'wt', encoding='utf-8') as f:
+        with open(stac_metadata_file, "wt", encoding="utf-8") as f:
             json.dump(transformed, f, indent=2)
 
 
-def _get_tracker(tracker_id=""):
+def _get_tracker(tracker_id: str = ""):
     return get_jvm().org.openeo.geotrelliscommon.BatchJobMetadataTracker.tracker(tracker_id)
 
 
-def _get_tracker_metadata(tracker_id="") -> dict:
+def _get_tracker_metadata(tracker_id: str = "", *, omit_derived_from_links: bool = False) -> dict:
     tracker = _get_tracker(tracker_id)
     usage = {}
     all_links = []
@@ -376,30 +378,32 @@ def _get_tracker_metadata(tracker_id="") -> dict:
         if pixels is not None:
             usage["input_pixel"] = {"value": pixels / (1024 * 1024), "unit": "mega-pixel"}
 
-        links = tracker_results.get("links", None)
-        all_links = None
-        if links is not None:
-            all_links = list(chain(*links.values()))
+        input_product_links: Dict[str, list] = tracker_results.get("links", None)
+        if not omit_derived_from_links and input_product_links:
             # TODO: when in the future these links point to STAC objects we will need to update the type.
             #   https://github.com/openEOPlatform/architecture-docs/issues/327
-            all_links = [
+            all_links.extend(
                 {
                     "href": link.getSelfUrl(),
                     "rel": "derived_from",
                     "title": f"Derived from {link.getId()}",
                     "type": "application/json",
                 }
-                for link in all_links
-            ]
-
+                for links in input_product_links.values()
+                for link in links
+            )
 
     from openeogeotrellis.metrics_tracking import global_tracker
+
     python_metrics = global_tracker().as_dict()
-    sar_backscatter_errors = python_metrics.pop("orfeo_backscatter_soft_errors",0)
-    sar_backscatter_total = python_metrics.pop("orfeo_backscatter_execution_counter",0)
-    usage =  { **usage, **{name: {"value": value, "unit": "count"} for name, value in python_metrics.items()}}
+    sar_backscatter_errors = python_metrics.pop("orfeo_backscatter_soft_errors", 0)
+    sar_backscatter_total = python_metrics.pop("orfeo_backscatter_execution_counter", 0)
+    usage = {**usage, **{name: {"value": value, "unit": "count"} for name, value in python_metrics.items()}}
     if sar_backscatter_total > 0:
-        usage["sar_backscatter_soft_errors"] = {"value": sar_backscatter_errors / sar_backscatter_total, "unit": "fraction"}
+        usage["sar_backscatter_soft_errors"] = {
+            "value": sar_backscatter_errors / sar_backscatter_total,
+            "unit": "fraction",
+        }
     sar_backscatter_inputpixels = python_metrics.pop("orfeo_backscatter_input_pixels", 0)
     if sar_backscatter_inputpixels > 0:
         if "input_pixel" in usage:

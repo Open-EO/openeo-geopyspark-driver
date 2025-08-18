@@ -13,7 +13,16 @@ without compromising stable operations.
 <!-- start-of-changelog -->
 
 
-## In progress: 0.66.0
+## In progress: 0.67.0
+
+- Configurable usage of `async_task` ([eu-cdse/openeo-cdse-infra#387](https://github.com/eu-cdse/openeo-cdse-infra/issues/387))
+- Add job option "omit-derived-from-links" to omit "derived_from" links in batch job results metadata ([ESA-WEED-project/eo_processing#175](https://github.com/ESA-WEED-project/eo_processing/issues/175))
+- Better freeIPA configurability for proxy user lookup ([#1261](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1261), eu-cdse/openeo-cdse-infra#626)
+- `load_stac`: temporal filtering of STAC Items: prefer more descriptive `start_datetime`+`end_datetime` over nominal `datetime` if possible ([#1293](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1293))
+- Restore proper `bbox` and `geometry` for STAC items with netCDF assets ([#1294](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1294))
+
+
+## 0.66.0
 
 - 'Batch job options' are now advertised following the openEO [processing parameters extension](https://github.com/Open-EO/openeo-api/tree/draft/extensions/processing-parameters)  ([Open-EO/openeo-python-driver#307](https://github.com/Open-EO/openeo-python-driver/issues/307))
 - use region specific config for workspace actions
@@ -36,6 +45,7 @@ without compromising stable operations.
 - Fix thresholds in `linear_scale_range` to trigger type casting ([#1275](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1275))
 - `load_stac`: fully switch to `_StacMetadataParser` from `openeo.metadata`, which has wider STAC (1.1) support ([#1015](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1015), [#1138](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1138))
 - `load_ml_model`: switch to group `openeo_results` for `ml_models` folder (eu-cdse/openeo-cdse-infra#609)
+- `resample_cube_spatial` avoid going out of memory when resampling from lower to much higher resolution ([Open-EO/openeo-geotrellis-extensions#478](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/478))
 
 
 ## 0.65.0
