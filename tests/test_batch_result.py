@@ -1807,27 +1807,63 @@ def test_export_workspace_merge_into_stac_api(
     if stac_version == "1.1":
         assert create_item.call_count == 1
 
-        assert create_item.request_history[0].json()["assets"]== {
-            "openEO_Latitude": DictSubSet({
-                "href": f"s3://openeo-fake-bucketname/{merge}/lat.tif"
-            }),
-            "openEO_Longitude": DictSubSet({
-                "href": f"s3://openeo-fake-bucketname/{merge}/some/deeply/nested/folder/lon.tif"
-            })
+        assert create_item.request_history[0].json()["assets"] == {
+            "openEO_Latitude": DictSubSet(
+                {
+                    "href": f"s3://openeo-fake-bucketname/{merge}/lat.tif",
+                    "bands": [
+                        DictSubSet(
+                            {
+                                "statistics": DictSubSet({}),
+                            }
+                        )
+                    ],
+                }
+            ),
+            "openEO_Longitude": DictSubSet(
+                {
+                    "href": f"s3://openeo-fake-bucketname/{merge}/some/deeply/nested/folder/lon.tif",
+                    "bands": [
+                        DictSubSet(
+                            {
+                                "statistics": DictSubSet({}),
+                            }
+                        )
+                    ],
+                }
+            ),
         }
     else:
-
         assert create_item.call_count == 2
 
         assert create_item.request_history[0].json()["assets"] == {
-            "some/deeply/nested/folder/lon.tif": DictSubSet({
-                "href": f"s3://openeo-fake-bucketname/{merge}/some/deeply/nested/folder/lon.tif"
-            })
+            "some/deeply/nested/folder/lon.tif": DictSubSet(
+                {
+                    "href": f"s3://openeo-fake-bucketname/{merge}/some/deeply/nested/folder/lon.tif",
+                    "raster:bands": [
+                        DictSubSet(
+                            {
+                                "statistics": DictSubSet({}),
+                            }
+                        )
+                    ],
+                }
+            )
         }
         assert create_item.request_history[1].json()["assets"] == {
-            "lat.tif": DictSubSet({
-                "href": f"s3://openeo-fake-bucketname/{merge}/lat.tif"
-            })}
+            "lat.tif": DictSubSet(
+                {
+                    "href": f"s3://openeo-fake-bucketname/{merge}/lat.tif",
+                    "raster:bands": [
+                        DictSubSet(
+                            {
+                                "statistics": DictSubSet({}),
+                            }
+                        )
+                    ],
+                }
+            )
+        }
     exported_asset_keys = [PurePath(obj.key) for obj in mock_s3_bucket.objects.all()]
 
     assert exported_asset_keys == ListSubSet([

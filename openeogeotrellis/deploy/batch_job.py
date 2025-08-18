@@ -907,7 +907,7 @@ def _write_exported_stac_collection(
             "assets": {
                 asset_id: dict_no_none(
                     **{
-                        "href": f"{Path(asset['href']).name}",
+                        "href": f"{Path(asset['href']).name}",  # relative to possibly nested item file
                         "roles": asset.get("roles"),
                         "type": asset.get("type"),
                         "eo:bands": asset.get("bands"),
@@ -987,7 +987,7 @@ def _write_exported_stac_collection_from_item(
                             asset_band.update(raster_band)
                     asset_bands.append(asset_band)
             assets[asset_key] = dict_no_none({
-                "href": f"{Path(asset['href']).relative_to(job_dir)}",
+                "href": f"{Path(urlparse(asset['href']).path).relative_to(job_dir)}",  # relative to top-level item file
                 "type": asset.get("type"),
                 "roles": asset.get("roles"),
                 "bands": asset_bands,

@@ -167,7 +167,6 @@ def _extract_gdal_asset_raster_metadata(
     # Then it could profit from Sparks parallel processing.
     argument_tuples = [
         (
-            Path(asset_md["href"]).name if asset_md["href"].startswith("s3:/") else os.path.relpath(asset_md["href"],job_dir) if os.path.isabs(asset_md["href"]) else asset_md["href"],
             asset_md,
             job_dir,
             asset_key,
@@ -202,19 +201,22 @@ def _extract_gdal_asset_raster_metadata(
     return raster_metadata, is_some_raster_md_missing
 
 
-def _get_metadata_callback(asset_path: str, asset_md: Dict[str, str], job_dir: Path, asset_key: str):
-
-    mime_type: str = asset_md.get("type", "")
+def _get_metadata_callback(asset_md: Dict[str, str], job_dir: Path, asset_key: str):
+    asset_href: str = asset_md["href"]
 
     # Skip assets that are clearly not images. TODO: Whitelist instead of blacklist
-    asset_path_extension = Path(asset_path).suffix.lower()
-    if asset_path_extension in [".json", ".csv", ".parquet"]:
+    if any(asset_href.endswith(extension) for extension in [".json", ".csv", ".parquet"]):
         return None
 
     # The asset path should be relative to the job directory.
-    abs_asset_path: Path = get_abs_path_of_asset(asset_path, job_dir)
+    if asset_href.startswith("s3://"):
+        assert job_dir.name in asset_href
+        abs_asset_path: Path = get_abs_path_of_asset(
+            asset_href[asset_href.rfind(job_dir.name) + len(job_dir.name) + 1 :], job_dir
+        )
+    else:
+        abs_asset_path: Path = get_abs_path_of_asset(asset_href, job_dir)
 
-    asset_href: str = asset_md.get("href", "")
     if not abs_asset_path.exists() and asset_href.startswith("s3://"):
         try:
             abs_asset_path.parent.mkdir(parents=True, exist_ok=True)
