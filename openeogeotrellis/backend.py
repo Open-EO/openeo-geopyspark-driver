@@ -1959,13 +1959,8 @@ class GpsBatchJobs(backend.BatchJobs):
             # allow to override the image name via job options, other option would be to deduce it from the udf runtimes being used
             running_image = api_instance_core.read_namespaced_pod(name=os.environ.get("POD_NAME"), namespace=os.environ.get("POD_NAMESPACE")).spec.containers[0].image
 
-            image_name = job_options.get("image-name", running_image)
-            if "image-name" in job_options and image_name.lower() not in get_backend_config().batch_runtime_to_image:
-                if re.compile(get_backend_config().batch_image_regex).fullmatch(
-                        image_name) is None:  # validate image name
-                    raise OpenEOApiException(f"invalid value {image_name} for job_option image-name")
-            else:
-                image_name = get_backend_config().batch_runtime_to_image.get(image_name.lower(), image_name)
+            image_name = options.image_name or running_image
+            image_name = get_backend_config().batch_runtime_to_image.get(image_name.lower(), image_name)
 
             batch_job_cfg_secret_name = k8s_get_batch_job_cfg_secret_name(spark_app_id)
 
