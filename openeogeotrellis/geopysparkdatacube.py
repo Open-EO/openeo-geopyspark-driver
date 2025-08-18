@@ -2027,7 +2027,7 @@ class GeopysparkDataCube(DriverDataCube):
                     if attach_gdalinfo_assets:
                         for key, value in assets_original.items():
                             href_path = str(value["href"])
-                            if os.path.exists(href_path + GDALINFO_SUFFIX):
+                            if os.path.exists(href_path + GDALINFO_SUFFIX):  # TODO: only supported if fuse_mount_batchjob_s3_bucket?
                                 obj = {
                                     "href": href_path + GDALINFO_SUFFIX,
                                     "type": "application/json",

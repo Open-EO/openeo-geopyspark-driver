@@ -437,7 +437,7 @@ def run_job(
                     try:
                         if str(href).startswith("s3://"):
                             url = urlparse(str(href))
-                            temp_key = url.path.split("/")[-1]
+                            temp_key = str(Path(url.path).relative_to(output_file.parent))
                         else:
                             hrefPath = Path(str(href))
                             if hrefPath.is_absolute():
@@ -795,7 +795,7 @@ def _write_exported_stac_collection(
             "assets": {
                 asset_id: dict_no_none(
                     **{
-                        "href": f"{Path(asset['href']).relative_to(item_file.parent)}",
+                        "href": f"{Path(asset['href']).name}",
                         "roles": asset.get("roles"),
                         "type": asset.get("type"),
                         "eo:bands": asset.get("bands"),
