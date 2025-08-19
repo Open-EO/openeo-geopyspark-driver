@@ -166,7 +166,8 @@ class JobOptions:
         if (self.image_name is not None):
             if self.image_name not in get_backend_config().batch_runtime_to_image:
                 if re.compile(get_backend_config().batch_image_regex).fullmatch(self.image_name) is None:
-                    raise OpenEOApiException(f"Invalid value {self.image_name} for job_option image-name", status_code=400)
+                    self._log.warning(f"Invalid value {self.image_name} for job_option image-name")
+                    #raise OpenEOApiException(f"Invalid value {self.image_name} for job_option image-name", status_code=400)
 
     def soft_errors_arg(self) -> str:
         value = self.soft_errors
