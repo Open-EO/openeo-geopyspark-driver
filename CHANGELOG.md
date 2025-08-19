@@ -20,6 +20,7 @@ without compromising stable operations.
 - Better freeIPA configurability for proxy user lookup ([#1261](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1261), eu-cdse/openeo-cdse-infra#626)
 - `load_stac`: temporal filtering of STAC Items: prefer more descriptive `start_datetime`+`end_datetime` over nominal `datetime` if possible ([#1293](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1293))
 - Restore proper `bbox` and `geometry` for STAC items with netCDF assets ([#1294](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1294))
+- `load_stac`: drop (unused) support for `eo:bands` with integer indices ([#619](https://github.com/Open-EO/openeo-geopyspark-driver/issues/619))
 
 
 ## 0.66.0
