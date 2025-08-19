@@ -1,5 +1,6 @@
 import dataclasses
 import logging
+import re
 from dataclasses import dataclass, field, fields
 from typing import Any, Dict, List
 
@@ -109,6 +110,11 @@ class JobOptions:
         metadata={"description": "Custom jar path.", "public":False},
     )
 
+    image_name: str = field(
+        default=None,
+        metadata={"description": "Custom docker image name.", "public": False},
+    )
+
     log_level:str = field(
         default=DEFAULT_LOG_LEVEL_PROCESSING,
         metadata={"name":"log_level","description": "log level, can be 'debug', 'info', 'warning' or 'error'", "public":True},
@@ -132,7 +138,7 @@ class JobOptions:
     def validate(self):
 
 
-        if self.log_level not in ["DEBUG", "INFO", "WARN", "ERROR"]:
+        if self.log_level.upper() not in ["DEBUG", "INFO", "WARN", "ERROR"]:
             raise OpenEOApiException(
                 code="InvalidLogLevel",
                 status_code=400,
@@ -156,6 +162,12 @@ class JobOptions:
             raise OpenEOApiException(
                 message=f"Requested invalid openeo jar path {self.openeo_jar_path}",
                 status_code=400)
+
+        if (self.image_name is not None):
+            if self.image_name not in get_backend_config().batch_runtime_to_image:
+                if re.compile(get_backend_config().batch_image_regex).fullmatch(self.image_name) is None:
+                    self._log.warning(f"Invalid value {self.image_name} for job_option image-name")
+                    #raise OpenEOApiException(f"Invalid value {self.image_name} for job_option image-name", status_code=400)
 
     def soft_errors_arg(self) -> str:
         value = self.soft_errors

@@ -257,6 +257,8 @@ class GpsBackendConfig(OpenEoBackendConfig):
         "python311" : "vito-docker.artifactory.vgt.vito.be/openeo-geotrellis-kube-python311:latest"
     }
 
+    batch_image_regex: str = "^vito-docker.artifactory.vgt.vito.be/openeo-.+$"
+
     """
     Only used by YARN, allows to specify paths to mount in batch job docker containers.
     """

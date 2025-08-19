@@ -172,7 +172,7 @@ class YARNBatchJobRunner:
         submit_script = "submit_batch_job_spark3.sh"
         script_location = pkg_resources.resource_filename("openeogeotrellis.deploy", submit_script)
 
-        image_name = job_options.get("image-name", os.environ.get("YARN_CONTAINER_RUNTIME_DOCKER_IMAGE"))
+        image_name = options.image_name or os.environ.get("YARN_CONTAINER_RUNTIME_DOCKER_IMAGE")
         if image_name:
             image_name = get_backend_config().batch_runtime_to_image.get(image_name.lower(), image_name)
 
