@@ -599,8 +599,13 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             }
         }
 
-    def processing_parameters(self) -> list:
-        return JobOptions.list_options()
+    def processing_parameters(self) -> Dict[str, List[dict]]:
+        options = JobOptions.list_options()
+        return {
+            "create_job_parameters": options,
+            # TODO: probably not all these options are also valid in a synchronous processing context
+            "create_synchronous_parameters": options,
+        }
 
     def load_disk_data(
             self, format: str, glob_pattern: str, options: dict, load_params: LoadParameters, env: EvalEnv
