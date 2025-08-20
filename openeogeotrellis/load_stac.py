@@ -154,6 +154,8 @@ def load_stac(
         else None
     )
 
+    stac_metadata_parser = _StacMetadataParser(logger=logger)
+
     remote_request_info = None
     try:
         if dependency_job_info:
@@ -209,7 +211,6 @@ def load_stac(
                 max_poll_time=max_poll_time,
             )
 
-            stac_metadata_parser = _StacMetadataParser(logger=logger)
             if isinstance(stac_object, pystac.Item):
                 if load_params.properties:
                     raise properties_unsupported_exception  # as dictated by the load_stac spec
