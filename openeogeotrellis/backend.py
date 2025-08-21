@@ -2592,18 +2592,7 @@ class GpsBatchJobs(backend.BatchJobs):
         if job_dict["status"] != JOB_STATUS.FINISHED:
             raise JobNotFinishedException
 
-        results_metadata = None
-
-        # TODO: add DEBUG logging
-
-        if "results_metadata_uri" in job_dict:
-            results_metadata = self.load_results_metadata(job_id, user_id, job_dict["results_metadata_uri"])  # TODO: expose a getter?
-
-        if not results_metadata and "results_metadata" in job_dict:
-            results_metadata = job_dict["results_metadata"]
-
-        if not results_metadata:
-            results_metadata = self.load_results_metadata(job_id, user_id)
+        results_metadata = self.load_results_metadata(job_id, user_id, job_dict)
 
         out_assets = results_metadata.get("assets", {})
         out_metadata = out_assets.get("out", {})
@@ -2680,7 +2669,27 @@ class GpsBatchJobs(backend.BatchJobs):
     def get_results_metadata_path(self, job_id: str) -> Path:
         return self.get_job_output_dir(job_id) / JOB_METADATA_FILENAME
 
-    def load_results_metadata(self, job_id: str, user_id: str, results_metadata_uri: str = None) -> dict:
+    def load_results_metadata(self, job_id: str, user_id: str, job_dict: dict = None) -> dict:
+        # TODO: add DEBUG logging
+
+        if job_dict is None:
+            with self._double_job_registry as registry:
+                job_dict = registry.get_job(job_id=job_id, user_id=user_id)
+
+        results_metadata = None
+
+        if "results_metadata_uri" in job_dict:
+            results_metadata = self._load_results_metadata_from_file(job_id, job_dict["results_metadata_uri"])  # TODO: expose a getter?
+
+        if not results_metadata and "results_metadata" in job_dict:
+            results_metadata = job_dict["results_metadata"]
+
+        if not results_metadata:
+            results_metadata = self._load_results_metadata_from_file(job_id, results_metadata_uri=None)
+
+        return results_metadata
+
+    def _load_results_metadata_from_file(self, job_id: str, results_metadata_uri: Optional[str]) -> dict:
         """
         Reads the metadata json file either from the job directory or an explicit URI and returns it.
         """
@@ -2701,7 +2710,8 @@ class GpsBatchJobs(backend.BatchJobs):
 
                 return {}
 
-        def try_get_results_metadata_from_file(path: Union[Path, str]) -> dict:
+        def try_get_results_metadata_from_disk(path: Union[Path, str]) -> dict:
+            # add retries if necessary
             try:
                 with open(path) as f:
                     return json.load(f)
@@ -2720,7 +2730,7 @@ class GpsBatchJobs(backend.BatchJobs):
             uri_parts = urlparse(results_metadata_uri)
 
             if uri_parts.scheme == "file":
-                return try_get_results_metadata_from_file(uri_parts.path)
+                return try_get_results_metadata_from_disk(uri_parts.path)
             elif uri_parts.scheme == "s3":
                 bucket, key = PresignedS3AssetUrls.get_bucket_key_from_uri(results_metadata_uri)
                 return try_get_results_metadata_from_object_storage(key, bucket)
@@ -2732,7 +2742,7 @@ class GpsBatchJobs(backend.BatchJobs):
         if ConfigParams().use_object_storage:
             return try_get_results_metadata_from_object_storage(metadata_file, bucket=None)
 
-        return try_get_results_metadata_from_file(metadata_file)
+        return try_get_results_metadata_from_disk(metadata_file)
 
     def _get_providers(self, job_id: str, user_id: str) -> List[dict]:
         results_metadata = self.load_results_metadata(job_id, user_id)
