@@ -57,6 +57,12 @@ logger = logging.getLogger(__name__)
 REQUESTS_TIMEOUT_SECONDS = 60
 
 
+class NoDataAvailableException(OpenEOApiException):
+    status_code = 400
+    code = "NoDataAvailable"
+    message = "There is no data available for the given extents."
+
+
 def load_stac(
     url: str,
     *,
@@ -76,10 +82,6 @@ def load_stac(
 
     feature_flags = load_params.get("featureflags", {})
     allow_empty_cubes = feature_flags.get("allow_empty_cube", env.get(EVAL_ENV_KEY.ALLOW_EMPTY_CUBES, False))
-
-    no_data_available_exception = OpenEOApiException(message="There is no data available for the given extents.",
-                                                     code="NoDataAvailable", status_code=400)
-    properties_unsupported_exception = ProcessParameterUnsupportedException("load_stac", "properties")
 
     all_properties = {**layer_properties, **load_params.properties} if layer_properties else load_params.properties
 
@@ -214,7 +216,9 @@ def load_stac(
 
             if isinstance(stac_object, pystac.Item):
                 if load_params.properties:
-                    raise properties_unsupported_exception  # as dictated by the load_stac spec
+                    # as dictated by the load_stac spec
+                    # TODO: it's not that simple see https://github.com/Open-EO/openeo-processes/issues/536 and https://github.com/Open-EO/openeo-processes/pull/547
+                    raise ProcessParameterUnsupportedException(process="load_stac", parameter="properties")
 
                 item = stac_object
                 band_names = stac_metadata_parser.bands_from_stac_item(item=item).band_names()
@@ -296,7 +300,9 @@ def load_stac(
                 metadata = GeopysparkCubeMetadata(metadata=catalog.to_dict(include_self_link=False, transform_hrefs=False))
 
                 if load_params.properties:
-                    raise properties_unsupported_exception  # as dictated by the load_stac spec
+                    # as dictated by the load_stac spec
+                    # TODO: it's not that simple see https://github.com/Open-EO/openeo-processes/issues/536 and https://github.com/Open-EO/openeo-processes/pull/547
+                    raise ProcessParameterUnsupportedException(process="load_stac", parameter="properties")
 
                 if isinstance(catalog, pystac.Collection):
                     collection = catalog
@@ -493,7 +499,7 @@ def load_stac(
 
 
     if not allow_empty_cubes and not items_found:
-        raise no_data_available_exception
+        raise NoDataAvailableException()
 
     target_bbox = requested_bbox or stac_bbox
 
