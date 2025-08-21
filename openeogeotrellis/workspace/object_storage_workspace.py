@@ -82,7 +82,7 @@ class ObjectStorageWorkspace(Workspace):
 
             def item_func(item: Item, parent_dir: str) -> str:
                 unique_item_filename = item.id.replace("/", "_")
-                return f"{parent_dir}/{target.name}/{unique_item_filename}.json"  # item ID == asset key == relative asset path
+                return f"{parent_dir}/{target.name}/{unique_item_filename}.json"
 
             return CustomLayoutStrategy(collection_func=collection_func, item_func=item_func)
 

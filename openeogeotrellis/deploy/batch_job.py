@@ -647,7 +647,7 @@ def run_job(
 def write_metadata(metadata: dict, metadata_file: Path, is_stac11:bool):
     def log_asset_hrefs(context: str):
         if is_stac11:
-            items = {items["id"]: items for items in metadata.get("items", [])}
+            items = {item["id"]: item for item in metadata.get("items", [])}
             asset_hrefs =  {item_key + ", " + asset_key: asset.get("href") for item_key, item in items.items() for asset_key, asset in item.get("assets").items() }
             logger.info(f"{context} asset hrefs: {asset_hrefs!r}")
         else:
@@ -992,7 +992,7 @@ def _write_exported_stac_collection_from_item(
                 "roles": asset.get("roles"),
                 "bands": asset_bands,
                 # "nodata": asset.get("nodata"),
-                "datatime": asset.get("datetime"),
+                "datetime": asset.get("datetime"),
                 "bbox": asset.get("bbox"),
                 "geometry": asset.get("geometry"),
             })

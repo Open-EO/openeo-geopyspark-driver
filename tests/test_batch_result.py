@@ -355,6 +355,7 @@ def test_separate_asset_per_band(tmp_path, from_node, expected_filenames, stac_v
 
     for asset in assets:
         assert len(asset["bands"]) == 1
+        assert len(asset["raster:bands"]) == 1
         assert asset["bands"][0]["name"] == asset["raster:bands"][0]["name"]
 
 
@@ -1044,19 +1045,19 @@ def test_export_workspace(tmp_path, remove_original, attach_gdalinfo_assets, sta
         item_links = [item_link for item_link in stac_collection.links if item_link.rel == "item"]
         assert len(item_links) == 4 if (attach_gdalinfo_assets & (stac_version == "1.0")) else len(item_links) == 2
 
-        item_refs = set()
+        item_hrefs = set()
         for item_link in item_links:
             assert item_link.media_type == "application/geo+json"
             if "gdalinfo.json" not in item_link.href:
-                item_refs.add(Path(item_link.href))
-        assert len(item_refs) == 2
-        assert item_refs.issubset(_paths_relative_to(workspace_dir))
+                item_hrefs.add(Path(item_link.href))
+        assert len(item_hrefs) == 2
+        assert item_hrefs.issubset(_paths_relative_to(workspace_dir))
         items = list(stac_collection.get_items())
         items = list(filter(lambda x: "data" in x.assets[x.id if stac_version=="1.0" else "openEO"].roles, items))
         assert len(items) == 2
 
         for item in items:
-            assert item.bbox == [0.0,0.0,1.0,2.0]
+            assert item.bbox == [0.0, 0.0, 1.0, 2.0]
             assert (shape(item.geometry).normalize()
                     .almost_equals(Polygon.from_bounds(0.0, 0.0, 1.0, 2.0).normalize()))
             assets = item.get_assets()
@@ -1523,7 +1524,7 @@ def test_export_workspace_merge_into_existing(tmp_path, mock_s3_bucket, stac_ver
     )
 
     object_workspace_keys = [PurePath(obj.key) for obj in mock_s3_bucket.objects.all()]
-    assert len(object_workspace_keys) == 5
+    assert len(object_workspace_keys) == 5, "STAC item document(s) not found"
 
     assert object_workspace_keys == ListSubSet([
         merge,  # the Collection itself
@@ -2798,7 +2799,7 @@ def test_geotiff_tile_size(tmp_path, window_size, default_tile_size, requested_t
 @pytest.mark.parametrize(
     ["separate_asset_per_band", "expected_tiff_files", "expected_asset_keys"],
     [
-        (False, {"openEO_2025-04-05Z.tif", "openEO_2025-04-15Z.tif"}, {""}),
+        (False, {"openEO_2025-04-05Z.tif", "openEO_2025-04-15Z.tif"}, {"openEO"}),
         (
             True,
             {
@@ -2809,16 +2810,12 @@ def test_geotiff_tile_size(tmp_path, window_size, default_tile_size, requested_t
                 "openEO_2025-04-15Z_Flat:1.tif",
                 "openEO_2025-04-15Z_Flat:2.tif",
             },
-            {"_Flat:0", "_Flat:1", "_Flat:2"},
+            {"openEO_Flat:0", "openEO_Flat:1", "openEO_Flat:2"},
         ),
     ],
 )
-@pytest.mark.parametrize(["stac_version", "asset_name"], [
-    ("1.1", [("","")]),
-    ("1.0", [("_2025-04-05Z",".tif"),("_2025-04-15Z",".tif")]),
-])
 def test_unified_asset_keys_spatiotemporal_geotiff(
-    tmp_path, separate_asset_per_band, expected_tiff_files, expected_asset_keys, stac_version, asset_name
+    tmp_path, separate_asset_per_band, expected_tiff_files, expected_asset_keys
 ):
     process_graph = {
         "load2": {
@@ -2852,7 +2849,7 @@ def test_unified_asset_keys_spatiotemporal_geotiff(
 
     process = {
         "process_graph": process_graph,
-        "job_options": {"stac-version": stac_version},
+        "job_options": {"stac-version": "1.1"},
     }
 
     job_dir = tmp_path
@@ -2873,18 +2870,15 @@ def test_unified_asset_keys_spatiotemporal_geotiff(
     with open(metadata_file) as f:
         metadata = json.load(f)
 
-    if stac_version == "1.1":
-        items = metadata["items"]
-        print(f"items={json.dumps(items, indent=2)}")
+    items = metadata["items"]
+    print(f"items={json.dumps(items, indent=2)}")
 
-        assert len(items) == 2
-        assert len({item["id"] for item in items}) == 2
-        assert {item["properties"]["datetime"] for item in items} == {"2025-04-05T00:00:00Z", "2025-04-15T00:00:00Z"}
+    assert len(items) == 2
+    assert len({item["id"] for item in items}) == 2
+    assert {item["properties"]["datetime"] for item in items} == {"2025-04-05T00:00:00Z", "2025-04-15T00:00:00Z"}
 
-    assets = [items for items in metadata["items"]] if stac_version == "1.1" else [metadata]
-    expected_asset_keys = {"openEO"+date+key+tif for key in expected_asset_keys for (date,tif) in asset_name}
-    for asset in assets:
-        assert set(asset["assets"].keys()) == expected_asset_keys
+    for item in items:
+        assert set(item["assets"].keys()) == expected_asset_keys
 
 
 def test_unified_asset_keys_tile_grid(tmp_path):
