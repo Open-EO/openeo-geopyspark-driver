@@ -1502,8 +1502,26 @@ class TestK8sJobTracker:
 
             assert caplog.record_tuples == []
 
-    def test_k8s_no_zookeeper(self, k8s_mock, prometheus_mock, job_costs_calculator, batch_job_output_root,
-                              elastic_job_registry, caplog, time_machine):
+    @pytest.mark.parametrize(
+        "results_metadata_uri_present",
+        [False, True],
+        ids=[
+            "results_metadata_uri missing",  # old web app writer does not write results_metadata_uri yet so patch
+            "results_metadata_uri present",  # new web app driver wrote results_metadata_uri so no need to patch
+        ],
+    )
+    def test_k8s_no_zookeeper(
+        self,
+        k8s_mock,
+        prometheus_mock,
+        job_costs_calculator,
+        batch_job_output_root,
+        elastic_job_registry,
+        caplog,
+        time_machine,
+        mock_s3_bucket,
+        results_metadata_uri_present,
+    ):
         job_tracker = JobTracker(
             app_state_getter=K8sStatusGetter(k8s_mock, prometheus_mock),
             zk_job_registry=None,
@@ -1543,6 +1561,15 @@ class TestK8sJobTracker:
         kube_app = k8s_mock.submit(app_id=app_id)
         kube_app.set_submitted()
         elastic_job_registry.set_application_id(job_id=job_id, application_id=app_id)
+        if results_metadata_uri_present:
+            results_metadata_key = "path/to/results_metadata.json"
+            results_metadata_uri = f"s3://{mock_s3_bucket.name}/{results_metadata_key}"
+            # avoid WARNING log about not being able to retrieve results metadata from object storage
+            mock_s3_bucket.put_object(Key=results_metadata_key, Body="{}")
+            elastic_job_registry.set_results_metadata_uri(
+                job_id,
+                results_metadata_uri=results_metadata_uri,
+            )
 
         # Trigger `update_statuses`
         job_tracker.update_statuses()
@@ -1597,15 +1624,20 @@ class TestK8sJobTracker:
                     "max_executor_memory": {"unit": "gb", "value": 3.5},
                 },
                 "costs": 129.95,
-                "results_metadata": {
-                    "foo": "bar",
-                    "usage": {"input_pixel": {"unit": "mega-pixel", "value": 1.125},
-                              "sentinelhub": {"unit": "sentinelhub_processing_unit", "value": 1.25},
-                              },
-                    "b0rked": [24, ["a", {"b": ['nan', None]}], {"c": ['inf', 1.23]}],
-                },
             }
         )
+
+        if results_metadata_uri_present:
+            assert not elastic_job_registry.db[job_id].get("results_metadata")
+        else:
+            assert elastic_job_registry.db[job_id]["results_metadata"] == {
+                "foo": "bar",
+                "usage": {
+                    "input_pixel": {"unit": "mega-pixel", "value": 1.125},
+                    "sentinelhub": {"unit": "sentinelhub_processing_unit", "value": 1.25},
+                },
+                "b0rked": [24, ["a", {"b": ["nan", None]}], {"c": ["inf", 1.23]}],
+            }
 
         json.dumps(elastic_job_registry.db[job_id], allow_nan=False)
 
