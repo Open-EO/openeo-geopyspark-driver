@@ -32,6 +32,7 @@ import openeo.udf
 import pkg_resources
 import pystac
 import requests
+import reretry
 import shapely.geometry.base
 from deprecated import deprecated
 from geopyspark import LayerType, Pyramid, TiledRasterLayer
@@ -2711,10 +2712,13 @@ class GpsBatchJobs(backend.BatchJobs):
                 return {}
 
         def try_get_results_metadata_from_disk(path: Union[Path, str]) -> dict:
-            # add retries if necessary
-            try:
+            @reretry.retry(exceptions=FileNotFoundError, tries=5, delay=1, backoff=2, logger=logger)
+            def read_results_metadata_file():
                 with open(path) as f:
                     return json.load(f)
+
+            try:
+                return read_results_metadata_file()
             except FileNotFoundError:
                 logger.warning(
                     "Could not derive result metadata from %s",
