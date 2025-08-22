@@ -1,5 +1,4 @@
 import re
-
 import datetime as dt
 import datetime
 import json
@@ -7,7 +6,7 @@ import time
 from functools import partial
 import logging
 import os
-from typing import Union, Optional, Tuple, Dict, List, Iterable, Any, Set
+from typing import Union, Optional, Tuple, Dict, List, Iterable, Any, Set, Callable
 from urllib.parse import urlparse
 
 import dateutil.parser
@@ -104,34 +103,8 @@ def load_stac(
 
         return raster_offset / raster_scale
 
-    literal_matches = {
-        property_name: filter_properties.extract_literal_match(condition, env)
-        for property_name, condition in all_properties.items()
-    }
+    property_filter = PropertyFilter(properties=all_properties, env=env)
 
-    def matches_metadata_properties(itm: pystac.Item) -> bool:
-        def operator_value(criterion: Dict[str, object]) -> (str, object):
-            if len(criterion) != 1:
-                raise ValueError(f'expected a single criterion, was {criterion}')
-
-            (operator, value), = criterion.items()
-            return operator, value
-
-        for property_name, criterion in literal_matches.items():
-            if property_name not in itm.properties:
-                return False
-
-            item_value = itm.properties[property_name]
-            operator, criterion_value = operator_value(criterion)
-
-            if operator == 'eq' and item_value != criterion_value:
-                return False
-            if operator == 'lte' and item_value is not None and item_value > criterion_value:
-                return False
-            if operator == 'gte' and item_value is not None and item_value < criterion_value:
-                return False
-
-        return True
 
     collection = None
     metadata = None
@@ -264,9 +237,8 @@ def load_stac(
                 stac_io = pystac_client.stac_api_io.StacApiIO(timeout=REQUESTS_TIMEOUT_SECONDS, max_retries=retry)
                 client = pystac_client.Client.open(root_catalog.get_self_href(), modifier=modifier, stac_io=stac_io)
 
-                cql2_filter = _cql2_filter(
-                    client,
-                    literal_matches,
+                cql2_filter = property_filter.to_cql2_filter(
+                    client=client,
                     use_filter_extension=feature_flags.get("use-filter-extension", True),
                 )
 
@@ -293,7 +265,8 @@ def load_stac(
                 logger.info(f"STAC API request: {remote_request_info}")
 
                 # STAC API might not support Filter Extension so always use client-side filtering as well
-                intersecting_items = filter(matches_metadata_properties, search_request.items())
+                property_matcher = property_filter.build_matcher()
+                intersecting_items = [item for item in search_request.items() if property_matcher(item.properties)]
             else:
                 assert isinstance(stac_object, pystac.Catalog)  # static Catalog + Collection
                 catalog = stac_object
@@ -1060,79 +1033,124 @@ def _await_stac_object(
     return stac_object
 
 
-def _cql2_filter(
-    client: pystac_client.Client,
-    literal_matches: Dict[str, Dict[str, Any]],
-    use_filter_extension: Union[bool, str],
-) -> Union[str, dict, None]:
-    if use_filter_extension == "cql2-json":  # force POST JSON
-        return _cql2_json_filter(literal_matches)
+class PropertyFilter:
+    """
+    Container for STAC object property filters declared as process graphs
+    (e.g. like the `properties` argument of `load_collection`/`load_stac` processes).
+    """
 
-    if use_filter_extension == "cql2-text":  # force GET text
-        return _cql2_text_filter(literal_matches)
+    # TODO: move this utility to a more generic location for better reuse
 
-    if use_filter_extension:  # auto-detect, favor POST
-        search_links = client.get_links(rel="search")
-        supports_post_search = any(link.extra_fields.get("method") == "POST" for link in search_links)
+    def __init__(self, properties: Dict[str, dict], *, env: Optional[EvalEnv] = None):
+        self._properties = properties
+        self._env = env or EvalEnv()
 
-        return (
-            _cql2_json_filter(literal_matches) if supports_post_search
-            else _cql2_text_filter(literal_matches)  # assume serves ignores filter if no "search" method advertised
+    @staticmethod
+    def _build_callable(operator: str, value: Any) -> Callable[[Any], bool]:
+        if operator == "eq":
+            return lambda actual: actual == value
+        elif operator == "lte":
+            return lambda actual: actual is not None and actual <= value
+        elif operator == "gte":
+            return lambda actual: actual is not None and value <= actual
+        elif operator == "in":
+            return lambda actual: actual is not None and actual in value
+        else:
+            # TODO: support more operators?
+            raise ValueError(f"Unsupported operator: {operator}")
+
+    def build_matcher(self) -> Callable[[Dict[str, Any]], bool]:
+        """
+        Build an evaluating function (a closure)
+        that can be used to check if properties match the filter conditions.
+        """
+        conditions = [
+            (name, self._build_callable(operator, value))
+            for name, pg in self._properties.items()
+            for operator, value in filter_properties.extract_literal_match(pg, env=self._env).items()
+        ]
+
+        def match(properties: Dict[str, Any]) -> bool:
+            return all(name in properties and condition(properties[name]) for name, condition in conditions)
+
+        return match
+
+    def to_cql2_filter(
+        self,
+        *,
+        use_filter_extension: Union[bool, str],
+        client: pystac_client.Client,
+    ) -> Union[str, dict, None]:
+        if use_filter_extension == "cql2-json":  # force POST JSON
+            return self.to_cql2_json()
+        elif use_filter_extension == "cql2-text":  # force GET text
+            return self.to_cql2_text()
+        elif use_filter_extension == True:  # auto-detect, favor POST
+            search_links = client.get_links(rel="search")
+            supports_post_search = any(link.extra_fields.get("method") == "POST" for link in search_links)
+            if supports_post_search:
+                return self.to_cql2_json()
+            else:
+                # assume serves ignores filter if no "search" method advertised
+                return self.to_cql2_text()
+        elif use_filter_extension == False:
+            return None  # explicitly disabled
+        else:
+            raise ValueError(f"Invalid use-filter-extension value: {use_filter_extension!r}")
+
+    def to_cql2_text(self) -> str:
+        """Convert the property filter to a CQL2 text representation."""
+        literal_matches = {
+            property_name: filter_properties.extract_literal_match(condition, self._env)
+            for property_name, condition in self._properties.items()
+        }
+        cql2_text_formatter = get_jvm().org.openeo.geotrellissentinelhub.Cql2TextFormatter()
+
+        return cql2_text_formatter.format(
+            # Cql2TextFormatter won't add necessary quotes so provide them up front
+            # TODO: are these quotes actually necessary?
+            {f'"properties.{name}"': criteria for name, criteria in literal_matches.items()}
         )
 
-    return None  # explicitly disabled
+    def to_cql2_json(self) -> Union[Dict, None]:
+        literal_matches = {
+            property_name: filter_properties.extract_literal_match(condition, self._env)
+            for property_name, condition in self._properties.items()
+        }
+        if len(literal_matches) == 0:
+            return None
 
-
-def _cql2_text_filter(literal_matches: Dict[str, Dict[str, Any]]) -> str:
-    cql2_text_formatter = get_jvm().org.openeo.geotrellissentinelhub.Cql2TextFormatter()
-
-    return cql2_text_formatter.format(
-        # Cql2TextFormatter won't add necessary quotes so provide them up front
-        {f'"properties.{name}"': criteria for name, criteria in literal_matches.items()}
-    )
-
-
-def _cql2_json_filter(literal_matches: Dict[str, Dict[str, Any]]) -> Optional[dict]:
-    if len(literal_matches) == 0:
-        return None
-
-    operator_mapping = {
-        "eq": "=",
-        "neq": "<>",
-        "lt": "<",
-        "lte": "<=",
-        "gt": ">",
-        "gte": ">=",
-    }
-
-    def single_filter(property, operator, value) -> dict:
-        cql2_json_operator = operator_mapping.get(operator)
-
-        if cql2_json_operator is None:
-            raise ValueError(f"unsupported operator {operator}")
-
-        return {
-            "op": cql2_json_operator,
-            "args": [
-                {"property": f"properties.{property}"},
-                value
-            ]
+        operator_mapping = {
+            "eq": "=",
+            "neq": "<>",
+            "lt": "<",
+            "lte": "<=",
+            "gt": ">",
+            "gte": ">=",
+            "in": "in",
         }
 
-    filters = [
-        single_filter(property, operator, value)
-        for property, criteria in literal_matches.items()
-        for operator, value in criteria.items()
-    ]
+        def single_filter(property, operator, value) -> dict:
+            cql2_json_operator = operator_mapping.get(operator)
 
-    if len(filters) == 1:
-        return filters[0]
+            if cql2_json_operator is None:
+                raise ValueError(f"unsupported operator {operator}")
 
-    return {
-        "op": "and",
-        "args": filters,
-    }
+            return {"op": cql2_json_operator, "args": [{"property": f"properties.{property}"}, value]}
 
+        filters = [
+            single_filter(property, operator, value)
+            for property, criteria in literal_matches.items()
+            for operator, value in criteria.items()
+        ]
+
+        if len(filters) == 1:
+            return filters[0]
+
+        return {
+            "op": "and",
+            "args": filters,
+        }
 
 
 
