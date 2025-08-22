@@ -13,7 +13,13 @@ without compromising stable operations.
 <!-- start-of-changelog -->
 
 
-## In progress: 0.67.0
+## In progress: 0.68.0
+
+- Avoid workaround with EJR to obtain job results metadata in the context of a failover ([#1255](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1255))
+- Avoid 413 "Payload Too Large" response from EJR upon job results metadata update ([#1200](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1200))
+
+
+## 0.67.0
 
 - Configurable usage of `async_task` ([eu-cdse/openeo-cdse-infra#387](https://github.com/eu-cdse/openeo-cdse-infra/issues/387))
 - Add job option "omit-derived-from-links" to omit "derived_from" links in batch job results metadata ([ESA-WEED-project/eo_processing#175](https://github.com/ESA-WEED-project/eo_processing/issues/175))
