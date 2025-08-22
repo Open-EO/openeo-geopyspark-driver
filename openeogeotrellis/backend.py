@@ -2683,6 +2683,7 @@ class GpsBatchJobs(backend.BatchJobs):
             results_metadata = self._load_results_metadata_from_file(job_id, job_dict["results_metadata_uri"])  # TODO: expose a getter?
 
         if not results_metadata and "results_metadata" in job_dict:
+            logger.debug("Loading results metadata from job registry", extra={"job_id": job_id})
             results_metadata = job_dict["results_metadata"]
 
         if not results_metadata:
@@ -2731,6 +2732,7 @@ class GpsBatchJobs(backend.BatchJobs):
             return {}
 
         if results_metadata_uri:
+            logger.debug("Loading results metadata from %s", results_metadata_uri, extra={"job_id": job_id})
             uri_parts = urlparse(results_metadata_uri)
 
             if uri_parts.scheme == "file":
@@ -2742,6 +2744,8 @@ class GpsBatchJobs(backend.BatchJobs):
                 raise NotImplementedError(results_metadata_uri)
 
         metadata_file = self.get_results_metadata_path(job_id=job_id)
+
+        logger.debug("Loading results metadata from %s", metadata_file, extra={"job_id": job_id})
 
         if ConfigParams().use_object_storage:
             return try_get_results_metadata_from_object_storage(metadata_file, bucket=None)

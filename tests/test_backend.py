@@ -789,8 +789,6 @@ class TestGpsBatchJobs:
         mock_create_spark_pod.assert_called_once()
         assert job.get("results_metadata_uri") == f"s3://{mock_s3_bucket.name}/batch_jobs/{job_id}/job_metadata.json"
 
-        # TODO: check why this test takes so long
-
     def test_getters_read_from_s3_results_metadata_uri(
         self,
         kube_no_zk,
