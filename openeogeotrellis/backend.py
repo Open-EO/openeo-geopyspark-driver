@@ -2671,8 +2671,6 @@ class GpsBatchJobs(backend.BatchJobs):
         return self.get_job_output_dir(job_id) / JOB_METADATA_FILENAME
 
     def load_results_metadata(self, job_id: str, user_id: str, job_dict: dict = None) -> dict:
-        # TODO: add DEBUG logging
-
         if job_dict is None:
             with self._double_job_registry as registry:
                 job_dict = registry.get_job(job_id=job_id, user_id=user_id)
