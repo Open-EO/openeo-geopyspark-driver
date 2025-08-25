@@ -39,6 +39,7 @@ from openeo_driver.testing import (
     RegexMatcher,
     UrllibMocker,
     load_json,
+    ApiException,
 )
 from openeo_driver.users import User
 from openeo_driver.util.auth import ClientCredentials
@@ -4116,6 +4117,76 @@ class TestLoadStac:
         print(res.text)
         parsed = pandas.read_csv(io.StringIO(res.text))
         print(parsed)
+
+    def test_load_stac_from_spatiotemporal_netcdf_mixed_columns(self, api110, tmp_path):
+        process_graph = {
+            "loadstac1": {
+                "process_id": "load_stac",
+                "arguments": {
+                    "url": str(get_test_data_file("binary/load_stac/spatiotemporal_netcdf/collection.json")),
+                    "bands": [
+                        "S2-SCL",
+                        "S2-B01",
+                        "S2-B02",
+                        "S2-B03",
+                        "S2-B04",
+                        "S2-B05",
+                        "S2-B06",
+                        "S2-B07",
+                        "S2-B08",
+                        "S2-B8A",
+                        "S2-B09",
+                        "S2-B11",
+                        "S2-B12",
+                    ],
+                },
+            },
+            "aggregatespatial1": {
+                "process_id": "aggregate_spatial",
+                "arguments": {
+                    "data": {"from_node": "loadstac1"},
+                    "geometries": {
+                        "type": "FeatureCollection",
+                        "features": [
+                            {
+                                "geometry": {"coordinates": [27.1385676752, 57.34267002], "type": "Point"},
+                                "id": "0",
+                                "properties": {},
+                                "type": "Feature",
+                            },
+                            {
+                                "geometry": {"coordinates": [27.0837739, 57.38799], "type": "Point"},
+                                "id": "1",
+                                "properties": {},
+                                "type": "Feature",
+                            },
+                        ],
+                    },
+                    "reducer": {
+                        "process_graph": {
+                            "mean1": {
+                                "arguments": {"data": {"from_parameter": "data"}},
+                                "process_id": "mean",
+                                "result": True,
+                            }
+                        }
+                    },
+                },
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "aggregatespatial1"}, "format": "parquet"},
+                "result": True,
+            },
+        }
+
+        with pytest.raises(ApiException) as exc_info:
+            api110.result(process_graph).assert_status_code(200)
+
+        assert (
+            """Custom band order is not yet supported for a NetCDF STAC-catalog with a time dimension."""
+            in exc_info.value.args[0]
+        )
 
     @pytest.mark.parametrize(
         "catalog_url",
