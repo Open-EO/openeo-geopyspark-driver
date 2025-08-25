@@ -1414,10 +1414,20 @@ class GeopysparkDataCube(DriverDataCube):
             )
             scala_target_extent = get_jvm().geotrellis.vector.Extent(float(extent_in_target_projection.xmin), float(extent_in_target_projection.ymin),
                                                                    float(extent_in_target_projection.xmax), float(extent_in_target_projection.ymax))
-            return self._apply_to_levels_geotrellis_rdd(lambda rdd,
-                                                               level: get_jvm().org.openeo.geotrellis.geocoding.GeoCodingProcess().geoCode(
-                rdd, scala_target_extent, scala_crs
-            ))
+
+            def geocode_level(cube):
+                bandNames = ["band_unnamed"]
+                if self.metadata.has_band_dimension():
+                    bandNames = self.metadata.band_names
+
+                wrapped = get_jvm().org.openeo.geotrellis.OpenEOProcesses().wrapCube(cube)
+                wrapped.openEOMetadata().setBandNames(bandNames)
+
+                get_jvm().org.openeo.geotrellis.geocoding.GeoCodingProcess().geoCode(
+                    cube, scala_target_extent, scala_crs
+                )
+
+            return self._apply_to_levels_geotrellis_rdd(lambda rdd, level: geocode_level(rdd))
 
         #IF projection is defined, we need to warp
         if projection is not None and resolution==0.0:
