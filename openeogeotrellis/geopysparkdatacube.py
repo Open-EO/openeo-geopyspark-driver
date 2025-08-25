@@ -1334,8 +1334,12 @@ class GeopysparkDataCube(DriverDataCube):
 
         target_resolution = target.get_cellsize()
         target_crs = target.metadata.get_layer_crs()
-
-        proposed_partition_count = self._compute_proposed_partition_count(target_crs, target_resolution)
+        bit_depth = target.metadata.get_bit_depth() or 16
+        estimated_weight = target.metadata.estimate_pixel_volume(target_resolution) * bit_depth
+        proposed_partition_count = estimated_weight / 6000000  # Try 6megapixel per partition
+        proposed_partition_count = max(1.0, proposed_partition_count)
+        proposed_partition_count_old = self._compute_proposed_partition_count(target_crs, target_resolution)
+        print(f"{proposed_partition_count_old=} or {proposed_partition_count=}")
         if (  # Only repartition when there would be significantly more
                 max_level.getNumPartitions() * 2 <= proposed_partition_count
                 and max_level.layer_type == gps.LayerType.SPACETIME):
@@ -1483,7 +1487,8 @@ class GeopysparkDataCube(DriverDataCube):
         # The repartitioning only considers the resolution change. It considers that the partitioning took
         # already into account band count and the pixel type, sparse/not, ...
         proposed_partition_count = int(proposed_partition_count_tup[0] * proposed_partition_count_tup[1])
-        return proposed_partition_count
+
+        return max(1, proposed_partition_count)
 
     def cellsize_in_target_crs(self, target_projection):
         cellsize_before = self.get_cellsize()

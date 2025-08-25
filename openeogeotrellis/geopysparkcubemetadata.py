@@ -1,5 +1,9 @@
 import logging
+import math
 from typing import List, Union, Optional, Tuple
+
+import dateutil.parser
+import pytz
 
 from openeo.metadata import (
     CollectionMetadata,
@@ -11,7 +15,7 @@ from openeo.metadata import (
     SpatialDimension,
 )
 from openeo_driver.util.geometry import BoundingBox
-from openeogeotrellis.utils import reproject_cellsize
+from openeogeotrellis.utils import reproject_cellsize, parse_approximate_isoduration, normalize_temporal_extent
 
 _log = logging.getLogger(__name__)
 
@@ -274,3 +278,74 @@ class GeopysparkCubeMetadata(CollectionMetadata):
                     resolution_meters = reproject_cellsize(spatial_extent, dimensions_step, crs, "Auto42001")
                     return resolution_meters
         return None
+
+    @staticmethod
+    def type_to_bit_depth(data_type: str) -> Optional[int]:
+        if not data_type:
+            return None
+        data_type = data_type.lower()
+        if data_type == "float":
+            return 32
+        if data_type.startswith("uint"):
+            return int(data_type[4:])
+        elif data_type.startswith("int"):
+            return int(data_type[3:]) + 1
+        elif data_type.startswith("float"):
+            return int(data_type[5:])
+        else:
+            return None
+
+    def get_bit_depth(self) -> Optional[int]:
+        # TODO #1109 upgrade this implementation to "common" bands metadata
+        #      instead of (soon to be) outdated STAC extension patterns like "eo:bands" and "raster:bands"
+        bands_metadata = self.get("summaries", "eo:bands", default=self.get("summaries", "raster:bands", default=[]))
+
+        sample_type = self.get("_vito", "data_source", "sample_type", default=None)
+        layer_bit_depth = self.type_to_bit_depth(sample_type)
+        if layer_bit_depth:
+            return layer_bit_depth
+        bit_depth = set()
+        for band_metadata in bands_metadata:
+            if "data_type" in band_metadata:
+                data_type = band_metadata["data_type"]
+                bit_depth.add(self.type_to_bit_depth(data_type))
+        if bit_depth:
+            return max(bit_depth)  # TODO: Is this an ok assumption?
+        else:
+            return None
+
+    def estimate_number_of_temporal_observations(self):
+        consider_as_singular_time_step = self.get(
+            "_vito", "data_source", "consider_as_singular_time_step", default=False
+        )
+        if consider_as_singular_time_step:
+            return 1
+
+        # step could be explicitly 'None', so we use 'or' to specify the default
+        temporal_step = self.get("cube:dimensions", "t", "step", default=None) or "P10D"
+
+        # https://github.com/stac-extensions/datacube?tab=readme-ov-file#temporal-dimension-object
+        temporal_step = parse_approximate_isoduration(temporal_step)
+        temporal_step = temporal_step.total_seconds()
+
+        from_date, to_date = normalize_temporal_extent((self.temporal_extent[0], self.temporal_extent[1]))
+        to_date_parsed = dateutil.parser.parse(to_date).replace(tzinfo=pytz.UTC)
+        from_date_parsed = dateutil.parser.parse(from_date).replace(tzinfo=pytz.UTC)
+        number_of_temporal_observations = (to_date_parsed - from_date_parsed).total_seconds() / temporal_step
+        number_of_temporal_observations = max(math.floor(number_of_temporal_observations), 1)
+        return number_of_temporal_observations
+
+    def estimate_pixel_volume(self, target_resolution) -> int:
+        # TODO: Dedup with layercatalog.py
+        number_of_temporal_observations = self.estimate_number_of_temporal_observations()
+        spatial_extent = self.spatial_extent  # TODO: Is this always same CRS as target_resolution?
+        bbox_width = abs(spatial_extent["east"] - spatial_extent["west"])
+        bbox_height = abs(spatial_extent["north"] - spatial_extent["south"])
+
+        nr_bands = len(self.bands)
+
+        cell_width, cell_height = target_resolution
+        estimated_pixels = (
+            (bbox_width * bbox_height) / (cell_width * cell_height) * number_of_temporal_observations * nr_bands
+        )
+        return estimated_pixels
