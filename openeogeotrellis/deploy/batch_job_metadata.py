@@ -34,11 +34,12 @@ logger = logging.getLogger(__name__)
 def _assemble_result_metadata(
     tracer: DryRunDataTracer,
     result: SaveResult,
-    output_file: Path,
+    job_dir: Path,
     unique_process_ids: Set[str],
     apply_gdal,
     asset_metadata: Dict = None,  # TODO: include "items" instead of "assets"
     ml_model_metadata: Dict = None,
+    is_item = False,
 ) -> dict:
     metadata = extract_result_metadata(tracer)
 
@@ -48,48 +49,49 @@ def _assemble_result_metadata(
 
     bands = []
     if isinstance(result, GeopysparkDataCube):
-        if result.cube.metadata.has_band_dimension():
-            bands = result.metadata.bands
         max_level = result.pyramid.levels[result.pyramid.max_zoom]
-        nodata = max_level.layer_metadata.no_data_value
         epsg = epsg_code(max_level.srdd.rdd().metadata().crs())
         instruments = result.metadata.get("summaries", "instruments", default=[])
     elif isinstance(result, ImageCollectionResult) and isinstance(result.cube, GeopysparkDataCube):
-        if result.cube.metadata.has_band_dimension():
-            bands = result.cube.metadata.bands
         max_level = result.cube.pyramid.levels[result.cube.pyramid.max_zoom]
-        nodata = max_level.layer_metadata.no_data_value
         epsg = epsg_code(max_level.srdd.rdd().metadata().crs())
         instruments = result.cube.metadata.get("summaries", "instruments", default=[])
     else:
-        bands = []
-        nodata = None
         epsg = None
         instruments = []
 
     if not isinstance(result, NullResult):
-        if asset_metadata is None:  # TODO: eliminate dead code path
-            # Old approach: need to construct metadata ourselves, from inspecting SaveResult
-            metadata["assets"] = {
-                output_file.name: {
-                    "bands": bands,
-                    "nodata": nodata,
-                    "type": result.get_mimetype(),
-                }
-            }
-        else:
-            # New approach: SaveResult has generated metadata already for us
-            if apply_gdal:
+        if apply_gdal:
+            if is_item:
+                items_metadata = dict()
+                for (item_key, item) in asset_metadata.items():
+                    temp_asset_metadata = metadata.copy()
+                    try:
+                        _extract_asset_metadata(
+                            job_result_metadata=temp_asset_metadata,
+                            asset_metadata=item["assets"],
+                            job_dir=job_dir,
+                            epsg=epsg,
+                        )
+                        items_metadata[item_key] = temp_asset_metadata
+                    except Exception as e:
+                        error_summary = GeoPySparkBackendImplementation.summarize_exception_static(e)
+                        logger.exception("Error while creating asset metadata: " + error_summary.summary)
+                metadata["items"]= items_metadata
+            else:
                 try:
                     _extract_asset_metadata(
                         job_result_metadata=metadata,
                         asset_metadata=asset_metadata,
-                        job_dir=output_file.parent,
+                        job_dir=job_dir,
                         epsg=epsg,
                     )
                 except Exception as e:
                     error_summary = GeoPySparkBackendImplementation.summarize_exception_static(e)
                     logger.exception("Error while creating asset metadata: " + error_summary.summary)
+        else:
+            if is_item:
+                metadata["items"] = asset_metadata
             else:
                 metadata["assets"] = asset_metadata
 

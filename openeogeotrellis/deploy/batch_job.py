@@ -288,7 +288,7 @@ def run_job(
     job_options = job_specification.get("job_options", {})
     parsed_job_options: JobOptions = JobOptions.from_dict(job_options)
 
-    is_stac11 = job_options.get("stac-version", "1.0") == "1.1"
+    is_stac11 = job_options.get("stac-version-experimental", "1.0") == "1.1"
 
     try:
         # We actually expect type Path, but in reality paths as strings tend to
@@ -376,11 +376,12 @@ def run_job(
         result_metadata = _assemble_result_metadata(
             tracer=tracer,
             result=results[0],
-            output_file=output_file,
+            job_dir=job_dir,
             unique_process_ids=unique_process_ids,
             apply_gdal=False,
             asset_metadata={},
             ml_model_metadata=ml_model_metadata,
+            is_item=is_stac11,
         )
         # perform a first metadata write _before_ actually computing the result. This provides a bit more info, even if the job fails.
         write_metadata(
@@ -389,6 +390,7 @@ def run_job(
                 **_get_tracker_metadata("", omit_derived_from_links=parsed_job_options.omit_derived_from_links),
             },
             metadata_file,
+            is_stac11,
         )
 
         for result in results:
@@ -550,19 +552,25 @@ def run_job(
                 }
             ]
 
+        assets_for_result_metadata = {
+            item_key: item
+            for result_item_metadata in list(results_items)
+            for item_key, item in result_item_metadata.items()
+        } if is_stac11 else {
+            # TODO: flattened instead of per-result, clean this up?
+            asset_key: asset_metadata
+            for result_assets_metadata in assets_metadata
+            for asset_key, asset_metadata in result_assets_metadata.items()
+        }
         result_metadata = _assemble_result_metadata(
             tracer=tracer,
             result=result,
-            output_file=output_file,
+            job_dir=job_dir,
             unique_process_ids=unique_process_ids,
             apply_gdal=False,
-            asset_metadata={
-                # TODO: flattened instead of per-result, clean this up?
-                asset_key: asset_metadata
-                for result_assets_metadata in assets_metadata
-                for asset_key, asset_metadata in result_assets_metadata.items()
-            },
+            asset_metadata=assets_for_result_metadata,
             ml_model_metadata=ml_model_metadata,
+            is_item=is_stac11,
         )
 
         tracker_metadata = _get_tracker_metadata("", omit_derived_from_links=parsed_job_options.omit_derived_from_links)
@@ -576,36 +584,53 @@ def run_job(
             if is_stac11
             else {**result_metadata, **tracker_metadata}
         )
-        write_metadata(meta, metadata_file)
+        write_metadata(meta, metadata_file, is_stac11)
         logger.debug("Starting GDAL-based retrieval of asset metadata")
+
+        assets_for_result_metadata = {
+            item_key: item
+            for result_item_metadata in list(results_items)
+            for item_key, item in result_item_metadata.items()
+        } if is_stac11 else {
+            # TODO: flattened instead of per-result, clean this up?
+            asset_key: asset_metadata
+            for result_assets_metadata in assets_metadata
+            for asset_key, asset_metadata in result_assets_metadata.items()
+        }
         result_metadata = _assemble_result_metadata(
             tracer=tracer,
             result=result,
-            output_file=output_file,
+            job_dir=job_dir,
             unique_process_ids=unique_process_ids,
             apply_gdal=job_options.get("detailed_asset_metadata", True),
-            asset_metadata={
-                # TODO: flattened instead of per-result, clean this up?
-                asset_key: asset_metadata
-                for result_assets_metadata in assets_metadata
-                for asset_key, asset_metadata in result_assets_metadata.items()
-            },
+            asset_metadata=assets_for_result_metadata,
             ml_model_metadata=ml_model_metadata,
+            is_item=is_stac11,
         )
 
         assert len(results) == len(assets_metadata)
         assert len(results) == len(results_items)
         for result, result_assets_metadata, result_items_metadata in zip(results, assets_metadata, results_items):
-            _export_to_workspaces(
-                result,
-                result_metadata,
-                result_assets_metadata=result_assets_metadata,
-                result_items_metadata=result_items_metadata if is_stac11 else None,
-                job_dir=job_dir,
-                remove_exported_assets=job_options.get("remove-exported-assets", False),
-                enable_merge=job_options.get("export-workspace-enable-merge", False),
-                omit_derived_from_links=parsed_job_options.omit_derived_from_links,
-            )
+            if is_stac11:
+                _export_to_workspaces_item(
+                    result,
+                    result_metadata,
+                    result_items_metadata=result_items_metadata,
+                    job_dir=job_dir,
+                    remove_exported_assets=job_options.get("remove-exported-assets", False),
+                    enable_merge=job_options.get("export-workspace-enable-merge", False),
+                    omit_derived_from_links=parsed_job_options.omit_derived_from_links,
+                )
+            else:
+                _export_to_workspaces(
+                    result,
+                    result_metadata,
+                    result_assets_metadata=result_assets_metadata,
+                    job_dir=job_dir,
+                    remove_exported_assets=job_options.get("remove-exported-assets", False),
+                    enable_merge=job_options.get("export-workspace-enable-merge", False),
+                    omit_derived_from_links=parsed_job_options.omit_derived_from_links,
+                )
     finally:
         if len(tracker_metadata) == 0:
             tracker_metadata = _get_tracker_metadata(
@@ -616,13 +641,18 @@ def run_job(
             if is_stac11
             else {**result_metadata, **tracker_metadata}
         )
-        write_metadata(meta, metadata_file)
+        write_metadata(meta, metadata_file, is_stac11)
 
 
-def write_metadata(metadata: dict, metadata_file: Path):
+def write_metadata(metadata: dict, metadata_file: Path, is_stac11:bool):
     def log_asset_hrefs(context: str):
-        asset_hrefs = {asset_key: asset.get("href") for asset_key, asset in metadata.get("assets", {}).items()}
-        logger.info(f"{context} asset hrefs: {asset_hrefs!r}")
+        if is_stac11:
+            items = {item["id"]: item for item in metadata.get("items", [])}
+            asset_hrefs =  {item_key + ", " + asset_key: asset.get("href") for item_key, item in items.items() for asset_key, asset in item.get("assets").items() }
+            logger.info(f"{context} asset hrefs: {asset_hrefs!r}")
+        else:
+            asset_hrefs = {asset_key: asset.get("href") for asset_key, asset in metadata.get("assets", {}).items()}
+            logger.info(f"{context} asset hrefs: {asset_hrefs!r}")
 
     log_asset_hrefs("input")
     out_metadata = metadata
@@ -645,11 +675,10 @@ def write_metadata(metadata: dict, metadata_file: Path):
         s3_instance.upload_file(str(metadata_file), bucket, str(metadata_file).strip("/"))
 
 
-def _export_to_workspaces(
+def _export_to_workspaces_item(
     result: SaveResult,
     result_metadata: dict,
     *,
-    result_assets_metadata: dict,
     result_items_metadata: dict,
     job_dir: Path,
     remove_exported_assets: bool,
@@ -665,28 +694,111 @@ def _export_to_workspaces(
     if not workspace_exports:
         return
 
-    if result_items_metadata is not None:
-        # TODO #402 add a function that serializes result_items_metadata and creates the collection, like for asses in the 'else' branch
-        # placeholder code below is a copy of the 'assets' case, should be replaced with call to new function
-        stac_hrefs = [
-            f"file:{path}"
-            for path in _write_exported_stac_collection(
-                job_dir,
-                result_metadata,
-                asset_keys=list(result_assets_metadata.keys()),
-                omit_derived_from_links=omit_derived_from_links,
+    stac_hrefs = [
+        f"file:{path}"
+        for path in _write_exported_stac_collection_from_item(
+            job_dir,
+            result_metadata,
+            item_metadata=result_items_metadata,
+            omit_derived_from_links=omit_derived_from_links,
+        )
+    ]
+
+    # TODO: assemble pystac.STACObject and avoid file altogether?
+    collection_href = [href for href in stac_hrefs if "collection.json" in href][0]
+    collection = pystac.Collection.from_file(urlparse(collection_href).path)
+
+    workspace_uris = {}
+
+    for i, workspace_export in enumerate(workspace_exports):
+        workspace: Workspace = workspace_repository.get_by_id(workspace_export.workspace_id)
+        merge = workspace_export.merge
+
+        if merge is None:
+            merge = get_job_id(default="unknown-job")
+        elif merge == "":  # TODO: puts it in root of workspace? move it there?
+            merge = "."
+
+        final_export = i >= len(workspace_exports) - 1
+        remove_original = remove_exported_assets and final_export
+
+        if enable_merge:
+            imported_collection = workspace.merge(collection, target=Path(merge), remove_original=remove_original)
+            assert isinstance(imported_collection, pystac.Collection)
+
+            for item in imported_collection.get_items(recursive=True):
+                item_key = item.id
+                for asset_key, asset in item.get_assets().items():
+                    (workspace_uri,) = asset.extra_fields["alternate"].values()
+                    workspace_uris.setdefault((item_key,asset_key), []).append(
+                        (workspace_export.workspace_id, workspace_export.merge, workspace_uri)
+                    )
+        else:
+            export_to_workspace = partial(
+                _export_to_workspace,
+                common_path=job_dir,
+                target=workspace,
+                merge=merge,
+                remove_original=remove_original,
             )
-        ]
-    else:
-        stac_hrefs = [
-            f"file:{path}"
-            for path in _write_exported_stac_collection(
-                job_dir,
-                result_metadata,
-                asset_keys=list(result_assets_metadata.keys()),
-                omit_derived_from_links=omit_derived_from_links,
-            )
-        ]
+
+            for stac_href in stac_hrefs:
+                export_to_workspace(source_uri=stac_href)
+
+            for item_key, item in result_items_metadata.items():
+                for asset_key, asset in item["assets"].items():
+                    workspace_uri = export_to_workspace(source_uri=asset["href"])
+                    workspace_uris.setdefault((item_key,asset_key), []).append(
+                        (workspace_export.workspace_id, workspace_export.merge, workspace_uri)
+                    )
+
+    for (item_key,asset_key), workspace_uris in workspace_uris.items():
+        if remove_exported_assets:
+            # the last workspace URI becomes the public_href; the rest become "alternate" hrefs
+            result_metadata["items"][item_key]["assets"][asset_key][BatchJobs.ASSET_PUBLIC_HREF] = workspace_uris[-1][2]
+            alternate = {
+                f"{workspace_id}/{merge}": {"href": workspace_uri}
+                for workspace_id, merge, workspace_uri in workspace_uris[:-1]
+            }
+        else:
+            # the original href still applies; all workspace URIs become "alternate" hrefs
+            alternate = {
+                f"{workspace_id}/{merge}": {"href": workspace_uri}
+                for workspace_id, merge, workspace_uri in workspace_uris
+            }
+
+        if alternate:
+            result_metadata["items"][item_key]["assets"][asset_key]["alternate"] = alternate
+
+
+def _export_to_workspaces(
+    result: SaveResult,
+    result_metadata: dict,
+    *,
+    result_assets_metadata: dict,
+    job_dir: Path,
+    remove_exported_assets: bool,
+    enable_merge: bool,
+    omit_derived_from_links: bool = False,
+):
+    workspace_repository: WorkspaceRepository = backend_config_workspace_repository
+    workspace_exports = sorted(
+        list(result.workspace_exports),
+        key=lambda export: export.workspace_id + (export.merge or ""),  # arbitrary but deterministic order of hrefs
+    )
+
+    if not workspace_exports:
+        return
+
+    stac_hrefs = [
+        f"file:{path}"
+        for path in _write_exported_stac_collection(
+            job_dir,
+            result_metadata,
+            asset_keys=list(result_assets_metadata.keys()),
+            omit_derived_from_links=omit_derived_from_links,
+        )
+    ]
 
     # TODO: assemble pystac.STACObject and avoid file altogether?
     collection_href = [href for href in stac_hrefs if "collection.json" in href][0]
@@ -795,7 +907,7 @@ def _write_exported_stac_collection(
             "assets": {
                 asset_id: dict_no_none(
                     **{
-                        "href": f"{Path(asset['href']).name}",
+                        "href": f"{Path(asset['href']).name}",  # relative to possibly nested item file
                         "roles": asset.get("roles"),
                         "type": asset.get("type"),
                         "eo:bands": asset.get("bands"),
@@ -846,6 +958,96 @@ def _write_exported_stac_collection(
     }
 
     collection_file = job_dir / "collection.json"
+    with open(collection_file, "wt") as fc:
+        json.dump(stac_collection, fc)
+
+    return item_files + [collection_file]
+
+
+def _write_exported_stac_collection_from_item(
+    job_dir: Path,
+    result_metadata: dict,
+    *,
+    item_metadata: dict,
+    omit_derived_from_links: bool = False,
+) -> List[Path]:  # TODO: change to Set?
+    def write_stac_item_file(item: dict) -> Path:
+        assets = dict()
+        for (asset_key,asset) in item.get("assets").items():
+            asset_bands = None
+            if "bands" in asset:
+                bands = asset["bands"]
+                raster_bands = to_jsonable(asset.get("raster:bands",[]))
+                asset_bands = list()
+                for band in bands:
+                    name = band["name"]
+                    asset_band = dict_no_none(band)
+                    for raster_band in raster_bands:
+                        if raster_band["name"] == name:
+                            asset_band.update(raster_band)
+                    asset_bands.append(asset_band)
+            assets[asset_key] = dict_no_none({
+                "href": f"{Path(urlparse(asset['href']).path).relative_to(job_dir)}",  # relative to top-level item file
+                "type": asset.get("type"),
+                "roles": asset.get("roles"),
+                "bands": asset_bands,
+                # "nodata": asset.get("nodata"),
+                "datetime": asset.get("datetime"),
+                "bbox": asset.get("bbox"),
+                "geometry": asset.get("geometry"),
+            })
+        stac_item = {
+            "type": "Feature",
+            "stac_version": "1.1.0",
+            "id": item["id"],
+            "geometry": item.get("geometry"),
+            "bbox":item.get("bbox"),
+            "properties":item.get("properties",{"datetime": result_metadata.get("start_datetime")}),
+            "links":[],
+            "assets":assets
+        }
+        item_file = get_abs_path_of_asset(Path(f"{item['id']}.json"), job_dir)
+        item_file.parent.mkdir(parents=True, exist_ok=True)
+        with open(item_file, "wt") as fi:
+            json.dump(stac_item, fi, allow_nan=False)
+
+        return item_file
+
+    item_files = [
+        write_stac_item_file(item) for item in item_metadata.values()
+    ]
+
+    def item_link(item_file: Path) -> dict:
+        relative_path = item_file.relative_to(job_dir)
+        return {
+            "href": f"./{relative_path}",
+            "rel": "item",
+            "type": "application/geo+json",
+        }
+
+    job_id = get_job_id(default="unknown-job")
+
+    stac_collection = {
+        "type": "Collection",
+        "stac_version": "1.1.0",
+        "id": job_id,
+        "description": f"This is the STAC metadata for the openEO job {job_id!r}",  # TODO
+        "license": "unknown",  # TODO
+        "extent": {
+            "spatial": {"bbox": [result_metadata.get("bbox", [-180, -90, 180, 90])]},
+            "temporal": {"interval": [[result_metadata.get("start_datetime"), result_metadata.get("end_datetime")]]},
+        },
+        "links": (
+            [item_link(item_file) for item_file in item_files]
+            + [
+                link
+                for link in _get_tracker_metadata("", omit_derived_from_links=omit_derived_from_links).get("links", [])
+                if link["rel"] == "derived_from"
+            ]
+        ),
+    }
+
+    collection_file = job_dir / "collection.json"  # TODO: file is reused for each result
     with open(collection_file, "wt") as fc:
         json.dump(stac_collection, fc)
 
