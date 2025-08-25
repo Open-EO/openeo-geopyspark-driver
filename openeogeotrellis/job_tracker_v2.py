@@ -302,10 +302,11 @@ class K8sStatusGetter(JobMetadataGetterInterface):
                 msg = metadata["status"]["applicationState"]["errorMessage"]
                 if "driver" in msg and "OOMKilled" in msg:
                     _log.error(
-                        "Your batch job main application went out of memory, consider increasing driver-memoryOverhead."
+                        "Your batch job main application went out of memory, consider increasing driver-memoryOverhead.",
+                        extra={"job_id": job_id, "user_id": user_id}
                     )
                 else:
-                    _log.warning(f"Final application error message: {msg}")
+                    _log.warning(f"Final application error message: {msg}", extra={"job_id": job_id, "user_id": user_id})
 
             datetime_formatter = Rfc3339(propagate_none=True)
             start_time = datetime_formatter.parse_datetime(metadata["status"]["lastSubmissionAttemptTime"])
