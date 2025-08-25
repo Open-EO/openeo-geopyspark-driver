@@ -2711,7 +2711,11 @@ class GpsBatchJobs(backend.BatchJobs):
                 return {}
 
         def try_get_results_metadata_from_disk(path: Union[Path, str]) -> dict:
-            @reretry.retry(exceptions=FileNotFoundError, tries=5, delay=1, backoff=2, logger=logger)
+            @reretry.retry(
+                exceptions=FileNotFoundError,
+                logger=logger,
+                **get_backend_config().read_results_metadata_file_retry_settings,
+            )
             def read_results_metadata_file():
                 with open(path) as f:
                     return json.load(f)
