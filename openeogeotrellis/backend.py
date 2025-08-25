@@ -32,6 +32,7 @@ import openeo.udf
 import pkg_resources
 import pystac
 import requests
+import reretry
 import shapely.geometry.base
 from deprecated import deprecated
 from geopyspark import LayerType, Pyramid, TiledRasterLayer
@@ -96,6 +97,7 @@ from openeogeotrellis.integrations.kubernetes import (
     k8s_get_batch_job_cfg_secret_name,
     truncate_user_id_k8s,
 )
+from openeogeotrellis.integrations.s3proxy.asset_urls import PresignedS3AssetUrls
 from openeogeotrellis.integrations.stac import ResilientStacIO
 from openeogeotrellis.integrations.traefik import Traefik
 from openeogeotrellis.integrations.yarn_jobrunner import YARNBatchJobRunner
@@ -2082,6 +2084,12 @@ class GpsBatchJobs(backend.BatchJobs):
                     )
                     log.info(f"mapped job_id {job_id} to application ID {spark_app_id}")
                     dbl_registry.set_application_id(job_id=job_id, user_id=user_id, application_id=spark_app_id)
+                    dbl_registry.set_results_metadata_uri(
+                        job_id=job_id,
+                        user_id=user_id,
+                        results_metadata_uri=f"s3://{bucket}/{str(job_work_dir).strip('/')}/{JOB_METADATA_FILENAME}",
+                    )
+
                     status_response = {}
                     retry = 0
                     while "status" not in status_response and retry < 10:
@@ -2112,9 +2120,24 @@ class GpsBatchJobs(backend.BatchJobs):
             runner = YARNBatchJobRunner(principal=self._principal, key_tab=self._key_tab)
             runner.set_default_sentinel_hub_credentials(self._default_sentinel_hub_client_id,self._default_sentinel_hub_client_secret)
             vault_token = None if sentinel_hub_client_alias == 'default' else get_vault_token(sentinel_hub_client_alias)
-            application_id = runner.run_job(job_info, job_id, job_work_dir = self.get_job_work_dir(job_id=job_id), log=log, user_id=user_id, api_version=api_version,proxy_user=proxy_user or job_info.get('proxy_user',None), vault_token=vault_token)
+            job_work_dir = self.get_job_work_dir(job_id=job_id)
+            application_id = runner.run_job(
+                job_info,
+                job_id,
+                job_work_dir=job_work_dir,
+                log=log,
+                user_id=user_id,
+                api_version=api_version,
+                proxy_user=proxy_user or job_info.get("proxy_user", None),
+                vault_token=vault_token,
+            )
             with self._double_job_registry as dbl_registry:
                 dbl_registry.set_application_id(job_id=job_id, user_id=user_id, application_id=application_id)
+                dbl_registry.set_results_metadata_uri(
+                    job_id=job_id,
+                    user_id=user_id,
+                    results_metadata_uri=f"file://{job_work_dir}/{JOB_METADATA_FILENAME}",
+                )
                 dbl_registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.QUEUED)
 
 
@@ -2564,31 +2587,14 @@ class GpsBatchJobs(backend.BatchJobs):
 
         :return: A mapping between a filename and a dict containing information about that file.
         """
-        job_info = self.get_job_info(job_id=job_id, user_id=user_id)
-        if job_info.status != JOB_STATUS.FINISHED:
+        with self._double_job_registry as registry:
+            job_dict = registry.get_job(job_id=job_id, user_id=user_id)
+
+        if job_dict["status"] != JOB_STATUS.FINISHED:
             raise JobNotFinishedException
 
-        job_dir = self.get_job_output_dir(job_id=job_id)
+        results_metadata = self.load_results_metadata(job_id, user_id, job_dict)
 
-        results_metadata = None
-
-        if logger.isEnabledFor(logging.DEBUG) and not ConfigParams().use_object_storage:
-            # debug/assert what looks like some kind of NFS latency on Terrascope
-            debuggable_results_metadata = self.load_results_metadata(job_id=job_id, user_id=user_id)
-            if debuggable_results_metadata:  # otherwise, will have logged a warning elsewhere
-                logger.debug(f"successfully loaded results metadata {debuggable_results_metadata}", extra={"job_id": job_id})
-
-        try:
-            with self._double_job_registry as registry:
-                job_dict = registry.elastic_job_registry.get_job(job_id, user_id=user_id)
-                if "results_metadata" in job_dict:
-                    results_metadata = job_dict["results_metadata"]
-        except Exception as e:
-            logger.warning(
-                "Could not retrieve result metadata from job tracker %s", e, exc_info=True, extra={"job_id": job_id}
-            )
-        if results_metadata is None or len(results_metadata) == 0:
-            results_metadata = self.load_results_metadata(job_id, user_id)
         out_assets = results_metadata.get("assets", {})
         out_metadata = out_assets.get("out", {})
         bands = [Band(*properties) for properties in out_metadata.get("bands", [])]
@@ -2610,6 +2616,8 @@ class GpsBatchJobs(backend.BatchJobs):
         # container that ran the job can already be gone.
         # We only want to apply the cases below when we effectively have a job directory:
         # it should exists and should be a directory.
+        job_dir = self.get_job_output_dir(job_id=job_id)
+
         if job_dir.is_dir():
             if os.path.isfile(job_dir / 'out'):
                 results_dict['out'] = {
@@ -2662,32 +2670,89 @@ class GpsBatchJobs(backend.BatchJobs):
     def get_results_metadata_path(self, job_id: str) -> Path:
         return self.get_job_output_dir(job_id) / JOB_METADATA_FILENAME
 
-    def load_results_metadata(self, job_id: str, user_id: str) -> dict:
+    def load_results_metadata(self, job_id: str, user_id: str, job_dict: dict = None) -> dict:
+        if job_dict is None:
+            with self._double_job_registry as registry:
+                job_dict = registry.get_job(job_id=job_id, user_id=user_id)
+
+        results_metadata = None
+
+        if "results_metadata_uri" in job_dict:
+            results_metadata = self._load_results_metadata_from_file(job_id, job_dict["results_metadata_uri"])  # TODO: expose a getter?
+
+        if not results_metadata and "results_metadata" in job_dict:
+            logger.debug("Loading results metadata from job registry", extra={"job_id": job_id})
+            results_metadata = job_dict["results_metadata"]
+
+        if not results_metadata:
+            results_metadata = self._load_results_metadata_from_file(job_id, results_metadata_uri=None)
+
+        return results_metadata
+
+    def _load_results_metadata_from_file(self, job_id: str, results_metadata_uri: Optional[str]) -> dict:
         """
-        Reads the metadata json file from the job directory and returns it.
+        Reads the metadata json file either from the job directory or an explicit URI and returns it.
         """
 
-        metadata_file = self.get_results_metadata_path(job_id=job_id)
-
-        if ConfigParams().use_object_storage:
+        def try_get_results_metadata_from_object_storage(path: Union[Path, str], bucket: Optional[str]) -> dict:
             try:
-                contents = get_s3_file_contents(str(metadata_file))
+                contents = get_s3_file_contents(path, bucket)
                 return json.loads(contents)
             except Exception:
                 logger.warning(
-                    "Could not retrieve result metadata from object storage %s",
-                    metadata_file, exc_info=True,
-                    extra={'job_id': job_id})
+                    "Could not retrieve result metadata from object storage %s in bucket %s",
+                    path,
+                    bucket or "[default]",
+                    exc_info=True,
+                    stack_info=True,
+                    extra={"job_id": job_id},
+                )
 
-        try:
-            with open(metadata_file) as f:
-                return json.load(f)
-        except FileNotFoundError:
-            logger.warning("Could not derive result metadata from %s", metadata_file, exc_info=True,
-                           stack_info=True,
-                           extra={'job_id': job_id})
+                return {}
 
-        return {}
+        def try_get_results_metadata_from_disk(path: Union[Path, str]) -> dict:
+            @reretry.retry(
+                exceptions=FileNotFoundError,
+                logger=logger,
+                **get_backend_config().read_results_metadata_file_retry_settings,
+            )
+            def read_results_metadata_file():
+                with open(path) as f:
+                    return json.load(f)
+
+            try:
+                return read_results_metadata_file()
+            except FileNotFoundError:
+                logger.warning(
+                    "Could not derive result metadata from %s",
+                    path,
+                    exc_info=True,
+                    stack_info=True,
+                    extra={"job_id": job_id},
+                )
+
+            return {}
+
+        if results_metadata_uri:
+            logger.debug("Loading results metadata from %s", results_metadata_uri, extra={"job_id": job_id})
+            uri_parts = urlparse(results_metadata_uri)
+
+            if uri_parts.scheme == "file":
+                return try_get_results_metadata_from_disk(uri_parts.path)
+            elif uri_parts.scheme == "s3":
+                bucket, key = PresignedS3AssetUrls.get_bucket_key_from_uri(results_metadata_uri)
+                return try_get_results_metadata_from_object_storage(key, bucket)
+            else:
+                raise NotImplementedError(results_metadata_uri)
+
+        metadata_file = self.get_results_metadata_path(job_id=job_id)
+
+        logger.debug("Loading results metadata from %s", metadata_file, extra={"job_id": job_id})
+
+        if ConfigParams().use_object_storage:
+            return try_get_results_metadata_from_object_storage(metadata_file, bucket=None)
+
+        return try_get_results_metadata_from_disk(metadata_file)
 
     def _get_providers(self, job_id: str, user_id: str) -> List[dict]:
         results_metadata = self.load_results_metadata(job_id, user_id)
