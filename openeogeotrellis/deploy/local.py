@@ -2,7 +2,7 @@
 """
 Script to start a local server. This script can serve as the entry-point for doing spark-submit.
 """
-
+import datetime
 import logging
 import os
 import socket
@@ -34,7 +34,8 @@ def setup_local_spark(log_dir: Path = Path.cwd(), verbosity=0):
     # TODO: make this more reusable (e.g. also see `_setup_local_spark` in tests/conftest.py)
     from pyspark import SparkContext, find_spark_home
 
-    spark_python = os.path.join(find_spark_home._find_spark_home(), "python")
+    spark_home = find_spark_home._find_spark_home()
+    spark_python = os.path.join(spark_home, "python")
     logging.info(f"spark_python: {spark_python}")
     py4j = glob(os.path.join(spark_python, "lib", "py4j-*.zip"))[0]
     sys.path[:0] = [spark_python, py4j]
@@ -86,6 +87,21 @@ def setup_local_spark(log_dir: Path = Path.cwd(), verbosity=0):
     conf.set(key="spark.executor.memory", value="2G")
     OPENEO_LOCAL_DEBUGGING = smart_bool(os.environ.get("OPENEO_LOCAL_DEBUGGING", "false"))
     conf.set("spark.ui.enabled", OPENEO_LOCAL_DEBUGGING)
+    if OPENEO_LOCAL_DEBUGGING or True:
+        events_dir = "/tmp/spark-events"
+        if os.path.exists(events_dir):
+            conf.set("spark.eventLog.enabled", "true")
+            _log.info(
+                f"Start spark history server with {spark_home}/sbin/start-history-server.sh and open http://localhost:18080/"
+            )
+            files = glob(os.path.join(events_dir, "*"))
+            for f in files:
+                # remove event logs older than 7 days:
+                if os.path.getmtime(f) < datetime.datetime.now().timestamp() - 7 * 24 * 3600:
+                    try:
+                        os.remove(f)
+                    except Exception as e:
+                        _log.warning(f"Failed to remove old spark event log {f}: {e}")
 
     jars = []
     more_jars = [] if "GEOPYSPARK_JARS_PATH" not in os.environ else os.environ["GEOPYSPARK_JARS_PATH"].split(":")

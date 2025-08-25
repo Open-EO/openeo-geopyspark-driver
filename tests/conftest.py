@@ -6,6 +6,7 @@ import shutil
 import sys
 import typing
 from datetime import datetime
+from glob import glob
 from pathlib import Path
 from typing import Optional
 from unittest import mock
@@ -170,6 +171,23 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
     conf.set(key="spark.executor.memory", value="2G")
     OPENEO_LOCAL_DEBUGGING = smart_bool(os.environ.get("OPENEO_LOCAL_DEBUGGING", "false"))
     conf.set("spark.ui.enabled", OPENEO_LOCAL_DEBUGGING)
+    # Test if this causes issues on CI. Should be disabled in next commit.
+    if OPENEO_LOCAL_DEBUGGING or True:
+        events_dir = "/tmp/spark-events"
+        os.makedirs(events_dir, exist_ok=True)
+        if os.path.exists(events_dir):
+            conf.set("spark.eventLog.enabled", "true")
+            out.write_line(
+                f"Start spark history server with $SPARK_HOME/sbin/start-history-server.sh and open http://localhost:18080/"
+            )
+            files = glob(os.path.join(events_dir, "*"))
+            for f in files:
+                # remove event logs older than 7 days:
+                if os.path.getmtime(f) < datetime.now().timestamp() - 7 * 24 * 3600:
+                    try:
+                        os.remove(f)
+                    except Exception as e:
+                        out.write_line(f"Failed to remove old spark event log {f}: {e}")
 
     jars = []
     for jar_dir in additional_jar_dirs:
