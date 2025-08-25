@@ -13,7 +13,12 @@ without compromising stable operations.
 <!-- start-of-changelog -->
 
 
-## In progress: 0.67.0
+## In progress: 0.68.0
+
+- Experimental support for unified asset keys in job results STAC items by means of the "stac-version-experimental" job option ([#1111](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1111), [Open-EO/openeo-geotrellis-extensions#402](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/402))
+
+
+## 0.67.0
 
 - Configurable usage of `async_task` ([eu-cdse/openeo-cdse-infra#387](https://github.com/eu-cdse/openeo-cdse-infra/issues/387))
 - Add job option "omit-derived-from-links" to omit "derived_from" links in batch job results metadata ([ESA-WEED-project/eo_processing#175](https://github.com/ESA-WEED-project/eo_processing/issues/175))
