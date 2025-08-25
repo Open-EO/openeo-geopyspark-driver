@@ -599,8 +599,13 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             }
         }
 
-    def processing_parameters(self) -> list:
-        return JobOptions.list_options()
+    def processing_parameters(self) -> Dict[str, List[dict]]:
+        options = JobOptions.list_options()
+        return {
+            "create_job_parameters": options,
+            # TODO: probably not all these options are also valid in a synchronous processing context
+            "create_synchronous_parameters": options,
+        }
 
     def load_disk_data(
             self, format: str, glob_pattern: str, options: dict, load_params: LoadParameters, env: EvalEnv
@@ -1959,7 +1964,7 @@ class GpsBatchJobs(backend.BatchJobs):
             # allow to override the image name via job options, other option would be to deduce it from the udf runtimes being used
             running_image = api_instance_core.read_namespaced_pod(name=os.environ.get("POD_NAME"), namespace=os.environ.get("POD_NAMESPACE")).spec.containers[0].image
 
-            image_name = job_options.get("image-name", running_image)
+            image_name = options.image_name or running_image
             image_name = get_backend_config().batch_runtime_to_image.get(image_name.lower(), image_name)
 
             batch_job_cfg_secret_name = k8s_get_batch_job_cfg_secret_name(spark_app_id)
