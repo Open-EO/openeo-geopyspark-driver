@@ -134,7 +134,7 @@ def test_simple_math(tmp_path):
 def test_ep3899_netcdf_no_bands(tmp_path, stac_version, asset_name, bands_name):
 
     job_spec = {
-        "job_options": {"stac-version":stac_version},
+        "job_options": {"stac-version-experimental":stac_version},
         "title": "my job",
         "description": "*minimum band*",
         "process_graph":{
@@ -201,7 +201,7 @@ def test_ep3899_netcdf_no_bands(tmp_path, stac_version, asset_name, bands_name):
 ])
 def test_ep3874_sample_by_feature_filter_spatial_inline_geojson(prefix, tmp_path, stac_version, asset_name):
     job_spec = {
-        "job_options": {"stac-version": stac_version},
+        "job_options": {"stac-version-experimental": stac_version},
         "process_graph":{
         "lc": {
             "process_id": "load_collection",
@@ -295,7 +295,7 @@ def test_ep3874_sample_by_feature_filter_spatial_inline_geojson(prefix, tmp_path
 @pytest.mark.parametrize("stac_version", ["1.0","1.1",])
 def test_separate_asset_per_band(tmp_path, from_node, expected_filenames, stac_version):
     job_spec = {
-        "job_options": {"stac-version": stac_version},
+        "job_options": {"stac-version-experimental": stac_version},
         "process_graph": {
             "loadcollection_sentinel2": {
                 "process_id": "load_collection",
@@ -398,6 +398,7 @@ def test_separate_asset_per_band_throw(tmp_path):
             user_id="jenkins",
         )
 
+
 @pytest.mark.parametrize("stac_version", ["1.0", "1.1"])
 def test_sample_by_feature_filter_spatial_vector_cube_from_load_url(tmp_path, stac_version):
     """
@@ -406,7 +407,7 @@ def test_sample_by_feature_filter_spatial_vector_cube_from_load_url(tmp_path, st
     """
     with ephemeral_fileserver(TEST_DATA_ROOT) as fileserver_root:
         job_spec = {
-            "job_options": {"stac-version": stac_version},
+            "job_options": {"stac-version-experimental": stac_version},
             "process_graph": {
                 "lc": {
                     "process_id": "load_collection",
@@ -719,7 +720,7 @@ def test_spatial_geoparquet(tmp_path):
 
 def test_spatial_cube_to_netcdf_sample_by_feature(tmp_path):
     job_spec = {
-        "job_options": {"stac-version": "1.1"},
+        "job_options": {"stac-version-experimental": "1.1"},
         "process_graph": {
         "loadcollection1": {
             "process_id": "load_collection",
@@ -978,7 +979,7 @@ def test_export_workspace(tmp_path, remove_original, attach_gdalinfo_assets, sta
     process = {
         "process_graph": process_graph,
         "job_options": {
-            "stac-version": stac_version,
+            "stac-version-experimental": stac_version,
             "remove-exported-assets": remove_original,
         },
     }
@@ -1171,7 +1172,7 @@ def test_export_workspace_with_asset_per_band(tmp_path, stac_version, asset_name
     }
 
     process = {
-        "job_options": {"stac-version": stac_version},
+        "job_options": {"stac-version-experimental": stac_version},
         "process_graph": process_graph,
     }
 
@@ -1485,7 +1486,7 @@ def test_export_workspace_merge_into_existing(tmp_path, mock_s3_bucket, stac_ver
             "process_graph": process_graph,
             "job_options": {
                 "export-workspace-enable-merge": enable_merge,
-                "stac-version": stac_version
+                "stac-version-experimental": stac_version
             },
         }
 
@@ -1603,7 +1604,7 @@ def test_export_workspace_merge_filepath_per_band(tmp_path, mock_s3_bucket, stac
     process = {
         "process_graph": process_graph,
         "job_options": {
-            "stac-version": stac_version,
+            "stac-version-experimental": stac_version,
             "export-workspace-enable-merge": enable_merge,
             "concurrent-save-results": 4,  # TODO: Make this the default
         },
@@ -1628,7 +1629,7 @@ def test_export_workspace_merge_filepath_per_band(tmp_path, mock_s3_bucket, stac
             Path("lat.tif"),
         ])
 
-        # collection STAC document and assets have to remain in the same place, regardless of "stac-version" job_option
+        # collection STAC document and assets have to remain in the same place, regardless of "stac-version-experimental" job_option
         assert {
             Path("collection.json"),
             Path("collection.json_items") / "some/deeply/nested/folder" / "lon.tif",
@@ -1790,7 +1791,7 @@ def test_export_workspace_merge_into_stac_api(
     process = {
         "process_graph": process_graph,
         "job_options": {
-            "stac-version": stac_version,
+            "stac-version-experimental": stac_version,
             "export-workspace-enable-merge": enable_merge,
         },
     }
@@ -2066,7 +2067,7 @@ def test_results_geometry_from_load_collection_with_crs_not_wgs84(tmp_path):
 @pytest.mark.parametrize(["stac_version","asset_name"], [("1.0","out.tiff"),("1.1","openEO")])
 def test_load_ml_model_via_jobid(tmp_path, stac_version, asset_name):
     job_spec = {
-      "job_options": {"stac-version": stac_version},
+      "job_options": {"stac-version-experimental": stac_version},
       "process_graph": {
         "loadmlmodel1": {
           "process_id": "load_ml_model",
@@ -2186,7 +2187,7 @@ def test_load_stac_temporal_extent_in_result_metadata(tmp_path, requests_mock, s
 
     requests_mock.get(geoparquet_url, content=geoparquet_content)
 
-    process["job_options"] = {"stac-version":stac_version}
+    process["job_options"] = {"stac-version-experimental": stac_version}
 
     run_job(
         process,
@@ -2265,7 +2266,7 @@ def test_multiple_save_result_single_export_workspace(tmp_path, stac_version, as
     }
 
     process = {
-        "job_options": {"stac-version": stac_version},
+        "job_options": {"stac-version-experimental": stac_version},
         "process_graph": process_graph,
     }
 
@@ -2482,7 +2483,7 @@ def test_export_to_multiple_workspaces(tmp_path, remove_original, stac_version, 
         "process_graph": process_graph,
         "job_options": {
             "remove-exported-assets": remove_original,
-            "stac-version": stac_version
+            "stac-version-experimental": stac_version
         },
     }
 
@@ -2658,7 +2659,7 @@ def test_spatial_geotiff_metadata(tmp_path, stac_version, asset_name):
     }
 
     process = {
-        "job_options": {"stac-version": stac_version},
+        "job_options": {"stac-version-experimental": stac_version},
         "process_graph": process_graph,
     }
 
@@ -2849,7 +2850,7 @@ def test_unified_asset_keys_spatiotemporal_geotiff(
 
     process = {
         "process_graph": process_graph,
-        "job_options": {"stac-version": "1.1"},
+        "job_options": {"stac-version-experimental": "1.1"},
     }
 
     job_dir = tmp_path
@@ -2914,7 +2915,7 @@ def test_unified_asset_keys_tile_grid(tmp_path):
 
     process = {
         "process_graph": process_graph,
-        "job_options": {"stac-version": "1.1"},
+        "job_options": {"stac-version-experimental": "1.1"},
     }
 
     job_dir = tmp_path
@@ -2999,7 +3000,7 @@ def test_unified_asset_keys_tile_grid_spatial(tmp_path):
 
     process = {
         "process_graph": process_graph,
-        "job_options": {"stac-version": "1.1"},
+        "job_options": {"stac-version-experimental": "1.1"},
     }
 
     job_dir = tmp_path
@@ -3092,7 +3093,7 @@ def test_unified_asset_keys_sample_by_feature(tmp_path):
 
     process = {
         "process_graph": process_graph,
-        "job_options": {"stac-version": "1.1"},
+        "job_options": {"stac-version-experimental": "1.1"},
     }
 
     job_dir = tmp_path
@@ -3194,7 +3195,7 @@ def test_unified_asset_keys_spatial_geotiff(
 
     process = {
         "process_graph": process_graph,
-        "job_options": {"stac-version": "1.1"},
+        "job_options": {"stac-version-experimental": "1.1"},
     }
 
     job_dir = tmp_path
@@ -3262,7 +3263,7 @@ def test_unified_asset_keys_stitch_geotiff(tmp_path):
 
     process = {
         "process_graph": process_graph,
-        "job_options": {"stac-version": "1.1"},
+        "job_options": {"stac-version-experimental": "1.1"},
     }
 
     job_dir = tmp_path
@@ -3332,7 +3333,7 @@ def test_unified_asset_keys_stitch_tile_grid(tmp_path):
 
     process = {
         "process_graph": process_graph,
-        "job_options": {"stac-version": "1.1"},
+        "job_options": {"stac-version-experimental": "1.1"},
     }
 
     job_dir = tmp_path
@@ -3374,7 +3375,7 @@ def test_unified_asset_keys_stitch_tile_grid(tmp_path):
 def test_netcdf_sample_by_feature_asset_bbox_geometry(tmp_path):
     """
     An asset's bbox and geometry become those of the corresponding item in the openeo-python-driver
-    (this is pre-"stac-version":"1.1").
+    (this is pre-"stac-version-experimental": "1.1").
     """
 
     job_spec = {

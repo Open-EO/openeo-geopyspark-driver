@@ -288,7 +288,7 @@ def run_job(
     job_options = job_specification.get("job_options", {})
     parsed_job_options: JobOptions = JobOptions.from_dict(job_options)
 
-    is_stac11 = job_options.get("stac-version", "1.0") == "1.1"
+    is_stac11 = job_options.get("stac-version-experimental", "1.0") == "1.1"
 
     try:
         # We actually expect type Path, but in reality paths as strings tend to
