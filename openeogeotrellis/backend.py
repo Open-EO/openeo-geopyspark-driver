@@ -596,6 +596,12 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                     "gis_data_types": ["vector"],
                     "parameters": {},
                 },
+                "Zarr":{
+                    "title":"Zarr",
+                    "description": "chunked, compressed, N-dimensional arrays, designed for parallel computing (experimental)",
+                    "gis_data_types": ["raster"],
+                    "parameters":{},
+                },
             }
         }
 
