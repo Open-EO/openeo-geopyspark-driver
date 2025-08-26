@@ -154,9 +154,6 @@ class ZkJobRegistry:
     def remove_dependencies(self, job_id: str, user_id: str):
         self.patch(job_id, user_id, dependencies=None, dependency_status=None)
 
-    def set_results_metadata_uri(self, job_id: str, user_id: str, results_metadata_uri: str) -> None:
-        self.patch(job_id, user_id, results_metadata_uri=results_metadata_uri)
-
     def patch(
         self, job_id: str, user_id: str, auto_mark_done: bool = True, **kwargs
     ) -> None:
@@ -961,17 +958,6 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
             self.zk_job_registry.set_application_id(job_id=job_id, user_id=user_id, application_id=application_id)
         if self.elastic_job_registry:
             self.elastic_job_registry.set_application_id(job_id=job_id, user_id=user_id, application_id=application_id)
-
-    def set_results_metadata_uri(self, job_id: str, *, user_id: Optional[str] = None, results_metadata_uri: str):
-        if self.zk_job_registry:
-            assert user_id, "user_id is required in ZkJobRegistry"
-            self.zk_job_registry.set_results_metadata_uri(
-                job_id=job_id, user_id=user_id, results_metadata_uri=results_metadata_uri
-            )
-        if self.elastic_job_registry:
-            self.elastic_job_registry.set_results_metadata_uri(
-                job_id=job_id, user_id=user_id, results_metadata_uri=results_metadata_uri
-            )
 
     def mark_ongoing(self, job_id: str, user_id: str) -> None:
         # TODO #863/#1123 can this method be eliminated (e.g. integrate it directly in ZkJobRegistry.set_status)?

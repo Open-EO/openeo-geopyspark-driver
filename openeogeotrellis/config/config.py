@@ -308,5 +308,3 @@ class GpsBackendConfig(OpenEoBackendConfig):
     freeipa_default_credentials_info: Optional[dict] = None
 
     supports_async_tasks: bool = False
-
-    read_results_metadata_file_retry_settings: dict = attrs.Factory(lambda: dict(tries=1))  # fail immediately

@@ -1,11 +1,11 @@
 import collections
+import datetime
 import getpass
 import json
 import logging
 import pathlib
 from pathlib import Path
 
-import botocore.exceptions
 import pytest
 from openeo_driver.testing import TIFF_DUMMY_DATA
 
@@ -30,7 +30,6 @@ from openeogeotrellis.utils import (
     get_jvm,
     to_tuple,
     unzip,
-    get_s3_file_contents,
 )
 
 
@@ -247,25 +246,6 @@ def test_get_s3_binary_file_contents(mock_s3_bucket):
         buffer += bytearray(chunk)
 
     assert bytes(buffer) == TIFF_DUMMY_DATA
-
-
-@pytest.mark.parametrize(
-    ["args", "expectation"],
-    [
-        ([Path("/batch_jobs/j-abc123/text.txt")], nullcontext()),
-        ([Path("/batch_jobs/j-abc123/text.txt"), "openeo-fake-bucketname"], nullcontext()),
-        (
-            [Path("/batch_jobs/j-abc123/text.txt"), "unknown-bucket"],
-            pytest.raises(botocore.exceptions.ClientError, match="NoSuchBucket"),
-        ),
-    ],
-)
-def test_get_s3_file_contents(mock_s3_bucket, args, expectation):
-    text = "some text"
-    mock_s3_bucket.put_object(Key="batch_jobs/j-abc123/text.txt", Body=text.encode("utf-8"))
-
-    with expectation:
-        assert get_s3_file_contents(*args) == text
 
 
 @pytest.mark.parametrize(
