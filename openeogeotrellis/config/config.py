@@ -307,6 +307,6 @@ class GpsBackendConfig(OpenEoBackendConfig):
     freeipa_server: Optional[str] = os.environ.get("OPENEO_FREEIPA_SERVER", None)
     freeipa_default_credentials_info: Optional[dict] = None
 
-    supports_async_tasks: bool = not _is_kube_deploy
+    supports_async_tasks: bool = False
 
     read_results_metadata_file_retry_settings: dict = attrs.Factory(lambda: dict(tries=1))  # fail immediately
