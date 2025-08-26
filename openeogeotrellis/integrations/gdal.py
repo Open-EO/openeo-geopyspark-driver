@@ -532,6 +532,8 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
         if os.path.exists(asset_uri + GDALINFO_SUFFIX):
             with open(asset_uri + GDALINFO_SUFFIX) as f:
                 data_gdalinfo = json.load(f)
+                # We can safely assume that this json is valid and return early.
+                return data_gdalinfo
 
     if backend_config.gdalinfo_python_call:
         start = time.time()
