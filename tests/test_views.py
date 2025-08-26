@@ -738,7 +738,11 @@ class TestBatchJobs:
 
         assert batch_job_args[8] == expected_proxy_user
 
-    def test_providers_present(self, api, tmp_path, monkeypatch, batch_job_output_root, job_registry, time_machine):
+    @pytest.mark.parametrize("api", ["api100", "api110"])
+    def test_results_metadata(
+        self, api, tmp_path, monkeypatch, batch_job_output_root, job_registry, time_machine, request
+    ):
+        api = request.getfixturevalue(api)
         time_machine.move_to("2020-04-20T16:04:03Z")
 
         with self._mock_kazoo_client() as zk, mock.patch.dict(
@@ -822,6 +826,9 @@ class TestBatchJobs:
                 elastic_job_registry=job_registry,
             )
             with dbl_job_registry as jr:
+                jr.set_results_metadata(
+                    job_id, user_id=TEST_USER, costs=None, usage={}, results_metadata=job_metadata_contents
+                )
                 jr.set_status(job_id=job_id, user_id=TEST_USER, status=JOB_STATUS.FINISHED)
 
             res = api.get(f"/jobs/{job_id}", headers=TEST_USER_AUTH_HEADER).assert_status_code(200).json
@@ -831,7 +838,10 @@ class TestBatchJobs:
             res = api.get(f"/jobs/{job_id}/results", headers=TEST_USER_AUTH_HEADER).assert_status_code(200).json
 
             assert "providers" in res
-            assert res["providers"] == expected_providers
+            assert res["providers"] == expected_providers  # directly from job_metadata.json
+
+            if api.api_version_compare.at_least("1.1.0"):
+                assert res["extent"]["spatial"]["bbox"] == [[2, 51, 3, 52]]  # relies on job_tracker patching job entity
 
     @mock.patch(
         "openeogeotrellis.configparams.ConfigParams.use_object_storage",
