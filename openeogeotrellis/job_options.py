@@ -124,6 +124,15 @@ class JobOptions:
         default=False,
         metadata={
             "description": "Whether to omit 'derived_from' links in the batch job results to reduce the batch job result metadata size.",
+            "public": False
+        },
+    )
+
+    concurrent_save_results: int = field(
+        default=1,
+        metadata={
+            "description": "[Experimental] The number of save-result nodes to evaluate concurrently. Increasing this setting may improve resource utilization, but too high values usually increase costs.",
+            "public": True
         },
     )
 
