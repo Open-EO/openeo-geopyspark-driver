@@ -3543,7 +3543,7 @@ def test_export_workspace_derived_from(tmp_path, requests_mock, mock_s3_bucket, 
         nonlocal new_collection
         new_collection = request.json()  # save it for second "get existing collection"
 
-        assert new_collection["links"] == [
+        assert new_collection["links"] == [  # input products for the _entire_ job
             DictSubSet({
                 "rel": "derived_from",
                 "href": "http://s2.test/p1",
@@ -3560,7 +3560,7 @@ def test_export_workspace_derived_from(tmp_path, requests_mock, mock_s3_bucket, 
     def update_collection_callback(request, context) -> dict:
         updated_collection = request.json()
 
-        assert updated_collection["links"] == [
+        assert updated_collection["links"] == [  # the same because export_workspace avoids duplicates
             DictSubSet(
                 {
                     "rel": "derived_from",
@@ -3577,6 +3577,14 @@ def test_export_workspace_derived_from(tmp_path, requests_mock, mock_s3_bucket, 
 
         return updated_collection
 
+    def create_item_callback(request, context) -> dict:
+        new_item = request.json()
+
+        assert not new_item.get("links")  # current behavior: no links on item, only on Collection
+
+        context.status_code = 201
+        return new_item
+
     # create STAC objects
     create_collection = requests_mock.post(
         f"{stac_api_workspace.root_url}/collections", json=create_collection_callback
@@ -3584,7 +3592,9 @@ def test_export_workspace_derived_from(tmp_path, requests_mock, mock_s3_bucket, 
     update_collection = requests_mock.put(
         f"{stac_api_workspace.root_url}/collections/{collection_id}", json=update_collection_callback
     )
-    create_item = requests_mock.post(f"{stac_api_workspace.root_url}/collections/{collection_id}/items")
+    create_item = requests_mock.post(
+        f"{stac_api_workspace.root_url}/collections/{collection_id}/items", json=create_item_callback
+    )
 
     process = {
         "process_graph": process_graph,
@@ -3604,6 +3614,6 @@ def test_export_workspace_derived_from(tmp_path, requests_mock, mock_s3_bucket, 
         dependencies=[],
     )
 
-    assert create_collection.called_once
-    assert update_collection.called_once
-    assert create_item.call_count == 2
+    assert create_collection.call_count == 1, "expected creation of one new collection"
+    assert update_collection.call_count == 1, "expected one update of this collection"
+    assert create_item.call_count == 2, "expected one item for each output asset"
