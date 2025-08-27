@@ -1424,7 +1424,7 @@ class GeopysparkDataCube(DriverDataCube):
                 wrapped.openEOMetadata().setBandNames(bandNames)
 
                 get_jvm().org.openeo.geotrellis.geocoding.GeoCodingProcess().geoCode(
-                    cube, scala_target_extent, scala_crs
+                    wrapped, scala_target_extent, scala_crs
                 )
 
             return self._apply_to_levels_geotrellis_rdd(lambda rdd, level: geocode_level(rdd))
