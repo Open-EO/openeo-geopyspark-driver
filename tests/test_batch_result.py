@@ -3456,3 +3456,154 @@ def test_netcdf_sample_by_feature_asset_bbox_geometry(tmp_path):
         "type": "Polygon",
         "coordinates": [[[4.0, 4.0], [4.0, 5.0], [5.0, 5.0], [5.0, 4.0], [4.0, 4.0]]],
     }
+
+
+def test_export_workspace_derived_from(tmp_path, requests_mock, mock_s3_bucket, metadata_tracker):
+    stac_api_workspace_id = "stac_api_workspace"
+    stac_api_workspace = get_backend_config().workspaces[stac_api_workspace_id]
+    assert isinstance(stac_api_workspace, StacApiWorkspace)
+
+    enable_merge = True
+
+    merge = _random_merge(is_actual_collection_document=enable_merge)
+    collection_id = merge.name
+
+    process_graph = {
+        "loadcollection1": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "TestCollection-LonLat16x16",
+                "temporal_extent": ["2021-01-05", "2021-01-06"],
+                "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 2.0},
+                "bands": ["Longitude"],
+            },
+        },
+        "saveresult1": {
+            "process_id": "save_result",
+            "arguments": {
+                "data": {"from_node": "loadcollection1"},
+                "format": "GTiff",
+            },
+        },
+        "exportworkspace1": {
+            "process_id": "export_workspace",
+            "arguments": {
+                "data": {"from_node": "saveresult1"},
+                "workspace": stac_api_workspace_id,
+                "merge": str(merge),
+            },
+        },
+        "saveresult2": {
+            "process_id": "save_result",
+            "arguments": {
+                "data": {"from_node": "loadcollection1"},
+                "format": "netCDF",
+            },
+        },
+        "exportworkspace2": {
+            "process_id": "export_workspace",
+            "arguments": {
+                "data": {"from_node": "saveresult2"},
+                "workspace": stac_api_workspace_id,
+                "merge": str(merge),
+            },
+            "result": True,
+        },
+    }
+
+    # the root Catalog
+    requests_mock.get(stac_api_workspace.root_url, json={
+        "type": "Catalog",
+        "stac_version": "1.0.0",
+        "id": "stac.test",
+        "description": "stac.test",
+        "conformsTo": [
+            "https://api.stacspec.org/v1.0.0/collections",
+            "https://api.stacspec.org/v1.0.0/collections/extensions/transaction",
+            "https://api.stacspec.org/v1.0.0/ogcapi-features/extensions/transaction",
+        ],
+        "links": [],
+    })
+
+    new_collection = None
+
+    # does the Collection already exist?
+    requests_mock.get(
+        f"{stac_api_workspace.root_url}/collections/{collection_id}",
+        [
+            {"status_code": 404, "text": "Not Found"},  # first export_workspace provokes a POST
+            {
+                "status_code": 200,  # second export_workspace provokes a PUT
+                "json": lambda request, context: new_collection,
+            },
+        ],
+    )
+
+    def create_collection_callback(request, context) -> dict:
+        nonlocal new_collection
+        new_collection = request.json()  # save it for second "get existing collection"
+
+        assert new_collection["links"] == [
+            DictSubSet({
+                "rel": "derived_from",
+                "href": "http://s2.test/p1",
+            }),
+            DictSubSet({
+                "rel": "derived_from",
+                "href": "http://s2.test/p2",
+            }),
+        ]
+
+        context.status_code = 201
+        return new_collection
+
+    def update_collection_callback(request, context) -> dict:
+        updated_collection = request.json()
+
+        assert updated_collection["links"] == [
+            DictSubSet(
+                {
+                    "rel": "derived_from",
+                    "href": "http://s2.test/p1",
+                }
+            ),
+            DictSubSet(
+                {
+                    "rel": "derived_from",
+                    "href": "http://s2.test/p2",
+                }
+            ),
+        ]
+
+        return updated_collection
+
+    # create STAC objects
+    create_collection = requests_mock.post(
+        f"{stac_api_workspace.root_url}/collections", json=create_collection_callback
+    )
+    update_collection = requests_mock.put(
+        f"{stac_api_workspace.root_url}/collections/{collection_id}", json=update_collection_callback
+    )
+    create_item = requests_mock.post(f"{stac_api_workspace.root_url}/collections/{collection_id}/items")
+
+    process = {
+        "process_graph": process_graph,
+        "job_options": {
+            "export-workspace-enable-merge": enable_merge,
+        }
+    }
+
+    metadata_tracker.addInputProducts("S2", ["http://s2.test/p1", "http://s2.test/p2"])
+
+    run_job(
+        process,
+        output_file=tmp_path / "out.tif",
+        metadata_file=tmp_path / "job_metadata.json",
+        api_version="2.0.0",
+        job_dir=tmp_path,
+        dependencies=[],
+    )
+
+    assert create_collection.called_once
+    assert update_collection.called_once
+    assert create_item.call_count == 2

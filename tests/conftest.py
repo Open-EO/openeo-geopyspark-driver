@@ -703,3 +703,17 @@ def apply_datacube(cube: DataArray, context: dict) -> DataArray:
         },
     }
     return udf_process
+
+
+@pytest.fixture
+def metadata_tracker():
+    from openeogeotrellis.deploy.batch_job_metadata import _get_tracker
+
+    # TODO: this is quite messy, involving internal implementation details from another project
+    bootstrap_tracker = _get_tracker()
+    bootstrap_tracker.setGlobalTracking(True)
+    bootstrap_tracker.clearGlobalTracker()
+    # tracker reset, so get it again
+    tracker = _get_tracker()
+    yield tracker
+    tracker.setGlobalTracking(False)
