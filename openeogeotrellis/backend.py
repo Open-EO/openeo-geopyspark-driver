@@ -462,6 +462,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 "GTiff": {
                     "title": "GeoTiff",
                     "description": "Cloud Optimized Geotiff is one of the most widely supported formats and thus a popular choice for further dissemination. This implementation stores all bands in one file, and creates one file per timestamp in your datacube.",
+                    "type": "object",
                     "gis_data_types": ["raster"],
                     "parameters": {
                         "tile_grid": {
@@ -494,7 +495,18 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                         "colormap": {
                             "type": ["object", "null"],
                             "description": "Allows specifying a colormap, for single band geotiffs. The colormap is a dictionary mapping band values to colors, specified by an integer.",
-                            "default": None
+                            "default": None,
+                            "additionalProperties": {
+                                "anyOf": [
+                                    {"type": "integer"},
+                                    {
+                                        "type": "array",
+                                        "items": {"type": "number", "minimum": 0, "maximum": 1},
+                                        "minItems": 4,
+                                        "maxItems": 4,
+                                    },
+                                ]
+                            },
                         },
                         "filename_prefix": {
                             "type": "string",
