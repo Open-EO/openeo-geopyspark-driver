@@ -64,6 +64,7 @@ class _Usage(NamedTuple):
     mb_seconds: Optional[float] = None
     network_receive_bytes: Optional[float] = None
     max_executor_gigabytes: Optional[float] = None
+    memory_requested: Optional[float] = None
 
     def to_dict(self) -> dict:
         result = {}
@@ -72,6 +73,8 @@ class _Usage(NamedTuple):
             result["cpu"] = {"value": self.cpu_seconds, "unit": "cpu-seconds"}
         if self.mb_seconds:
             result["memory"] = {"value": self.mb_seconds, "unit": "mb-seconds"}
+        if self.memory_requested:
+            result["memory_requested"] = {"value": self.mb_seconds, "unit": "mb-seconds"}
         if self.network_receive_bytes:
             result["network_received"] = {"value": self.network_receive_bytes, "unit": "b"}
         if self.max_executor_gigabytes:
@@ -337,6 +340,7 @@ class K8sStatusGetter(JobMetadataGetterInterface):
             network_receive_bytes = self._prometheus_api.get_network_received_usage(application_id)
 
             max_executor_gigabyte = self._prometheus_api.get_max_executor_memory_usage(application_id)
+            memory_seconds_requested = self._prometheus_api.get_memory_requested(application_id)
 
 
             _log.info(f"Successfully retrieved usage stats from {self._prometheus_api.endpoint}: "
@@ -355,7 +359,8 @@ class K8sStatusGetter(JobMetadataGetterInterface):
 
             return _Usage(cpu_seconds=cpu_seconds,
                           mb_seconds=byte_seconds / (1024 * 1024) if byte_seconds is not None else None,
-                          network_receive_bytes=network_receive_bytes, max_executor_gigabytes=max_executor_gigabyte
+                          network_receive_bytes=network_receive_bytes, max_executor_gigabytes=max_executor_gigabyte,
+                          memory_requested=memory_seconds_requested
                           )
         except Exception as e:
             _log.exception(
