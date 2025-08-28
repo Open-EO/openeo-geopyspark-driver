@@ -1,5 +1,4 @@
 import datetime as dt
-import time
 from pathlib import PurePath, Path
 from typing import Dict
 
@@ -278,11 +277,10 @@ def test_merge_target_supports_path(requests_mock, tmp_path):
 
 
 def test_vito_stac_api_workspace_helper(tmp_path, requests_mock, mock_s3_bucket):
-    current_epoch_time_ns = time.time_ns()
-
     asset_path = tmp_path / "asset.tif"
     with open(asset_path, "wb") as f:
         f.write(b"data")
+    source_file_mtime_ns = asset_path.stat().st_mtime_ns
 
     collection = _collection(root_path=tmp_path / "collection", collection_id="collection", asset_path=asset_path)
 
@@ -349,7 +347,7 @@ def test_vito_stac_api_workspace_helper(tmp_path, requests_mock, mock_s3_bucket)
     asset_object_metadata = mock_s3_bucket.Object(key=asset_key).metadata
 
     assert asset_object_metadata["md5"] == "8d777f385d3dfec8815d20f7496026dc"
-    assert int(asset_object_metadata["mtime"]) == pytest.approx(current_epoch_time_ns, abs=1_000_000_000)  # 1s leeway
+    assert int(asset_object_metadata["mtime"]) == pytest.approx(source_file_mtime_ns, abs=1_000_000_000)  # 1s leeway
 
 
 def _mock_stac_api_root_catalog(requests_mock, root_url: str):
