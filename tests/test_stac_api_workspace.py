@@ -407,3 +407,44 @@ def _collection(
     assert collection.validate_all() == (1 if item_id else 0)
 
     return collection
+
+
+def test_set_s3_attributes(tmp_path, mock_s3_bucket, mock_s3_client):
+    import time
+
+    current_epoch_time_ns = time.time_ns()
+
+    source_file = tmp_path / "file.txt"
+    with open(source_file, "w") as f:
+        f.write("data")
+
+    target_key = f"some/prefix/{source_file.name}"
+
+    def md5_checksum(file: Path) -> str:  # TODO: move to utils
+        """Computes the MD5 checksum of a (potentially large) file."""
+
+        import hashlib
+
+        hash_md5 = hashlib.md5()
+        with open(file, "rb") as f:
+            for chunk in iter(lambda: f.read(4096), b""):
+                hash_md5.update(chunk)
+        return hash_md5.hexdigest()
+
+    metadata: Dict[str, str] = {
+        "md5": md5_checksum(source_file),
+        "mtime": str(source_file.stat().st_mtime_ns),
+    }
+
+    mock_s3_client.upload_file(
+        Filename=str(source_file),
+        Bucket=mock_s3_bucket.name,
+        Key=target_key,
+        ExtraArgs={"Metadata": metadata} if metadata else None,
+    )
+
+    obj = mock_s3_bucket.Object(key=target_key)
+    print(obj.metadata)
+
+    assert obj.metadata["md5"] == "8d777f385d3dfec8815d20f7496026dc"  # from md5sum
+    assert int(obj.metadata["mtime"]) == pytest.approx(current_epoch_time_ns, abs=1_000_000_000)  # 1s tolerance
