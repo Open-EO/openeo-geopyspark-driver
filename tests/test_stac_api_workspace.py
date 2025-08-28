@@ -1,4 +1,5 @@
 import datetime as dt
+import time
 from pathlib import PurePath, Path
 from typing import Dict
 
@@ -276,10 +277,12 @@ def test_merge_target_supports_path(requests_mock, tmp_path):
     export_asset_mock.assert_called_once_with(ANY, target, ANY, ANY)
 
 
-def test_vito_stac_api_workspace_helper(tmp_path, requests_mock, mock_s3_bucket, mock_s3_client):
+def test_vito_stac_api_workspace_helper(tmp_path, requests_mock, mock_s3_bucket):
+    current_epoch_time_ns = time.time_ns()
+
     asset_path = tmp_path / "asset.tif"
-    with open(asset_path, "w") as f:
-        f.write(str(asset_path))
+    with open(asset_path, "wb") as f:
+        f.write(b"data")
 
     collection = _collection(root_path=tmp_path / "collection", collection_id="collection", asset_path=asset_path)
 
@@ -338,9 +341,15 @@ def test_vito_stac_api_workspace_helper(tmp_path, requests_mock, mock_s3_bucket,
         },
     )
     assert create_item_mock.call_count == 2  # single item is retried with new access_token
-    object_keys = {obj["Key"] for obj in mock_s3_client.list_objects_v2(Bucket=mock_s3_bucket.name).get("Contents", [])}
 
+    object_keys = {obj.key for obj in mock_s3_bucket.objects.all()}
     assert object_keys == {"assets/path/to/collection/asset.tif"}
+
+    asset_key = next(iter(object_keys))
+    asset_object_metadata = mock_s3_bucket.Object(key=asset_key).metadata
+
+    assert asset_object_metadata["md5"] == "8d777f385d3dfec8815d20f7496026dc"
+    assert int(asset_object_metadata["mtime"]) == pytest.approx(current_epoch_time_ns, abs=1_000_000_000)  # 1s leeway
 
 
 def _mock_stac_api_root_catalog(requests_mock, root_url: str):
@@ -407,44 +416,3 @@ def _collection(
     assert collection.validate_all() == (1 if item_id else 0)
 
     return collection
-
-
-def test_set_s3_attributes(tmp_path, mock_s3_bucket, mock_s3_client):
-    import time
-
-    current_epoch_time_ns = time.time_ns()
-
-    source_file = tmp_path / "file.txt"
-    with open(source_file, "w") as f:
-        f.write("data")
-
-    target_key = f"some/prefix/{source_file.name}"
-
-    def md5_checksum(file: Path) -> str:  # TODO: move to utils
-        """Computes the MD5 checksum of a (potentially large) file."""
-
-        import hashlib
-
-        hash_md5 = hashlib.md5()
-        with open(file, "rb") as f:
-            for chunk in iter(lambda: f.read(4096), b""):
-                hash_md5.update(chunk)
-        return hash_md5.hexdigest()
-
-    metadata: Dict[str, str] = {
-        "md5": md5_checksum(source_file),
-        "mtime": str(source_file.stat().st_mtime_ns),
-    }
-
-    mock_s3_client.upload_file(
-        Filename=str(source_file),
-        Bucket=mock_s3_bucket.name,
-        Key=target_key,
-        ExtraArgs={"Metadata": metadata} if metadata else None,
-    )
-
-    obj = mock_s3_bucket.Object(key=target_key)
-    print(obj.metadata)
-
-    assert obj.metadata["md5"] == "8d777f385d3dfec8815d20f7496026dc"  # from md5sum
-    assert int(obj.metadata["mtime"]) == pytest.approx(current_epoch_time_ns, abs=1_000_000_000)  # 1s tolerance
