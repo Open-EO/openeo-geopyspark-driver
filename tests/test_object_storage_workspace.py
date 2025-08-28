@@ -1,4 +1,5 @@
 import datetime as dt
+import time
 from pathlib import PurePath, Path
 from typing import Set, List
 from urllib.parse import urlparse
@@ -18,6 +19,8 @@ def test_import_file(tmp_path, mock_s3_client, mock_s3_bucket, remove_original):
     source_file = source_directory / "file"
     source_file.touch()
 
+    current_epoch_time_ns = time.time_ns()
+
     merge = "some/target"
 
     workspace = ObjectStorageWorkspace(bucket="openeo-fake-bucketname", region="waw3-1")
@@ -26,7 +29,14 @@ def test_import_file(tmp_path, mock_s3_client, mock_s3_bucket, remove_original):
     )
 
     assert workspace_uri == f"s3://{workspace.bucket}/{merge}/{source_file.name}"
-    assert _workspace_keys(mock_s3_client, workspace.bucket, prefix=merge) == {f"{merge}/{source_file.name}"}
+
+    expected_asset_key = f"{merge}/{source_file.name}"
+    assert _workspace_keys(mock_s3_client, workspace.bucket, prefix=merge) == {expected_asset_key}
+
+    asset_object_metadata = mock_s3_bucket.Object(key=expected_asset_key).metadata
+    assert asset_object_metadata["md5"] == "d41d8cd98f00b204e9800998ecf8427e"
+    assert int(asset_object_metadata["mtime"]) == pytest.approx(current_epoch_time_ns, abs=1_000_000_000)  # 1s leeway
+
     assert source_file.exists() != remove_original
 
 
