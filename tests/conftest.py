@@ -707,6 +707,8 @@ def apply_datacube(cube: DataArray, context: dict) -> DataArray:
 
 @pytest.fixture
 def metadata_tracker():
+    # TODO: local import, otherwise subsequent import of openeogeotrellis.job_options.JobOptions will call
+    #  get_backend_config() eagerly, bypassing the setup of OPENEO_BACKEND_CONFIG in pytest_configure()
     from openeogeotrellis.deploy.batch_job_metadata import _get_tracker
 
     # TODO: this is quite messy, involving internal implementation details from another project
