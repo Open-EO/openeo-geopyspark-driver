@@ -431,6 +431,17 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         return get_backend_config().oidc_providers
 
     def file_formats(self) -> dict:
+        colormap_properties = {
+            "anyOf": [
+                {"type": "integer"},
+                {
+                    "type": "array",
+                    "items": {"type": "number", "minimum": 0, "maximum": 1},
+                    "minItems": 4,
+                    "maxItems": 4,
+                },
+            ]
+        }
         return {
             "input": {
                 "GeoJSON": {
@@ -462,6 +473,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 "GTiff": {
                     "title": "GeoTiff",
                     "description": "Cloud Optimized Geotiff is one of the most widely supported formats and thus a popular choice for further dissemination. This implementation stores all bands in one file, and creates one file per timestamp in your datacube.",
+                    "type": "object",
                     "gis_data_types": ["raster"],
                     "parameters": {
                         "tile_grid": {
@@ -494,7 +506,8 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                         "colormap": {
                             "type": ["object", "null"],
                             "description": "Allows specifying a colormap, for single band geotiffs. The colormap is a dictionary mapping band values to colors, specified by an integer.",
-                            "default": None
+                            "default": None,
+                            "additionalProperties": colormap_properties,
                         },
                         "filename_prefix": {
                             "type": "string",
@@ -540,7 +553,8 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                         "colormap": {
                             "type": ["object", "null"],
                             "description": "Allows specifying a colormap, for single band PNGs. The colormap is a dictionary mapping band values to colors, either specified by an integer or an array of [R, G, B, A], where each value lies between 0.0 and 1.0.",
-                            "default": None
+                            "default": None,
+                            "additionalProperties": colormap_properties,
                         },
                     }
                 },

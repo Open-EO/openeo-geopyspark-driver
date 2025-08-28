@@ -32,6 +32,7 @@ tests_require = [
     "rio_cogeo",
     "pydantic~=1.0",
     "zarr",
+    "jsonschema",
 ]
 
 typing_require = [
