@@ -1423,7 +1423,7 @@ class GeopysparkDataCube(DriverDataCube):
                 wrapped = get_jvm().org.openeo.geotrellis.OpenEOProcesses().wrapCube(cube)
                 wrapped.openEOMetadata().setBandNames(bandNames)
 
-                get_jvm().org.openeo.geotrellis.geocoding.GeoCodingProcess().geoCode(
+                return get_jvm().org.openeo.geotrellis.geocoding.GeoCodingProcess().geoCode(
                     wrapped, scala_target_extent, scala_crs
                 )
 
