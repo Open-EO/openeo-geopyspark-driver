@@ -473,7 +473,6 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 "GTiff": {
                     "title": "GeoTiff",
                     "description": "Cloud Optimized Geotiff is one of the most widely supported formats and thus a popular choice for further dissemination. This implementation stores all bands in one file, and creates one file per timestamp in your datacube.",
-                    "type": "object",
                     "gis_data_types": ["raster"],
                     "parameters": {
                         "tile_grid": {
