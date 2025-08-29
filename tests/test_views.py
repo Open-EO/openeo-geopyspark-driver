@@ -134,7 +134,6 @@ class TestCapabilities:
         assert capabilities["links"][-1] == {"rel": "flavor", "href": "https://flavors.test/sweet"}
 
 
-
 class TestCollections:
     _CRS_AUTO_42001 = {'$schema': 'https://proj.org/schemas/v0.2/projjson.schema.json', 'type': 'GeodeticCRS',
                        'name': 'AUTO 42001 (Universal Transverse Mercator)',
@@ -395,7 +394,6 @@ class TestBatchJobs:
         }
     }
 
-
     DUMMY_PROCESS_GRAPH_WITH_UDF = {
         "loadcollection1": {
             "arguments": {
@@ -533,7 +531,15 @@ class TestBatchJobs:
 
     @mock.patch("openeogeotrellis.logs.Elasticsearch.search")
     def test_create_and_start_and_download(
-        self, mock_search, api, tmp_path, monkeypatch, batch_job_output_root, job_registry, time_machine
+        self,
+        mock_search,
+        api,
+        tmp_path,
+        monkeypatch,
+        batch_job_output_root,
+        job_registry,
+        time_machine,
+        mock_yarn_backend_config,
     ):
         time_machine.move_to("2020-04-20T16:04:03Z")
 
@@ -716,6 +722,7 @@ class TestBatchJobs:
         requests_mock,
         freeipa_response,
         expected_proxy_user,
+        mock_yarn_backend_config,
     ):
         def freeipa_user_find_handler(request, context):
             request_data = request.json()
@@ -748,7 +755,15 @@ class TestBatchJobs:
 
     @pytest.mark.parametrize("api", ["api100", "api110"])
     def test_results_metadata(
-        self, api, tmp_path, monkeypatch, batch_job_output_root, job_registry, time_machine, request
+        self,
+        api,
+        tmp_path,
+        monkeypatch,
+        batch_job_output_root,
+        job_registry,
+        time_machine,
+        request,
+        mock_yarn_backend_config,
     ):
         api = request.getfixturevalue(api)
         time_machine.move_to("2020-04-20T16:04:03Z")
@@ -1220,7 +1235,9 @@ class TestBatchJobs:
                     assert res.status_code == 200
                     assert res.data == TIFF_DUMMY_DATA
 
-    def test_create_and_start_job_options(self, api, tmp_path, monkeypatch, batch_job_output_root, time_machine):
+    def test_create_and_start_job_options(
+        self, api, tmp_path, monkeypatch, batch_job_output_root, time_machine, mock_yarn_backend_config
+    ):
         time_machine.move_to("2020-04-20T16:04:03Z")
 
         with self._mock_kazoo_client() as zk, \
@@ -1273,17 +1290,12 @@ class TestBatchJobs:
         return batch_job_args, job_id,env
 
     def test_start_custom_udf_runtime(
-            self,
-            api,
-            job_registry,
-            time_machine,
-            batch_job_output_root,
+        self, api, job_registry, time_machine, batch_job_output_root, mock_yarn_backend_config
     ):
         time_machine.move_to("2020-04-20T12:01:01Z")
 
         job_data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH_WITH_UDF, title="Dummy")
         batch_job_args, job_id,env = self._create_and_start_yarn_job(job_data, api)
-
 
         # Check batch in/out files
         job_dir = batch_job_output_root / job_id
@@ -1294,7 +1306,6 @@ class TestBatchJobs:
         assert batch_job_args[4] == job_output.name
         assert batch_job_args[5] == job_metadata.name
         assert env['YARN_CONTAINER_RUNTIME_DOCKER_IMAGE'] == "vito-docker.artifactory.vgt.vito.be/openeo-geotrellis-kube-python311:latest"
-
 
     @pytest.mark.parametrize(["boost"], [
         [("driver-memory", "99999g")],
@@ -1363,7 +1374,7 @@ class TestBatchJobs:
         print(res2.text)
         res2.assert_status_code(400)
 
-    def test_cancel_job(self, api, job_registry):
+    def test_cancel_job(self, api, job_registry, mock_yarn_backend_config):
         with self._mock_kazoo_client() as zk:
             # Create job
             data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH)
@@ -1418,7 +1429,7 @@ class TestBatchJobs:
             assert meta_data == DictSubSet({"status": "canceled"})
             assert job_registry.db[job_id] == DictSubSet({"status": "canceled"})
 
-    def test_delete_job(self, api, job_registry):
+    def test_delete_job(self, api, job_registry, mock_yarn_backend_config):
         with self._mock_kazoo_client() as zk:
             # Create job
             data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH)
@@ -1993,6 +2004,7 @@ class TestSentinelHubBatchJobs:
         time_machine,
         zk_client,
         batch_job_output_root,
+        mock_yarn_backend_config
     ):
         time_machine.move_to("2020-04-20T12:01:01Z")
 
@@ -2311,6 +2323,7 @@ class TestSentinelHubBatchJobs:
         backend_implementation,
         time_machine,
         zk_client,
+        mock_yarn_backend_config
     ):
         time_machine.move_to("2020-04-20T12:01:01Z")
 
@@ -2532,6 +2545,7 @@ class TestSentinelHubBatchJobs:
         time_machine,
         zk_client,
         requests_mock,
+        mock_yarn_backend_config
     ):
         partial_job_results_url = "https://openeo.test/jobs/j-a778cc99-f741-4512-b304-07fdd692ae22/results/s1gn4turE?partial=true"
         requests_mock.get(partial_job_results_url, [
@@ -2735,6 +2749,7 @@ class TestSentinelHubBatchJobs:
         backend_implementation,
         time_machine,
         zk_client,
+        mock_yarn_backend_config
     ):
         job_registry.create_job(process={}, user_id=TEST_USER, job_id='j-a778cc99-f741-4512-b304-07fdd692ae22')
         partial_job_results_url = "https://openeo.test/jobs/j-a778cc99-f741-4512-b304-07fdd692ae22/results?partial=true"
