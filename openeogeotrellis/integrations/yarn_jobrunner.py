@@ -207,6 +207,18 @@ class BatchJobSubmitArgs:
     Passed to `--conf spark.executor.pyspark.memory={python_max_memory}b`.
     See https://spark.apache.org/docs/latest/configuration.html
     """
+    
+    spark_eventlog_dir: str
+    """Directory for Spark event logs"""
+    
+    spark_history_fs_logdirectory: str
+    """Directory for Spark history server logs"""
+    
+    spark_yarn_historyserver_address: str
+    """Address of Spark history server"""
+    
+    yarn_container_runtime_docker_client_config: str
+    """Path to Docker client configuration for YARN containers (optional)"""
 
     def to_args_list(self) -> list[str]:
         """Convert the dataclass to a list of string arguments for subprocess."""
@@ -249,6 +261,10 @@ class BatchJobSubmitArgs:
             self.udf_python_dependencies_archive_path,
             self.propagatable_web_app_driver_envars,
             self.python_max_memory,
+            self.spark_eventlog_dir,
+            self.spark_history_fs_logdirectory,
+            self.spark_yarn_historyserver_address,
+            self.yarn_container_runtime_docker_client_config,
         ]
 
 
@@ -438,6 +454,15 @@ class YARNBatchJobRunner:
                 principal_value = "no_principal"
                 keytab_value = "no_keytab"
             
+            backend_config = get_backend_config()
+            
+            if not backend_config.batch_spark_eventlog_dir:
+                raise InternalException("batch_spark_eventlog_dir must be configured in backend config")
+            if not backend_config.batch_spark_history_fs_logdirectory:
+                raise InternalException("batch_spark_history_fs_logdirectory must be configured in backend config")
+            if not backend_config.batch_spark_yarn_historyserver_address:
+                raise InternalException("batch_spark_yarn_historyserver_address must be configured in backend config")
+            
             # Create structured arguments using dataclass
             submit_args = BatchJobSubmitArgs(
                 script_location=script_location,
@@ -471,13 +496,17 @@ class YARNBatchJobRunner:
                 log_level=options.log_level,
                 openeo_backend_config=os.environ.get(ConfigGetter.OPENEO_BACKEND_CONFIG, ""),
                 udf_python_dependencies_folder_path=str(job_work_dir / UDF_PYTHON_DEPENDENCIES_FOLDER_NAME),
-                ejr_api=get_backend_config().ejr_api or "",
-                ejr_backend_id=get_backend_config().ejr_backend_id,
+                ejr_api=backend_config.ejr_api or "",
+                ejr_backend_id=backend_config.ejr_backend_id,
                 ejr_oidc_client_credentials=os.environ.get("OPENEO_EJR_OIDC_CLIENT_CREDENTIALS", ""),
                 docker_mounts=docker_mounts,
                 udf_python_dependencies_archive_path=str(job_work_dir / UDF_PYTHON_DEPENDENCIES_ARCHIVE_NAME),
                 propagatable_web_app_driver_envars=os.environ.get("OPENEO_PROPAGATABLE_WEB_APP_DRIVER_ENVARS", ""),
                 python_max_memory=str(byte_string_as(options.python_memory)) if options.python_memory else "-1",
+                spark_eventlog_dir=backend_config.batch_spark_eventlog_dir,
+                spark_history_fs_logdirectory=backend_config.batch_spark_history_fs_logdirectory,
+                spark_yarn_historyserver_address=backend_config.batch_spark_yarn_historyserver_address,
+                yarn_container_runtime_docker_client_config=backend_config.batch_yarn_container_runtime_docker_client_config,
             )
             args = submit_args.to_args_list()
 
