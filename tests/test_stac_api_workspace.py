@@ -295,7 +295,7 @@ def test_vito_stac_api_workspace_helper(tmp_path, requests_mock, mock_s3_bucket)
     mock_s3_bucket.put_object(
         Key=source_key,
         Body=b"object_asset.tif\n",
-        Metadata={"md5": "187812e0004062471a40ed0063f6f9d8", "mtime": str(source_file_mtime_ns)},
+        Metadata={"md5": "187812e0004062471a40ed0063f6f9d8", "mtime": "1756477082123456789"},
     )
 
     collection = _collection(
@@ -374,7 +374,7 @@ def test_vito_stac_api_workspace_helper(tmp_path, requests_mock, mock_s3_bucket)
     assert int(disk_asset_object_metadata["mtime"]) == pytest.approx(source_file_mtime_ns, abs=1_000_000_000)
 
     assert object_asset_object_metadata["md5"] == "187812e0004062471a40ed0063f6f9d8"
-    assert int(object_asset_object_metadata["mtime"]) == pytest.approx(source_file_mtime_ns, abs=1_000_000_000)
+    assert object_asset_object_metadata["mtime"] == "1756477082123456789"
 
 
 def _mock_stac_api_root_catalog(requests_mock, root_url: str):
