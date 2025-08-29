@@ -40,7 +40,7 @@ from geopyspark import LayerType, Pyramid, TiledRasterLayer
 import openeo_driver.util.changelog
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 from openeo.metadata import Band, BandDimension, Dimension, SpatialDimension, TemporalDimension
-from openeo.util import TimingLogger, deep_get, dict_no_none, repr_truncate, rfc3339, str_truncate, ensure_dir
+from openeo.util import TimingLogger, deep_get, dict_no_none, repr_truncate, rfc3339, str_truncate, ensure_dir, Rfc3339
 from openeo.utils.version import ComparableVersion
 from openeo_driver import backend
 from openeo_driver.backend import (
@@ -137,6 +137,7 @@ from openeogeotrellis.utils import (
     dict_merge_recursive,
     get_jvm,
     get_s3_file_contents,
+    map_optional,
     mdc_include,
     mdc_remove,
     normalize_temporal_extent,
@@ -1461,6 +1462,27 @@ class GpsBatchJobs(backend.BatchJobs):
         with self._double_job_registry as registry:
             with TimingLogger(f"registry.get_job_metadata({job_id=}, {user_id=})", logger):
                 job_metadata = registry.get_job_metadata(job_id, user_id)
+
+        # TODO: move results metadata out of BatchJobMetadata
+        #  (https://github.com/Open-EO/openeo-python-driver/issues/190)
+        if job_metadata.status == JOB_STATUS.FINISHED:
+            results_metadata = self.load_results_metadata(job_id, user_id)
+
+            rfc3339 = Rfc3339(propagate_none=True)
+
+            job_metadata = job_metadata._replace(
+                geometry=results_metadata.get("geometry"),
+                bbox=results_metadata.get("bbox"),
+                start_datetime=map_optional(rfc3339.parse_datetime, results_metadata.get("start_datetime")),
+                end_datetime=map_optional(rfc3339.parse_datetime, results_metadata.get("end_datetime")),
+                instruments=results_metadata.get("instruments"),
+                epsg=results_metadata.get("epsg"),
+                links=results_metadata.get("links"),
+                usage=results_metadata.get("usage"),
+                proj_shape=results_metadata.get("proj:shape"),
+                proj_bbox=results_metadata.get("proj:bbox"),
+            )
+
         return job_metadata
 
     def poll_job_dependencies(
