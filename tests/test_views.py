@@ -12,6 +12,7 @@ from typing import Optional
 from unittest import mock
 
 import boto3
+import jsonschema
 import kazoo.exceptions
 import pytest
 import requests
@@ -50,6 +51,13 @@ class TestCapabilities:
 
     def test_file_formats(self, api100):
         formats = api100.get("/file_formats").assert_status_code(200).json
+        formats_schema = {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "$id": "https://processes.openeo.org/2.0.0-rc.1/meta/subtype-schemas.json",
+            "type": "object",
+            "properties": formats["output"],
+        }
+        jsonschema.validate(instance=formats_schema, schema={"$ref": "http://json-schema.org/draft-07/schema#"})
         assert "GeoJSON" in formats["input"]
         assert "GTiff" in formats["output"]
         assert "CovJSON" in formats["output"]

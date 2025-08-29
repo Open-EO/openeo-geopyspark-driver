@@ -275,6 +275,10 @@ class GpsBackendConfig(OpenEoBackendConfig):
         "/tmp_epod:/tmp_epod:rw,"
     )
     batch_user_docker_mounts: dict[str, List[str]] = {}
+    batch_spark_eventlog_dir: str = ""
+    batch_spark_history_fs_logdirectory: str = ""
+    batch_spark_yarn_historyserver_address: str = ""
+    batch_yarn_container_runtime_docker_client_config: str = ""
     gdalinfo_from_file: bool = True
     gdalinfo_python_call: bool = False
     gdalinfo_use_subprocess: bool = False
