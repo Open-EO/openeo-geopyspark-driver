@@ -1,5 +1,4 @@
 import collections
-import datetime
 import getpass
 import json
 import logging
@@ -19,6 +18,7 @@ from openeogeotrellis.utils import (
     json_default,
     lonlat_to_mercator_tile_indices,
     map_optional,
+    md5_checksum,
     nullcontext,
     parse_approximate_isoduration,
     reproject_cellsize,
@@ -450,3 +450,12 @@ def test_unzip():
 
     assert digits == (1, 2, 3)
     assert words == ("one", "two", "three")
+
+
+def test_md5_checksum(tmp_path):
+    file = tmp_path / "file"
+
+    with open(file, "wb") as f:
+        f.write(b"hello world")
+
+    assert md5_checksum(file) == "5eb63bbbe01eeed093cb22bb8f5acdc3"

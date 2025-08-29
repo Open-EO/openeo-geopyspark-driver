@@ -14,6 +14,7 @@ from pystac.layout import HrefLayoutStrategy, CustomLayoutStrategy
 
 from openeo_driver.integrations.s3.client import S3ClientBuilder
 from .custom_stac_io import CustomStacIO
+from openeogeotrellis.utils import md5_checksum
 
 _log = logging.getLogger(__name__)
 
@@ -36,7 +37,13 @@ class ObjectStorageWorkspace(Workspace):
         config = TransferConfig(multipart_threshold=self.MULTIPART_THRESHOLD_IN_MB * MB)
 
         key = f"{subdirectory}/{file_relative}"
-        S3ClientBuilder.from_region(self.region).upload_file(str(file), self.bucket, key, Config=config)
+        S3ClientBuilder.from_region(self.region).upload_file(
+            str(file),
+            self.bucket,
+            key,
+            Config=config,
+            ExtraArgs={"Metadata": self._object_metadata(file)},
+        )
 
         if remove_original:
             file.unlink()
@@ -164,7 +171,9 @@ class ObjectStorageWorkspace(Workspace):
         workspace_uri = f"s3://{self.bucket}/{target_key}"
 
         if source_uri_parts.scheme in ["", "file"]:
-            S3ClientBuilder.from_region(self.region).upload_file(str(source_path), self.bucket, target_key)
+            S3ClientBuilder.from_region(self.region).upload_file(
+                str(source_path), self.bucket, target_key, ExtraArgs={"Metadata": self._object_metadata(source_path)}
+            )
 
             if remove_original:
                 source_path.unlink()
@@ -187,3 +196,10 @@ class ObjectStorageWorkspace(Workspace):
             raise ValueError(asset_uri)
 
         return workspace_uri
+
+    @staticmethod
+    def _object_metadata(source_file: Path) -> dict:
+        return {
+            "md5": md5_checksum(source_file),
+            "mtime": str(source_file.stat().st_mtime_ns),
+        }

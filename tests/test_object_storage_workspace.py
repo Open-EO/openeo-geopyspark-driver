@@ -17,6 +17,7 @@ def test_import_file(tmp_path, mock_s3_client, mock_s3_bucket, remove_original):
     source_directory.mkdir()
     source_file = source_directory / "file"
     source_file.touch()
+    source_file_mtime_ns = source_file.stat().st_mtime_ns
 
     merge = "some/target"
 
@@ -26,7 +27,14 @@ def test_import_file(tmp_path, mock_s3_client, mock_s3_bucket, remove_original):
     )
 
     assert workspace_uri == f"s3://{workspace.bucket}/{merge}/{source_file.name}"
-    assert _workspace_keys(mock_s3_client, workspace.bucket, prefix=merge) == {f"{merge}/{source_file.name}"}
+
+    expected_asset_key = f"{merge}/{source_file.name}"
+    assert _workspace_keys(mock_s3_client, workspace.bucket, prefix=merge) == {expected_asset_key}
+
+    asset_object_metadata = mock_s3_bucket.Object(key=expected_asset_key).metadata
+    assert asset_object_metadata["md5"] == "d41d8cd98f00b204e9800998ecf8427e"
+    assert int(asset_object_metadata["mtime"]) == pytest.approx(source_file_mtime_ns, abs=1_000_000_000)  # 1s leeway
+
     assert source_file.exists() != remove_original
 
 
@@ -75,11 +83,17 @@ def test_merge_new(mock_s3_client, mock_s3_bucket, tmp_path, remove_original: bo
 
     with open(disk_asset_path, "w") as f:
         f.write("disk_asset.tif\n")
+    disk_asset_mtime_ns = disk_asset_path.stat().st_mtime_ns
 
     source_bucket = target_bucket = "openeo-fake-bucketname"
     source_key = "src/object_asset.tif"
 
-    mock_s3_client.put_object(Bucket=source_bucket, Key=source_key, Body="object_asset.tif\n")
+    mock_s3_client.put_object(
+        Bucket=source_bucket,
+        Key=source_key,
+        Body="object_asset.tif\n",
+        Metadata={"md5": "187812e0004062471a40ed0063f6f9d8", "mtime": "1756477240123456789"},
+    )
 
     new_collection = _collection(
         root_path=source_directory / "new_collection",
@@ -111,6 +125,16 @@ def test_merge_new(mock_s3_client, mock_s3_bucket, tmp_path, remove_original: bo
         "some/target/collection/object_asset.tif.json",
         "some/target/collection/object_asset.tif",
     }
+
+    disk_asset_object_metadata = mock_s3_bucket.Object(key="some/target/collection/disk_asset.tif").metadata
+    assert disk_asset_object_metadata["md5"] == "2132afe6fed0b020888c10872309a98e"
+    assert int(disk_asset_object_metadata["mtime"]) == pytest.approx(
+        disk_asset_mtime_ns, abs=1_000_000_000  # 1s leeway
+    )
+
+    object_asset_object_metadata = mock_s3_bucket.Object(key="some/target/collection/object_asset.tif").metadata
+    assert object_asset_object_metadata["md5"] == "187812e0004062471a40ed0063f6f9d8"
+    assert object_asset_object_metadata["mtime"] == "1756477240123456789"
 
     assert disk_asset_path.exists() != remove_original
     assert bool(_workspace_keys(mock_s3_client, workspace.bucket, prefix=source_key)) != remove_original
