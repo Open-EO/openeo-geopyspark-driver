@@ -50,7 +50,7 @@ def vito_stac_api_workspace(  # for lack of a better name, can still be aliased
                 ExtraArgs={
                     "Metadata": {
                         "md5": md5_checksum(source_path),
-                        "mtime": str(time.time_ns()),
+                        "mtime": str(source_path.stat().st_mtime_ns),
                     }
                 },
             )
