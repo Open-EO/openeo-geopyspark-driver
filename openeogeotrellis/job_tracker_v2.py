@@ -435,6 +435,7 @@ class JobTracker:
                     "job_options",
                     "dependencies",
                     "dependency_usage",
+                    "results_metadata_uri",
                 ],
                 max_age=3 * 30,
                 max_updated_ago=14,
@@ -584,21 +585,26 @@ class JobTracker:
                 _log.debug(f"job_costs: calculated {job_costs}")
                 stats["job_costs: calculated"] += 1
                 stats[f"job_costs: nonzero={isinstance(job_costs, float) and job_costs>0}"] += 1
-                # TODO: skip patching the job znode and read from this file directly?
             except Exception as e:
                 log.exception(f"Failed to calculate job costs: {e}")
                 stats["job_costs: failed"] += 1
                 job_costs = None
 
             total_usage = dict_merge_recursive(job_metadata.usage.to_dict(), result_metadata.get("usage", {}))
-            try:
+
+            def set_results_metadata(results_metadata: dict):
+                include_all_results_metadata = "results_metadata_uri" not in job_info
+
                 double_job_registry.set_results_metadata(
                     job_id=job_id,
                     user_id=user_id,
                     costs=job_costs,
                     usage=to_jsonable(dict(total_usage)),
-                    results_metadata=to_jsonable(result_metadata),
+                    results_metadata=to_jsonable(results_metadata) if include_all_results_metadata else None,
                 )
+
+            try:
+                set_results_metadata(result_metadata)
             except EjrApiResponseError as e:
                 if e.status_code == 413:
                     log.warning(
@@ -612,13 +618,7 @@ class JobTracker:
                     if not result_metadata["links"]:
                         del result_metadata["links"]
 
-                    double_job_registry.set_results_metadata(
-                        job_id=job_id,
-                        user_id=user_id,
-                        costs=job_costs,
-                        usage=to_jsonable(dict(total_usage)),
-                        results_metadata=to_jsonable(result_metadata),
-                    )
+                    set_results_metadata(result_metadata)
                 else:
                     raise
 
