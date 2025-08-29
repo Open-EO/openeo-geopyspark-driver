@@ -10,7 +10,7 @@ import traceback
 from dataclasses import dataclass
 from pathlib import Path
 from subprocess import CalledProcessError
-from typing import Optional, Union
+from typing import Optional, Union, List
 
 import pkg_resources
 from openeo.util import deep_get, ensure_dir
@@ -220,7 +220,7 @@ class BatchJobSubmitArgs:
     yarn_container_runtime_docker_client_config: str
     """Path to Docker client configuration for YARN containers (optional)"""
 
-    def to_args_list(self) -> list[str]:
+    def to_args_list(self) -> List[str]:
         """Convert the dataclass to a list of string arguments for subprocess."""
         return [
             self.script_location,
