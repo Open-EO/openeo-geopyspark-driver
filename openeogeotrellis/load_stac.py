@@ -141,7 +141,6 @@ def load_stac(
             item_collection = ItemCollection.from_own_job(
                 job=dependency_job_info, spatiotemporal_extent=spatiotemporal_extent, batch_jobs=batch_jobs, user=user
             )
-            intersecting_items = item_collection.items
             band_names = []
         else:
             logger.info(f"load_stac of arbitrary URL {url}")
@@ -163,7 +162,6 @@ def load_stac(
                 item = stac_object
                 band_names = stac_metadata_parser.bands_from_stac_item(item=item).band_names()
                 item_collection = ItemCollection.from_stac_item(item=item, spatiotemporal_extent=spatiotemporal_extent)
-                intersecting_items = item_collection.items
             elif isinstance(stac_object, pystac.Collection) and _supports_item_search(stac_object):
                 collection = stac_object
                 netcdf_with_time_dimension = contains_netcdf_with_time_dimension(collection)
@@ -180,7 +178,6 @@ def load_stac(
                     use_filter_extension=feature_flags.get("use-filter-extension", True),
                     skip_datetime_filter=((temporal_extent is DEFAULT_TEMPORAL_EXTENT) or netcdf_with_time_dimension),
                 )
-                intersecting_items = item_collection.items
             else:
                 assert isinstance(stac_object, pystac.Catalog)  # static Catalog + Collection
                 catalog = stac_object
@@ -197,7 +194,6 @@ def load_stac(
                 band_names = stac_metadata_parser.bands_from_stac_object(obj=stac_object).band_names()
 
                 item_collection = ItemCollection.from_stac_catalog(catalog, spatiotemporal_extent=spatiotemporal_extent)
-                intersecting_items = item_collection.items
 
         jvm = get_jvm()
 
@@ -214,7 +210,7 @@ def load_stac(
         band_epsgs: Dict[str, Set[int]] = {}
 
 
-        for itm in intersecting_items:
+        for itm in item_collection.items:
             items_found = True
 
             item_start_datetime = dateutil.parser.parse(itm.properties.get("datetime") or itm.properties["start_datetime"])
