@@ -741,6 +741,7 @@ class TestTemporalExtent:
         assert extent.intersects(nominal="1789-07-14") == True
         assert extent.intersects(start_datetime="1914-07-28", end_datetime="1918-11-11") == True
         assert extent.intersects(nominal="2025-07-24") == True
+        assert extent.intersects(nominal=None) == True
 
     def test_nominal_basic(self):
         extent = _TemporalExtent("2025-03-04T11:11:11", "2025-05-06T22:22:22")
@@ -751,6 +752,8 @@ class TestTemporalExtent:
 
         assert extent.intersects(nominal=datetime.date(2025, 4, 10)) == True
         assert extent.intersects(nominal=datetime.datetime(2025, 4, 10, 12)) == True
+
+        assert extent.intersects(nominal=None) == True
 
     def test_nominal_edges(self):
         extent = _TemporalExtent("2025-03-04T11:11:11", "2025-05-06T22:22:22")
@@ -781,11 +784,13 @@ class TestTemporalExtent:
         assert extent.intersects(nominal="2025-05-05") == True
         assert extent.intersects(nominal="2025-05-06") == False
         assert extent.intersects(nominal="2025-11-11") == False
+        assert extent.intersects(nominal=None) == True
 
         extent = _TemporalExtent("2025-05-06", None)
         assert extent.intersects(nominal="2025-05-05") == False
         assert extent.intersects(nominal="2025-05-06") == True
         assert extent.intersects(nominal="2099-11-11") == True
+        assert extent.intersects(nominal=None) == True
 
     def test_start_end_basic(self):
         extent = _TemporalExtent("2025-03-04T11:11:11", "2025-05-06T22:22:22")
@@ -794,6 +799,13 @@ class TestTemporalExtent:
         assert extent.intersects(start_datetime="2025-03-10", end_datetime="2025-04-04") == True
         assert extent.intersects(start_datetime="2025-03-10", end_datetime="2025-08-08") == True
         assert extent.intersects(start_datetime="2025-06-10", end_datetime="2025-08-08") == False
+
+        # Half-open intervals
+        assert extent.intersects(start_datetime=None, end_datetime=None) == True
+        assert extent.intersects(start_datetime="2022-02-02", end_datetime=None) == True
+        assert extent.intersects(start_datetime="2025-10-02", end_datetime=None) == False
+        assert extent.intersects(start_datetime=None, end_datetime="2025-01-01") == False
+        assert extent.intersects(start_datetime=None, end_datetime="2025-04-04") == True
 
     def test_start_end_edges(self):
         extent = _TemporalExtent("2025-03-04T11:11:11", "2025-05-06T22:22:22")
@@ -818,11 +830,19 @@ class TestTemporalExtent:
         assert extent.intersects(start_datetime="2025-02-02", end_datetime="2025-05-05") == True
         assert extent.intersects(start_datetime="2025-02-02", end_datetime="2025-08-08") == True
         assert extent.intersects(start_datetime="2025-06-06", end_datetime="2025-08-08") == False
+        assert extent.intersects(start_datetime=None, end_datetime=None) == True
+        assert extent.intersects(start_datetime="2025-02-02", end_datetime=None) == True
+        assert extent.intersects(start_datetime="2025-06-06", end_datetime=None) == False
+        assert extent.intersects(start_datetime=None, end_datetime="2025-05-05") == True
 
         extent = _TemporalExtent("2025-05-06", None)
         assert extent.intersects(start_datetime="2025-02-02", end_datetime="2025-05-05") == False
         assert extent.intersects(start_datetime="2025-02-02", end_datetime="2025-08-08") == True
         assert extent.intersects(start_datetime="2025-06-06", end_datetime="2025-08-08") == True
+        assert extent.intersects(start_datetime=None, end_datetime=None) == True
+        assert extent.intersects(start_datetime="2025-02-02", end_datetime=None) == True
+        assert extent.intersects(start_datetime=None, end_datetime="2025-08-08") == True
+        assert extent.intersects(start_datetime=None, end_datetime="2025-02-02") == False
 
     def test_nominal_vs_start_end(self):
         """https://github.com/Open-EO/openeo-geopyspark-driver/issues/1293"""
