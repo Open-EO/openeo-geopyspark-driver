@@ -6,6 +6,7 @@ import dataclasses
 import datetime
 import functools
 import grp
+import hashlib
 import json
 import logging
 import math
@@ -902,3 +903,13 @@ def to_tuple(scala_tuple):
 def unzip(*iterables: Iterable) -> Iterator:
     # iterables are typically of equal length
     return zip(*iterables)
+
+
+def md5_checksum(file: Path) -> str:
+    """Computes the MD5 checksum of a (potentially large) file."""
+
+    hash_md5 = hashlib.md5()
+    with open(file, "rb") as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            hash_md5.update(chunk)
+    return hash_md5.hexdigest()

@@ -8,7 +8,7 @@ from openeo_driver.util.auth import _AccessTokenCache
 from openeo.rest.auth.oidc import OidcClientCredentialsAuthenticator, OidcClientInfo, OidcProviderInfo
 
 from .stac_api_workspace import StacApiWorkspace
-from openeogeotrellis.utils import s3_client
+from openeogeotrellis.utils import s3_client, md5_checksum
 
 
 def vito_stac_api_workspace(  # for lack of a better name, can still be aliased
@@ -43,7 +43,17 @@ def vito_stac_api_workspace(  # for lack of a better name, can still be aliased
         target_key = f"{target_prefix}/{relative_asset_path}"
 
         if source_uri_parts.scheme in ["", "file"]:
-            s3_client().upload_file(str(source_path), asset_bucket, target_key)
+            s3_client().upload_file(
+                str(source_path),
+                asset_bucket,
+                target_key,
+                ExtraArgs={
+                    "Metadata": {
+                        "md5": md5_checksum(source_path),
+                        "mtime": str(source_path.stat().st_mtime_ns),
+                    }
+                },
+            )
 
             if remove_original:
                 source_path.unlink()
