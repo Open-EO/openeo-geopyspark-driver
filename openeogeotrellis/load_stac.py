@@ -158,7 +158,7 @@ def load_stac(
 
                 item = stac_object
                 band_names = stac_metadata_parser.bands_from_stac_item(item=item).band_names()
-                item_collection = ItemCollection.from_item(item=item, spatiotemporal_extent=spatiotemporal_extent)
+                item_collection = ItemCollection.from_stac_item(item=item, spatiotemporal_extent=spatiotemporal_extent)
             elif isinstance(stac_object, pystac.Collection) and _supports_item_search(stac_object):
                 collection = stac_object
                 netcdf_with_time_dimension = contains_netcdf_with_time_dimension(collection)
@@ -687,6 +687,8 @@ class ItemCollection:
     Experimental/WIP API
     """
 
+    # TODO: leverage pystac.ItemCollection in some way ?
+
     def __init__(self, items: List[pystac.Item]):
         self.items = items
 
@@ -748,7 +750,7 @@ class ItemCollection:
         return ItemCollection(items)
 
     @staticmethod
-    def from_item(item: pystac.Item, *, spatiotemporal_extent: _SpatioTemporalExtent) -> ItemCollection:
+    def from_stac_item(item: pystac.Item, *, spatiotemporal_extent: _SpatioTemporalExtent) -> ItemCollection:
         items = [item] if spatiotemporal_extent.item_intersects(item) else []
         return ItemCollection(items)
 
