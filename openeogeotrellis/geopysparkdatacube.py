@@ -1420,11 +1420,18 @@ class GeopysparkDataCube(DriverDataCube):
                 if self.metadata.has_band_dimension():
                     bandNames = self.metadata.band_names
 
-                wrapped = get_jvm().org.openeo.geotrellis.OpenEOProcesses().wrapCube(cube)
+                jvm = get_jvm
+                wrapped = jvm().org.openeo.geotrellis.OpenEOProcesses().wrapCube(cube)
                 wrapped.openEOMetadata().setBandNames(bandNames)
+                target_resolution = None
+                if isinstance(resolution, (list, tuple)):
+                    target_resolution = jvm.geotrellis.raster.CellSize( resolution[0], resolution[1] )
+                else:
+                    target_resolution = jvm.geotrellis.raster.CellSize(resolution, resolution)
 
-                return get_jvm().org.openeo.geotrellis.geocoding.GeoCodingProcess().geoCode(
-                    wrapped, scala_target_extent, scala_crs
+
+                return jvm().org.openeo.geotrellis.geocoding.GeoCodingProcess().geoCode(
+                    wrapped, scala_target_extent, scala_crs, target_resolution
                 )
 
             return self._apply_to_levels_geotrellis_rdd(lambda rdd, level: geocode_level(rdd))
