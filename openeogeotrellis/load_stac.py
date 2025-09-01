@@ -7,7 +7,7 @@ import time
 from functools import partial
 import logging
 import os
-from typing import Union, Optional, Tuple, Dict, List, Iterable, Any, Set, Callable
+from typing import Union, Optional, Tuple, Dict, List, Iterable, Any, Set, Callable, Iterator
 from urllib.parse import urlparse
 
 import dateutil.parser
@@ -245,62 +245,12 @@ def load_stac(
                     raise ProcessParameterUnsupportedException(process="load_stac", parameter="properties")
 
                 if isinstance(catalog, pystac.Collection):
-                    collection = catalog
-                    netcdf_with_time_dimension = contains_netcdf_with_time_dimension(collection)
+                    netcdf_with_time_dimension = contains_netcdf_with_time_dimension(collection=catalog)
 
                 band_names = stac_metadata_parser.bands_from_stac_object(obj=stac_object).band_names()
 
-                def intersecting_catalogs(root: pystac.Catalog) -> Iterable[pystac.Catalog]:
-                    def intersects_spatiotemporally(coll: pystac.Collection) -> bool:
-                        def intersects_spatially(bbox) -> bool:
-                            if not requested_bbox:
-                                return True
-
-                            requested_bbox_lonlat = requested_bbox.reproject("EPSG:4326")
-                            return requested_bbox_lonlat.as_polygon().intersects(
-                                Polygon.from_bounds(*bbox)
-                            )
-
-                        def intersects_temporally(interval) -> bool:
-                            start, end = interval
-
-                            if start is not None and end is not None:
-                                return to_date >= start and from_date <= end
-                            if start is not None:
-                                return to_date >= start
-                            if end is not None:
-                                return from_date <= end
-                            return True
-
-                        bboxes = coll.extent.spatial.bboxes
-                        intervals = coll.extent.temporal.intervals
-
-                        if len(bboxes) > 1 and not any(intersects_spatially(bbox) for bbox in bboxes[1:]):
-                            return False
-                        if len(bboxes) == 1 and not intersects_spatially(bboxes[0]):
-                            return False
-
-                        if len(intervals) > 1 and not any(intersects_temporally(interval)
-                                                          for interval in intervals[1:]):
-                            return False
-                        if len(intervals) == 1 and not intersects_temporally(intervals[0]):
-                            return False
-
-                        return True
-
-                    if isinstance(root, pystac.Collection) and not intersects_spatiotemporally(root):
-                        return []
-
-                    yield root
-                    for child in root.get_children():
-                        yield from intersecting_catalogs(child)
-
-                intersecting_items = (
-                    itm
-                    for intersecting_catalog in intersecting_catalogs(root=catalog)
-                    for itm in intersecting_catalog.get_items()
-                    if spatiotemporal_extent.item_intersects(itm)
-                )
+                item_collection = ItemCollection.from_stac_catalog(catalog, spatiotemporal_extent=spatiotemporal_extent)
+                intersecting_items = item_collection.items
 
         jvm = get_jvm()
 
@@ -719,6 +669,15 @@ class _TemporalExtent:
             self.to_date is None or start_datetime < self.to_date
         )
 
+    def intersects_interval(
+        self,
+        interval: Tuple[
+            Union[str, datetime.datetime, datetime.date, None], Union[str, datetime.datetime, datetime.date, None]
+        ],
+    ) -> bool:
+        start, end = interval
+        return self.intersects(start_datetime=start, end_datetime=end)
+
 
 class _SpatialExtent:
     """
@@ -836,6 +795,46 @@ class ItemCollection:
 
         return ItemCollection(items)
 
+    @staticmethod
+    def from_stac_catalog(catalog: pystac.Catalog, *, spatiotemporal_extent: _SpatioTemporalExtent) -> ItemCollection:
+
+        def intersecting_catalogs(root: pystac.Catalog) -> Iterator[pystac.Catalog]:
+            def intersects_spatiotemporally(coll: pystac.Collection) -> bool:
+                def intersects_spatially(bbox) -> bool:
+                    return spatiotemporal_extent._spatial_extent.intersects(bbox)
+
+                def intersects_temporally(interval) -> bool:
+                    return spatiotemporal_extent._temporal_extent.intersects_interval(interval)
+
+                bboxes = coll.extent.spatial.bboxes
+                intervals = coll.extent.temporal.intervals
+
+                if len(bboxes) > 1 and not any(intersects_spatially(bbox) for bbox in bboxes[1:]):
+                    return False
+                if len(bboxes) == 1 and not intersects_spatially(bboxes[0]):
+                    return False
+
+                if len(intervals) > 1 and not any(intersects_temporally(interval) for interval in intervals[1:]):
+                    return False
+                if len(intervals) == 1 and not intersects_temporally(intervals[0]):
+                    return False
+
+                return True
+
+            if isinstance(root, pystac.Collection) and not intersects_spatiotemporally(root):
+                return
+
+            yield root
+            for child in root.get_children():
+                yield from intersecting_catalogs(child)
+
+        items = [
+            item
+            for intersecting_catalog in intersecting_catalogs(root=catalog)
+            for item in intersecting_catalog.get_items()
+            if spatiotemporal_extent.item_intersects(item)
+        ]
+        return ItemCollection(items)
 
 
 def _is_supported_raster_mime_type(mime_type: str) -> bool:
@@ -919,7 +918,7 @@ def _supports_item_search(collection: pystac.Collection) -> bool:
     return False
 
 
-def contains_netcdf_with_time_dimension(collection):
+def contains_netcdf_with_time_dimension(collection: pystac.Collection):
     """
     Checks if the STAC collection contains netcdf files with multiple time stamps.
     This collection organization is used for storing small patches of EO data, and requires special loading because the
