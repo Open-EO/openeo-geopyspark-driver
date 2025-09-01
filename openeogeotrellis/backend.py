@@ -507,15 +507,13 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                         },
                         "colormap": {
                             "type": ["object", "null"],
-                            "description": """Allows specifying a colormap, for single band geotiffs. The colormap is a dictionary mapping band values to colors, specified by an integer. 
+                            "description": """Allows specifying a colormap, for single band geotiffs. The colormap is a dictionary mapping band values to colors, specified by an integer.
 Example usage:
 ```python
-{"colormap": {
+"colormap": {
     0: [1, 0, 0, 1],  # red
-    1: [0, 1, 0, 1],  # green
-    2: [0, 0, 1, 1],  # blue
-    3: 4294967295,  # white
-}}
+    1: 4294967295,  # white
+}
 ```""",
                             "default": None,
                             "additionalProperties": colormap_properties,
@@ -563,7 +561,7 @@ Example usage:
                     "parameters": {
                         "colormap": {
                             "type": ["object", "null"],
-                            "description": """Allows specifying a colormap, for single band PNGs. The colormap is a dictionary mapping band values to colors, either specified by an integer or an array of [R, G, B, A], where each value lies between 0.0 and 1.0. 
+                            "description": """Allows specifying a colormap, for single band PNGs. The colormap is a dictionary mapping band values to colors, either specified by an integer or an array of [R, G, B, A], where each value lies between 0.0 and 1.0.
 Example usage:
 ```python
 {"colormap": {
