@@ -896,6 +896,39 @@ class TestSpatioTemporalExtent:
         )
         assert extent.item_intersects(item) == expected
 
+    @pytest.mark.parametrize(
+        ["bboxes", "intervals", "expected"],
+        [
+            # Single bbox/interval cases
+            ([[20, 34, 26, 40]], [["2024-01-01", "2024-12-31"]], True),
+            ([[10, 34, 16, 40]], [["2024-01-01", "2024-12-31"]], False),
+            ([[20, 34, 26, 40]], [["2025-01-01", "2025-12-31"]], False),
+            # Multiple bboxes: first "overall" one should be ignored
+            ([[20, 30, 30, 40], [23, 34, 26, 39]], [["2024-01-01", "2024-12-31"]], True),
+            ([[20, 30, 30, 40], [21, 31, 22, 32]], [["2024-01-01", "2024-12-31"]], False),
+            ([[20, 30, 30, 40], [21, 31, 22, 32], [23, 34, 26, 39]], [["2024-01-01", "2024-12-31"]], True),
+            ([[20, 30, 30, 40], [21, 31, 22, 32], [25, 31, 26, 32]], [["2024-01-01", "2024-12-31"]], False),
+            # Multiple intervals: first "overall" one should be ignored
+            ([[20, 34, 26, 40]], [["2024-01-01", "2024-12-31"], ["2024-02-01", "2024-02-20"]], True),
+            ([[20, 34, 26, 40]], [["2024-01-01", "2024-12-31"], ["2024-10-01", "2024-10-20"]], False),
+        ],
+    )
+    def test_collection_intersects_simple(self, bboxes, intervals, expected):
+        extent = _SpatioTemporalExtent(
+            bbox=BoundingBox(west=21, south=35, east=25, north=38, crs=4326),
+            from_date="2024-02-01",
+            to_date="2024-02-10",
+        )
+        collection = pystac.Collection(
+            id="c123",
+            description="C123",
+            extent=pystac.Extent(
+                spatial=pystac.SpatialExtent(bboxes=bboxes),
+                temporal=pystac.TemporalExtent.from_dict({"interval": intervals}),
+            ),
+        )
+        assert extent.collection_intersects(collection) == expected
+
 
 class TestPropertyFilter:
     def test_build_matcher_empty(self):

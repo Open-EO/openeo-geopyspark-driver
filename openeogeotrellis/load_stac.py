@@ -719,6 +719,20 @@ class _SpatioTemporalExtent:
             end_datetime=item.properties.get("end_datetime"),
         ) and self._spatial_extent.intersects(item.bbox)
 
+    def collection_intersects(self, collection: pystac.Collection) -> bool:
+        bboxes = collection.extent.spatial.bboxes
+        intervals = collection.extent.temporal.intervals
+        # If multiple bboxes/intervals, skip the first "overall" one (per STAC spec),
+        # for more granular checking (if available)
+        if len(bboxes) > 1:
+            bboxes = bboxes[1:]
+        if len(intervals) > 1:
+            intervals = intervals[1:]
+
+        return any(self._spatial_extent.intersects(bbox) for bbox in bboxes) and any(
+            self._temporal_extent.intersects_interval(interval) for interval in intervals
+        )
+
 
 class ItemCollection:
     """
@@ -799,31 +813,8 @@ class ItemCollection:
     def from_stac_catalog(catalog: pystac.Catalog, *, spatiotemporal_extent: _SpatioTemporalExtent) -> ItemCollection:
 
         def intersecting_catalogs(root: pystac.Catalog) -> Iterator[pystac.Catalog]:
-            def intersects_spatiotemporally(coll: pystac.Collection) -> bool:
-                def intersects_spatially(bbox) -> bool:
-                    return spatiotemporal_extent._spatial_extent.intersects(bbox)
-
-                def intersects_temporally(interval) -> bool:
-                    return spatiotemporal_extent._temporal_extent.intersects_interval(interval)
-
-                bboxes = coll.extent.spatial.bboxes
-                intervals = coll.extent.temporal.intervals
-
-                if len(bboxes) > 1 and not any(intersects_spatially(bbox) for bbox in bboxes[1:]):
-                    return False
-                if len(bboxes) == 1 and not intersects_spatially(bboxes[0]):
-                    return False
-
-                if len(intervals) > 1 and not any(intersects_temporally(interval) for interval in intervals[1:]):
-                    return False
-                if len(intervals) == 1 and not intersects_temporally(intervals[0]):
-                    return False
-
-                return True
-
-            if isinstance(root, pystac.Collection) and not intersects_spatiotemporally(root):
+            if isinstance(root, pystac.Collection) and not spatiotemporal_extent.collection_intersects(root):
                 return
-
             yield root
             for child in root.get_children():
                 yield from intersecting_catalogs(child)
@@ -831,7 +822,7 @@ class ItemCollection:
         items = [
             item
             for intersecting_catalog in intersecting_catalogs(root=catalog)
-            for item in intersecting_catalog.get_items()
+            for item in intersecting_catalog.get_items(recursive=False)
             if spatiotemporal_extent.item_intersects(item)
         ]
         return ItemCollection(items)
