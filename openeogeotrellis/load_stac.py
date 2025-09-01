@@ -49,7 +49,7 @@ from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.constants import EVAL_ENV_KEY
 from openeogeotrellis.geopysparkcubemetadata import GeopysparkCubeMetadata
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
-from openeogeotrellis.util.datetime import to_datetime_utc_unless_none
+from openeogeotrellis.util.datetime import to_datetime_utc_unless_none, DateTimeLikeOrNone
 from openeogeotrellis.utils import normalize_temporal_extent, get_jvm, to_projected_polygons, map_optional, unzip
 from openeogeotrellis.integrations.stac import ResilientStacIO
 
@@ -631,19 +631,15 @@ class _TemporalExtent:
 
     __slots__ = ("from_date", "to_date")
 
-    def __init__(
-        self,
-        from_date: Union[str, datetime.datetime, datetime.date, None],
-        to_date: Union[str, datetime.datetime, datetime.date, None],
-    ):
+    def __init__(self, from_date: DateTimeLikeOrNone, to_date: DateTimeLikeOrNone):
         self.from_date: Union[datetime.datetime, None] = to_datetime_utc_unless_none(from_date)
         self.to_date: Union[datetime.datetime, None] = to_datetime_utc_unless_none(to_date)
 
     def intersects(
         self,
-        nominal: Union[str, datetime.datetime, datetime.date, None] = None,
-        start_datetime: Union[str, datetime.datetime, datetime.date, None] = None,
-        end_datetime: Union[str, datetime.datetime, datetime.date, None] = None,
+        nominal: DateTimeLikeOrNone = None,
+        start_datetime: DateTimeLikeOrNone = None,
+        end_datetime: DateTimeLikeOrNone = None,
     ) -> bool:
         """
         Check if the given datetime/interval intersects with the spatiotemporal extent.
@@ -667,8 +663,9 @@ class _TemporalExtent:
 
     def intersects_interval(
         self,
-        interval: Tuple[
-            Union[str, datetime.datetime, datetime.date, None], Union[str, datetime.datetime, datetime.date, None]
+        interval: Union[
+            Tuple[DateTimeLikeOrNone, DateTimeLikeOrNone],
+            List[DateTimeLikeOrNone],
         ],
     ) -> bool:
         start, end = interval
@@ -698,13 +695,7 @@ class _SpatialExtent:
 
 class _SpatioTemporalExtent:
     # TODO: move this to a more generic location for better reuse
-    def __init__(
-        self,
-        *,
-        bbox: Union[BoundingBox, None],
-        from_date: Union[str, datetime.datetime, datetime.date, None],
-        to_date: Union[str, datetime.datetime, datetime.date, None],
-    ):
+    def __init__(self, *, bbox: Union[BoundingBox, None], from_date: DateTimeLikeOrNone, to_date: DateTimeLikeOrNone):
         self._spatial_extent = _SpatialExtent(bbox=bbox)
         self._temporal_extent = _TemporalExtent(from_date=from_date, to_date=to_date)
 
