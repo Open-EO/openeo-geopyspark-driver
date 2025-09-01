@@ -824,6 +824,11 @@ class TestGpsBatchJobs:
         assert asset_key == "openEO"
         assert asset["href"] == "s3://bucket/path/to/openEO.tif"
 
+        metadata = backend_implementation.batch_jobs.get_job_info(
+            job_id=job_id, user_id=self._dummy_user.user_id
+        )
+        assert metadata.epsg == 32631
+
         providers = backend_implementation.batch_jobs.get_result_metadata(
             job_id=job_id, user_id=self._dummy_user.user_id
         ).providers
