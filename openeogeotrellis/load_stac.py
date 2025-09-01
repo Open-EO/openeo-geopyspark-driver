@@ -126,7 +126,7 @@ def load_stac(
             max_poll_delay_seconds=max_poll_delay_seconds,
             max_poll_time=max_poll_time,
         )
-        if user
+        if user and batch_jobs
         else None
     )
 
@@ -134,7 +134,7 @@ def load_stac(
 
     remote_request_info = None
     try:
-        if dependency_job_info:
+        if dependency_job_info and batch_jobs:
             item_collection = ItemCollection.from_own_job(
                 job=dependency_job_info, spatiotemporal_extent=spatiotemporal_extent, batch_jobs=batch_jobs, user=user
             )
@@ -781,7 +781,7 @@ class ItemCollection:
         job: BatchJobMetadata,
         *,
         spatiotemporal_extent: _SpatioTemporalExtent,
-        batch_jobs: Optional[openeo_driver.backend.BatchJobs] = None,
+        batch_jobs: openeo_driver.backend.BatchJobs,
         user: Optional[User],
     ) -> ItemCollection:
         items = []
