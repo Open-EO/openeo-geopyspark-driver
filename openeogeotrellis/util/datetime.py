@@ -4,7 +4,14 @@ import datetime
 import dateutil.parser
 
 
-def to_datetime_utc(d: Union[str, datetime.datetime, datetime.date]) -> datetime.datetime:
+# TODO: move these utilities to openeo-python-driver or even openeo-python-client?
+
+DateLike = Union[str, datetime.date]
+DateTimeLike = Union[str, datetime.datetime, datetime.date]
+DateTimeLikeOrNone = Union[DateTimeLike, None]
+
+
+def to_datetime_utc(d: DateTimeLike) -> datetime.datetime:
     """Parse/convert to datetime in UTC."""
     if isinstance(d, str):
         d = dateutil.parser.parse(d)
@@ -21,8 +28,6 @@ def to_datetime_utc(d: Union[str, datetime.datetime, datetime.date]) -> datetime
     return d
 
 
-def to_datetime_utc_unless_none(
-    d: Union[str, datetime.datetime, datetime.date, None]
-) -> Union[datetime.datetime, None]:
+def to_datetime_utc_unless_none(d: DateTimeLikeOrNone) -> Union[datetime.datetime, None]:
     """Parse/convert to datetime in UTC, but preserve None."""
     return None if d is None else to_datetime_utc(d)
