@@ -29,6 +29,7 @@ from openeogeotrellis.load_stac import (
     _SpatioTemporalExtent,
     _SpatialExtent,
     PropertyFilter,
+    ItemCollection,
 )
 
 
@@ -1325,3 +1326,32 @@ class TestPropertyFilter:
             )
             == expected
         )
+
+
+class TestItemCollection:
+
+    def test_from_stac_item_basic(self):
+        item = pystac.Item.from_dict(StacDummyBuilder.item())
+        spatiotemporal_extent = _SpatioTemporalExtent(bbox=None, from_date=None, to_date=None)
+        item_collection = ItemCollection.from_stac_item(item, spatiotemporal_extent=spatiotemporal_extent)
+
+        assert item_collection.items == [item]
+
+    @pytest.mark.parametrize(
+        ["bbox", "interval", "expected"],
+        [
+            ((20, 34, 26, 40), ["2025-09-01", "2025-10-01"], True),
+            ((20, 34, 26, 40), ["2025-10-01", "2025-11-01"], False),
+            ((30, 34, 36, 40), ["2025-09-01", "2025-10-01"], False),
+        ],
+    )
+    def test_from_stac_item_with_filtering(self, bbox, interval, expected):
+        item = pystac.Item.from_dict(StacDummyBuilder.item(datetime="2025-09-04", bbox=[20, 30, 25, 35]))
+
+        from_date, to_date = interval
+        spatiotemporal_extent = _SpatioTemporalExtent(
+            bbox=BoundingBox.from_wsen_tuple(bbox, crs=4326), from_date=from_date, to_date=to_date
+        )
+        item_collection = ItemCollection.from_stac_item(item, spatiotemporal_extent=spatiotemporal_extent)
+        expected = [item] if expected else []
+        assert item_collection.items == expected
