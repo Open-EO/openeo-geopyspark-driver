@@ -658,15 +658,11 @@ class _TemporalExtent:
 
         # If available, start+end are preferred (cleanly defined interval)
         # fall back on nominal otherwise
-        if start_datetime and end_datetime and start_datetime <= end_datetime:
-            pass
-        elif nominal:
+        if start_datetime is None and end_datetime is None and nominal:
             start_datetime = end_datetime = nominal
-        else:
-            raise ValueError(f"Ill-defined instant/interval {nominal=} {start_datetime=} {end_datetime=}")
 
-        return (self.from_date is None or self.from_date <= end_datetime) and (
-            self.to_date is None or start_datetime < self.to_date
+        return (self.from_date is None or end_datetime is None or self.from_date <= end_datetime) and (
+            self.to_date is None or start_datetime is None or start_datetime < self.to_date
         )
 
     def intersects_interval(
