@@ -2952,12 +2952,7 @@ def _setup_existing_job(
             process_graph=load_json(result_dir / "process_graph.json")["process_graph"],
         ),
     )
-    job_metadata = load_json(job_metadata_file)
-    zk_job_registry.patch(
-        job_id=job_id,
-        user_id=user_id,
-        **{k: job_metadata[k] for k in ["bbox", "epsg"]},
-    )
+    zk_job_registry.set_results_metadata_uri(job_id, user_id, results_metadata_uri=f"file://{job_metadata_file}")
     zk_job_registry.set_status(
         job_id=job_id, user_id=user_id, status=JOB_STATUS.FINISHED
     )
