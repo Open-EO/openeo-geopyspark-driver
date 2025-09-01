@@ -849,9 +849,6 @@ class TestBatchJobs:
                 elastic_job_registry=job_registry,
             )
             with dbl_job_registry as jr:
-                jr.set_results_metadata(
-                    job_id, user_id=TEST_USER, costs=None, usage={}, results_metadata=job_metadata_contents
-                )
                 jr.set_status(job_id=job_id, user_id=TEST_USER, status=JOB_STATUS.FINISHED)
 
             res = api.get(f"/jobs/{job_id}", headers=TEST_USER_AUTH_HEADER).assert_status_code(200).json
@@ -861,10 +858,10 @@ class TestBatchJobs:
             res = api.get(f"/jobs/{job_id}/results", headers=TEST_USER_AUTH_HEADER).assert_status_code(200).json
 
             assert "providers" in res
-            assert res["providers"] == expected_providers  # directly from job_metadata.json
+            assert res["providers"] == expected_providers
 
             if api.api_version_compare.at_least("1.1.0"):
-                assert res["extent"]["spatial"]["bbox"] == [[2, 51, 3, 52]]  # relies on job_tracker patching job entity
+                assert res["extent"]["spatial"]["bbox"] == [[2, 51, 3, 52]]
 
     @mock.patch(
         "openeogeotrellis.configparams.ConfigParams.use_object_storage",
@@ -1825,7 +1822,6 @@ class TestBatchJobs:
                     title="Fake Test Job",
                     description="Fake job for the purpose of testing",
                 )
-                registry.patch(job_id=job_id, user_id=TEST_USER, **job_metadata_contents)
                 registry.set_status(job_id=job_id, user_id=TEST_USER, status=JOB_STATUS.FINISHED)
 
                 # Download
