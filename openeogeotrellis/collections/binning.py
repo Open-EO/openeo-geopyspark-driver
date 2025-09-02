@@ -24,7 +24,7 @@ def _bin_generic():
     """
     Binning implementation that supports multiple aggregators via scipy ``binned_statistic``.
     """
-    pass
+    raise NotImplementedError("Only mean-binning is currently supported")
 
 
 def _bin_with_mean_statistic(ds: xr.Dataset, bands: Iterable[str], lat_edges, lon_edges, *, super_sampling: int=1) -> xr.Dataset:
