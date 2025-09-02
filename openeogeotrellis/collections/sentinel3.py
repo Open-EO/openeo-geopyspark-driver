@@ -27,6 +27,8 @@ SYNERGY_PRODUCT_TYPE = "SY_2_SYN___"
 SLSTR_PRODUCT_TYPE = "SL_2_LST___"
 
 RIM_PIXELS = 60
+DEFAULT_REPROJECTION_TYPE = "nearest_neighbor"
+DEFAULT_SUPER_SAMPLING = 1 # no super sampling
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +81,8 @@ def main(product_type, native_resolution, bbox, from_date, to_date, band_names):
 
 def pyramid(metadata_properties, projected_polygons_native_crs, from_date, to_date, band_names, data_cube_parameters,
             native_cell_size, feature_flags, jvm):
+    reprojection_type = feature_flags.get("reprojection_type", DEFAULT_REPROJECTION_TYPE)
+    super_sampling = feature_flags.get("super_sampling", DEFAULT_SUPER_SAMPLING)
 
     opensearch_client = jvm.org.openeo.opensearch.OpenSearchClient.apply(
         "https://catalogue.dataspace.copernicus.eu/resto", False, "", [], "",
@@ -148,6 +152,8 @@ def pyramid(metadata_properties, projected_polygons_native_crs, from_date, to_da
             band_names=band_names,
             tile_size=tile_size,
             resolution=native_cell_size.width(),
+            reprojection_type=reprojection_type,
+            super_sampling=super_sampling,
         )
     )
 
@@ -189,7 +195,7 @@ def _instant_ms_to_minute(instant: int) -> datetime:
 
 
 @ensure_executor_logging
-def read_product(product, product_type, band_names, tile_size, resolution, reprojection_type="nearest_neighbour", super_sampling=1):
+def read_product(product, product_type, band_names, tile_size, resolution, reprojection_type=DEFAULT_REPROJECTION_TYPE, super_sampling=DEFAULT_SUPER_SAMPLING):
     from openeogeotrellis.collections.s1backscatter_orfeo import get_total_extent
 
     creo_path, features = product  # better: "tiles"
@@ -302,7 +308,7 @@ def read_product(product, product_type, band_names, tile_size, resolution, repro
     return tiles
 
 
-def create_s3_toa(product_type, creo_path, band_names, bbox_tile, digital_numbers: bool, final_grid_resolution: float, reprojection_type="nearest_neighbour", super_sampling=1):
+def create_s3_toa(product_type, creo_path, band_names, bbox_tile, digital_numbers: bool, final_grid_resolution: float, reprojection_type=DEFAULT_REPROJECTION_TYPE, super_sampling=DEFAULT_SUPER_SAMPLING):
     if product_type == OLCI_PRODUCT_TYPE:
         geofile = 'geo_coordinates.nc'
         lat_band = 'latitude'
@@ -351,7 +357,7 @@ def create_s3_toa(product_type, creo_path, band_names, bbox_tile, digital_number
         angle_data_mask = None
         tile_coordinates_with_rim = None
 
-    if reprojection_type == "nearest_neighbour":
+    if reprojection_type in ["nearest_neighbour", "nearest_neighbor", "nn"]:
         reprojected_data, is_empty = do_reproject(product_type, final_grid_resolution, creo_path, band_names,
                                                   source_coordinates, tile_coordinates, data_mask,
                                                   angle_source_coordinates, tile_coordinates_with_rim, angle_data_mask,
@@ -372,7 +378,7 @@ def create_s3_toa(product_type, creo_path, band_names, bbox_tile, digital_number
             super_sampling=super_sampling,
         )
     else:
-        raise ValueError(f"reprojection_type must be either 'nearest_neighbour' or 'binning', found '{reprojection_type}'")
+        raise ValueError(f"reprojection_type must be either 'nearest_neighbor' or 'binning', found '{reprojection_type}'")
     return reprojected_data
 
 
