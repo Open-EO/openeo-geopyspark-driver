@@ -95,11 +95,8 @@ def test_read_single_binned():
         super_sampling=3
     )
 
-
-    import rasterio
-    from rasterio.transform import from_bounds, from_origin
-
     arr = result[0][1].cells
+    return
 
 def test_read_single_edge():
 
