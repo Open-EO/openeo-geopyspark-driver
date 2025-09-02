@@ -9,7 +9,6 @@ from numpy.typing import NDArray
 import xarray as xr
 import numpy as np
 
-# TODO shift if we cross the antimeridian. Here is a good place, as we wouldn't want to do it multiple times
 def bin_to_grid(ds: xr.Dataset, bands: Iterable[str], lat_edges, lon_edges, *, aggregation="mean", super_sampling: int=1) -> xr.Dataset:
     """
     assumes strictly increasing lat_edges, lon_edges
@@ -144,9 +143,14 @@ def _super_sample_2d(arr, factor, *, kind="nearest"):
 
 def _super_sample_1d(arr, factor, *, kind="nearest"):
     """
+    Super sampling of a sorted, one-dimensional array.
+    If kind is "linear" the minimum and maximum values in the array will be slightly smaller/larger than before.
 
+    :param arr: the array to be super sampled
+    :param factor: the number of sampling points per input sampling point, 1 means no super sampling
+    :param kind: super-sampling strategy. "nearest": repeat each point factor times, "linear": interpolate linearly between points (default: "nearest").
+    :returns: new array of shape (factor * arr.size)
     """
-    # TODO docstring
     if factor == 1:
         return arr
     if kind == "nearest":
@@ -160,8 +164,6 @@ def _super_sample_1d(arr, factor, *, kind="nearest"):
         x = np.linspace(xp[0]-shift, xp[-1]+shift, factor * xp.shape[0])
         spl = make_interp_spline(xp, arr, k=1) # linear
         return spl(x)
-
-        #return np.interp(x, xp, arr)
     else:
         raise ValueError(f"Unknown kind: {kind}")
 
@@ -188,8 +190,10 @@ def _compute_grid_bin_edges(bbox: Mapping[str, float], num_rows: int) -> Tuple[N
     res = lat[lat_idx_min:lat_idx_max + 1], lon[lon_idx_min:lon_idx_max + 1]
     return res
 
+
 def _compute_pixel_centers_from_edges(edges, pixel_size):
     return edges[:-1] + 0.5 * pixel_size
+
 
 def compute_edges_from_pixel_centers(centers, pixel_size):
     assert centers.ndim == 1, "only edges for one-dimensional arrays are supported"
@@ -202,12 +206,12 @@ def compute_edges_from_pixel_centers(centers, pixel_size):
 
 def _extrapolate_edges_2d(arr: NDArray, border: int) -> NDArray:
     """
-    In-place extrapolation of interpolated results
+    In-place extrapolation for 2D arrays. arr must already contain the border with values that will be overwritten.
 
-    arr should already contain the border with values that will be overwritten
-    border is an int, used for all dimensions
+    :param arr: 2D array with a border (e.g. of NaN values) that will be overwritten
+    :param border: number of rows and columns to extrapolate
+    :returns: arr with borders overwritten
     """
-    # TODO doc string
     assert (arr.shape[0] > border * 2) and (arr.shape[1] > border * 2), (
         "The border must be fully contained in the array (no overlap). Found "
         f"shape {arr.shape} and border size {border}."
