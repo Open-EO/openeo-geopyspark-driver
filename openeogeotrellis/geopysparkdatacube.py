@@ -1425,9 +1425,9 @@ class GeopysparkDataCube(DriverDataCube):
                 wrapped.openEOMetadata().setBandNames(bandNames)
                 target_resolution = None
                 if isinstance(resolution, (list, tuple)):
-                    target_resolution = jvm.geotrellis.raster.CellSize( resolution[0], resolution[1] )
+                    target_resolution = jvm.geotrellis.raster.CellSize( float(resolution[0]), float(resolution[1]) )
                 else:
-                    target_resolution = jvm.geotrellis.raster.CellSize(resolution, resolution)
+                    target_resolution = jvm.geotrellis.raster.CellSize(float(resolution), float(resolution))
 
 
                 return jvm.org.openeo.geotrellis.geocoding.GeoCodingProcess().geoCode(
