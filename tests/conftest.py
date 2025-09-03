@@ -706,6 +706,27 @@ def apply_datacube(cube: DataArray, context: dict) -> DataArray:
 
 
 @pytest.fixture
+def mock_yarn_backend_config():
+    """
+    Backend config that provides mock values for properties that are required in the yarn_jobrunner
+    while preserving all other backend config functionality.
+    """
+    with mock.patch("openeogeotrellis.integrations.yarn_jobrunner.get_backend_config") as mock_config:
+        real_backend_config = get_backend_config()
+        mock_backend_config = mock.MagicMock(spec=real_backend_config)
+        # Copy all attributes from real config
+        for attr in dir(real_backend_config):
+            if not attr.startswith('_'):
+                setattr(mock_backend_config, attr, getattr(real_backend_config, attr))
+        # Override only the specific yarn properties we need to mock
+        mock_backend_config.batch_spark_eventlog_dir = "mockvalue"
+        mock_backend_config.batch_spark_history_fs_logdirectory = "mockvalue"
+        mock_backend_config.batch_spark_yarn_historyserver_address = "mockvalue"
+        mock_config.return_value = mock_backend_config
+        yield mock_backend_config
+
+
+@pytest.fixture
 def metadata_tracker():
     # TODO: local import, otherwise subsequent import of openeogeotrellis.job_options.JobOptions will call
     #  get_backend_config() eagerly, bypassing the setup of OPENEO_BACKEND_CONFIG in pytest_configure()

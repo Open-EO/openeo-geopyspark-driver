@@ -1420,14 +1420,23 @@ class GeopysparkDataCube(DriverDataCube):
                 if self.metadata.has_band_dimension():
                     bandNames = self.metadata.band_names
 
-                wrapped = get_jvm().org.openeo.geotrellis.OpenEOProcesses().wrapCube(cube)
+                jvm = get_jvm()
+                wrapped = jvm.org.openeo.geotrellis.OpenEOProcesses().wrapCube(cube)
                 wrapped.openEOMetadata().setBandNames(bandNames)
+                target_resolution = None
+                if isinstance(resolution, (list, tuple)):
+                    target_resolution = jvm.geotrellis.raster.CellSize( float(resolution[0]), float(resolution[1]) )
+                else:
+                    target_resolution = jvm.geotrellis.raster.CellSize(float(resolution), float(resolution))
 
-                get_jvm().org.openeo.geotrellis.geocoding.GeoCodingProcess().geoCode(
-                    cube, scala_target_extent, scala_crs
+
+                return jvm.org.openeo.geotrellis.geocoding.GeoCodingProcess().geoCode(
+                    wrapped, scala_target_extent, scala_crs, target_resolution
                 )
 
-            return self._apply_to_levels_geotrellis_rdd(lambda rdd, level: geocode_level(rdd))
+            geoCodedCube = self._apply_to_levels_geotrellis_rdd(lambda rdd, level: geocode_level(rdd))
+            new_extent = geoCodedCube.get_max_level().layer_metadata.extent
+            return GeopysparkDataCube(geoCodedCube.pyramid,metadata= self.metadata.filter_bbox(new_extent.xmin,new_extent.ymin,new_extent.xmax,new_extent.ymax,geoCodedCube.get_max_level().layer_metadata.crs))
 
         #IF projection is defined, we need to warp
         if projection is not None and resolution==0.0:

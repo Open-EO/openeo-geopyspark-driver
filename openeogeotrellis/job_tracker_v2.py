@@ -64,6 +64,7 @@ class _Usage(NamedTuple):
     mb_seconds: Optional[float] = None
     network_receive_bytes: Optional[float] = None
     max_executor_gigabytes: Optional[float] = None
+    memory_requested: Optional[float] = None
 
     def to_dict(self) -> dict:
         result = {}
@@ -72,6 +73,8 @@ class _Usage(NamedTuple):
             result["cpu"] = {"value": self.cpu_seconds, "unit": "cpu-seconds"}
         if self.mb_seconds:
             result["memory"] = {"value": self.mb_seconds, "unit": "mb-seconds"}
+        if self.memory_requested:
+            result["memory_requested"] = {"value": self.mb_seconds, "unit": "mb-seconds"}
         if self.network_receive_bytes:
             result["network_received"] = {"value": self.network_receive_bytes, "unit": "b"}
         if self.max_executor_gigabytes:
@@ -337,6 +340,7 @@ class K8sStatusGetter(JobMetadataGetterInterface):
             network_receive_bytes = self._prometheus_api.get_network_received_usage(application_id)
 
             max_executor_gigabyte = self._prometheus_api.get_max_executor_memory_usage(application_id)
+            memory_seconds_requested = self._prometheus_api.get_memory_requested(application_id)
 
 
             _log.info(f"Successfully retrieved usage stats from {self._prometheus_api.endpoint}: "
@@ -355,7 +359,8 @@ class K8sStatusGetter(JobMetadataGetterInterface):
 
             return _Usage(cpu_seconds=cpu_seconds,
                           mb_seconds=byte_seconds / (1024 * 1024) if byte_seconds is not None else None,
-                          network_receive_bytes=network_receive_bytes, max_executor_gigabytes=max_executor_gigabyte
+                          network_receive_bytes=network_receive_bytes, max_executor_gigabytes=max_executor_gigabyte,
+                          memory_requested=memory_seconds_requested
                           )
         except Exception as e:
             _log.exception(
@@ -430,6 +435,7 @@ class JobTracker:
                     "job_options",
                     "dependencies",
                     "dependency_usage",
+                    "results_metadata_uri",
                 ],
                 max_age=3 * 30,
                 max_updated_ago=14,
@@ -579,21 +585,26 @@ class JobTracker:
                 _log.debug(f"job_costs: calculated {job_costs}")
                 stats["job_costs: calculated"] += 1
                 stats[f"job_costs: nonzero={isinstance(job_costs, float) and job_costs>0}"] += 1
-                # TODO: skip patching the job znode and read from this file directly?
             except Exception as e:
                 log.exception(f"Failed to calculate job costs: {e}")
                 stats["job_costs: failed"] += 1
                 job_costs = None
 
             total_usage = dict_merge_recursive(job_metadata.usage.to_dict(), result_metadata.get("usage", {}))
-            try:
+
+            def set_results_metadata(results_metadata: dict):
+                include_all_results_metadata = "results_metadata_uri" not in job_info
+
                 double_job_registry.set_results_metadata(
                     job_id=job_id,
                     user_id=user_id,
                     costs=job_costs,
                     usage=to_jsonable(dict(total_usage)),
-                    results_metadata=to_jsonable(result_metadata),
+                    results_metadata=to_jsonable(results_metadata) if include_all_results_metadata else None,
                 )
+
+            try:
+                set_results_metadata(result_metadata)
             except EjrApiResponseError as e:
                 if e.status_code == 413:
                     log.warning(
@@ -607,13 +618,7 @@ class JobTracker:
                     if not result_metadata["links"]:
                         del result_metadata["links"]
 
-                    double_job_registry.set_results_metadata(
-                        job_id=job_id,
-                        user_id=user_id,
-                        costs=job_costs,
-                        usage=to_jsonable(dict(total_usage)),
-                        results_metadata=to_jsonable(result_metadata),
-                    )
+                    set_results_metadata(result_metadata)
                 else:
                     raise
 

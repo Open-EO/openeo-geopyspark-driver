@@ -6,6 +6,7 @@ import dataclasses
 import datetime
 import functools
 import grp
+import hashlib
 import json
 import logging
 import math
@@ -275,15 +276,14 @@ def s3_client():
     return s3_client
 
 
-def get_s3_file_contents(filename: Union[os.PathLike,str]) -> str:
-    """Get contents of a text file from the S3 bucket.
-
-        The bucket is set in ConfigParams().s3_bucket_name
+def get_s3_file_contents(filename: Union[os.PathLike, str], bucket: Optional[str] = None) -> str:
+    """
+    Get contents of a text file in an S3 bucket; the bucket defaults to ConfigParams().s3_bucket_name.
     """
     # TODO: move this to openeodriver.integrations.s3?
     s3_instance = s3_client()
     s3_file_object = s3_instance.get_object(
-        Bucket=get_backend_config().s3_bucket_name,
+        Bucket=bucket or get_backend_config().s3_bucket_name,
         Key=str(filename).strip("/"),
     )
     body = s3_file_object["Body"]
@@ -903,3 +903,13 @@ def to_tuple(scala_tuple):
 def unzip(*iterables: Iterable) -> Iterator:
     # iterables are typically of equal length
     return zip(*iterables)
+
+
+def md5_checksum(file: Path) -> str:
+    """Computes the MD5 checksum of a (potentially large) file."""
+
+    hash_md5 = hashlib.md5()
+    with open(file, "rb") as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            hash_md5.update(chunk)
+    return hash_md5.hexdigest()

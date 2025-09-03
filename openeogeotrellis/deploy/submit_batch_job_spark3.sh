@@ -55,10 +55,14 @@ udf_python_dependencies_folder_path=${30}
 ejr_api=${31}
 ejr_backend_id=${32}
 ejr_oidc_client_credentials=${33}
-docker_mounts=${34-"/var/lib/sss/pubconf/krb5.include.d:/var/lib/sss/pubconf/krb5.include.d:ro,/var/lib/sss/pipes:/var/lib/sss/pipes:rw,/usr/hdp/current/:/usr/hdp/current/:ro,/etc/hadoop/conf/:/etc/hadoop/conf/:ro,/etc/krb5.conf:/etc/krb5.conf:ro,/data/MTDA:/data/MTDA:ro,/data/projects/OpenEO:/data/projects/OpenEO:rw,/data/MEP:/data/MEP:ro,/data/users:/data/users:rw,/tmp_epod:/tmp_epod:rw"}
+docker_mounts=${34}
 udf_python_dependencies_archive_path=${35}
 propagatable_web_app_driver_envars=${36}
 python_max_memory=${37-"-1"}
+spark_eventlog_dir=${38}
+spark_history_fs_logdirectory=${39}
+spark_yarn_historyserver_address=${40}
+yarn_container_runtime_docker_client_config=${41}
 
 
 pysparkPython="/opt/venv/bin/python"
@@ -131,6 +135,13 @@ batch_job_driver_envar_arguments()
   echo "${arguments}"
 }
 
+docker_client_config_args()
+{
+  if [ -n "${yarn_container_runtime_docker_client_config}" ]; then
+    echo "--conf spark.yarn.appMasterEnv.YARN_CONTAINER_RUNTIME_DOCKER_CLIENT_CONFIG=${yarn_container_runtime_docker_client_config} --conf spark.executorEnv.YARN_CONTAINER_RUNTIME_DOCKER_CLIENT_CONFIG=${yarn_container_runtime_docker_client_config}"
+  fi
+}
+
 spark-submit \
  --master yarn --deploy-mode cluster \
  ${run_as} \
@@ -175,6 +186,7 @@ spark-submit \
  --conf spark.yarn.appMasterEnv.OPENEO_EJR_BACKEND_ID=${ejr_backend_id} \
  --conf spark.yarn.appMasterEnv.OPENEO_EJR_OIDC_CLIENT_CREDENTIALS=${ejr_oidc_client_credentials} \
  $(batch_job_driver_envar_arguments) \
+ $(docker_client_config_args) \
  --conf spark.executorEnv.AWS_REGION=${AWS_REGION} --conf spark.yarn.appMasterEnv.AWS_REGION=${AWS_REGION} \
  --conf spark.executorEnv.AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} --conf spark.yarn.appMasterEnv.AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} \
  --conf spark.executorEnv.AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} --conf spark.yarn.appMasterEnv.AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} \
@@ -201,14 +213,14 @@ spark-submit \
  --conf spark.hadoop.yarn.client.failover-proxy-provider=org.apache.hadoop.yarn.client.ConfiguredRMFailoverProxyProvider \
  --conf spark.shuffle.service.name=spark_shuffle_320 --conf spark.shuffle.service.port=7557 \
  --conf spark.eventLog.enabled=true \
- --conf spark.eventLog.dir=hdfs:///spark2-history/ \
- --conf spark.history.fs.logDirectory=hdfs:///spark2-history/ \
+ --conf spark.eventLog.dir=${spark_eventlog_dir} \
+ --conf spark.history.fs.logDirectory=${spark_history_fs_logdirectory} \
  --conf spark.history.kerberos.enabled=true \
  --conf spark.history.kerberos.keytab=/etc/security/keytabs/spark.service.keytab \
  --conf spark.history.kerberos.principal=spark/_HOST@VGT.VITO.BE \
  --conf spark.history.provider=org.apache.spark.deploy.history.FsHistoryProvider \
  --conf spark.history.store.path=/var/lib/spark2/shs_db \
- --conf spark.yarn.historyServer.address=epod-ha.vgt.vito.be:18481 \
+ --conf spark.yarn.historyServer.address=${spark_yarn_historyserver_address} \
  --conf spark.archives=${archives} \
  --conf spark.extraListeners=org.openeo.sparklisteners.LogErrorSparkListener,org.openeo.sparklisteners.BatchJobProgressListener \
  --conf spark.sql.adaptive.coalescePartitions.parallelismFirst=false \
