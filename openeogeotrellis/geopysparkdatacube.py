@@ -1434,7 +1434,9 @@ class GeopysparkDataCube(DriverDataCube):
                     wrapped, scala_target_extent, scala_crs, target_resolution
                 )
 
-            return self._apply_to_levels_geotrellis_rdd(lambda rdd, level: geocode_level(rdd))
+            geoCodedCube = self._apply_to_levels_geotrellis_rdd(lambda rdd, level: geocode_level(rdd))
+            new_extent = geoCodedCube.get_max_level().layer_metadata.extent
+            return GeopysparkDataCube(geoCodedCube.pyramid,metadata= self.metadata.filter_bbox(new_extent.xmin,new_extent.ymin,new_extent.xmax,new_extent.ymax,geoCodedCube.get_max_level().layer_metadata.crs))
 
         #IF projection is defined, we need to warp
         if projection is not None and resolution==0.0:
