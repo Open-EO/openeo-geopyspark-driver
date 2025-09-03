@@ -1510,3 +1510,59 @@ class TestItemCollection:
         }
         expected = [expected_map[e] for e in expected]
         assert [item.to_dict() for item in item_collection.items] == expected
+
+    def test_from_stac_catalog_basic(self):
+        collection = pystac.Collection(
+            id="c123",
+            description="C123",
+            extent=pystac.Extent(
+                spatial=pystac.SpatialExtent(bboxes=[[20, 30, 25, 35]]),
+                temporal=pystac.TemporalExtent.from_dict({"interval": ["2025-07-01", "2025-08-31"]}),
+            ),
+        )
+        item1 = pystac.Item.from_dict(StacDummyBuilder.item(datetime="2025-07-10", bbox=[21, 31, 25, 35]))
+        item2 = pystac.Item.from_dict(StacDummyBuilder.item(datetime="2025-07-20", bbox=[22, 32, 25, 35]))
+        collection.add_link(pystac.Link(rel=pystac.RelType.ITEM, target=item1))
+        collection.add_link(pystac.Link(rel=pystac.RelType.ITEM, target=item2))
+
+        spatiotemporal_extent = _SpatioTemporalExtent(bbox=None, from_date=None, to_date=None)
+        item_collection = ItemCollection.from_stac_catalog(collection, spatiotemporal_extent=spatiotemporal_extent)
+        assert item_collection.items == [item1, item2]
+
+    @pytest.mark.parametrize(
+        ["bbox", "interval", "expected"],
+        [
+            (None, None, [1, 2]),
+            ([20, 30, 25, 35], ["2025-06-01", "2025-09-30"], [1, 2]),
+            ([20, 30, 21, 31], ["2025-06-01", "2025-09-30"], [1]),
+            ([22.3, 32.3, 22.6, 32.6], ["2025-06-01", "2025-09-30"], [2]),
+            ([20, 30, 25, 35], ["2025-07-05", "2025-07-15"], [1]),
+            ([20, 30, 25, 35], ["2025-07-15", "2025-07-25"], [2]),
+        ],
+    )
+    def test_from_stac_catalog_spatiotemporal_filtering(self, bbox, interval, expected):
+        collection = pystac.Collection(
+            id="c123",
+            description="C123",
+            extent=pystac.Extent(
+                spatial=pystac.SpatialExtent(bboxes=[[20, 30, 25, 35]]),
+                temporal=pystac.TemporalExtent.from_dict({"interval": ["2025-07-01", "2025-08-31"]}),
+            ),
+        )
+        item1 = pystac.Item.from_dict(
+            StacDummyBuilder.item(id="item1", datetime="2025-07-10", bbox=[21, 31, 21.5, 31.5])
+        )
+        item2 = pystac.Item.from_dict(
+            StacDummyBuilder.item(id="item2", datetime="2025-07-20", bbox=[22, 32, 22.5, 32.5])
+        )
+        collection.add_link(pystac.Link(rel=pystac.RelType.ITEM, target=item1))
+        collection.add_link(pystac.Link(rel=pystac.RelType.ITEM, target=item2))
+
+        from_date, to_date = interval or (None, None)
+        if bbox:
+            bbox = BoundingBox.from_wsen_tuple(bbox, crs=4326)
+        spatiotemporal_extent = _SpatioTemporalExtent(bbox=bbox, from_date=from_date, to_date=to_date)
+        item_collection = ItemCollection.from_stac_catalog(collection, spatiotemporal_extent=spatiotemporal_extent)
+
+        expected = [{1: item1, 2: item2}[x] for x in expected]
+        assert item_collection.items == expected
