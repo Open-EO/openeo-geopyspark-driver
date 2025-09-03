@@ -3605,10 +3605,12 @@ def test_export_workspace_derived_from(tmp_path, requests_mock, mock_s3_bucket, 
 
     metadata_tracker.addInputProducts("S2", ["http://s2.test/p1", "http://s2.test/p2"])
 
+    metadata_file = tmp_path / "job_metadata.json"
+
     run_job(
         process,
         output_file=tmp_path / "out.tif",
-        metadata_file=tmp_path / "job_metadata.json",
+        metadata_file=metadata_file,
         api_version="2.0.0",
         job_dir=tmp_path,
         dependencies=[],
@@ -3617,3 +3619,10 @@ def test_export_workspace_derived_from(tmp_path, requests_mock, mock_s3_bucket, 
     assert create_collection.call_count == 1, "expected creation of one new collection"
     assert update_collection.call_count == 1, "expected one update of this collection"
     assert create_item.call_count == 2, "expected one item for each output asset"
+
+    with open(metadata_file) as f:
+        results_metadata = json.load(f)
+
+        # these get rendered in the /jobs/<job_id>/results STAC Collection document
+        derived_from_hrefs = {link["href"] for link in results_metadata["links"] if link["rel"] == "derived_from"}
+        assert derived_from_hrefs == {"http://s2.test/p1", "http://s2.test/p2"}
