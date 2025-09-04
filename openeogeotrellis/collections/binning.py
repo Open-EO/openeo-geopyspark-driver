@@ -1,7 +1,6 @@
 """ This module implements spatial binning that can be used to avoid issues with nearest neighbor resampling
 while preserving physical spectra"""
-from collections.abc import Iterable, Mapping
-from typing import Tuple
+from typing import Tuple, Iterable, Mapping
 
 from scipy.interpolate import griddata, make_interp_spline
 from numpy import floating
