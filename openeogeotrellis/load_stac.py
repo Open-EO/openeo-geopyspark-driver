@@ -1,5 +1,5 @@
+from __future__ import annotations
 import re
-
 import datetime as dt
 import datetime
 import json
@@ -7,7 +7,7 @@ import time
 from functools import partial
 import logging
 import os
-from typing import Union, Optional, Tuple, Dict, List, Iterable, Any, Set
+from typing import Union, Optional, Tuple, Dict, List, Iterable, Any, Set, Callable, Iterator
 from urllib.parse import urlparse
 
 import dateutil.parser
@@ -19,7 +19,7 @@ import pystac_client
 import requests.adapters
 from pystac_client import exceptions, stac_api_io
 from geopyspark import LayerType, TiledRasterLayer
-from openeo.util import dict_no_none, Rfc3339
+from openeo.util import dict_no_none, Rfc3339, rfc3339
 from openeo.metadata import _StacMetadataParser
 import openeo_driver.backend
 from openeo_driver import filter_properties
@@ -49,12 +49,18 @@ from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.constants import EVAL_ENV_KEY
 from openeogeotrellis.geopysparkcubemetadata import GeopysparkCubeMetadata
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
-from openeogeotrellis.util.datetime import to_datetime_utc_unless_none
+from openeogeotrellis.util.datetime import to_datetime_utc_unless_none, DateTimeLikeOrNone
 from openeogeotrellis.utils import normalize_temporal_extent, get_jvm, to_projected_polygons, map_optional, unzip
 from openeogeotrellis.integrations.stac import ResilientStacIO
 
 logger = logging.getLogger(__name__)
 REQUESTS_TIMEOUT_SECONDS = 60
+
+
+class NoDataAvailableException(OpenEOApiException):
+    status_code = 400
+    code = "NoDataAvailable"
+    message = "There is no data available for the given extents."
 
 
 def load_stac(
@@ -77,10 +83,6 @@ def load_stac(
     feature_flags = load_params.get("featureflags", {})
     allow_empty_cubes = feature_flags.get("allow_empty_cube", env.get(EVAL_ENV_KEY.ALLOW_EMPTY_CUBES, False))
 
-    no_data_available_exception = OpenEOApiException(message="There is no data available for the given extents.",
-                                                     code="NoDataAvailable", status_code=400)
-    properties_unsupported_exception = ProcessParameterUnsupportedException("load_stac", "properties")
-
     all_properties = {**layer_properties, **load_params.properties} if layer_properties else load_params.properties
 
     user: Optional[User] = env.get("user")
@@ -102,34 +104,8 @@ def load_stac(
 
         return raster_offset / raster_scale
 
-    literal_matches = {
-        property_name: filter_properties.extract_literal_match(condition, env)
-        for property_name, condition in all_properties.items()
-    }
+    property_filter = PropertyFilter(properties=all_properties, env=env)
 
-    def matches_metadata_properties(itm: pystac.Item) -> bool:
-        def operator_value(criterion: Dict[str, object]) -> (str, object):
-            if len(criterion) != 1:
-                raise ValueError(f'expected a single criterion, was {criterion}')
-
-            (operator, value), = criterion.items()
-            return operator, value
-
-        for property_name, criterion in literal_matches.items():
-            if property_name not in itm.properties:
-                return False
-
-            item_value = itm.properties[property_name]
-            operator, criterion_value = operator_value(criterion)
-
-            if operator == 'eq' and item_value != criterion_value:
-                return False
-            if operator == 'lte' and item_value is not None and item_value > criterion_value:
-                return False
-            if operator == 'gte' and item_value is not None and item_value < criterion_value:
-                return False
-
-        return True
 
     collection = None
     metadata = None
@@ -151,7 +127,7 @@ def load_stac(
             max_poll_delay_seconds=max_poll_delay_seconds,
             max_poll_time=max_poll_time,
         )
-        if user
+        if user and batch_jobs
         else None
     )
 
@@ -159,48 +135,10 @@ def load_stac(
 
     remote_request_info = None
     try:
-        if dependency_job_info:
-            intersecting_items = []
-
-            for asset_id, asset in batch_jobs.get_result_assets(job_id=dependency_job_info.id,
-                                                                user_id=user.user_id).items():
-                rfc3339 = Rfc3339(propagate_none=True)
-                parse_datetime = partial(rfc3339.parse_datetime, with_timezone=True)
-
-                item_geometry = asset.get("geometry", dependency_job_info.geometry)
-                item_bbox = asset.get("bbox", dependency_job_info.bbox)
-                item_datetime = parse_datetime(asset.get("datetime"))
-                item_start_datetime = None
-                item_end_datetime = None
-
-                if not item_datetime:
-                    item_start_datetime = parse_datetime(asset.get("start_datetime")) or dependency_job_info.start_datetime
-                    item_end_datetime = parse_datetime(asset.get("end_datetime")) or dependency_job_info.end_datetime
-
-                    if item_start_datetime == item_end_datetime:
-                        item_datetime = item_start_datetime
-
-                pystac_item = pystac.Item(id=asset_id, geometry=item_geometry, bbox=item_bbox, datetime=item_datetime,
-                                          properties=dict_no_none({
-                                              "datetime": rfc3339.datetime(item_datetime),
-                                              "start_datetime": rfc3339.datetime(item_start_datetime),
-                                              "end_datetime": rfc3339.datetime(item_end_datetime),
-                                              "proj:epsg": asset.get("proj:epsg"),
-                                              "proj:bbox": asset.get("proj:bbox"),
-                                              "proj:shape": asset.get("proj:shape"),
-                                          }))
-
-                if spatiotemporal_extent.item_intersects(pystac_item) and "data" in asset.get("roles", []):
-                    pystac_asset = pystac.Asset(
-                        href=asset["href"],
-                        extra_fields={
-                            "eo:bands": [{"name": b.name} for b in asset["bands"]]
-                            # TODO #1109 #1015 also add common "bands"?
-                        },
-                    )
-                    pystac_item.add_asset(asset_id, pystac_asset)
-                    intersecting_items.append(pystac_item)
-
+        if dependency_job_info and batch_jobs:
+            item_collection = ItemCollection.from_own_job(
+                job=dependency_job_info, spatiotemporal_extent=spatiotemporal_extent, batch_jobs=batch_jobs, user=user
+            )
             band_names = []
         else:
             logger.info(f"load_stac of arbitrary URL {url}")
@@ -214,147 +152,45 @@ def load_stac(
 
             if isinstance(stac_object, pystac.Item):
                 if load_params.properties:
-                    raise properties_unsupported_exception  # as dictated by the load_stac spec
+                    # as dictated by the load_stac spec
+                    # TODO: it's not that simple see https://github.com/Open-EO/openeo-processes/issues/536 and https://github.com/Open-EO/openeo-processes/pull/547
+                    raise ProcessParameterUnsupportedException(process="load_stac", parameter="properties")
 
                 item = stac_object
                 band_names = stac_metadata_parser.bands_from_stac_item(item=item).band_names()
-                intersecting_items = [item] if spatiotemporal_extent.item_intersects(item) else []
+                item_collection = ItemCollection.from_stac_item(item=item, spatiotemporal_extent=spatiotemporal_extent)
             elif isinstance(stac_object, pystac.Collection) and _supports_item_search(stac_object):
                 collection = stac_object
                 netcdf_with_time_dimension = contains_netcdf_with_time_dimension(collection)
-                collection_id = collection.id
                 metadata = GeopysparkCubeMetadata(
                     metadata=collection.to_dict(include_self_link=False, transform_hrefs=False)
                 )
-                root_catalog = collection.get_root()
 
                 band_names = stac_metadata_parser.bands_from_stac_collection(collection=collection).band_names()
 
-                if root_catalog.get_self_href().startswith("https://planetarycomputer.microsoft.com/api/stac/v1"):
-                    modifier = planetary_computer.sign_inplace
-                    # by default, returns all properties and an invalid STAC Item if fields are specified
-                    fields = None
-                elif (
-                    root_catalog.get_self_href().startswith("https://tamn.snapplanet.io")
-                    or root_catalog.get_self_href().startswith("https://stac.eurac.edu")
-                    or root_catalog.get_self_href().startswith("https://catalogue.dataspace.copernicus.eu/stac")
-                    or root_catalog.get_self_href().startswith("https://pgstac.demo.cloudferro.com")
-                ):
-                    modifier = None
-                    # by default, returns all properties and "none" if fields are specified
-                    fields = None
-                else:
-                    modifier = None
-                    # Those now also return all fields by default as well:
-                    # https://stac.openeo.vito.be/ and https://stac.terrascope.be
-                    fields = None
-
-                retry = requests.adapters.Retry(
-                    total=3,
-                    backoff_factor=2,
-                    status_forcelist=frozenset([429, 500, 502, 503, 504]),
-                    allowed_methods=Retry.DEFAULT_ALLOWED_METHODS.union({"POST"}),
-                    raise_on_status=False,  # otherwise StacApiIO will catch this and lose the response body
-                )
-
-                stac_io = pystac_client.stac_api_io.StacApiIO(timeout=REQUESTS_TIMEOUT_SECONDS, max_retries=retry)
-                client = pystac_client.Client.open(root_catalog.get_self_href(), modifier=modifier, stac_io=stac_io)
-
-                cql2_filter = _cql2_filter(
-                    client,
-                    literal_matches,
+                item_collection = ItemCollection.from_stac_api(
+                    collection=stac_object,
+                    property_filter=property_filter,
+                    spatiotemporal_extent=spatiotemporal_extent,
                     use_filter_extension=feature_flags.get("use-filter-extension", True),
+                    skip_datetime_filter=((temporal_extent is DEFAULT_TEMPORAL_EXTENT) or netcdf_with_time_dimension),
                 )
-
-                search_request = client.search(
-                    method="POST" if isinstance(cql2_filter, dict) else "GET",
-                    collections=collection_id,
-                    bbox=requested_bbox.reproject("EPSG:4326").as_wsen_tuple() if requested_bbox else None,
-                    limit=20,
-                    datetime=(
-                        None
-                        if ((temporal_extent is DEFAULT_TEMPORAL_EXTENT) or netcdf_with_time_dimension)
-                        else f"{from_date.isoformat().replace('+00:00', 'Z')}/"
-                        f"{to_date.isoformat().replace('+00:00', 'Z')}"  # end is inclusive
-                    ),
-                    filter=cql2_filter,
-                    fields=fields,
-                )
-
-                if isinstance(cql2_filter, dict):
-                    remote_request_info = (f"{search_request.method} {search_request.url} " +
-                                           f"with body {json.dumps(search_request.get_parameters())}")
-                else:
-                    remote_request_info = f"{search_request.method} {search_request.url_with_parameters()}"
-                logger.info(f"STAC API request: {remote_request_info}")
-
-                # STAC API might not support Filter Extension so always use client-side filtering as well
-                intersecting_items = filter(matches_metadata_properties, search_request.items())
             else:
                 assert isinstance(stac_object, pystac.Catalog)  # static Catalog + Collection
                 catalog = stac_object
                 metadata = GeopysparkCubeMetadata(metadata=catalog.to_dict(include_self_link=False, transform_hrefs=False))
 
                 if load_params.properties:
-                    raise properties_unsupported_exception  # as dictated by the load_stac spec
+                    # as dictated by the load_stac spec
+                    # TODO: it's not that simple see https://github.com/Open-EO/openeo-processes/issues/536 and https://github.com/Open-EO/openeo-processes/pull/547
+                    raise ProcessParameterUnsupportedException(process="load_stac", parameter="properties")
 
                 if isinstance(catalog, pystac.Collection):
-                    collection = catalog
-                    netcdf_with_time_dimension = contains_netcdf_with_time_dimension(collection)
+                    netcdf_with_time_dimension = contains_netcdf_with_time_dimension(collection=catalog)
 
                 band_names = stac_metadata_parser.bands_from_stac_object(obj=stac_object).band_names()
 
-                def intersecting_catalogs(root: pystac.Catalog) -> Iterable[pystac.Catalog]:
-                    def intersects_spatiotemporally(coll: pystac.Collection) -> bool:
-                        def intersects_spatially(bbox) -> bool:
-                            if not requested_bbox:
-                                return True
-
-                            requested_bbox_lonlat = requested_bbox.reproject("EPSG:4326")
-                            return requested_bbox_lonlat.as_polygon().intersects(
-                                Polygon.from_bounds(*bbox)
-                            )
-
-                        def intersects_temporally(interval) -> bool:
-                            start, end = interval
-
-                            if start is not None and end is not None:
-                                return to_date >= start and from_date <= end
-                            if start is not None:
-                                return to_date >= start
-                            if end is not None:
-                                return from_date <= end
-                            return True
-
-                        bboxes = coll.extent.spatial.bboxes
-                        intervals = coll.extent.temporal.intervals
-
-                        if len(bboxes) > 1 and not any(intersects_spatially(bbox) for bbox in bboxes[1:]):
-                            return False
-                        if len(bboxes) == 1 and not intersects_spatially(bboxes[0]):
-                            return False
-
-                        if len(intervals) > 1 and not any(intersects_temporally(interval)
-                                                          for interval in intervals[1:]):
-                            return False
-                        if len(intervals) == 1 and not intersects_temporally(intervals[0]):
-                            return False
-
-                        return True
-
-                    if isinstance(root, pystac.Collection) and not intersects_spatiotemporally(root):
-                        return []
-
-                    yield root
-                    for child in root.get_children():
-                        yield from intersecting_catalogs(child)
-
-                intersecting_items = (
-                    itm
-                    for intersecting_catalog in intersecting_catalogs(root=catalog)
-                    for itm in intersecting_catalog.get_items()
-                    if spatiotemporal_extent.item_intersects(itm)
-                )
+                item_collection = ItemCollection.from_stac_catalog(catalog, spatiotemporal_extent=spatiotemporal_extent)
 
         jvm = get_jvm()
 
@@ -371,7 +207,7 @@ def load_stac(
         band_epsgs: Dict[str, Set[int]] = {}
 
 
-        for itm in intersecting_items:
+        for itm in item_collection.items:
             items_found = True
 
             item_start_datetime = dateutil.parser.parse(itm.properties.get("datetime") or itm.properties["start_datetime"])
@@ -493,7 +329,7 @@ def load_stac(
 
 
     if not allow_empty_cubes and not items_found:
-        raise no_data_available_exception
+        raise NoDataAvailableException()
 
     target_bbox = requested_bbox or stac_bbox
 
@@ -728,19 +564,18 @@ class _TemporalExtent:
 
     __slots__ = ("from_date", "to_date")
 
-    def __init__(
-        self,
-        from_date: Union[str, datetime.datetime, datetime.date, None],
-        to_date: Union[str, datetime.datetime, datetime.date, None],
-    ):
+    def __init__(self, from_date: DateTimeLikeOrNone, to_date: DateTimeLikeOrNone):
         self.from_date: Union[datetime.datetime, None] = to_datetime_utc_unless_none(from_date)
         self.to_date: Union[datetime.datetime, None] = to_datetime_utc_unless_none(to_date)
 
+    def as_tuple(self) -> Tuple[Union[datetime.datetime, None], Union[datetime.datetime, None]]:
+        return self.from_date, self.to_date
+
     def intersects(
         self,
-        nominal: Union[str, datetime.datetime, datetime.date, None] = None,
-        start_datetime: Union[str, datetime.datetime, datetime.date, None] = None,
-        end_datetime: Union[str, datetime.datetime, datetime.date, None] = None,
+        nominal: DateTimeLikeOrNone = None,
+        start_datetime: DateTimeLikeOrNone = None,
+        end_datetime: DateTimeLikeOrNone = None,
     ) -> bool:
         """
         Check if the given datetime/interval intersects with the spatiotemporal extent.
@@ -755,16 +590,22 @@ class _TemporalExtent:
 
         # If available, start+end are preferred (cleanly defined interval)
         # fall back on nominal otherwise
-        if start_datetime and end_datetime and start_datetime <= end_datetime:
-            pass
-        elif nominal:
+        if start_datetime is None and end_datetime is None and nominal:
             start_datetime = end_datetime = nominal
-        else:
-            raise ValueError(f"Ill-defined instant/interval {nominal=} {start_datetime=} {end_datetime=}")
 
-        return (self.from_date is None or self.from_date <= end_datetime) and (
-            self.to_date is None or start_datetime < self.to_date
+        return (self.from_date is None or end_datetime is None or self.from_date <= end_datetime) and (
+            self.to_date is None or start_datetime is None or start_datetime < self.to_date
         )
+
+    def intersects_interval(
+        self,
+        interval: Union[
+            Tuple[DateTimeLikeOrNone, DateTimeLikeOrNone],
+            List[DateTimeLikeOrNone],
+        ],
+    ) -> bool:
+        start, end = interval
+        return self.intersects(start_datetime=start, end_datetime=end)
 
 
 class _SpatialExtent:
@@ -774,31 +615,40 @@ class _SpatialExtent:
     """
     # TODO: move this to a more generic location for better reuse
 
-    __slots__ = ("bbox", "_bbox_lonlat_shape")
+    __slots__ = ("_bbox", "_bbox_lonlat_shape")
 
     def __init__(self, *, bbox: Union[BoundingBox, None]):
         # TODO: support more bbox representations as input
-        self.bbox = bbox
-        self._bbox_lonlat_shape = self.bbox.reproject("EPSG:4326").as_polygon() if self.bbox else None
+        self._bbox = bbox
+        # cache for shapely polygon in lon/lat
+        self._bbox_lonlat_shape = self._bbox.reproject("EPSG:4326").as_polygon() if self._bbox else None
+
+    def as_bbox(self, crs: Optional[str] = None) -> Union[BoundingBox, None]:
+        bbox = self._bbox
+        if bbox and crs:
+            bbox = bbox.reproject(crs)
+        return bbox
 
     def intersects(self, bbox: Union[List[float], Tuple[float, float, float, float], None]):
         # TODO: this assumes bbox is in lon/lat coordinates, also support other CRSes?
-        if not self.bbox or bbox is None:
+        if not self._bbox or bbox is None:
             return True
         return self._bbox_lonlat_shape.intersects(Polygon.from_bounds(*bbox))
 
 
 class _SpatioTemporalExtent:
     # TODO: move this to a more generic location for better reuse
-    def __init__(
-        self,
-        *,
-        bbox: Union[BoundingBox, None],
-        from_date: Union[str, datetime.datetime, datetime.date, None],
-        to_date: Union[str, datetime.datetime, datetime.date, None],
-    ):
+    def __init__(self, *, bbox: Union[BoundingBox, None], from_date: DateTimeLikeOrNone, to_date: DateTimeLikeOrNone):
         self._spatial_extent = _SpatialExtent(bbox=bbox)
         self._temporal_extent = _TemporalExtent(from_date=from_date, to_date=to_date)
+
+    @property
+    def spatial_extent(self) -> _SpatialExtent:
+        return self._spatial_extent
+
+    @property
+    def temporal_extent(self) -> _TemporalExtent:
+        return self._temporal_extent
 
     def item_intersects(self, item: pystac.Item) -> bool:
         return self._temporal_extent.intersects(
@@ -807,6 +657,184 @@ class _SpatioTemporalExtent:
             end_datetime=item.properties.get("end_datetime"),
         ) and self._spatial_extent.intersects(item.bbox)
 
+    def collection_intersects(self, collection: pystac.Collection) -> bool:
+        bboxes = collection.extent.spatial.bboxes
+        intervals = collection.extent.temporal.intervals
+        # If multiple bboxes/intervals, skip the first "overall" one (per STAC spec),
+        # for more granular checking (if available)
+        if len(bboxes) > 1:
+            bboxes = bboxes[1:]
+        if len(intervals) > 1:
+            intervals = intervals[1:]
+
+        return any(self._spatial_extent.intersects(bbox) for bbox in bboxes) and any(
+            self._temporal_extent.intersects_interval(interval) for interval in intervals
+        )
+
+
+class ItemCollection:
+    """
+    Collection of STAC Items.
+    Typically a subset from a larger Collection/Catalog/API based on spatiotemporal filtering.
+
+    Experimental/WIP API
+    """
+
+    # TODO: leverage pystac.ItemCollection in some way ?
+
+    def __init__(self, items: List[pystac.Item]):
+        self.items = items
+
+    @staticmethod
+    def from_own_job(
+        job: BatchJobMetadata,
+        *,
+        spatiotemporal_extent: _SpatioTemporalExtent,
+        batch_jobs: openeo_driver.backend.BatchJobs,
+        user: Optional[User],
+    ) -> ItemCollection:
+        items = []
+        rfc3339 = Rfc3339(propagate_none=True)
+
+        for asset_id, asset in batch_jobs.get_result_assets(job_id=job.id, user_id=user.user_id).items():
+            parse_datetime = partial(rfc3339.parse_datetime, with_timezone=True)
+
+            item_geometry = asset.get("geometry", job.geometry)
+            item_bbox = asset.get("bbox", job.bbox)
+            item_datetime = parse_datetime(asset.get("datetime"))
+            item_start_datetime = None
+            item_end_datetime = None
+
+            if not item_datetime:
+                item_start_datetime = parse_datetime(asset.get("start_datetime")) or job.start_datetime
+                item_end_datetime = parse_datetime(asset.get("end_datetime")) or job.end_datetime
+
+                if item_start_datetime == item_end_datetime:
+                    item_datetime = item_start_datetime
+
+            pystac_item = pystac.Item(
+                id=asset_id,
+                geometry=item_geometry,
+                bbox=item_bbox,
+                datetime=item_datetime,
+                properties=dict_no_none(
+                    {
+                        "datetime": rfc3339.datetime(item_datetime),
+                        "start_datetime": rfc3339.datetime(item_start_datetime),
+                        "end_datetime": rfc3339.datetime(item_end_datetime),
+                        "proj:epsg": asset.get("proj:epsg"),
+                        "proj:bbox": asset.get("proj:bbox"),
+                        "proj:shape": asset.get("proj:shape"),
+                    }
+                ),
+            )
+
+            if spatiotemporal_extent.item_intersects(pystac_item) and "data" in asset.get("roles", []):
+                pystac_asset = pystac.Asset(
+                    href=asset["href"],
+                    extra_fields={
+                        "eo:bands": [{"name": b.name} for b in asset["bands"]]
+                        # TODO #1109 #1015 also add common "bands"?
+                    },
+                )
+                pystac_item.add_asset(asset_id, pystac_asset)
+                items.append(pystac_item)
+
+        return ItemCollection(items)
+
+    @staticmethod
+    def from_stac_item(item: pystac.Item, *, spatiotemporal_extent: _SpatioTemporalExtent) -> ItemCollection:
+        items = [item] if spatiotemporal_extent.item_intersects(item) else []
+        return ItemCollection(items)
+
+    @staticmethod
+    def from_stac_catalog(catalog: pystac.Catalog, *, spatiotemporal_extent: _SpatioTemporalExtent) -> ItemCollection:
+
+        def intersecting_catalogs(root: pystac.Catalog) -> Iterator[pystac.Catalog]:
+            if isinstance(root, pystac.Collection) and not spatiotemporal_extent.collection_intersects(root):
+                return
+            yield root
+            for child in root.get_children():
+                yield from intersecting_catalogs(child)
+
+        items = [
+            item
+            for intersecting_catalog in intersecting_catalogs(root=catalog)
+            for item in intersecting_catalog.get_items(recursive=False)
+            if spatiotemporal_extent.item_intersects(item)
+        ]
+        return ItemCollection(items)
+
+    @staticmethod
+    def from_stac_api(
+        collection: pystac.Collection,
+        *,
+        property_filter: PropertyFilter,
+        spatiotemporal_extent: _SpatioTemporalExtent,
+        use_filter_extension: Union[bool, str] = True,
+        skip_datetime_filter: bool = False,
+    ) -> ItemCollection:
+        root_catalog = collection.get_root()
+
+        if root_catalog.get_self_href().startswith("https://planetarycomputer.microsoft.com/api/stac/v1"):
+            modifier = planetary_computer.sign_inplace
+            # by default, returns all properties and an invalid STAC Item if fields are specified
+            fields = None
+        elif (
+            root_catalog.get_self_href().startswith("https://tamn.snapplanet.io")
+            or root_catalog.get_self_href().startswith("https://stac.eurac.edu")
+            or root_catalog.get_self_href().startswith("https://catalogue.dataspace.copernicus.eu/stac")
+            or root_catalog.get_self_href().startswith("https://pgstac.demo.cloudferro.com")
+        ):
+            modifier = None
+            # by default, returns all properties and "none" if fields are specified
+            fields = None
+        else:
+            modifier = None
+            # Those now also return all fields by default as well:
+            # https://stac.openeo.vito.be/ and https://stac.terrascope.be
+            fields = None
+
+        retry = requests.adapters.Retry(
+            total=3,
+            backoff_factor=2,
+            status_forcelist=frozenset([429, 500, 502, 503, 504]),
+            allowed_methods=Retry.DEFAULT_ALLOWED_METHODS.union({"POST"}),
+            raise_on_status=False,  # otherwise StacApiIO will catch this and lose the response body
+        )
+
+        stac_io = pystac_client.stac_api_io.StacApiIO(timeout=REQUESTS_TIMEOUT_SECONDS, max_retries=retry)
+        client = pystac_client.Client.open(root_catalog.get_self_href(), modifier=modifier, stac_io=stac_io)
+
+        cql2_filter = property_filter.to_cql2_filter(
+            client=client,
+            use_filter_extension=use_filter_extension,
+        )
+
+        bbox = spatiotemporal_extent.spatial_extent.as_bbox(crs="EPSG:4326")
+        search_request = client.search(
+            method="POST" if isinstance(cql2_filter, dict) else "GET",
+            collections=collection.id,
+            bbox=bbox.as_wsen_tuple() if bbox else None,
+            limit=20,
+            datetime=None if skip_datetime_filter else spatiotemporal_extent.temporal_extent.as_tuple(),
+            filter=cql2_filter,
+            fields=fields,
+        )
+
+        if isinstance(cql2_filter, dict):
+            remote_request_info = (
+                f"{search_request.method} {search_request.url} "
+                + f"with body {json.dumps(search_request.get_parameters())}"
+            )
+        else:
+            remote_request_info = f"{search_request.method} {search_request.url_with_parameters()}"
+        logger.info(f"STAC API request: {remote_request_info}")
+
+        # STAC API might not support Filter Extension so always use client-side filtering as well
+        property_matcher = property_filter.build_matcher()
+        items = [item for item in search_request.items() if property_matcher(item.properties)]
+        return ItemCollection(items)
 
 def _is_supported_raster_mime_type(mime_type: str) -> bool:
     mime_type = mime_type.lower()
@@ -886,7 +914,7 @@ def _supports_item_search(collection: pystac.Collection) -> bool:
     return False
 
 
-def contains_netcdf_with_time_dimension(collection):
+def contains_netcdf_with_time_dimension(collection: pystac.Collection) -> bool:
     """
     Checks if the STAC collection contains netcdf files with multiple time stamps.
     This collection organization is used for storing small patches of EO data, and requires special loading because the
@@ -1047,79 +1075,124 @@ def _await_stac_object(
     return stac_object
 
 
-def _cql2_filter(
-    client: pystac_client.Client,
-    literal_matches: Dict[str, Dict[str, Any]],
-    use_filter_extension: Union[bool, str],
-) -> Union[str, dict, None]:
-    if use_filter_extension == "cql2-json":  # force POST JSON
-        return _cql2_json_filter(literal_matches)
+class PropertyFilter:
+    """
+    Container for STAC object property filters declared as process graphs
+    (e.g. like the `properties` argument of `load_collection`/`load_stac` processes).
+    """
 
-    if use_filter_extension == "cql2-text":  # force GET text
-        return _cql2_text_filter(literal_matches)
+    # TODO: move this utility to a more generic location for better reuse
 
-    if use_filter_extension:  # auto-detect, favor POST
-        search_links = client.get_links(rel="search")
-        supports_post_search = any(link.extra_fields.get("method") == "POST" for link in search_links)
+    def __init__(self, properties: Dict[str, dict], *, env: Optional[EvalEnv] = None):
+        self._properties = properties
+        self._env = env or EvalEnv()
 
-        return (
-            _cql2_json_filter(literal_matches) if supports_post_search
-            else _cql2_text_filter(literal_matches)  # assume serves ignores filter if no "search" method advertised
+    @staticmethod
+    def _build_callable(operator: str, value: Any) -> Callable[[Any], bool]:
+        if operator == "eq":
+            return lambda actual: actual == value
+        elif operator == "lte":
+            return lambda actual: actual is not None and actual <= value
+        elif operator == "gte":
+            return lambda actual: actual is not None and value <= actual
+        elif operator == "in":
+            return lambda actual: actual is not None and actual in value
+        else:
+            # TODO: support more operators?
+            raise ValueError(f"Unsupported operator: {operator}")
+
+    def build_matcher(self) -> Callable[[Dict[str, Any]], bool]:
+        """
+        Build an evaluating function (a closure)
+        that can be used to check if properties match the filter conditions.
+        """
+        conditions = [
+            (name, self._build_callable(operator, value))
+            for name, pg in self._properties.items()
+            for operator, value in filter_properties.extract_literal_match(pg, env=self._env).items()
+        ]
+
+        def match(properties: Dict[str, Any]) -> bool:
+            return all(name in properties and condition(properties[name]) for name, condition in conditions)
+
+        return match
+
+    def to_cql2_filter(
+        self,
+        *,
+        use_filter_extension: Union[bool, str],
+        client: pystac_client.Client,
+    ) -> Union[str, dict, None]:
+        if use_filter_extension == "cql2-json":  # force POST JSON
+            return self.to_cql2_json()
+        elif use_filter_extension == "cql2-text":  # force GET text
+            return self.to_cql2_text()
+        elif use_filter_extension == True:  # auto-detect, favor POST
+            search_links = client.get_links(rel="search")
+            supports_post_search = any(link.extra_fields.get("method") == "POST" for link in search_links)
+            if supports_post_search:
+                return self.to_cql2_json()
+            else:
+                # assume serves ignores filter if no "search" method advertised
+                return self.to_cql2_text()
+        elif use_filter_extension == False:
+            return None  # explicitly disabled
+        else:
+            raise ValueError(f"Invalid use-filter-extension value: {use_filter_extension!r}")
+
+    def to_cql2_text(self) -> str:
+        """Convert the property filter to a CQL2 text representation."""
+        literal_matches = {
+            property_name: filter_properties.extract_literal_match(condition, self._env)
+            for property_name, condition in self._properties.items()
+        }
+        cql2_text_formatter = get_jvm().org.openeo.geotrellissentinelhub.Cql2TextFormatter()
+
+        return cql2_text_formatter.format(
+            # Cql2TextFormatter won't add necessary quotes so provide them up front
+            # TODO: are these quotes actually necessary?
+            {f'"properties.{name}"': criteria for name, criteria in literal_matches.items()}
         )
 
-    return None  # explicitly disabled
+    def to_cql2_json(self) -> Union[Dict, None]:
+        literal_matches = {
+            property_name: filter_properties.extract_literal_match(condition, self._env)
+            for property_name, condition in self._properties.items()
+        }
+        if len(literal_matches) == 0:
+            return None
 
-
-def _cql2_text_filter(literal_matches: Dict[str, Dict[str, Any]]) -> str:
-    cql2_text_formatter = get_jvm().org.openeo.geotrellissentinelhub.Cql2TextFormatter()
-
-    return cql2_text_formatter.format(
-        # Cql2TextFormatter won't add necessary quotes so provide them up front
-        {f'"properties.{name}"': criteria for name, criteria in literal_matches.items()}
-    )
-
-
-def _cql2_json_filter(literal_matches: Dict[str, Dict[str, Any]]) -> Optional[dict]:
-    if len(literal_matches) == 0:
-        return None
-
-    operator_mapping = {
-        "eq": "=",
-        "neq": "<>",
-        "lt": "<",
-        "lte": "<=",
-        "gt": ">",
-        "gte": ">=",
-    }
-
-    def single_filter(property, operator, value) -> dict:
-        cql2_json_operator = operator_mapping.get(operator)
-
-        if cql2_json_operator is None:
-            raise ValueError(f"unsupported operator {operator}")
-
-        return {
-            "op": cql2_json_operator,
-            "args": [
-                {"property": f"properties.{property}"},
-                value
-            ]
+        operator_mapping = {
+            "eq": "=",
+            "neq": "<>",
+            "lt": "<",
+            "lte": "<=",
+            "gt": ">",
+            "gte": ">=",
+            "in": "in",
         }
 
-    filters = [
-        single_filter(property, operator, value)
-        for property, criteria in literal_matches.items()
-        for operator, value in criteria.items()
-    ]
+        def single_filter(property, operator, value) -> dict:
+            cql2_json_operator = operator_mapping.get(operator)
 
-    if len(filters) == 1:
-        return filters[0]
+            if cql2_json_operator is None:
+                raise ValueError(f"unsupported operator {operator}")
 
-    return {
-        "op": "and",
-        "args": filters,
-    }
+            return {"op": cql2_json_operator, "args": [{"property": f"properties.{property}"}, value]}
 
+        filters = [
+            single_filter(property, operator, value)
+            for property, criteria in literal_matches.items()
+            for operator, value in criteria.items()
+        ]
+
+        if len(filters) == 1:
+            return filters[0]
+
+        return {
+            "op": "and",
+            "args": filters,
+        }
 
 
 
