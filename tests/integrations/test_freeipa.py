@@ -14,6 +14,7 @@ from openeogeotrellis.integrations.freeipa import (
     temp_keytab_from_env,
     acquire_gssapi_creds,
 )
+from openeogeotrellis.testing import skip_if_package_not_available
 
 
 class TestFreeIpaClient:
@@ -204,6 +205,7 @@ def test_temp_keytab_from_env(monkeypatch):
     assert not path.exists()
 
 
+@skip_if_package_not_available("gssapi")
 @mock.patch("gssapi.Credentials")
 def test_acquire_gssapi_creds_memory_per_principal(Credentials):
     acquire_gssapi_creds(principal="foo@BAR.EXAMPLE", keytab_path="/tmp/foo.keytab")

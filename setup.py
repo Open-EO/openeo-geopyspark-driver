@@ -15,6 +15,11 @@ with open('openeogeotrellis/_version.py') as fp:
 
 version = __version__
 
+yarn_require = [
+    "gssapi>=1.8.0",
+    "requests-gssapi>=1.2.3",  # For Kerberos authentication
+]
+
 tests_require = [
     'pytest',
     'pytest-timeout',
@@ -33,7 +38,7 @@ tests_require = [
     "pydantic~=1.0",
     "zarr",
     "jsonschema",
-]
+] + yarn_require
 
 typing_require = [
     'mypy-boto3-sts',
@@ -117,10 +122,7 @@ setup(
             "kubernetes",
             "PyYAML",
         ],
-        "yarn": [
-            "gssapi>=1.8.0",
-            "requests-gssapi>=1.2.3",  # For Kerberos authentication
-        ],
+        "yarn": yarn_require,
     },
     entry_points={
         "console_scripts": [
