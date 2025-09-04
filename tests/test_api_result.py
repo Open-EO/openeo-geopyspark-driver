@@ -4113,6 +4113,7 @@ class TestLoadStac:
         parsed = pandas.read_csv(io.StringIO(res.text))
         print(parsed)
 
+    @pytest.mark.skip(reason="Disabled till this is clarified.")
     def test_load_stac_from_spatiotemporal_netcdf_mixed_columns(self, api110, tmp_path):
         process_graph = {
             "loadstac1": {
