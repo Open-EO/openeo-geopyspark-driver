@@ -606,14 +606,7 @@ def load_stac(
                 target_epsg = pyproj.CRS.from_user_input(load_params.target_crs).to_epsg()
 
     if netcdf_with_time_dimension:
-        if band_names != asset_band_names:
-            # TODO: Pass band_names to NetCDFCollection, just like PyramidFactory.
-            raise ProcessParameterInvalidException(
-                process="load_stac",
-                parameter="bands",
-                reason=f"Custom band order is not yet supported for a NetCDF STAC-catalog with a time dimension. "
-                f"Was {band_names}, but should be {asset_band_names} instead.",
-            )
+        # TODO: Pass band_names to NetCDFCollection, just like PyramidFactory.
         pyramid_factory = jvm.org.openeo.geotrellis.layers.NetCDFCollection
     else:
         max_soft_errors_ratio = env.get(EVAL_ENV_KEY.MAX_SOFT_ERRORS_RATIO, 0.0)
