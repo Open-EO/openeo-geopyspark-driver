@@ -3458,7 +3458,8 @@ def test_netcdf_sample_by_feature_asset_bbox_geometry(tmp_path):
     }
 
 
-def test_export_workspace_derived_from(tmp_path, requests_mock, mock_s3_bucket, metadata_tracker):
+@pytest.mark.parametrize("stac_version", [None, "1.1"])
+def test_export_workspace_derived_from(tmp_path, requests_mock, mock_s3_bucket, metadata_tracker, stac_version):
     stac_api_workspace_id = "stac_api_workspace"
     stac_api_workspace = get_backend_config().workspaces[stac_api_workspace_id]
     assert isinstance(stac_api_workspace, StacApiWorkspace)
@@ -3580,7 +3581,27 @@ def test_export_workspace_derived_from(tmp_path, requests_mock, mock_s3_bucket, 
     def create_item_callback(request, context) -> dict:
         new_item = request.json()
 
-        assert not new_item.get("links")  # current behavior: no links on item, only on Collection
+        # TODO: just a sanity check of the workspace URI, remove
+        for asset in new_item["assets"].values():
+            assert asset["href"].startswith(f"s3://{mock_s3_bucket.name}/{merge}/openEO"), asset["href"]
+
+        links = new_item.get("links")
+
+        if stac_version == "1.1":
+            assert len(links) == 1, f"expected one link to an ItemCollection but got {links}"
+            derived_from_document_link = links[0]
+
+            assert derived_from_document_link["rel"] == "custom"  # TODO
+            assert derived_from_document_link["type"] == "application/json"  # TODO
+            assert (
+                derived_from_document_link["href"] == f"s3://{mock_s3_bucket.name}/{merge}/unknown-job_input_items.json"
+            )
+
+            # TODO: read the file in the workspace; it should initially be e.g. a document with "links": [{"rel": "derived_from", "href": <input product>}]
+            # TODO: the file should in fact be an ItemCollection with STAC items that have a "derived_from" link to their original feature (?)
+            pass
+        else:
+            assert not links  # current behavior: no links on item, only on Collection
 
         context.status_code = 201
         return new_item
@@ -3600,6 +3621,7 @@ def test_export_workspace_derived_from(tmp_path, requests_mock, mock_s3_bucket, 
         "process_graph": process_graph,
         "job_options": {
             "export-workspace-enable-merge": enable_merge,
+            "stac-version-experimental": stac_version,
         }
     }
 
@@ -3609,7 +3631,7 @@ def test_export_workspace_derived_from(tmp_path, requests_mock, mock_s3_bucket, 
 
     run_job(
         process,
-        output_file=tmp_path / "out.tif",
+        output_file=tmp_path / "out",
         metadata_file=metadata_file,
         api_version="2.0.0",
         job_dir=tmp_path,
@@ -3618,11 +3640,10 @@ def test_export_workspace_derived_from(tmp_path, requests_mock, mock_s3_bucket, 
 
     assert create_collection.call_count == 1, "expected creation of one new collection"
     assert update_collection.call_count == 1, "expected one update of this collection"
-    assert create_item.call_count == 2, "expected one item for each output asset"
+    assert create_item.call_count == 2, "expected creation of one item for each export_workspace"
 
     with open(metadata_file) as f:
         results_metadata = json.load(f)
-
         # these get rendered in the /jobs/<job_id>/results STAC Collection document
         derived_from_hrefs = {link["href"] for link in results_metadata["links"] if link["rel"] == "derived_from"}
         assert derived_from_hrefs == {"http://s2.test/p1", "http://s2.test/p2"}
