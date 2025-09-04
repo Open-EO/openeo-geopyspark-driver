@@ -976,6 +976,15 @@ def _write_exported_stac_collection_from_item(
         Path(f"{job_id}_input_items.json"), job_dir  # TODO: better file name?
     )
 
+    derived_from_links = [
+        link
+        for link in _get_tracker_metadata("", omit_derived_from_links=omit_derived_from_links).get("links", [])
+        if link["rel"] == "derived_from"
+    ]
+
+    with open(derived_from_document, "w") as f:
+        json.dump({"links": derived_from_links}, f)
+
     def write_stac_item_file(item: dict) -> Path:
         assets = dict()
         for (asset_key,asset) in item.get("assets").items():
@@ -1048,14 +1057,7 @@ def _write_exported_stac_collection_from_item(
             "spatial": {"bbox": [result_metadata.get("bbox", [-180, -90, 180, 90])]},
             "temporal": {"interval": [[result_metadata.get("start_datetime"), result_metadata.get("end_datetime")]]},
         },
-        "links": (
-            [item_link(item_file) for item_file in item_files]
-            + [
-                link
-                for link in _get_tracker_metadata("", omit_derived_from_links=omit_derived_from_links).get("links", [])
-                if link["rel"] == "derived_from"
-            ]
-        ),
+        "links": [item_link(item_file) for item_file in item_files] + derived_from_links,
     }
 
     collection_file = job_dir / "collection.json"  # TODO: file is reused for each result

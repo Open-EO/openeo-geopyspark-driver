@@ -55,9 +55,9 @@ def _stac_api_workspace() -> StacApiWorkspace:
             raise NotImplementedError
 
         source_path = Path(link.href)  # assumes file on disk
-        # TODO: upload link target to $merge/$filename
+        s3_client().upload_file(str(source_path), target_bucket, str(merge / source_path.name))
 
-        return f"s3://{target_bucket}/{merge}/{source_path.name}"
+        return f"s3://{target_bucket}/{merge / source_path.name}"
 
     return StacApiWorkspace("https://stac.test", export_asset, asset_alternate_id="s3", export_link=export_link)
 

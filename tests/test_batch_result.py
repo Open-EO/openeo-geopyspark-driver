@@ -3597,9 +3597,19 @@ def test_export_workspace_derived_from(tmp_path, requests_mock, mock_s3_bucket, 
                 derived_from_document_link["href"] == f"s3://{mock_s3_bucket.name}/{merge}/unknown-job_input_items.json"
             )
 
-            # TODO: read the file in the workspace; it should initially be e.g. a document with "links": [{"rel": "derived_from", "href": <input product>}]
-            # TODO: the file should in fact be an ItemCollection with STAC items that have a "derived_from" link to their original feature (?)
-            pass
+            derived_from_document_file = tmp_path / "unknown-job_input_items.json"
+            with open(derived_from_document_file, "wb") as f:
+                derived_from_document_obj = mock_s3_bucket.Object(key=f"{merge}/unknown-job_input_items.json")
+                derived_from_document_obj.download_fileobj(f)
+
+            with open(derived_from_document_file) as f:
+                derived_from_document = json.load(f)
+
+            assert {link["href"] for link in derived_from_document["links"]} == {
+                "http://s2.test/p1",
+                "http://s2.test/p2",
+            }
+            # TODO: the file should in fact be an ItemCollection with STAC items that have a "derived_from" link to their original feature
         else:
             assert not links  # current behavior: no links on item, only on Collection
 
