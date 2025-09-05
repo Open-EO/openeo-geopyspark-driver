@@ -42,7 +42,7 @@ def test_input_ds(input_grid_edges, num_rows_global, aoi_size_degrees):
 
     lat = lat_centers[:, np.newaxis].repeat(pixels_per_dim, axis=1)
     lon = lon_centers[np.newaxis].repeat(pixels_per_dim, axis=0)
-    dims = ("lat", "lon")
+    dims = ("y", "x")
     # TODO change to meaningful band names
     ds = xr.Dataset(
         data_vars={
