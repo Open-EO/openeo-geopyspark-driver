@@ -2,6 +2,7 @@
 Reusable helpers, functions, classes, fixtures for testing purposes
 """
 import json
+import pytest
 import uuid
 from pathlib import Path
 from typing import Dict, Iterator, List, Tuple, Union
@@ -13,6 +14,7 @@ import kazoo.exceptions
 import openeo_driver.testing
 
 from openeogeotrellis.config import GpsBackendConfig, gps_config_getter
+from openeogeotrellis.util.runtime import is_package_available
 
 
 def random_name(prefix: str = "") -> str:
@@ -166,3 +168,11 @@ def gps_config_overrides(**kwargs):
         ... def test_stuff():
     """
     return openeo_driver.testing.config_overrides(config_getter=gps_config_getter, **kwargs)
+
+
+def skip_if_package_not_available(package: str):
+    """Decorator to skip a test if given package is not available."""
+    return pytest.mark.skipif(
+        condition=not is_package_available(package),
+        reason=f"This test depends on the presence of package {package!r}",
+    )

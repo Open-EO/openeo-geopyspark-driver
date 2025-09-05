@@ -20,6 +20,7 @@ without compromising stable operations.
 - Avoid 413 "Payload Too Large" response from EJR upon job results metadata update ([#1200](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1200))
 - Disable `async_task` by default ([eu-cdse/openeo-cdse-infra#387](https://github.com/eu-cdse/openeo-cdse-infra/issues/387))
 - `export_workspace`: add `md5` and `mtime` metadata to assets exported as objects ([#1318](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1318))
+- Avoid in-memory credentials cache conflict in IPA tooling (eu-cdse/openeo-cdse-infra#660)
 
 
 ## 0.67.0

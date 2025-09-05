@@ -634,11 +634,6 @@ class StatsReporter:
         self.report(f"{self.name}: {json.dumps(self.stats)}")
 
 
-@functools.lru_cache
-def is_package_available(name: str) -> bool:
-    return any(m.name == name for m in pkgutil.iter_modules())
-
-
 def reproject_cellsize(
         spatial_extent: dict,
         input_resolution: tuple,
