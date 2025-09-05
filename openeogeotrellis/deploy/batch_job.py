@@ -971,6 +971,20 @@ def _write_exported_stac_collection_from_item(
     item_metadata: dict,
     omit_derived_from_links: bool = False,
 ) -> List[Path]:  # TODO: change to Set?
+    job_id = get_job_id(default="unknown-job")
+    derived_from_document = get_abs_path_of_asset(
+        Path(f"{job_id}_input_items.json"), job_dir  # TODO: better file name?
+    )
+
+    derived_from_links = [
+        link
+        for link in _get_tracker_metadata("", omit_derived_from_links=omit_derived_from_links).get("links", [])
+        if link["rel"] == "derived_from"
+    ]
+
+    with open(derived_from_document, "w") as f:
+        json.dump({"links": derived_from_links}, f)
+
     def write_stac_item_file(item: dict) -> Path:
         assets = dict()
         for (asset_key,asset) in item.get("assets").items():
@@ -996,6 +1010,7 @@ def _write_exported_stac_collection_from_item(
                 "bbox": asset.get("bbox"),
                 "geometry": asset.get("geometry"),
             })
+
         stac_item = {
             "type": "Feature",
             "stac_version": "1.1.0",
@@ -1003,8 +1018,15 @@ def _write_exported_stac_collection_from_item(
             "geometry": item.get("geometry"),
             "bbox":item.get("bbox"),
             "properties":item.get("properties",{"datetime": result_metadata.get("start_datetime")}),
-            "links":[],
-            "assets":assets
+            "links": [
+                {
+                    "href": str(derived_from_document),
+                    "rel": "custom",  # TODO
+                    "type": "application/json",  # TODO: ultimately, "application/geo+json" for an ItemCollection
+                    "_export": True,
+                },
+            ],
+            "assets": assets,
         }
         item_file = get_abs_path_of_asset(Path(f"{item['id']}.json"), job_dir)
         item_file.parent.mkdir(parents=True, exist_ok=True)
@@ -1025,8 +1047,6 @@ def _write_exported_stac_collection_from_item(
             "type": "application/geo+json",
         }
 
-    job_id = get_job_id(default="unknown-job")
-
     stac_collection = {
         "type": "Collection",
         "stac_version": "1.1.0",
@@ -1037,14 +1057,7 @@ def _write_exported_stac_collection_from_item(
             "spatial": {"bbox": [result_metadata.get("bbox", [-180, -90, 180, 90])]},
             "temporal": {"interval": [[result_metadata.get("start_datetime"), result_metadata.get("end_datetime")]]},
         },
-        "links": (
-            [item_link(item_file) for item_file in item_files]
-            + [
-                link
-                for link in _get_tracker_metadata("", omit_derived_from_links=omit_derived_from_links).get("links", [])
-                if link["rel"] == "derived_from"
-            ]
-        ),
+        "links": [item_link(item_file) for item_file in item_files] + derived_from_links,
     }
 
     collection_file = job_dir / "collection.json"  # TODO: file is reused for each result

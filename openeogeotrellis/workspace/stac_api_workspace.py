@@ -6,7 +6,7 @@ from typing import Union, Callable, Optional
 
 from openeo_driver.util.http import requests_with_retry
 from openeo_driver.workspace import Workspace, _merge_collection_metadata
-from pystac import STACObject, Collection, Item, Asset
+from pystac import STACObject, Collection, Item, Asset, Link
 import pystac_client
 from pystac_client import ConformanceClasses, stac_api_io
 import requests
@@ -30,10 +30,13 @@ class StacApiWorkspace(Workspace):
         self,
         root_url: str,
         export_asset: Callable[
-            [Asset, PurePath, PurePath, bool],  # asset, merge, relative_asset_path, remove_original
-            str,  #  workspace URI
+            [Asset, PurePath, PurePath, bool],  # (asset, merge, relative_asset_path, remove_original)
+            str,  #  => workspace URI
         ],
         asset_alternate_id: str,
+        export_link: Callable[
+            [Link, PurePath, bool], str  # (link, merge, remove_original) => workspace URI
+        ] = lambda link: link.href,
         additional_collection_properties: dict = None,
         get_access_token: Callable[[bool], str] = None,  # fresh => access_token
     ):
@@ -52,6 +55,7 @@ class StacApiWorkspace(Workspace):
         self._additional_collection_properties = additional_collection_properties
         self._get_access_token = get_access_token
         self._export_asset = export_asset
+        self._export_link = export_link
         self._asset_alternate_id = asset_alternate_id
 
     def import_file(self, common_path: Union[str, Path], file: Path, merge: str, remove_original: bool = False) -> str:
@@ -64,8 +68,6 @@ class StacApiWorkspace(Workspace):
 
     def merge(self, stac_resource: STACObject, target: PurePath, remove_original: bool = False) -> STACObject:
         self._assert_catalog_supports_necessary_api()
-
-        stac_resource = stac_resource.full_copy()
 
         if isinstance(stac_resource, Collection):
             new_collection = stac_resource
@@ -127,6 +129,12 @@ class StacApiWorkspace(Workspace):
                         _log.info(f"exported asset {asset.get_absolute_href()} as {workspace_uri}")
 
                         asset.href = workspace_uri
+
+                    for link in new_item.links:
+                        if link.extra_fields.pop("_export", False):
+                            workspace_uri = self._export_link(link, target, remove_original)
+                            _log.info(f"exported link {link.get_absolute_href()} as {workspace_uri}")
+                            link.target = workspace_uri
 
                     self._upload_item(new_item, collection_id, session)
 
