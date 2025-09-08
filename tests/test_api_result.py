@@ -4060,7 +4060,26 @@ class TestLoadStac:
         process_graph = {
             "loadstac1": {
                 "process_id": "load_stac",
-                "arguments": {"url": str(get_test_data_file("binary/load_stac/spatiotemporal_netcdf/collection.json"))}
+                "arguments": {
+                    "url": str(get_test_data_file("binary/load_stac/spatiotemporal_netcdf/collection.json")),
+                    "bands": sorted(
+                        [
+                            "S2-B01",
+                            "S2-B02",
+                            "S2-B03",
+                            "S2-B04",
+                            "S2-B05",
+                            "S2-B06",
+                            "S2-B07",
+                            "S2-B08",
+                            "S2-B8A",
+                            "S2-B09",
+                            "S2-B11",
+                            "S2-B12",
+                            "S2-SCL",
+                        ]
+                    ),
+                },
             },
             "aggregatespatial1": {
                 "process_id": "aggregate_spatial",
