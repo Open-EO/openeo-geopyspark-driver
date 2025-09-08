@@ -2190,6 +2190,7 @@ def test_load_stac_temporal_extent_in_result_metadata(tmp_path, requests_mock, s
             "S2-L2A-B07",
             "S2-L2A-B8A",
             "S2-L2A-B08",
+            "S2-L2A-B09",
             "S2-L2A-B11",
             "S2-L2A-B12",
             "S2-L2A-SCL",
