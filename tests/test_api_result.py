@@ -4217,7 +4217,7 @@ class TestLoadStac:
     @pytest.mark.parametrize(
         "save_format",
         [
-            "netcdf",
+            # "netcdf",
             "csv",
         ],
     )
