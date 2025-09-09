@@ -111,3 +111,41 @@ def vito_stac_api_workspace(  # for lack of a better name, can still be aliased
         additional_collection_properties=additional_collection_properties,
         get_access_token=get_access_token,
     )
+
+
+def get_oidc_access_token(
+    oidc_issuer: str, oidc_client_id: str, oidc_client_secret
+) -> Callable[[bool], str]:  # fresh => access_token
+    access_token_cache = _AccessTokenCache(access_token="", expires_at=0)
+
+    def get_access_token(fresh: bool) -> str:
+        nonlocal access_token_cache
+
+        if fresh or time.time() > access_token_cache.expires_at:
+            access_token = _fetch_access_token()
+            # TODO: get expiry from access token itself?
+            access_token_cache = _AccessTokenCache(access_token, time.time() + 5 * 60)
+        return access_token_cache.access_token
+
+    def _fetch_access_token() -> str:
+        session = None  # TODO: use Session with retries
+
+        oidc_provider = OidcProviderInfo(
+            issuer=oidc_issuer,
+            requests_session=None,
+        )
+
+        client_info = OidcClientInfo(
+            client_id=oidc_client_id,
+            provider=oidc_provider,
+            client_secret=oidc_client_secret,
+        )
+
+        authenticator = OidcClientCredentialsAuthenticator(
+            client_info,
+            session,
+        )
+
+        return authenticator.get_tokens().access_token
+
+    return get_access_token
