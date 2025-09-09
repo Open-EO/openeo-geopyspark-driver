@@ -4229,6 +4229,7 @@ class TestLoadStac:
         """
         Explicitly check if the band order is as expected and if the values match.
         """
+        # TODO: Add test with "featureflags": {"allow_empty_cube": True} once it works
         request_band_names = sorted(
             [
                 "S2-B01",
