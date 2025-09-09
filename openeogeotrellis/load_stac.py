@@ -606,13 +606,12 @@ def load_stac(
                 target_epsg = pyproj.CRS.from_user_input(load_params.target_crs).to_epsg()
 
     if netcdf_with_time_dimension:
-        if band_names != sorted(asset_band_names):
+        sorted_bands_from_catalog = sorted(asset_band_names)
+        if band_names != sorted_bands_from_catalog:
             # TODO: Pass band_names to NetCDFCollection, just like PyramidFactory.
-            raise ProcessParameterInvalidException(
-                process="load_stac",
-                parameter="bands",
-                reason=f"Band order should be alphabetical for NetCDF STAC-catalog with a time dimension. "
-                f"Was {band_names}, but should be {asset_band_names} instead.",
+            logger.warning(
+                f"load_stac: Band order should be alphabetical for NetCDF STAC-catalog with a time dimension. "
+                f"Was {band_names}, but should be {sorted_bands_from_catalog} instead.",
             )
         pyramid_factory = jvm.org.openeo.geotrellis.layers.NetCDFCollection
     else:

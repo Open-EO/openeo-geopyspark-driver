@@ -4135,11 +4135,12 @@ class TestLoadStac:
         parsed = pandas.read_csv(io.StringIO(res.text))
         print(parsed)
 
-    @pytest.mark.timeout(120)
-    def test_load_stac_from_spatiotemporal_netcdf_mixed_columns_error(self, api110, tmp_path):
+    def test_load_stac_from_spatiotemporal_netcdf_mixed_columns_error(self, api110, tmp_path, caplog):
         """
         Request with the same order as in the stac catalog will throw an error if it is not alphabetical
         """
+        caplog.set_level("WARNING")
+
         request_band_names = [
             "S2-B01",
             "S2-B02",
@@ -4164,10 +4165,17 @@ class TestLoadStac:
                     "bands": request_band_names,
                 },
             },
+            "filtertemporal1": {
+                "process_id": "filter_temporal",
+                "arguments": {
+                    "data": {"from_node": "loadstac1"},
+                    "extent": ["2020-09-01", "2020-09-06"],
+                },
+            },
             "aggregatespatial1": {
                 "process_id": "aggregate_spatial",
                 "arguments": {
-                    "data": {"from_node": "loadstac1"},
+                    "data": {"from_node": "filtertemporal1"},
                     "geometries": {
                         "type": "FeatureCollection",
                         "features": [
@@ -4206,18 +4214,14 @@ class TestLoadStac:
             },
         }
 
-        with pytest.raises(ApiException) as exc_info:
-            api110.result(process_graph).assert_status_code(200)
+        api110.result(process_graph).assert_status_code(200)
+        message = "Band order should be alphabetical for NetCDF STAC-catalog with a time dimension."
+        assert any(message in m for m in caplog.messages)
 
-        assert (
-            "Band order should be alphabetical for NetCDF STAC-catalog with a time dimension." in exc_info.value.args[0]
-        )
-
-    @pytest.mark.timeout(120)
     @pytest.mark.parametrize(
         "save_format",
         [
-            # "netcdf",
+            "netcdf",
             "csv",
         ],
     )
@@ -4250,10 +4254,17 @@ class TestLoadStac:
                     "bands": request_band_names,
                 },
             },
+            "filtertemporal1": {
+                "process_id": "filter_temporal",
+                "arguments": {
+                    "data": {"from_node": "loadstac1"},
+                    "extent": ["2020-09-01", "2020-09-06"],
+                },
+            },
             "aggregatespatial1": {
                 "process_id": "aggregate_spatial",
                 "arguments": {
-                    "data": {"from_node": "loadstac1"},
+                    "data": {"from_node": "filtertemporal1"},
                     "geometries": {
                         "type": "FeatureCollection",
                         "features": [
@@ -4285,7 +4296,7 @@ class TestLoadStac:
             "saveresult1": {
                 "process_id": "save_result",
                 "arguments": {
-                    "data": {"from_node": "aggregatespatial1" if save_format == "csv" else "loadstac1"},
+                    "data": {"from_node": "aggregatespatial1" if save_format == "csv" else "filtertemporal1"},
                     "format": save_format,
                 },
                 "result": True,
