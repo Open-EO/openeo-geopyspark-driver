@@ -64,6 +64,27 @@ class NoDataAvailableException(OpenEOApiException):
     message = "There is no data available for the given extents."
 
 
+class LoadStacException(OpenEOApiException):
+    """Generic/base exception for load_stac failures"""
+
+    status_code = 500
+    code = "LoadStacFailure"
+
+    def __init__(
+        self,
+        *,
+        url: str = "n/a",
+        info: str = "n/a",
+        message: Optional[str] = None,
+        status_code: Optional[int] = None,
+        code: Optional[str] = None,
+    ):
+        if not message:
+            message = f"Error when constructing data cube from load_stac({url!r}): {info}"
+        super().__init__(message=message, code=code, status_code=status_code)
+        self.url = url
+
+
 def load_stac(
     url: str,
     *,
@@ -135,7 +156,6 @@ def load_stac(
 
     stac_metadata_parser = _StacMetadataParser(logger=logger)
 
-    remote_request_info = None
     try:
         if dependency_job_info and batch_jobs:
             item_collection = ItemCollection.from_own_job(
@@ -173,6 +193,7 @@ def load_stac(
 
                 item_collection = ItemCollection.from_stac_api(
                     collection=stac_object,
+                    original_url=url,
                     property_filter=property_filter,
                     spatiotemporal_extent=spatiotemporal_extent,
                     use_filter_extension=feature_flags.get("use-filter-extension", True),
@@ -309,26 +330,10 @@ def load_stac(
                          else BoundingBox.from_wsen_tuple(item_bbox.as_polygon().union(stac_bbox.as_polygon()).bounds,
                                                           stac_bbox.crs))
 
+    except LoadStacException:
+        raise
     except Exception as e:
-        if isinstance(e, OpenEOApiException):
-            raise e
-        elif isinstance(e, pystac_client.exceptions.APIError):
-            if remote_request_info is not None:
-                raise OpenEOApiException(
-                    message=f"load_stac: error when constructing datacube from {remote_request_info}: {e}.",
-                    status_code=400,
-                ) from e
-            else:
-                raise OpenEOApiException(
-                    message=f"load_stac: error when constructing datacube from {url}: {e}. Please check the remote catalog. More information can be found in the job logs.",
-                    status_code=500,
-                ) from e
-        else:
-            raise OpenEOApiException(
-                message=f"load_stac: Error when constructing datacube from {url}: {e}",
-                status_code=500,
-            ) from e
-
+        raise LoadStacException(url=url, info=repr(e)) from e
 
 
     if not allow_empty_cubes and not items_found:
@@ -783,9 +788,12 @@ class ItemCollection:
         spatiotemporal_extent: _SpatioTemporalExtent,
         use_filter_extension: Union[bool, str] = True,
         skip_datetime_filter: bool = False,
+        original_url: str = "n/a",
     ) -> ItemCollection:
         root_catalog = collection.get_root()
 
+        # TODO: avoid hardcoded domain sniffing. Possible to discover capabilities in some way?
+        # TODO: still necessary to handle `fields` here? It's apparently always the same.
         if root_catalog.get_self_href().startswith("https://planetarycomputer.microsoft.com/api/stac/v1"):
             modifier = planetary_computer.sign_inplace
             # by default, returns all properties and an invalid STAC Item if fields are specified
@@ -812,38 +820,42 @@ class ItemCollection:
             allowed_methods=Retry.DEFAULT_ALLOWED_METHODS.union({"POST"}),
             raise_on_status=False,  # otherwise StacApiIO will catch this and lose the response body
         )
+        query_info = ""
+        try:
+            stac_io = pystac_client.stac_api_io.StacApiIO(timeout=REQUESTS_TIMEOUT_SECONDS, max_retries=retry)
+            client = pystac_client.Client.open(root_catalog.get_self_href(), modifier=modifier, stac_io=stac_io)
 
-        stac_io = pystac_client.stac_api_io.StacApiIO(timeout=REQUESTS_TIMEOUT_SECONDS, max_retries=retry)
-        client = pystac_client.Client.open(root_catalog.get_self_href(), modifier=modifier, stac_io=stac_io)
-
-        cql2_filter = property_filter.to_cql2_filter(
-            client=client,
-            use_filter_extension=use_filter_extension,
-        )
-
-        bbox = spatiotemporal_extent.spatial_extent.as_bbox(crs="EPSG:4326")
-        search_request = client.search(
-            method="POST" if isinstance(cql2_filter, dict) else "GET",
-            collections=collection.id,
-            bbox=bbox.as_wsen_tuple() if bbox else None,
-            limit=20,
-            datetime=None if skip_datetime_filter else spatiotemporal_extent.temporal_extent.as_tuple(),
-            filter=cql2_filter,
-            fields=fields,
-        )
-
-        if isinstance(cql2_filter, dict):
-            remote_request_info = (
-                f"{search_request.method} {search_request.url} "
-                + f"with body {json.dumps(search_request.get_parameters())}"
+            cql2_filter = property_filter.to_cql2_filter(
+                client=client,
+                use_filter_extension=use_filter_extension,
             )
-        else:
-            remote_request_info = f"{search_request.method} {search_request.url_with_parameters()}"
-        logger.info(f"STAC API request: {remote_request_info}")
+            method = "POST" if isinstance(cql2_filter, dict) else "GET"
+            query_info += f" {use_filter_extension=} {cql2_filter=} {method=}"
 
-        # STAC API might not support Filter Extension so always use client-side filtering as well
-        property_matcher = property_filter.build_matcher()
-        items = [item for item in search_request.items() if property_matcher(item.properties)]
+            bbox = spatiotemporal_extent.spatial_extent.as_bbox(crs="EPSG:4326")
+            bbox = bbox.as_wsen_tuple() if bbox else None
+            search_request = client.search(
+                method=method,
+                collections=collection.id,
+                bbox=bbox,
+                limit=20,
+                datetime=None if skip_datetime_filter else spatiotemporal_extent.temporal_extent.as_tuple(),
+                filter=cql2_filter,
+                fields=fields,
+            )
+            query_info += f" {search_request.url=} {search_request.get_parameters()=}"
+            logger.info(f"ItemCollection.from_stac_api: STAC API request: {query_info}")
+
+            # STAC API might not support Filter Extension so always use client-side filtering as well
+            # TODO: check "filter" conformance class for this instead of blindly trying to do double work
+            #       see https://github.com/stac-api-extensions/filter
+            property_matcher = property_filter.build_matcher()
+            items = [item for item in search_request.items() if property_matcher(item.properties)]
+        except Exception as e:
+            raise LoadStacException(
+                url=original_url, info=f"failed to construct ItemCollection from STAC API. {query_info=} {e=}"
+            ) from e
+
         return ItemCollection(items)
 
 def _is_supported_raster_mime_type(mime_type: str) -> bool:
