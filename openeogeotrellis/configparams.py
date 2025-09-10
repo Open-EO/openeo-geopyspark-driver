@@ -3,7 +3,6 @@ from pathlib import Path
 from pprint import pformat
 from typing import Optional
 
-from openeo_driver.utils import smart_bool
 
 
 class ConfigParams:

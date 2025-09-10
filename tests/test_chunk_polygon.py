@@ -1,14 +1,13 @@
 import datetime
-from typing import List, Union
 
 import numpy as np
 from geopyspark import Extent, LayerType, Tile, TiledRasterLayer
 from openeo_driver.utils import EvalEnv
-from shapely.geometry import MultiPolygon, Polygon
+from shapely.geometry import MultiPolygon
 
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 
-from .data import TEST_DATA_ROOT, get_test_data_file
+from .data import get_test_data_file
 
 # Note: Ensure that the python environment has all the required modules installed.
 # Numpy should be installed before Jep for off-heap memory tiles to work!

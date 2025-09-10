@@ -1,16 +1,12 @@
-import abc
 import datetime as dt
 import io
 import json
 import logging
 import os
-import random
 import re
 import shutil
 import socket
-import stat
 import subprocess
-import sys
 import tempfile
 import time
 import traceback
@@ -29,7 +25,6 @@ import flask
 import geopyspark as gps
 import kazoo.exceptions
 import openeo.udf
-import pkg_resources
 import pystac
 import requests
 import reretry
@@ -40,7 +35,7 @@ from geopyspark import LayerType, Pyramid, TiledRasterLayer
 import openeo_driver.util.changelog
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 from openeo.metadata import Band, BandDimension, Dimension, SpatialDimension, TemporalDimension
-from openeo.util import TimingLogger, deep_get, dict_no_none, repr_truncate, rfc3339, str_truncate, ensure_dir, Rfc3339
+from openeo.util import TimingLogger, deep_get, dict_no_none, repr_truncate, rfc3339, str_truncate, Rfc3339
 from openeo.utils.version import ComparableVersion
 from openeo_driver import backend
 from openeo_driver.backend import (
@@ -59,7 +54,7 @@ from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import SourceConstraint
 from openeo_driver.errors import (InternalException, JobNotFinishedException, OpenEOApiException,
                                   ServiceUnsupportedException,
-                                  ProcessParameterInvalidException, ProcessGraphComplexityException, )
+                                  ProcessParameterInvalidException, )
 from openeo_driver.jobregistry import (DEPENDENCY_STATUS, JOB_STATUS, ElasticJobRegistry, PARTIAL_JOB_STATUS,
                                        get_ejr_credentials_from_env)
 from openeo_driver.ProcessGraphDeserializer import ENV_FINAL_RESULT, ENV_SAVE_RESULT, ConcreteProcessing, \
@@ -70,9 +65,9 @@ from openeo_driver.util.date_math import now_utc
 from openeo_driver.util.geometry import BoundingBox
 from openeo_driver.util.http import requests_with_retry
 from openeo_driver.util.utm import area_in_square_meters
-from openeo_driver.utils import EvalEnv, generate_unique_id, to_hashable, smart_bool, WhiteListEvalEnv
+from openeo_driver.utils import EvalEnv, generate_unique_id, to_hashable, WhiteListEvalEnv
 from pandas import Timedelta
-from py4j.java_gateway import JavaObject, JVMView
+from py4j.java_gateway import JVMView
 from py4j.protocol import Py4JJavaError
 from pyspark import SparkContext
 from shapely.geometry import Polygon
@@ -85,7 +80,7 @@ from openeogeotrellis import sentinel_hub, load_stac, datacube_parameters
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.config.s3_config import S3Config
 from openeogeotrellis.configparams import ConfigParams
-from openeogeotrellis.constants import JOB_OPTION_LOG_LEVEL, JOB_OPTION_LOGGING_THRESHOLD
+from openeogeotrellis.constants import JOB_OPTION_LOG_LEVEL
 from openeogeotrellis.geopysparkdatacube import GeopysparkCubeMetadata, GeopysparkDataCube
 from openeogeotrellis.integrations.etl_api import get_etl_api, ETL_ORGANIZATION_ID_JOB_OPTION
 from openeogeotrellis.integrations.identity import IDP_TOKEN_ISSUER
@@ -133,7 +128,6 @@ from openeogeotrellis.user_defined_process_repository import (
 )
 from openeogeotrellis.util.byteunit import byte_string_as
 from openeogeotrellis.utils import (
-    add_permissions,
     dict_merge_recursive,
     get_jvm,
     get_s3_file_contents,
@@ -145,7 +139,6 @@ from openeogeotrellis.utils import (
     single_value,
     to_projected_polygons,
     zk_client,
-    reproject_cellsize,
 )
 from openeogeotrellis.vault import Vault
 

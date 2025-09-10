@@ -39,9 +39,7 @@ from openeo_driver.testing import (
     IgnoreOrder,
     ListSubSet,
     RegexMatcher,
-    UrllibMocker,
     load_json,
-    ApiException,
 )
 from openeo_driver.users import User
 from openeo_driver.util.auth import ClientCredentials

@@ -6,14 +6,12 @@ import pytest
 import uuid
 from pathlib import Path
 from typing import Dict, Iterator, List, Tuple, Union
-from unittest import mock
 
-import attrs
 import kazoo
 import kazoo.exceptions
 import openeo_driver.testing
 
-from openeogeotrellis.config import GpsBackendConfig, gps_config_getter
+from openeogeotrellis.config import gps_config_getter
 from openeogeotrellis.util.runtime import is_package_available
 
 

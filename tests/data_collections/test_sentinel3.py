@@ -1,7 +1,5 @@
 from pathlib import Path
 
-import pytest
-from pyproj import CRS
 import rasterio
 
 if __name__ == "__main__":
@@ -47,8 +45,7 @@ def test_read_single():
     )
 
 
-    import rasterio
-    from rasterio.transform import from_bounds, from_origin
+    from rasterio.transform import from_bounds
 
     arr = result[0][1].cells
 

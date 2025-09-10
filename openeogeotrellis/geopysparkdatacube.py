@@ -7,7 +7,6 @@ import os
 import pathlib
 import re
 import shutil
-import subprocess
 import tempfile
 import uuid
 from datetime import datetime, date
@@ -58,7 +57,6 @@ from openeogeotrellis.utils import (
     reproject_cellsize,
     normalize_temporal_extent,
     GDALINFO_SUFFIX,
-    to_tuple,
 )
 from openeogeotrellis.udf import run_udf_code
 from openeogeotrellis._version import __version__ as softwareversion

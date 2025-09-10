@@ -15,7 +15,6 @@ from math import isfinite
 from openeo.util import dict_no_none
 from osgeo import gdal
 
-from openeo_driver.utils import smart_bool
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.util.runtime import get_job_id
 from openeogeotrellis.utils import (

@@ -6,10 +6,8 @@ from typing import NamedTuple, Optional
 import hvac
 import requests
 
-from openeo_driver.util.auth import ClientCredentials
 from reretry import retry
 
-from openeogeotrellis.config import get_backend_config
 
 _log = logging.getLogger(__name__)
 

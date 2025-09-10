@@ -9,7 +9,6 @@ import collections
 import datetime as dt
 import logging
 from decimal import Decimal
-from math import isfinite
 from pathlib import Path
 from typing import Any, List, NamedTuple, Optional, Union
 

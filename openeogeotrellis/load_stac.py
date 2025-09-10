@@ -16,7 +16,6 @@ import pyproj
 import pystac
 import pystac_client
 import requests.adapters
-from pystac_client import exceptions, stac_api_io
 from geopyspark import LayerType, TiledRasterLayer
 from openeo.util import dict_no_none, Rfc3339
 from openeo.metadata import _StacMetadataParser

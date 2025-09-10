@@ -6,10 +6,8 @@ from typing import Dict, Union
 
 from openeo_driver.datastructs import StacAsset
 from openeo_driver.utils import generate_unique_id
-from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.ml.catboost_spark import CatBoostClassificationModel
 from openeogeotrellis.ml.geopysparkmlmodel import GeopysparkMlModel
-from openeogeotrellis.utils import download_s3_directory, to_s3_url
 
 
 class GeopySparkCatBoostModel(GeopysparkMlModel):
