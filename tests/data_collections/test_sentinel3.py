@@ -89,7 +89,6 @@ def test_read_single_binned():
         SLSTR_PRODUCT_TYPE,
         ["LST_in:LST"],
         tile_size=1024,
-        limit_python_memory=True,
         resolution=0.008928571428571,
         reprojection_type="binning",
         super_sampling=3
