@@ -1383,11 +1383,13 @@ class GpsBatchJobs(backend.BatchJobs):
 
     def __init__(
         self,
+        *,
+        # TODO: clean up this overly Terrascope-coupled constructor
         catalog: GeoPySparkLayerCatalog,
         jvm: JVMView,
-        principal: str,
-        key_tab: str,
-        vault: Vault,
+        principal: Optional[str] = None,
+        key_tab: Optional[str] = None,
+        vault: Optional[Vault] = None,
         output_root_dir: Optional[Union[str, Path]] = None,
         elastic_job_registry: Optional[ElasticJobRegistry] = None,
         requests_session: Optional[requests.Session] = None,

@@ -202,10 +202,10 @@ def main():
                 jvm.org.slf4j.MDC.put(jvm.org.openeo.logging.JsonLayout.JobId(), batch_job_id)
 
                 batch_jobs = GpsBatchJobs(
-                    catalog,
-                    jvm,
-                    args.principal,
-                    args.keytab,
+                    catalog=catalog,
+                    jvm=jvm,
+                    principal=args.principal,
+                    key_tab=args.keytab,
                     vault=vault,
                     elastic_job_registry=elastic_job_registry,
                     requests_session=requests_session,
