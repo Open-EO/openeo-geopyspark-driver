@@ -56,9 +56,6 @@ class ConfigParams:
             )
         )
 
-        # TODO: this param is now also available in GpsBackendConfig
-        self.vault_addr = os.environ.get("VAULT_ADDR", "https://vault.vgt.vito.be")
-
     def __str__(self) -> str:
         return pformat(vars(self))
 

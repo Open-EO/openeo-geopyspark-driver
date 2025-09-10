@@ -194,7 +194,7 @@ def main():
             elastic_job_registry = get_elastic_job_registry(requests_session) if backend_config.ejr_api else None
 
             def get_batch_jobs(batch_job_id: str, user_id: str) -> GpsBatchJobs:
-                vault = Vault(ConfigParams().vault_addr)
+                vault = Vault(backend_config.vault_addr)
                 catalog = get_layer_catalog(vault=vault)
 
                 jvm = java_gateway.jvm

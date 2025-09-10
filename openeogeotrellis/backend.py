@@ -359,7 +359,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             )
 
         requests_session = requests_with_retry(total=3, backoff_factor=2)
-        vault = Vault(ConfigParams().vault_addr, requests_session)
+        vault = Vault(get_backend_config().vault_addr, requests_session)
 
         catalog = get_layer_catalog(vault)
 
