@@ -1379,16 +1379,7 @@ def get_elastic_job_registry(
         session=requests_session,
         preserialize_process=config.ejr_preserialize_process,
     )
-    # Get credentials from env (preferably) or vault (as fallback).
-    ejr_creds = get_ejr_credentials_from_env(strict=False)
-    if not ejr_creds:
-        if config.ejr_credentials_vault_path:
-            # TODO: eliminate dependency on Vault here (i.e.: always use env vars to get creds)
-            vault = Vault(config.vault_addr, requests_session=requests_session)
-            ejr_creds = vault.get_elastic_job_registry_credentials()
-        else:
-            # Fail harder
-            ejr_creds = get_ejr_credentials_from_env(strict=True)
+    ejr_creds = get_ejr_credentials_from_env(strict=True)
     job_registry.setup_auth_oidc_client_credentials(credentials=ejr_creds)
     if do_health_check:
         job_registry.health_check(log=True)
