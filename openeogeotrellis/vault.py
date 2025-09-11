@@ -84,6 +84,13 @@ class Vault:
                 f"Vault login (Kerberos) failed: {e!s}. stderr: {e.stderr.strip()!r}"
             ) from e
 
+    def login_cert(self, name: str, cacert: str, cert_pem: str, key_pem: str) -> str:
+        """Loging to Vault with "cert" method. Returns the Vault token."""
+        client = self._client()
+        # see https://python-hvac.org/en/stable/source/hvac_api_auth_methods.html#hvac.api.auth_methods.Cert.login
+        client.auth.cert.login(name=name, cacert=cacert, cert_pem=cert_pem, key_pem=key_pem)
+        return client.token
+
     def _client(self, token: Optional[str] = None):
         return hvac.Client(self._url, token=token, session=self._session)
 
