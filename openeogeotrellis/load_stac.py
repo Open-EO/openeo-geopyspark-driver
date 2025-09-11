@@ -384,7 +384,7 @@ def load_stac(
                 )
 
                 asset_band_names_from_metadata = stac_metadata_parser.bands_from_stac_asset(asset=asset).band_names()
-                logger.info(f"from intersecting_items: {itm.id=} {asset_id=} {asset_band_names_from_metadata=}")
+                logger.debug(f"from intersecting_items: {itm.id=} {asset_id=} {asset_band_names_from_metadata=}")
 
                 if not load_params.bands:
                     # No user-specified band filtering: follow band names from metadata (if possible)
@@ -415,7 +415,7 @@ def load_stac(
                         band_epsgs.setdefault(asset_band_name, set()).add(proj_epsg)
 
                 pixel_value_offset = get_pixel_value_offset(itm, asset) if apply_lcfm_improvements else 0.0
-                logger.info(
+                logger.debug(
                     f"FeatureBuilder.addlink {itm.id=} {asset_id=} {asset_band_names_from_metadata=} {asset_band_names=}"
                 )
                 builder = builder.addLink(get_best_url(asset), asset_id, pixel_value_offset, asset_band_names)
