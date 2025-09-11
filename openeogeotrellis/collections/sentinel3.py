@@ -442,7 +442,7 @@ def do_binning(
 
     data_vars = {}
     # TODO check order
-    dims = ("lat", "lon")
+    dims = ("latitude", "longitude")
     # TODO check handling of attrs
     attrs = {}
     coords = {
