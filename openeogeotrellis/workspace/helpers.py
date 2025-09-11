@@ -71,8 +71,19 @@ def vito_stac_api_workspace(  # for lack of a better name, can still be aliased
         workspace_uri = f"s3://{asset_bucket}/{target_key}"
         return workspace_uri
 
-    # TODO: move to ClientCredentialsAccessTokenHelper?
-    access_token_cache = _AccessTokenCache(access_token="", expires_at=0)  # one cache per StacApiWorkspace
+    return StacApiWorkspace(
+        root_url=root_url,
+        export_asset=export_asset,
+        asset_alternate_id="s3",
+        additional_collection_properties=additional_collection_properties,
+        get_access_token=get_oidc_access_token(oidc_issuer, oidc_client_id, oidc_client_secret),
+    )
+
+
+def get_oidc_access_token(
+    oidc_issuer: str, oidc_client_id: str, oidc_client_secret
+) -> Callable[[bool], str]:  # fresh => access_token
+    access_token_cache = _AccessTokenCache(access_token="", expires_at=0)
 
     def get_access_token(fresh: bool) -> str:
         nonlocal access_token_cache
@@ -104,10 +115,4 @@ def vito_stac_api_workspace(  # for lack of a better name, can still be aliased
 
         return authenticator.get_tokens().access_token
 
-    return StacApiWorkspace(
-        root_url=root_url,
-        export_asset=export_asset,
-        asset_alternate_id="s3",
-        additional_collection_properties=additional_collection_properties,
-        get_access_token=get_access_token,
-    )
+    return get_access_token

@@ -14,8 +14,8 @@ from pyspark.ml.regression import _JavaRegressionModel
 
 import pyspark.ml.common
 from pyspark.ml.common import inherit_doc
-from pyspark.ml.param import Param, Params
-from pyspark.ml.util import JavaMLReader, JavaMLWriter, JavaMLWritable, MLReadable
+from pyspark.ml.param import Param
+from pyspark.ml.util import JavaMLReader, JavaMLWritable, MLReadable
 
 
 import pyspark.ml.wrapper

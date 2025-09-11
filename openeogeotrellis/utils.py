@@ -4,14 +4,12 @@ import collections.abc
 import contextlib
 import dataclasses
 import datetime
-import functools
 import grp
 import hashlib
 import json
 import logging
 import math
 import os
-import pkgutil
 import pwd
 import resource
 import shutil
@@ -45,7 +43,6 @@ from openeo_driver.util.logging import (
 from openeo_driver.util.utm import auto_utm_epsg_for_geometry
 from py4j.clientserver import ClientServer
 from py4j.java_gateway import JVMView
-from pyproj import CRS
 from shapely.geometry import GeometryCollection, MultiPolygon, Point, Polygon, box
 from shapely.geometry.base import BaseGeometry
 

@@ -1,14 +1,9 @@
-import json
 import re
-from datetime import datetime
 from pathlib import Path
-from random import uniform
-from typing import Any, List, Iterator
-from unittest import skip
+from typing import List, Iterator
 
 import mock
 import pytest
-from openeo_driver.backend import BatchJobMetadata
 from openeo_driver.constants import JOB_STATUS
 from openeo_driver.save_result import MlModelResult
 from openeo_driver.testing import (
@@ -18,7 +13,6 @@ from openeo_driver.testing import (
     TEST_USER,
 )
 from openeo_driver.utils import read_json
-from py4j.java_gateway import JavaObject
 from pyspark.ml.linalg import Vectors
 from pyspark.sql.types import *
 from shapely.geometry import GeometryCollection, Point
@@ -30,7 +24,6 @@ from openeogeotrellis.job_registry import DoubleJobRegistry, ZkJobRegistry
 from openeogeotrellis.ml.aggregatespatialvectorcube import AggregateSpatialVectorCube
 from openeogeotrellis.ml.geopysparkcatboostmodel import GeopySparkCatBoostModel
 from openeogeotrellis.testing import KazooClientMock
-from tests.data import TEST_DATA_ROOT
 
 FEATURE_COLLECTION_1 = {
     "type": "FeatureCollection",

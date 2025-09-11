@@ -12,9 +12,8 @@ import geopyspark
 import numpy as np
 import pyspark
 import xarray as xr
-from openeo_driver.errors import InternalException, OpenEOApiException
+from openeo_driver.errors import InternalException
 from openeo_driver.util.geometry import BoundingBox
-from py4j.java_gateway import JavaObject
 from pyspark import SparkContext, find_spark_home
 from scipy.spatial import cKDTree  # used for tuning the griddata interpolation settings
 

@@ -8,7 +8,7 @@ from openeo_driver.util.http import requests_with_retry
 from openeo_driver.workspace import Workspace, _merge_collection_metadata
 from pystac import STACObject, Collection, Item, Asset, Link
 import pystac_client
-from pystac_client import ConformanceClasses, stac_api_io
+from pystac_client import ConformanceClasses
 import requests
 import requests.adapters
 from requests import JSONDecodeError

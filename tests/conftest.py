@@ -27,11 +27,9 @@ from openeo_driver.integrations.s3.client import S3ClientBuilder
 
 import openeogeotrellis
 import pytest
-import requests_mock
 import time_machine
 from _pytest.terminal import TerminalReporter
 from openeo_driver.backend import OpenEoBackendImplementation, UserDefinedProcesses
-from openeo_driver.jobregistry import ElasticJobRegistry, JobRegistryInterface
 from openeo_driver.testing import ApiTester, ephemeral_fileserver, UrllibMocker
 from openeo_driver.utils import smart_bool
 from openeo_driver.views import build_app

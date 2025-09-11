@@ -2175,9 +2175,30 @@ def test_load_stac_temporal_extent_in_result_metadata(tmp_path, requests_mock, s
     process["process_graph"]["loadstac1"]["arguments"]["url"] = str(
         get_test_data_file("binary/load_stac/issue852-temporal-extent/s1/collection.json").absolute()
     )
+    process["process_graph"]["loadstac1"]["arguments"]["bands"] = sorted(["S1-SIGMA0-VV", "S1-SIGMA0-VH"])
     process["process_graph"]["loadstac2"]["arguments"]["url"] = str(
         get_test_data_file("binary/load_stac/issue852-temporal-extent/s2/collection.json").absolute()
     )
+    process["process_graph"]["loadstac2"]["arguments"]["bands"] = sorted(
+        [
+            "S2-L2A-B01",
+            "S2-L2A-B02",
+            "S2-L2A-B03",
+            "S2-L2A-B04",
+            "S2-L2A-B05",
+            "S2-L2A-B06",
+            "S2-L2A-B07",
+            "S2-L2A-B8A",
+            "S2-L2A-B08",
+            "S2-L2A-B09",
+            "S2-L2A-B11",
+            "S2-L2A-B12",
+            "S2-L2A-SCL",
+            "S2-L2A-SCL_DILATED_MASK",
+            "S2-L2A-DISTANCE-TO-CLOUD",
+        ]
+    )
+
     process["process_graph"]["loadurl1"]["arguments"]["url"] = geoparquet_url
 
     with open(

@@ -38,6 +38,7 @@ tests_require = [
     "pydantic~=1.0",
     "zarr",
     "jsonschema",
+    "rioxarray",
 ] + yarn_require
 
 typing_require = [
