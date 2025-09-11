@@ -1,7 +1,7 @@
 import logging
 import subprocess
 from subprocess import CalledProcessError, PIPE
-from typing import NamedTuple, Optional
+from typing import NamedTuple, Optional, Union, Tuple
 
 import hvac
 import requests
@@ -84,15 +84,14 @@ class Vault:
                 f"Vault login (Kerberos) failed: {e!s}. stderr: {e.stderr.strip()!r}"
             ) from e
 
-    def login_cert(self, name: str, cacert: str, cert_pem: str, key_pem: str) -> str:
+    def login_cert(self, *, name: str, cert: Optional[Tuple[str, str]] = None, verify: Union[str, bool] = None) -> str:
         """Loging to Vault with "cert" method. Returns the Vault token."""
-        client = self._client()
-        # see https://python-hvac.org/en/stable/source/hvac_api_auth_methods.html#hvac.api.auth_methods.Cert.login
-        client.auth.cert.login(name=name, cacert=cacert, cert_pem=cert_pem, key_pem=key_pem)
+        client = self._client(cert=cert, verify=verify)
+        client.auth.cert.login(name=name)
         return client.token
 
-    def _client(self, token: Optional[str] = None):
-        return hvac.Client(self._url, token=token, session=self._session)
+    def _client(self, *, token: Optional[str] = None, **kwargs) -> hvac.Client:
+        return hvac.Client(self._url, token=token, session=self._session, **kwargs)
 
     def __str__(self):
         return self._url
