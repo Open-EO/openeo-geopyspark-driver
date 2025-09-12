@@ -2710,6 +2710,22 @@ class GpsBatchJobs(backend.BatchJobs):
 
         return results_dict
 
+    @lru_cache(maxsize=20)
+    def get_result_items(self, job_id: str, user_id: str) -> Optional[Dict[str, dict]]:
+        with self._double_job_registry as registry:
+            job_dict = registry.get_job(job_id=job_id, user_id=user_id)
+
+        if job_dict["status"] != JOB_STATUS.FINISHED:
+            raise JobNotFinishedException
+
+        results_metadata = self.load_results_metadata(job_id, user_id, job_dict)
+
+        return map_optional(
+            lambda item_list: {item["id"]: item for item in item_list},
+            results_metadata.get("items")  # TODO: is a list instead of a dict so needs translation; avoid?
+        )
+
+
     def get_results_metadata_path(self, job_id: str) -> Path:
         return self.get_job_output_dir(job_id) / JOB_METADATA_FILENAME
 
