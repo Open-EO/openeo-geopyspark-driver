@@ -2093,7 +2093,8 @@ class GpsBatchJobs(backend.BatchJobs):
                 provide_s3_profiles_and_tokens=get_backend_config().provide_s3_profiles_and_tokens,
                 batch_job_cfg_secret_name=batch_job_cfg_secret_name,
                 batch_job_config_dir=get_backend_config().batch_job_config_dir,
-                openeo_jar_path=options.openeo_jar_path or 'local:///opt/geotrellis-extensions-static.jar'
+                openeo_jar_path=options.openeo_jar_path or 'local:///opt/geotrellis-extensions-static.jar',
+                debug_metrics="true" if options.log_level.lower() == "debug" else "false"
             )
 
             with self._double_job_registry as dbl_registry:
