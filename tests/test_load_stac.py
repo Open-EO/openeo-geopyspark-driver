@@ -12,10 +12,14 @@ import responses
 from openeo.testing.stac import StacDummyBuilder
 from openeo_driver.ProcessGraphDeserializer import DEFAULT_TEMPORAL_EXTENT
 from openeo_driver.backend import BatchJobMetadata, BatchJobs, LoadParameters
+from openeo_driver.dummy.dummy_backend import DummyBatchJobs
 from openeo_driver.errors import OpenEOApiException
+from openeo_driver.users import User
 from openeo_driver.util.date_math import now_utc
 from openeo_driver.util.geometry import BoundingBox
 from openeo_driver.utils import EvalEnv
+from openeogeotrellis.backend import GpsBatchJobs
+from openeogeotrellis.job_registry import InMemoryJobRegistry
 
 from openeogeotrellis.load_stac import (
     extract_own_job_info,
@@ -31,6 +35,7 @@ from openeogeotrellis.load_stac import (
     PropertyFilter,
     ItemCollection,
 )
+from openeogeotrellis.testing import gps_config_overrides
 
 
 @pytest.mark.parametrize("url, user_id, job_info_id",
@@ -1355,3 +1360,86 @@ class TestItemCollection:
         item_collection = ItemCollection.from_stac_item(item, spatiotemporal_extent=spatiotemporal_extent)
         expected = [item] if expected else []
         assert item_collection.items == expected
+
+    @pytest.mark.parametrize(
+        ["bbox", "interval", "expected"],
+        [
+            # Full spatio-temporal overlap
+            ((10, 20, 30, 40), ["2025-09-01", "2025-10-01"], [1, 2]),
+            ((21, 31, 26, 36), ["2025-09-01", "2025-10-01"], [1, 2]),
+            # Spatial constraints
+            ((20, 30, 23, 33), ["2025-09-01", "2025-10-01"], [1]),
+            ((26, 36, 27, 37), ["2025-09-01", "2025-10-01"], [2]),
+            # Temporal constraints
+            ((20, 34, 26, 40), ["2025-09-01", "2025-09-07"], [1]),
+            ((20, 34, 26, 40), ["2025-09-05", "2025-09-10"], [2]),
+            # No overlap
+            ((10, 20, 30, 40), ["2025-10-01", "2025-11-01"], []),
+            ((70, 70, 80, 80), ["2025-09-01", "2025-10-01"], []),
+        ],
+    )
+    @gps_config_overrides(use_zk_job_registry=False)
+    def test_from_own_job(self, bbox, interval, expected):
+        from_date, to_date = interval
+        spatiotemporal_extent = _SpatioTemporalExtent(
+            bbox=BoundingBox.from_wsen_tuple(bbox, crs=4326), from_date=from_date, to_date=to_date
+        )
+
+        user = User("john")
+        job_registry = InMemoryJobRegistry()
+        batch_jobs = GpsBatchJobs(catalog=None, jvm=None, elastic_job_registry=job_registry)
+        job = batch_jobs.create_job(user=user, process={"foo": "bar"}, api_version="1.0.0", metadata={})
+        job_registry.set_status(job_id=job.id, user_id=user.user_id, status="finished")
+        job_registry.set_results_metadata(
+            job_id=job.id,
+            user_id=user.user_id,
+            costs=0,
+            usage={},
+            results_metadata={
+                "assets": {
+                    "asset1": {
+                        "bbox": [20, 30, 25, 35],
+                        "datetime": "2025-09-04T10:00:00Z",
+                        "roles": ["data"],
+                        "href": "https://data.test/asset1.tif",
+                        "bands": [{"name": "red"}],
+                    },
+                    "asset2": {
+                        "bbox": [24, 34, 28, 38],
+                        "datetime": "2025-09-08T10:00:00Z",
+                        "roles": ["data"],
+                        "href": "https://data.test/asset2.tif",
+                        "bands": [{"name": "red"}],
+                    },
+                }
+            },
+        )
+
+        item_collection = ItemCollection.from_own_job(
+            job=job, spatiotemporal_extent=spatiotemporal_extent, batch_jobs=batch_jobs, user=user
+        )
+
+        expected_map = {
+            1: dirty_equals.IsPartialDict(
+                {
+                    "type": "Feature",
+                    "stac_version": "1.0.0",
+                    "id": "asset1",
+                    "assets": {"asset1": {"eo:bands": [{"name": "red"}], "href": "https://data.test/asset1.tif"}},
+                    "bbox": [20, 30, 25, 35],
+                    "properties": {"datetime": "2025-09-04T10:00:00Z"},
+                }
+            ),
+            2: dirty_equals.IsPartialDict(
+                {
+                    "type": "Feature",
+                    "stac_version": "1.0.0",
+                    "id": "asset2",
+                    "assets": {"asset2": {"eo:bands": [{"name": "red"}], "href": "https://data.test/asset2.tif"}},
+                    "bbox": [24, 34, 28, 38],
+                    "properties": {"datetime": "2025-09-08T10:00:00Z"},
+                }
+            ),
+        }
+        expected = [expected_map[e] for e in expected]
+        assert [item.to_dict() for item in item_collection.items] == expected

@@ -126,7 +126,7 @@ def load_stac(
             max_poll_delay_seconds=max_poll_delay_seconds,
             max_poll_time=max_poll_time,
         )
-        if user
+        if user and batch_jobs
         else None
     )
 
@@ -134,48 +134,11 @@ def load_stac(
 
     remote_request_info = None
     try:
-        if dependency_job_info:
-            intersecting_items = []
-
-            for asset_id, asset in batch_jobs.get_result_assets(job_id=dependency_job_info.id,
-                                                                user_id=user.user_id).items():
-                rfc3339 = Rfc3339(propagate_none=True)
-                parse_datetime = partial(rfc3339.parse_datetime, with_timezone=True)
-
-                item_geometry = asset.get("geometry", dependency_job_info.geometry)
-                item_bbox = asset.get("bbox", dependency_job_info.bbox)
-                item_datetime = parse_datetime(asset.get("datetime"))
-                item_start_datetime = None
-                item_end_datetime = None
-
-                if not item_datetime:
-                    item_start_datetime = parse_datetime(asset.get("start_datetime")) or dependency_job_info.start_datetime
-                    item_end_datetime = parse_datetime(asset.get("end_datetime")) or dependency_job_info.end_datetime
-
-                    if item_start_datetime == item_end_datetime:
-                        item_datetime = item_start_datetime
-
-                pystac_item = pystac.Item(id=asset_id, geometry=item_geometry, bbox=item_bbox, datetime=item_datetime,
-                                          properties=dict_no_none({
-                                              "datetime": rfc3339.datetime(item_datetime),
-                                              "start_datetime": rfc3339.datetime(item_start_datetime),
-                                              "end_datetime": rfc3339.datetime(item_end_datetime),
-                                              "proj:epsg": asset.get("proj:epsg"),
-                                              "proj:bbox": asset.get("proj:bbox"),
-                                              "proj:shape": asset.get("proj:shape"),
-                                          }))
-
-                if spatiotemporal_extent.item_intersects(pystac_item) and "data" in asset.get("roles", []):
-                    pystac_asset = pystac.Asset(
-                        href=asset["href"],
-                        extra_fields={
-                            "eo:bands": [{"name": b.name} for b in asset["bands"]]
-                            # TODO #1109 #1015 also add common "bands"?
-                        },
-                    )
-                    pystac_item.add_asset(asset_id, pystac_asset)
-                    intersecting_items.append(pystac_item)
-
+        if dependency_job_info and batch_jobs:
+            item_collection = ItemCollection.from_own_job(
+                job=dependency_job_info, spatiotemporal_extent=spatiotemporal_extent, batch_jobs=batch_jobs, user=user
+            )
+            intersecting_items = item_collection.items
             band_names = []
         else:
             logger.info(f"load_stac of arbitrary URL {url}")
@@ -812,6 +775,64 @@ class ItemCollection:
     def from_stac_item(item: pystac.Item, *, spatiotemporal_extent: _SpatioTemporalExtent) -> ItemCollection:
         items = [item] if spatiotemporal_extent.item_intersects(item) else []
         return ItemCollection(items)
+
+    @staticmethod
+    def from_own_job(
+        job: BatchJobMetadata,
+        *,
+        spatiotemporal_extent: _SpatioTemporalExtent,
+        batch_jobs: openeo_driver.backend.BatchJobs,
+        user: Optional[User],
+    ) -> ItemCollection:
+        items = []
+        rfc3339 = Rfc3339(propagate_none=True)
+
+        for asset_id, asset in batch_jobs.get_result_assets(job_id=job.id, user_id=user.user_id).items():
+            parse_datetime = partial(rfc3339.parse_datetime, with_timezone=True)
+
+            item_geometry = asset.get("geometry", job.geometry)
+            item_bbox = asset.get("bbox", job.bbox)
+            item_datetime = parse_datetime(asset.get("datetime"))
+            item_start_datetime = None
+            item_end_datetime = None
+
+            if not item_datetime:
+                item_start_datetime = parse_datetime(asset.get("start_datetime")) or job.start_datetime
+                item_end_datetime = parse_datetime(asset.get("end_datetime")) or job.end_datetime
+
+                if item_start_datetime == item_end_datetime:
+                    item_datetime = item_start_datetime
+
+            pystac_item = pystac.Item(
+                id=asset_id,
+                geometry=item_geometry,
+                bbox=item_bbox,
+                datetime=item_datetime,
+                properties=dict_no_none(
+                    {
+                        "datetime": rfc3339.datetime(item_datetime),
+                        "start_datetime": rfc3339.datetime(item_start_datetime),
+                        "end_datetime": rfc3339.datetime(item_end_datetime),
+                        "proj:epsg": asset.get("proj:epsg"),
+                        "proj:bbox": asset.get("proj:bbox"),
+                        "proj:shape": asset.get("proj:shape"),
+                    }
+                ),
+            )
+
+            if spatiotemporal_extent.item_intersects(pystac_item) and "data" in asset.get("roles", []):
+                pystac_asset = pystac.Asset(
+                    href=asset["href"],
+                    extra_fields={
+                        "eo:bands": [{"name": b.name} for b in asset["bands"]]
+                        # TODO #1109 #1015 also add common "bands"?
+                    },
+                )
+                pystac_item.add_asset(asset_id, pystac_asset)
+                items.append(pystac_item)
+
+        return ItemCollection(items)
+
 
 
 def _is_supported_raster_mime_type(mime_type: str) -> bool:
