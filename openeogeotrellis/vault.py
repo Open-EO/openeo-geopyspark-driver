@@ -86,7 +86,8 @@ class Vault:
 
     def login_cert(self, *, name: str, cert: Optional[Tuple[str, str]] = None, verify: Union[str, bool] = None) -> str:
         """Loging to Vault with "cert" method. Returns the Vault token."""
-        client = self._client(cert=cert, verify=verify)
+        # Note: don't use self._session (through _client()) here, to make sure cert/verify is picked up properly
+        client = hvac.Client(url=self._url, cert=cert, verify=verify)
         client.auth.cert.login(name=name)
         return client.token
 
