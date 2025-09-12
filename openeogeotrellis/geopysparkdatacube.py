@@ -1932,7 +1932,7 @@ class GeopysparkDataCube(DriverDataCube):
 
             return latlng_extent.xmin, latlng_extent.ymin, latlng_extent.xmax, latlng_extent.ymax
 
-        def return_netcdf_items(java_items, bands, nodata) -> dict:
+        def return_netcdf_items(java_items, nodata) -> dict:
             items = {}
 
             for java_item in java_items:
@@ -1950,8 +1950,13 @@ class GeopysparkDataCube(DriverDataCube):
                         "bbox": bbox,
                         "geometry": geometry,
                     }
-                    if bands is not None:
-                        assets[asset_key]["bands"] = bands
+                    bands = []
+                    for band in asset.metadata().get("bands"):
+                        band = dict(band)
+                        if "statistics" in band:
+                            band["statistics"] = dict(band.get("statistics"))
+                        bands.append(band)
+                    assets[asset_key]["bands"] = bands
 
                 items[java_item.id()] = {
                     "id": java_item.id(),
@@ -2368,6 +2373,7 @@ class GeopysparkDataCube(DriverDataCube):
             nodata = max_level.layer_metadata.no_data_value
             global_metadata = format_options.get("file_metadata",{})
             zlevel = format_options.get("ZLEVEL", 6)
+            add_bands_statistics = format_options.get("add_bands_statistics",False)
             for band_name, band_metadata in bands_metadata.items():
                 for tag, value in band_metadata.items():
                     bands_metadata[band_name][tag] = str(value)
@@ -2379,6 +2385,12 @@ class GeopysparkDataCube(DriverDataCube):
                     geometries = GeometryCollection(geometries.geoms)
                 projected_polygons = to_projected_polygons(get_jvm(), geometries)
                 labels = self.get_labels(geometries,feature_id_property)
+                options = get_jvm().org.openeo.geotrellis.netcdf.NetCDFOptions()
+                options.setBandNames(band_names)
+                options.setDimensionNames(dim_names)
+                options.setAttributes(global_metadata)
+                options.setBandsMetadata(bands_metadata)
+                options.setAddBandStatistics(add_bands_statistics)
                 if max_level.layer_type != gps.LayerType.SPATIAL:
                     _log.debug(f"projected_polygons carries {len(projected_polygons.polygons())} polygons")
                     java_items = get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.saveSamples(
@@ -2386,10 +2398,7 @@ class GeopysparkDataCube(DriverDataCube):
                         save_directory,
                         projected_polygons,
                         labels,
-                        band_names,
-                        dim_names,
-                        global_metadata,
-                        bands_metadata,
+                        options,
                         filename_prefix,
                     )
                 else:
@@ -2398,26 +2407,24 @@ class GeopysparkDataCube(DriverDataCube):
                         save_directory,
                         projected_polygons,
                         labels,
-                        band_names,
-                        dim_names,
-                        global_metadata,
-                        bands_metadata,
+                        options,
                         filename_prefix,
                     )
 
-                return return_netcdf_items(java_items, bands, nodata)
+                return return_netcdf_items(java_items, nodata)
             else:
                 originalName = pathlib.Path(filename)
                 filename_tmp = format_options.get("filename_prefix", "openEO") + ".nc" if originalName.name == "out" else originalName.name
                 if not stitch:
                     filename = save_directory + "/" + filename_tmp
+                    options = get_jvm().org.openeo.geotrellis.netcdf.NetCDFOptions()
+                    options.setBandNames(band_names)
+                    options.setDimensionNames(dim_names)
+                    options.setAttributes(global_metadata)
+                    options.setBandsMetadata(bands_metadata)
+                    options.setZLevel(zlevel)
+                    options.setAddBandStatistics(add_bands_statistics)
                     if strict_cropping:
-                        options = get_jvm().org.openeo.geotrellis.netcdf.NetCDFOptions()
-                        options.setBandNames(band_names)
-                        options.setDimensionNames(dim_names)
-                        options.setAttributes(global_metadata)
-                        options.setBandsMetadata(bands_metadata)
-                        options.setZLevel(zlevel)
                         options.setCropBounds(crop_extent)
                         java_items = get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.writeRasters(
                             max_level.srdd.rdd(),
@@ -2428,23 +2435,15 @@ class GeopysparkDataCube(DriverDataCube):
                             java_items = get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.saveSingleNetCDF(
                                 max_level.srdd.rdd(),
                                 filename,
-                                band_names,
-                                dim_names,
-                                global_metadata,
-                                bands_metadata,
-                                zlevel,
+                                options,
                             )
                         else:
                             java_items = get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.saveSingleNetCDFSpatial(
                                 max_level.srdd.rdd(),
                                 filename,
-                                band_names,
-                                dim_names,
-                                global_metadata,
-                                bands_metadata,
-                                zlevel,
+                                options,
                             )
-                    return return_netcdf_items(java_items, bands, nodata)
+                    return return_netcdf_items(java_items, nodata)
 
                 else:
                     if not tiled:
