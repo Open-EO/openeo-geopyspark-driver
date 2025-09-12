@@ -870,6 +870,35 @@ class TestGpsBatchJobs:
         assert asset_key == "openEO"
         assert asset["href"] == "file:///path/to/openEO.tif"
 
+    def test_get_result_items(self, kube_no_zk, backend_implementation, job_registry, tmp_path):
+        self._create_dummy_batch_job(backend_implementation, self._dummy_user)
+        job_id, job = next(iter(job_registry.db.items()))
+
+        job_metadata_json_path = tmp_path / "job_metadata.json"
+        with open(job_metadata_json_path, "w") as f:
+            json.dump(
+                {
+                    "items": [
+                        {"id": "item1", "assets": {"openEO": {"href": "file:///path/to/openEO.tif"}}},
+                    ]
+                },
+                f,
+            )
+
+        job["status"] = JOB_STATUS.FINISHED
+        job["results_metadata_uri"] = f"file://{job_metadata_json_path}"
+
+        item_id, item = next(
+            iter(
+                backend_implementation.batch_jobs.get_result_items(
+                    job_id=job_id, user_id=self._dummy_user.user_id
+                ).items()
+            )
+        )
+
+        assert item_id == "item1"
+        assert [asset["href"] for asset in item["assets"].values()] == ["file:///path/to/openEO.tif"]
+
     @staticmethod
     def _create_dummy_batch_job(backend_implementation, user):
         backend_implementation.batch_jobs.create_job(

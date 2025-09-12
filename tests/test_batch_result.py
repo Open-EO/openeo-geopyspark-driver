@@ -3685,18 +3685,25 @@ def test_export_workspace_derived_from(tmp_path, requests_mock, mock_s3_bucket, 
 
     with open(metadata_file) as f:
         results_metadata = json.load(f)
-        # these get rendered in the /jobs/<job_id>/results STAC Collection document
+
         derived_from_hrefs = [link["href"] for link in results_metadata["links"] if link["rel"] == "derived_from"]
-        assert derived_from_hrefs == ["http://s2.test/p1", "http://s2.test/p2"]
 
         if stac_version == "1.1":
-            # these get rendered in the /jobs/<job_id>/results/items/<item_id> STAC Item document
-            exposable_link_hrefs = [
-                link["href"] for link in results_metadata["links"] if link.get("_expose_internal", False)
-            ]
             assert (
-                len(exposable_link_hrefs) == 1
-            ), f"expected one link to an ItemCollection but got {exposable_link_hrefs}"
-            assert (
-                Path(exposable_link_hrefs[0]).name == "unknown-job_input_items.json"
-            )  # TODO: currently assumed to be an absolute file path
+                not derived_from_hrefs
+            ), f'expected no Collection-level "derived_from" links for stac_version {stac_version}'
+
+            # these should get rendered in the job result items STAC documents
+            for item in results_metadata["items"]:
+                exposable_link_hrefs = [
+                    link["href"] for link in item.get("links", []) if link.get("_expose_internal", False)
+                ]
+                assert (
+                    len(exposable_link_hrefs) == 1
+                ), f"expected one link to an ItemCollection but got {exposable_link_hrefs}"
+                assert (
+                    Path(exposable_link_hrefs[0]).name == "unknown-job_input_items.json"
+                )  # TODO: currently assumed to be an absolute file path
+        else:
+            # these get rendered in the /jobs/<job_id>/results STAC Collection document
+            assert derived_from_hrefs == ["http://s2.test/p1", "http://s2.test/p2"]

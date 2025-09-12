@@ -31,6 +31,7 @@ from openeogeotrellis.utils import (
     get_jvm,
     to_tuple,
     unzip,
+    partition,
     get_s3_file_contents,
 )
 
@@ -471,6 +472,15 @@ def test_unzip():
 
     assert digits == (1, 2, 3)
     assert words == ("one", "two", "three")
+
+
+def test_partition():
+    xs = range(10)
+
+    even, odd = partition(lambda i: i % 2 == 0, xs)
+
+    assert list(even) == [0, 2, 4, 6, 8]
+    assert list(odd) == [1, 3, 5, 7, 9]
 
 
 def test_md5_checksum(tmp_path):

@@ -81,6 +81,7 @@ from openeogeotrellis.utils import (
     unzip,
     wait_till_path_available,
     add_permissions_with_failsafe,
+    partition,
 )
 
 logger = logging.getLogger("openeogeotrellis.deploy.batch_job")
@@ -645,7 +646,7 @@ def run_job(
         write_metadata(meta, metadata_file, is_stac11, derived_from_document)
 
 
-def write_metadata(metadata: dict, metadata_file: Path, is_stac11: bool, derived_from_document: Optional[Path]):
+def write_metadata(metadata: dict, metadata_file: Path, is_stac11: bool, derived_from_document: Optional[Path]):  # TODO: presence of derived_from_document implies is_stac11; remove is_stac11?
     def log_asset_hrefs(context: str):
         if is_stac11:
             items = {item["id"]: item for item in metadata.get("items", [])}
@@ -662,22 +663,25 @@ def write_metadata(metadata: dict, metadata_file: Path, is_stac11: bool, derived
     log_asset_hrefs("output")
 
     if derived_from_document:
-        derived_from_links = [link for link in out_metadata.get("links", []) if link.get("rel") == "derived_from"]
+        derived_from_links, other_links = partition(
+            lambda link: link.get("rel") == "derived_from", out_metadata.get("links", [])
+        )
 
         with open(derived_from_document, "w") as f:
-            json.dump({"links": derived_from_links}, f)
-
-        print(f"adding custom link to metadata at {id(metadata)} with links {id(metadata['links'])}")
+            json.dump({"links": list(derived_from_links)}, f)
 
         out_metadata = deepcopy(out_metadata)  # avoid mutating an object that is going to be reused
-        out_metadata.setdefault("links", []).append(
-            {
-                "href": str(derived_from_document),
-                "rel": "custom",  # TODO
-                "type": "application/json",  # TODO: ultimately, "application/geo+json" for an ItemCollection
-                "_expose_internal": True,
-            },
-        )
+
+        out_metadata["links"] = list(other_links)  # remove top-level derived_from links
+        for item in out_metadata.get("items", []):  # add link to derived_from document to each item
+            item.setdefault("links", []).append(
+                {
+                    "href": str(derived_from_document),
+                    "rel": "custom",  # TODO
+                    "type": "application/json",  # TODO: ultimately, "application/geo+json" for an ItemCollection
+                    "_expose_internal": True,
+                },
+            )
 
     with open(metadata_file, "w") as f:
         json.dump(out_metadata, f, default=json_default)

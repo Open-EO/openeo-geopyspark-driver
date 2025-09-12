@@ -6,6 +6,7 @@ import dataclasses
 import datetime
 import grp
 import hashlib
+import itertools
 import json
 import logging
 import math
@@ -895,6 +896,13 @@ def to_tuple(scala_tuple):
 def unzip(*iterables: Iterable) -> Iterator:
     # iterables are typically of equal length
     return zip(*iterables)
+
+
+def partition(pred: Callable[[T], bool], iterable: Iterable[T]) -> Tuple[Iterator[T], Iterator[T]]:
+    """Use a predicate to partition entries into true entries and false entries."""
+
+    t1, t2 = itertools.tee(iterable)
+    return filter(pred, t1), itertools.filterfalse(pred, t2)
 
 
 def md5_checksum(file: Path) -> str:
