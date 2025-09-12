@@ -1,3 +1,4 @@
+from __future__ import annotations
 import re
 import datetime as dt
 import datetime
@@ -194,7 +195,8 @@ def load_stac(
 
                 item = stac_object
                 band_names = stac_metadata_parser.bands_from_stac_item(item=item).band_names()
-                intersecting_items = [item] if spatiotemporal_extent.item_intersects(item) else []
+                item_collection = ItemCollection.from_stac_item(item=item, spatiotemporal_extent=spatiotemporal_extent)
+                intersecting_items = item_collection.items
             elif isinstance(stac_object, pystac.Collection) and _supports_item_search(stac_object):
                 collection = stac_object
                 netcdf_with_time_dimension = contains_netcdf_with_time_dimension(collection)
@@ -791,6 +793,25 @@ class _SpatioTemporalExtent:
             start_datetime=item.properties.get("start_datetime"),
             end_datetime=item.properties.get("end_datetime"),
         ) and self._spatial_extent.intersects(item.bbox)
+
+
+class ItemCollection:
+    """
+    Collection of STAC Items.
+    Typically a subset from a larger Collection/Catalog/API based on spatiotemporal filtering.
+
+    Experimental/WIP API
+    """
+
+    # TODO: leverage pystac.ItemCollection in some way ?
+
+    def __init__(self, items: List[pystac.Item]):
+        self.items = items
+
+    @staticmethod
+    def from_stac_item(item: pystac.Item, *, spatiotemporal_extent: _SpatioTemporalExtent) -> ItemCollection:
+        items = [item] if spatiotemporal_extent.item_intersects(item) else []
+        return ItemCollection(items)
 
 
 def _is_supported_raster_mime_type(mime_type: str) -> bool:
