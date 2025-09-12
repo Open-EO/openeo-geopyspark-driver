@@ -23,11 +23,18 @@ class VaultLoginError(Exception):
 
 
 class Vault:
+
+    # TODO: migrate all usage to `openeogeotrellis.integrations.vault.VaultClient`
+    #       or just fully eliminate need for `get_sentinel_hub_credentials`
+    #       which is the only remaining use case here?
+    #       https://github.com/Open-EO/openeo-geopyspark-driver/issues/1341
+
     def __init__(self, url: str, requests_session: Optional[requests.Session] = None):
         self._url = url
         self._session = requests_session or requests.Session()
 
     def get_sentinel_hub_credentials(self, sentinel_hub_client_alias: str, vault_token: str) -> OAuthCredentials:
+        # TODO: eliminate hardcoded Terrascope internals
         client_credentials = self._get_kv_credentials(
             f"TAP/big_data_services/openeo/sentinelhub-oauth-{sentinel_hub_client_alias}", vault_token)
 
@@ -83,13 +90,6 @@ class Vault:
             raise VaultLoginError(
                 f"Vault login (Kerberos) failed: {e!s}. stderr: {e.stderr.strip()!r}"
             ) from e
-
-    def login_cert(self, *, name: str, cert: Optional[Tuple[str, str]] = None, verify: Union[str, bool] = None) -> str:
-        """Loging to Vault with "cert" method. Returns the Vault token."""
-        # Note: don't use self._session (through _client()) here, to make sure cert/verify is picked up properly
-        client = hvac.Client(url=self._url, cert=cert, verify=verify)
-        client.auth.cert.login(name=name)
-        return client.token
 
     def _client(self, *, token: Optional[str] = None, **kwargs) -> hvac.Client:
         return hvac.Client(self._url, token=token, session=self._session, **kwargs)
