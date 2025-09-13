@@ -1364,7 +1364,10 @@ class GeopysparkDataCube(DriverDataCube):
             level_rdd_tuple = get_jvm().org.openeo.geotrellis.OpenEOProcesses().resampleCubeSpatial_spatial(
                 max_level.srdd.rdd(), crs, layout, resample_method, partitioner)
         else:
-            raise FeatureUnsupportedException(message='resample_cube_spatial - Unsupported combination of two cubes of type: ' + str(self.pyramid.layer_type) + ' and ' + str(target.pyramid.layer_type))
+            layout = target_max_level.srdd.rdd().metadata().layout()
+            crs = target_max_level.srdd.rdd().metadata().crs()
+            level_rdd_tuple = get_jvm().org.openeo.geotrellis.OpenEOProcesses().resampleCubeSpatial_spatial(
+                max_level.srdd.rdd(), crs, layout, resample_method, None)
 
         layer = self._create_tilelayer(level_rdd_tuple._2(),max_level.layer_type,target.pyramid.max_zoom)
         pyramid = Pyramid({target.pyramid.max_zoom:layer})
