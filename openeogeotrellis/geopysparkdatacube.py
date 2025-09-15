@@ -156,12 +156,6 @@ class GeopysparkDataCube(DriverDataCube):
     def _data_source_type(self):
         return self.metadata.get("_vito", "data_source", "type", default="Accumulo")
 
-    # TODO: deprecated
-    def date_range_filter(
-            self, start_date: Union[str, datetime, date], end_date: Union[str, datetime, date]
-    ) -> 'GeopysparkDataCube':
-        return self.apply_to_levels(lambda rdd: rdd.filter_by_times([pd.to_datetime(start_date),pd.to_datetime(end_date)]))
-
     @callsite
     def filter_temporal(self, start: str, end: str) -> 'GeopysparkDataCube':
         # TODO: is this necessary? Temporal range is handled already at load_collection time
