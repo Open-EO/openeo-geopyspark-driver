@@ -21,6 +21,10 @@ without compromising stable operations.
 - Disable `async_task` by default ([eu-cdse/openeo-cdse-infra#387](https://github.com/eu-cdse/openeo-cdse-infra/issues/387))
 - `export_workspace`: add `md5` and `mtime` metadata to assets exported as objects ([#1318](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1318))
 - Avoid in-memory credentials cache conflict in IPA tooling (eu-cdse/openeo-cdse-infra#660)
+- Log warning when requesting bands in unexpected order for temporal NetCDF STAC catalogs. ([#1153](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1153))
+- Expose `get_oidc_access_token` helper method for use with `StacApiWorkspace` ([eu-cdse/openeo-cdse-infra#633](https://github.com/eu-cdse/openeo-cdse-infra/issues/633))
+- Add `integrations.vault.VaultClient` with "cert" auth support (eu-cdse/openeo-cdse-infra#671)
+- Avoid ZeroDivisionError with resample_spatial with resolution 0 for UTM layers. ([openeo-geotrellis-extensions#506](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/506))
 - Less often used Spark metrics for batch jobs are now disabled by default. They are enabled when log-level is set to 'debug'. 
 
 

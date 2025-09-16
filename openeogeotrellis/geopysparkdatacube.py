@@ -7,7 +7,6 @@ import os
 import pathlib
 import re
 import shutil
-import subprocess
 import tempfile
 import uuid
 from datetime import datetime, date
@@ -58,7 +57,6 @@ from openeogeotrellis.utils import (
     reproject_cellsize,
     normalize_temporal_extent,
     GDALINFO_SUFFIX,
-    to_tuple,
 )
 from openeogeotrellis.udf import run_udf_code
 from openeogeotrellis._version import __version__ as softwareversion
@@ -157,12 +155,6 @@ class GeopysparkDataCube(DriverDataCube):
 
     def _data_source_type(self):
         return self.metadata.get("_vito", "data_source", "type", default="Accumulo")
-
-    # TODO: deprecated
-    def date_range_filter(
-            self, start_date: Union[str, datetime, date], end_date: Union[str, datetime, date]
-    ) -> 'GeopysparkDataCube':
-        return self.apply_to_levels(lambda rdd: rdd.filter_by_times([pd.to_datetime(start_date),pd.to_datetime(end_date)]))
 
     @callsite
     def filter_temporal(self, start: str, end: str) -> 'GeopysparkDataCube':

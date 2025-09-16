@@ -1,7 +1,7 @@
 import pytest
 from kazoo.exceptions import BadVersionError, NoNodeError
 
-from openeogeotrellis.config import GpsBackendConfig, get_backend_config
+from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.testing import KazooClientMock, _ZNodeStat, gps_config_overrides
 
 

@@ -2,11 +2,9 @@ import logging
 
 import shutil
 import typing
-import uuid
 from pathlib import Path
 from typing import Dict, Union
 
-from openeo_driver.datacube import DriverMlModel
 from openeo_driver.datastructs import StacAsset
 import geopyspark as gps
 from py4j.java_gateway import JavaObject

@@ -1,5 +1,5 @@
 import logging
-from abc import abstractclassmethod, abstractproperty
+from abc import abstractclassmethod
 from enum import Enum
 
 

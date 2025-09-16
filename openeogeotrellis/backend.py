@@ -1,16 +1,12 @@
-import abc
 import datetime as dt
 import io
 import json
 import logging
 import os
-import random
 import re
 import shutil
 import socket
-import stat
 import subprocess
-import sys
 import tempfile
 import time
 import traceback
@@ -29,7 +25,6 @@ import flask
 import geopyspark as gps
 import kazoo.exceptions
 import openeo.udf
-import pkg_resources
 import pystac
 import requests
 import reretry
@@ -40,7 +35,7 @@ from geopyspark import LayerType, Pyramid, TiledRasterLayer
 import openeo_driver.util.changelog
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 from openeo.metadata import Band, BandDimension, Dimension, SpatialDimension, TemporalDimension
-from openeo.util import TimingLogger, deep_get, dict_no_none, repr_truncate, rfc3339, str_truncate, ensure_dir, Rfc3339
+from openeo.util import TimingLogger, deep_get, dict_no_none, repr_truncate, rfc3339, str_truncate, Rfc3339
 from openeo.utils.version import ComparableVersion
 from openeo_driver import backend
 from openeo_driver.backend import (
@@ -59,7 +54,7 @@ from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import SourceConstraint
 from openeo_driver.errors import (InternalException, JobNotFinishedException, OpenEOApiException,
                                   ServiceUnsupportedException,
-                                  ProcessParameterInvalidException, ProcessGraphComplexityException, )
+                                  ProcessParameterInvalidException, )
 from openeo_driver.jobregistry import (DEPENDENCY_STATUS, JOB_STATUS, ElasticJobRegistry, PARTIAL_JOB_STATUS,
                                        get_ejr_credentials_from_env)
 from openeo_driver.ProcessGraphDeserializer import ENV_FINAL_RESULT, ENV_SAVE_RESULT, ConcreteProcessing, \
@@ -70,9 +65,9 @@ from openeo_driver.util.date_math import now_utc
 from openeo_driver.util.geometry import BoundingBox
 from openeo_driver.util.http import requests_with_retry
 from openeo_driver.util.utm import area_in_square_meters
-from openeo_driver.utils import EvalEnv, generate_unique_id, to_hashable, smart_bool, WhiteListEvalEnv
+from openeo_driver.utils import EvalEnv, generate_unique_id, to_hashable, WhiteListEvalEnv
 from pandas import Timedelta
-from py4j.java_gateway import JavaObject, JVMView
+from py4j.java_gateway import JVMView
 from py4j.protocol import Py4JJavaError
 from pyspark import SparkContext
 from shapely.geometry import Polygon
@@ -85,7 +80,7 @@ from openeogeotrellis import sentinel_hub, load_stac, datacube_parameters
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.config.s3_config import S3Config
 from openeogeotrellis.configparams import ConfigParams
-from openeogeotrellis.constants import JOB_OPTION_LOG_LEVEL, JOB_OPTION_LOGGING_THRESHOLD
+from openeogeotrellis.constants import JOB_OPTION_LOG_LEVEL
 from openeogeotrellis.geopysparkdatacube import GeopysparkCubeMetadata, GeopysparkDataCube
 from openeogeotrellis.integrations.etl_api import get_etl_api, ETL_ORGANIZATION_ID_JOB_OPTION
 from openeogeotrellis.integrations.identity import IDP_TOKEN_ISSUER
@@ -133,7 +128,6 @@ from openeogeotrellis.user_defined_process_repository import (
 )
 from openeogeotrellis.util.byteunit import byte_string_as
 from openeogeotrellis.utils import (
-    add_permissions,
     dict_merge_recursive,
     get_jvm,
     get_s3_file_contents,
@@ -145,7 +139,6 @@ from openeogeotrellis.utils import (
     single_value,
     to_projected_polygons,
     zk_client,
-    reproject_cellsize,
 )
 from openeogeotrellis.vault import Vault
 
@@ -359,9 +352,9 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             )
 
         requests_session = requests_with_retry(total=3, backoff_factor=2)
-        vault = Vault(ConfigParams().vault_addr, requests_session)
+        vault = Vault(get_backend_config().vault_addr, requests_session)
 
-        catalog = get_layer_catalog(vault)
+        catalog = get_layer_catalog(vault=vault)
 
         jvm = get_jvm()
 
@@ -1379,16 +1372,7 @@ def get_elastic_job_registry(
         session=requests_session,
         preserialize_process=config.ejr_preserialize_process,
     )
-    # Get credentials from env (preferably) or vault (as fallback).
-    ejr_creds = get_ejr_credentials_from_env(strict=False)
-    if not ejr_creds:
-        if config.ejr_credentials_vault_path:
-            # TODO: eliminate dependency on Vault here (i.e.: always use env vars to get creds)
-            vault = Vault(config.vault_addr, requests_session=requests_session)
-            ejr_creds = vault.get_elastic_job_registry_credentials()
-        else:
-            # Fail harder
-            ejr_creds = get_ejr_credentials_from_env(strict=True)
+    ejr_creds = get_ejr_credentials_from_env(strict=True)
     job_registry.setup_auth_oidc_client_credentials(credentials=ejr_creds)
     if do_health_check:
         job_registry.health_check(log=True)
@@ -1399,11 +1383,13 @@ class GpsBatchJobs(backend.BatchJobs):
 
     def __init__(
         self,
+        *,
+        # TODO: clean up this overly Terrascope-coupled constructor
         catalog: GeoPySparkLayerCatalog,
         jvm: JVMView,
-        principal: str,
-        key_tab: str,
-        vault: Vault,
+        principal: Optional[str] = None,
+        key_tab: Optional[str] = None,
+        vault: Optional[Vault] = None,
         output_root_dir: Optional[Union[str, Path]] = None,
         elastic_job_registry: Optional[ElasticJobRegistry] = None,
         requests_session: Optional[requests.Session] = None,
