@@ -25,7 +25,8 @@ without compromising stable operations.
 - Expose `get_oidc_access_token` helper method for use with `StacApiWorkspace` ([eu-cdse/openeo-cdse-infra#633](https://github.com/eu-cdse/openeo-cdse-infra/issues/633))
 - Add `integrations.vault.VaultClient` with "cert" auth support (eu-cdse/openeo-cdse-infra#671)
 - Avoid ZeroDivisionError with resample_spatial with resolution 0 for UTM layers. ([openeo-geotrellis-extensions#506](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/506))
-- Less often used Spark metrics for batch jobs are now disabled by default. They are enabled when log-level is set to 'debug'. 
+- Less often used Spark metrics for batch jobs are now disabled by default. They are enabled when log-level is set to 'debug'.
+- `filter_temporal` should also work in half-open fashion when applied after `load_collection`/`load_stac` with non-empty `temporal_extent` ([Open-EO/openeo-geotrellis-extensions#498](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/498))
 
 
 ## 0.67.0

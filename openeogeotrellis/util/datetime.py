@@ -1,5 +1,5 @@
-from typing import Union
 import datetime
+from typing import Union
 
 import dateutil.parser
 
@@ -19,6 +19,11 @@ def to_datetime_utc(d: Union[str, datetime.datetime, datetime.date]) -> datetime
     else:
         d = d.astimezone(datetime.timezone.utc)
     return d
+
+
+def to_datetime_naive(d: Union[str, datetime.datetime, datetime.date]) -> datetime.datetime:
+    """Convert to datetime, assuming UTC where necessary, but return as naive."""
+    return to_datetime_utc(d).replace(tzinfo=None)
 
 
 def to_datetime_utc_unless_none(
