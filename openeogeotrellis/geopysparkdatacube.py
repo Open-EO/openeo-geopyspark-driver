@@ -160,10 +160,14 @@ class GeopysparkDataCube(DriverDataCube):
     @callsite
     def filter_temporal(self, start: str, end: str) -> 'GeopysparkDataCube':
         start, end = normalize_temporal_extent((start, end))
-        time_intervals = [
-            to_datetime_utc(start),
-            to_datetime_utc(end) - datetime.timedelta(seconds=1),
-        ]
+        if start < end:
+            time_intervals = [
+                to_datetime_utc(start),
+                to_datetime_utc(end) - datetime.timedelta(seconds=1),
+            ]
+        else:
+            _log.warning(f"filter_temporal with invalid extent {start=} {end=}")
+            time_intervals = [to_datetime_utc(start), to_datetime_utc(end)]
         return self.apply_to_levels(
             lambda rdd: rdd.filter_by_times(time_intervals=time_intervals),
             metadata=self.metadata.filter_temporal(start, end)
