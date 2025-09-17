@@ -860,7 +860,9 @@ def _is_band_asset(asset: pystac.Asset) -> bool:
         return False
 
     # Decide based on role (if known)
-    if asset.roles is not None:
+    if asset.roles is None:
+        pass
+    elif len(asset.roles) > 0:
         roles_with_bands = {
             "data",
             "data-mask",
@@ -869,6 +871,8 @@ def _is_band_asset(asset: pystac.Asset) -> bool:
             "water-mask",
         }
         return bool(roles_with_bands.intersection(asset.roles))
+    else:
+        logger.warning(f"_is_band_asset with {asset.href=}: ignoring empty {asset.roles=}")
 
     # Fallback based on presence of any band metadata
     return (

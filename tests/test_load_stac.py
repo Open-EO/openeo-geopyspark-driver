@@ -686,6 +686,7 @@ def test_is_supported_raster_mime_type():
         ({"href": "https://stac.test/asset.png", "roles": ["thumbnail"]}, False),
         ({"href": "https://stac.test/asset.png", "bands": [{"name": "B02"}]}, True),
         ({"href": "https://stac.test/asset.png", "eo:bands": [{"name": "B02"}]}, True),
+        ({"href": "https://stac.test/asset.png", "roles": [], "bands": [{"name": "B02"}]}, True),
     ],
 )
 def test_is_band_asset(data, expected):
