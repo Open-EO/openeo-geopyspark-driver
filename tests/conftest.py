@@ -218,7 +218,7 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
             if is_port_free(port):
                 # 'agentlib' to allow attaching a Java debugger to running Spark driver
                 # IntelliJ IDEA: Run -> Edit Configurations -> Remote JVM Debug uses 5005 by default
-                sparkDriverJavaOptions += f" -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:{port}"
+                sparkDriverJavaOptions += f" -agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=*:{port}"
                 break
     conf.set("spark.driver.extraJavaOptions", sparkDriverJavaOptions)
 

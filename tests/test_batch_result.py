@@ -3743,3 +3743,56 @@ def test_export_workspace_derived_from(tmp_path, requests_mock, mock_s3_bucket, 
         else:
             # these get rendered in the /jobs/<job_id>/results STAC Collection document
             assert derived_from_hrefs == ["http://s2.test/p1", "http://s2.test/p2"]
+
+
+def test_input_item_collection(tmp_path):
+    process_graph = {
+        "loadcollection1": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "TERRASCOPE_S2_TOC_V2",
+                "temporal_extent": ["2024-01-05", "2024-01-06"],
+                "spatial_extent": {
+                    "west": 5,
+                    "south": 50,
+                    "east": 5.05,
+                    "north": 50.05,
+                },
+                "bands": ["B04", "B03", "B02"],
+            },
+        },
+        "saveresult1": {
+            "process_id": "save_result",
+            "arguments": {
+                "data": {"from_node": "loadcollection1"},
+                "format": "GTiff",
+            },
+            "result": True,
+        },
+    }
+
+    process = {
+        "process_graph": process_graph,
+        "job_options": {
+            "stac-version-experimental": "1.1",
+        },
+    }
+
+    print(json.dumps(process))
+    # return
+
+    job_dir = tmp_path
+    metadata_file = job_dir / "job_metadata.json"
+
+    run_job(
+        process,
+        output_file=job_dir / "out",
+        metadata_file=metadata_file,
+        api_version="2.0.0",
+        job_dir=tmp_path,
+        dependencies=[],
+    )
+
+    assert "openEO_2024-01-05Z.tif" in os.listdir(job_dir)
+
+    # TODO: check contents of derived_from_document (should be a link in the metadata file)
