@@ -1830,10 +1830,18 @@ class GpsBatchJobs(backend.BatchJobs):
 
         udf_runtimes = set([ (udf[1],udf[2]) for udf in collect_udfs(job_process_graph)])
 
-        if len(udf_runtimes) == 1:
-            udf_runtime = udf_runtimes.pop()
+        if len(udf_runtimes) == 0:
+            # TODO: this is a quick hack to start using python311 for batch jobs without UDFs. Needs clean-up
+            image_name = "python311"
+            if "image-name" not in job_options and image_name in get_backend_config().batch_runtime_to_image:
+                log.info(f'Forcing job_options["image-name"]={image_name!r} from {udf_runtimes=}')
+                job_options["image-name"] = image_name
+        elif len(udf_runtimes) == 1:
+            (udf_runtime,) = udf_runtimes
             if udf_runtime is not None and "image-name" not in job_options and udf_runtime[1] is not None:
-                job_options["image-name"] = udf_runtime[0].lower() + udf_runtime[1].replace(".","")
+                image_name = udf_runtime[0].lower() + udf_runtime[1].replace(".", "")
+                log.info(f'Forcing job_options["image-name"]={image_name!r} from {udf_runtimes=}')
+                job_options["image-name"] = image_name
         elif len(udf_runtimes) > 1:
             log.warning(f"Multiple UDF runtimes detected in the process graph: {udf_runtimes}. Running with default environment.")
 
