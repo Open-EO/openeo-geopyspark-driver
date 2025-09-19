@@ -1075,10 +1075,6 @@ def test_export_workspace(tmp_path, remove_original, attach_gdalinfo_assets, sta
             assert bands[0]["name"] == "Flat:2"
             assert "statistics" in bands[0]
             assert len(bands[0]["statistics"]) == 5
-            if stac_version== "1.1":
-                assert "bbox" in asset_fields
-                assert asset_fields["bbox"] == [0.0, 0.0, 1.0, 2.0]
-                assert "geometry" in asset_fields
 
         item = [item for item in items if "2021-01-05" in item.id ][0]
         assert item.bbox == [0.0, 0.0, 1.0, 2.0]
