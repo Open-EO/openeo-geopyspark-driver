@@ -59,9 +59,7 @@ def run_udf_code(code: str, data: openeo.udf.UdfData, require_executor_context: 
             context = python_udf_dependency_context_from_archive(archive=udf_python_dependencies_archive_path)
         else:
             # TODO: make this an exception instead of warning?
-            _log.warning(
-                f"Empty/non-existent UDF_PYTHON_DEPENDENCIES_ARCHIVE_PATH {udf_python_dependencies_archive_path}"
-            )
+            _log.info(f"Empty/non-existent UDF_PYTHON_DEPENDENCIES_ARCHIVE_PATH {udf_python_dependencies_archive_path}")
 
     with context:
         return openeo.udf.run_udf_code(code=code, data=data)
