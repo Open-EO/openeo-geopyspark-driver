@@ -5583,5 +5583,3 @@ class CatBoostClassificationModel(_JavaProbabilisticClassificationModel, MLReada
         list of FeatureInteractionScore
         """
         return self._call_java("getFeatureImportanceInteraction")
-
-

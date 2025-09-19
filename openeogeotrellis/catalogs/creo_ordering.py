@@ -157,8 +157,3 @@ class CreoOrder(object):
 #     respjson= _handle_request(session, request).json()
 #     self.logger.debug(json.dumps(respjson,indent=2))
 #     return respjson
-
-
-
-
-
