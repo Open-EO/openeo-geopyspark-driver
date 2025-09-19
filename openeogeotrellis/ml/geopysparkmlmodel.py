@@ -16,7 +16,7 @@ class GeopysparkMlModel(DriverMlModel, ABC):
     @staticmethod
     def from_path(sc, path) -> "GeopysparkMlModel":
         """Create ML model instance from file path.
-        
+
         :param sc: Spark context
         :param path: Path to model file or directory
         :return: Model instance
@@ -25,7 +25,7 @@ class GeopysparkMlModel(DriverMlModel, ABC):
 
     def get_java_object(self):
         """Get the underlying Java object representation of the model.
-        
+
         :return: Java object for the model
         """
         raise NotImplementedError

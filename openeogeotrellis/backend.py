@@ -881,7 +881,7 @@ Example usage:
     def load_ml_model(self, model_id: str) -> GeopysparkMlModel:
         """Load ML model from URL or batch job ID"""
         gps_batch_jobs: Optional[GpsBatchJobs] = self.batch_jobs
-        
+
         if model_id.startswith("http"):
             return ModelLoader.load_from_url(model_id, gps_batch_jobs)
         else:

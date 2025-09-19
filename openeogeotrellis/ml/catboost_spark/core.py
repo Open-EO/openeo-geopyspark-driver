@@ -82,7 +82,7 @@ def _py2java(sc, obj):
     if isinstance(obj, Enum):
         return getattr(
             getattr(
-                sc._jvm.ru.yandex.catboost.spark.catboost4j_spark.core.src.native_impl, 
+                sc._jvm.ru.yandex.catboost.spark.catboost4j_spark.core.src.native_impl,
                 obj.__class__.__name__
             ),
             'swigToEnum'
@@ -100,7 +100,7 @@ def _java2py(sc, r, encoding="bytes"):
         enumValues = r.getClass().getEnumConstants()
         if (enumValues is not None) and (len(enumValues) > 0):
             return globals()[r.getClass().getSimpleName()](r.swigValue())
-        
+
         clsName = r.getClass().getName()
         if clsName == 'java.time.Duration':
             return datetime.timedelta(milliseconds=r.toMillis())
@@ -498,7 +498,7 @@ class Pool(JavaParams):
         self.subgroupIdCol = Param(self, "subgroupIdCol", "subgroupId column name")
         self.timestampCol = Param(self, "timestampCol", "timestamp column name")
         self.weightCol = Param(self, "weightCol", "weight column name. If this is not set or empty, we treat all instance weights as 1.0")
-      
+
 
     @keyword_only
     def setParams(self, baselineCol=None, featuresCol="features", groupIdCol=None, groupWeightCol=None, labelCol="label", sampleIdCol=None, subgroupIdCol=None, timestampCol=None, weightCol=None):
@@ -805,7 +805,7 @@ class Pool(JavaParams):
         Load dataset in one of CatBoost's natively supported formats:
            * dsv - https://catboost.ai/docs/concepts/input-data_values-file.html
            * libsvm - https://catboost.ai/docs/concepts/input-data_libsvm.html
-        
+
         Parameters
         ----------
         sparkSession : SparkSession
@@ -814,14 +814,14 @@ class Pool(JavaParams):
             For example, `dsv:///home/user/datasets/my_dataset/train.dsv` or
             `libsvm:///home/user/datasets/my_dataset/train.libsvm`
         columnDescription : str, optional
-            Path to column description file. See https://catboost.ai/docs/concepts/input-data_column-descfile.html 
+            Path to column description file. See https://catboost.ai/docs/concepts/input-data_column-descfile.html
         params : PoolLoadParams, optional
             Additional params specifying data format.
         pairsDataPathWithScheme : str, optional
             Path with scheme to dataset pairs in CatBoost format.
             Only "dsv-grouped" format is supported for now.
             For example, `dsv-grouped:///home/user/datasets/my_dataset/train_pairs.dsv`
-        
+
         Returns
         -------
            Pool
@@ -2726,9 +2726,9 @@ class CatBoostRegressor(JavaEstimator, MLReadable, JavaMLWritable):
         Extended variant of standard Estimator's fit method
         that accepts CatBoost's Pool s and allows to specify additional
         datasets for computing evaluation metrics and overfitting detection similarily to CatBoost's other APIs.
-        
+
         Parameters
-        ---------- 
+        ----------
         dataset : Pool or DataFrame
           The input training dataset.
         params : dict or list or tuple, optional
@@ -2740,7 +2740,7 @@ class CatBoostRegressor(JavaEstimator, MLReadable, JavaMLWritable):
            - overfitting detector
            - best iteration selection
            - monitoring metrics' changes
-        
+
         Returns
         -------
         trained model(s): CatBoostRegressionModel or a list of trained CatBoostRegressionModel
@@ -2912,7 +2912,7 @@ class CatBoostRegressionModel(_JavaRegressionModel, MLReadable, JavaMLWritable):
         return self._call_java("transformPool", pool)
 
 
-    def getFeatureImportance(self, 
+    def getFeatureImportance(self,
                              fstrType=EFstrType.FeatureImportance,
                              data=None,
                              calcType=ECalcTypeShapValues.Regular
@@ -2928,7 +2928,7 @@ class CatBoostRegressionModel(_JavaRegressionModel, MLReadable, JavaMLWritable):
             with flag to store no leaf weights.
             otherwise it can be null
         calcType : ECalcTypeShapValues
-            Used only for PredictionValuesChange. 
+            Used only for PredictionValuesChange.
             Possible values:
               - Regular
                  Calculate regular SHAP values
@@ -2944,7 +2944,7 @@ class CatBoostRegressionModel(_JavaRegressionModel, MLReadable, JavaMLWritable):
         """
         return self._call_java("getFeatureImportance", fstrType, data, calcType)
 
-    def getFeatureImportancePrettified(self, 
+    def getFeatureImportancePrettified(self,
                                        fstrType=EFstrType.FeatureImportance,
                                        data=None,
                                        calcType=ECalcTypeShapValues.Regular
@@ -2960,7 +2960,7 @@ class CatBoostRegressionModel(_JavaRegressionModel, MLReadable, JavaMLWritable):
             with flag to store no leaf weights.
             otherwise it can be null
         calcType : ECalcTypeShapValues
-            Used only for PredictionValuesChange. 
+            Used only for PredictionValuesChange.
             Possible values:
 
               - Regular
@@ -3021,14 +3021,14 @@ class CatBoostRegressionModel(_JavaRegressionModel, MLReadable, JavaMLWritable):
         Returns
         -------
         DataFrame
-            - for regression and binclass models: 
+            - for regression and binclass models:
               contains outputColumns and "shapValues" column with Vector of length (n_features + 1) with SHAP values
             - for multiclass models:
               contains outputColumns and "shapValues" column with Matrix of shape (n_classes x (n_features + 1)) with SHAP values
         """
         return self._call_java(
-            "getFeatureImportanceShapValues", 
-            data, 
+            "getFeatureImportanceShapValues",
+            data,
             preCalcMode,
             calcType,
             modelOutputType,
@@ -3044,7 +3044,7 @@ class CatBoostRegressionModel(_JavaRegressionModel, MLReadable, JavaMLWritable):
                                                   calcType=ECalcTypeShapValues.Regular,
                                                   outputColumns=None):
         """
-        SHAP interaction values are calculated for all features pairs if nor featureIndices nor featureNames 
+        SHAP interaction values are calculated for all features pairs if nor featureIndices nor featureNames
           are specified.
 
         Parameters
@@ -3084,17 +3084,17 @@ class CatBoostRegressionModel(_JavaRegressionModel, MLReadable, JavaMLWritable):
         Returns
         -------
         DataFrame
-            - for regression and binclass models: 
+            - for regression and binclass models:
               contains outputColumns and "featureIdx1", "featureIdx2", "shapInteractionValue" columns
             - for multiclass models:
               contains outputColumns and "classIdx", "featureIdx1", "featureIdx2", "shapInteractionValue" columns
         """
         return self._call_java(
-            "getFeatureImportanceShapInteractionValues", 
+            "getFeatureImportanceShapInteractionValues",
             data,
             featureIndices,
             featureNames,
-            preCalcMode, 
+            preCalcMode,
             calcType,
             outputColumns
         )
@@ -5129,9 +5129,9 @@ class CatBoostClassifier(JavaEstimator, MLReadable, JavaMLWritable):
         Extended variant of standard Estimator's fit method
         that accepts CatBoost's Pool s and allows to specify additional
         datasets for computing evaluation metrics and overfitting detection similarily to CatBoost's other APIs.
-        
+
         Parameters
-        ---------- 
+        ----------
         dataset : Pool or DataFrame
           The input training dataset.
         params : dict or list or tuple, optional
@@ -5143,7 +5143,7 @@ class CatBoostClassifier(JavaEstimator, MLReadable, JavaMLWritable):
            - overfitting detector
            - best iteration selection
            - monitoring metrics' changes
-        
+
         Returns
         -------
         trained model(s): CatBoostClassificationModel or a list of trained CatBoostClassificationModel
@@ -5389,7 +5389,7 @@ class CatBoostClassificationModel(_JavaProbabilisticClassificationModel, MLReada
         return self._call_java("transformPool", pool)
 
 
-    def getFeatureImportance(self, 
+    def getFeatureImportance(self,
                              fstrType=EFstrType.FeatureImportance,
                              data=None,
                              calcType=ECalcTypeShapValues.Regular
@@ -5405,7 +5405,7 @@ class CatBoostClassificationModel(_JavaProbabilisticClassificationModel, MLReada
             with flag to store no leaf weights.
             otherwise it can be null
         calcType : ECalcTypeShapValues
-            Used only for PredictionValuesChange. 
+            Used only for PredictionValuesChange.
             Possible values:
               - Regular
                  Calculate regular SHAP values
@@ -5421,7 +5421,7 @@ class CatBoostClassificationModel(_JavaProbabilisticClassificationModel, MLReada
         """
         return self._call_java("getFeatureImportance", fstrType, data, calcType)
 
-    def getFeatureImportancePrettified(self, 
+    def getFeatureImportancePrettified(self,
                                        fstrType=EFstrType.FeatureImportance,
                                        data=None,
                                        calcType=ECalcTypeShapValues.Regular
@@ -5437,7 +5437,7 @@ class CatBoostClassificationModel(_JavaProbabilisticClassificationModel, MLReada
             with flag to store no leaf weights.
             otherwise it can be null
         calcType : ECalcTypeShapValues
-            Used only for PredictionValuesChange. 
+            Used only for PredictionValuesChange.
             Possible values:
 
               - Regular
@@ -5498,14 +5498,14 @@ class CatBoostClassificationModel(_JavaProbabilisticClassificationModel, MLReada
         Returns
         -------
         DataFrame
-            - for regression and binclass models: 
+            - for regression and binclass models:
               contains outputColumns and "shapValues" column with Vector of length (n_features + 1) with SHAP values
             - for multiclass models:
               contains outputColumns and "shapValues" column with Matrix of shape (n_classes x (n_features + 1)) with SHAP values
         """
         return self._call_java(
-            "getFeatureImportanceShapValues", 
-            data, 
+            "getFeatureImportanceShapValues",
+            data,
             preCalcMode,
             calcType,
             modelOutputType,
@@ -5521,7 +5521,7 @@ class CatBoostClassificationModel(_JavaProbabilisticClassificationModel, MLReada
                                                   calcType=ECalcTypeShapValues.Regular,
                                                   outputColumns=None):
         """
-        SHAP interaction values are calculated for all features pairs if nor featureIndices nor featureNames 
+        SHAP interaction values are calculated for all features pairs if nor featureIndices nor featureNames
           are specified.
 
         Parameters
@@ -5561,17 +5561,17 @@ class CatBoostClassificationModel(_JavaProbabilisticClassificationModel, MLReada
         Returns
         -------
         DataFrame
-            - for regression and binclass models: 
+            - for regression and binclass models:
               contains outputColumns and "featureIdx1", "featureIdx2", "shapInteractionValue" columns
             - for multiclass models:
               contains outputColumns and "classIdx", "featureIdx1", "featureIdx2", "shapInteractionValue" columns
         """
         return self._call_java(
-            "getFeatureImportanceShapInteractionValues", 
+            "getFeatureImportanceShapInteractionValues",
             data,
             featureIndices,
             featureNames,
-            preCalcMode, 
+            preCalcMode,
             calcType,
             outputColumns
         )

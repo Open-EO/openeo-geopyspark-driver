@@ -1,5 +1,5 @@
 on: workflow_dispatch
-  
+
 jobs:
   move-to-next-iteration:
     name: Move to next iteration

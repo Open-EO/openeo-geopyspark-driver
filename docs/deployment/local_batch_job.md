@@ -11,7 +11,7 @@ The drawback is that scaling is limited to the resources of a single machine, wh
 ## Prerequisites
 
 For testing and debugging, a machine with Docker and a couple of GB of RAM is sufficient. For production use, we recommend
-at least 40GB of free RAM for very small deployments, with capacity of running 1 non-trivial batch job at time. 
+at least 40GB of free RAM for very small deployments, with capacity of running 1 non-trivial batch job at time.
 
 ## The `local_batch_job` tool
 
@@ -42,4 +42,4 @@ Note, you can refer to local stac collections by file path on Linux, but not on 
 ## Example:
 
 [local_batch_job_example.py](./local_batch_job_example.py)  runs a small openEO process in a local docker container.
-It shows you can use load_stac on static STAC catalogs that are hosted locally. 
+It shows you can use load_stac on static STAC catalogs that are hosted locally.
