@@ -20,7 +20,7 @@ pythonPipeline {
   ]
   python_version = ["3.11"]
   docker_registry = 'vito-docker-private.artifactory.vgt.vito.be'
-  downstream_job = 'openEO/openeo-integrationtests'
+  downstream_job = ''
   wheel_repo = ''
   wheel_repo_dev = ''
   test_module_name = 'openeogeotrellis'
