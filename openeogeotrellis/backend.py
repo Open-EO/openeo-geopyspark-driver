@@ -1828,7 +1828,10 @@ class GpsBatchJobs(backend.BatchJobs):
 
         log.debug(f"_start_job {job_options=}")
 
-        udf_runtimes = set([ (udf[1],udf[2]) for udf in collect_udfs(job_process_graph)])
+        process_registry = GpsProcessing().get_process_registry(api_version=api_version)
+        udf_runtimes = set(
+            (udf[1], udf[2]) for udf in collect_udfs(job_process_graph, process_registry=process_registry)
+        )
 
         if len(udf_runtimes) == 0:
             # TODO: this is a quick hack to start using python311 for batch jobs without UDFs. Needs clean-up
