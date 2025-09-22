@@ -18,6 +18,7 @@ from openeo_driver.config.load import ConfigGetter
 from openeo_driver.errors import InternalException, OpenEOApiException
 
 import openeogeotrellis.integrations.freeipa
+from openeo_driver.views import OPENEO_API_VERSION_DEFAULT
 from openeogeotrellis import sentinel_hub
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.job_options import JobOptions
@@ -474,7 +475,7 @@ class YARNBatchJobRunner:
                 principal=principal_value,
                 key_tab=keytab_value,
                 proxy_user=self._verify_proxy_user(proxy_user or user_id),
-                api_version=api_version if api_version else "0.4.0",
+                api_version=api_version or OPENEO_API_VERSION_DEFAULT,
                 driver_memory=options.driver_memory,
                 executor_memory=options.executor_memory,
                 executor_memory_overhead=options.executor_memory_overhead,
