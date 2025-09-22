@@ -137,6 +137,8 @@ def main(argv: List[str]) -> None:
     logger.debug(f"batch_job.py argv: {argv}")
     logger.debug(f"batch_job.py {os.getpid()=} {os.getppid()=} {os.getcwd()=}")
     logger.debug(f"batch_job.py version info {get_backend_config().capabilities_deploy_metadata}")
+    # TODO: lower log level once dust of 3.11 migration has settled
+    logger.info(f"batch_job.py {sys.version=}")
 
     if len(argv) < 9:
         raise Exception(

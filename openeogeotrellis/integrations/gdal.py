@@ -201,7 +201,7 @@ def _extract_gdal_asset_raster_metadata(
 
 
 def _get_metadata_callback(asset_md: Dict[str, str], job_dir: Path, asset_key: str):
-    asset_href: str = asset_md["href"]
+    asset_href: str = str(asset_md["href"])
 
     # Skip assets that are clearly not images. TODO: Whitelist instead of blacklist
     if any(asset_href.endswith(extension) for extension in [".json", ".csv", ".parquet"]):

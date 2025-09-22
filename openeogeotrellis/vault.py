@@ -1,7 +1,7 @@
 import logging
 import subprocess
 from subprocess import CalledProcessError, PIPE
-from typing import NamedTuple, Optional
+from typing import NamedTuple, Optional, Union, Tuple
 
 import hvac
 import requests
@@ -23,11 +23,18 @@ class VaultLoginError(Exception):
 
 
 class Vault:
+
+    # TODO: migrate all usage to `openeogeotrellis.integrations.vault.VaultClient`
+    #       or just fully eliminate need for `get_sentinel_hub_credentials`
+    #       which is the only remaining use case here?
+    #       https://github.com/Open-EO/openeo-geopyspark-driver/issues/1341
+
     def __init__(self, url: str, requests_session: Optional[requests.Session] = None):
         self._url = url
         self._session = requests_session or requests.Session()
 
     def get_sentinel_hub_credentials(self, sentinel_hub_client_alias: str, vault_token: str) -> OAuthCredentials:
+        # TODO: eliminate hardcoded Terrascope internals
         client_credentials = self._get_kv_credentials(
             f"TAP/big_data_services/openeo/sentinelhub-oauth-{sentinel_hub_client_alias}", vault_token)
 
@@ -84,8 +91,8 @@ class Vault:
                 f"Vault login (Kerberos) failed: {e!s}. stderr: {e.stderr.strip()!r}"
             ) from e
 
-    def _client(self, token: Optional[str] = None):
-        return hvac.Client(self._url, token=token, session=self._session)
+    def _client(self, *, token: Optional[str] = None, **kwargs) -> hvac.Client:
+        return hvac.Client(self._url, token=token, session=self._session, **kwargs)
 
     def __str__(self):
         return self._url

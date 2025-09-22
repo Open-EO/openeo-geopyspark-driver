@@ -16,7 +16,10 @@ Environment variables are taken from local_service.env, where they can be easily
 
 ```bash
 docker pull vito-docker.artifactory.vgt.vito.be/openeo-base:latest
-local_service.sh
+
+git clone https://github.com/Open-EO/openeo-geopyspark-driver.git
+cd ./docker/local_openeo_server
+sh local_service.sh
 ```
 
 ### Using Docker Compose

@@ -9,7 +9,7 @@ import re
 import shutil
 import tempfile
 import uuid
-from datetime import datetime, date
+import datetime
 from functools import partial
 from typing import Dict, List, Union, Tuple, Iterable, Callable, Optional
 
@@ -48,6 +48,7 @@ from openeogeotrellis.geopysparkcubemetadata import GeopysparkCubeMetadata
 from openeogeotrellis.ml.geopysparkmlmodel import GeopysparkMlModel
 from openeogeotrellis.processgraphvisiting import GeotrellisTileProcessGraphVisitor, SingleNodeUDFProcessGraphVisitor
 from openeogeotrellis.ml.aggregatespatialvectorcube import AggregateSpatialVectorCube
+from openeogeotrellis.util.datetime import to_datetime_utc
 from openeogeotrellis.utils import (
     to_projected_polygons,
     log_memory,
@@ -156,19 +157,19 @@ class GeopysparkDataCube(DriverDataCube):
     def _data_source_type(self):
         return self.metadata.get("_vito", "data_source", "type", default="Accumulo")
 
-    # TODO: deprecated
-    def date_range_filter(
-            self, start_date: Union[str, datetime, date], end_date: Union[str, datetime, date]
-    ) -> 'GeopysparkDataCube':
-        return self.apply_to_levels(lambda rdd: rdd.filter_by_times([pd.to_datetime(start_date),pd.to_datetime(end_date)]))
-
     @callsite
     def filter_temporal(self, start: str, end: str) -> 'GeopysparkDataCube':
-        # TODO: is this necessary? Temporal range is handled already at load_collection time
         start, end = normalize_temporal_extent((start, end))
-
+        if start < end:
+            time_intervals = [
+                to_datetime_utc(start),
+                to_datetime_utc(end) - datetime.timedelta(seconds=1),
+            ]
+        else:
+            _log.warning(f"filter_temporal with invalid extent {start=} {end=}")
+            time_intervals = [to_datetime_utc(start), to_datetime_utc(end)]
         return self.apply_to_levels(
-            lambda rdd: rdd.filter_by_times([pd.to_datetime(start), pd.to_datetime(end)]),
+            lambda rdd: rdd.filter_by_times(time_intervals=time_intervals),
             metadata=self.metadata.filter_temporal(start, end)
         )
 
@@ -591,9 +592,17 @@ class GeopysparkDataCube(DriverDataCube):
                          Tile(array_slice.values, CellType.FLOAT32, tile_list[0][1].no_data_value))
                         for timestamp, array_slice in result_array.groupby('t')]
             else:
-                result_array = result_array.transpose(*( 'bands', 'y', 'x'))
-                return [(SpaceTimeKey(col=tiles[0].col, row=tiles[0].row, instant=datetime.fromisoformat('2020-01-01T00:00:00')),
-                         Tile(result_array.values, CellType.FLOAT32, tile_list[0][1].no_data_value))]
+                result_array = result_array.transpose(*("bands", "y", "x"))
+                return [
+                    (
+                        SpaceTimeKey(
+                            col=tiles[0].col,
+                            row=tiles[0].row,
+                            instant=datetime.datetime.fromisoformat("2020-01-01T00:00:00"),
+                        ),
+                        Tile(result_array.values, CellType.FLOAT32, tile_list[0][1].no_data_value),
+                    )
+                ]
 
         def rdd_function(openeo_metadata: GeopysparkCubeMetadata, rdd: TiledRasterLayer) -> TiledRasterLayer:
             converted = rdd.convert_data_type(CellType.FLOAT32)

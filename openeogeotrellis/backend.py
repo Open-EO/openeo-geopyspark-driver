@@ -354,7 +354,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         requests_session = requests_with_retry(total=3, backoff_factor=2)
         vault = Vault(get_backend_config().vault_addr, requests_session)
 
-        catalog = get_layer_catalog(vault)
+        catalog = get_layer_catalog(vault=vault)
 
         jvm = get_jvm()
 
@@ -881,7 +881,7 @@ Example usage:
     def load_ml_model(self, model_id: str) -> GeopysparkMlModel:
         """Load ML model from URL or batch job ID"""
         gps_batch_jobs: Optional[GpsBatchJobs] = self.batch_jobs
-        
+
         if model_id.startswith("http"):
             return ModelLoader.load_from_url(model_id, gps_batch_jobs)
         else:
@@ -1828,12 +1828,23 @@ class GpsBatchJobs(backend.BatchJobs):
 
         log.debug(f"_start_job {job_options=}")
 
-        udf_runtimes = set([ (udf[1],udf[2]) for udf in collect_udfs(job_process_graph)])
+        process_registry = GpsProcessing().get_process_registry(api_version=api_version)
+        udf_runtimes = set(
+            (udf[1], udf[2]) for udf in collect_udfs(job_process_graph, process_registry=process_registry)
+        )
 
-        if len(udf_runtimes) == 1:
-            udf_runtime = udf_runtimes.pop()
+        if len(udf_runtimes) == 0:
+            # TODO: this is a quick hack to start using python311 for batch jobs without UDFs. Needs clean-up
+            image_name = "python311"
+            if "image-name" not in job_options and image_name in get_backend_config().batch_runtime_to_image:
+                log.info(f'Forcing job_options["image-name"]={image_name!r} from {udf_runtimes=}')
+                job_options["image-name"] = image_name
+        elif len(udf_runtimes) == 1:
+            (udf_runtime,) = udf_runtimes
             if udf_runtime is not None and "image-name" not in job_options and udf_runtime[1] is not None:
-                job_options["image-name"] = udf_runtime[0].lower() + udf_runtime[1].replace(".","")
+                image_name = udf_runtime[0].lower() + udf_runtime[1].replace(".", "")
+                log.info(f'Forcing job_options["image-name"]={image_name!r} from {udf_runtimes=}')
+                job_options["image-name"] = image_name
         elif len(udf_runtimes) > 1:
             log.warning(f"Multiple UDF runtimes detected in the process graph: {udf_runtimes}. Running with default environment.")
 
@@ -2079,7 +2090,8 @@ class GpsBatchJobs(backend.BatchJobs):
                 provide_s3_profiles_and_tokens=get_backend_config().provide_s3_profiles_and_tokens,
                 batch_job_cfg_secret_name=batch_job_cfg_secret_name,
                 batch_job_config_dir=get_backend_config().batch_job_config_dir,
-                openeo_jar_path=options.openeo_jar_path or 'local:///opt/geotrellis-extensions-static.jar'
+                openeo_jar_path=options.openeo_jar_path or 'local:///opt/geotrellis-extensions-static.jar',
+                debug_metrics="true" if options.log_level.lower() == "debug" else "false"
             )
 
             with self._double_job_registry as dbl_registry:

@@ -43,7 +43,7 @@ which is passed on to the user code for transformation.
 
 The main openEO concept implemented by this library is the `Raster data cube`, which is a multi-dimensional array of raster data.
 
-This library does not support arbitrary multidimensional cubes, but rather focuses on the type of cubes that are most 
+This library does not support arbitrary multidimensional cubes, but rather focuses on the type of cubes that are most
 commonly encountered in earth observation. The most complex type that we can represent is the 4-dimensional space-time-bands cube.
 
 This cube is mapped to a Geotrellis [`MultibandTileLayerRDD`](https://geotrellis.github.io/scaladocs/latest/geotrellis/spark/index.html#MultibandTileLayerRDD[K]=org.apache.spark.rdd.RDD[(K,geotrellis.raster.MultibandTile)]withgeotrellis.layer.Metadata[geotrellis.layer.TileLayerMetadata[K]])
@@ -58,14 +58,14 @@ with a regular tile grid (`TileLayout`). This also defines the pixel size, which
 ![Layout Definition](img/layoutdefinition.png)
 
 To be able to understand how these cubes work and behave, or how to correctly manipulate them, knowledge of the [Spark RDD concept](https://spark.apache.org/docs/latest/rdd-programming-guide.html)
-is essential. These are distributed datasets that (in production) live on multiple machines in a cluster, allowing openEO 
-to effectively scale out computations. 
+is essential. These are distributed datasets that (in production) live on multiple machines in a cluster, allowing openEO
+to effectively scale out computations.
 
 
-### Data cube loading: `load_collection` & `load_stac` 
+### Data cube loading: `load_collection` & `load_stac`
 
 Loading large EO datasets into a Spark RDD is complex, mainly due to the variety in data formats, but also because
-IO is often a performance & stability bottleneck. Depending on the characteristics of the underlying storage system, the 
+IO is often a performance & stability bottleneck. Depending on the characteristics of the underlying storage system, the
 optimal loading strategy may also differ, which is why we support multiple code paths.
 
 The main class for loading data from POSIX or Object Storage type of systems is the `FileLayerProvider`.
@@ -84,12 +84,12 @@ This `load_collection` implementation supports a number of features:
 As mentioned, Spark will distribute data cubes over a cluster, into groups of data called `partitions`. A partition needs
 to fit into memory for processing, so the size matters, and Spark is not able to know the optimal partitioning for any given problem.
 
-Depending on procesess that are used, the optimal partitioning scheme can also change: for time series analysis, it would 
+Depending on procesess that are used, the optimal partitioning scheme can also change: for time series analysis, it would
 be optimal to group data for the same location with multiple observations in the same group. For other processes, like `resample_spatial`,
 it may be needed to have information from neighbouring tiles, so a grouping per observation would be more optimal.
 As a rule of thumb it is up to the process to check the partitioner, and change it if needed.
 
-Whenever a partitioner is changed, the data will be shuffled, which is a costly operation. This is why the code often tries 
+Whenever a partitioner is changed, the data will be shuffled, which is a costly operation. This is why the code often tries
 to cleverly avoid this where possible.
 
 Assigning keys to partitions happens based on an indexing scheme. Usually, it is recommended to consider the spatiotemporal
@@ -126,7 +126,7 @@ Some of this Scala code may be used by multiple openEO process implementations. 
 use the same code.
 
 `OpenEOProcessScriptBuilder` supports openEO processes that operate on arrays of numbers, which are often encountered in
-openEO `child processes`, as explained [here](https://api.openeo.org/#section/Processes/Process-Graphs). This part of the 
+openEO `child processes`, as explained [here](https://api.openeo.org/#section/Processes/Process-Graphs). This part of the
 work is not distributed on Spark, so operates on chunks of data that fit in memory. It does use Geotrellis which generally has
 quite well performing implementations for most basic processes.
 
@@ -135,7 +135,7 @@ quite well performing implementations for most basic processes.
 
 ### Only up to 4D cubes supported
 
-A Geotrellis cube has fixed dimensions, in this order: time, y, x, and bands. This does not prevent us from advertising 
+A Geotrellis cube has fixed dimensions, in this order: time, y, x, and bands. This does not prevent us from advertising
 certain operations on dimensions at the metadata level, but does imply some limitations. In practice, this limitation has
 little impact on most real-world use cases.
 
@@ -146,7 +146,7 @@ and thus either need to increase memory, or decrease the chunk size.
 
 ## Tunables
 
-The Geotrellis implementation has a number of tunables that can be used to configure a specific backend for an environment, 
+The Geotrellis implementation has a number of tunables that can be used to configure a specific backend for an environment,
 or that can be set per batch job. Most of them can be found in [`openeogeotrellis.config.config.GpsBackendConfig`](https://github.com/Open-EO/openeo-geopyspark-driver/blob/c0a949ac875ea3a983a1738d52aa1fb1af810a19/openeogeotrellis/config/config.py#L65).
 
 - `tile_size` is the size in pixels of a single tile, as returned by `load_collection`. Large tiles benefit operations on spatial neighborhoods, but may require memory or cause jobs to fail.
@@ -159,7 +159,7 @@ Small tiles may create more overhead from parallellization or task scheduling.
 A number of options can be configured via 'feature flags' on load_collection level. This allows a per-load_collection config.
 These tunables allow to easily run performs experiments.
 By default, the strategy should be for the backend to select the most optimal value dynamically or by configuring a fixed value
-in the backend config. 
+in the backend config.
 
 There is not necessarily a single optimal value: for instance if a processing cluster has a high memory per cpu ratio, it
 may be better to create larger partitions.
@@ -175,7 +175,7 @@ cube.result_node().update_arguments(featureflags=temporal_partition_options)
 
 ```
 
-- `tilesize` e.g. 128, 256, 512 
+- `tilesize` e.g. 128, 256, 512
 - `load_per_product` boolean, set to true to read all chunks of the same asset on a single executor
 - `temporalresolution` can be `ByDay`, `ByMonth`, used to configure partitioner
 - `indexreduction` usually between 3 and 10, a higher reduction reduces the number of partitions, so more memory per partition
@@ -185,10 +185,10 @@ cube.result_node().update_arguments(featureflags=temporal_partition_options)
 ## Runtime properties of a typical cloud setup
 
 The behaviour and configuration of an openEO backend heavily depends on the performance characteristics of the environment
-in which it is deployed. 
+in which it is deployed.
 
 A very common one is a 'cloud' environment, which we define as having the following characteristics:
 
-- A cpu to memory ratio of about 4GB per cpu, where requesting more memory is possible but will increase costs, 
+- A cpu to memory ratio of about 4GB per cpu, where requesting more memory is possible but will increase costs,
 while reducing memory is also possible, but may not necessarily free up the cpu, even though overcommitting cpu is possible.
 - Object storage access for data, with relatively high latency per request, but good throughput. Supports many requests in parallel.
