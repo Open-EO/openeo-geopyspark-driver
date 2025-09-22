@@ -76,6 +76,7 @@ from xarray import DataArray
 import numpy as np
 
 import openeogeotrellis
+from openeo_driver.views import OPENEO_API_VERSION_DEFAULT
 from openeogeotrellis import sentinel_hub, load_stac, datacube_parameters
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.config.s3_config import S3Config
@@ -1790,7 +1791,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
         with self._double_job_registry as dbl_registry:
             job_info = dbl_registry.get_job(job_id=job_id, user_id=user_id)
-            api_version = job_info.get('api_version')
+            api_version = job_info.get("api_version", OPENEO_API_VERSION_DEFAULT)
 
             if dependencies is None:
                 # restart logic
@@ -2007,11 +2008,6 @@ class GpsBatchJobs(backend.BatchJobs):
                 bucket,
                 job_specification_file.strip("/"),
             )
-
-            if api_version:
-                api_version = api_version
-            else:
-                api_version = '0.4.0'
 
             eodata_mount = "/eodata2" if use_goofys else "/eodata"
 
