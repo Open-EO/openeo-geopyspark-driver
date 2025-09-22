@@ -249,6 +249,13 @@ class GpsBackendConfig(OpenEoBackendConfig):
         ),
     )
 
+    processing_container_image: Optional[str] = attrs.field(
+        default=None,
+        metadata={
+            "description": "Docker image to use for batch/synchronous processing jobs when started from web app. If not specified, the same image the web app is running in will be used."
+        },
+    )
+
     """
     Maps the name of a UDF runtime to the image to use for the batch job.
     Also used to map image-name job option to batch job image.
