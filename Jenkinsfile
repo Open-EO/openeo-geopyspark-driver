@@ -16,6 +16,7 @@ pythonPipeline {
   extra_env_variables = [
     /* Set pytest `basetemp` inside Jenkins workspace. (Note: this is intentionally Jenkins specific, instead of a global pytest.ini thing.) */
     "PYTEST_DEBUG_TEMPROOT=pytest-tmp",
+    "PYTHON_VERSION=3.8",
   ]
   python_version = ["3.8"]
   docker_registry = 'vito-docker-private.artifactory.vgt.vito.be'
