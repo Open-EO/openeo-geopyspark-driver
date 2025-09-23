@@ -3477,3 +3477,25 @@ def test_netcdf_sample_by_feature_asset_bbox_geometry(tmp_path):
         "type": "Polygon",
         "coordinates": [[[4.0, 4.0], [4.0, 5.0], [5.0, 5.0], [5.0, 4.0], [4.0, 4.0]]],
     }
+
+
+@pytest.mark.skip("only runs on my machine")
+def test_load_stac_multiband_cog():
+    tree = Path("/tmp/test_load_stac_multiband_cog/tiles")
+    tree.mkdir(parents=True, exist_ok=True)
+
+    job_dir = tree.parent
+
+    with open(
+        "/home/bossie/Documents/VITO/openeo-geotrellis-extensions/multiband cog: Not all data is loaded into cube #446/j-250813104047412bbefe7f9a3ec639e7_smaller_process_graph.json"
+    ) as f:
+        process = json.load(f)
+
+    run_job(
+        process,
+        output_file=job_dir / "out",
+        metadata_file=job_dir / "job_metadata.json",
+        api_version="1.0.0",
+        job_dir=job_dir,
+        user_id="jenkins",
+    )
