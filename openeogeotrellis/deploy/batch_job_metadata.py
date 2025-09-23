@@ -26,7 +26,7 @@ from openeogeotrellis._version import __version__
 from openeogeotrellis.backend import JOB_METADATA_FILENAME, GeoPySparkBackendImplementation
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.integrations.gdal import _extract_gdal_asset_raster_metadata
-from openeogeotrellis.utils import _make_set_for_key, get_jvm, to_s3_url
+from openeogeotrellis.utils import _make_set_for_key, get_jvm, to_s3_url, map_optional
 
 logger = logging.getLogger(__name__)
 
@@ -366,6 +366,7 @@ def _get_tracker_metadata(tracker_id: str = "", *, omit_derived_from_links: bool
     tracker = _get_tracker(tracker_id)
     usage = {}
     all_links = []
+    internal_links = []
 
     if tracker is not None:
         tracker_results = tracker.asDict()
@@ -393,6 +394,19 @@ def _get_tracker_metadata(tracker_id: str = "", *, omit_derived_from_links: bool
                 for link in links
             )
 
+        def _as_python(internal_files) -> List[dict]:  # TODO: add to GeopysparkDataCube._as_python and put in utils
+            return [
+                {
+                    "href": str(internal_file.getPath()),
+                    "type": internal_file.getMediaType(),
+                    "rel": "custom",
+                    "_expose_internal": True,
+                }
+                for internal_file in internal_files
+            ]
+
+        internal_links = map_optional(_as_python, tracker_results.get("internal_files"))
+
     from openeogeotrellis.metrics_tracking import global_tracker
 
     python_metrics = global_tracker().as_dict()
@@ -410,4 +424,4 @@ def _get_tracker_metadata(tracker_id: str = "", *, omit_derived_from_links: bool
             usage["input_pixel"]["value"] += sar_backscatter_inputpixels / (1024 * 1024)
         else:
             usage["input_pixel"] = {"value": sar_backscatter_inputpixels / (1024 * 1024), "unit": "mega-pixel"}
-    return dict_no_none(usage=usage if usage != {} else None, links=all_links)
+    return dict_no_none(usage=usage if usage != {} else None, links=all_links, internal_links=internal_links)

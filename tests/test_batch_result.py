@@ -3664,19 +3664,14 @@ def test_export_workspace_derived_from(tmp_path, requests_mock, mock_s3_bucket, 
                 derived_from_document_link["href"] == f"s3://{mock_s3_bucket.name}/{merge}/unknown-job_input_items.json"
             )
 
-            derived_from_document_file = tmp_path / "unknown-job_input_items.json"
+            # check file is exported and downloadable
+            derived_from_document_file = tmp_path / "unknown-job_input_items.json.downloaded"
             with open(derived_from_document_file, "wb") as f:
                 derived_from_document_obj = mock_s3_bucket.Object(key=f"{merge}/unknown-job_input_items.json")
                 derived_from_document_obj.download_fileobj(f)
 
             with open(derived_from_document_file) as f:
-                derived_from_document = json.load(f)
-
-            assert {link["href"] for link in derived_from_document["links"]} == {
-                "http://s2.test/p1",
-                "http://s2.test/p2",
-            }
-            # TODO: the file should in fact be an ItemCollection with STAC items that have a "derived_from" link to their original feature
+                assert f.read() == "your derived_from document here"
         else:
             assert not links  # current behavior: no links on item, only on Collection
 
@@ -3703,6 +3698,11 @@ def test_export_workspace_derived_from(tmp_path, requests_mock, mock_s3_bucket, 
     }
 
     metadata_tracker.addInputProducts("S2", ["http://s2.test/p1", "http://s2.test/p2"])
+
+    derived_from_document_file = tmp_path / "unknown-job_input_items.json"
+    with open(derived_from_document_file, "w") as f:
+        f.write("your derived_from document here")  # actual contents do not matter: Scala will write this file
+    metadata_tracker.addInternalFile(str(derived_from_document_file), "application/json")
 
     metadata_file = tmp_path / "job_metadata.json"
 
@@ -3745,7 +3745,7 @@ def test_export_workspace_derived_from(tmp_path, requests_mock, mock_s3_bucket, 
             assert derived_from_hrefs == ["http://s2.test/p1", "http://s2.test/p2"]
 
 
-def test_input_item_collection(tmp_path):
+def test_input_item_collection(tmp_path, metadata_tracker):
     process_graph = {
         "loadcollection1": {
             "process_id": "load_collection",
@@ -3795,4 +3795,24 @@ def test_input_item_collection(tmp_path):
 
     assert "openEO_2024-01-05Z.tif" in os.listdir(job_dir)
 
-    # TODO: check contents of derived_from_document (should be a link in the metadata file)
+    with open(metadata_file) as f:
+        job_metadata = json.load(f)
+
+    internal_links = [
+        link
+        for item in job_metadata.get("items", {})
+        for link in item.get("links", [])
+        if link.get("_expose_internal", False)
+    ]
+
+    assert len(internal_links) == 1, internal_links
+    derived_from_document_link = internal_links[0]
+    assert derived_from_document_link["rel"] == "custom"
+    assert derived_from_document_link["type"] == "application/json"
+
+    with open(derived_from_document_link["href"]) as f:
+        derived_from_document = json.load(f)
+
+    print(derived_from_document)
+    assert len(derived_from_document)
+    assert all(item["type"] == "Feature" for item in derived_from_document)
