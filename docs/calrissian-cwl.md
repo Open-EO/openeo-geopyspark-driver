@@ -20,6 +20,7 @@ designed to run inside a Kubernetes cluster.
 If running on minikube, first run this:
 
 ```bash
+cd openeo-geopyspark-driver
 minikube delete # clean up previous sessions
 minikube start
 NAMESPACE_NAME=calrissian-demo-project
