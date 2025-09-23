@@ -22,6 +22,8 @@ logger = logging.getLogger("get-jars")
 ROOT_DIR = Path(__file__).parent.parent.absolute()
 DEFAULT_JAR_DIR = ROOT_DIR / "jars"
 JARS_SOURCE_FILE = ROOT_DIR / "jars.json"
+if not JARS_SOURCE_FILE.exists():
+    JARS_SOURCE_FILE = ROOT_DIR / "scripts/jars.json"
 
 def download_jar(jar_dir: Path, url: str, force: bool = False) -> Path:
     """Download JAR at given URL to JAR dir."""
