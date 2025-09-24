@@ -21,15 +21,18 @@ but here are some references that might help:
 """
 from __future__ import annotations
 
+import base64
 import configparser
+import contextlib
 import logging
 import os
+import re
+import sys
+import tempfile
 from pathlib import Path
-from typing import Union, Optional, Iterable, Mapping
+from typing import Iterable, Iterator, Mapping, Optional, Union
 
 import requests
-import sys
-
 from openeo_driver.utils import generate_unique_id, smart_bool
 
 try:
@@ -37,6 +40,7 @@ try:
     import gssapi
     import requests_gssapi
 except ImportError:
+    gssapi = None
     requests_gssapi = None
 
 _log = logging.getLogger(__name__)
@@ -214,20 +218,26 @@ def get_freeipa_server_from_env(
 
 
 def acquire_gssapi_creds(
-    principal: str, keytab_path: Union[str, Path], ccache: str = "MEMORY:"
+    principal: str, keytab_path: Union[str, Path], ccache: Optional[str] = None
 ) -> "gssapi.Credentials":
     """
     Helper to acquire initial GSSAPI credentials based on a keytab file.
 
-    Additionally by using a "MEMORY:" credential cache,
-    we avoid leaking (elevated) credentials into existing credential caches on disk.
-
     :param principal: Kerberos principal (e.g. "openeo@EXAMPLE.COM")
     :param keytab_path: path to keytab file
-    :param ccache: credential cache name (default: "MEMORY" to not leak into existing credential caches)
+    :param ccache: credential cache.
+        By default, in-memory cache ("MEMORY:..") is used
+        to avoid leaking (possibly elevated) credentials
+        into existing credential caches on disk.
     :return:
     """
     _log.debug(f"Acquiring GSSAPI credentials for {principal=} with {keytab_path=}")
+
+    if ccache is None:
+        # By default use in-memory credential cache to avoid leaking credentials to the file system,
+        # but also use principal-based cache id to avoid conflicts when using multiple principals.
+        ccache = "MEMORY:" + re.sub(r"[^a-zA-Z0-9]+", "", principal)
+
     return gssapi.Credentials(
         usage="initiate",
         name=gssapi.Name(principal),
@@ -249,6 +259,22 @@ def get_verify_tls_from_env(*, env_var: str = "OPENEO_FREEIPA_VERIFY_TLS") -> Un
         return value
     else:
         return smart_bool(value)
+
+
+@contextlib.contextmanager
+def temp_keytab_from_env(env_var: str = "OPENEO_FREEIPA_KEYTAB_BASE64") -> Iterator[str]:
+    """
+    Setup temporary keytab context from env var (with base64 encoded keytab content)
+
+    :return: path to keytab
+    """
+    with tempfile.NamedTemporaryFile(mode="wb", prefix="kt-openeo-ipa-", delete=True) as temp_keytab:
+        keytab_base64 = os.environ.get(env_var, "")
+        _log.info(f"Setting up temporary keytab {temp_keytab.name!r} from {env_var!r} ({len(keytab_base64)=})")
+        temp_keytab.write(base64.b64decode(keytab_base64))
+        temp_keytab.flush()
+        yield temp_keytab.name
+    _log.debug(f"Temporary keytab {temp_keytab.name!r} still exists: {os.path.exists(temp_keytab.name)!r}")
 
 
 def main():

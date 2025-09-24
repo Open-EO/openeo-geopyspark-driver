@@ -3,23 +3,32 @@ import textwrap
 from pathlib import Path
 from unittest import TestCase
 
+import geopyspark as gps
 import numpy as np
 import numpy.testing
 import pytest
 import rasterio
-import geopyspark as gps
 from geopyspark import CellType
-from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time, TemporalProjectedExtent, Extent,
-                                   RasterLayer)
+from geopyspark.geotrellis import (
+    Extent,
+    RasterLayer,
+    SpaceTimeKey,
+    TemporalProjectedExtent,
+    Tile,
+    _convert_to_unix_time,
+)
 from geopyspark.geotrellis.constants import LayerType
-from geopyspark.geotrellis.layer import TiledRasterLayer, Pyramid
+from geopyspark.geotrellis.layer import Pyramid, TiledRasterLayer
 from numpy.testing import assert_array_almost_equal
+from openeo_driver.errors import FeatureUnsupportedException
+from openeo_driver.utils import EvalEnv
 from pyspark import SparkContext
 from shapely.geometry import Point
 
-from openeo_driver.errors import FeatureUnsupportedException
-from openeo_driver.utils import EvalEnv
-from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
+from openeogeotrellis.geopysparkdatacube import (
+    GeopysparkCubeMetadata,
+    GeopysparkDataCube,
+)
 from openeogeotrellis.numpy_aggregators import max_composite
 from tests.datacube_fixtures import layer_with_one_band_and_three_dates
 
@@ -145,18 +154,18 @@ class TestMultipleDates(TestCase):
 
         imagecollection = GeopysparkDataCube(pyramid=input, metadata=self.collection_metadata)
 
-        ref_path = str(self.temp_folder / "reproj_ref.tiff")
+        ref_path = str(self.temp_folder / "reproj_ref.nc")
         imagecollection.reduce_dimension(reducer=reducer("max"), dimension="t", env=EvalEnv()).save_result(
-            ref_path, format="GTIFF"
+            ref_path, format="netCDF"
         )
 
         resampled = imagecollection.resample_spatial(resolution=0,projection="EPSG:3395",method="max")
         metadata = resampled.pyramid.levels[0].layer_metadata
         print(metadata)
-        self.assertTrue("proj=merc" in metadata.crs)
-        path = str(self.temp_folder / "reprojected.tiff")
+        self.assertTrue(metadata.crs == 'EPSG:3395')
+        path = str(self.temp_folder / "reprojected.nc")
         res = resampled.reduce_dimension(reducer=reducer("max"), dimension="t", env=EvalEnv())
-        res.save_result(path, format="GTIFF")
+        res.save_result(path, format="netCDF")
 
         with rasterio.open(ref_path) as ref_ds:
             with rasterio.open(path) as ds:
@@ -514,21 +523,7 @@ def rct_savitzky_golay(udf_data:UdfData):
         assert stitched.cells[0][0][1] == 8.0
         assert stitched.cells[0][1][1] == 10.0
 
-    def test_resample_spatial(self):
-        input = Pyramid({0: layer_with_one_band_and_three_dates()})
 
-        imagecollection = GeopysparkDataCube(pyramid=input, metadata=self.collection_metadata)
-
-        resampled = imagecollection.resample_spatial(resolution=0.05)
-
-        path = str(self.temp_folder / "resampled.tiff")
-        res = resampled.reduce_dimension(reducer('max'), dimension="t", env=EvalEnv())
-        res.save_result(path, format="GTIFF")
-
-        import rasterio
-        with rasterio.open(path) as ds:
-            print(ds.profile)
-            self.assertAlmostEqual(0.05, ds.res[0], 3)
 
     def test_resample_spatial_reproject(self):
         input = Pyramid({0: layer_with_one_band_and_three_dates()})
@@ -557,6 +552,61 @@ def rct_savitzky_golay(udf_data:UdfData):
         with rasterio.open(path) as ds:
             print(ds.profile)
             self.assertAlmostEqual(0.005, ds.res[0], 3)
+
+    def test_resample_cube_spatial_partitions(self):
+        from openeogeotrellis.utils import get_jvm
+
+        jvm = get_jvm()
+        pe = jvm.geotrellis.vector.ProjectedExtent(
+            jvm.geotrellis.vector.Extent(266000.0, 5376000.0, 768000.0, 5888000.0),
+            jvm.geotrellis.proj4.CRS.fromEpsgCode(32631),
+        )
+        from tests.test_views import TestCollections
+
+        m = GeopysparkCubeMetadata(
+            {
+                "cube:dimensions": {
+                    "x": {"type": "spatial", "axis": "x", "reference_system": TestCollections._CRS_AUTO_42001},
+                    "y": {"type": "spatial", "axis": "y", "reference_system": TestCollections._CRS_AUTO_42001},
+                    "t": {"type": "temporal", "extent": ["2019-01-01T11:37:00Z", "2019-01-01T11:37:00Z"]},
+                    "bands": {"type": "bands", "values": ["band1", "band2"]},
+                }
+            }
+        )
+
+        data_cube_parameters = jvm.org.openeo.geotrelliscommon.DataCubeParameters()
+        getattr(data_cube_parameters, "tileSize_$eq")(256)
+        getattr(data_cube_parameters, "layoutScheme_$eq")("FloatingLayoutScheme")
+
+        def build_plain_spatio_temporal_data_cube(resolution):
+            rdd = jvm.org.openeo.geotrellis.TestUtils.buildPlainSpatioTemporalDataCube(pe, resolution, data_cube_parameters)
+            datacube = GeopysparkDataCube(pyramid=Pyramid({0: rdd}), metadata=m)
+            srdd = datacube._create_tilelayer(rdd, gps.LayerType.SPACETIME, 0)
+            datacube = GeopysparkDataCube(pyramid=Pyramid({0: srdd}), metadata=m)
+            return datacube
+
+        datacube_lores = build_plain_spatio_temporal_data_cube(1000.0)
+        partitions_lores = datacube_lores.get_max_level().getNumPartitions()
+
+        datacube_hires = build_plain_spatio_temporal_data_cube(50.0)
+        datacube_hires = datacube_hires.rename_labels("bands", ["band1_hires", "band2_hires"])
+        partitions_hires = datacube_hires.get_max_level().getNumPartitions()
+        print("Partitions: ", partitions_lores, partitions_hires)
+
+        datacube_lores_resampled = datacube_lores.resample_cube_spatial(datacube_hires)
+        partitions_merged = datacube_lores_resampled.get_max_level().getNumPartitions()
+        print("Partitions after resample_cube_spatial: ", partitions_merged)
+
+        path = str(self.temp_folder / "test_resample_cube_spatial_partitions.tiff")
+        datacube_lores_resampled.save_result(path, format="GTIFF")
+
+        assert partitions_merged > partitions_lores
+        assert partitions_merged < partitions_hires * 1.5  # TODO: make stricter test.
+
+        import rasterio
+
+        with rasterio.open(path) as ds:
+            print(ds.profile)
 
     def test_rename_dimension(self):
         imagecollection = GeopysparkDataCube(pyramid=Pyramid({0: self.tiled_raster_rdd}),
@@ -630,3 +680,21 @@ def test_apply_spatiotemporal(udf_code):
     assert stitched.cells[0][0][0] == 2
     assert stitched.cells[0][0][5] == 6
     assert stitched.cells[0][5][6] == 4
+
+@pytest.mark.parametrize("target_resolution", [(0.05),([0.05,0.06])])
+def test_resample_spatial(imagecollection_with_two_bands_and_one_date, tmp_path ,target_resolution):
+    resampled = imagecollection_with_two_bands_and_one_date.resample_spatial(resolution=target_resolution)
+
+    path = str(tmp_path / "resampled.tiff")
+    res = resampled.reduce_dimension(reducer('max'), dimension="t", env=EvalEnv())
+    res.save_result(path, format="GTIFF")
+
+    import rasterio
+    with rasterio.open(path) as ds:
+        print(ds.profile)
+        if isinstance(target_resolution,list):
+            assert pytest.approx(target_resolution[0]) == ds.res[0]
+            assert pytest.approx(target_resolution[1]) == ds.res[1]
+        else:
+            assert pytest.approx(target_resolution) == ds.res[0]
+            assert pytest.approx(target_resolution) == ds.res[1]

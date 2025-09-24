@@ -1,20 +1,25 @@
+import json
+
+import geopandas as gpd
+import geopyspark as gps
 import mock
 import pytest
 import rasterio
-from mock import MagicMock, ANY
+from mock import ANY, MagicMock
 
+import openeo
 from openeo_driver.backend import LoadParameters
 from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.errors import OpenEOApiException
 from openeo_driver.utils import EvalEnv
 from py4j.java_gateway import JavaGateway
-from tests.data import get_test_data_file
 
+from openeogeotrellis.backend import JOB_METADATA_FILENAME
+from openeogeotrellis.deploy.batch_job import run_job
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.layercatalog import get_layer_catalog
-import geopandas as gpd
-import geopyspark as gps
+from tests.data import get_test_data_file
 
 
 @pytest.fixture
@@ -416,7 +421,7 @@ def test_load_disk_collection_pyramid(
     cube = cube.rename_labels("bands", ["band1", "bands"])
 
     assert len(cube.metadata.spatial_dimensions) == 2
-    assert len(cube.pyramid.levels) == 2
+    assert len(cube.pyramid.levels) == 4
 
 
 def test_load_disk_collection_batch(imagecollection_with_two_bands_and_three_dates,backend_implementation,tmp_path):
@@ -458,43 +463,56 @@ def test_driver_vector_cube_supports_load_collection_caching(jvm_mock, catalog):
         catalog.load_collection('SENTINEL1_GRD', load_params=load_params1(), env=EvalEnv({'pyramid_levels': 'highest'}))
 
         # TODO: is there an easier way to count the calls to lru_cache-decorated function load_collection?
-        creating_layer_calls = list(filter(lambda call: call.args[0].startswith("Creating layer for SENTINEL1_GRD"),
+        creating_layer_calls = list(filter(lambda call: call.args[0].startswith("load_collection: Creating raster datacube for SENTINEL1_GRD"),
                                            logger.info.call_args_list))
 
         n_load_collection_calls = len(creating_layer_calls)
         assert n_load_collection_calls == 2
 
 
-def test_data_cube_params(catalog):
-    load_params = LoadParameters(bands=['TOC-B03_10M'], resample_method="average", target_crs="EPSG:4326", global_extent = {"east":2.0,"west":1.0,"south":2.0,"north":3.0, "crs":"EPSG:4326"}, featureflags={"tilesize":128})
-    env = EvalEnv({'require_bounds': True})
-
-    cube_params, level = catalog.create_datacube_parameters(load_params, env)
-    assert (
-        str(cube_params)
-        == "DataCubeParameters(128, {}, ZoomedLayoutScheme, ByDay, 6, None, Average, 0.0, 0.0)"
+def test_load_stac_pixel_shift(api110, tmp_path, flask_app):
+    data_cube = openeo.DataCube.load_stac(
+        url=str(get_test_data_file("stac/issue648-pixel-shift/collection.json")),
+        temporal_extent=["2023-01-20", "2023-02-01"],
     )
-    assert "Average" == str(cube_params.resampleMethod())
+
+    run_job(
+        {"process_graph": data_cube.flat_graph()},
+        output_file=tmp_path / "out",  # just like in backend.py
+        metadata_file=tmp_path / JOB_METADATA_FILENAME,
+        api_version="2.0.0",
+        job_dir=tmp_path,
+        dependencies=[],
+        user_id="jenkins",
+    )
+    with (tmp_path / JOB_METADATA_FILENAME).open("r", encoding="utf-8") as f:
+        metadata = json.load(f)
+    bbox = metadata["proj:bbox"]
+    assert bbox[0] == 631800
 
 
 @pytest.mark.parametrize(["bands", "expected_bands"], [
+    (None, ["SPROD", "TPROD", "QFLAG"]),  # ordered as specified in layercatalog.json
     ([], ["SPROD", "TPROD", "QFLAG"]),  # ordered as specified in layercatalog.json
     (["TPROD", "QFLAG", "SPROD"], ["TPROD", "QFLAG", "SPROD"])  # override order
 ])
 def test_load_stac_collection_with_property_filters(catalog, tmp_path, requests_mock, bands, expected_bands):
     requests_mock.get("https://stac.openeo.vito.be/", text=get_test_data_file("stac/issue640-api-layer-property-filter/stac.openeo.vito.be.json").read_text())
-    requests_mock.get("https://stac.openeo.vito.be/search", [
-        {'text': get_test_data_file("stac/issue640-api-layer-property-filter/copernicus_r_utm-wgs84_10_m_hrvpp-vpp_p_2017-now_v01_features.json")
-                      .read_text()
-                      .replace("$SPROD_TIF",
-                               str(get_test_data_file("binary/load_stac/copernicus_r_utm-wgs84_10_m_hrvpp-vpp_p_2017-now_v01/VPP_2018_S2_T31UFS-010m_V101_s1_SPROD_small.tif").absolute()))
-                      .replace("$TPROD_TIF",
-                               str(get_test_data_file("binary/load_stac/copernicus_r_utm-wgs84_10_m_hrvpp-vpp_p_2017-now_v01/VPP_2018_S2_T31UFS-010m_V101_s1_TPROD_small.tif").absolute()))
-                      .replace("$QFLAG_TIF",
-                               str(get_test_data_file("binary/load_stac/copernicus_r_utm-wgs84_10_m_hrvpp-vpp_p_2017-now_v01/VPP_2018_S2_T31UFS-010m_V101_s1_QFLAG_small.tif").absolute()))},
-        {'text': get_test_data_file("stac/issue640-api-layer-property-filter/copernicus_r_utm-wgs84_10_m_hrvpp-vpp_p_2017-now_v01_no_features.json")
-                      .read_text()}
-    ])
+    requests_mock.get("https://stac.openeo.vito.be/collections/copernicus_r_utm-wgs84_10_m_hrvpp-vpp_p_2017-now_v01",
+                      text=get_test_data_file("stac/issue640-api-layer-property-filter/copernicus_r_utm-wgs84_10_m_hrvpp-vpp_p_2017-now_v01_collection.json").read_text())
+    requests_mock.post("https://stac.openeo.vito.be/search", text=get_test_data_file(
+        "stac/issue640-api-layer-property-filter/copernicus_r_utm-wgs84_10_m_hrvpp-vpp_p_2017-now_v01_features.json")
+                       .read_text()
+                       .replace("$SPROD_TIF",
+                                str(get_test_data_file(
+                                    "binary/load_stac/copernicus_r_utm-wgs84_10_m_hrvpp-vpp_p_2017-now_v01/VPP_2018_S2_T31UFS-010m_V101_s1_SPROD_small.tif").absolute()))
+                       .replace("$TPROD_TIF",
+                                str(get_test_data_file(
+                                    "binary/load_stac/copernicus_r_utm-wgs84_10_m_hrvpp-vpp_p_2017-now_v01/VPP_2018_S2_T31UFS-010m_V101_s1_TPROD_small.tif").absolute()))
+                       .replace("$QFLAG_TIF",
+                                str(get_test_data_file(
+                                    "binary/load_stac/copernicus_r_utm-wgs84_10_m_hrvpp-vpp_p_2017-now_v01/VPP_2018_S2_T31UFS-010m_V101_s1_QFLAG_small.tif").absolute())),
+                       )
 
     load_params = LoadParameters(spatial_extent={"west": 5.00, "south": 51.20, "east": 5.01, "north": 51.21},
                                  temporal_extent=["2017-07-01T00:00Z", "2018-07-31T00:00Z"],
@@ -510,6 +528,35 @@ def test_load_stac_collection_with_property_filters(catalog, tmp_path, requests_
 
     with rasterio.open(output_file) as ds:
         assert ds.count == len(expected_bands)
-        for band_index, band_name in enumerate(expected_bands):
-            # ds.tags(0) has global metadata, band metadata starts from 1
-            assert ds.tags(band_index + 1)["DESCRIPTION"] == expected_bands[band_index]
+        assert (list(ds.descriptions) == expected_bands) or (
+            [ds.tags(bidx=i + 1)["DESCRIPTION"] for i in range(ds.count)] == expected_bands
+        )
+
+
+def test_property_filter_from_parameter(catalog):
+    properties = {
+        "eo:cloud_cover": {
+            "process_graph": {
+                "lte1": {
+                    "process_id": "lte",
+                    "arguments": {
+                        "x": {"from_parameter": "value"},
+                        "y": {"from_parameter": "cloud_cover"}
+                    },
+                    "result": True,
+                }
+            }
+        }
+    }
+
+    load_params = LoadParameters(
+        temporal_extent=("2019-01-01", "2019-01-02"),
+        bands=["TOC-B03_10M"],
+        spatial_extent={"west": 4, "east": 4.001, "north": 52, "south": 51.9999, "crs": 4326},
+        properties=properties,
+    )
+
+    env = EvalEnv().push_parameters({"cloud_cover": 24})
+
+    with pytest.raises(OpenEOApiException, match=r"There is no data available"):  # expected, not a problem
+        catalog.load_collection("TERRASCOPE_S2_TOC_V2", load_params=load_params, env=env)

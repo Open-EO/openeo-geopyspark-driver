@@ -1,8 +1,10 @@
-from kazoo.exceptions import NoNodeError, BadVersionError
-import pytest
+import datetime
 
-from openeogeotrellis.config import get_backend_config, GpsBackendConfig
-from openeogeotrellis.testing import KazooClientMock, _ZNodeStat, gps_config_overrides
+import pytest
+from kazoo.exceptions import BadVersionError, NoNodeError
+
+from openeogeotrellis.config import get_backend_config
+from openeogeotrellis.testing import KazooClientMock, _ZNodeStat, gps_config_overrides, DummyCubeBuilder
 
 
 def test_kazoo_mock_basic():
@@ -117,3 +119,34 @@ class TestGpsConfigOverrides:
     @gps_config_overrides(id="hello-decorator")
     def test_decorator_vs_fixture(self, special_stuff):
         assert get_backend_config().id == "hello-decorator"
+
+
+class TestDummyCubeBuilder:
+    def test_to_datetime_list_int(self):
+        builder = DummyCubeBuilder()
+        assert builder.to_datetime_list(0) == []
+        assert builder.to_datetime_list(1) == [
+            datetime.datetime(2025, 9, 1, tzinfo=datetime.timezone.utc),
+        ]
+        assert builder.to_datetime_list(3) == [
+            datetime.datetime(2025, 9, 1, tzinfo=datetime.timezone.utc),
+            datetime.datetime(2025, 9, 2, tzinfo=datetime.timezone.utc),
+            datetime.datetime(2025, 9, 3, tzinfo=datetime.timezone.utc),
+        ]
+
+    def test_to_datetime_list_list(self):
+        builder = DummyCubeBuilder()
+        assert builder.to_datetime_list([]) == []
+        assert builder.to_datetime_list(["2021-02-03", "2021-02-12"]) == [
+            datetime.datetime(2021, 2, 3, tzinfo=datetime.timezone.utc),
+            datetime.datetime(2021, 2, 12, tzinfo=datetime.timezone.utc),
+        ]
+        assert builder.to_datetime_list(
+            [
+                datetime.datetime(2022, 3, 4),
+                datetime.date(2022, 4, 5),
+            ]
+        ) == [
+            datetime.datetime(2022, 3, 4, tzinfo=datetime.timezone.utc),
+            datetime.datetime(2022, 4, 5, tzinfo=datetime.timezone.utc),
+        ]

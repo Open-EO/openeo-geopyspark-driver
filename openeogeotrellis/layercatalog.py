@@ -5,16 +5,20 @@ import json
 import logging
 import math
 import sys
-from copy import deepcopy
+from copy import deepcopy, copy
 from datetime import datetime
 from functools import lru_cache
-from typing import List, Dict, Optional, Tuple, Union
+from typing import List, Dict, Iterable, Optional, Tuple, Union
 
 import dateutil.parser
 import geopyspark
 import py4j.protocol
 import pyproj
 import pyspark.sql.utils
+import pytz
+from py4j.protocol import Py4JJavaError
+import requests
+
 from openeo.metadata import Band
 from openeo.util import TimingLogger, deep_get, str_truncate
 from openeo_driver import filter_properties
@@ -22,22 +26,23 @@ from openeo_driver.backend import CollectionCatalog, LoadParameters
 from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.datastructs import SarBackscatterArgs
-from openeo_driver.errors import OpenEOApiException, InternalException
+from openeo_driver.errors import OpenEOApiException, InternalException, ProcessGraphComplexityException
 from openeo_driver.filter_properties import extract_literal_match
 from openeo_driver.util.geometry import reproject_bounding_box
 from openeo_driver.util.utm import auto_utm_epsg_for_geometry
 from openeo_driver.util.http import requests_with_retry
-from openeo_driver.utils import read_json, EvalEnv, WhiteListEvalEnv
+from openeo_driver.utils import read_json, EvalEnv, WhiteListEvalEnv, smart_bool
 from shapely.geometry import box
 from shapely.geometry.base import BaseGeometry
 
-from openeogeotrellis import sentinel_hub
+from openeogeotrellis import sentinel_hub, datacube_parameters
+import openeogeotrellis.backend
 from openeogeotrellis.catalogs.creo import CreoCatalogClient
 from openeogeotrellis.collections.s1backscatter_orfeo import get_implementation as get_s1_backscatter_orfeo
-from openeogeotrellis.collections import sentinel3
 from openeogeotrellis.collections.testing import load_test_collection
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
+from openeogeotrellis.constants import EVAL_ENV_KEY
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
 from openeogeotrellis.load_stac import load_stac
 from openeogeotrellis.opensearch import OpenSearch, OpenSearchOscars, OpenSearchCreodias, OpenSearchCdse
@@ -49,30 +54,28 @@ from openeogeotrellis.utils import (
     normalize_temporal_extent,
     calculate_rough_area,
     parse_approximate_isoduration,
+    reproject_cellsize,
+    health_check_extent,
 )
 from openeogeotrellis.vault import Vault
 
-VAULT_TOKEN = 'vault_token'
-SENTINEL_HUB_CLIENT_ALIAS = 'sentinel_hub_client_alias'
-MAX_SOFT_ERRORS_RATIO = 'max_soft_errors_ratio'
-DEPENDENCIES = 'dependencies'
-PYRAMID_LEVELS = 'pyramid_levels'
-REQUIRE_BOUNDS = 'require_bounds'
-CORRELATION_ID = 'correlation_id'
-USER = 'user'
-ALLOW_EMPTY_CUBES = "allow_empty_cubes"
 WHITELIST = [
-    VAULT_TOKEN,
-    SENTINEL_HUB_CLIENT_ALIAS,
-    MAX_SOFT_ERRORS_RATIO,
-    DEPENDENCIES,
-    PYRAMID_LEVELS,
-    REQUIRE_BOUNDS,
-    CORRELATION_ID,
-    USER,
-    ALLOW_EMPTY_CUBES,
+    EVAL_ENV_KEY.VAULT_TOKEN,
+    EVAL_ENV_KEY.SENTINEL_HUB_CLIENT_ALIAS,
+    EVAL_ENV_KEY.MAX_SOFT_ERRORS_RATIO,
+    EVAL_ENV_KEY.DEPENDENCIES,
+    EVAL_ENV_KEY.PYRAMID_LEVELS,
+    EVAL_ENV_KEY.REQUIRE_BOUNDS,
+    EVAL_ENV_KEY.CORRELATION_ID,
+    EVAL_ENV_KEY.USER,
+    EVAL_ENV_KEY.ALLOW_EMPTY_CUBES,
+    EVAL_ENV_KEY.DO_EXTENT_CHECK,
+    EVAL_ENV_KEY.PARAMETERS,
+    EVAL_ENV_KEY.LOAD_STAC_APPLY_LCFM_IMPROVEMENTS,
+    EVAL_ENV_KEY.OPENEO_API_VERSION,
 ]
 LARGE_LAYER_THRESHOLD_IN_PIXELS = pow(10, 11)
+LARGE_LAYER_THRESHOLD_IN_PIXELS_SENTINELHUB = pow(10, 10)
 
 logger = logging.getLogger(__name__)
 
@@ -89,69 +92,36 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         self._default_sentinel_hub_client_id = client_id
         self._default_sentinel_hub_client_secret = client_secret
 
-    def create_datacube_parameters(self, load_params, env):
-        jvm = get_jvm()
-        feature_flags = load_params.get("featureflags", {})
-        tilesize = feature_flags.get("tilesize", 256)
-        default_temporal_resolution = "ByDay"
-        default_indexReduction = 6
-        #if len(load_params.process_types) == 1 and ProcessType.GLOBAL_TIME in load_params.process_types:
-            # for pure timeseries processing, adjust partitioning strategy
-            #default_temporal_resolution = "None"
-            #default_indexReduction = 0
-        indexReduction = feature_flags.get("indexreduction", default_indexReduction)
-        temporalResolution = feature_flags.get("temporalresolution", default_temporal_resolution)
-        datacubeParams = jvm.org.openeo.geotrelliscommon.DataCubeParameters()
-        # WTF simple assignment to a var in a scala class doesn't work??
-        getattr(datacubeParams, "tileSize_$eq")(tilesize)
-        getattr(datacubeParams, "maskingStrategyParameters_$eq")(load_params.custom_mask)
-        logger.debug(f"Using load_params.data_mask {load_params.data_mask!r}")
-        if isinstance(load_params.data_mask, GeopysparkDataCube):
-            datacubeParams.setMaskingCube(load_params.data_mask.get_max_level().srdd.rdd())
-        datacubeParams.setPartitionerIndexReduction(indexReduction)
-        datacubeParams.setPartitionerTemporalResolution(temporalResolution)
-
-        datacubeParams.setAllowEmptyCube(feature_flags.get("allow_empty_cube", env.get(ALLOW_EMPTY_CUBES, False)))
-
-        globalbounds = feature_flags.get("global_bounds", True)
-        if globalbounds and load_params.global_extent is not None and len(load_params.global_extent) > 0:
-            ge = load_params.global_extent
-            datacubeParams.setGlobalExtent(float(ge["west"]), float(ge["south"]), float(ge["east"]), float(ge["north"]),
-                                           ge["crs"])
-        single_level = env.get(PYRAMID_LEVELS, 'all') != 'all'
-        if single_level:
-            getattr(datacubeParams, "layoutScheme_$eq")("FloatingLayoutScheme")
-
-        if load_params.pixel_buffer is not None:
-            datacubeParams.setPixelBuffer(load_params.pixel_buffer[0],load_params.pixel_buffer[1])
-
-        load_per_product = feature_flags.get("load_per_product",None)
-        if load_per_product is not None:
-            datacubeParams.setLoadPerProduct(load_per_product)
-        elif(get_backend_config().default_reading_strategy == "load_per_product"):
-            datacubeParams.setLoadPerProduct(True)
-
-        if (get_backend_config().default_tile_size is not None):
-            if "tilesize" not in feature_flags:
-                getattr(datacubeParams, "tileSize_$eq")(get_backend_config().default_tile_size)
-
-
-        datacubeParams.setResampleMethod(GeopysparkDataCube._get_resample_method(load_params.resample_method))
-
-        if load_params.filter_temporal_labels is not None:
-            from openeogeotrellis.backend import GeoPySparkBackendImplementation
-            labels_filter = GeoPySparkBackendImplementation.accept_process_graph(load_params.filter_temporal_labels["process_graph"])
-            datacubeParams.setTimeDimensionFilter(labels_filter.builder)
-        return datacubeParams, single_level
-
-
     @TimingLogger(title="load_collection", logger=logger)
     def load_collection(self, collection_id: str, load_params: LoadParameters, env: EvalEnv) -> GeopysparkDataCube:
+
+        if smart_bool(env.get(EVAL_ENV_KEY.DO_EXTENT_CHECK, True)):
+            env_validate = env.push({
+                "allow_check_missing_products": False,
+            })
+            try:
+                issues = extra_validation_load_collection(collection_id, load_params, env_validate)
+            except Exception as e:
+                issues = [{"code": "Internal", "message": str(e)}]
+                logger.warning(f"Error during extra_validation_load_collection: {e!r}")
+            # Only care for certain errors and make list of strings:
+            issues = [e["message"] for e in issues if e["code"] == "ExtentTooLarge"]
+            if issues:
+                if env.get("sync_job", False):
+                    raise ProcessGraphComplexityException(
+                        ProcessGraphComplexityException.message + f" Reasons: {' '.join(issues)}"
+                    )
+                else:
+                    raise ProcessGraphComplexityException(
+                        "The process graph is computationally too heavy and will likely time out. Disable this check with 'job_options.do_extent_check': "
+                        + " ".join(issues)
+                    )
+
         return self._load_collection_cached(collection_id, load_params, WhiteListEvalEnv(env, WHITELIST))
 
-    @lru_cache(maxsize=20)
+    @lru_cache(maxsize=40)
     def _load_collection_cached(self, collection_id: str, load_params: LoadParameters, env: EvalEnv) -> GeopysparkDataCube:
-        logger.info("Creating layer for {c} with load params {p}".format(c=collection_id, p=load_params))
+        logger.info(f"load_collection: Creating raster datacube for {collection_id} with arguments {load_params}, environment: {env}")
 
         from_date, to_date = temporal_extent = normalize_temporal_extent(load_params.temporal_extent)
         spatial_extent = load_params.spatial_extent
@@ -166,7 +136,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
         spatial_bounds_present = all(b is not None for b in [west, south, east, north])
         if not spatial_bounds_present:
-            if env.get(REQUIRE_BOUNDS, False):
+            if env.get(EVAL_ENV_KEY.REQUIRE_BOUNDS, False):
                 raise OpenEOApiException(code="MissingSpatialFilter", status_code=400,
                                          message="No spatial filter could be derived to load this collection: {c} . Please specify a bounding box, or polygons to define your area of interest.".format(
                                              c=collection_id))
@@ -202,7 +172,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         catalog_type = layer_source_info.get("catalog_type", "")  # E.g. STAC, Opensearch, Creodias
 
         postprocessing_band_graph = metadata.get("_vito", "postprocessing_bands", default=None)
-        logger.info("Layer source type: {s!r}".format(s=layer_source_type))
+        logger.debug("Cube source type: {s!r}".format(s=layer_source_type))
         cell_width = float(metadata.get("cube:dimensions", "x", "step", default=10.0))
         cell_height = float(metadata.get("cube:dimensions", "y", "step", default=10.0))
 
@@ -213,7 +183,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             metadata = metadata.rename_labels(metadata.band_dimension.name, bands, metadata.band_names)
         else:
             band_indices = None
-        logger.info("band_indices: {b!r}".format(b=band_indices))
+        logger.debug("band_indices: {b!r}".format(b=band_indices))
         # TODO: avoid this `still_needs_band_filter` ugliness.
         #       Also see https://github.com/Open-EO/openeo-geopyspark-driver/issues/29
         still_needs_band_filter = False
@@ -221,19 +191,21 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         #band specific gsd can override collection default
         band_gsds = [band.gsd['value'] for band in metadata.bands if band.gsd is not None]
         if len(band_gsds) > 0:
-            def highest_resolution(band_gsd, coordinate_index):
-                return (min(res[coordinate_index] for res in band_gsd) if isinstance(band_gsd[0], list)
-                        else band_gsd[coordinate_index])
 
-            cell_width = float(min(highest_resolution(band_gsd, coordinate_index=0) for band_gsd in band_gsds))
-            cell_height = float(min(highest_resolution(band_gsd, coordinate_index=1) for band_gsd in band_gsds))
+            def smallest_cell_size(band_gsd, coordinate_index):
+                return (
+                    min(size[coordinate_index] for size in band_gsd) if isinstance(band_gsd[0], list)
+                    else band_gsd[coordinate_index]
+                )
+
+            cell_width = float(min(smallest_cell_size(band_gsd, coordinate_index=0) for band_gsd in band_gsds))
+            cell_height = float(min(smallest_cell_size(band_gsd, coordinate_index=1) for band_gsd in band_gsds))
 
         native_crs = self._native_crs(metadata)
 
         metadata = metadata.filter_temporal(from_date, to_date)
 
-
-        correlation_id = env.get(CORRELATION_ID, '')
+        correlation_id = env.get(EVAL_ENV_KEY.CORRELATION_ID, "")
         logger.info("Correlation ID is '{cid}'".format(cid=correlation_id))
 
         logger.info("Detected process types:" + str(load_params.process_types))
@@ -294,22 +266,32 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         logger.debug(projected_polygons_native_crs.extent())
         logger.debug(projected_polygons_native_crs.polygons()[0].toString())
 
-        datacubeParams, single_level = self.create_datacube_parameters(load_params, env)
+        datacubeParams, single_level = datacube_parameters.create(load_params, env, jvm)
         opensearch_endpoint = layer_source_info.get(
             "opensearch_endpoint", get_backend_config().default_opensearch_endpoint
         )
-        max_soft_errors_ratio = env.get(MAX_SOFT_ERRORS_RATIO, 0.0)
+        max_soft_errors_ratio = env.get(EVAL_ENV_KEY.MAX_SOFT_ERRORS_RATIO, 0.0)
         no_data_value = metadata.get_nodata_value(load_params.bands, 0.0)
         if feature_flags.get("no_resample_on_read", False):
             logger.info("Setting NoResampleOnRead to true")
             datacubeParams.setNoResampleOnRead(True)
 
+        val = smart_bool(feature_flags.get("use_new_feature_extent_intersection", False))
+        datacubeParams.setUseNewFeatureExtentIntersection(val)
+
+        if "use_new_feature_extent_intersection_2" in feature_flags:
+            val = smart_bool(feature_flags.get("use_new_feature_extent_intersection_2"))
+            logger.info(f"Setting useNewFeatureExtentIntersection2 to {val}")
+            datacubeParams.setUseNewFeatureExtentIntersection2(val)
+
         def metadata_properties(flatten_eqs=True) -> Dict[str, object]:
             layer_properties = metadata.get("_vito", "properties", default={})
             custom_properties = load_params.properties
 
-            all_properties = {property_name: filter_properties.extract_literal_match(condition)
-                        for property_name, condition in {**layer_properties, **custom_properties}.items()}
+            all_properties = {
+                property_name: filter_properties.extract_literal_match(condition, env)
+                for property_name, condition in {**layer_properties, **custom_properties}.items()
+            }
 
             def eq_value(criterion: Dict[str, object]) -> object:
                 if len(criterion) != 1:
@@ -343,13 +325,19 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
         def file_s2_pyramid():
             def pyramid_factory(
-                opensearch_endpoint,
-                opensearch_collection_id,
+                opensearch_endpoint: str,
+                opensearch_collection_id: str,
                 opensearch_link_titles,
-                root_path,
+                root_path: str,
             ):
                 opensearch_client = jvm.org.openeo.opensearch.OpenSearchClient.apply(
-                    opensearch_endpoint, is_utm, "", metadata.band_names, catalog_type, metadata.parallel_query()
+                    opensearch_endpoint,
+                    is_utm,
+                    "",
+                    metadata.band_names,
+                    catalog_type,
+                    metadata.parallel_query(),
+                    metadata.select_one_orbit_per_day(),
                 )
 
                 return jvm.org.openeo.geotrellis.file.PyramidFactory(
@@ -434,10 +422,9 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             # TODO: move the metadata manipulation out of this function and get rid of the nonlocal?
             nonlocal metadata
 
-            dependencies = env.get(DEPENDENCIES, [])
+            dependencies = env.get(EVAL_ENV_KEY.DEPENDENCIES, [])
             sar_backscatter_arguments: Optional[SarBackscatterArgs] = (
-                (load_params.sar_backscatter or SarBackscatterArgs()) if sar_backscatter_compatible
-                else None
+                _get_sar_backscatter_arguments(load_params=load_params, env=env) if sar_backscatter_compatible else None
             )
 
             if dependencies:
@@ -541,7 +528,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 cell_size = jvm.geotrellis.raster.CellSize(cell_width, cell_height)
 
                 if ConfigParams().is_kube_deploy:
-                    access_token = env[USER].internal_auth_data["access_token"]
+                    access_token = env[EVAL_ENV_KEY.USER].internal_auth_data["access_token"]
 
                     pyramid_factory = jvm.org.openeo.geotrellissentinelhub.PyramidFactory.withFixedAccessToken(
                         endpoint,
@@ -556,14 +543,14 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                         no_data_value,
                     )
                 else:
-                    sentinel_hub_client_alias = env.get(SENTINEL_HUB_CLIENT_ALIAS, 'default')
+                    sentinel_hub_client_alias = env.get(EVAL_ENV_KEY.SENTINEL_HUB_CLIENT_ALIAS, "default")
                     logger.debug(f"Sentinel Hub client alias: {sentinel_hub_client_alias}")
 
                     if sentinel_hub_client_alias == 'default':
                         sentinel_hub_client_id = self._default_sentinel_hub_client_id
                         sentinel_hub_client_secret = self._default_sentinel_hub_client_secret
                     else:
-                        vault_token = env[VAULT_TOKEN]
+                        vault_token = env[EVAL_ENV_KEY.VAULT_TOKEN]
                         sentinel_hub_client_id, sentinel_hub_client_secret = (
                             self._vault.get_sentinel_hub_credentials(sentinel_hub_client_alias, vault_token))
 
@@ -672,7 +659,6 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             )
             return create_pyramid(factory)
 
-        logger.info("loading pyramid {s}".format(s=layer_source_type))
 
         if layer_source_type == 'file-s2':
             pyramid = file_s2_pyramid()
@@ -695,7 +681,9 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         elif layer_source_type == 'file-oscars'  or layer_source_type == "cgls_oscars":
             pyramid = file_s2_pyramid()
         elif layer_source_type == 'creodias-s1-backscatter':
-            sar_backscatter_arguments = load_params.sar_backscatter or SarBackscatterArgs()
+            sar_backscatter_arguments = _get_sar_backscatter_arguments(load_params=load_params, env=env)
+            #make a copy before modifying: it is used as a cache key
+            sar_backscatter_arguments = deepcopy(sar_backscatter_arguments)
             sar_backscatter_arguments.options["resolution"] = (cell_width, cell_height)
             s1_backscatter_orfeo = get_s1_backscatter_orfeo(
                 version=sar_backscatter_arguments.options.get("implementation_version", "2"),
@@ -712,24 +700,45 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 max_soft_errors_ratio=max_soft_errors_ratio
             )
         elif layer_source_type == 'file-s3':
+            native_cell_size = jvm.geotrellis.raster.CellSize(
+                float(metadata.get("cube:dimensions", "x", "step")),
+                float(metadata.get("cube:dimensions", "y", "step"))
+            )
+            # Local import to save some RAM and avoid potential confusing error:
+            from openeogeotrellis.collections import sentinel3
+
             pyramid = sentinel3.pyramid(metadata_properties(),
                                         projected_polygons_native_crs, from_date, to_date,
                                         metadata.opensearch_link_titles, datacubeParams,
-                                        jvm.geotrellis.raster.CellSize(cell_width, cell_height), feature_flags, jvm,
+                                        native_cell_size, feature_flags, jvm,
                                         )
-        elif layer_source_type == 'stac':
-            cube = load_stac(layer_source_info["url"], load_params, env,
-                             layer_properties=metadata.get("_vito", "properties", default={}),
-                             batch_jobs=None, override_band_names=metadata.band_names)
+        elif layer_source_type == "stac":
+            cube = load_stac(
+                url=layer_source_info["url"],
+                load_params=load_params,
+                env=env,
+                layer_properties=metadata.get("_vito", "properties", default={}),
+                batch_jobs=None,
+                override_band_names=metadata.band_names,
+                apply_lcfm_improvements=layer_source_info.get("load_stac_apply_lcfm_improvements", False),
+            )
             pyramid = cube.pyramid.levels
             metadata = cube.metadata
         elif layer_source_type == 'accumulo':
             pyramid = accumulo_pyramid()
         elif layer_source_type == 'testing':
+            import re
+
+            tile_cols, tile_rows = map(int, re.match(r".*?(\d+)x(\d+)", collection_id).groups())
+            assert tile_cols == tile_rows
+
             pyramid = load_test_collection(
-                collection_id=collection_id, collection_metadata=metadata,
-                extent=extent, srs=srs,
-                from_date=from_date, to_date=to_date,
+                tile_size=tile_cols,
+                collection_metadata=metadata,
+                extent=extent,
+                srs=srs,
+                from_date=from_date,
+                to_date=to_date,
                 bands=bands,
                 correlation_id=correlation_id
             )
@@ -827,11 +836,13 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
         return "UTM"  # LANDSAT7_ETM_L2 doesn't have any, for example
 
-    def derive_temporal_extent(self, collection_id: str, constraints: dict) -> List[Optional[str]]:
+    def derive_temporal_extent(
+        self, collection_id: str, load_params: LoadParameters
+    ) -> Tuple[Optional[str], Optional[str]]:
         metadata_json = self.get_collection_metadata(collection_id=collection_id)
         metadata = GeopysparkCubeMetadata(metadata_json)
 
-        temporal_extent_constraints = constraints.get("temporal_extent")
+        temporal_extent_constraints = load_params.temporal_extent
 
         # The first temporal interval should encompass the other temporal intervals.
         # The outer bounds are still calculated just in case.
@@ -878,9 +889,9 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
 
     def estimate_number_of_temporal_observations(self,
                                                  collection_id: str,
-                                                 constraints: dict,
+                                                 load_params: LoadParameters,
                                                  ) -> int:
-        temporal_extent = self.derive_temporal_extent(collection_id, constraints)
+        temporal_extent = self.derive_temporal_extent(collection_id, load_params)
 
         metadata_json = self.get_collection_metadata(collection_id=collection_id)
         metadata = GeopysparkCubeMetadata(metadata_json)
@@ -897,23 +908,10 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         temporal_step = parse_approximate_isoduration(temporal_step)
         temporal_step = temporal_step.total_seconds()
 
-        from_date, to_date = temporal_extent
-        if to_date is None:
-            if from_date is None:
-                number_of_temporal_observations = 1
-                logger.warning(
-                    f"Got open: {temporal_extent=}. Assuming {number_of_temporal_observations=}."
-                )
-            else:
-                logger.warning(
-                    f"Got half open: {temporal_extent=}. Assuming it goes till today."
-                )
-                from_date_parsed = dateutil.parser.parse(from_date).replace(tzinfo=None)
-                to_date_now = datetime.now().replace(tzinfo=None)
-                number_of_temporal_observations = (to_date_now - from_date_parsed).total_seconds() / temporal_step
-        else:
-            number_of_temporal_observations = (dateutil.parser.parse(to_date) - dateutil.parser.parse(
-                from_date)).total_seconds() / temporal_step
+        from_date, to_date = normalize_temporal_extent((temporal_extent[0], temporal_extent[1]))
+        to_date_parsed = dateutil.parser.parse(to_date).replace(tzinfo=pytz.UTC)
+        from_date_parsed = dateutil.parser.parse(from_date).replace(tzinfo=pytz.UTC)
+        number_of_temporal_observations = (to_date_parsed - from_date_parsed).total_seconds() / temporal_step
         number_of_temporal_observations = max(math.floor(number_of_temporal_observations), 1)
         return number_of_temporal_observations
 
@@ -934,20 +932,24 @@ def _get_layer_catalog(
     if opensearch_enrich is None:
         opensearch_enrich = get_backend_config().opensearch_enrich
     if catalog_files is None:
-        catalog_files = ConfigParams().layer_catalog_metadata_files
+        catalog_files = get_backend_config().layer_catalog_files
 
     metadata: CatalogDict = {}
 
     def read_catalog_file(catalog_file) -> CatalogDict:
-        return {coll["id"]: coll for coll in read_json(catalog_file)}
+        try:
+            return {coll["id"]: coll for coll in read_json(catalog_file)}
+        except Exception as e:
+            raise ValueError(f"Failed to read/parse {catalog_file=}: {e=}") from e
 
-    logger.info(f"_get_layer_catalog: {catalog_files=}")
+
+    logger.debug(f"_get_layer_catalog: {catalog_files=}")
     for path in catalog_files:
-        logger.info(f"_get_layer_catalog: reading {path}")
+        logger.debug(f"_get_layer_catalog: reading {path}")
         metadata = dict_merge_recursive(metadata, read_catalog_file(path), overwrite=True)
-        logger.info(f"_get_layer_catalog: collected {len(metadata)} collections")
+        logger.debug(f"_get_layer_catalog: collected {len(metadata)} collections")
 
-    logger.info(f"_get_layer_catalog: {opensearch_enrich=}")
+    logger.debug(f"_get_layer_catalog: {opensearch_enrich=}")
     if opensearch_enrich:
         opensearch_metadata = {}
         sh_collection_metadatas = None
@@ -981,10 +983,9 @@ def _get_layer_catalog(
                     logger.warning(f"Failed to enrich collection metadata of {cid}: {e}", exc_info=True)
             elif data_source.get("type") == "stac":
                 url = data_source.get("url")
-                logger.info(f"Getting collection metadata from {url}")
-                import requests
+                logger.debug(f"Getting collection metadata from {url}")
                 try:
-                    resp = requests.get(url=url)
+                    resp = requests.get(url=url, timeout=10)
                     resp.raise_for_status()
                     opensearch_metadata[cid] = resp.json()
                 except Exception as e:
@@ -1079,7 +1080,7 @@ def dump_layer_catalog():
 def _merge_layers_with_common_name(metadata: CatalogDict):
     """Merge collections with same common name. Updates metadata dict in place."""
     common_names = set(m["common_name"] for m in metadata.values() if "common_name" in m)
-    logger.info(f"Creating merged collections for common names: {common_names}")
+    logger.debug(f"Creating merged collections for common names: {common_names}")
     for common_name in common_names:
         merged = {
             "id": common_name,
@@ -1144,6 +1145,7 @@ def _merge_layers_with_common_name(metadata: CatalogDict):
         if band_dims:
             (band_dim,) = band_dims
             merged["summaries"]["eo:bands"] = [eo_bands[b] for b in merged["cube:dimensions"][band_dim]["values"]]
+            # TODO #1109 also merge/handle "common" bands under summaries (instead of legacy eo:bands)
 
         metadata[common_name] = merged
 
@@ -1225,29 +1227,33 @@ def check_missing_products(
         elif method == "terrascope":
             jvm = get_jvm()
 
-            expected_tiles = query_jvm_opensearch_client(
-                open_search_client=jvm.org.openeo.opensearch.backends.CreodiasClient.apply(),
-                collection_id=check_data["creo_catalog"]["mission"],
-                _query_kwargs=query_kwargs,
-                processing_level=check_data["creo_catalog"]["level"],
-            )
+            try:
+                expected_tiles = query_jvm_opensearch_client(
+                    open_search_client=jvm.org.openeo.opensearch.backends.CreodiasClient.apply(),
+                    collection_id=check_data["creo_catalog"]["mission"],
+                    _query_kwargs=query_kwargs,
+                    processing_level=check_data["creo_catalog"]["level"],
+                )
+                logger.debug(f"Expected tiles ({len(expected_tiles)}): {str_truncate(repr(expected_tiles), 200)}")
+                opensearch_collection_id = collection_metadata.get("_vito", "data_source", "opensearch_collection_id")
 
-            logger.debug(f"Expected tiles ({len(expected_tiles)}): {str_truncate(repr(expected_tiles), 200)}")
-            opensearch_collection_id = collection_metadata.get("_vito", "data_source", "opensearch_collection_id")
+                url = jvm.java.net.URL("https://services.terrascope.be/catalogue")
+                # Terrascope has a different calculation for cloudCover
+                query_kwargs_no_cldPrcnt = query_kwargs.copy()
+                if "cldPrcnt" in query_kwargs_no_cldPrcnt:
+                    del query_kwargs_no_cldPrcnt["cldPrcnt"]
+                terrascope_tiles = query_jvm_opensearch_client(
+                    open_search_client=jvm.org.openeo.opensearch.OpenSearchClient.apply(url, False, ""),
+                    collection_id=opensearch_collection_id,
+                    _query_kwargs=query_kwargs_no_cldPrcnt,
+                )
 
-            url = jvm.java.net.URL("https://services.terrascope.be/catalogue")
-            # Terrascope has a different calculation for cloudCover
-            query_kwargs_no_cldPrcnt = query_kwargs.copy()
-            if "cldPrcnt" in query_kwargs_no_cldPrcnt:
-                del query_kwargs_no_cldPrcnt["cldPrcnt"]
-            terrascope_tiles = query_jvm_opensearch_client(
-                open_search_client=jvm.org.openeo.opensearch.OpenSearchClient.apply(url, False, ""),
-                collection_id=opensearch_collection_id,
-                _query_kwargs=query_kwargs_no_cldPrcnt,
-            )
+                logger.debug(f"Oscar tiles ({len(terrascope_tiles)}): {str_truncate(repr(terrascope_tiles), 200)}")
+                missing = list(expected_tiles.difference(terrascope_tiles))
+            except Py4JJavaError as e:
+                logger.error(f"load_collection: Failed to retrieve list of expected products from CDSE. {e}")
+                missing = [f"unknown - CDSE query failed with {e}"]
 
-            logger.debug(f"Oscar tiles ({len(terrascope_tiles)}): {str_truncate(repr(terrascope_tiles), 200)}")
-            return list(expected_tiles.difference(terrascope_tiles))
         else:
             logger.error(f"Invalid check_missing_products data {check_data}")
             raise InternalException("Invalid check_missing_products data")
@@ -1258,16 +1264,150 @@ def check_missing_products(
         return missing
 
 
+def potential_sentinelhub(catalog, collection_id) -> bool:
+    metadata_json = catalog.get_collection_metadata(collection_id=collection_id)
+    metadata = GeopysparkCubeMetadata(metadata_json)
+    if metadata.provider_backend() == "sentinelhub":
+        return True
+    for col in metadata.get("_vito", "data_source", "merged_collections", default=[]):
+        if potential_sentinelhub(catalog, col):
+            return True
+    return False
+
+
+def extra_validation_load_collection(collection_id: str, load_params: LoadParameters, env: EvalEnv) -> Iterable[dict]:
+    if collection_id == "TestCollection-LonLat4x4":
+        # No need to check on artificial debug layer
+        return
+    if "backend_implementation" not in env:
+        yield {"code": "NoBackendImplementation", "message": "It seems like you are running in a test environment"}
+        return
+    catalog: GeoPySparkLayerCatalog = env.backend_implementation.catalog
+    allow_check_missing_products = smart_bool(env.get("allow_check_missing_products", True))
+    sync_job = smart_bool(env.get("sync_job", False))
+    metadata_json = catalog.get_collection_metadata(collection_id=collection_id)
+    metadata = GeopysparkCubeMetadata(metadata_json)
+    large_layer_threshold_in_pixels = int(
+        float(
+            env.get(
+                "large_layer_threshold_in_pixels",
+                (
+                    LARGE_LAYER_THRESHOLD_IN_PIXELS_SENTINELHUB
+                    if potential_sentinelhub(catalog, collection_id)
+                    else LARGE_LAYER_THRESHOLD_IN_PIXELS
+                ),
+            )
+        )
+    )
+    load_params_tmp = copy(load_params)  # Make shallow copy, so we can remove data_mask
+    load_params_tmp.data_mask = {}  # Clear to avoid SPARK-5063 error
+    load_params = deepcopy(load_params_tmp)  # deepcopy so we can modify it
+    load_params.temporal_extent = normalize_temporal_extent(catalog.derive_temporal_extent(collection_id, load_params))
+    temporal_extent = load_params.temporal_extent
+
+    spatial_extent = load_params.spatial_extent
+    if spatial_extent is None or len(spatial_extent) == 0:
+        spatial_extent = load_params.global_extent
+    if spatial_extent is None or len(spatial_extent) == 0:
+        spatial_extent = metadata.get_overall_spatial_extent()
+    load_params.spatial_extent = spatial_extent
+
+    native_crs = metadata.get("cube:dimensions", "x", "reference_system", default="EPSG:4326")
+    if isinstance(native_crs, dict):
+        native_crs = native_crs.get("id", {}).get("code", None)
+    if isinstance(native_crs, int):
+        native_crs = f"EPSG:{native_crs}"
+    if not isinstance(native_crs, str):
+        yield {
+            "code": "InvalidNativeCRS",
+            "message": f"Invalid native CRS {native_crs!r} for " f"collection {collection_id!r}",
+        }
+        return
+
+    number_of_temporal_observations: int = catalog.estimate_number_of_temporal_observations(
+        collection_id,
+        load_params,
+    )
+
+    band_names = load_params.bands
+    if band_names:
+        # Will convert aliases:
+        band_names = metadata.filter_bands(band_names).band_names
+    else:
+        band_names = metadata.get("cube:dimensions", "bands", "values", default=["_at_least_assume_one_band_"])
+    nr_bands = len(band_names)
+
+    if collection_id == "TestCollection-LonLat4x4":
+        # This layer is always 4x4 pixels, adapt resolution accordingly
+        bbox_width = abs(spatial_extent["east"] - spatial_extent["west"])
+        bbox_height = abs(spatial_extent["north"] - spatial_extent["south"])
+        cell_width_latlon = bbox_width / 4
+        cell_height_latlon = bbox_height / 4
+        cell_width, cell_height = reproject_cellsize(
+            spatial_extent,
+            (cell_width_latlon, cell_height_latlon),
+            "EPSG:4326",
+            "Auto42001",
+        )
+    else:
+        # The largest GSD I encountered was 25km. Double it as very permissive guess:
+        default_gsd = (50000, 50000)
+        gsd_object = metadata.get_GSD_in_meters()
+        if isinstance(gsd_object, dict):
+            gsd_in_meter_list = list(map(lambda x: gsd_object.get(x), band_names))
+            gsd_in_meter_list = list(filter(lambda x: x is not None, gsd_in_meter_list))
+            if not gsd_in_meter_list:
+                gsd_in_meter_list = [default_gsd] * nr_bands
+        elif isinstance(gsd_object, tuple):
+            gsd_in_meter_list = [gsd_object] * nr_bands
+        else:
+            gsd_in_meter_list = [default_gsd] * nr_bands
+
+        # We need to convert GSD to resolution in order to take an average:
+        px_per_m2_average_band = sum(map(lambda x: 1 / (x[0] * x[1]), gsd_in_meter_list)) / len(gsd_in_meter_list)
+        px_per_m_average_band = pow(px_per_m2_average_band, 0.5)
+        m_per_px_average_band = 1 / px_per_m_average_band
+
+        res = (m_per_px_average_band, m_per_px_average_band)
+        # Auto42001 is in meter
+        cell_width, cell_height = reproject_cellsize(spatial_extent, res, "Auto42001", native_crs)
+
+    is_layer_too_large_message = is_layer_too_large(
+        load_params=load_params,
+        number_of_temporal_observations=number_of_temporal_observations,
+        nr_bands=nr_bands,
+        cell_width=cell_width,
+        cell_height=cell_height,
+        native_crs=native_crs,
+        threshold_pixels=large_layer_threshold_in_pixels,
+        sync_job=sync_job,
+    )
+    if is_layer_too_large_message:
+        yield {"code": "ExtentTooLarge", "message": f"collection_id {collection_id!r}: {is_layer_too_large_message}"}
+    elif allow_check_missing_products and metadata.get("_vito", "data_source", "check_missing_products", default=None):
+        # Only check missing products when extent is not too large
+        properties = load_params.properties
+
+        products = check_missing_products(
+            collection_metadata=metadata,
+            temporal_extent=temporal_extent,
+            spatial_extent=spatial_extent,
+            properties=properties,
+        )
+        if products:
+            for p in products:
+                yield {
+                    "code": "MissingProduct",
+                    "message": f"Tile {p!r} in collection {collection_id!r} is not available."
+                }
 
 def is_layer_too_large(
-        spatial_extent: dict,
-        geometries: Union[DriverVectorCube, DelayedVector, BaseGeometry],
+        load_params: LoadParameters,
         number_of_temporal_observations: int,
         nr_bands: int,
         cell_width: float,
         cell_height: float,
         native_crs: str,
-        resample_params: dict,
         threshold_pixels: int = LARGE_LAYER_THRESHOLD_IN_PIXELS,
         sync_job: bool = False,
 ):
@@ -1275,20 +1415,20 @@ def is_layer_too_large(
     Estimates the number of pixels that will be required to load this layer
     and returns True if it exceeds the threshold.
 
-    :param spatial_extent: Requested spatial extent.
-    :param geometries: Requested geometries (if any). From e.g. filter_spatial or aggregate_spatial.
+    :param load_params: Requested load parameters.
     :param number_of_temporal_observations: Requested number of temporal observations.
     :param nr_bands: Requested number of bands.
     :param cell_width: Width of the cells/pixels.
     :param cell_height: Height of the cells/pixels.
     :param native_crs: Native CRS of the layer.
-    :param resample_params: Resampling parameters.
     :param threshold_pixels: Threshold in pixels.
     :param sync_job: Is sync job.
 
     :return: A message if the layer exceeds the threshold in pixels. None otherwise.
              Also returns the estimated number of pixels and the threshold.
     """
+    geometries = load_params.aggregate_spatial_geometries
+    spatial_extent = load_params.spatial_extent
     srs = spatial_extent.get("crs", 'EPSG:4326')
     if isinstance(srs, int):
         srs = 'EPSG:%s' % str(srs)
@@ -1296,28 +1436,34 @@ def is_layer_too_large(
         if srs["name"] == 'AUTO 42001 (Universal Transverse Mercator)':
             srs = 'Auto42001'
 
-    # Resampling process overwrites native_crs and resolution from metadata.
-    resample_target_crs = resample_params.get("target_crs", None)
-    if resample_target_crs:
-        native_crs = resample_target_crs
-    resample_target_resolution = resample_params.get("resolution", None)
-    if resample_target_resolution:
-        resample_width, resample_height = resample_target_resolution
-        if resample_width != 0 and resample_height != 0:
-            # This can happen with e.g. resample_spatial(resolution=0, projection=4326)
-            cell_width, cell_height = resample_width, resample_height
+    spatial_extent["crs"] = srs
+    if not health_check_extent(spatial_extent):
+        return f"Unsupported spatial extent: {spatial_extent}"
 
-    # Reproject.
-    if isinstance(native_crs, dict):
-        native_crs = native_crs.get("id", {}).get("code", None)
-    if native_crs is None:
+    target_crs = native_crs
+    # Resampling process overwrites native_crs and resolution from metadata.
+    if load_params.target_resolution is not None:
+        # This can happen with e.g. resample_spatial(resolution=0, projection=4326)
+        if load_params.target_resolution[0] != 0.0 and load_params.target_resolution[1] != 0.0:
+            cell_width = float(load_params.target_resolution[0])
+            cell_height = float(load_params.target_resolution[1])
+            if load_params.target_crs is not None:
+                target_crs = load_params.target_crs
+
+    if isinstance(target_crs, dict):
+        target_crs = target_crs.get("id", {}).get("code", None)
+    if target_crs is None:
         raise InternalException("No native CRS found during is_layer_too_large check.")
-    if native_crs == "Auto42001":
+    if target_crs == "Auto42001":
         west, south = spatial_extent["west"], spatial_extent["south"]
         east, north = spatial_extent["east"], spatial_extent["north"]
-        native_crs = auto_utm_epsg_for_geometry(box(west, south, east, north), srs)
-    if srs != native_crs:
-        spatial_extent = reproject_bounding_box(spatial_extent, from_crs=srs, to_crs=native_crs)
+        target_crs = "EPSG:%s" % str(auto_utm_epsg_for_geometry(box(west, south, east, north), srs))
+    else:
+        target_crs = pyproj.CRS.from_user_input(target_crs).to_epsg()
+    if isinstance(target_crs, int):
+        target_crs = "EPSG:%s" % str(target_crs)
+    if srs != target_crs:
+        spatial_extent = reproject_bounding_box(spatial_extent, from_crs=srs, to_crs=target_crs)
 
     bbox_width = abs(spatial_extent["east"] - spatial_extent["west"])
     bbox_height = abs(spatial_extent["north"] - spatial_extent["south"])
@@ -1342,11 +1488,11 @@ def is_layer_too_large(
             elif isinstance(geometries, BaseGeometry):
                 geometries_area = calculate_rough_area([geometries])
             else:
-                raise TypeError(f'Unsupported geometry type: {type(geometries)}')
-            if native_crs != 'EPSG:4326':
+                raise TypeError(f"Unsupported geometry type: {type(geometries)}")
+            if target_crs != "EPSG:4326":
                 # Geojson is always in 4326. Reproject the cell bbox from native to 4326 so we can calculate the area.
-                cell_bbox = { "west": 0, "east": cell_width, "south": 0, "north": cell_height, "crs": native_crs }
-                cell_bbox = reproject_bounding_box(cell_bbox, from_crs=native_crs, to_crs='EPSG:4326')
+                cell_bbox = {"west": 0, "east": cell_width, "south": 0, "north": cell_height, "crs": target_crs}
+                cell_bbox = reproject_bounding_box(cell_bbox, from_crs=target_crs, to_crs="EPSG:4326")
                 cell_width = abs(cell_bbox["east"] - cell_bbox["west"])
                 cell_height = abs(cell_bbox["north"] - cell_bbox["south"])
             surface_area_pixels = geometries_area / (cell_width * cell_height)
@@ -1359,6 +1505,28 @@ def is_layer_too_large(
         return f"Requested extent is too large to process. Estimated number of pixels: {estimated_pixels:.2e}, " + \
             f"threshold: {threshold_pixels:.2e}."
     return None
+
+
+def _get_sar_backscatter_arguments(load_params: LoadParameters, env: EvalEnv) -> SarBackscatterArgs:
+    """
+    Get SarBackscatterArgs from LoadParameters if available,
+    otherwise: look in process registry schema to pick defaults that
+    are possibly overridden in deployment configuration.
+    """
+    if load_params.sar_backscatter:
+        sar_backscatter_arguments = load_params.sar_backscatter
+    else:
+        try:
+            # TODO: is it possible to avoid hardcoding `GpsProcessing` here?
+            #       Note that `env.get("backend_implementation").processing` is not available here anymore
+            #       because of that WhiteListEvalEnv caching business.
+            processing = openeogeotrellis.backend.GpsProcessing()
+            api_version = env.openeo_api_version()
+            sar_backscatter_arguments = processing.get_default_sar_backscatter_arguments(api_version=api_version)
+        except Exception as e:
+            logger.warning(f"_get_sar_backscatter_arguments failed: {e!r}")
+            sar_backscatter_arguments = SarBackscatterArgs()
+    return sar_backscatter_arguments
 
 
 if __name__ == "__main__":

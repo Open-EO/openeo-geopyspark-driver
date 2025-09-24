@@ -1,14 +1,18 @@
 import json
+from datetime import datetime
 from unittest import mock
 
-from kazoo.exceptions import NoNodeError
 import pytest
-from datetime import datetime
-
+from kazoo.exceptions import NoNodeError
 from openeo_driver.backend import ServiceMetadata
 from openeo_driver.errors import ServiceNotFoundException
+
 import openeogeotrellis.service_registry
-from openeogeotrellis.service_registry import InMemoryServiceRegistry, SecondaryService, ZooKeeperServiceRegistry
+from openeogeotrellis.service_registry import (
+    InMemoryServiceRegistry,
+    SecondaryService,
+    ZooKeeperServiceRegistry,
+)
 
 dummy_process_graph = {"foo": {"process_id": "foo", "arguments": {}}}
 dummy_service_metadata = ServiceMetadata(

@@ -5,21 +5,23 @@ import numpy as np
 import pytest
 import pytz
 
-from openeogeotrellis.service_registry import InMemoryServiceRegistry
+from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 
-matrix_of_one = np.zeros((1, 4, 4))
+TILE_SIZE = 16  # multiple of 16 as this is used for the GeoTIFF tile size as well and mandated by its spec
+
+matrix_of_one = np.zeros((1, TILE_SIZE, TILE_SIZE))
 matrix_of_one.fill(1)
 
-matrix_of_two = np.zeros((1, 4, 4))
+matrix_of_two = np.zeros((1, TILE_SIZE, TILE_SIZE))
 matrix_of_two.fill(2)
 
-matrix_of_nodata = np.zeros((1, 4, 4))
+matrix_of_nodata = np.zeros((1, TILE_SIZE, TILE_SIZE))
 matrix_of_nodata.fill(-1)
 
-extent = {'xmin': 0.0, 'ymin': 0.0, 'xmax': 4.0, 'ymax': 4.0}
-extent_webmerc = {'xmin': 0.0, 'ymin': 0.0, 'xmax': 445277.96317309426, 'ymax': 445640.1096560266}
-layout = {'layoutCols': 1, 'layoutRows': 1, 'tileCols': 4, 'tileRows': 4}
-
+extent = {"xmin": 0.0, "ymin": 0.0, "xmax": 4.0, "ymax": 4.0}
+extent_webmerc = {"xmin": 0.0, "ymin": 0.0, "xmax": 445277.96317309426, "ymax": 445640.1096560266}
+# TODO: shouldn't layoutCols/Rows be 2 as we're adding 4 tiles to it? Or at least make it easier to reason about?
+layout = {"layoutCols": 1, "layoutRows": 1, "tileCols": TILE_SIZE, "tileRows": TILE_SIZE}
 
 
 openeo_metadata = {
@@ -27,7 +29,7 @@ openeo_metadata = {
         "x": {"type": "spatial", "axis": "x"},
         "y": {"type": "spatial", "axis": "y"},
         "bands": {"type": "bands", "values": ["red", "nir"]},
-        "t": {"type": "temporal"}
+        "t": {"type": "temporal", "extent":["2016-01-01T11:37:00Z","2019-10-01T11:37:00Z"]}
     },
     "bands": [
 
@@ -131,7 +133,7 @@ def layer_with_two_bands_and_one_date():
 
 
 @pytest.fixture
-def imagecollection_with_two_bands_and_one_date(request):
+def imagecollection_with_two_bands_and_one_date(request) -> GeopysparkDataCube:
     import geopyspark as gps
     from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
     geopyspark_layer = layer_with_two_bands_and_one_date()
@@ -144,7 +146,7 @@ def imagecollection_with_two_bands_and_one_date(request):
 
 @pytest.fixture
 def imagecollection_with_two_bands_and_three_dates(request):
-    from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time)
+    from geopyspark.geotrellis import _convert_to_unix_time
     from geopyspark.geotrellis.constants import LayerType
     from geopyspark.geotrellis.layer import TiledRasterLayer
     import geopyspark as gps
@@ -179,7 +181,7 @@ def imagecollection_with_two_bands_and_three_dates(request):
 
 
 def numpy_rdd_two_bands_and_three_dates():
-    from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time)
+    from geopyspark.geotrellis import SpaceTimeKey, Tile
     from pyspark import SparkContext
 
     two_band_one_two = np.array([matrix_of_one, matrix_of_two], dtype='int')
@@ -208,7 +210,7 @@ def numpy_rdd_two_bands_and_three_dates():
 
 @pytest.fixture
 def imagecollection_with_two_bands_and_three_dates_webmerc(request):
-    from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time)
+    from geopyspark.geotrellis import _convert_to_unix_time
     from geopyspark.geotrellis.constants import LayerType
     from geopyspark.geotrellis.layer import TiledRasterLayer
     import geopyspark as gps
@@ -389,7 +391,7 @@ def layer_with_one_band_and_three_dates():
 @pytest.fixture
 def imagecollection_with_two_bands_and_one_date_multiple_values(request):
     import geopyspark as gps
-    from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
+    from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
     geopyspark_layer = layer_with_two_bands_and_one_date_multiple_values()
     datacube = GeopysparkDataCube(pyramid=gps.Pyramid({0: geopyspark_layer}), metadata=openeo_metadata)
 

@@ -1,0 +1,107 @@
+{
+  "process_graph": {
+    "1": {
+      "process_id": "load_stac",
+      "arguments": {
+        "url": "https://stac.dataspace.copernicus.test/v1/collections/sentinel-2-l2a",
+        "spatial_extent": null,
+        "temporal_extent": null,
+        "bands": [
+          "B02", "B03"
+        ],
+        "featureflags": {
+          "allow_empty_cube": true
+        }
+      }
+    },
+    "load1": {
+      "process_id": "load_collection",
+      "arguments": {
+        "id": "TestCollection-LonLat16x16",
+        "spatial_extent": null,
+        "temporal_extent": null,
+        "bands": [
+          "Flat:1",
+          "Flat:2"
+        ]
+      }
+    },
+    "aggregate2": {
+      "process_id": "aggregate_spatial",
+      "arguments": {
+        "data": {
+          "from_node": "filter2"
+        },
+        "geometries": {
+          "type": "Feature",
+          "properties": {},
+          "geometry": {
+            "coordinates": [
+              [
+                [
+                  2.649925019944618,
+                  51.332303127077466
+                ],
+                [
+                  2.649925019944618,
+                  51.02670918639183
+                ],
+                [
+                  3.2327588520359996,
+                  51.02670918639183
+                ],
+                [
+                  3.2327588520359996,
+                  51.332303127077466
+                ],
+                [
+                  2.649925019944618,
+                  51.332303127077466
+                ]
+              ]
+            ],
+            "type": "Polygon"
+          }
+        },
+        "reducer": {
+          "process_graph": {
+            "mean1": {
+              "process_id": "mean",
+              "arguments": {
+                "data": {
+                  "from_parameter": "data"
+                }
+              },
+              "result": true
+            }
+          }
+        }
+      },
+      "result": true
+    },
+    "filter2": {
+      "process_id": "filter_temporal",
+      "arguments": {
+        "data": {
+          "from_node": "merge3"
+        },
+        "extent": [
+          "2025-01-05T00:00:00Z",
+          "2025-01-16T00:00:00Z"
+        ]
+      }
+    },
+    "merge3": {
+      "process_id": "merge_cubes",
+      "arguments": {
+        "cube1": {
+          "from_node": "load1"
+        },
+        "cube2": {
+          "from_node": "1"
+        }
+      }
+    }
+  },
+  "parameters": []
+}

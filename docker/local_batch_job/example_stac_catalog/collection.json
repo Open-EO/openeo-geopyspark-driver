@@ -1,0 +1,44 @@
+{
+  "type": "Collection",
+  "stac_version": "1.0.0",
+  "id": "unknown-job",
+  "description": "Simple Sentinel-2 based stac catalog",
+  "license": "unknown",
+  "extent": {
+    "spatial": {
+      "bbox": [
+        [
+          -180,
+          -90,
+          180,
+          90
+        ]
+      ]
+    },
+    "temporal": {
+      "interval": [
+        [
+          null,
+          null
+        ]
+      ]
+    }
+  },
+  "links": [
+    {
+      "href": "./openEO_2023-06-01Z.tif.json",
+      "rel": "item",
+      "type": "application/geo+json"
+    },
+    {
+      "href": "./openEO_2023-06-04Z.tif.json",
+      "rel": "item",
+      "type": "application/geo+json"
+    },
+    {
+      "href": "./openEO_2023-06-06Z.tif.json",
+      "rel": "item",
+      "type": "application/geo+json"
+    }
+  ]
+}

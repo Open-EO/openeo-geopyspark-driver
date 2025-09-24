@@ -1,10 +1,10 @@
+
 import mock
-import os
 import pytest
+from elasticsearch.exceptions import ConnectionTimeout, TransportError
+from openeo_driver.errors import OpenEOApiException
 
 from openeogeotrellis.logs import elasticsearch_logs
-from openeo_driver.errors import OpenEOApiException
-from elasticsearch.exceptions import ConnectionTimeout, TransportError
 
 
 @mock.patch("openeogeotrellis.logs.Elasticsearch.search")

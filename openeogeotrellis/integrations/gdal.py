@@ -1,6 +1,13 @@
+import copy
 import multiprocessing
+import subprocess
+import sys
 from dataclasses import dataclass
+import json
+import logging
+import os
 from pathlib import Path
+import time
 from typing import Dict, Optional, Union, Any, Tuple
 
 import pyproj
@@ -8,7 +15,29 @@ from math import isfinite
 from openeo.util import dict_no_none
 from osgeo import gdal
 
-from openeogeotrellis.utils import get_s3_binary_file_contents, _make_set_for_key
+from openeogeotrellis.config import get_backend_config
+from openeogeotrellis.util.runtime import get_job_id
+from openeogeotrellis.utils import (
+    stream_s3_binary_file_contents,
+    _make_set_for_key,
+    parse_json_from_output,
+    GDALINFO_SUFFIX,
+)
+
+
+def poorly_log(message: str, level=logging.INFO):
+    # TODO: fix logging in combination with multiprocessing (#906)
+    log_entry = dict_no_none(
+        levelname=logging.getLevelName(level),
+        name=__name__,
+        message=message,
+        created=time.time(),
+        filename=Path(__file__).name,
+        user_id=os.environ.get("OPENEO_USER_ID"),
+        job_id=get_job_id(),
+    )
+
+    print(json.dumps(log_entry))
 
 
 """Output from GDAL.Info.
@@ -87,6 +116,33 @@ class AssetRasterMetadata:
         return result
 
 
+def exec_parallel_with_fallback(callback, argument_tuples):
+    def error_handler(e):
+        poorly_log(f"Error while calling '{callback.__name__}', may be incomplete. {str(e)}", level=logging.WARNING)
+
+    pool_size = min(10, max(1, int(len(argument_tuples) // 3)))
+
+    if pool_size == 1:
+        # no need for error-prone multiprocessing here (Typical for NetCDF output)
+        results = [callback(*arg_tuple) for arg_tuple in argument_tuples]
+    else:
+        pool = multiprocessing.Pool(pool_size)
+        jobs = [pool.apply_async(callback, arg_tuple, error_callback=error_handler) for arg_tuple in argument_tuples]
+        pool.close()
+        try:
+            results = [job.get(timeout=1800) for job in jobs]
+            pool.join()
+        except multiprocessing.TimeoutError:
+            pool.terminate()
+            pool.join()
+            poorly_log(
+                "Multiprocessing had timeout. This could be due to a deadlock. Retrying without threading.",
+                level=logging.WARNING,
+            )
+            results = [callback(*arg_tuple) for arg_tuple in argument_tuples]
+    return results
+
+
 def _extract_gdal_asset_raster_metadata(
     asset_metadata: Dict[str, Any],
     job_dir: Path,
@@ -106,18 +162,18 @@ def _extract_gdal_asset_raster_metadata(
     # TODO would be better if we could return just Dict[str, AssetRasterMetadata]
     #   or even CollectionRasterMetadata with CollectionRasterMetadata = Dict[str, AssetRasterMetadata]
 
-
-    def error_handler(e):
-        #logger.warning(f"Error while looking up result metadata, may be incomplete. {str(e)}")
-        pass
-
-    pool_size = min(10,max(1,int(len(asset_metadata)//3)))
-
-    pool = multiprocessing.Pool(pool_size)
-    job = [pool.apply_async(_get_metadata_callback, (asset_path, asset_md,job_dir,), error_callback=error_handler) for asset_path, asset_md in asset_metadata.items()]
-    pool.close()
-    pool.join()
-
+    # Ideally gdalinfo would be called on the moment the asset is created.
+    # Then it could profit from Sparks parallel processing.
+    argument_tuples = [
+        (
+            asset_md,
+            job_dir,
+            asset_key,
+        )
+        for asset_key, asset_md in asset_metadata.items()
+        if "roles" not in asset_md or "data" in asset_md.get("roles")
+    ]
+    results = exec_parallel_with_fallback(_get_metadata_callback, argument_tuples)
 
     # Add the projection extension metadata.
     # When the projection metadata is the same for all assets, then set it at
@@ -130,9 +186,8 @@ def _extract_gdal_asset_raster_metadata(
     # metadata at the item level.
     is_some_raster_md_missing = False
 
-    for j in job:
+    for result in results:
         try:
-            result = j.get()
             if result is not None:
                 raster_metadata[result[0]] = result[1]
             else:
@@ -145,23 +200,35 @@ def _extract_gdal_asset_raster_metadata(
     return raster_metadata, is_some_raster_md_missing
 
 
-def _get_metadata_callback(asset_path: str, asset_md: Dict[str, str], job_dir: Path):
+def _get_metadata_callback(asset_md: Dict[str, str], job_dir: Path, asset_key: str):
+    asset_href: str = str(asset_md["href"])
 
-    mime_type: str = asset_md.get("type", "")
-
-    # Skip assets that are clearly not images.
-    if asset_path.endswith(".json"):
+    # Skip assets that are clearly not images. TODO: Whitelist instead of blacklist
+    if any(asset_href.endswith(extension) for extension in [".json", ".csv", ".parquet"]):
         return None
 
     # The asset path should be relative to the job directory.
-    abs_asset_path: Path = get_abs_path_of_asset(asset_path, job_dir)
+    if asset_href.startswith("s3://"):
+        assert job_dir.name in asset_href
+        abs_asset_path: Path = get_abs_path_of_asset(
+            asset_href[asset_href.rfind(job_dir.name) + len(job_dir.name) + 1 :], job_dir
+        )
+    else:
+        abs_asset_path: Path = get_abs_path_of_asset(asset_href, job_dir)
 
-    asset_href: str = asset_md.get("href", "")
     if not abs_asset_path.exists() and asset_href.startswith("s3://"):
         try:
-            abs_asset_path.write_bytes(get_s3_binary_file_contents(asset_href))
+            abs_asset_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(abs_asset_path, "wb") as f:
+                for chunk in stream_s3_binary_file_contents(asset_href):
+                    f.write(chunk)
+            poorly_log(f"Downloaded {asset_href} to {abs_asset_path}", level=logging.DEBUG)
         except Exception as exc:
-            pass
+            message = (
+                "Could not download asset from object storage: "
+                + f"asset={abs_asset_path}, href={asset_href!r}, exception: {exc!r}"
+            )
+            poorly_log(message, level=logging.ERROR)
 
     asset_gdal_metadata: AssetRasterMetadata = read_gdal_raster_metadata(abs_asset_path)
     # If gdal could not extract the projection metadata from the file
@@ -169,7 +236,7 @@ def _get_metadata_callback(asset_path: str, asset_md: Dict[str, str], job_dir: P
     if asset_gdal_metadata.could_not_read_file:
         return None
     else:
-        return (asset_path, asset_gdal_metadata.to_dict())
+        return (asset_key, asset_gdal_metadata.to_dict())
         # TODO: Would make it simpler if we could store the AssetRasterMetadata
         #   and convert it to dict at the end.
         # raster_metadata[asset_path] = asset_gdal_metadata
@@ -370,7 +437,7 @@ def _get_projection_extension_metadata(gdal_info: GDALInfo) -> ProjectionMetadat
     return proj_metadata
 
 
-def get_abs_path_of_asset(asset_filename: str, job_dir: Union[str, Path]) -> Path:
+def get_abs_path_of_asset(asset_filename: Union[str, Path], job_dir: Union[str, Path]) -> Path:
     """Get a correct absolute path for the asset file.
 
     A simple `Path(mypath).resolve()` is not enough, because that is based on
@@ -393,9 +460,34 @@ def get_abs_path_of_asset(asset_filename: str, job_dir: Union[str, Path]) -> Pat
     """
     abs_asset_path = Path(asset_filename)
     if not abs_asset_path.is_absolute():
-        abs_asset_path = Path(job_dir).resolve() / asset_filename
+        abs_asset_path = Path(job_dir).absolute() / asset_filename
 
     return abs_asset_path
+
+
+def find_gdalinfo_differences(gdalinfo1: GDALInfo, gdalinfo2: GDALInfo) -> Optional[str]:
+    """
+    Only find relevant differences.
+    """
+    projection_extension_metadata1 = _get_projection_extension_metadata(gdalinfo1)
+    projection_extension_metadata2 = _get_projection_extension_metadata(gdalinfo2)
+    if projection_extension_metadata1 != projection_extension_metadata2:
+        return "Projection metadata differs"
+    gdalinfo1 = copy.deepcopy(gdalinfo1)
+    gdalinfo2 = copy.deepcopy(gdalinfo2)
+    # "wkt" already compared at this point, so we can remove it:
+    gdalinfo1.get("coordinateSystem", {})["wkt"] = None
+    gdalinfo2.get("coordinateSystem", {})["wkt"] = None
+    gdalinfo1.get("stac", {})["proj:wkt2"] = None
+    gdalinfo2.get("stac", {})["proj:wkt2"] = None
+
+    if gdalinfo1["stac"]["proj:projjson"]["name"] != gdalinfo2["stac"]["proj:projjson"]["name"]:
+        return "proj:projjson differs"
+    gdalinfo1["stac"]["proj:projjson"] = None
+    gdalinfo2["stac"]["proj:projjson"] = None
+    if gdalinfo1 != gdalinfo2:
+        return "gdalinfo differs"
+    return None
 
 
 def read_gdal_info(asset_uri: str) -> GDALInfo:
@@ -422,17 +514,84 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
     # See https://gdal.org/api/python_gotchas.html
     gdal.UseExceptions()
 
-    try:
-        data_gdalinfo = gdal.Info(
-            asset_uri,
-            options=gdal.InfoOptions(format="json", stats=True),
+    data_gdalinfo = {}
+    # TODO: Choose a version, and remove others
+    backend_config = get_backend_config()
+    if (
+        not backend_config.gdalinfo_from_file
+        and not backend_config.gdalinfo_python_call
+        and not backend_config.gdalinfo_use_subprocess
+        and not backend_config.gdalinfo_use_python_subprocess
+    ):
+        poorly_log(
+            "Neither gdalinfo_python_call nor gdalinfo_use_subprocess nor gdalinfo_use_python_subprocess is True. Avoiding gdalinfo."
         )
-    except Exception as exc:
-        # TODO: Specific exception type(s) would be better but Wasn't able to find what
-        #   specific exceptions gdal.Info might raise.
-        return {}
-    else:
-        return data_gdalinfo
+
+    if backend_config.gdalinfo_from_file:
+        if os.path.exists(asset_uri + GDALINFO_SUFFIX):
+            with open(asset_uri + GDALINFO_SUFFIX) as f:
+                data_gdalinfo = json.load(f)
+                # We can safely assume that this json is valid and return early.
+                return data_gdalinfo
+
+    if backend_config.gdalinfo_python_call:
+        start = time.time()
+        try:
+            data_gdalinfo = gdal.Info(asset_uri, options=gdal.InfoOptions(format="json", stats=True))
+            end = time.time()
+            # This can throw a segfault on empty netcdf bands:
+            poorly_log(f"gdal.Info() took {int((end - start) * 1000)}ms for {asset_uri}", level=logging.DEBUG)  # ~10ms
+        except Exception as exc:  # TODO: handle more specific exceptions
+            poorly_log(
+                f"gdalinfo Exception. Statistics won't be added to STAC metadata. {exc.__class__.__name__}: '{exc}'.",
+                level=logging.WARNING,
+            )
+
+    if backend_config.gdalinfo_use_subprocess or data_gdalinfo == {}:
+        start = time.time()
+        # Ignore errors like "band 2: Failed to compute statistics, no valid pixels found in sampling."
+        # use "--debug ON" to print more logging to cerr
+        cmd = ["gdalinfo", asset_uri, "-json", "-stats", "--config", "GDAL_IGNORE_ERRORS", "ALL"]
+        try:
+            out = subprocess.check_output(cmd, timeout=1800, text=True)
+            data_gdalinfo_from_subprocess = parse_json_from_output(out)
+            end = time.time()
+            poorly_log(f"gdalinfo took {int((end - start) * 1000)}ms for {asset_uri}", level=logging.DEBUG)  # ~30ms
+            if data_gdalinfo:
+                assert find_gdalinfo_differences(data_gdalinfo_from_subprocess, data_gdalinfo) is None
+            else:
+                data_gdalinfo = data_gdalinfo_from_subprocess
+        except Exception as exc:  # TODO: handle more specific exceptions
+            poorly_log(
+                f"gdalinfo Exception. Statistics won't be added to STAC metadata. {exc.__class__.__name__}: '{exc}'. Command: {subprocess.list2cmdline(cmd)}",
+                level=logging.WARNING,
+            )
+
+    if backend_config.gdalinfo_use_python_subprocess:
+        start = time.time()
+        cmd = [
+            sys.executable,
+            "-c",
+            f"""from osgeo import gdal; import json; gdal.UseExceptions(); print(json.dumps(gdal.Info({asset_uri!r}, options=gdal.InfoOptions(format="json", stats=True))))""",
+        ]
+        try:
+            out = subprocess.check_output(cmd, timeout=1800, text=True)
+            data_gdalinfo_from_subprocess = parse_json_from_output(out)
+            end = time.time()
+            poorly_log(
+                f"gdal.Info() subprocess took {int((end - start) * 1000)}ms for {asset_uri}", level=logging.DEBUG
+            )  # ~130ms
+            if data_gdalinfo:
+                assert find_gdalinfo_differences(data_gdalinfo_from_subprocess, data_gdalinfo) is None
+            else:
+                data_gdalinfo = data_gdalinfo_from_subprocess
+        except Exception as exc:  # TODO: handle more specific exceptions
+            poorly_log(
+                f"gdalinfo Exception. Statistics won't be added to STAC metadata. {exc.__class__.__name__}: '{exc}'. Command: {subprocess.list2cmdline(cmd)}",
+                level=logging.WARNING,
+            )
+
+    return data_gdalinfo
 
 
 def _get_raster_statistics(gdal_info: GDALInfo, band_name: Optional[str] = None) -> RasterStatistics:
@@ -456,7 +615,8 @@ def _get_raster_statistics(gdal_info: GDALInfo, band_name: Optional[str] = None)
         # just the empty string.
         gdal_band_stats = band_metadata.get("", {})
         band_name_out = (
-            band_name or gdal_band_stats.get("long_name") or gdal_band_stats.get("DESCRIPTION") or str(band_num)
+                band_name or gdal_band_stats.get("long_name") or band.get("description")
+                or gdal_band_stats.get("DESCRIPTION") or str(band_num)
         )
 
         def to_float_or_none(x: Optional[str]):

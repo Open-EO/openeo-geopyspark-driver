@@ -1,9 +1,8 @@
+from __future__ import annotations
 import contextlib
-import datetime as dt
 import json
 import logging
 import random
-import threading
 from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any, List, Dict, Callable, Union, Optional, Iterator, Tuple
@@ -16,13 +15,17 @@ from kazoo.handlers.threading import KazooTimeoutError
 from kazoo.protocol.states import ZnodeStat
 
 from openeo.util import rfc3339, dict_no_none, TimingLogger
-from openeo_driver.backend import BatchJobMetadata
+from openeo_driver.backend import BatchJobMetadata, JobListing
 from openeo_driver.errors import JobNotFoundException
 from openeo_driver.jobregistry import (
     JOB_STATUS,
     JobRegistryInterface,
     JobDict,
+    ejr_job_info_to_metadata,
 )
+
+# TODO: eliminate coupling of job_registry with openeogeotrellis.sentinel_hub?
+#       It's actually only used for OG_BATCH_RESULTS_BUCKET, which could be a config?
 from openeogeotrellis import sentinel_hub
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
@@ -96,8 +99,8 @@ class ZkJobRegistry:
             'api_version': api_version,
             "specification": specification_blob,
             "application_id": None,
-            "created": rfc3339.utcnow(),
-            "updated": rfc3339.utcnow(),
+            "created": rfc3339.now_utc(),
+            "updated": rfc3339.now_utc(),
             "title": title,
             "description": description,
         }
@@ -116,7 +119,7 @@ class ZkJobRegistry:
         """Updates a registered batch job with its status. Additionally, updates its "updated" property."""
         kwargs = {
             "status": status,
-            "updated": rfc3339.utcnow(),
+            "updated": rfc3339.now_utc(),
         }
 
         if started:
@@ -149,6 +152,9 @@ class ZkJobRegistry:
 
     def remove_dependencies(self, job_id: str, user_id: str):
         self.patch(job_id, user_id, dependencies=None, dependency_status=None)
+
+    def set_results_metadata_uri(self, job_id: str, user_id: str, results_metadata_uri: str) -> None:
+        self.patch(job_id, user_id, results_metadata_uri=results_metadata_uri)
 
     def patch(
         self, job_id: str, user_id: str, auto_mark_done: bool = True, **kwargs
@@ -581,47 +587,6 @@ def zk_job_info_to_metadata(job_info: dict) -> BatchJobMetadata:
     )
 
 
-def ejr_job_info_to_metadata(job_info: JobDict, full: bool = True) -> BatchJobMetadata:
-    """Convert job info dict (from JobRegistryInterface) to BatchJobMetadata"""
-    # TODO: eliminate zk_job_info_to_metadata/ejr_job_info_to_metadata duplication?
-
-    def map_safe(prop: str, f):
-        value = job_info.get(prop)
-        return f(value) if value else None
-
-    def get_results_metadata(result_metadata_prop: str):
-        return job_info.get("results_metadata", {}).get(result_metadata_prop)
-
-    def map_results_metadata_safe(result_metadata_prop: str, f):
-        value = get_results_metadata(result_metadata_prop)
-        return f(value) if value is not None else None
-
-    return BatchJobMetadata(
-        id=job_info["job_id"],
-        status=job_info["status"],
-        created=map_safe("created", rfc3339.parse_datetime),
-        process=job_info.get("process") if full else None,
-        job_options=job_info.get("job_options") if full else None,
-        title=job_info.get("title"),
-        description=job_info.get("description"),
-        updated=map_safe("updated", rfc3339.parse_datetime),
-        started=map_safe("started", rfc3339.parse_datetime),
-        finished=map_safe("finished", rfc3339.parse_datetime),
-        memory_time_megabyte=map_safe("memory_time_megabyte_seconds", lambda seconds: timedelta(seconds=seconds)),
-        cpu_time=map_safe("cpu_time_seconds", lambda seconds: timedelta(seconds=seconds)),
-        geometry=get_results_metadata("geometry"),
-        bbox=get_results_metadata("bbox"),
-        start_datetime=map_results_metadata_safe("start_datetime", rfc3339.parse_datetime),
-        end_datetime=map_results_metadata_safe("end_datetime", rfc3339.parse_datetime),
-        instruments=get_results_metadata("instruments"),
-        epsg=get_results_metadata("epsg"),
-        links=get_results_metadata("links"),
-        usage=job_info.get("usage"),
-        costs=job_info.get("costs"),
-        proj_shape=get_results_metadata("proj:shape"),
-        proj_bbox=get_results_metadata("proj:bbox"),
-    )
-
 
 class InMemoryJobRegistry(JobRegistryInterface):
     """
@@ -634,6 +599,7 @@ class InMemoryJobRegistry(JobRegistryInterface):
 
     def create_job(
         self,
+        *,
         process: dict,
         user_id: str,
         job_id: Optional[str] = None,
@@ -644,7 +610,7 @@ class InMemoryJobRegistry(JobRegistryInterface):
         job_options: Optional[dict] = None,
     ) -> JobDict:
         assert job_id not in self.db
-        created = rfc3339.utcnow()
+        created = rfc3339.now_utc()
         self.db[job_id] = {
             "job_id": job_id,
             "user_id": user_id,
@@ -661,7 +627,7 @@ class InMemoryJobRegistry(JobRegistryInterface):
         }
         return self.db[job_id]
 
-    def get_job(self, job_id: str, user_id: Optional[str] = None) -> JobDict:
+    def get_job(self, job_id: str, *, user_id: Optional[str] = None) -> JobDict:
         job = self.db.get(job_id)
 
         if not job or (user_id is not None and job['user_id'] != user_id):
@@ -669,7 +635,7 @@ class InMemoryJobRegistry(JobRegistryInterface):
 
         return job
 
-    def delete_job(self, job_id: str, user_id: Optional[str] = None) -> None:
+    def delete_job(self, job_id: str, *, user_id: Optional[str] = None) -> None:
         self.get_job(job_id=job_id, user_id=user_id)  # will raise on job not found
         del self.db[job_id]
 
@@ -681,66 +647,99 @@ class InMemoryJobRegistry(JobRegistryInterface):
     def set_status(
         self,
         job_id: str,
-        status: str,
         *,
+        user_id: Optional[str] = None,
+        status: str,
         updated: Optional[str] = None,
         started: Optional[str] = None,
         finished: Optional[str] = None,
-    ) -> JobDict:
+    ) -> None:
         self._update(
             job_id=job_id,
             status=status,
-            updated=rfc3339.datetime(updated) if updated else rfc3339.utcnow(),
+            updated=rfc3339.datetime(updated) if updated else rfc3339.now_utc(),
         )
         if started:
             self._update(job_id=job_id, started=rfc3339.datetime(started))
         if finished:
             self._update(job_id=job_id, finished=rfc3339.datetime(finished))
-        return self.db[job_id]
 
     def set_dependencies(
-        self, job_id: str, dependencies: List[Dict[str, str]]
-    ) -> JobDict:
-        return self._update(job_id=job_id, dependencies=dependencies)
+        self, job_id: str, *, user_id: Optional[str] = None, dependencies: List[Dict[str, str]]
+    ) -> None:
+        self._update(job_id=job_id, dependencies=dependencies)
 
-    def remove_dependencies(self, job_id: str) -> JobDict:
-        return self._update(job_id=job_id, dependencies=None, dependency_status=None)
+    def remove_dependencies(self, job_id: str, *, user_id: Optional[str] = None) -> None:
+        self._update(job_id=job_id, dependencies=None, dependency_status=None)
 
-    def set_dependency_status(self, job_id: str, dependency_status: str) -> JobDict:
-        return self._update(job_id=job_id, dependency_status=dependency_status)
+    def set_dependency_status(self, job_id: str, *, user_id: Optional[str] = None, dependency_status: str) -> None:
+        self._update(job_id=job_id, dependency_status=dependency_status)
 
-    def set_dependency_usage(self, job_id: str, dependency_usage: Decimal) -> JobDict:
-        return self._update(job_id, dependency_usage=str(dependency_usage))
+    def set_dependency_usage(self, job_id: str, *, user_id: Optional[str] = None, dependency_usage: Decimal) -> None:
+        self._update(job_id, dependency_usage=str(dependency_usage))
 
-    def set_proxy_user(self, job_id: str, proxy_user: str) -> JobDict:
-        return self._update(job_id=job_id, proxy_user=proxy_user)
+    def set_proxy_user(self, job_id: str, *, user_id: Optional[str] = None, proxy_user: str) -> None:
+        self._update(job_id=job_id, proxy_user=proxy_user)
 
-    def set_application_id(self, job_id: str, application_id: str) -> JobDict:
-        return self._update(job_id=job_id, application_id=application_id)
+    def set_application_id(self, job_id: str, *, user_id: Optional[str] = None, application_id: str) -> None:
+        self._update(job_id=job_id, application_id=application_id)
 
-    def set_usage(self, job_id: str, costs: float, usage: dict) -> JobDict:
-        return self._update(job_id=job_id, costs=costs, usage=usage)
+    def set_results_metadata(
+        self,
+        job_id: str,
+        *,
+        user_id: Optional[str] = None,
+        costs: Optional[float],
+        usage: dict,
+        results_metadata: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        self._update(job_id=job_id, costs=costs, usage=usage, results_metadata=results_metadata)
 
-    def set_results_metadata(self, job_id: str, costs: Optional[float], usage: dict,
-                             results_metadata: Dict[str, Any]) -> JobDict:
-        return self._update(job_id=job_id, costs=costs, usage=usage, results_metadata=results_metadata)
+    def set_results_metadata_uri(
+        self, job_id: str, *, user_id: Optional[str] = None, results_metadata_uri: str
+    ) -> None:
+        self._update(job_id=job_id, results_metadata_uri=results_metadata_uri)
 
     def list_user_jobs(
-        self, user_id: str, fields: Optional[List[str]] = None
-    ) -> List[JobDict]:
-        return [job for job in self.db.values() if job["user_id"] == user_id]
+        self,
+        user_id: str,
+        *,
+        fields: Optional[List[str]] = None,
+        limit: Optional[int] = None,
+        request_parameters: Optional[dict] = None,
+        # TODO #959 settle on returning just `JobListing` and eliminate other options/code paths.
+    ) -> Union[JobListing, List[JobDict]]:
+        jobs = [job for job in self.db.values() if job["user_id"] == user_id]
+        if limit:
+            pagination_param = "page"
+            page_number = int((request_parameters or {}).get(pagination_param, 0))
+            assert page_number >= 0 and limit >= 1
+            if len(jobs) > (page_number + 1) * limit:
+                next_parameters = {"limit": limit, pagination_param: page_number + 1}
+            else:
+                next_parameters = None
+            jobs = jobs[page_number * limit : (page_number + 1) * limit]
+            jobs = JobListing(
+                jobs=[ejr_job_info_to_metadata(j, full=False) for j in jobs],
+                next_parameters=next_parameters,
+            )
+        return jobs
 
     def list_active_jobs(
-        self, max_age: Optional[int] = None, fields: Optional[List[str]] = None
+        self,
+        *,
+        fields: Optional[List[str]] = None,
+        max_age: Optional[int] = None,
+        max_updated_ago: Optional[int] = None,
+        require_application_id: bool = False,
     ) -> List[JobDict]:
         active = [JOB_STATUS.CREATED, JOB_STATUS.QUEUED, JOB_STATUS.RUNNING]
-        # TODO: implement max_age support
-        return [job for job in self.db.values() if job["status"] in active]
-
-    def list_trackable_jobs(self, fields: Optional[List[str]] = None) -> List[JobDict]:
-        return [job for job in self.db.values()
-                if job["status"] in [JOB_STATUS.CREATED, JOB_STATUS.QUEUED, JOB_STATUS.RUNNING]
-                and job.get("application_id")]
+        # TODO: implement support for max_age, max_updated_ago, fields
+        return [
+            job
+            for job in self.db.values()
+            if job["status"] in active and (not require_application_id or job.get("application_id") is not None)
+        ]
 
 
 class DoubleJobRegistryException(Exception):
@@ -768,7 +767,7 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
         self.zk_job_registry: Optional[ZkJobRegistry] = None
         self.elastic_job_registry = elastic_job_registry
         # Synchronisation lock to make sure that only one thread at a time can use this as a context manager.
-        self._lock = threading.RLock()
+        # self._lock = threading.RLock()
 
     def __repr__(self):
         return (
@@ -776,7 +775,7 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
         )
 
     def __enter__(self):
-        self._lock.acquire()
+        # self._lock.acquire()
         self.zk_job_registry = self._zk_job_registry_factory() if self._zk_job_registry_factory else None
         self._log.debug(f"Context enter {self!r}")
         if self.zk_job_registry:
@@ -794,18 +793,23 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
                 self.zk_job_registry.__exit__(exc_type, exc_val, exc_tb)
         finally:
             self.zk_job_registry = None
-            self._lock.release()
+            # self._lock.release()
 
     def create_job(
         self,
-        job_id: str,
-        user_id: str,
+        *,
         process: dict,
-        api_version: Optional[str] = None,
-        job_options: Optional[dict] = None,
+        user_id: str,
+        job_id: Optional[str] = None,
         title: Optional[str] = None,
         description: Optional[str] = None,
-    ) -> dict:
+        parent_id: Optional[str] = None,
+        api_version: Optional[str] = None,
+        job_options: Optional[dict] = None,
+    ) -> JobDict:
+        if not job_id:
+            job_id = JobRegistryInterface.generate_job_id()
+
         zk_job_info = None
         ejr_job_info = None
         if self.zk_job_registry:
@@ -829,15 +833,17 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
                 description=description,
                 api_version=api_version,
                 job_options=job_options,
+                parent_id=parent_id,
             )
         if zk_job_info is None and ejr_job_info is None:
             raise DoubleJobRegistryException(f"None of ZK/EJR registered {job_id=}")
         return zk_job_info or ejr_job_info
 
-    def get_job(self, job_id: str, user_id: str) -> dict:
+    def get_job(self, job_id: str, *, user_id: Optional[str] = None) -> JobDict:
         # TODO: eliminate get_job/get_job_metadata duplication?
         zk_job = ejr_job = None
         if self.zk_job_registry:
+            assert user_id, "user_id is required in ZkJobRegistry"
             with contextlib.suppress(JobNotFoundException, ZkStrippedSpecification):
                 zk_job = self.zk_job_registry.get_job(
                     job_id=job_id, user_id=user_id, parse_specification=True, omit_raw_specification=True
@@ -878,144 +884,227 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
         elif zk_job_info is None and ejr_job_info is None:
             raise JobNotFoundException(job_id=job_id)
 
-    def set_status(self, job_id: str, user_id: str, status: str,
-                   started: Optional[str] = None, finished: Optional[str] = None,
-                   ) -> None:
+    def set_status(
+        self,
+        job_id: str,
+        *,
+        user_id: Optional[str] = None,
+        status: str,
+        updated: Optional[str] = None,
+        started: Optional[str] = None,
+        finished: Optional[str] = None,
+    ) -> None:
         if self.zk_job_registry:
+            assert user_id, "user_id is required in ZkJobRegistry"
             self.zk_job_registry.set_status(job_id=job_id, user_id=user_id, status=status, started=started,
                                             finished=finished)
         if self.elastic_job_registry:
-            self.elastic_job_registry.set_status(job_id=job_id, status=status, started=started, finished=finished)
+            self.elastic_job_registry.set_status(
+                job_id=job_id, user_id=user_id, status=status, updated=updated, started=started, finished=finished
+            )
 
-    def delete_job(self, job_id: str, user_id: str) -> None:
+    def delete_job(self, job_id: str, *, user_id: Optional[str] = None) -> None:
         if self.zk_job_registry:
+            assert user_id, "user_id is required in ZkJobRegistry"
             self.zk_job_registry.delete(job_id=job_id, user_id=user_id)
         if self.elastic_job_registry:
             self.elastic_job_registry.delete_job(job_id=job_id, user_id=user_id)
 
-    # Legacy alias
-    delete = delete_job
-
     def set_dependencies(
-        self, job_id: str, user_id: str, dependencies: List[Dict[str, str]]
-    ):
-        if self.zk_job_registry:
-            self.zk_job_registry.set_dependencies(job_id=job_id, user_id=user_id, dependencies=dependencies)
-        if self.elastic_job_registry:
-            self.elastic_job_registry.set_dependencies(
-                job_id=job_id, dependencies=dependencies
-            )
-
-    def remove_dependencies(self, job_id: str, user_id: str):
-        if self.zk_job_registry:
-            self.zk_job_registry.remove_dependencies(job_id=job_id, user_id=user_id)
-        if self.elastic_job_registry:
-            self.elastic_job_registry.remove_dependencies(job_id=job_id)
-
-    def set_dependency_status(
-        self, job_id: str, user_id: str, dependency_status: str
+        self, job_id: str, *, user_id: Optional[str] = None, dependencies: List[Dict[str, str]]
     ) -> None:
         if self.zk_job_registry:
+            assert user_id, "user_id is required in ZkJobRegistry"
+            self.zk_job_registry.set_dependencies(job_id=job_id, user_id=user_id, dependencies=dependencies)
+        if self.elastic_job_registry:
+            self.elastic_job_registry.set_dependencies(job_id=job_id, user_id=user_id, dependencies=dependencies)
+
+    def remove_dependencies(self, job_id: str, *, user_id: Optional[str] = None) -> None:
+        if self.zk_job_registry:
+            assert user_id, "user_id is required in ZkJobRegistry"
+            self.zk_job_registry.remove_dependencies(job_id=job_id, user_id=user_id)
+        if self.elastic_job_registry:
+            self.elastic_job_registry.remove_dependencies(job_id=job_id, user_id=user_id)
+
+    def set_dependency_status(self, job_id: str, *, user_id: Optional[str] = None, dependency_status: str) -> None:
+        if self.zk_job_registry:
+            assert user_id, "user_id is required in ZkJobRegistry"
             self.zk_job_registry.set_dependency_status(
                 job_id=job_id, user_id=user_id, dependency_status=dependency_status
             )
         if self.elastic_job_registry:
             self.elastic_job_registry.set_dependency_status(
-                job_id=job_id, dependency_status=dependency_status
+                job_id=job_id, user_id=user_id, dependency_status=dependency_status
             )
 
-    def set_dependency_usage(
-        self, job_id: str, user_id: str, dependency_usage: Decimal
-    ):
+    def set_dependency_usage(self, job_id: str, *, user_id: Optional[str] = None, dependency_usage: Decimal) -> None:
         if self.zk_job_registry:
+            assert user_id, "user_id is required in ZkJobRegistry"
             self.zk_job_registry.set_dependency_usage(job_id=job_id, user_id=user_id, processing_units=dependency_usage)
         if self.elastic_job_registry:
             self.elastic_job_registry.set_dependency_usage(
-                job_id=job_id, dependency_usage=dependency_usage
+                job_id=job_id, user_id=user_id, dependency_usage=dependency_usage
             )
 
-    def set_proxy_user(self, job_id: str, user_id: str, proxy_user: str):
+    def set_proxy_user(self, job_id: str, *, user_id: Optional[str] = None, proxy_user: str) -> None:
         # TODO: add dedicated method
         if self.zk_job_registry:
+            assert user_id, "user_id is required in ZkJobRegistry"
             self.zk_job_registry.patch(job_id=job_id, user_id=user_id, proxy_user=proxy_user)
         if self.elastic_job_registry:
-            self.elastic_job_registry.set_proxy_user(
-                job_id=job_id, proxy_user=proxy_user
-            )
+            self.elastic_job_registry.set_proxy_user(job_id=job_id, user_id=user_id, proxy_user=proxy_user)
 
-    def set_application_id(
-        self, job_id: str, user_id: str, application_id: str
-    ) -> None:
+    def set_application_id(self, job_id: str, *, user_id: Optional[str] = None, application_id: str) -> None:
         if self.zk_job_registry:
+            assert user_id, "user_id is required in ZkJobRegistry"
             self.zk_job_registry.set_application_id(job_id=job_id, user_id=user_id, application_id=application_id)
         if self.elastic_job_registry:
-            self.elastic_job_registry.set_application_id(
-                job_id=job_id, application_id=application_id
+            self.elastic_job_registry.set_application_id(job_id=job_id, user_id=user_id, application_id=application_id)
+
+    def set_results_metadata_uri(self, job_id: str, *, user_id: Optional[str] = None, results_metadata_uri: str):
+        if self.zk_job_registry:
+            assert user_id, "user_id is required in ZkJobRegistry"
+            self.zk_job_registry.set_results_metadata_uri(
+                job_id=job_id, user_id=user_id, results_metadata_uri=results_metadata_uri
+            )
+        if self.elastic_job_registry:
+            self.elastic_job_registry.set_results_metadata_uri(
+                job_id=job_id, user_id=user_id, results_metadata_uri=results_metadata_uri
             )
 
     def mark_ongoing(self, job_id: str, user_id: str) -> None:
+        # TODO #863/#1123 can this method be eliminated (e.g. integrate it directly in ZkJobRegistry.set_status)?
         if self.zk_job_registry:
             self.zk_job_registry.mark_ongoing(job_id=job_id, user_id=user_id)
 
     def get_user_jobs(
-        self, user_id: str, fields: Optional[List[str]] = None
-    ) -> List[BatchJobMetadata]:
+        self,
+        user_id: str,
+        *,
+        fields: Optional[List[str]] = None,
+        limit: Optional[int] = None,
+        request_parameters: Optional[dict] = None,
+        # TODO  # 959 settle on returning just `JobListing` and eliminate other options/code paths.
+    ) -> Union[List[BatchJobMetadata], JobListing]:
         zk_jobs = None
         ejr_jobs = None
         if self.zk_job_registry:
             zk_jobs = [zk_job_info_to_metadata(j) for j in self.zk_job_registry.get_user_jobs(user_id)]
         if self.elastic_job_registry:
-            ejr_jobs = [
-                ejr_job_info_to_metadata(j, full=False)
-                for j in self.elastic_job_registry.list_user_jobs(user_id=user_id, fields=fields)
-            ]
+            ejr_jobs = self.elastic_job_registry.list_user_jobs(
+                user_id=user_id,
+                fields=fields,
+                limit=limit,
+                request_parameters=request_parameters,
+            )
+            # TODO #959 Settle on just handling JobListing and drop other legacy code path
+            if isinstance(ejr_jobs, list):
+                ejr_jobs = [ejr_job_info_to_metadata(j, full=False) for j in ejr_jobs]
 
         # TODO: more insightful comparison? (e.g. only consider recent jobs)
         self._log.log(
             level=logging.WARNING if (zk_jobs is None or ejr_jobs is None) else logging.INFO,
-            msg=f"DoubleJobRegistry.get_user_jobs({user_id=}) zk_jobs={zk_jobs and len(zk_jobs)} ejr_jobs={ejr_jobs and len(ejr_jobs)}",
+            msg=f"DoubleJobRegistry.get_user_jobs({user_id=}) zk_jobs={zk_jobs and len(zk_jobs)} ejr_jobs={len(ejr_jobs) if ejr_jobs is not None else None}",
         )
         # TODO #236/#498: error if both sources failed?
 
         return zk_jobs or ejr_jobs or []
 
-    def get_all_jobs_before(
+    def list_active_jobs(
         self,
-        upper: dt.datetime,
         *,
-        user_ids: Optional[List[str]] = None,
-        include_ongoing: bool = True,
-        include_done: bool = True,
-        user_limit: Optional[int] = 1000,
-    ) -> List[dict]:
-        if not self.zk_job_registry:
-            raise NotImplementedError("only necessary for ZK cleaner script")
-
-        jobs = self.zk_job_registry.get_all_jobs_before(
-            upper=upper,
-            user_ids=user_ids,
-            include_ongoing=include_ongoing,
-            include_done=include_done,
-            per_user_limit=user_limit,
-        )
-        return jobs
-
-    def get_active_jobs(self) -> Iterator[Dict]:
+        fields: Optional[List[str]] = None,
+        max_age: Optional[int] = None,
+        max_updated_ago: Optional[int] = None,
+        require_application_id: bool = False,
+    ) -> List[JobDict]:
         if self.zk_job_registry:
             # Note: `parse_specification` is enabled here because the jobtracker needs job_options (e.g. to determine target ETL)
-            yield from self.zk_job_registry.get_running_jobs(parse_specification=True)
+            return list(self.zk_job_registry.get_running_jobs(parse_specification=True))
         elif self.elastic_job_registry:
-            yield from self.elastic_job_registry.list_trackable_jobs(fields=[
-                "job_id", "user_id", "application_id", "status", "created", "title", "job_options", "dependencies",
-                "dependency_usage",
-            ])
+            return self.elastic_job_registry.list_active_jobs(
+                fields=fields,
+                max_age=max_age,
+                max_updated_ago=max_updated_ago,
+                require_application_id=require_application_id,
+            )
 
-    def set_results_metadata(self, job_id, user_id, costs: Optional[float], usage: dict,
-                             results_metadata: Dict[str, Any]):
+    def set_results_metadata(
+        self,
+        job_id: str,
+        *,
+        user_id: Optional[str] = None,
+        costs: Optional[float],
+        usage: dict,
+        results_metadata: Optional[Dict[str, Any]] = None,
+    ) -> None:
         if self.zk_job_registry:
+            assert user_id, "user_id is required in ZkJobRegistry"
             self.zk_job_registry.patch(job_id=job_id, user_id=user_id,
                                        **dict(results_metadata, costs=costs, usage=usage))
 
         if self.elastic_job_registry:
-            self.elastic_job_registry.set_results_metadata(job_id=job_id, costs=costs, usage=usage,
-                                                           results_metadata=results_metadata)
+            self.elastic_job_registry.set_results_metadata(
+                job_id=job_id, user_id=user_id, costs=costs, usage=usage, results_metadata=results_metadata
+            )
+
+
+class EagerlyK8sTrackingInMemoryJobRegistry(InMemoryJobRegistry):
+    """
+    Calls k8s API for application status eagerly, avoiding the need for a separate job_tracker process.
+    """
+
+    STATUS_ONGOING = {JOB_STATUS.CREATED, JOB_STATUS.QUEUED, JOB_STATUS.RUNNING}
+
+    def __init__(self, kubernetes_api):
+        super().__init__()
+        self._kubernetes_api = kubernetes_api
+
+    def get_job(self, job_id: str, *, user_id: Optional[str] = None) -> JobDict:
+        import kubernetes.client.exceptions
+
+        job = super().get_job(job_id=job_id, user_id=user_id)
+
+        if job["status"] not in self.STATUS_ONGOING:
+            _log.debug(f"Job is done with status {job['status']}, skipping k8s status check")
+            return job
+
+        application_id = job.get("application_id")
+        if application_id:
+            try:
+                new_status = self._get_openeo_status(application_id)
+                _log.debug(f"App {application_id} status: {new_status}")
+
+                self.set_status(job_id, user_id=user_id, status=new_status)
+                job["status"] = new_status
+            except kubernetes.client.exceptions.ApiException as e:
+                if e.status == 404:  # app is gone
+                    if job["status"] in self.STATUS_ONGOING:
+                        # mark as done to avoid endless polling
+                        _log.warning(f"App {application_id} not found, marking job as done", exc_info=True)
+                        new_status = JOB_STATUS.ERROR
+                        self.set_status(job_id, user_id=user_id, status=new_status)
+                        job["status"] = new_status
+                    else:
+                        # retain old (done) status
+                        _log.warning(f"App {application_id} not found, retaining status {job['status']}", exc_info=True)
+                else:
+                    raise
+
+        return job
+
+    def _get_openeo_status(self, application_id: str) -> str:
+        # TODO: reduce code duplication with openeogeotrellis.job_tracker_v2.K8sStatusGetter?
+        from openeogeotrellis.integrations.kubernetes import K8S_SPARK_APP_STATE, k8s_state_to_openeo_job_status
+
+        metadata = self._kubernetes_api.get_namespaced_custom_object(
+            group="sparkoperator.k8s.io",
+            version="v1beta2",
+            # TODO: this namespace should come from job metadata, not config
+            namespace=ConfigParams().pod_namespace,
+            plural="sparkapplications",
+            name=application_id,
+        )
+
+        app_state = metadata["status"]["applicationState"]["state"] if "status" in metadata else K8S_SPARK_APP_STATE.NEW
+        return k8s_state_to_openeo_job_status(app_state)

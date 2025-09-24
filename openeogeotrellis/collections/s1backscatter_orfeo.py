@@ -13,7 +13,7 @@ import types
 import zipfile
 from datetime import datetime
 from multiprocessing import Process
-from typing import Dict, Tuple, Union, List
+from typing import Dict, Tuple, Union, List, Optional
 
 import geopyspark
 import numpy
@@ -24,18 +24,23 @@ import shapely.geometry
 import shapely.geometry.polygon
 import shapely.ops
 from py4j.java_gateway import JVMView, JavaObject
+from pyspark import TaskContext
 
 from openeo.util import TimingLogger
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.errors import OpenEOApiException, FeatureUnsupportedException
 from openeo_driver.utils import smart_bool
+
+from openeogeotrellis.collections import convert_scala_metadata
 from openeogeotrellis.config import get_backend_config
-from openeogeotrellis.utils import lonlat_to_mercator_tile_indices, nullcontext, get_jvm, set_max_memory, \
+from openeogeotrellis.util.runtime import in_batch_job_context
+from openeogeotrellis.utils import lonlat_to_mercator_tile_indices, nullcontext, get_jvm, \
     ensure_executor_logging
 
 logger = logging.getLogger(__name__)
 _SOFT_ERROR_TRACKER_ID = "orfeo_backscatter_soft_errors"
 _EXECUTION_TRACKER_ID = "orfeo_backscatter_execution_counter"
+_INPUTPIXELS_TRACKER_ID = "orfeo_backscatter_input_pixels"
 
 
 def _import_orfeo_toolbox(otb_home_env_var="OTB_HOME") -> types.ModuleType:
@@ -92,6 +97,16 @@ def get_total_extent(features):
     layout_extent = {"xmin": xmin_min, "xmax": xmax_max, "ymin": ymin_min, "ymax": ymax_max}
     return layout_extent
 
+
+def get_area_in_square_kilometers(projected_polygons: any) -> str:
+    try:
+        area_to_display = projected_polygons.areaInSquareMeters() / (1000.0 * 1000.0)
+    except Exception as e:
+        logger.error("sar_backscatter: Error while calculating areaInSquareMeters: " + str(e))
+        area_to_display = "unknown "
+    return f"{area_to_display}km²"
+
+
 class S1BackscatterOrfeo:
     """
     Collection loader that uses Orfeo pipeline to calculate Sentinel-1 Backscatter on the fly.
@@ -112,11 +127,11 @@ class S1BackscatterOrfeo:
     def _load_feature_rdd(
             self, file_rdd_factory: JavaObject, projected_polygons, from_date: str, to_date: str, zoom: int,
             tile_size: int, datacubeParams=None
-    ) -> Tuple[pyspark.RDD, JavaObject]:
+    ) -> Tuple[pyspark.RDD, JavaObject, JavaObject]:
         logger.info("Loading feature JSON RDD from {f}".format(f=file_rdd_factory))
-        json_rdd = file_rdd_factory.loadSpatialFeatureJsonRDD(projected_polygons, from_date, to_date, zoom, tile_size,datacubeParams)
-        jrdd = json_rdd._1()
-        layer_metadata_sc = json_rdd._2()
+        json_rdd_partitioner = file_rdd_factory.loadSpatialFeatureJsonRDD(projected_polygons, from_date, to_date, zoom, tile_size,datacubeParams)
+        jrdd = json_rdd_partitioner._1()
+        layer_metadata_sc = json_rdd_partitioner._2()
 
         # Decode/unwrap the JavaRDD of JSON blobs we built in Scala,
         # additionally pickle-serialized by the PySpark adaption layer.
@@ -124,7 +139,7 @@ class S1BackscatterOrfeo:
         serializer = pyspark.serializers.PickleSerializer()
         pyrdd = geopyspark.create_python_rdd(j2p_rdd, serializer=serializer)
         pyrdd = pyrdd.map(json.loads)
-        return pyrdd, layer_metadata_sc
+        return pyrdd, layer_metadata_sc,json_rdd_partitioner._3()
 
     def _build_feature_rdd(
             self,
@@ -155,50 +170,14 @@ class S1BackscatterOrfeo:
         file_rdd_factory = self.jvm.org.openeo.geotrellis.file.FileRDDFactory(
             opensearch_client, collection_id, attributeValues, correlation_id,self.jvm.geotrellis.raster.CellSize(resolution[0], resolution[1])
         )
-        feature_pyrdd, layer_metadata_sc = self._load_feature_rdd(
+        feature_pyrdd, layer_metadata_sc,partitioner = self._load_feature_rdd(
             file_rdd_factory, projected_polygons=projected_polygons, from_date=from_date, to_date=to_date,
-            zoom=zoom, tile_size=tile_size,datacubeParams=datacubeParams
+            zoom=zoom, tile_size=tile_size, datacubeParams=datacubeParams
         )
-        layer_metadata_py = self._convert_scala_metadata(layer_metadata_sc)
-        return feature_pyrdd, layer_metadata_py
-
-    def _convert_scala_metadata(self, metadata_sc: JavaObject) -> geopyspark.Metadata:
-        """
-        Convert geotrellis TileLayerMetadata (Java) object to geopyspark Metadata object
-        """
-        logger.info("Convert {m!r} to geopyspark.Metadata".format(m=metadata_sc))
-        crs_py = str(metadata_sc.crs())
-        cell_type_py = str(metadata_sc.cellType())
-
-        def convert_key(key_sc: JavaObject) -> geopyspark.SpaceTimeKey:
-            return geopyspark.SpaceTimeKey(
-                col=key_sc.col(), row=key_sc.row(),
-                instant=_instant_ms_to_day(key_sc.instant())
-            )
-
-        bounds_sc = metadata_sc.bounds()
-        bounds_py = geopyspark.Bounds(minKey=convert_key(bounds_sc.minKey()), maxKey=convert_key(bounds_sc.maxKey()))
-
-        def convert_extent(extent_sc: JavaObject) -> geopyspark.Extent:
-            return geopyspark.Extent(extent_sc.xmin(), extent_sc.ymin(), extent_sc.xmax(), extent_sc.ymax())
-
-        extent_py = convert_extent(metadata_sc.extent())
-
-        layout_definition_sc = metadata_sc.layout()
-        tile_layout_sc = layout_definition_sc.tileLayout()
-        tile_layout_py = geopyspark.TileLayout(
-            layoutCols=tile_layout_sc.layoutCols(), layoutRows=tile_layout_sc.layoutRows(),
-            tileCols=tile_layout_sc.tileCols(), tileRows=tile_layout_sc.tileRows()
+        layer_metadata_py = convert_scala_metadata(
+            layer_metadata_sc, epoch_ms_to_datetime=_instant_ms_to_day, logger=logger
         )
-        layout_definition_py = geopyspark.LayoutDefinition(
-            extent=convert_extent(layout_definition_sc.extent()),
-            tileLayout=tile_layout_py
-        )
-
-        return geopyspark.Metadata(
-            bounds=bounds_py, crs=crs_py, cell_type=cell_type_py,
-            extent=extent_py, layout_definition=layout_definition_py
-        )
+        return feature_pyrdd, layer_metadata_py,partitioner
 
     # Mapping of `sar_backscatter` coefficient value to `SARCalibration` Lookup table value
     _coefficient_mapping = {
@@ -238,7 +217,7 @@ class S1BackscatterOrfeo:
             # We expect the desired geotiff files under `creo_path` at location like
             #       measurements/s1a-iw-grd-vh-20200606t063717-20200606t063746-032893-03cf5f-002.tiff
             # TODO Get tiff path from manifest instead of assuming this `measurement` file structure?
-            band_regex = re.compile(r"^s1[ab]-iw-grd-([hv]{2})-", flags=re.IGNORECASE)
+            band_regex = re.compile(r"^s1[abcdefgh]-iw-grd-([hv]{2})-", flags=re.IGNORECASE)
             band_tiffs = {}
             for tiff in creo_path.glob("measurement/*.tiff"):
                 match = band_regex.match(tiff.name)
@@ -259,6 +238,7 @@ class S1BackscatterOrfeo:
         elevation_model = sar_backscatter_arguments.elevation_model
         if elevation_model:
             elevation_model = elevation_model.lower()
+
         if elevation_model in [None, "srtmgl1"]:
             dem_dir_context = S1BackscatterOrfeo._creodias_dem_subset_srtm_hgt_unzip(
                 bbox=(extent["xmin"], extent["ymin"], extent["xmax"], extent["ymax"]), bbox_epsg=epsg,
@@ -313,9 +293,10 @@ class S1BackscatterOrfeo:
     ):
         logger.info(f"{log_prefix} Input tiff {input_tiff}")
         logger.info(f"{log_prefix} extent {extent} EPSG {extent_epsg})")
-        max_total_memory_in_bytes = os.environ.get('PYTHON_MAX_MEMORY')
-        if max_total_memory_in_bytes:
-            set_max_memory(int(max_total_memory_in_bytes))
+
+        if trackers is not None:
+            trackers[0].add(1)
+            trackers[2].add(extent_width_px * extent_height_px)
 
         tempdir = tempfile.mkdtemp()
         out_path = os.path.join(tempdir, input_tiff.name)
@@ -353,6 +334,11 @@ class S1BackscatterOrfeo:
                     msg = f"Error while running Orfeo toolbox. {input_tiff}, {e}   {extent} EPSG {extent_epsg} {sar_calibration_lut}"
                     logger.error(msg,exc_info=True)
 
+            # TODO: Set these env vars at executor-level (for all clusters).
+            gdal_http_max_retry: Optional[str] = os.environ.get("GDAL_HTTP_MAX_RETRY")
+            gdal_http_retry_delay: Optional[str] = os.environ.get("GDAL_HTTP_RETRY_DELAY")
+            os.environ["GDAL_HTTP_MAX_RETRY"] = "10"
+            os.environ["GDAL_HTTP_RETRY_DELAY"] = "60"
             p = Process(target=run, args=())
             p.start()
             p.join()
@@ -360,13 +346,24 @@ class S1BackscatterOrfeo:
                 error_counter.value += 1
                 msg = f"Segmentation fault while running Orfeo toolbox. {input_tiff} {extent} EPSG {extent_epsg} {sar_calibration_lut}"
                 logger.error(msg)
+            del os.environ["GDAL_HTTP_MAX_RETRY"]
+            del os.environ["GDAL_HTTP_RETRY_DELAY"]
+            if gdal_http_max_retry is not None:
+                os.environ["GDAL_HTTP_MAX_RETRY"] = gdal_http_max_retry
+            if gdal_http_retry_delay is not None:
+                os.environ["GDAL_HTTP_RETRY_DELAY"] = gdal_http_retry_delay
             # Check soft error ratio.
-            if trackers is not None:
+            if trackers is not None and error_counter.value > 0:
                 if max_soft_errors_ratio == 0.0:
-                    if error_counter.value > 0:
-                        msg = f"sar_backscatter: Orfeo error can be found in the logs. Errors can happen due to corrupted input products. Setting the 'soft-errors' job option allows you to skip these products and continue processing."
-                        raise RuntimeError(msg)
+                    msg = f"sar_backscatter: Orfeo error can be found in the logs. Errors can happen due to corrupted input products. Setting the 'soft-errors' job option allows you to skip these products and continue processing."
+                    raise RuntimeError(msg)
                 else:
+                    context = TaskContext.get()
+                    if context is not None and context.attemptNumber() == 0:
+                        raise RuntimeError(f"sar_backscatter: First attempt for {input_tiff} failed with an error, will retry.")
+                    else:
+                        trackers[1].add(1)
+
                     # TODO: #302 Implement singleton for batch jobs, to check soft errors after collect.
                     logger.warning(f"ignoring soft errors, max_soft_errors_ratio={max_soft_errors_ratio}")
 
@@ -410,6 +407,8 @@ class S1BackscatterOrfeo:
         if dem_dir:
             ortho_rect.SetParameterString("elev.dem", dem_dir)
         if elev_geoid:
+            if not pathlib.Path(elev_geoid).exists():
+                raise OpenEOApiException(f"sar_backscatter: Geoid file {elev_geoid} does not exist on the cluster, a missing geoid causes shifted output data.")
             ortho_rect.SetParameterString("elev.geoid", elev_geoid)
         if elev_default is not None:
             ortho_rect.SetParameterFloat("elev.default", float(elev_default))
@@ -571,10 +570,14 @@ class S1BackscatterOrfeo:
         # Tile size to use in the TiledRasterLayer.
         tile_size = sar_backscatter_arguments.options.get("tile_size", self._DEFAULT_TILE_SIZE)
 
+        geopyspark.get_spark_context().setLocalProperty(
+            "callSite.short",
+            f"load_collection: SENTINEL1_GRD {from_date}-{to_date} Area: {get_area_in_square_kilometers(projected_polygons)}",
+        )
 
         debug_mode = smart_bool(sar_backscatter_arguments.options.get("debug"))
 
-        feature_pyrdd, layer_metadata_py = self._build_feature_rdd(
+        feature_pyrdd, layer_metadata_py,partitioner = self._build_feature_rdd(
             collection_id=collection_id, projected_polygons=projected_polygons,
             from_date=from_date, to_date=to_date, extra_properties=extra_properties,
             tile_size=tile_size, zoom=zoom, correlation_id=
@@ -609,6 +612,10 @@ class S1BackscatterOrfeo:
                 return hashPartitioner(tuple)
         grouped = per_product.partitionBy(per_product.count(),partitionByPath)
 
+        geopyspark.get_spark_context().setLocalProperty(
+            "callSite.short",
+            f"sar_backscatter: {sar_backscatter_arguments.coefficient} {from_date}-{to_date} Area: {get_area_in_square_kilometers(projected_polygons)}",
+        )
         #local = grouped.collect()
 
         #print(local)
@@ -778,12 +785,15 @@ class S1BackscatterOrfeo:
 
     @staticmethod
     def _get_trackers(spark_context):
-        if "OPENEO_BATCH_JOB_ID" in os.environ:
+        if in_batch_job_context():
             # Trackers are only used for batch jobs, and they are global to that job.
             if S1BackscatterOrfeo._trackers is None:
+                from openeogeotrellis.metrics_tracking import global_tracker
+                metrics_tracker = global_tracker()
                 S1BackscatterOrfeo._trackers = (
-                    spark_context.accumulator(0), # nr_execution_tracker
-                    spark_context.accumulator(0), # nr_error_tracker
+                    metrics_tracker.register_counter(_EXECUTION_TRACKER_ID), # nr_execution_tracker
+                    metrics_tracker.register_counter(_SOFT_ERROR_TRACKER_ID), # nr_error_tracker
+                    metrics_tracker.register_counter(_INPUTPIXELS_TRACKER_ID),  # nr_error_tracker
                 )
         return S1BackscatterOrfeo._trackers
 
@@ -830,7 +840,7 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
 
         # Tile size to use in the TiledRasterLayer.
         tile_size = sar_backscatter_arguments.options.get("tile_size", self._DEFAULT_TILE_SIZE)
-        max_processing_area_pixels = sar_backscatter_arguments.options.get("max_processing_area_pixels", 3072)
+        max_processing_area_pixels = sar_backscatter_arguments.options.get("max_processing_area_pixels", 2048)
         orfeo_memory = sar_backscatter_arguments.options.get("otb_memory", 256)
 
         # Geoid for orthorectification: get from options, fallback on config.
@@ -843,9 +853,14 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
         noise_removal = bool(sar_backscatter_arguments.noise_removal)
         debug_mode = smart_bool(sar_backscatter_arguments.options.get("debug"))
 
+        geopyspark.get_spark_context().setLocalProperty(
+            "callSite.short",
+            f"load_collection: SENTINEL1_GRD {from_date}-{to_date} Area: {get_area_in_square_kilometers(projected_polygons)}",
+        )
+
         # an RDD of Python objects (basically SpaceTimeKey + feature) with gps.Metadata
         target_resolution = sar_backscatter_arguments.options.get("resolution", (10.0, 10.0))
-        feature_pyrdd, layer_metadata_py = self._build_feature_rdd(
+        feature_pyrdd, layer_metadata_py,partitioner = self._build_feature_rdd(
             collection_id=collection_id, projected_polygons=projected_polygons,
             from_date=from_date, to_date=to_date, extra_properties=extra_properties,
             tile_size=tile_size, zoom=zoom, correlation_id=
@@ -890,7 +905,8 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
 
             creo_path = pathlib.Path(creo_path)
             if not creo_path.exists():
-                raise OpenEOApiException(f"sar_backscatter: path {creo_path} does not exist on the cluster.")
+                return []
+                #raise OpenEOApiException(f"sar_backscatter: path {creo_path} does not exist on the cluster.")
 
             # Get whole extent of tile layout
             col_min = min(f["key"]["col"] for f in features)
@@ -1046,7 +1062,11 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
                 hashPartitioner = pyspark.rdd.portable_hash
                 return hashPartitioner(tuple)
 
-        grouped = per_product.partitionBy(per_product.count(),partitionByPath)
+        grouped = per_product.partitionBy(per_product.count(), partitionByPath)
+        geopyspark.get_spark_context().setLocalProperty(
+            "callSite.short",
+            f"sar_backscatter: {sar_backscatter_arguments.coefficient} {from_date}-{to_date} Area: {get_area_in_square_kilometers(projected_polygons)}",
+        )
         tile_rdd = grouped.flatMap(process_product)
         if result_dtype:
             layer_metadata_py.cell_type = geopyspark.CellType.create_user_defined_celltype(result_dtype,0)
@@ -1056,8 +1076,15 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
             numpy_rdd=tile_rdd,
             metadata=layer_metadata_py
         )
+
+        the_rdd = tile_layer.srdd
+
+        logger.info(f"sar-backscatter: partitioning with {str(partitioner)}")
+        if(partitioner is not None):
+            the_rdd = the_rdd.partitionByPartitioner(partitioner)
+
         # Merge any keys that have more than one tile.
-        contextRDD = self.jvm.org.openeo.geotrellis.OpenEOProcesses().mergeTiles(tile_layer.srdd.rdd())
+        contextRDD = self.jvm.org.openeo.geotrellis.OpenEOProcesses().mergeTiles(the_rdd.rdd())
         temporal_tiled_raster_layer = self.jvm.geopyspark.geotrellis.TemporalTiledRasterLayer
         srdd = temporal_tiled_raster_layer.apply(self.jvm.scala.Option.apply(zoom), contextRDD)
         merged_tile_layer = geopyspark.TiledRasterLayer(geopyspark.LayerType.SPACETIME, srdd)

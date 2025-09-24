@@ -3,18 +3,17 @@ import io
 import json
 import logging
 import os
-import random
 import re
 import shutil
 import socket
-import stat
 import subprocess
-import sys
 import tempfile
 import time
 import traceback
+import urllib
 import uuid
 import importlib.metadata
+from copy import deepcopy
 from decimal import Decimal
 from functools import lru_cache, partial, reduce
 from pathlib import Path
@@ -26,9 +25,9 @@ import flask
 import geopyspark as gps
 import kazoo.exceptions
 import openeo.udf
-import pkg_resources
 import pystac
 import requests
+import reretry
 import shapely.geometry.base
 from deprecated import deprecated
 from geopyspark import LayerType, Pyramid, TiledRasterLayer
@@ -36,10 +35,19 @@ from geopyspark import LayerType, Pyramid, TiledRasterLayer
 import openeo_driver.util.changelog
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
 from openeo.metadata import Band, BandDimension, Dimension, SpatialDimension, TemporalDimension
-from openeo.util import TimingLogger, deep_get, dict_no_none, repr_truncate, rfc3339, str_truncate
+from openeo.util import TimingLogger, deep_get, dict_no_none, repr_truncate, rfc3339, str_truncate, Rfc3339
+from openeo.utils.version import ComparableVersion
 from openeo_driver import backend
-from openeo_driver.backend import BatchJobMetadata, ErrorSummary, LoadParameters, OidcProvider, ServiceMetadata
+from openeo_driver.backend import (
+    BatchJobMetadata,
+    ErrorSummary,
+    LoadParameters,
+    OidcProvider,
+    ServiceMetadata,
+    JobListing,
+)
 from openeo_driver.config.load import ConfigGetter
+from openeo_driver.constants import DEFAULT_LOG_LEVEL_RETRIEVAL, DEFAULT_LOG_LEVEL_PROCESSING
 from openeo_driver.datacube import DriverDataCube, DriverVectorCube
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.delayed_vector import DelayedVector
@@ -49,32 +57,47 @@ from openeo_driver.errors import (InternalException, JobNotFinishedException, Op
                                   ProcessParameterInvalidException, )
 from openeo_driver.jobregistry import (DEPENDENCY_STATUS, JOB_STATUS, ElasticJobRegistry, PARTIAL_JOB_STATUS,
                                        get_ejr_credentials_from_env)
-from openeo_driver.ProcessGraphDeserializer import ENV_FINAL_RESULT, ENV_SAVE_RESULT, ConcreteProcessing
+from openeo_driver.ProcessGraphDeserializer import ENV_FINAL_RESULT, ENV_SAVE_RESULT, ConcreteProcessing, \
+    _extract_load_parameters, ENV_MAX_BUFFER
 from openeo_driver.save_result import ImageCollectionResult
 from openeo_driver.users import User
+from openeo_driver.util.date_math import now_utc
 from openeo_driver.util.geometry import BoundingBox
 from openeo_driver.util.http import requests_with_retry
 from openeo_driver.util.utm import area_in_square_meters
-from openeo_driver.utils import EvalEnv, generate_unique_id, to_hashable, smart_bool
+from openeo_driver.utils import EvalEnv, generate_unique_id, to_hashable, WhiteListEvalEnv
 from pandas import Timedelta
-from py4j.java_gateway import JavaObject, JVMView
+from py4j.java_gateway import JVMView
 from py4j.protocol import Py4JJavaError
 from pyspark import SparkContext
-from pyspark.mllib.tree import RandomForestModel
 from shapely.geometry import Polygon
 from urllib3 import Retry
 from xarray import DataArray
 import numpy as np
 
 import openeogeotrellis
-from openeogeotrellis import sentinel_hub, load_stac
+from openeo_driver.views import OPENEO_API_VERSION_DEFAULT
+from openeogeotrellis import sentinel_hub, load_stac, datacube_parameters
 from openeogeotrellis.config import get_backend_config
+from openeogeotrellis.config.s3_config import S3Config
 from openeogeotrellis.configparams import ConfigParams
+from openeogeotrellis.constants import JOB_OPTION_LOG_LEVEL
 from openeogeotrellis.geopysparkdatacube import GeopysparkCubeMetadata, GeopysparkDataCube
-from openeogeotrellis.integrations.etl_api import get_etl_api
+from openeogeotrellis.integrations.etl_api import get_etl_api, ETL_ORGANIZATION_ID_JOB_OPTION
+from openeogeotrellis.integrations.identity import IDP_TOKEN_ISSUER
 from openeogeotrellis.integrations.hadoop import setup_kerberos_auth
-from openeogeotrellis.integrations.kubernetes import k8s_job_name, kube_client, truncate_job_id_k8s, k8s_render_manifest_template
+from openeogeotrellis.integrations.kubernetes import (
+    k8s_job_name, kube_client,
+    truncate_job_id_k8s,
+    k8s_render_manifest_template,
+    k8s_get_batch_job_cfg_secret_name,
+    truncate_user_id_k8s,
+)
+from openeogeotrellis.integrations.s3proxy.asset_urls import PresignedS3AssetUrls
+from openeogeotrellis.integrations.stac import ResilientStacIO
 from openeogeotrellis.integrations.traefik import Traefik
+from openeogeotrellis.integrations.yarn_jobrunner import YARNBatchJobRunner
+from openeogeotrellis.job_options import JobOptions, K8SOptions
 from openeogeotrellis.job_registry import (
     DoubleJobRegistry,
     ZkJobRegistry,
@@ -83,13 +106,12 @@ from openeogeotrellis.job_registry import (
 )
 from openeogeotrellis.layercatalog import (
     GeoPySparkLayerCatalog,
-    check_missing_products,
     get_layer_catalog,
-    is_layer_too_large,
-    LARGE_LAYER_THRESHOLD_IN_PIXELS,
+    extra_validation_load_collection, WHITELIST,
 )
 from openeogeotrellis.logs import elasticsearch_logs
-from openeogeotrellis.ml.catboost_spark import CatBoostClassificationModel
+from openeogeotrellis.ml.geopysparkmlmodel import GeopysparkMlModel
+from openeogeotrellis.ml.modelloader import ModelLoader
 from openeogeotrellis.processgraphvisiting import GeotrellisTileProcessGraphVisitor, SingleNodeUDFProcessGraphVisitor
 from openeogeotrellis.sentinel_hub.batchprocessing import SentinelHubBatchProcessing
 from openeogeotrellis.service_registry import (
@@ -99,16 +121,18 @@ from openeogeotrellis.service_registry import (
     ServiceEntity,
     ZooKeeperServiceRegistry,
 )
-from openeogeotrellis.udf import run_udf_code, UDF_PYTHON_DEPENDENCIES_FOLDER_NAME
+from openeogeotrellis.udf import run_udf_code, UDF_PYTHON_DEPENDENCIES_FOLDER_NAME, \
+    UDF_PYTHON_DEPENDENCIES_ARCHIVE_NAME, collect_udfs
 from openeogeotrellis.user_defined_process_repository import (
     InMemoryUserDefinedProcessRepository,
     ZooKeeperUserDefinedProcessRepository,
 )
+from openeogeotrellis.util.byteunit import byte_string_as
 from openeogeotrellis.utils import (
-    add_permissions,
     dict_merge_recursive,
     get_jvm,
     get_s3_file_contents,
+    map_optional,
     mdc_include,
     mdc_remove,
     normalize_temporal_extent,
@@ -116,7 +140,6 @@ from openeogeotrellis.utils import (
     single_value,
     to_projected_polygons,
     zk_client,
-    reproject_cellsize,
 )
 from openeogeotrellis.vault import Vault
 
@@ -199,18 +222,22 @@ class GpsSecondaryServices(backend.SecondaryServices):
             logger.info("Can not create service for: " + str(image_collection))
             raise OpenEOApiException("Can not create service for: " + str(image_collection))
 
+        wmts_base_url = os.getenv("WMTS_BASE_URL_PATTERN", "http://openeo.vgt.vito.be/openeo/services/%s") % service_id
 
-        wmts_base_url = os.getenv('WMTS_BASE_URL_PATTERN', 'http://openeo.vgt.vito.be/openeo/services/%s') % service_id
-
-        self.service_registry.persist(user_id, ServiceMetadata(
-            id=service_id,
-            process={"process_graph": process_graph},
-            url=wmts_base_url + "/service/wmts",
-            type=service_type,
-            enabled=True,
-            attributes={},
-            configuration=configuration,
-            created=dt.datetime.utcnow()), api_version)
+        self.service_registry.persist(
+            user_id,
+            ServiceMetadata(
+                id=service_id,
+                process={"process_graph": process_graph},
+                url=wmts_base_url + "/service/wmts",
+                type=service_type,
+                enabled=True,
+                attributes={},
+                configuration=configuration,
+                created=now_utc(),
+            ),
+            api_version,
+        )
 
         secondary_service = self._wmts_service(image_collection, configuration, wmts_base_url)
 
@@ -308,6 +335,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         batch_job_output_root: Optional[Path] = None,
         use_job_registry: bool = True,
         elastic_job_registry: Optional[ElasticJobRegistry] = None,
+        do_ejr_health_check: bool = True,
     ):
         self._service_registry = (
             # TODO #283 #285: eliminate is_ci_context, use some kind of config structure
@@ -315,16 +343,19 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             else ZooKeeperServiceRegistry()
         )
 
-        user_defined_processes = (
-            # TODO #283 #285: eliminate is_ci_context, use some kind of config structure
-            InMemoryUserDefinedProcessRepository() if not use_zookeeper or ConfigParams().is_ci_context
-            else ZooKeeperUserDefinedProcessRepository(hosts=ConfigParams().zookeepernodes)
-        )
+        # TODO #283 #285: eliminate is_ci_context, use some kind of config structure
+        if not use_zookeeper or ConfigParams().is_ci_context:
+            user_defined_processes = InMemoryUserDefinedProcessRepository()
+        else:
+            user_defined_processes = ZooKeeperUserDefinedProcessRepository(
+                hosts=ConfigParams().zookeepernodes,
+                zk_client_reuse=get_backend_config().udp_registry_zookeeper_client_reuse,
+            )
 
         requests_session = requests_with_retry(total=3, backoff_factor=2)
-        vault = Vault(ConfigParams().vault_addr, requests_session)
+        vault = Vault(get_backend_config().vault_addr, requests_session)
 
-        catalog = get_layer_catalog(vault)
+        catalog = get_layer_catalog(vault=vault)
 
         jvm = get_jvm()
 
@@ -335,7 +366,9 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         if use_job_registry and not elastic_job_registry:
             # TODO #236/#498 avoid this fallback and just make sure it is always set when necessary
             logger.warning("No elastic_job_registry given to GeoPySparkBackendImplementation, creating one")
-            elastic_job_registry = get_elastic_job_registry(requests_session=requests_session)
+            elastic_job_registry = get_elastic_job_registry(
+                requests_session=requests_session, do_health_check=do_ejr_health_check
+            )
 
         super().__init__(
             catalog=catalog,
@@ -362,6 +395,19 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             "currency": "credits",
         }
 
+    def postprocess_capabilities(self, capabilities: dict) -> dict:
+        extras = get_backend_config().capabilities_extras
+        if extras:
+            for key, value in extras.items():
+                if key not in capabilities:
+                    capabilities[key] = value
+                elif key == "links":
+                    capabilities["links"] += value
+                else:
+                    # TODO: handle more merging cases
+                    logger.warning(f"postprocess_capabilities: unsupported merging of {key=}")
+        return capabilities
+
     def health_check(self, options: Optional[dict] = None) -> dict:
         mode = (options or {}).get("mode", "spark")
         if mode == "spark":
@@ -382,6 +428,17 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         return get_backend_config().oidc_providers
 
     def file_formats(self) -> dict:
+        colormap_properties = {
+            "anyOf": [
+                {"type": "integer", "minimum": 0, "maximum": 4294967295},
+                {
+                    "type": "array",
+                    "items": {"type": "number", "minimum": 0, "maximum": 1},
+                    "minItems": 4,
+                    "maxItems": 4,
+                },
+            ]
+        }
         return {
             "input": {
                 "GeoJSON": {
@@ -422,9 +479,9 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                             "enum": ["wgs84-1degree", "utm-100km", "utm-20km", "utm-10km"]
                         },
                         "ZLEVEL": {
-                            "type": "string",
+                            "type": "integer",
                             "description": "Specifies the compression level used for DEFLATE compression. As a number from 1 to 9, lowest and fastest compression is 1 while 9 is highest and slowest compression.",
-                            "default": "6"
+                            "default": 6
                         },
                         "sample_by_feature": {
                             "type": "boolean",
@@ -444,8 +501,16 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                         },
                         "colormap": {
                             "type": ["object", "null"],
-                            "description": "Allows specifying a colormap, for single band geotiffs. The colormap is a dictionary mapping band values to colors, specified by an integer.",
-                            "default": None
+                            "description": """Allows specifying a colormap, for single band geotiffs. The colormap is a dictionary mapping band values to colors, either specified by an integer or an array of [R, G, B, A], where each value lies between 0.0 and 1.0.
+Example usage:
+```python
+"colormap": {
+    0: [1, 0, 0, 1],  # red
+    1: 4294967295,  # white
+}
+```""",
+                            "default": None,
+                            "additionalProperties": colormap_properties,
                         },
                         "filename_prefix": {
                             "type": "string",
@@ -453,8 +518,32 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                             "default": None,
                         },
                         "separate_asset_per_band": {
-                            "type": "string",
-                            "description": "Set to true to write one output tiff per band. If there is a time dimention, the files will be split on time as well.",
+                            "type": "boolean",
+                            "description": "Set to true to write one output tiff per band. If there is a time dimension, the files will be split on time as well.",
+                            "default": False,
+                        },
+                        "filepath_per_band": {
+                            "type": "array",
+                            "description": "Specify an array with the same amount of bands, to give each band it's separate path. Subfolders are allowed.",
+                            "default": None,
+                        },
+                        "attach_gdalinfo_assets": {
+                            "type": "boolean",
+                            "description": "Attaches *_gdalinfo.json files to the output results.",
+                            "default": False,
+                        },
+                        "tile_size": {
+                            "type": ["integer", "null"],
+                            "description": "Overrides tile size; typically a multiple of 16.",
+                            "default": None,
+                        },
+                        "file_metadata": {
+                            "type": ["object"],
+                            "description": "Sets file-level GDAL metadata (key-value).",
+                        },
+                        "bands_metadata": {
+                            "type": ["object", "null"],
+                            "description": "Specifies band-level metadata for each band (band-(key-value)).",
                             "default": None,
                         },
                     },
@@ -466,8 +555,18 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                     "parameters": {
                         "colormap": {
                             "type": ["object", "null"],
-                            "description": "Allows specifying a colormap, for single band PNGs. The colormap is a dictionary mapping band values to colors, either specified by an integer or an array of [R, G, B, A], where each value lies between 0.0 and 1.0.",
-                            "default": None
+                            "description": """Allows specifying a colormap, for single band PNGs. The colormap is a dictionary mapping band values to colors, either specified by an integer or an array of [R, G, B, A], where each value lies between 0.0 and 1.0.
+Example usage:
+```python
+{"colormap": {
+    0: [1, 0, 0, 1],  # red
+    1: [0, 1, 0, 1],  # green
+    2: [0, 0, 1, 1],  # blue
+    3: 4294967295,  # white
+}}
+```""",
+                            "default": None,
+                            "additionalProperties": colormap_properties,
                         },
                     }
                 },
@@ -491,13 +590,24 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                             "type": ["string", "null"],
                             "default": None,
                             "description": "Specifies the name of the feature attribute that is to be used as feature id, by processes that require it. Can be used to link a given output back to an input feature."
-                        }
+                        },
+                        "filename_prefix": {
+                            "type": "string",
+                            "description": "Specifies the filename prefix when outputting multiple files. By default, depending on the context, 'OpenEO' or a part of the input filename will be used as prefix.",
+                            "default": None,
+                        },
                     },
                 },
                 "JSON": {
                     "title": "JavaScript Object Notation (JSON)",
                     "description": "JSON is a generic data serialization format. Being generic, it allows to represent various data types (raster, vector, table, ...). On the other side, there is little standardization for complex data structures.",
                     "gis_data_types": ["raster", "vector"],
+                    "parameters": {},
+                },
+                "GeoJSON": {
+                    "title": "GeoJSON",
+                    "description": "GeoJSON is supported to export vector cube data. GeoJSON is always in EPSG:4326. ",
+                    "gis_data_types": ["vector"],
                     "parameters": {},
                 },
                 "CSV": {
@@ -512,7 +622,21 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                     "gis_data_types": ["vector"],
                     "parameters": {},
                 },
+                "Zarr":{
+                    "title":"Zarr",
+                    "description": "chunked, compressed, N-dimensional arrays, designed for parallel computing (experimental)",
+                    "gis_data_types": ["raster"],
+                    "parameters":{},
+                },
             }
+        }
+
+    def processing_parameters(self) -> Dict[str, List[dict]]:
+        options = JobOptions.list_options()
+        return {
+            "create_job_parameters": options,
+            # TODO: probably not all these options are also valid in a synchronous processing context
+            "create_synchronous_parameters": options,
         }
 
     def load_disk_data(
@@ -564,7 +688,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
         feature_flags = load_params.get("featureflags", {})
         experimental = feature_flags.get("experimental", False)
-        datacubeParams, single_level = self.catalog.create_datacube_parameters(load_params, env)
+        datacubeParams, single_level = datacube_parameters.create(load_params, env, jvm)
 
         extent = jvm.geotrellis.vector.Extent(float(west), float(south), float(east), float(north)) \
             if spatial_bounds_present else None
@@ -602,7 +726,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
 
         if job_id.startswith("http://") or job_id.startswith("https://"):
             job_results_canonical_url = job_id
-            job_results = pystac.Collection.from_file(href=job_results_canonical_url)
+            job_results = pystac.Collection.from_file(href=job_results_canonical_url, stac_io=ResilientStacIO())
 
             def intersects_spatial_extent(item) -> bool:
                 if not requested_bbox or item.bbox is None:
@@ -747,133 +871,25 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         return cube
 
     def load_stac(self, url: str, load_params: LoadParameters, env: EvalEnv) -> GeopysparkDataCube:
-        return load_stac.load_stac(url, load_params, env, layer_properties={}, batch_jobs=self.batch_jobs)
+        return self._load_stac_cached(url=url, load_params=load_params, env=WhiteListEvalEnv(env, WHITELIST))
 
-    def load_ml_model(self, model_id: str) -> 'JavaObject':
+    @lru_cache(maxsize=20)
+    def _load_stac_cached(self, url: str, *, load_params: LoadParameters, env: EvalEnv) -> GeopysparkDataCube:
+        return load_stac.load_stac(
+            url=url, load_params=load_params, env=env, layer_properties=None, batch_jobs=self.batch_jobs
+        )
 
-        # Trick to make sure IDE infers right type of `self.batch_jobs` and can resolve `get_job_output_dir`
-        gps_batch_jobs: GpsBatchJobs = self.batch_jobs
+    def load_ml_model(self, model_id: str) -> GeopysparkMlModel:
+        """Load ML model from URL or batch job ID"""
+        gps_batch_jobs: Optional[GpsBatchJobs] = self.batch_jobs
 
-        def _create_model_dir(use_s3=False):
-            if use_s3:
-                return f"openeo-ml-models-dev/{generate_unique_id(prefix='model')}"
-
-            def _set_permissions(job_dir: Path):
-                try:
-                    shutil.chown(job_dir, user = None, group = 'eodata')
-                except LookupError as e:
-                    logger.warning(f"Could not change group of {job_dir} to eodata.")
-                add_permissions(job_dir, stat.S_ISGID | stat.S_IWGRP)  # make children inherit this group
-
-            result_dir = gps_batch_jobs.get_job_output_dir("ml_models")
-            result_path = result_dir / generate_unique_id(prefix="model")
-            result_dir_exists = os.path.exists(result_dir)
-            logger.info("Creating directory: {}".format(result_path))
-            os.makedirs(result_path)
-            if not result_dir_exists:
-                _set_permissions(result_dir)
-            _set_permissions(result_path)
-            return str(result_path)
-
-        if model_id.startswith('http'):
-            # Load the model using its STAC metadata file.
-            with requests.get(model_id) as resp:
-                resp.raise_for_status()
-                metadata = resp.json()
-            if deep_get(metadata, "properties", "ml-model:architecture", default=None) is None:
-                raise OpenEOApiException(
-                    message=f"{model_id} does not specify a model architecture under properties.ml-model:architecture.",
-                    status_code=400)
-            checkpoints = []
-            assets = metadata.get('assets', {})
-            for asset in assets:
-                if "ml-model:checkpoint" in assets[asset].get('roles', []):
-                    checkpoints.append(assets[asset])
-            if len(checkpoints) == 0 or checkpoints[0].get("href", None) is None:
-                raise OpenEOApiException(
-                    message=f"{model_id} does not contain a link to the ml model in its assets section.",
-                    status_code=400)
-            # TODO: How to handle multiple models?
-            if len(checkpoints) > 1:
-                raise OpenEOApiException(
-                    message=f"{model_id} contains multiple checkpoints.",
-                    status_code=400)
-
-            # Get the url for the actual model from the STAC metadata.
-            model_url = checkpoints[0]["href"]
-            architecture = metadata["properties"]["ml-model:architecture"]
-            # Download the model to the ml_models folder and load it as a java object.
-            use_s3 = ConfigParams().is_kube_deploy
-            model_dir_path = _create_model_dir(use_s3)
-            if architecture == "random-forest":
-                if use_s3:
-                    with tempfile.TemporaryDirectory() as tmp_dir:
-                        # Download to tmp_dir and unpack it there.
-                        tmp_path = Path(tmp_dir + "/randomforest.model.tar.gz")
-                        logger.info(f"Downloading ml_model from {model_url} to {tmp_path}")
-                        with open(tmp_path, 'wb') as f:
-                            f.write(requests.get(model_url).content)
-                        shutil.unpack_archive(tmp_path, extract_dir = tmp_dir, format = 'gztar')
-                        # Upload the unpacked model to s3.
-                        unpacked_model_path = str(tmp_path).replace(".tar.gz", "")
-                        logger.info(f"Uploading ml_model to {model_dir_path}")
-                        path_split = model_dir_path.split("/")
-                        bucket, key = path_split[0], path_split[1]
-                        s3 = s3_client()
-                        for root, dirs, files in os.walk(unpacked_model_path):
-                            for file in files:
-                                relative_filepath = os.path.relpath(os.path.join(root, file), tmp_dir)
-                                s3.upload_file(os.path.join(root, file), bucket, key + "/" + relative_filepath)
-                        # Load the spark model using the new s3 path.
-                        s3_path = f"s3a://{model_dir_path}/randomforest.model/"
-                        logger.info("Loading ml_model using filename: {}".format(s3_path))
-                        model: JavaObject = RandomForestModel._load_java(sc = gps.get_spark_context(), path = s3_path)
-                        return model
-                dest_path = Path(model_dir_path + "/randomforest.model.tar.gz")
-                with open(dest_path, 'wb') as f:
-                    f.write(requests.get(model_url).content)
-                shutil.unpack_archive(dest_path, extract_dir=model_dir_path, format='gztar')
-                unpacked_model_path = str(dest_path).replace(".tar.gz", "")
-                logger.info("Loading ml_model using filename: {}".format(unpacked_model_path))
-                model: JavaObject = RandomForestModel._load_java(sc=gps.get_spark_context(), path="file:" + unpacked_model_path)
-                return model
-            elif architecture == "catboost":
-                if use_s3:
-                    # TODO: Verify that local files work. If it does, we can remove the model_dir_path implementation.
-                    # Download the model to the tmp directory and load it as a java object.
-                    with tempfile.TemporaryDirectory() as tmp_dir:
-                        tmp_path = Path(tmp_dir + "/catboost_model.cbm")
-                        logger.info(f"Downloading ml_model from {model_url} to {tmp_path}")
-                        with open(tmp_path, 'wb') as f:
-                            f.write(requests.get(model_url).content)
-                        model: JavaObject = CatBoostClassificationModel.load_native_model(tmp_path)
-                        return model
-                filename = Path(model_dir_path + "/catboost_model.cbm")
-                with open(filename, 'wb') as f:
-                    f.write(requests.get(model_url).content)
-                logger.info("Loading ml_model using filename: {}".format(filename))
-                model: JavaObject = CatBoostClassificationModel.load_native_model(str(filename))
-            else:
-                raise NotImplementedError("The ml-model architecture is not supported by the backend: " + architecture)
-            return model
+        if model_id.startswith("http"):
+            return ModelLoader.load_from_url(model_id, gps_batch_jobs)
         else:
-            # Load the model using a batch job id.
-            directory = gps_batch_jobs.get_job_output_dir(model_id)
-            # TODO: This also needs to support Catboost model
-            # TODO: This can be done by first reading ml_model_metadata.json in the batch job directory.
-            model_path = str(Path(directory) / "randomforest.model")
-            if Path(model_path).exists():
-                logger.info("Loading ml_model using filename: {}".format(model_path))
-                model: JavaObject = RandomForestModel._load_java(sc=gps.get_spark_context(), path="file:" + model_path)
-            elif Path(model_path+".tar.gz").exists():
-                packed_model_path = model_path+".tar.gz"
-                shutil.unpack_archive(packed_model_path, extract_dir=directory, format='gztar')
-                unpacked_model_path = str(packed_model_path).replace(".tar.gz", "")
-                model: JavaObject = RandomForestModel._load_java(sc=gps.get_spark_context(), path="file:" + unpacked_model_path)
-            else:
-                raise OpenEOApiException(
-                    message=f"No random forest model found for job {model_id}",status_code=400)
-            return model
+            # Load the model using a batch job id
+            batch_job_id = model_id
+            batch_job_dir = gps_batch_jobs.get_job_output_dir(batch_job_id)
+            return ModelLoader.load_from_batch_job(Path(batch_job_dir) / "randomforest.model")
 
     def vector_to_raster(self, input_vector_cube: DriverVectorCube, target: DriverDataCube) -> DriverDataCube:
         """
@@ -988,10 +1004,10 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         return self.summarize_exception_static(error, 2000)
 
     @staticmethod
-    def summarize_exception_static(error: Exception, width=2000) -> Union[ErrorSummary, Exception]:
+    def summarize_exception_static(error: Exception, width=2000) -> ErrorSummary:
         if "Container killed on request. Exit code is 143" in str(error):
             is_client_error = False  # Give user the benefit of doubt.
-            summary = "Your batch job failed because workers used too much Python memory. The same task was attempted multiple times. Consider increasing executor-memoryOverhead or contact the developers to investigate."
+            summary = "Your batch job failed because workers used too much memory. The same task was attempted multiple times. Consider increasing executor-memory, python-memory or executor-memoryOverhead or contact the developers to investigate."
 
         elif isinstance(error, Py4JJavaError):
             def get_exception_chain(from_java_exception) -> list:
@@ -1004,6 +1020,9 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             root_cause = exception_chain[-1]
             root_cause_class_name = root_cause.getClass().getName()
             root_cause_message = root_cause.getMessage()
+
+            # Snippet to get JVM stack trace:
+            # get_jvm().org.apache.commons.lang.exception.ExceptionUtils.getStackTrace(root_cause)
 
             logger.debug(f"exception chain classes: "
                          f"{' caused by '.join(exception.getClass().getName() for exception in exception_chain)}")
@@ -1037,6 +1056,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             elif "outofmemoryerror" in root_cause_class_name.lower():
                 summary = "Your batch job failed because the 'driver' used too much java memory. Consider increasing driver-memory or contact the developers to investigate."
             elif is_spark_exception:
+                retry_message = "Simply try submitting again, or use batch job logs to find more detailed information in case of persistent failures. Increasing executor memory may help if the root cause is not clear from the logs."
                 if missing_sentinel1_band:
                     summary = (f"Requested band '{missing_sentinel1_band}' is not present in Sentinel 1 tile;"
                                f' try specifying a "polarization" property filter according to the table at'
@@ -1047,20 +1067,55 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                     else:
                         summary = (f"Batch job failed due to Kubernetes error, try running again, or contact support if the problem persists. Detailed cause: {kubernetes_exception[0].getMessage()} - {root_cause_message}")
                 elif root_cause_message:
-                    udf_stacktrace = GeoPySparkBackendImplementation.extract_udf_stacktrace(root_cause_message)
+                    root_cause_message = root_cause_message.rstrip()
+                    so_error = "failed to map segment from shared object"
+                    memory_message = (
+                        "Ran out of memory. If you run as a batch_job, consider increasing job_options > python-memory."
+                    )
+                    if so_error in root_cause_message and not so_error + ":" in root_cause_message:
+                        # This error can be so obscure that we replace it with our own message:
+                        # After the ":" there might be "operation not permitted", in that case we don't change the message
+                        return ErrorSummary(error, True, memory_message)
+
+                    # if root_cause_class_name == 'jep.JepException':
+                    #     st = root_cause.stackTrace  # NOTE: UDF stack trace in Jep is not supported yet.
+                    udf_stacktrace = GeoPySparkBackendImplementation.extract_udf_stacktrace(root_cause_message, width)
                     if udf_stacktrace:
-                        if len(udf_stacktrace) > width - 150:
-                            udf_stacktrace_list = udf_stacktrace.split("\n")
-                            udf_stacktrace_new = "\n".join(
-                                udf_stacktrace_list[:5] + ["... skipped stack frames ..."] + udf_stacktrace_list[-5:]
+                        if root_cause_class_name != "org.apache.spark.api.python.PythonException":
+                            # one word, to be findable in elasticsearch logs
+                            logger.warning(f"StackTraceButNotPythonException: {root_cause_class_name}")
+
+                        summary = f"UDF exception while evaluating processing graph. Please check your user defined functions. stacktrace:\n{udf_stacktrace}"
+                        if udf_stacktrace.endswith("MemoryError") or udf_stacktrace.endswith("std::bad_alloc"):
+                            summary += "\n" + memory_message
+                        return ErrorSummary(error, is_client_error, summary)
+
+                    # Could be an error in the OpenEO stack
+                    python_error = GeoPySparkBackendImplementation.extract_python_error(root_cause_message)
+                    if python_error:
+                        summary = f"Python exception while evaluating processing graph: {python_error}"
+                        if python_error.endswith("MemoryError") or python_error.endswith("MemoryError: std::bad_alloc"):
+                            # Got OOM before getting in user UDF code:
+                            summary += "\n" + memory_message
+                    elif (
+                        "Missing an output location" in root_cause_message
+                        or (  # OOM on YARN
+                            "times, most recent failure:" in root_cause_message
+                            and (
+                                "ExecutorLostFailure" in root_cause_message
+                                or "exited unexpectedly" in root_cause_message
                             )
-                            if len(udf_stacktrace_new) < width - 150:
-                                udf_stacktrace = udf_stacktrace_new
-                        summary = f"UDF exception while evaluating processing graph. Please check your user defined functions. {udf_stacktrace}"
+                        )
+                        or "has failed the maximum allowable number of times" in root_cause_message
+                    ):
+                        summary = f"A part of your process graph failed multiple times. " + retry_message
                     else:
                         summary = f"Exception during Spark execution: {root_cause_class_name}: {root_cause_message}"
                 else:
-                    summary = f"Exception during Spark execution: {root_cause_class_name}"
+                    if root_cause_class_name == "java.io.EOFException":
+                        summary = f"Exception during Spark execution. " + retry_message
+                    else:
+                        summary = f"Exception during Spark execution: {root_cause_class_name}"
             else:
                 summary = f"{root_cause_class_name}: {root_cause_message}"
             summary = str_truncate(summary, width=width)
@@ -1068,23 +1123,77 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             is_client_error = False  # Give user the benefit of doubt.
             if isinstance(error, FileNotFoundError):
                 summary = repr_truncate(str(error), width=width)
+            elif isinstance(error, urllib.error.HTTPError):
+                summary = repr_truncate(str(error) + ": " + error.filename, width=width)
+            elif isinstance(error, AssertionError) and str(error) == "":
+                tb = error.__traceback__
+                tb_info = traceback.extract_tb(tb)
+                filename, line, func, text = tb_info[-1]
+                summary = "Failed " + text
             else:
-                summary = repr_truncate(error, width=width)
+                if ConfigParams().is_kube_deploy:
+                    # Conditional import just to be sure.
+                    import kubernetes.client.exceptions
+
+                    if isinstance(error, kubernetes.client.exceptions.ApiException):
+                        s = "kubernetes.client.exceptions.ApiException: " + str(error).strip()
+                        summary = repr_truncate(s, width=width)
+                    else:
+                        summary = repr_truncate(error, width=width)
+                else:
+                    summary = repr_truncate(error, width=width)
 
         return ErrorSummary(error, is_client_error, summary)
 
     @staticmethod
-    def extract_udf_stacktrace(full_stacktrace: str) -> Optional[str]:
+    def collapse_stack_strace(stacktrace: str, width: int) -> Optional[str]:
+        if len(stacktrace) > width - 150:
+            stacktrace_list = stacktrace.split("\n")
+            stacktrace_list = [str_truncate(line, width=500) for line in stacktrace_list]
+            stacktrace_new = "\n".join(stacktrace_list[:5] + ["... skipped stack frames ..."] + stacktrace_list[-5:])
+            if len(stacktrace_new) < len(stacktrace):
+                return stacktrace_new
+        return stacktrace
+
+    @staticmethod
+    def extract_udf_stacktrace(full_stacktrace: str, width: int = 3000) -> Optional[str]:
+        """
+        Select all lines starting from <string>.
+        This is what interests the user
+        """
+        needle = """File "<string>","""
+        needle_index = full_stacktrace.find(needle)
+        if needle_index != -1:
+            start_index = full_stacktrace.rfind("\n", 0, needle_index) + 1
+            if start_index == -1:
+                start_index = 0
+
+            # No need for the Java stack trace if we found UDF stack trace.
+            # Triggering an exception in the UDF code with
+            #   jvm.org.openeo.dumpGeoJson("", jvm.scala.Some(""))
+            # will not add a jvm stacktrace. Instead, it wil give a connection lost error.
+            end_index = full_stacktrace.find("\n\tat ", start_index)
+            if end_index == -1:
+                end_index = len(full_stacktrace)
+            udf_stacktrace = full_stacktrace[start_index:end_index].rstrip()
+            udf_stacktrace = GeoPySparkBackendImplementation.collapse_stack_strace(udf_stacktrace, width)
+            return udf_stacktrace
+        return None
+
+    @staticmethod
+    def extract_python_error(full_stacktrace: str) -> Optional[str]:
         """
         Select all lines a bit under 'run_udf_code'.
         This is what interests the user
         """
-        regex = re.compile(r" in run_udf_code\n.*\n((.|\n)*)", re.MULTILINE)
-
-        match = regex.search(full_stacktrace)
-        if match:
-            return match.group(1).rstrip()
-        return None
+        lines = full_stacktrace.strip().split("\n")
+        if len(lines) < 2 or not lines[0].strip().startswith("Traceback (most recent call last)"):
+            return None
+        # find line that shows error:
+        index = next((i for i, line in enumerate(lines) if not line.startswith(" ") and i >= 1), 0)
+        another_exception = "During handling of the above exception, another exception occurred"
+        index2 = next((i for i, line in enumerate(lines) if another_exception in line and i > index), len(lines))
+        return "\n".join(lines[index:index2]).strip()
 
     def changelog(self) -> Union[str, Path, flask.Response]:
         html = openeo_driver.util.changelog.multi_project_changelog(
@@ -1195,6 +1304,8 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 sentinel_hub_processing_units=(sentinel_hub_processing_units
                                                if sentinel_hub_processing_units and
                                                   backend_config.report_usage_sentinelhub_pus else None),
+                additional_credits_cost=None,
+                organization_id=(job_options or {}).get(ETL_ORGANIZATION_ID_JOB_OPTION),
             )
 
             logger.info(
@@ -1208,151 +1319,51 @@ class GpsProcessing(ConcreteProcessing):
     def extra_validation(
             self, process_graph: dict, env: EvalEnv, result, source_constraints: List[SourceConstraint]
     ) -> Iterable[dict]:
-
-        catalog = env.backend_implementation.catalog
-        allow_check_missing_products = smart_bool(env.get("allow_check_missing_products", True))
-        sync_job = smart_bool(env.get("sync_job", False))
-        large_layer_threshold_in_pixels = int(float(env.get("large_layer_threshold_in_pixels", LARGE_LAYER_THRESHOLD_IN_PIXELS)))
-
-        for source_id, constraints in source_constraints:
-            source_id_proc, source_id_args = source_id
-            if source_id_proc == "load_collection":
+        try:
+            env = env.push({ENV_MAX_BUFFER: {}})
+            # copy because _extract_load_parameters is stateful
+            source_constraints_copy = deepcopy(source_constraints)
+            for source_constraint in source_constraints_copy:
+                source_id, constraints = source_constraint
+                source_id_proc, source_id_args = source_id
                 collection_id = source_id_args[0]
-                metadata_json = catalog.get_collection_metadata(collection_id=collection_id)
-                metadata = GeopysparkCubeMetadata(metadata_json)
-                temporal_extent = constraints.get("temporal_extent")
-                spatial_extent = constraints.get("spatial_extent")
-
-                if allow_check_missing_products and metadata.get("_vito", "data_source", "check_missing_products", default=None):
-                    properties = constraints.get("properties", {})
-                    if temporal_extent is None:
-                        yield {"code": "UnlimitedExtent", "message": "No temporal extent given."}
-                    if spatial_extent is None:
-                        yield {"code": "UnlimitedExtent", "message": "No spatial extent given."}
-                    if temporal_extent is None or spatial_extent is None:
-                        return
-
-                    products = check_missing_products(
-                        collection_metadata=metadata,
-                        temporal_extent=temporal_extent,
-                        spatial_extent=spatial_extent,
-                        properties=properties,
-                    )
-                    if products:
-                        for p in products:
-                            yield {
-                                "code": "MissingProduct",
-                                "message": f"Tile {p!r} in collection {collection_id!r} is not available."
-                            }
-
-                native_crs = metadata.get("cube:dimensions", "x", "reference_system", default="EPSG:4326")
-                if isinstance(native_crs, dict):
-                    native_crs = native_crs.get("id", {}).get("code", None)
-                if isinstance(native_crs, int):
-                    native_crs = f"EPSG:{native_crs}"
-                if not isinstance(native_crs, str):
-                    yield {"code": "InvalidNativeCRS", "message": f"Invalid native CRS {native_crs!r} for "
-                                                                  f"collection {collection_id!r}"}
-                    continue
-
-                catalog = env.backend_implementation.catalog
-                number_of_temporal_observations: int = catalog.estimate_number_of_temporal_observations(
-                    collection_id,
-                    constraints,
-                )
-
-                if spatial_extent and temporal_extent:
-                    band_names = constraints.get("bands")
-                    if band_names:
-                        # Will convert aliases:
-                        band_names = metadata.filter_bands(band_names).band_names
-                    else:
-                        band_names = metadata.get("cube:dimensions", "bands", "values",
-                                                  default=["_at_least_assume_one_band_"])
-                    nr_bands = len(band_names)
-
-
-                    if collection_id == 'TestCollection-LonLat4x4':
-                        # This layer is always 4x4 pixels, adapt resolution accordingly
-                        bbox_width = abs(spatial_extent["east"] - spatial_extent["west"])
-                        bbox_height = abs(spatial_extent["north"] - spatial_extent["south"])
-                        cell_width_latlon = bbox_width / 4
-                        cell_height_latlon = bbox_height / 4
-                        cell_width, cell_height = reproject_cellsize(spatial_extent,
-                                                                     (cell_width_latlon, cell_height_latlon),
-                                                                     "EPSG:4326",
-                                                                     "Auto42001",
-                                                                     )
-                    else:
-                        # The largest GSD I encountered was 25km. Double it as very permissive guess:
-                        default_gsd = (50000, 50000)
-                        gsd_object = metadata.get_GSD_in_meters()
-                        if isinstance(gsd_object, dict):
-                            gsd_in_meter_list = list(map(lambda x: gsd_object.get(x), band_names))
-                            gsd_in_meter_list = list(filter(lambda x: x is not None, gsd_in_meter_list))
-                            if not gsd_in_meter_list:
-                                gsd_in_meter_list = [default_gsd] * nr_bands
-                        elif isinstance(gsd_object, tuple):
-                            gsd_in_meter_list = [gsd_object] * nr_bands
-                        else:
-                            gsd_in_meter_list = [default_gsd] * nr_bands
-
-                        # We need to convert GSD to resolution in order to take an average:
-                        px_per_m2_average_band = sum(map(lambda x: 1 / (x[0] * x[1]), gsd_in_meter_list)) / len(gsd_in_meter_list)
-                        px_per_m_average_band = pow(px_per_m2_average_band, 0.5)
-                        m_per_px_average_band = 1 / px_per_m_average_band
-
-                        res = (m_per_px_average_band, m_per_px_average_band)
-                        # Auto42001 is in meter
-                        cell_width, cell_height = reproject_cellsize(spatial_extent, res, "Auto42001", native_crs)
-
-                    geometries = constraints.get("aggregate_spatial", {}).get("geometries")
-                    if geometries is None:
-                        geometries = constraints.get("filter_spatial", {}).get("geometries")
-                    message = is_layer_too_large(
-                        spatial_extent=spatial_extent,
-                        geometries=geometries,
-                        number_of_temporal_observations=number_of_temporal_observations,
-                        nr_bands=nr_bands,
-                        cell_width=cell_width,
-                        cell_height=cell_height,
-                        native_crs=native_crs,
-                        resample_params=constraints.get("resample", {}),
-                        threshold_pixels=large_layer_threshold_in_pixels,
-                        sync_job=sync_job,
-                    )
-                    if message:
-                        yield {
-                            "code": "ExtentTooLarge",
-                            "message": f"collection_id {collection_id!r}: {message}"
-                        }
-
-    def verify_for_synchronous_processing(self, process_graph: dict, env: EvalEnv = None) -> Iterable[str]:
-        env_validate = env.push({
-            "allow_check_missing_products": False,
-            "sync_job": True,
-        })
-        errors = self.validate(process_graph=process_graph, env=env_validate)
-
-        # Only care for certain errors and make list of strings:
-        errors = [e["message"] for e in errors if e["code"] == "ExtentTooLarge"]
-        return errors
+                if source_id_proc == "load_collection":
+                    load_params = _extract_load_parameters(env, source_id=source_id)
+                    yield from extra_validation_load_collection(collection_id, load_params, env)
+        except Exception as e:
+            logger.error("extra validation failed", exc_info=True)
+            yield {"code": "Internal", "message": str(e)}  # TODO: just propagate errors not related to validation?
 
     def run_udf(self, udf: str, data: openeo.udf.UdfData) -> openeo.udf.UdfData:
         if get_backend_config().allow_run_udf_in_driver:
             # TODO: remove this temporary feature flag https://github.com/Open-EO/openeo-geopyspark-driver/issues/404
             return run_udf_code(code=udf, data=data, require_executor_context=False)
         sc = SparkContext.getOrCreate()
-        data_rdd = sc.parallelize([data])
+        data_rdd = sc.parallelize([data],1)
         result_rdd = data_rdd.map(lambda d: run_udf_code(code=udf, data=d))
         result = result_rdd.collect()
         if not len(result) == 1:
             raise InternalException(message=f"run_udf result RDD with 1 element expected but got {len(result)}")
         return result[0]
 
+    def get_default_sar_backscatter_arguments(self, api_version: Union[str, ComparableVersion]) -> SarBackscatterArgs:
+        """
+        Get default `sar_backscatter` arguments based on actual `sar_backscatter` spec in
+        process registry (which might be deployment-specific).
+        """
+        kwargs = {}
+        process_registry = self.get_process_registry(api_version=api_version)
+        if process_registry.contains("sar_backscatter"):
+            process_spec = process_registry.get_spec("sar_backscatter")
+            [coefficient_param] = (p for p in process_spec["parameters"] if p["name"] == "coefficient")
+            kwargs["coefficient"] = coefficient_param["default"]
+        logger.info(f"get_default_sar_backscatter_arguments: {kwargs=}")
+        return SarBackscatterArgs(**kwargs)
+
 
 def get_elastic_job_registry(
     requests_session: Optional[requests.Session] = None,
+    do_health_check: bool = True,
 ) -> ElasticJobRegistry:
     """Build ElasticJobRegistry instance from config"""
     config = get_backend_config()
@@ -1360,19 +1371,12 @@ def get_elastic_job_registry(
         api_url=config.ejr_api,
         backend_id=config.ejr_backend_id,
         session=requests_session,
+        preserialize_process=config.ejr_preserialize_process,
     )
-    # Get credentials from env (preferably) or vault (as fallback).
-    ejr_creds = get_ejr_credentials_from_env(strict=False)
-    if not ejr_creds:
-        if config.ejr_credentials_vault_path:
-            # TODO: eliminate dependency on Vault here (i.e.: always use env vars to get creds)
-            vault = Vault(config.vault_addr, requests_session=requests_session)
-            ejr_creds = vault.get_elastic_job_registry_credentials()
-        else:
-            # Fail harder
-            ejr_creds = get_ejr_credentials_from_env(strict=True)
+    ejr_creds = get_ejr_credentials_from_env(strict=True)
     job_registry.setup_auth_oidc_client_credentials(credentials=ejr_creds)
-    job_registry.health_check(log=True)
+    if do_health_check:
+        job_registry.health_check(log=True)
     return job_registry
 
 
@@ -1380,11 +1384,13 @@ class GpsBatchJobs(backend.BatchJobs):
 
     def __init__(
         self,
+        *,
+        # TODO: clean up this overly Terrascope-coupled constructor
         catalog: GeoPySparkLayerCatalog,
         jvm: JVMView,
-        principal: str,
-        key_tab: str,
-        vault: Vault,
+        principal: Optional[str] = None,
+        key_tab: Optional[str] = None,
+        vault: Optional[Vault] = None,
         output_root_dir: Optional[Union[str, Path]] = None,
         elastic_job_registry: Optional[ElasticJobRegistry] = None,
         requests_session: Optional[requests.Session] = None,
@@ -1401,6 +1407,8 @@ class GpsBatchJobs(backend.BatchJobs):
         self._requests_session = requests_session or requests.Session()
 
         # TODO: Generalize assumption that output_dir == local FS? (e.g. results go to non-local S3)
+        # TODO: What's called here "output" dir is also used for input (e.g. specification file or UDF dependencies).
+        #       Rename to more general "work" dir, or have clean separation between input/output dirs?
         self._output_root_dir = Path(
             output_root_dir or ConfigParams().batch_job_output_root
         )
@@ -1419,7 +1427,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
     def create_job(
         self,
-        user_id: str,
+        user: User,
         process: dict,
         api_version: str,
         metadata: dict,
@@ -1428,10 +1436,19 @@ class GpsBatchJobs(backend.BatchJobs):
         job_id = generate_unique_id(prefix="j")
         title = metadata.get("title")
         description = metadata.get("description")
+        if "log_level" in metadata:
+            # TODO: it's not ideal to put "log_level" (processing parameter from official spec)
+            #       in job_options, which is intended for parameters that are not part of official spec.
+            #       Unfortunately, it's quite involved to add a new field like "log_level"
+            #       in all the appropriate job registry related places, so we do it just here for now.
+            if job_options is None:
+                job_options = {}
+            job_options[JOB_OPTION_LOG_LEVEL] = metadata.get("log_level", DEFAULT_LOG_LEVEL_PROCESSING)
+
         with self._double_job_registry as registry:
             job_info = registry.create_job(
                 job_id=job_id,
-                user_id=user_id,
+                user_id=user.user_id,
                 process=process,
                 api_version=api_version,
                 job_options=job_options,
@@ -1448,6 +1465,27 @@ class GpsBatchJobs(backend.BatchJobs):
         with self._double_job_registry as registry:
             with TimingLogger(f"registry.get_job_metadata({job_id=}, {user_id=})", logger):
                 job_metadata = registry.get_job_metadata(job_id, user_id)
+
+        # TODO: move results metadata out of BatchJobMetadata
+        #  (https://github.com/Open-EO/openeo-python-driver/issues/190)
+        if job_metadata.status == JOB_STATUS.FINISHED:
+            results_metadata = self.load_results_metadata(job_id, user_id)
+
+            rfc3339 = Rfc3339(propagate_none=True)
+
+            job_metadata = job_metadata._replace(
+                geometry=results_metadata.get("geometry"),
+                bbox=results_metadata.get("bbox"),
+                start_datetime=map_optional(rfc3339.parse_datetime, results_metadata.get("start_datetime")),
+                end_datetime=map_optional(rfc3339.parse_datetime, results_metadata.get("end_datetime")),
+                instruments=results_metadata.get("instruments"),
+                epsg=results_metadata.get("epsg"),
+                links=results_metadata.get("links"),
+                usage=results_metadata.get("usage"),
+                proj_shape=results_metadata.get("proj:shape"),
+                proj_bbox=results_metadata.get("proj:bbox"),
+            )
+
         return job_metadata
 
     def poll_job_dependencies(
@@ -1518,7 +1556,7 @@ class GpsBatchJobs(backend.BatchJobs):
             if dependency_job_info:
                 partial_job_status = PARTIAL_JOB_STATUS.for_job_status(dependency_job_info.status)
             else:
-                with requests_session.get(url, timeout=600) as resp:
+                with requests_session.get(url, timeout=20) as resp:
                     resp.raise_for_status()
                     stac_object = resp.json()
                 partial_job_status = stac_object.get('openeo:status')
@@ -1527,8 +1565,10 @@ class GpsBatchJobs(backend.BatchJobs):
 
         def fail_job():
             with self._double_job_registry as registry:
-                registry.set_dependency_status(job_id, user_id, DEPENDENCY_STATUS.ERROR)
-                registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
+                registry.set_dependency_status(
+                    job_id=job_id, user_id=user_id, dependency_status=DEPENDENCY_STATUS.ERROR
+                )
+                registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.ERROR)
 
             job_info["status"] = JOB_STATUS.ERROR  # TODO: avoid mutation
 
@@ -1565,7 +1605,9 @@ class GpsBatchJobs(backend.BatchJobs):
                 job_info.get("dependency_status") != DEPENDENCY_STATUS.AWAITING_RETRY
             ):  # haven't retried yet: retry
                 with self._double_job_registry as registry:
-                    registry.set_dependency_status(job_id, user_id, DEPENDENCY_STATUS.AWAITING_RETRY)
+                    registry.set_dependency_status(
+                        job_id=job_id, user_id=user_id, dependency_status=DEPENDENCY_STATUS.AWAITING_RETRY
+                    )
 
                 retries = [retry for details, _, retry in batch_processes.values() if details.status() == "PARTIAL"]
 
@@ -1674,44 +1716,52 @@ class GpsBatchJobs(backend.BatchJobs):
                 logger.debug(f"Total cost of Sentinel Hub batch processes: {batch_process_processing_units} PU",
                              extra={'job_id': job_id, 'user_id': user_id})
 
-                registry.set_dependencies(job_id, user_id, dependencies)
-                registry.set_dependency_status(job_id, user_id, DEPENDENCY_STATUS.AVAILABLE)
+                registry.set_dependencies(job_id=job_id, user_id=user_id, dependencies=dependencies)
+                registry.set_dependency_status(
+                    job_id=job_id, user_id=user_id, dependency_status=DEPENDENCY_STATUS.AVAILABLE
+                )
 
                 if batch_process_processing_units:
-                    registry.set_dependency_usage(job_id, user_id, batch_process_processing_units)
+                    registry.set_dependency_usage(
+                        job_id=job_id, user_id=user_id, dependency_usage=batch_process_processing_units
+                    )
 
             self._start_job(job_id, User(user_id=user_id), lambda _: vault_token, dependencies)
         else:  # still some running: continue polling
             pass
 
-    def get_user_jobs(self, user_id: str) -> List[BatchJobMetadata]:
+    def get_user_jobs(
+        self,
+        user_id: str,
+        limit: Optional[int] = None,
+        request_parameters: Optional[dict] = None,
+    ) -> Union[List[BatchJobMetadata], JobListing]:
         with self._double_job_registry as registry:
-            return registry.get_user_jobs(user_id=user_id)
+            return registry.get_user_jobs(
+                user_id=user_id,
+                # Make sure to include title (in addition to the basic fields)
+                fields=["title"],
+                limit=limit,
+                request_parameters=request_parameters,
+            )
 
     # TODO: issue #232 we should get this from S3 but should there still be an output dir then?
     def get_job_output_dir(self, job_id: str) -> Path:
         # TODO: instead of flat dir with potentially a lot of subdirs (which is hard to maintain/clean up):
         #       add an intermediate level (e.g. based on job_id/user_id prefix or date or ...)?
+        # TODO: this so called "output" dir is also being used for "input" (e.g. specification file, UDF deps, ...),
+        #       so "work dir" would be a better name. Also see `get_job_work_dir`.
         return self._output_root_dir / job_id
 
-    @staticmethod
-    def get_submit_py_files(env: dict = None, cwd: Union[str, Path] = ".") -> str:
-        """Get `-py-files` for batch job submit (e.g. based on how flask app was submitted)."""
-        py_files = (env or os.environ).get("OPENEO_SPARK_SUBMIT_PY_FILES", "")
-        cwd = Path(cwd)
-        if py_files:
-            found = []
-            # Spark-submit moves `py-files` directly into job folder (`cwd`),
-            # or under __pyfiles__ subfolder in case of *.py, regardless of original path.
-            for filename in (Path(p).name for p in py_files.split(",")):
-                if (cwd / filename).exists():
-                    found.append(filename)
-                elif (cwd / "__pyfiles__" / filename).exists():
-                    found.append("__pyfiles__/" + filename)
-                else:
-                    logger.warning(f"Could not find 'py-file' {filename}: skipping")
-            py_files = ",".join(found)
-        return py_files
+    def get_job_work_dir(self, job_id: str) -> Path:
+        """
+        Get the work directory for a given job, where input files can be found and output data can be stored.
+
+        also see get_job_output_dir (deprecated)
+        """
+        return self._output_root_dir / job_id
+
+
 
     def start_job(self, job_id: str, user: User):
         proxy_user = self.get_proxy_user(user)
@@ -1730,18 +1780,18 @@ class GpsBatchJobs(backend.BatchJobs):
             terrascope_access_token = self._get_terrascope_access_token(user, sentinel_hub_client_alias)
             return self._vault.login_jwt(terrascope_access_token)
 
-        self._start_job(job_id, user, _get_vault_token)
+        self._start_job(job_id, user, _get_vault_token,proxy_user=proxy_user)
 
     def _start_job(self, job_id: str, user: User, get_vault_token: Callable[[str], str],
-                   dependencies: Union[list, None] = None):
+                   dependencies: Union[list, None] = None,proxy_user=None):
         from openeogeotrellis import async_task  # TODO: avoid local import because of circular dependency
 
         user_id = user.user_id
         log = logging.LoggerAdapter(logger, extra={'job_id': job_id, 'user_id': user_id})
 
         with self._double_job_registry as dbl_registry:
-            job_info = dbl_registry.get_job(job_id, user_id)
-            api_version = job_info.get('api_version')
+            job_info = dbl_registry.get_job(job_id=job_id, user_id=user_id)
+            api_version = job_info.get("api_version", OPENEO_API_VERSION_DEFAULT)
 
             if dependencies is None:
                 # restart logic
@@ -1749,10 +1799,18 @@ class GpsBatchJobs(backend.BatchJobs):
 
                 if current_status in [JOB_STATUS.QUEUED, JOB_STATUS.RUNNING]:
                     return
-                elif current_status != JOB_STATUS.CREATED:  # TODO: not in line with the current spec (it must first be canceled)
+                elif current_status == JOB_STATUS.CREATED:
+                    pass
+                else:
+                    # TODO: not in line with the current spec (it must first be canceled)
+                    # TODO: this code path is ill-defined (also on level of openEO API)
+                    logger.warning(
+                        f"GpsBatchJobs._start_job: ill-defined job status transition from {current_status!r} to {JOB_STATUS.CREATED!r}"
+                    )
                     dbl_registry.mark_ongoing(job_id, user_id)
-                    dbl_registry.set_application_id(job_id, user_id, None)
-                    dbl_registry.set_status(job_id, user_id, JOB_STATUS.CREATED)
+                    # TODO: do we really want to reset the application id?
+                    dbl_registry.set_application_id(job_id=job_id, user_id=user_id, application_id=None)
+                    dbl_registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.CREATED)
 
         if "specification" in job_info:
             # This is old-style (ZK based) job info with "specification" being a JSON string.
@@ -1765,10 +1823,32 @@ class GpsBatchJobs(backend.BatchJobs):
             job_options = job_info.get("job_options") or {}  # can be None
             job_specification_json = json.dumps({"process_graph": job_process_graph, "job_options": job_options})
 
-        job_title = job_info.get('title', '')
+
+
         sentinel_hub_client_alias = deep_get(job_options, 'sentinel-hub', 'client-alias', default="default")
 
-        log.debug("job_options: {o!r}".format(o=job_options))
+        log.debug(f"_start_job {job_options=}")
+
+        process_registry = GpsProcessing().get_process_registry(api_version=api_version)
+        udf_runtimes = set(
+            (udf[1], udf[2]) for udf in collect_udfs(job_process_graph, process_registry=process_registry)
+        )
+
+        if len(udf_runtimes) == 0:
+            # TODO: this is a quick hack to start using python311 for batch jobs without UDFs. Needs clean-up
+            image_name = "python311"
+            if "image-name" not in job_options and image_name in get_backend_config().batch_runtime_to_image:
+                log.info(f'Forcing job_options["image-name"]={image_name!r} from {udf_runtimes=}')
+                job_options["image-name"] = image_name
+        elif len(udf_runtimes) == 1:
+            (udf_runtime,) = udf_runtimes
+            if udf_runtime is not None and "image-name" not in job_options and udf_runtime[1] is not None:
+                image_name = udf_runtime[0].lower() + udf_runtime[1].replace(".", "")
+                log.info(f'Forcing job_options["image-name"]={image_name!r} from {udf_runtimes=}')
+                job_options["image-name"] = image_name
+        elif len(udf_runtimes) > 1:
+            log.warning(f"Multiple UDF runtimes detected in the process graph: {udf_runtimes}. Running with default environment.")
+
 
         if (dependencies is None
             and job_info.get("dependency_status")
@@ -1779,7 +1859,7 @@ class GpsBatchJobs(backend.BatchJobs):
             ]
         ):
             job_dependencies = self._schedule_and_get_dependencies(
-                supports_async_tasks=not ConfigParams().is_kube_deploy,
+                supports_async_tasks=get_backend_config().supports_async_tasks,
                 process_graph=job_process_graph,
                 api_version=api_version,
                 user_id=user_id,
@@ -1790,7 +1870,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 logger_adapter=log,
             )
 
-            log.debug(f"job_dependencies: {job_dependencies}")
+            log.debug(f"_start_job {job_dependencies=}")
 
             if job_dependencies:
                 with self._double_job_registry as dbl_registry:
@@ -1807,9 +1887,9 @@ class GpsBatchJobs(backend.BatchJobs):
                         else get_vault_token(sentinel_hub_client_alias),
                     )
                     dbl_registry.set_dependency_status(
-                        job_id, user_id, DEPENDENCY_STATUS.AWAITING
+                        job_id=job_id, user_id=user_id, dependency_status=DEPENDENCY_STATUS.AWAITING
                     )
-                    dbl_registry.set_status(job_id, user_id, JOB_STATUS.QUEUED)
+                    dbl_registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.QUEUED)
 
                     return
 
@@ -1825,106 +1905,31 @@ class GpsBatchJobs(backend.BatchJobs):
 
             raise OpenEOApiException(f"invalid value {value} for job_option {job_option_key}")
 
-        def as_max_soft_errors_ratio_arg() -> str:
-            value = job_options.get("soft-errors")
 
-            if value == "false":
-                return "0.0"
-            elif value == None:
-                return str(get_backend_config().default_soft_errors)
-            elif value == "true":
-                return "1.0"
-            elif isinstance(value, bool):
-                return "1.0" if value else "0.0"
-            elif isinstance(value, (int, float)) and 0.0 <= value <= 1.0:
-                return str(value)
-
-            raise OpenEOApiException(message=f"invalid value {value} for job_option soft-errors; "
-                                             f"supported values include false/true and values in the "
-                                             f"interval [0.0, 1.0]",
-                                     status_code=400)
-
-        def as_logging_threshold_arg() -> str:
-            value = job_options.get("logging-threshold", "info").upper()
-
-            if value == "WARNING":
-                value = "WARN"  # Log4j only accepts WARN whereas Python logging accepts WARN as well as WARNING
-
-            if value in ["DEBUG", "INFO", "WARN", "ERROR"]:
-                return value
-
-            raise OpenEOApiException(message=f"invalid value {value} for job_option logging-threshold; "
-                                             f'supported values include "debug", "info", "warning" and "error"',
-                                     status_code=400)
 
         isKube = ConfigParams().is_kube_deploy
-        driver_memory = job_options.get("driver-memory", get_backend_config().default_driver_memory )
-        driver_memory_overhead = job_options.get("driver-memoryOverhead", get_backend_config().default_driver_memoryOverhead)
-        executor_memory = job_options.get("executor-memory", get_backend_config().default_executor_memory)
-        executor_memory_overhead = job_options.get("executor-memoryOverhead", get_backend_config().default_executor_memoryOverhead )
-        driver_cores = str(job_options.get("driver-cores", 1 if isKube else 5))
-        executor_cores = str(job_options.get("executor-cores", 1 if isKube else 2))
-        executor_corerequest = job_options.get("executor-request-cores", "NONE")
-        if executor_corerequest == "NONE":
-            executor_corerequest = str(int(executor_cores)/2*1000)+"m"
-        max_executors = str(job_options.get("max-executors", get_backend_config().default_max_executors))
-        executor_threads_jvm = str(job_options.get("executor-threads-jvm", get_backend_config().default_executor_threads_jvm))
-        gdal_dataset_cache_size = str(job_options.get("gdal-dataset-cache-size", get_backend_config().default_gdal_dataset_cache_size))
-        gdal_cachemax = str(job_options.get("gdal-cachemax", get_backend_config().default_gdal_cachemax ))
-        queue = job_options.get("queue", "default")
-        profile = as_boolean_arg("profile", default_value="false")
-        max_soft_errors_ratio = as_max_soft_errors_ratio_arg()
-        task_cpus = str(job_options.get("task-cpus", 1))
-        archives = ",".join(job_options.get("udf-dependency-archives", []))
-        py_files = job_options.get("udf-dependency-files", [])
-        use_goofys = as_boolean_arg("goofys", default_value="false") != "false"
-        mount_tmp = as_boolean_arg("mount_tmp", default_value="false") != "false"
-        use_pvc = as_boolean_arg("spark_pvc", default_value="false") != "false"
-        logging_threshold = as_logging_threshold_arg()
-
-        as_bytes = self._jvm.org.apache.spark.util.Utils.byteStringAsBytes
-
-        if as_bytes(executor_memory) + as_bytes(executor_memory_overhead) > as_bytes(get_backend_config().max_executor_or_driver_memory):
-            raise OpenEOApiException(
-                message=f"Requested too much executor memory: {executor_memory} + {executor_memory_overhead}, the max for this instance is: {get_backend_config().max_executor_or_driver_memory}",
-                status_code=400)
-        if as_bytes(driver_memory) + as_bytes(driver_memory_overhead) > as_bytes(get_backend_config().max_executor_or_driver_memory):
-            raise OpenEOApiException(
-                message=f"Requested too much driver memory: {driver_memory} + {driver_memory_overhead}, the max for this instance is: {get_backend_config().max_executor_or_driver_memory}",
-                status_code=400)
 
         if isKube:
-            max_cores = 4
-            if int(executor_cores) > max_cores:
-                raise OpenEOApiException(
-                    message=f"Requested too many executor cores: {executor_cores} , the max for this instance is: {max_cores}",
-                    status_code=400)
-            if int(driver_cores) > max_cores:
-                raise OpenEOApiException(
-                    message=f"Requested too many driver cores: {driver_cores} , the max for this instance is: {max_cores}",
-                    status_code=400)
+            options = K8SOptions.from_dict(job_options)
+        else:
+            options = JobOptions.from_dict(job_options)
 
+        executor_memory_overhead = options.executor_memory_overhead
 
-        def serialize_dependencies() -> str:
-            batch_process_dependencies = [dependency for dependency in
-                                          (dependencies or job_info.get('dependencies') or [])
-                                          if 'collection_id' in dependency]
+        queue = job_options.get("queue", "default")
+        profile = as_boolean_arg("profile", default_value="false")
 
-            def as_arg_element(dependency: dict) -> dict:
-                source_location = (dependency.get('assembled_location')  # cached
-                                   or dependency.get('results_location')  # not cached
-                                   or f"s3://{sentinel_hub.OG_BATCH_RESULTS_BUCKET}"
-                                      f"/{dependency.get('subfolder') or dependency['batch_request_id']}")  # legacy
+        propagatable_web_app_driver_envars = {
+            envar: os.environ.get(envar, "")
+            for envar in os.environ.get("OPENEO_PROPAGATABLE_WEB_APP_DRIVER_ENVARS", "").split()
+        }
 
-                return {
-                    'source_location': source_location,
-                    'card4l': dependency.get('card4l', False)
-                }
+        options.validate()
 
-            return json.dumps([as_arg_element(dependency) for dependency in batch_process_dependencies])
 
         if get_backend_config().setup_kerberos_auth:
             setup_kerberos_auth(self._principal, self._key_tab, self._jvm)
+
 
         if isKube:
             # TODO: get rid of this "isKube" anti-pattern, it makes testing of this whole code path practically impossible
@@ -1932,21 +1937,37 @@ class GpsBatchJobs(backend.BatchJobs):
             # TODO: eliminate these local imports
             from kubernetes.client.rest import ApiException
 
+            use_goofys = as_boolean_arg("goofys", default_value="false") != "false"
+            mount_tmp = as_boolean_arg("mount_tmp", default_value="false") != "false"
+            use_pvc = as_boolean_arg("spark_pvc", default_value="false") != "false"
+
+            executor_corerequest = job_options.get("executor-request-cores", "NONE")
+            if executor_corerequest == "NONE":
+                executor_corerequest = str(int(options.executor_cores) / 2 * 1000) + "m"
+
+            gdal_cachemax = str(job_options.get("gdal-cachemax", get_backend_config().default_gdal_cachemax))
+
+
             api_instance_custom_object = kube_client("CustomObject")
             api_instance_core = kube_client("Core")
             pod_namespace = ConfigParams().pod_namespace
 
             # Check concurrent_pod_limit constraints.
             concurrent_pod_limit = ConfigParams().concurrent_pod_limit
-            try:
-                with zk_client(hosts=ConfigParams().zookeepernodes) as zk:
-                    zk_path = f"{get_backend_config().zookeeper_root_path}/config/users/{user_id}/concurrent_pod_limit"
-                    concurrent_pod_limit = int(zk.get(zk_path)[0])
-                    log.info(f"concurrent_pod_limit for user {user_id} found: {concurrent_pod_limit}")
-            except kazoo.exceptions.NoNodeError:
-                pass
-            except Exception:
-                log.warning(f"Failed to get user specific concurrent_pod_limit", exc_info=True)
+            if not get_backend_config().yunikorn_user_specific_queues:
+                try:
+                    with zk_client(hosts=ConfigParams().zookeepernodes) as zk:
+                        zk_path = f"{get_backend_config().zookeeper_root_path}/config/users/{user_id}/concurrent_pod_limit"
+                        concurrent_pod_limit = int(zk.get(zk_path)[0])
+                        log.info(f"Concurrent job limit for user {user_id} found: {concurrent_pod_limit}")
+                except kazoo.exceptions.NoNodeError:
+                    pass
+                except Exception:
+                    log.warning(f"Failed to get user specific concurrent_pod_limit", exc_info=True)
+                limitting_state = "RUNNING"
+            else:
+                limitting_state = "SUBMITTED"
+
             if concurrent_pod_limit != 0:
                 label_selector = f"user={user_id}"
                 try:
@@ -1958,12 +1979,12 @@ class GpsBatchJobs(backend.BatchJobs):
                     log.info("Exception when calling CustomObjectsApi->list_namespaced_custom_object: %s\n" % e)
                     result = {'items': []}
 
-                running_count = 0
+                limit_count = 0
                 for app in result['items']:
-                    if 'status' not in app or app['status']['applicationState']['state'] == 'RUNNING':
-                        running_count += 1
-                log.debug(f"concurrent_pod_limit check: {concurrent_pod_limit=} {running_count=}")
-                if running_count >= concurrent_pod_limit:
+                    if 'status' not in app or app['status']['applicationState']['state'] == limitting_state:
+                        limit_count += 1
+                log.debug(f"concurrent_pod_limit check: {concurrent_pod_limit=} {limit_count=}")
+                if limit_count >= concurrent_pod_limit:
                     raise OpenEOApiException(
                         code="ConcurrentJobLimit",
                         message=f"Job was not started because concurrent job limit ({concurrent_pod_limit}) is reached.",
@@ -1979,39 +2000,27 @@ class GpsBatchJobs(backend.BatchJobs):
                 s3_instance.create_bucket(Bucket=bucket)
 
             output_dir = str(self.get_job_output_dir(job_id))
+            job_work_dir = self.get_job_work_dir(job_id=job_id)
 
-            job_specification_file = output_dir + '/job_specification.json'
-
+            job_specification_file = str(job_work_dir / "job_specification.json")
             s3_instance.upload_fileobj(
                 io.BytesIO(job_specification_json.encode("utf8")),
                 bucket,
                 job_specification_file.strip("/"),
             )
 
-            if api_version:
-                api_version = api_version
-            else:
-                api_version = '0.4.0'
-
-            memOverheadBytes = as_bytes(executor_memory_overhead)
-            jvmOverheadBytes = as_bytes("128m")
-
-            python_max = job_options.get("python-memory", None)
-            if python_max is not None:
-                python_max = as_bytes(python_max)
-                if "executor-memoryOverhead" not in job_options:
-                    memOverheadBytes = jvmOverheadBytes
-                    executor_memory_overhead = f"{memOverheadBytes//(1024**2)}m"
-            else:
-                python_max = memOverheadBytes - jvmOverheadBytes
-                executor_memory_overhead = f"{jvmOverheadBytes//(1024**2)}m"
-
             eodata_mount = "/eodata2" if use_goofys else "/eodata"
 
             spark_app_id = k8s_job_name()
 
             # allow to override the image name via job options, other option would be to deduce it from the udf runtimes being used
-            image_name = job_options.get("image-name",os.environ.get("IMAGE_NAME"))
+            running_image = api_instance_core.read_namespaced_pod(name=os.environ.get("POD_NAME"), namespace=os.environ.get("POD_NAMESPACE")).spec.containers[0].image
+
+            image_name = options.image_name or get_backend_config().processing_container_image or running_image
+            image_name = get_backend_config().batch_runtime_to_image.get(image_name.lower(), image_name)
+            log.info(f"Using {image_name=}")
+
+            batch_job_cfg_secret_name = k8s_get_batch_job_cfg_secret_name(spark_app_id)
 
             sparkapplication_dict = k8s_render_manifest_template(
                 "sparkapplication.yaml.j2",
@@ -2023,22 +2032,23 @@ class GpsBatchJobs(backend.BatchJobs):
                 metadata_file=JOB_METADATA_FILENAME,
                 job_id_short=truncate_job_id_k8s(job_id),
                 job_id_full=job_id,
-                driver_cores=driver_cores,
-                driver_memory=driver_memory,
-                driver_memory_overhead=driver_memory_overhead,
-                executor_cores=executor_cores,
+                driver_cores=str(options.driver_cores),
+                driver_memory=options.driver_memory,
+                driver_memory_overhead=options.driver_memory_overhead,
+                executor_cores=options.executor_cores,
                 executor_corerequest=executor_corerequest,
-                executor_memory=executor_memory,
-                executor_memory_overhead=executor_memory_overhead,
-                executor_threads_jvm=executor_threads_jvm,
-                python_max_memory = python_max,
-                max_executors=max_executors,
+                executor_memory=options.executor_memory,
+                executor_memory_overhead=options.executor_memory_overhead,
+                executor_threads_jvm=str(options.executor_threads_jvm),
+                python_max_memory = byte_string_as(options.python_memory or "0b"),
+                max_executors=options.max_executors,
                 api_version=api_version,
                 dependencies="[]",  # TODO: use `serialize_dependencies()` here instead? It's probably messy to get that JSON string correctly encoded in the rendered YAML.
                 user_id=user_id,
-                max_soft_errors_ratio=max_soft_errors_ratio,
-                task_cpus=task_cpus,
-                gdal_dataset_cache_size=gdal_dataset_cache_size,
+                user_id_short=truncate_user_id_k8s(user_id),
+                max_soft_errors_ratio=options.soft_errors_arg(),
+                task_cpus=options.task_cpus,
+                gdal_dataset_cache_size=str(options.gdal_dataset_cache_size),
                 gdal_cachemax=gdal_cachemax,
                 current_time=int(time.time()),
                 aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID"),
@@ -2050,188 +2060,141 @@ class GpsBatchJobs(backend.BatchJobs):
                 aws_region=os.environ.get("AWS_REGION","RegionOne"),
                 swift_url=os.environ.get("SWIFT_URL"),
                 image_name=image_name,
-                openeo_backend_config=os.environ.get("OPENEO_BACKEND_CONFIG"),
+                openeo_backend_config=os.environ.get(ConfigGetter.OPENEO_BACKEND_CONFIG, ""),
                 swift_bucket=bucket,
                 zookeeper_nodes=os.environ.get("ZOOKEEPERNODES"),
                 eodata_mount=eodata_mount,
-                archives=archives,
-                py_files = py_files,
-                logging_threshold=logging_threshold,
+                archives=",".join(options.udf_dependency_archives),
+                py_files = options.udf_dependency_files,
+                logging_threshold=options.log_level,
                 mount_tmp=mount_tmp,
                 use_pvc=use_pvc,
                 access_token=user.internal_auth_data["access_token"],
                 fuse_mount_batchjob_s3_bucket=get_backend_config().fuse_mount_batchjob_s3_bucket,
                 UDF_PYTHON_DEPENDENCIES_FOLDER_NAME=UDF_PYTHON_DEPENDENCIES_FOLDER_NAME,
-                openeo_ejr_api=get_backend_config().ejr_api,
+                udf_python_dependencies_folder_path=str(job_work_dir / UDF_PYTHON_DEPENDENCIES_FOLDER_NAME),
+                udf_python_dependencies_archive_path=str(job_work_dir / UDF_PYTHON_DEPENDENCIES_ARCHIVE_NAME),
+                openeo_ejr_api=get_backend_config().ejr_api or "",
                 openeo_ejr_backend_id=get_backend_config().ejr_backend_id,
                 openeo_ejr_oidc_client_credentials=os.environ.get("OPENEO_EJR_OIDC_CLIENT_CREDENTIALS"),
-                profile=profile
+                profile=profile,
+                batch_scheduler=get_backend_config().batch_scheduler,
+                yunikorn_queue=get_backend_config().yunikorn_queue,
+                yunikorn_scheduling_timeout=get_backend_config().yunikorn_scheduling_timeout.rstrip(),
+                yunikorn_user_specific_queues=get_backend_config().yunikorn_user_specific_queues,
+                separate_asset_per_band_new_partitioner=os.environ.get("SEPARATE_ASSET_PER_BAND_NEW_PARTITIONER"),
+                propagatable_web_app_driver_envars=propagatable_web_app_driver_envars,
+                provide_s3_profiles_and_tokens=get_backend_config().provide_s3_profiles_and_tokens,
+                batch_job_cfg_secret_name=batch_job_cfg_secret_name,
+                batch_job_config_dir=get_backend_config().batch_job_config_dir,
+                openeo_jar_path=options.openeo_jar_path or 'local:///opt/geotrellis-extensions-static.jar',
+                debug_metrics="true" if options.log_level.lower() == "debug" else "false"
             )
-
-            if get_backend_config().fuse_mount_batchjob_s3_bucket:
-                persistentvolume_batch_job_results_dict = k8s_render_manifest_template(
-                    "persistentvolume_batch_job_results.yaml.j2",
-                    job_name=spark_app_id,
-                    job_namespace=pod_namespace,
-                    mounter=get_backend_config().fuse_mount_batchjob_s3_mounter,
-                    mount_options=get_backend_config().fuse_mount_batchjob_s3_mount_options,
-                    storage_class=get_backend_config().fuse_mount_batchjob_s3_storage_class,
-                    output_dir=output_dir,
-                    swift_bucket=bucket,
-                )
-
-                persistentvolumeclaim_batch_job_results_dict = k8s_render_manifest_template(
-                    "persistentvolumeclaim_batch_job_results.yaml.j2",
-                    job_name=spark_app_id,
-                )
 
             with self._double_job_registry as dbl_registry:
                 try:
                     if get_backend_config().fuse_mount_batchjob_s3_bucket:
+                        persistentvolume_batch_job_results_dict = k8s_render_manifest_template(
+                            "persistentvolume_batch_job_results.yaml.j2",
+                            job_name=spark_app_id,
+                            job_namespace=pod_namespace,
+                            mounter=get_backend_config().fuse_mount_batchjob_s3_mounter,
+                            mount_options=get_backend_config().fuse_mount_batchjob_s3_mount_options,
+                            storage_class=get_backend_config().fuse_mount_batchjob_s3_storage_class,
+                            output_dir=output_dir,
+                            swift_bucket=bucket,
+                        )
+
+                        persistentvolumeclaim_batch_job_results_dict = k8s_render_manifest_template(
+                            "persistentvolumeclaim_batch_job_results.yaml.j2",
+                            job_name=spark_app_id,
+                        )
+
                         api_instance_core.create_persistent_volume(persistentvolume_batch_job_results_dict, pretty=True)
                         api_instance_core.create_namespaced_persistent_volume_claim(pod_namespace, persistentvolumeclaim_batch_job_results_dict, pretty=True)
-                    submit_response_sparkapplication = api_instance_custom_object.create_namespaced_custom_object("sparkoperator.k8s.io", "v1beta2", pod_namespace, "sparkapplications", sparkapplication_dict, pretty=True)
+                    if get_backend_config().provide_s3_profiles_and_tokens:
+                        # For now we cannot access the subject of the initial access token but generally it is the user_id
+                        token_path = get_backend_config().batch_job_config_dir / "token"
+                        s3_profiles_cfg_batch_secret = k8s_render_manifest_template(
+                            "batch_job_cfg_secret.yaml.j2",
+                            secret_name=batch_job_cfg_secret_name,
+                            job_id=job_id,
+                            token=IDP_TOKEN_ISSUER.get_job_token(sub_id=user_id, user_id=user_id, job_id=job_id),
+                            profile_file_content=S3Config.from_backend_config(job_id, str(token_path)),
+                        )
+
+                        api_instance_core.create_namespaced_secret(
+                            pod_namespace, s3_profiles_cfg_batch_secret, pretty=True
+                        )
+                    api_instance_custom_object.create_namespaced_custom_object(
+                        "sparkoperator.k8s.io",
+                        "v1beta2",
+                        pod_namespace,
+                        "sparkapplications",
+                        sparkapplication_dict,
+                        pretty=True,
+                    )
                     log.info(f"mapped job_id {job_id} to application ID {spark_app_id}")
-                    dbl_registry.set_application_id(job_id, user_id, spark_app_id)
+                    dbl_registry.set_application_id(job_id=job_id, user_id=user_id, application_id=spark_app_id)
+                    dbl_registry.set_results_metadata_uri(
+                        job_id=job_id,
+                        user_id=user_id,
+                        results_metadata_uri=f"s3://{bucket}/{str(job_work_dir).strip('/')}/{JOB_METADATA_FILENAME}",
+                    )
+
                     status_response = {}
-                    retry=0
-                    while('status' not in status_response and retry<10):
-                        retry+=1
+                    retry = 0
+                    while "status" not in status_response and retry < 10:
+                        retry += 1
                         time.sleep(10)
                         try:
-                            status_response = api_instance_custom_object.get_namespaced_custom_object("sparkoperator.k8s.io", "v1beta2", pod_namespace, "sparkapplications",
-                                                                                        spark_app_id)
-                        except ApiException as e:
-                            log.info("Exception when calling CustomObjectsApi->list_custom_object: %s\n" % e)
+                            status_response = api_instance_custom_object.get_namespaced_custom_object(
+                                "sparkoperator.k8s.io", "v1beta2", pod_namespace, "sparkapplications", spark_app_id
+                            )
+                        except ApiException:
+                            log.warning(
+                                f"failed to fetch status of Spark application at {pod_namespace}:{spark_app_id}",
+                                exc_info=True,
+                            )
 
-                    if('status' not in status_response):
-                        log.warning(f"invalid status response: {status_response}, assuming it is queued.")
-                        dbl_registry.set_status(job_id, user_id, JOB_STATUS.QUEUED)
-
+                    if "status" not in status_response:
+                        log.warning(
+                            f"invalid status response of Spark application at {pod_namespace}:{spark_app_id}: {status_response}, assuming it is queued."
+                        )
+                        dbl_registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.QUEUED)
                 except ApiException as e:
-                    log.error("Exception when calling CustomObjectsApi->list_custom_object: %s\n" % e)
+                    log.error("failed to submit Spark application", exc_info=True)
                     if "AlreadyExists" in e.body:
-                        raise OpenEOApiException(message=f"Your job {job_id} was already started.",status_code=400)
-                    dbl_registry.set_status(job_id, user_id, JOB_STATUS.ERROR)
+                        raise OpenEOApiException(message=f"Your job {job_id} was already started.", status_code=400)
+                    dbl_registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.ERROR)
 
         else:
-            submit_script = "submit_batch_job_spark3.sh"
-            script_location = pkg_resources.resource_filename("openeogeotrellis.deploy", submit_script)
+            runner = YARNBatchJobRunner(principal=self._principal, key_tab=self._key_tab)
+            runner.set_default_sentinel_hub_credentials(self._default_sentinel_hub_client_id,self._default_sentinel_hub_client_secret)
+            vault_token = None if sentinel_hub_client_alias == 'default' else get_vault_token(sentinel_hub_client_alias)
+            job_work_dir = self.get_job_work_dir(job_id=job_id)
+            application_id = runner.run_job(
+                job_info,
+                job_id,
+                job_work_dir=job_work_dir,
+                log=log,
+                user_id=user_id,
+                api_version=api_version,
+                proxy_user=proxy_user or job_info.get("proxy_user", None),
+                vault_token=vault_token,
+            )
+            with self._double_job_registry as dbl_registry:
+                dbl_registry.set_application_id(job_id=job_id, user_id=user_id, application_id=application_id)
+                dbl_registry.set_results_metadata_uri(
+                    job_id=job_id,
+                    user_id=user_id,
+                    results_metadata_uri=f"file://{job_work_dir}/{JOB_METADATA_FILENAME}",
+                )
+                dbl_registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.QUEUED)
 
-            extra_py_files=""
-            if len(py_files)>0:
-                extra_py_files = "," + py_files.join(",")
 
 
 
-            # TODO: use different root dir for these temp input files than self._output_root_dir (which is for output files)?
-            with tempfile.NamedTemporaryFile(
-                mode="wt",
-                encoding="utf-8",
-                dir=self._output_root_dir,
-                prefix=f"{job_id}_",
-                suffix=".in",
-            ) as job_specification_file, tempfile.NamedTemporaryFile(
-                mode="wt",
-                encoding="utf-8",
-                dir=self._output_root_dir,
-                prefix=f"{job_id}_",
-                suffix=".properties",
-            ) as temp_properties_file:
-                job_specification_file.write(job_specification_json)
-                job_specification_file.flush()
-
-                self._write_sensitive_values(temp_properties_file,
-                                             vault_token=None if sentinel_hub_client_alias == 'default'
-                                             else get_vault_token(sentinel_hub_client_alias))
-                temp_properties_file.flush()
-
-                job_name = "openEO batch_{title}_{j}_user {u}".format(title=job_title, j=job_id, u=user_id)
-                args = [
-                    script_location,
-                    job_name,
-                    job_specification_file.name,
-                    str(self.get_job_output_dir(job_id)),
-                    "out",  # TODO: how support multiple output files?
-                    JOB_METADATA_FILENAME,
-                ]
-
-                if self._principal is not None and self._key_tab is not None:
-                    args.append(self._principal)
-                    args.append(self._key_tab)
-                else:
-                    args.append("no_principal")
-                    args.append("no_keytab")
-
-                args.append(job_info.get('proxy_user') or user_id)
-
-                if api_version:
-                    args.append(api_version)
-                else:
-                    args.append("0.4.0")
-
-                args.append(driver_memory)
-                args.append(executor_memory)
-                args.append(executor_memory_overhead)
-                args.append(driver_cores)
-                args.append(executor_cores)
-                args.append(driver_memory_overhead)
-                args.append(queue)
-                args.append(profile)
-                args.append(serialize_dependencies())
-                args.append(self.get_submit_py_files()+extra_py_files)
-                args.append(max_executors)
-                args.append(user_id)
-                args.append(job_id)
-                args.append(max_soft_errors_ratio)
-                args.append(task_cpus)
-                args.append(sentinel_hub_client_alias)
-                args.append(temp_properties_file.name)
-                args.append(archives)
-                args.append(logging_threshold)
-                args.append(os.environ.get(ConfigGetter.OPENEO_BACKEND_CONFIG, ""))
-                args.append(self.get_job_output_dir(job_id) / UDF_PYTHON_DEPENDENCIES_FOLDER_NAME)
-                args.append(get_backend_config().ejr_api or "")
-                args.append(get_backend_config().ejr_backend_id)
-                args.append(os.environ.get("OPENEO_EJR_OIDC_CLIENT_CREDENTIALS", ""))
-                # TODO: this positional `args` handling is getting out of hand, leverage _write_sensitive_values?
-
-                try:
-                    log.info(f"Submitting job with command {args!r}")
-                    script_output = subprocess.check_output(args, stderr=subprocess.STDOUT, universal_newlines=True)
-                    log.info(f"Submitted job, output was: {script_output}")
-                except CalledProcessError as e:
-                    log.error(f"Submitting job failed, output was: {e.stdout}", exc_info=True)
-                    raise InternalException(message=f"Failed to start batch job (YARN submit failure).")
-
-            try:
-                application_id = self._extract_application_id(script_output)
-                log.info("mapped job_id %s to application ID %s" % (job_id, application_id))
-
-                with self._double_job_registry as dbl_registry:
-                    dbl_registry.set_application_id(job_id, user_id, application_id)
-                    dbl_registry.set_status(job_id, user_id, JOB_STATUS.QUEUED)
-
-            except _BatchJobError:
-                traceback.print_exc(file=sys.stderr)
-                # TODO: why reraise as CalledProcessError?
-                raise CalledProcessError(1, str(args), output=script_output)
-
-    def _write_sensitive_values(self, output_file, vault_token: Optional[str]):
-        output_file.write(f"spark.openeo.sentinelhub.client.id.default={self._default_sentinel_hub_client_id}\n")
-        output_file.write(f"spark.openeo.sentinelhub.client.secret.default={self._default_sentinel_hub_client_secret}\n")
-
-        if vault_token is not None:
-            output_file.write(f"spark.openeo.vault.token={vault_token}\n")
-
-    @staticmethod
-    def _extract_application_id(script_output: str) -> str:
-        regex = re.compile(r"^.*Application report for (application_\d{13}_\d+)\s\(state:.*", re.MULTILINE)
-        match = regex.search(script_output)
-        if match:
-            return match.group(1)
-        else:
-            raise _BatchJobError(script_output)
 
     # TODO: encapsulate this SHub stuff in a dedicated class?
     def _schedule_and_get_dependencies(  # some we schedule ourselves, some already exist
@@ -2262,7 +2225,12 @@ class GpsBatchJobs(backend.BatchJobs):
         )
 
         if api_version:
-            env = env.push({"version": api_version})
+            env = env.push(
+                {
+                    "version": api_version,
+                    "openeo_api_version": api_version,
+                }
+            )
 
         top_level_node = ProcessGraphVisitor.dereference_from_node_arguments(process_graph)
         result_node = process_graph[top_level_node]
@@ -2283,7 +2251,8 @@ class GpsBatchJobs(backend.BatchJobs):
 
         for (process, arguments), constraints in source_constraints:
             if process == 'load_collection':
-                collection_id, properties_criteria = arguments
+                collection_id = arguments[0]
+                properties_criteria = arguments[1]
 
                 band_names = constraints.get('bands')
 
@@ -2632,7 +2601,7 @@ class GpsBatchJobs(backend.BatchJobs):
                         card4l=card4l  # should the batch job expect CARD4L metadata?
                     ))
             elif process == 'load_stac':
-                url, _ = arguments  # properties will be taken care of @ process graph evaluation time
+                url = arguments[0]  # properties will be taken care of @ process graph evaluation time
 
                 if url.startswith("http://") or url.startswith("https://"):
                     dependency_job_info = load_stac.extract_own_job_info(url, user_id=user_id, batch_jobs=self)
@@ -2640,7 +2609,7 @@ class GpsBatchJobs(backend.BatchJobs):
                         partial_job_status = PARTIAL_JOB_STATUS.for_job_status(dependency_job_info.status)
                     else:
                         with TimingLogger(f'load_stac({url}): extract "openeo:status"', logger=logger_adapter.debug):
-                            with self._requests_session.get(url, timeout=600) as resp:
+                            with self._requests_session.get(url, timeout=20) as resp:
                                 resp.raise_for_status()
                                 stac_object = resp.json()
                             partial_job_status = stac_object.get('openeo:status')
@@ -2670,13 +2639,14 @@ class GpsBatchJobs(backend.BatchJobs):
 
         :return: A mapping between a filename and a dict containing information about that file.
         """
-        job_info = self.get_job_info(job_id=job_id, user_id=user_id)
-        if job_info.status != JOB_STATUS.FINISHED:
+        with self._double_job_registry as registry:
+            job_dict = registry.get_job(job_id=job_id, user_id=user_id)
+
+        if job_dict["status"] != JOB_STATUS.FINISHED:
             raise JobNotFinishedException
 
-        job_dir = self.get_job_output_dir(job_id=job_id)
+        results_metadata = self.load_results_metadata(job_id, user_id, job_dict)
 
-        results_metadata = self.load_results_metadata(job_id, user_id)
         out_assets = results_metadata.get("assets", {})
         out_metadata = out_assets.get("out", {})
         bands = [Band(*properties) for properties in out_metadata.get("bands", [])]
@@ -2698,6 +2668,8 @@ class GpsBatchJobs(backend.BatchJobs):
         # container that ran the job can already be gone.
         # We only want to apply the cases below when we effectively have a job directory:
         # it should exists and should be a directory.
+        job_dir = self.get_job_output_dir(job_id=job_id)
+
         if job_dir.is_dir():
             if os.path.isfile(job_dir / 'out'):
                 results_dict['out'] = {
@@ -2750,30 +2722,89 @@ class GpsBatchJobs(backend.BatchJobs):
     def get_results_metadata_path(self, job_id: str) -> Path:
         return self.get_job_output_dir(job_id) / JOB_METADATA_FILENAME
 
-    def load_results_metadata(self, job_id: str, user_id: str) -> dict:
-        """
-        Reads the metadata json file from the job directory and returns it.
-        """
-        metadata_file = self.get_results_metadata_path(job_id=job_id)
+    def load_results_metadata(self, job_id: str, user_id: str, job_dict: dict = None) -> dict:
+        if job_dict is None:
+            with self._double_job_registry as registry:
+                job_dict = registry.get_job(job_id=job_id, user_id=user_id)
 
-        if ConfigParams().use_object_storage:
+        results_metadata = None
+
+        if "results_metadata_uri" in job_dict:
+            results_metadata = self._load_results_metadata_from_file(job_id, job_dict["results_metadata_uri"])  # TODO: expose a getter?
+
+        if not results_metadata and "results_metadata" in job_dict:
+            logger.debug("Loading results metadata from job registry", extra={"job_id": job_id})
+            results_metadata = job_dict["results_metadata"]
+
+        if not results_metadata:
+            results_metadata = self._load_results_metadata_from_file(job_id, results_metadata_uri=None)
+
+        return results_metadata
+
+    def _load_results_metadata_from_file(self, job_id: str, results_metadata_uri: Optional[str]) -> dict:
+        """
+        Reads the metadata json file either from the job directory or an explicit URI and returns it.
+        """
+
+        def try_get_results_metadata_from_object_storage(path: Union[Path, str], bucket: Optional[str]) -> dict:
             try:
-                contents = get_s3_file_contents(str(metadata_file))
+                contents = get_s3_file_contents(path, bucket)
                 return json.loads(contents)
             except Exception:
                 logger.warning(
-                    "Could not retrieve result metadata from object storage %s",
-                    metadata_file, exc_info=True,
-                    extra={'job_id': job_id})
+                    "Could not retrieve result metadata from object storage %s in bucket %s",
+                    path,
+                    bucket or "[default]",
+                    exc_info=True,
+                    stack_info=True,
+                    extra={"job_id": job_id},
+                )
 
-        try:
-            with open(metadata_file) as f:
-                return json.load(f)
-        except FileNotFoundError:
-            logger.warning("Could not derive result metadata from %s", metadata_file, exc_info=True,
-                           extra={'job_id': job_id})
+                return {}
 
-        return {}
+        def try_get_results_metadata_from_disk(path: Union[Path, str]) -> dict:
+            @reretry.retry(
+                exceptions=FileNotFoundError,
+                logger=logger,
+                **get_backend_config().read_results_metadata_file_retry_settings,
+            )
+            def read_results_metadata_file():
+                with open(path) as f:
+                    return json.load(f)
+
+            try:
+                return read_results_metadata_file()
+            except FileNotFoundError:
+                logger.warning(
+                    "Could not derive result metadata from %s",
+                    path,
+                    exc_info=True,
+                    stack_info=True,
+                    extra={"job_id": job_id},
+                )
+
+            return {}
+
+        if results_metadata_uri:
+            logger.debug("Loading results metadata from %s", results_metadata_uri, extra={"job_id": job_id})
+            uri_parts = urlparse(results_metadata_uri)
+
+            if uri_parts.scheme == "file":
+                return try_get_results_metadata_from_disk(uri_parts.path)
+            elif uri_parts.scheme == "s3":
+                bucket, key = PresignedS3AssetUrls.get_bucket_key_from_uri(results_metadata_uri)
+                return try_get_results_metadata_from_object_storage(key, bucket)
+            else:
+                raise NotImplementedError(results_metadata_uri)
+
+        metadata_file = self.get_results_metadata_path(job_id=job_id)
+
+        logger.debug("Loading results metadata from %s", metadata_file, extra={"job_id": job_id})
+
+        if ConfigParams().use_object_storage:
+            return try_get_results_metadata_from_object_storage(metadata_file, bucket=None)
+
+        return try_get_results_metadata_from_disk(metadata_file)
 
     def _get_providers(self, job_id: str, user_id: str) -> List[dict]:
         results_metadata = self.load_results_metadata(job_id, user_id)
@@ -2782,9 +2813,11 @@ class GpsBatchJobs(backend.BatchJobs):
     def get_log_entries(
         self,
         job_id: str,
+        *,
         user_id: str,
-        offset: Optional[str] = None,
-        level: Optional[str] = None,
+        offset: Union[str, None] = None,
+        limit: Union[str, None] = None,
+        level: str = DEFAULT_LOG_LEVEL_RETRIEVAL,
     ) -> Iterable[dict]:
         # will throw if job doesn't match user
         job_info = self.get_job_info(job_id=job_id, user_id=user_id)
@@ -2797,7 +2830,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
     def cancel_job(self, job_id: str, user_id: str):
         with self._double_job_registry as registry:
-            job_info = registry.get_job(job_id, user_id)
+            job_info = registry.get_job(job_id=job_id, user_id=user_id)
 
         if job_info["status"] in [
             JOB_STATUS.CREATED,
@@ -2854,8 +2887,30 @@ class GpsBatchJobs(backend.BatchJobs):
                                 f"The storage resources for {application_id} could not be found."
                             )
 
+                if get_backend_config().provide_s3_profiles_and_tokens:
+                    batch_job_cfg_secret_name = k8s_get_batch_job_cfg_secret_name(application_id)
+                    try:
+                        delete_response_secret = api_instance_core.delete_namespaced_secret(
+                            name=batch_job_cfg_secret_name,
+                            namespace=namespace,
+                            pretty=True
+                        )
+                        logger.debug(
+                            f"Removed secret {batch_job_cfg_secret_name} with kubernetes API call",
+                            extra={'job_id': job_id, 'API response': delete_response_secret}
+                        )
+                    except kubernetes.client.exceptions.ApiException as e:
+                        if e.status == 404:
+                            logger.info(
+                                f"The secret {batch_job_cfg_secret_name} could not be found."
+                            )
+                        else:
+                            logger.warning(
+                                f"Got exception {e} when deleting secret {batch_job_cfg_secret_name}"
+                            )
+
                 with self._double_job_registry:
-                    registry.set_status(job_id, user_id, JOB_STATUS.CANCELED)
+                    registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.CANCELED)
             else:
                 try:
                     kill_spark_job = subprocess.run(
@@ -2875,11 +2930,11 @@ class GpsBatchJobs(backend.BatchJobs):
                                    exc_info=True, extra={'job_id': job_id})
                 finally:
                     with self._double_job_registry as registry:
-                        registry.set_status(job_id, user_id, JOB_STATUS.CANCELED)
+                        registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.CANCELED)
         else:
             with self._double_job_registry as registry:
-                registry.remove_dependencies(job_id, user_id)
-                registry.set_status(job_id, user_id, JOB_STATUS.CANCELED)
+                registry.remove_dependencies(job_id=job_id, user_id=user_id)
+                registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.CANCELED)
 
     def delete_job(self, job_id: str, user_id: str):
         self._delete_job(job_id, user_id, propagate_errors=False)
@@ -2912,7 +2967,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 raise
 
         with self._double_job_registry as registry:
-            job_info = registry.get_job(job_id, user_id)
+            job_info = registry.get_job(job_id=job_id, user_id=user_id)
         dependency_sources = get_deletable_dependency_sources(job_info)
 
         if dependency_sources:
@@ -2988,44 +3043,3 @@ class GpsBatchJobs(backend.BatchJobs):
         if assembled_folders:
             logger.info("Deleted Sentinel Hub assembled folder(s) {fs} for batch job {j}"
                         .format(fs=assembled_folders, j=job_id), extra={'job_id': job_id})
-
-    def delete_jobs_before(
-        self,
-        upper: dt.datetime,
-        *,
-        user_ids: Optional[List[str]] = None,
-        dry_run: bool = True,
-        include_ongoing: bool = True,
-        include_done: bool = True,
-        user_limit: Optional[int] = 1000,
-    ) -> None:
-        with self._double_job_registry as registry, TimingLogger(
-            title=f"Collecting jobs to delete: {upper=} {user_ids=} {include_ongoing=} {include_done=}",
-            logger=logger,
-        ):
-            jobs_before = registry.get_all_jobs_before(
-                upper,
-                user_ids=user_ids,
-                include_ongoing=include_ongoing,
-                include_done=include_done,
-                user_limit=user_limit,
-            )
-        logger.info(f"Collected {len(jobs_before)} jobs to delete")
-
-        with TimingLogger(title=f"Deleting {len(jobs_before)} jobs", logger=logger):
-
-            for job_info in jobs_before:
-                job_id = job_info["job_id"]
-                user_id = job_info["user_id"]
-                if not dry_run:
-                    logger.info(f"Deleting {job_id=} from {user_id=}")
-                    self._delete_job(
-                        job_id=job_id, user_id=user_id, propagate_errors=True
-                    )
-                else:
-                    logger.info(f"Dry run: not deleting {job_id=} from {user_id=}")
-
-
-
-class _BatchJobError(Exception):
-    pass

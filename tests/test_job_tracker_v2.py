@@ -13,15 +13,16 @@ from unittest import mock
 import kubernetes
 import pytest
 import requests_mock
-from openeo.util import rfc3339, url_join
+from openeo.util import rfc3339
 from openeo_driver.testing import DictSubSet
 from openeo_driver.utils import generate_unique_id
 
+from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.integrations.kubernetes import K8S_SPARK_APP_STATE, k8s_job_name
 from openeogeotrellis.integrations.prometheus import Prometheus
 from openeogeotrellis.integrations.yarn import YARN_FINAL_STATUS, YARN_STATE
 from openeogeotrellis.job_costs_calculator import CostsDetails
-from openeogeotrellis.job_registry import ZkJobRegistry, InMemoryJobRegistry
+from openeogeotrellis.job_registry import InMemoryJobRegistry, ZkJobRegistry
 from openeogeotrellis.job_tracker_v2 import (
     JobCostsCalculator,
     JobTracker,
@@ -31,7 +32,6 @@ from openeogeotrellis.job_tracker_v2 import (
 )
 from openeogeotrellis.testing import KazooClientMock, gps_config_overrides
 from openeogeotrellis.utils import json_write
-from openeogeotrellis.configparams import ConfigParams
 
 # TODO: move YARN related mocks to openeogeotrellis.testing
 
@@ -267,7 +267,7 @@ class KubernetesAppInfo:
 
     def set_submitted(self):
         if not self.start_time:
-            self.start_time = rfc3339.datetime(dt.datetime.utcnow())
+            self.start_time = rfc3339.now_utc()
         self.state = K8S_SPARK_APP_STATE.SUBMITTED
 
     def set_running(self):
@@ -283,7 +283,7 @@ class KubernetesAppInfo:
 
     def set_finish_time(self, force: bool = False):
         if not self.finish_time or force:
-            self.finish_time = rfc3339.datetime(dt.datetime.utcnow())
+            self.finish_time = rfc3339.now_utc()
 
 
 class KubernetesMock:
@@ -567,6 +567,7 @@ class TestYarnJobTracker:
             sentinelhub_processing_units=None,
             unique_process_ids=[],
             job_options=job_options,
+            additional_credits_cost=None,
         )
 
         assert caplog.record_tuples == []
@@ -621,8 +622,9 @@ class TestYarnJobTracker:
         assert caplog.record_tuples == [
             (
                 "openeogeotrellis.job_tracker_v2",
-                logging.ERROR,
-                "App not found: job_id='job-2' application_id='app-2'",
+                logging.WARNING,
+                "App not found: job_id='job-2' application_id='app-2'; "
+                "this is not necessarily a problem (https://github.com/eu-cdse/openeo-cdse-infra/issues/147)",
             )
         ]
 
@@ -1165,6 +1167,7 @@ class TestK8sJobTracker:
                     "max_executor_memory": {"unit": "gb", "value": 3.5},
                     "cpu": {"unit": "cpu-seconds", "value": pytest.approx(2.34 * 3600, rel=0.001)},
                     "memory": {"unit": "mb-seconds", "value": pytest.approx(5.678 * 3600, rel=0.001)},
+                    'memory_requested': {'unit': 'mb-seconds', 'value': pytest.approx(5.678 * 3600, rel=0.001)},
                     "network_received": {"unit": "b", "value": pytest.approx(370841160371254.75, rel=0.001)},
                     "sentinelhub": {"unit": "sentinelhub_processing_unit", "value": 1.25},
                 },
@@ -1183,6 +1186,7 @@ class TestK8sJobTracker:
                     "max_executor_memory": {"unit": "gb", "value": 3.5},
                     "cpu": {"unit": "cpu-seconds", "value": pytest.approx(2.34 * 3600, rel=0.001)},
                     "memory": {"unit": "mb-seconds", "value": pytest.approx(5.678 * 3600, rel=0.001)},
+                    'memory_requested': {'unit': 'mb-seconds', 'value': pytest.approx(5.678 * 3600, rel=0.001)},
                     "network_received": {"unit": "b", "value": pytest.approx(370841160371254.75, rel=0.001)},
                     "sentinelhub": {"unit": "sentinelhub_processing_unit", "value": 1.25},
                 },
@@ -1331,8 +1335,9 @@ class TestK8sJobTracker:
         assert caplog.record_tuples == [
             (
                 "openeogeotrellis.job_tracker_v2",
-                logging.ERROR,
-                f"App not found: job_id='job-2' application_id='{app_ids[2]}'",
+                logging.WARNING,
+                f"App not found: job_id='job-2' application_id='{app_ids[2]}'; "
+                f"this is not necessarily a problem (https://github.com/eu-cdse/openeo-cdse-infra/issues/147)",
             )
         ]
 
@@ -1415,6 +1420,7 @@ class TestK8sJobTracker:
         ],
     )
     @pytest.mark.parametrize("report_usage_sentinelhub_pus", [True, False], ids=["include_shpu", "exclude_shpu"])
+    @pytest.mark.parametrize("batch_job_base_fee_credits", [None, 1.23])
     def test_k8s_zookeeper_job_cost(
         self,
         zk_job_registry,
@@ -1429,8 +1435,12 @@ class TestK8sJobTracker:
         expected_etl_state,
         expected_job_status,
         report_usage_sentinelhub_pus,
+        batch_job_base_fee_credits,
     ):
-        with gps_config_overrides(report_usage_sentinelhub_pus=report_usage_sentinelhub_pus):
+        with gps_config_overrides(
+            report_usage_sentinelhub_pus=report_usage_sentinelhub_pus,
+            batch_job_base_fee_credits=batch_job_base_fee_credits,
+        ):
             caplog.set_level(logging.WARNING)
             time_machine.move_to("2022-12-14T12:00:00Z", tick=False)
 
@@ -1487,14 +1497,33 @@ class TestK8sJobTracker:
                 cpu_seconds=pytest.approx(2.34 * 3600, rel=0.001),
                 mb_seconds=pytest.approx(5.678 * 3600, rel=0.001),
                 sentinelhub_processing_units=1.25 if report_usage_sentinelhub_pus else None,
+                additional_credits_cost=batch_job_base_fee_credits,
                 unique_process_ids=[],
                 job_options=job_options,
             )
 
             assert caplog.record_tuples == []
 
-    def test_k8s_no_zookeeper(self, k8s_mock, prometheus_mock, job_costs_calculator, batch_job_output_root,
-                              elastic_job_registry, caplog, time_machine):
+    @pytest.mark.parametrize(
+        "results_metadata_uri_present",
+        [False, True],
+        ids=[
+            "results_metadata_uri missing",  # old web app writer does not write results_metadata_uri yet so patch
+            "results_metadata_uri present",  # new web app driver wrote results_metadata_uri so no need to patch
+        ],
+    )
+    def test_k8s_no_zookeeper(
+        self,
+        k8s_mock,
+        prometheus_mock,
+        job_costs_calculator,
+        batch_job_output_root,
+        elastic_job_registry,
+        caplog,
+        time_machine,
+        mock_s3_bucket,
+        results_metadata_uri_present,
+    ):
         job_tracker = JobTracker(
             app_state_getter=K8sStatusGetter(k8s_mock, prometheus_mock),
             zk_job_registry=None,
@@ -1534,6 +1563,15 @@ class TestK8sJobTracker:
         kube_app = k8s_mock.submit(app_id=app_id)
         kube_app.set_submitted()
         elastic_job_registry.set_application_id(job_id=job_id, application_id=app_id)
+        if results_metadata_uri_present:
+            results_metadata_key = "path/to/results_metadata.json"
+            results_metadata_uri = f"s3://{mock_s3_bucket.name}/{results_metadata_key}"
+            # avoid WARNING log about not being able to retrieve results metadata from object storage
+            mock_s3_bucket.put_object(Key=results_metadata_key, Body="{}")
+            elastic_job_registry.set_results_metadata_uri(
+                job_id,
+                results_metadata_uri=results_metadata_uri,
+            )
 
         # Trigger `update_statuses`
         job_tracker.update_statuses()
@@ -1583,20 +1621,26 @@ class TestK8sJobTracker:
                     "input_pixel": {"unit": "mega-pixel", "value": 1.125},
                     "cpu": {"unit": "cpu-seconds", "value": pytest.approx(2.34 * 3600, rel=0.001)},
                     "memory": {"unit": "mb-seconds", "value": pytest.approx(5.678 * 3600, rel=0.001)},
+                    "memory_requested": {'unit': 'mb-seconds', 'value': pytest.approx(5.678 * 3600, rel=0.001)},
                     "network_received": {"unit": "b", "value": pytest.approx(370841160371254.75, rel=0.001)},
                     "sentinelhub": {"unit": "sentinelhub_processing_unit", "value": 1.25},
                     "max_executor_memory": {"unit": "gb", "value": 3.5},
                 },
                 "costs": 129.95,
-                "results_metadata": {
-                    "foo": "bar",
-                    "usage": {"input_pixel": {"unit": "mega-pixel", "value": 1.125},
-                              "sentinelhub": {"unit": "sentinelhub_processing_unit", "value": 1.25},
-                              },
-                    "b0rked": [24, ["a", {"b": ['nan', None]}], {"c": ['inf', 1.23]}],
-                },
             }
         )
+
+        if results_metadata_uri_present:
+            assert not elastic_job_registry.db[job_id].get("results_metadata")
+        else:
+            assert elastic_job_registry.db[job_id]["results_metadata"] == {
+                "foo": "bar",
+                "usage": {
+                    "input_pixel": {"unit": "mega-pixel", "value": 1.125},
+                    "sentinelhub": {"unit": "sentinelhub_processing_unit", "value": 1.25},
+                },
+                "b0rked": [24, ["a", {"b": ["nan", None]}], {"c": ["inf", 1.23]}],
+            }
 
         json.dumps(elastic_job_registry.db[job_id], allow_nan=False)
 
@@ -1616,8 +1660,8 @@ class TestK8sStatusGetter:
         k8s_mock.get_namespaced_custom_object.return_value = {
             "status": {
                 "applicationState": {"state": K8S_SPARK_APP_STATE.COMPLETED},
-                "lastSubmissionAttemptTime": rfc3339.datetime(dt.datetime.utcnow()),
-                "terminationTime": rfc3339.datetime(dt.datetime.utcnow()),
+                "lastSubmissionAttemptTime": rfc3339.now_utc(),
+                "terminationTime": rfc3339.now_utc(),
             }
         }
 

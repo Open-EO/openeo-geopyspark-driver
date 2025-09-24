@@ -1,7 +1,16 @@
 import logging
-from typing import List, Union
+from typing import List, Union, Optional, Tuple
 
-from openeo.metadata import CollectionMetadata, Dimension
+from openeo.metadata import (
+    CollectionMetadata,
+    Dimension,
+    TemporalDimension,
+    BandDimension,
+    Band,
+    DimensionAlreadyExistsException,
+    SpatialDimension,
+)
+from openeo_driver.util.geometry import BoundingBox
 from openeogeotrellis.utils import reproject_cellsize
 
 _log = logging.getLogger(__name__)
@@ -36,9 +45,11 @@ class GeopysparkCubeMetadata(CollectionMetadata):
             spatial_extent: dict = None, temporal_extent: tuple = None
     ):
         super().__init__(metadata=metadata, dimensions=dimensions)
+        # TODO: why do we need these in addition to those in dimensions?
+        # TODO: normalize extents or user proper types altogether
         self._spatial_extent = spatial_extent
         self._temporal_extent = temporal_extent
-        if (self.has_temporal_dimension() and temporal_extent is not None):
+        if self.has_temporal_dimension() and temporal_extent is not None:
             self.temporal_dimension.extent = temporal_extent
 
     def _clone_and_update(
@@ -66,12 +77,62 @@ class GeopysparkCubeMetadata(CollectionMetadata):
 
     def filter_temporal(self, start, end) -> 'GeopysparkCubeMetadata':
         """Create new metadata instance with temporal extent"""
-        # TODO take intersection with existing extent
-        return self._clone_and_update(temporal_extent=(start, end))
+        if self._temporal_extent is None:  # TODO: only for backwards compatibility
+            return self._clone_and_update(temporal_extent=(start, end))
+
+        this_start, this_end = self._temporal_extent
+
+        # TODO: support time zones other than UTC
+        if this_start > end or this_end < start:  # compared lexicographically
+            # no overlap
+            raise ValueError(start, end)
+
+        return self._clone_and_update(temporal_extent=(max(this_start, start), min(this_end, end)))
 
     @property
     def temporal_extent(self) -> tuple:
         return self._temporal_extent
+
+    def with_temporal_extent(self, temporal_extent: Tuple[str, str], allow_adding_dimension: bool = False):
+        if self.has_temporal_dimension():
+            dimensions = [
+                TemporalDimension(d.name, temporal_extent) if isinstance(d, TemporalDimension) else d
+                for d in self._dimensions
+            ]
+        else:
+            if not allow_adding_dimension:
+                raise ValueError("Temporal dimension should already be in metadata")
+            dimensions = self._dimensions + [TemporalDimension(name="t", extent=temporal_extent)]
+
+        return self._clone_and_update(
+            dimensions=dimensions,
+            temporal_extent=temporal_extent,
+        )
+
+    def with_new_band_names(self, override_band_names: List[str]):
+        if self.has_band_dimension():
+            dimensions = [
+                (
+                    BandDimension(name=d.name, bands=[Band(band_name) for band_name in override_band_names])
+                    if isinstance(d, BandDimension)
+                    else d
+                )
+                for d in self._dimensions
+            ]
+        else:
+            dimensions = self._dimensions + [
+                BandDimension(name="bands", bands=[Band(band_name) for band_name in override_band_names])
+            ]
+
+        return self._clone_and_update(
+            dimensions=dimensions,
+        )
+
+    def add_spatial_dimension(self, name: str, extent: Union[Tuple[float, float], List[float]]):
+        if any(d.name == name for d in self._dimensions):
+            raise DimensionAlreadyExistsException(f"Dimension with name {name!r} already exists")
+
+        return self._clone_and_update(dimensions=self._dimensions + [SpatialDimension(name, extent)])
 
     @property
     def opensearch_link_titles(self) -> List[str]:
@@ -82,11 +143,14 @@ class GeopysparkCubeMetadata(CollectionMetadata):
     def provider_backend(self) -> Union[str, None]:
         return self.get("_vito", "data_source", "provider:backend", default=None)
 
-    def auto_polarization(self) -> Union[str, None]:
+    def auto_polarization(self) -> bool:
         return self.get("_vito", "data_source", "auto_polarization", default=False)
 
-    def parallel_query(self) -> Union[str, None]:
+    def parallel_query(self) -> bool:
         return self.get("_vito", "data_source", "parallel_query", default=False)
+
+    def select_one_orbit_per_day(self) -> bool:
+        return self.get("_vito", "data_source", "select_one_orbit_per_day", default=False)
 
     def common_name_priority(self) -> int:
         priority = self.get("_vito", "data_source", "common_name_priority", default=None)
@@ -100,6 +164,8 @@ class GeopysparkCubeMetadata(CollectionMetadata):
         }.get(self.provider_backend(), 0)
 
     def get_nodata_value(self, requested_bands, default_value) -> float:
+        # TODO #1109 upgrade this implementation to "common" bands metadata
+        #      instead of (soon to be) outdated STAC extension patterns like "eo:bands" and "raster:bands"
         bands_metadata = self.get("summaries", "eo:bands",
                                   default=self.get("summaries", "raster:bands", default=[]))
         no_data_value = "undefined"
@@ -113,12 +179,56 @@ class GeopysparkCubeMetadata(CollectionMetadata):
                 no_data_value = nodata
             if no_data_value != nodata:
                 # TODO: Support different nodata values per band in a layer.
-                raise Exception("Requested bands have different nodata values: " + no_data_value + " and " + nodata)
+                raise Exception(f"Requested bands have different nodata values: {no_data_value} and {nodata}")
         if no_data_value == "undefined":
             no_data_value = default_value
         return float(no_data_value)
 
+    def get_layer_crs(self) -> str:
+        crs = self.get("cube:dimensions", "x", "reference_system", default="EPSG:4326")
+        if isinstance(crs, int):
+            crs = "EPSG:%s" % str(crs)
+        elif isinstance(crs, dict):
+            if crs.get("name") == "AUTO 42001 (Universal Transverse Mercator)":
+                crs = "Auto42001"
+        return crs
+
+    def get_overall_spatial_extent(self):
+        global_extent_latlon = {"west": -180.0, "south": -90, "east": 180, "north": 90}
+        bboxes = self.get("extent", "spatial", "bbox")
+        if not bboxes:
+            return global_extent_latlon
+        # https://github.com/radiantearth/stac-spec/blob/master/collection-spec/collection-spec.md#spatial-extent-object
+        # "The first bounding box always describes the overall spatial extent of the data"
+        bbox = bboxes[0]
+        overall_extent = dict(zip(["west", "south", "east", "north"], bbox))
+
+        likely_latlon = abs(overall_extent["west"] + 180) < 0.01 and abs(overall_extent["east"] - 180) < 0.01
+        if self.get_layer_crs() != "EPSG:4326" and not likely_latlon:
+            # We can only trust bbox values in LatLon
+            return global_extent_latlon
+
+        return overall_extent
+
+    def get_layer_native_extent(self) -> Optional[BoundingBox]:
+        dims = self.spatial_dimensions
+        if not dims:
+            return None
+        x = dims[0]
+        y = dims[1]
+        if not x.extent or not y.extent:
+            return None
+        return BoundingBox(
+            west=x.extent[0],
+            south=y.extent[0],
+            east=x.extent[1],
+            north=y.extent[1],
+            crs=self.get_layer_crs(),
+        )
+
     def get_GSD_in_meters(self) -> Union[tuple, dict, None]:
+        # TODO #1109 upgrade this implementation to "common" bands metadata
+        #      instead of (soon to be) outdated STAC extension patterns like "eo:bands" and "raster:bands"
         bands_metadata = self.get("summaries", "eo:bands",
                                   default=self.get("summaries", "raster:bands", default=[]))
         band_to_gsd = {}
@@ -142,13 +252,7 @@ class GeopysparkCubeMetadata(CollectionMetadata):
         if gsd_layer_wide:
             return gsd_layer_wide
 
-        crs = self.get("cube:dimensions", "x", "reference_system", default='EPSG:4326')
-        if isinstance(crs, int):
-            crs = 'EPSG:%s' % str(crs)
-        elif isinstance(crs, dict):
-            if crs["name"] == 'AUTO 42001 (Universal Transverse Mercator)':
-                crs = 'Auto42001'
-
+        crs = self.get_layer_crs()
         if crs == "EPSG:4326":
             # step could be expressed in LatLon or layer native crs.
             # Only when the layer native CRS is LatLon, we can trust it

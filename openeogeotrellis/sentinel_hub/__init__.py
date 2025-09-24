@@ -1,3 +1,5 @@
+# TODO: keep this __init__ slim and dependency-low (openeogeotrellis.geopysparkdatacube is a heavy one for example)
+
 from typing import Dict
 
 import logging

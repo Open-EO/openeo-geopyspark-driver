@@ -1,28 +1,37 @@
 import collections
-import datetime
 import getpass
 import json
 import logging
 import pathlib
 from pathlib import Path
 
+import botocore.exceptions
 import pytest
-
 from openeo_driver.testing import TIFF_DUMMY_DATA
+
 from openeogeotrellis.config import get_backend_config
+from openeogeotrellis.geopysparkdatacube import callsite
 from openeogeotrellis.testing import gps_config_overrides
 from openeogeotrellis.utils import (
-    dict_merge_recursive,
-    describe_path,
-    lonlat_to_mercator_tile_indices,
-    nullcontext,
-    utcnow,
-    UtcNowClock,
-    single_value,
     StatsReporter,
-    get_s3_binary_file_contents,
-    to_s3_url, parse_approximate_isoduration, reproject_cellsize,
+    describe_path,
+    dict_merge_recursive,
     json_default,
+    lonlat_to_mercator_tile_indices,
+    map_optional,
+    md5_checksum,
+    nullcontext,
+    parse_approximate_isoduration,
+    reproject_cellsize,
+    single_value,
+    stream_s3_binary_file_contents,
+    to_s3_url,
+    parse_json_from_output,
+    FileChangeWatcher,
+    get_jvm,
+    to_tuple,
+    unzip,
+    get_s3_file_contents,
 )
 
 
@@ -151,27 +160,6 @@ def test_nullcontext():
         assert n is None
 
 
-class TestUtcNowClock:
-
-    def test_default(self):
-        now = utcnow()
-        real_now = datetime.datetime.utcnow()
-        assert isinstance(now, datetime.datetime)
-        assert (real_now - now).total_seconds() < 1
-
-    def test_mock(self):
-        with UtcNowClock.mock(now=datetime.datetime(2012, 3, 4, 5, 6)):
-            assert utcnow() == datetime.datetime(2012, 3, 4, 5, 6)
-
-    def test_mock_str_date(self):
-        with UtcNowClock.mock(now="2021-10-22"):
-            assert utcnow() == datetime.datetime(2021, 10, 22)
-
-    def test_mock_str_datetime(self):
-        with UtcNowClock.mock(now="2021-10-22 12:34:56"):
-            assert utcnow() == datetime.datetime(2021, 10, 22, 12, 34, 56)
-
-
 def test_single_value():
     try:
         single_value([])
@@ -204,6 +192,16 @@ def test_single_value():
 def test_json_default(value, expected):
     out = json.loads(json.dumps(value, default=json_default))
     assert out == expected
+
+
+def test_parse_json_from_output():
+    json_dict = parse_json_from_output("{}")
+    assert json_dict == {}
+
+
+def test_parse_json_from_output_complex():
+    json_dict = parse_json_from_output("""prefix\n{}\nmiddle\n{"num":\n 5}\n""")
+    assert json_dict == {"num": 5}
 
 
 class TestStatsReporter:
@@ -244,9 +242,31 @@ def test_get_s3_binary_file_contents(mock_s3_bucket):
     out_file_s3_url = f"s3://{get_backend_config().s3_bucket_name}/{output_file}"
     mock_s3_bucket.put_object(Key=output_file, Body=TIFF_DUMMY_DATA)
 
-    bytes_retrieved = get_s3_binary_file_contents(out_file_s3_url)
+    buffer = bytearray()
 
-    assert TIFF_DUMMY_DATA == bytes_retrieved
+    for chunk in stream_s3_binary_file_contents(out_file_s3_url):
+        buffer += bytearray(chunk)
+
+    assert bytes(buffer) == TIFF_DUMMY_DATA
+
+
+@pytest.mark.parametrize(
+    ["args", "expectation"],
+    [
+        ([Path("/batch_jobs/j-abc123/text.txt")], nullcontext()),
+        ([Path("/batch_jobs/j-abc123/text.txt"), "openeo-fake-bucketname"], nullcontext()),
+        (
+            [Path("/batch_jobs/j-abc123/text.txt"), "unknown-bucket"],
+            pytest.raises(botocore.exceptions.ClientError, match="NoSuchBucket"),
+        ),
+    ],
+)
+def test_get_s3_file_contents(mock_s3_bucket, args, expectation):
+    text = "some text"
+    mock_s3_bucket.put_object(Key="batch_jobs/j-abc123/text.txt", Body=text.encode("utf-8"))
+
+    with expectation:
+        assert get_s3_file_contents(*args) == text
 
 
 @pytest.mark.parametrize(
@@ -375,3 +395,88 @@ def test_parse_approximate_isoduration(duration_str, expected):
     duration = parse_approximate_isoduration(duration_str)
     print(f"duration={duration}")
     assert str(duration) == expected
+
+def test_callsite():
+    # object that throws error when converting to string:
+    class BadObject:
+        value = 5
+        def __str__(self):
+            raise ValueError("to string error")
+
+    @callsite
+    def f(o):
+        return "hello " + str(o.value)
+
+    f(BadObject())
+    print("done")
+
+def test_map_optional():
+    to_upper = str.upper
+
+    assert map_optional(to_upper, None) is None
+    assert map_optional(to_upper, "hello") == "HELLO"
+
+
+def test_get_file_reload_register_func_if_changed(tmp_path):
+    # GIVEN a file path that does not exist yet
+    cfg_file_path = tmp_path.joinpath("cfg.json")
+    watcher = FileChangeWatcher()
+
+    # WHEN you check if a file needs to be reloaded the first time
+    reg_func = watcher.get_file_reload_register_func_if_changed(cfg_file_path)
+    # THEN it needs to be loaded whether it exists or not
+    assert reg_func is not None
+
+    # GIVEN the reload was not successfull (reg_func not called)
+    # WHEN you check if a file needs to be reloaded again
+    reg_func = watcher.get_file_reload_register_func_if_changed(cfg_file_path)
+    # THEN it still needs to be loaded whether it exists or not
+    assert reg_func is not None
+
+    # WHEN reload is registered as completed
+    reg_func()
+    # WHEN you check if a file needs to be reloaded after succesful registration but no change to the file
+    reg_func = watcher.get_file_reload_register_func_if_changed(cfg_file_path)
+    # THEN no reload is required
+    assert reg_func is None
+
+    # WHEN file gets changed
+    with open(cfg_file_path, "w") as fh:
+        fh.write("file changed")
+    # THEN a subsequent check would require reload
+    reg_func = watcher.get_file_reload_register_func_if_changed(cfg_file_path)
+    assert reg_func is not None
+
+    # When reload succeeded again
+    reg_func()
+    # THEN subsequent check would not require reload
+    reg_func = watcher.get_file_reload_register_func_if_changed(cfg_file_path)
+    assert reg_func is None
+
+
+def test_to_tuple():
+    scala_tuple = get_jvm().scala.Tuple3(1, 2, 3)
+
+    assert to_tuple(scala_tuple) == (1, 2, 3)
+
+
+def test_unzip():
+    pairs = [
+        (1, "one"),
+        (2, "two"),
+        (3, "three"),
+    ]
+
+    digits, words = list(unzip(*pairs))
+
+    assert digits == (1, 2, 3)
+    assert words == ("one", "two", "three")
+
+
+def test_md5_checksum(tmp_path):
+    file = tmp_path / "file"
+
+    with open(file, "wb") as f:
+        f.write(b"hello world")
+
+    assert md5_checksum(file) == "5eb63bbbe01eeed093cb22bb8f5acdc3"

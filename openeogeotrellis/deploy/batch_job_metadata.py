@@ -1,82 +1,99 @@
 import json
 import logging
 import os
-from itertools import chain
+from copy import deepcopy
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Union
 from urllib.parse import urlparse
 
 import pyproj
 from openeo.util import Rfc3339, dict_no_none
-from shapely.geometry import mapping, Polygon
-from shapely.geometry.base import BaseGeometry
-
 from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import DryRunDataTracer
-from openeo_driver.save_result import (ImageCollectionResult, SaveResult, NullResult, )
-from openeo_driver.util.geometry import spatial_extent_union, reproject_bounding_box
+from openeo_driver.save_result import (
+    ImageCollectionResult,
+    NullResult,
+    SaveResult,
+)
+from openeo_driver.util.geometry import reproject_bounding_box, spatial_extent_union
 from openeo_driver.util.utm import area_in_square_meters
 from openeo_driver.utils import temporal_extent_union
+from shapely.geometry import Polygon, mapping
+from shapely.geometry.base import BaseGeometry
+
 from openeogeotrellis._version import __version__
-from openeogeotrellis.backend import GeoPySparkBackendImplementation, JOB_METADATA_FILENAME
+from openeogeotrellis.backend import JOB_METADATA_FILENAME, GeoPySparkBackendImplementation
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.integrations.gdal import _extract_gdal_asset_raster_metadata
-from openeogeotrellis.utils import (get_jvm, _make_set_for_key, to_s3_url, )
+from openeogeotrellis.utils import _make_set_for_key, get_jvm, to_s3_url
 
 logger = logging.getLogger(__name__)
 
 
-def _assemble_result_metadata(tracer: DryRunDataTracer, result: SaveResult, output_file: Path,
-                              unique_process_ids: Set[str], asset_metadata: Dict = None,
-                              ml_model_metadata: Dict = None) -> dict:
+def _assemble_result_metadata(
+    tracer: DryRunDataTracer,
+    result: SaveResult,
+    job_dir: Path,
+    unique_process_ids: Set[str],
+    apply_gdal,
+    asset_metadata: Dict = None,  # TODO: include "items" instead of "assets"
+    ml_model_metadata: Dict = None,
+    is_item = False,
+) -> dict:
     metadata = extract_result_metadata(tracer)
 
-    def epsg_code(gps_crs) -> Optional[int]:
-        crs = get_jvm().geopyspark.geotrellis.TileLayer.getCRS(gps_crs)
-        return crs.get().epsgCode().getOrElse(None) if crs.isDefined() else None
+    def epsg_code(geotrellis_proj4_crs) -> Optional[int]:
+        # We have to use the original geotrellis.proj4.CRS to avoid proj4 conversion issues.
+        return geotrellis_proj4_crs.epsgCode().getOrElse(None)
 
     bands = []
     if isinstance(result, GeopysparkDataCube):
-        if result.cube.metadata.has_band_dimension():
-            bands = result.metadata.bands
         max_level = result.pyramid.levels[result.pyramid.max_zoom]
-        nodata = max_level.layer_metadata.no_data_value
-        epsg = epsg_code(max_level.layer_metadata.crs)
+        epsg = epsg_code(max_level.srdd.rdd().metadata().crs())
         instruments = result.metadata.get("summaries", "instruments", default=[])
     elif isinstance(result, ImageCollectionResult) and isinstance(result.cube, GeopysparkDataCube):
-        if result.cube.metadata.has_band_dimension():
-            bands = result.cube.metadata.bands
         max_level = result.cube.pyramid.levels[result.cube.pyramid.max_zoom]
-        nodata = max_level.layer_metadata.no_data_value
-        epsg = epsg_code(max_level.layer_metadata.crs)
+        epsg = epsg_code(max_level.srdd.rdd().metadata().crs())
         instruments = result.cube.metadata.get("summaries", "instruments", default=[])
     else:
-        bands = []
-        nodata = None
         epsg = None
         instruments = []
 
     if not isinstance(result, NullResult):
-        if asset_metadata is None:
-            # Old approach: need to construct metadata ourselves, from inspecting SaveResult
-            metadata['assets'] = {
-                output_file.name: {
-                    'bands': bands,
-                    'nodata': nodata,
-                    'type': result.get_mimetype()
-                }
-            }
+        if apply_gdal:
+            if is_item:
+                items_metadata = dict()
+                for (item_key, item) in asset_metadata.items():
+                    temp_asset_metadata = metadata.copy()
+                    try:
+                        _extract_asset_metadata(
+                            job_result_metadata=temp_asset_metadata,
+                            asset_metadata=item["assets"],
+                            job_dir=job_dir,
+                            epsg=epsg,
+                        )
+                        items_metadata[item_key] = temp_asset_metadata
+                    except Exception as e:
+                        error_summary = GeoPySparkBackendImplementation.summarize_exception_static(e)
+                        logger.exception("Error while creating asset metadata: " + error_summary.summary)
+                metadata["items"]= items_metadata
+            else:
+                try:
+                    _extract_asset_metadata(
+                        job_result_metadata=metadata,
+                        asset_metadata=asset_metadata,
+                        job_dir=job_dir,
+                        epsg=epsg,
+                    )
+                except Exception as e:
+                    error_summary = GeoPySparkBackendImplementation.summarize_exception_static(e)
+                    logger.exception("Error while creating asset metadata: " + error_summary.summary)
         else:
-            # New approach: SaveResult has generated metadata already for us
-            try:
-                _extract_asset_metadata(
-                    job_result_metadata=metadata, asset_metadata=asset_metadata, job_dir=output_file.parent, epsg=epsg
-                )
-            except Exception as e:
-                error_summary = GeoPySparkBackendImplementation.summarize_exception_static(e)
-                logger.exception("Error while creating asset metadata: " + error_summary.summary)
-
+            if is_item:
+                metadata["items"] = asset_metadata
+            else:
+                metadata["assets"] = asset_metadata
 
     # _extract_asset_metadata may already fill in metadata["epsg"], but only
     # if the value of epsg was None. So we don't want to overwrite it with
@@ -89,11 +106,12 @@ def _assemble_result_metadata(tracer: DryRunDataTracer, result: SaveResult, outp
     metadata["processing:facility"] = "VITO - SPARK"  # TODO make configurable
     metadata["processing:software"] = "openeo-geotrellis-" + __version__
     metadata["unique_process_ids"] = list(unique_process_ids)
-    global_metadata = result.options.get("file_metadata",{})
-    metadata["providers"] = global_metadata.get("providers",[])
+    if isinstance(result, SaveResult):
+        global_metadata = result.options.get("file_metadata", {})
+    metadata["providers"] = global_metadata.get("providers", [])
 
     if ml_model_metadata is not None:
-        metadata['ml_model_metadata'] = ml_model_metadata
+        metadata["ml_model_metadata"] = ml_model_metadata
 
     return metadata
 
@@ -106,25 +124,24 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
     source_constraints = tracer.get_source_constraints()
 
     # Take union of extents
-    temporal_extent = temporal_extent_union(*[
-        sc["temporal_extent"] for _, sc in source_constraints if "temporal_extent" in sc
-    ])
+    temporal_extent = temporal_extent_union(
+        *[sc["temporal_extent"] for _, sc in source_constraints if "temporal_extent" in sc]
+    )
     extents = [sc["spatial_extent"] for _, sc in source_constraints if "spatial_extent" in sc]
     # In the result metadata we want the bbox to be in EPSG:4326 (lat-long).
     # Therefore, keep track of the bbox's CRS to convert it to EPSG:4326 at the end, if needed.
     bbox_crs = None
     bbox = None
-    geometry = None
+    lonlat_geometry = None
     area = None
-    if(len(extents) > 0):
+    if len(extents) > 0:
         spatial_extent = spatial_extent_union(*extents)
         bbox_crs = spatial_extent["crs"]
         temp_bbox = [spatial_extent[b] for b in ["west", "south", "east", "north"]]
         if all(b is not None for b in temp_bbox):
             bbox = temp_bbox  # Only set bbox once we are sure we have all the info
-            polygon = Polygon.from_bounds(*bbox)
-            geometry = mapping(polygon)
-            area = area_in_square_meters(polygon, bbox_crs)
+            area = area_in_square_meters(Polygon.from_bounds(*bbox), bbox_crs)
+            lonlat_geometry = mapping(Polygon.from_bounds(*convert_bbox_to_lat_long(bbox, bbox_crs)))
 
     start_date, end_date = [rfc3339.datetime(d) for d in temporal_extent]
 
@@ -141,19 +158,19 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
             # See also: https://shapely.readthedocs.io/en/stable/manual.html#coordinate-systems
             bbox_crs = "EPSG:4326"
             bbox = agg_geometry.bounds
-            geometry = mapping(agg_geometry)
+            lonlat_geometry = mapping(agg_geometry)
             area = area_in_square_meters(agg_geometry, bbox_crs)
         elif isinstance(agg_geometry, DelayedVector):
             bbox = agg_geometry.bounds
             bbox_crs = agg_geometry.crs
             # Intentionally don't return the complete vector file. https://github.com/Open-EO/openeo-api/issues/339
-            geometry = mapping(Polygon.from_bounds(*bbox))
+            lonlat_geometry = mapping(Polygon.from_bounds(*convert_bbox_to_lat_long(bbox, bbox_crs)))
             area = DriverVectorCube.from_fiona([agg_geometry.path]).get_area()
         elif isinstance(agg_geometry, DriverVectorCube):
             if agg_geometry.geometry_count() != 0:
                 bbox = agg_geometry.get_bounding_box()
                 bbox_crs = agg_geometry.get_crs()
-                geometry = agg_geometry.get_bounding_box_geojson()
+                lonlat_geometry = agg_geometry.get_bounding_box_geojson()
                 area = agg_geometry.get_area()
         else:
             logger.warning(f"Result metadata: no bbox/area support for {type(agg_geometry)}")
@@ -166,14 +183,11 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
     links = tracer.get_metadata_links()
     links = [link for k, v in links.items() for link in v]
 
-    # Convert bbox to lat-long, EPSG:4326 if it was any other CRS.
-    bbox = convert_bbox_to_lat_long(bbox, bbox_crs)
-
     # TODO: dedicated type?
     # TODO: match STAC format?
     return {
-        "geometry": geometry,
-        "bbox": bbox,
+        "geometry": lonlat_geometry,
+        "bbox": convert_bbox_to_lat_long(bbox, bbox_crs),
         "area": {"value": area, "unit": "square meter"} if area else None,
         "start_datetime": start_date,
         "end_datetime": end_date,
@@ -294,35 +308,29 @@ def convert_bbox_to_lat_long(bbox: List[int], bbox_crs: Optional[Union[str, int,
             "north": bbox[3],
             "crs": bbox_crs,
         }
-        latlon_spatial_extent = reproject_bounding_box(
-            latlon_spatial_extent, from_crs=None, to_crs="EPSG:4326"
-        )
+        latlon_spatial_extent = reproject_bounding_box(latlon_spatial_extent, from_crs=None, to_crs="EPSG:4326")
         return [latlon_spatial_extent[b] for b in ["west", "south", "east", "north"]]
 
     return bbox
 
 
-def _convert_job_metadatafile_outputs_to_s3_urls(metadata_file: Path):
-    """Convert each asset's output_dir value to a URL on S3, in the job metadata file."""
-    with open(metadata_file, "rt") as mdf:
-        metadata_to_update = json.load(mdf)
-    with open(metadata_file, "wt") as mdf:
-        _convert_asset_outputs_to_s3_urls(metadata_to_update)
-        json.dump(metadata_to_update, mdf)
-
-
-def _convert_asset_outputs_to_s3_urls(job_metadata: dict):
+def _convert_asset_outputs_to_s3_urls(job_metadata: dict) -> dict:
     """Convert each asset's output_dir value to a URL on S3 in the metadata dictionary."""
+
+    job_metadata = deepcopy(job_metadata)
+
     out_assets = job_metadata.get("assets", {})
     for asset in out_assets.values():
-        if "href" in asset and not asset["href"].startswith("s3://"):
+        if "href" in asset and not str(asset["href"]).startswith("s3://"):
             asset["href"] = to_s3_url(asset["href"])
+
+    return job_metadata
 
 
 def _transform_stac_metadata(job_dir: Path):
     def relativize(assets: dict) -> dict:
         def relativize_href(asset: dict) -> dict:
-            absolute_href = asset['href']
+            absolute_href = asset["href"]
             relative_path = urlparse(absolute_href).path.split("/")[-1]
             return dict(asset, href=relative_path)
 
@@ -330,34 +338,38 @@ def _transform_stac_metadata(job_dir: Path):
 
     def drop_links(metadata: dict) -> dict:
         result = metadata.copy()
-        result.pop('links', None)
+        result.pop("links", None)
         return result
 
-    stac_metadata_files = [job_dir / file_name for file_name in os.listdir(job_dir) if
-                           file_name.endswith("_metadata.json") and file_name != JOB_METADATA_FILENAME]
+    stac_metadata_files = [
+        job_dir / file_name
+        for file_name in os.listdir(job_dir)
+        if file_name.endswith("_metadata.json") and file_name != JOB_METADATA_FILENAME
+    ]
 
     for stac_metadata_file in stac_metadata_files:
-        with open(stac_metadata_file, 'rt', encoding='utf-8') as f:
+        with open(stac_metadata_file, "rt", encoding="utf-8") as f:
             stac_metadata = json.load(f)
 
-        relative_assets = relativize(stac_metadata.get('assets', {}))
+        relative_assets = relativize(stac_metadata.get("assets", {}))
         transformed = dict(drop_links(stac_metadata), assets=relative_assets)
 
-        with open(stac_metadata_file, 'wt', encoding='utf-8') as f:
+        with open(stac_metadata_file, "wt", encoding="utf-8") as f:
             json.dump(transformed, f, indent=2)
 
 
-def _get_tracker(tracker_id=""):
+def _get_tracker(tracker_id: str = ""):
     return get_jvm().org.openeo.geotrelliscommon.BatchJobMetadataTracker.tracker(tracker_id)
 
 
-def _get_tracker_metadata(tracker_id="") -> dict:
+def _get_tracker_metadata(tracker_id: str = "", *, omit_derived_from_links: bool = False) -> dict:
     tracker = _get_tracker(tracker_id)
+    usage = {}
+    all_links = []
 
     if tracker is not None:
         tracker_results = tracker.asDict()
 
-        usage = {}
         pu = tracker_results.get("Sentinelhub_Processing_Units", None)
         if pu is not None:
             usage["sentinelhub"] = {"value": pu, "unit": "sentinelhub_processing_unit"}
@@ -366,20 +378,36 @@ def _get_tracker_metadata(tracker_id="") -> dict:
         if pixels is not None:
             usage["input_pixel"] = {"value": pixels / (1024 * 1024), "unit": "mega-pixel"}
 
-        links = tracker_results.get("links", None)
-        all_links = None
-        if links is not None:
-            all_links = list(chain(*links.values()))
+        input_product_links: Dict[str, list] = tracker_results.get("links", None)
+        if not omit_derived_from_links and input_product_links:
             # TODO: when in the future these links point to STAC objects we will need to update the type.
             #   https://github.com/openEOPlatform/architecture-docs/issues/327
-            all_links = [
+            all_links.extend(
                 {
                     "href": link.getSelfUrl(),
                     "rel": "derived_from",
                     "title": f"Derived from {link.getId()}",
                     "type": "application/json",
                 }
-                for link in all_links
-            ]
+                for links in input_product_links.values()
+                for link in links
+            )
 
-        return dict_no_none(usage=usage if usage != {} else None, links=all_links)
+    from openeogeotrellis.metrics_tracking import global_tracker
+
+    python_metrics = global_tracker().as_dict()
+    sar_backscatter_errors = python_metrics.pop("orfeo_backscatter_soft_errors", 0)
+    sar_backscatter_total = python_metrics.pop("orfeo_backscatter_execution_counter", 0)
+    usage = {**usage, **{name: {"value": value, "unit": "count"} for name, value in python_metrics.items()}}
+    if sar_backscatter_total > 0:
+        usage["sar_backscatter_soft_errors"] = {
+            "value": sar_backscatter_errors / sar_backscatter_total,
+            "unit": "fraction",
+        }
+    sar_backscatter_inputpixels = python_metrics.pop("orfeo_backscatter_input_pixels", 0)
+    if sar_backscatter_inputpixels > 0:
+        if "input_pixel" in usage:
+            usage["input_pixel"]["value"] += sar_backscatter_inputpixels / (1024 * 1024)
+        else:
+            usage["input_pixel"] = {"value": sar_backscatter_inputpixels / (1024 * 1024), "unit": "mega-pixel"}
+    return dict_no_none(usage=usage if usage != {} else None, links=all_links)

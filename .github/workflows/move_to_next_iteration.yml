@@ -1,0 +1,17 @@
+on: workflow_dispatch
+
+jobs:
+  move-to-next-iteration:
+    name: Move to next iteration
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: blombard/move-to-next-iteration@master
+      with:
+        owner: Open-EO
+        number: 1
+        token: ${{ secrets.PROJECT_PAT }}
+        iteration-field: Iteration
+        iteration: current
+        new-iteration: next
+        statuses: ',Blocked,In Progress,To be tested'

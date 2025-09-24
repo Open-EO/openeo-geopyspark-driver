@@ -9,7 +9,6 @@ import collections
 import datetime as dt
 import logging
 from decimal import Decimal
-from math import isfinite
 from pathlib import Path
 from typing import Any, List, NamedTuple, Optional, Union
 
@@ -25,7 +24,7 @@ except ImportError:
     requests_gssapi = None
 
 from openeo.util import TimingLogger, repr_truncate, Rfc3339, url_join, deep_get
-from openeo_driver.jobregistry import JOB_STATUS, ElasticJobRegistry
+from openeo_driver.jobregistry import JOB_STATUS, ElasticJobRegistry, EjrApiResponseError
 from openeo_driver.util.http import requests_with_retry
 from openeo_driver.util.logging import (
     get_logging_config,
@@ -48,13 +47,12 @@ from openeogeotrellis.integrations.etl_api import ETL_API_STATE
 from openeogeotrellis.integrations.yarn import yarn_state_to_openeo_job_status, YARN_STATE
 from openeogeotrellis.job_costs_calculator import (
     JobCostsCalculator,
-    noJobCostsCalculator,
     CostsDetails,
     DynamicEtlApiJobCostCalculator,
+    NoJobCostsCalculator,
 )
 from openeogeotrellis.job_registry import DoubleJobRegistry, ZkJobRegistry, get_deletable_dependency_sources
-from openeogeotrellis.utils import StatsReporter, dict_merge_recursive
-
+from openeogeotrellis.utils import StatsReporter, dict_merge_recursive, to_jsonable
 
 # Note: hardcoded logger name as this script is executed directly which kills the usefulness of `__name__`.
 _log = logging.getLogger("openeogeotrellis.job_tracker_v2")
@@ -65,6 +63,7 @@ class _Usage(NamedTuple):
     mb_seconds: Optional[float] = None
     network_receive_bytes: Optional[float] = None
     max_executor_gigabytes: Optional[float] = None
+    memory_requested: Optional[float] = None
 
     def to_dict(self) -> dict:
         result = {}
@@ -73,6 +72,8 @@ class _Usage(NamedTuple):
             result["cpu"] = {"value": self.cpu_seconds, "unit": "cpu-seconds"}
         if self.mb_seconds:
             result["memory"] = {"value": self.mb_seconds, "unit": "mb-seconds"}
+        if self.memory_requested:
+            result["memory_requested"] = {"value": self.mb_seconds, "unit": "mb-seconds"}
         if self.network_receive_bytes:
             result["network_received"] = {"value": self.network_receive_bytes, "unit": "b"}
         if self.max_executor_gigabytes:
@@ -286,6 +287,7 @@ class K8sStatusGetter(JobMetadataGetterInterface):
             metadata = self._kubernetes_api.get_namespaced_custom_object(
                 group="sparkoperator.k8s.io",
                 version="v1beta2",
+                # TODO: this namespace should come from job metadata, not config
                 namespace=ConfigParams().pod_namespace,
                 plural="sparkapplications",
                 name=app_id,
@@ -302,10 +304,11 @@ class K8sStatusGetter(JobMetadataGetterInterface):
                 msg = metadata["status"]["applicationState"]["errorMessage"]
                 if "driver" in msg and "OOMKilled" in msg:
                     _log.error(
-                        "Your batch job main application went out of memory, consider increasing driver-memoryOverhead."
+                        "Your batch job main application went out of memory, consider increasing driver-memoryOverhead.",
+                        extra={"job_id": job_id, "user_id": user_id}
                     )
                 else:
-                    _log.warning(f"Final application error message: {msg}")
+                    _log.warning(f"Final application error message: {msg}", extra={"job_id": job_id, "user_id": user_id})
 
             datetime_formatter = Rfc3339(propagate_none=True)
             start_time = datetime_formatter.parse_datetime(metadata["status"]["lastSubmissionAttemptTime"])
@@ -336,6 +339,7 @@ class K8sStatusGetter(JobMetadataGetterInterface):
             network_receive_bytes = self._prometheus_api.get_network_received_usage(application_id)
 
             max_executor_gigabyte = self._prometheus_api.get_max_executor_memory_usage(application_id)
+            memory_seconds_requested = self._prometheus_api.get_memory_requested(application_id)
 
 
             _log.info(f"Successfully retrieved usage stats from {self._prometheus_api.endpoint}: "
@@ -354,7 +358,8 @@ class K8sStatusGetter(JobMetadataGetterInterface):
 
             return _Usage(cpu_seconds=cpu_seconds,
                           mb_seconds=byte_seconds / (1024 * 1024) if byte_seconds is not None else None,
-                          network_receive_bytes=network_receive_bytes, max_executor_gigabytes=max_executor_gigabyte
+                          network_receive_bytes=network_receive_bytes, max_executor_gigabytes=max_executor_gigabyte,
+                          memory_requested=memory_seconds_requested
                           )
         except Exception as e:
             _log.exception(
@@ -391,12 +396,12 @@ class JobTracker:
         zk_job_registry: Optional[ZkJobRegistry],
         principal: str,
         keytab: str,
-        job_costs_calculator: JobCostsCalculator = noJobCostsCalculator,
+        job_costs_calculator: Optional[JobCostsCalculator] = None,
         output_root_dir: Optional[Union[str, Path]] = None,
         elastic_job_registry: Optional[ElasticJobRegistry] = None
     ):
         self._app_state_getter = app_state_getter
-        self._job_costs_calculator = job_costs_calculator
+        self._job_costs_calculator: JobCostsCalculator = job_costs_calculator or NoJobCostsCalculator()
         # TODO: inject GpsBatchJobs (instead of constructing it here and requiring all its constructor args to be present)
         #       Also note that only `load_results_metadata` is actually used, so dragging a complete GpsBatchJobs might actually be overkill in the first place.
         self._batch_jobs = GpsBatchJobs(
@@ -418,8 +423,23 @@ class JobTracker:
         with self._double_job_registry as double_job_registry, StatsReporter(
             name="JobTracker.update_statuses stats", report=_log.info
         ) as stats, TimingLogger("JobTracker.update_statuses", logger=_log.info):
-
-            jobs_to_track = double_job_registry.get_active_jobs()
+            jobs_to_track = double_job_registry.list_active_jobs(
+                fields=[
+                    "job_id",
+                    "user_id",
+                    "application_id",
+                    "status",
+                    "created",
+                    "title",
+                    "job_options",
+                    "dependencies",
+                    "dependency_usage",
+                    "results_metadata_uri",
+                ],
+                max_age=3 * 30,
+                max_updated_ago=14,
+                require_application_id=True,
+            )
 
             for job_info in jobs_to_track:
                 stats["collected jobs"] += 1
@@ -483,7 +503,11 @@ class JobTracker:
             )
             stats["new metadata"] += 1
         except AppNotFound:
-            log.error(f"App not found: {job_id=} {application_id=}", exc_info=True)
+            log.warning(
+                f"App not found: {job_id=} {application_id=}; "
+                f"this is not necessarily a problem (https://github.com/eu-cdse/openeo-cdse-infra/issues/147)",
+                exc_info=True,
+            )
             # TODO: originally, we set the job status here to "error", but that is potentially
             #       destructive in distributed context with partial replication.
             #       So we just don't touch anything and skip it instead for now.
@@ -508,7 +532,7 @@ class JobTracker:
             stats[f"reached final status {job_metadata.status}"] += 1
             result_metadata = self._batch_jobs.load_results_metadata(job_id, user_id)
 
-            double_job_registry.remove_dependencies(job_id, user_id)
+            double_job_registry.remove_dependencies(job_id=job_id, user_id=user_id)
 
             # there can be duplicates if batch processes are recycled
             dependency_sources = list(set(get_deletable_dependency_sources(job_info)))
@@ -550,6 +574,7 @@ class JobTracker:
                 cpu_seconds=job_metadata.usage.cpu_seconds,
                 mb_seconds=job_metadata.usage.mb_seconds,
                 sentinelhub_processing_units=sentinelhub_processing_units_to_report,
+                additional_credits_cost=get_backend_config().batch_job_base_fee_credits,
                 unique_process_ids=result_metadata.get("unique_process_ids", []),
                 job_options=job_info.get("job_options"),
             )
@@ -559,16 +584,42 @@ class JobTracker:
                 _log.debug(f"job_costs: calculated {job_costs}")
                 stats["job_costs: calculated"] += 1
                 stats[f"job_costs: nonzero={isinstance(job_costs, float) and job_costs>0}"] += 1
-                # TODO: skip patching the job znode and read from this file directly?
             except Exception as e:
                 log.exception(f"Failed to calculate job costs: {e}")
                 stats["job_costs: failed"] += 1
                 job_costs = None
 
             total_usage = dict_merge_recursive(job_metadata.usage.to_dict(), result_metadata.get("usage", {}))
-            double_job_registry.set_results_metadata(job_id, user_id, costs=job_costs,
-                                                     usage=self._to_jsonable(dict(total_usage)),
-                                                     results_metadata=self._to_jsonable(result_metadata))
+
+            def set_results_metadata(results_metadata: dict):
+                include_all_results_metadata = "results_metadata_uri" not in job_info
+
+                double_job_registry.set_results_metadata(
+                    job_id=job_id,
+                    user_id=user_id,
+                    costs=job_costs,
+                    usage=to_jsonable(dict(total_usage)),
+                    results_metadata=to_jsonable(results_metadata) if include_all_results_metadata else None,
+                )
+
+            try:
+                set_results_metadata(result_metadata)
+            except EjrApiResponseError as e:
+                if e.status_code == 413:
+                    log.warning(
+                        'Results metadata is too large to store in the job registry, removing "derived_from" links.',
+                        exc_info=True,
+                    )
+
+                    result_metadata["links"] = [
+                        link for link in result_metadata.get("links", []) if link.get("rel") != "derived_from"
+                    ]
+                    if not result_metadata["links"]:
+                        del result_metadata["links"]
+
+                    set_results_metadata(result_metadata)
+                else:
+                    raise
 
         datetime_formatter = Rfc3339(propagate_none=True)
 
@@ -579,21 +630,6 @@ class JobTracker:
             started=datetime_formatter.datetime(job_metadata.start_time),
             finished=datetime_formatter.datetime(job_metadata.finish_time),
         )
-
-    @staticmethod
-    def _to_jsonable_float(x: float) -> Union[float, str]:
-        return x if isfinite(x) else str(x)
-
-    @staticmethod
-    def _to_jsonable(x):
-        if isinstance(x, float):
-            return JobTracker._to_jsonable_float(x)
-        if isinstance(x, dict):
-            return {JobTracker._to_jsonable(key): JobTracker._to_jsonable(value) for key, value in x.items()}
-        elif isinstance(x, list):
-            return [JobTracker._to_jsonable(elem) for elem in x]
-
-        return x
 
 
 class CliApp:

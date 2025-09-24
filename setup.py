@@ -15,8 +15,14 @@ with open('openeogeotrellis/_version.py') as fp:
 
 version = __version__
 
+yarn_require = [
+    "gssapi>=1.8.0",
+    "requests-gssapi>=1.2.3",  # For Kerberos authentication
+]
+
 tests_require = [
     'pytest',
+    'pytest-timeout',
     'mock',
     'moto[s3]>=5.0.0',
     'schema',
@@ -26,6 +32,18 @@ tests_require = [
     "kubernetes",
     "re-assert",
     "dirty-equals>=0.6",
+    "cryptography>=44.0.0",
+    "responses",
+    "rio_cogeo",
+    "pydantic~=1.0",
+    "zarr",
+    "jsonschema",
+    "rioxarray",
+] + yarn_require
+
+typing_require = [
+    'mypy-boto3-sts',
+    'mypy-boto3-s3',
 ]
 
 setup(
@@ -41,22 +59,19 @@ setup(
             "scripts/submit_batch_job_log4j.properties",
             "scripts/submit_batch_job_log4j2.xml",
             "scripts/batch_job_log4j2.xml",
-            "scripts/cleaner-entrypoint.sh",
             "scripts/job_tracker-entrypoint.sh",
             "scripts/async_task-entrypoint.sh",
             "scripts/async_task_log4j2.xml",
-            "scripts/kleaner-entrypoint.sh",
             "scripts/zookeeper_set.py",
         ]),
     ],
-    setup_requires=['pytest-runner'],
     tests_require=tests_require,
     install_requires=[
-        "openeo>=0.30.0.a2.dev",
-        "openeo_driver>=0.107.3.dev",
-        'pyspark==3.4.2; python_version>="3.8"',
+        "openeo>=0.43.0.dev",
+        "openeo_driver>=0.135.0a5.dev",
+        'pyspark==4.0.1; python_version>="3.8"',
         'pyspark>=2.3.1,<2.4.0; python_version<"3.8"',
-        'geopyspark==0.4.7+openeo',
+        'geopyspark_openeo==0.4.3.post1',
         # rasterio is an undeclared but required dependency for geopyspark
         # (see https://github.com/locationtech-labs/geopyspark/issues/683 https://github.com/locationtech-labs/geopyspark/pull/706)
         'rasterio~=1.2.0; python_version<"3.9"',
@@ -79,16 +94,17 @@ setup(
         'xarray~=0.16.2; python_version<"3.9"',
         'xarray~=2024.7.0; python_version>="3.9"',
         "netcdf4",
-        'Shapely<2.0',
+        "shapely>=1.8.5",  # TODO #1161 bump requirement to at least 2.0.0 for simplicity (once compatibility is verified on all deployments)
         'epsel~=1.0.0',
-        'numbagg==0.1',
+        'numbagg==0.1; python_version<"3.9"', #leave it to user environment to include this for newer pythons
         'Bottleneck~=1.3.2; python_version<"3.9"',
         'Bottleneck~=1.4.0; python_version>="3.9"',
-        'python-json-logger',
+        "python-json-logger~=2.0",  # Avoid breaking change in 3.1.0 https://github.com/nhairs/python-json-logger/issues/29
         'jep==4.1.1',
         'kafka-python==1.4.6',
         'deprecated>=1.2.12',
         'elasticsearch==7.16.3',
+        "pystac>=1.8.4",  # TODO #1060 bump to more recent version (1.8.4 is from Sep 2023) once we can leave Python 3.8 behind
         'pystac_client~=0.7.2',
         'boto3>=1.16.25,<2.0',
         "hvac>=1.0.2",
@@ -96,24 +112,25 @@ setup(
         "attrs>=22.1.0",
         "planetary-computer~=1.0.0",
         "reretry~=0.11.8",
-        "traceback-with-variables==2.0.4",
-        'scipy>=1.8' # used by sentinel-3 reader
+        'scipy>=1.8',  # used by sentinel-3 reader
+        "PyJWT[crypto]>=2.9.0",  # For identity tokens
+        "urllib3>=1.26.20",
+        "importlib_resources; python_version<'3.9'",  # #1060 on python 3.8 we need importlib_resources backport
     ],
     extras_require={
-        "dev": tests_require,
+        "dev": tests_require + typing_require,
         "k8s": [
             "kubernetes",
             "PyYAML",
         ],
-        "yarn": [
-            "gssapi>=1.8.0",
-            "requests-gssapi>=1.2.3",  # For Kerberos authentication
-        ],
+        "yarn": yarn_require,
     },
     entry_points={
-        'console_scripts': [
-            'openeo_kube.py = openeogeotrellis.deploy.kube:main',
-            'openeo_batch.py = openeogeotrellis.deploy.batch_job:start_main'
+        "console_scripts": [
+            "openeo_kube.py = openeogeotrellis.deploy.kube:main",
+            "openeo_batch.py = openeogeotrellis.deploy.batch_job:start_main",
+            "openeo_local.py = openeogeotrellis.deploy.local:main",
+            "run_graph_locally.py = openeogeotrellis.deploy.run_graph_locally:main",
         ]
     }
 )

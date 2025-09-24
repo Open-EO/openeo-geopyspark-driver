@@ -1,10 +1,20 @@
+import base64
 import textwrap
-from typing import Optional, List
+from pathlib import Path
+from typing import List, Optional
+from unittest import mock
 
 import dirty_equals
 import pytest
 
-from openeogeotrellis.integrations.freeipa import FreeIpaClient, get_freeipa_server_from_env, get_verify_tls_from_env
+from openeogeotrellis.integrations.freeipa import (
+    FreeIpaClient,
+    get_freeipa_server_from_env,
+    get_verify_tls_from_env,
+    temp_keytab_from_env,
+    acquire_gssapi_creds,
+)
+from openeogeotrellis.testing import skip_if_package_not_available
 
 
 class TestFreeIpaClient:
@@ -180,3 +190,28 @@ def test_guess_verify_tls(monkeypatch):
     # Custom CA certificate file
     monkeypatch.setenv("OPENEO_FREEIPA_VERIFY_TLS", "/etc/ipa/ca.crt")
     assert get_verify_tls_from_env() == "/etc/ipa/ca.crt"
+
+
+def test_temp_keytab_from_env(monkeypatch):
+    env_var = "OPENEO_FREEIPA_KEYTAB_BASE64"
+    env_val = base64.b64encode("Ola señor".encode("utf8")).decode("ascii")
+    monkeypatch.setenv(env_var, env_val)
+
+    with temp_keytab_from_env(env_var=env_var) as keytab_path:
+        path = Path(keytab_path)
+        assert path.exists() and path.is_file()
+        assert path.read_text(encoding="utf8") == "Ola señor"
+
+    assert not path.exists()
+
+
+@skip_if_package_not_available("gssapi")
+@mock.patch("gssapi.Credentials")
+def test_acquire_gssapi_creds_memory_per_principal(Credentials):
+    acquire_gssapi_creds(principal="foo@BAR.EXAMPLE", keytab_path="/tmp/foo.keytab")
+    acquire_gssapi_creds(principal="foo-admin@BAZZ.EXAMPLE", keytab_path="/tmp/admin.keytab")
+
+    assert [call.kwargs["store"] for call in Credentials.call_args_list] == [
+        {"client_keytab": "FILE:/tmp/foo.keytab", "ccache": "MEMORY:fooBAREXAMPLE"},
+        {"client_keytab": "FILE:/tmp/admin.keytab", "ccache": "MEMORY:fooadminBAZZEXAMPLE"},
+    ]

@@ -4,22 +4,24 @@ import subprocess
 import sys
 import textwrap
 import zipfile
-
 from pathlib import Path
-from unittest import mock, skip
+from typing import Tuple
+from unittest import mock
 
 import pytest
 import rasterio
 from numpy.testing import assert_allclose
-
+import numpy as np
 from openeo_driver.backend import LoadParameters
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.utils import EvalEnv
+
 from openeogeotrellis.collections.s1backscatter_orfeo import (
     S1BackscatterOrfeo,
-    _instant_ms_to_day,
     S1BackscatterOrfeoV2,
+    _instant_ms_to_day,
 )
+
 
 @pytest.mark.parametrize(
     ["bbox", "bbox_epsg"],
@@ -194,13 +196,18 @@ class TestOrfeoPipeline:
         else:
             os.environ["OPENEO_BATCH_JOB_ID"] = self.old_openeo_batch_job_id
 
-    def orfeo_success_run(self, trackers, max_soft_errors_ratio):
+    def orfeo_success_run(self, trackers, max_soft_errors_ratio, target_resolution: Tuple[float, float]):
         input = Path(
             "/data/MTDA/CGS_S1/CGS_S1_GRD_L1/IW/HR/DV/2021/05/17/S1B_IW_GRDH_1SDV_20210517T054123_20210517T054148_026940_0337F2_2CE0/S1B_IW_GRDH_1SDV_20210517T054123_20210517T054148_026940_0337F2_2CE0.zip"
         )
         target_location = r"s1_grd"
         TestOrfeoPipeline.extract_product(input, target_location)
-        extent = {"xmin": 697534, "ymin": 5865437 - 80000, "xmax": 697534 + 10000, "ymax": 5865437 - 40000}
+        extent = {'xmin': 837703.6259948454,
+                  'ymin': 5767680.665770726,
+                  'xmax': 838703.6259948454,
+                  'ymax': 5768680.665770726}
+        extent_width_px = int((extent["xmax"] - extent["xmin"]) / target_resolution[0])
+        extent_height_px = int((extent["ymax"] - extent["ymin"]) / target_resolution[1])
         data, nodata = S1BackscatterOrfeoV2._orfeo_pipeline(
             input_tiff=Path(
                 "s1_grd/S1B_IW_GRDH_1SDV_20210517T054123_20210517T054148_026940_0337F2_2CE0.SAFE/measurement/s1b-iw-grd-vh-20210517t054123-20210517t054148-026940-0337f2-002.tiff"
@@ -208,8 +215,8 @@ class TestOrfeoPipeline:
             extent=extent,
             extent_epsg=32631,
             dem_dir=None,
-            extent_width_px=100,
-            extent_height_px=120,
+            extent_width_px=extent_width_px,
+            extent_height_px=extent_height_px,
             sar_calibration_lut="gamma",
             noise_removal=True,
             elev_geoid=None,
@@ -218,11 +225,14 @@ class TestOrfeoPipeline:
             orfeo_memory=512,
             trackers=trackers,
             max_soft_errors_ratio=max_soft_errors_ratio,
+            target_resolution=target_resolution
         )
         # orfeo data is returned (y,x)
-        assert (120, 100) == data.shape
+        assert isinstance(data, np.ndarray), f"Expected numpy array, got {type(data)}"
+        assert (extent_width_px, extent_height_px) == data.shape
+        assert_allclose([np.mean(data)], [0.02247126], atol=1e-4)
 
-    def orfeo_failed_run(self, trackers, max_soft_errors_ratio):
+    def orfeo_failed_run(self, trackers, max_soft_errors_ratio, target_resolution: Tuple[float, float]):
         extent = {"xmin": 697534, "ymin": 5865437 - 80000, "xmax": 697534 + 10000, "ymax": 5865437 - 40000}
         S1BackscatterOrfeoV2._orfeo_pipeline(
             input_tiff=Path("some_path.tiff"),
@@ -239,12 +249,13 @@ class TestOrfeoPipeline:
             orfeo_memory=512,
             trackers=trackers,
             max_soft_errors_ratio=max_soft_errors_ratio,
+            target_resolution=target_resolution
         )
 
     @staticmethod
     def extract_product(input, target_location):
-        import zipfile
         import os
+        import zipfile
 
         with zipfile.ZipFile(input) as zip_file:
             for member in zip_file.namelist():
@@ -253,15 +264,31 @@ class TestOrfeoPipeline:
                 else:
                     zip_file.extract(member, target_location)
 
-    def test_orfeo_soft_errors(self):
+    @pytest.mark.parametrize("target_resolution", [(10.0, 10.0), (20.0, 20.0)])
+    def test_orfeo_no_soft_errors_success(self, target_resolution):
         import geopyspark
         pysc = geopyspark.get_spark_context()
         max_soft_errors_ratio = 0.0
+        self.orfeo_success_run(S1BackscatterOrfeo._get_trackers(pysc), max_soft_errors_ratio, target_resolution)
 
-        # The first run should succeed, the second should fail.
-        self.orfeo_success_run(S1BackscatterOrfeo._get_trackers(pysc), max_soft_errors_ratio)
+    def test_orfeo_no_soft_errors_fail(self):
+        import geopyspark
+        pysc = geopyspark.get_spark_context()
+        max_soft_errors_ratio = 0.0
         with pytest.raises(RuntimeError):
-            self.orfeo_failed_run(S1BackscatterOrfeo._get_trackers(pysc), max_soft_errors_ratio)
+            self.orfeo_failed_run(S1BackscatterOrfeo._get_trackers(pysc), max_soft_errors_ratio, (10.0, 10.0))
+
+    @pytest.mark.parametrize("success", [True, False], ids=["success", "failure"])
+    def test_orfeo_soft_errors(self, success, caplog):
+        import geopyspark
+
+        pysc = geopyspark.get_spark_context()
+        max_soft_errors_ratio = 0.1
+
+        orfeo_run = self.orfeo_success_run if success else self.orfeo_failed_run
+        orfeo_run(S1BackscatterOrfeo._get_trackers(pysc), max_soft_errors_ratio, target_resolution=(10.0, 10.0))
+
+        assert success != ("ignoring soft errors, max_soft_errors_ratio=0.1" in caplog.messages)
 
     @pytest.mark.parametrize(
         [
@@ -423,6 +450,8 @@ class TestOrfeoPipeline:
               }}
         )
         datacube = catalog.load_collection("Creodias-S1-Backscatter", load_params=load_params, env=EvalEnv())
+
+        assert "SpacePartitioner" in str(datacube.get_max_level().srdd.rdd().partitioner())
 
         # Compare actual with the expected result.
         filename = tmp_path / "s1backscatter.tiff"

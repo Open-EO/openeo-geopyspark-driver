@@ -1,7 +1,8 @@
-import xarray
 import numpy as np
-from openeo.udf import XarrayDataCube
+import xarray
 from openeo.metadata import CollectionMetadata, SpatialDimension
+from openeo.udf import XarrayDataCube
+
 
 def apply_metadata(metadata: CollectionMetadata,
                    context: dict) -> CollectionMetadata:

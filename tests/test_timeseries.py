@@ -1,5 +1,6 @@
 import datetime
 import json
+from pathlib import Path
 from tempfile import NamedTemporaryFile
 from unittest import TestCase
 
@@ -7,16 +8,24 @@ import geopyspark as gps
 import numpy as np
 import pytest
 import pytz
-from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time)
+from geopyspark.geotrellis import SpaceTimeKey, Tile, _convert_to_unix_time
 from geopyspark.geotrellis.constants import LayerType
 from geopyspark.geotrellis.layer import TiledRasterLayer
-from pyspark import SparkContext
-from shapely.geometry import mapping, Point, Polygon, GeometryCollection, MultiPolygon, box
-
 from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.delayed_vector import DelayedVector
-from openeo_driver.save_result import AggregatePolygonResultCSV, AggregatePolygonResult
+from openeo_driver.save_result import AggregatePolygonResult, AggregatePolygonResultCSV
+from pyspark import SparkContext
+from shapely.geometry import (
+    GeometryCollection,
+    MultiPolygon,
+    Point,
+    Polygon,
+    box,
+    mapping,
+)
+
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
+
 from .data import get_test_data_file
 
 
@@ -234,6 +243,21 @@ def test_aggregate_spatial_last_polygon_empty(get_regions, imagecollection_with_
     }
 
 
+def test_aggregate_spatial_small_polygon(imagecollection_with_two_bands_and_one_date):
+    regions = DriverVectorCube.from_fiona([str(get_test_data_file("geometries/small_polygon.geojson"))], None, {})
+
+    result = imagecollection_with_two_bands_and_one_date.aggregate_spatial(
+        regions, {"mean1": {"process_id": "mean", "arguments": {"data": {"from_parameter": "data"}}, "result": True}}
+    )
+    assert isinstance(result, AggregatePolygonResultCSV)
+
+    spatial_result = AggregatePolygonResult(
+        result.get_data(), regions=regions, metadata=imagecollection_with_two_bands_and_one_date.metadata
+    )
+    filename = spatial_result.to_geoparquet()
+    assert Path(filename).exists()
+
+
 def test_zonal_statistics_median_datacube(imagecollection_with_two_bands_and_three_dates):
 
     polygon = Polygon(shell=[
@@ -392,7 +416,7 @@ def test_multiple_zonal_statistics(imagecollection_with_two_bands_and_three_date
     result = imagecollection_with_two_bands_and_three_dates.aggregate_spatial(polygon, callback)
     assert isinstance(result, AggregatePolygonResultCSV)
     assert result.get_data() == {
-        "2017-09-25T11:37:00Z": [[1.0, 1.0, 1.0, 2.0, 1.0, 2.0]],
+        "2017-09-25T11:37:00Z": [[16.0, 16.0, 1.0, 32.0, 16.0, 2.0]],
         "2017-09-30T00:37:00Z": [
             [
                 pytest.approx(np.nan, nan_ok=True),
@@ -403,7 +427,7 @@ def test_multiple_zonal_statistics(imagecollection_with_two_bands_and_three_date
                 pytest.approx(np.nan, nan_ok=True),
             ]
         ],
-        "2017-10-25T11:37:00Z": [[2.0, 1.0, 2.0, 1.0, 1.0, 1.0]],
+        "2017-10-25T11:37:00Z": [[32.0, 16.0, 2.0, 16.0, 16.0, 1.0]],
     }
 
 

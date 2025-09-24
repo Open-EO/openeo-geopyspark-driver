@@ -1,0 +1,2 @@
+#start the webservice locally, using host network so all ports are available
+podman run -it --network=host --env-file local_service.env  --entrypoint=sh vito-docker.artifactory.vgt.vito.be/openeo-base -c '/opt/venv/bin/python  /opt/venv/bin/openeo_local.py'

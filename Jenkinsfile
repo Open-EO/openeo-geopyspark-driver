@@ -11,14 +11,14 @@
 pythonPipeline {
   package_name = 'openeo-geopyspark'
   wipeout_workspace = true
-  hadoop = false
+  hadoop = true
   pre_test_script = 'pre_test.sh'
   extra_env_variables = [
-    'JAVA_HOME=/usr/lib/jvm/java-21-openjdk-21.0.2.0.13-1.el9.alma.1.x86_64',
     /* Set pytest `basetemp` inside Jenkins workspace. (Note: this is intentionally Jenkins specific, instead of a global pytest.ini thing.) */
     "PYTEST_DEBUG_TEMPROOT=pytest-tmp",
+    "PYTHON_VERSION=3.8",
   ]
-  python_version = ["3.11"]
+  python_version = ["3.8"]
   docker_registry = 'vito-docker-private.artifactory.vgt.vito.be'
   downstream_job = 'openEO/openeo-integrationtests'
   wheel_repo = 'python-openeo'
@@ -27,9 +27,11 @@ pythonPipeline {
   extras_require = 'dev'
   upload_dev_wheels = false
   pep440 = true
-  venv_rpm_deps = ['gcc-c++', 'kstart', 'krb5-devel', 'gdal-devel', 'hdf5-devel']
-  custom_test_image = 'vito-docker.artifactory.vgt.vito.be/almalinux9-spark-py-openeo:3.5.0'
+  venv_rpm_deps = ['gcc-c++', 'kstart', 'krb5-devel']
+  custom_test_image = 'vito-docker.artifactory.vgt.vito.be/almalinux8.5-spark-py-openeo:3.5.6'
   extra_container_volumes = [
     '/data/MTDA:/data/MTDA:ro'
   ]
+  enable_caching = true
+  enable_uv = true
 }

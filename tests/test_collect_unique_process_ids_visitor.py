@@ -1,6 +1,8 @@
 from openeo_driver.utils import read_json
 
-from openeogeotrellis.collect_unique_process_ids_visitor import CollectUniqueProcessIdsVisitor
+from openeogeotrellis.collect_unique_process_ids_visitor import (
+    CollectUniqueProcessIdsVisitor,
+)
 
 
 def test_collect_unique_process_ids():

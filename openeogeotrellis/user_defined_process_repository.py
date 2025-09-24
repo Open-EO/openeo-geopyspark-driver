@@ -1,15 +1,15 @@
 import contextlib
 import json
 import logging
-from typing import List, Dict
-from typing import Union
+from typing import Dict, List, Union
 
 from kazoo.client import KazooClient
 from kazoo.exceptions import NodeExistsError, NoNodeError
 from kazoo.handlers.threading import KazooTimeoutError
-
-from openeo_driver.backend import UserDefinedProcessMetadata, UserDefinedProcesses
+from kazoo.retry import KazooRetry
+from openeo_driver.backend import UserDefinedProcesses, UserDefinedProcessMetadata
 from openeo_driver.errors import ProcessGraphNotFoundException
+
 from openeogeotrellis.configparams import ConfigParams
 
 
@@ -19,19 +19,20 @@ class ZooKeeperUserDefinedProcessRepository(UserDefinedProcesses):
 
     _log = logging.getLogger(__name__)
 
-    def __init__(self, hosts: List[str], root: str = "/openeo/udps"):
-        self._hosts = ','.join(hosts)
+    def __init__(self, hosts: List[str], root: str = "/openeo/udps", *, zk_client_reuse: bool = False):
+        self._hosts = ",".join(hosts)
         self._root = root
+        self._zk_client_reuse = zk_client_reuse
+        self._zk_client_cache = None
+        self._log.info(f"ZooKeeperUserDefinedProcessRepository with {self._root=} {self._zk_client_reuse=}")
 
     @staticmethod
     def _serialize(spec: dict) -> bytes:
-        return json.dumps({
-            'specification': spec
-        }).encode()
+        return json.dumps({"specification": spec}).encode("utf8")
 
     @staticmethod
     def _deserialize(data: bytes) -> dict:
-        return json.loads(data.decode())
+        return json.loads(data.decode("utf8"))
 
     def save(self, user_id: str, process_id: str, spec: dict) -> None:
         with self._zk_client() as zk:
@@ -81,14 +82,34 @@ class ZooKeeperUserDefinedProcessRepository(UserDefinedProcesses):
 
     @contextlib.contextmanager
     def _zk_client(self):
-        zk = KazooClient(hosts=self._hosts)
-        zk.start()
+        create_new_client = (not self._zk_client_reuse) or (self._zk_client_cache is None)
+        if create_new_client:
+            kz_retry = KazooRetry(max_tries=10, delay=0.5, backoff=2)
+            self._log.info(f"ZooKeeperUserDefinedProcessRepository: creating KazooClient ({self._zk_client_reuse=})")
+            zk = KazooClient(
+                hosts=self._hosts,
+                connection_retry=kz_retry,
+                command_retry=kz_retry,
+                timeout=3.0,
+            )
+            zk.start(timeout=15.0)
+            if self._zk_client_reuse:
+                self._zk_client_cache = zk
+        else:
+            zk = self._zk_client_cache
 
         try:
             yield zk
         finally:
-            zk.stop()
-            zk.close()
+            if not self._zk_client_reuse:
+                zk.stop()
+                zk.close()
+
+    def __del__(self):
+        if self._zk_client_cache:
+            self._zk_client_cache.stop()
+            self._zk_client_cache.close()
+            self._zk_client_cache = None
 
 
 class InMemoryUserDefinedProcessRepository(UserDefinedProcesses):
@@ -119,7 +140,7 @@ class InMemoryUserDefinedProcessRepository(UserDefinedProcesses):
 
 
 def main():
-    repo = ZooKeeperUserDefinedProcessRepository(hosts=ConfigParams().zookeepernodes)
+    repo = ZooKeeperUserDefinedProcessRepository(hosts=ConfigParams().zookeepernodes, zk_client_reuse=True)
 
     user_id = 'vdboschj'
     process_graph_id = 'evi'

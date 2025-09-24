@@ -20,13 +20,12 @@ from openeo_driver.jobregistry import JOB_STATUS, DEPENDENCY_STATUS
 from openeo_driver.util.http import requests_with_retry
 from openeo_driver.util.logging import JSON_LOGGER_DEFAULT_FORMAT
 from openeogeotrellis import sentinel_hub
-from openeogeotrellis.backend import GpsBatchJobs
+from openeogeotrellis.backend import GpsBatchJobs, get_elastic_job_registry
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.layercatalog import get_layer_catalog
 from openeogeotrellis.vault import Vault
-from openeogeotrellis.job_registry import ZkJobRegistry
-
+from openeogeotrellis.job_registry import ZkJobRegistry, DoubleJobRegistry
 
 ARG_BATCH_JOB_ID = 'batch_job_id'
 ARG_USER_ID = 'user_id'
@@ -190,19 +189,31 @@ def main():
                                             redirect_stderr=sys.stderr)
 
         try:
+            backend_config = get_backend_config()
+            requests_session = requests_with_retry()
+            elastic_job_registry = get_elastic_job_registry(requests_session) if backend_config.ejr_api else None
+
             def get_batch_jobs(batch_job_id: str, user_id: str) -> GpsBatchJobs:
-                vault = Vault(ConfigParams().vault_addr)
+                vault = Vault(backend_config.vault_addr)
                 catalog = get_layer_catalog(vault=vault)
 
                 jvm = java_gateway.jvm
                 jvm.org.slf4j.MDC.put(jvm.org.openeo.logging.JsonLayout.UserId(), user_id)
                 jvm.org.slf4j.MDC.put(jvm.org.openeo.logging.JsonLayout.JobId(), batch_job_id)
 
-                batch_jobs = GpsBatchJobs(catalog, jvm, args.principal, args.keytab, vault=vault)
+                batch_jobs = GpsBatchJobs(
+                    catalog=catalog,
+                    jvm=jvm,
+                    principal=args.principal,
+                    key_tab=args.keytab,
+                    vault=vault,
+                    elastic_job_registry=elastic_job_registry,
+                    requests_session=requests_session,
+                )
 
                 default_sentinel_hub_credentials = vault.get_sentinel_hub_credentials(
                     sentinel_hub_client_alias='default',
-                    vault_token=vault.login_kerberos(args.principal, args.keytab))
+                    vault_token=vault.login_kerberos(principal=args.principal, keytab=args.keytab))
 
                 batch_jobs.set_default_sentinel_hub_credentials(
                     client_id=default_sentinel_hub_credentials.client_id,
@@ -232,19 +243,21 @@ def main():
                 vault_token = arguments.get('vault_token')
 
                 batch_jobs = get_batch_jobs(batch_job_id, user_id)
-                requests_session = requests_with_retry()
 
                 log = logging.LoggerAdapter(_log, extra={'job_id': batch_job_id, 'user_id': user_id})
 
-                backend_config = get_backend_config()
                 max_poll_time = time.time() + backend_config.job_dependencies_max_poll_delay_seconds
+
+                double_job_registry = DoubleJobRegistry(
+                    zk_job_registry_factory=ZkJobRegistry if backend_config.use_zk_job_registry else None,
+                    elastic_job_registry=elastic_job_registry,
+                )
 
                 while True:
                     time.sleep(backend_config.job_dependencies_poll_interval_seconds)
 
-                    # TODO #236/#498/#632 phase out ZkJobRegistry (or at least abstract it away)
-                    with ZkJobRegistry() as registry:
-                        job_info = registry.get_job(batch_job_id, user_id)
+                    with double_job_registry as registry:
+                        job_info = registry.get_job(job_id=batch_job_id, user_id=user_id)
 
                     if job_info.get("dependency_status") not in [
                         DEPENDENCY_STATUS.AWAITING,
@@ -259,9 +272,8 @@ def main():
                             # TODO: retry in Nifi? How to mark this job as 'error' then?
                             log.exception("failed to handle polling job dependencies")
 
-                            # TODO #236/#498/#632 phase out ZkJobRegistry (or at least abstract it away)
-                            with ZkJobRegistry() as registry:
-                                registry.set_status(batch_job_id, user_id, JOB_STATUS.ERROR)
+                            with double_job_registry as registry:
+                                registry.set_status(job_id=batch_job_id, user_id=user_id, status=JOB_STATUS.ERROR)
 
                             raise  # TODO: this will get caught by the exception handler below which will just log it again  # 141
 
@@ -271,9 +283,8 @@ def main():
                                                         f" aborting")
                         log.error(max_poll_delay_reached_error)
 
-                        # TODO #236/#498/#632 phase out ZkJobRegistry (or at least abstract it away)
-                        with ZkJobRegistry() as registry:
-                            registry.set_status(batch_job_id, user_id, JOB_STATUS.ERROR)
+                        with double_job_registry as registry:
+                            registry.set_status(job_id=batch_job_id, user_id=user_id, status=JOB_STATUS.ERROR)
 
                         raise Exception(max_poll_delay_reached_error)
             else:

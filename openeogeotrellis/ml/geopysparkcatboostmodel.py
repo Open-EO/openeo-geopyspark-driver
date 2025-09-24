@@ -1,25 +1,16 @@
 import logging
 import shutil
 import typing
-import uuid
-from enum import Enum
 from pathlib import Path
 from typing import Dict, Union
 
-import geopyspark as gps
-import pyspark
-from openeo_driver.datacube import DriverMlModel
 from openeo_driver.datastructs import StacAsset
 from openeo_driver.utils import generate_unique_id
-from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.ml.catboost_spark import CatBoostClassificationModel
-from openeogeotrellis.utils import download_s3_directory, to_s3_url
-from pyspark.ml.classification import _JavaProbabilisticClassificationModel
-from pyspark.ml.util import JavaMLReader, JavaMLWritable, MLReadable
-from pyspark.mllib.util import JavaSaveable
+from openeogeotrellis.ml.geopysparkmlmodel import GeopysparkMlModel
 
 
-class GeopySparkCatBoostModel(DriverMlModel):
+class GeopySparkCatBoostModel(GeopysparkMlModel):
 
     def __init__(self, model: CatBoostClassificationModel):
         self._model = model
@@ -105,7 +96,6 @@ class GeopySparkCatBoostModel(DriverMlModel):
         model_path = Path(directory) / "catboost_model.cbm"
 
         # Save model to disk.
-        # TODO: We might require s3 support here.
         spark_path = "file:" + str(model_path)
         logging.info(f"Saving GeopySparkCatboostModel to {spark_path}")
         self._model.save(spark_path)
@@ -115,9 +105,17 @@ class GeopySparkCatBoostModel(DriverMlModel):
         shutil.make_archive(base_name=str(model_path), format='gztar', root_dir=directory)
         logging.info(f"Removing original {model_path}")
         shutil.rmtree(model_path)
-        model_path = Path(str(model_path) + '.tar.gz')
-        logging.info(f"GeopySparkCatboostModel stored as {model_path=}")
-        return {model_path.name: {"href": str(model_path)}}
+        archived_model_path = Path(str(model_path) + '.tar.gz')
+        logging.info(f"GeopySparkCatboostModel stored as {archived_model_path=}")
+        return {archived_model_path.name: {"href": str(archived_model_path)}}
 
     def get_model(self) -> CatBoostClassificationModel:
         return self._model
+
+    @staticmethod
+    def from_path(path) -> "GeopySparkCatBoostModel":
+        catboost_model = CatBoostClassificationModel.loadNativeModel(path)
+        return GeopySparkCatBoostModel(catboost_model)
+
+    def get_java_object(self):
+        return self._model._java_obj

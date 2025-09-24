@@ -12,19 +12,286 @@ without compromising stable operations.
 
 <!-- start-of-changelog -->
 
-## Unreleased
+
+## In progress: 0.68.0
+
+- Experimental support for unified asset keys in job results STAC items by means of the "stac-version-experimental" job option ([#1111](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1111), [Open-EO/openeo-geotrellis-extensions#402](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/402))
+- Avoid workaround with EJR to obtain job results metadata in the context of a failover ([#1255](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1255))
+- Avoid 413 "Payload Too Large" response from EJR upon job results metadata update ([#1200](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1200))
+- Disable `async_task` by default ([eu-cdse/openeo-cdse-infra#387](https://github.com/eu-cdse/openeo-cdse-infra/issues/387))
+- `export_workspace`: add `md5` and `mtime` metadata to assets exported as objects ([#1318](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1318))
+- Avoid in-memory credentials cache conflict in IPA tooling (eu-cdse/openeo-cdse-infra#660)
+- Log warning when requesting bands in unexpected order for temporal NetCDF STAC catalogs. ([#1153](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1153))
+- Expose `get_oidc_access_token` helper method for use with `StacApiWorkspace` ([eu-cdse/openeo-cdse-infra#633](https://github.com/eu-cdse/openeo-cdse-infra/issues/633))
+- Add `integrations.vault.VaultClient` with "cert" auth support (eu-cdse/openeo-cdse-infra#671)
+- Avoid ZeroDivisionError with resample_spatial with resolution 0 for UTM layers. ([openeo-geotrellis-extensions#506](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/506))
+- Less often used Spark metrics for batch jobs are now disabled by default. They are enabled when log-level is set to 'debug'.
+- `filter_temporal` should also work in half-open fashion when applied after `load_collection`/`load_stac` with non-empty `temporal_extent` ([Open-EO/openeo-geotrellis-extensions#498](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/498))
+- `load_stac`: ignore empty `roles` listing for assets to decide if asset is a "band asset" ([1356](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1356))
+
+
+## 0.67.0
+
+- Configurable usage of `async_task` ([eu-cdse/openeo-cdse-infra#387](https://github.com/eu-cdse/openeo-cdse-infra/issues/387))
+- Add job option "omit-derived-from-links" to omit "derived_from" links in batch job results metadata ([ESA-WEED-project/eo_processing#175](https://github.com/ESA-WEED-project/eo_processing/issues/175))
+- Better freeIPA configurability for proxy user lookup ([#1261](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1261), eu-cdse/openeo-cdse-infra#626)
+- `load_stac`: temporal filtering of STAC Items: prefer more descriptive `start_datetime`+`end_datetime` over nominal `datetime` if possible ([#1293](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1293))
+- Restore proper `bbox` and `geometry` for STAC items with netCDF assets ([#1294](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1294))
+- `load_stac`: drop (unused) support for `eo:bands` with integer indices ([#619](https://github.com/Open-EO/openeo-geopyspark-driver/issues/619))
+
+
+## 0.66.0
+
+- 'Batch job options' are now advertised following the openEO [processing parameters extension](https://github.com/Open-EO/openeo-api/tree/draft/extensions/processing-parameters)  ([Open-EO/openeo-python-driver#307](https://github.com/Open-EO/openeo-python-driver/issues/307))
+- use region specific config for workspace actions
+- `apply_neighborhood`/`apply_dimension`: support changing band names via apply_metadata ([#1155](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1155))
+- `StacApiWorkspace`: support arbitrary paths in `merge`; the last part of a path becomes the collection ID in the STAC API ([#1074](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1074))
+- Fix compatibility with Shapely 2 ([#1161](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1161))
+- Change default `use_zk_job_registry` config to `False` ([#632](https://github.com/Open-EO/openeo-geopyspark-driver/issues/632), [#863](https://github.com/Open-EO/openeo-geopyspark-driver/issues/863), [#1165](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1165))
+- Add timeout to metadata request on "stac" data sources in layer catalog ([eu-cdse/openeo-cdse-infra#525](https://github.com/eu-cdse/openeo-cdse-infra/issues/525))
+- Improve detection of `apply_metadata` function in UDF code (related to [#1182](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1182))
+- Fix `require_application_id` filter of `list_active_jobs` in job tracker ([#1197](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1197))
+- Remove outdated and defunct ZooKeeper "cleaner" scripts and code paths ([#1219](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1219), [#1123](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1123))
+- Move `integrations.s3` to Python driver [#1195](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1195)
+- Add config `ejr_preserialize_process` to enable process graph pre-serialization when storing new jobs in EJR ([#1232](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1232))
+- `load_stac`: start supporting STAC 1.1 style "common" bands" metadata (in addition to legacy "eo:bands") ([#1015](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1015))
+- `load_stac`: improve resilience of STAC API item search ([#1096](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1096))
+- Harden IPA lookup of proxy user in YARN batch job submit code path ([#1261](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1261))
+- Make sure presigned URLs against S3 proxy also allow HEAD requests [#1265](https://github.com/Open-EO/openeo-geopyspark-driver/pull/1265)
+- Work around 413 "Payload Too Large" response from EJR upon job results metadata update ([#1200](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1200))
+- Basic support for batch jobs without a job registry or job tracker ([#1005](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1005))
+- Fix thresholds in `linear_scale_range` to trigger type casting ([#1275](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1275))
+- `load_stac`: fully switch to `_StacMetadataParser` from `openeo.metadata`, which has wider STAC (1.1) support ([#1015](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1015), [#1138](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1138))
+- `load_ml_model`: switch to group `openeo_results` for `ml_models` folder (eu-cdse/openeo-cdse-infra#609)
+- `resample_cube_spatial` avoid going out of memory when resampling from lower to much higher resolution ([Open-EO/openeo-geotrellis-extensions#478](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/478))
+
+
+## 0.65.0
+
+- `sar_backscatter`: soft-errors can now be a fraction, allowing to tolerate a certain failure percentage provided as a number between 0 and 1. ([#443](https://github.com/Open-EO/openeo-geopyspark-driver/issues/443))
+- `save_result`: write GeoTiff assets with valid tile size; override with `tile_size` format option. ([#1083](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1083))
+- `sar_backscatter` support: automatically use backend-specific `coefficient` default even if there is no explicit `sar_backscatter` in the process graph ([Open-EO/openeo-python-driver#376](https://github.com/Open-EO/openeo-python-driver/issues/376))
+- Add `capabilities_extras` config to easily extend capabilities document ([Open-EO/openeo-python-driver#384](https://github.com/Open-EO/openeo-python-driver/issues/384))
+- Add `CalrissianS3Result.generate_presigned_url()` ([#937](https://github.com/Open-EO/openeo-geopyspark-driver/issues/937))
+- Restore COG layout for `GTiff` output format ([Open-EO/openeo-geotrellis-extensions#393](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/393))
+- Add `CalrissianS3Result.download()` ([#937](https://github.com/Open-EO/openeo-geopyspark-driver/issues/937))
+- Support additional Sentinel 3 collections ([eu-cdse/openeo-cdse-infra#380](https://github.com/eu-cdse/openeo-cdse-infra/issues/380))
+- Add `CalrissianS3Result.generate_public_url()` ([#937](https://github.com/Open-EO/openeo-geopyspark-driver/issues/937))
+- Replace `ConfigParams.layer_catalog_metadata_files` with `GpsBackendConfig.layer_catalog_files` ([#285](https://github.com/Open-EO/openeo-geopyspark-driver/issues/285), [#1084](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1084))
+- `StacApiWorkspace`: log body of error response from STAC API for better root cause analysis ([#1116](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1116))
+- `export_workspace`: add `"derived_from"` links to STAC Collection ([#1050](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1050))
+- Calrissian integration: avoid unnecessary pulls of `alpine` image ([#1132]https://github.com/Open-EO/openeo-geopyspark-driver/issues/1132)
+- Calrissian integration: refactor config to a `CalrissianConfig` sub-config ([#1009](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1009))
+- `save_result`: support zarr format (experimental)
+- `save_result`: allow non-string values in `GTiff` `file_metadata` ([#1142](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1142))
+- Add `udp_registry_zookeeper_client_reuse` config for `KazooClient` reuse in `ZooKeeperUserDefinedProcessRepository` ([#1037](https://github.com/Open-EO/openeo-geopyspark-driver/pull/1037))
+- `GpsBackendConfig`: be more forgiving about unknown config keys to better support use cases that involve backward/forward incompatible configurations ([Open-EO/openeo-python-driver#322](https://github.com/Open-EO/openeo-python-driver/issues/322))
+- Improved API alignment between `DoubleJobRegistry` and `JobRegistryInterface`/`ElasticJobRegistry` ([#863](https://github.com/Open-EO/openeo-geopyspark-driver/issues/863), [#1123](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1123))
+- Add `use_new_feature_extent_intersection_2` option to `load_collection`: To use new intersection code to work with products crossing the antimeridian. ([#1072](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1072))
+
+
+## 0.64.1
+
+- `load_custom_processes`: allow specifying path directly
+
+
+## 0.63.0
+
+- Add `bbox` and `geometry` to exported STAC items pertaining to GeoTiff assets of a spatial data cube ([eu-cdse/openeo-cdse-infra#418](https://github.com/eu-cdse/openeo-cdse-infra/issues/418))
+- Support UDF dependency extraction from remote process definitions (URL based UDPs) ([#1063](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1063))
+- `StacApiWorkspace`: improve STAC requests resilience ([#1073](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1073))
+- `StacApiWorkspace`: reject unsupported characters in `merge` ([eu-cdse/openeo-cdse-infra#415](https://github.com/eu-cdse/openeo-cdse-infra/issues/415))
+- `load_stac`: fix delay in driver due to expensive item/asset processing ([#1081](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1081))
+
+
+## 0.62.0
+
+- `load_stac`: improve STAC requests resilience ([#818](https://github.com/Open-EO/openeo-geopyspark-driver/issues/818))
+- Extract demo CWL content to package resources ([#1057](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1057))
+- Disable EJR health check from batch job context ([#1066](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1066))
+- `load_stac`: support empty data cubes ([#1049](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1049))
+- Remove proof-of-concept CWL processes (now in openeo-geotrellis-kubernetes) from generic openeo-geopyspark-driver ([#1057](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1057)/[#1038](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1038))
+
+
+## 0.61.0
+
+- `python-memory`: make job option available on YARN, add a default config
+- `load_stac`: optimize resolution with regard to requested bands (experimental) ([#1043](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1043))
+- `load_stac`: apply offset (experimental) ([#1051](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1051))
+- Deprecate non-standard "logging-threshold" job option in favor of standardized "log_level" job creation parameter ([#909](https://github.com/Open-EO/openeo-geopyspark-driver/issues/909))
+- Fail fast on UDF dependency installation failure ([#1048](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1048))
+- `load_stac`: avoid OOM on global low-res assets ([#1055](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1055))
+
+## 0.60.1
+
+- `load_stac`: restore spatial dimensions of data cube loaded from STAC Collection that lacks `cube:dimensions`. ([#1036](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1036))
+- `sar_backscatter`: report soft-errors fraction in usage metrics
+- `apply_neighborhood`: for t='P1D', add date to dataarray.attrs with key 't'
+
+## 0.60.0
+
+- Make environment variables to be passed from web app driver to batch job driver configurable ([#867](https://github.com/Open-EO/openeo-geopyspark-driver/issues/867))
+- `load_collection`/`load_stac`: support parameters in `properties` ([Open-EO/openeo-python-driver#327](https://github.com/Open-EO/openeo-python-driver/issues/327))
+
+## 0.59.0
+
+- load_stac: cube creation is now cached, just like load_collection ([#993](https://github.com/Open-EO/openeo-geopyspark-driver/issues/993))
+- logs: Provide a performance summary at the end of a batch job.
+- `StacApiWorkspace`: support `filepath_per_band` ([#867](https://github.com/Open-EO/openeo-geopyspark-driver/issues/867))
+- `load_stac`: use STAC API Filter Extension to prevent driver OOM ([#979](https://github.com/Open-EO/openeo-geopyspark-driver/issues/979))
+
+## 0.58.1
+
+- Fix spatial and temporal extents of exported STAC Collection ([#867](https://github.com/Open-EO/openeo-geopyspark-driver/issues/867))
+
+## 0.58.0
+
+- Improve "App not found" logs to avoid red herrings in root cause analysis ([eu-cdse/openeo-cdse-infra#147](https://github.com/eu-cdse/openeo-cdse-infra/issues/147))
+- Avoid pixel shift when source data is not aligned in load_stac. ([#648](https://github.com/Open-EO/openeo-geopyspark-driver/issues/648))
+- Fix when outputting an empty vector cube to GeoParquet ([#987](https://github.com/Open-EO/openeo-geopyspark-driver/issues/987))
+- Fix for outputting a vector cube to legacy `timeseries.json` format. ([#342](https://github.com/Open-EO/openeo-python-driver/issues/342))
+- Add gdalinfo json files next to tiff files. ([openeo-geotrellis-extensions#352](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/352))
+- Support exporting assets for different collections to different paths ([#867](https://github.com/Open-EO/openeo-geopyspark-driver/issues/867))
+- load_collection: bugfix in 'global extent' computation, increases performance ([#334](https://github.com/Open-EO/openeo-python-driver/issues/334))
+
+## 0.57.0
+
+- Initial support for S3 profiles and tokens during batch job execution ([#969](https://github.com/Open-EO/openeo-geopyspark-driver/pull/969))
+
+## 0.56.0
+
+- Initial support for CWL based processes with Calrissian on a Kubernetes cluster ([#936](https://github.com/Open-EO/openeo-geopyspark-driver/issues/936))
+
+## 0.55.0
+
+- Support `file_metadata` format option to set file-specific metadata on `GTiff` output assets ([#970](https://github.com/Open-EO/openeo-geopyspark-driver/issues/970))
+- load_collection for Sentinel-3 Level2 data: avoid data corruption in specific case ([#755](https://github.com/Open-EO/openeo-geopyspark-driver/issues/755))
+
+## 0.54.0
+
+- `export_workspace`: experimental support for merging into STAC API ([#867](https://github.com/Open-EO/openeo-geopyspark-driver/issues/867))
+
+## 0.53.1
+
+- `export_workspace`: fix `KeyError: 'alternate'` upon merging into existing STAC collection ([#677](https://github.com/Open-EO/openeo-geopyspark-driver/issues/677))
+
+## 0.53.0
+
+- `export_workspace`: experimental support for merging STAC Collections ([#677](https://github.com/Open-EO/openeo-geopyspark-driver/issues/677))
+- Add support for `orgId` in ETL resource/cost reporting ([#671](https://github.com/Open-EO/openeo-geopyspark-driver/issues/671))
+- `load_stac`: Align output pixels with source pixels if source data is UTM and has an offset. ([#648](https://github.com/Open-EO/openeo-geopyspark-driver/issues/648))
+
+## 0.52.0
+
+- Throw error when trying to use unsupported `target_dimension` in `aggregate_spatial` ([#951](https://github.com/Open-EO/openeo-geopyspark-driver/issues/951))
+- Allow specifying region name for an ObjectStorageWorkspace ([#955](https://github.com/Open-EO/openeo-geopyspark-driver/pull/955))
+- Better print ApiException. ([#962](https://github.com/Open-EO/openeo-geopyspark-driver/pull/962))
+- Include job title by default in user job listings ([#963](https://github.com/Open-EO/openeo-geopyspark-driver/issues/963))
+- Support pagination of user job listings ([#959](https://github.com/Open-EO/openeo-geopyspark-driver/issues/959)/[Open-EO/openeo-python-driver#332](https://github.com/Open-EO/openeo-python-driver/issues/332))
+
+## 0.51.0
+
+- `load_stac`: omit `datetime` parameter from STAC API item search request if no `temporal_extent` specified ([#950](https://github.com/Open-EO/openeo-geopyspark-driver/issues/950))
+
+## 0.50.1
+
+- Fix `reduce_dimension` of bands for GeoTIFF output in batch job ([#943](https://github.com/Open-EO/openeo-geopyspark-driver/issues/943))
+
+
+## 0.50.0
+
+- Fix type of `ZLEVEL` option for `GTiff` format
+- Add `filepath_per_band` to `save_result` options. ([#877](https://github.com/Open-EO/openeo-geopyspark-driver/issues/877))
+- Allow pointing to custom processes with `OPENEO_CUSTOM_PROCESSES` env var (related to [#936](https://github.com/Open-EO/openeo-geopyspark-driver/issues/936))
+
+
+## 0.49.1
+
+- Py4j log level is now always 'WARN' to avoid spurious messages.
+- Fix removal of multiple original job result assets ([#883](https://github.com/Open-EO/openeo-geopyspark-driver/issues/883))
+- Fix using asset_per_band with large extends giving partial tiff files ([Open-EO/openeo-geotrellis-extensions#329](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/329))
+
+## 0.49.0
+
+- Fix `load_stac` for collections from stac.terrascope.be ([#862](https://github.com/Open-EO/openeo-geopyspark-driver/issues/862))
+- Point `href` of job result asset to workspace URI if original was removed ([#883](https://github.com/Open-EO/openeo-geopyspark-driver/issues/883))
+
+## 0.48.2
+
+- Fix `resample_spatial` of Sentinel-3 data cube ([#920](https://github.com/Open-EO/openeo-geopyspark-driver/issues/920))
+
+## 0.48.0
+
+- Expose `filename_prefix` format option for `netCDF` output assets ([#876](https://github.com/Open-EO/openeo-geopyspark-driver/issues/876))
+- Make sure `OPENEO_BACKEND_CONFIG` env var is set in K8s executors
+
+## 0.47.0
+
+- Support `bands_metadata` format option to set band-specific scale, offset and other metadata on `GTiff` output assets ([Open-EO/openeo-geotrellis-extensions#317](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/317))
+
+## 0.46.0
+
+- Automatic Python UDF dependency handling: add option to work with ZIP archive
+  instead of full tree in job work folder, to improve performance/stability
+  in contexts where large file trees under the job work folder are not ideal,
+  e.g. FUSE-mounted S3 storage
+  ([#845](https://github.com/Open-EO/openeo-geopyspark-driver/issues/845), [docs](docs/udf-deps.md))
+
+## 0.45.0
+
+- Experimental support for removal of originals of assets exported to workspace ([#883](https://github.com/Open-EO/openeo-geopyspark-driver/issues/883))
+- A rounding bug was fixed in a downstream library that in specific cases leads to a change in the number of pixel rows/columns in the output. We mainly observe this when the input bounding box is not well aligned to the pixel grid of the Copernicus data. [#297](https://github.com/Open-EO/openeo-geopyspark-driver/issues/297)
+- Fixed an issue where jobs asset_per_band sometimes returned empty tiff files.  ([Open-EO/openeo-geotrellis-extensions#329](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/329))
+
+## 0.44.1
+
+- Stream assets from object storage to prevent batch job driver pod from being OOMKilled ([eu-cdse/openeo-cdse-infra#278](https://github.com/eu-cdse/openeo-cdse-infra/issues/278))
+
+## 0.44.0
+
+- Job tracker: only consider jobs _updated_ in last 2 weeks ([#902](https://github.com/Open-EO/openeo-geopyspark-driver/issues/902))
+
+## 0.43.0
+
+- Support exporting objects to object storage workspace ([eu-cdse/openeo-cdse-infra#278](https://github.com/eu-cdse/openeo-cdse-infra/issues/278))
+
+## 0.42.0
+
+- Job tracker (still based on `DoubleJobRegistry`): only consider last 2 weeks of "trackable" jobs ([#902](https://github.com/Open-EO/openeo-geopyspark-driver/issues/902))
+
+## 0.41.0
+
+- quantiles, when used in apply_dimension was corrected to use the interpolation method that is prescribed by the openEO process definition.
+- return STAC Items with valid date/time for time series job results ([#852](https://github.com/Open-EO/openeo-geopyspark-driver/issues/852))
+- filter_labels now also supported for collections that use sar_backscatter and use the internal Orfeo toolbox based method to compute backscatter on the fly. For example: SENTINEL1_GRD ([Open-EO/openeo-geotrellis-extensions#320](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/320))
+- support mask assets in `load_stac` ([#874](https://github.com/Open-EO/openeo-geopyspark-driver/issues/874))
+- align `DataCubeParameters` with `load_collection` ([#812](https://github.com/Open-EO/openeo-geopyspark-driver/issues/812))
+- apply/apply_dimension(dimension='bands'): nodata tiles were removed as an optimization, but this could lead to unexpected results depending on subsequent steps. They are now replaced with a memory efficient implementation. ([WorldCereal issue][https://github.com/WorldCereal/worldcereal-classification/issues/141])
+- `load_collection` with an excessive extent (temporal or spatial) will now be blocked to avoid excessive resource usage. This check can be disabled with `job_options.do_extent_check=False` ([#815](https://github.com/Open-EO/openeo-geopyspark-driver/issues/815))
+- Mixing bands with signed and unsigned data types could lead to negative values being misrepresented. This is now fixed by using the correct data type for the output.
+- Logging output is being reduced to focus on most relevant messages from a user perspective.
+- Support multiple `export_workspace` processes ([eu-cdse/openeo-cdse-infra#264](https://github.com/eu-cdse/openeo-cdse-infra/issues/264))
+- Fix `export_workspace` process not executed in process graph with multiple `save_result` processes ([eu-cdse/openeo-cdse-infra#264](https://github.com/eu-cdse/openeo-cdse-infra/issues/264))
+
+## 0.40.1
+
+- Fix `load_stac` of GeoTiff batch job results by returning compliant GeoJSON in `"geometry"` of STAC Items. [#854](https://github.com/Open-EO/openeo-geopyspark-driver/issues/854)
+
+## 0.40.0
 
 - a new 'python-memory' option allows to more explicitly limit memory usage for UDF's, sar_backscatter and Sentinel3 data loading. The executor-memoryOverhead option can be reduced or removed when using the new python-memory option.
 - The default processing chunk size can now be configured for backends. If not set, the default may be determined automatically. We observe that a lower default, like 128 pixels, allows running jobs with less memory. ([Open-EO/openeo-geotrellis-extensions#311](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/311))
 - aggregate_spatial: trying to use the probabilities argument in a _single_ 'quantiles' reduces was throwing an error. ([#821](https://github.com/Open-EO/openeo-geopyspark-driver/issues/821))
 - sar_backscatter: when a target resolution is provided via resample_spatial, it is now immediately taken into account for computing backscatter, reducing memory usage.
-- the temporary folder which is created for aggregate_spatial now contains a timestamp to aid cleanup scripts. 
+- the temporary folder which is created for aggregate_spatial now contains a timestamp to aid cleanup scripts.
 - apply_neighborhood: support applying UDF on cubes without a time dimension
-- Add "separate_asset_per_band" to format_options. Currently, for TIFF only.
+- Add "separate_asset_per_band" to save_result options. Currently, for TIFF only.
+- `load_stac`: presence of `eo:bands` is no longer a hard requirement; band name defaults to asset key [#762](https://github.com/Open-EO/openeo-geopyspark-driver/issues/762).
+- Optionally sleep after automatic UDF dependency install (config `udf_dependencies_sleep_after_install`) (eu-cdse/openeo-cdse-infra#112)
 
 ## 0.39.0
 
-- Correctly apply the method parameter in resample_spatial and resample_cube_spatial, when downsampling to lower resolution, and the sampling is not applied at load time. ([Open-EO/openeo-geotrellis-extensions#303](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/303)) 
+- Correctly apply the method parameter in resample_spatial and resample_cube_spatial, when downsampling to lower resolution, and the sampling is not applied at load time. ([Open-EO/openeo-geotrellis-extensions#303](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/303))
 - Use band names as column name in GeoParquet output ([#723](https://github.com/Open-EO/openeo-geopyspark-driver/issues/723))
 - Prevent nightly cleaner from failing a job tracker run ([eu-cdse/openeo-cdse-infra#166](https://github.com/eu-cdse/openeo-cdse-infra/issues/166))
 - Sentinelhub collections handle non zero nodata better ([openeo-geotrellis-extensions#300](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/300))

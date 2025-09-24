@@ -7,7 +7,7 @@ from openeo_driver.util.caching import TtlCache
 from openeo_driver.util.http import requests_with_retry
 from urllib3 import Retry
 
-from openeogeotrellis.integrations.etl_api import ETL_API_STATUS, EtlApi, get_etl_api
+from openeogeotrellis.integrations.etl_api import ETL_API_STATUS, EtlApi, get_etl_api, ETL_ORGANIZATION_ID_JOB_OPTION
 
 _log = logging.getLogger(__name__)
 
@@ -29,6 +29,7 @@ class CostsDetails(NamedTuple):  # for lack of a better name
     cpu_seconds: Optional[float] = None
     mb_seconds: Optional[float] = None
     sentinelhub_processing_units: Optional[float] = None
+    additional_credits_cost: Optional[float] = None
     unique_process_ids: List[str] = []
     job_options: Optional[dict] = None
 
@@ -42,9 +43,6 @@ class JobCostsCalculator(metaclass=abc.ABCMeta):
 class NoJobCostsCalculator(JobCostsCalculator):
     def calculate_costs(self, details: CostsDetails) -> float:
         return 0.0
-
-
-noJobCostsCalculator = NoJobCostsCalculator()
 
 
 class EtlApiJobCostsCalculator(JobCostsCalculator):
@@ -75,6 +73,8 @@ class EtlApiJobCostsCalculator(JobCostsCalculator):
             mb_seconds=details.mb_seconds,
             duration_ms=duration_ms,
             sentinel_hub_processing_units=details.sentinelhub_processing_units,
+            additional_credits_cost=details.additional_credits_cost,
+            organization_id=(details.job_options or {}).get(ETL_ORGANIZATION_ID_JOB_OPTION),
         )
 
         if details.area_square_meters is None:

@@ -1,13 +1,13 @@
 import datetime
-from typing import List, Union
-from geopyspark import Tile, TiledRasterLayer, Extent, LayerType
-from openeo_driver.utils import EvalEnv
+
 import numpy as np
-from shapely.geometry import Polygon, MultiPolygon
+from geopyspark import Extent, LayerType, Tile, TiledRasterLayer
+from openeo_driver.utils import EvalEnv
+from shapely.geometry import MultiPolygon
 
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
-from .data import get_test_data_file, TEST_DATA_ROOT
 
+from .data import get_test_data_file
 
 # Note: Ensure that the python environment has all the required modules installed.
 # Numpy should be installed before Jep for off-heap memory tiles to work!
@@ -44,15 +44,15 @@ def test_chunk_polygon(imagecollection_with_two_bands_and_three_dates):
     assert result_layer.layer_type == LayerType.SPACETIME
 
     results_numpy = result_layer.to_numpy_rdd().collect()
-    band0_month10 = np.zeros((4, 4))
-    band1_month10 = np.zeros((4, 4))
+    band0_month10 = np.zeros((16, 16))
+    band1_month10 = np.zeros((16, 16))
     band0_month10.fill(1012)
     band1_month10.fill(1101)
     for key_and_tile in results_numpy:
         instant: datetime.datetime = key_and_tile[0].instant
         tile: Tile = key_and_tile[1]
         cells: np.ndarray = tile.cells
-        assert cells.shape == (2, 4, 4)
+        assert cells.shape == (2, 16, 16)
         assert tile.cell_type == 'FLOAT'
         if instant.month == 10:
             np.testing.assert_array_equal(cells, np.array([band0_month10, band1_month10]))
