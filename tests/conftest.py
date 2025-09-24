@@ -149,7 +149,7 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
 
     spark_jars = conf.get("spark.jars").split(",")
     # geotrellis-extensions needs to be loaded first to avoid "java.lang.NoClassDefFoundError: shapeless/lazily$"
-    spark_jars.sort(key=lambda x: "geotrellis-extensions" not in x)
+    spark_jars.sort(key=lambda x: "geotrellis-extensions" not in x and "geotrellis-dependencies" not in x)
     conf.set(key="spark.jars", value=",".join(spark_jars))
 
     # Use UTC timezone by default when formatting/parsing dates (e.g. CSV export of timeseries)
