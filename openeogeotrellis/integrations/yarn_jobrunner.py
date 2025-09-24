@@ -421,6 +421,7 @@ class YARNBatchJobRunner:
         )
         if image_name:
             image_name = get_backend_config().batch_runtime_to_image.get(image_name.lower(), image_name)
+        log.info(f"Using {image_name=}")
 
         extra_py_files = ""
         if options.udf_dependency_files is not None and len(options.udf_dependency_files) > 0:

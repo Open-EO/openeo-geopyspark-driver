@@ -2018,6 +2018,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
             image_name = options.image_name or get_backend_config().processing_container_image or running_image
             image_name = get_backend_config().batch_runtime_to_image.get(image_name.lower(), image_name)
+            log.info(f"Using {image_name=}")
 
             batch_job_cfg_secret_name = k8s_get_batch_job_cfg_secret_name(spark_app_id)
 
