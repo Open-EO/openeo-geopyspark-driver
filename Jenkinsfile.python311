@@ -12,7 +12,7 @@
 pythonPipeline {
   package_name = 'openeo-geopyspark'
   wipeout_workspace = true
-  hadoop = true
+  hadoop = false
   pre_test_script = 'pre_test.sh'
   extra_env_variables = [
     /* Set pytest `basetemp` inside Jenkins workspace. (Note: this is intentionally Jenkins specific, instead of a global pytest.ini thing.) */
