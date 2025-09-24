@@ -189,7 +189,7 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
     jars = []
     for jar_dir in additional_jar_dirs:
         for jar_path in Path(jar_dir).iterdir():
-            if jar_path.match("openeo-logging-*.jar"):
+            if jar_path.match("openeo-logging-*.jar") or jar_path.match("geotrellis-dependencies-*.jar"):
                 jars.append(str(jar_path))
     extraClassPath = ":".join(jars)
     conf.set("spark.driver.extraClassPath", extraClassPath)
