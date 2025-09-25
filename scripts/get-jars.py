@@ -64,7 +64,7 @@ def main():
 
     cli_args = parser.parse_args()
     logger.info(f"{cli_args=}")
-    jar_dir: Path = cli_args.jar_dir
+    jar_dir: Path = cli_args.jar_dir.absolute()
     force_download = cli_args.force_download
     python_version = cli_args.python_version
 
