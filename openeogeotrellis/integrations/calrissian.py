@@ -120,7 +120,7 @@ class CwLSource:
         """
         Read CWL from a packaged resource file in importlib.resources-style.
         """
-        content = importlib_resources.files(anchor=anchor).joinpath(path).read_text(encoding="utf-8")
+        content = importlib_resources.files(anchor).joinpath(path).read_text(encoding="utf-8")
         return cls(content=content)
 
 
