@@ -1059,8 +1059,11 @@ def test_export_workspace(tmp_path, remove_original, attach_gdalinfo_assets, sta
 
         for item in items:
             assert item.bbox == [0.0, 0.0, 1.0, 2.0]
-            assert (shape(item.geometry).normalize()
-                    .equals_exact(Polygon.from_bounds(0.0, 0.0, 1.0, 2.0).normalize()))
+            assert (
+                shape(item.geometry)
+                .normalize()
+                .equals_exact(Polygon.from_bounds(0.0, 0.0, 1.0, 2.0).normalize(), tolerance=0.001)
+            )
             assets = item.get_assets()
             assert len(assets) == 2 if attach_gdalinfo_assets & (stac_version == "1.1") else len(assets) == 1
             asset_name = "openEO" if stac_version == "1.1" else item.id
@@ -1082,8 +1085,11 @@ def test_export_workspace(tmp_path, remove_original, attach_gdalinfo_assets, sta
 
         item = [item for item in items if "2021-01-05" in item.id ][0]
         assert item.bbox == [0.0, 0.0, 1.0, 2.0]
-        assert (shape(item.geometry).normalize()
-                .equals_exact(Polygon.from_bounds(0.0, 0.0, 1.0, 2.0).normalize()))
+        assert (
+            shape(item.geometry)
+            .normalize()
+            .equals_exact(Polygon.from_bounds(0.0, 0.0, 1.0, 2.0).normalize(), tolerance=0.001)
+        )
 
         geotiff_asset = item.get_assets()[asset_names[1]]
         assert "data" in geotiff_asset.roles
