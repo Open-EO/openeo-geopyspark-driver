@@ -588,6 +588,7 @@ class GeopysparkDataCube(DriverDataCube):
             _log.debug(f"[apply_tiles_spatiotemporal] UDF resulted in {result_array}!r")
             if 't' in result_array.dims:
                 result_array = result_array.transpose(*('t' ,'bands','y', 'x'))
+                #TODO remove check on shape once we drop support for old xarray
                 return [(SpaceTimeKey(col=tiles[0].col, row=tiles[0].row, instant=pd.Timestamp(timestamp)),
                          Tile(array_slice.values[0] if len(array_slice.values.shape)==4 else array_slice.values, CellType.FLOAT32, tile_list[0][1].no_data_value))
                         for timestamp, array_slice in result_array.groupby('t')]
