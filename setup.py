@@ -124,6 +124,13 @@ setup(
             "PyYAML",
         ],
         "yarn": yarn_require,
+        "gdal": [
+            # Note: the GDAL package is practically a hard dependency,
+            # but it can be quite challenging to install,
+            # so we list it as "extra" instead of under "install_requires" for now.
+            # Also see https://github.com/Open-EO/openeo-geopyspark-driver/issues/1363
+            "gdal~=3.8.4",
+        ],
     },
     entry_points={
         "console_scripts": [
