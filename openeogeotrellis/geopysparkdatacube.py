@@ -589,7 +589,7 @@ class GeopysparkDataCube(DriverDataCube):
             if 't' in result_array.dims:
                 result_array = result_array.transpose(*('t' ,'bands','y', 'x'))
                 return [(SpaceTimeKey(col=tiles[0].col, row=tiles[0].row, instant=pd.Timestamp(timestamp)),
-                         Tile(array_slice.values, CellType.FLOAT32, tile_list[0][1].no_data_value))
+                         Tile(array_slice.values[0], CellType.FLOAT32, tile_list[0][1].no_data_value))
                         for timestamp, array_slice in result_array.groupby('t')]
             else:
                 result_array = result_array.transpose(*("bands", "y", "x"))
