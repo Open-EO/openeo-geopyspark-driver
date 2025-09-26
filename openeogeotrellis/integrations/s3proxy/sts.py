@@ -17,6 +17,7 @@ from openeogeotrellis.integrations.s3proxy.exceptions import (
     CredentialsException,
 )
 from openeogeotrellis.config.s3_config import AWSConfig
+from openeogeotrellis.config import get_backend_config
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -47,6 +48,12 @@ class STSCredentials:
             "aws_session_token": self.session_token
         }
 
+    def as_env_vars(self):
+        return {
+            "AWS_ACCESS_KEY_ID": self.access_key_id,
+            "AWS_SECRET_ACCESS_KEY": self.secret_access_key,
+            "AWS_SESSION_TOKEN": self.session_token,
+        }
 
 class _STSClient:
     """Because moto does not support custom endpoints"""
@@ -81,6 +88,11 @@ def _get_aws_credentials_for_proxy(token: str, role_arn: str, session_name: Opti
 def get_job_aws_credentials_for_proxy(
         job_id: str, user_id: str, role_arn: str, session_name: Optional[str] = None
 ) -> STSCredentials:
+    """
+    Get credentials for a job to be created.
+
+    This method is expected to be called on the webapp driver otherwise this will fail with DriverCannotIssueTokens
+    """
     token = IDP_TOKEN_ISSUER.get_job_token(sub_id="openeo-driver", user_id=user_id, job_id=job_id)
     if token is None:
         raise DriverCannotIssueTokens()
@@ -88,4 +100,20 @@ def get_job_aws_credentials_for_proxy(
         return _get_aws_credentials_for_proxy(token=token, role_arn=role_arn, session_name=session_name)
     except Exception as e:
         _log.debug("Could not get credentials from proxy", exc_info=e)
+        raise CredentialsException() from e
+
+
+def get_aws_credentials_for_proxy_for_running_job(*, role_arn: str, session_name: str):
+    """
+    Get credentials for a job that is running.
+
+    This method is expected to be called from within a job context
+    """
+    token_path = get_backend_config().batch_job_config_dir.joinpath("token")
+    try:
+        with open(token_path) as token_fh:
+            token = token_fh.read()
+        return _get_aws_credentials_for_proxy(token=token, role_arn=role_arn, session_name=session_name)
+    except Exception as e:
+        _log.warning("Could not get credentials from proxy", exc_info=e)
         raise CredentialsException() from e
