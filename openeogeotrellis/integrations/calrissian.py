@@ -552,6 +552,8 @@ class CalrissianJobLauncher:
 
         :param cwl_content: CWL content as a string.
         :param cwl_arguments: arguments to pass to the CWL workflow.
+        :param env_vars: environment variables set to the pod that runs calrissian these are not passsed to pods spawned
+                         by calrissian.
         :return: output of the CWL workflow as a string.
         """
         # Input staging
