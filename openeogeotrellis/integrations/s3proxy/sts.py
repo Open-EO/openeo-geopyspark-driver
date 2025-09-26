@@ -47,6 +47,12 @@ class STSCredentials:
             "aws_session_token": self.session_token
         }
 
+    def as_env_vars(self):
+        return {
+            "AWS_ACCESS_KEY_ID": self.access_key_id,
+            "AWS_SECRET_ACCESS_KEY": self.secret_access_key,
+            "AWS_SESSION_TOKEN": self.session_token,
+        }
 
 class _STSClient:
     """Because moto does not support custom endpoints"""
