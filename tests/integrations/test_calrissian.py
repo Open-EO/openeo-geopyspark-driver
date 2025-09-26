@@ -42,6 +42,7 @@ class TestCalrissianJobLauncher:
     AWS_ACCESS_KEY_ID = "akid"
     AWS_SECRET_ACCESS_KEY = "secret"
     AWS_SESSION_TOKEN = "token"
+    JOB_NAME = "j-hello123"
 
     @pytest.fixture
     def s3_calrissian_bucket(self):
@@ -60,7 +61,7 @@ class TestCalrissianJobLauncher:
             expiration=datetime.datetime.now(),
         )
 
-        with mock.patch("openeogeotrellis.integrations.s3proxy.sts.get_job_aws_credentials_for_proxy") as g:
+        with mock.patch("openeogeotrellis.integrations.s3proxy.sts._get_aws_credentials_for_proxy") as g:
             g.return_value = c
             yield c
 
@@ -108,7 +109,7 @@ class TestCalrissianJobLauncher:
                         {
                             "name": "r-1234-cal-inp-01234567",
                             "image": "alpine:3",
-                            "image_pull_policy": "IfNotPresent",
+                            "image_pull_policy": "Always",
                             "command": ["/bin/sh"],
                             "args": [
                                 "-c",
@@ -171,7 +172,7 @@ class TestCalrissianJobLauncher:
                         {
                             "name": "r-123-cal-cwl-01234567",
                             "image": DEFAULT_CALRISSIAN_IMAGE,
-                            "image_pull_policy": "IfNotPresent",
+                            "image_pull_policy": "Always",
                             "command": ["calrissian"],
                             "args": dirty_equals.Contains(
                                 "--tmp-outdir-prefix",
@@ -400,6 +401,16 @@ class TestCalrissianJobLauncher:
             ),
         }
 
+    @pytest.fixture()
+    def job_context(self, monkeypatch, tmp_path):
+        monkeypatch.setenv(ENV_VAR_OPENEO_BATCH_JOB_ID, self.JOB_NAME)
+        cfg_dir = tmp_path / "config"
+        cfg_dir.mkdir()
+        with open(cfg_dir / "token", "w") as token_fh:
+            token_fh.write("secretToken134")
+        with gps_config_overrides(batch_job_config_dir=cfg_dir):
+            yield
+
     def test_from_context(
         self,
         monkeypatch,
@@ -408,8 +419,8 @@ class TestCalrissianJobLauncher:
         k8s_core_v1_api,
         calrissian_launch_config,
         mock_sts,
+        job_context,
     ):
-        monkeypatch.setenv(ENV_VAR_OPENEO_BATCH_JOB_ID, "j-hello123")
         calrissian_config = CalrissianConfig(
             namespace="namezpace",
             input_staging_image="albino:3.14",
@@ -453,9 +464,8 @@ class TestCalrissianJobLauncher:
         k8s_core_v1_api,
         calrissian_launch_config,
         mock_sts,
+        job_context,
     ):
-        test_job_name = "j-hello123"
-        monkeypatch.setenv(ENV_VAR_OPENEO_BATCH_JOB_ID, test_job_name)
         calrissian_config = CalrissianConfig(
             namespace="namezpace",
             input_staging_image="albino:3.14",
@@ -492,7 +502,7 @@ class TestCalrissianJobLauncher:
             dirty_equals.IsPartialDict(
                 {
                     "name": "calrissian-launch-config",
-                    "secret": dirty_equals.IsPartialDict({"secret_name": test_job_name}),
+                    "secret": dirty_equals.IsPartialDict({"secret_name": self.JOB_NAME}),
                 }
             )
         )
@@ -515,9 +525,8 @@ class TestCalrissianJobLauncher:
         k8s_batch_api,
         k8s_secret_api_verify_mocked_sts,
         calrissian_launch_config,
+        job_context,
     ):
-        test_job_name = "j-hello123"
-        monkeypatch.setenv(ENV_VAR_OPENEO_BATCH_JOB_ID, test_job_name)
         calrissian_config = CalrissianConfig(
             namespace=self.NAMESPACE,
             input_staging_image="albino:3.14",

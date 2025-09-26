@@ -242,12 +242,18 @@ class CalrissianJobLauncher:
         s3_endpoint = s3_config.AWSConfig.get_s3_endpoint_url()
         sts_endpoint = s3_config.AWSConfig.get_sts_endpoint_url()
 
-        s3_credentials = sts.get_job_aws_credentials_for_proxy(
-            job_id=correlation_id,
-            user_id=user_id,
-            role_arn="arn:openeo:iam:::role/eodata",
-            session_name="calrissian-eodata-access",
-        )
+        credential_session_details = {
+            "role_arn": "arn:openeo:iam:::role/eodata",
+            "session_name": "calrissian-eodata-access",
+        }
+
+        if get_job_id(default=None) is None:
+            # Synchronous request so we are on webappdriver
+            s3_credentials = sts.get_job_aws_credentials_for_proxy(
+                job_id=correlation_id, user_id=user_id, **credential_session_details
+            )
+        else:
+            s3_credentials = sts.get_aws_credentials_for_proxy_for_running_job(**credential_session_details)
 
         return {
             "AWS_ENDPOINT_URL_S3": s3_endpoint,
