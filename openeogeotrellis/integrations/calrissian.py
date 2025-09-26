@@ -324,7 +324,7 @@ class CalrissianJobLauncher:
         container = kubernetes.client.V1Container(
             name=name,
             image=self._input_staging_image,
-            image_pull_policy="IfNotPresent",
+            image_pull_policy="Always",
             security_context=self._security_context,
             command=["/bin/sh"],
             args=["-c", f"set -euxo pipefail; echo '{cwl_serialized}' | base64 -d > {cwl_path}"],
@@ -428,7 +428,7 @@ class CalrissianJobLauncher:
         container = kubernetes.client.V1Container(
             name=name,
             image=self._calrissian_image,
-            image_pull_policy="IfNotPresent",
+            image_pull_policy="Always",
             security_context=self._security_context,
             command=["calrissian"],
             args=calrissian_arguments,
