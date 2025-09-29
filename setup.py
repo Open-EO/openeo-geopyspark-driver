@@ -35,7 +35,7 @@ tests_require = [
     "cryptography>=44.0.0",
     "responses",
     "rio_cogeo",
-    "pydantic~=1.0",
+    "pydantic",
     "zarr",
     "jsonschema",
     "rioxarray",
