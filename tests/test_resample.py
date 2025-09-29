@@ -23,7 +23,7 @@ def test_resample_cube_spatial_spacetime_spatial(imagecollection_with_two_bands_
     #print(imagecollection_with_two_bands_and_three_dates.pyramid.levels[0].to_spatial_layer(datetime.datetime(2017, 9, 25, 11, 37)).stitch())
     resampled = imagecollection_with_two_bands_and_three_dates.resample_cube_spatial(imagecollection_with_two_bands_spatial_only,method='cube')
 
-    assert resampled.pyramid.levels[0].layer_metadata.crs == '+proj=longlat +datum=WGS84 +no_defs '
+    assert resampled.pyramid.levels[0].layer_metadata.crs == 'EPSG:4326'
 
     stitched = resampled.pyramid.levels[0].to_spatial_layer(datetime.datetime(2017, 9, 25, 11, 37)).stitch()
     print(stitched)
