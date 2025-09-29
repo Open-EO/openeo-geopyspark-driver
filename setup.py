@@ -78,7 +78,7 @@ setup(
         'rasterio~=1.3.10; python_version>="3.9"',
         'py4j',
         'numpy==1.22.4; python_version<"3.9"',
-        'numpy; python_version>="3.9"',
+        'numpy>=2.3.3; python_version>="3.9"',
         'pandas>=1.4.0,<2.0.0; python_version<"3.9"',
         'pandas; python_version>="3.9"',
         'pyproj==3.4.1',
