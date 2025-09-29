@@ -15,7 +15,6 @@ from math import isfinite
 from openeo.util import dict_no_none
 from osgeo import gdal
 
-from openeo_driver.utils import smart_bool
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.util.runtime import get_job_id
 from openeogeotrellis.utils import (
@@ -202,7 +201,7 @@ def _extract_gdal_asset_raster_metadata(
 
 
 def _get_metadata_callback(asset_md: Dict[str, str], job_dir: Path, asset_key: str):
-    asset_href: str = asset_md["href"]
+    asset_href: str = str(asset_md["href"])
 
     # Skip assets that are clearly not images. TODO: Whitelist instead of blacklist
     if any(asset_href.endswith(extension) for extension in [".json", ".csv", ".parquet"]):

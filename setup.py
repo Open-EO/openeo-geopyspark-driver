@@ -35,9 +35,10 @@ tests_require = [
     "cryptography>=44.0.0",
     "responses",
     "rio_cogeo",
-    "pydantic~=1.0",
+    "pydantic",
     "zarr",
     "jsonschema",
+    "rioxarray",
 ] + yarn_require
 
 typing_require = [
@@ -68,8 +69,8 @@ setup(
     install_requires=[
         "openeo>=0.43.0.dev",
         "openeo_driver>=0.135.0a5.dev",
-        'pyspark==3.5.3; python_version>="3.8"',
-        'pyspark>=2.3.1,<2.4.0; python_version<"3.8"',
+        'pyspark<4.0.0; python_version>"3.8"',
+        'pyspark>=3.5.0,<4.0.0; python_version<="3.8"',
         'geopyspark_openeo==0.4.3.post1',
         # rasterio is an undeclared but required dependency for geopyspark
         # (see https://github.com/locationtech-labs/geopyspark/issues/683 https://github.com/locationtech-labs/geopyspark/pull/706)
@@ -77,7 +78,7 @@ setup(
         'rasterio~=1.3.10; python_version>="3.9"',
         'py4j',
         'numpy==1.22.4; python_version<"3.9"',
-        'numpy; python_version>="3.9"',
+        'numpy>=2.3.3; python_version>="3.9"',
         'pandas>=1.4.0,<2.0.0; python_version<"3.9"',
         'pandas; python_version>="3.9"',
         'pyproj==3.4.1',
@@ -123,6 +124,13 @@ setup(
             "PyYAML",
         ],
         "yarn": yarn_require,
+        "gdal": [
+            # Note: the GDAL package is practically a hard dependency,
+            # but it can be quite challenging to install,
+            # so we list it as "extra" instead of under "install_requires" for now.
+            # Also see https://github.com/Open-EO/openeo-geopyspark-driver/issues/1363
+            "gdal~=3.8.4",
+        ],
     },
     entry_points={
         "console_scripts": [

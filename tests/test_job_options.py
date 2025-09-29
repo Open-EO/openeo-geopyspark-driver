@@ -1,10 +1,8 @@
 import json
-from dataclasses import fields
 
 import pytest
 
 from openeo.util import dict_no_none
-from openeo_driver.errors import OpenEOApiException
 from openeogeotrellis.constants import JOB_OPTION_LOGGING_THRESHOLD
 from openeogeotrellis.job_options import JobOptions, K8SOptions
 from openeogeotrellis.config import get_backend_config

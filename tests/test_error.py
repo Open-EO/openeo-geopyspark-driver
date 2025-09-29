@@ -418,7 +418,7 @@ Traceback (most recent call last):
   File "/usr/local/spark/python/lib/py4j-0.10.9.7-src.zip/py4j/protocol.py", line 326, in get_return_value
     raise Py4JJavaError(
 py4j.protocol.Py4JJavaError: An error occurred while calling z:org.openeo.geotrellis.geotiff.package.saveRDDTemporalAllowAssetPerBand.
-: org.apache.spark.SparkException: Job aborted due to stage failure: 
+: org.apache.spark.SparkException: Job aborted due to stage failure:
 Aborting TaskSet 5.0 because task 0 (partition 0)
 cannot run anywhere due to node and executor excludeOnFailure.
 Most recent failure:

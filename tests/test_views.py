@@ -1,6 +1,4 @@
-import collections
 import contextlib
-import datetime
 import decimal
 import json
 import logging
@@ -11,12 +9,10 @@ import subprocess
 from typing import Optional
 from unittest import mock
 
-import boto3
 import jsonschema
 import kazoo.exceptions
 import pytest
 import requests
-import time_machine
 from elasticsearch.exceptions import ConnectionTimeout
 from openeo.util import deep_get
 from openeo_driver.jobregistry import JOB_STATUS
@@ -27,7 +23,6 @@ from openeo_driver.testing import (
     TIFF_DUMMY_DATA,
     ApiTester,
     DictSubSet,
-    ListSubSet,
     RegexMatcher,
 )
 

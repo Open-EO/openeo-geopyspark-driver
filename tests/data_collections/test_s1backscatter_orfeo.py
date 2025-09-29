@@ -6,7 +6,7 @@ import textwrap
 import zipfile
 from pathlib import Path
 from typing import Tuple
-from unittest import mock, skip
+from unittest import mock
 
 import pytest
 import rasterio

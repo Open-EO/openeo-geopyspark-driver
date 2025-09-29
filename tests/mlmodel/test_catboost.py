@@ -1,14 +1,9 @@
-import json
 import re
-from datetime import datetime
 from pathlib import Path
-from random import uniform
-from typing import Any, List, Iterator
-from unittest import skip
+from typing import List, Iterator
 
 import mock
 import pytest
-from openeo_driver.backend import BatchJobMetadata
 from openeo_driver.constants import JOB_STATUS
 from openeo_driver.save_result import MlModelResult
 from openeo_driver.testing import (
@@ -18,7 +13,6 @@ from openeo_driver.testing import (
     TEST_USER,
 )
 from openeo_driver.utils import read_json
-from py4j.java_gateway import JavaObject
 from pyspark.ml.linalg import Vectors
 from pyspark.sql.types import *
 from shapely.geometry import GeometryCollection, Point
@@ -30,7 +24,6 @@ from openeogeotrellis.job_registry import DoubleJobRegistry, ZkJobRegistry
 from openeogeotrellis.ml.aggregatespatialvectorcube import AggregateSpatialVectorCube
 from openeogeotrellis.ml.geopysparkcatboostmodel import GeopySparkCatBoostModel
 from openeogeotrellis.testing import KazooClientMock
-from tests.data import TEST_DATA_ROOT
 
 FEATURE_COLLECTION_1 = {
     "type": "FeatureCollection",
@@ -95,7 +88,7 @@ def test_fit_class_catboost_batch_job_metadata(
 ):
     """
     Test the metadata generation for a CatBoost model trained using a batch job.
-    
+
     This test performs the following steps:
     1. Runs a batch job while mocking the evaluate step. So it only generates a job_metadata.json file.
     2. Verifies "job_metadata.json"
@@ -120,32 +113,32 @@ def test_fit_class_catboost_batch_job_metadata(
     assert metadata_result == DictSubSet({
         'assets': {'catboost_model.cbm.tar.gz': {'href': str(tmp_path / 'catboost_model.cbm.tar.gz')}},
         'ml_model_metadata': DictSubSet({
-            'stac_extensions': ['https://stac-extensions.github.io/ml-model/v1.0.0/schema.json'], 
+            'stac_extensions': ['https://stac-extensions.github.io/ml-model/v1.0.0/schema.json'],
             'type': 'Feature',
-            'collection': 'collection-id', 
-            'bbox': [-179.999, -89.999, 179.999, 89.999], 
+            'collection': 'collection-id',
+            'bbox': [-179.999, -89.999, 179.999, 89.999],
             'geometry': {
-                'type': 'Polygon', 
+                'type': 'Polygon',
                 'coordinates': [
                     [[-179.999, -89.999], [179.999, -89.999], [179.999, 89.999], [-179.999, 89.999],
                      [-179.999, -89.999]]
                 ]
-            }, 
+            },
             'properties': {
                 'datetime': None, 'start_datetime': '1970-01-01T00:00:00Z', 'end_datetime': '9999-12-31T23:59:59Z',
-                'ml-model:type': 'ml-model', 
+                'ml-model:type': 'ml-model',
                 'ml-model:learning_approach': 'supervised',
-                'ml-model:prediction_type': 'classification', 
+                'ml-model:prediction_type': 'classification',
                 'ml-model:architecture': 'catboost',
-                'ml-model:training-processor-type': 'cpu', 
+                'ml-model:training-processor-type': 'cpu',
                 'ml-model:training-os': 'linux'
-            }, 
-            'links': [], 
+            },
+            'links': [],
             'assets': {
                 'model': {
                     'href': str(tmp_path / 'catboost_model.cbm.tar.gz'),
                     # 'href': '/tmp/pytest-of-jeroen/pytest-35/test_fit_class_catboost_batch_0/catboost_model.cbm',
-                    'type': 'application/octet-stream', 
+                    'type': 'application/octet-stream',
                     'title': 'ai.catboost.spark.CatBoostClassificationModel',
                     'roles': ['ml-model:checkpoint']
                 }
@@ -175,8 +168,8 @@ def test_fit_class_catboost_batch_job_metadata(
     assert res == DictSubSet({
         'assets': {
             'catboost_model.cbm.tar.gz': {
-                'title': 'catboost_model.cbm.tar.gz', 
-                'href': f'http://oeo.net/openeo/1.1.0/jobs/{job_id}/results/assets/catboost_model.cbm.tar.gz', 
+                'title': 'catboost_model.cbm.tar.gz',
+                'href': f'http://oeo.net/openeo/1.1.0/jobs/{job_id}/results/assets/catboost_model.cbm.tar.gz',
                 'roles': ['data'], 'type': 'application/octet-stream',
                 "file:size": size,
             }
@@ -189,10 +182,10 @@ def test_fit_class_catboost_batch_job_metadata(
             "https://stac-extensions.github.io/ml-model/v1.0.0/schema.json"
         ]),
         'summaries': {
-            'ml-model:architecture': ['catboost'], 
+            'ml-model:architecture': ['catboost'],
             'ml-model:learning_approach': ['supervised'],
             'ml-model:prediction_type': ['classification']
-        }, 
+        },
     })
 
     # 4. Check the item metadata returned by the /jobs/{j}/results/items endpoint.

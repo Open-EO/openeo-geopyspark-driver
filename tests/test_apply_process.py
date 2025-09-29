@@ -19,7 +19,6 @@ from openeogeotrellis.geopysparkdatacube import (
     GeopysparkDataCube,
 )
 from openeogeotrellis.processgraphvisiting import GeotrellisTileProcessGraphVisitor
-from openeogeotrellis.service_registry import InMemoryServiceRegistry
 
 
 def _build_metadata(bands: List[str] = ["B01", "B02"]) -> GeopysparkCubeMetadata:

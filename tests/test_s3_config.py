@@ -67,4 +67,3 @@ def test_sanitization_should_always_arrive_at_a_valid_session_name(in_str: str, 
     assert is_sanitized == requires_sanitization
     assert 2 <= len(sanitized) <= 64
     assert re.match(r"^[\w+=,.@-]*$", sanitized) is not None, f"post sanitization still mismatch pattern {sanitized}"
-

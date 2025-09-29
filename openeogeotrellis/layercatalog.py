@@ -22,14 +22,13 @@ import requests
 from openeo.metadata import Band
 from openeo.util import TimingLogger, deep_get, str_truncate
 from openeo_driver import filter_properties
-from openeo_driver.backend import CollectionCatalog, LoadParameters, OpenEoBackendImplementation
+from openeo_driver.backend import CollectionCatalog, LoadParameters
 from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.errors import OpenEOApiException, InternalException, ProcessGraphComplexityException
 from openeo_driver.filter_properties import extract_literal_match
 from openeo_driver.util.geometry import reproject_bounding_box
-from openeo_driver.util.logging import just_log_exceptions
 from openeo_driver.util.utm import auto_utm_epsg_for_geometry
 from openeo_driver.util.http import requests_with_retry
 from openeo_driver.utils import read_json, EvalEnv, WhiteListEvalEnv, smart_bool

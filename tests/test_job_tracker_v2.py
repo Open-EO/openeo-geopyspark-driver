@@ -13,7 +13,7 @@ from unittest import mock
 import kubernetes
 import pytest
 import requests_mock
-from openeo.util import rfc3339, url_join
+from openeo.util import rfc3339
 from openeo_driver.testing import DictSubSet
 from openeo_driver.utils import generate_unique_id
 

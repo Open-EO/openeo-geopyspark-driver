@@ -3,7 +3,6 @@ from pathlib import Path
 from pprint import pformat
 from typing import Optional
 
-from openeo_driver.utils import smart_bool
 
 
 class ConfigParams:
@@ -55,9 +54,6 @@ class ConfigParams:
                 else "/data/projects/OpenEO/"
             )
         )
-
-        # TODO: this param is now also available in GpsBackendConfig
-        self.vault_addr = os.environ.get("VAULT_ADDR", "https://vault.vgt.vito.be")
 
     def __str__(self) -> str:
         return pformat(vars(self))

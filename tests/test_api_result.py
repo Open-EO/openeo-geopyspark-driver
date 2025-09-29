@@ -18,6 +18,8 @@ import geopandas as gpd
 import mock
 import numpy
 import numpy as np
+import rioxarray
+
 import openeo
 import openeo.processes
 import pandas
@@ -37,9 +39,7 @@ from openeo_driver.testing import (
     IgnoreOrder,
     ListSubSet,
     RegexMatcher,
-    UrllibMocker,
     load_json,
-    ApiException,
 )
 from openeo_driver.users import User
 from openeo_driver.util.auth import ClientCredentials
@@ -62,6 +62,7 @@ from shapely.geometry import GeometryCollection, Point, Polygon, box, mapping
 from openeogeotrellis._version import __version__
 from openeogeotrellis.backend import JOB_METADATA_FILENAME
 from openeogeotrellis.config.config import EtlApiConfig
+from openeogeotrellis.integrations.gdal import read_gdal_info
 from openeogeotrellis.job_registry import ZkJobRegistry
 from openeogeotrellis.testing import KazooClientMock, gps_config_overrides, random_name
 from openeogeotrellis.util.runtime import is_package_available
@@ -4057,7 +4058,26 @@ class TestLoadStac:
         process_graph = {
             "loadstac1": {
                 "process_id": "load_stac",
-                "arguments": {"url": str(get_test_data_file("binary/load_stac/spatiotemporal_netcdf/collection.json"))}
+                "arguments": {
+                    "url": str(get_test_data_file("binary/load_stac/spatiotemporal_netcdf/collection.json")),
+                    "bands": sorted(
+                        [
+                            "S2-B01",
+                            "S2-B02",
+                            "S2-B03",
+                            "S2-B04",
+                            "S2-B05",
+                            "S2-B06",
+                            "S2-B07",
+                            "S2-B08",
+                            "S2-B8A",
+                            "S2-B09",
+                            "S2-B11",
+                            "S2-B12",
+                            "S2-SCL",
+                        ]
+                    ),
+                },
             },
             "aggregatespatial1": {
                 "process_id": "aggregate_spatial",
@@ -4113,34 +4133,47 @@ class TestLoadStac:
         parsed = pandas.read_csv(io.StringIO(res.text))
         print(parsed)
 
-    @pytest.mark.skip(reason="Disabled till this is clarified.")
-    def test_load_stac_from_spatiotemporal_netcdf_mixed_columns(self, api110, tmp_path):
+    def test_load_stac_from_spatiotemporal_netcdf_mixed_columns_error(self, api110, tmp_path, caplog):
+        """
+        Request with the same order as in the stac catalog will throw an error if it is not alphabetical
+        """
+        caplog.set_level("WARNING")
+
+        request_band_names = [
+            "S2-B01",
+            "S2-B02",
+            "S2-B03",
+            "S2-B04",
+            "S2-B05",
+            "S2-B06",
+            "S2-B07",
+            "S2-B08",
+            "S2-B8A",
+            "S2-B09",
+            "S2-B11",
+            "S2-B12",
+            "S2-SCL",
+        ]
+
         process_graph = {
             "loadstac1": {
                 "process_id": "load_stac",
                 "arguments": {
                     "url": str(get_test_data_file("binary/load_stac/spatiotemporal_netcdf/collection.json")),
-                    "bands": [
-                        "S2-SCL",
-                        "S2-B01",
-                        "S2-B02",
-                        "S2-B03",
-                        "S2-B04",
-                        "S2-B05",
-                        "S2-B06",
-                        "S2-B07",
-                        "S2-B08",
-                        "S2-B8A",
-                        "S2-B09",
-                        "S2-B11",
-                        "S2-B12",
-                    ],
+                    "bands": request_band_names,
+                },
+            },
+            "filtertemporal1": {
+                "process_id": "filter_temporal",
+                "arguments": {
+                    "data": {"from_node": "loadstac1"},
+                    "extent": ["2020-09-01", "2020-09-06"],
                 },
             },
             "aggregatespatial1": {
                 "process_id": "aggregate_spatial",
                 "arguments": {
-                    "data": {"from_node": "loadstac1"},
+                    "data": {"from_node": "filtertemporal1"},
                     "geometries": {
                         "type": "FeatureCollection",
                         "features": [
@@ -4171,18 +4204,144 @@ class TestLoadStac:
             },
             "saveresult1": {
                 "process_id": "save_result",
-                "arguments": {"data": {"from_node": "aggregatespatial1"}, "format": "parquet"},
+                "arguments": {
+                    "data": {"from_node": "aggregatespatial1"},
+                    "format": "parquet",
+                },
                 "result": True,
             },
         }
 
-        with pytest.raises(ApiException) as exc_info:
-            api110.result(process_graph).assert_status_code(200)
+        api110.result(process_graph).assert_status_code(200)
+        message = "Band order should be alphabetical for NetCDF STAC-catalog with a time dimension."
+        assert any(message in m for m in caplog.messages)
 
-        assert (
-            """Custom band order is not yet supported for a NetCDF STAC-catalog with a time dimension."""
-            in exc_info.value.args[0]
+    @pytest.mark.parametrize(
+        "save_format",
+        [
+            "netcdf",
+            "csv",
+        ],
+    )
+    def test_load_stac_from_spatiotemporal_netcdf_mixed_columns(self, api110, tmp_path, save_format):
+        """
+        Explicitly check if the band order is as expected and if the values match.
+        """
+        # TODO: Add test with "featureflags": {"allow_empty_cube": True} once it works
+        request_band_names = sorted(
+            [
+                "S2-B01",
+                "S2-B02",
+                "S2-B03",
+                "S2-B04",
+                "S2-B05",
+                "S2-B06",
+                "S2-B07",
+                "S2-B08",
+                "S2-B09",
+                "S2-B11",
+                "S2-B12",
+                "S2-B8A",
+                "S2-SCL",
+            ]
         )
+        process_graph = {
+            "loadstac1": {
+                "process_id": "load_stac",
+                "arguments": {
+                    "url": str(get_test_data_file("binary/load_stac/spatiotemporal_netcdf/collection.json")),
+                    "bands": request_band_names,
+                },
+            },
+            "filtertemporal1": {
+                "process_id": "filter_temporal",
+                "arguments": {
+                    "data": {"from_node": "loadstac1"},
+                    "extent": ["2020-09-01", "2020-09-06"],
+                },
+            },
+            "aggregatespatial1": {
+                "process_id": "aggregate_spatial",
+                "arguments": {
+                    "data": {"from_node": "filtertemporal1"},
+                    "geometries": {
+                        "type": "FeatureCollection",
+                        "features": [
+                            {
+                                "geometry": {"coordinates": [27.1385676752, 57.34267002], "type": "Point"},
+                                "id": "0",
+                                "properties": {},
+                                "type": "Feature",
+                            },
+                            {
+                                "geometry": {"coordinates": [27.0837739, 57.38799], "type": "Point"},
+                                "id": "1",
+                                "properties": {},
+                                "type": "Feature",
+                            },
+                        ],
+                    },
+                    "reducer": {
+                        "process_graph": {
+                            "mean1": {
+                                "arguments": {"data": {"from_parameter": "data"}},
+                                "process_id": "mean",
+                                "result": True,
+                            }
+                        }
+                    },
+                },
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {
+                    "data": {"from_node": "aggregatespatial1" if save_format == "csv" else "filtertemporal1"},
+                    "format": save_format,
+                },
+                "result": True,
+            },
+        }
+
+        res = api110.result(process_graph).assert_status_code(200)
+        if save_format == "csv":
+            res_path = tmp_path / "res.csv"
+        else:
+            res_path = tmp_path / "res.nc"
+        res_path.write_bytes(res.data)
+
+        def get_ordered_names_with_gdalinfo(netcdf_path):
+            gdal_info = read_gdal_info(str(netcdf_path))
+            subdatasets = gdal_info["metadata"]["SUBDATASETS"]
+            subdatasets_filtered = {k: v for k, v in subdatasets.items() if k.endswith("_NAME")}
+            regex = re.compile(r"NETCDF:\"([^\"]+)\":([^\"]+)")
+            return [m.group(2) for k, v in subdatasets_filtered.items() if (m := regex.match(v))]
+
+        ref_path = get_test_data_file(
+            "binary/load_stac/spatiotemporal_netcdf/S2_2021_LV_LPIS_POLY_110-12525751_32635_2020-08-30_2022-03-03.nc"
+        )
+        ref_band_names = get_ordered_names_with_gdalinfo(ref_path)
+        ref_array = rioxarray.open_rasterio(ref_path, masked=True).squeeze()
+        ref_sel = ref_array.isel(x=6, y=ref_array.dims["y"] - 2, t=0)  # manually picked in QGIS
+
+        ref_ordered_value_per_band = list(map(lambda x: ref_sel[x].values, request_band_names))
+
+        if save_format == "csv":
+            csv_object = io.StringIO(res_path.read_text())
+            df = pandas.read_csv(csv_object)
+            df = df[df["feature_index"] == 0]
+            df = df[df["date"] == "2020-09-01T00:00:00.000Z"]
+            df = df.drop(columns=["date", "feature_index"])
+            res_band_names = list(df.columns)
+            assert res_band_names == request_band_names
+            assert (df.values[0] == ref_ordered_value_per_band).all()
+        else:
+            res_band_names = get_ordered_names_with_gdalinfo(res_path)
+            res_array = rioxarray.open_rasterio(res_path, masked=True).squeeze()
+            res_sel = res_array.isel(x=331, y=568, t=0)  # manually picked in QGIS
+            res_ordered_value_per_band = list(map(lambda x: res_sel[x].values, res_band_names))
+
+            assert res_ordered_value_per_band == ref_ordered_value_per_band
+            assert res_band_names == request_band_names
 
     @pytest.mark.parametrize(
         "catalog_url",

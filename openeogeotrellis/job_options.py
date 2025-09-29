@@ -206,7 +206,7 @@ class JobOptions:
             if job_option_name in data:
 
                 value = data.get(job_option_name)
-                cls.validate_type(value,field.type)
+                cls.validate_type(value=value, expected_type=field.type, name=job_option_name)
                 init_kwargs[field.name] = value
 
         if JOB_OPTION_LOG_LEVEL not in init_kwargs and JOB_OPTION_LOGGING_THRESHOLD in data:
@@ -244,10 +244,12 @@ class JobOptions:
 
 
     @classmethod
-    def validate_type(cls, arg, type):
+    def validate_type(cls, value, expected_type, name: str = "n/a"):
         try:
-            if not isinstance(arg,type):
-                cls._log.warning(f"Job option with unexpected type: {arg}, expected type {cls.python_type_to_json_schema(type)}")
+            if not isinstance(value, expected_type):
+                cls._log.warning(
+                    f"Job option {name!r} with unexpected type: {value!r}, expected: {cls.python_type_to_json_schema(expected_type)}"
+                )
         except TypeError:
             pass
 

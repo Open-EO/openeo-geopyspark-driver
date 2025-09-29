@@ -813,12 +813,18 @@ def test_spatial_cube_to_netcdf_sample_by_feature(tmp_path):
     item0 = [item for item in items for asset in item["assets"].values() if asset["href"].endswith("/openEO_0.nc")][0]
 
     assert item0["bbox"] == [0.1, 0.1, 1.8, 1.8]
-    assert shape(item0["geometry"]).normalize().almost_equals(Polygon.from_bounds(0.1, 0.1, 1.8, 1.8).normalize())
+    assert (
+        shape(item0["geometry"])
+        .normalize()
+        .equals_exact(Polygon.from_bounds(0.1, 0.1, 1.8, 1.8).normalize(), tolerance=0.001)
+    )
 
     item1 = [item for item in items for asset in item["assets"].values() if asset["href"].endswith("/openEO_1.nc")][0]
     assert item1["bbox"] == [0.725, -1.29, 2.99, 1.724]
     assert (
-        shape(item1["geometry"]).normalize().almost_equals(Polygon.from_bounds(0.725, -1.29, 2.99, 1.724).normalize())
+        shape(item1["geometry"])
+        .normalize()
+        .equals_exact(Polygon.from_bounds(0.725, -1.29, 2.99, 1.724).normalize(), tolerance=0.001)
     )
 
 
@@ -1059,8 +1065,11 @@ def test_export_workspace(tmp_path, remove_original, attach_gdalinfo_assets, sta
 
         for item in items:
             assert item.bbox == [0.0, 0.0, 1.0, 2.0]
-            assert (shape(item.geometry).normalize()
-                    .almost_equals(Polygon.from_bounds(0.0, 0.0, 1.0, 2.0).normalize()))
+            assert (
+                shape(item.geometry)
+                .normalize()
+                .equals_exact(Polygon.from_bounds(0.0, 0.0, 1.0, 2.0).normalize(), tolerance=0.001)
+            )
             assets = item.get_assets()
             assert len(assets) == 2 if attach_gdalinfo_assets & (stac_version == "1.1") else len(assets) == 1
             asset_name = "openEO" if stac_version == "1.1" else item.id
@@ -1082,8 +1091,11 @@ def test_export_workspace(tmp_path, remove_original, attach_gdalinfo_assets, sta
 
         item = [item for item in items if "2021-01-05" in item.id ][0]
         assert item.bbox == [0.0, 0.0, 1.0, 2.0]
-        assert (shape(item.geometry).normalize()
-                .almost_equals(Polygon.from_bounds(0.0, 0.0, 1.0, 2.0).normalize()))
+        assert (
+            shape(item.geometry)
+            .normalize()
+            .equals_exact(Polygon.from_bounds(0.0, 0.0, 1.0, 2.0).normalize(), tolerance=0.001)
+        )
 
         geotiff_asset = item.get_assets()[asset_names[1]]
         assert "data" in geotiff_asset.roles
@@ -1219,7 +1231,11 @@ def test_export_workspace_with_asset_per_band(tmp_path, stac_version, asset_name
 
         item = items[0]
         assert item.bbox == [0.0, 0.0, 1.0, 2.0]
-        assert shape(item.geometry).normalize().almost_equals(Polygon.from_bounds(0.0, 0.0, 1.0, 2.0).normalize())
+        assert (
+            shape(item.geometry)
+            .normalize()
+            .equals_exact(Polygon.from_bounds(0.0, 0.0, 1.0, 2.0).normalize(), tolerance=0.001)
+        )
 
         assets = [{asset_key:asset} for item in items for asset_key, asset in item.assets.items()]
         assert len(assets) == 2
@@ -2175,9 +2191,30 @@ def test_load_stac_temporal_extent_in_result_metadata(tmp_path, requests_mock, s
     process["process_graph"]["loadstac1"]["arguments"]["url"] = str(
         get_test_data_file("binary/load_stac/issue852-temporal-extent/s1/collection.json").absolute()
     )
+    process["process_graph"]["loadstac1"]["arguments"]["bands"] = sorted(["S1-SIGMA0-VV", "S1-SIGMA0-VH"])
     process["process_graph"]["loadstac2"]["arguments"]["url"] = str(
         get_test_data_file("binary/load_stac/issue852-temporal-extent/s2/collection.json").absolute()
     )
+    process["process_graph"]["loadstac2"]["arguments"]["bands"] = sorted(
+        [
+            "S2-L2A-B01",
+            "S2-L2A-B02",
+            "S2-L2A-B03",
+            "S2-L2A-B04",
+            "S2-L2A-B05",
+            "S2-L2A-B06",
+            "S2-L2A-B07",
+            "S2-L2A-B8A",
+            "S2-L2A-B08",
+            "S2-L2A-B09",
+            "S2-L2A-B11",
+            "S2-L2A-B12",
+            "S2-L2A-SCL",
+            "S2-L2A-SCL_DILATED_MASK",
+            "S2-L2A-DISTANCE-TO-CLOUD",
+        ]
+    )
+
     process["process_graph"]["loadurl1"]["arguments"]["url"] = geoparquet_url
 
     with open(

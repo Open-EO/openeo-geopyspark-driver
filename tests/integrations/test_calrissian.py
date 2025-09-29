@@ -12,7 +12,6 @@ import pytest
 from openeogeotrellis.config.integrations.calrissian_config import (
     CalrissianConfig,
     DEFAULT_CALRISSIAN_IMAGE,
-    DEFAULT_CALRISSIAN_S3_BUCKET,
 )
 from openeogeotrellis.integrations.calrissian import (
     CalrissianJobLauncher,

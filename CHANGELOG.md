@@ -22,6 +22,13 @@ without compromising stable operations.
 - `export_workspace`: add `md5` and `mtime` metadata to assets exported as objects ([#1318](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1318))
 - Avoid in-memory credentials cache conflict in IPA tooling (eu-cdse/openeo-cdse-infra#660)
 - `resample_cube_spatial`: support resampling cube without time dimension, where target cube has a time dimension
+- Log warning when requesting bands in unexpected order for temporal NetCDF STAC catalogs. ([#1153](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1153))
+- Expose `get_oidc_access_token` helper method for use with `StacApiWorkspace` ([eu-cdse/openeo-cdse-infra#633](https://github.com/eu-cdse/openeo-cdse-infra/issues/633))
+- Add `integrations.vault.VaultClient` with "cert" auth support (eu-cdse/openeo-cdse-infra#671)
+- Avoid ZeroDivisionError with resample_spatial with resolution 0 for UTM layers. ([openeo-geotrellis-extensions#506](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/506))
+- Less often used Spark metrics for batch jobs are now disabled by default. They are enabled when log-level is set to 'debug'.
+- `filter_temporal` should also work in half-open fashion when applied after `load_collection`/`load_stac` with non-empty `temporal_extent` ([Open-EO/openeo-geotrellis-extensions#498](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/498))
+- `load_stac`: ignore empty `roles` listing for assets to decide if asset is a "band asset" ([1356](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1356))
 
 
 ## 0.67.0

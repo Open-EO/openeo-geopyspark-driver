@@ -125,7 +125,7 @@ class GpsBackendConfig(OpenEoBackendConfig):
 
     ejr_api: Optional[str] = os.environ.get("OPENEO_EJR_API")
     ejr_backend_id: str = "unknown"
-    ejr_credentials_vault_path: Optional[str] = os.environ.get("OPENEO_EJR_CREDENTIALS_VAULT_PATH")
+    ejr_credentials_vault_path: Optional[str] = "UNUSED_AND_TO_BE_REMOVED"
     ejr_preserialize_process: bool = False
 
     # TODO: eliminate hardcoded Terrascope references
@@ -247,6 +247,13 @@ class GpsBackendConfig(OpenEoBackendConfig):
                 UDF_DEPENDENCIES_INSTALL_MODE.ZIP,
             ]
         ),
+    )
+
+    processing_container_image: Optional[str] = attrs.field(
+        default=None,
+        metadata={
+            "description": "Docker image to use for batch/synchronous processing jobs when started from web app. If not specified, the same image the web app is running in will be used."
+        },
     )
 
     """

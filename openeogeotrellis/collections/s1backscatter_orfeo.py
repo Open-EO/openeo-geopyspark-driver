@@ -13,7 +13,7 @@ import types
 import zipfile
 from datetime import datetime
 from multiprocessing import Process
-from typing import Dict, Tuple, Union, List, Any, Optional
+from typing import Dict, Tuple, Union, List, Optional
 
 import geopyspark
 import numpy
