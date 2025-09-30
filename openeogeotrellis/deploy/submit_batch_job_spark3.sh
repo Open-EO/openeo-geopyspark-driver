@@ -225,6 +225,9 @@ spark-submit \
  --conf spark.extraListeners=org.openeo.sparklisteners.LogErrorSparkListener,org.openeo.sparklisteners.BatchJobProgressListener \
  --conf spark.sql.adaptive.coalescePartitions.parallelismFirst=false \
  --conf spark.sql.adaptive.advisoryPartitionSizeInBytes=5242880 \
+ --conf spark.yarn.jars=local:///usr/local/spark/jars/* \
+ --conf spark.driver.userClassPathFirst=false \
+ --conf spark.executor.userClassPathFirst=false \
  --files "${files}" \
  --py-files "${pyfiles}" \
  --conf spark.hadoop.security.authentication=kerberos --conf spark.yarn.maxAppAttempts=1 \

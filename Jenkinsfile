@@ -16,6 +16,7 @@ pythonPipeline {
   extra_env_variables = [
     /* Set pytest `basetemp` inside Jenkins workspace. (Note: this is intentionally Jenkins specific, instead of a global pytest.ini thing.) */
     "PYTEST_DEBUG_TEMPROOT=pytest-tmp",
+    "PYTHON_VERSION=3.8",
   ]
   python_version = ["3.8"]
   docker_registry = 'vito-docker-private.artifactory.vgt.vito.be'
@@ -27,7 +28,7 @@ pythonPipeline {
   upload_dev_wheels = false
   pep440 = true
   venv_rpm_deps = ['gcc-c++', 'kstart', 'krb5-devel']
-  custom_test_image = 'vito-docker.artifactory.vgt.vito.be/almalinux8.5-spark-py-openeo:3.5.3'
+  custom_test_image = 'vito-docker.artifactory.vgt.vito.be/almalinux8.5-spark-py-openeo:3.5.6'
   extra_container_volumes = [
     '/data/MTDA:/data/MTDA:ro'
   ]

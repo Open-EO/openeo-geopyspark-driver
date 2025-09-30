@@ -954,8 +954,8 @@ Example usage:
                 parameter = 'data', process = 'vector_to_raster',
                 reason = f'Input vector cube {input_vector_cube} is not fully numeric. Actual data type: {cube.dtype}.'
             )
-        if cube.dtype != np.float:
-            input_vector_cube = input_vector_cube.with_cube(cube.astype(np.float))
+        if cube.dtype != float:
+            input_vector_cube = input_vector_cube.with_cube(cube.astype(float))
 
         # Pass over to scala using a parquet file (py4j is too slow) and convert it to a raster layer.
         file_name = "input_vector_cube.geojson"
@@ -2018,6 +2018,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
             image_name = options.image_name or get_backend_config().processing_container_image or running_image
             image_name = get_backend_config().batch_runtime_to_image.get(image_name.lower(), image_name)
+            log.info(f"Using {image_name=}")
 
             batch_job_cfg_secret_name = k8s_get_batch_job_cfg_secret_name(spark_app_id)
 

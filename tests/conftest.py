@@ -149,7 +149,7 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
 
     spark_jars = conf.get("spark.jars").split(",")
     # geotrellis-extensions needs to be loaded first to avoid "java.lang.NoClassDefFoundError: shapeless/lazily$"
-    spark_jars.sort(key=lambda x: "geotrellis-extensions" not in x)
+    spark_jars.sort(key=lambda x: "geotrellis-extensions" not in x and "geotrellis-dependencies" not in x)
     conf.set(key="spark.jars", value=",".join(spark_jars))
 
     # Use UTC timezone by default when formatting/parsing dates (e.g. CSV export of timeseries)
@@ -189,7 +189,7 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
     jars = []
     for jar_dir in additional_jar_dirs:
         for jar_path in Path(jar_dir).iterdir():
-            if jar_path.match("openeo-logging-*.jar"):
+            if jar_path.match("openeo-logging-*.jar") or jar_path.match("geotrellis-dependencies-*.jar"):
                 jars.append(str(jar_path))
     extraClassPath = ":".join(jars)
     conf.set("spark.driver.extraClassPath", extraClassPath)

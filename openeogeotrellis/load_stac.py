@@ -345,7 +345,7 @@ def load_stac(
                 ),
             ):
                 proj_epsg, proj_bbox, proj_shape = _get_proj_metadata(
-                    asset=asset, item=itm, apply_lcfm_improvements=apply_lcfm_improvements
+                    asset=asset, item=itm
                 )
 
                 asset_band_names_from_metadata = stac_metadata_parser.bands_from_stac_asset(asset=asset).band_names()
@@ -882,17 +882,16 @@ def _is_band_asset(asset: pystac.Asset) -> bool:
 
 
 def _get_proj_metadata(
-    asset: pystac.Asset, *, item: pystac.Item, apply_lcfm_improvements: bool = False
+    asset: pystac.Asset, *, item: pystac.Item
 ) -> Tuple[Optional[int], Optional[Tuple[float, float, float, float]], Optional[Tuple[int, int]]]:
     """Returns EPSG code, bbox (in that EPSG) and number of pixels (rows, cols), if available."""
     # TODO: possible to avoid item argument and just use asset.owner?
-    # TODO: why does this depend on "apply_lcfm_improvements"?
 
     def to_epsg(proj_code: str) -> Optional[int]:
         prefix = "EPSG:"
         return int(proj_code[len(prefix) :]) if proj_code.upper().startswith(prefix) else None
 
-    code = asset.extra_fields.get("proj:code") or item.properties.get("proj:code") if apply_lcfm_improvements else None
+    code = asset.extra_fields.get("proj:code") or item.properties.get("proj:code")
     epsg = map_optional(to_epsg, code) or asset.extra_fields.get("proj:epsg") or item.properties.get("proj:epsg")
     bbox = asset.extra_fields.get("proj:bbox") or item.properties.get("proj:bbox")
 

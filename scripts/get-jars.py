@@ -11,6 +11,7 @@ To be used instead of `geopyspark install-jar`
 # to be widely usable without need for pre-existing virtual envs
 import argparse
 import logging
+import json
 import os
 import subprocess
 import urllib.request
@@ -20,6 +21,7 @@ logger = logging.getLogger("get-jars")
 
 ROOT_DIR = Path(__file__).parent.parent.absolute()
 DEFAULT_JAR_DIR = ROOT_DIR / "jars"
+JARS_SOURCE_FILE = ROOT_DIR / "scripts/jars.json"
 
 
 def download_jar(jar_dir: Path, url: str, force: bool = False) -> Path:
@@ -52,20 +54,34 @@ def main():
         action="store_true",
         help="Force download instead of skipping existing jars.",
     )
+    parser.add_argument(
+        "-p",
+        "--python-version",
+        choices=["3.8", "3.11"],
+        default="3.8",
+        help="Python version to download jars for (default: current Python version).",
+    )
 
     cli_args = parser.parse_args()
-    jar_dir: Path = cli_args.jar_dir
+    logger.info(f"{cli_args=}")
+    jar_dir: Path = cli_args.jar_dir.absolute()
     force_download = cli_args.force_download
+    python_version = cli_args.python_version
 
     logger.info(f"Using target JAR dir: {jar_dir}")
     jar_dir.mkdir(parents=True, exist_ok=True)
 
-    for url in [
-        # TODO: list these URLs in a simple text/CSV file so it can be consumed by other tools too?
-        "https://artifactory.vgt.vito.be/artifactory/libs-release-public/org/openeo/geotrellis-extensions/PR-544/geotrellis-extensions-PR-544.jar",
-        "https://artifactory.vgt.vito.be/artifactory/libs-release-public/org/openeo/geotrellis-dependencies/PR-544/geotrellis-dependencies-PR-544.jar",
-        "https://artifactory.vgt.vito.be/artifactory/libs-release-public/org/openeo/openeo-logging/PR-544/openeo-logging-PR-544.jar",
-    ]:
+    jar_urls = []
+    with open(JARS_SOURCE_FILE, "r") as f:
+        jar_sources = json.load(f)
+        jar_urls = jar_sources[f"python{python_version}"]
+        assert isinstance(jar_urls, list)
+        assert all(isinstance(u, str) for u in jar_urls)
+        logger.info(f"Found {len(jar_urls)} JAR URLs in {JARS_SOURCE_FILE}:")
+        for u in jar_urls:
+            logger.info(f" - {u}")
+
+    for url in jar_urls:
         download_jar(jar_dir, url=url, force=force_download)
 
     logger.info(f"Listing of {jar_dir}:")
