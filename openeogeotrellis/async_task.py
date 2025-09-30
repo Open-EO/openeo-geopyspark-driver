@@ -194,7 +194,7 @@ def main():
             elastic_job_registry = get_elastic_job_registry(requests_session) if backend_config.ejr_api else None
 
             def get_batch_jobs(batch_job_id: str, user_id: str) -> GpsBatchJobs:
-                vault = Vault(ConfigParams().vault_addr)
+                vault = Vault(backend_config.vault_addr)
                 catalog = get_layer_catalog(vault=vault)
 
                 jvm = java_gateway.jvm
@@ -202,10 +202,10 @@ def main():
                 jvm.org.slf4j.MDC.put(jvm.org.openeo.logging.JsonLayout.JobId(), batch_job_id)
 
                 batch_jobs = GpsBatchJobs(
-                    catalog,
-                    jvm,
-                    args.principal,
-                    args.keytab,
+                    catalog=catalog,
+                    jvm=jvm,
+                    principal=args.principal,
+                    key_tab=args.keytab,
                     vault=vault,
                     elastic_job_registry=elastic_job_registry,
                     requests_session=requests_session,
@@ -213,7 +213,7 @@ def main():
 
                 default_sentinel_hub_credentials = vault.get_sentinel_hub_credentials(
                     sentinel_hub_client_alias='default',
-                    vault_token=vault.login_kerberos(args.principal, args.keytab))
+                    vault_token=vault.login_kerberos(principal=args.principal, keytab=args.keytab))
 
                 batch_jobs.set_default_sentinel_hub_credentials(
                     client_id=default_sentinel_hub_credentials.client_id,

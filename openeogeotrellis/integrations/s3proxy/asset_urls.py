@@ -39,7 +39,12 @@ class PresignedS3AssetUrls(AssetUrl):
     def _get_presigned_url_against_proxy(self, bucket: str, key: str, job_id: str, user_id: str) -> str:
         s3_client = get_proxy_s3_client_for_job(bucket, job_id, user_id)
         url = create_presigned_url(
-            s3_client, bucket_name=bucket, object_name=key, expiration=self._expiration, default=None
+            s3_client,
+            bucket_name=bucket,
+            object_name=key,
+            expiration=self._expiration,
+            default=None,
+            parameters={"X-Proxy-Head-As-Get": "true"},
         )
         if url is None:
             raise ValueError(f"Could not create a presigned url for s3://{bucket}/{key} job_id={job_id} user={user_id}")

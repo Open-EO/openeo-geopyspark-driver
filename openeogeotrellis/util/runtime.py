@@ -1,6 +1,6 @@
-import inspect
 import os
 from typing import Type, Union
+import importlib.util
 
 from openeo_driver.util.logging import FlaskRequestCorrelationIdLogging
 
@@ -36,3 +36,8 @@ def get_request_id(*, default: Union[None, str, Exception, Type[Exception]] = No
     if _is_exception_like(request_id):
         raise request_id
     return request_id
+
+
+def is_package_available(name: str) -> bool:
+    # TODO: move this utility to openeo-python-driver or openeo-python-client
+    return importlib.util.find_spec(name) is not None

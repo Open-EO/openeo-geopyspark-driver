@@ -1,0 +1,190 @@
+<mxfile host="app.diagrams.net" agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36" version="27.1.4">
+  <diagram name="Pagina-1" id="goe-oXB3VCyJgH8RvOtW">
+    <mxGraphModel dx="3028" dy="1261" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="rLJY375tBITqcNEiM_px-1" value="STAC 1.1 support" style="html=1;outlineConnect=0;whiteSpace=wrap;fillColor=#CCCCFF;shape=mxgraph.archimate3.application;appType=goal;archiType=oct;" parent="1" vertex="1">
+          <mxGeometry x="220" y="250" width="150" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="rLJY375tBITqcNEiM_px-2" value="Simplify reproduction&lt;br&gt;using synthetic data" style="html=1;outlineConnect=0;whiteSpace=wrap;fillColor=#CCCCFF;shape=mxgraph.archimate3.application;appType=goal;archiType=oct;" parent="1" vertex="1">
+          <mxGeometry x="414" y="250" width="150" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="rLJY375tBITqcNEiM_px-3" value="Zarr read support" style="html=1;outlineConnect=0;whiteSpace=wrap;fillColor=#CCCCFF;shape=mxgraph.archimate3.application;appType=goal;archiType=oct;" parent="1" vertex="1">
+          <mxGeometry x="960" y="247.5" width="150" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="rLJY375tBITqcNEiM_px-4" value="Make codebase easier to test" style="html=1;outlineConnect=0;whiteSpace=wrap;fillColor=#CCCCFF;shape=mxgraph.archimate3.application;appType=goal;archiType=oct;" parent="1" vertex="1">
+          <mxGeometry x="590" y="250" width="150" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="rLJY375tBITqcNEiM_px-8" value="generates" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" parent="1" source="rLJY375tBITqcNEiM_px-5" target="rLJY375tBITqcNEiM_px-7" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rLJY375tBITqcNEiM_px-5" value="LoadSTACFromAPI" style="html=1;outlineConnect=0;whiteSpace=wrap;fillColor=#99ffff;shape=mxgraph.archimate3.application;appType=comp;archiType=square;" parent="1" vertex="1">
+          <mxGeometry x="80" y="570" width="150" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="rLJY375tBITqcNEiM_px-6" value="LoadSTACFromStaticCatalog" style="html=1;outlineConnect=0;whiteSpace=wrap;fillColor=#99ffff;shape=mxgraph.archimate3.application;appType=comp;archiType=square;" parent="1" vertex="1">
+          <mxGeometry x="80" y="690" width="150" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="rLJY375tBITqcNEiM_px-7" value="STAC&lt;br&gt;ItemCollection" style="html=1;outlineConnect=0;whiteSpace=wrap;fillColor=#99ffff;shape=mxgraph.archimate3.application;appType=passive;archiType=square;" parent="1" vertex="1">
+          <mxGeometry x="339" y="620" width="131" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="rLJY375tBITqcNEiM_px-9" value="generates" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.75;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" source="rLJY375tBITqcNEiM_px-6" target="rLJY375tBITqcNEiM_px-7" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rLJY375tBITqcNEiM_px-12" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" parent="1" source="rLJY375tBITqcNEiM_px-11" target="rLJY375tBITqcNEiM_px-7" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rLJY375tBITqcNEiM_px-11" value="Can be large&lt;br&gt;Persist on disk&lt;div&gt;Should be cacheable&lt;br&gt;Part of job-results&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;" style="html=1;outlineConnect=0;whiteSpace=wrap;fillColor=#CCCCFF;shape=mxgraph.archimate3.application;appType=constraint;archiType=oct;" parent="1" vertex="1">
+          <mxGeometry x="329.5" y="470" width="150" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="rLJY375tBITqcNEiM_px-16" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" parent="1" source="rLJY375tBITqcNEiM_px-13" target="rLJY375tBITqcNEiM_px-14" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rLJY375tBITqcNEiM_px-35" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" parent="1" source="rLJY375tBITqcNEiM_px-13" target="rLJY375tBITqcNEiM_px-21" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rLJY375tBITqcNEiM_px-13" value="STACCollectionBuilder" style="html=1;outlineConnect=0;whiteSpace=wrap;fillColor=#99ffff;shape=mxgraph.archimate3.application;appType=comp;archiType=square;" parent="1" vertex="1">
+          <mxGeometry x="635" y="480" width="150" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="rLJY375tBITqcNEiM_px-18" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" parent="1" source="rLJY375tBITqcNEiM_px-14" target="rLJY375tBITqcNEiM_px-17" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rLJY375tBITqcNEiM_px-14" value="Summarize as collection" style="html=1;outlineConnect=0;whiteSpace=wrap;fillColor=#99ffff;shape=mxgraph.archimate3.application;appType=proc;archiType=rounded;" parent="1" vertex="1">
+          <mxGeometry x="740" y="627.5" width="150" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="rLJY375tBITqcNEiM_px-17" value="STAC &lt;br&gt;Collection Metadata&lt;br&gt;&lt;br&gt;proj:epsg&lt;br&gt;proj:bbox&lt;br&gt;datacube:bands&lt;br&gt;item_assets?&lt;div&gt;&lt;br/&gt;&lt;/div&gt;" style="html=1;outlineConnect=0;whiteSpace=wrap;fillColor=#99ffff;shape=mxgraph.archimate3.application;appType=passive;archiType=square;" parent="1" vertex="1">
+          <mxGeometry x="950" y="577.5" width="150" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="rLJY375tBITqcNEiM_px-23" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" parent="1" source="rLJY375tBITqcNEiM_px-21" target="rLJY375tBITqcNEiM_px-14" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rLJY375tBITqcNEiM_px-30" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" parent="1" source="rLJY375tBITqcNEiM_px-21" target="rLJY375tBITqcNEiM_px-29" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rLJY375tBITqcNEiM_px-21" value="Augment item properties&lt;br&gt;proj:bbox&lt;br&gt;proj:shape" style="html=1;outlineConnect=0;whiteSpace=wrap;fillColor=#99ffff;shape=mxgraph.archimate3.application;appType=proc;archiType=rounded;" parent="1" vertex="1">
+          <mxGeometry x="520" y="631.25" width="180" height="52.5" as="geometry" />
+        </mxCell>
+        <mxCell id="rLJY375tBITqcNEiM_px-22" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" source="rLJY375tBITqcNEiM_px-7" target="rLJY375tBITqcNEiM_px-21" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rLJY375tBITqcNEiM_px-24" value="Deduplication of items" style="html=1;outlineConnect=0;whiteSpace=wrap;fillColor=#CCCCFF;shape=mxgraph.archimate3.application;appType=requirement;archiType=oct;" parent="1" vertex="1">
+          <mxGeometry x="80" y="435" width="150" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="rLJY375tBITqcNEiM_px-25" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" source="rLJY375tBITqcNEiM_px-24" target="rLJY375tBITqcNEiM_px-5" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rLJY375tBITqcNEiM_px-27" value="uses" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" parent="1" source="rLJY375tBITqcNEiM_px-26" target="rLJY375tBITqcNEiM_px-17" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rLJY375tBITqcNEiM_px-26" value="DryRun&lt;br&gt;SourceConstraints" style="html=1;outlineConnect=0;whiteSpace=wrap;fillColor=#99ffff;shape=mxgraph.archimate3.application;appType=comp;archiType=square;" parent="1" vertex="1">
+          <mxGeometry x="950" y="430" width="150" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="rLJY375tBITqcNEiM_px-28" value="FileLayerProvider" style="html=1;outlineConnect=0;whiteSpace=wrap;fillColor=#99ffff;shape=mxgraph.archimate3.application;appType=comp;archiType=square;" parent="1" vertex="1">
+          <mxGeometry x="635" y="920" width="140" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="rLJY375tBITqcNEiM_px-31" value="input for" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" parent="1" source="rLJY375tBITqcNEiM_px-29" target="rLJY375tBITqcNEiM_px-28" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rLJY375tBITqcNEiM_px-29" value="Convert to Scala&lt;br&gt;STAC Item to &#39;Feature&#39;" style="html=1;outlineConnect=0;whiteSpace=wrap;fillColor=#99ffff;shape=mxgraph.archimate3.application;appType=proc;archiType=rounded;" parent="1" vertex="1">
+          <mxGeometry x="630" y="780" width="150" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="rLJY375tBITqcNEiM_px-55" value="uses" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" parent="1" source="rLJY375tBITqcNEiM_px-32" target="rLJY375tBITqcNEiM_px-53" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="355" y="1050" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="rLJY375tBITqcNEiM_px-32" value="LoadStacProcess" style="html=1;outlineConnect=0;whiteSpace=wrap;fillColor=#99ffff;shape=mxgraph.archimate3.application;appType=comp;archiType=square;" parent="1" vertex="1">
+          <mxGeometry x="10" y="1020" width="150" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="rLJY375tBITqcNEiM_px-39" value="tracks" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" parent="1" source="rLJY375tBITqcNEiM_px-36" target="rLJY375tBITqcNEiM_px-17" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rLJY375tBITqcNEiM_px-63" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" parent="1" source="rLJY375tBITqcNEiM_px-36" target="rLJY375tBITqcNEiM_px-62" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rLJY375tBITqcNEiM_px-36" value="DriverDataCube" style="html=1;outlineConnect=0;whiteSpace=wrap;fillColor=#99ffff;shape=mxgraph.archimate3.application;appType=comp;archiType=square;" parent="1" vertex="1">
+          <mxGeometry x="1200" y="631.25" width="140" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="rLJY375tBITqcNEiM_px-40" value="At end of job,&lt;br&gt;track metadata via &#39;derived-from&#39;&lt;br&gt;Our own static STAC items can link to online item." style="html=1;outlineConnect=0;whiteSpace=wrap;fillColor=#CCCCFF;shape=mxgraph.archimate3.application;appType=requirement;archiType=oct;" parent="1" vertex="1">
+          <mxGeometry x="1390" y="460" width="150" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="rLJY375tBITqcNEiM_px-41" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" source="rLJY375tBITqcNEiM_px-40" target="rLJY375tBITqcNEiM_px-36" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1365" y="498" />
+              <mxPoint x="1365" y="580" />
+              <mxPoint x="1270" y="580" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="rLJY375tBITqcNEiM_px-43" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" parent="1" source="rLJY375tBITqcNEiM_px-42" target="rLJY375tBITqcNEiM_px-13" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rLJY375tBITqcNEiM_px-42" value="Overlaps with STACBuilder&lt;br&gt;Reuse code!" style="html=1;outlineConnect=0;whiteSpace=wrap;fillColor=#CCCCFF;shape=mxgraph.archimate3.application;appType=principle;archiType=oct;" parent="1" vertex="1">
+          <mxGeometry x="635" y="370" width="150" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="rLJY375tBITqcNEiM_px-46" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=0;" parent="1" source="rLJY375tBITqcNEiM_px-45" target="rLJY375tBITqcNEiM_px-6" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rLJY375tBITqcNEiM_px-47" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=0;" parent="1" source="rLJY375tBITqcNEiM_px-45" target="rLJY375tBITqcNEiM_px-5" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rLJY375tBITqcNEiM_px-45" value="STACItemSource" style="html=1;outlineConnect=0;whiteSpace=wrap;fillColor=#99ffff;shape=mxgraph.archimate3.application;appType=comp;archiType=square;" parent="1" vertex="1">
+          <mxGeometry x="-150" y="631.25" width="150" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="rLJY375tBITqcNEiM_px-48" value="uses&lt;div&gt;&lt;br&gt;&lt;/div&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=1;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" source="rLJY375tBITqcNEiM_px-32" target="rLJY375tBITqcNEiM_px-45" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rLJY375tBITqcNEiM_px-50" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" parent="1" source="rLJY375tBITqcNEiM_px-49" target="rLJY375tBITqcNEiM_px-26" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rLJY375tBITqcNEiM_px-49" value="Multiple dry runs possible:&lt;br&gt;(validate, pre-batch, batch)" style="html=1;outlineConnect=0;whiteSpace=wrap;fillColor=#CCCCFF;shape=mxgraph.archimate3.application;appType=principle;archiType=oct;" parent="1" vertex="1">
+          <mxGeometry x="1150" y="430" width="150" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="rLJY375tBITqcNEiM_px-51" value="ZarrSTACSource" style="html=1;outlineConnect=0;whiteSpace=wrap;fillColor=#99ffff;shape=mxgraph.archimate3.application;appType=comp;archiType=square;" parent="1" vertex="1">
+          <mxGeometry x="80" y="810" width="150" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="rLJY375tBITqcNEiM_px-52" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;entryPerimeter=0;endArrow=block;endFill=0;" parent="1" source="rLJY375tBITqcNEiM_px-45" target="rLJY375tBITqcNEiM_px-51" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rLJY375tBITqcNEiM_px-56" value="filters" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" parent="1" source="rLJY375tBITqcNEiM_px-53" target="rLJY375tBITqcNEiM_px-7" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rLJY375tBITqcNEiM_px-53" value="STACItemFilter" style="html=1;outlineConnect=0;whiteSpace=wrap;fillColor=#99ffff;shape=mxgraph.archimate3.application;appType=comp;archiType=square;" parent="1" vertex="1">
+          <mxGeometry x="280" y="912.5" width="150" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="rLJY375tBITqcNEiM_px-58" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" source="rLJY375tBITqcNEiM_px-32" target="rLJY375tBITqcNEiM_px-29" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="480" y="1058" />
+              <mxPoint x="480" y="818" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="rLJY375tBITqcNEiM_px-59" value="Support complex Item&lt;br&gt;filters" style="html=1;outlineConnect=0;whiteSpace=wrap;fillColor=#CCCCFF;shape=mxgraph.archimate3.application;appType=goal;archiType=oct;" parent="1" vertex="1">
+          <mxGeometry x="785" y="247.5" width="150" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="rLJY375tBITqcNEiM_px-60" value="New feature:&lt;br&gt;STAC Item filtering&lt;br&gt;e.g. retain at most 1 item per 10 dates" style="html=1;outlineConnect=0;whiteSpace=wrap;fillColor=#CCCCFF;shape=mxgraph.archimate3.application;appType=requirement;archiType=oct;" parent="1" vertex="1">
+          <mxGeometry x="80" y="912.5" width="150" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="rLJY375tBITqcNEiM_px-61" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" source="rLJY375tBITqcNEiM_px-60" target="rLJY375tBITqcNEiM_px-53" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rLJY375tBITqcNEiM_px-65" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" parent="1" source="rLJY375tBITqcNEiM_px-62" target="rLJY375tBITqcNEiM_px-64" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rLJY375tBITqcNEiM_px-62" value="save_result&lt;br&gt;export_workspace" style="html=1;outlineConnect=0;whiteSpace=wrap;fillColor=#99ffff;shape=mxgraph.archimate3.application;appType=comp;archiType=square;" parent="1" vertex="1">
+          <mxGeometry x="1195" y="730" width="150" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="rLJY375tBITqcNEiM_px-66" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" parent="1" source="rLJY375tBITqcNEiM_px-64" target="rLJY375tBITqcNEiM_px-14" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rLJY375tBITqcNEiM_px-64" value="Generate STAC Output" style="html=1;outlineConnect=0;whiteSpace=wrap;fillColor=#99ffff;shape=mxgraph.archimate3.application;appType=proc;archiType=rounded;" parent="1" vertex="1">
+          <mxGeometry x="1195" y="845" width="150" height="55" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

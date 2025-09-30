@@ -1,6 +1,7 @@
 import datetime as dt
 from pathlib import PurePath, Path
-from typing import Dict
+from typing import Dict, List
+from urllib.parse import urlparse
 
 import pytest
 import responses
@@ -29,7 +30,9 @@ def test_merge_new(requests_mock, tmp_path):
     create_collection_mock = requests_mock.post(f"{stac_api_workspace.root_url}/collections")
     create_item_mock = requests_mock.post(f"{stac_api_workspace.root_url}/collections/{target}/items")
 
-    collection1 = _collection(root_path=tmp_path / "collection1", collection_id="collection1", asset_path=asset_path)
+    collection1 = _collection(
+        root_path=tmp_path / "collection1", collection_id="collection1", asset_hrefs=[str(asset_path)]
+    )
     imported_collection = stac_api_workspace.merge(stac_resource=collection1, target=target)
 
     assert isinstance(imported_collection, Collection)
@@ -81,7 +84,7 @@ def test_merge_into_existing(requests_mock, tmp_path):
     existing_collection = _collection(
         root_path=tmp_path / "collection1",
         collection_id="existing_collection",
-        asset_path=Path("asset1.tif"),
+        asset_hrefs=["asset1.tif"],
         spatial_extent=SpatialExtent([[0, 50, 2, 52]]),
         temporal_extent=TemporalExtent([[
             dt.datetime.fromisoformat("2024-12-17T00:00:00+00:00"),
@@ -96,7 +99,7 @@ def test_merge_into_existing(requests_mock, tmp_path):
     new_collection = _collection(
         root_path=tmp_path / "collection2",
         collection_id="collection2",
-        asset_path=asset_path,
+        asset_hrefs=[str(asset_path)],
         spatial_extent=SpatialExtent([[1, 51, 3, 53]]),
         temporal_extent=TemporalExtent([[
             dt.datetime.fromisoformat("2024-12-18T00:00:00+00:00"),
@@ -192,7 +195,9 @@ def test_merge_resilience(tmp_path, caplog):
         },
     )
 
-    collection1 = _collection(root_path=tmp_path / "collection1", collection_id="collection1", asset_path=asset_path)
+    collection1 = _collection(
+        root_path=tmp_path / "collection1", collection_id="collection1", asset_hrefs=[str(asset_path)]
+    )
     stac_api_workspace.merge(stac_resource=collection1, target=target)
 
     assert get_root_catalog_error_resp.call_count == 1
@@ -240,7 +245,9 @@ def test_error_details(tmp_path, requests_mock):
         json={"detail": "Invalid collection authorizations"},
     )
 
-    collection1 = _collection(root_path=tmp_path / "collection1", collection_id="collection1", asset_path=asset_path)
+    collection1 = _collection(
+        root_path=tmp_path / "collection1", collection_id="collection1", asset_hrefs=[str(asset_path)]
+    )
 
     with pytest.raises(
         StacApiResponseError,
@@ -252,7 +259,9 @@ def test_error_details(tmp_path, requests_mock):
 
 def test_merge_target_supports_path(requests_mock, tmp_path):
     asset_path = Path("/path") / "to" / "asset.tif"
-    collection = _collection(root_path=tmp_path / "collection", collection_id="collection", asset_path=asset_path)
+    collection = _collection(
+        root_path=tmp_path / "collection", collection_id="collection", asset_hrefs=[str(asset_path)]
+    )
 
     export_asset_mock = MagicMock(wraps=_export_asset)
 
@@ -276,12 +285,24 @@ def test_merge_target_supports_path(requests_mock, tmp_path):
     export_asset_mock.assert_called_once_with(ANY, target, ANY, ANY)
 
 
-def test_vito_stac_api_workspace_helper(tmp_path, requests_mock, mock_s3_bucket, mock_s3_client):
-    asset_path = tmp_path / "asset.tif"
-    with open(asset_path, "w") as f:
-        f.write(str(asset_path))
+def test_vito_stac_api_workspace_helper(tmp_path, requests_mock, mock_s3_bucket):
+    disk_asset_path = tmp_path / "disk_asset.tif"
+    with open(disk_asset_path, "wb") as f:
+        f.write(b"disk_asset.tif\n")
+    source_file_mtime_ns = disk_asset_path.stat().st_mtime_ns
 
-    collection = _collection(root_path=tmp_path / "collection", collection_id="collection", asset_path=asset_path)
+    source_key = "src/object_asset.tif"
+    mock_s3_bucket.put_object(
+        Key=source_key,
+        Body=b"object_asset.tif\n",
+        Metadata={"md5": "187812e0004062471a40ed0063f6f9d8", "mtime": "1756477082123456789"},
+    )
+
+    collection = _collection(
+        root_path=tmp_path / "collection",
+        collection_id="collection",
+        asset_hrefs=[str(disk_asset_path), f"s3://{mock_s3_bucket.name}/{source_key}"],
+    )
 
     oidc_issuer = "https://auth.test/realms/test"
 
@@ -337,10 +358,23 @@ def test_vito_stac_api_workspace_helper(tmp_path, requests_mock, mock_s3_bucket,
             "write": ["editor"],
         },
     )
-    assert create_item_mock.call_count == 2  # single item is retried with new access_token
-    object_keys = {obj["Key"] for obj in mock_s3_client.list_objects_v2(Bucket=mock_s3_bucket.name).get("Contents", [])}
+    assert create_item_mock.call_count == 3  # two items of which the first one is retried with a new access token
 
-    assert object_keys == {"assets/path/to/collection/asset.tif"}
+    object_keys = {obj.key for obj in mock_s3_bucket.objects.all()}
+    assert object_keys == {
+        source_key,  # the original is still there
+        "assets/path/to/collection/disk_asset.tif",
+        "assets/path/to/collection/object_asset.tif",
+    }
+
+    disk_asset_object_metadata = mock_s3_bucket.Object(key="assets/path/to/collection/disk_asset.tif").metadata
+    object_asset_object_metadata = mock_s3_bucket.Object(key="assets/path/to/collection/object_asset.tif").metadata
+
+    assert disk_asset_object_metadata["md5"] == "2132afe6fed0b020888c10872309a98e"
+    assert int(disk_asset_object_metadata["mtime"]) == pytest.approx(source_file_mtime_ns, abs=1_000_000_000)
+
+    assert object_asset_object_metadata["md5"] == "187812e0004062471a40ed0063f6f9d8"
+    assert object_asset_object_metadata["mtime"] == "1756477082123456789"
 
 
 def _mock_stac_api_root_catalog(requests_mock, root_url: str):
@@ -359,7 +393,6 @@ def _mock_stac_api_root_catalog(requests_mock, root_url: str):
             "links": [],
         },
     )
-
 
 
 def _export_asset(asset: Asset, merge: PurePath, relative_asset_path: PurePath, remove_original: bool) -> str:
@@ -381,11 +414,12 @@ def _asset_workspace_uris(collection: Collection, alternate_key: str) -> Dict[st
 def _collection(
     root_path: Path,
     collection_id: str,
-    asset_path: Path,
+    asset_hrefs: List[str] = None,
     spatial_extent: SpatialExtent = SpatialExtent([[-180, -90, 180, 90]]),
     temporal_extent: TemporalExtent = TemporalExtent([[None, None]]),
 ) -> Collection:
-    root_path.mkdir()
+    if asset_hrefs is None:
+        asset_hrefs = []
 
     collection = Collection(
         id=collection_id,
@@ -393,17 +427,21 @@ def _collection(
         extent=Extent(spatial_extent, temporal_extent),
     )
 
-    item_id = asset_key = asset_path.name
+    for asset_href in asset_hrefs:
+        asset_href_parts = urlparse(asset_href)
+        asset_filename = asset_href_parts.path.split("/")[-1]
 
-    item = Item(id=item_id, geometry=None, bbox=None, datetime=dt.datetime.now(dt.timezone.utc), properties={})
-    asset = Asset(href=str(asset_path))
+        item_id = asset_key = asset_filename
 
-    item.add_asset(asset_key, asset)
-    collection.add_item(item)
+        item = Item(id=item_id, geometry=None, bbox=None, datetime=dt.datetime.now(dt.timezone.utc), properties={})
+        asset = Asset(href=asset_href)
 
-    collection.add_link(Link(rel=RelType.DERIVED_FROM, target=f"https://src.test/{asset_path.name}"))
+        item.add_asset(asset_key, asset)
+        collection.add_item(item)
+
+        collection.add_link(Link(rel=RelType.DERIVED_FROM, target=f"https://src.test/{asset_filename}"))
 
     collection.normalize_and_save(root_href=str(root_path))
-    assert collection.validate_all() == (1 if item_id else 0)
+    assert collection.validate_all() == len(asset_hrefs)
 
     return collection

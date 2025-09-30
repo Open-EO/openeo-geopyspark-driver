@@ -6,6 +6,8 @@ from openeo_driver.workspace import DiskWorkspace
 from openeogeotrellis.config import GpsBackendConfig
 from openeogeotrellis.config.integrations.calrissian_config import CalrissianConfig
 
+
+# TODO: avoid VITO default client here. Only provide simple basic auth by default?
 oidc_default_client_egi = {
     "id": "vito-default-client",
     "grant_types": [
@@ -28,9 +30,14 @@ oidc_providers = [
 os.makedirs("/tmp/workspace", exist_ok=True)
 workspaces = {"tmp_workspace": DiskWorkspace(root_directory=Path("/tmp/workspace"))}
 
+if "OPENEO_CATALOG_FILES" in os.environ:
+    layer_catalog_files = os.environ["OPENEO_CATALOG_FILES"].split(",")
+else:
+    layer_catalog_files = [str(Path(__file__).parent / "simple_layercatalog.json")]
+
 config = GpsBackendConfig(
     id="gps-local",
-    layer_catalog_files=[str(Path(__file__).parent / "simple_layercatalog.json")],
+    layer_catalog_files=layer_catalog_files,
     capabilities_title="Local GeoPySpark openEO Backend",
     capabilities_description="Local GeoPySpark openEO Backend",
     oidc_providers=oidc_providers,
@@ -43,4 +50,6 @@ config = GpsBackendConfig(
         calrissian_image="registry.stag.waw3-1.openeo-int.v1.dataspace.copernicus.eu/rand/calrissian:latest",
         s3_bucket="calrissian",
     ),
+    enable_basic_auth=True,
+    valid_basic_auth=lambda name, password: (name == "openeo" and password == "openeo"),
 )

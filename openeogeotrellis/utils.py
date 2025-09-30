@@ -4,15 +4,15 @@ import collections.abc
 import contextlib
 import dataclasses
 import datetime
-import functools
 import grp
+import hashlib
 import json
 import logging
 import math
 import os
-import pkgutil
 import pwd
 import resource
+import shutil
 import stat
 import tempfile
 import time
@@ -43,7 +43,6 @@ from openeo_driver.util.logging import (
 from openeo_driver.util.utm import auto_utm_epsg_for_geometry
 from py4j.clientserver import ClientServer
 from py4j.java_gateway import JVMView
-from pyproj import CRS
 from shapely.geometry import GeometryCollection, MultiPolygon, Point, Polygon, box
 from shapely.geometry.base import BaseGeometry
 
@@ -274,15 +273,14 @@ def s3_client():
     return s3_client
 
 
-def get_s3_file_contents(filename: Union[os.PathLike,str]) -> str:
-    """Get contents of a text file from the S3 bucket.
-
-        The bucket is set in ConfigParams().s3_bucket_name
+def get_s3_file_contents(filename: Union[os.PathLike, str], bucket: Optional[str] = None) -> str:
+    """
+    Get contents of a text file in an S3 bucket; the bucket defaults to ConfigParams().s3_bucket_name.
     """
     # TODO: move this to openeodriver.integrations.s3?
     s3_instance = s3_client()
     s3_file_object = s3_instance.get_object(
-        Bucket=get_backend_config().s3_bucket_name,
+        Bucket=bucket or get_backend_config().s3_bucket_name,
         Key=str(filename).strip("/"),
     )
     body = s3_file_object["Body"]
@@ -418,19 +416,55 @@ def single_value(xs):
     raise ValueError(f"distinct values in {xs}")
 
 
-def add_permissions(path: Path, mode: int):
+def add_permissions(path: Path, mode: int, user=None, group=None):
+    """
+    Add permissions to a file or directory, and optionally change its ownership.
+    """
     # TODO: accept PathLike etc as well
     # TODO: maybe umask is a better/cleaner option
-    # TODO: Don't change permissions on s3 urls?
-    # if str(path).lower().startswith("s3:/"):
-    #     return
+    if str(path).lower().startswith("s3:/"):
+        logger.warning(f"add_permissions called on S3 path {path!r}, which is not supported.")
+        return
     if path.exists():
         current_permission_bits = os.stat(path).st_mode
         os.chmod(path, current_permission_bits | mode)
+        if user is not None or group is not None:
+            try:
+                shutil.chown(path, user=user, group=group)
+            except LookupError as e:
+                logger.warning(f"Could not change user/group of {path} to {user}/{group}.")
+            except PermissionError as e:
+                logger.warning(f"Could not change user/group of {path} to {user}/{group}, no permissions.")
+
+
+def add_permissions_with_failsafe(path: Path, mode: int, user=None, group=None):
+    if path.exists():
+        add_permissions(path, mode, user=user, group=group)
     else:
+        # If the path does not exist, we set the permissions on all siblings in the parent directory.
+        # TODO: This was originally implemented for tiffs with multiple dates (EP-3800). Check if this can be removed.
         for p in path.parent.glob('*'):
             current_permission_bits = os.stat(p).st_mode
             p.chmod(current_permission_bits | mode)
+
+
+def set_permissions(path: Path, mode: int, user=None, group=None):
+    """
+    Set permissions to a file or directory, and optionally change its ownership.
+    """
+    if str(path).lower().startswith("s3:/"):
+        logger.warning(f"set_permissions called on S3 path {path!r}, which is not supported.")
+        return
+    if not path.exists():
+        raise FileNotFoundError
+    os.chmod(path, mode)
+    if user is not None or group is not None:
+        try:
+            shutil.chown(path, user=user, group=group)
+        except LookupError as e:
+            logger.warning(f"Could not change user/group of {path} to {user}/{group}.")
+        except PermissionError as e:
+            logger.warning(f"Could not change user/group of {path} to {user}/{group}, no permissions.")
 
 
 def ensure_executor_logging(f) -> Callable:
@@ -595,11 +629,6 @@ class StatsReporter:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.report(f"{self.name}: {json.dumps(self.stats)}")
-
-
-@functools.lru_cache
-def is_package_available(name: str) -> bool:
-    return any(m.name == name for m in pkgutil.iter_modules())
 
 
 def reproject_cellsize(
@@ -866,3 +895,13 @@ def to_tuple(scala_tuple):
 def unzip(*iterables: Iterable) -> Iterator:
     # iterables are typically of equal length
     return zip(*iterables)
+
+
+def md5_checksum(file: Path) -> str:
+    """Computes the MD5 checksum of a (potentially large) file."""
+
+    hash_md5 = hashlib.md5()
+    with open(file, "rb") as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            hash_md5.update(chunk)
+    return hash_md5.hexdigest()

@@ -1,10 +1,17 @@
+import dataclasses
 import logging
+import re
 from dataclasses import dataclass, field, fields
 from typing import Any, Dict, List
 
+from openeo_driver.constants import DEFAULT_LOG_LEVEL_PROCESSING
 from openeo_driver.errors import OpenEOApiException
 from openeogeotrellis.config import get_backend_config
+from openeogeotrellis.constants import JOB_OPTION_LOG_LEVEL, JOB_OPTION_LOGGING_THRESHOLD
 from openeogeotrellis.util.byteunit import byte_string_as
+
+
+JOB_OPTION_DISABLE = "disable"
 
 @dataclass
 class JobOptions:
@@ -106,14 +113,57 @@ class JobOptions:
         metadata={"description": "Custom jar path.", "public":False},
     )
 
+    image_name: str = field(
+        default=None,
+        metadata={"description": "Custom docker image name.", "public": False},
+    )
+
+    log_level:str = field(
+        default=DEFAULT_LOG_LEVEL_PROCESSING,
+        metadata={"name":"log_level","description": "log level, can be 'debug', 'info', 'warning' or 'error'", "public":True},
+    )
+
+    omit_derived_from_links: bool = field(
+        default=False,
+        metadata={
+            "description": "Whether to omit 'derived_from' links in the batch job results to reduce the batch job result metadata size.",
+            "public": False
+        },
+    )
+
+    concurrent_save_results: int = field(
+        default=1,
+        metadata={
+            "description": "[Experimental] The number of save-result nodes to evaluate concurrently. Increasing this setting may improve resource utilization, but too high values usually increase costs.",
+            "public": True
+        },
+    )
+
+    @staticmethod
+    def as_logging_threshold_arg(value) -> str:
+        value = value.upper()
+        if value == "WARNING":
+            value = "WARN"  # Log4j only accepts WARN whereas Python logging accepts WARN as well as WARNING
+
+        return value
+
     def validate(self):
 
 
-        if byte_string_as(self.executor_memory) + byte_string_as(self.executor_memory_overhead) > byte_string_as(
+        if self.log_level.upper() not in ["DEBUG", "INFO", "WARN", "ERROR"]:
+            raise OpenEOApiException(
+                code="InvalidLogLevel",
+                status_code=400,
+                message=f"Invalid log level {self.log_level}. Should be one of 'debug', 'info', 'warning' or 'error'.",
+            )
+
+        python_memory = 0 if self.python_memory == JOB_OPTION_DISABLE else byte_string_as(self.python_memory or "0b")
+        if byte_string_as(self.executor_memory) + byte_string_as(self.executor_memory_overhead) + python_memory > byte_string_as(
                 get_backend_config().max_executor_or_driver_memory):
             raise OpenEOApiException(
                 message=f"Requested too much executor memory: {self.executor_memory} + {self.executor_memory_overhead}, the max for this instance is: {get_backend_config().max_executor_or_driver_memory}",
                 status_code=400)
+
         if byte_string_as(self.driver_memory) + byte_string_as(self.driver_memory_overhead) > byte_string_as(
                 get_backend_config().max_executor_or_driver_memory):
             raise OpenEOApiException(
@@ -125,6 +175,12 @@ class JobOptions:
             raise OpenEOApiException(
                 message=f"Requested invalid openeo jar path {self.openeo_jar_path}",
                 status_code=400)
+
+        if (self.image_name is not None):
+            if self.image_name not in get_backend_config().batch_runtime_to_image:
+                if re.compile(get_backend_config().batch_image_regex).fullmatch(self.image_name) is None:
+                    self._log.warning(f"Invalid value {self.image_name} for job_option image-name")
+                    #raise OpenEOApiException(f"Invalid value {self.image_name} for job_option image-name", status_code=400)
 
     def soft_errors_arg(self) -> str:
         value = self.soft_errors
@@ -154,17 +210,52 @@ class JobOptions:
             if job_option_name in data:
 
                 value = data.get(job_option_name)
-                cls.validate_type(value,field.type)
+                cls.validate_type(value=value, expected_type=field.type, name=job_option_name)
                 init_kwargs[field.name] = value
+
+        if JOB_OPTION_LOG_LEVEL not in init_kwargs and JOB_OPTION_LOGGING_THRESHOLD in data:
+            init_kwargs[JOB_OPTION_LOG_LEVEL] = data[JOB_OPTION_LOGGING_THRESHOLD]
+        if JOB_OPTION_LOG_LEVEL in init_kwargs:
+            init_kwargs[JOB_OPTION_LOG_LEVEL] = JobOptions.as_logging_threshold_arg(init_kwargs[JOB_OPTION_LOG_LEVEL])
+
+
+        jvmOverheadBytes = byte_string_as("128m")
+
+        # By default, Python uses the space reserved by `spark.executor.memoryOverhead` but no limit is enforced.
+        # When `spark.executor.pyspark.memory` is specified, Python will only use this memory and no more.
+        python_mem = data.get("python-memory",None)
+        python_max = -1
+        if python_mem != JOB_OPTION_DISABLE:
+
+            noExplicitOverhead = "executor-memoryOverhead" not in data
+            if python_mem is not None:
+                python_max = byte_string_as(python_mem)
+
+                if noExplicitOverhead:
+                    memOverheadBytes = jvmOverheadBytes
+                    init_kwargs["executor_memory_overhead"] = f"{memOverheadBytes // (1024 ** 2)}m"
+
+            elif not noExplicitOverhead:
+                # If python-memory is not set, we convert most of the overhead memory to python memory
+                # this in fact duplicates the overhead memory, we should migrate away from this approach
+                if cls == K8SOptions:
+                    memOverheadBytes = byte_string_as(data["executor-memoryOverhead"])
+                    python_max = memOverheadBytes - jvmOverheadBytes
+
+        if python_max is not None and python_max > 0:
+            init_kwargs["python_memory"] = f"{python_max}b"
+
 
         return cls(**init_kwargs)
 
 
     @classmethod
-    def validate_type(cls, arg, type):
+    def validate_type(cls, value, expected_type, name: str = "n/a"):
         try:
-            if not isinstance(arg,type):
-                cls._log.warning(f"Job option with unexpected type: {arg}, expected type {cls.python_type_to_json_schema(type)}")
+            if not isinstance(value, expected_type):
+                cls._log.warning(
+                    f"Job option {name!r} with unexpected type: {value!r}, expected: {cls.python_type_to_json_schema(expected_type)}"
+                )
         except TypeError:
             pass
 
@@ -177,15 +268,25 @@ class JobOptions:
         List all available options and their descriptions, following the schema defined by openEO parameters extension
         https://github.com/Open-EO/openeo-api/blob/draft/extensions/processing-parameters/openapi.yaml
         """
+
+        def get_default(field):
+            if field.default_factory != dataclasses.MISSING:
+                return field.default_factory()
+            elif field.default != dataclasses.MISSING:
+                return field.default
+            else:
+                return None
+
         options = []
         for field in fields(cls):
             if public_only and field.metadata.get("public", False):
                 continue
+            default = get_default(field)
             options.append({
                 "name": field.metadata.get("name", field.name.replace("_","-")),
                 "description": field.metadata.get("description", ""),
                 "optional": True,
-                "default": field.default,
+                "default": default,
                 "schema": cls.python_type_to_json_schema(field.type)
             })
         return options
@@ -266,6 +367,3 @@ class K8SOptions(JobOptions):
                 message=f"Requested too many driver cores: {self.driver_cores} , the max for this instance is: {max_cores}",
                 status_code=400)
         return super().validate()
-
-
-

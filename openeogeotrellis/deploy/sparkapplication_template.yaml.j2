@@ -49,7 +49,9 @@ spec:
 {%- endblock %}
   sparkConf:
 {%- block sparkConf %}
+{%- if python_max_memory != 'disable' %}
     "spark.executor.pyspark.memory": "{{ python_max_memory }}b"
+{%- endif %}
     "spark.network.timeout": "300s"
     "spark.rpc.message.maxSize": "200"
     "spark.rdd.compress": "true"
@@ -74,6 +76,8 @@ spec:
     "spark.stage.ignoreDecommissionFetchFailure": "true"
     "spark.executor.processTreeMetrics.enabled": "true"
     "spark.eventLog.logStageExecutorMetrics": "true"
+    "spark.metrics.executorMetricsSource.enabled": "{{debug_metrics}}"
+    "spark.metrics.staticSources.enabled": "{{debug_metrics}}"
     "spark.python.profile": "{{ profile }}"
     "spark.eventLog.dir": "s3a://spark-history/history_prod"
     "spark.hadoop.fs.s3a.endpoint": {{ swift_url }}

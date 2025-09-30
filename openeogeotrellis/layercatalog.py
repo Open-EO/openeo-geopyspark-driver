@@ -22,14 +22,13 @@ import requests
 from openeo.metadata import Band
 from openeo.util import TimingLogger, deep_get, str_truncate
 from openeo_driver import filter_properties
-from openeo_driver.backend import CollectionCatalog, LoadParameters, OpenEoBackendImplementation
+from openeo_driver.backend import CollectionCatalog, LoadParameters
 from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.errors import OpenEOApiException, InternalException, ProcessGraphComplexityException
 from openeo_driver.filter_properties import extract_literal_match
 from openeo_driver.util.geometry import reproject_bounding_box
-from openeo_driver.util.logging import just_log_exceptions
 from openeo_driver.util.utm import auto_utm_epsg_for_geometry
 from openeo_driver.util.http import requests_with_retry
 from openeo_driver.utils import read_json, EvalEnv, WhiteListEvalEnv, smart_bool
@@ -76,6 +75,7 @@ WHITELIST = [
     EVAL_ENV_KEY.OPENEO_API_VERSION,
 ]
 LARGE_LAYER_THRESHOLD_IN_PIXELS = pow(10, 11)
+LARGE_LAYER_THRESHOLD_IN_PIXELS_SENTINELHUB = pow(10, 10)
 
 logger = logging.getLogger(__name__)
 
@@ -1264,6 +1264,17 @@ def check_missing_products(
         return missing
 
 
+def potential_sentinelhub(catalog, collection_id) -> bool:
+    metadata_json = catalog.get_collection_metadata(collection_id=collection_id)
+    metadata = GeopysparkCubeMetadata(metadata_json)
+    if metadata.provider_backend() == "sentinelhub":
+        return True
+    for col in metadata.get("_vito", "data_source", "merged_collections", default=[]):
+        if potential_sentinelhub(catalog, col):
+            return True
+    return False
+
+
 def extra_validation_load_collection(collection_id: str, load_params: LoadParameters, env: EvalEnv) -> Iterable[dict]:
     if collection_id == "TestCollection-LonLat4x4":
         # No need to check on artificial debug layer
@@ -1274,10 +1285,20 @@ def extra_validation_load_collection(collection_id: str, load_params: LoadParame
     catalog: GeoPySparkLayerCatalog = env.backend_implementation.catalog
     allow_check_missing_products = smart_bool(env.get("allow_check_missing_products", True))
     sync_job = smart_bool(env.get("sync_job", False))
-    large_layer_threshold_in_pixels = int(
-        float(env.get("large_layer_threshold_in_pixels", LARGE_LAYER_THRESHOLD_IN_PIXELS)))
     metadata_json = catalog.get_collection_metadata(collection_id=collection_id)
     metadata = GeopysparkCubeMetadata(metadata_json)
+    large_layer_threshold_in_pixels = int(
+        float(
+            env.get(
+                "large_layer_threshold_in_pixels",
+                (
+                    LARGE_LAYER_THRESHOLD_IN_PIXELS_SENTINELHUB
+                    if potential_sentinelhub(catalog, collection_id)
+                    else LARGE_LAYER_THRESHOLD_IN_PIXELS
+                ),
+            )
+        )
+    )
     load_params_tmp = copy(load_params)  # Make shallow copy, so we can remove data_mask
     load_params_tmp.data_mask = {}  # Clear to avoid SPARK-5063 error
     load_params = deepcopy(load_params_tmp)  # deepcopy so we can modify it

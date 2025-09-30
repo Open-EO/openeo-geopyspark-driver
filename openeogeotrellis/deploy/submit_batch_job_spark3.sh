@@ -55,10 +55,14 @@ udf_python_dependencies_folder_path=${30}
 ejr_api=${31}
 ejr_backend_id=${32}
 ejr_oidc_client_credentials=${33}
-docker_mounts=${34-"/var/lib/sss/pubconf/krb5.include.d:/var/lib/sss/pubconf/krb5.include.d:ro,/var/lib/sss/pipes:/var/lib/sss/pipes:rw,/usr/hdp/current/:/usr/hdp/current/:ro,/etc/hadoop/conf/:/etc/hadoop/conf/:ro,/etc/krb5.conf:/etc/krb5.conf:ro,/data/MTDA:/data/MTDA:ro,/data/projects/OpenEO:/data/projects/OpenEO:rw,/data/MEP:/data/MEP:ro,/data/users:/data/users:rw,/tmp_epod:/tmp_epod:rw"}
+docker_mounts=${34}
 udf_python_dependencies_archive_path=${35}
 propagatable_web_app_driver_envars=${36}
 python_max_memory=${37-"-1"}
+spark_eventlog_dir=${38}
+spark_history_fs_logdirectory=${39}
+spark_yarn_historyserver_address=${40}
+yarn_container_runtime_docker_client_config=${41}
 
 
 pysparkPython="/opt/venv/bin/python"
@@ -104,17 +108,14 @@ sparkExecutorJavaOptions="-Dlog4j2.configurationFile=file:/opt/venv/openeo-geopy
  -Dscala.concurrent.context.numThreads=8 -Djava.library.path=/opt/venv/lib/python3.8/site-packages/jep\
  -Dopeneo.logging.threshold=$logging_threshold"
 
-# TODO: reuse FreeIpaClient here for better decoupling, logging, observability, ...
-ipa_request='{"id": 0, "method": "user_find", "params": [["'${proxyUser}'"], {"all": false, "no_members": true, "sizelimit": 40000, "whoami": false}]}'
-ipa_response=$(curl --negotiate -u : --insecure -X POST https://ipa01.vgt.vito.be/ipa/session/json   -H 'Content-Type: application/json' -H 'referer: https://ipa01.vgt.vito.be/ipa'  -d "${ipa_request}")
-# TODO: fail early instead of trying to parse an IPA error page as JSON
-echo "${ipa_response}"
-ipa_user_count=$(echo "${ipa_response}" | python3 -c 'import json,sys;obj=json.load(sys.stdin);print(obj["result"]["count"])')
-if [ "${ipa_user_count}" != "0" ]; then
-  run_as="--proxy-user ${proxyUser}"
-else
+
+
+if [ -z "$proxyUser" ]; then
   run_as="--principal ${principal} --keytab ${keyTab}"
+else
+  run_as="--proxy-user ${proxyUser}"
 fi
+
 
 python_max_conf=""
 if [ "${python_max_memory}" != "-1" ]; then
@@ -132,6 +133,13 @@ batch_job_driver_envar_arguments()
   done
 
   echo "${arguments}"
+}
+
+docker_client_config_args()
+{
+  if [ -n "${yarn_container_runtime_docker_client_config}" ]; then
+    echo "--conf spark.yarn.appMasterEnv.YARN_CONTAINER_RUNTIME_DOCKER_CLIENT_CONFIG=${yarn_container_runtime_docker_client_config} --conf spark.executorEnv.YARN_CONTAINER_RUNTIME_DOCKER_CLIENT_CONFIG=${yarn_container_runtime_docker_client_config}"
+  fi
 }
 
 spark-submit \
@@ -158,6 +166,7 @@ spark-submit \
  --conf spark.executor.memoryOverhead=${executormemoryoverhead} \
  ${python_max_conf} \
  --conf spark.excludeOnFailure.enabled=true \
+ --conf spark.excludeOnFailure.task.maxTaskAttemptsPerExecutor=2 \
  --conf spark.speculation=true \
  --conf spark.speculation.interval=5000ms \
  --conf spark.speculation.multiplier=8 \
@@ -177,6 +186,7 @@ spark-submit \
  --conf spark.yarn.appMasterEnv.OPENEO_EJR_BACKEND_ID=${ejr_backend_id} \
  --conf spark.yarn.appMasterEnv.OPENEO_EJR_OIDC_CLIENT_CREDENTIALS=${ejr_oidc_client_credentials} \
  $(batch_job_driver_envar_arguments) \
+ $(docker_client_config_args) \
  --conf spark.executorEnv.AWS_REGION=${AWS_REGION} --conf spark.yarn.appMasterEnv.AWS_REGION=${AWS_REGION} \
  --conf spark.executorEnv.AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} --conf spark.yarn.appMasterEnv.AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} \
  --conf spark.executorEnv.AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} --conf spark.yarn.appMasterEnv.AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} \
@@ -203,18 +213,21 @@ spark-submit \
  --conf spark.hadoop.yarn.client.failover-proxy-provider=org.apache.hadoop.yarn.client.ConfiguredRMFailoverProxyProvider \
  --conf spark.shuffle.service.name=spark_shuffle_320 --conf spark.shuffle.service.port=7557 \
  --conf spark.eventLog.enabled=true \
- --conf spark.eventLog.dir=hdfs:///spark2-history/ \
- --conf spark.history.fs.logDirectory=hdfs:///spark2-history/ \
+ --conf spark.eventLog.dir=${spark_eventlog_dir} \
+ --conf spark.history.fs.logDirectory=${spark_history_fs_logdirectory} \
  --conf spark.history.kerberos.enabled=true \
  --conf spark.history.kerberos.keytab=/etc/security/keytabs/spark.service.keytab \
  --conf spark.history.kerberos.principal=spark/_HOST@VGT.VITO.BE \
  --conf spark.history.provider=org.apache.spark.deploy.history.FsHistoryProvider \
  --conf spark.history.store.path=/var/lib/spark2/shs_db \
- --conf spark.yarn.historyServer.address=epod-ha.vgt.vito.be:18481 \
+ --conf spark.yarn.historyServer.address=${spark_yarn_historyserver_address} \
  --conf spark.archives=${archives} \
  --conf spark.extraListeners=org.openeo.sparklisteners.LogErrorSparkListener,org.openeo.sparklisteners.BatchJobProgressListener \
  --conf spark.sql.adaptive.coalescePartitions.parallelismFirst=false \
  --conf spark.sql.adaptive.advisoryPartitionSizeInBytes=5242880 \
+ --conf spark.yarn.jars=local:///usr/local/spark/jars/* \
+ --conf spark.driver.userClassPathFirst=false \
+ --conf spark.executor.userClassPathFirst=false \
  --files "${files}" \
  --py-files "${pyfiles}" \
  --conf spark.hadoop.security.authentication=kerberos --conf spark.yarn.maxAppAttempts=1 \

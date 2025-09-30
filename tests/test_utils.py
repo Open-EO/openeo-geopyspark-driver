@@ -1,11 +1,11 @@
 import collections
-import datetime
 import getpass
 import json
 import logging
 import pathlib
 from pathlib import Path
 
+import botocore.exceptions
 import pytest
 from openeo_driver.testing import TIFF_DUMMY_DATA
 
@@ -19,6 +19,7 @@ from openeogeotrellis.utils import (
     json_default,
     lonlat_to_mercator_tile_indices,
     map_optional,
+    md5_checksum,
     nullcontext,
     parse_approximate_isoduration,
     reproject_cellsize,
@@ -30,6 +31,7 @@ from openeogeotrellis.utils import (
     get_jvm,
     to_tuple,
     unzip,
+    get_s3_file_contents,
 )
 
 
@@ -83,7 +85,7 @@ def test_merge_recursive_preserve_input():
 
 
 def test_dict_merge_recursive_accepts_arbitrary_mapping():
-    class EmptyMapping(collections.Mapping):
+    class EmptyMapping(collections.abc.Mapping):
         def __getitem__(self, key):
             raise KeyError(key)
 
@@ -246,6 +248,25 @@ def test_get_s3_binary_file_contents(mock_s3_bucket):
         buffer += bytearray(chunk)
 
     assert bytes(buffer) == TIFF_DUMMY_DATA
+
+
+@pytest.mark.parametrize(
+    ["args", "expectation"],
+    [
+        ([Path("/batch_jobs/j-abc123/text.txt")], nullcontext()),
+        ([Path("/batch_jobs/j-abc123/text.txt"), "openeo-fake-bucketname"], nullcontext()),
+        (
+            [Path("/batch_jobs/j-abc123/text.txt"), "unknown-bucket"],
+            pytest.raises(botocore.exceptions.ClientError, match="NoSuchBucket"),
+        ),
+    ],
+)
+def test_get_s3_file_contents(mock_s3_bucket, args, expectation):
+    text = "some text"
+    mock_s3_bucket.put_object(Key="batch_jobs/j-abc123/text.txt", Body=text.encode("utf-8"))
+
+    with expectation:
+        assert get_s3_file_contents(*args) == text
 
 
 @pytest.mark.parametrize(
@@ -450,3 +471,12 @@ def test_unzip():
 
     assert digits == (1, 2, 3)
     assert words == ("one", "two", "three")
+
+
+def test_md5_checksum(tmp_path):
+    file = tmp_path / "file"
+
+    with open(file, "wb") as f:
+        f.write(b"hello world")
+
+    assert md5_checksum(file) == "5eb63bbbe01eeed093cb22bb8f5acdc3"

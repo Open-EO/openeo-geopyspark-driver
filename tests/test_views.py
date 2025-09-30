@@ -1,6 +1,4 @@
-import collections
 import contextlib
-import datetime
 import decimal
 import json
 import logging
@@ -11,11 +9,10 @@ import subprocess
 from typing import Optional
 from unittest import mock
 
-import boto3
+import jsonschema
 import kazoo.exceptions
 import pytest
 import requests
-import time_machine
 from elasticsearch.exceptions import ConnectionTimeout
 from openeo.util import deep_get
 from openeo_driver.jobregistry import JOB_STATUS
@@ -26,7 +23,6 @@ from openeo_driver.testing import (
     TIFF_DUMMY_DATA,
     ApiTester,
     DictSubSet,
-    ListSubSet,
     RegexMatcher,
 )
 
@@ -50,6 +46,13 @@ class TestCapabilities:
 
     def test_file_formats(self, api100):
         formats = api100.get("/file_formats").assert_status_code(200).json
+        formats_schema = {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "$id": "https://processes.openeo.org/2.0.0-rc.1/meta/subtype-schemas.json",
+            "type": "object",
+            "properties": formats["output"],
+        }
+        jsonschema.validate(instance=formats_schema, schema={"$ref": "http://json-schema.org/draft-07/schema#"})
         assert "GeoJSON" in formats["input"]
         assert "GTiff" in formats["output"]
         assert "CovJSON" in formats["output"]
@@ -100,7 +103,7 @@ class TestCapabilities:
                 "openeo": semver_alike,
                 "openeo_driver": semver_alike,
                 "openeo-geopyspark": semver_alike,
-                "geopyspark": semver_alike,
+                "geopyspark-openeo": semver_alike,
                 "geotrellis-extensions": semver_alike,
             },
         }
@@ -108,7 +111,7 @@ class TestCapabilities:
             "openeo": semver_alike,
             "openeo_driver": semver_alike,
             "openeo-geopyspark": semver_alike,
-            "geopyspark": semver_alike,
+            "geopyspark-openeo": semver_alike,
             "geotrellis-extensions": semver_alike,
         }
 
@@ -124,7 +127,6 @@ class TestCapabilities:
         assert capabilities["foo"] == ["bar", "baz"]
         assert len(capabilities["links"]) > 1
         assert capabilities["links"][-1] == {"rel": "flavor", "href": "https://flavors.test/sweet"}
-
 
 
 class TestCollections:
@@ -387,6 +389,44 @@ class TestBatchJobs:
         }
     }
 
+    DUMMY_PROCESS_GRAPH_WITH_UDF = {
+        "loadcollection1": {
+            "arguments": {
+                "id": "BIOPAR_FAPAR_V1_GLOBAL",
+                "callback": {
+                    "process_graph": {
+                        "deep_udf": {
+                            "arguments": {
+                                "udf": "some code",
+                                "runtime": "python",
+                                "version": "3.11"
+                            },
+                            "process_id": "run_udf",
+                            "result": True
+                        }
+                    }
+                },
+
+                "temporal_extent": [
+                    "2017-03-01",
+                    "2017-03-15"
+                ]
+            },
+            "process_id": "load_collection"
+        },
+        "saveresult1": {
+            "arguments": {
+                "data": {
+                    "from_node": "loadcollection1"
+                },
+                "format": "GTiff",
+                "options": {}
+            },
+            "process_id": "save_result",
+            "result": True
+        }
+    }
+
     @staticmethod
     @contextlib.contextmanager
     def _mock_kazoo_client() -> KazooClientMock:
@@ -486,7 +526,15 @@ class TestBatchJobs:
 
     @mock.patch("openeogeotrellis.logs.Elasticsearch.search")
     def test_create_and_start_and_download(
-        self, mock_search, api, tmp_path, monkeypatch, batch_job_output_root, job_registry, time_machine
+        self,
+        mock_search,
+        api,
+        tmp_path,
+        monkeypatch,
+        batch_job_output_root,
+        job_registry,
+        time_machine,
+        mock_yarn_backend_config,
     ):
         time_machine.move_to("2020-04-20T16:04:03Z")
 
@@ -526,7 +574,6 @@ class TestBatchJobs:
             assert batch_job_args[3] == str(job_dir)
             assert batch_job_args[4] == job_output.name
             assert batch_job_args[5] == job_metadata.name
-            assert batch_job_args[8] == TEST_USER
             assert batch_job_args[9] == api.api_version
 
             assert batch_job_args[10:16] == ['8G', '2G', '3G', '5', '2', '2G']
@@ -653,7 +700,67 @@ class TestBatchJobs:
 
             assert res["logs"] == expected_log_entries
 
-    def test_providers_present(self, api, tmp_path, monkeypatch, batch_job_output_root, job_registry, time_machine):
+    @pytest.mark.parametrize(
+        ["freeipa_response", "expected_proxy_user"],
+        [
+            ((200, []), ""),
+            ((200, [{"uid": TEST_USER}]), TEST_USER),
+            ((500, []), ""),
+        ],
+    )
+    def test_create_and_start_proxy_user(
+        self,
+        api,
+        tmp_path,
+        batch_job_output_root,
+        job_registry,
+        requests_mock,
+        freeipa_response,
+        expected_proxy_user,
+        mock_yarn_backend_config,
+    ):
+        def freeipa_user_find_handler(request, context):
+            request_data = request.json()
+            assert request_data.get("method") == "user_find"
+            status_code, result = freeipa_response
+            context.status_code = status_code
+            return {
+                "id": request_data["id"],
+                "result": {"result": result},
+            }
+
+        requests_mock.post("https://freeipa.test/ipa/json", json=freeipa_user_find_handler)
+
+        # Create job
+        data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH, title="Dummy")
+        res = api.post("/jobs", json=data, headers=TEST_USER_AUTH_HEADER).assert_status_code(201)
+        job_id = res.headers["OpenEO-Identifier"]
+
+        # Start job
+        with mock.patch("subprocess.run") as run:
+            os.mkdir(batch_job_output_root / job_id)
+            stdout = api.read_file("spark-submit-stdout.txt")
+            run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout=stdout, stderr="")
+            # Trigger job start
+            api.post(f"/jobs/{job_id}/results", json={}, headers=TEST_USER_AUTH_HEADER).assert_status_code(202)
+        run.assert_called_once()
+        batch_job_args = run.call_args[0][0]
+
+        assert batch_job_args[8] == expected_proxy_user
+
+    @pytest.mark.parametrize("api", ["api100", "api110"])
+    def test_results_metadata(
+        self,
+        api,
+        tmp_path,
+        monkeypatch,
+        batch_job_output_root,
+        job_registry,
+        time_machine,
+        request,
+        mock_yarn_backend_config,
+    ):
+        api = request.getfixturevalue(api)
         time_machine.move_to("2020-04-20T16:04:03Z")
 
         with self._mock_kazoo_client() as zk, mock.patch.dict(
@@ -747,6 +854,9 @@ class TestBatchJobs:
 
             assert "providers" in res
             assert res["providers"] == expected_providers
+
+            if api.api_version_compare.at_least("1.1.0"):
+                assert res["extent"]["spatial"]["bbox"] == [[2, 51, 3, 52]]
 
     @mock.patch(
         "openeogeotrellis.configparams.ConfigParams.use_object_storage",
@@ -990,12 +1100,14 @@ class TestBatchJobs:
 
                 retrieve_url = api.client.get
                 if download_url.startswith("http://127.0.0.1:"):
-                    # pre-signed urls don't woark with flask retriever
+                    # pre-signed urls don't work with flask retriever
                     def retrieve_url_and_set_data(*args, **kwargs):
                         result = requests.get(*args, **kwargs)
                         setattr(result, "data", result.text.encode("utf-8"))
                         return result
                     retrieve_url = retrieve_url_and_set_data
+                    # Proxy should allow Head requests which requires extra header.
+                    assert "X-Proxy-Head-As-Get=true" in download_url
 
                 if auth_header:
                     res = retrieve_url(download_url, headers=TEST_USER_AUTH_HEADER)
@@ -1115,7 +1227,9 @@ class TestBatchJobs:
                     assert res.status_code == 200
                     assert res.data == TIFF_DUMMY_DATA
 
-    def test_create_and_start_job_options(self, api, tmp_path, monkeypatch, batch_job_output_root, time_machine):
+    def test_create_and_start_job_options(
+        self, api, tmp_path, monkeypatch, batch_job_output_root, time_machine, mock_yarn_backend_config
+    ):
         time_machine.move_to("2020-04-20T16:04:03Z")
 
         with self._mock_kazoo_client() as zk, \
@@ -1131,18 +1245,7 @@ class TestBatchJobs:
             # Create job
             data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH, title="Dummy")
             data["job_options"] = {"driver-memory": "3g", "executor-memory": "11g","executor-cores":"4","queue":"somequeue","driver-memoryOverhead":"10G", "soft-errors":"false", "udf-dependency-archives":["https://host.com/my.jar"]}
-            res = api.post('/jobs', json=data, headers=TEST_USER_AUTH_HEADER).assert_status_code(201)
-            job_id = res.headers['OpenEO-Identifier']
-            # Start job
-            with mock.patch('subprocess.run') as run:
-                stdout = api.read_file("spark-submit-stdout.txt")
-                run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout=stdout, stderr="")
-                # Trigger job start
-                api.post(
-                    f"/jobs/{job_id}/results", json={}, headers=TEST_USER_AUTH_HEADER
-                ).assert_status_code(202)
-                run.assert_called_once()
-                batch_job_args = run.call_args[0][0]
+            batch_job_args, job_id, env = self._create_and_start_yarn_job(data, api)
 
             # Check batch in/out files
             job_dir = batch_job_output_root / job_id
@@ -1152,7 +1255,6 @@ class TestBatchJobs:
             assert batch_job_args[3] == str(job_dir)
             assert batch_job_args[4] == job_output.name
             assert batch_job_args[5] == job_metadata.name
-            assert batch_job_args[8] == TEST_USER
             assert batch_job_args[9] == api.api_version
             assert batch_job_args[10:16] == ['3g', '11g', '3G', '5', '4', '10G']
             assert batch_job_args[16:21] == [
@@ -1162,6 +1264,40 @@ class TestBatchJobs:
             assert batch_job_args[21:23] == [TEST_USER, job_id]
             assert batch_job_args[23] == '0.0'
             assert batch_job_args[27] == 'https://host.com/my.jar'
+
+    def _create_and_start_yarn_job(self, job_data, api):
+        res = api.post('/jobs', json=job_data, headers=TEST_USER_AUTH_HEADER).assert_status_code(201)
+        job_id = res.headers['OpenEO-Identifier']
+        # Start job
+        with mock.patch('subprocess.run') as run:
+            stdout = api.read_file("spark-submit-stdout.txt")
+            run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout=stdout, stderr="")
+            # Trigger job start
+            api.post(
+                f"/jobs/{job_id}/results", json={}, headers=TEST_USER_AUTH_HEADER
+            ).assert_status_code(202)
+            run.assert_called_once()
+            batch_job_args = run.call_args[0][0]
+            env = run.call_args[1]['env']
+        return batch_job_args, job_id,env
+
+    def test_start_custom_udf_runtime(
+        self, api, job_registry, time_machine, batch_job_output_root, mock_yarn_backend_config
+    ):
+        time_machine.move_to("2020-04-20T12:01:01Z")
+
+        job_data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH_WITH_UDF, title="Dummy")
+        batch_job_args, job_id,env = self._create_and_start_yarn_job(job_data, api)
+
+        # Check batch in/out files
+        job_dir = batch_job_output_root / job_id
+        job_output = job_dir / "out"
+        job_metadata = job_dir / JOB_METADATA_FILENAME
+        assert batch_job_args[2].endswith(".in")
+        assert batch_job_args[3] == str(job_dir)
+        assert batch_job_args[4] == job_output.name
+        assert batch_job_args[5] == job_metadata.name
+        assert env['YARN_CONTAINER_RUNTIME_DOCKER_IMAGE'] == "vito-docker.artifactory.vgt.vito.be/openeo-geotrellis-kube-python311:latest"
 
     @pytest.mark.parametrize(["boost"], [
         [("driver-memory", "99999g")],
@@ -1230,7 +1366,7 @@ class TestBatchJobs:
         print(res2.text)
         res2.assert_status_code(400)
 
-    def test_cancel_job(self, api, job_registry):
+    def test_cancel_job(self, api, job_registry, mock_yarn_backend_config):
         with self._mock_kazoo_client() as zk:
             # Create job
             data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH)
@@ -1285,7 +1421,7 @@ class TestBatchJobs:
             assert meta_data == DictSubSet({"status": "canceled"})
             assert job_registry.db[job_id] == DictSubSet({"status": "canceled"})
 
-    def test_delete_job(self, api, job_registry):
+    def test_delete_job(self, api, job_registry, mock_yarn_backend_config):
         with self._mock_kazoo_client() as zk:
             # Create job
             data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH)
@@ -1681,7 +1817,6 @@ class TestBatchJobs:
                     title="Fake Test Job",
                     description="Fake job for the purpose of testing",
                 )
-                registry.patch(job_id=job_id, user_id=TEST_USER, **job_metadata_contents)
                 registry.set_status(job_id=job_id, user_id=TEST_USER, status=JOB_STATUS.FINISHED)
 
                 # Download
@@ -1806,7 +1941,6 @@ class TestSentinelHubBatchJobs:
         assert args[3] == str(job_dir)
         assert args[4] == job_output.name
         assert args[5] == job_metadata.name
-        assert args[8] == TEST_USER
         assert args[16] == "default"
         assert args[18] == expected_dependencies
         assert args[21:23] == [TEST_USER, job_id]
@@ -1861,6 +1995,7 @@ class TestSentinelHubBatchJobs:
         time_machine,
         zk_client,
         batch_job_output_root,
+        mock_yarn_backend_config
     ):
         time_machine.move_to("2020-04-20T12:01:01Z")
 
@@ -2179,6 +2314,7 @@ class TestSentinelHubBatchJobs:
         backend_implementation,
         time_machine,
         zk_client,
+        mock_yarn_backend_config
     ):
         time_machine.move_to("2020-04-20T12:01:01Z")
 
@@ -2400,6 +2536,7 @@ class TestSentinelHubBatchJobs:
         time_machine,
         zk_client,
         requests_mock,
+        mock_yarn_backend_config
     ):
         partial_job_results_url = "https://openeo.test/jobs/j-a778cc99-f741-4512-b304-07fdd692ae22/results/s1gn4turE?partial=true"
         requests_mock.get(partial_job_results_url, [
@@ -2603,6 +2740,7 @@ class TestSentinelHubBatchJobs:
         backend_implementation,
         time_machine,
         zk_client,
+        mock_yarn_backend_config
     ):
         job_registry.create_job(process={}, user_id=TEST_USER, job_id='j-a778cc99-f741-4512-b304-07fdd692ae22')
         partial_job_results_url = "https://openeo.test/jobs/j-a778cc99-f741-4512-b304-07fdd692ae22/results?partial=true"
