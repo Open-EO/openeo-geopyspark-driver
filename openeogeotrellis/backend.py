@@ -97,7 +97,7 @@ from openeogeotrellis.integrations.s3proxy.asset_urls import PresignedS3AssetUrl
 from openeogeotrellis.integrations.stac import ResilientStacIO
 from openeogeotrellis.integrations.traefik import Traefik
 from openeogeotrellis.integrations.yarn_jobrunner import YARNBatchJobRunner
-from openeogeotrellis.job_options import JobOptions, K8SOptions
+from openeogeotrellis.job_options import JobOptions, K8SOptions, JOB_OPTION_DISABLE
 from openeogeotrellis.job_registry import (
     DoubleJobRegistry,
     ZkJobRegistry,
@@ -954,8 +954,8 @@ Example usage:
                 parameter = 'data', process = 'vector_to_raster',
                 reason = f'Input vector cube {input_vector_cube} is not fully numeric. Actual data type: {cube.dtype}.'
             )
-        if cube.dtype != np.float:
-            input_vector_cube = input_vector_cube.with_cube(cube.astype(np.float))
+        if cube.dtype != float:
+            input_vector_cube = input_vector_cube.with_cube(cube.astype(float))
 
         # Pass over to scala using a parquet file (py4j is too slow) and convert it to a raster layer.
         file_name = "input_vector_cube.geojson"
@@ -2040,7 +2040,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 executor_memory=options.executor_memory,
                 executor_memory_overhead=options.executor_memory_overhead,
                 executor_threads_jvm=str(options.executor_threads_jvm),
-                python_max_memory = byte_string_as(options.python_memory or "0b"),
+                python_max_memory = byte_string_as(options.python_memory or "0b") if options.python_memory != JOB_OPTION_DISABLE else JOB_OPTION_DISABLE,
                 max_executors=options.max_executors,
                 api_version=api_version,
                 dependencies="[]",  # TODO: use `serialize_dependencies()` here instead? It's probably messy to get that JSON string correctly encoded in the rendered YAML.
