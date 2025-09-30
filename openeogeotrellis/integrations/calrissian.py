@@ -167,7 +167,9 @@ class CalrissianJobLauncher:
             mount_path="/calrissian/output-data",
         )
 
-        self._security_context = kubernetes.client.V1SecurityContext(**(security_context or DEFAULT_SECURITY_CONTEXT))
+        self._security_context = kubernetes.client.V1PodSecurityContext(
+            **(security_context or DEFAULT_SECURITY_CONTEXT)
+        )
 
     @staticmethod
     def from_context() -> CalrissianJobLauncher:
