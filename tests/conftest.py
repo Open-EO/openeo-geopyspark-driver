@@ -210,8 +210,7 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
     sparkDriverJavaOptions = f"-Dlog4j2.configurationFile=file:{sparkSubmitLog4jConfigurationFile}\
     -Dscala.concurrent.context.numThreads=6 \
     -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService\
-    -Dtsservice.layersConfigClass=ProdLayersConfiguration -Dtsservice.sparktasktimeout=600\
-    --add-opens=java.base/sun.net.util=ALL-UNNAMED"
+    -Dtsservice.layersConfigClass=ProdLayersConfiguration -Dtsservice.sparktasktimeout=600"
     if OPENEO_LOCAL_DEBUGGING:
         for port in range(5005, 5009):
             if is_port_free(port):
