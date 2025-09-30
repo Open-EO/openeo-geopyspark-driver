@@ -190,7 +190,7 @@ def test_ep3899_netcdf_no_bands(tmp_path, stac_version, asset_name, bands_name):
         info = Info("NETCDF:\""+href+"\":var", format='json')
         print(info)
         assert info['driverShortName'] == 'netCDF'
-        da = xarray.open_dataset(href, engine='h5netcdf')
+        da = xarray.open_dataset(href)
         print(da)
 
 
@@ -272,7 +272,7 @@ def test_ep3874_sample_by_feature_filter_spatial_inline_geojson(prefix, tmp_path
     for _, theAsset in assets:
         bands = [Band(**b) for b in theAsset["bands"]]
         assert len(bands) == 1
-        da = xarray.open_dataset(theAsset['href'], engine='h5netcdf')
+        da = xarray.open_dataset(theAsset['href'])
         assert 'Flat:2' in da
         print(da['Flat:2'])
 
