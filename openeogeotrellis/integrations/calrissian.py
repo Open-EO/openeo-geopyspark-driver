@@ -239,7 +239,7 @@ class CalrissianJobLauncher:
     @staticmethod
     def get_eodata_access_env_vars(user_id: str, correlation_id: str) -> dict:
         """
-        Get environment variables which configure S3 SDKs to allow access to eodata
+        Get environment variables which configure S3 SDKs to allow access to earth observation data provided.
         """
         s3_endpoint = s3_config.AWSConfig.get_s3_endpoint_url()
         sts_endpoint = s3_config.AWSConfig.get_sts_endpoint_url()
@@ -259,11 +259,8 @@ class CalrissianJobLauncher:
 
         return {
             "AWS_ENDPOINT_URL_S3": s3_endpoint,
-            "S3_ENDPOINT_URL": s3_endpoint,  # s5cmd support
             "AWS_ENDPOINT_URL_STS": sts_endpoint,
             "AWS_REGION": "eodata",
-            "AWS_S3_ENDPOINT": s3_endpoint,  # s5cmd support
-            "AWS_HTTPS": "NO",
             "AWS_VIRTUAL_HOSTING": "FALSE",
             **s3_credentials.as_env_vars(),
         }
