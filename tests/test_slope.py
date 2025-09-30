@@ -32,12 +32,12 @@ def test_slope(imagecollection_with_two_bands_and_three_dates):
     result_xarray = result._to_xarray()
     logger.info("##### result xarray")
     logger.info(result_xarray)
+    red_band = input_xarray.sel(bands='red', t=the_date)
+    logger.info("##### input red band")
+    logger.info(red_band)
+    nir_band = input_xarray.sel(bands='nir', t=the_date)
+    logger.info("##### input nir band")
+    logger.info(nir_band)
     slope_band = result_xarray.sel(bands='slope', t=the_date)
-    print("##### slope_band")
-    logger.info("##### slope_band")
-    print(slope_band)
+    logger.info("##### result slope band")
     logger.info(slope_band)
-
-
-
-
