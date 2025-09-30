@@ -7,10 +7,9 @@ import os
 import pathlib
 import re
 import shutil
-import subprocess
 import tempfile
 import uuid
-from datetime import datetime, date
+import datetime
 from functools import partial
 from typing import Dict, List, Union, Tuple, Iterable, Callable, Optional
 
@@ -49,6 +48,7 @@ from openeogeotrellis.geopysparkcubemetadata import GeopysparkCubeMetadata
 from openeogeotrellis.ml.geopysparkmlmodel import GeopysparkMlModel
 from openeogeotrellis.processgraphvisiting import GeotrellisTileProcessGraphVisitor, SingleNodeUDFProcessGraphVisitor
 from openeogeotrellis.ml.aggregatespatialvectorcube import AggregateSpatialVectorCube
+from openeogeotrellis.util.datetime import to_datetime_utc
 from openeogeotrellis.utils import (
     to_projected_polygons,
     log_memory,
@@ -58,7 +58,6 @@ from openeogeotrellis.utils import (
     reproject_cellsize,
     normalize_temporal_extent,
     GDALINFO_SUFFIX,
-    to_tuple,
 )
 from openeogeotrellis.udf import run_udf_code
 from openeogeotrellis._version import __version__ as softwareversion
@@ -158,19 +157,19 @@ class GeopysparkDataCube(DriverDataCube):
     def _data_source_type(self):
         return self.metadata.get("_vito", "data_source", "type", default="Accumulo")
 
-    # TODO: deprecated
-    def date_range_filter(
-            self, start_date: Union[str, datetime, date], end_date: Union[str, datetime, date]
-    ) -> 'GeopysparkDataCube':
-        return self.apply_to_levels(lambda rdd: rdd.filter_by_times([pd.to_datetime(start_date),pd.to_datetime(end_date)]))
-
     @callsite
     def filter_temporal(self, start: str, end: str) -> 'GeopysparkDataCube':
-        # TODO: is this necessary? Temporal range is handled already at load_collection time
         start, end = normalize_temporal_extent((start, end))
-
+        if start < end:
+            time_intervals = [
+                to_datetime_utc(start),
+                to_datetime_utc(end) - datetime.timedelta(seconds=1),
+            ]
+        else:
+            _log.warning(f"filter_temporal with invalid extent {start=} {end=}")
+            time_intervals = [to_datetime_utc(start), to_datetime_utc(end)]
         return self.apply_to_levels(
-            lambda rdd: rdd.filter_by_times([pd.to_datetime(start), pd.to_datetime(end)]),
+            lambda rdd: rdd.filter_by_times(time_intervals=time_intervals),
             metadata=self.metadata.filter_temporal(start, end)
         )
 
@@ -375,7 +374,7 @@ class GeopysparkDataCube(DriverDataCube):
                 jvm = get_jvm()
                 label_as_zoneddatetime = jvm.java.time.ZonedDateTime.parse(label)
                 temporal_key = jvm.geotrellis.layer.TemporalKey.apply(label_as_zoneddatetime)
-                cube = cube.apply_to_levels(lambda rdd: rdd.srdd.toTemporalLayer(temporal_key))
+                cube = cube.apply_to_levels(lambda rdd: gps.TiledRasterLayer(gps.LayerType.SPACETIME, srdd=rdd.srdd.toTemporalLayer(temporal_key)))
         return GeopysparkDataCube(
             pyramid=cube.pyramid,
             metadata=cube.metadata.add_dimension(name=name, label=label, type=type)
@@ -589,13 +588,22 @@ class GeopysparkDataCube(DriverDataCube):
             _log.debug(f"[apply_tiles_spatiotemporal] UDF resulted in {result_array}!r")
             if 't' in result_array.dims:
                 result_array = result_array.transpose(*('t' ,'bands','y', 'x'))
+                #TODO remove check on shape once we drop support for old xarray
                 return [(SpaceTimeKey(col=tiles[0].col, row=tiles[0].row, instant=pd.Timestamp(timestamp)),
-                         Tile(array_slice.values, CellType.FLOAT32, tile_list[0][1].no_data_value))
+                         Tile(array_slice.values[0] if len(array_slice.values.shape)==4 else array_slice.values, CellType.FLOAT32, tile_list[0][1].no_data_value))
                         for timestamp, array_slice in result_array.groupby('t')]
             else:
-                result_array = result_array.transpose(*( 'bands', 'y', 'x'))
-                return [(SpaceTimeKey(col=tiles[0].col, row=tiles[0].row, instant=datetime.fromisoformat('2020-01-01T00:00:00')),
-                         Tile(result_array.values, CellType.FLOAT32, tile_list[0][1].no_data_value))]
+                result_array = result_array.transpose(*("bands", "y", "x"))
+                return [
+                    (
+                        SpaceTimeKey(
+                            col=tiles[0].col,
+                            row=tiles[0].row,
+                            instant=datetime.datetime.fromisoformat("2020-01-01T00:00:00"),
+                        ),
+                        Tile(result_array.values, CellType.FLOAT32, tile_list[0][1].no_data_value),
+                    )
+                ]
 
         def rdd_function(openeo_metadata: GeopysparkCubeMetadata, rdd: TiledRasterLayer) -> TiledRasterLayer:
             converted = rdd.convert_data_type(CellType.FLOAT32)
@@ -1331,6 +1339,24 @@ class GeopysparkDataCube(DriverDataCube):
 
         max_level:TiledRasterLayer = self.get_max_level()
         target_max_level:TiledRasterLayer = target.pyramid.levels[target.pyramid.max_zoom]
+
+        target_resolution = target.get_cellsize()
+        target_crs = target.metadata.get_layer_crs()
+
+        proposed_partition_count = self._compute_proposed_partition_count(target_crs, target_resolution)
+        if (  # Only repartition when there would be significantly more
+                max_level.getNumPartitions() * 2 <= proposed_partition_count
+                and max_level.layer_type == gps.LayerType.SPACETIME):
+            if proposed_partition_count < 100000:
+                _log.info(
+                    f"Repartitioning datacube with {max_level.getNumPartitions()} partitions to {proposed_partition_count} before resample_cube_spatial."
+                )
+                max_level = max_level.repartition(int(proposed_partition_count))
+            else:
+                _log.warning(
+                    f"resample_spatial proposed new partition count {proposed_partition_count} is too high, not repartitioning."
+                )
+
         if self.pyramid.layer_type == gps.LayerType.SPACETIME and target.pyramid.layer_type == gps.LayerType.SPACETIME:
             level_rdd_tuple = get_jvm().org.openeo.geotrellis.OpenEOProcesses().resampleCubeSpatial(max_level.srdd.rdd(),target_max_level.srdd.rdd(),resample_method)
         elif self.pyramid.layer_type == gps.LayerType.SPATIAL:
@@ -1346,7 +1372,10 @@ class GeopysparkDataCube(DriverDataCube):
             level_rdd_tuple = get_jvm().org.openeo.geotrellis.OpenEOProcesses().resampleCubeSpatial_spatial(
                 max_level.srdd.rdd(), crs, layout, resample_method, partitioner)
         else:
-            raise FeatureUnsupportedException(message='resample_cube_spatial - Unsupported combination of two cubes of type: ' + str(self.pyramid.layer_type) + ' and ' + str(target.pyramid.layer_type))
+            layout = target_max_level.srdd.rdd().metadata().layout()
+            crs = target_max_level.srdd.rdd().metadata().crs()
+            level_rdd_tuple = get_jvm().org.openeo.geotrellis.OpenEOProcesses().resampleCubeSpatial_spatial(
+                max_level.srdd.rdd(), crs, layout, resample_method, None)
 
         layer = self._create_tilelayer(level_rdd_tuple._2(),max_level.layer_type,target.pyramid.max_zoom)
         pyramid = Pyramid({target.pyramid.max_zoom:layer})
@@ -1383,6 +1412,43 @@ class GeopysparkDataCube(DriverDataCube):
         if projection is not None and CRS.from_user_input(projection).equals(CRS.from_user_input(current_crs_proj4)):
             projection = None
 
+        if method == "geocode":
+            if projection is None:
+                raise ProcessParameterInvalidException(
+                    parameter="projection", process="resample_spatial",
+                    reason="geocode method requires a projection to be set."
+                )
+            scala_crs = get_jvm().geopyspark.geotrellis.TileLayer.getCRS(projection).get()
+            extent = max_level.layer_metadata.layout_definition.extent
+            extent_in_target_projection = GeopysparkDataCube._reproject_extent(
+                cube_crs, projection, extent.xmin, extent.ymin, extent.xmax, extent.ymax
+            )
+            scala_target_extent = get_jvm().geotrellis.vector.Extent(float(extent_in_target_projection.xmin), float(extent_in_target_projection.ymin),
+                                                                   float(extent_in_target_projection.xmax), float(extent_in_target_projection.ymax))
+
+            def geocode_level(cube):
+                bandNames = ["band_unnamed"]
+                if self.metadata.has_band_dimension():
+                    bandNames = self.metadata.band_names
+
+                jvm = get_jvm()
+                wrapped = jvm.org.openeo.geotrellis.OpenEOProcesses().wrapCube(cube)
+                wrapped.openEOMetadata().setBandNames(bandNames)
+                target_resolution = None
+                if isinstance(resolution, (list, tuple)):
+                    target_resolution = jvm.geotrellis.raster.CellSize( float(resolution[0]), float(resolution[1]) )
+                else:
+                    target_resolution = jvm.geotrellis.raster.CellSize(float(resolution), float(resolution))
+
+
+                return jvm.org.openeo.geotrellis.geocoding.GeoCodingProcess().geoCode(
+                    wrapped, scala_target_extent, scala_crs, target_resolution
+                )
+
+            geoCodedCube = self._apply_to_levels_geotrellis_rdd(lambda rdd, level: geocode_level(rdd))
+            new_extent = geoCodedCube.get_max_level().layer_metadata.extent
+            return GeopysparkDataCube(geoCodedCube.pyramid,metadata= self.metadata.filter_bbox(new_extent.xmin,new_extent.ymin,new_extent.xmax,new_extent.ymax,geoCodedCube.get_max_level().layer_metadata.crs))
+
         #IF projection is defined, we need to warp
         if projection is not None and resolution==0.0:
             reprojected = self.apply_to_levels(lambda layer: gps.TiledRasterLayer(
@@ -1403,41 +1469,14 @@ class GeopysparkDataCube(DriverDataCube):
             if newLayout == None:
                 return self
 
-            cellsize_before = self.get_cellsize()
             if not isinstance(resolution, (list, tuple)):
                 resolution = (resolution, resolution)
 
-            if projection is not None:
-                # reproject to target CRS to make meaningful comparisons
-                e = max_level.layer_metadata.layout_definition.extent
-                e = GeopysparkDataCube._reproject_extent(
-                    cube_crs, "EPSG:4326", e.xmin, e.ymin, e.xmax, e.ymax
-                )
-                extent_dict = {"west": e.xmin, "east": e.xmax,
-                               "south": e.ymin, "north": e.ymax,
-                               "crs": "EPSG:4326"}
-
-                cellsize_before = reproject_cellsize(extent_dict, cellsize_before, cube_crs, projection)
-
-            estimated_size_in_pixels_tup = self.calculate_layer_size_in_pixels()
-
-            resolution_factor = (
-                cellsize_before[0] / resolution[0],
-                cellsize_before[1] / resolution[1]
-            )
-
-            proposed_partition_count_tup = (
-                estimated_size_in_pixels_tup[0] * resolution_factor[0] / currentTileLayout.tileCols,
-                estimated_size_in_pixels_tup[1] * resolution_factor[1] / currentTileLayout.tileRows
-            )
-            # Could also use "currentTileLayout.layoutCols * resolution_factor[0]", but that would be less accurate.
-            # The repartitioning only considers the resolution change. It considers that the partitioning took
-            # already into account band count and the pixel type, sparse/not, ...
-            proposed_partition_count = int(proposed_partition_count_tup[0] * proposed_partition_count_tup[1])
+            proposed_partition_count = self._compute_proposed_partition_count(projection, resolution)
             if (  # Only repartition when there would be significantly more
                     max_level.getNumPartitions() * 2 <= proposed_partition_count
                     and max_level.layer_type == gps.LayerType.SPACETIME):
-                if proposed_partition_count < 10000:
+                if proposed_partition_count < 100000:
                     _log.info(
                         f"Repartitioning datacube with {max_level.getNumPartitions()} partitions to {proposed_partition_count} before resample_spatial."
                     )
@@ -1456,6 +1495,42 @@ class GeopysparkDataCube(DriverDataCube):
             return GeopysparkDataCube(pyramid=pyramid, metadata=self.metadata)
             #return self.apply_to_levels(lambda layer: layer.tile_to_layout(projection, resample_method))
         return self
+
+    def _compute_proposed_partition_count(self, target_projection, target_resolution):
+        max_level = self.get_max_level()
+        currentTileLayout: gps.TileLayout = max_level.layer_metadata.tile_layout
+        cellsize_before, max_level = self.cellsize_in_target_crs(target_projection)
+        estimated_size_in_pixels_tup = self.calculate_layer_size_in_pixels()
+        resolution_factor = (
+            cellsize_before[0] / target_resolution[0],
+            cellsize_before[1] / target_resolution[1]
+        )
+        proposed_partition_count_tup = (
+            estimated_size_in_pixels_tup[0] * resolution_factor[0] / currentTileLayout.tileCols,
+            estimated_size_in_pixels_tup[1] * resolution_factor[1] / currentTileLayout.tileRows
+        )
+        # Could also use "currentTileLayout.layoutCols * resolution_factor[0]", but that would be less accurate.
+        # The repartitioning only considers the resolution change. It considers that the partitioning took
+        # already into account band count and the pixel type, sparse/not, ...
+        proposed_partition_count = int(proposed_partition_count_tup[0] * proposed_partition_count_tup[1])
+        return proposed_partition_count
+
+    def cellsize_in_target_crs(self, target_projection):
+        cellsize_before = self.get_cellsize()
+        max_level = self.get_max_level()
+        cube_crs = max_level.layer_metadata.crs
+        if target_projection is not None:
+            # reproject to target CRS to make meaningful comparisons
+            e = max_level.layer_metadata.layout_definition.extent
+            e = GeopysparkDataCube._reproject_extent(
+                cube_crs, "EPSG:4326", e.xmin, e.ymin, e.xmax, e.ymax
+            )
+            extent_dict = {"west": e.xmin, "east": e.xmax,
+                           "south": e.ymin, "north": e.ymax,
+                           "crs": "EPSG:4326"}
+
+            cellsize_before = reproject_cellsize(extent_dict, cellsize_before, cube_crs, target_projection)
+        return cellsize_before, max_level
 
     def get_cellsize(self):
         max_level = self.get_max_level()
@@ -1547,9 +1622,10 @@ class GeopysparkDataCube(DriverDataCube):
         rescaled = self.apply_to_levels(lambda layer: layer.normalize(output_min, output_max, input_min, input_max))
         output_range = output_max - output_min
         if output_range >1 and type(output_min) == int and type(output_max) == int:
-            if output_range < 254 and output_min >= 0:
-                rescaled = rescaled.apply_to_levels(lambda layer: layer.convert_data_type(gps.CellType.UINT8,255))
-            elif output_range < 65535 and output_min >= 0:
+            if 0 <= output_min and output_max <= 254:
+                # 8 bit unsigned: 0-254 as user values and 255 as no-data value
+                rescaled = rescaled.apply_to_levels(lambda layer: layer.convert_data_type(gps.CellType.UINT8, 255))
+            elif 0 <= output_min and output_max <= 65534:
                 rescaled = rescaled.apply_to_levels(lambda layer: layer.convert_data_type(gps.CellType.UINT16))
         return rescaled
 
@@ -1875,6 +1951,8 @@ class GeopysparkDataCube(DriverDataCube):
             for java_item in java_items:
                 assets = {}
                 extent = java_item.bbox()
+                bbox = to_latlng_bbox(extent) if extent else None
+                geometry = mapping(Polygon.from_bounds(*to_latlng_bbox(extent))) if extent else None
 
                 for asset_key, asset in java_item.assets().items():
                     assets[asset_key] = {
@@ -1882,6 +1960,8 @@ class GeopysparkDataCube(DriverDataCube):
                         "type": "application/x-netcdf",
                         "roles": ["data"],
                         "nodata": nodata,
+                        "bbox": bbox,
+                        "geometry": geometry,
                     }
                     bands = []
                     for band in asset.metadata().get("bands"):
@@ -1893,8 +1973,8 @@ class GeopysparkDataCube(DriverDataCube):
 
                 items[java_item.id()] = {
                     "id": java_item.id(),
-                    "bbox": to_latlng_bbox(extent) if extent else None,
-                    "geometry": mapping(Polygon.from_bounds(*to_latlng_bbox(extent))) if extent else None,
+                    "bbox": bbox,
+                    "geometry": geometry,
                     "assets": assets,
                 }
 
@@ -1982,7 +2062,7 @@ class GeopysparkDataCube(DriverDataCube):
                     if attach_gdalinfo_assets:
                         for key, value in assets_original.items():
                             href_path = str(value["href"])
-                            if os.path.exists(href_path + GDALINFO_SUFFIX):
+                            if os.path.exists(href_path + GDALINFO_SUFFIX):  # TODO: only supported if fuse_mount_batchjob_s3_bucket?
                                 obj = {
                                     "href": href_path + GDALINFO_SUFFIX,
                                     "type": "application/json",

@@ -81,4 +81,5 @@ config = GpsBackendConfig(
     valid_basic_auth=lambda u, p: p == f"{u}123",
     workspaces=workspaces,
     freeipa_server="https://freeipa.test/",
+    supports_async_tasks=True,
 )

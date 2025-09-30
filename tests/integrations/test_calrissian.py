@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 from typing import Dict, Iterator
 from unittest import mock
@@ -11,7 +12,6 @@ import pytest
 from openeogeotrellis.config.integrations.calrissian_config import (
     CalrissianConfig,
     DEFAULT_CALRISSIAN_IMAGE,
-    DEFAULT_CALRISSIAN_S3_BUCKET,
 )
 from openeogeotrellis.integrations.calrissian import (
     CalrissianJobLauncher,
@@ -275,13 +275,21 @@ class TestCalrissianJobLauncher:
             def read_namespaced_job(self, name: str, namespace: str):
                 assert name in self.jobs
                 assert self.jobs[name].metadata.namespace == namespace
-                return kubernetes.client.V1Job(
-                    metadata=self.jobs[name].metadata,
-                    status=kubernetes.client.V1JobStatus(
-                        # TODO: way to specify timeline of job conditions?
-                        conditions=[kubernetes.client.V1JobCondition(type="Complete", status="True")]
-                    ),
-                )
+                if "instant-fail" in name:
+                    return kubernetes.client.V1Job(
+                        metadata=self.jobs[name].metadata,
+                        status=kubernetes.client.V1JobStatus(
+                            failed=1,
+                        ),
+                    )
+                else:
+                    return kubernetes.client.V1Job(
+                        metadata=self.jobs[name].metadata,
+                        status=kubernetes.client.V1JobStatus(
+                            # TODO: way to specify timeline of job conditions?
+                            conditions=[kubernetes.client.V1JobCondition(type="Complete", status="True")]
+                        ),
+                    )
 
         with mock.patch("kubernetes.client.BatchV1Api", new=BatchV1Api):
             yield
@@ -295,6 +303,14 @@ class TestCalrissianJobLauncher:
         assert isinstance(result, kubernetes.client.V1Job)
 
         assert caplog.messages[-1] == dirty_equals.IsStr(regex=".*job_name='cal-123'.*final_status='complete'.*")
+
+    def test_launch_job_and_wait_fail(self, k8s_batch_api, caplog):
+        launcher = CalrissianJobLauncher(namespace=self.NAMESPACE, name_base="r-456")
+        job_manifest = kubernetes.client.V1Job(
+            metadata=kubernetes.client.V1ObjectMeta(name="cal-123-instant-fail", namespace=self.NAMESPACE)
+        )
+        with pytest.raises(RuntimeError, match=re.compile(r"CWL Job.*")) as e_info:
+            launcher.launch_job_and_wait(manifest=job_manifest)
 
     def test_run_cwl_workflow_basic(
         self, k8_pvc_api, k8s_batch_api, generate_unique_id_mock, caplog, s3_calrissian_bucket

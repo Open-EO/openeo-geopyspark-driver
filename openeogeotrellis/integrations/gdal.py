@@ -15,7 +15,6 @@ from math import isfinite
 from openeo.util import dict_no_none
 from osgeo import gdal
 
-from openeo_driver.utils import smart_bool
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.util.runtime import get_job_id
 from openeogeotrellis.utils import (
@@ -167,11 +166,11 @@ def _extract_gdal_asset_raster_metadata(
     # Then it could profit from Sparks parallel processing.
     argument_tuples = [
         (
-            asset_path,
             asset_md,
             job_dir,
+            asset_key,
         )
-        for asset_path, asset_md in asset_metadata.items()  # FIXME: this is asset key rather than asset path
+        for asset_key, asset_md in asset_metadata.items()
         if "roles" not in asset_md or "data" in asset_md.get("roles")
     ]
     results = exec_parallel_with_fallback(_get_metadata_callback, argument_tuples)
@@ -201,19 +200,22 @@ def _extract_gdal_asset_raster_metadata(
     return raster_metadata, is_some_raster_md_missing
 
 
-def _get_metadata_callback(asset_path: str, asset_md: Dict[str, str], job_dir: Path):
-
-    mime_type: str = asset_md.get("type", "")
+def _get_metadata_callback(asset_md: Dict[str, str], job_dir: Path, asset_key: str):
+    asset_href: str = str(asset_md["href"])
 
     # Skip assets that are clearly not images. TODO: Whitelist instead of blacklist
-    asset_path_extension = Path(asset_path).suffix.lower()
-    if asset_path_extension in [".json", ".csv", ".parquet"]:
+    if any(asset_href.endswith(extension) for extension in [".json", ".csv", ".parquet"]):
         return None
 
     # The asset path should be relative to the job directory.
-    abs_asset_path: Path = get_abs_path_of_asset(asset_path, job_dir)
+    if asset_href.startswith("s3://"):
+        assert job_dir.name in asset_href
+        abs_asset_path: Path = get_abs_path_of_asset(
+            asset_href[asset_href.rfind(job_dir.name) + len(job_dir.name) + 1 :], job_dir
+        )
+    else:
+        abs_asset_path: Path = get_abs_path_of_asset(asset_href, job_dir)
 
-    asset_href: str = asset_md.get("href", "")
     if not abs_asset_path.exists() and asset_href.startswith("s3://"):
         try:
             abs_asset_path.parent.mkdir(parents=True, exist_ok=True)
@@ -234,7 +236,7 @@ def _get_metadata_callback(asset_path: str, asset_md: Dict[str, str], job_dir: P
     if asset_gdal_metadata.could_not_read_file:
         return None
     else:
-        return (asset_path, asset_gdal_metadata.to_dict())
+        return (asset_key, asset_gdal_metadata.to_dict())
         # TODO: Would make it simpler if we could store the AssetRasterMetadata
         #   and convert it to dict at the end.
         # raster_metadata[asset_path] = asset_gdal_metadata
@@ -529,6 +531,8 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
         if os.path.exists(asset_uri + GDALINFO_SUFFIX):
             with open(asset_uri + GDALINFO_SUFFIX) as f:
                 data_gdalinfo = json.load(f)
+                # We can safely assume that this json is valid and return early.
+                return data_gdalinfo
 
     if backend_config.gdalinfo_python_call:
         start = time.time()
@@ -537,7 +541,7 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
             end = time.time()
             # This can throw a segfault on empty netcdf bands:
             poorly_log(f"gdal.Info() took {int((end - start) * 1000)}ms for {asset_uri}", level=logging.DEBUG)  # ~10ms
-        except Exception as exc:
+        except Exception as exc:  # TODO: handle more specific exceptions
             poorly_log(
                 f"gdalinfo Exception. Statistics won't be added to STAC metadata. {exc.__class__.__name__}: '{exc}'.",
                 level=logging.WARNING,
@@ -557,7 +561,7 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
                 assert find_gdalinfo_differences(data_gdalinfo_from_subprocess, data_gdalinfo) is None
             else:
                 data_gdalinfo = data_gdalinfo_from_subprocess
-        except Exception as exc:
+        except Exception as exc:  # TODO: handle more specific exceptions
             poorly_log(
                 f"gdalinfo Exception. Statistics won't be added to STAC metadata. {exc.__class__.__name__}: '{exc}'. Command: {subprocess.list2cmdline(cmd)}",
                 level=logging.WARNING,
@@ -581,7 +585,7 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
                 assert find_gdalinfo_differences(data_gdalinfo_from_subprocess, data_gdalinfo) is None
             else:
                 data_gdalinfo = data_gdalinfo_from_subprocess
-        except Exception as exc:
+        except Exception as exc:  # TODO: handle more specific exceptions
             poorly_log(
                 f"gdalinfo Exception. Statistics won't be added to STAC metadata. {exc.__class__.__name__}: '{exc}'. Command: {subprocess.list2cmdline(cmd)}",
                 level=logging.WARNING,

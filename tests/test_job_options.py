@@ -1,5 +1,4 @@
 import json
-from dataclasses import fields
 
 import pytest
 
@@ -83,6 +82,22 @@ def test_from_dict_with_missing_values():
     assert job_options.executor_memory == backend_config.default_executor_memory
     assert job_options.executor_cores == backend_config.default_executor_cores
 
+def test_from_dict_invalid_image():
+    data = {
+        "image-name": "myrepo/openeo-geotrellis-kube:latest",
+    }
+
+    job_options = JobOptions.from_dict(data)
+    #with pytest.raises(OpenEOApiException) as excinfo:
+    job_options.validate()
+
+def test_from_dict_valid_image():
+    data = {
+        "image-name": "vito-docker.artifactory.vgt.vito.be/openeo-geotrellis-kube:1208848",
+    }
+
+    job_options = JobOptions.from_dict(data)
+    job_options.validate()
 
 def test_list_options():
     options = JobOptions.list_options(public_only=False)

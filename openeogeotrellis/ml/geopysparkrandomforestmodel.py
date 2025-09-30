@@ -2,11 +2,9 @@ import logging
 
 import shutil
 import typing
-import uuid
 from pathlib import Path
 from typing import Dict, Union
 
-from openeo_driver.datacube import DriverMlModel
 from openeo_driver.datastructs import StacAsset
 import geopyspark as gps
 from py4j.java_gateway import JavaObject
@@ -111,10 +109,15 @@ class GeopySparkRandomForestModel(GeopysparkMlModel):
         if use_s3:
             spark_path = to_s3_url(model_path).replace("s3:", 's3a:')
         logging.info(f"Saving GeopySparkRandomForestModel to {spark_path}")
+        model_num_nodes = self._model._java_model.totalNumNodes()
+        model_num_trees = self._model._java_model.numTrees()
+        logging.info(f"GeopySparkRandomForestModel has {model_num_nodes} nodes and {model_num_trees} trees before saving.")
         self._model.save(gps.get_spark_context(), spark_path)
 
         # Archive the saved model.
         if use_s3 and not model_path.exists():
+            # This happens when we saved using S3A but the bucket is not mounted via S3FS.
+            # So we have to download it to the driver's local filesystem first.
             logging.info(f"{model_path} does not exist, downloading it from s3 first.")
             download_s3_directory(to_s3_url(model_path), "/")
         logging.info(f"Archiving {model_path} to {model_path}.tar.gz")
@@ -127,10 +130,10 @@ class GeopySparkRandomForestModel(GeopysparkMlModel):
 
     def get_model(self) -> RandomForestModel:
         return self._model
-    
+
     def get_java_model(self) -> JavaObject:
         return self.get_model()._java_model
-    
+
     @staticmethod
     def from_path(sc, path) -> "GeopySparkRandomForestModel":
         return GeopySparkRandomForestModel(RandomForestModel(RandomForestModel._load_java(sc=sc, path=path)))

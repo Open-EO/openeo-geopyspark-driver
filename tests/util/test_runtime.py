@@ -7,6 +7,7 @@ from openeogeotrellis.util.runtime import (
     ENV_VAR_OPENEO_BATCH_JOB_ID,
     get_job_id,
     get_request_id,
+    is_package_available,
 )
 
 
@@ -71,3 +72,8 @@ def test_get_request_id_in_flask():
         dirty_equals.IsStr(regex="r-[0-9a-f]+"),
         dirty_equals.IsStr(regex="r-[0-9a-f]+"),
     ]
+
+
+def test_is_package_available():
+    assert is_package_available("os") == True
+    assert is_package_available("howdy_this_package_doesnt_even_exist") == False

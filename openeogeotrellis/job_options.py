@@ -1,5 +1,6 @@
 import dataclasses
 import logging
+import re
 from dataclasses import dataclass, field, fields
 from typing import Any, Dict, List
 
@@ -109,9 +110,30 @@ class JobOptions:
         metadata={"description": "Custom jar path.", "public":False},
     )
 
+    image_name: str = field(
+        default=None,
+        metadata={"description": "Custom docker image name.", "public": False},
+    )
+
     log_level:str = field(
         default=DEFAULT_LOG_LEVEL_PROCESSING,
         metadata={"name":"log_level","description": "log level, can be 'debug', 'info', 'warning' or 'error'", "public":True},
+    )
+
+    omit_derived_from_links: bool = field(
+        default=False,
+        metadata={
+            "description": "Whether to omit 'derived_from' links in the batch job results to reduce the batch job result metadata size.",
+            "public": False
+        },
+    )
+
+    concurrent_save_results: int = field(
+        default=1,
+        metadata={
+            "description": "[Experimental] The number of save-result nodes to evaluate concurrently. Increasing this setting may improve resource utilization, but too high values usually increase costs.",
+            "public": True
+        },
     )
 
     @staticmethod
@@ -125,7 +147,7 @@ class JobOptions:
     def validate(self):
 
 
-        if self.log_level not in ["DEBUG", "INFO", "WARN", "ERROR"]:
+        if self.log_level.upper() not in ["DEBUG", "INFO", "WARN", "ERROR"]:
             raise OpenEOApiException(
                 code="InvalidLogLevel",
                 status_code=400,
@@ -149,6 +171,12 @@ class JobOptions:
             raise OpenEOApiException(
                 message=f"Requested invalid openeo jar path {self.openeo_jar_path}",
                 status_code=400)
+
+        if (self.image_name is not None):
+            if self.image_name not in get_backend_config().batch_runtime_to_image:
+                if re.compile(get_backend_config().batch_image_regex).fullmatch(self.image_name) is None:
+                    self._log.warning(f"Invalid value {self.image_name} for job_option image-name")
+                    #raise OpenEOApiException(f"Invalid value {self.image_name} for job_option image-name", status_code=400)
 
     def soft_errors_arg(self) -> str:
         value = self.soft_errors
@@ -178,7 +206,7 @@ class JobOptions:
             if job_option_name in data:
 
                 value = data.get(job_option_name)
-                cls.validate_type(value,field.type)
+                cls.validate_type(value=value, expected_type=field.type, name=job_option_name)
                 init_kwargs[field.name] = value
 
         if JOB_OPTION_LOG_LEVEL not in init_kwargs and JOB_OPTION_LOGGING_THRESHOLD in data:
@@ -216,10 +244,12 @@ class JobOptions:
 
 
     @classmethod
-    def validate_type(cls, arg, type):
+    def validate_type(cls, value, expected_type, name: str = "n/a"):
         try:
-            if not isinstance(arg,type):
-                cls._log.warning(f"Job option with unexpected type: {arg}, expected type {cls.python_type_to_json_schema(type)}")
+            if not isinstance(value, expected_type):
+                cls._log.warning(
+                    f"Job option {name!r} with unexpected type: {value!r}, expected: {cls.python_type_to_json_schema(expected_type)}"
+                )
         except TypeError:
             pass
 
@@ -331,6 +361,3 @@ class K8SOptions(JobOptions):
                 message=f"Requested too many driver cores: {self.driver_cores} , the max for this instance is: {max_cores}",
                 status_code=400)
         return super().validate()
-
-
-

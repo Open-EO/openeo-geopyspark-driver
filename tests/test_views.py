@@ -1,6 +1,4 @@
-import collections
 import contextlib
-import datetime
 import decimal
 import json
 import logging
@@ -11,11 +9,10 @@ import subprocess
 from typing import Optional
 from unittest import mock
 
-import boto3
+import jsonschema
 import kazoo.exceptions
 import pytest
 import requests
-import time_machine
 from elasticsearch.exceptions import ConnectionTimeout
 from openeo.util import deep_get
 from openeo_driver.jobregistry import JOB_STATUS
@@ -26,7 +23,6 @@ from openeo_driver.testing import (
     TIFF_DUMMY_DATA,
     ApiTester,
     DictSubSet,
-    ListSubSet,
     RegexMatcher,
 )
 
@@ -50,6 +46,13 @@ class TestCapabilities:
 
     def test_file_formats(self, api100):
         formats = api100.get("/file_formats").assert_status_code(200).json
+        formats_schema = {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "$id": "https://processes.openeo.org/2.0.0-rc.1/meta/subtype-schemas.json",
+            "type": "object",
+            "properties": formats["output"],
+        }
+        jsonschema.validate(instance=formats_schema, schema={"$ref": "http://json-schema.org/draft-07/schema#"})
         assert "GeoJSON" in formats["input"]
         assert "GTiff" in formats["output"]
         assert "CovJSON" in formats["output"]
@@ -124,7 +127,6 @@ class TestCapabilities:
         assert capabilities["foo"] == ["bar", "baz"]
         assert len(capabilities["links"]) > 1
         assert capabilities["links"][-1] == {"rel": "flavor", "href": "https://flavors.test/sweet"}
-
 
 
 class TestCollections:
@@ -387,7 +389,6 @@ class TestBatchJobs:
         }
     }
 
-
     DUMMY_PROCESS_GRAPH_WITH_UDF = {
         "loadcollection1": {
             "arguments": {
@@ -525,7 +526,15 @@ class TestBatchJobs:
 
     @mock.patch("openeogeotrellis.logs.Elasticsearch.search")
     def test_create_and_start_and_download(
-        self, mock_search, api, tmp_path, monkeypatch, batch_job_output_root, job_registry, time_machine
+        self,
+        mock_search,
+        api,
+        tmp_path,
+        monkeypatch,
+        batch_job_output_root,
+        job_registry,
+        time_machine,
+        mock_yarn_backend_config,
     ):
         time_machine.move_to("2020-04-20T16:04:03Z")
 
@@ -708,6 +717,7 @@ class TestBatchJobs:
         requests_mock,
         freeipa_response,
         expected_proxy_user,
+        mock_yarn_backend_config,
     ):
         def freeipa_user_find_handler(request, context):
             request_data = request.json()
@@ -738,7 +748,19 @@ class TestBatchJobs:
 
         assert batch_job_args[8] == expected_proxy_user
 
-    def test_providers_present(self, api, tmp_path, monkeypatch, batch_job_output_root, job_registry, time_machine):
+    @pytest.mark.parametrize("api", ["api100", "api110"])
+    def test_results_metadata(
+        self,
+        api,
+        tmp_path,
+        monkeypatch,
+        batch_job_output_root,
+        job_registry,
+        time_machine,
+        request,
+        mock_yarn_backend_config,
+    ):
+        api = request.getfixturevalue(api)
         time_machine.move_to("2020-04-20T16:04:03Z")
 
         with self._mock_kazoo_client() as zk, mock.patch.dict(
@@ -832,6 +854,9 @@ class TestBatchJobs:
 
             assert "providers" in res
             assert res["providers"] == expected_providers
+
+            if api.api_version_compare.at_least("1.1.0"):
+                assert res["extent"]["spatial"]["bbox"] == [[2, 51, 3, 52]]
 
     @mock.patch(
         "openeogeotrellis.configparams.ConfigParams.use_object_storage",
@@ -1202,7 +1227,9 @@ class TestBatchJobs:
                     assert res.status_code == 200
                     assert res.data == TIFF_DUMMY_DATA
 
-    def test_create_and_start_job_options(self, api, tmp_path, monkeypatch, batch_job_output_root, time_machine):
+    def test_create_and_start_job_options(
+        self, api, tmp_path, monkeypatch, batch_job_output_root, time_machine, mock_yarn_backend_config
+    ):
         time_machine.move_to("2020-04-20T16:04:03Z")
 
         with self._mock_kazoo_client() as zk, \
@@ -1255,17 +1282,12 @@ class TestBatchJobs:
         return batch_job_args, job_id,env
 
     def test_start_custom_udf_runtime(
-            self,
-            api,
-            job_registry,
-            time_machine,
-            batch_job_output_root,
+        self, api, job_registry, time_machine, batch_job_output_root, mock_yarn_backend_config
     ):
         time_machine.move_to("2020-04-20T12:01:01Z")
 
         job_data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH_WITH_UDF, title="Dummy")
         batch_job_args, job_id,env = self._create_and_start_yarn_job(job_data, api)
-
 
         # Check batch in/out files
         job_dir = batch_job_output_root / job_id
@@ -1276,7 +1298,6 @@ class TestBatchJobs:
         assert batch_job_args[4] == job_output.name
         assert batch_job_args[5] == job_metadata.name
         assert env['YARN_CONTAINER_RUNTIME_DOCKER_IMAGE'] == "vito-docker.artifactory.vgt.vito.be/openeo-geotrellis-kube-python311:latest"
-
 
     @pytest.mark.parametrize(["boost"], [
         [("driver-memory", "99999g")],
@@ -1345,7 +1366,7 @@ class TestBatchJobs:
         print(res2.text)
         res2.assert_status_code(400)
 
-    def test_cancel_job(self, api, job_registry):
+    def test_cancel_job(self, api, job_registry, mock_yarn_backend_config):
         with self._mock_kazoo_client() as zk:
             # Create job
             data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH)
@@ -1400,7 +1421,7 @@ class TestBatchJobs:
             assert meta_data == DictSubSet({"status": "canceled"})
             assert job_registry.db[job_id] == DictSubSet({"status": "canceled"})
 
-    def test_delete_job(self, api, job_registry):
+    def test_delete_job(self, api, job_registry, mock_yarn_backend_config):
         with self._mock_kazoo_client() as zk:
             # Create job
             data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH)
@@ -1796,7 +1817,6 @@ class TestBatchJobs:
                     title="Fake Test Job",
                     description="Fake job for the purpose of testing",
                 )
-                registry.patch(job_id=job_id, user_id=TEST_USER, **job_metadata_contents)
                 registry.set_status(job_id=job_id, user_id=TEST_USER, status=JOB_STATUS.FINISHED)
 
                 # Download
@@ -1975,6 +1995,7 @@ class TestSentinelHubBatchJobs:
         time_machine,
         zk_client,
         batch_job_output_root,
+        mock_yarn_backend_config
     ):
         time_machine.move_to("2020-04-20T12:01:01Z")
 
@@ -2293,6 +2314,7 @@ class TestSentinelHubBatchJobs:
         backend_implementation,
         time_machine,
         zk_client,
+        mock_yarn_backend_config
     ):
         time_machine.move_to("2020-04-20T12:01:01Z")
 
@@ -2514,6 +2536,7 @@ class TestSentinelHubBatchJobs:
         time_machine,
         zk_client,
         requests_mock,
+        mock_yarn_backend_config
     ):
         partial_job_results_url = "https://openeo.test/jobs/j-a778cc99-f741-4512-b304-07fdd692ae22/results/s1gn4turE?partial=true"
         requests_mock.get(partial_job_results_url, [
@@ -2717,6 +2740,7 @@ class TestSentinelHubBatchJobs:
         backend_implementation,
         time_machine,
         zk_client,
+        mock_yarn_backend_config
     ):
         job_registry.create_job(process={}, user_id=TEST_USER, job_id='j-a778cc99-f741-4512-b304-07fdd692ae22')
         partial_job_results_url = "https://openeo.test/jobs/j-a778cc99-f741-4512-b304-07fdd692ae22/results?partial=true"

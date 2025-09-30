@@ -120,7 +120,7 @@ class CwLSource:
         """
         Read CWL from a packaged resource file in importlib.resources-style.
         """
-        content = importlib_resources.files(anchor=anchor).joinpath(path).read_text(encoding="utf-8")
+        content = importlib_resources.files(anchor).joinpath(path).read_text(encoding="utf-8")
         return cls(content=content)
 
 
@@ -397,6 +397,9 @@ class CalrissianJobLauncher:
             while timer.elapsed() < timeout:
                 job: kubernetes.client.V1Job = k8s_batch.read_namespaced_job(name=job_name, namespace=self._namespace)
                 _log.info(f"CWL job poll loop: {job_name=} {timer.elapsed()=:.2f} {job.status.to_dict()=}")
+                if job.status.failed == 1:
+                    final_status = "failed"
+                    break
                 if job.status.conditions:
                     if any(c.type == "Failed" and c.status == "True" for c in job.status.conditions):
                         final_status = "failed"
@@ -412,8 +415,11 @@ class CalrissianJobLauncher:
         elif final_status is None:
             raise TimeoutError(f"CWL Job {job_name} did not finish within {timeout}s")
         elif final_status != "complete":
+            messages = ""
+            if job.status.conditions:
+                messages = f" Messages: {set(c.message for c in job.status.conditions)}."
             raise RuntimeError(
-                f"CWL Job {job_name} failed with {final_status=} after {timer.elapsed()=:.2f}s. Messages: {set(c.message for c in job.status.conditions)}"
+                f"CWL Job {job_name} failed with {final_status=} after {timer.elapsed()=:.2f}s.{messages}"
             )
         else:
             raise ValueError("CWL")

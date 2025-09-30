@@ -15,6 +15,11 @@ with open('openeogeotrellis/_version.py') as fp:
 
 version = __version__
 
+yarn_require = [
+    "gssapi>=1.8.0",
+    "requests-gssapi>=1.2.3",  # For Kerberos authentication
+]
+
 tests_require = [
     'pytest',
     'pytest-timeout',
@@ -30,9 +35,12 @@ tests_require = [
     "cryptography>=44.0.0",
     "responses",
     "rio_cogeo",
-    "pydantic~=1.0",
+    'pydantic~=1.0; python_version<"3.9"',
+    'pydantic; python_version>="3.9"',
     "zarr",
-]
+    "jsonschema",
+    "rioxarray",
+] + yarn_require
 
 typing_require = [
     'mypy-boto3-sts',
@@ -60,10 +68,10 @@ setup(
     ],
     tests_require=tests_require,
     install_requires=[
-        "openeo>=0.42.0.dev",
-        "openeo_driver>=0.135.0a4.dev",
-        'pyspark==3.5.3; python_version>="3.8"',
-        'pyspark>=2.3.1,<2.4.0; python_version<"3.8"',
+        "openeo>=0.43.0.dev",
+        "openeo_driver>=0.135.0a5.dev",
+        'pyspark<4.0.0; python_version>"3.8"',
+        'pyspark>=3.5.0,<4.0.0; python_version<="3.8"',
         'geopyspark_openeo==0.4.3.post1',
         # rasterio is an undeclared but required dependency for geopyspark
         # (see https://github.com/locationtech-labs/geopyspark/issues/683 https://github.com/locationtech-labs/geopyspark/pull/706)
@@ -71,7 +79,7 @@ setup(
         'rasterio~=1.3.10; python_version>="3.9"',
         'py4j',
         'numpy==1.22.4; python_version<"3.9"',
-        'numpy; python_version>="3.9"',
+        'numpy>=2.3.3; python_version>="3.9"',
         'pandas>=1.4.0,<2.0.0; python_version<"3.9"',
         'pandas; python_version>="3.9"',
         'pyproj==3.4.1',
@@ -93,10 +101,12 @@ setup(
         'Bottleneck~=1.3.2; python_version<"3.9"',
         'Bottleneck~=1.4.0; python_version>="3.9"',
         "python-json-logger~=2.0",  # Avoid breaking change in 3.1.0 https://github.com/nhairs/python-json-logger/issues/29
-        'jep==4.1.1',
+        'jep==4.1.1; python_version<"3.9"',
+        'jep_openeo==4.1.1; python_version>="3.9"',  # Required because Jep needs to compile against numpy 2.x
         'kafka-python==1.4.6',
         'deprecated>=1.2.12',
         'elasticsearch==7.16.3',
+        "pystac>=1.8.4",  # TODO #1060 bump to more recent version (1.8.4 is from Sep 2023) once we can leave Python 3.8 behind
         'pystac_client~=0.7.2',
         'boto3>=1.16.25,<2.0',
         "hvac>=1.0.2",
@@ -104,7 +114,6 @@ setup(
         "attrs>=22.1.0",
         "planetary-computer~=1.0.0",
         "reretry~=0.11.8",
-        "traceback-with-variables==2.0.4",
         'scipy>=1.8',  # used by sentinel-3 reader
         "PyJWT[crypto]>=2.9.0",  # For identity tokens
         "urllib3>=1.26.20",
@@ -116,9 +125,13 @@ setup(
             "kubernetes",
             "PyYAML",
         ],
-        "yarn": [
-            "gssapi>=1.8.0",
-            "requests-gssapi>=1.2.3",  # For Kerberos authentication
+        "yarn": yarn_require,
+        "gdal": [
+            # Note: the GDAL package is practically a hard dependency,
+            # but it can be quite challenging to install,
+            # so we list it as "extra" instead of under "install_requires" for now.
+            # Also see https://github.com/Open-EO/openeo-geopyspark-driver/issues/1363
+            "gdal~=3.8.4",
         ],
     },
     entry_points={

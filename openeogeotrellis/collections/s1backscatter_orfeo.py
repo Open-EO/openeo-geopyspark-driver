@@ -13,7 +13,7 @@ import types
 import zipfile
 from datetime import datetime
 from multiprocessing import Process
-from typing import Dict, Tuple, Union, List, Any
+from typing import Dict, Tuple, Union, List, Optional
 
 import geopyspark
 import numpy
@@ -334,6 +334,11 @@ class S1BackscatterOrfeo:
                     msg = f"Error while running Orfeo toolbox. {input_tiff}, {e}   {extent} EPSG {extent_epsg} {sar_calibration_lut}"
                     logger.error(msg,exc_info=True)
 
+            # TODO: Set these env vars at executor-level (for all clusters).
+            gdal_http_max_retry: Optional[str] = os.environ.get("GDAL_HTTP_MAX_RETRY")
+            gdal_http_retry_delay: Optional[str] = os.environ.get("GDAL_HTTP_RETRY_DELAY")
+            os.environ["GDAL_HTTP_MAX_RETRY"] = "10"
+            os.environ["GDAL_HTTP_RETRY_DELAY"] = "60"
             p = Process(target=run, args=())
             p.start()
             p.join()
@@ -341,6 +346,12 @@ class S1BackscatterOrfeo:
                 error_counter.value += 1
                 msg = f"Segmentation fault while running Orfeo toolbox. {input_tiff} {extent} EPSG {extent_epsg} {sar_calibration_lut}"
                 logger.error(msg)
+            del os.environ["GDAL_HTTP_MAX_RETRY"]
+            del os.environ["GDAL_HTTP_RETRY_DELAY"]
+            if gdal_http_max_retry is not None:
+                os.environ["GDAL_HTTP_MAX_RETRY"] = gdal_http_max_retry
+            if gdal_http_retry_delay is not None:
+                os.environ["GDAL_HTTP_RETRY_DELAY"] = gdal_http_retry_delay
             # Check soft error ratio.
             if trackers is not None and error_counter.value > 0:
                 if max_soft_errors_ratio == 0.0:
@@ -396,6 +407,8 @@ class S1BackscatterOrfeo:
         if dem_dir:
             ortho_rect.SetParameterString("elev.dem", dem_dir)
         if elev_geoid:
+            if not pathlib.Path(elev_geoid).exists():
+                raise OpenEOApiException(f"sar_backscatter: Geoid file {elev_geoid} does not exist on the cluster, a missing geoid causes shifted output data.")
             ortho_rect.SetParameterString("elev.geoid", elev_geoid)
         if elev_default is not None:
             ortho_rect.SetParameterFloat("elev.default", float(elev_default))
@@ -892,7 +905,8 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
 
             creo_path = pathlib.Path(creo_path)
             if not creo_path.exists():
-                raise OpenEOApiException(f"sar_backscatter: path {creo_path} does not exist on the cluster.")
+                return []
+                #raise OpenEOApiException(f"sar_backscatter: path {creo_path} does not exist on the cluster.")
 
             # Get whole extent of tile layout
             col_min = min(f["key"]["col"] for f in features)

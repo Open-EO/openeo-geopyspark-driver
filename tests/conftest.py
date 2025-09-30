@@ -6,6 +6,7 @@ import shutil
 import sys
 import typing
 from datetime import datetime
+from glob import glob
 from pathlib import Path
 from typing import Optional
 from unittest import mock
@@ -26,11 +27,9 @@ from openeo_driver.integrations.s3.client import S3ClientBuilder
 
 import openeogeotrellis
 import pytest
-import requests_mock
 import time_machine
 from _pytest.terminal import TerminalReporter
 from openeo_driver.backend import OpenEoBackendImplementation, UserDefinedProcesses
-from openeo_driver.jobregistry import ElasticJobRegistry, JobRegistryInterface
 from openeo_driver.testing import ApiTester, ephemeral_fileserver, UrllibMocker
 from openeo_driver.utils import smart_bool
 from openeo_driver.views import build_app
@@ -150,7 +149,7 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
 
     spark_jars = conf.get("spark.jars").split(",")
     # geotrellis-extensions needs to be loaded first to avoid "java.lang.NoClassDefFoundError: shapeless/lazily$"
-    spark_jars.sort(key=lambda x: "geotrellis-extensions" not in x)
+    spark_jars.sort(key=lambda x: "geotrellis-extensions" not in x and "geotrellis-dependencies" not in x)
     conf.set(key="spark.jars", value=",".join(spark_jars))
 
     # Use UTC timezone by default when formatting/parsing dates (e.g. CSV export of timeseries)
@@ -170,11 +169,27 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
     conf.set(key="spark.executor.memory", value="2G")
     OPENEO_LOCAL_DEBUGGING = smart_bool(os.environ.get("OPENEO_LOCAL_DEBUGGING", "false"))
     conf.set("spark.ui.enabled", OPENEO_LOCAL_DEBUGGING)
+    # Test if this causes issues on CI. Should be disabled in next commit.
+    if OPENEO_LOCAL_DEBUGGING:
+        events_dir = "/tmp/spark-events"  # manually create this folder if you want to keep history
+        if os.path.exists(events_dir):
+            conf.set("spark.eventLog.enabled", "true")
+            out.write_line(
+                f"Start spark history server with $SPARK_HOME/sbin/start-history-server.sh and open http://localhost:18080/"
+            )
+            files = glob(os.path.join(events_dir, "*"))
+            for f in files:
+                # remove event logs older than 7 days:
+                if os.path.getmtime(f) < datetime.now().timestamp() - 7 * 24 * 3600:
+                    try:
+                        os.remove(f)
+                    except Exception as e:
+                        out.write_line(f"Failed to remove old spark event log {f}: {e}")
 
     jars = []
     for jar_dir in additional_jar_dirs:
         for jar_path in Path(jar_dir).iterdir():
-            if jar_path.match("openeo-logging-*.jar"):
+            if jar_path.match("openeo-logging-*.jar") or jar_path.match("geotrellis-dependencies-*.jar"):
                 jars.append(str(jar_path))
     extraClassPath = ":".join(jars)
     conf.set("spark.driver.extraClassPath", extraClassPath)
@@ -686,3 +701,24 @@ def apply_datacube(cube: DataArray, context: dict) -> DataArray:
         },
     }
     return udf_process
+
+
+@pytest.fixture
+def mock_yarn_backend_config():
+    """
+    Backend config that provides mock values for properties that are required in the yarn_jobrunner
+    while preserving all other backend config functionality.
+    """
+    with mock.patch("openeogeotrellis.integrations.yarn_jobrunner.get_backend_config") as mock_config:
+        real_backend_config = get_backend_config()
+        mock_backend_config = mock.MagicMock(spec=real_backend_config)
+        # Copy all attributes from real config
+        for attr in dir(real_backend_config):
+            if not attr.startswith('_'):
+                setattr(mock_backend_config, attr, getattr(real_backend_config, attr))
+        # Override only the specific yarn properties we need to mock
+        mock_backend_config.batch_spark_eventlog_dir = "mockvalue"
+        mock_backend_config.batch_spark_history_fs_logdirectory = "mockvalue"
+        mock_backend_config.batch_spark_yarn_historyserver_address = "mockvalue"
+        mock_config.return_value = mock_backend_config
+        yield mock_backend_config
