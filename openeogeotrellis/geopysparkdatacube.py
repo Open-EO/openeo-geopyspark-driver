@@ -2943,6 +2943,13 @@ class GeopysparkDataCube(DriverDataCube):
         )
         return atmo_corrected
 
+    @callsite
+    def slope(self):
+        return self.apply_to_levels(lambda rdd: rdd.slope(),
+                                    self.metadata.rename_labels(self.metadata.band_dimension.name, target=["slope"]))
+
+
+
     def sar_backscatter(self, args: SarBackscatterArgs) -> 'GeopysparkDataCube':
         # Nothing to do: the actual SAR backscatter processing already happened in `load_collection`
         return self
