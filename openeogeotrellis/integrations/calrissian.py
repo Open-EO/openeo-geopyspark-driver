@@ -259,11 +259,8 @@ class CalrissianJobLauncher:
 
         return {
             "AWS_ENDPOINT_URL_S3": s3_endpoint,
-            "S3_ENDPOINT_URL": s3_endpoint,  # s5cmd support
             "AWS_ENDPOINT_URL_STS": sts_endpoint,
             "AWS_REGION": "eodata",
-            "AWS_S3_ENDPOINT": s3_endpoint,  # s5cmd support
-            "AWS_HTTPS": "NO",
             "AWS_VIRTUAL_HOSTING": "FALSE",
             **s3_credentials.as_env_vars(),
         }
