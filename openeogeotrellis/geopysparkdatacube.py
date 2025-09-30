@@ -20,9 +20,9 @@ import geopandas as gpd
 import pyproj
 import pytz
 import xarray as xr
-from geopyspark import TiledRasterLayer, Pyramid, Tile, SpaceTimeKey, SpatialKey, Metadata
+from geopyspark import TiledRasterLayer, Pyramid, Tile, SpaceTimeKey, SpatialKey, Metadata, zfactor_lat_lng_calculator
 from geopyspark.geotrellis import Extent, ResampleMethod
-from geopyspark.geotrellis.constants import CellType
+from geopyspark.geotrellis.constants import CellType, Unit
 from pandas import Series
 from pyproj import CRS
 from shapely.geometry import mapping, Point, Polygon, MultiPolygon, GeometryCollection, box
@@ -2945,7 +2945,7 @@ class GeopysparkDataCube(DriverDataCube):
 
     @callsite
     def slope(self):
-        return self.apply_to_levels(lambda rdd: rdd.slope(),
+        return self.apply_to_levels(lambda rdd: rdd.slope(zfactor_lat_lng_calculator(Unit.METERS)),
                                     self.metadata.rename_labels(self.metadata.band_dimension.name, target=["slope"]))
 
 
