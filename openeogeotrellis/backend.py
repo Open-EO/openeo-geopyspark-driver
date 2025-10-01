@@ -2630,29 +2630,17 @@ class GpsBatchJobs(backend.BatchJobs):
 
     @lru_cache(maxsize=20)
     def get_result_metadata(self, job_id: str, user_id: str) -> BatchJobResultMetadata:
+        with self._double_job_registry as registry:
+            job_dict = registry.get_job(job_id, user_id=user_id)
 
-        results_metadata = None
-        job_status = "unknown"
-        try:
-            with self._double_job_registry as registry:
-                job_dict = registry.get_job(job_id, user_id=user_id)
-                if "results_metadata" in job_dict:
-                    results_metadata = job_dict["results_metadata"]
-                job_status = job_dict.get("status", "unknown")
-        except Exception as e:
-            logger.warning(
-                "Could not retrieve result metadata from job tracker %s", e, exc_info=True, extra={"job_id": job_id}
-            )
-
-        if job_status not in  [JOB_STATUS.FINISHED, JOB_STATUS.ERROR]:
+        if job_dict["status"] not in [JOB_STATUS.FINISHED, JOB_STATUS.ERROR]:
             raise JobNotFinishedException
 
-        if results_metadata is None or len(results_metadata) == 0:
-            results_metadata = self.load_results_metadata(job_id, user_id)
+        results_metadata = self.load_results_metadata(job_id, user_id, job_dict)
 
         if "items" in results_metadata:
             return BatchJobResultMetadata(
-                items={ i['id'] : i for i in results_metadata["items"]},
+                items={item["id"]: item for item in results_metadata["items"]},
                 assets=self._results_metadata_to_assets(results_metadata, job_id),
                 links=[],
                 providers=self._get_providers(job_id=job_id, user_id=user_id),
@@ -2671,7 +2659,7 @@ class GpsBatchJobs(backend.BatchJobs):
         Reads the metadata json file from the job directory
         and returns information about the output files.
 
-        DEPRECATED: usages of this method havec to be replaced with retrieving the items directly
+        DEPRECATED: usages of this method have to be replaced with retrieving the items directly
 
         :param job_id: The id of the job to get the results for.
         :param user_id: The id of the user that started the job.
