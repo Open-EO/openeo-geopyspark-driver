@@ -127,7 +127,7 @@ def force_stop_spark_context():
 def _setup_local_spark(out: TerminalReporter, verbosity=0):
     # TODO make a "spark_context" fixture instead of doing this through pytest_configure
     out.write_line("[conftest.py] Setting up local Spark")
-    master_str = "local[*]"
+    master_str = "local[2]"
 
     if "PYSPARK_PYTHON" not in os.environ:
         os.environ["PYSPARK_PYTHON"] = sys.executable
