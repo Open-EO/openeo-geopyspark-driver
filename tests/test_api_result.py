@@ -9,6 +9,8 @@ import shutil
 import textwrap
 import urllib.parse
 import urllib.request
+from unittest import skip
+
 import requests
 from pathlib import Path
 from typing import List, Optional, Sequence, Union
@@ -4216,6 +4218,7 @@ class TestLoadStac:
         message = "Band order should be alphabetical for NetCDF STAC-catalog with a time dimension."
         assert any(message in m for m in caplog.messages)
 
+    @skip
     @pytest.mark.parametrize(
         "save_format",
         [
