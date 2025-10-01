@@ -2664,6 +2664,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 providers=self._get_providers(job_id=job_id, user_id=user_id),
             )
 
+    @deprecated("call get_result_metadata instead")
     @lru_cache(maxsize=20)
     def get_result_assets(self, job_id: str, user_id: str) -> Dict[str, dict]:
         """
