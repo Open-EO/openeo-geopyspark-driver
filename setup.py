@@ -40,6 +40,7 @@ tests_require = [
     "zarr",
     "jsonschema",
     "rioxarray",
+    # TODO: GDAL (aka osgeo.gdal) should be listed here. See https://github.com/Open-EO/openeo-geopyspark-driver/issues/1363
 ] + yarn_require
 
 typing_require = [
@@ -127,11 +128,9 @@ setup(
         ],
         "yarn": yarn_require,
         "gdal": [
-            # Note: the GDAL package is practically a hard dependency,
-            # but it can be quite challenging to install,
-            # so we list it as "extra" instead of under "install_requires" for now.
+            # GDAL (aka osgeo.gdal) is effectively an optional (runtime) dependency now.
             # Also see https://github.com/Open-EO/openeo-geopyspark-driver/issues/1363
-            "gdal~=3.8.4",
+            "gdal>=3.8.4",
         ],
     },
     entry_points={
