@@ -510,11 +510,6 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
     :return:
         GDALInfo: which is a dictionary that contains the output from `gdal.Info()`.
     """
-    # By default, gdal does not raise exceptions but returns error codes and prints
-    # error info on stdout. We don't want that. At the least it should go to the logs.
-    # See https://gdal.org/api/python_gotchas.html
-    osgeo.gdal.UseExceptions()
-
     data_gdalinfo = {}
     # TODO: Choose a version, and remove others
     backend_config = get_backend_config()
@@ -538,6 +533,10 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
     if backend_config.gdalinfo_python_call:
         start = time.time()
         try:
+            # By default, gdal does not raise exceptions but returns error codes and prints
+            # error info on stdout. We don't want that. At the least it should go to the logs.
+            # See https://gdal.org/api/python_gotchas.html
+            osgeo.gdal.UseExceptions()
             data_gdalinfo = osgeo.gdal.Info(asset_uri, options=osgeo.gdal.InfoOptions(format="json", stats=True))
             end = time.time()
             # This can throw a segfault on empty netcdf bands:
