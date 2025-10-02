@@ -1,7 +1,7 @@
 from pathlib import Path
 
 import openeo
-from osgeo import gdal
+import osgeo.gdal
 
 UDF_CODE_PATH = Path(__file__).parent / "udf_code"
 
@@ -35,5 +35,5 @@ def test_run_udf_jep_with_apply_metadata(api100):
     with open(output_file, mode="wb") as f:
         f.write(result.data)
 
-    data_gdalinfo = gdal.Info(str(output_file))
+    data_gdalinfo = osgeo.gdal.Info(str(output_file))
     assert "Longitude_RENAMED" in data_gdalinfo

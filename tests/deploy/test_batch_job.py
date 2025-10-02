@@ -19,7 +19,7 @@ from openeo_driver.dry_run import DryRunDataTracer
 from openeo_driver.save_result import ImageCollectionResult
 from openeo_driver.testing import DictSubSet, ListSubSet
 from openeo_driver.utils import read_json
-from osgeo import gdal
+import osgeo.gdal
 from pytest import approx
 from shapely.geometry import box, mapping, shape
 
@@ -865,8 +865,8 @@ def reproject_raster_file(source_path: str, destination_path: str, dest_crs: str
         Height of the output raster in pixels.
         Same remark as for `width`: need to specify output raster's width and height.
     """
-    opts = gdal.WarpOptions(dstSRS=dest_crs, width=width, height=height)
-    gdal.Warp(destNameOrDestDS=destination_path, srcDSOrSrcDSTab=source_path, options=opts)
+    opts = osgeo.gdal.WarpOptions(dstSRS=dest_crs, width=width, height=height)
+    osgeo.gdal.Warp(destNameOrDestDS=destination_path, srcDSOrSrcDSTab=source_path, options=opts)
 
 
 @mock.patch("openeo_driver.ProcessGraphDeserializer.evaluate")
@@ -1668,7 +1668,7 @@ def test_get_projection_extension_metadata(json_file, expected_metadata):
     assert proj_metadata == expected_metadata
 
 
-@mock.patch("openeogeotrellis.integrations.gdal.read_gdal_info")
+@mock.patch("osgeo.gdal.read_gdal_info")
 def test_parse_gdal_raster_metadata(mock_read_gdal_info):
     json_dir = get_test_data_file("gdalinfo-output/SENTINEL2_L1C_SENTINELHUB_E5_05_N51_21-E5_10_N51_23")
     netcdf_path = json_dir / "SENTINEL2_L1C_SENTINELHUB_E5_05_N51_21-E5_10_N51_23.nc"

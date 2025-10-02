@@ -13,7 +13,8 @@ from typing import Dict, Optional, Union, Any, Tuple
 import pyproj
 from math import isfinite
 from openeo.util import dict_no_none
-from osgeo import gdal
+import osgeo.gdal
+
 
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.util.runtime import get_job_id
@@ -512,7 +513,7 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
     # By default, gdal does not raise exceptions but returns error codes and prints
     # error info on stdout. We don't want that. At the least it should go to the logs.
     # See https://gdal.org/api/python_gotchas.html
-    gdal.UseExceptions()
+    osgeo.gdal.UseExceptions()
 
     data_gdalinfo = {}
     # TODO: Choose a version, and remove others
@@ -537,7 +538,7 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
     if backend_config.gdalinfo_python_call:
         start = time.time()
         try:
-            data_gdalinfo = gdal.Info(asset_uri, options=gdal.InfoOptions(format="json", stats=True))
+            data_gdalinfo = osgeo.gdal.Info(asset_uri, options=osgeo.gdal.InfoOptions(format="json", stats=True))
             end = time.time()
             # This can throw a segfault on empty netcdf bands:
             poorly_log(f"gdal.Info() took {int((end - start) * 1000)}ms for {asset_uri}", level=logging.DEBUG)  # ~10ms
@@ -572,7 +573,7 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
         cmd = [
             sys.executable,
             "-c",
-            f"""from osgeo import gdal; import json; gdal.UseExceptions(); print(json.dumps(gdal.Info({asset_uri!r}, options=gdal.InfoOptions(format="json", stats=True))))""",
+            f"""import osgeo.gdal; import json; osgeo.gdal.UseExceptions(); print(json.dumps(osgeo.gdal.Info({asset_uri!r}, options=osgeo.gdal.InfoOptions(format="json", stats=True))))""",
         ]
         try:
             out = subprocess.check_output(cmd, timeout=1800, text=True)
