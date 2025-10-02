@@ -1964,12 +1964,16 @@ class GeopysparkDataCube(DriverDataCube):
                         "geometry": geometry,
                     }
                     bands = []
-                    for band in asset.metadata().get("bands"):
+                    asset_metadata = asset.metadata()
+                    for band in asset_metadata.get("bands"):
                         band = dict(band)
                         if "statistics" in band:
                             band["statistics"] = dict(band.get("statistics"))
                         bands.append(band)
                     assets[asset_key]["bands"] = bands
+                    assets[asset_key]["proj:bbox"] = tuple(asset_metadata.get("proj:bbox"))
+                    # assets[asset_key]["proj:shape"] = tuple(asset_metadata.get("proj:shape"))
+                    assets[asset_key]["proj:epsg"] = asset_metadata.get("proj:epsg")
 
                 items[java_item.id()] = {
                     "id": java_item.id(),

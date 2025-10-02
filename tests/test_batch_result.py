@@ -720,7 +720,10 @@ def test_spatial_geoparquet(tmp_path):
 
 def test_spatial_cube_to_netcdf_sample_by_feature(tmp_path):
     job_spec = {
-        "job_options": {"stac-version-experimental": "1.1"},
+        "job_options": {
+            "stac-version-experimental": "1.1",
+            "detailed_asset_metadata": False,
+        },
         "process_graph": {
         "loadcollection1": {
             "process_id": "load_collection",
@@ -779,7 +782,9 @@ def test_spatial_cube_to_netcdf_sample_by_feature(tmp_path):
             "arguments": {
                 "data": {"from_node": "filterspatial1"},
                 "format": "netCDF",
-                "options": {"sample_by_feature": True}
+                "options": {
+                    "sample_by_feature": True,
+                    "add_bands_statistics": True,}
             },
             "result": True
         }
@@ -818,6 +823,15 @@ def test_spatial_cube_to_netcdf_sample_by_feature(tmp_path):
         .normalize()
         .equals_exact(Polygon.from_bounds(0.1, 0.1, 1.8, 1.8).normalize(), tolerance=0.001)
     )
+    asset0 = item0.get("assets").get("openEO")
+
+    assert asset0.get("proj:bbox") == [0.1, 0.1, 1.8, 1.8]
+    assert asset0.get("proj:epsg") == 4326
+    assert asset0.get("proj:shape") == [13, 10]
+    assert asset0.get("bands") == [{
+        'name': 'Flat:2',
+        'statistics': {'max': 2.0, 'mean': 2.0, 'min': 2.0, 'stddev': 0.0, 'valid_percent': 53.125}
+    }]
 
     item1 = [item for item in items for asset in item["assets"].values() if asset["href"].endswith("/openEO_1.nc")][0]
     assert item1["bbox"] == [0.725, -1.29, 2.99, 1.724]
@@ -826,6 +840,14 @@ def test_spatial_cube_to_netcdf_sample_by_feature(tmp_path):
         .normalize()
         .equals_exact(Polygon.from_bounds(0.725, -1.29, 2.99, 1.724).normalize(), tolerance=0.001)
     )
+    asset1 = item1.get("assets").get("openEO")
+    assert asset1.get("proj:bbox") == [0.725, -1.29, 2.99, 1.724]
+    assert asset1.get("proj:epsg") == 4326
+    assert asset1.get("proj:shape") == [8, 8]
+    assert asset1.get("bands") == [{
+        'name': 'Flat:2',
+        'statistics': {'max': 2.0, 'mean': 2.0, 'min': 2.0, 'stddev': 0.0, 'valid_percent': 56.15384615384615}
+    }]
 
 
 def test_multiple_time_series_results(tmp_path):
