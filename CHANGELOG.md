@@ -29,6 +29,7 @@ without compromising stable operations.
 - Less often used Spark metrics for batch jobs are now disabled by default. They are enabled when log-level is set to 'debug'.
 - `filter_temporal` should also work in half-open fashion when applied after `load_collection`/`load_stac` with non-empty `temporal_extent` ([Open-EO/openeo-geotrellis-extensions#498](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/498))
 - `load_stac`: ignore empty `roles` listing for assets to decide if asset is a "band asset" ([1356](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1356))
+- Make `osgeo.gdal` more clearly an optional (runtime) dependency ([#1363](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1363), eu-cdse/openeo-cdse-infra#718, eu-cdse/openeo-cdse-infra#733)
 
 
 ## 0.67.0

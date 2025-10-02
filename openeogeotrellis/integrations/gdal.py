@@ -13,7 +13,6 @@ from typing import Dict, Optional, Union, Any, Tuple
 import pyproj
 from math import isfinite
 from openeo.util import dict_no_none
-import osgeo.gdal
 
 
 from openeogeotrellis.config import get_backend_config
@@ -531,6 +530,10 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
                 return data_gdalinfo
 
     if backend_config.gdalinfo_python_call:
+        # Local import of osgeo.gdal to make this effectively an optional dependency.
+        # Also see https://github.com/eu-cdse/openeo-cdse-infra/issues/733
+        # and https://github.com/Open-EO/openeo-geopyspark-driver/issues/1363
+        import osgeo.gdal
         start = time.time()
         try:
             # By default, gdal does not raise exceptions but returns error codes and prints
