@@ -1,12 +1,12 @@
 {
   "python3.8": [
-    "https://artifactory.vgt.vito.be/artifactory/libs-release-public/org/openeo/geotrellis-extensions/PR-544/geotrellis-extensions-PR-544.jar",
-    "https://artifactory.vgt.vito.be/artifactory/libs-release-public/org/openeo/geotrellis-dependencies/PR-544/geotrellis-dependencies-PR-544.jar",
-    "https://artifactory.vgt.vito.be/artifactory/libs-release-public/org/openeo/openeo-logging/PR-544/openeo-logging-PR-544.jar"
+    "https://artifactory.vgt.vito.be/artifactory/libs-release-public/org/openeo/geotrellis-extensions/PR-547/geotrellis-extensions-PR-547.jar",
+    "https://artifactory.vgt.vito.be/artifactory/libs-release-public/org/openeo/geotrellis-dependencies/PR-547/geotrellis-dependencies-PR-547.jar",
+    "https://artifactory.vgt.vito.be/artifactory/libs-release-public/org/openeo/openeo-logging/PR-547/openeo-logging-PR-547.jar"
   ],
   "python3.11": [
-    "https://artifactory.vgt.vito.be/artifactory/libs-release-public/org/openeo/geotrellis-extensions/PR-544/geotrellis-extensions-PR-544.jar",
-    "https://artifactory.vgt.vito.be/artifactory/libs-release-public/org/openeo/geotrellis-dependencies/PR-544/geotrellis-dependencies-PR-544.jar",
-    "https://artifactory.vgt.vito.be/artifactory/libs-release-public/org/openeo/openeo-logging/PR-544/openeo-logging-PR-544.jar"
+    "https://artifactory.vgt.vito.be/artifactory/libs-release-public/org/openeo/geotrellis-extensions/PR-547/geotrellis-extensions-PR-547.jar",
+    "https://artifactory.vgt.vito.be/artifactory/libs-release-public/org/openeo/geotrellis-dependencies/PR-547/geotrellis-dependencies-PR-547.jar",
+    "https://artifactory.vgt.vito.be/artifactory/libs-release-public/org/openeo/openeo-logging/PR-547/openeo-logging-PR-547.jar"
   ]
 }
