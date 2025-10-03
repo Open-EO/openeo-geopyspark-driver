@@ -2049,6 +2049,8 @@ class GeopysparkDataCube(DriverDataCube):
                 max_level = max_level.to_spatial_layer()
 
             if format == "GTIFF":
+                compression = format_options.get("compression", "deflate")
+                predictor = format_options.get("predictor", 1)
                 zlevel = format_options.get("ZLEVEL", 6)
                 tile_size = format_options.get("tile_size")
 
@@ -2075,6 +2077,7 @@ class GeopysparkDataCube(DriverDataCube):
 
                 if stitch:
                     gtiff_options = get_jvm().org.openeo.geotrellis.geotiff.GTiffOptions()
+                    gtiff_options.setCompression(compression, zlevel, predictor)
                     if filename_prefix.isDefined():
                         gtiff_options.setFilenamePrefix(filename_prefix.get())
                     gtiff_options.setResampleMethod(overview_resample)
@@ -2150,6 +2153,7 @@ class GeopysparkDataCube(DriverDataCube):
                 else:
                     _log.info("save_result: saveRDD")
                     gtiff_options = get_jvm().org.openeo.geotrellis.geotiff.GTiffOptions()
+                    gtiff_options.setCompression(compression, zlevel, predictor)
                     if filename_prefix.isDefined():
                         gtiff_options.setFilenamePrefix(filename_prefix.get())
                     gtiff_options.setSeparateAssetPerBand(separate_asset_per_band)
