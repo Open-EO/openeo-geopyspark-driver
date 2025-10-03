@@ -44,7 +44,7 @@ from openeo_driver.backend import (
     LoadParameters,
     OidcProvider,
     ServiceMetadata,
-    JobListing,
+    JobListing, BatchJobResultMetadata,
 )
 from openeo_driver.config.load import ConfigGetter
 from openeo_driver.constants import DEFAULT_LOG_LEVEL_RETRIEVAL, DEFAULT_LOG_LEVEL_PROCESSING
@@ -2629,10 +2629,37 @@ class GpsBatchJobs(backend.BatchJobs):
         return job_dependencies
 
     @lru_cache(maxsize=20)
+    def get_result_metadata(self, job_id: str, user_id: str) -> BatchJobResultMetadata:
+        with self._double_job_registry as registry:
+            job_dict = registry.get_job(job_id, user_id=user_id)
+
+        if job_dict["status"] not in [JOB_STATUS.FINISHED, JOB_STATUS.ERROR]:
+            raise JobNotFinishedException
+
+        results_metadata = self.load_results_metadata(job_id, user_id, job_dict)
+
+        if "items" in results_metadata:
+            return BatchJobResultMetadata(
+                items={item["id"]: item for item in results_metadata["items"]},
+                assets=self._results_metadata_to_assets(results_metadata, job_id),
+                links=[],
+                providers=self._get_providers(job_id=job_id, user_id=user_id),
+            )
+        else:
+            return BatchJobResultMetadata(
+                assets=self._results_metadata_to_assets(results_metadata, job_id),
+                links=[],
+                providers=self._get_providers(job_id=job_id, user_id=user_id),
+            )
+
+    @deprecated("call get_result_metadata instead")
+    @lru_cache(maxsize=20)
     def get_result_assets(self, job_id: str, user_id: str) -> Dict[str, dict]:
         """
         Reads the metadata json file from the job directory
         and returns information about the output files.
+
+        DEPRECATED: usages of this method have to be replaced with retrieving the items directly
 
         :param job_id: The id of the job to get the results for.
         :param user_id: The id of the user that started the job.
@@ -2646,7 +2673,9 @@ class GpsBatchJobs(backend.BatchJobs):
             raise JobNotFinishedException
 
         results_metadata = self.load_results_metadata(job_id, user_id, job_dict)
+        return self._results_metadata_to_assets(results_metadata, job_id)
 
+    def _results_metadata_to_assets(self, results_metadata, job_id):
         out_assets = results_metadata.get("assets", {})
         out_metadata = out_assets.get("out", {})
         bands = [Band(*properties) for properties in out_metadata.get("bands", [])]

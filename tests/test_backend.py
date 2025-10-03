@@ -805,7 +805,12 @@ class TestGpsBatchJobs:
             Key=job_metadata_json_key,
             Body=json.dumps(
                 {
-                    "assets": {"openEO": {"href": "s3://bucket/path/to/openEO.tif"}},
+                    "items": [
+                        {
+                            "id": "b9510f20-92a0-4947-a4b6-a6a934a0015e",
+                            "assets": {"openEO": {"href": "s3://bucket/path/to/openEO.tif"}},
+                        }
+                    ],
                     "epsg": 32631,
                     "providers": [{"name": "VITO"}],
                 }
@@ -814,25 +819,21 @@ class TestGpsBatchJobs:
         job["status"] = JOB_STATUS.FINISHED
         job["results_metadata_uri"] = f"s3://{mock_non_swift_s3_bucket.name}/{job_metadata_json_key}"
 
-        asset_key, asset = next(
-            iter(
-                backend_implementation.batch_jobs.get_result_assets(
-                    job_id=job_id, user_id=self._dummy_user.user_id
-                ).items()
-            )
-        )
-        assert asset_key == "openEO"
-        assert asset["href"] == "s3://bucket/path/to/openEO.tif"
-
         metadata = backend_implementation.batch_jobs.get_job_info(
             job_id=job_id, user_id=self._dummy_user.user_id
         )
         assert metadata.epsg == 32631
 
-        providers = backend_implementation.batch_jobs.get_result_metadata(
+        result_metadata = backend_implementation.batch_jobs.get_result_metadata(
             job_id=job_id, user_id=self._dummy_user.user_id
-        ).providers
-        assert [provider["name"] for provider in providers] == ["VITO"]
+        )
+        assert [provider["name"] for provider in result_metadata.providers] == ["VITO"]
+        assert result_metadata.items == {
+            "b9510f20-92a0-4947-a4b6-a6a934a0015e": {
+                "id": "b9510f20-92a0-4947-a4b6-a6a934a0015e",
+                "assets": {"openEO": {"href": "s3://bucket/path/to/openEO.tif"}},
+            }
+        }
 
     @pytest.mark.parametrize(
         "results_metadata_uri_prefix",
