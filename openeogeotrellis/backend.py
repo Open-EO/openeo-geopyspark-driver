@@ -65,7 +65,7 @@ from openeo_driver.util.date_math import now_utc
 from openeo_driver.util.geometry import BoundingBox
 from openeo_driver.util.http import requests_with_retry
 from openeo_driver.util.utm import area_in_square_meters
-from openeo_driver.utils import EvalEnv, generate_unique_id, to_hashable, WhiteListEvalEnv
+from openeo_driver.utils import EvalEnv, generate_unique_id, to_hashable, WhiteListEvalEnv, get_package_versions
 from pandas import Timedelta
 from py4j.java_gateway import JVMView
 from py4j.protocol import Py4JJavaError
@@ -384,6 +384,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             ),
             user_defined_processes=user_defined_processes,
             processing=GpsProcessing(),
+            udf_runtimes=GpsUdfRuntimes(),
             # secondary_services=GpsSecondaryServices(service_registry=self._service_registry),
         )
 
@@ -3072,3 +3073,61 @@ class GpsBatchJobs(backend.BatchJobs):
         if assembled_folders:
             logger.info("Deleted Sentinel Hub assembled folder(s) {fs} for batch job {j}"
                         .format(fs=assembled_folders, j=job_id), extra={'job_id': job_id})
+
+
+class GpsUdfRuntimes(backend.UdfRuntimes):
+
+    # Python libraries to list
+    # TODO: allow customization of this list (e.g. through config)
+    python_libraries = [
+        "openeo",
+        "openeo_driver",
+        "numpy",
+        "scipy",
+        "pandas",
+        "xarray",
+        "geopandas",
+        "netCDF4",
+        "shapely",
+        "pyproj",
+        "rasterio",
+        "tensorflow",
+        "pytorch",
+    ]
+
+    def _get_python_versions(self):
+        # TODO: this assumes UDF runtime is equal to web app runtime, which is not true anymore.
+        major, minor, patch = (str(v) for v in sys.version_info[:3])
+        aliases = [
+            f"{major}",
+            f"{major}.{minor}",
+            f"{major}.{minor}.{patch}",
+        ]
+        default_version = major
+        return major, aliases, default_version
+
+    def _get_python_udf_runtime_metadata(self):
+        major, aliases, default_version = self._get_python_versions()
+        # TODO: get actual library version (instead of version of current environment).
+        libraries = {
+            p: {"version": v.split(" ", 1)[-1]}
+            for p, v in get_package_versions(self.python_libraries, na_value=None).items()
+            if v
+        }
+
+        return {
+            "title": f"Python {major}",
+            "description": f"Python {major} runtime environment.",
+            "type": "language",
+            "default": default_version,
+            "versions": {v: {"libraries": libraries} for v in aliases},
+        }
+
+    def get_udf_runtimes(self) -> dict:
+        # TODO: this is highly geopyspark-driver specific: return a simpler listing by default
+        # TODO add caching of this result
+        return {
+            # TODO: toggle these runtimes through dependency injection or config?
+            "Python": self._get_python_udf_runtime_metadata(),
+            "Python-Jep": self._get_python_udf_runtime_metadata(),
+        }
