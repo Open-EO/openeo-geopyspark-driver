@@ -127,11 +127,6 @@ setup(
             "PyYAML",
         ],
         "yarn": yarn_require,
-        "gdal": [
-            # GDAL (aka osgeo.gdal) is effectively an optional (runtime) dependency now.
-            # Also see https://github.com/Open-EO/openeo-geopyspark-driver/issues/1363
-            "gdal>=3.8.4",
-        ],
     },
     entry_points={
         "console_scripts": [
