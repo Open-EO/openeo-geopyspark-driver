@@ -82,18 +82,6 @@ def metrics_tracker() -> Iterator[MetricsTracker]:
     tracker.clear()
 
 
-@pytest.fixture
-def metadata_tracker():
-    # TODO: this is quite messy, involving internal implementation details from another project
-    bootstrap_tracker = _get_tracker()
-    bootstrap_tracker.setGlobalTracking(True)
-    bootstrap_tracker.clearGlobalTracker()
-    # tracker reset, so get it again
-    tracker = _get_tracker()
-    yield tracker
-    tracker.setGlobalTracking(False)
-
-
 def test_extract_result_metadata():
     tracer = DryRunDataTracer()
     cube = tracer.load_collection(
