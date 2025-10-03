@@ -4,6 +4,7 @@ pwd
 #TODO: remove temporary switch to spark-vito-4_0_1
 yum remove -y spark-bin
 yum install -y hdf5 spark-vito-4_0_1
+ln -sf /opt/spark4_0_1 /usr/local/spark
 mkdir /eodata
 chown jenkins /eodata
 runuser jenkins -c '
