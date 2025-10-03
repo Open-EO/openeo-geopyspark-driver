@@ -119,10 +119,26 @@ def test_basic(
 
     mock_s3_bucket.put_object(
         Key=f"batch_jobs/{job_id}/job_metadata.json",
-        Body=json.dumps({"assets": {"openEO": {"href": "s3://bucket/path/to/openEO.tif"}}}).encode("utf-8"),
+        Body=json.dumps(
+            {
+                "items": [
+                    {
+                        "id": "b9510f20-92a0-4947-a4b6-a6a934a0015e",
+                        "assets": {"openEO": {"href": "s3://bucket/path/to/openEO.tif"}},
+                    },
+                ],
+                "assets": {"openEO": {"href": "s3://bucket/path/to/openEO.tif"}},
+            }
+        ).encode("utf-8"),
     )
 
     # 5: get job results (finished)
-    asset_key, asset = next(iter(backend_implementation.batch_jobs.get_result_assets(job_id, user.user_id).items()))
+    asset_key, asset = next(
+        iter(
+            asset
+            for item in backend_implementation.batch_jobs.get_result_metadata(job_id, user.user_id).items.values()
+            for asset in item["assets"].items()
+        )
+    )
     assert asset_key == "openEO"
     assert asset == DictSubSet({"href": "s3://bucket/path/to/openEO.tif"})
