@@ -1,8 +1,9 @@
 #!/bin/sh
 set -eux
 pwd
-
-yum install -y hdf5
+#TODO: remove temporary switch to spark-vito-4_0_1
+yum remove -y spark-bin
+yum install -y hdf5 spark-vito-4_0_1
 mkdir /eodata
 chown jenkins /eodata
 runuser jenkins -c '
