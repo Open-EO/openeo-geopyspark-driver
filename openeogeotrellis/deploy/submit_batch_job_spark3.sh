@@ -103,10 +103,26 @@ sparkDriverJavaOptions="-Dscala.concurrent.context.maxThreads=2 -Dpixels.treshol
  -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService\
  -Dopeneo.logging.threshold=$logging_threshold"
 
+javaAddOpens="--add-opens=java.base/java.lang=ALL-UNNAMED\
+ --add-opens=java.base/java.lang.invoke=ALL-UNNAMED\
+ --add-opens=java.base/java.lang.reflect=ALL-UNNAMED\
+ --add-opens=java.base/java.io=ALL-UNNAMED\
+ --add-opens=java.base/java.net=ALL-UNNAMED\
+ --add-opens=java.base/java.nio=ALL-UNNAMED\
+ --add-opens=java.base/java.util=ALL-UNNAMED\
+ --add-opens=java.base/java.util.concurrent=ALL-UNNAMED\
+ --add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED\
+ --add-opens=java.base/jdk.internal.ref=ALL-UNNAMED\
+ --add-opens=java.base/sun.nio.ch=ALL-UNNAMED\
+ --add-opens=java.base/sun.nio.cs=ALL-UNNAMED\
+ --add-opens=java.base/sun.security.action=ALL-UNNAMED\
+ --add-opens=java.base/sun.net.util=ALL-UNNAMED\
+ --add-opens=java.base/sun.util.calendar=ALL-UNNAMED"
+
 sparkExecutorJavaOptions="-Dlog4j2.configurationFile=file:/opt/venv/openeo-geopyspark-driver/batch_job_log4j2.xml\
  -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService\
  -Dscala.concurrent.context.numThreads=8 -Djava.library.path=/opt/venv/lib/python3.8/site-packages/jep\
- -Dopeneo.logging.threshold=$logging_threshold"
+ -Dopeneo.logging.threshold=$logging_threshold ${javaAddOpens}"
 
 
 
