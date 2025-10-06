@@ -647,7 +647,6 @@ class TestUdfCollection:
 
 class TestInstallPythonUdfDependencies:
 
-
     def test_install_python_udf_dependencies_basic(self, tmp_path, dummy_pypi, caplog):
         caplog.set_level("DEBUG")
         install_target = tmp_path / "target"
@@ -668,7 +667,9 @@ class TestInstallPythonUdfDependencies:
     def test_install_python_udf_dependencies_fail(self, tmp_path, dummy_pypi, caplog):
         caplog.set_level("DEBUG")
         install_target = tmp_path / "target"
-        with pytest.raises(UdfDependencyHandlingFailure, match="pip install of UDF dependencies failed with exit_code=1"):
+        with pytest.raises(
+            UdfDependencyHandlingFailure, match="pip install of UDF dependencies failed with exit_code=1"
+        ):
             install_python_udf_dependencies(["nope-nope"], target=install_target, index=dummy_pypi)
         assert (
             "pip install output: ERROR: Could not find a version that satisfies the requirement nope-nope"
