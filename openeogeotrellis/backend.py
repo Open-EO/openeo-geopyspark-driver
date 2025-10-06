@@ -19,7 +19,7 @@ from decimal import Decimal
 from functools import lru_cache, partial, reduce
 from pathlib import Path
 from subprocess import CalledProcessError
-from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union
+from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union, Set
 from urllib.parse import urlparse
 
 import flask
@@ -122,8 +122,13 @@ from openeogeotrellis.service_registry import (
     ServiceEntity,
     ZooKeeperServiceRegistry,
 )
-from openeogeotrellis.udf import run_udf_code, UDF_PYTHON_DEPENDENCIES_FOLDER_NAME, \
-    UDF_PYTHON_DEPENDENCIES_ARCHIVE_NAME, collect_udfs
+from openeogeotrellis.udf import (
+    run_udf_code,
+    UDF_PYTHON_DEPENDENCIES_FOLDER_NAME,
+    UDF_PYTHON_DEPENDENCIES_ARCHIVE_NAME,
+    collect_udfs,
+    UdfRuntimeSpecified,
+)
 from openeogeotrellis.user_defined_process_repository import (
     InMemoryUserDefinedProcessRepository,
     ZooKeeperUserDefinedProcessRepository,
@@ -1832,8 +1837,8 @@ class GpsBatchJobs(backend.BatchJobs):
         log.debug(f"_start_job {job_options=}")
 
         process_registry = GpsProcessing().get_process_registry(api_version=api_version)
-        udf_runtimes = set(
-            (udf[1], udf[2]) for udf in collect_udfs(job_process_graph, process_registry=process_registry)
+        udf_runtimes: Set[UdfRuntimeSpecified] = set(
+            udf.runtime for udf in collect_udfs(job_process_graph, process_registry=process_registry)
         )
 
         if len(udf_runtimes) == 0:
@@ -1844,8 +1849,8 @@ class GpsBatchJobs(backend.BatchJobs):
                 job_options["image-name"] = image_name
         elif len(udf_runtimes) == 1:
             (udf_runtime,) = udf_runtimes
-            if udf_runtime is not None and "image-name" not in job_options and udf_runtime[1] is not None:
-                image_name = udf_runtime[0].lower() + udf_runtime[1].replace(".", "")
+            if udf_runtime is not None and "image-name" not in job_options and udf_runtime.version is not None:
+                image_name = udf_runtime.name.lower() + udf_runtime.version.replace(".", "")
                 log.info(f'Forcing job_options["image-name"]={image_name!r} from {udf_runtimes=}')
                 job_options["image-name"] = image_name
         elif len(udf_runtimes) > 1:

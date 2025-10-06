@@ -4,11 +4,12 @@ import logging
 import os
 import shutil
 import subprocess
+import typing
 import sys
 import tempfile
 import textwrap
 from pathlib import Path
-from typing import Dict, Iterable, Iterator, Optional, Tuple, Union
+from typing import Dict, Iterable, Iterator, Optional, Tuple, Union, Set
 
 import openeo.udf
 import pyspark
@@ -75,13 +76,30 @@ def assert_running_in_executor():
         raise RuntimeError("Not running in PySpark executor context.")
 
 
-def collect_udfs(
-    process_graph: dict, process_registry: Optional[ProcessRegistry] = None
-) -> Iterator[Tuple[str, str, Union[str, None]]]:
+class UdfRuntimeSpecified(typing.NamedTuple):
+    """
+    UDF runtime as specified in a `run_udf` process in a process graph
+    (runtime is required, but version is optional)
+    """
+
+    name: str
+    version: Optional[str] = None
+
+
+class UdfSpecified(typing.NamedTuple):
+    """
+    UDF code and runtime info as specified in a `run_udf` process in a process graph
+    """
+
+    code: str
+    runtime: UdfRuntimeSpecified
+
+
+def collect_udfs(process_graph: dict, process_registry: Optional[ProcessRegistry] = None) -> Iterator[UdfSpecified]:
     """
     Recursively traverse a process graph in flat graph representation and collect UDFs.
 
-    :return: Iterator of (udf, runtime, version) tuples
+    :return: Iterator of (udf_code, runtime, version) tuples
     """
     for node_id, node in process_graph.items():
         process_id = node["process_id"]
@@ -89,7 +107,10 @@ def collect_udfs(
         namespace = node.get("namespace")
 
         if process_id == "run_udf":
-            yield tuple(node["arguments"].get(k) for k in ["udf", "runtime", "version"])
+            yield UdfSpecified(
+                code=arguments.get("udf"),
+                runtime=UdfRuntimeSpecified(name=arguments.get("runtime"), version=arguments.get("version")),
+            )
 
         for argument_id, argument in arguments.items():
             if isinstance(argument, dict) and "process_graph" in argument:
@@ -114,16 +135,16 @@ def collect_udfs(
                 _log.warning(f"collect_udf: skipping failure on {node=} ({node_id=}): {e!r}")
 
 
-def collect_python_udf_dependencies(process_graph: dict) -> Dict[Tuple[str, str], set]:
+def collect_python_udf_dependencies(process_graph: dict) -> Dict[UdfRuntimeSpecified, Set[str]]:
     """
     Collect dependencies (imports) from Python UDFs in a given process graph,
 
-    :return: Dictionary of dependencies (set) per (runtime, version) tuple
+    :return: Dictionary of dependencies (set) per `UdfRuntimeSpecified`
     """
     dependencies = collections.defaultdict(set)
-    for udf, runtime, version in collect_udfs(process_graph):
-        if runtime.lower().startswith("python"):
-            dependencies[(runtime, version)].update(extract_udf_dependencies(udf) or [])
+    for udf in collect_udfs(process_graph):
+        if udf.runtime.name.lower().startswith("python"):
+            dependencies[udf.runtime].update(extract_udf_dependencies(udf.code) or [])
 
     return dict(dependencies)
 
