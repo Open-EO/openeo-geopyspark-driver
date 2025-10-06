@@ -261,6 +261,7 @@ class GpsBackendConfig(OpenEoBackendConfig):
     Also used to map image-name job option to batch job image.
     """
     batch_runtime_to_image: dict = {
+        # TODO: eliminate this hardcoded VITO default?
         "python311" : "vito-docker.artifactory.vgt.vito.be/openeo-geotrellis-kube-python311:latest"
     }
 

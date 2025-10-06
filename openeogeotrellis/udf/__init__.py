@@ -82,7 +82,10 @@ class UdfRuntimeSpecified(typing.NamedTuple):
     (runtime is required, but version is optional)
     """
 
+    # Runtime name, e.g. "Python", "Python-Jep", ...
     name: str
+
+    # Runtime version (if explicitly specified), e.g. "3.8", "3.11"
     version: Optional[str] = None
 
 
@@ -91,7 +94,10 @@ class UdfSpecified(typing.NamedTuple):
     UDF code and runtime info as specified in a `run_udf` process in a process graph
     """
 
+    # UDF source code
     code: str
+
+    # UDF runtime info
     runtime: UdfRuntimeSpecified
 
 
@@ -99,7 +105,7 @@ def collect_udfs(process_graph: dict, process_registry: Optional[ProcessRegistry
     """
     Recursively traverse a process graph in flat graph representation and collect UDFs.
 
-    :return: Iterator of (udf_code, runtime, version) tuples
+    :return: Iterator of `UdfSpecified` entries (containing UDF source, code, runtime name and version)
     """
     for node_id, node in process_graph.items():
         process_id = node["process_id"]
@@ -109,7 +115,10 @@ def collect_udfs(process_graph: dict, process_registry: Optional[ProcessRegistry
         if process_id == "run_udf":
             yield UdfSpecified(
                 code=arguments.get("udf"),
-                runtime=UdfRuntimeSpecified(name=arguments.get("runtime"), version=arguments.get("version")),
+                runtime=UdfRuntimeSpecified(
+                    name=arguments.get("runtime"),
+                    version=arguments.get("version"),
+                ),
             )
 
         for argument_id, argument in arguments.items():

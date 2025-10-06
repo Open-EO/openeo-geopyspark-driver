@@ -129,6 +129,7 @@ from openeogeotrellis.udf import (
     collect_udfs,
     UdfRuntimeSpecified,
 )
+from openeogeotrellis.udf.udf_runtime_images import UdfRuntimeImageRepository
 from openeogeotrellis.user_defined_process_repository import (
     InMemoryUserDefinedProcessRepository,
     ZooKeeperUserDefinedProcessRepository,
@@ -376,10 +377,13 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 requests_session=requests_session, do_health_check=do_ejr_health_check
             )
 
+        udf_runtimes = GpsUdfRuntimes()
+
         super().__init__(
             catalog=catalog,
             batch_jobs=GpsBatchJobs(
                 catalog=catalog,
+                udf_runtimes=udf_runtimes,
                 jvm=jvm,
                 principal=principal,
                 key_tab=key_tab,
@@ -390,7 +394,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             ),
             user_defined_processes=user_defined_processes,
             processing=GpsProcessing(),
-            udf_runtimes=GpsUdfRuntimes(),
+            udf_runtimes=udf_runtimes,
             # secondary_services=GpsSecondaryServices(service_registry=self._service_registry),
         )
 
@@ -1394,6 +1398,7 @@ class GpsBatchJobs(backend.BatchJobs):
         *,
         # TODO: clean up this overly Terrascope-coupled constructor
         catalog: GeoPySparkLayerCatalog,
+        udf_runtimes: Optional["GpsUdfRuntimes"] = None,
         jvm: JVMView,
         principal: Optional[str] = None,
         key_tab: Optional[str] = None,
@@ -1404,6 +1409,7 @@ class GpsBatchJobs(backend.BatchJobs):
     ):
         super().__init__()
         self._catalog = catalog
+        self._udf_runtimes = udf_runtimes
         self._jvm = jvm
         self._principal = principal
         self._key_tab = key_tab
@@ -1843,19 +1849,22 @@ class GpsBatchJobs(backend.BatchJobs):
 
         if len(udf_runtimes) == 0:
             # TODO: this is a quick hack to start using python311 for batch jobs without UDFs. Needs clean-up
+            # TODO: With proper config, this will just be handled automatically by `udf_runtime_image_repository.get_image_from_udf_runtimes`
             image_name = "python311"
             if "image-name" not in job_options and image_name in get_backend_config().batch_runtime_to_image:
                 log.info(f'Forcing job_options["image-name"]={image_name!r} from {udf_runtimes=}')
                 job_options["image-name"] = image_name
-        elif len(udf_runtimes) == 1:
-            (udf_runtime,) = udf_runtimes
-            if udf_runtime is not None and "image-name" not in job_options and udf_runtime.version is not None:
-                image_name = udf_runtime.name.lower() + udf_runtime.version.replace(".", "")
+        else:
+            try:
+                image_name = self._udf_runtimes.udf_runtime_image_repository.get_image_from_udf_runtimes(
+                    runtimes=udf_runtimes
+                )
+            except Exception as e:
+                log.error(f"Failed to get image name from {udf_runtimes=}", exc_info=e)
+                image_name = None
+            if image_name and "image-name" not in job_options:
                 log.info(f'Forcing job_options["image-name"]={image_name!r} from {udf_runtimes=}')
                 job_options["image-name"] = image_name
-        elif len(udf_runtimes) > 1:
-            log.warning(f"Multiple UDF runtimes detected in the process graph: {udf_runtimes}. Running with default environment.")
-
 
         if (dependencies is None
             and job_info.get("dependency_status")
@@ -3085,7 +3094,7 @@ class GpsUdfRuntimes(backend.UdfRuntimes):
 
     # Python libraries to list
     # TODO: allow customization of this list (e.g. through config)
-    python_libraries = [
+    _python_libraries = [
         "openeo",
         "openeo_driver",
         "numpy",
@@ -3100,6 +3109,10 @@ class GpsUdfRuntimes(backend.UdfRuntimes):
         "tensorflow",
         "pytorch",
     ]
+
+    def __init__(self):
+        super().__init__()
+        self.udf_runtime_image_repository = UdfRuntimeImageRepository.from_config()
 
     def _get_python_versions(self):
         # TODO: this assumes UDF runtime is equal to web app runtime, which is not true anymore.
@@ -3117,7 +3130,7 @@ class GpsUdfRuntimes(backend.UdfRuntimes):
         # TODO: get actual library version (instead of version of current environment).
         libraries = {
             p: {"version": v.split(" ", 1)[-1]}
-            for p, v in get_package_versions(self.python_libraries, na_value=None).items()
+            for p, v in get_package_versions(self._python_libraries, na_value=None).items()
             if v
         }
 
