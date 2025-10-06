@@ -6,9 +6,11 @@ import os
 import pathlib
 import re
 import subprocess
+import sys
 from typing import Optional
 from unittest import mock
 
+import dirty_equals
 import jsonschema
 import kazoo.exceptions
 import pytest
@@ -127,6 +129,31 @@ class TestCapabilities:
         assert capabilities["foo"] == ["bar", "baz"]
         assert len(capabilities["links"]) > 1
         assert capabilities["links"][-1] == {"rel": "flavor", "href": "https://flavors.test/sweet"}
+
+    def test_udf_runtimes(self, api100):
+        udf_runtimes = api100.get("/udf_runtimes").assert_status_code(200).json
+        current_py_3_minor = f"{sys.version_info.major}.{sys.version_info.minor}"
+        expected_libraries = dirty_equals.IsPartialDict(
+            {"numpy": {"version": dirty_equals.IsStr(regex=r"\d+\.\d+\.\d+")}}
+        )
+        assert udf_runtimes == dirty_equals.IsPartialDict(
+            {
+                "Python": dirty_equals.IsPartialDict(
+                    {
+                        "title": "Python 3",
+                        "type": "language",
+                        "default": "3",
+                        "versions": dirty_equals.IsPartialDict(
+                            {
+                                "3": {"libraries": expected_libraries},
+                                current_py_3_minor: {"libraries": expected_libraries},
+                            }
+                        ),
+                    }
+                )
+            }
+        )
+
 
 
 class TestCollections:

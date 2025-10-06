@@ -3,6 +3,7 @@ import math
 
 import geopyspark as gps
 import pytest
+import osgeo.gdal
 
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 
@@ -39,8 +40,7 @@ def test_resample__spatial_single_level(imagecollection_with_two_bands_and_three
 
     path = tmp_path / "resampled.tiff"
     resampled.save_result(path, format="GTIFF")
-    from osgeo.gdal import Info
-    info = Info(str(path), format='json')
+    info = osgeo.gdal.Info(str(path), format='json')
     print(info)
     assert math.floor(info['geoTransform'][1]) == 100000.0
 

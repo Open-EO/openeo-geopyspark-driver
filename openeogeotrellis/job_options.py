@@ -10,6 +10,9 @@ from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.constants import JOB_OPTION_LOG_LEVEL, JOB_OPTION_LOGGING_THRESHOLD
 from openeogeotrellis.util.byteunit import byte_string_as
 
+
+JOB_OPTION_DISABLE = "disable"
+
 @dataclass
 class JobOptions:
     """
@@ -154,7 +157,8 @@ class JobOptions:
                 message=f"Invalid log level {self.log_level}. Should be one of 'debug', 'info', 'warning' or 'error'.",
             )
 
-        if byte_string_as(self.executor_memory) + byte_string_as(self.executor_memory_overhead) + byte_string_as(self.python_memory or "0b") > byte_string_as(
+        python_memory = 0 if self.python_memory == JOB_OPTION_DISABLE else byte_string_as(self.python_memory or "0b")
+        if byte_string_as(self.executor_memory) + byte_string_as(self.executor_memory_overhead) + python_memory > byte_string_as(
                 get_backend_config().max_executor_or_driver_memory):
             raise OpenEOApiException(
                 message=f"Requested too much executor memory: {self.executor_memory} + {self.executor_memory_overhead}, the max for this instance is: {get_backend_config().max_executor_or_driver_memory}",
@@ -221,20 +225,22 @@ class JobOptions:
         # When `spark.executor.pyspark.memory` is specified, Python will only use this memory and no more.
         python_mem = data.get("python-memory",None)
         python_max = -1
-        noExplicitOverhead = "executor-memoryOverhead" not in data
-        if python_mem is not None:
-            python_max = byte_string_as(python_mem)
+        if python_mem != JOB_OPTION_DISABLE:
 
-            if noExplicitOverhead:
-                memOverheadBytes = jvmOverheadBytes
-                init_kwargs["executor_memory_overhead"] = f"{memOverheadBytes // (1024 ** 2)}m"
+            noExplicitOverhead = "executor-memoryOverhead" not in data
+            if python_mem is not None:
+                python_max = byte_string_as(python_mem)
 
-        elif not noExplicitOverhead:
-            # If python-memory is not set, we convert most of the overhead memory to python memory
-            # this in fact duplicates the overhead memory, we should migrate away from this approach
-            if cls == K8SOptions:
-                memOverheadBytes = byte_string_as(data["executor-memoryOverhead"])
-                python_max = memOverheadBytes - jvmOverheadBytes
+                if noExplicitOverhead:
+                    memOverheadBytes = jvmOverheadBytes
+                    init_kwargs["executor_memory_overhead"] = f"{memOverheadBytes // (1024 ** 2)}m"
+
+            elif not noExplicitOverhead:
+                # If python-memory is not set, we convert most of the overhead memory to python memory
+                # this in fact duplicates the overhead memory, we should migrate away from this approach
+                if cls == K8SOptions:
+                    memOverheadBytes = byte_string_as(data["executor-memoryOverhead"])
+                    python_max = memOverheadBytes - jvmOverheadBytes
 
         if python_max is not None and python_max > 0:
             init_kwargs["python_memory"] = f"{python_max}b"
