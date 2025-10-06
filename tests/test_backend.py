@@ -1,3 +1,5 @@
+import sys
+
 import json
 import logging
 
@@ -20,7 +22,7 @@ from openeo_driver.specs import read_spec
 from openeo_driver.users import User
 from openeo_driver.utils import EvalEnv
 
-from openeogeotrellis.backend import GpsProcessing, GeoPySparkBackendImplementation
+from openeogeotrellis.backend import GpsProcessing, GeoPySparkBackendImplementation, GpsUdfRuntimes
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.config.s3_config import S3Config
 from openeogeotrellis.integrations.kubernetes import k8s_render_manifest_template, K8S_SPARK_APP_STATE
@@ -886,4 +888,46 @@ class TestGpsBatchJobs:
             api_version="1.2",
             metadata={},
             job_options={"log_level": "info"},
+        )
+
+
+class TestGpsUdfRuntimes:
+    def test_get_udf_runtimes(self):
+        runtimes = GpsUdfRuntimes()
+        current_py_3_minor = f"{sys.version_info.major}.{sys.version_info.minor}"
+        expected_libraries = dirty_equals.IsPartialDict(
+            {
+                "numpy": {"version": dirty_equals.IsStr(regex=r"\d+\.\d+\.\d+")},
+                "xarray": {"version": dirty_equals.IsStr(regex=r"\d+\.\d+\.\d+")},
+            }
+        )
+        assert runtimes.get_udf_runtimes() == dirty_equals.IsPartialDict(
+            {
+                "Python": dirty_equals.IsPartialDict(
+                    {
+                        "title": "Python 3",
+                        "type": "language",
+                        "default": "3",
+                        "versions": dirty_equals.IsPartialDict(
+                            {
+                                "3": {"libraries": expected_libraries},
+                                current_py_3_minor: {"libraries": expected_libraries},
+                            }
+                        ),
+                    }
+                ),
+                "Python-Jep": dirty_equals.IsPartialDict(
+                    {
+                        "title": "Python 3",
+                        "type": "language",
+                        "default": "3",
+                        "versions": dirty_equals.IsPartialDict(
+                            {
+                                "3": {"libraries": expected_libraries},
+                                current_py_3_minor: {"libraries": expected_libraries},
+                            }
+                        ),
+                    }
+                ),
+            }
         )
