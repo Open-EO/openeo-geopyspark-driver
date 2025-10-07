@@ -65,7 +65,6 @@ def backend_config_path() -> Path:
 @pytest.hookimpl(trylast=True)
 def pytest_configure(config):
     """Pytest configuration hook"""
-
     os.environ["PYTEST_CONFIGURE"] = (os.environ.get("PYTEST_CONFIGURE", "") + ":" + __file__).lstrip(":")
 
     # Load test GpsBackendConfig by default
@@ -77,9 +76,6 @@ def pytest_configure(config):
     os.environ["ASYNC_TASKS_KAFKA_BOOTSTRAP_SERVERS"] = "kafka01.test:6668"
 
     terminal_reporter = config.pluginmanager.get_plugin("terminalreporter")
-    import site
-
-    terminal_reporter.wrap_write(f"{sys.executable=} {sys.path=} {site.getsitepackages()=}")
     _ensure_geopyspark(terminal_reporter)
     if smart_bool(os.environ.get("OPENEO_TESTING_SETUP_SPARK", "yes")):
         _setup_local_spark(terminal_reporter, verbosity=config.getoption("verbose"))
