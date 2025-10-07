@@ -5,7 +5,7 @@ pwd
 
 rm -f /opt/geotrellis-dependencies-static.jar
 
-yum remove -y spark-bin
+yum remove -y spark-vito-scala213-3_5_7
 yum install -y hdf5 spark-vito-4_0_1
 ln -sf /opt/spark4_0_1 /usr/local/spark
 mkdir /eodata
