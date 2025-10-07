@@ -2,6 +2,9 @@
 set -eux
 pwd
 #TODO: remove temporary switch to spark-vito-4_0_1
+
+rm -f /opt/geotrellis-dependencies-static.jar
+
 yum remove -y spark-bin
 yum install -y hdf5 spark-vito-4_0_1
 ln -sf /opt/spark4_0_1 /usr/local/spark
