@@ -63,8 +63,12 @@ def backend_config_path() -> Path:
 
 
 @pytest.hookimpl(trylast=True)
-def pytest_configure(config):
+def pytest_configure(config, out: TerminalReporter):
     """Pytest configuration hook"""
+    import site
+
+    out.wrap_write(f"{sys.executable=} {sys.path=} {site.getsitepackages()=}")
+
     os.environ["PYTEST_CONFIGURE"] = (os.environ.get("PYTEST_CONFIGURE", "") + ":" + __file__).lstrip(":")
 
     # Load test GpsBackendConfig by default
