@@ -368,8 +368,8 @@ def create_red_nir_layer():
     return imagecollection
 
 def create_elevation_layer():
-    elevation_ramp, = np.mgrid[0:4]
-    layer = _create_spacetime_layer(cells=np.array([[elevation_ramp]]))
+    elevation_1, elevation_2 = np.mgrid[0:4, 0:4]
+    layer = _create_spacetime_layer(cells=np.array([[elevation_1], [elevation_2]]))
     pyramid = gps.Pyramid({0: layer})
     metadata = GeopysparkCubeMetadata(
         {
