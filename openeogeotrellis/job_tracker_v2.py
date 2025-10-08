@@ -100,6 +100,9 @@ class _JobMetadata(NamedTuple):
     # UTC datetime (or None if not finished yet)
     finish_time: Optional[dt.datetime] = None
 
+    # allows overriding the etl_source_id for this job (i.e. when set as a label on the K8s SparkApplication)
+    etl_source_id_override: Optional[str] = None
+
 
 class JobMetadataGetterInterface(metaclass=abc.ABCMeta):
     """
@@ -318,11 +321,16 @@ class K8sStatusGetter(JobMetadataGetterInterface):
             app_state = K8S_SPARK_APP_STATE.NEW
             start_time = finish_time = None
 
+        etl_source_id_override = metadata.get("metadata", {}).get("labels", {}).get("etl_source_id_override")
+
         job_status = k8s_state_to_openeo_job_status(app_state)
         return _JobMetadata(
-            app_state=app_state, status=job_status, usage=self._get_usage(app_id, start_time, finish_time,
-                                                                          job_id, user_id),
-            start_time=start_time, finish_time=finish_time
+            app_state=app_state,
+            status=job_status,
+            usage=self._get_usage(app_id, start_time, finish_time, job_id, user_id),
+            start_time=start_time,
+            finish_time=finish_time,
+            etl_source_id_override=etl_source_id_override,
         )
 
     def _get_usage(self, application_id: str, start_time: Optional[dt.datetime], finish_time: Optional[dt.datetime],
@@ -577,6 +585,7 @@ class JobTracker:
                 additional_credits_cost=get_backend_config().batch_job_base_fee_credits,
                 unique_process_ids=result_metadata.get("unique_process_ids", []),
                 job_options=job_info.get("job_options"),
+                etl_source_id=job_metadata.etl_source_id_override,
             )
 
             try:
@@ -688,7 +697,9 @@ class CliApp:
                         ),
                     )
                 elif app_cluster == "k8s":
-                    app_state_getter = K8sStatusGetter(kube_client("CustomObject"), Prometheus(config.prometheus_api))
+                    app_state_getter = K8sStatusGetter(
+                        kube_client(api_type="CustomObject"), Prometheus(config.prometheus_api)
+                    )
                 elif app_cluster == "broken-dummy":
                     raise RuntimeError("Broken dummy")
                 else:
