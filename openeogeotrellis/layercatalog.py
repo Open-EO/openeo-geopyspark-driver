@@ -388,8 +388,6 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             except Exception as e:
                 if isinstance(e, py4j.protocol.Py4JJavaError):
                     msg = e.java_exception.getMessage()
-                elif isinstance(e, pyspark.sql.utils.IllegalArgumentException):
-                    msg = e.desc
                 else:
                     msg = str(e)
                 if msg and "Could not find data for your load_collection request with catalog ID" in msg:
