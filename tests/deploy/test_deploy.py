@@ -117,7 +117,7 @@ JAR_DIR = Path(__file__).parent.parent.parent / "jars"
 @pytest.mark.parametrize(
     ["glob", "expected"],
     [
-        ("geotrellis-extensions-*.jar", dirty_equals.IsStr(regex=r"\d+\.\d+.\d+_\d+\.\d+|PR-\d+.*")),
+        ("geotrellis-extensions-*.jar", dirty_equals.IsStr(regex=r"(\d+\.\d+.\d+_\d+\.\d+|PR-\d+).*")),
     ],
 )
 def test_get_jar_version_info(glob, expected):
@@ -134,7 +134,7 @@ def test_get_jar_versions():
     versions = get_jar_versions(paths)
     assert versions == DictSubSet(
         {
-            "geotrellis-extensions": dirty_equals.IsStr(regex=r"\d+\.\d+.\d+_\d+\.\d+|PR-\d+.*"),
+            "geotrellis-extensions": dirty_equals.IsStr(regex=r"(\d+\.\d+.\d+_\d+\.\d+|PR-\d+).*"),
         }
     )
 
@@ -161,7 +161,7 @@ def test_build_gps_backend_deploy_metadata():
             "versions": DictSubSet(
                 {
                     "openeo": RegexMatcher("\d+.\d+.\d+"),
-                    "geotrellis-extensions": dirty_equals.IsStr(regex=r"\d+\.\d+.\d+_\d+\.\d+|PR-\d+.*"),
+                    "geotrellis-extensions": dirty_equals.IsStr(regex=r"(\d+\.\d+.\d+_\d+\.\d+|PR-\d+).*"),
                 }
             )
         }
