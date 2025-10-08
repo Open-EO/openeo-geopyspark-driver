@@ -367,6 +367,28 @@ def create_red_nir_layer():
     imagecollection = GeopysparkDataCube(pyramid=pyramid, metadata=metadata)
     return imagecollection
 
+def create_elevation_layer():
+    elevation_ramp, = np.mgrid[0:4]
+    layer = _create_spacetime_layer(cells=np.array([[elevation_ramp]]))
+    pyramid = gps.Pyramid({0: layer})
+    metadata = GeopysparkCubeMetadata(
+        {
+            "cube:dimensions": {
+                "x": {"type": "spatial", "axis": "x"},
+                "y": {"type": "spatial", "axis": "y"},
+                "bands": {"type": "bands", "values": ["elevation"]},
+            },
+            "summaries": {
+                "eo:bands": [
+                    {"name": "elevation", "common_name": "elevation"}
+                ]
+            },
+        }
+    )
+    imagecollection = GeopysparkDataCube(pyramid=pyramid, metadata=metadata)
+    return imagecollection
+
+
 
 def test_linear_scale_range():
     imagecollection = create_red_nir_layer()
@@ -518,3 +540,10 @@ def test_merge_cubes_error():
         cube1 = GeopysparkDataCube(pyramid=gps.Pyramid({0: layer1}), metadata=metadata1)
         cube2 = GeopysparkDataCube(pyramid=gps.Pyramid({0: layer2}), metadata=metadata2)
         cube1.merge_cubes(cube2)
+
+def test_slope():
+    imagecollection = create_elevation_layer()
+
+    slope = imagecollection.ndvi().slope()
+    print(slope)
+
