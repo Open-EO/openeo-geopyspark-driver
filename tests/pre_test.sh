@@ -4,8 +4,6 @@ pwd
 
 rm -f /opt/geotrellis-dependencies-static.jar
 
-yum remove -y hdf5
-yum install -y hdf5
 mkdir /eodata
 chown jenkins /eodata
 runuser jenkins -c '
