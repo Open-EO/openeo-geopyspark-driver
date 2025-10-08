@@ -2,9 +2,9 @@
 set -eux
 pwd
 
-yum install -y hdf5
 mkdir /eodata
 chown jenkins /eodata
+
 runuser jenkins -c '
 set -eux
 source ./env.sh
