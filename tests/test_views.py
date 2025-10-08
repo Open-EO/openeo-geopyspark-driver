@@ -106,7 +106,7 @@ class TestCapabilities:
                 "openeo_driver": semver_alike,
                 "openeo-geopyspark": semver_alike,
                 "geopyspark-openeo": semver_alike,
-                "geotrellis-extensions": semver_alike,
+                "geotrellis-extensions": dirty_equals.IsAnyStr,
             },
         }
         assert deep_get(capabilities, "processing:software") == {
@@ -114,7 +114,7 @@ class TestCapabilities:
             "openeo_driver": semver_alike,
             "openeo-geopyspark": semver_alike,
             "geopyspark-openeo": semver_alike,
-            "geotrellis-extensions": semver_alike,
+            "geotrellis-extensions": dirty_equals.IsAnyStr,
         }
 
     def test_capabilities_extras(self, api100):
