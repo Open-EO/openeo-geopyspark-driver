@@ -100,7 +100,7 @@ class _JobMetadata(NamedTuple):
     # UTC datetime (or None if not finished yet)
     finish_time: Optional[dt.datetime] = None
 
-    # allows overriding the etl_source_id for this job (i.e. when set as a label on the K8s SparkApplication)
+    # allows overriding the ETL source ID for this job (i.e. when set as a label on the K8s application)
     etl_source_id_override: Optional[str] = None
 
 
