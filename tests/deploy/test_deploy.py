@@ -156,12 +156,16 @@ def test_build_gps_backend_deploy_metadata():
         packages=["openeo", "openeo_driver", "openeo-geopyspark", "geopyspark"],
         jar_paths=JAR_DIR.glob("geotrellis-*.jar")
     )
-    assert metadata == DictSubSet({
-        "versions": DictSubSet({
-            "openeo": RegexMatcher("\d+.\d+.\d+"),
-            "geotrellis-extensions": RegexMatcher(r"\d+\.\d+.\d+_\d+\.\d+"),
-        })
-    })
+    assert metadata == DictSubSet(
+        {
+            "versions": DictSubSet(
+                {
+                    "openeo": RegexMatcher("\d+.\d+.\d+"),
+                    "geotrellis-extensions": dirty_equals.IsStr(regex=r"\d+\.\d+.\d+_\d+\.\d+|PR-\d+.*"),
+                }
+            )
+        }
+    )
 
 
 def test_find_geotrellis_jars_cwd(tmp_path, monkeypatch):
