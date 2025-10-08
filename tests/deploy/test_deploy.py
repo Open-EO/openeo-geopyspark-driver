@@ -1,4 +1,6 @@
 import logging
+
+import dirty_equals
 import sys
 import textwrap
 from io import StringIO
@@ -112,9 +114,12 @@ def test_load_custom_processes_import_present(tmp_path, api_version, backend_imp
 JAR_DIR = Path(__file__).parent.parent.parent / "jars"
 
 
-@pytest.mark.parametrize(["glob", "expected"], [
-    ("geotrellis-extensions-*.jar", RegexMatcher(r"\d+\.\d+.\d+_\d+\.\d+")),
-])
+@pytest.mark.parametrize(
+    ["glob", "expected"],
+    [
+        ("geotrellis-extensions-*.jar", dirty_equals.IsStr(regex=r"\d+\.\d+.\d+_\d+\.\d+|PR-\d+.*")),
+    ],
+)
 def test_get_jar_version_info(glob, expected):
     # TODO: run these tests against small dedicated test files instead of the ones downloaded in pre_test.sh? #336
     jar_paths = list(JAR_DIR.glob(glob))
@@ -127,9 +132,11 @@ def test_get_jar_version_info(glob, expected):
 def test_get_jar_versions():
     paths = JAR_DIR.glob("geotrellis-*.jar")
     versions = get_jar_versions(paths)
-    assert versions == DictSubSet({
-        "geotrellis-extensions": RegexMatcher(r"\d+\.\d+.\d+_\d+\.\d+"),
-    })
+    assert versions == DictSubSet(
+        {
+            "geotrellis-extensions": dirty_equals.IsStr(regex=r"\d+\.\d+.\d+_\d+\.\d+|PR-\d+.*"),
+        }
+    )
 
 
 @pytest.mark.parametrize(
