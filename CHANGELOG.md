@@ -31,6 +31,7 @@ without compromising stable operations.
 - `load_stac`: ignore empty `roles` listing for assets to decide if asset is a "band asset" ([1356](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1356))
 - ~~Make `osgeo.gdal` more clearly an optional~~ Eliminate `osgeo.gdal` as runtime dependency ([#1363](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1363), eu-cdse/openeo-cdse-infra#718, eu-cdse/openeo-cdse-infra#733)
 - Support returning job result STAC items in addition to assets ([#1111](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1111))
+- Support overriding default ETL source ID from K8s app label ([eu-cdse/openeo-cdse-infra#612](https://github.com/eu-cdse/openeo-cdse-infra/issues/612))
 
 
 ## 0.67.0
