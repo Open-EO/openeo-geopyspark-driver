@@ -132,6 +132,18 @@ def test_get_jar_versions():
     })
 
 
+@pytest.mark.parametrize(
+    ["jar_path", "expected"],
+    [
+        ("jarz/geotrellis-extensions-2.5.1_2.13-SNAPSHOT.jar", "geotrellis-extensions"),
+        ("jarz/geotrellis-extensions-PR-123.jar", "geotrellis-extensions"),
+    ],
+)
+def test_get_jar_versions_name_detection(jar_path, expected):
+    """Ignore "PR" prefix (`-PR-123`) in jar name-version detection"""
+    assert get_jar_versions([Path(jar_path)]) == {expected: "n/a"}
+
+
 def test_build_gps_backend_deploy_metadata():
     metadata = build_gps_backend_deploy_metadata(
         packages=["openeo", "openeo_driver", "openeo-geopyspark", "geopyspark"],
