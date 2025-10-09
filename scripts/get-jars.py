@@ -16,6 +16,7 @@ import os
 import subprocess
 import urllib.request
 from pathlib import Path
+from typing import List
 
 logger = logging.getLogger("get-jars")
 
@@ -54,10 +55,10 @@ class JarVariants:
     def default_variant(self) -> str:
         return self._default
 
-    def get_variants(self) -> list[str]:
+    def get_variants(self) -> List[str]:
         return sorted(self._variants.keys())
 
-    def get_jars(self, variant: str) -> list[str]:
+    def get_jars(self, variant: str) -> List[str]:
         return self._variants[variant]
 
 
