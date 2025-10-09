@@ -37,8 +37,34 @@ def download_jar(jar_dir: Path, url: str, force: bool = False) -> Path:
     return target
 
 
+class JarVariants:
+    def __init__(self, jars_json_path: Path):
+        logger.info(f"Loading JAR variants from {jars_json_path}")
+        with jars_json_path.open(mode="r", encoding="utf8") as f:
+            data = json.load(f)
+        self._default = data["default"]
+        self._variants = data["variants"]
+        assert self._default in self._variants
+        for variant, jars in self._variants.items():
+            assert (
+                isinstance(jars, list) and len(jars) > 0 and all(isinstance(j, str) for j in jars)
+            ), f"Must be non-empty list of strings: {jars!r}"
+        logger.info(f"Loaded variants {self.get_variants()} with default {self._default!r}")
+
+    def default_variant(self) -> str:
+        return self._default
+
+    def get_variants(self) -> list[str]:
+        return sorted(self._variants.keys())
+
+    def get_jars(self, variant: str) -> list[str]:
+        return self._variants[variant]
+
+
 def main():
     logging.basicConfig(level=logging.INFO)
+
+    jar_variants = JarVariants(JARS_SOURCE_FILE)
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -55,11 +81,18 @@ def main():
         help="Force download instead of skipping existing jars.",
     )
     parser.add_argument(
+        "--variant",
+        choices=jar_variants.get_variants(),
+        default=jar_variants.default_variant(),
+        help="Variant of JAR set to download (default: %(default)r).",
+    )
+    # TODO: eliminate this deprecated "python-version" option
+    parser.add_argument(
         "-p",
         "--python-version",
         choices=["3.8", "3.11"],
-        default="3.8",
-        help="Python version to download jars for (default: current Python version).",
+        default=None,
+        help="[DEPRECATED] Python version to download jars for.",
     )
 
     cli_args = parser.parse_args()
@@ -67,19 +100,20 @@ def main():
     jar_dir: Path = cli_args.jar_dir.absolute()
     force_download = cli_args.force_download
     python_version = cli_args.python_version
+    variant = cli_args.variant
 
     logger.info(f"Using target JAR dir: {jar_dir}")
     jar_dir.mkdir(parents=True, exist_ok=True)
 
-    jar_urls = []
-    with open(JARS_SOURCE_FILE, "r") as f:
-        jar_sources = json.load(f)
-        jar_urls = jar_sources[f"python{python_version}"]
-        assert isinstance(jar_urls, list)
-        assert all(isinstance(u, str) for u in jar_urls)
-        logger.info(f"Found {len(jar_urls)} JAR URLs in {JARS_SOURCE_FILE}:")
-        for u in jar_urls:
-            logger.info(f" - {u}")
+    if python_version:
+        logger.warning("The --python-version option is deprecated, use --variant instead.")
+        variant = f"python{python_version}"
+
+    logger.info(f"Looking up JAR URLs for variant {variant!r}")
+    jar_urls = jar_variants.get_jars(variant)
+    logger.info(f"Found {len(jar_urls)} JAR URLs for {variant!r} in {JARS_SOURCE_FILE}:")
+    for u in jar_urls:
+        logger.info(f" - {u}")
 
     for url in jar_urls:
         download_jar(jar_dir, url=url, force=force_download)
