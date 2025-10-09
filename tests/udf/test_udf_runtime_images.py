@@ -184,6 +184,20 @@ class TestUdfRuntimeImageRepository:
         repo = UdfRuntimeImageRepository.from_config(config=config)
         assert repo.get_default_image() == "docker.example/openeo:3.11"
 
+    def test_get_image_from_udf_runtimes_empty_from_config_batch_runtime_to_image_python(self):
+        """
+        Legacy `batch_runtime_to_image` config.
+        Empty runtimes should result in default image.
+        """
+        config = GpsBackendConfig(
+            batch_runtime_to_image={
+                "python38": "docker.test/openeo:3.8",
+                "python311": "docker.test/openeo:3.11",
+            }
+        )
+        repo = UdfRuntimeImageRepository.from_config(config=config)
+        assert repo.get_image_from_udf_runtimes(runtimes=[]) == "docker.test/openeo:3.11"
+
     def test_get_image_from_udf_runtimes_basic(self):
         repo = UdfRuntimeImageRepository(
             images=[
@@ -202,6 +216,7 @@ class TestUdfRuntimeImageRepository:
     @pytest.mark.parametrize(
         ["versions_specified", "expected"],
         [
+            ([], "docker.test/openeo:3.11"),
             (["3.11"], "docker.test/openeo:3.11"),
             (["3.14"], "docker.test/openeo:3.14-alpha"),
             (["3"], "docker.test/openeo:3.11"),

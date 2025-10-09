@@ -1324,7 +1324,7 @@ class TestBatchJobs:
         assert batch_job_args[3] == str(job_dir)
         assert batch_job_args[4] == job_output.name
         assert batch_job_args[5] == job_metadata.name
-        assert env['YARN_CONTAINER_RUNTIME_DOCKER_IMAGE'] == "vito-docker.artifactory.vgt.vito.be/openeo-geotrellis-kube-python311:latest"
+        assert env["YARN_CONTAINER_RUNTIME_DOCKER_IMAGE"] == "docker.test/openeo-geopy311:7.9.11"
 
     @pytest.mark.parametrize(["boost"], [
         [("driver-memory", "99999g")],

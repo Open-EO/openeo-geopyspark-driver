@@ -1842,28 +1842,12 @@ class GpsBatchJobs(backend.BatchJobs):
 
         log.debug(f"_start_job {job_options=}")
 
-        process_registry = GpsProcessing().get_process_registry(api_version=api_version)
-        udf_runtimes: Set[UdfRuntimeSpecified] = set(
-            udf.runtime for udf in collect_udfs(job_process_graph, process_registry=process_registry)
-        )
-
-        if len(udf_runtimes) == 0:
-            # TODO: this is a quick hack to start using python311 for batch jobs without UDFs. Needs clean-up
-            # TODO: With proper config, this will just be handled automatically by `udf_runtime_image_repository.get_image_from_udf_runtimes`
-            image_name = "python311"
-            if "image-name" not in job_options and image_name in get_backend_config().batch_runtime_to_image:
-                log.info(f'Forcing job_options["image-name"]={image_name!r} from {udf_runtimes=}')
-                job_options["image-name"] = image_name
-        else:
-            try:
-                image_name = self._udf_runtimes.udf_runtime_image_repository.get_image_from_udf_runtimes(
-                    runtimes=udf_runtimes
-                )
-            except Exception as e:
-                log.error(f"Failed to get image name from {udf_runtimes=}", exc_info=e)
-                image_name = None
-            if image_name and "image-name" not in job_options:
-                log.info(f'Forcing job_options["image-name"]={image_name!r} from {udf_runtimes=}')
+        if "image-name" not in job_options:
+            image_name = self._determine_container_image_from_process_graph(
+                process_graph=job_process_graph, api_version=api_version
+            )
+            if image_name:
+                log.info(f'Forcing job_options["image-name"]={image_name!r}')
                 job_options["image-name"] = image_name
 
         if (dependencies is None
@@ -2208,9 +2192,22 @@ class GpsBatchJobs(backend.BatchJobs):
                 )
                 dbl_registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.QUEUED)
 
-
-
-
+    def _determine_container_image_from_process_graph(
+        self, process_graph: dict, *, api_version: str = OPENEO_API_VERSION_DEFAULT
+    ) -> Union[str, None]:
+        try:
+            process_registry = GpsProcessing().get_process_registry(api_version=api_version)
+            udf_runtimes: Set[UdfRuntimeSpecified] = set(
+                udf.runtime for udf in collect_udfs(process_graph, process_registry=process_registry)
+            )
+            image_name = self._udf_runtimes.udf_runtime_image_repository.get_image_from_udf_runtimes(
+                runtimes=udf_runtimes
+            )
+            logger.info(f"Determined container image {image_name} from process graph with {udf_runtimes=}")
+            return image_name
+        except Exception as e:
+            logger.warning(f"Failed to determine container image from process graph: {e}", exc_info=True)
+            return None
 
     # TODO: encapsulate this SHub stuff in a dedicated class?
     def _schedule_and_get_dependencies(  # some we schedule ourselves, some already exist

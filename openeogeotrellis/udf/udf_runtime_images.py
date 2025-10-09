@@ -197,7 +197,9 @@ class UdfRuntimeImageRepository:
         best_image, best_score, _ = max(scored, key=lambda s: (s[1], s[2]))
 
         if best_score != len(runtimes):
-            _log.warning(f"No image matches all {runtimes=}, best match {best_score}/{len(runtimes)}: {best_image!r}")
+            _log.warning(
+                f"No image matches all {runtimes=}, best match {best_score}/{len(runtimes)}: {best_image.image_ref!r}"
+            )
         else:
-            _log.info(f"Best image match for {runtimes=}: {best_image}")
+            _log.info(f"Best image match for {runtimes=}: {best_image.image_ref!r}")
         return best_image.image_ref

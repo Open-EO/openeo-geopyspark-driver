@@ -22,7 +22,7 @@ from openeo_driver.specs import read_spec
 from openeo_driver.users import User
 from openeo_driver.utils import EvalEnv
 
-from openeogeotrellis.backend import GpsProcessing, GeoPySparkBackendImplementation, GpsUdfRuntimes
+from openeogeotrellis.backend import GpsProcessing, GeoPySparkBackendImplementation, GpsUdfRuntimes, GpsBatchJobs
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.config.s3_config import S3Config
 from openeogeotrellis.integrations.kubernetes import k8s_render_manifest_template, K8S_SPARK_APP_STATE
@@ -889,6 +889,53 @@ class TestGpsBatchJobs:
             metadata={},
             job_options={"log_level": "info"},
         )
+
+    def test_determine_container_image_from_process_graph_no_udfs(self):
+        gps_batch_jobs = GpsBatchJobs(catalog=None, jvm=None, udf_runtimes=GpsUdfRuntimes())
+        pg = {
+            "add35": {"process_id": "add", "arguments": {"x": 3, "y": 5}, "result": True},
+        }
+        image = gps_batch_jobs._determine_container_image_from_process_graph(pg)
+        assert image == "docker.test/openeo-geopy311:7.9.11"
+
+    @pytest.mark.parametrize(
+        ["args", "expected", "expected_warning"],
+        [
+            ({"runtime": "Python"}, "docker.test/openeo-geopy311:7.9.11", None),
+            ({"runtime": "Python", "version": "3"}, "docker.test/openeo-geopy311:7.9.11", None),
+            ({"runtime": "Python", "version": "3.8"}, "docker.test/openeo-geopy38:3.5.8", None),
+            ({"runtime": "Python", "version": "3.11"}, "docker.test/openeo-geopy311:7.9.11", None),
+            (
+                {"runtime": "Python", "version": "4.5"},
+                "docker.test/openeo-geopy311:7.9.11",
+                dirty_equals.IsStr(regex="No image matches all runtimes.*"),
+            ),
+            (
+                {"runtime": "Pithoon", "version": "3.8"},
+                "docker.test/openeo-geopy311:7.9.11",
+                dirty_equals.IsStr(regex="No image matches all runtimes.*"),
+            ),
+        ],
+    )
+    def test_determine_container_image_from_process_graph_with_udf_runtime(
+        self, args, expected, expected_warning, caplog
+    ):
+        caplog.set_level(logging.WARNING)
+        gps_batch_jobs = GpsBatchJobs(catalog=None, jvm=None, udf_runtimes=GpsUdfRuntimes())
+        pg = {
+            "runudf": {
+                "process_id": "run_udf",
+                "arguments": {"data": [1, 2, 3], "udf": "hello world", **args},
+                "result": True,
+            },
+        }
+        image = gps_batch_jobs._determine_container_image_from_process_graph(pg)
+        assert image == expected
+
+        if expected_warning:
+            assert expected_warning in caplog.messages
+        else:
+            assert caplog.messages == []
 
 
 class TestGpsUdfRuntimes:
