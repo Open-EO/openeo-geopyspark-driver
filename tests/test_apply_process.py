@@ -544,6 +544,6 @@ def test_merge_cubes_error():
 def test_slope():
     imagecollection = create_elevation_layer()
 
-    slope = imagecollection.ndvi().slope()
+    slope = imagecollection.slope()
     print(slope)
 
