@@ -2944,9 +2944,15 @@ class GeopysparkDataCube(DriverDataCube):
         return atmo_corrected
 
     @callsite
+    def aspect(self):
+        pr = gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses()
+        return self._apply_to_levels_geotrellis_rdd(lambda rdd, level: pr.aspect(rdd),
+            self.metadata.rename_labels(self.metadata.band_dimension.name, target=["aspect"]))
+
+    @callsite
     def slope(self):
         pr = gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses()
-        return self._apply_to_levels_geotrellis_rdd(lambda rdd: pr.slope(rdd),
+        return self._apply_to_levels_geotrellis_rdd(lambda rdd, level: pr.slope(rdd),
             self.metadata.rename_labels(self.metadata.band_dimension.name, target=["slope"]))
 
 
