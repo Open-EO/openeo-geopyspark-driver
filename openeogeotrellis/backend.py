@@ -3088,62 +3088,9 @@ class GpsBatchJobs(backend.BatchJobs):
 
 
 class GpsUdfRuntimes(backend.UdfRuntimes):
-
-    # Python libraries to list
-    # TODO: allow customization of this list (e.g. through config)
-    _python_libraries = [
-        "openeo",
-        "openeo_driver",
-        "numpy",
-        "scipy",
-        "pandas",
-        "xarray",
-        "geopandas",
-        "netCDF4",
-        "shapely",
-        "pyproj",
-        "rasterio",
-        "tensorflow",
-        "pytorch",
-    ]
-
     def __init__(self):
         super().__init__()
         self.udf_runtime_image_repository = UdfRuntimeImageRepository.from_config()
 
-    def _get_python_versions(self):
-        # TODO: this assumes UDF runtime is equal to web app runtime, which is not true anymore.
-        major, minor, patch = (str(v) for v in sys.version_info[:3])
-        aliases = [
-            f"{major}",
-            f"{major}.{minor}",
-            f"{major}.{minor}.{patch}",
-        ]
-        default_version = major
-        return major, aliases, default_version
-
-    def _get_python_udf_runtime_metadata(self):
-        major, aliases, default_version = self._get_python_versions()
-        # TODO: get actual library version (instead of version of current environment).
-        libraries = {
-            p: {"version": v.split(" ", 1)[-1]}
-            for p, v in get_package_versions(self._python_libraries, na_value=None).items()
-            if v
-        }
-
-        return {
-            "title": f"Python {major}",
-            "description": f"Python {major} runtime environment.",
-            "type": "language",
-            "default": default_version,
-            "versions": {v: {"libraries": libraries} for v in aliases},
-        }
-
     def get_udf_runtimes(self) -> dict:
-        # TODO: this is highly geopyspark-driver specific: return a simpler listing by default
-        # TODO add caching of this result
-        return {
-            # TODO: toggle these runtimes through dependency injection or config?
-            "Python": self._get_python_udf_runtime_metadata(),
-            "Python-Jep": self._get_python_udf_runtime_metadata(),
-        }
+        return self.udf_runtime_image_repository.get_udf_runtimes_response()
