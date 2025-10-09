@@ -544,6 +544,8 @@ def test_merge_cubes_error():
 def test_aspect():
     imagecollection = create_elevation_layer()
 
+    cube = GeopysparkDataCube(pyramid=input, metadata=self.collection_metadata)
+
     aspect = imagecollection.aspect()
     print(aspect)
 
