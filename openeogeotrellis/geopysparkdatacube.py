@@ -2945,19 +2945,29 @@ class GeopysparkDataCube(DriverDataCube):
 
     @callsite
     def aspect(self):
-        pr = gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses()
-        pyramid = self.pyramid
-        return self._apply_to_levels_geotrellis_rdd(lambda rdd, level: pr.aspect(pyramid.levels[level].srdd.rdd()),
-            self.metadata.rename_labels(self.metadata.band_dimension.name, target=["aspect"]))
+        def compute_aspect(rdd, level):
+            pr = gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses()
+            if self.metadata.has_band_dimension():
+                band_names = self.metadata.band_names
+            else:
+                band_names = ["band_unnamed"]
+            wrapped = pr.wrapCube(rdd)
+            wrapped.openEOMetadata().setBandNames(band_names)
+            return pr.aspect(wrapped)
+        return self._apply_to_levels_geotrellis_rdd(compute_aspect)
 
     @callsite
     def slope(self):
-        pr = gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses()
-        pyramid = self.pyramid
-        return self._apply_to_levels_geotrellis_rdd(lambda rdd, level: pr.slope(pyramid.levels[level].srdd.rdd()),
-            self.metadata.rename_labels(self.metadata.band_dimension.name, target=["slope"]))
-
-
+        def compute_slope(rdd, level):
+            pr = gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses()
+            if self.metadata.has_band_dimension():
+                band_names = self.metadata.band_names
+            else:
+                band_names = ["band_unnamed"]
+            wrapped = pr.wrapCube(rdd)
+            wrapped.openEOMetadata().setBandNames(band_names)
+            return pr.slope(wrapped)
+        return self._apply_to_levels_geotrellis_rdd(compute_slope)
 
     def sar_backscatter(self, args: SarBackscatterArgs) -> 'GeopysparkDataCube':
         # Nothing to do: the actual SAR backscatter processing already happened in `load_collection`
