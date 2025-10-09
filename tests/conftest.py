@@ -244,6 +244,12 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
         )
     )
 
+    try:
+        scala_version = context._jvm.scala.util.Properties.versionNumberString()
+    except Exception as e:
+        scala_version = str(e)
+    out.write_line("[conftest.py] Scala version: " + scala_version)
+
     if OPENEO_LOCAL_DEBUGGING:
         # TODO: Activate default logging for this message
         print("Spark UI: " + str(context.uiWebUrl))
