@@ -287,9 +287,7 @@ class GpsBackendConfig(OpenEoBackendConfig):
     batch_spark_yarn_historyserver_address: str = ""
     batch_yarn_container_runtime_docker_client_config: str = ""
     gdalinfo_from_file: bool = True
-    gdalinfo_python_call: bool = False
     gdalinfo_use_subprocess: bool = False
-    gdalinfo_use_python_subprocess: bool = False
 
     # TODO #1009 make None by default, when appropriate configs are set.
     calrissian_config: Optional[CalrissianConfig] = CalrissianConfig()

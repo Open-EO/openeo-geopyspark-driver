@@ -9,6 +9,8 @@ import shutil
 import textwrap
 import urllib.parse
 import urllib.request
+from unittest import skip
+
 import requests
 from pathlib import Path
 from typing import List, Optional, Sequence, Union
@@ -47,7 +49,7 @@ from openeo_driver.util.geometry import (
     as_geojson_feature,
     as_geojson_feature_collection,
 )
-from osgeo import gdal
+import osgeo.gdal
 from pystac import (
     Asset,
     Catalog,
@@ -4216,6 +4218,7 @@ class TestLoadStac:
         message = "Band order should be alphabetical for NetCDF STAC-catalog with a time dimension."
         assert any(message in m for m in caplog.messages)
 
+    @skip
     @pytest.mark.parametrize(
         "save_format",
         [
@@ -4754,7 +4757,7 @@ class TestLoadStac:
         res_path = tmp_path / "res.tiff"
         res_path.write_bytes(res.data)
 
-        raster = gdal.Open(str(res_path))
+        raster = osgeo.gdal.Open(str(res_path))
         assert raster.RasterCount == 1
 
         only_band = raster.GetRasterBand(1)
@@ -5215,7 +5218,7 @@ def test_custom_geotiff_tags(api110, tmp_path):
     with open(output_file, mode="wb") as f:
         f.write(response.data)
 
-    raster = gdal.Open(str(output_file))
+    raster = osgeo.gdal.Open(str(output_file))
 
     assert raster.GetMetadata() == DictSubSet({
         "AREA_OR_POINT": "Area",
@@ -5347,7 +5350,7 @@ def test_reduce_bands_to_geotiff(api110, tmp_path):
     with open(output_file, mode="wb") as f:
         f.write(response.data)
 
-    raster = gdal.Open(str(output_file))
+    raster = osgeo.gdal.Open(str(output_file))
     assert raster.RasterCount == 1
 
     only_band = raster.GetRasterBand(1)

@@ -194,7 +194,7 @@ class ModelLoader:
 
     @staticmethod
     def _load_catboost_model(model_url: str) -> GeopysparkMlModel:
-        filename = "catboost_model.cbm"
+        filename = "catboost_model.cbm.tar.gz"
         with tempfile.TemporaryDirectory() as tmp_dir:
             packed_path = Path(tmp_dir) / filename
             ModelLoader._download_file(model_url, packed_path)

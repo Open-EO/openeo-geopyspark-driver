@@ -2898,7 +2898,7 @@ class GeopysparkDataCube(DriverDataCube):
         mission_id = options.get("mission_id") or supported_missons[0]
         append_debug_bands = bool(options.get("append_debug_bands"))
 
-        def get_float(d: dict, key: str, default: float = np.NaN) -> float:
+        def get_float(d: dict, key: str, default: float = np.nan) -> float:
             value = d.get(key)
             if value is None:
                 value = default

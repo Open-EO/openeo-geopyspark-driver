@@ -10,7 +10,7 @@
 
 ### Using podman
 
-A shell script is available that runs the service in podman.
+A shell script is available that runs the service in podman/docker.
 
 Environment variables are taken from local_service.env, where they can be easily adapted.
 

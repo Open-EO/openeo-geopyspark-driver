@@ -72,11 +72,14 @@ def get_jar_version_info(path: PathLike, na_value="n/a") -> str:
 
 def get_jar_versions(paths: Iterable[PathLike]) -> Dict[str, str]:
     """Build dict describing jar versions"""
-    paths = [Path(p) for p in paths]
-    return {
-        re.match("[a-zA-Z_-]*[a-zA-Z]", p.name).group(0): get_jar_version_info(p)
-        for p in paths
-    }
+    versions = {}
+    for path in [Path(p) for p in paths]:
+        name = re.match(r"[a-zA-Z_-]*[a-zA-Z]", path.name).group(0)
+        # Drop suffix because of "PR-123" style versioning (instead of more classic "1.2.3-SNAPSHOT" style)
+        if name.endswith("-PR"):
+            name = name[:-3]
+        versions[name] = get_jar_version_info(path)
+    return versions
 
 
 def find_geotrellis_jars(
