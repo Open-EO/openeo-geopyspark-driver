@@ -18,6 +18,7 @@ def test_slope(imagecollection_with_two_bands_and_three_dates):
     input = imagecollection_with_two_bands_and_three_dates
     result = input.slope()
 
+    logger.info(result)
     the_date = datetime.datetime(2017, 9, 25, 11, 37)
     result_xarray = result._to_xarray()
     t1_slope_band = result_xarray.sel(bands='slope', t=the_date)

@@ -541,9 +541,14 @@ def test_merge_cubes_error():
         cube2 = GeopysparkDataCube(pyramid=gps.Pyramid({0: layer2}), metadata=metadata2)
         cube1.merge_cubes(cube2)
 
+def test_aspect():
+    imagecollection = create_elevation_layer()
+
+    aspect = imagecollection.aspect()
+    print(aspect)
+
 def test_slope():
     imagecollection = create_elevation_layer()
 
     slope = imagecollection.slope()
     print(slope)
-
