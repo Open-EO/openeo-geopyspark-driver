@@ -1,4 +1,6 @@
 import logging
+
+import dirty_equals
 import sys
 import textwrap
 from io import StringIO
@@ -112,9 +114,12 @@ def test_load_custom_processes_import_present(tmp_path, api_version, backend_imp
 JAR_DIR = Path(__file__).parent.parent.parent / "jars"
 
 
-@pytest.mark.parametrize(["glob", "expected"], [
-    ("geotrellis-extensions-*.jar", RegexMatcher(r"\d+\.\d+.\d+_\d+\.\d+")),
-])
+@pytest.mark.parametrize(
+    ["glob", "expected"],
+    [
+        ("geotrellis-extensions-*.jar", dirty_equals.IsStr(regex=r"(\d+\.\d+.\d+_\d+\.\d+|PR-\d+).*")),
+    ],
+)
 def test_get_jar_version_info(glob, expected):
     # TODO: run these tests against small dedicated test files instead of the ones downloaded in pre_test.sh? #336
     jar_paths = list(JAR_DIR.glob(glob))
@@ -127,9 +132,23 @@ def test_get_jar_version_info(glob, expected):
 def test_get_jar_versions():
     paths = JAR_DIR.glob("geotrellis-*.jar")
     versions = get_jar_versions(paths)
-    assert versions == DictSubSet({
-        "geotrellis-extensions": RegexMatcher(r"\d+\.\d+.\d+_\d+\.\d+"),
-    })
+    assert versions == DictSubSet(
+        {
+            "geotrellis-extensions": dirty_equals.IsStr(regex=r"(\d+\.\d+.\d+_\d+\.\d+|PR-\d+).*"),
+        }
+    )
+
+
+@pytest.mark.parametrize(
+    ["jar_path", "expected"],
+    [
+        ("jarz/geotrellis-extensions-2.5.1_2.13-SNAPSHOT.jar", "geotrellis-extensions"),
+        ("jarz/geotrellis-extensions-PR-123.jar", "geotrellis-extensions"),
+    ],
+)
+def test_get_jar_versions_name_detection(jar_path, expected):
+    """Ignore "PR" prefix (`-PR-123`) in jar name-version detection"""
+    assert get_jar_versions([Path(jar_path)]) == {expected: "n/a"}
 
 
 def test_build_gps_backend_deploy_metadata():
@@ -137,12 +156,16 @@ def test_build_gps_backend_deploy_metadata():
         packages=["openeo", "openeo_driver", "openeo-geopyspark", "geopyspark"],
         jar_paths=JAR_DIR.glob("geotrellis-*.jar")
     )
-    assert metadata == DictSubSet({
-        "versions": DictSubSet({
-            "openeo": RegexMatcher("\d+.\d+.\d+"),
-            "geotrellis-extensions": RegexMatcher(r"\d+\.\d+.\d+_\d+\.\d+"),
-        })
-    })
+    assert metadata == DictSubSet(
+        {
+            "versions": DictSubSet(
+                {
+                    "openeo": RegexMatcher("\d+.\d+.\d+"),
+                    "geotrellis-extensions": dirty_equals.IsStr(regex=r"(\d+\.\d+.\d+_\d+\.\d+|PR-\d+).*"),
+                }
+            )
+        }
+    )
 
 
 def test_find_geotrellis_jars_cwd(tmp_path, monkeypatch):

@@ -101,7 +101,8 @@ sparkDriverJavaOptions="-Dscala.concurrent.context.maxThreads=2 -Dpixels.treshol
  -Dlog4j2.configurationFile=file:/opt/venv/openeo-geopyspark-driver/batch_job_log4j2.xml\
  -Dhdp.version=3.1.4.0-315\
  -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService\
- -Dopeneo.logging.threshold=$logging_threshold"
+ -Dopeneo.logging.threshold=$logging_threshold\
+ --add-opens=java.base/sun.net.util=ALL-UNNAMED"
 
 sparkExecutorJavaOptions="-Dlog4j2.configurationFile=file:/opt/venv/openeo-geopyspark-driver/batch_job_log4j2.xml\
  -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService\
