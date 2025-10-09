@@ -2945,8 +2945,8 @@ class GeopysparkDataCube(DriverDataCube):
 
     @callsite
     def slope(self):
-        slope = gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses().slope
-        return self.apply_to_levels(lambda rdd: slope(rdd),
+        pr = gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses()
+        return self.apply_to_levels(lambda rdd: pr.slope(rdd),
             self.metadata.rename_labels(self.metadata.band_dimension.name, target=["slope"]))
 
 
