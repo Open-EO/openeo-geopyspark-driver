@@ -160,7 +160,7 @@ class UdfRuntimeImageRepository:
 
     @staticmethod
     def _merge_libraries(libs1: dict, libs2: dict) -> dict:
-        """Merge two library listings, only keeping info if identical."""
+        """Merge two library listings (`GET /udf_runtimes style), only keeping info if identical."""
         merged = {}
         for name in set(libs1).union(libs2):
             if libs1.get(name) == libs2.get(name):
@@ -174,6 +174,10 @@ class UdfRuntimeImageRepository:
     def get_default_image(self) -> str:
         best: _ImageData = max(self._images, key=lambda x: x.preference)
         return best.image_ref
+
+    def get_all_refs_and_aliases(self) -> Set[str]:
+        """Get all known image references and aliases"""
+        return set(n for im in self._images for n in [im.image_ref] + im.image_aliases)
 
     def get_image_from_udf_runtimes(self, runtimes: Iterable[UdfRuntimeSpecified]) -> str:
         """

@@ -184,6 +184,21 @@ class TestUdfRuntimeImageRepository:
         repo = UdfRuntimeImageRepository.from_config(config=config)
         assert repo.get_default_image() == "docker.example/openeo:3.11"
 
+    def test_get_all_refs_and_aliases(self):
+        repo = UdfRuntimeImageRepository(
+            images=[
+                _ImageData(image_ref="docker.test/openeo:3.8", image_aliases=["py38"]),
+                _ImageData(image_ref="docker.test/openeo:3.11", image_aliases=["python311", "default"]),
+            ]
+        )
+        assert repo.get_all_refs_and_aliases() == {
+            "default",
+            "docker.test/openeo:3.11",
+            "docker.test/openeo:3.8",
+            "py38",
+            "python311",
+        }
+
     def test_get_image_from_udf_runtimes_empty_from_config_batch_runtime_to_image_python(self):
         """
         Legacy `batch_runtime_to_image` config.

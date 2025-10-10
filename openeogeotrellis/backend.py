@@ -2197,13 +2197,25 @@ class GpsBatchJobs(backend.BatchJobs):
     ) -> Union[str, None]:
         try:
             process_registry = GpsProcessing().get_process_registry(api_version=api_version)
-            udf_runtimes: Set[UdfRuntimeSpecified] = set(
+            udf_runtimes: List[UdfRuntimeSpecified] = [
                 udf.runtime for udf in collect_udfs(process_graph, process_registry=process_registry)
-            )
+            ]
             image_name = self._udf_runtimes.udf_runtime_image_repository.get_image_from_udf_runtimes(
                 runtimes=udf_runtimes
             )
-            logger.info(f"Determined container image {image_name} from process graph with {udf_runtimes=}")
+            if len(udf_runtimes) > 0 and all(rt.version is None for rt in udf_runtimes):
+                # TODO: clean up this temporary migration path infra#169
+                override = "python38"
+                if override not in self._udf_runtimes.udf_runtime_image_repository.get_all_refs_and_aliases():
+                    override = None
+                logger.warning(
+                    f"Container image from UDF runtimes: {len(udf_runtimes)} run_udf call(s) found but none with explicit runtime version specified."
+                    f" During the current Python 3.8 to 3.11 migration phase, we do hard fall back to {override!r} in this situation"
+                    f" (overriding the normal default {image_name!r})."
+                    f" This override (and Python 3.8 support in general) will be removed in the future."
+                )
+                image_name = override
+            logger.info(f"Determined container image {image_name!r} from process graph with {set(udf_runtimes)}")
             return image_name
         except Exception as e:
             logger.warning(f"Failed to determine container image from process graph: {e}", exc_info=True)

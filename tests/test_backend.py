@@ -901,7 +901,16 @@ class TestGpsBatchJobs:
     @pytest.mark.parametrize(
         ["args", "expected", "expected_warning"],
         [
-            ({"runtime": "Python"}, "docker.test/openeo-geopy311:7.9.11", None),
+            (
+                {"runtime": "Python"},
+                "python38",
+                dirty_equals.IsStr(
+                    regex="Container image from UDF runtimes:"
+                    ".*none with explicit runtime version"
+                    ".*hard fall back to 'python38'"
+                    ".*overriding the normal default 'docker.test/openeo-geopy311:7.9.11'.*"
+                ),
+            ),
             ({"runtime": "Python", "version": "3"}, "docker.test/openeo-geopy311:7.9.11", None),
             ({"runtime": "Python", "version": "3.8"}, "docker.test/openeo-geopy38:3.5.8", None),
             ({"runtime": "Python", "version": "3.11"}, "docker.test/openeo-geopy311:7.9.11", None),
