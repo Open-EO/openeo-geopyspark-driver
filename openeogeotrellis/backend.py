@@ -2016,8 +2016,9 @@ class GpsBatchJobs(backend.BatchJobs):
             # allow to override the image name via job options, other option would be to deduce it from the udf runtimes being used
             running_image = api_instance_core.read_namespaced_pod(name=os.environ.get("POD_NAME"), namespace=os.environ.get("POD_NAMESPACE")).spec.containers[0].image
 
-            image_name = options.image_name or get_backend_config().processing_container_image or running_image
-            image_name = get_backend_config().batch_runtime_to_image.get(image_name.lower(), image_name)
+            image_name = self._udf_runtimes.udf_runtime_image_repository.resolve_image_alias(
+                options.image_name or get_backend_config().processing_container_image or running_image
+            )
             log.info(f"Using {image_name=}")
 
             batch_job_cfg_secret_name = k8s_get_batch_job_cfg_secret_name(spark_app_id)
@@ -2206,7 +2207,7 @@ class GpsBatchJobs(backend.BatchJobs):
             if len(udf_runtimes) > 0 and all(rt.version is None for rt in udf_runtimes):
                 # TODO: clean up this temporary migration path infra#169
                 override = "python38"
-                if override not in self._udf_runtimes.udf_runtime_image_repository.get_all_refs_and_aliases():
+                if override not in self._udf_runtimes.udf_runtime_image_repository.get_all_image_refs_and_aliases():
                     override = None
                 logger.warning(
                     f"Container image from UDF runtimes: {len(udf_runtimes)} run_udf call(s) found but none with explicit runtime version specified."

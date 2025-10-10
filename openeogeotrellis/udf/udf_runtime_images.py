@@ -1,8 +1,9 @@
 import dataclasses
+import functools
 import itertools
 import re
 import typing
-from typing import List, Dict, Optional, Iterable, Tuple, Set
+from typing import List, Dict, Optional, Iterable, Tuple, Set, Union
 import logging
 from openeogeotrellis.config import GpsBackendConfig, get_backend_config
 from openeogeotrellis.udf import UdfRuntimeSpecified
@@ -175,7 +176,7 @@ class UdfRuntimeImageRepository:
         best: _ImageData = max(self._images, key=lambda x: x.preference)
         return best.image_ref
 
-    def get_all_refs_and_aliases(self) -> Set[str]:
+    def get_all_image_refs_and_aliases(self) -> Set[str]:
         """Get all known image references and aliases"""
         return set(n for im in self._images for n in [im.image_ref] + im.image_aliases)
 
@@ -207,3 +208,20 @@ class UdfRuntimeImageRepository:
         else:
             _log.info(f"Best image match for {runtimes=}: {best_image.image_ref!r}")
         return best_image.image_ref
+
+    @functools.lru_cache
+    def _alias_map(self):
+        """Build mapping of alias (lower case) to preferred image reference"""
+        alias_groups = itertools.groupby(
+            sorted(
+                (alias.lower(), image.preference, image.image_ref)
+                for image in self._images
+                for alias in image.image_aliases
+            ),
+            key=lambda x: x[0],
+        )
+        return {alias: max(group)[2] for alias, group in alias_groups}
+
+    def resolve_image_alias(self, name: Union[str, None]) -> Union[str, None]:
+        """Resolves image alias to full image reference (preserves input if no alias match)."""
+        return self._alias_map().get(name.lower() if name else name, name)

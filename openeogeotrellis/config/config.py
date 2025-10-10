@@ -249,6 +249,7 @@ class GpsBackendConfig(OpenEoBackendConfig):
         ),
     )
 
+    # TODO: deprecate this processing_container_image in favor of fine-grained UdfRuntimeImageRepository config?
     processing_container_image: Optional[str] = attrs.field(
         default=None,
         metadata={

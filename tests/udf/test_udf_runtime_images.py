@@ -184,14 +184,14 @@ class TestUdfRuntimeImageRepository:
         repo = UdfRuntimeImageRepository.from_config(config=config)
         assert repo.get_default_image() == "docker.example/openeo:3.11"
 
-    def test_get_all_refs_and_aliases(self):
+    def test_get_all_image_refs_and_aliases(self):
         repo = UdfRuntimeImageRepository(
             images=[
                 _ImageData(image_ref="docker.test/openeo:3.8", image_aliases=["py38"]),
                 _ImageData(image_ref="docker.test/openeo:3.11", image_aliases=["python311", "default"]),
             ]
         )
-        assert repo.get_all_refs_and_aliases() == {
+        assert repo.get_all_image_refs_and_aliases() == {
             "default",
             "docker.test/openeo:3.11",
             "docker.test/openeo:3.8",
@@ -269,3 +269,44 @@ class TestUdfRuntimeImageRepository:
         assert repo.get_image_from_udf_runtimes(runtimes=runtimes) == expected
 
         assert caplog.messages == []
+
+    def test_alias_map_basic(self):
+        repo = UdfRuntimeImageRepository(
+            images=[
+                _ImageData(image_ref="docker.test/openeo:3.8", image_aliases=["py38"]),
+                _ImageData(image_ref="docker.test/openeo:3.11", image_aliases=["python311", "default"]),
+            ]
+        )
+        assert repo._alias_map() == {
+            "py38": "docker.test/openeo:3.8",
+            "python311": "docker.test/openeo:3.11",
+            "default": "docker.test/openeo:3.11",
+        }
+
+    def test_alias_map_case_and_preference(self):
+        repo = UdfRuntimeImageRepository(
+            images=[
+                _ImageData(image_ref="docker.test/foo", image_aliases=["PY38"], preference=100),
+                _ImageData(image_ref="docker.test/bar", image_aliases=["py38", "Python3.8"], preference=10),
+            ]
+        )
+        assert repo._alias_map() == {
+            "py38": "docker.test/foo",
+            "python3.8": "docker.test/bar",
+        }
+
+    def test_resolve_image_alias(self):
+        repo = UdfRuntimeImageRepository(
+            images=[
+                _ImageData(image_ref="docker.test/openeo:3.8", image_aliases=["py38"]),
+                _ImageData(image_ref="docker.test/openeo:3.11", image_aliases=["python311", "default"]),
+            ]
+        )
+        assert repo.resolve_image_alias(None) is None
+        assert repo.resolve_image_alias("py38") == "docker.test/openeo:3.8"
+        assert repo.resolve_image_alias("PY38") == "docker.test/openeo:3.8"
+        assert repo.resolve_image_alias("python311") == "docker.test/openeo:3.11"
+        assert repo.resolve_image_alias("PythOn311") == "docker.test/openeo:3.11"
+        assert repo.resolve_image_alias("default") == "docker.test/openeo:3.11"
+        assert repo.resolve_image_alias("docker.test/openeo:3.8") == "docker.test/openeo:3.8"
+        assert repo.resolve_image_alias("docker.test/openeo:2.7") == "docker.test/openeo:2.7"
