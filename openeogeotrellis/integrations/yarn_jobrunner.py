@@ -23,6 +23,7 @@ from openeogeotrellis import sentinel_hub
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.job_options import JobOptions
 from openeogeotrellis.udf import UDF_PYTHON_DEPENDENCIES_ARCHIVE_NAME, UDF_PYTHON_DEPENDENCIES_FOLDER_NAME
+from openeogeotrellis.udf.udf_runtime_images import UdfRuntimeImageRepository
 from openeogeotrellis.util.byteunit import byte_string_as
 from openeogeotrellis.utils import add_permissions
 
@@ -275,6 +276,8 @@ class YARNBatchJobRunner:
         self._key_tab = key_tab
         self._default_sentinel_hub_client_id = None
         self._default_sentinel_hub_client_secret = None
+        # TODO: reuse existing UdfRuntimeImageRepository through composition instead of creating a new one?
+        self._udf_runtime_image_repository = UdfRuntimeImageRepository.from_config()
 
     def set_default_sentinel_hub_credentials(self, client_id: str, client_secret: str):
         self._default_sentinel_hub_client_id = client_id
@@ -371,7 +374,7 @@ class YARNBatchJobRunner:
         return ""
 
     def _current_container_image(self) -> Union[str, None]:
-        """Currentrly running container image"""
+        """Currently running container image"""
         return os.environ.get("YARN_CONTAINER_RUNTIME_DOCKER_IMAGE")
 
     def run_job(
@@ -416,11 +419,9 @@ class YARNBatchJobRunner:
         submit_script = "submit_batch_job_spark3.sh"
         script_location = pkg_resources.resource_filename("openeogeotrellis.deploy", submit_script)
 
-        image_name = (
+        image_name = self._udf_runtime_image_repository.resolve_image_alias(
             options.image_name or get_backend_config().processing_container_image or self._current_container_image()
         )
-        if image_name:
-            image_name = get_backend_config().batch_runtime_to_image.get(image_name.lower(), image_name)
         log.info(f"Using {image_name=}")
 
         extra_py_files = ""

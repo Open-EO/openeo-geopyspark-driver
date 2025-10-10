@@ -67,6 +67,7 @@ class UdfRuntimeImageRepository:
     - batch job container images and how to resolve aliases or UDF runtime info to images
     """
 
+    __slot__ = ("_images",)
 
     def __init__(self, images: List[_ImageData]):
         self._images: List[_ImageData] = images
