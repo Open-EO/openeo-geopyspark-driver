@@ -381,8 +381,8 @@ class YARNBatchJobRunner:
         self,
         job_info: dict,
         job_id: str,
-        job_work_dir,
-        log,
+        job_work_dir: Path,
+        log: logging.Logger = _log,
         user_id="",
         api_version="1.0.0",  # TODO: this default is probably not correct, use OPENEO_API_VERSION_DEFAULT instead?
         proxy_user: str = None,
@@ -448,6 +448,7 @@ class YARNBatchJobRunner:
             self._write_sensitive_values(temp_properties_file, vault_token=vault_token)
             temp_properties_file.flush()
 
+            # TODO: what's up with this weird mix of underscores and spaces?
             job_name = "openEO batch_{title}_{j}_user {u}".format(title=job_title, j=job_id, u=user_id)
 
             # Calculate docker mounts including user-specific mounts
@@ -523,11 +524,14 @@ class YARNBatchJobRunner:
 
             try:
                 log.info(f"Submitting job with command {args!r}")
-                d = dict(**os.environ)
-                d["YARN_CONTAINER_RUNTIME_DOCKER_IMAGE"] = image_name
+                # TODO #1385 avoid copying the whole environment, only pass what is needed
+                env = dict(**os.environ)
+                env["YARN_CONTAINER_RUNTIME_DOCKER_IMAGE"] = image_name
                 if options.openeo_jar_path is not None:
-                    d["OPENEO_GEOTRELLIS_JAR"] = options.openeo_jar_path
-                script_output = subprocess.check_output(args, stderr=subprocess.STDOUT, universal_newlines=True, env=d)
+                    env["OPENEO_GEOTRELLIS_JAR"] = options.openeo_jar_path
+                script_output = subprocess.check_output(
+                    args, stderr=subprocess.STDOUT, universal_newlines=True, env=env
+                )
                 log.info(f"Submitted job, output was: {script_output}")
             except CalledProcessError as e:
                 log.error(f"Submitting job failed, output was: {e.stdout}", exc_info=True)
