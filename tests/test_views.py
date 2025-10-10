@@ -406,6 +406,9 @@ def create_files_on_s3(s3_bucket, file_names, file_contents):
 
 
 class TestBatchJobs:
+
+    # TODO: use YarnMocker/yarn_mocker fixture here to eliminate subprocess.run mocking boilerplate?
+
     DUMMY_PROCESS_GRAPH = {
         "loadcollection1": {
             "process_id": "load_collection",
@@ -1296,6 +1299,7 @@ class TestBatchJobs:
         res = api.post('/jobs', json=job_data, headers=TEST_USER_AUTH_HEADER).assert_status_code(201)
         job_id = res.headers['OpenEO-Identifier']
         # Start job
+        # TODO: reuse `yarn_mocker/YarnMocker` here?
         with mock.patch('subprocess.run') as run:
             stdout = api.read_file("spark-submit-stdout.txt")
             run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout=stdout, stderr="")

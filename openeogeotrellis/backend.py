@@ -2967,7 +2967,10 @@ class GpsBatchJobs(backend.BatchJobs):
                 with self._double_job_registry:
                     registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.CANCELED)
             else:
+                # TODO: extract this logic and move YARNBatchJobRunner or related?
+                #       and get rid of hardcoded VITO references
                 try:
+                    # TODO: is it necessary to do this with curl subprocess instead of requests?
                     kill_spark_job = subprocess.run(
                         ["curl", "--location-trusted", "--fail", "--negotiate", "-u", ":", "--insecure", "-X", "PUT",
                          "-H", "Content-Type: application/json", "-d", '{"state": "KILLED"}',
