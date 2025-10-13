@@ -1,3 +1,4 @@
+from __future__ import annotations
 import dataclasses
 import functools
 import itertools
@@ -22,9 +23,17 @@ class _UdfRuntimeAndVersion(typing.NamedTuple):
     # of a UDF runtime (in `GET /udf_runtimes` response).
     preference: int = 0
 
+    @classmethod
+    def from_dict(cls, data: dict) -> _UdfRuntimeAndVersion:
+        return cls(
+            name=data["name"],
+            version=data["version"],
+            preference=data.get("preference", 0),
+        )
+
 
 @dataclasses.dataclass(frozen=True)
-class _ImageData:
+class ContainerImageRecord:
     """
     Internal record with data about a (docker) container image
     and associated UDF runtime information
@@ -51,6 +60,16 @@ class _ImageData:
     # (e.g. {"numpy": "1.23.5", "pandas": "1.5.3"})
     udf_runtime_libraries: Dict[str, str] = dataclasses.field(default_factory=dict)
 
+    @classmethod
+    def from_dict(cls, data: dict) -> ContainerImageRecord:
+        return cls(
+            image_ref=data["image_ref"],
+            image_aliases=data.get("image_aliases", []),
+            preference=data.get("preference", 0),
+            udf_runtimes=[_UdfRuntimeAndVersion.from_dict(rt) for rt in data.get("udf_runtimes", [])],
+            udf_runtime_libraries=data.get("udf_runtime_libraries", {}),
+        )
+
     def matches_udf_runtime(self, runtime: UdfRuntimeSpecified) -> bool:
         """Whether this image supports the given UDF runtime (name+optional version)"""
         return any(
@@ -69,21 +88,24 @@ class UdfRuntimeImageRepository:
 
     __slot__ = ("_images",)
 
-    def __init__(self, images: List[_ImageData]):
-        self._images: List[_ImageData] = images
+    def __init__(self, images: List[ContainerImageRecord]):
+        self._images: List[ContainerImageRecord] = images
 
     @classmethod
-    def from_config(cls, config: Optional[GpsBackendConfig] = None):
+    def from_config(cls, config: Optional[GpsBackendConfig] = None) -> UdfRuntimeImageRepository:
         config = config or get_backend_config()
 
-        if batch_runtime_to_image := config.batch_runtime_to_image:
+        if config.container_images_and_udf_runtimes:
+            images = [ContainerImageRecord.from_dict(d) for d in config.container_images_and_udf_runtimes]
+            return cls(images)
+        elif batch_runtime_to_image := config.batch_runtime_to_image:
+            # TODO: deprecate `batch_runtime_to_image` in favor of `container_image_and_udf_runtimes` based configuration
             return cls._from_config_batch_runtime_to_image(batch_runtime_to_image=batch_runtime_to_image)
         else:
-            # TODO: support a new, more flexible config format?
             return cls(images=[])
 
     @classmethod
-    def _from_config_batch_runtime_to_image(cls, batch_runtime_to_image: dict):
+    def _from_config_batch_runtime_to_image(cls, batch_runtime_to_image: dict) -> UdfRuntimeImageRepository:
         """Ad-hoc adapter for legacy `batch_runtime_to_image` config format"""
         # TODO get rid of `batch_runtime_to_image` in longer term?
         image_entries = []
@@ -110,7 +132,7 @@ class UdfRuntimeImageRepository:
                 image_preference = 0
 
             image_entries.append(
-                _ImageData(
+                ContainerImageRecord(
                     image_ref=image_ref,
                     image_aliases=[alias],
                     preference=image_preference,
@@ -174,7 +196,7 @@ class UdfRuntimeImageRepository:
         return merged
 
     def get_default_image(self) -> str:
-        best: _ImageData = max(self._images, key=lambda x: x.preference)
+        best: ContainerImageRecord = max(self._images, key=lambda x: x.preference)
         return best.image_ref
 
     def get_all_image_refs_and_aliases(self) -> Set[str]:

@@ -249,7 +249,7 @@ class GpsBackendConfig(OpenEoBackendConfig):
         ),
     )
 
-    # TODO: deprecate this processing_container_image in favor of fine-grained UdfRuntimeImageRepository config?
+    # TODO: deprecate this processing_container_image in favor of container_images_and_udf_runtimes?
     processing_container_image: Optional[str] = attrs.field(
         default=None,
         metadata={
@@ -261,12 +261,21 @@ class GpsBackendConfig(OpenEoBackendConfig):
     Maps the name of a UDF runtime to the image to use for the batch job.
     Also used to map image-name job option to batch job image.
     """
+    # TODO deprecate this in favor of container_images_and_udf_runtimes?
     batch_runtime_to_image: dict = {
         # TODO: eliminate this hardcoded VITO default?
         "python311" : "vito-docker.artifactory.vgt.vito.be/openeo-geotrellis-kube-python311:latest"
     }
 
     batch_image_regex: str = "^vito-docker.artifactory.vgt.vito.be/openeo-.+$"
+
+    container_images_and_udf_runtimes: List[dict] = attrs.field(
+        factory=list,
+        metadata={
+            "doc": """List of container image information, including corresponding UDF runtimes.
+                See `ContainerImageRecord.from_dict()` for expected/optional fields"""
+        },
+    )
 
     """
     Only used by YARN, allows to specify paths to mount in batch job docker containers.

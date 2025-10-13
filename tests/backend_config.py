@@ -86,4 +86,25 @@ config = GpsBackendConfig(
         "python38": "docker.test/openeo-geopy38:3.5.8",
         "python311": "docker.test/openeo-geopy311:7.9.11",
     },
+    container_images_and_udf_runtimes=[
+        {
+            "image_ref": "docker.test/openeo-geopy38:3.5.8",
+            "image_aliases": ["python38"],
+            "udf_runtimes": [
+                {"name": "Python", "version": "3.8"},
+                {"name": "Python-Jep", "version": "3.8"},
+            ],
+            "udf_runtime_libraries": {"numpy": "1.22.4", "pandas": "1.5.3"},
+        },
+        {
+            "image_ref": "docker.test/openeo-geopy311:7.9.11",
+            "image_aliases": ["python311"],
+            "preference": 100,
+            "udf_runtimes": [
+                {"name": "Python", "version": "3.11"},
+                {"name": "Python", "version": "3", "preference": 100},
+            ],
+            "udf_runtime_libraries": {"numpy": "2.3.3", "pandas": "2.3.3"},
+        },
+    ],
 )

@@ -4,8 +4,55 @@ import pytest
 
 from openeogeotrellis.config import GpsBackendConfig
 from openeogeotrellis.udf import UdfRuntimeSpecified
-from openeogeotrellis.udf.udf_runtime_images import UdfRuntimeImageRepository, _ImageData, _UdfRuntimeAndVersion
+from openeogeotrellis.udf.udf_runtime_images import (
+    UdfRuntimeImageRepository,
+    ContainerImageRecord,
+    _UdfRuntimeAndVersion,
+)
 
+
+class TestUdfRuntimeAndVersion:
+    def test_from_dict_minimal(self):
+        urv = _UdfRuntimeAndVersion.from_dict({"name": "Python", "version": "3.8"})
+        assert urv == _UdfRuntimeAndVersion(name="Python", version="3.8", preference=0)
+
+    def test_from_dict_full(self):
+        urv = _UdfRuntimeAndVersion.from_dict({"name": "Python", "version": "3.8", "preference": 42})
+        assert urv == _UdfRuntimeAndVersion(name="Python", version="3.8", preference=42)
+
+
+class TestImageData:
+    def test_from_dict_minimal(self):
+        image_data = ContainerImageRecord.from_dict({"image_ref": "docker.test/openeo:1.2.3"})
+        assert image_data == ContainerImageRecord(
+            image_ref="docker.test/openeo:1.2.3",
+            udf_runtimes=[],
+            udf_runtime_libraries={},
+            image_aliases=[],
+            preference=0,
+        )
+
+    def test_from_dict_full(self):
+        data = {
+            "image_ref": "docker.test/openeo:11",
+            "image_aliases": ["python311"],
+            "preference": 11,
+            "udf_runtimes": [
+                {"name": "Python", "version": "3", "preference": 100},
+                {"name": "Python", "version": "3.11"},
+            ],
+            "udf_runtime_libraries": {"numpy": "1.2.3", "pandas": "4.5.6"},
+        }
+        assert ContainerImageRecord.from_dict(data) == ContainerImageRecord(
+            image_ref="docker.test/openeo:11",
+            udf_runtimes=[
+                _UdfRuntimeAndVersion(name="Python", version="3", preference=100),
+                _UdfRuntimeAndVersion(name="Python", version="3.11", preference=0),
+            ],
+            udf_runtime_libraries={"numpy": "1.2.3", "pandas": "4.5.6"},
+            image_aliases=["python311"],
+            preference=11,
+        )
 
 class TestUdfRuntimeImageRepository:
     def test_get_udf_runtimes_response_empty(self):
@@ -15,7 +62,7 @@ class TestUdfRuntimeImageRepository:
     def test_get_udf_runtimes_response_basic(self):
         repo = UdfRuntimeImageRepository(
             images=[
-                _ImageData(
+                ContainerImageRecord(
                     image_ref="docker.example/openeo:1.2.3",
                     udf_runtimes=[_UdfRuntimeAndVersion("Python", "3.11")],
                     udf_runtime_libraries={"numpy": "12.34"},
@@ -34,7 +81,7 @@ class TestUdfRuntimeImageRepository:
     def test_get_udf_runtimes_response_default_and_library_merging(self):
         repo = UdfRuntimeImageRepository(
             images=[
-                _ImageData(
+                ContainerImageRecord(
                     image_ref="docker.example/openeo:38",
                     udf_runtimes=[
                         _UdfRuntimeAndVersion("Python", "3.8", preference=38),
@@ -43,7 +90,7 @@ class TestUdfRuntimeImageRepository:
                     ],
                     udf_runtime_libraries={"numpy": "1.2", "pandas": "8.8"},
                 ),
-                _ImageData(
+                ContainerImageRecord(
                     image_ref="docker.example/openeo:311",
                     udf_runtimes=[
                         _UdfRuntimeAndVersion("Python", "3.11", preference=311),
@@ -102,6 +149,46 @@ class TestUdfRuntimeImageRepository:
                     },
                 },
             }
+        }
+
+    def test_get_udf_runtimes_response_from_config_container_images_and_udf_runtimes(self):
+        config = GpsBackendConfig(
+            container_images_and_udf_runtimes=[
+                {
+                    "image_ref": "docker.test/openeo:8",
+                    "udf_runtimes": [{"name": "Python", "version": "3.8"}, {"name": "Python-Jep", "version": "3.8"}],
+                    "udf_runtime_libraries": {"numpy": "1.2", "pandas": "3.4"},
+                },
+                {
+                    "image_ref": "docker.test/openeo:11",
+                    "udf_runtimes": [
+                        {"name": "Python", "version": "3.11"},
+                        {"name": "Python", "version": "3"},
+                    ],
+                    "udf_runtime_libraries": {"numpy": "2.1", "pandas": "4.3"},
+                },
+            ]
+        )
+        repo = UdfRuntimeImageRepository.from_config(config=config)
+        assert repo.get_udf_runtimes_response() == {
+            "Python": {
+                "title": "Python",
+                "type": "language",
+                "default": "3",
+                "versions": {
+                    "3.8": {"libraries": {"numpy": {"version": "1.2"}, "pandas": {"version": "3.4"}}},
+                    "3.11": {"libraries": {"numpy": {"version": "2.1"}, "pandas": {"version": "4.3"}}},
+                    "3": {"libraries": {"numpy": {"version": "2.1"}, "pandas": {"version": "4.3"}}},
+                },
+            },
+            "Python-Jep": {
+                "title": "Python-Jep",
+                "type": "language",
+                "default": "3.8",
+                "versions": {
+                    "3.8": {"libraries": {"numpy": {"version": "1.2"}, "pandas": {"version": "3.4"}}},
+                },
+            },
         }
 
     def test_get_udf_runtimes_response_from_config_batch_runtime_to_image_python(self):
@@ -167,12 +254,28 @@ class TestUdfRuntimeImageRepository:
     def test_get_default_image_basic(self):
         repo = UdfRuntimeImageRepository(
             images=[
-                _ImageData(image_ref="docker.test/openeo:1.2.3", preference=123),
-                _ImageData(image_ref="docker.test/openeo:3.4.5", preference=345),
-                _ImageData(image_ref="docker.test/openeo:5.6.7", preference=-20),
+                ContainerImageRecord(image_ref="docker.test/openeo:1.2.3", preference=123),
+                ContainerImageRecord(image_ref="docker.test/openeo:3.4.5", preference=345),
+                ContainerImageRecord(image_ref="docker.test/openeo:5.6.7", preference=-20),
             ]
         )
         assert repo.get_default_image() == "docker.test/openeo:3.4.5"
+
+    def test_get_default_image_from_config_container_images_and_udf_runtimes(self):
+        config = GpsBackendConfig(
+            container_images_and_udf_runtimes=[
+                {
+                    "image_ref": "docker.test/openeo:3.8",
+                    "preference": 0,
+                },
+                {
+                    "image_ref": "docker.test/openeo:3.11",
+                    "preference": 100,
+                },
+            ]
+        )
+        repo = UdfRuntimeImageRepository.from_config(config=config)
+        assert repo.get_default_image() == "docker.test/openeo:3.11"
 
     def test_get_default_image_from_config_batch_runtime_to_image_python(self):
         config = GpsBackendConfig(
@@ -187,8 +290,8 @@ class TestUdfRuntimeImageRepository:
     def test_get_all_image_refs_and_aliases(self):
         repo = UdfRuntimeImageRepository(
             images=[
-                _ImageData(image_ref="docker.test/openeo:3.8", image_aliases=["py38"]),
-                _ImageData(image_ref="docker.test/openeo:3.11", image_aliases=["python311", "default"]),
+                ContainerImageRecord(image_ref="docker.test/openeo:3.8", image_aliases=["py38"]),
+                ContainerImageRecord(image_ref="docker.test/openeo:3.11", image_aliases=["python311", "default"]),
             ]
         )
         assert repo.get_all_image_refs_and_aliases() == {
@@ -198,6 +301,53 @@ class TestUdfRuntimeImageRepository:
             "py38",
             "python311",
         }
+
+    def test_get_all_image_refs_and_aliases_from_config_container_images_and_udf_runtimes(self):
+        config = GpsBackendConfig(
+            container_images_and_udf_runtimes=[
+                {
+                    "image_ref": "docker.test/openeo:3.8",
+                    "image_aliases": ["py38"],
+                },
+                {
+                    "image_ref": "docker.test/openeo:3.11",
+                    "image_aliases": ["python311", "default"],
+                },
+            ]
+        )
+        repo = UdfRuntimeImageRepository.from_config(config=config)
+        assert repo.get_all_image_refs_and_aliases() == {
+            "default",
+            "docker.test/openeo:3.11",
+            "docker.test/openeo:3.8",
+            "py38",
+            "python311",
+        }
+
+    @pytest.mark.parametrize(
+        ["preference38", "preference311", "expected"],
+        [
+            (100, 0, "docker.test/openeo:3.8"),
+            (0, 100, "docker.test/openeo:3.11"),
+        ],
+    )
+    def test_get_image_from_udf_runtimes_empty_from_config_container_images_and_udf_runtimes(
+        self, preference38, preference311, expected
+    ):
+        config = GpsBackendConfig(
+            container_images_and_udf_runtimes=[
+                {
+                    "image_ref": "docker.test/openeo:3.8",
+                    "preference": preference38,
+                },
+                {
+                    "image_ref": "docker.test/openeo:3.11",
+                    "preference": preference311,
+                },
+            ]
+        )
+        repo = UdfRuntimeImageRepository.from_config(config=config)
+        assert repo.get_image_from_udf_runtimes(runtimes=[]) == expected
 
     def test_get_image_from_udf_runtimes_empty_from_config_batch_runtime_to_image_python(self):
         """
@@ -216,7 +366,7 @@ class TestUdfRuntimeImageRepository:
     def test_get_image_from_udf_runtimes_basic(self):
         repo = UdfRuntimeImageRepository(
             images=[
-                _ImageData(
+                ContainerImageRecord(
                     image_ref="docker.test/openeo:1.2.3",
                     udf_runtimes=[_UdfRuntimeAndVersion("Python", "3.11")],
                 ),
@@ -247,7 +397,7 @@ class TestUdfRuntimeImageRepository:
         caplog.set_level(logging.WARNING)
         repo = UdfRuntimeImageRepository(
             images=[
-                _ImageData(
+                ContainerImageRecord(
                     image_ref="docker.test/openeo:3.11",
                     preference=100,
                     udf_runtimes=[
@@ -255,7 +405,7 @@ class TestUdfRuntimeImageRepository:
                         _UdfRuntimeAndVersion("Python", "3"),
                     ],
                 ),
-                _ImageData(
+                ContainerImageRecord(
                     image_ref="docker.test/openeo:3.14-alpha",
                     preference=1,
                     udf_runtimes=[
@@ -273,8 +423,8 @@ class TestUdfRuntimeImageRepository:
     def test_alias_map_basic(self):
         repo = UdfRuntimeImageRepository(
             images=[
-                _ImageData(image_ref="docker.test/openeo:3.8", image_aliases=["py38"]),
-                _ImageData(image_ref="docker.test/openeo:3.11", image_aliases=["python311", "default"]),
+                ContainerImageRecord(image_ref="docker.test/openeo:3.8", image_aliases=["py38"]),
+                ContainerImageRecord(image_ref="docker.test/openeo:3.11", image_aliases=["python311", "default"]),
             ]
         )
         assert repo._alias_map() == {
@@ -286,8 +436,8 @@ class TestUdfRuntimeImageRepository:
     def test_alias_map_case_and_preference(self):
         repo = UdfRuntimeImageRepository(
             images=[
-                _ImageData(image_ref="docker.test/foo", image_aliases=["PY38"], preference=100),
-                _ImageData(image_ref="docker.test/bar", image_aliases=["py38", "Python3.8"], preference=10),
+                ContainerImageRecord(image_ref="docker.test/foo", image_aliases=["PY38"], preference=100),
+                ContainerImageRecord(image_ref="docker.test/bar", image_aliases=["py38", "Python3.8"], preference=10),
             ]
         )
         assert repo._alias_map() == {
@@ -298,8 +448,8 @@ class TestUdfRuntimeImageRepository:
     def test_resolve_image_alias(self):
         repo = UdfRuntimeImageRepository(
             images=[
-                _ImageData(image_ref="docker.test/openeo:3.8", image_aliases=["py38"]),
-                _ImageData(image_ref="docker.test/openeo:3.11", image_aliases=["python311", "default"]),
+                ContainerImageRecord(image_ref="docker.test/openeo:3.8", image_aliases=["py38"]),
+                ContainerImageRecord(image_ref="docker.test/openeo:3.11", image_aliases=["python311", "default"]),
             ]
         )
         assert repo.resolve_image_alias(None) is None

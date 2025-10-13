@@ -891,6 +891,7 @@ class TestGpsBatchJobs:
         )
 
     def test_determine_container_image_from_process_graph_no_udfs(self):
+        """No UDFs -> use default image (e.g. highest Python version)"""
         gps_batch_jobs = GpsBatchJobs(catalog=None, jvm=None, udf_runtimes=GpsUdfRuntimes())
         pg = {
             "add35": {"process_id": "add", "arguments": {"x": 3, "y": 5}, "result": True},
@@ -956,19 +957,17 @@ class TestGpsUdfRuntimes:
                 "type": "language",
                 "default": "3",
                 "versions": {
-                    "3": {"libraries": {}},
-                    "3.8": {"libraries": {}},
-                    "3.11": {"libraries": {}},
+                    "3.8": {"libraries": {"numpy": {"version": "1.22.4"}, "pandas": {"version": "1.5.3"}}},
+                    "3.11": {"libraries": {"numpy": {"version": "2.3.3"}, "pandas": {"version": "2.3.3"}}},
+                    "3": {"libraries": {"numpy": {"version": "2.3.3"}, "pandas": {"version": "2.3.3"}}},
                 },
             },
             "Python-Jep": {
                 "title": "Python-Jep",
                 "type": "language",
-                "default": "3",
+                "default": "3.8",
                 "versions": {
-                    "3": {"libraries": {}},
-                    "3.8": {"libraries": {}},
-                    "3.11": {"libraries": {}},
+                    "3.8": {"libraries": {"numpy": {"version": "1.22.4"}, "pandas": {"version": "1.5.3"}}},
                 },
             },
         }

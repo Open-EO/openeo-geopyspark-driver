@@ -138,19 +138,17 @@ class TestCapabilities:
                 "type": "language",
                 "default": "3",
                 "versions": {
-                    "3": {"libraries": {}},
-                    "3.11": {"libraries": {}},
-                    "3.8": {"libraries": {}},
+                    "3.8": {"libraries": {"numpy": {"version": "1.22.4"}, "pandas": {"version": "1.5.3"}}},
+                    "3.11": {"libraries": {"numpy": {"version": "2.3.3"}, "pandas": {"version": "2.3.3"}}},
+                    "3": {"libraries": {"numpy": {"version": "2.3.3"}, "pandas": {"version": "2.3.3"}}},
                 },
             },
             "Python-Jep": {
-                "default": "3",
+                "default": "3.8",
                 "title": "Python-Jep",
                 "type": "language",
                 "versions": {
-                    "3": {"libraries": {}},
-                    "3.11": {"libraries": {}},
-                    "3.8": {"libraries": {}},
+                    "3.8": {"libraries": {"numpy": {"version": "1.22.4"}, "pandas": {"version": "1.5.3"}}},
                 },
             },
         }
