@@ -11,15 +11,18 @@ To be used instead of `geopyspark install-jar`
 # to be widely usable without need for pre-existing virtual envs
 import argparse
 import logging
+import json
 import os
 import subprocess
 import urllib.request
 from pathlib import Path
+from typing import List
 
 logger = logging.getLogger("get-jars")
 
 ROOT_DIR = Path(__file__).parent.parent.absolute()
 DEFAULT_JAR_DIR = ROOT_DIR / "jars"
+JARS_SOURCE_FILE = ROOT_DIR / "scripts/jars.json"
 
 
 def download_jar(jar_dir: Path, url: str, force: bool = False) -> Path:
@@ -35,8 +38,34 @@ def download_jar(jar_dir: Path, url: str, force: bool = False) -> Path:
     return target
 
 
+class JarVariants:
+    def __init__(self, jars_json_path: Path):
+        logger.info(f"Loading JAR variants from {jars_json_path}")
+        with jars_json_path.open(mode="r", encoding="utf8") as f:
+            data = json.load(f)
+        self._default = data["default"]
+        self._variants = data["variants"]
+        assert self._default in self._variants
+        for variant, jars in self._variants.items():
+            assert (
+                isinstance(jars, list) and len(jars) > 0 and all(isinstance(j, str) for j in jars)
+            ), f"Must be non-empty list of strings: {jars!r}"
+        logger.info(f"Loaded variants {self.get_variants()} with default {self._default!r}")
+
+    def default_variant(self) -> str:
+        return self._default
+
+    def get_variants(self) -> List[str]:
+        return sorted(self._variants.keys())
+
+    def get_jars(self, variant: str) -> List[str]:
+        return self._variants[variant]
+
+
 def main():
     logging.basicConfig(level=logging.INFO)
+
+    jar_variants = JarVariants(JARS_SOURCE_FILE)
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -52,20 +81,42 @@ def main():
         action="store_true",
         help="Force download instead of skipping existing jars.",
     )
+    parser.add_argument(
+        "--variant",
+        choices=jar_variants.get_variants(),
+        default=jar_variants.default_variant(),
+        help="Variant of JAR set to download (default: %(default)r).",
+    )
+    # TODO: eliminate this deprecated "python-version" option
+    parser.add_argument(
+        "-p",
+        "--python-version",
+        choices=["3.8", "3.11"],
+        default=None,
+        help="[DEPRECATED] Python version to download jars for.",
+    )
 
     cli_args = parser.parse_args()
-    jar_dir: Path = cli_args.jar_dir
+    logger.info(f"{cli_args=}")
+    jar_dir: Path = cli_args.jar_dir.absolute()
     force_download = cli_args.force_download
+    python_version = cli_args.python_version
+    variant = cli_args.variant
 
     logger.info(f"Using target JAR dir: {jar_dir}")
     jar_dir.mkdir(parents=True, exist_ok=True)
 
-    for url in [
-        # TODO: list these URLs in a simple text/CSV file so it can be consumed by other tools too?
-        "https://artifactory.vgt.vito.be/artifactory/libs-snapshot-public/org/openeo/geotrellis-extensions/2.5.0_2.12-SNAPSHOT/geotrellis-extensions-2.5.0_2.12-SNAPSHOT.jar",
-        "https://artifactory.vgt.vito.be/artifactory/libs-snapshot-public/org/openeo/geotrellis-dependencies/2.5.0_2.12-SNAPSHOT/geotrellis-dependencies-2.5.0_2.12-SNAPSHOT.jar",
-        "https://artifactory.vgt.vito.be/artifactory/libs-snapshot-public/org/openeo/openeo-logging/2.5.0_2.12-SNAPSHOT/openeo-logging-2.5.0_2.12-SNAPSHOT.jar",
-    ]:
+    if python_version:
+        logger.warning("The --python-version option is deprecated, use --variant instead.")
+        variant = f"python{python_version}"
+
+    logger.info(f"Looking up JAR URLs for variant {variant!r}")
+    jar_urls = jar_variants.get_jars(variant)
+    logger.info(f"Found {len(jar_urls)} JAR URLs for {variant!r} in {JARS_SOURCE_FILE}:")
+    for u in jar_urls:
+        logger.info(f" - {u}")
+
+    for url in jar_urls:
         download_jar(jar_dir, url=url, force=force_download)
 
     logger.info(f"Listing of {jar_dir}:")

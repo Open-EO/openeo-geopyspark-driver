@@ -588,8 +588,9 @@ class GeopysparkDataCube(DriverDataCube):
             _log.debug(f"[apply_tiles_spatiotemporal] UDF resulted in {result_array}!r")
             if 't' in result_array.dims:
                 result_array = result_array.transpose(*('t' ,'bands','y', 'x'))
+                #TODO remove check on shape once we drop support for old xarray
                 return [(SpaceTimeKey(col=tiles[0].col, row=tiles[0].row, instant=pd.Timestamp(timestamp)),
-                         Tile(array_slice.values, CellType.FLOAT32, tile_list[0][1].no_data_value))
+                         Tile(array_slice.values[0] if len(array_slice.values.shape)==4 else array_slice.values, CellType.FLOAT32, tile_list[0][1].no_data_value))
                         for timestamp, array_slice in result_array.groupby('t')]
             else:
                 result_array = result_array.transpose(*("bands", "y", "x"))
@@ -1260,11 +1261,11 @@ class GeopysparkDataCube(DriverDataCube):
             runtime = process.udf_args.get('runtime', 'Python')
             udf, udf_context = self._extract_udf_code_and_context(process=process, context=context, env=env)
 
-            if sizeX < 32 or sizeY < 32:
+            if sizeX < 4 or sizeY < 4:
                 raise ProcessParameterInvalidException(
                     parameter="size",
                     process="apply_neighborhood",
-                    reason=f"window sizes smaller then 32 are not yet supported for UDFs (got {size!r}).",
+                    reason=f"window sizes smaller then 4 are not yet supported for UDFs (got {size!r}).",
                 )
 
             if has_time_dim and (temporal_size is None or temporal_size.get('value',None) is None):
@@ -1371,7 +1372,10 @@ class GeopysparkDataCube(DriverDataCube):
             level_rdd_tuple = get_jvm().org.openeo.geotrellis.OpenEOProcesses().resampleCubeSpatial_spatial(
                 max_level.srdd.rdd(), crs, layout, resample_method, partitioner)
         else:
-            raise FeatureUnsupportedException(message='resample_cube_spatial - Unsupported combination of two cubes of type: ' + str(self.pyramid.layer_type) + ' and ' + str(target.pyramid.layer_type))
+            layout = target_max_level.srdd.rdd().metadata().layout()
+            crs = target_max_level.srdd.rdd().metadata().crs()
+            level_rdd_tuple = get_jvm().org.openeo.geotrellis.OpenEOProcesses().resampleCubeSpatial_spatial(
+                max_level.srdd.rdd(), crs, layout, resample_method, None)
 
         layer = self._create_tilelayer(level_rdd_tuple._2(),max_level.layer_type,target.pyramid.max_zoom)
         pyramid = Pyramid({target.pyramid.max_zoom:layer})
@@ -2894,7 +2898,7 @@ class GeopysparkDataCube(DriverDataCube):
         mission_id = options.get("mission_id") or supported_missons[0]
         append_debug_bands = bool(options.get("append_debug_bands"))
 
-        def get_float(d: dict, key: str, default: float = np.NaN) -> float:
+        def get_float(d: dict, key: str, default: float = np.nan) -> float:
             value = d.get(key)
             if value is None:
                 value = default

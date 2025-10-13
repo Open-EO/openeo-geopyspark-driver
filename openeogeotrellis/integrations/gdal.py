@@ -13,7 +13,7 @@ from typing import Dict, Optional, Union, Any, Tuple
 import pyproj
 from math import isfinite
 from openeo.util import dict_no_none
-from osgeo import gdal
+
 
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.util.runtime import get_job_id
@@ -509,22 +509,15 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
     :return:
         GDALInfo: which is a dictionary that contains the output from `gdal.Info()`.
     """
-    # By default, gdal does not raise exceptions but returns error codes and prints
-    # error info on stdout. We don't want that. At the least it should go to the logs.
-    # See https://gdal.org/api/python_gotchas.html
-    gdal.UseExceptions()
-
     data_gdalinfo = {}
     # TODO: Choose a version, and remove others
     backend_config = get_backend_config()
     if (
         not backend_config.gdalinfo_from_file
-        and not backend_config.gdalinfo_python_call
         and not backend_config.gdalinfo_use_subprocess
-        and not backend_config.gdalinfo_use_python_subprocess
     ):
         poorly_log(
-            "Neither gdalinfo_python_call nor gdalinfo_use_subprocess nor gdalinfo_use_python_subprocess is True. Avoiding gdalinfo."
+            "Neither gdalinfo_use_subprocess nor gdalinfo_from_file is True. Avoiding gdalinfo."
         )
 
     if backend_config.gdalinfo_from_file:
@@ -533,19 +526,6 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
                 data_gdalinfo = json.load(f)
                 # We can safely assume that this json is valid and return early.
                 return data_gdalinfo
-
-    if backend_config.gdalinfo_python_call:
-        start = time.time()
-        try:
-            data_gdalinfo = gdal.Info(asset_uri, options=gdal.InfoOptions(format="json", stats=True))
-            end = time.time()
-            # This can throw a segfault on empty netcdf bands:
-            poorly_log(f"gdal.Info() took {int((end - start) * 1000)}ms for {asset_uri}", level=logging.DEBUG)  # ~10ms
-        except Exception as exc:  # TODO: handle more specific exceptions
-            poorly_log(
-                f"gdalinfo Exception. Statistics won't be added to STAC metadata. {exc.__class__.__name__}: '{exc}'.",
-                level=logging.WARNING,
-            )
 
     if backend_config.gdalinfo_use_subprocess or data_gdalinfo == {}:
         start = time.time()
@@ -557,30 +537,6 @@ def read_gdal_info(asset_uri: str) -> GDALInfo:
             data_gdalinfo_from_subprocess = parse_json_from_output(out)
             end = time.time()
             poorly_log(f"gdalinfo took {int((end - start) * 1000)}ms for {asset_uri}", level=logging.DEBUG)  # ~30ms
-            if data_gdalinfo:
-                assert find_gdalinfo_differences(data_gdalinfo_from_subprocess, data_gdalinfo) is None
-            else:
-                data_gdalinfo = data_gdalinfo_from_subprocess
-        except Exception as exc:  # TODO: handle more specific exceptions
-            poorly_log(
-                f"gdalinfo Exception. Statistics won't be added to STAC metadata. {exc.__class__.__name__}: '{exc}'. Command: {subprocess.list2cmdline(cmd)}",
-                level=logging.WARNING,
-            )
-
-    if backend_config.gdalinfo_use_python_subprocess:
-        start = time.time()
-        cmd = [
-            sys.executable,
-            "-c",
-            f"""from osgeo import gdal; import json; gdal.UseExceptions(); print(json.dumps(gdal.Info({asset_uri!r}, options=gdal.InfoOptions(format="json", stats=True))))""",
-        ]
-        try:
-            out = subprocess.check_output(cmd, timeout=1800, text=True)
-            data_gdalinfo_from_subprocess = parse_json_from_output(out)
-            end = time.time()
-            poorly_log(
-                f"gdal.Info() subprocess took {int((end - start) * 1000)}ms for {asset_uri}", level=logging.DEBUG
-            )  # ~130ms
             if data_gdalinfo:
                 assert find_gdalinfo_differences(data_gdalinfo_from_subprocess, data_gdalinfo) is None
             else:

@@ -21,6 +21,7 @@ without compromising stable operations.
 - Disable `async_task` by default ([eu-cdse/openeo-cdse-infra#387](https://github.com/eu-cdse/openeo-cdse-infra/issues/387))
 - `export_workspace`: add `md5` and `mtime` metadata to assets exported as objects ([#1318](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1318))
 - Avoid in-memory credentials cache conflict in IPA tooling (eu-cdse/openeo-cdse-infra#660)
+- `resample_cube_spatial`: support resampling cube without time dimension, where target cube has a time dimension
 - Log warning when requesting bands in unexpected order for temporal NetCDF STAC catalogs. ([#1153](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1153))
 - Expose `get_oidc_access_token` helper method for use with `StacApiWorkspace` ([eu-cdse/openeo-cdse-infra#633](https://github.com/eu-cdse/openeo-cdse-infra/issues/633))
 - Add `integrations.vault.VaultClient` with "cert" auth support (eu-cdse/openeo-cdse-infra#671)
@@ -28,6 +29,9 @@ without compromising stable operations.
 - Less often used Spark metrics for batch jobs are now disabled by default. They are enabled when log-level is set to 'debug'.
 - `filter_temporal` should also work in half-open fashion when applied after `load_collection`/`load_stac` with non-empty `temporal_extent` ([Open-EO/openeo-geotrellis-extensions#498](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/498))
 - `load_stac`: ignore empty `roles` listing for assets to decide if asset is a "band asset" ([1356](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1356))
+- ~~Make `osgeo.gdal` more clearly an optional~~ Eliminate `osgeo.gdal` as runtime dependency ([#1363](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1363), eu-cdse/openeo-cdse-infra#718, eu-cdse/openeo-cdse-infra#733)
+- Support returning job result STAC items in addition to assets ([#1111](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1111))
+- apply_neighborhood: allow minimum X/Y size of 4 instead of 32
 
 
 ## 0.67.0

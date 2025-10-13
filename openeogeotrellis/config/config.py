@@ -249,6 +249,13 @@ class GpsBackendConfig(OpenEoBackendConfig):
         ),
     )
 
+    processing_container_image: Optional[str] = attrs.field(
+        default=None,
+        metadata={
+            "description": "Docker image to use for batch/synchronous processing jobs when started from web app. If not specified, the same image the web app is running in will be used."
+        },
+    )
+
     """
     Maps the name of a UDF runtime to the image to use for the batch job.
     Also used to map image-name job option to batch job image.
@@ -280,9 +287,7 @@ class GpsBackendConfig(OpenEoBackendConfig):
     batch_spark_yarn_historyserver_address: str = ""
     batch_yarn_container_runtime_docker_client_config: str = ""
     gdalinfo_from_file: bool = True
-    gdalinfo_python_call: bool = False
     gdalinfo_use_subprocess: bool = False
-    gdalinfo_use_python_subprocess: bool = False
 
     # TODO #1009 make None by default, when appropriate configs are set.
     calrissian_config: Optional[CalrissianConfig] = CalrissianConfig()

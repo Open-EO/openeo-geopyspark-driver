@@ -1,3 +1,5 @@
+import sys
+
 import json
 import logging
 
@@ -20,7 +22,7 @@ from openeo_driver.specs import read_spec
 from openeo_driver.users import User
 from openeo_driver.utils import EvalEnv
 
-from openeogeotrellis.backend import GpsProcessing, GeoPySparkBackendImplementation
+from openeogeotrellis.backend import GpsProcessing, GeoPySparkBackendImplementation, GpsUdfRuntimes
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.config.s3_config import S3Config
 from openeogeotrellis.integrations.kubernetes import k8s_render_manifest_template, K8S_SPARK_APP_STATE
@@ -805,7 +807,12 @@ class TestGpsBatchJobs:
             Key=job_metadata_json_key,
             Body=json.dumps(
                 {
-                    "assets": {"openEO": {"href": "s3://bucket/path/to/openEO.tif"}},
+                    "items": [
+                        {
+                            "id": "b9510f20-92a0-4947-a4b6-a6a934a0015e",
+                            "assets": {"openEO": {"href": "s3://bucket/path/to/openEO.tif"}},
+                        }
+                    ],
                     "epsg": 32631,
                     "providers": [{"name": "VITO"}],
                 }
@@ -814,25 +821,21 @@ class TestGpsBatchJobs:
         job["status"] = JOB_STATUS.FINISHED
         job["results_metadata_uri"] = f"s3://{mock_non_swift_s3_bucket.name}/{job_metadata_json_key}"
 
-        asset_key, asset = next(
-            iter(
-                backend_implementation.batch_jobs.get_result_assets(
-                    job_id=job_id, user_id=self._dummy_user.user_id
-                ).items()
-            )
-        )
-        assert asset_key == "openEO"
-        assert asset["href"] == "s3://bucket/path/to/openEO.tif"
-
         metadata = backend_implementation.batch_jobs.get_job_info(
             job_id=job_id, user_id=self._dummy_user.user_id
         )
         assert metadata.epsg == 32631
 
-        providers = backend_implementation.batch_jobs.get_result_metadata(
+        result_metadata = backend_implementation.batch_jobs.get_result_metadata(
             job_id=job_id, user_id=self._dummy_user.user_id
-        ).providers
-        assert [provider["name"] for provider in providers] == ["VITO"]
+        )
+        assert [provider["name"] for provider in result_metadata.providers] == ["VITO"]
+        assert result_metadata.items == {
+            "b9510f20-92a0-4947-a4b6-a6a934a0015e": {
+                "id": "b9510f20-92a0-4947-a4b6-a6a934a0015e",
+                "assets": {"openEO": {"href": "s3://bucket/path/to/openEO.tif"}},
+            }
+        }
 
     @pytest.mark.parametrize(
         "results_metadata_uri_prefix",
@@ -914,4 +917,46 @@ class TestGpsBatchJobs:
             api_version="1.2",
             metadata={},
             job_options={"log_level": "info"},
+        )
+
+
+class TestGpsUdfRuntimes:
+    def test_get_udf_runtimes(self):
+        runtimes = GpsUdfRuntimes()
+        current_py_3_minor = f"{sys.version_info.major}.{sys.version_info.minor}"
+        expected_libraries = dirty_equals.IsPartialDict(
+            {
+                "numpy": {"version": dirty_equals.IsStr(regex=r"\d+\.\d+\.\d+")},
+                "xarray": {"version": dirty_equals.IsStr(regex=r"\d+\.\d+\.\d+")},
+            }
+        )
+        assert runtimes.get_udf_runtimes() == dirty_equals.IsPartialDict(
+            {
+                "Python": dirty_equals.IsPartialDict(
+                    {
+                        "title": "Python 3",
+                        "type": "language",
+                        "default": "3",
+                        "versions": dirty_equals.IsPartialDict(
+                            {
+                                "3": {"libraries": expected_libraries},
+                                current_py_3_minor: {"libraries": expected_libraries},
+                            }
+                        ),
+                    }
+                ),
+                "Python-Jep": dirty_equals.IsPartialDict(
+                    {
+                        "title": "Python 3",
+                        "type": "language",
+                        "default": "3",
+                        "versions": dirty_equals.IsPartialDict(
+                            {
+                                "3": {"libraries": expected_libraries},
+                                current_py_3_minor: {"libraries": expected_libraries},
+                            }
+                        ),
+                    }
+                ),
+            }
         )

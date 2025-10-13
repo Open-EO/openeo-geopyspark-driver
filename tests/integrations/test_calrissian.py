@@ -73,7 +73,7 @@ class TestCalrissianJobLauncher:
                         {
                             "name": "r-1234-cal-inp-01234567",
                             "image": "alpine:3",
-                            "image_pull_policy": "IfNotPresent",
+                            "image_pull_policy": "Always",
                             "command": ["/bin/sh"],
                             "args": [
                                 "-c",
@@ -134,7 +134,7 @@ class TestCalrissianJobLauncher:
                         {
                             "name": "r-123-cal-cwl-01234567",
                             "image": DEFAULT_CALRISSIAN_IMAGE,
-                            "image_pull_policy": "IfNotPresent",
+                            "image_pull_policy": "Always",
                             "command": ["calrissian"],
                             "args": dirty_equals.Contains(
                                 "--tmp-outdir-prefix",

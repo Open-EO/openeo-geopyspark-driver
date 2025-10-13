@@ -1,3 +1,4 @@
+import sys
 import datetime as dt
 import io
 import json
@@ -44,7 +45,7 @@ from openeo_driver.backend import (
     LoadParameters,
     OidcProvider,
     ServiceMetadata,
-    JobListing,
+    JobListing, BatchJobResultMetadata,
 )
 from openeo_driver.config.load import ConfigGetter
 from openeo_driver.constants import DEFAULT_LOG_LEVEL_RETRIEVAL, DEFAULT_LOG_LEVEL_PROCESSING
@@ -65,7 +66,7 @@ from openeo_driver.util.date_math import now_utc
 from openeo_driver.util.geometry import BoundingBox
 from openeo_driver.util.http import requests_with_retry
 from openeo_driver.util.utm import area_in_square_meters
-from openeo_driver.utils import EvalEnv, generate_unique_id, to_hashable, WhiteListEvalEnv
+from openeo_driver.utils import EvalEnv, generate_unique_id, to_hashable, WhiteListEvalEnv, get_package_versions
 from pandas import Timedelta
 from py4j.java_gateway import JVMView
 from py4j.protocol import Py4JJavaError
@@ -76,6 +77,7 @@ from xarray import DataArray
 import numpy as np
 
 import openeogeotrellis
+from openeo_driver.views import OPENEO_API_VERSION_DEFAULT
 from openeogeotrellis import sentinel_hub, load_stac, datacube_parameters
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.config.s3_config import S3Config
@@ -96,7 +98,7 @@ from openeogeotrellis.integrations.s3proxy.asset_urls import PresignedS3AssetUrl
 from openeogeotrellis.integrations.stac import ResilientStacIO
 from openeogeotrellis.integrations.traefik import Traefik
 from openeogeotrellis.integrations.yarn_jobrunner import YARNBatchJobRunner
-from openeogeotrellis.job_options import JobOptions, K8SOptions
+from openeogeotrellis.job_options import JobOptions, K8SOptions, JOB_OPTION_DISABLE
 from openeogeotrellis.job_registry import (
     DoubleJobRegistry,
     ZkJobRegistry,
@@ -383,6 +385,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             ),
             user_defined_processes=user_defined_processes,
             processing=GpsProcessing(),
+            udf_runtimes=GpsUdfRuntimes(),
             # secondary_services=GpsSecondaryServices(service_registry=self._service_registry),
         )
 
@@ -953,8 +956,8 @@ Example usage:
                 parameter = 'data', process = 'vector_to_raster',
                 reason = f'Input vector cube {input_vector_cube} is not fully numeric. Actual data type: {cube.dtype}.'
             )
-        if cube.dtype != np.float:
-            input_vector_cube = input_vector_cube.with_cube(cube.astype(np.float))
+        if cube.dtype != float:
+            input_vector_cube = input_vector_cube.with_cube(cube.astype(float))
 
         # Pass over to scala using a parquet file (py4j is too slow) and convert it to a raster layer.
         file_name = "input_vector_cube.geojson"
@@ -1790,7 +1793,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
         with self._double_job_registry as dbl_registry:
             job_info = dbl_registry.get_job(job_id=job_id, user_id=user_id)
-            api_version = job_info.get('api_version')
+            api_version = job_info.get("api_version", OPENEO_API_VERSION_DEFAULT)
 
             if dependencies is None:
                 # restart logic
@@ -2008,11 +2011,6 @@ class GpsBatchJobs(backend.BatchJobs):
                 job_specification_file.strip("/"),
             )
 
-            if api_version:
-                api_version = api_version
-            else:
-                api_version = '0.4.0'
-
             eodata_mount = "/eodata2" if use_goofys else "/eodata"
 
             spark_app_id = k8s_job_name()
@@ -2020,8 +2018,9 @@ class GpsBatchJobs(backend.BatchJobs):
             # allow to override the image name via job options, other option would be to deduce it from the udf runtimes being used
             running_image = api_instance_core.read_namespaced_pod(name=os.environ.get("POD_NAME"), namespace=os.environ.get("POD_NAMESPACE")).spec.containers[0].image
 
-            image_name = options.image_name or running_image
+            image_name = options.image_name or get_backend_config().processing_container_image or running_image
             image_name = get_backend_config().batch_runtime_to_image.get(image_name.lower(), image_name)
+            log.info(f"Using {image_name=}")
 
             batch_job_cfg_secret_name = k8s_get_batch_job_cfg_secret_name(spark_app_id)
 
@@ -2043,7 +2042,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 executor_memory=options.executor_memory,
                 executor_memory_overhead=options.executor_memory_overhead,
                 executor_threads_jvm=str(options.executor_threads_jvm),
-                python_max_memory = byte_string_as(options.python_memory or "0b"),
+                python_max_memory = byte_string_as(options.python_memory or "0b") if options.python_memory != JOB_OPTION_DISABLE else JOB_OPTION_DISABLE,
                 max_executors=options.max_executors,
                 api_version=api_version,
                 dependencies="[]",  # TODO: use `serialize_dependencies()` here instead? It's probably messy to get that JSON string correctly encoded in the rendered YAML.
@@ -2632,10 +2631,37 @@ class GpsBatchJobs(backend.BatchJobs):
         return job_dependencies
 
     @lru_cache(maxsize=20)
+    def get_result_metadata(self, job_id: str, user_id: str) -> BatchJobResultMetadata:
+        with self._double_job_registry as registry:
+            job_dict = registry.get_job(job_id, user_id=user_id)
+
+        if job_dict["status"] not in [JOB_STATUS.FINISHED, JOB_STATUS.ERROR]:
+            raise JobNotFinishedException
+
+        results_metadata = self.load_results_metadata(job_id, user_id, job_dict)
+
+        if "items" in results_metadata:
+            return BatchJobResultMetadata(
+                items={item["id"]: item for item in results_metadata["items"]},
+                assets=self._results_metadata_to_assets(results_metadata, job_id),
+                links=[],
+                providers=self._get_providers(job_id=job_id, user_id=user_id),
+            )
+        else:
+            return BatchJobResultMetadata(
+                assets=self._results_metadata_to_assets(results_metadata, job_id),
+                links=[],
+                providers=self._get_providers(job_id=job_id, user_id=user_id),
+            )
+
+    @deprecated("call get_result_metadata instead")
+    @lru_cache(maxsize=20)
     def get_result_assets(self, job_id: str, user_id: str) -> Dict[str, dict]:
         """
         Reads the metadata json file from the job directory
         and returns information about the output files.
+
+        DEPRECATED: usages of this method have to be replaced with retrieving the items directly
 
         :param job_id: The id of the job to get the results for.
         :param user_id: The id of the user that started the job.
@@ -2649,7 +2675,9 @@ class GpsBatchJobs(backend.BatchJobs):
             raise JobNotFinishedException
 
         results_metadata = self.load_results_metadata(job_id, user_id, job_dict)
+        return self._results_metadata_to_assets(results_metadata, job_id)
 
+    def _results_metadata_to_assets(self, results_metadata, job_id):
         out_assets = results_metadata.get("assets", {})
         out_metadata = out_assets.get("out", {})
         bands = [Band(*properties) for properties in out_metadata.get("bands", [])]
@@ -3062,3 +3090,61 @@ class GpsBatchJobs(backend.BatchJobs):
         if assembled_folders:
             logger.info("Deleted Sentinel Hub assembled folder(s) {fs} for batch job {j}"
                         .format(fs=assembled_folders, j=job_id), extra={'job_id': job_id})
+
+
+class GpsUdfRuntimes(backend.UdfRuntimes):
+
+    # Python libraries to list
+    # TODO: allow customization of this list (e.g. through config)
+    python_libraries = [
+        "openeo",
+        "openeo_driver",
+        "numpy",
+        "scipy",
+        "pandas",
+        "xarray",
+        "geopandas",
+        "netCDF4",
+        "shapely",
+        "pyproj",
+        "rasterio",
+        "tensorflow",
+        "pytorch",
+    ]
+
+    def _get_python_versions(self):
+        # TODO: this assumes UDF runtime is equal to web app runtime, which is not true anymore.
+        major, minor, patch = (str(v) for v in sys.version_info[:3])
+        aliases = [
+            f"{major}",
+            f"{major}.{minor}",
+            f"{major}.{minor}.{patch}",
+        ]
+        default_version = major
+        return major, aliases, default_version
+
+    def _get_python_udf_runtime_metadata(self):
+        major, aliases, default_version = self._get_python_versions()
+        # TODO: get actual library version (instead of version of current environment).
+        libraries = {
+            p: {"version": v.split(" ", 1)[-1]}
+            for p, v in get_package_versions(self.python_libraries, na_value=None).items()
+            if v
+        }
+
+        return {
+            "title": f"Python {major}",
+            "description": f"Python {major} runtime environment.",
+            "type": "language",
+            "default": default_version,
+            "versions": {v: {"libraries": libraries} for v in aliases},
+        }
+
+    def get_udf_runtimes(self) -> dict:
+        # TODO: this is highly geopyspark-driver specific: return a simpler listing by default
+        # TODO add caching of this result
+        return {
+            # TODO: toggle these runtimes through dependency injection or config?
+            "Python": self._get_python_udf_runtime_metadata(),
+            "Python-Jep": self._get_python_udf_runtime_metadata(),
+        }

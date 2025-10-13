@@ -45,6 +45,8 @@ spec:
           value: "minioadmin"
         - name: MINIO_SECRET_KEY
           value: "minioadmin"
+        - name: MINIO_BROWSER_LOGIN_ANIMATION
+          value: "off"
         ports:
         - containerPort: 9000
         - containerPort: 9001

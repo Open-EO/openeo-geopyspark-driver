@@ -120,7 +120,7 @@ class CwLSource:
         """
         Read CWL from a packaged resource file in importlib.resources-style.
         """
-        content = importlib_resources.files(anchor=anchor).joinpath(path).read_text(encoding="utf-8")
+        content = importlib_resources.files(anchor).joinpath(path).read_text(encoding="utf-8")
         return cls(content=content)
 
 
@@ -167,7 +167,9 @@ class CalrissianJobLauncher:
             mount_path="/calrissian/output-data",
         )
 
-        self._security_context = kubernetes.client.V1SecurityContext(**(security_context or DEFAULT_SECURITY_CONTEXT))
+        self._security_context = kubernetes.client.V1PodSecurityContext(
+            **(security_context or DEFAULT_SECURITY_CONTEXT)
+        )
 
     @staticmethod
     def from_context() -> CalrissianJobLauncher:
@@ -225,7 +227,7 @@ class CalrissianJobLauncher:
         container = kubernetes.client.V1Container(
             name=name,
             image=self._input_staging_image,
-            image_pull_policy="IfNotPresent",
+            image_pull_policy="Always",
             security_context=self._security_context,
             command=["/bin/sh"],
             args=["-c", f"set -euxo pipefail; echo '{cwl_serialized}' | base64 -d > {cwl_path}"],
@@ -328,7 +330,7 @@ class CalrissianJobLauncher:
         container = kubernetes.client.V1Container(
             name=name,
             image=self._calrissian_image,
-            image_pull_policy="IfNotPresent",
+            image_pull_policy="Always",
             security_context=self._security_context,
             command=["calrissian"],
             args=calrissian_arguments,

@@ -18,6 +18,7 @@ from openeo_driver.config.load import ConfigGetter
 from openeo_driver.errors import InternalException, OpenEOApiException
 
 import openeogeotrellis.integrations.freeipa
+from openeo_driver.views import OPENEO_API_VERSION_DEFAULT
 from openeogeotrellis import sentinel_hub
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.job_options import JobOptions
@@ -369,6 +370,10 @@ class YARNBatchJobRunner:
         _log.info(f"_verify_proxy_user: invalid {user!r}")
         return ""
 
+    def _current_container_image(self) -> Union[str, None]:
+        """Currentrly running container image"""
+        return os.environ.get("YARN_CONTAINER_RUNTIME_DOCKER_IMAGE")
+
     def run_job(
         self,
         job_info: dict,
@@ -411,9 +416,12 @@ class YARNBatchJobRunner:
         submit_script = "submit_batch_job_spark3.sh"
         script_location = pkg_resources.resource_filename("openeogeotrellis.deploy", submit_script)
 
-        image_name = options.image_name or os.environ.get("YARN_CONTAINER_RUNTIME_DOCKER_IMAGE")
+        image_name = (
+            options.image_name or get_backend_config().processing_container_image or self._current_container_image()
+        )
         if image_name:
             image_name = get_backend_config().batch_runtime_to_image.get(image_name.lower(), image_name)
+        log.info(f"Using {image_name=}")
 
         extra_py_files = ""
         if options.udf_dependency_files is not None and len(options.udf_dependency_files) > 0:
@@ -474,7 +482,7 @@ class YARNBatchJobRunner:
                 principal=principal_value,
                 key_tab=keytab_value,
                 proxy_user=self._verify_proxy_user(proxy_user or user_id),
-                api_version=api_version if api_version else "0.4.0",
+                api_version=api_version or OPENEO_API_VERSION_DEFAULT,
                 driver_memory=options.driver_memory,
                 executor_memory=options.executor_memory,
                 executor_memory_overhead=options.executor_memory_overhead,

@@ -23,7 +23,7 @@ from openeo_driver.testing import DictSubSet, ephemeral_fileserver, ListSubSet
 from openeo_driver.util.geometry import validate_geojson_coordinates
 from openeo_driver.utils import EvalEnv
 from openeo_driver.workspace import DiskWorkspace
-from osgeo import gdal
+import osgeo.gdal
 from shapely.geometry import Point, Polygon, shape
 
 from openeogeotrellis.testing import gps_config_overrides
@@ -84,8 +84,7 @@ def test_png_export(tmp_path):
 
         assert 'image/png' == theAsset['type']
         href = theAsset['href']
-        from osgeo.gdal import Info
-        info = Info(href, format='json')
+        info = osgeo.gdal.Info(href, format='json')
         print(info)
         assert info['driverShortName'] == 'PNG'
 
@@ -186,11 +185,10 @@ def test_ep3899_netcdf_no_bands(tmp_path, stac_version, asset_name, bands_name):
     for theAsset in assets:
         assert 'application/x-netcdf' == theAsset['type']
         href = theAsset['href']
-        from osgeo.gdal import Info
-        info = Info("NETCDF:\""+href+"\":var", format='json')
+        info = osgeo.gdal.Info("NETCDF:\""+href+"\":var", format='json')
         print(info)
         assert info['driverShortName'] == 'netCDF'
-        da = xarray.open_dataset(href, engine='h5netcdf')
+        da = xarray.open_dataset(href)
         print(da)
 
 
@@ -272,7 +270,7 @@ def test_ep3874_sample_by_feature_filter_spatial_inline_geojson(prefix, tmp_path
     for _, theAsset in assets:
         bands = [Band(**b) for b in theAsset["bands"]]
         assert len(bands) == 1
-        da = xarray.open_dataset(theAsset['href'], engine='h5netcdf')
+        da = xarray.open_dataset(theAsset['href'])
         assert 'Flat:2' in da
         print(da['Flat:2'])
 
@@ -813,12 +811,18 @@ def test_spatial_cube_to_netcdf_sample_by_feature(tmp_path):
     item0 = [item for item in items for asset in item["assets"].values() if asset["href"].endswith("/openEO_0.nc")][0]
 
     assert item0["bbox"] == [0.1, 0.1, 1.8, 1.8]
-    assert shape(item0["geometry"]).normalize().almost_equals(Polygon.from_bounds(0.1, 0.1, 1.8, 1.8).normalize())
+    assert (
+        shape(item0["geometry"])
+        .normalize()
+        .equals_exact(Polygon.from_bounds(0.1, 0.1, 1.8, 1.8).normalize(), tolerance=0.001)
+    )
 
     item1 = [item for item in items for asset in item["assets"].values() if asset["href"].endswith("/openEO_1.nc")][0]
     assert item1["bbox"] == [0.725, -1.29, 2.99, 1.724]
     assert (
-        shape(item1["geometry"]).normalize().almost_equals(Polygon.from_bounds(0.725, -1.29, 2.99, 1.724).normalize())
+        shape(item1["geometry"])
+        .normalize()
+        .equals_exact(Polygon.from_bounds(0.725, -1.29, 2.99, 1.724).normalize(), tolerance=0.001)
     )
 
 
@@ -1059,8 +1063,11 @@ def test_export_workspace(tmp_path, remove_original, attach_gdalinfo_assets, sta
 
         for item in items:
             assert item.bbox == [0.0, 0.0, 1.0, 2.0]
-            assert (shape(item.geometry).normalize()
-                    .almost_equals(Polygon.from_bounds(0.0, 0.0, 1.0, 2.0).normalize()))
+            assert (
+                shape(item.geometry)
+                .normalize()
+                .equals_exact(Polygon.from_bounds(0.0, 0.0, 1.0, 2.0).normalize(), tolerance=0.001)
+            )
             assets = item.get_assets()
             assert len(assets) == 2 if attach_gdalinfo_assets & (stac_version == "1.1") else len(assets) == 1
             asset_name = "openEO" if stac_version == "1.1" else item.id
@@ -1082,8 +1089,11 @@ def test_export_workspace(tmp_path, remove_original, attach_gdalinfo_assets, sta
 
         item = [item for item in items if "2021-01-05" in item.id ][0]
         assert item.bbox == [0.0, 0.0, 1.0, 2.0]
-        assert (shape(item.geometry).normalize()
-                .almost_equals(Polygon.from_bounds(0.0, 0.0, 1.0, 2.0).normalize()))
+        assert (
+            shape(item.geometry)
+            .normalize()
+            .equals_exact(Polygon.from_bounds(0.0, 0.0, 1.0, 2.0).normalize(), tolerance=0.001)
+        )
 
         geotiff_asset = item.get_assets()[asset_names[1]]
         assert "data" in geotiff_asset.roles
@@ -1219,7 +1229,11 @@ def test_export_workspace_with_asset_per_band(tmp_path, stac_version, asset_name
 
         item = items[0]
         assert item.bbox == [0.0, 0.0, 1.0, 2.0]
-        assert shape(item.geometry).normalize().almost_equals(Polygon.from_bounds(0.0, 0.0, 1.0, 2.0).normalize())
+        assert (
+            shape(item.geometry)
+            .normalize()
+            .equals_exact(Polygon.from_bounds(0.0, 0.0, 1.0, 2.0).normalize(), tolerance=0.001)
+        )
 
         assets = [{asset_key:asset} for item in items for asset_key, asset in item.assets.items()]
         assert len(assets) == 2
@@ -2431,7 +2445,7 @@ def test_custom_geotiff_tags(tmp_path):
     assert len(output_tiffs) == 1
     output_tiff = output_tiffs[0]
 
-    raster = gdal.Open(str(output_tiff))
+    raster = osgeo.gdal.Open(str(output_tiff))
 
     assert raster.GetMetadata() == DictSubSet({
         "AREA_OR_POINT": "Area",
@@ -2616,7 +2630,7 @@ def test_reduce_bands_to_geotiff(tmp_path):
     output_tiffs = {filename for filename in os.listdir(tmp_path) if filename.endswith(".tif")}
     assert output_tiffs == {"openEO_2024-10-05Z.tif"}
 
-    raster = gdal.Open(str(tmp_path / output_tiffs.pop()))
+    raster = osgeo.gdal.Open(str(tmp_path / output_tiffs.pop()))
     assert raster.RasterCount == 1
 
     only_band = raster.GetRasterBand(1)

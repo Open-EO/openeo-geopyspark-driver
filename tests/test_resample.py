@@ -3,8 +3,10 @@ import math
 
 import geopyspark as gps
 import pytest
+import osgeo.gdal
 
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
+
 
 
 def test_resample_cube_spatial_single_level(imagecollection_with_two_bands_and_three_dates,imagecollection_with_two_bands_and_three_dates_webmerc):
@@ -12,6 +14,17 @@ def test_resample_cube_spatial_single_level(imagecollection_with_two_bands_and_t
     resampled = imagecollection_with_two_bands_and_three_dates.resample_cube_spatial(imagecollection_with_two_bands_and_three_dates_webmerc,method='cube')
 
     assert resampled.pyramid.levels[0].layer_metadata.crs == '+proj=merc +a=6378137 +b=6378137 +lat_ts=0 +lon_0=0 +x_0=0 +y_0=0 +k=1 +units=m +no_defs '
+
+    stitched = resampled.pyramid.levels[0].to_spatial_layer(datetime.datetime(2017, 9, 25, 11, 37)).stitch()
+    print(stitched)
+    assert stitched.cells[0][0][0] == 1.0
+    assert stitched.cells[1][0][0] == 2.0
+
+def test_resample_cube_spatial_spacetime_spatial(imagecollection_with_two_bands_and_three_dates,imagecollection_with_two_bands_spatial_only):
+    #print(imagecollection_with_two_bands_and_three_dates.pyramid.levels[0].to_spatial_layer(datetime.datetime(2017, 9, 25, 11, 37)).stitch())
+    resampled = imagecollection_with_two_bands_and_three_dates.resample_cube_spatial(imagecollection_with_two_bands_spatial_only,method='cube')
+
+    assert resampled.pyramid.levels[0].layer_metadata.crs == 'EPSG:4326'
 
     stitched = resampled.pyramid.levels[0].to_spatial_layer(datetime.datetime(2017, 9, 25, 11, 37)).stitch()
     print(stitched)
@@ -27,8 +40,7 @@ def test_resample__spatial_single_level(imagecollection_with_two_bands_and_three
 
     path = tmp_path / "resampled.tiff"
     resampled.save_result(path, format="GTIFF")
-    from osgeo.gdal import Info
-    info = Info(str(path), format='json')
+    info = osgeo.gdal.Info(str(path), format='json')
     print(info)
     assert math.floor(info['geoTransform'][1]) == 100000.0
 
