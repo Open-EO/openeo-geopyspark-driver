@@ -16,6 +16,7 @@
         <Logger name="org.apache.spark.deploy.yarn.ApplicationMaster" level="off"/> <!-- Ignore this: "User application exited with status 1" -->
         <Logger name="org.apache.spark.executor.Executor" level="off"/>
         <Logger name="org.apache.spark.network.server.TransportRequestHandler" level="off"/> <!-- Ignore this: "Could not find CoarseGrainedScheduler." -->
+        <Logger name="org.apache.spark.MapOutputTrackerWorker" level="off" /><!-- Ignore this: "Error communicating with MapOutputTracker" -->
         <Logger name="org.apache.spark.scheduler.TaskSetManager" level="warn"/>
         <Logger name="org.apache.spark.storage.DiskBlockObjectWriter" level="off"/>
         <Logger name="org.apache.zookeeper" level="warn"/>
