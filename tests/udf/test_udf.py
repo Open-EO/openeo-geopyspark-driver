@@ -27,6 +27,8 @@ from openeogeotrellis.udf import (
     python_udf_dependency_context_from_archive,
     run_udf_code,
     collect_udfs,
+    UdfSpecified,
+    UdfRuntimeSpecified,
 )
 
 
@@ -132,7 +134,7 @@ class TestUdfCollection:
             },
         }
         assert list(collect_udfs(pg)) == [
-            ("print('hello world')\n", "Python", None),
+            UdfSpecified(code="print('hello world')\n", runtime=UdfRuntimeSpecified(name="Python", version=None)),
         ]
 
     def test_collect_udfs_direct_and_remote_udp(self, requests_mock):
@@ -205,8 +207,8 @@ class TestUdfCollection:
             },
         }
         assert sorted(collect_udfs(pg)) == [
-            ("print('Hello 1')", "Python", None),
-            ("print('Hello 2')", "Python", None),
+            UdfSpecified(code="print('Hello 1')", runtime=UdfRuntimeSpecified(name="Python", version=None)),
+            UdfSpecified(code="print('Hello 2')", runtime=UdfRuntimeSpecified(name="Python", version=None)),
         ]
 
     def test_collect_udfs_from_custom_process(self):
@@ -260,7 +262,7 @@ class TestUdfCollection:
             },
         }
         assert sorted(collect_udfs(pg, process_registry=process_registry)) == [
-            ("print('Hello 123')", "Python", None),
+            UdfSpecified(code="print('Hello 123')", runtime=UdfRuntimeSpecified(name="Python", version=None)),
         ]
 
     def test_collect_python_udf_dependencies_no_udfs(self):
@@ -314,7 +316,7 @@ class TestUdfCollection:
                 "result": True,
             },
         }
-        assert collect_python_udf_dependencies(pg) == {("Python", None): set()}
+        assert collect_python_udf_dependencies(pg) == {UdfRuntimeSpecified(name="Python", version=None): set()}
 
     @pytest.mark.parametrize(
         ["run_udf_args", "expected"],
@@ -335,7 +337,7 @@ class TestUdfCollection:
                     ),
                     "runtime": "Python",
                 },
-                {("Python", None): {"numpy", "pandas"}},
+                {UdfRuntimeSpecified(name="Python", version=None): {"numpy", "pandas"}},
             ),
             (
                 {
@@ -351,7 +353,7 @@ class TestUdfCollection:
                     "runtime": "Python3",
                     "version": "3.1415",
                 },
-                {("Python3", "3.1415"): {"numpy", "pandas>=1.2.3"}},
+                {UdfRuntimeSpecified(name="Python3", version="3.1415"): {"numpy", "pandas>=1.2.3"}},
             ),
         ],
     )
@@ -450,7 +452,9 @@ class TestUdfCollection:
                 "result": True,
             },
         }
-        assert collect_python_udf_dependencies(pg) == {("Python", None): {"numpy", "pandas", "scipy"}}
+        assert collect_python_udf_dependencies(pg) == {
+            UdfRuntimeSpecified(name="Python", version=None): {"numpy", "pandas", "scipy"}
+        }
 
     def test_collect_python_udf_dependencies_from_remote_udp(self, requests_mock):
         udp_url = "https://udphub.test/apply_foo.udp.json"
@@ -509,7 +513,9 @@ class TestUdfCollection:
                 "result": True,
             },
         }
-        assert collect_python_udf_dependencies(pg) == {("Python", None): {"numpy", "pandas"}}
+        assert collect_python_udf_dependencies(pg) == {
+            UdfRuntimeSpecified(name="Python", version=None): {"numpy", "pandas"}
+        }
 
     def test_collect_python_udf_dependencies_direct_and_remote_udp(self, requests_mock):
         udp_url = "https://udphub.test/apply_foo.udp.json"
@@ -589,7 +595,9 @@ class TestUdfCollection:
                 "result": True,
             },
         }
-        assert collect_python_udf_dependencies(pg) == {("Python", None): {"numpy", "pandas", "scipy"}}
+        assert collect_python_udf_dependencies(pg) == {
+            UdfRuntimeSpecified(name="Python", version=None): {"numpy", "pandas", "scipy"}
+        }
 
     def test_collect_python_udf_dependencies_from_remote_udp_resilience(self, requests_mock, caplog):
         caplog.set_level(logging.WARNING)
@@ -637,7 +645,7 @@ class TestUdfCollection:
                 "result": True,
             },
         }
-        assert collect_python_udf_dependencies(pg) == {("Python", None): {"scipy"}}
+        assert collect_python_udf_dependencies(pg) == {UdfRuntimeSpecified(name="Python", version=None): {"scipy"}}
 
         assert caplog.text == dirty_equals.IsStr(
             regex=r".*collect_udf: skipping failure.*https://udphub.test/apply_foo.udp.json.*ProcessNamespaceInvalid.*",

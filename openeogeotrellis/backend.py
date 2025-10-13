@@ -19,7 +19,7 @@ from decimal import Decimal
 from functools import lru_cache, partial, reduce
 from pathlib import Path
 from subprocess import CalledProcessError
-from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union
+from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union, Set
 from urllib.parse import urlparse
 
 import flask
@@ -122,8 +122,14 @@ from openeogeotrellis.service_registry import (
     ServiceEntity,
     ZooKeeperServiceRegistry,
 )
-from openeogeotrellis.udf import run_udf_code, UDF_PYTHON_DEPENDENCIES_FOLDER_NAME, \
-    UDF_PYTHON_DEPENDENCIES_ARCHIVE_NAME, collect_udfs
+from openeogeotrellis.udf import (
+    run_udf_code,
+    UDF_PYTHON_DEPENDENCIES_FOLDER_NAME,
+    UDF_PYTHON_DEPENDENCIES_ARCHIVE_NAME,
+    collect_udfs,
+    UdfRuntimeSpecified,
+)
+from openeogeotrellis.udf.udf_runtime_images import UdfRuntimeImageRepository
 from openeogeotrellis.user_defined_process_repository import (
     InMemoryUserDefinedProcessRepository,
     ZooKeeperUserDefinedProcessRepository,
@@ -371,10 +377,13 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 requests_session=requests_session, do_health_check=do_ejr_health_check
             )
 
+        udf_runtimes = GpsUdfRuntimes()
+
         super().__init__(
             catalog=catalog,
             batch_jobs=GpsBatchJobs(
                 catalog=catalog,
+                udf_runtimes=udf_runtimes,
                 jvm=jvm,
                 principal=principal,
                 key_tab=key_tab,
@@ -385,7 +394,7 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             ),
             user_defined_processes=user_defined_processes,
             processing=GpsProcessing(),
-            udf_runtimes=GpsUdfRuntimes(),
+            udf_runtimes=udf_runtimes,
             # secondary_services=GpsSecondaryServices(service_registry=self._service_registry),
         )
 
@@ -1389,6 +1398,7 @@ class GpsBatchJobs(backend.BatchJobs):
         *,
         # TODO: clean up this overly Terrascope-coupled constructor
         catalog: GeoPySparkLayerCatalog,
+        udf_runtimes: Optional["GpsUdfRuntimes"] = None,
         jvm: JVMView,
         principal: Optional[str] = None,
         key_tab: Optional[str] = None,
@@ -1399,6 +1409,7 @@ class GpsBatchJobs(backend.BatchJobs):
     ):
         super().__init__()
         self._catalog = catalog
+        self._udf_runtimes = udf_runtimes
         self._jvm = jvm
         self._principal = principal
         self._key_tab = key_tab
@@ -1831,26 +1842,13 @@ class GpsBatchJobs(backend.BatchJobs):
 
         log.debug(f"_start_job {job_options=}")
 
-        process_registry = GpsProcessing().get_process_registry(api_version=api_version)
-        udf_runtimes = set(
-            (udf[1], udf[2]) for udf in collect_udfs(job_process_graph, process_registry=process_registry)
-        )
-
-        if len(udf_runtimes) == 0:
-            # TODO: this is a quick hack to start using python311 for batch jobs without UDFs. Needs clean-up
-            image_name = "python311"
-            if "image-name" not in job_options and image_name in get_backend_config().batch_runtime_to_image:
-                log.info(f'Forcing job_options["image-name"]={image_name!r} from {udf_runtimes=}')
+        if "image-name" not in job_options:
+            image_name = self._determine_container_image_from_process_graph(
+                process_graph=job_process_graph, api_version=api_version
+            )
+            if image_name:
+                log.info(f'Forcing job_options["image-name"]={image_name!r}')
                 job_options["image-name"] = image_name
-        elif len(udf_runtimes) == 1:
-            (udf_runtime,) = udf_runtimes
-            if udf_runtime is not None and "image-name" not in job_options and udf_runtime[1] is not None:
-                image_name = udf_runtime[0].lower() + udf_runtime[1].replace(".", "")
-                log.info(f'Forcing job_options["image-name"]={image_name!r} from {udf_runtimes=}')
-                job_options["image-name"] = image_name
-        elif len(udf_runtimes) > 1:
-            log.warning(f"Multiple UDF runtimes detected in the process graph: {udf_runtimes}. Running with default environment.")
-
 
         if (dependencies is None
             and job_info.get("dependency_status")
@@ -2018,8 +2016,9 @@ class GpsBatchJobs(backend.BatchJobs):
             # allow to override the image name via job options, other option would be to deduce it from the udf runtimes being used
             running_image = api_instance_core.read_namespaced_pod(name=os.environ.get("POD_NAME"), namespace=os.environ.get("POD_NAMESPACE")).spec.containers[0].image
 
-            image_name = options.image_name or get_backend_config().processing_container_image or running_image
-            image_name = get_backend_config().batch_runtime_to_image.get(image_name.lower(), image_name)
+            image_name = self._udf_runtimes.udf_runtime_image_repository.resolve_image_alias(
+                options.image_name or get_backend_config().processing_container_image or running_image
+            )
             log.info(f"Using {image_name=}")
 
             batch_job_cfg_secret_name = k8s_get_batch_job_cfg_secret_name(spark_app_id)
@@ -2194,9 +2193,33 @@ class GpsBatchJobs(backend.BatchJobs):
                 )
                 dbl_registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.QUEUED)
 
-
-
-
+    def _determine_container_image_from_process_graph(
+        self, process_graph: dict, *, api_version: str = OPENEO_API_VERSION_DEFAULT
+    ) -> Union[str, None]:
+        try:
+            process_registry = GpsProcessing().get_process_registry(api_version=api_version)
+            udf_runtimes: List[UdfRuntimeSpecified] = [
+                udf.runtime for udf in collect_udfs(process_graph, process_registry=process_registry)
+            ]
+            image_name = self._udf_runtimes.udf_runtime_image_repository.get_image_from_udf_runtimes(
+                runtimes=udf_runtimes
+            )
+            if len(udf_runtimes) > 0 and all(rt.version is None for rt in udf_runtimes):
+                # TODO #1387 clean up this temporary migration path infra#169
+                override = "python38"
+                if override in self._udf_runtimes.udf_runtime_image_repository.get_all_image_refs_and_aliases():
+                    logger.warning(
+                        f"Container image from UDF runtimes: {len(udf_runtimes)} run_udf call(s) found but none with explicit runtime version specified."
+                        f" During the current Python 3.8 to 3.11 migration phase, we do hard fall back to {override!r} in this situation"
+                        f" (overriding the normal default {image_name!r})."
+                        f" This override (and Python 3.8 support in general) will be removed in the future."
+                    )
+                    image_name = override
+            logger.info(f"Determined container image {image_name!r} from process graph with {set(udf_runtimes)}")
+            return image_name
+        except Exception as e:
+            logger.warning(f"Failed to determine container image from process graph: {e}", exc_info=True)
+            return None
 
     # TODO: encapsulate this SHub stuff in a dedicated class?
     def _schedule_and_get_dependencies(  # some we schedule ourselves, some already exist
@@ -2943,7 +2966,10 @@ class GpsBatchJobs(backend.BatchJobs):
                 with self._double_job_registry:
                     registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.CANCELED)
             else:
+                # TODO: extract this logic and move YARNBatchJobRunner or related?
+                #       and get rid of hardcoded VITO references
                 try:
+                    # TODO: is it necessary to do this with curl subprocess instead of requests?
                     kill_spark_job = subprocess.run(
                         ["curl", "--location-trusted", "--fail", "--negotiate", "-u", ":", "--insecure", "-X", "PUT",
                          "-H", "Content-Type: application/json", "-d", '{"state": "KILLED"}',
@@ -3077,58 +3103,9 @@ class GpsBatchJobs(backend.BatchJobs):
 
 
 class GpsUdfRuntimes(backend.UdfRuntimes):
-
-    # Python libraries to list
-    # TODO: allow customization of this list (e.g. through config)
-    python_libraries = [
-        "openeo",
-        "openeo_driver",
-        "numpy",
-        "scipy",
-        "pandas",
-        "xarray",
-        "geopandas",
-        "netCDF4",
-        "shapely",
-        "pyproj",
-        "rasterio",
-        "tensorflow",
-        "pytorch",
-    ]
-
-    def _get_python_versions(self):
-        # TODO: this assumes UDF runtime is equal to web app runtime, which is not true anymore.
-        major, minor, patch = (str(v) for v in sys.version_info[:3])
-        aliases = [
-            f"{major}",
-            f"{major}.{minor}",
-            f"{major}.{minor}.{patch}",
-        ]
-        default_version = major
-        return major, aliases, default_version
-
-    def _get_python_udf_runtime_metadata(self):
-        major, aliases, default_version = self._get_python_versions()
-        # TODO: get actual library version (instead of version of current environment).
-        libraries = {
-            p: {"version": v.split(" ", 1)[-1]}
-            for p, v in get_package_versions(self.python_libraries, na_value=None).items()
-            if v
-        }
-
-        return {
-            "title": f"Python {major}",
-            "description": f"Python {major} runtime environment.",
-            "type": "language",
-            "default": default_version,
-            "versions": {v: {"libraries": libraries} for v in aliases},
-        }
+    def __init__(self):
+        super().__init__()
+        self.udf_runtime_image_repository = UdfRuntimeImageRepository.from_config()
 
     def get_udf_runtimes(self) -> dict:
-        # TODO: this is highly geopyspark-driver specific: return a simpler listing by default
-        # TODO add caching of this result
-        return {
-            # TODO: toggle these runtimes through dependency injection or config?
-            "Python": self._get_python_udf_runtime_metadata(),
-            "Python-Jep": self._get_python_udf_runtime_metadata(),
-        }
+        return self.udf_runtime_image_repository.get_udf_runtimes_response()
