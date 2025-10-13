@@ -2945,29 +2945,25 @@ class GeopysparkDataCube(DriverDataCube):
 
     @callsite
     def aspect(self):
+        new_metadata = self.metadata
+        if self.metadata.has_band_dimension():
+            band_names = [band_name + '_aspect' for band_name in self.metadata.band_names]
+            new_metadata = self.metadata.with_new_band_names(band_names)
         def compute_aspect(rdd, level):
             pr = gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses()
-            if self.metadata.has_band_dimension():
-                band_names = self.metadata.band_names
-            else:
-                band_names = ["band_unnamed"]
-            wrapped = pr.wrapCube(rdd)
-            wrapped.openEOMetadata().setBandNames(band_names)
-            return pr.aspect(wrapped)
-        return self._apply_to_levels_geotrellis_rdd(compute_aspect)
+            return pr.aspect(rdd)
+        return self._apply_to_levels_geotrellis_rdd(compute_aspect, metadata=new_metadata)
 
     @callsite
     def slope(self):
+        new_metadata = self.metadata
+        if self.metadata.has_band_dimension():
+            band_names = [band_name + '_slope' for band_name in self.metadata.band_names]
+            new_metadata = self.metadata.with_new_band_names(band_names)
         def compute_slope(rdd, level):
             pr = gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses()
-            if self.metadata.has_band_dimension():
-                band_names = self.metadata.band_names
-            else:
-                band_names = ["band_unnamed"]
-            wrapped = pr.wrapCube(rdd)
-            wrapped.openEOMetadata().setBandNames(band_names)
-            return pr.slope(wrapped)
-        return self._apply_to_levels_geotrellis_rdd(compute_slope)
+            return pr.slope(rdd)
+        return self._apply_to_levels_geotrellis_rdd(compute_slope, metadata=new_metadata)
 
     def sar_backscatter(self, args: SarBackscatterArgs) -> 'GeopysparkDataCube':
         # Nothing to do: the actual SAR backscatter processing already happened in `load_collection`
