@@ -20,9 +20,9 @@ import geopandas as gpd
 import pyproj
 import pytz
 import xarray as xr
-from geopyspark import TiledRasterLayer, Pyramid, Tile, SpaceTimeKey, SpatialKey, Metadata
+from geopyspark import TiledRasterLayer, Pyramid, Tile, SpaceTimeKey, SpatialKey, Metadata, zfactor_lat_lng_calculator
 from geopyspark.geotrellis import Extent, ResampleMethod
-from geopyspark.geotrellis.constants import CellType
+from geopyspark.geotrellis.constants import CellType, Unit
 from pandas import Series
 from pyproj import CRS
 from shapely.geometry import mapping, Point, Polygon, MultiPolygon, GeometryCollection, box
@@ -2946,6 +2946,28 @@ class GeopysparkDataCube(DriverDataCube):
             )
         )
         return atmo_corrected
+
+    @callsite
+    def aspect(self):
+        new_metadata = self.metadata
+        if self.metadata.has_band_dimension():
+            band_names = [band_name + '_aspect' for band_name in self.metadata.band_names]
+            new_metadata = self.metadata.with_new_band_names(band_names)
+        def compute_aspect(rdd, level):
+            pr = gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses()
+            return pr.aspect(rdd)
+        return self._apply_to_levels_geotrellis_rdd(compute_aspect, metadata=new_metadata)
+
+    @callsite
+    def slope(self):
+        new_metadata = self.metadata
+        if self.metadata.has_band_dimension():
+            band_names = [band_name + '_slope' for band_name in self.metadata.band_names]
+            new_metadata = self.metadata.with_new_band_names(band_names)
+        def compute_slope(rdd, level):
+            pr = gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses()
+            return pr.slope(rdd)
+        return self._apply_to_levels_geotrellis_rdd(compute_slope, metadata=new_metadata)
 
     def sar_backscatter(self, args: SarBackscatterArgs) -> 'GeopysparkDataCube':
         # Nothing to do: the actual SAR backscatter processing already happened in `load_collection`
