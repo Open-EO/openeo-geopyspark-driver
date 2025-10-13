@@ -2205,17 +2205,16 @@ class GpsBatchJobs(backend.BatchJobs):
                 runtimes=udf_runtimes
             )
             if len(udf_runtimes) > 0 and all(rt.version is None for rt in udf_runtimes):
-                # TODO: clean up this temporary migration path infra#169
+                # TODO #1387 clean up this temporary migration path infra#169
                 override = "python38"
-                if override not in self._udf_runtimes.udf_runtime_image_repository.get_all_image_refs_and_aliases():
-                    override = None
-                logger.warning(
-                    f"Container image from UDF runtimes: {len(udf_runtimes)} run_udf call(s) found but none with explicit runtime version specified."
-                    f" During the current Python 3.8 to 3.11 migration phase, we do hard fall back to {override!r} in this situation"
-                    f" (overriding the normal default {image_name!r})."
-                    f" This override (and Python 3.8 support in general) will be removed in the future."
-                )
-                image_name = override
+                if override in self._udf_runtimes.udf_runtime_image_repository.get_all_image_refs_and_aliases():
+                    logger.warning(
+                        f"Container image from UDF runtimes: {len(udf_runtimes)} run_udf call(s) found but none with explicit runtime version specified."
+                        f" During the current Python 3.8 to 3.11 migration phase, we do hard fall back to {override!r} in this situation"
+                        f" (overriding the normal default {image_name!r})."
+                        f" This override (and Python 3.8 support in general) will be removed in the future."
+                    )
+                    image_name = override
             logger.info(f"Determined container image {image_name!r} from process graph with {set(udf_runtimes)}")
             return image_name
         except Exception as e:
