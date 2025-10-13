@@ -31,7 +31,7 @@ import time_machine
 from _pytest.terminal import TerminalReporter
 from openeo_driver.backend import OpenEoBackendImplementation, UserDefinedProcesses
 from openeo_driver.testing import ApiTester, ephemeral_fileserver, UrllibMocker
-from openeo_driver.utils import smart_bool
+from openeo_driver.utils import smart_bool, get_package_versions
 from openeo_driver.views import build_app
 
 from openeogeotrellis.integrations.s3proxy.sts import _STSClient
@@ -86,18 +86,17 @@ def _ensure_geopyspark(out: TerminalReporter):
     try:
         import geopyspark
 
-        out.write_line("[conftest.py] Succeeded to import geopyspark automatically: {p!r}".format(p=geopyspark))
+        out.write_line(f"[conftest.py] Succeeded to import automatically: {geopyspark=}")
     except KeyError as e:
         # Geopyspark failed to detect Spark home and py4j, let's fix that.
-        from pyspark import find_spark_home
+        import pyspark.find_spark_home
 
-        pyspark_home = Path(find_spark_home._find_spark_home())
+        pyspark_home = Path(pyspark.find_spark_home._find_spark_home())
         out.write_line(
-            "[conftest.py] Failed to import geopyspark automatically. "
-            "Will set up py4j path using Spark home: {h}".format(h=pyspark_home)
+            f"[conftest.py] Failed to import geopyspark automatically. Will set up py4j path using {pyspark_home=}"
         )
         py4j_zip = next((pyspark_home / "python" / "lib").glob("py4j-*-src.zip"))
-        out.write_line("[conftest.py] py4j zip: {z!r}".format(z=py4j_zip))
+        out.write_line(f"[conftest.py] {py4j_zip=}")
         sys.path.append(str(py4j_zip))
 
 
@@ -132,8 +131,10 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
     if "PYSPARK_PYTHON" not in os.environ:
         os.environ["PYSPARK_PYTHON"] = sys.executable
 
-    from geopyspark import geopyspark_conf
-    from pyspark import SparkContext
+    version_info = get_package_versions(["pyspark", "geopyspark", "geopyspark_openeo"])
+    out.write_line(f"[conftest.py] {version_info=}")
+    import pyspark
+    import geopyspark
 
     # Make sure geopyspark can find the custom jars (e.g. geotrellis-extension)
     # even if test suite is not run from project root (e.g. "run this test" functionality in an IDE like PyCharm)
@@ -141,7 +142,7 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
         Path(__file__).parent / "../jars",
     ]
 
-    conf = geopyspark_conf(
+    conf = geopyspark.geopyspark_conf(
         master=master_str,
         appName="OpenEO-GeoPySpark-Driver-Tests",
         additional_jar_dirs=additional_jar_dirs,
@@ -210,7 +211,8 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
     sparkDriverJavaOptions = f"-Dlog4j2.configurationFile=file:{sparkSubmitLog4jConfigurationFile}\
     -Dscala.concurrent.context.numThreads=6 \
     -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService\
-    -Dtsservice.layersConfigClass=ProdLayersConfiguration -Dtsservice.sparktasktimeout=600"
+    -Dtsservice.layersConfigClass=ProdLayersConfiguration -Dtsservice.sparktasktimeout=600\
+    --add-opens=java.base/sun.net.util=ALL-UNNAMED"
     if OPENEO_LOCAL_DEBUGGING:
         for port in range(5005, 5009):
             if is_port_free(port):
@@ -225,8 +227,8 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
      -Dscala.concurrent.context.numThreads=8"
     conf.set("spark.executor.extraJavaOptions", sparkExecutorJavaOptions)
 
-    out.write_line("[conftest.py] SparkContext.getOrCreate with {c!r}".format(c=conf.getAll()))
-    context = SparkContext.getOrCreate(conf)
+    out.write_line(f"[conftest.py] SparkContext.getOrCreate with {conf.getAll()=}")
+    context = pyspark.SparkContext.getOrCreate(conf)
     context.setLogLevel("DEBUG")
     out.write_line(
         "[conftest.py] JVM info: {d!r}".format(
@@ -242,6 +244,12 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
             }
         )
     )
+
+    try:
+        scala_version = context._jvm.scala.util.Properties.versionNumberString()
+    except Exception as e:
+        scala_version = str(e)
+    out.write_line("[conftest.py] Scala version: " + scala_version)
 
     if OPENEO_LOCAL_DEBUGGING:
         # TODO: Activate default logging for this message

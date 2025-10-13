@@ -1261,11 +1261,11 @@ class GeopysparkDataCube(DriverDataCube):
             runtime = process.udf_args.get('runtime', 'Python')
             udf, udf_context = self._extract_udf_code_and_context(process=process, context=context, env=env)
 
-            if sizeX < 32 or sizeY < 32:
+            if sizeX < 4 or sizeY < 4:
                 raise ProcessParameterInvalidException(
                     parameter="size",
                     process="apply_neighborhood",
-                    reason=f"window sizes smaller then 32 are not yet supported for UDFs (got {size!r}).",
+                    reason=f"window sizes smaller then 4 are not yet supported for UDFs (got {size!r}).",
                 )
 
             if has_time_dim and (temporal_size is None or temporal_size.get('value',None) is None):
@@ -2902,7 +2902,7 @@ class GeopysparkDataCube(DriverDataCube):
         mission_id = options.get("mission_id") or supported_missons[0]
         append_debug_bands = bool(options.get("append_debug_bands"))
 
-        def get_float(d: dict, key: str, default: float = np.NaN) -> float:
+        def get_float(d: dict, key: str, default: float = np.nan) -> float:
             value = d.get(key)
             if value is None:
                 value = default
