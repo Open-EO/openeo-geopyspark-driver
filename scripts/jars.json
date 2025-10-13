@@ -1,12 +1,35 @@
 {
-  "python3.8": [
-    "https://artifactory.vgt.vito.be/artifactory/libs-snapshot-public/org/openeo/geotrellis-extensions/2.5.1_2.13-SNAPSHOT/geotrellis-extensions-2.5.1_2.13-SNAPSHOT.jar",
-    "https://artifactory.vgt.vito.be/artifactory/libs-snapshot-public/org/openeo/geotrellis-dependencies/2.5.1_2.13-SNAPSHOT/geotrellis-dependencies-2.5.1_2.13-SNAPSHOT.jar",
-    "https://artifactory.vgt.vito.be/artifactory/libs-snapshot-public/org/openeo/openeo-logging/2.5.1_2.13-SNAPSHOT/openeo-logging-2.5.1_2.13-SNAPSHOT.jar"
-  ],
-  "python3.11": [
-    "https://artifactory.vgt.vito.be/artifactory/libs-snapshot-public/org/openeo/geotrellis-extensions/2.5.1_2.13-SNAPSHOT/geotrellis-extensions-2.5.1_2.13-SNAPSHOT.jar",
-    "https://artifactory.vgt.vito.be/artifactory/libs-snapshot-public/org/openeo/geotrellis-dependencies/2.5.1_2.13-SNAPSHOT/geotrellis-dependencies-2.5.1_2.13-SNAPSHOT.jar",
-    "https://artifactory.vgt.vito.be/artifactory/libs-snapshot-public/org/openeo/openeo-logging/2.5.1_2.13-SNAPSHOT/openeo-logging-2.5.1_2.13-SNAPSHOT.jar"
-  ]
+  "default": "spark35-scala213",
+  "variants": {
+    "python3.8": [
+      "https://artifactory.vgt.vito.be/artifactory/libs-snapshot-public/org/openeo/geotrellis-extensions/2.5.1_2.13-SNAPSHOT/geotrellis-extensions-2.5.1_2.13-SNAPSHOT.jar",
+      "https://artifactory.vgt.vito.be/artifactory/libs-snapshot-public/org/openeo/geotrellis-dependencies/2.5.1_2.13-SNAPSHOT/geotrellis-dependencies-2.5.1_2.13-SNAPSHOT.jar",
+      "https://artifactory.vgt.vito.be/artifactory/libs-snapshot-public/org/openeo/openeo-logging/2.5.1_2.13-SNAPSHOT/openeo-logging-2.5.1_2.13-SNAPSHOT.jar"
+    ],
+    "python3.11": [
+      "https://artifactory.vgt.vito.be/artifactory/libs-snapshot-public/org/openeo/geotrellis-extensions/2.5.1_2.13-SNAPSHOT/geotrellis-extensions-2.5.1_2.13-SNAPSHOT.jar",
+      "https://artifactory.vgt.vito.be/artifactory/libs-snapshot-public/org/openeo/geotrellis-dependencies/2.5.1_2.13-SNAPSHOT/geotrellis-dependencies-2.5.1_2.13-SNAPSHOT.jar",
+      "https://artifactory.vgt.vito.be/artifactory/libs-snapshot-public/org/openeo/openeo-logging/2.5.1_2.13-SNAPSHOT/openeo-logging-2.5.1_2.13-SNAPSHOT.jar"
+    ],
+    "spark35-scala212": [
+      "https://artifactory.vgt.vito.be/artifactory/libs-snapshot-public/org/openeo/geotrellis-extensions/2.5.1_2.12-SNAPSHOT/geotrellis-extensions-2.5.1_2.12-SNAPSHOT.jar",
+      "https://artifactory.vgt.vito.be/artifactory/libs-snapshot-public/org/openeo/geotrellis-dependencies/2.5.1_2.12-SNAPSHOT/geotrellis-dependencies-2.5.1_2.12-SNAPSHOT.jar",
+      "https://artifactory.vgt.vito.be/artifactory/libs-snapshot-public/org/openeo/openeo-logging/2.5.1_2.12-SNAPSHOT/openeo-logging-2.5.1_2.12-SNAPSHOT.jar"
+    ],
+    "spark35-scala213": [
+      "https://artifactory.vgt.vito.be/artifactory/libs-snapshot-public/org/openeo/geotrellis-extensions/2.5.1_2.13-SNAPSHOT/geotrellis-extensions-2.5.1_2.13-SNAPSHOT.jar",
+      "https://artifactory.vgt.vito.be/artifactory/libs-snapshot-public/org/openeo/geotrellis-dependencies/2.5.1_2.13-SNAPSHOT/geotrellis-dependencies-2.5.1_2.13-SNAPSHOT.jar",
+      "https://artifactory.vgt.vito.be/artifactory/libs-snapshot-public/org/openeo/openeo-logging/2.5.1_2.13-SNAPSHOT/openeo-logging-2.5.1_2.13-SNAPSHOT.jar"
+    ],
+    "PR-549": [
+      "https://artifactory.vgt.vito.be/artifactory/libs-release-public/org/openeo/geotrellis-extensions/PR-549/geotrellis-extensions-PR-549.jar",
+      "https://artifactory.vgt.vito.be/artifactory/libs-release-public/org/openeo/geotrellis-dependencies/PR-549/geotrellis-dependencies-PR-549.jar",
+      "https://artifactory.vgt.vito.be/artifactory/libs-release-public/org/openeo/openeo-logging/PR-549/openeo-logging-PR-549.jar"
+    ],
+    "spark4-scala213": [
+      "https://artifactory.vgt.vito.be/artifactory/libs-release-public/org/openeo/geotrellis-extensions/PR-549/geotrellis-extensions-PR-549.jar",
+      "https://artifactory.vgt.vito.be/artifactory/libs-release-public/org/openeo/geotrellis-dependencies/PR-549/geotrellis-dependencies-PR-549.jar",
+      "https://artifactory.vgt.vito.be/artifactory/libs-release-public/org/openeo/openeo-logging/PR-549/openeo-logging-PR-549.jar"
+    ]
+  }
 }
