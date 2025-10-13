@@ -99,7 +99,7 @@ class UdfRuntimeImageRepository:
             images = [ContainerImageRecord.from_dict(d) for d in config.container_images_and_udf_runtimes]
             return cls(images)
         elif batch_runtime_to_image := config.batch_runtime_to_image:
-            # TODO: deprecate `batch_runtime_to_image` in favor of `container_image_and_udf_runtimes` based configuration
+            # TODO #1387 deprecate `batch_runtime_to_image` in favor of `container_image_and_udf_runtimes` based configuration
             return cls._from_config_batch_runtime_to_image(batch_runtime_to_image=batch_runtime_to_image)
         else:
             return cls(images=[])
@@ -107,7 +107,7 @@ class UdfRuntimeImageRepository:
     @classmethod
     def _from_config_batch_runtime_to_image(cls, batch_runtime_to_image: dict) -> UdfRuntimeImageRepository:
         """Ad-hoc adapter for legacy `batch_runtime_to_image` config format"""
-        # TODO get rid of `batch_runtime_to_image` in longer term?
+        # TODO #1387 get rid of `batch_runtime_to_image` in longer term?
         image_entries = []
         # TODO: toggle the Jep variant through config too?
         runtime_names = ["Python", "Python-Jep"]

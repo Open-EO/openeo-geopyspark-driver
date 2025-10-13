@@ -249,7 +249,7 @@ class GpsBackendConfig(OpenEoBackendConfig):
         ),
     )
 
-    # TODO: deprecate this processing_container_image in favor of container_images_and_udf_runtimes?
+    # TODO #1387 deprecate this processing_container_image in favor of container_images_and_udf_runtimes?
     processing_container_image: Optional[str] = attrs.field(
         default=None,
         metadata={
@@ -261,7 +261,7 @@ class GpsBackendConfig(OpenEoBackendConfig):
     Maps the name of a UDF runtime to the image to use for the batch job.
     Also used to map image-name job option to batch job image.
     """
-    # TODO deprecate this in favor of container_images_and_udf_runtimes?
+    # TODO #1387 deprecate this in favor of container_images_and_udf_runtimes?
     batch_runtime_to_image: dict = {
         # TODO: eliminate this hardcoded VITO default?
         "python311" : "vito-docker.artifactory.vgt.vito.be/openeo-geotrellis-kube-python311:latest"
