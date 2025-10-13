@@ -322,6 +322,9 @@ class TestDownload:
                         "geometry": dirty_equals.IsPartialDict(type="Polygon"),
                         "href": str(tmp_path / name),
                         "nodata": -1,
+                        "proj:epsg" : 4326,
+                        "proj:bbox": dirty_equals.IsListOrTuple(length=4),
+                        "proj:shape": dirty_equals.IsListOrTuple(length=2),
                         "roles": ["data"],
                         "type": expected_type,
                     }
