@@ -823,9 +823,9 @@ def test_spatial_cube_to_netcdf_sample_by_feature(tmp_path):
     )
     asset0 = item0.get("assets").get("openEO")
 
-    assert asset0.get("proj:bbox") == [0.1, 0.1, 1.8, 1.8]
+    assert asset0.get("proj:bbox") == [0.0, 0.0, 2.0, 2.0]
     assert asset0.get("proj:epsg") == 4326
-    assert asset0.get("proj:shape") == [13, 10]
+    assert asset0.get("proj:shape") == [8,8]
     assert asset0.get("bands") == [{
         'name': 'Flat:2',
         'statistics': {'max': 2.0, 'mean': 2.0, 'min': 2.0, 'stddev': 0.0, 'valid_percent': 53.125}
@@ -839,9 +839,9 @@ def test_spatial_cube_to_netcdf_sample_by_feature(tmp_path):
         .equals_exact(Polygon.from_bounds(0.725, -1.29, 2.99, 1.724).normalize(), tolerance=0.001)
     )
     asset1 = item1.get("assets").get("openEO")
-    assert asset1.get("proj:bbox") == [0.725, -1.29, 2.99, 1.724]
+    assert asset1.get("proj:bbox") == [0.5, -1.5, 3.00, 1.75]
     assert asset1.get("proj:epsg") == 4326
-    assert asset1.get("proj:shape") == [8, 8]
+    assert asset1.get("proj:shape") == [13, 10]
     assert asset1.get("bands") == [{
         'name': 'Flat:2',
         'statistics': {'max': 2.0, 'mean': 2.0, 'min': 2.0, 'stddev': 0.0, 'valid_percent': 56.15384615384615}
