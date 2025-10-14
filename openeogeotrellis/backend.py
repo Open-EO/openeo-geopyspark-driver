@@ -1316,6 +1316,7 @@ Example usage:
                                                if sentinel_hub_processing_units and
                                                   backend_config.report_usage_sentinelhub_pus else None),
                 additional_credits_cost=None,
+                source_id=None,
                 organization_id=(job_options or {}).get(ETL_ORGANIZATION_ID_JOB_OPTION),
             )
 
