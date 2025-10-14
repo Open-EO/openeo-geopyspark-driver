@@ -17,7 +17,7 @@
       "https://artifactory.vgt.vito.be/artifactory/libs-snapshot-public/org/openeo/openeo-logging/2.5.1_2.12-SNAPSHOT/openeo-logging-2.5.1_2.12-SNAPSHOT.jar"
     ],
     "spark35-scala213": [
-      "https://artifactory.vgt.vito.be/artifactory/libs-release-public/org/openeo/geotrellis-s3-extensions/PR-562/geotrellis-extensions-PR-562.jar",
+      "https://artifactory.vgt.vito.be/artifactory/libs-release-public/org/openeo/geotrellis-extensions/PR-562/geotrellis-extensions-PR-562.jar",
       "https://artifactory.vgt.vito.be/artifactory/libs-release-public/org/openeo/geotrellis-dependencies/PR-562/geotrellis-dependencies-PR-562.jar",
       "https://artifactory.vgt.vito.be/artifactory/libs-release-public/org/openeo/openeo-logging/PR-562/openeo-logging-PR-562.jar"
     ],
