@@ -88,21 +88,25 @@ class ContainerImageRecord:
     @staticmethod
     def parse_udf_runtime_libraries(data: Union[dict, str, Path]) -> UdfRuntimeLibraries:
         """Parse udf_runtime_libraries from dict/str/JSON file, ..."""
-        if isinstance(data, dict):
-            pass
-        elif isinstance(data, str) and re.match(r'\s*\{\s*"', data):
-            # Data looks like raw JSON string
-            data = json.loads(data)
-        elif (isinstance(data, Path) and data.suffix == ".json") or (
-            isinstance(data, str) and data.endswith(".json") and Path(data).is_file()
-        ):
-            # Data looks like path to JSON file
-            with open(data, "r") as f:
-                data = json.load(f)
+        try:
+            if isinstance(data, dict):
+                pass
+            elif isinstance(data, str) and re.match(r'\s*\{\s*"', data):
+                # Data looks like raw JSON string
+                data = json.loads(data)
+            elif (isinstance(data, Path) and data.suffix == ".json") or (
+                isinstance(data, str) and data.endswith(".json") and Path(data).is_file()
+            ):
+                # Data looks like path to JSON file
+                with open(data, "r") as f:
+                    data = json.load(f)
 
-        # Some minimal validation
-        # TODO: support richer library metadata from `GET /udf_runtimes` (deprecated, experimental, links, ...)?
-        data = {k: v for k, v in data.items() if isinstance(k, str) and isinstance(v, str)}
+            # Some minimal validation
+            # TODO: support richer library metadata from `GET /udf_runtimes` (deprecated, experimental, links, ...)?
+            data = {k: v for k, v in data.items() if isinstance(k, str) and isinstance(v, str)}
+        except Exception as e:
+            _log.error(f"Failed to parse udf_runtime_libraries {data!r}: {e}")
+            data = {}
         return data
 
 

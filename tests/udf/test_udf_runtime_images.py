@@ -95,6 +95,22 @@ class TestImageData:
             udf_runtime_libraries={"numpy": "1.2.3", "pandas": "4.5.6"},
         )
 
+    def test_from_dict_parse_udf_runtime_libraries_invalid(self):
+        data = {
+            "image_ref": "docker.test/openeo:11",
+            "udf_runtimes": [
+                {"name": "Python", "version": "3.11"},
+            ],
+            "udf_runtime_libraries": "{ invalid J$0n here!,,,}",
+        }
+        assert ContainerImageRecord.from_dict(data) == ContainerImageRecord(
+            image_ref="docker.test/openeo:11",
+            udf_runtimes=[
+                _UdfRuntimeAndVersion(name="Python", version="3.11"),
+            ],
+            udf_runtime_libraries={},
+        )
+
 class TestUdfRuntimeImageRepository:
     def test_get_udf_runtimes_response_empty(self):
         repo = UdfRuntimeImageRepository(images=[])
