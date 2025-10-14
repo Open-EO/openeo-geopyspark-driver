@@ -12,7 +12,7 @@ chown jenkins /eodata
 runuser jenkins -c '
 set -eux
 source ./env.sh
-python3 scripts/get-jars.py --force-download --python-version ${PYTHON_VERSION:-3.8} jars
+python3 scripts/get-jars.py --force-download --variant ${OPENEO_JARS_VARIANT} jars
 '
 
 # Root folder for temp folders during tests (e.g. through `tmp_path` fixture).
