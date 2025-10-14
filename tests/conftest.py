@@ -37,7 +37,7 @@ from openeo_driver.views import build_app
 from openeogeotrellis.integrations.s3proxy.sts import _STSClient
 from openeogeotrellis.config import get_backend_config, GpsBackendConfig
 from openeogeotrellis.job_registry import InMemoryJobRegistry
-from openeogeotrellis.testing import gps_config_overrides
+from openeogeotrellis.testing import gps_config_overrides, YarnMocker
 from openeogeotrellis.vault import Vault
 
 from .data import TEST_DATA_ROOT, get_test_data_file
@@ -730,3 +730,8 @@ def mock_yarn_backend_config():
         mock_backend_config.batch_spark_yarn_historyserver_address = "mockvalue"
         mock_config.return_value = mock_backend_config
         yield mock_backend_config
+
+
+@pytest.fixture
+def yarn_mocker() -> YarnMocker:
+    return YarnMocker()
