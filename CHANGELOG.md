@@ -13,7 +13,13 @@ without compromising stable operations.
 <!-- start-of-changelog -->
 
 
-## In progress: 0.68.0
+## In progress: 0.69.0
+
+- Added new API `UdfRuntimeImageRepository` for centralized configuration and handling of container images and corresponding UDF runtimes ([#1279](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1279), [Open-EO/openeo-python-driver#415](https://github.com/Open-EO/openeo-python-driver/issues/415), eu-cdse/openeo-cdse-infra#721)
+- Support overriding default ETL source ID from K8s app label ([eu-cdse/openeo-cdse-infra#612](https://github.com/eu-cdse/openeo-cdse-infra/issues/612))
+
+
+## 0.68.0
 
 - Experimental support for unified asset keys in job results STAC items by means of the "stac-version-experimental" job option ([#1111](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1111), [Open-EO/openeo-geotrellis-extensions#402](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/402))
 - Avoid workaround with EJR to obtain job results metadata in the context of a failover ([#1255](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1255))
@@ -32,7 +38,6 @@ without compromising stable operations.
 - ~~Make `osgeo.gdal` more clearly an optional~~ Eliminate `osgeo.gdal` as runtime dependency ([#1363](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1363), eu-cdse/openeo-cdse-infra#718, eu-cdse/openeo-cdse-infra#733)
 - Support returning job result STAC items in addition to assets ([#1111](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1111))
 - apply_neighborhood: allow minimum X/Y size of 4 instead of 32
-- Support overriding default ETL source ID from K8s app label ([eu-cdse/openeo-cdse-infra#612](https://github.com/eu-cdse/openeo-cdse-infra/issues/612))
 
 
 ## 0.67.0
