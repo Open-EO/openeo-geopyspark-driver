@@ -1,14 +1,17 @@
 from __future__ import annotations
+
 import dataclasses
 import functools
 import itertools
+import json
+import logging
 import re
 import typing
-from typing import List, Dict, Optional, Iterable, Tuple, Set, Union
-import logging
+from pathlib import Path
+from typing import Dict, Iterable, List, Optional, Set, Tuple, Union
+
 from openeogeotrellis.config import GpsBackendConfig, get_backend_config
 from openeogeotrellis.udf import UdfRuntimeSpecified
-
 
 _log = logging.getLogger(__name__)
 
@@ -30,6 +33,11 @@ class _UdfRuntimeAndVersion(typing.NamedTuple):
             version=data["version"],
             preference=data.get("preference", 0),
         )
+
+
+# Simple type alias for now
+# TODO: support richer library metadata from `GET /udf_runtimes` (deprecated, experimental, links, ...)?
+UdfRuntimeLibraries = Dict[str, str]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -58,7 +66,7 @@ class ContainerImageRecord:
 
     # Mapping of UDF runtime library names to versions included in this image
     # (e.g. {"numpy": "1.23.5", "pandas": "1.5.3"})
-    udf_runtime_libraries: Dict[str, str] = dataclasses.field(default_factory=dict)
+    udf_runtime_libraries: UdfRuntimeLibraries = dataclasses.field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, data: dict) -> ContainerImageRecord:
@@ -67,7 +75,7 @@ class ContainerImageRecord:
             image_aliases=data.get("image_aliases", []),
             preference=data.get("preference", 0),
             udf_runtimes=[_UdfRuntimeAndVersion.from_dict(rt) for rt in data.get("udf_runtimes", [])],
-            udf_runtime_libraries=data.get("udf_runtime_libraries", {}),
+            udf_runtime_libraries=cls.parse_udf_runtime_libraries(data.get("udf_runtime_libraries", {})),
         )
 
     def matches_udf_runtime(self, runtime: UdfRuntimeSpecified) -> bool:
@@ -76,6 +84,26 @@ class ContainerImageRecord:
             runtime.name == r.name and (runtime.version is None or runtime.version == r.version)
             for r in self.udf_runtimes
         )
+
+    @staticmethod
+    def parse_udf_runtime_libraries(data: Union[dict, str, Path]) -> UdfRuntimeLibraries:
+        """Parse udf_runtime_libraries from dict/str/JSON file, ..."""
+        if isinstance(data, dict):
+            pass
+        elif isinstance(data, str) and re.match(r'\s*\{\s*"', data):
+            # Data looks like raw JSON string
+            data = json.loads(data)
+        elif (isinstance(data, Path) and data.suffix == ".json") or (
+            isinstance(data, str) and data.endswith(".json") and Path(data).is_file()
+        ):
+            # Data looks like path to JSON file
+            with open(data, "r") as f:
+                data = json.load(f)
+
+        # Some minimal validation
+        # TODO: support richer library metadata from `GET /udf_runtimes` (deprecated, experimental, links, ...)?
+        data = {k: v for k, v in data.items() if isinstance(k, str) and isinstance(v, str)}
+        return data
 
 
 class UdfRuntimeImageRepository:

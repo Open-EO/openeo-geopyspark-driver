@@ -1,12 +1,14 @@
+import json
 import logging
+from pathlib import Path
 
 import pytest
 
 from openeogeotrellis.config import GpsBackendConfig
 from openeogeotrellis.udf import UdfRuntimeSpecified
 from openeogeotrellis.udf.udf_runtime_images import (
-    UdfRuntimeImageRepository,
     ContainerImageRecord,
+    UdfRuntimeImageRepository,
     _UdfRuntimeAndVersion,
 )
 
@@ -52,6 +54,45 @@ class TestImageData:
             udf_runtime_libraries={"numpy": "1.2.3", "pandas": "4.5.6"},
             image_aliases=["python311"],
             preference=11,
+        )
+
+    @pytest.mark.parametrize(
+        ["udf_runtime_libraries"],
+        [
+            [{"numpy": "1.2.3", "pandas": "4.5.6"}],
+            ['{"numpy": "1.2.3", "pandas": "4.5.6"}'],
+            ["""   \n   {   \n     "numpy": "1.2.3", \n "pandas": "4.5.6"  \n         }"""],
+        ],
+    )
+    def test_from_dict_parse_udf_runtime_libraries_inline(self, udf_runtime_libraries):
+        data = {
+            "image_ref": "docker.test/openeo:11",
+            "udf_runtimes": [{"name": "Python", "version": "3.11"}],
+            "udf_runtime_libraries": udf_runtime_libraries,
+        }
+        assert ContainerImageRecord.from_dict(data) == ContainerImageRecord(
+            image_ref="docker.test/openeo:11",
+            udf_runtimes=[_UdfRuntimeAndVersion(name="Python", version="3.11")],
+            udf_runtime_libraries={"numpy": "1.2.3", "pandas": "4.5.6"},
+        )
+
+    @pytest.mark.parametrize("path_factory", [str, Path])
+    def test_from_dict_parse_udf_runtime_libraries_json_file(self, tmp_path, path_factory):
+        udf_runtime_libraries = tmp_path / "udf_runtime_libraries.json"
+        udf_runtime_libraries.write_text('{"numpy": "1.2.3", "pandas": "4.5.6"}')
+        data = {
+            "image_ref": "docker.test/openeo:11",
+            "udf_runtimes": [
+                {"name": "Python", "version": "3.11"},
+            ],
+            "udf_runtime_libraries": path_factory(udf_runtime_libraries),
+        }
+        assert ContainerImageRecord.from_dict(data) == ContainerImageRecord(
+            image_ref="docker.test/openeo:11",
+            udf_runtimes=[
+                _UdfRuntimeAndVersion(name="Python", version="3.11"),
+            ],
+            udf_runtime_libraries={"numpy": "1.2.3", "pandas": "4.5.6"},
         )
 
 class TestUdfRuntimeImageRepository:
