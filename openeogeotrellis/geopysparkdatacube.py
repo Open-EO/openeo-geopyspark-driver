@@ -1974,7 +1974,7 @@ class GeopysparkDataCube(DriverDataCube):
                     assets[asset_key]["proj:bbox"] = tuple(asset_metadata.get("proj:bbox"))
                     assets[asset_key]["proj:shape"] = tuple(asset_metadata.get("proj:shape"))
                     assets[asset_key]["proj:epsg"] = asset_metadata.get("proj:epsg")
-                    assets[asset_key] = dict_no_none(assets[assets])
+                    assets[asset_key] = dict_no_none(assets[asset_key])
 
                 items[java_item.id()] = {
                     "id": java_item.id(),
