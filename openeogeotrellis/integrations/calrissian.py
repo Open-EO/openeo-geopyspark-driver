@@ -237,9 +237,10 @@ class CalrissianJobLauncher:
         )
 
     @staticmethod
-    def get_eodata_access_env_vars(user_id: str, correlation_id: str) -> dict:
+    def get_s3proxy_access_env_vars(user_id: str, correlation_id: str) -> dict:
         """
-        Get environment variables which configure S3 SDKs to allow access to earth observation data provided.
+        Get environment variables which configure S3 SDKs to allow access to earth observation data provided via an
+        S3 proxy/endpoint
         """
         s3_endpoint = s3_config.AWSConfig.get_s3_endpoint_url()
         sts_endpoint = s3_config.AWSConfig.get_sts_endpoint_url()
@@ -279,7 +280,7 @@ class CalrissianJobLauncher:
             raise ConfigException("No calrissian (sub)config.")
 
         # To avoid custom logic in every calrissian container the default environment variables for S3 access are set.
-        env_vars = CalrissianJobLauncher.get_eodata_access_env_vars(
+        env_vars = CalrissianJobLauncher.get_s3proxy_access_env_vars(
             user_id=str(env.get("user", "unknown")) if env is not None else "", correlation_id=correlation_id
         )
         launch_config = CalrissianLaunchConfigBuilder(
