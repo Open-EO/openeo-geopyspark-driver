@@ -110,6 +110,7 @@ class EtlApi:
         duration_ms: Optional[float],
         sentinel_hub_processing_units: Optional[float],
         additional_credits_cost: Optional[float],
+        source_id: Optional[str],
         organization_id: Optional[int] = None,
     ) -> float:
         """
@@ -133,7 +134,7 @@ class EtlApi:
                 "jobName": title,
                 "executionId": execution_id,
                 "userId": user_id,
-                "sourceId": self._source_id,
+                "sourceId": source_id or self._source_id,
                 "orchestrator": ORCHESTRATOR,
                 "jobStart": started_ms,
                 "jobFinish": finished_ms,
@@ -192,9 +193,18 @@ class EtlApi:
 
         return total_credits_cost
 
-    def log_added_value(self, batch_job_id: str, title: Optional[str], execution_id: str, user_id: str,
-                        started_ms: Optional[float], finished_ms: Optional[float], process_id: str,
-                        square_meters: float) -> float:
+    def log_added_value(
+        self,
+        batch_job_id: str,
+        title: Optional[str],
+        execution_id: str,
+        user_id: str,
+        started_ms: Optional[float],
+        finished_ms: Optional[float],
+        process_id: str,
+        square_meters: float,
+        source_id: Optional[str],
+    ) -> float:
         log = logging.LoggerAdapter(_log, extra={"job_id": batch_job_id, "user_id": user_id})
 
         billable = process_id not in ["fahrenheit_to_celsius", "mask_polygon", "mask_scl_dilation", "filter_bbox",
@@ -208,17 +218,17 @@ class EtlApi:
             return 0.0
 
         data = {
-            'jobId': batch_job_id,
-            'jobName': title,
-            'executionId': execution_id,
-            'userId': user_id,
-            'sourceId': self._source_id,
-            'orchestrator': ORCHESTRATOR,
-            'jobStart': started_ms,
-            'jobFinish': finished_ms,
-            'idempotencyKey': execution_id,
-            'service': process_id,
-            'area': {'value': square_meters, 'unit': 'square_meter'}
+            "jobId": batch_job_id,
+            "jobName": title,
+            "executionId": execution_id,
+            "userId": user_id,
+            "sourceId": source_id or self._source_id,
+            "orchestrator": ORCHESTRATOR,
+            "jobStart": started_ms,
+            "jobFinish": finished_ms,
+            "idempotencyKey": execution_id,
+            "service": process_id,
+            "area": {"value": square_meters, "unit": "square_meter"},
         }
 
         log.debug(f"logging added value {data} at {self._endpoint}")

@@ -1,5 +1,6 @@
 import datetime
 from typing import List, Tuple
+from unittest import skip
 
 import numpy as np
 import pytest
@@ -144,8 +145,8 @@ def overlap_jep_multiresolution_test(image_collection, size, overlap, udf_code, 
         env=EvalEnv()
     )
 
-    input_array: List[Tuple[SpaceTimeKey, Tile]] = image_collection.get_max_level().to_numpy_rdd().collect()
-    result_array: List[Tuple[SpaceTimeKey, Tile]] = result.get_max_level().to_numpy_rdd().collect()
+    input_array: List[Tuple[SpaceTimeKey, Tile]] = image_collection.get_max_level().to_numpy_rdd().sortByKey().collect()
+    result_array: List[Tuple[SpaceTimeKey, Tile]] = result.get_max_level().to_numpy_rdd().sortByKey().collect()
     input_head_cells = input_array[0][1].cells
     result_head_cells = result_array[0][1].cells
 

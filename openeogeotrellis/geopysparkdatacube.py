@@ -20,9 +20,9 @@ import geopandas as gpd
 import pyproj
 import pytz
 import xarray as xr
-from geopyspark import TiledRasterLayer, Pyramid, Tile, SpaceTimeKey, SpatialKey, Metadata
+from geopyspark import TiledRasterLayer, Pyramid, Tile, SpaceTimeKey, SpatialKey, Metadata, zfactor_lat_lng_calculator
 from geopyspark.geotrellis import Extent, ResampleMethod
-from geopyspark.geotrellis.constants import CellType
+from geopyspark.geotrellis.constants import CellType, Unit
 from pandas import Series
 from pyproj import CRS
 from shapely.geometry import mapping, Point, Polygon, MultiPolygon, GeometryCollection, box
@@ -1261,11 +1261,11 @@ class GeopysparkDataCube(DriverDataCube):
             runtime = process.udf_args.get('runtime', 'Python')
             udf, udf_context = self._extract_udf_code_and_context(process=process, context=context, env=env)
 
-            if sizeX < 32 or sizeY < 32:
+            if sizeX < 4 or sizeY < 4:
                 raise ProcessParameterInvalidException(
                     parameter="size",
                     process="apply_neighborhood",
-                    reason=f"window sizes smaller then 32 are not yet supported for UDFs (got {size!r}).",
+                    reason=f"window sizes smaller then 4 are not yet supported for UDFs (got {size!r}).",
                 )
 
             if has_time_dim and (temporal_size is None or temporal_size.get('value',None) is None):
@@ -2059,6 +2059,8 @@ class GeopysparkDataCube(DriverDataCube):
                 max_level = max_level.to_spatial_layer()
 
             if format == "GTIFF":
+                compression = format_options.get("compression", "deflate")
+                predictor = format_options.get("predictor", 1)
                 zlevel = format_options.get("ZLEVEL", 6)
                 tile_size = format_options.get("tile_size")
 
@@ -2085,6 +2087,7 @@ class GeopysparkDataCube(DriverDataCube):
 
                 if stitch:
                     gtiff_options = get_jvm().org.openeo.geotrellis.geotiff.GTiffOptions()
+                    gtiff_options.setCompression(compression, zlevel, predictor)
                     if filename_prefix.isDefined():
                         gtiff_options.setFilenamePrefix(filename_prefix.get())
                     gtiff_options.setResampleMethod(overview_resample)
@@ -2160,6 +2163,7 @@ class GeopysparkDataCube(DriverDataCube):
                 else:
                     _log.info("save_result: saveRDD")
                     gtiff_options = get_jvm().org.openeo.geotrellis.geotiff.GTiffOptions()
+                    gtiff_options.setCompression(compression, zlevel, predictor)
                     if filename_prefix.isDefined():
                         gtiff_options.setFilenamePrefix(filename_prefix.get())
                     gtiff_options.setSeparateAssetPerBand(separate_asset_per_band)
@@ -2946,6 +2950,28 @@ class GeopysparkDataCube(DriverDataCube):
             )
         )
         return atmo_corrected
+
+    @callsite
+    def aspect(self):
+        new_metadata = self.metadata
+        if self.metadata.has_band_dimension():
+            band_names = [band_name + '_aspect' for band_name in self.metadata.band_names]
+            new_metadata = self.metadata.with_new_band_names(band_names)
+        def compute_aspect(rdd, level):
+            pr = gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses()
+            return pr.aspect(rdd)
+        return self._apply_to_levels_geotrellis_rdd(compute_aspect, metadata=new_metadata)
+
+    @callsite
+    def slope(self):
+        new_metadata = self.metadata
+        if self.metadata.has_band_dimension():
+            band_names = [band_name + '_slope' for band_name in self.metadata.band_names]
+            new_metadata = self.metadata.with_new_band_names(band_names)
+        def compute_slope(rdd, level):
+            pr = gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses()
+            return pr.slope(rdd)
+        return self._apply_to_levels_geotrellis_rdd(compute_slope, metadata=new_metadata)
 
     def sar_backscatter(self, args: SarBackscatterArgs) -> 'GeopysparkDataCube':
         # Nothing to do: the actual SAR backscatter processing already happened in `load_collection`

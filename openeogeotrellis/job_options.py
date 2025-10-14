@@ -8,6 +8,7 @@ from openeo_driver.constants import DEFAULT_LOG_LEVEL_PROCESSING
 from openeo_driver.errors import OpenEOApiException
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.constants import JOB_OPTION_LOG_LEVEL, JOB_OPTION_LOGGING_THRESHOLD
+from openeogeotrellis.udf.udf_runtime_images import UdfRuntimeImageRepository
 from openeogeotrellis.util.byteunit import byte_string_as
 
 
@@ -176,8 +177,11 @@ class JobOptions:
                 message=f"Requested invalid openeo jar path {self.openeo_jar_path}",
                 status_code=400)
 
-        if (self.image_name is not None):
-            if self.image_name not in get_backend_config().batch_runtime_to_image:
+        if self.image_name is not None:
+            # TODO: reuse existing UdfRuntimeImageRepository instead of creating a new one?
+            udf_runtime_image_repository = UdfRuntimeImageRepository.from_config()
+            if self.image_name not in udf_runtime_image_repository.get_all_image_refs_and_aliases():
+                # TODO: move this validation inside UdfRuntimeImageRepository too?
                 if re.compile(get_backend_config().batch_image_regex).fullmatch(self.image_name) is None:
                     self._log.warning(f"Invalid value {self.image_name} for job_option image-name")
                     #raise OpenEOApiException(f"Invalid value {self.image_name} for job_option image-name", status_code=400)

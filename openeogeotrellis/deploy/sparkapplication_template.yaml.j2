@@ -17,11 +17,7 @@ spec:
   batchScheduler: {{ batch_scheduler }}
 {%- if batch_scheduler == 'yunikorn' %}
   batchSchedulerOptions:
-  {%- if yunikorn_user_specific_queues is sameas true %}
     queue: {{ yunikorn_queue }}.{{ user_id_short }}
-  {%- else %}
-    queue: {{ yunikorn_queue }}
-  {%- endif %}
 {%- endif %}
 {%- endif %}
   image: {{ image_name }}

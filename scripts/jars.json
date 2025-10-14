@@ -1,12 +1,35 @@
 {
-  "python3.8": [
+  "default": "spark35-scala213",
+  "variants": {
+    "python3.8": [
     "https://artifactory.vgt.vito.be/artifactory/libs-release-public/org/openeo/geotrellis-extensions/PR-447/geotrellis-extensions-PR-447.jar",
     "https://artifactory.vgt.vito.be/artifactory/libs-release-public/org/openeo/geotrellis-dependencies/PR-447/geotrellis-dependencies-PR-447.jar",
     "https://artifactory.vgt.vito.be/artifactory/libs-release-public/org/openeo/openeo-logging/PR-447/openeo-logging-PR-447.jar"
-  ],
-  "python3.11": [
-    "https://artifactory.vgt.vito.be/artifactory/libs-release-public/org/openeo/geotrellis-extensions/PR-447/geotrellis-extensions-PR-447.jar",
+    ],
+    "python3.11": [
+      "https://artifactory.vgt.vito.be/artifactory/libs-release-public/org/openeo/geotrellis-extensions/PR-447/geotrellis-extensions-PR-447.jar",
     "https://artifactory.vgt.vito.be/artifactory/libs-release-public/org/openeo/geotrellis-dependencies/PR-447/geotrellis-dependencies-PR-447.jar",
     "https://artifactory.vgt.vito.be/artifactory/libs-release-public/org/openeo/openeo-logging/PR-447/openeo-logging-PR-447.jar"
-  ]
+    ],
+    "spark35-scala212": [
+      "https://artifactory.vgt.vito.be/artifactory/libs-release-public/org/openeo/geotrellis-extensions/PR-447/geotrellis-extensions-PR-447.jar",
+      "https://artifactory.vgt.vito.be/artifactory/libs-release-public/org/openeo/geotrellis-dependencies/PR-447/geotrellis-dependencies-PR-447.jar",
+      "https://artifactory.vgt.vito.be/artifactory/libs-release-public/org/openeo/openeo-logging/PR-447/openeo-logging-PR-447.jar"
+    ],
+    "spark35-scala213": [
+      "https://artifactory.vgt.vito.be/artifactory/libs-release-public/org/openeo/geotrellis-extensions/PR-447/geotrellis-extensions-PR-447.jar",
+      "https://artifactory.vgt.vito.be/artifactory/libs-release-public/org/openeo/geotrellis-dependencies/PR-447/geotrellis-dependencies-PR-447.jar",
+      "https://artifactory.vgt.vito.be/artifactory/libs-release-public/org/openeo/openeo-logging/PR-447/openeo-logging-PR-447.jar"
+    ],
+    "PR-549": [
+      "https://artifactory.vgt.vito.be/artifactory/libs-release-public/org/openeo/geotrellis-extensions/PR-447/geotrellis-extensions-PR-447.jar",
+      "https://artifactory.vgt.vito.be/artifactory/libs-release-public/org/openeo/geotrellis-dependencies/PR-447/geotrellis-dependencies-PR-447.jar",
+      "https://artifactory.vgt.vito.be/artifactory/libs-release-public/org/openeo/openeo-logging/PR-447/openeo-logging-PR-447.jar"
+    ],
+    "spark4-scala213": [
+      "https://artifactory.vgt.vito.be/artifactory/libs-release-public/org/openeo/geotrellis-extensions/PR-447/geotrellis-extensions-PR-447.jar",
+      "https://artifactory.vgt.vito.be/artifactory/libs-release-public/org/openeo/geotrellis-dependencies/PR-447/geotrellis-dependencies-PR-447.jar",
+      "https://artifactory.vgt.vito.be/artifactory/libs-release-public/org/openeo/openeo-logging/PR-447/openeo-logging-PR-447.jar"
+    ]
+  }
 }
