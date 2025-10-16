@@ -232,3 +232,15 @@ def test_fit_class_catboost_batch_job_metadata(
         "stac_extensions": ["https://stac-extensions.github.io/ml-model/v1.0.0/schema.json"],
         "type": "Feature",
     })
+
+
+def test_load_ml_model(backend_implementation, urllib_and_request_mock, test_data):
+    metadata = test_data.load_text("mlmodel/catboost/stac_catboost.json")
+    model_data = test_data.load_bytes("mlmodel/catboost/catboost_model.cbm.tar.gz")
+    prefix = "https://openeo.vito.be/openeo/1.2/jobs/j-25101315033849049a4a67ea6d24b7ca/results/items/ZGZhNjc4Y/"
+    metadata_url = prefix + "catboost.json"
+    urllib_and_request_mock.get(metadata_url, metadata)
+    urllib_and_request_mock.get(prefix + "catboost_model.cbm.tar.gz", model_data)
+    ml_model:GeopySparkCatBoostModel = backend_implementation.load_ml_model(metadata_url)
+    assert isinstance(ml_model, GeopySparkCatBoostModel)
+    assert isinstance(ml_model.get_model(), catboost_spark.CatBoostClassificationModel)
