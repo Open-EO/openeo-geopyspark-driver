@@ -267,10 +267,11 @@ class TestDownload:
     @pytest.mark.parametrize("catalog", [False, True])
     @pytest.mark.parametrize("format_arg", ["netCDF"])  # "GTIFF" behaves different from "netCDF", so not testing now
     @pytest.mark.parametrize("bands_metadata", [{},"s","so"])
+    @pytest.mark.parametrize("add_bands_statistics", [False, True])
     def test_write_assets_parameterize_batch(self, tmp_path, imagecollection_with_two_bands_and_three_dates,
                                              imagecollection_with_two_bands_spatial_only,
                                              format_arg, catalog, stitch, space_type,
-                                             tile_grid, filename_prefix,bands_metadata):
+                                             tile_grid, filename_prefix,bands_metadata,add_bands_statistics):
         if space_type == "spacetime":
             imagecollection = imagecollection_with_two_bands_and_three_dates
         else:
@@ -292,7 +293,8 @@ class TestDownload:
                 "filename_prefix": filename_prefix,
                 "stitch": stitch,
                 "tile_grid": tile_grid,
-                "bands_metadata": bands_metadata
+                "bands_metadata": bands_metadata,
+                "add_bands_statistics": add_bands_statistics,
             }
         )
 
@@ -320,6 +322,9 @@ class TestDownload:
                         "geometry": dirty_equals.IsPartialDict(type="Polygon"),
                         "href": str(tmp_path / name),
                         "nodata": -1,
+                        "proj:epsg" : 4326,
+                        "proj:bbox": dirty_equals.IsListOrTuple(length=4),
+                        "proj:shape": dirty_equals.IsListOrTuple(length=2),
                         "roles": ["data"],
                         "type": expected_type,
                     }

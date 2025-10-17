@@ -98,6 +98,7 @@ without compromising stable operations.
 - `GpsBackendConfig`: be more forgiving about unknown config keys to better support use cases that involve backward/forward incompatible configurations ([Open-EO/openeo-python-driver#322](https://github.com/Open-EO/openeo-python-driver/issues/322))
 - Improved API alignment between `DoubleJobRegistry` and `JobRegistryInterface`/`ElasticJobRegistry` ([#863](https://github.com/Open-EO/openeo-geopyspark-driver/issues/863), [#1123](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1123))
 - Add `use_new_feature_extent_intersection_2` option to `load_collection`: To use new intersection code to work with products crossing the antimeridian. ([#1072](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1072))
+- Add `add_bands_statistics` format option to include the statistics in asset metadata of netCDF bands ([Open-EO/openeo-geotrellis-extensions#406](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/406))
 
 
 ## 0.64.1
