@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import json
 
 import os
@@ -37,8 +38,9 @@ def main(argv: List[str]) -> None:
     if containing_folder == Path.cwd():
         output_folder = containing_folder / "tmp_sub_collection_output"
         print(
-            "Warning: When running from CWL, cwd should be the output folder. For testing purposes, using "
-            + str(output_folder)
+            "Warning: When running from CWL, cwd should be the output folder, "
+            "and different than the source data folder. "
+            "For testing purposes, using " + str(output_folder)
         )
         output_folder.mkdir(exist_ok=True)
         os.chdir(output_folder)
