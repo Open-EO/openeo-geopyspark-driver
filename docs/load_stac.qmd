@@ -53,6 +53,17 @@ On top of these minimal requirements, we recommend:
 When you need to load only a single item, this [example notebook](https://github.com/Open-EO/openeo-community-examples/blob/main/python/LoadStac/load-stac-item-example.ipynb)
 shows how to do that easily.
 
+#### Creating large collections
+
+Currently, there is no officially supported tool that generates high quality STAC metadata.
+There are however a few open source options that can provide inspiration, or that you can use at your own
+risk:
+
+- [stactools-packages](https://stactools-packages.github.io/) provides collection building scripts for various datasets. 
+   Not all off them are openEO compatible.
+- [STAC catalog builder](https://github.com/VitoTAP/stac-catalog-builder) takes an automated approach at building a collection
+  based on minimal configuration. 
+
 
 
 ### Metadata requirement motivation
