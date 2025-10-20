@@ -46,6 +46,14 @@ On top of these minimal requirements, we recommend:
 - nodata value
 - datatype value
 
+### Examples
+
+#### Single item loading
+
+When you need to load only a single item, this [example notebook](https://github.com/Open-EO/openeo-community-examples/blob/main/python/LoadStac/load-stac-item-example.ipynb)
+shows how to do that easily.
+
+
 
 ### Metadata requirement motivation
 
