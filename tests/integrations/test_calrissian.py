@@ -377,6 +377,10 @@ class TestCalrissianS3Result:
             s3.put_object(Bucket=bucket, Key=key, Body="Howdy, Earth!")
             yield bucket, key
 
+    def test_s3_uri(self):
+        result = CalrissianS3Result(s3_bucket="bucky", s3_key="path/to/collection.json")
+        assert result.s3_uri() == "s3://bucky/path/to/collection.json"
+
     def test_read(self, s3_output):
         bucket, key = s3_output
         result = CalrissianS3Result(s3_bucket=bucket, s3_key=key)

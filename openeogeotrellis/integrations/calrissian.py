@@ -51,6 +51,9 @@ class CalrissianS3Result:
     s3_bucket: str
     s3_key: str
 
+    def s3_uri(self) -> str:
+        return f"s3://{self.s3_bucket}/{self.s3_key}"
+
     def read(self, encoding: Union[None, str] = None) -> Union[bytes, str]:
         _log.info(f"Reading from S3: {self.s3_bucket=}, {self.s3_key=}")
         s3_file_object = s3_client().get_object(Bucket=self.s3_bucket, Key=self.s3_key)
