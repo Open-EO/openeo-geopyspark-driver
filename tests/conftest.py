@@ -533,7 +533,7 @@ def mock_s3_bucket(mock_s3_resource, monkeypatch):
         bucket.create(CreateBucketConfiguration={"LocationConstraint": TEST_AWS_REGION_NAME})
         yield bucket
 
-
+# TODO: find a better solution for sharing moto server address between fixtures
 moto_server_address: Optional[str] = None
 
 
