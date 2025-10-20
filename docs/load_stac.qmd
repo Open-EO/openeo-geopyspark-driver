@@ -11,7 +11,7 @@ For the backend to be able to load your data, it needs to be in an accessible lo
 The following options are available:
 
 - Public HTTP(S) URLs
-- Public OBject Storage (e.g., S3, GCS, Azure Blob Storage) with anonymous read access
+- Public Object Storage (e.g., S3, CloudFerro, T-Systems, ...) with anonymous read access
 - Local POSIX file paths (only when running the backend locally)
 
 While the backend support various common authentication protocols, there is currently
