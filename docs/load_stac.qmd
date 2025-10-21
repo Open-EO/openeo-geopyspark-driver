@@ -1,0 +1,113 @@
+
+
+# Loading external data
+
+Some EO workflows require datasets that are not hosted on the backend as a collection.
+This section explains how to prepare your data for use within the openEO backend.
+
+## Data access prerequisites
+
+For the backend to be able to load your data, it needs to be in an accessible location.
+The following options are available:
+
+- Public HTTP(S) URLs
+- Public Object Storage (e.g., S3, CloudFerro, T-Systems, ...) with anonymous read access
+- Local POSIX file paths (only when running the backend locally)
+
+While the backend support various common authentication protocols, there is currently
+no support to provide authentication credentials via the openEO API.
+
+For non-public data, we recommend using signed url's to grant temporary access to the backend.
+
+## Data format prerequisites
+
+These formats are supported for import:
+
+- GeoTIFF (cloud optimized is recommended for performance)
+- CF compliant netCDF files, readable by GDAL
+
+## Metadata prerequisites
+
+Metadata is used to describe where your data can be found, and how it is structured.
+OpenEO uses the well-known STAC (SpatioTemporal Asset Catalog) specification for this purpose.
+
+Because STAC is a very flexible standard, not all metadata will be compatible with this
+backend implementation.
+
+### Minimal STAC requirement summary
+
+- Use STAC version 1.1 or higher
+- The collection metadata has to list the available 'bands'. If bands are not available, openEO will try using asset keys.
+- Assets have to list the bands they contain, or only contain a single band that corresponds to the asset key.
+- Items have to include `proj:code`, `proj:bbox` and `proj:shape` properties from the projection extension.
+
+On top of these minimal requirements, we recommend:
+
+- nodata value
+- datatype value
+
+### Examples
+
+#### Single item loading
+
+When you need to load only a single item, this [example notebook](https://github.com/Open-EO/openeo-community-examples/blob/main/python/LoadStac/load-stac-item-example.ipynb)
+shows how to do that easily.
+
+#### Creating large collections
+
+Currently, there is no officially supported tool that generates high quality STAC metadata.
+There are however a few open source options that can provide inspiration, or that you can use at your own
+risk:
+
+- [stactools-packages](https://stactools-packages.github.io/) provides collection building scripts for various datasets. 
+   Not all off them are openEO compatible.
+- [STAC catalog builder](https://github.com/VitoTAP/stac-catalog-builder) takes an automated approach at building a collection
+  based on minimal configuration. 
+
+
+
+### Metadata requirement motivation
+
+This section explains in more detail why the backend requires specific STAC metadata.
+
+While this explanation is certainly relevant for openEO, it is also a more broadly applicable 'best practice'.
+Check out [FAIR principles](https://www.go-fair.org/fair-principles/) for more information on why this matters.
+
+#### Usability
+
+In the openEO API, users can use 'bands' to define which data should be loaded.
+If a STAC collection does not list bands, or does not allow mapping bands to assets, than
+this simply does not work.
+
+Bands also provide critical information to the user on the data they are working with.
+For instance, for physical quantities, bands can specify the unit of measurement. 
+
+While this information is sometimes also encoded in the format itself, for instance
+in the case of netCDF, it is much easier for the user if this crucial information is readily
+available in a format that can be published online.
+
+#### Performance
+
+Most file formats are self-describing to a certain degree, allowing metadata to be 
+retrieved from the format. So why should STAC repeat this metadata?
+
+The main reason is performance. When a collection contains for instance 1000 assets,
+checking all 1000 assets to retrieve metadata requires 1000 separate calls to the storage system. Depending on the system
+and the size of the collection, this process can take minutes to hours. While making all these calls, it also
+generates load on the storage system itself.
+
+With sufficiently rich metadata, the openEO backend is able to quickly construct a virtual datacube, without requiring
+to touch any of the actual data files. Additionally, it can accurately filter out data files that do not affect the result.
+
+#### Accuracy
+
+Most openEO users have pretty strict demands on how raw pixels are loaded into a data cube. This is not trivial when only 
+a vague description of the data to be loaded is available. With complete and accurate metdata, an openEO backend can construct
+virtual pixel grids for the input data, and then correctly combine them. With incomplete metadata, the backend is forced
+to make assumptions, which can lead to inaccurate results.
+
+
+
+
+
+

@@ -2,11 +2,15 @@
 Reusable helpers, functions, classes, fixtures for testing purposes
 """
 
+import contextlib
+import dataclasses
 import datetime
 import json
+import subprocess
 import uuid
 from pathlib import Path
 from typing import Dict, Iterator, List, Tuple, Union, Optional
+from unittest import mock
 
 import geopyspark.geotrellis
 import geopyspark.geotrellis.constants
@@ -276,3 +280,41 @@ class DummyCubeBuilder:
         )
         # TODO: customize GeopysparkCubeMetadata
         return GeopysparkDataCube(pyramid=pyramid)
+
+
+class YarnMocker:
+    """Test utility to mock YARN submit and related"""
+
+    _YARN_SUBMIT_STDOUT_BASIC = """
+    20/04/20 16:48:33 INFO YarnClientImpl: Submitted application application_1587387643572_0842
+    20/04/20 16:48:33 INFO Client: Application report for application_1587387643572_0842 (state: ACCEPTED)
+    """
+
+    @dataclasses.dataclass
+    class _SubprocessRunArgs:
+        command: Union[List[str], None] = None
+        kwargs: Optional[dict] = None
+        env: Optional[dict] = None
+
+    @contextlib.contextmanager
+    def mock_yarn_submit_job(self, yarn_submit_stdout: str = _YARN_SUBMIT_STDOUT_BASIC) -> Iterator[_SubprocessRunArgs]:
+        """
+        Test utility to mock and inspect the `subprocess.run` call used to submit a YARN job.
+
+        Usage:
+            with yarn_mocker.mock_yarn_submit_job() as yarn_submit_call:
+                runner.run_job(...)
+
+            # after the block, you can inspect:
+            yarn_submit_call.command  # List[str] - the "submit_batch_job_spark3.sh" command used
+            yarn_submit_call.kwargs   # dict - other kwargs passed to subprocess.run
+            yarn_submit_call.env      # dict - the environment variables used
+        """
+        with mock.patch("subprocess.run") as run:
+            run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout=yarn_submit_stdout, stderr="")
+            result = self._SubprocessRunArgs()
+            yield result
+            run.assert_called_once()
+            result.command = run.call_args.args[0]
+            result.kwargs = run.call_args.kwargs
+            result.env = run.call_args.kwargs["env"]

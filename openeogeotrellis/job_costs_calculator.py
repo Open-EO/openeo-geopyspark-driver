@@ -32,6 +32,7 @@ class CostsDetails(NamedTuple):  # for lack of a better name
     additional_credits_cost: Optional[float] = None
     unique_process_ids: List[str] = []
     job_options: Optional[dict] = None
+    etl_source_id: Optional[str] = None
 
 
 class JobCostsCalculator(metaclass=abc.ABCMeta):
@@ -74,6 +75,7 @@ class EtlApiJobCostsCalculator(JobCostsCalculator):
             duration_ms=duration_ms,
             sentinel_hub_processing_units=details.sentinelhub_processing_units,
             additional_credits_cost=details.additional_credits_cost,
+            source_id=details.etl_source_id,
             organization_id=(details.job_options or {}).get(ETL_ORGANIZATION_ID_JOB_OPTION),
         )
 
@@ -81,16 +83,20 @@ class EtlApiJobCostsCalculator(JobCostsCalculator):
             added_value_costs_in_credits = 0.0
             _log.debug("not logging added value because area is None")
         else:
-            added_value_costs_in_credits = sum(self._etl_api.log_added_value(
-                batch_job_id=details.job_id,
-                title=details.job_title,
-                execution_id=details.execution_id,
-                user_id=details.user_id,
-                started_ms=started_ms,
-                finished_ms=finished_ms,
-                process_id=process_id,
-                square_meters=details.area_square_meters,
-                ) for process_id in details.unique_process_ids)
+            added_value_costs_in_credits = sum(
+                self._etl_api.log_added_value(
+                    batch_job_id=details.job_id,
+                    title=details.job_title,
+                    execution_id=details.execution_id,
+                    user_id=details.user_id,
+                    started_ms=started_ms,
+                    finished_ms=finished_ms,
+                    process_id=process_id,
+                    square_meters=details.area_square_meters,
+                    source_id=details.etl_source_id,
+                )
+                for process_id in details.unique_process_ids
+            )
 
         return resource_costs_in_credits + added_value_costs_in_credits
 

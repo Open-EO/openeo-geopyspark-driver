@@ -218,7 +218,14 @@ class TestGetEtlApi:
 
 
 class TestEtlApi:
-    def test_log_resource_usage(self, requests_mock, etl_credentials):
+    @pytest.mark.parametrize(
+        ["source_id_override", "expected_source_id"],
+        [
+            (None, "test"),
+            ("overridden", "overridden"),
+        ],
+    )
+    def test_log_resource_usage(self, requests_mock, etl_credentials, source_id_override, expected_source_id):
         mock_endpoint = "https://etl-api.test"
         etl_api = EtlApi(mock_endpoint, credentials=etl_credentials, source_id="test")
 
@@ -228,7 +235,7 @@ class TestEtlApi:
                 jobName="a test",
                 executionId="application_1704961751000_456",
                 userId="johndoe",
-                sourceId="test",
+                sourceId=expected_source_id,
                 orchestrator="openeo",
                 jobStart=1704961751000,
                 jobFinish=1704961804000,
@@ -265,6 +272,7 @@ class TestEtlApi:
             duration_ms=53000,
             sentinel_hub_processing_units=4.0,
             additional_credits_cost=None,
+            source_id=source_id_override,
         )
 
         assert credits_cost == 9.87
@@ -342,12 +350,20 @@ class TestEtlApi:
             duration_ms=53000,
             sentinel_hub_processing_units=4.0,
             additional_credits_cost=additional_credits_cost,
+            source_id=None,
         )
 
         assert mock.call_count == 2
         assert credits_cost == usage_credits_cost + additional_credits_cost
 
-    def test_log_added_value(self, requests_mock, etl_credentials):
+    @pytest.mark.parametrize(
+        ["source_id_override", "expected_source_id"],
+        [
+            (None, "test"),
+            ("overridden", "overridden"),
+        ],
+    )
+    def test_log_added_value(self, requests_mock, etl_credentials, source_id_override, expected_source_id):
         mock_endpoint = "https://etl-api.test"
         etl_api = EtlApi(mock_endpoint, credentials=etl_credentials, source_id="test")
 
@@ -357,7 +373,7 @@ class TestEtlApi:
                 jobName="a test",
                 executionId="application_1704961751000_456",
                 userId="johndoe",
-                sourceId="test",
+                sourceId=expected_source_id,
                 orchestrator="openeo",
                 jobStart=1704961751000,
                 jobFinish=1704961804000,
@@ -374,10 +390,17 @@ class TestEtlApi:
 
         requests_mock.post(f"{mock_endpoint}/addedvalue", json=verify_request)
 
-        credits_cost = etl_api.log_added_value(batch_job_id="j-abc123", title="a test",
-                                               execution_id="application_1704961751000_456", user_id="johndoe",
-                                               started_ms=1704961751000, finished_ms=1704961804000,
-                                               process_id="load_stac", square_meters=40.0)
+        credits_cost = etl_api.log_added_value(
+            batch_job_id="j-abc123",
+            title="a test",
+            execution_id="application_1704961751000_456",
+            user_id="johndoe",
+            started_ms=1704961751000,
+            finished_ms=1704961804000,
+            process_id="load_stac",
+            square_meters=40.0,
+            source_id=source_id_override,
+        )
 
         assert credits_cost == 8.76
 

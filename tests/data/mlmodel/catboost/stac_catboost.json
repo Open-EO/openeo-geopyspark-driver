@@ -1,0 +1,64 @@
+{
+  "assets": {
+    "model": {
+      "href": "https://openeo.vito.be/openeo/1.2/jobs/j-25101315033849049a4a67ea6d24b7ca/results/items/ZGZhNjc4Y/catboost_model.cbm.tar.gz",
+      "roles": [
+        "ml-model:checkpoint"
+      ],
+      "title": "ai.catboost.spark.CatBoostClassificationModel",
+      "type": "application/octet-stream"
+    }
+  },
+  "bbox": [
+    -179.999,
+    -89.999,
+    179.999,
+    89.999
+  ],
+  "collection": "j-25101315033849049a4a67ea6d24b7ca",
+  "geometry": {
+    "coordinates": [
+      [
+        [
+          -179.999,
+          -89.999
+        ],
+        [
+          179.999,
+          -89.999
+        ],
+        [
+          179.999,
+          89.999
+        ],
+        [
+          -179.999,
+          89.999
+        ],
+        [
+          -179.999,
+          -89.999
+        ]
+      ]
+    ],
+    "type": "Polygon"
+  },
+  "id": "cb-25101315094547a0a9e42e73c8560e12",
+  "links": [],
+  "properties": {
+    "datetime": null,
+    "end_datetime": "9999-12-31T23:59:59Z",
+    "ml-model:architecture": "catboost",
+    "ml-model:learning_approach": "supervised",
+    "ml-model:prediction_type": "classification",
+    "ml-model:training-os": "linux",
+    "ml-model:training-processor-type": "cpu",
+    "ml-model:type": "ml-model",
+    "start_datetime": "1970-01-01T00:00:00Z"
+  },
+  "stac_extensions": [
+    "https://stac-extensions.github.io/ml-model/v1.0.0/schema.json"
+  ],
+  "stac_version": "1.0.0",
+  "type": "Feature"
+}

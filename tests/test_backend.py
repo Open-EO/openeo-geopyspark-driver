@@ -22,7 +22,7 @@ from openeo_driver.specs import read_spec
 from openeo_driver.users import User
 from openeo_driver.utils import EvalEnv
 
-from openeogeotrellis.backend import GpsProcessing, GeoPySparkBackendImplementation, GpsUdfRuntimes
+from openeogeotrellis.backend import GpsProcessing, GeoPySparkBackendImplementation, GpsUdfRuntimes, GpsBatchJobs
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.config.s3_config import S3Config
 from openeogeotrellis.integrations.kubernetes import k8s_render_manifest_template, K8S_SPARK_APP_STATE
@@ -585,6 +585,7 @@ def test_request_costs(mock_get_etl_api_credentials_from_env, backend_implementa
             duration_ms=None,
             sentinel_hub_processing_units=shpu if shpu else None,
             additional_credits_cost=None,
+            source_id=None,
             organization_id=None,
         )
 
@@ -919,44 +920,84 @@ class TestGpsBatchJobs:
             job_options={"log_level": "info"},
         )
 
+    def test_determine_container_image_from_process_graph_no_udfs(self):
+        """No UDFs -> use default image (e.g. highest Python version)"""
+        gps_batch_jobs = GpsBatchJobs(catalog=None, jvm=None, udf_runtimes=GpsUdfRuntimes())
+        pg = {
+            "add35": {"process_id": "add", "arguments": {"x": 3, "y": 5}, "result": True},
+        }
+        image = gps_batch_jobs._determine_container_image_from_process_graph(pg)
+        assert image == "docker.test/openeo-geopy311:7.9.11"
+
+    @pytest.mark.parametrize(
+        ["args", "expected", "expected_warning"],
+        [
+            (
+                {"runtime": "Python"},
+                "python38",
+                dirty_equals.IsStr(
+                    regex="Container image from UDF runtimes:"
+                    ".*none with explicit runtime version"
+                    ".*hard fall back to 'python38'"
+                    ".*overriding the normal default 'docker.test/openeo-geopy311:7.9.11'.*"
+                ),
+            ),
+            ({"runtime": "Python", "version": "3"}, "docker.test/openeo-geopy311:7.9.11", None),
+            ({"runtime": "Python", "version": "3.8"}, "docker.test/openeo-geopy38:3.5.8", None),
+            ({"runtime": "Python", "version": "3.11"}, "docker.test/openeo-geopy311:7.9.11", None),
+            (
+                {"runtime": "Python", "version": "4.5"},
+                "docker.test/openeo-geopy311:7.9.11",
+                dirty_equals.IsStr(regex="No image matches all runtimes.*"),
+            ),
+            (
+                {"runtime": "Pithoon", "version": "3.8"},
+                "docker.test/openeo-geopy311:7.9.11",
+                dirty_equals.IsStr(regex="No image matches all runtimes.*"),
+            ),
+        ],
+    )
+    def test_determine_container_image_from_process_graph_with_udf_runtime(
+        self, args, expected, expected_warning, caplog
+    ):
+        caplog.set_level(logging.WARNING)
+        gps_batch_jobs = GpsBatchJobs(catalog=None, jvm=None, udf_runtimes=GpsUdfRuntimes())
+        pg = {
+            "runudf": {
+                "process_id": "run_udf",
+                "arguments": {"data": [1, 2, 3], "udf": "hello world", **args},
+                "result": True,
+            },
+        }
+        image = gps_batch_jobs._determine_container_image_from_process_graph(pg)
+        assert image == expected
+
+        if expected_warning:
+            assert expected_warning in caplog.messages
+        else:
+            assert caplog.messages == []
+
 
 class TestGpsUdfRuntimes:
     def test_get_udf_runtimes(self):
         runtimes = GpsUdfRuntimes()
-        current_py_3_minor = f"{sys.version_info.major}.{sys.version_info.minor}"
-        expected_libraries = dirty_equals.IsPartialDict(
-            {
-                "numpy": {"version": dirty_equals.IsStr(regex=r"\d+\.\d+\.\d+")},
-                "xarray": {"version": dirty_equals.IsStr(regex=r"\d+\.\d+\.\d+")},
-            }
-        )
-        assert runtimes.get_udf_runtimes() == dirty_equals.IsPartialDict(
-            {
-                "Python": dirty_equals.IsPartialDict(
-                    {
-                        "title": "Python 3",
-                        "type": "language",
-                        "default": "3",
-                        "versions": dirty_equals.IsPartialDict(
-                            {
-                                "3": {"libraries": expected_libraries},
-                                current_py_3_minor: {"libraries": expected_libraries},
-                            }
-                        ),
-                    }
-                ),
-                "Python-Jep": dirty_equals.IsPartialDict(
-                    {
-                        "title": "Python 3",
-                        "type": "language",
-                        "default": "3",
-                        "versions": dirty_equals.IsPartialDict(
-                            {
-                                "3": {"libraries": expected_libraries},
-                                current_py_3_minor: {"libraries": expected_libraries},
-                            }
-                        ),
-                    }
-                ),
-            }
-        )
+        assert runtimes.get_udf_runtimes() == {
+            "Python": {
+                "title": "Python",
+                "type": "language",
+                "default": "3",
+                "versions": {
+                    "3.8": {"libraries": {"numpy": {"version": "1.22.4"}, "pandas": {"version": "1.5.3"}}},
+                    "3.11": {"libraries": {"numpy": {"version": "2.3.3"}, "pandas": {"version": "2.3.3"}}},
+                    "3": {"libraries": {"numpy": {"version": "2.3.3"}, "pandas": {"version": "2.3.3"}}},
+                },
+            },
+            "Python-Jep": {
+                "title": "Python-Jep",
+                "type": "language",
+                "default": "3.8",
+                "versions": {
+                    "3.8": {"libraries": {"numpy": {"version": "1.22.4"}, "pandas": {"version": "1.5.3"}}},
+                },
+            },
+        }

@@ -15,6 +15,7 @@ import geopyspark as gps
 import planetary_computer
 import pyproj
 import pystac
+import pystac.stac_io
 import pystac_client
 import requests.adapters
 from geopyspark import LayerType, TiledRasterLayer
@@ -71,6 +72,7 @@ def load_stac(
     batch_jobs: Optional[openeo_driver.backend.BatchJobs] = None,
     override_band_names: Optional[List[str]] = None,
     apply_lcfm_improvements: bool = False,
+    stac_io: Optional[pystac.stac_io.StacIO] = None,
 ) -> GeopysparkDataCube:
     if override_band_names is None:
         override_band_names = []
@@ -148,6 +150,7 @@ def load_stac(
                 poll_interval_seconds=poll_interval_seconds,
                 max_poll_delay_seconds=max_poll_delay_seconds,
                 max_poll_time=max_poll_time,
+                stac_io=stac_io,
             )
 
             if isinstance(stac_object, pystac.Item):
@@ -1052,11 +1055,14 @@ def _await_stac_object(
     poll_interval_seconds: float,
     max_poll_delay_seconds: float,
     max_poll_time: float,
+    stac_io: Optional[pystac.stac_io.StacIO] = None,
 ) -> STACObject:
-    session = requests_with_retry(total=5, backoff_factor=0.1, status_forcelist={500, 502, 503, 504})
+
+    if stac_io is None:
+        session = requests_with_retry(total=5, backoff_factor=0.1, status_forcelist={500, 502, 503, 504})
+        stac_io = ResilientStacIO(session)
 
     while True:
-        stac_io = ResilientStacIO(session)
         stac_object = pystac.read_file(href=url, stac_io=stac_io)
 
         if isinstance(stac_object, pystac.Catalog):
