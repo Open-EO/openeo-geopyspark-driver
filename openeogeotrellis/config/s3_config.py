@@ -39,6 +39,14 @@ class AWSConfig(ConfigParser):
         self[f"profile {profile.name}"] = section_details
 
     @staticmethod
+    def get_sts_endpoint_url() -> str:
+        return os.environ.get(AWSConfig.S3PROXY_STS_ENDPOINT_URL, "")
+
+    @staticmethod
+    def get_s3_endpoint_url() -> str:
+        return os.environ.get(AWSConfig.S3PROXY_S3_ENDPOINT_URL, "")
+
+    @staticmethod
     def create_nested_config_entry(d: dict[str, str]) -> str:
         """
         AWS config files allow nested config which is not really part of the ConfigParser. Our generated config must
@@ -52,12 +60,8 @@ class AWSConfig(ConfigParser):
 
     def add_s3proxy_services(self) -> None:
         self[f"services {self.S3PROXY_SERVICES}"] = {
-            "sts": self.create_nested_config_entry(
-                {"endpoint_url": os.environ.get(self.S3PROXY_STS_ENDPOINT_URL, "")}
-            ),
-            "s3": self.create_nested_config_entry(
-                {"endpoint_url": os.environ.get(self.S3PROXY_S3_ENDPOINT_URL, "")}
-            )
+            "sts": self.create_nested_config_entry({"endpoint_url": self.get_sts_endpoint_url()}),
+            "s3": self.create_nested_config_entry({"endpoint_url": self.get_s3_endpoint_url()}),
         }
 
 
