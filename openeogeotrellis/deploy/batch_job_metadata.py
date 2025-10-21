@@ -424,4 +424,4 @@ def _get_tracker_metadata(tracker_id: str = "", *, omit_derived_from_links: bool
             usage["input_pixel"]["value"] += sar_backscatter_inputpixels / (1024 * 1024)
         else:
             usage["input_pixel"] = {"value": sar_backscatter_inputpixels / (1024 * 1024), "unit": "mega-pixel"}
-    return dict_no_none(usage=usage if usage != {} else None, links=all_links, internal_links=internal_links)
+    return dict_no_none(usage=usage or None, links=all_links, internal_links=internal_links or None)
