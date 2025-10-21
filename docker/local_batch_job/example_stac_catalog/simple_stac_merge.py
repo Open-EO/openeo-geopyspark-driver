@@ -4,36 +4,9 @@ import os
 import shutil
 import sys
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 containing_folder = Path(__file__).parent
-
-
-def get_files_from_stac_catalog(catalog_path: Path):
-    """
-    Simple function that recursively searches files in catalog
-    """
-    catalog_path = Path(catalog_path)
-    assert catalog_path.exists()
-    catalog_json = json.loads(catalog_path.read_text())
-    all_files = []
-    links = []
-    if "links" in catalog_json:
-        links.extend(catalog_json["links"])
-    if "assets" in catalog_json:
-        links.extend(list(catalog_json["assets"].values()))
-    for link in links:
-        if "href" in link:
-            href = link["href"]
-            if href.startswith("file://"):
-                href = href[7:]
-            # make absolute, compared to parent json file:
-            href = Path(os.path.normpath(os.path.join(catalog_path.parent, href)))
-            all_files.append(href)
-
-            if "rel" in link and (link["rel"] == "child" or link["rel"] == "item"):
-                all_files.extend(get_files_from_stac_catalog(href))
-    return all_files
 
 
 def main(argv: List[str]) -> None:
@@ -67,6 +40,49 @@ def main(argv: List[str]) -> None:
         input_files = argv[1:]
         os.chdir(output_folder)
     input_files = [Path(c) for c in input_files]
+
+    def file_name_to_path(file: Path) -> Optional[Path]:
+        """
+        By default, CWL does not guarantee that files stay next to each other
+        https://cwl.discourse.group/t/output-files-not-next-to-each-other-in-next-step/1020
+        """
+        file_name = Path(file).name
+        for input_file in input_files:
+            if input_file.name == file_name:
+                return input_file
+        print(f"Not found in input files: {file_name}")
+        return None
+
+    def get_files_from_stac_catalog(catalog_path: Path):
+        """
+        Simple function that recursively searches files in catalog
+        """
+        catalog_path = Path(catalog_path)
+        assert catalog_path.exists()
+        catalog_json = json.loads(catalog_path.read_text())
+        all_files = []
+        links = []
+        if "links" in catalog_json:
+            links.extend(catalog_json["links"])
+        if "assets" in catalog_json:
+            links.extend(list(catalog_json["assets"].values()))
+        for link in links:
+            if "href" in link:
+                href = link["href"]
+                if href.startswith("file://"):
+                    href = href[7:]
+                # make absolute, compared to parent json file:
+                href_new = file_name_to_path(href)
+                if href_new is None:
+                    href = Path(os.path.normpath(os.path.join(catalog_path.parent, href)))
+                else:
+                    href = href_new
+                all_files.append(href)
+
+                if "rel" in link and (link["rel"] == "child" or link["rel"] == "item"):
+                    all_files.extend(get_files_from_stac_catalog(href))
+        return all_files
+
     collections = [c for c in input_files if "collection.json" in c.name]
     first_json_path = collections[0]
     first_json = json.loads(first_json_path.read_text())
