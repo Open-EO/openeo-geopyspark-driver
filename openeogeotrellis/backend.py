@@ -1477,7 +1477,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
     def get_job_info(self, job_id: str, user_id: str) -> BatchJobMetadata:
         with self._double_job_registry as registry:
-            with TimingLogger(f"registry.get_job_metadata({job_id=}, {user_id=})", logger):
+            with TimingLogger(f"registry.get_job_metadata({job_id=}, {user_id=})", logger.debug):
                 job_metadata = registry.get_job_metadata(job_id, user_id)
 
         # TODO: move results metadata out of BatchJobMetadata
