@@ -93,13 +93,10 @@ def load_stac(
     layer_properties: Optional[Dict[str, object]] = None,
     batch_jobs: Optional[openeo_driver.backend.BatchJobs] = None,
     override_band_names: Optional[List[str]] = None,
-    apply_lcfm_improvements: bool = False,
     stac_io: Optional[pystac.stac_io.StacIO] = None,
 ) -> GeopysparkDataCube:
     if override_band_names is None:
         override_band_names = []
-
-    apply_lcfm_improvements = apply_lcfm_improvements or env.get(EVAL_ENV_KEY.LOAD_STAC_APPLY_LCFM_IMPROVEMENTS, False)
 
     logger.info("load_stac from url {u!r} with load params {p!r}".format(u=url, p=load_params))
 
@@ -300,7 +297,7 @@ def load_stac(
                     if proj_epsg:
                         band_epsgs.setdefault(asset_band_name, set()).add(proj_epsg)
 
-                pixel_value_offset = get_pixel_value_offset(itm, asset) if apply_lcfm_improvements else 0.0
+                pixel_value_offset = get_pixel_value_offset(itm, asset)
                 logger.debug(
                     f"FeatureBuilder.addlink {itm.id=} {asset_id=} {asset_band_names_from_metadata=} {asset_band_names=}"
                 )
@@ -392,48 +389,28 @@ def load_stac(
 
     band_names = metadata.band_names
 
-    if apply_lcfm_improvements:
-        logger.info("applying LCFM resolution improvements")
+    requested_band_epsgs = [epsgs for band_name, epsgs in band_epsgs.items() if band_name in band_names]
+    unique_epsgs = {epsg for epsgs in requested_band_epsgs for epsg in epsgs}
+    requested_band_cell_sizes = [size for band_name, size in band_cell_size.items() if band_name in band_names]
 
-        requested_band_epsgs = [epsgs for band_name, epsgs in band_epsgs.items() if band_name in band_names]
-        unique_epsgs = {epsg for epsgs in requested_band_epsgs for epsg in epsgs}
-        requested_band_cell_sizes = [size for band_name, size in band_cell_size.items() if band_name in band_names]
-
-        if len(unique_epsgs) == 1 and requested_band_cell_sizes:  # exact resolution
-            target_epsg = unique_epsgs.pop()
-            cell_widths, cell_heights = unzip(*requested_band_cell_sizes)
-            cell_width = min(cell_widths)
-            cell_height = min(cell_heights)
-        elif len(unique_epsgs) == 1:  # about 10m in given CRS
-            target_epsg = unique_epsgs.pop()
-            try:
-                utm_zone_from_epsg(proj_epsg)
-                cell_width = cell_height = 10.0
-            except ValueError:
-                target_bbox_center = target_bbox.as_polygon().centroid
-                cell_width = cell_height = GeometryBufferer.transform_meter_to_crs(
-                    10.0, f"EPSG:{proj_epsg}", loi=(target_bbox_center.x, target_bbox_center.y)
-                )
-        else:  # 10m UTM
-            target_epsg = target_bbox.best_utm()
+    if len(unique_epsgs) == 1 and requested_band_cell_sizes:  # exact resolution
+        target_epsg = unique_epsgs.pop()
+        cell_widths, cell_heights = unzip(*requested_band_cell_sizes)
+        cell_width = min(cell_widths)
+        cell_height = min(cell_heights)
+    elif len(unique_epsgs) == 1:  # about 10m in given CRS
+        target_epsg = unique_epsgs.pop()
+        try:
+            utm_zone_from_epsg(proj_epsg)
             cell_width = cell_height = 10.0
-    else:
-        if proj_epsg and proj_bbox and proj_shape:  # exact resolution
-            target_epsg = proj_epsg
-            cell_width, cell_height = _compute_cellsize(proj_bbox, proj_shape)
-        elif proj_epsg:  # about 10m in given CRS
-            target_epsg = proj_epsg
-            try:
-                utm_zone_from_epsg(proj_epsg)
-                cell_width = cell_height = 10.0
-            except ValueError:
-                target_bbox_center = target_bbox.as_polygon().centroid
-                cell_width = cell_height = GeometryBufferer.transform_meter_to_crs(
-                    10.0, f"EPSG:{proj_epsg}", loi=(target_bbox_center.x, target_bbox_center.y)
-                )
-        else:  # 10m UTM
-            target_epsg = target_bbox.best_utm()
-            cell_width = cell_height = 10.0
+        except ValueError:
+            target_bbox_center = target_bbox.as_polygon().centroid
+            cell_width = cell_height = GeometryBufferer.transform_meter_to_crs(
+                10.0, f"EPSG:{proj_epsg}", loi=(target_bbox_center.x, target_bbox_center.y)
+            )
+    else:  # 10m UTM
+        target_epsg = target_bbox.best_utm()
+        cell_width = cell_height = 10.0
 
     if load_params.target_resolution is not None:
         if load_params.target_resolution[0] != 0.0 and load_params.target_resolution[1] != 0.0:
