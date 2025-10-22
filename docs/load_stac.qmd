@@ -32,7 +32,11 @@ Metadata is used to describe where your data can be found, and how it is structu
 OpenEO uses the well-known STAC (SpatioTemporal Asset Catalog) specification for this purpose.
 
 Because STAC is a very flexible standard, not all metadata will be compatible with this
-backend implementation.
+backend implementation, which is why we define this best practice.
+
+More broad [efforts are underway](https://github.com/EOEPCA/datacube-access/blob/main/best_practices/stac_best_practices.md)
+to define best practices for STAC metadata. OpenEO seeks to align with these efforts as much as possible.
+
 
 ### Minimal STAC requirement summary
 
