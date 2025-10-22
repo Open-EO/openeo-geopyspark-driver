@@ -18,6 +18,7 @@ without compromising stable operations.
 - Added new API `UdfRuntimeImageRepository` for centralized configuration and handling of container images and corresponding UDF runtimes ([#1279](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1279), [Open-EO/openeo-python-driver#415](https://github.com/Open-EO/openeo-python-driver/issues/415), eu-cdse/openeo-cdse-infra#721)
 - Support overriding default ETL source ID from K8s app label ([eu-cdse/openeo-cdse-infra#612](https://github.com/eu-cdse/openeo-cdse-infra/issues/612))
 - Add `S3StacIO` and support custom `StacIO` in `openeogeotrellis.load_stac.load_stac` ([#1133](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1133))
+- Drop override to "python38" image for batch jobs with UDFs (eu-cdse/openeo-cdse-infra#763, eu-cdse/openeo-cdse-infra#169, [#1387](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1387))
 
 
 ## 0.68.0
