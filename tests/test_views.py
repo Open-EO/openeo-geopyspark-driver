@@ -1331,8 +1331,8 @@ class TestBatchJobs:
     @pytest.mark.parametrize(
         ["args", "expected"],
         [
-            ({"runtime": "python"}, "docker.test/openeo-geopy38:3.5.8"),
-            ({"runtime": "Python"}, "docker.test/openeo-geopy38:3.5.8"),
+            ({"runtime": "python"}, "docker.test/openeo-geopy311:7.9.11"),
+            ({"runtime": "Python"}, "docker.test/openeo-geopy311:7.9.11"),
             ({"runtime": "Python", "version": "3.8"}, "docker.test/openeo-geopy38:3.5.8"),
             ({"runtime": "Python", "version": "3.11"}, "docker.test/openeo-geopy311:7.9.11"),
             ({"runtime": "Python", "version": "3"}, "docker.test/openeo-geopy311:7.9.11"),
