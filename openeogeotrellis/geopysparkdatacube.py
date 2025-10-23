@@ -1179,7 +1179,9 @@ class GeopysparkDataCube(DriverDataCube):
 
         pysc = gps.get_spark_context()
         metadata = self.metadata
-        _log.info(f"run_udf: detected use of apply_metadata to transform: {self.metadata}")
+        _log.info(f"run_udf: detected use of apply_metadata to transform: {self.metadata._orig_metadata}")
+
+        @ensure_executor_logging
         def get_metadata(x):
             from openeo.udf.run_code import load_module_from_string
             module = load_module_from_string(udf_code)
