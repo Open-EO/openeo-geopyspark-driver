@@ -7,7 +7,7 @@ import time
 from functools import partial
 import logging
 import os
-from typing import Union, Optional, Tuple, Dict, List, Iterable, Any, Set, Callable
+from typing import Union, Optional, Tuple, Dict, List, Iterable, Any, Set, Callable, Iterator
 from urllib.parse import urlparse
 
 import dateutil.parser
@@ -15,6 +15,7 @@ import geopyspark as gps
 import planetary_computer
 import pyproj
 import pystac
+import pystac.stac_io
 import pystac_client
 import requests.adapters
 from geopyspark import LayerType, TiledRasterLayer
@@ -48,7 +49,7 @@ from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.constants import EVAL_ENV_KEY
 from openeogeotrellis.geopysparkcubemetadata import GeopysparkCubeMetadata
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
-from openeogeotrellis.util.datetime import to_datetime_utc_unless_none
+from openeogeotrellis.util.datetime import to_datetime_utc_unless_none, DateTimeLikeOrNone
 from openeogeotrellis.utils import normalize_temporal_extent, get_jvm, to_projected_polygons, map_optional, unzip
 from openeogeotrellis.integrations.stac import ResilientStacIO
 
@@ -71,6 +72,7 @@ def load_stac(
     batch_jobs: Optional[openeo_driver.backend.BatchJobs] = None,
     override_band_names: Optional[List[str]] = None,
     apply_lcfm_improvements: bool = False,
+    stac_io: Optional[pystac.stac_io.StacIO] = None,
 ) -> GeopysparkDataCube:
     if override_band_names is None:
         override_band_names = []
@@ -148,6 +150,7 @@ def load_stac(
                 poll_interval_seconds=poll_interval_seconds,
                 max_poll_delay_seconds=max_poll_delay_seconds,
                 max_poll_time=max_poll_time,
+                stac_io=stac_io,
             )
 
             if isinstance(stac_object, pystac.Item):
@@ -242,62 +245,12 @@ def load_stac(
                     raise ProcessParameterUnsupportedException(process="load_stac", parameter="properties")
 
                 if isinstance(catalog, pystac.Collection):
-                    collection = catalog
-                    netcdf_with_time_dimension = contains_netcdf_with_time_dimension(collection)
+                    netcdf_with_time_dimension = contains_netcdf_with_time_dimension(collection=catalog)
 
                 band_names = stac_metadata_parser.bands_from_stac_object(obj=stac_object).band_names()
 
-                def intersecting_catalogs(root: pystac.Catalog) -> Iterable[pystac.Catalog]:
-                    def intersects_spatiotemporally(coll: pystac.Collection) -> bool:
-                        def intersects_spatially(bbox) -> bool:
-                            if not requested_bbox:
-                                return True
-
-                            requested_bbox_lonlat = requested_bbox.reproject("EPSG:4326")
-                            return requested_bbox_lonlat.as_polygon().intersects(
-                                Polygon.from_bounds(*bbox)
-                            )
-
-                        def intersects_temporally(interval) -> bool:
-                            start, end = interval
-
-                            if start is not None and end is not None:
-                                return to_date >= start and from_date <= end
-                            if start is not None:
-                                return to_date >= start
-                            if end is not None:
-                                return from_date <= end
-                            return True
-
-                        bboxes = coll.extent.spatial.bboxes
-                        intervals = coll.extent.temporal.intervals
-
-                        if len(bboxes) > 1 and not any(intersects_spatially(bbox) for bbox in bboxes[1:]):
-                            return False
-                        if len(bboxes) == 1 and not intersects_spatially(bboxes[0]):
-                            return False
-
-                        if len(intervals) > 1 and not any(intersects_temporally(interval)
-                                                          for interval in intervals[1:]):
-                            return False
-                        if len(intervals) == 1 and not intersects_temporally(intervals[0]):
-                            return False
-
-                        return True
-
-                    if isinstance(root, pystac.Collection) and not intersects_spatiotemporally(root):
-                        return []
-
-                    yield root
-                    for child in root.get_children():
-                        yield from intersecting_catalogs(child)
-
-                intersecting_items = (
-                    itm
-                    for intersecting_catalog in intersecting_catalogs(root=catalog)
-                    for itm in intersecting_catalog.get_items()
-                    if spatiotemporal_extent.item_intersects(itm)
-                )
+                item_collection = ItemCollection.from_stac_catalog(catalog, spatiotemporal_extent=spatiotemporal_extent)
+                intersecting_items = item_collection.items
 
         jvm = get_jvm()
 
@@ -678,19 +631,15 @@ class _TemporalExtent:
 
     __slots__ = ("from_date", "to_date")
 
-    def __init__(
-        self,
-        from_date: Union[str, datetime.datetime, datetime.date, None],
-        to_date: Union[str, datetime.datetime, datetime.date, None],
-    ):
+    def __init__(self, from_date: DateTimeLikeOrNone, to_date: DateTimeLikeOrNone):
         self.from_date: Union[datetime.datetime, None] = to_datetime_utc_unless_none(from_date)
         self.to_date: Union[datetime.datetime, None] = to_datetime_utc_unless_none(to_date)
 
     def intersects(
         self,
-        nominal: Union[str, datetime.datetime, datetime.date, None] = None,
-        start_datetime: Union[str, datetime.datetime, datetime.date, None] = None,
-        end_datetime: Union[str, datetime.datetime, datetime.date, None] = None,
+        nominal: DateTimeLikeOrNone = None,
+        start_datetime: DateTimeLikeOrNone = None,
+        end_datetime: DateTimeLikeOrNone = None,
     ) -> bool:
         """
         Check if the given datetime/interval intersects with the spatiotemporal extent.
@@ -705,16 +654,22 @@ class _TemporalExtent:
 
         # If available, start+end are preferred (cleanly defined interval)
         # fall back on nominal otherwise
-        if start_datetime and end_datetime and start_datetime <= end_datetime:
-            pass
-        elif nominal:
+        if start_datetime is None and end_datetime is None and nominal:
             start_datetime = end_datetime = nominal
-        else:
-            raise ValueError(f"Ill-defined instant/interval {nominal=} {start_datetime=} {end_datetime=}")
 
-        return (self.from_date is None or self.from_date <= end_datetime) and (
-            self.to_date is None or start_datetime < self.to_date
+        return (self.from_date is None or end_datetime is None or self.from_date <= end_datetime) and (
+            self.to_date is None or start_datetime is None or start_datetime < self.to_date
         )
+
+    def intersects_interval(
+        self,
+        interval: Union[
+            Tuple[DateTimeLikeOrNone, DateTimeLikeOrNone],
+            List[DateTimeLikeOrNone],
+        ],
+    ) -> bool:
+        start, end = interval
+        return self.intersects(start_datetime=start, end_datetime=end)
 
 
 class _SpatialExtent:
@@ -740,13 +695,7 @@ class _SpatialExtent:
 
 class _SpatioTemporalExtent:
     # TODO: move this to a more generic location for better reuse
-    def __init__(
-        self,
-        *,
-        bbox: Union[BoundingBox, None],
-        from_date: Union[str, datetime.datetime, datetime.date, None],
-        to_date: Union[str, datetime.datetime, datetime.date, None],
-    ):
+    def __init__(self, *, bbox: Union[BoundingBox, None], from_date: DateTimeLikeOrNone, to_date: DateTimeLikeOrNone):
         self._spatial_extent = _SpatialExtent(bbox=bbox)
         self._temporal_extent = _TemporalExtent(from_date=from_date, to_date=to_date)
 
@@ -756,6 +705,20 @@ class _SpatioTemporalExtent:
             start_datetime=item.properties.get("start_datetime"),
             end_datetime=item.properties.get("end_datetime"),
         ) and self._spatial_extent.intersects(item.bbox)
+
+    def collection_intersects(self, collection: pystac.Collection) -> bool:
+        bboxes = collection.extent.spatial.bboxes
+        intervals = collection.extent.temporal.intervals
+        # If multiple bboxes/intervals, skip the first "overall" one (per STAC spec),
+        # for more granular checking (if available)
+        if len(bboxes) > 1:
+            bboxes = bboxes[1:]
+        if len(intervals) > 1:
+            intervals = intervals[1:]
+
+        return any(self._spatial_extent.intersects(bbox) for bbox in bboxes) and any(
+            self._temporal_extent.intersects_interval(interval) for interval in intervals
+        )
 
 
 class ItemCollection:
@@ -833,6 +796,23 @@ class ItemCollection:
 
         return ItemCollection(items)
 
+    @staticmethod
+    def from_stac_catalog(catalog: pystac.Catalog, *, spatiotemporal_extent: _SpatioTemporalExtent) -> ItemCollection:
+
+        def intersecting_catalogs(root: pystac.Catalog) -> Iterator[pystac.Catalog]:
+            if isinstance(root, pystac.Collection) and not spatiotemporal_extent.collection_intersects(root):
+                return
+            yield root
+            for child in root.get_children():
+                yield from intersecting_catalogs(child)
+
+        items = [
+            item
+            for intersecting_catalog in intersecting_catalogs(root=catalog)
+            for item in intersecting_catalog.get_items(recursive=False)
+            if spatiotemporal_extent.item_intersects(item)
+        ]
+        return ItemCollection(items)
 
 
 def _is_supported_raster_mime_type(mime_type: str) -> bool:
@@ -916,7 +896,7 @@ def _supports_item_search(collection: pystac.Collection) -> bool:
     return False
 
 
-def contains_netcdf_with_time_dimension(collection):
+def contains_netcdf_with_time_dimension(collection: pystac.Collection):
     """
     Checks if the STAC collection contains netcdf files with multiple time stamps.
     This collection organization is used for storing small patches of EO data, and requires special loading because the
@@ -1046,11 +1026,14 @@ def _await_stac_object(
     poll_interval_seconds: float,
     max_poll_delay_seconds: float,
     max_poll_time: float,
+    stac_io: Optional[pystac.stac_io.StacIO] = None,
 ) -> STACObject:
-    session = requests_with_retry(total=5, backoff_factor=0.1, status_forcelist={500, 502, 503, 504})
+
+    if stac_io is None:
+        session = requests_with_retry(total=5, backoff_factor=0.1, status_forcelist={500, 502, 503, 504})
+        stac_io = ResilientStacIO(session)
 
     while True:
-        stac_io = ResilientStacIO(session)
         stac_object = pystac.read_file(href=url, stac_io=stac_io)
 
         if isinstance(stac_object, pystac.Catalog):

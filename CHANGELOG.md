@@ -17,6 +17,8 @@ without compromising stable operations.
 
 - Added new API `UdfRuntimeImageRepository` for centralized configuration and handling of container images and corresponding UDF runtimes ([#1279](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1279), [Open-EO/openeo-python-driver#415](https://github.com/Open-EO/openeo-python-driver/issues/415), eu-cdse/openeo-cdse-infra#721)
 - Support overriding default ETL source ID from K8s app label ([eu-cdse/openeo-cdse-infra#612](https://github.com/eu-cdse/openeo-cdse-infra/issues/612))
+- Add `S3StacIO` and support custom `StacIO` in `openeogeotrellis.load_stac.load_stac` ([#1133](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1133))
+- Drop override to "python38" image for batch jobs with UDFs (eu-cdse/openeo-cdse-infra#763, eu-cdse/openeo-cdse-infra#169, [#1387](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1387))
 
 
 ## 0.68.0
@@ -98,6 +100,7 @@ without compromising stable operations.
 - `GpsBackendConfig`: be more forgiving about unknown config keys to better support use cases that involve backward/forward incompatible configurations ([Open-EO/openeo-python-driver#322](https://github.com/Open-EO/openeo-python-driver/issues/322))
 - Improved API alignment between `DoubleJobRegistry` and `JobRegistryInterface`/`ElasticJobRegistry` ([#863](https://github.com/Open-EO/openeo-geopyspark-driver/issues/863), [#1123](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1123))
 - Add `use_new_feature_extent_intersection_2` option to `load_collection`: To use new intersection code to work with products crossing the antimeridian. ([#1072](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1072))
+- Add `add_bands_statistics` format option to include the statistics in asset metadata of netCDF bands ([Open-EO/openeo-geotrellis-extensions#406](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/406))
 
 
 ## 0.64.1
