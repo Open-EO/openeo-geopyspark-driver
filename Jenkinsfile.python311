@@ -26,7 +26,7 @@ pythonPipeline {
   wheel_repo = ''
   wheel_repo_dev = ''
   test_module_name = 'openeogeotrellis'
-  extras_require = 'dev'
+  extras_require = 'dev,spark4'
   upload_dev_wheels = false
   build_wheel = false
   pep440 = true

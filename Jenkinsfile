@@ -25,7 +25,7 @@ pythonPipeline {
   wheel_repo = 'python-openeo'
   wheel_repo_dev = 'python-openeo'
   test_module_name = 'openeogeotrellis'
-  extras_require = 'dev'
+  extras_require = 'dev,spark35'
   upload_dev_wheels = false
   pep440 = true
   venv_rpm_deps = ['gcc-c++', 'kstart', 'krb5-devel']
