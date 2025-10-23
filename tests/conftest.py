@@ -218,7 +218,7 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
             if is_port_free(port):
                 # 'agentlib' to allow attaching a Java debugger to running Spark driver
                 # IntelliJ IDEA: Run -> Edit Configurations -> Remote JVM Debug uses 5005 by default
-                sparkDriverJavaOptions += f" -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:{port}"
+                sparkDriverJavaOptions += f" -agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=*:{port}"
                 break
     conf.set("spark.driver.extraJavaOptions", sparkDriverJavaOptions)
 
@@ -735,3 +735,19 @@ def mock_yarn_backend_config():
 @pytest.fixture
 def yarn_mocker() -> YarnMocker:
     return YarnMocker()
+
+
+@pytest.fixture
+def metadata_tracker():
+    # TODO: local import, otherwise subsequent import of openeogeotrellis.job_options.JobOptions will call
+    #  get_backend_config() eagerly, bypassing the setup of OPENEO_BACKEND_CONFIG in pytest_configure()
+    from openeogeotrellis.deploy.batch_job_metadata import _get_tracker
+
+    # TODO: this is quite messy, involving internal implementation details from another project
+    bootstrap_tracker = _get_tracker()
+    bootstrap_tracker.setGlobalTracking(True)
+    bootstrap_tracker.clearGlobalTracker()
+    # tracker reset, so get it again
+    tracker = _get_tracker()
+    yield tracker
+    tracker.setGlobalTracking(False)
