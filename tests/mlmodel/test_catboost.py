@@ -1,6 +1,7 @@
 import re
 from pathlib import Path
 from typing import List, Iterator
+from unittest import skip
 
 import mock
 import pytest
@@ -68,6 +69,7 @@ def train_simple_catboost_model() -> GeopySparkCatBoostModel:
     return predictors.fit_class_catboost(target, iterations=1)
 
 
+@skip("not yet supported in spark 4")
 def test_fit_class_catboost_model():
     """
     Sanity check to ensure that the model returned by fit_class_catboost is valid
@@ -81,6 +83,7 @@ def test_fit_class_catboost_model():
     assert model.predict(Vectors.dense([565.5, 400.3])) == 10.0
 
 
+@skip("not yet supported in spark 4")
 @mock.patch('openeo_driver.ProcessGraphDeserializer.evaluate')
 @mock.patch('openeogeotrellis.backend.GpsBatchJobs.get_job_output_dir')
 def test_fit_class_catboost_batch_job_metadata(
