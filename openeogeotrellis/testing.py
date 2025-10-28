@@ -2,16 +2,20 @@
 Reusable helpers, functions, classes, fixtures for testing purposes
 """
 
+from __future__ import annotations
+
 import contextlib
 import dataclasses
 import datetime
 import json
+import logging
 import subprocess
 import uuid
 from pathlib import Path
-from typing import Dict, Iterator, List, Tuple, Union, Optional
+from typing import Dict, Iterator, List, Optional, Tuple, Union
 from unittest import mock
 
+import flask
 import geopyspark.geotrellis
 import geopyspark.geotrellis.constants
 import geopyspark.geotrellis.layer
@@ -20,7 +24,11 @@ import kazoo.exceptions
 import numpy
 import openeo_driver.testing
 import pyspark
+import pystac
 import pytest
+import werkzeug.exceptions
+from openeo.testing.stac import StacDummyBuilder
+from openeo_driver.testing import ephemeral_flask_server
 
 from openeogeotrellis.config import gps_config_getter
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
@@ -318,3 +326,186 @@ class YarnMocker:
             result.command = run.call_args.args[0]
             result.kwargs = run.call_args.kwargs
             result.env = run.call_args.kwargs["env"]
+
+
+class DummyStacApiServer:
+    """
+    Dummy STAC API server for testing purposes.
+
+    Powered by a Flask app serving a minimal STAC API implementation,
+    that can be run as an ephemeral server in a thread for the duration of a test.
+    This allows making real HTTP requests
+    and eliminates the need to mock HTTP calls,
+    which is complicated as pystac and pystac_client build on different HTTP libraries.
+    """
+
+    DEFAULT_BBOX = [2, 49, 7, 52]
+    DEFAULT_TEMPORAL_INTERVAL = ["2024-02-01", "2024-11-30"]
+
+    @dataclasses.dataclass
+    class _CollectionData:
+        collection: dict
+        items: List[dict]
+
+    def __init__(self):
+        # Mapping of collection id -> (collection dict, list of item dicts)
+        self._collections: Dict[str, DummyStacApiServer._CollectionData] = {}
+
+        # Predefine a default collection
+        # TODO: don't do this here, but move to a fixture?
+        self.define_collection(id="collection-123")
+        self.define_item(collection_id="collection-123", item_id="item-1", datetime="2024-05-01", bbox=[2, 49, 3, 50])
+        self.define_item(collection_id="collection-123", item_id="item-2", datetime="2024-06-02", bbox=[3, 50, 5, 51])
+        self.define_item(collection_id="collection-123", item_id="item-3", datetime="2024-07-03", bbox=[4, 51, 7, 52])
+
+    def define_collection(self, id: str, *, extent: Optional[dict] = None, **kwargs):
+        """Define a new collection in the dummy STAC API server."""
+        assert id not in self._collections
+        if extent is None:
+            extent = {
+                "spatial": {"bbox": [self.DEFAULT_BBOX]},
+                "temporal": {"interval": [self.DEFAULT_TEMPORAL_INTERVAL]},
+            }
+        self._collections[id] = DummyStacApiServer._CollectionData(
+            collection=StacDummyBuilder.collection(id=id, extent=extent, **kwargs),
+            items=[],
+        )
+
+    def define_item(self, collection_id: str, item_id: str, **kwargs):
+        assert collection_id in self._collections
+        item = StacDummyBuilder.item(id=item_id, **kwargs)
+        self._collections[collection_id].items.append(item)
+
+    def _build_flask_app(self) -> flask.Flask:
+        app = flask.Flask(__name__)
+
+        # Use JSON formatted errors to eliminate the unnecessary verbosity of default HTML error pages
+        @app.errorhandler(Exception)
+        def error(e):
+            app.logger.exception(f"Exception on {flask.request.method} {flask.request.path}: {e!r}")
+            body = {"exception": repr(e), "url": flask.request.url}
+            http_code = 500
+            if isinstance(e, werkzeug.exceptions.HTTPException):
+                http_code = e.code
+                body["description"] = e.description
+            return flask.jsonify(body), http_code
+
+        def link(rel: str, endpoint: str, **kwargs) -> dict:
+            """Helper to build a link dict"""
+            return {
+                "rel": rel,
+                "href": flask.url_for(
+                    endpoint,
+                    **kwargs,
+                    _external=True,
+                ),
+            }
+
+        def with_links(data: dict, *, links: List[dict]) -> dict:
+            """Helper to add links to the root of a dict"""
+            data = data.copy()
+            if "links" not in data:
+                data["links"] = []
+            data["links"].extend(links)
+            # And sort to make outcome predictable
+            data["links"] = sorted(data["links"], key=lambda link: link.get("rel", ""))
+            return data
+
+        @app.route("/", methods=["GET"])
+        def get_index():
+            root_catalog = StacDummyBuilder.catalog(id="stac-api-123", stac_version="1.0.0")
+            root_catalog["conformsTo"] = [
+                "https://api.stacspec.org/v1.0.0/collections",
+                "https://api.stacspec.org/v1.0.0/item-search",
+                "https://api.stacspec.org/v1.0.0/item-search#filter",
+            ]
+            root_catalog = with_links(
+                root_catalog,
+                links=[
+                    link(rel="root", endpoint="get_index"),
+                    link(rel="self", endpoint="get_index"),
+                    link(rel="search", endpoint="get_search"),
+                ],
+            )
+            return flask.jsonify(root_catalog)
+
+        @app.route("/collections", methods=["GET"])
+        def get_collections():
+            response = {
+                "collections": [
+                    with_links(
+                        data.collection,
+                        links=[
+                            link(rel="root", endpoint="get_index"),
+                            link(rel="self", endpoint="get_collection", collection_id=cid),
+                        ],
+                    )
+                    for cid, data in self._collections.items()
+                ],
+                "links": [
+                    link(rel="root", endpoint="get_index"),
+                    link(rel="self", endpoint="get_collections"),
+                ],
+            }
+            return flask.jsonify(response)
+
+        @app.route("/collections/<collection_id>", methods=["GET"])
+        def get_collection(collection_id):
+            if collection_id not in self._collections:
+                flask.abort(404, description=f"Collection {collection_id!r} not found")
+            response = with_links(
+                self._collections.get(collection_id).collection,
+                links=[
+                    link(rel="root", endpoint="get_index"),
+                    link(rel="self", endpoint="get_collection", collection_id=collection_id),
+                ],
+            )
+            return flask.jsonify(response)
+
+        @app.route("/search", methods=["GET", "POST"])
+        def get_search():
+            limit = flask.request.args.get("limit")
+            query_datetime = flask.request.args.get("datetime")
+            collections = flask.request.args.getlist("collections")
+            filter = flask.request.args.get("filter")
+            filter_language = flask.request.args.get("filter-lang")
+
+            collection_ids = [cid for cid in collections if cid in self._collections]
+
+            items = [pystac.Item.from_dict(item) for cid in collection_ids for item in self._collections[cid].items]
+
+            if query_datetime:
+                if "/" in query_datetime:
+                    start_dt, end_dt = [to_datetime_utc(d) if d != ".." else None for d in query_datetime.split("/", 1)]
+                    items = [
+                        item
+                        for item in items
+                        if (start_dt is None or start_dt <= to_datetime_utc(item.datetime))
+                        and (end_dt is None or to_datetime_utc(item.datetime) <= end_dt)
+                    ]
+                else:
+                    target_dt = to_datetime_utc(query_datetime)
+                    items = [item for item in items if item.datetime == target_dt]
+
+            # TODO: filter and filter-lang support (e.g. CQL JSON)
+
+            if limit:
+                items = items[: int(limit)]
+
+            item_collection = pystac.ItemCollection(items)
+            return flask.jsonify(item_collection.to_dict())
+
+        return app
+
+    def serve(self) -> Iterator[str]:
+        """
+        Run dummy STAC API as ephemeral server.
+        To be used as context manager, that generates the root url of the server.
+
+        Usage example:
+
+            with dummy_stac_api.serve() as root_url:
+                response = requests.get(f"{root_url}/...")
+        """
+        app = self._build_flask_app()
+        return ephemeral_flask_server(app)
