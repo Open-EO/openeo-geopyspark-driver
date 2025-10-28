@@ -29,12 +29,7 @@ def copy_matching_files(source_folder: Path, target_folder: Path, request_date: 
 
 
 def main(argv: List[str]) -> None:
-    if len(argv) != 2:
-        request_date = "*"
-        # request_date = "2023-06-01"
-        print(f"Using default date {request_date} for testing purposes.")
-    else:
-        request_date = argv[1]
+    print(f"Running sub_collection_maker with args: {argv}")
     if containing_folder == Path.cwd():
         output_folder = containing_folder / "tmp_sub_collection_output"
         print(
@@ -46,8 +41,14 @@ def main(argv: List[str]) -> None:
         os.chdir(output_folder)
 
     target_folder = Path.cwd()
+    request_date = argv[0]
 
     copied_files = copy_matching_files(containing_folder, target_folder, request_date)
+
+    # sleep to check if it runs in parallel:
+    # import time
+    # time.sleep(60)
+
     collection_json = json.loads((containing_folder / "collection.json").read_text())
     copied_file_names = {f.name for f in copied_files}
     collection_json["links"] = [
@@ -57,4 +58,10 @@ def main(argv: List[str]) -> None:
 
 
 if __name__ == "__main__":
-    main(sys.argv)
+    if len(sys.argv) <= 1:
+        # request_date = "*"
+        request_date = "2023-06-01"
+        print(f"Using default date {request_date} for testing purposes.")
+        main(["2023-06-01"])
+    else:
+        main(sys.argv[1:])

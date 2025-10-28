@@ -13,6 +13,7 @@ DEFAULT_CALRISSIAN_BASE_ARGUMENTS = (
     "--max-cores",
     "4",
     "--force-docker-pull",
+    # "--leave-container"  # For debugging purposes
 )
 
 

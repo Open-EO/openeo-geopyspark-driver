@@ -9,7 +9,34 @@ from typing import List, Optional
 containing_folder = Path(__file__).parent
 
 
+def get_files_from_stac_catalog(catalog_path: Path):
+    """
+    Simple function that recursively searches files in catalog
+    """
+    catalog_path = Path(catalog_path)
+    assert catalog_path.exists()
+    catalog_json = json.loads(catalog_path.read_text())
+    all_files = []
+    links = []
+    if "links" in catalog_json:
+        links.extend(catalog_json["links"])
+    if "assets" in catalog_json:
+        links.extend(list(catalog_json["assets"].values()))
+    for link in links:
+        if "href" in link:
+            href = link["href"]
+            if href.startswith("file://"):
+                href = href[7:]
+            href = Path(os.path.normpath(os.path.join(catalog_path.parent, href)))
+            all_files.append(href)
+
+            if "rel" in link and (link["rel"] == "child" or link["rel"] == "item"):
+                all_files.extend(get_files_from_stac_catalog(href))
+    return all_files
+
+
 def main(argv: List[str]) -> None:
+    print(f"Running simple_stac_merge with args: {argv}")
     if containing_folder == Path.cwd():
         output_folder = containing_folder / "tmp_simple_stac_merge"
         output_folder.mkdir(exist_ok=True)
@@ -27,79 +54,35 @@ def main(argv: List[str]) -> None:
         tmp_sub_collection_output_1 = containing_folder / "tmp_sub_collection_output_1"
         tmp_sub_collection_output_1.mkdir(exist_ok=True)
         os.chdir(tmp_sub_collection_output_1)
-        sub_collection_maker.main([argv[0], "2023-06-01"])
+        sub_collection_maker.main(["2023-06-01"])
 
         tmp_sub_collection_output_2 = containing_folder / "tmp_sub_collection_output_2"
         tmp_sub_collection_output_2.mkdir(exist_ok=True)
         os.chdir(tmp_sub_collection_output_2)
-        sub_collection_maker.main([argv[0], "2023-06-04"])
+        sub_collection_maker.main(["2023-06-04"])
 
-        input_files = [tmp_sub_collection_output_1 / "collection.json", tmp_sub_collection_output_2 / "collection.json"]
+        input_directories = [tmp_sub_collection_output_1, tmp_sub_collection_output_2]
         print(f"Using defaults tmp_sub_collection_output_1 / tmp_sub_collection_output_2 for testing purposes.")
     else:
-        input_files = argv[1:]
+        input_directories = argv[1:]
         os.chdir(output_folder)
-    input_files = [Path(c) for c in input_files]
+    input_directories = [Path(c) for c in input_directories]
 
-    def file_name_to_path(file: Path) -> Optional[Path]:
-        """
-        By default, CWL does not guarantee that files stay next to each other
-        https://cwl.discourse.group/t/output-files-not-next-to-each-other-in-next-step/1020
-        """
-        file_name = Path(file).name
-        for input_file in input_files:
-            if input_file.name == file_name:
-                return input_file
-        print(f"Not found in input files: {file_name}")
-        return None
-
-    def get_files_from_stac_catalog(catalog_path: Path):
-        """
-        Simple function that recursively searches files in catalog
-        """
-        catalog_path = Path(catalog_path)
-        assert catalog_path.exists()
-        catalog_json = json.loads(catalog_path.read_text())
-        all_files = []
-        links = []
-        if "links" in catalog_json:
-            links.extend(catalog_json["links"])
-        if "assets" in catalog_json:
-            links.extend(list(catalog_json["assets"].values()))
-        for link in links:
-            if "href" in link:
-                href = link["href"]
-                if href.startswith("file://"):
-                    href = href[7:]
-                # make absolute, compared to parent json file:
-                href_new = file_name_to_path(href)
-                if href_new is None:
-                    href = Path(os.path.normpath(os.path.join(catalog_path.parent, href)))
-                else:
-                    href = href_new
-                all_files.append(href)
-
-                if "rel" in link and (link["rel"] == "child" or link["rel"] == "item"):
-                    all_files.extend(get_files_from_stac_catalog(href))
-        return all_files
-
-    collections = [c for c in input_files if "collection.json" in c.name]
+    collections = [d / "collection.json" for d in input_directories]
     first_json_path = collections[0]
+
     first_json = json.loads(first_json_path.read_text())
     for other_json_path in collections[1:]:
         other_json = json.loads(other_json_path.read_text())
         first_json["links"].extend(other_json["links"])
         assert first_json["extent"] == other_json["extent"]
+
     for collection_path in collections:
         files = get_files_from_stac_catalog(collection_path)
         for f in files:
+            # TODO: avoid overwriting same filenames
+            # TODO: Keep folder structure. But right now we only get flat files here.
             shutil.copy(f, output_folder / f.name)
-
-    data_files = [c for c in input_files if "collection.json" not in c.name]
-    for data_file in data_files:
-        # TODO: avoid overwriting same filenames
-        # TODO: Keep folder structure. But right now we only get flat files here.
-        shutil.copy(data_file, output_folder / data_file.name)
 
     (output_folder / "collection.json").write_text(json.dumps(first_json, indent=2))
 
