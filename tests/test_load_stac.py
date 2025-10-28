@@ -1,3 +1,5 @@
+from typing import Iterator
+
 import dirty_equals
 import pystac
 import pystac_client
@@ -35,7 +37,7 @@ from openeogeotrellis.load_stac import (
     PropertyFilter,
     ItemCollection,
 )
-from openeogeotrellis.testing import gps_config_overrides
+from openeogeotrellis.testing import gps_config_overrides, DummyStacApiServer
 
 
 @pytest.mark.parametrize("url, user_id, job_info_id",
@@ -1566,3 +1568,86 @@ class TestItemCollection:
 
         expected = [{1: item1, 2: item2}[x] for x in expected]
         assert item_collection.items == expected
+
+    @pytest.fixture
+    def dummy_stac_api(self) -> Iterator[str]:
+        dummy_server = DummyStacApiServer()
+
+        dummy_server.define_collection(
+            "custom-s2",
+            extent={
+                "spatial": {"bbox": [[3, 50, 5, 51]]},
+                "temporal": {"interval": [["2024-02-01T00:00:00Z", "2024-12-01"]]},
+            },
+        )
+        for m in [2, 3, 4, 5, 6, 7, 8, 9, 10, 11]:
+            for x in [3, 4]:
+                dummy_server.define_item(
+                    collection_id="custom-s2",
+                    item_id=f"item-{m}-{x}",
+                    datetime=f"2024-{m:02d}-20T12:00:00Z",
+                    bbox=[x + 0.1, 50.1, x + 0.9, 50.9],
+                )
+
+        with dummy_server.serve() as root_url:
+            yield root_url
+
+    def test_from_stac_api_basic(self, dummy_stac_api):
+        given_url = f"{dummy_stac_api}/collections/collection-123"
+        collection: pystac.Collection = pystac.read_file(given_url)
+        property_filter = PropertyFilter(properties={})
+        spatiotemporal_extent = _SpatioTemporalExtent(bbox=None, from_date="2024-01-01", to_date="2025-01-01")
+        item_collection = ItemCollection.from_stac_api(
+            collection,
+            original_url=given_url,
+            property_filter=property_filter,
+            spatiotemporal_extent=spatiotemporal_extent,
+        )
+        assert [item.id for item in item_collection.items] == ["item-1", "item-2", "item-3"]
+
+    @pytest.mark.parametrize(
+        ["from_date", "to_date", "expected_items"],
+        [
+            ("2024-06-01", "2024-09-01", {"item-6-3", "item-6-4", "item-7-3", "item-7-4", "item-8-3", "item-8-4"}),
+            (None, "2024-04-01", {"item-2-3", "item-2-4", "item-3-3", "item-3-4"}),
+            ("2024-09-01", None, {"item-9-3", "item-9-4", "item-10-3", "item-10-4", "item-11-3", "item-11-4"}),
+        ],
+    )
+    def test_from_stac_api_temporal_filter(self, dummy_stac_api, from_date, to_date, expected_items):
+        given_url = f"{dummy_stac_api}/collections/custom-s2"
+        collection: pystac.Collection = pystac.read_file(given_url)
+        property_filter = PropertyFilter(properties={})
+        spatiotemporal_extent = _SpatioTemporalExtent(bbox=None, from_date=from_date, to_date=to_date)
+        item_collection = ItemCollection.from_stac_api(
+            collection,
+            original_url=given_url,
+            property_filter=property_filter,
+            spatiotemporal_extent=spatiotemporal_extent,
+        )
+        assert set(item.id for item in item_collection.items) == expected_items
+
+    @pytest.mark.parametrize(
+        ["bbox", "expected_items"],
+        [
+            (
+                BoundingBox(3, 50, 4, 51, crs=4326),
+                {f"item-{x}-3" for x in range(2, 12)},
+            ),
+            (
+                BoundingBox(4, 50, 5, 51, crs=4326),
+                {f"item-{x}-4" for x in range(2, 12)},
+            ),
+        ],
+    )
+    def test_from_stac_api_spatial_filter(self, dummy_stac_api, bbox, expected_items):
+        given_url = f"{dummy_stac_api}/collections/custom-s2"
+        collection: pystac.Collection = pystac.read_file(given_url)
+        property_filter = PropertyFilter(properties={})
+        spatiotemporal_extent = _SpatioTemporalExtent(bbox=bbox, from_date="2024-01-01", to_date="2025-01-01")
+        item_collection = ItemCollection.from_stac_api(
+            collection,
+            original_url=given_url,
+            property_filter=property_filter,
+            spatiotemporal_extent=spatiotemporal_extent,
+        )
+        assert set(item.id for item in item_collection.items) == expected_items

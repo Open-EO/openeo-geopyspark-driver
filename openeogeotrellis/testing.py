@@ -9,6 +9,7 @@ import dataclasses
 import datetime
 import json
 import logging
+import shapely
 import subprocess
 import uuid
 from pathlib import Path
@@ -466,6 +467,7 @@ class DummyStacApiServer:
         def get_search():
             limit = flask.request.args.get("limit")
             query_datetime = flask.request.args.get("datetime")
+            bbox = flask.request.args.get("bbox")
             collections = flask.request.args.getlist("collections")
             filter = flask.request.args.get("filter")
             filter_language = flask.request.args.get("filter-lang")
@@ -486,6 +488,13 @@ class DummyStacApiServer:
                 else:
                     target_dt = to_datetime_utc(query_datetime)
                     items = [item for item in items if item.datetime == target_dt]
+
+            if bbox:
+                bbox = [float(coord) for coord in bbox.split(",")]
+                assert len(bbox) == 4
+                bbox = shapely.box(*bbox)
+                # TODO: also support item geometry fields (not just bbox)
+                items = [item for item in items if item.bbox and bbox.intersects(shapely.box(*item.bbox))]
 
             # TODO: filter and filter-lang support (e.g. CQL JSON)
 
