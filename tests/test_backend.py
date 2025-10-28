@@ -1,3 +1,5 @@
+import sys
+
 import json
 import logging
 
@@ -20,7 +22,7 @@ from openeo_driver.specs import read_spec
 from openeo_driver.users import User
 from openeo_driver.utils import EvalEnv
 
-from openeogeotrellis.backend import GpsProcessing, GeoPySparkBackendImplementation
+from openeogeotrellis.backend import GpsProcessing, GeoPySparkBackendImplementation, GpsUdfRuntimes, GpsBatchJobs
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.config.s3_config import S3Config
 from openeogeotrellis.integrations.kubernetes import k8s_render_manifest_template, K8S_SPARK_APP_STATE
@@ -583,6 +585,7 @@ def test_request_costs(mock_get_etl_api_credentials_from_env, backend_implementa
             duration_ms=None,
             sentinel_hub_processing_units=shpu if shpu else None,
             additional_credits_cost=None,
+            source_id=None,
             organization_id=None,
         )
 
@@ -805,7 +808,12 @@ class TestGpsBatchJobs:
             Key=job_metadata_json_key,
             Body=json.dumps(
                 {
-                    "assets": {"openEO": {"href": "s3://bucket/path/to/openEO.tif"}},
+                    "items": [
+                        {
+                            "id": "b9510f20-92a0-4947-a4b6-a6a934a0015e",
+                            "assets": {"openEO": {"href": "s3://bucket/path/to/openEO.tif"}},
+                        }
+                    ],
                     "epsg": 32631,
                     "providers": [{"name": "VITO"}],
                 }
@@ -814,25 +822,21 @@ class TestGpsBatchJobs:
         job["status"] = JOB_STATUS.FINISHED
         job["results_metadata_uri"] = f"s3://{mock_non_swift_s3_bucket.name}/{job_metadata_json_key}"
 
-        asset_key, asset = next(
-            iter(
-                backend_implementation.batch_jobs.get_result_assets(
-                    job_id=job_id, user_id=self._dummy_user.user_id
-                ).items()
-            )
-        )
-        assert asset_key == "openEO"
-        assert asset["href"] == "s3://bucket/path/to/openEO.tif"
-
         metadata = backend_implementation.batch_jobs.get_job_info(
             job_id=job_id, user_id=self._dummy_user.user_id
         )
         assert metadata.epsg == 32631
 
-        providers = backend_implementation.batch_jobs.get_result_metadata(
+        result_metadata = backend_implementation.batch_jobs.get_result_metadata(
             job_id=job_id, user_id=self._dummy_user.user_id
-        ).providers
-        assert [provider["name"] for provider in providers] == ["VITO"]
+        )
+        assert [provider["name"] for provider in result_metadata.providers] == ["VITO"]
+        assert result_metadata.items == {
+            "b9510f20-92a0-4947-a4b6-a6a934a0015e": {
+                "id": "b9510f20-92a0-4947-a4b6-a6a934a0015e",
+                "assets": {"openEO": {"href": "s3://bucket/path/to/openEO.tif"}},
+            }
+        }
 
     @pytest.mark.parametrize(
         "results_metadata_uri_prefix",
@@ -886,3 +890,76 @@ class TestGpsBatchJobs:
             metadata={},
             job_options={"log_level": "info"},
         )
+
+    def test_determine_container_image_from_process_graph_no_udfs(self):
+        """No UDFs -> use default image (e.g. highest Python version)"""
+        gps_batch_jobs = GpsBatchJobs(catalog=None, jvm=None, udf_runtimes=GpsUdfRuntimes())
+        pg = {
+            "add35": {"process_id": "add", "arguments": {"x": 3, "y": 5}, "result": True},
+        }
+        image = gps_batch_jobs._determine_container_image_from_process_graph(pg)
+        assert image == "docker.test/openeo-geopy311:7.9.11"
+
+    @pytest.mark.parametrize(
+        ["args", "expected", "expected_warning"],
+        [
+            ({"runtime": "Python"}, "docker.test/openeo-geopy311:7.9.11", None),
+            ({"runtime": "Python", "version": "3"}, "docker.test/openeo-geopy311:7.9.11", None),
+            ({"runtime": "Python", "version": "3.8"}, "docker.test/openeo-geopy38:3.5.8", None),
+            ({"runtime": "Python", "version": "3.11"}, "docker.test/openeo-geopy311:7.9.11", None),
+            (
+                {"runtime": "Python", "version": "4.5"},
+                "docker.test/openeo-geopy311:7.9.11",
+                dirty_equals.IsStr(regex="No image matches all runtimes.*"),
+            ),
+            (
+                {"runtime": "Pithoon", "version": "3.8"},
+                "docker.test/openeo-geopy311:7.9.11",
+                dirty_equals.IsStr(regex="No image matches all runtimes.*"),
+            ),
+        ],
+    )
+    def test_determine_container_image_from_process_graph_with_udf_runtime(
+        self, args, expected, expected_warning, caplog
+    ):
+        caplog.set_level(logging.WARNING)
+        gps_batch_jobs = GpsBatchJobs(catalog=None, jvm=None, udf_runtimes=GpsUdfRuntimes())
+        pg = {
+            "runudf": {
+                "process_id": "run_udf",
+                "arguments": {"data": [1, 2, 3], "udf": "hello world", **args},
+                "result": True,
+            },
+        }
+        image = gps_batch_jobs._determine_container_image_from_process_graph(pg)
+        assert image == expected
+
+        if expected_warning:
+            assert expected_warning in caplog.messages
+        else:
+            assert caplog.messages == []
+
+
+class TestGpsUdfRuntimes:
+    def test_get_udf_runtimes(self):
+        runtimes = GpsUdfRuntimes()
+        assert runtimes.get_udf_runtimes() == {
+            "Python": {
+                "title": "Python",
+                "type": "language",
+                "default": "3",
+                "versions": {
+                    "3.8": {"libraries": {"numpy": {"version": "1.22.4"}, "pandas": {"version": "1.5.3"}}},
+                    "3.11": {"libraries": {"numpy": {"version": "2.3.3"}, "pandas": {"version": "2.3.3"}}},
+                    "3": {"libraries": {"numpy": {"version": "2.3.3"}, "pandas": {"version": "2.3.3"}}},
+                },
+            },
+            "Python-Jep": {
+                "title": "Python-Jep",
+                "type": "language",
+                "default": "3.8",
+                "versions": {
+                    "3.8": {"libraries": {"numpy": {"version": "1.22.4"}, "pandas": {"version": "1.5.3"}}},
+                },
+            },
+        }

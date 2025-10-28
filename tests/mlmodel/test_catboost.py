@@ -1,14 +1,10 @@
-import json
 import re
-from datetime import datetime
 from pathlib import Path
-from random import uniform
-from typing import Any, List, Iterator
+from typing import List, Iterator
 from unittest import skip
 
 import mock
 import pytest
-from openeo_driver.backend import BatchJobMetadata
 from openeo_driver.constants import JOB_STATUS
 from openeo_driver.save_result import MlModelResult
 from openeo_driver.testing import (
@@ -18,7 +14,6 @@ from openeo_driver.testing import (
     TEST_USER,
 )
 from openeo_driver.utils import read_json
-from py4j.java_gateway import JavaObject
 from pyspark.ml.linalg import Vectors
 from pyspark.sql.types import *
 from shapely.geometry import GeometryCollection, Point
@@ -30,7 +25,6 @@ from openeogeotrellis.job_registry import DoubleJobRegistry, ZkJobRegistry
 from openeogeotrellis.ml.aggregatespatialvectorcube import AggregateSpatialVectorCube
 from openeogeotrellis.ml.geopysparkcatboostmodel import GeopySparkCatBoostModel
 from openeogeotrellis.testing import KazooClientMock
-from tests.data import TEST_DATA_ROOT
 
 FEATURE_COLLECTION_1 = {
     "type": "FeatureCollection",
@@ -75,6 +69,7 @@ def train_simple_catboost_model() -> GeopySparkCatBoostModel:
     return predictors.fit_class_catboost(target, iterations=1)
 
 
+@skip("not yet supported in spark 4")
 def test_fit_class_catboost_model():
     """
     Sanity check to ensure that the model returned by fit_class_catboost is valid
@@ -88,6 +83,7 @@ def test_fit_class_catboost_model():
     assert model.predict(Vectors.dense([565.5, 400.3])) == 10.0
 
 
+@skip("not yet supported in spark 4")
 @mock.patch('openeo_driver.ProcessGraphDeserializer.evaluate')
 @mock.patch('openeogeotrellis.backend.GpsBatchJobs.get_job_output_dir')
 def test_fit_class_catboost_batch_job_metadata(
@@ -95,7 +91,7 @@ def test_fit_class_catboost_batch_job_metadata(
 ):
     """
     Test the metadata generation for a CatBoost model trained using a batch job.
-    
+
     This test performs the following steps:
     1. Runs a batch job while mocking the evaluate step. So it only generates a job_metadata.json file.
     2. Verifies "job_metadata.json"
@@ -120,32 +116,32 @@ def test_fit_class_catboost_batch_job_metadata(
     assert metadata_result == DictSubSet({
         'assets': {'catboost_model.cbm.tar.gz': {'href': str(tmp_path / 'catboost_model.cbm.tar.gz')}},
         'ml_model_metadata': DictSubSet({
-            'stac_extensions': ['https://stac-extensions.github.io/ml-model/v1.0.0/schema.json'], 
+            'stac_extensions': ['https://stac-extensions.github.io/ml-model/v1.0.0/schema.json'],
             'type': 'Feature',
-            'collection': 'collection-id', 
-            'bbox': [-179.999, -89.999, 179.999, 89.999], 
+            'collection': 'collection-id',
+            'bbox': [-179.999, -89.999, 179.999, 89.999],
             'geometry': {
-                'type': 'Polygon', 
+                'type': 'Polygon',
                 'coordinates': [
                     [[-179.999, -89.999], [179.999, -89.999], [179.999, 89.999], [-179.999, 89.999],
                      [-179.999, -89.999]]
                 ]
-            }, 
+            },
             'properties': {
                 'datetime': None, 'start_datetime': '1970-01-01T00:00:00Z', 'end_datetime': '9999-12-31T23:59:59Z',
-                'ml-model:type': 'ml-model', 
+                'ml-model:type': 'ml-model',
                 'ml-model:learning_approach': 'supervised',
-                'ml-model:prediction_type': 'classification', 
+                'ml-model:prediction_type': 'classification',
                 'ml-model:architecture': 'catboost',
-                'ml-model:training-processor-type': 'cpu', 
+                'ml-model:training-processor-type': 'cpu',
                 'ml-model:training-os': 'linux'
-            }, 
-            'links': [], 
+            },
+            'links': [],
             'assets': {
                 'model': {
                     'href': str(tmp_path / 'catboost_model.cbm.tar.gz'),
                     # 'href': '/tmp/pytest-of-jeroen/pytest-35/test_fit_class_catboost_batch_0/catboost_model.cbm',
-                    'type': 'application/octet-stream', 
+                    'type': 'application/octet-stream',
                     'title': 'ai.catboost.spark.CatBoostClassificationModel',
                     'roles': ['ml-model:checkpoint']
                 }
@@ -175,8 +171,8 @@ def test_fit_class_catboost_batch_job_metadata(
     assert res == DictSubSet({
         'assets': {
             'catboost_model.cbm.tar.gz': {
-                'title': 'catboost_model.cbm.tar.gz', 
-                'href': f'http://oeo.net/openeo/1.1.0/jobs/{job_id}/results/assets/catboost_model.cbm.tar.gz', 
+                'title': 'catboost_model.cbm.tar.gz',
+                'href': f'http://oeo.net/openeo/1.1.0/jobs/{job_id}/results/assets/catboost_model.cbm.tar.gz',
                 'roles': ['data'], 'type': 'application/octet-stream',
                 "file:size": size,
             }
@@ -189,10 +185,10 @@ def test_fit_class_catboost_batch_job_metadata(
             "https://stac-extensions.github.io/ml-model/v1.0.0/schema.json"
         ]),
         'summaries': {
-            'ml-model:architecture': ['catboost'], 
+            'ml-model:architecture': ['catboost'],
             'ml-model:learning_approach': ['supervised'],
             'ml-model:prediction_type': ['classification']
-        }, 
+        },
     })
 
     # 4. Check the item metadata returned by the /jobs/{j}/results/items endpoint.
@@ -239,3 +235,15 @@ def test_fit_class_catboost_batch_job_metadata(
         "stac_extensions": ["https://stac-extensions.github.io/ml-model/v1.0.0/schema.json"],
         "type": "Feature",
     })
+
+
+def test_load_ml_model(backend_implementation, urllib_and_request_mock, test_data):
+    metadata = test_data.load_text("mlmodel/catboost/stac_catboost.json")
+    model_data = test_data.load_bytes("mlmodel/catboost/catboost_model.cbm.tar.gz")
+    prefix = "https://openeo.vito.be/openeo/1.2/jobs/j-25101315033849049a4a67ea6d24b7ca/results/items/ZGZhNjc4Y/"
+    metadata_url = prefix + "catboost.json"
+    urllib_and_request_mock.get(metadata_url, metadata)
+    urllib_and_request_mock.get(prefix + "catboost_model.cbm.tar.gz", model_data)
+    ml_model:GeopySparkCatBoostModel = backend_implementation.load_ml_model(metadata_url)
+    assert isinstance(ml_model, GeopySparkCatBoostModel)
+    assert isinstance(ml_model.get_model(), catboost_spark.CatBoostClassificationModel)

@@ -18,10 +18,12 @@ from openeo_driver.config.load import ConfigGetter
 from openeo_driver.errors import InternalException, OpenEOApiException
 
 import openeogeotrellis.integrations.freeipa
+from openeo_driver.views import OPENEO_API_VERSION_DEFAULT
 from openeogeotrellis import sentinel_hub
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.job_options import JobOptions
 from openeogeotrellis.udf import UDF_PYTHON_DEPENDENCIES_ARCHIVE_NAME, UDF_PYTHON_DEPENDENCIES_FOLDER_NAME
+from openeogeotrellis.udf.udf_runtime_images import UdfRuntimeImageRepository
 from openeogeotrellis.util.byteunit import byte_string_as
 from openeogeotrellis.utils import add_permissions
 
@@ -34,42 +36,42 @@ JOB_METADATA_FILENAME = "job_metadata.json"
 class BatchJobSubmitArgs:
     """
     Arguments passed to the submit batch job bash script.
-    
+
     This dataclass represents all positional arguments that are passed to the YARN
     batch job submission script in the correct order.
     """
-    
+
     script_location: str
     """Path to the bash script"""
-    
+
     job_name: str
     """Human-readable name for the batch job (appears in YARN UI)"""
-    
+
     process_graph_file: str
     """Path to temporary file containing the job specification JSON"""
-    
+
     output_dir: str
     """
     Directory where job results will be written.
     Should be a shared directory that is accessible by both the webapp driver and the batch job driver via e.g. NFS.
     Note that the 'webapp' driver is the spark driver that created this dataclass and runs the submit script.
     """
-    
+
     output_file_name: str
     """
-    Name of the main output file (usually 'out'). 
+    Name of the main output file (usually 'out').
     In most cases, such as when writing the assets of a `GeopysparkDataCube`, this filename is ignored.
     """
-    
+
     metadata_file_name: str
     """Name of the job metadata file (usually 'job_metadata.json')"""
-    
+
     principal: str
     """
     Kerberos principal for YARN authentication, or 'no_principal' if not used.
     Required to submit spark jobs to the YARN cluster.
     """
-    
+
     key_tab: str
     """
     Path to Kerberos keytab file for YARN authentication, or 'no_keytab' if not used.
@@ -81,37 +83,37 @@ class BatchJobSubmitArgs:
     FreeIPA user to use as submitter of this yarn job. This appears in the YARN UI.
     It decides which directories the driver and executors can read/write to and scheduling priority.
     """
-    
+
     api_version: str
     """OpenEO API version for the job (e.g., '1.0.0')"""
-    
+
     driver_memory: str
     """Spark driver memory allocation (e.g., '8G')"""
-    
+
     executor_memory: str
     """Spark executor memory allocation (e.g., '4G')"""
-    
+
     executor_memory_overhead: str
     """Additional memory overhead for executors (e.g., '3G')"""
-    
+
     driver_cores: str
     """Number of CPU cores for the Spark driver"""
-    
+
     executor_cores: str
     """Number of CPU cores per Spark executor"""
-    
+
     driver_memory_overhead: str
     """Additional memory overhead for the driver (e.g., '8G')"""
-    
+
     queue: str
     """YARN queue to submit the job to (e.g., 'default')"""
-    
+
     profile: str
     """Whether to enable Spark profiling ('true' or 'false'). Passed to `--conf spark.python.profile`."""
-    
+
     dependencies: str
     """JSON string of batch job dependencies for input data"""
-    
+
     py_files: str
     """
     Comma-separated list of .py, .zip, or .egg files to distribute to driver and executors so that they can be imported.
@@ -119,104 +121,104 @@ class BatchJobSubmitArgs:
     We only use this to import `custom_processes.py`.
     See https://spark.apache.org/docs/latest/submitting-applications.html#advanced-dependency-management
     """
-    
+
     max_executors: str
     """Maximum number of dynamic executors for the job, e.g. "100"."""
-    
+
     user_id: str
     """
     OpenEO user ID who submitted the job.
     """
-    
+
     batch_job_id: str
     """Unique batch job identifier. E.g. "j-25082114030147d69f692c3ae21c7a1a"."""
-    
+
     max_soft_errors_ratio: str
     """Maximum ratio of soft errors allowed before job failure."""
-    
+
     task_cpus: str
     """Number of CPU cores per Spark task."""
-    
+
     sentinel_hub_client_alias: str
     """
     Alias for Sentinel Hub client configuration.
     TODO: more information needed
     """
-    
+
     properties_file: str
     """Path to temporary file containing sensitive Spark properties."""
-    
+
     udf_dependency_archives: str
     """Comma-separated list of UDF dependency archive paths."""
-    
+
     log_level: str
     """Logging level for the job (e.g., 'ERROR', 'INFO', 'DEBUG')."""
-    
+
     openeo_backend_config: str
     """
-    Path or configuration for OpenEO backend settings. 
+    Path or configuration for OpenEO backend settings.
     This is a private file that contains all the information to fill `config.config.GpsBackendConfig`.
     """
-    
+
     udf_python_dependencies_folder_path: str
     """
     Path to folder containing UDF Python dependencies.
     This feature allows users to provide a list of their own python dependencies for UDFs (executors).
     Note: This shared folder should be available on the batch job driver and executors via e.g. NFS.
     """
-    
+
     ejr_api: str
     """
     Elastic Job Registry API endpoint URL. Passed to `OPENEO_EJR_API` on the driver.
     This registry is used to track job metadata and update the job status.
     Note that this is not a direct connection with elastic but with a custom REST API on top of it.
     """
-    
+
     ejr_backend_id: str
     """
     Elastic Job Registry backend identifier. Passed to `OPENEO_EJR_BACKEND_ID` on the driver.
     Used for the `backend_id` column of this batch job in the Elastic Job registry.
     E.g. 'mep-dev', 'mep-prod'.
     """
-    
+
     ejr_oidc_client_credentials: str
     """Used for authentication with the EJR. Passed to `OPENEO_EJR_OIDC_CLIENT_CREDENTIALS` on the driver."""
-    
+
     docker_mounts: str
     """
-    Directories that will be mounted into the batch job driver and executors. 
+    Directories that will be mounted into the batch job driver and executors.
     These directories have to be available locally on all nodes in the YARN cluster.
     Usually:
     * a set of NFS directories containing raster data, shared batch job data, etc.
     * A set of configuration files for e.g. Kerberos, Hadoop, etc.
-    Passed to: 
+    Passed to:
     `--conf spark.yarn.appMasterEnv.YARN_CONTAINER_RUNTIME_DOCKER_MOUNTS`
     `--conf spark.executorEnv.YARN_CONTAINER_RUNTIME_DOCKER_MOUNTS`
     See https://hadoop.apache.org/docs/r3.1.3/hadoop-yarn/hadoop-yarn-site/DockerContainers.html
     """
-    
+
     udf_python_dependencies_archive_path: str
     """Path to UDF Python dependencies archive file."""
-    
+
     propagatable_web_app_driver_envars: str
     """Environment variables to propagate from web app to batch job driver."""
-    
+
     python_max_memory: str
     """
     Maximum memory allocation for Python processes ('-1' for unlimited).
     Passed to `--conf spark.executor.pyspark.memory={python_max_memory}b`.
     See https://spark.apache.org/docs/latest/configuration.html
     """
-    
+
     spark_eventlog_dir: str
     """Directory for Spark event logs"""
-    
+
     spark_history_fs_logdirectory: str
     """Directory for Spark history server logs"""
-    
+
     spark_yarn_historyserver_address: str
     """Address of Spark history server"""
-    
+
     yarn_container_runtime_docker_client_config: str
     """Path to Docker client configuration for YARN containers (optional)"""
 
@@ -274,6 +276,8 @@ class YARNBatchJobRunner:
         self._key_tab = key_tab
         self._default_sentinel_hub_client_id = None
         self._default_sentinel_hub_client_secret = None
+        # TODO: reuse existing UdfRuntimeImageRepository through composition instead of creating a new one?
+        self._udf_runtime_image_repository = UdfRuntimeImageRepository.from_config()
 
     def set_default_sentinel_hub_credentials(self, client_id: str, client_secret: str):
         self._default_sentinel_hub_client_id = client_id
@@ -369,12 +373,16 @@ class YARNBatchJobRunner:
         _log.info(f"_verify_proxy_user: invalid {user!r}")
         return ""
 
+    def _current_container_image(self) -> Union[str, None]:
+        """Currently running container image"""
+        return os.environ.get("YARN_CONTAINER_RUNTIME_DOCKER_IMAGE")
+
     def run_job(
         self,
         job_info: dict,
         job_id: str,
-        job_work_dir,
-        log,
+        job_work_dir: Path,
+        log: logging.Logger = _log,
         user_id="",
         api_version="1.0.0",  # TODO: this default is probably not correct, use OPENEO_API_VERSION_DEFAULT instead?
         proxy_user: str = None,
@@ -411,9 +419,10 @@ class YARNBatchJobRunner:
         submit_script = "submit_batch_job_spark3.sh"
         script_location = pkg_resources.resource_filename("openeogeotrellis.deploy", submit_script)
 
-        image_name = options.image_name or os.environ.get("YARN_CONTAINER_RUNTIME_DOCKER_IMAGE")
-        if image_name:
-            image_name = get_backend_config().batch_runtime_to_image.get(image_name.lower(), image_name)
+        image_name = self._udf_runtime_image_repository.resolve_image_alias(
+            options.image_name or get_backend_config().processing_container_image or self._current_container_image()
+        )
+        log.info(f"Using {image_name=}")
 
         extra_py_files = ""
         if options.udf_dependency_files is not None and len(options.udf_dependency_files) > 0:
@@ -439,13 +448,14 @@ class YARNBatchJobRunner:
             self._write_sensitive_values(temp_properties_file, vault_token=vault_token)
             temp_properties_file.flush()
 
+            # TODO: what's up with this weird mix of underscores and spaces?
             job_name = "openEO batch_{title}_{j}_user {u}".format(title=job_title, j=job_id, u=user_id)
-            
+
             # Calculate docker mounts including user-specific mounts
             docker_mounts = get_backend_config().batch_docker_mounts
             if user_id in get_backend_config().batch_user_docker_mounts:
                 docker_mounts = docker_mounts + "," + ",".join(get_backend_config().batch_user_docker_mounts[user_id])
-            
+
             # Determine principal and keytab values - both must be present or both use defaults
             if self._principal is not None and self._key_tab is not None:
                 principal_value = self._principal
@@ -453,16 +463,16 @@ class YARNBatchJobRunner:
             else:
                 principal_value = "no_principal"
                 keytab_value = "no_keytab"
-            
+
             backend_config = get_backend_config()
-            
+
             if not backend_config.batch_spark_eventlog_dir:
                 raise InternalException("batch_spark_eventlog_dir must be configured in backend config")
             if not backend_config.batch_spark_history_fs_logdirectory:
                 raise InternalException("batch_spark_history_fs_logdirectory must be configured in backend config")
             if not backend_config.batch_spark_yarn_historyserver_address:
                 raise InternalException("batch_spark_yarn_historyserver_address must be configured in backend config")
-            
+
             # Create structured arguments using dataclass
             submit_args = BatchJobSubmitArgs(
                 script_location=script_location,
@@ -474,7 +484,7 @@ class YARNBatchJobRunner:
                 principal=principal_value,
                 key_tab=keytab_value,
                 proxy_user=self._verify_proxy_user(proxy_user or user_id),
-                api_version=api_version if api_version else "0.4.0",
+                api_version=api_version or OPENEO_API_VERSION_DEFAULT,
                 driver_memory=options.driver_memory,
                 executor_memory=options.executor_memory,
                 executor_memory_overhead=options.executor_memory_overhead,
@@ -514,11 +524,14 @@ class YARNBatchJobRunner:
 
             try:
                 log.info(f"Submitting job with command {args!r}")
-                d = dict(**os.environ)
-                d["YARN_CONTAINER_RUNTIME_DOCKER_IMAGE"] = image_name
+                # TODO #1385 avoid copying the whole environment, only pass what is needed
+                env = dict(**os.environ)
+                env["YARN_CONTAINER_RUNTIME_DOCKER_IMAGE"] = image_name
                 if options.openeo_jar_path is not None:
-                    d["OPENEO_GEOTRELLIS_JAR"] = options.openeo_jar_path
-                script_output = subprocess.check_output(args, stderr=subprocess.STDOUT, universal_newlines=True, env=d)
+                    env["OPENEO_GEOTRELLIS_JAR"] = options.openeo_jar_path
+                script_output = subprocess.check_output(
+                    args, stderr=subprocess.STDOUT, universal_newlines=True, env=env
+                )
                 log.info(f"Submitted job, output was: {script_output}")
             except CalledProcessError as e:
                 log.error(f"Submitting job failed, output was: {e.stdout}", exc_info=True)

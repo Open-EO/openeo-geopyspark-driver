@@ -15,6 +15,8 @@ _log = logging.getLogger(__name__)
 class CustomStacIO(DefaultStacIO):
     """Adds support for object storage."""
 
+    # TODO: migrate to openeogeotrellis.integrations.stac.S3StacIO?
+
     def __init__(self, region: Optional[str] = None):
         super().__init__()
         self.region = region

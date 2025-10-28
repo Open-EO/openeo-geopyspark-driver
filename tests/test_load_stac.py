@@ -1,9 +1,10 @@
 import dirty_equals
 import pystac
+import pystac_client
 from contextlib import nullcontext
 import datetime
+from unittest import mock
 
-import mock
 import pytest
 
 import openeo.metadata
@@ -11,10 +12,14 @@ import responses
 from openeo.testing.stac import StacDummyBuilder
 from openeo_driver.ProcessGraphDeserializer import DEFAULT_TEMPORAL_EXTENT
 from openeo_driver.backend import BatchJobMetadata, BatchJobs, LoadParameters
+from openeo_driver.dummy.dummy_backend import DummyBatchJobs
 from openeo_driver.errors import OpenEOApiException
+from openeo_driver.users import User
 from openeo_driver.util.date_math import now_utc
 from openeo_driver.util.geometry import BoundingBox
 from openeo_driver.utils import EvalEnv
+from openeogeotrellis.backend import GpsBatchJobs
+from openeogeotrellis.job_registry import InMemoryJobRegistry
 
 from openeogeotrellis.load_stac import (
     extract_own_job_info,
@@ -27,7 +32,10 @@ from openeogeotrellis.load_stac import (
     _TemporalExtent,
     _SpatioTemporalExtent,
     _SpatialExtent,
+    PropertyFilter,
+    ItemCollection,
 )
+from openeogeotrellis.testing import gps_config_overrides
 
 
 @pytest.mark.parametrize("url, user_id, job_info_id",
@@ -678,6 +686,7 @@ def test_is_supported_raster_mime_type():
         ({"href": "https://stac.test/asset.png", "roles": ["thumbnail"]}, False),
         ({"href": "https://stac.test/asset.png", "bands": [{"name": "B02"}]}, True),
         ({"href": "https://stac.test/asset.png", "eo:bands": [{"name": "B02"}]}, True),
+        ({"href": "https://stac.test/asset.png", "roles": [], "bands": [{"name": "B02"}]}, True),
     ],
 )
 def test_is_band_asset(data, expected):
@@ -726,14 +735,15 @@ def test_get_proj_metadata_from_asset():
 
 
 class TestTemporalExtent:
-    def test_empty(self):
+    def test_intersects_empty(self):
         extent = _TemporalExtent(None, None)
         assert extent.intersects("1789-07-14") == True
         assert extent.intersects(nominal="1789-07-14") == True
         assert extent.intersects(start_datetime="1914-07-28", end_datetime="1918-11-11") == True
         assert extent.intersects(nominal="2025-07-24") == True
+        assert extent.intersects(nominal=None) == True
 
-    def test_nominal_basic(self):
+    def test_intersects_nominal_basic(self):
         extent = _TemporalExtent("2025-03-04T11:11:11", "2025-05-06T22:22:22")
         assert extent.intersects(nominal="2022-10-11") == False
         assert extent.intersects(nominal="2025-03-03T12:13:14") == False
@@ -743,7 +753,9 @@ class TestTemporalExtent:
         assert extent.intersects(nominal=datetime.date(2025, 4, 10)) == True
         assert extent.intersects(nominal=datetime.datetime(2025, 4, 10, 12)) == True
 
-    def test_nominal_edges(self):
+        assert extent.intersects(nominal=None) == True
+
+    def test_intersects_nominal_edges(self):
         extent = _TemporalExtent("2025-03-04T11:11:11", "2025-05-06T22:22:22")
         assert extent.intersects(nominal="2025-03-04T11:11:10") == False
         assert extent.intersects(nominal="2025-03-04T11:11:11") == True
@@ -751,7 +763,7 @@ class TestTemporalExtent:
         assert extent.intersects(nominal="2025-05-06T22:22:21") == True
         assert extent.intersects(nominal="2025-05-06T22:22:22") == False
 
-    def test_nominal_timezones(self):
+    def test_intersects_nominal_timezones(self):
         extent = _TemporalExtent("2025-03-04T11:11:11Z", "2025-05-06T22:22:22-03")
         assert extent.intersects(nominal="2025-03-04T11:11:10") == False
         assert extent.intersects(nominal="2025-03-04T11:11:10-02") == True
@@ -766,19 +778,21 @@ class TestTemporalExtent:
         assert extent.intersects(nominal="2025-05-07T01:22:21Z") == True
         assert extent.intersects(nominal="2025-05-07T01:22:22Z") == False
 
-    def test_nominal_half_open(self):
+    def test_intersects_nominal_half_open(self):
         extent = _TemporalExtent(None, "2025-05-06")
         assert extent.intersects(nominal="1789-07-14") == True
         assert extent.intersects(nominal="2025-05-05") == True
         assert extent.intersects(nominal="2025-05-06") == False
         assert extent.intersects(nominal="2025-11-11") == False
+        assert extent.intersects(nominal=None) == True
 
         extent = _TemporalExtent("2025-05-06", None)
         assert extent.intersects(nominal="2025-05-05") == False
         assert extent.intersects(nominal="2025-05-06") == True
         assert extent.intersects(nominal="2099-11-11") == True
+        assert extent.intersects(nominal=None) == True
 
-    def test_start_end_basic(self):
+    def test_intersects_start_end_basic(self):
         extent = _TemporalExtent("2025-03-04T11:11:11", "2025-05-06T22:22:22")
         assert extent.intersects(start_datetime="2022-02-02", end_datetime="2022-02-03") == False
         assert extent.intersects(start_datetime="2025-02-02", end_datetime="2025-04-04") == True
@@ -786,7 +800,14 @@ class TestTemporalExtent:
         assert extent.intersects(start_datetime="2025-03-10", end_datetime="2025-08-08") == True
         assert extent.intersects(start_datetime="2025-06-10", end_datetime="2025-08-08") == False
 
-    def test_start_end_edges(self):
+        # Half-open intervals
+        assert extent.intersects(start_datetime=None, end_datetime=None) == True
+        assert extent.intersects(start_datetime="2022-02-02", end_datetime=None) == True
+        assert extent.intersects(start_datetime="2025-10-02", end_datetime=None) == False
+        assert extent.intersects(start_datetime=None, end_datetime="2025-01-01") == False
+        assert extent.intersects(start_datetime=None, end_datetime="2025-04-04") == True
+
+    def test_intersects_start_end_edges(self):
         extent = _TemporalExtent("2025-03-04T11:11:11", "2025-05-06T22:22:22")
         assert extent.intersects(start_datetime="2025-02-02", end_datetime="2025-03-04T11:11:10") == False
         assert extent.intersects(start_datetime="2025-02-02", end_datetime="2025-03-04T11:11:11") == True
@@ -796,7 +817,7 @@ class TestTemporalExtent:
         assert extent.intersects(start_datetime="2025-05-06T22:22:22", end_datetime="2025-08-08") == False
         assert extent.intersects(start_datetime="2025-05-06T22:22:23", end_datetime="2025-08-08") == False
 
-    def test_start_end_timezones(self):
+    def test_intersects_start_end_timezones(self):
         extent = _TemporalExtent("2025-03-04T11:11:11Z", "2025-05-06T22:22:22-03")
         assert extent.intersects(start_datetime="2025-02-02", end_datetime="2025-03-04T12:12:12") == True
         assert extent.intersects(start_datetime="2025-02-02", end_datetime="2025-03-04T12:12:12Z") == True
@@ -804,21 +825,42 @@ class TestTemporalExtent:
         assert extent.intersects(start_datetime="2025-02-02", end_datetime="2025-03-04T10:10:10") == False
         assert extent.intersects(start_datetime="2025-02-02", end_datetime="2025-03-04T10:10:10-03") == True
 
-    def test_start_end_half_open(self):
+    def test_intersects_start_end_half_open(self):
         extent = _TemporalExtent(None, "2025-05-06")
         assert extent.intersects(start_datetime="2025-02-02", end_datetime="2025-05-05") == True
         assert extent.intersects(start_datetime="2025-02-02", end_datetime="2025-08-08") == True
         assert extent.intersects(start_datetime="2025-06-06", end_datetime="2025-08-08") == False
+        assert extent.intersects(start_datetime=None, end_datetime=None) == True
+        assert extent.intersects(start_datetime="2025-02-02", end_datetime=None) == True
+        assert extent.intersects(start_datetime="2025-06-06", end_datetime=None) == False
+        assert extent.intersects(start_datetime=None, end_datetime="2025-05-05") == True
 
         extent = _TemporalExtent("2025-05-06", None)
         assert extent.intersects(start_datetime="2025-02-02", end_datetime="2025-05-05") == False
         assert extent.intersects(start_datetime="2025-02-02", end_datetime="2025-08-08") == True
         assert extent.intersects(start_datetime="2025-06-06", end_datetime="2025-08-08") == True
+        assert extent.intersects(start_datetime=None, end_datetime=None) == True
+        assert extent.intersects(start_datetime="2025-02-02", end_datetime=None) == True
+        assert extent.intersects(start_datetime=None, end_datetime="2025-08-08") == True
+        assert extent.intersects(start_datetime=None, end_datetime="2025-02-02") == False
 
-    def test_nominal_vs_start_end(self):
+    def test_intersects_nominal_vs_start_end(self):
         """https://github.com/Open-EO/openeo-geopyspark-driver/issues/1293"""
         extent = _TemporalExtent("2024-02-01", "2024-02-10")
         assert extent.intersects(nominal="2024-01-01", start_datetime="2024-01-01", end_datetime="2024-12-31") == True
+
+    def test_intersects_interval(self):
+        extent = _TemporalExtent("2025-03-04T11:11:11", "2025-05-06T22:22:22")
+        assert extent.intersects_interval(["2022-02-02", "2022-02-03"]) == False
+        assert extent.intersects_interval(["2025-02-02", "2025-04-04"]) == True
+        assert extent.intersects_interval(["2025-03-10", "2025-04-04"]) == True
+        assert extent.intersects_interval(["2025-03-10", "2025-08-08"]) == True
+        assert extent.intersects_interval(["2025-06-10", "2025-08-08"]) == False
+        assert extent.intersects_interval([None, None]) == True
+        assert extent.intersects_interval(["2022-02-02", None]) == True
+        assert extent.intersects_interval(["2025-10-02", None]) == False
+        assert extent.intersects_interval([None, "2025-01-01"]) == False
+        assert extent.intersects_interval([None, "2025-04-04"]) == True
 
 
 class TestSpatialExtent:
@@ -886,3 +928,641 @@ class TestSpatioTemporalExtent:
             }
         )
         assert extent.item_intersects(item) == expected
+
+    @pytest.mark.parametrize(
+        ["bboxes", "intervals", "expected"],
+        [
+            # Single bbox/interval cases
+            ([[20, 34, 26, 40]], [["2024-01-01", "2024-12-31"]], True),
+            ([[10, 34, 16, 40]], [["2024-01-01", "2024-12-31"]], False),
+            ([[20, 34, 26, 40]], [["2025-01-01", "2025-12-31"]], False),
+            # Multiple bboxes: first "overall" one should be ignored
+            ([[20, 30, 30, 40], [23, 34, 26, 39]], [["2024-01-01", "2024-12-31"]], True),
+            ([[20, 30, 30, 40], [21, 31, 22, 32]], [["2024-01-01", "2024-12-31"]], False),
+            ([[20, 30, 30, 40], [21, 31, 22, 32], [23, 34, 26, 39]], [["2024-01-01", "2024-12-31"]], True),
+            ([[20, 30, 30, 40], [21, 31, 22, 32], [25, 31, 26, 32]], [["2024-01-01", "2024-12-31"]], False),
+            # Multiple intervals: first "overall" one should be ignored
+            ([[20, 34, 26, 40]], [["2024-01-01", "2024-12-31"], ["2024-02-01", "2024-02-20"]], True),
+            ([[20, 34, 26, 40]], [["2024-01-01", "2024-12-31"], ["2024-10-01", "2024-10-20"]], False),
+        ],
+    )
+    def test_collection_intersects_simple(self, bboxes, intervals, expected):
+        extent = _SpatioTemporalExtent(
+            bbox=BoundingBox(west=21, south=35, east=25, north=38, crs=4326),
+            from_date="2024-02-01",
+            to_date="2024-02-10",
+        )
+        collection = pystac.Collection(
+            id="c123",
+            description="C123",
+            extent=pystac.Extent(
+                spatial=pystac.SpatialExtent(bboxes=bboxes),
+                temporal=pystac.TemporalExtent.from_dict({"interval": intervals}),
+            ),
+        )
+        assert extent.collection_intersects(collection) == expected
+
+
+class TestPropertyFilter:
+    def test_build_matcher_empty(self):
+        """Empty property filter: always matches"""
+        property_filter = PropertyFilter(properties={})
+        matcher = property_filter.build_matcher()
+        assert matcher({}) == True
+        assert matcher({"foo": "bar"}) == True
+
+    def test_build_matcher_basic(self):
+        """Basic use case: single (equality) condition"""
+        properties = {
+            "foo": {
+                "process_graph": {
+                    "eq1": {
+                        "process_id": "eq",
+                        "arguments": {
+                            "x": {"from_parameter": "value"},
+                            "y": "bar",
+                        },
+                        "result": True,
+                    }
+                }
+            }
+        }
+        property_filter = PropertyFilter(properties)
+        matcher = property_filter.build_matcher()
+        assert matcher({}) == False
+        assert matcher({"foo": "bar"}) == True
+        assert matcher({"foo": "nope"}) == False
+        assert matcher({"fooooo": "bar"}) == False
+
+    def test_build_matcher_multiple_conditions(self):
+        """Multiple conditions: all must match"""
+        properties = {
+            "color": {
+                "process_graph": {
+                    "eq1": {
+                        "process_id": "eq",
+                        "arguments": {
+                            "x": {"from_parameter": "value"},
+                            "y": "red",
+                        },
+                        "result": True,
+                    }
+                }
+            },
+            "size": {
+                "process_graph": {
+                    "lte1": {
+                        "process_id": "lte",
+                        "arguments": {
+                            "x": {"from_parameter": "value"},
+                            "y": 42,
+                        },
+                        "result": True,
+                    }
+                }
+            },
+        }
+        property_filter = PropertyFilter(properties=properties)
+        matcher = property_filter.build_matcher()
+        assert matcher({}) == False
+        assert matcher({"color": "red", "size": 10}) == True
+        assert matcher({"color": "rrred", "size": 10}) == False
+        assert matcher({"color": "red", "size": 41}) == True
+        assert matcher({"color": "red", "size": 42}) == True
+        assert matcher({"color": "red", "size": 43}) == False
+        assert matcher({"color": "red", "size": 100}) == False
+
+    @pytest.mark.parametrize(
+        ["pg_node", "matching", "non_matching"],
+        [
+            (
+                {"process_id": "eq", "arguments": {"x": {"from_parameter": "value"}, "y": "y-bar"}},
+                ["y-bar"],
+                ["nope", None],
+            ),
+            (
+                {"process_id": "eq", "arguments": {"x": "x-bar", "y": {"from_parameter": "value"}}},
+                ["x-bar"],
+                ["nope", None],
+            ),
+            (
+                {"process_id": "eq", "arguments": {"x": {"from_parameter": "value"}, "y": 42}},
+                [42],
+                [0, 42.01, 44, None],
+            ),
+            (
+                {"process_id": "lte", "arguments": {"x": {"from_parameter": "value"}, "y": 42}},
+                [0, 42],
+                [42.01, 100, None],
+            ),
+            (
+                {"process_id": "lte", "arguments": {"x": 42, "y": {"from_parameter": "value"}}},
+                [42, 100],
+                [0, 41, None],
+            ),
+            (
+                {"process_id": "gte", "arguments": {"x": {"from_parameter": "value"}, "y": 42}},
+                [42, 100],
+                [0, 41, None],
+            ),
+            (
+                {"process_id": "gte", "arguments": {"x": 42, "y": {"from_parameter": "value"}}},
+                [42, 0],
+                [100, None],
+            ),
+            (
+                {"process_id": "array_contains", "arguments": {"data": [42, 4242], "y": {"from_parameter": "value"}}},
+                [42, 4242],
+                [0, 41, None, -101],
+            ),
+        ],
+    )
+    def test_build_matcher_operators(self, pg_node, matching, non_matching):
+        """Single conditions in multiple variants (operators, argument order)"""
+        properties = {"foo": {"process_graph": {"_": {**pg_node, "result": True}}}}
+        property_filter = PropertyFilter(properties=properties)
+        matcher = property_filter.build_matcher()
+        for value in matching:
+            assert matcher({"foo": value}) == True
+        for value in non_matching:
+            assert matcher({"foo": value}) == False
+
+    def test_build_matcher_with_env(self):
+        properties = {
+            "foo": {
+                "process_graph": {
+                    "eq1": {
+                        "process_id": "eq",
+                        "arguments": {
+                            "x": {"from_parameter": "value"},
+                            "y": {"from_parameter": "name"},
+                        },
+                        "result": True,
+                    }
+                }
+            }
+        }
+        env = EvalEnv().push_parameters({"name": "alice"})
+        property_filter = PropertyFilter(properties=properties, env=env)
+        matcher = property_filter.build_matcher()
+        assert matcher({"foo": "alice"}) == True
+        assert matcher({"foo": "bob"}) == False
+
+    @pytest.mark.parametrize(
+        ["properties", "expected"],
+        [
+            ({}, ""),
+            (
+                {
+                    "foo": {
+                        "process_graph": {
+                            "eq1": {
+                                "process_id": "eq",
+                                "arguments": {"x": {"from_parameter": "value"}, "y": "bar"},
+                                "result": True,
+                            }
+                        }
+                    }
+                },
+                "\"properties.foo\" = 'bar'",
+            ),
+            (
+                {
+                    "color": {
+                        "process_graph": {
+                            "eq1": {
+                                "process_id": "eq",
+                                "arguments": {
+                                    "x": {"from_parameter": "value"},
+                                    "y": "red",
+                                },
+                                "result": True,
+                            }
+                        }
+                    },
+                    "size": {
+                        "process_graph": {
+                            "lte1": {
+                                "process_id": "lte",
+                                "arguments": {
+                                    "x": {"from_parameter": "value"},
+                                    "y": 42,
+                                },
+                                "result": True,
+                            }
+                        }
+                    },
+                },
+                dirty_equals.IsOneOf(
+                    '"properties.color" = \'red\' and "properties.size" <= 42',
+                    '"properties.size" <= 42 and "properties.color" = \'red\'',
+                ),
+            ),
+        ],
+    )
+    def test_to_cql2_text(self, properties, expected):
+        property_filter = PropertyFilter(properties=properties)
+        assert property_filter.to_cql2_text() == expected
+
+    @pytest.mark.parametrize(
+        ["pg_node", "expected"],
+        [
+            (
+                {"process_id": "eq", "arguments": {"x": {"from_parameter": "value"}, "y": "y-bar"}},
+                "\"properties.foo\" = 'y-bar'",
+            ),
+            (
+                {"process_id": "eq", "arguments": {"x": "x-bar", "y": {"from_parameter": "value"}}},
+                "\"properties.foo\" = 'x-bar'",
+            ),
+            (
+                {"process_id": "eq", "arguments": {"x": {"from_parameter": "value"}, "y": 42}},
+                '"properties.foo" = 42',
+            ),
+            (
+                {"process_id": "lte", "arguments": {"x": {"from_parameter": "value"}, "y": 42}},
+                '"properties.foo" <= 42',
+            ),
+            (
+                {"process_id": "lte", "arguments": {"x": 42, "y": {"from_parameter": "value"}}},
+                '"properties.foo" >= 42',
+            ),
+            (
+                {"process_id": "gte", "arguments": {"x": {"from_parameter": "value"}, "y": 42}},
+                '"properties.foo" >= 42',
+            ),
+            (
+                {"process_id": "gte", "arguments": {"x": 42, "y": {"from_parameter": "value"}}},
+                '"properties.foo" <= 42',
+            ),
+            # TODO?
+            # (
+            #     {"process_id": "array_contains", "arguments": {"data": [42, 4242], "y": {"from_parameter": "value"}}},
+            #     "...",
+            # ),
+        ],
+    )
+    def test_to_cql2_text_operators(self, pg_node, expected):
+        properties = {"foo": {"process_graph": {"_": {**pg_node, "result": True}}}}
+        property_filter = PropertyFilter(properties=properties)
+        assert property_filter.to_cql2_text() == expected
+
+    def test_to_cql2_text_with_env(self):
+        properties = {
+            "foo": {
+                "process_graph": {
+                    "eq1": {
+                        "process_id": "eq",
+                        "arguments": {
+                            "x": {"from_parameter": "value"},
+                            "y": {"from_parameter": "name"},
+                        },
+                        "result": True,
+                    }
+                }
+            }
+        }
+        env = EvalEnv().push_parameters({"name": "alice"})
+        property_filter = PropertyFilter(properties=properties, env=env)
+        expected = "\"properties.foo\" = 'alice'"
+        assert property_filter.to_cql2_text() == expected
+
+    @pytest.mark.parametrize(
+        ["properties", "expected"],
+        [
+            ({}, None),
+            (
+                {
+                    "foo": {
+                        "process_graph": {
+                            "eq1": {
+                                "process_id": "eq",
+                                "arguments": {"x": {"from_parameter": "value"}, "y": "bar"},
+                                "result": True,
+                            }
+                        }
+                    }
+                },
+                {"op": "=", "args": [{"property": "properties.foo"}, "bar"]},
+            ),
+            (
+                {
+                    "color": {
+                        "process_graph": {
+                            "eq1": {
+                                "process_id": "eq",
+                                "arguments": {
+                                    "x": {"from_parameter": "value"},
+                                    "y": "red",
+                                },
+                                "result": True,
+                            }
+                        }
+                    },
+                    "size": {
+                        "process_graph": {
+                            "lte1": {
+                                "process_id": "lte",
+                                "arguments": {
+                                    "x": {"from_parameter": "value"},
+                                    "y": 42,
+                                },
+                                "result": True,
+                            }
+                        }
+                    },
+                },
+                {
+                    "op": "and",
+                    "args": [
+                        {"op": "=", "args": [{"property": "properties.color"}, "red"]},
+                        {"op": "<=", "args": [{"property": "properties.size"}, 42]},
+                    ],
+                },
+            ),
+        ],
+    )
+    def test_to_cql2_json(self, properties, expected):
+        property_filter = PropertyFilter(properties=properties)
+        assert property_filter.to_cql2_json() == expected
+
+    @pytest.mark.parametrize(
+        ["pg_node", "expected"],
+        [
+            (
+                {"process_id": "eq", "arguments": {"x": {"from_parameter": "value"}, "y": "y-bar"}},
+                {"op": "=", "args": [{"property": "properties.foo"}, "y-bar"]},
+            ),
+            (
+                {"process_id": "eq", "arguments": {"x": "x-bar", "y": {"from_parameter": "value"}}},
+                {"op": "=", "args": [{"property": "properties.foo"}, "x-bar"]},
+            ),
+            (
+                {"process_id": "eq", "arguments": {"x": {"from_parameter": "value"}, "y": 42}},
+                {"op": "=", "args": [{"property": "properties.foo"}, 42]},
+            ),
+            (
+                {"process_id": "lte", "arguments": {"x": {"from_parameter": "value"}, "y": 42}},
+                {"op": "<=", "args": [{"property": "properties.foo"}, 42]},
+            ),
+            (
+                {"process_id": "lte", "arguments": {"x": 42, "y": {"from_parameter": "value"}}},
+                {"op": ">=", "args": [{"property": "properties.foo"}, 42]},
+            ),
+            (
+                {"process_id": "gte", "arguments": {"x": {"from_parameter": "value"}, "y": 42}},
+                {"op": ">=", "args": [{"property": "properties.foo"}, 42]},
+            ),
+            (
+                {"process_id": "gte", "arguments": {"x": 42, "y": {"from_parameter": "value"}}},
+                {"op": "<=", "args": [{"property": "properties.foo"}, 42]},
+            ),
+            (
+                {"process_id": "array_contains", "arguments": {"data": [42, 4242], "y": {"from_parameter": "value"}}},
+                {"op": "in", "args": [{"property": "properties.foo"}, [42, 4242]]},
+            ),
+        ],
+    )
+    def test_to_cql2_json_operators(self, pg_node, expected):
+        properties = {"foo": {"process_graph": {"_": {**pg_node, "result": True}}}}
+        property_filter = PropertyFilter(properties=properties)
+        assert property_filter.to_cql2_json() == expected
+
+    def test_to_cql2_json_with_env(self):
+        properties = {
+            "foo": {
+                "process_graph": {
+                    "eq1": {
+                        "process_id": "eq",
+                        "arguments": {
+                            "x": {"from_parameter": "value"},
+                            "y": {"from_parameter": "name"},
+                        },
+                        "result": True,
+                    }
+                }
+            }
+        }
+        env = EvalEnv().push_parameters({"name": "alice"})
+        property_filter = PropertyFilter(properties=properties, env=env)
+        expected = {"op": "=", "args": [{"property": "properties.foo"}, "alice"]}
+        assert property_filter.to_cql2_json() == expected
+
+    @pytest.mark.parametrize(
+        ["use_filter_extension", "search_method", "expected"],
+        [
+            ("cql2-text", None, "\"properties.foo\" = 'bar'"),
+            ("cql2-json", None, {"op": "=", "args": [{"property": "properties.foo"}, "bar"]}),
+            (True, "POST", {"op": "=", "args": [{"property": "properties.foo"}, "bar"]}),
+            (True, "GET", "\"properties.foo\" = 'bar'"),
+        ],
+    )
+    def test_to_cql2_filter(self, use_filter_extension, search_method, expected, requests_mock):
+        links = [{"rel": "self", "href": "https://stac.test/"}]
+        if search_method:
+            links.append({"rel": "search", "href": "https://stac.test/search", "method": search_method})
+
+        requests_mock.get(
+            "https://stac.test/",
+            json={
+                "stac_version": "1.0.0",
+                "conformsTo": ["https://api.stacspec.org/v1.0.0/item-search"],
+                "type": "Catalog",
+                "id": "test-catalog",
+                "description": "Test STAC catalog",
+                "links": links,
+            },
+        )
+
+        properties = {
+            "foo": {
+                "process_graph": {
+                    "eq1": {
+                        "process_id": "eq",
+                        "arguments": {
+                            "x": {"from_parameter": "value"},
+                            "y": "bar",
+                        },
+                        "result": True,
+                    }
+                }
+            }
+        }
+        property_filter = PropertyFilter(properties=properties)
+        client = pystac_client.Client.open("https://stac.test/")
+
+        assert (
+            property_filter.to_cql2_filter(
+                use_filter_extension=use_filter_extension,
+                client=client,
+            )
+            == expected
+        )
+
+
+class TestItemCollection:
+
+    def test_from_stac_item_basic(self):
+        item = pystac.Item.from_dict(StacDummyBuilder.item())
+        spatiotemporal_extent = _SpatioTemporalExtent(bbox=None, from_date=None, to_date=None)
+        item_collection = ItemCollection.from_stac_item(item, spatiotemporal_extent=spatiotemporal_extent)
+
+        assert item_collection.items == [item]
+
+    @pytest.mark.parametrize(
+        ["bbox", "interval", "expected"],
+        [
+            ((20, 34, 26, 40), ["2025-09-01", "2025-10-01"], True),
+            ((20, 34, 26, 40), ["2025-10-01", "2025-11-01"], False),
+            ((30, 34, 36, 40), ["2025-09-01", "2025-10-01"], False),
+        ],
+    )
+    def test_from_stac_item_with_filtering(self, bbox, interval, expected):
+        item = pystac.Item.from_dict(StacDummyBuilder.item(datetime="2025-09-04", bbox=[20, 30, 25, 35]))
+
+        from_date, to_date = interval
+        spatiotemporal_extent = _SpatioTemporalExtent(
+            bbox=BoundingBox.from_wsen_tuple(bbox, crs=4326), from_date=from_date, to_date=to_date
+        )
+        item_collection = ItemCollection.from_stac_item(item, spatiotemporal_extent=spatiotemporal_extent)
+        expected = [item] if expected else []
+        assert item_collection.items == expected
+
+    @pytest.mark.parametrize(
+        ["bbox", "interval", "expected"],
+        [
+            # Full spatio-temporal overlap
+            ((10, 20, 30, 40), ["2025-09-01", "2025-10-01"], [1, 2]),
+            ((21, 31, 26, 36), ["2025-09-01", "2025-10-01"], [1, 2]),
+            # Spatial constraints
+            ((20, 30, 23, 33), ["2025-09-01", "2025-10-01"], [1]),
+            ((26, 36, 27, 37), ["2025-09-01", "2025-10-01"], [2]),
+            # Temporal constraints
+            ((20, 34, 26, 40), ["2025-09-01", "2025-09-07"], [1]),
+            ((20, 34, 26, 40), ["2025-09-05", "2025-09-10"], [2]),
+            # No overlap
+            ((10, 20, 30, 40), ["2025-10-01", "2025-11-01"], []),
+            ((70, 70, 80, 80), ["2025-09-01", "2025-10-01"], []),
+        ],
+    )
+    @gps_config_overrides(use_zk_job_registry=False)
+    def test_from_own_job(self, bbox, interval, expected):
+        from_date, to_date = interval
+        spatiotemporal_extent = _SpatioTemporalExtent(
+            bbox=BoundingBox.from_wsen_tuple(bbox, crs=4326), from_date=from_date, to_date=to_date
+        )
+
+        user = User("john")
+        job_registry = InMemoryJobRegistry()
+        batch_jobs = GpsBatchJobs(catalog=None, jvm=None, elastic_job_registry=job_registry)
+        job = batch_jobs.create_job(user=user, process={"foo": "bar"}, api_version="1.0.0", metadata={})
+        job_registry.set_status(job_id=job.id, user_id=user.user_id, status="finished")
+        job_registry.set_results_metadata(
+            job_id=job.id,
+            user_id=user.user_id,
+            costs=0,
+            usage={},
+            results_metadata={
+                "assets": {
+                    "asset1": {
+                        "bbox": [20, 30, 25, 35],
+                        "datetime": "2025-09-04T10:00:00Z",
+                        "roles": ["data"],
+                        "href": "https://data.test/asset1.tif",
+                        "bands": [{"name": "red"}],
+                    },
+                    "asset2": {
+                        "bbox": [24, 34, 28, 38],
+                        "datetime": "2025-09-08T10:00:00Z",
+                        "roles": ["data"],
+                        "href": "https://data.test/asset2.tif",
+                        "bands": [{"name": "red"}],
+                    },
+                }
+            },
+        )
+
+        item_collection = ItemCollection.from_own_job(
+            job=job, spatiotemporal_extent=spatiotemporal_extent, batch_jobs=batch_jobs, user=user
+        )
+
+        expected_map = {
+            1: dirty_equals.IsPartialDict(
+                {
+                    "type": "Feature",
+                    "stac_version": "1.0.0",
+                    "id": "asset1",
+                    "assets": {"asset1": {"eo:bands": [{"name": "red"}], "href": "https://data.test/asset1.tif"}},
+                    "bbox": [20, 30, 25, 35],
+                    "properties": {"datetime": "2025-09-04T10:00:00Z"},
+                }
+            ),
+            2: dirty_equals.IsPartialDict(
+                {
+                    "type": "Feature",
+                    "stac_version": "1.0.0",
+                    "id": "asset2",
+                    "assets": {"asset2": {"eo:bands": [{"name": "red"}], "href": "https://data.test/asset2.tif"}},
+                    "bbox": [24, 34, 28, 38],
+                    "properties": {"datetime": "2025-09-08T10:00:00Z"},
+                }
+            ),
+        }
+        expected = [expected_map[e] for e in expected]
+        assert [item.to_dict() for item in item_collection.items] == expected
+
+    def test_from_stac_catalog_basic(self):
+        collection = pystac.Collection(
+            id="c123",
+            description="C123",
+            extent=pystac.Extent(
+                spatial=pystac.SpatialExtent(bboxes=[[20, 30, 25, 35]]),
+                temporal=pystac.TemporalExtent.from_dict({"interval": ["2025-07-01", "2025-08-31"]}),
+            ),
+        )
+        item1 = pystac.Item.from_dict(StacDummyBuilder.item(datetime="2025-07-10", bbox=[21, 31, 25, 35]))
+        item2 = pystac.Item.from_dict(StacDummyBuilder.item(datetime="2025-07-20", bbox=[22, 32, 25, 35]))
+        collection.add_link(pystac.Link(rel=pystac.RelType.ITEM, target=item1))
+        collection.add_link(pystac.Link(rel=pystac.RelType.ITEM, target=item2))
+
+        spatiotemporal_extent = _SpatioTemporalExtent(bbox=None, from_date=None, to_date=None)
+        item_collection = ItemCollection.from_stac_catalog(collection, spatiotemporal_extent=spatiotemporal_extent)
+        assert item_collection.items == [item1, item2]
+
+    @pytest.mark.parametrize(
+        ["bbox", "interval", "expected"],
+        [
+            (None, None, [1, 2]),
+            ([20, 30, 25, 35], ["2025-06-01", "2025-09-30"], [1, 2]),
+            ([20, 30, 21, 31], ["2025-06-01", "2025-09-30"], [1]),
+            ([22.3, 32.3, 22.6, 32.6], ["2025-06-01", "2025-09-30"], [2]),
+            ([20, 30, 25, 35], ["2025-07-05", "2025-07-15"], [1]),
+            ([20, 30, 25, 35], ["2025-07-15", "2025-07-25"], [2]),
+        ],
+    )
+    def test_from_stac_catalog_spatiotemporal_filtering(self, bbox, interval, expected):
+        collection = pystac.Collection(
+            id="c123",
+            description="C123",
+            extent=pystac.Extent(
+                spatial=pystac.SpatialExtent(bboxes=[[20, 30, 25, 35]]),
+                temporal=pystac.TemporalExtent.from_dict({"interval": ["2025-07-01", "2025-08-31"]}),
+            ),
+        )
+        item1 = pystac.Item.from_dict(
+            StacDummyBuilder.item(id="item1", datetime="2025-07-10", bbox=[21, 31, 21.5, 31.5])
+        )
+        item2 = pystac.Item.from_dict(
+            StacDummyBuilder.item(id="item2", datetime="2025-07-20", bbox=[22, 32, 22.5, 32.5])
+        )
+        collection.add_link(pystac.Link(rel=pystac.RelType.ITEM, target=item1))
+        collection.add_link(pystac.Link(rel=pystac.RelType.ITEM, target=item2))
+
+        from_date, to_date = interval or (None, None)
+        if bbox:
+            bbox = BoundingBox.from_wsen_tuple(bbox, crs=4326)
+        spatiotemporal_extent = _SpatioTemporalExtent(bbox=bbox, from_date=from_date, to_date=to_date)
+        item_collection = ItemCollection.from_stac_catalog(collection, spatiotemporal_extent=spatiotemporal_extent)
+
+        expected = [{1: item1, 2: item2}[x] for x in expected]
+        assert item_collection.items == expected

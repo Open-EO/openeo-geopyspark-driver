@@ -1,7 +1,5 @@
 from pathlib import Path
 
-import pytest
-from pyproj import CRS
 import rasterio
 
 if __name__ == "__main__":
@@ -47,8 +45,7 @@ def test_read_single():
     )
 
 
-    import rasterio
-    from rasterio.transform import from_bounds, from_origin
+    from rasterio.transform import from_bounds
 
     arr = result[0][1].cells
 
@@ -65,6 +62,37 @@ def test_read_single():
     # new_dataset.close()
 
 
+def test_read_single_binned():
+    tiles = [
+        {
+            "key":{
+                "col":10,
+                "row":10,
+                "instant":100,
+
+            },
+            "key_extent":{
+                "xmin":3.1,"xmax":7.2,"ymin":50.1,"ymax":55.2
+            },
+            "key_epsg":4326
+        }
+    ]
+    result = read_product(
+        (
+            Path(__file__).parent.parent
+            / "data/binary/Sentinel-3/S3A_SL_2_LST____20240129T100540_20240129T100840_20240129T121848_0179_108_236_2160_PS1_O_NR_004.SEN3",
+            tiles,
+        ),
+        SLSTR_PRODUCT_TYPE,
+        ["LST_in:LST"],
+        tile_size=1024,
+        resolution=0.008928571428571,
+        reprojection_type="binning",
+        super_sampling=3
+    )
+
+    arr = result[0][1].cells
+    return
 
 def test_read_single_edge():
 

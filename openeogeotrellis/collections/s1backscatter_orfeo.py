@@ -13,7 +13,7 @@ import types
 import zipfile
 from datetime import datetime
 from multiprocessing import Process
-from typing import Dict, Tuple, Union, List, Any, Optional
+from typing import Dict, Tuple, Union, List, Optional
 
 import geopyspark
 import numpy
@@ -407,6 +407,8 @@ class S1BackscatterOrfeo:
         if dem_dir:
             ortho_rect.SetParameterString("elev.dem", dem_dir)
         if elev_geoid:
+            if not pathlib.Path(elev_geoid).exists():
+                raise OpenEOApiException(f"sar_backscatter: Geoid file {elev_geoid} does not exist on the cluster, a missing geoid causes shifted output data.")
             ortho_rect.SetParameterString("elev.geoid", elev_geoid)
         if elev_default is not None:
             ortho_rect.SetParameterFloat("elev.default", float(elev_default))
@@ -636,7 +638,7 @@ class S1BackscatterOrfeo:
         p = jvm.org.openeo.geotrellis.OpenEOProcesses()
         spk = jvm.geotrellis.layer.SpaceTimeKey
 
-        indexReduction = datacubeParams.partitionerIndexReduction() if datacubeParams is not None else 8
+        indexReduction = datacubeParams.partitionerIndexReduction().get() if datacubeParams is not None else 8
 
         keys_geotrellis = [ spk(k["col"], k["row"], k["instant"]) for k in all_keys]
         result = p.applySparseSpacetimePartitioner(tile_layer.srdd.rdd(),
@@ -903,7 +905,8 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
 
             creo_path = pathlib.Path(creo_path)
             if not creo_path.exists():
-                raise OpenEOApiException(f"sar_backscatter: path {creo_path} does not exist on the cluster.")
+                return []
+                #raise OpenEOApiException(f"sar_backscatter: path {creo_path} does not exist on the cluster.")
 
             # Get whole extent of tile layout
             col_min = min(f["key"]["col"] for f in features)

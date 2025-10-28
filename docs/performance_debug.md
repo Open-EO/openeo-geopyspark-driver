@@ -13,7 +13,7 @@ These are some common cases that you might encounter:
 1. Batch job latency: batch jobs are scheduled on processing resources, but take time to start, often due to many users running jobs at the same time.
 2. Batch job slow wall time: the job takes a relatively long time to complete, but the credit cost is low.
 3. Batch job high credit cost: the job costs more than expected
-4. Slow result download 
+4. Slow result download
 5. Slow API responses for common operations like job listings
 6. Slow /execute requests (synchronous processing)
 

@@ -15,6 +15,11 @@ with open('openeogeotrellis/_version.py') as fp:
 
 version = __version__
 
+yarn_require = [
+    "gssapi>=1.8.0",
+    "requests-gssapi>=1.2.3",  # For Kerberos authentication
+]
+
 tests_require = [
     'pytest',
     'pytest-timeout',
@@ -30,10 +35,13 @@ tests_require = [
     "cryptography>=44.0.0",
     "responses",
     "rio_cogeo",
-    "pydantic~=1.0",
+    'pydantic~=1.0; python_version<"3.9"',
+    'pydantic; python_version>="3.9"',
     "zarr",
     "jsonschema",
-]
+    "rioxarray",
+    # TODO: GDAL (aka osgeo.gdal) should be listed here. See https://github.com/Open-EO/openeo-geopyspark-driver/issues/1363
+] + yarn_require
 
 typing_require = [
     'mypy-boto3-sts',
@@ -61,10 +69,11 @@ setup(
     ],
     tests_require=tests_require,
     install_requires=[
+        # TODO: avoid excessive `python_version` based version constraints. https://github.com/Open-EO/openeo-geopyspark-driver/issues/1395
         "openeo>=0.43.0.dev",
-        "openeo_driver>=0.135.0a5.dev",
-        'pyspark==3.5.3; python_version>="3.8"',
-        'pyspark>=2.3.1,<2.4.0; python_version<"3.8"',
+        "openeo_driver>=0.136.0a1.dev",
+        'pyspark>=4.0.0; python_version>"3.8"',
+        'pyspark>=3.5.0,<4.0.0; python_version<="3.8"',
         'geopyspark_openeo==0.4.3.post1',
         # rasterio is an undeclared but required dependency for geopyspark
         # (see https://github.com/locationtech-labs/geopyspark/issues/683 https://github.com/locationtech-labs/geopyspark/pull/706)
@@ -72,7 +81,7 @@ setup(
         'rasterio~=1.3.10; python_version>="3.9"',
         'py4j',
         'numpy==1.22.4; python_version<"3.9"',
-        'numpy; python_version>="3.9"',
+        'numpy>=2.3.3; python_version>="3.9"',
         'pandas>=1.4.0,<2.0.0; python_version<"3.9"',
         'pandas; python_version>="3.9"',
         'pyproj==3.4.1',
@@ -94,7 +103,8 @@ setup(
         'Bottleneck~=1.3.2; python_version<"3.9"',
         'Bottleneck~=1.4.0; python_version>="3.9"',
         "python-json-logger~=2.0",  # Avoid breaking change in 3.1.0 https://github.com/nhairs/python-json-logger/issues/29
-        'jep==4.1.1',
+        'jep==4.1.1; python_version<"3.9"',
+        'jep_openeo==4.1.1; python_version>="3.9"',  # Required because Jep needs to compile against numpy 2.x
         'kafka-python==1.4.6',
         'deprecated>=1.2.12',
         'elasticsearch==7.16.3',
@@ -117,10 +127,9 @@ setup(
             "kubernetes",
             "PyYAML",
         ],
-        "yarn": [
-            "gssapi>=1.8.0",
-            "requests-gssapi>=1.2.3",  # For Kerberos authentication
-        ],
+        "yarn": yarn_require,
+        "spark35": ["pyspark>=3.5.0,<4.0.0"],
+        "spark4": ["pyspark>=4.0.0,<5.0.0"],
     },
     entry_points={
         "console_scripts": [

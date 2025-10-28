@@ -85,7 +85,7 @@ def test_merge_recursive_preserve_input():
 
 
 def test_dict_merge_recursive_accepts_arbitrary_mapping():
-    class EmptyMapping(collections.Mapping):
+    class EmptyMapping(collections.abc.Mapping):
         def __getitem__(self, key):
             raise KeyError(key)
 

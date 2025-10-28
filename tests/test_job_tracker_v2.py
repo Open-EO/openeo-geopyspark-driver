@@ -13,7 +13,7 @@ from unittest import mock
 import kubernetes
 import pytest
 import requests_mock
-from openeo.util import rfc3339, url_join
+from openeo.util import rfc3339
 from openeo_driver.testing import DictSubSet
 from openeo_driver.utils import generate_unique_id
 
@@ -261,6 +261,7 @@ class KubernetesAppInfo:
     state: str = K8S_SPARK_APP_STATE.NEW
     start_time: Union[str, None] = None
     finish_time: Union[str, None] = None
+    etl_source_id_override: Optional[str] = None
 
     def set_state(self, state: str):
         self.state = state
@@ -311,6 +312,9 @@ class KubernetesMock:
                 "applicationState": {"state": app.state},
                 "lastSubmissionAttemptTime": app.start_time,
                 "terminationTime": app.finish_time,
+            },
+            "metadata": {
+                "labels": {"etl_source_id_override": app.etl_source_id_override} if app.etl_source_id_override else {},
             }
         }
 
@@ -1046,6 +1050,7 @@ class TestK8sJobTracker:
         return job_tracker
 
     @pytest.mark.parametrize("job_options", [None, DUMMY_JOB_OPTIONS])
+    @pytest.mark.parametrize("etl_source_id_override", [None, "overridden"])
     def test_k8s_zookeeper_basic(
         self,
         zk_job_registry,
@@ -1056,6 +1061,7 @@ class TestK8sJobTracker:
         k8s_mock,
         job_costs_calculator,
         job_options,
+        etl_source_id_override,
     ):
         caplog.set_level(logging.WARNING)
         time_machine.move_to("2022-12-14T12:00:00Z", tick=False)
@@ -1101,7 +1107,7 @@ class TestK8sJobTracker:
         # Submit Kubernetes app
         time_machine.coordinates.shift(70)
         app_id = k8s_job_name()
-        kube_app = k8s_mock.submit(app_id=app_id)
+        kube_app = k8s_mock.submit(app_id=app_id, etl_source_id_override=etl_source_id_override)
         kube_app.set_submitted()
         zk_job_registry.set_application_id(
             job_id=job_id, user_id=user_id, application_id=app_id
@@ -1213,6 +1219,7 @@ class TestK8sJobTracker:
             sentinelhub_processing_units=1.25,
             unique_process_ids=[],
             job_options=job_options,
+            etl_source_id=etl_source_id_override,
         )
 
         assert caplog.record_tuples == []

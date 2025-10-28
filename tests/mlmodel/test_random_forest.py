@@ -1,19 +1,11 @@
 import re
 import shutil
-import tempfile
-from datetime import datetime
-from pathlib import Path
 from random import seed, uniform
 from typing import List, Iterator
-from unittest import TestCase, skip
-from unittest.mock import patch
 
 import geopyspark
 import mock
 import pytest
-import shapely.geometry
-from openeo.metadata import CollectionMetadata, Dimension, TemporalDimension
-from openeo_driver.backend import BatchJobMetadata
 from openeo_driver.constants import JOB_STATUS
 from openeo_driver.save_result import MlModelResult
 from openeo_driver.testing import (
@@ -22,8 +14,7 @@ from openeo_driver.testing import (
     DictSubSet,
     TEST_USER,
 )
-from openeo_driver.utils import EvalEnv, read_json
-from py4j.java_gateway import JavaObject
+from openeo_driver.utils import read_json
 from pyspark.mllib.tree import RandomForestModel
 from shapely.geometry import GeometryCollection, Point
 
@@ -166,9 +157,9 @@ def test_fit_class_random_forest_from_graph(
                 "fitclassrandomforest1": {
                     "process_id": "fit_class_random_forest",
                     "arguments": {
-                        "num_trees": 3,
+                        "num_trees": 5,
                         "predictors": {"from_node": "aggregatespatial1"},
-                        "seed": 42,
+                        "seed": 16,
                         "target": FEATURE_COLLECTION_1,
                     },
                     "result": True,
@@ -190,7 +181,7 @@ def test_fit_class_random_forest_from_graph(
     result_model = RandomForestModel.load(sc=geopyspark.get_spark_context(), path="file:" + unpacked_model_path)
 
     # 4. Perform some inference locally to check if the model is correct.
-    assert result_model.predict([0.0, 1.0]) == 5.0
+    assert result_model.predict([1.0, 2.0]) == 3.0
 
 
 def test_fit_class_random_forest_model():
@@ -202,7 +193,7 @@ def test_fit_class_random_forest_model():
     result: GeopySparkRandomForestModel = train_simple_random_forest_model(num_trees=num_trees, seedValue=42)
     model: RandomForestModel = result.get_model()
     assert model.numTrees() == num_trees
-    assert model.predict([0.0, 1.0]) == 980.0
+    assert model.predict([0.0, 600.0]) == 145.0
     assert model.predict([122.5, 150.3]) == 752.0
     assert model.predict([565.5, 400.3]) == 182.0
 

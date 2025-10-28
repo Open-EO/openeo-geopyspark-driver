@@ -102,7 +102,7 @@ class AggregateSpatialVectorCube(AggregatePolygonSpatialResult):
 
 
     def fit_class_catboost(
-            self, 
+            self,
             target: dict,
             iterations: int = 5,
             depth=5,

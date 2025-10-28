@@ -6,7 +6,6 @@ import pytest
 import pytz
 
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
-from openeogeotrellis.service_registry import InMemoryServiceRegistry
 
 TILE_SIZE = 16  # multiple of 16 as this is used for the GeoTIFF tile size as well and mandated by its spec
 
@@ -147,7 +146,7 @@ def imagecollection_with_two_bands_and_one_date(request) -> GeopysparkDataCube:
 
 @pytest.fixture
 def imagecollection_with_two_bands_and_three_dates(request):
-    from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time)
+    from geopyspark.geotrellis import _convert_to_unix_time
     from geopyspark.geotrellis.constants import LayerType
     from geopyspark.geotrellis.layer import TiledRasterLayer
     import geopyspark as gps
@@ -182,7 +181,7 @@ def imagecollection_with_two_bands_and_three_dates(request):
 
 
 def numpy_rdd_two_bands_and_three_dates():
-    from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time)
+    from geopyspark.geotrellis import SpaceTimeKey, Tile
     from pyspark import SparkContext
 
     two_band_one_two = np.array([matrix_of_one, matrix_of_two], dtype='int')
@@ -211,7 +210,7 @@ def numpy_rdd_two_bands_and_three_dates():
 
 @pytest.fixture
 def imagecollection_with_two_bands_and_three_dates_webmerc(request):
-    from geopyspark.geotrellis import (SpaceTimeKey, Tile, _convert_to_unix_time)
+    from geopyspark.geotrellis import _convert_to_unix_time
     from geopyspark.geotrellis.constants import LayerType
     from geopyspark.geotrellis.layer import TiledRasterLayer
     import geopyspark as gps
@@ -392,7 +391,7 @@ def layer_with_one_band_and_three_dates():
 @pytest.fixture
 def imagecollection_with_two_bands_and_one_date_multiple_values(request):
     import geopyspark as gps
-    from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
+    from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
     geopyspark_layer = layer_with_two_bands_and_one_date_multiple_values()
     datacube = GeopysparkDataCube(pyramid=gps.Pyramid({0: geopyspark_layer}), metadata=openeo_metadata)
 

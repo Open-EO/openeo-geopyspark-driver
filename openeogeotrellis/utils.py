@@ -4,14 +4,12 @@ import collections.abc
 import contextlib
 import dataclasses
 import datetime
-import functools
 import grp
 import hashlib
 import json
 import logging
 import math
 import os
-import pkgutil
 import pwd
 import resource
 import shutil
@@ -45,7 +43,6 @@ from openeo_driver.util.logging import (
 from openeo_driver.util.utm import auto_utm_epsg_for_geometry
 from py4j.clientserver import ClientServer
 from py4j.java_gateway import JVMView
-from pyproj import CRS
 from shapely.geometry import GeometryCollection, MultiPolygon, Point, Polygon, box
 from shapely.geometry.base import BaseGeometry
 
@@ -632,11 +629,6 @@ class StatsReporter:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.report(f"{self.name}: {json.dumps(self.stats)}")
-
-
-@functools.lru_cache
-def is_package_available(name: str) -> bool:
-    return any(m.name == name for m in pkgutil.iter_modules())
 
 
 def reproject_cellsize(

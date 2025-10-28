@@ -139,8 +139,10 @@ class TestMultipleDates(TestCase):
         jvm = gps.get_spark_context()._jvm
         p = jvm.org.openeo.geotrellis.OpenEOProcesses()
         spk = jvm.geotrellis.layer.SpaceTimeKey
-        datacubeParams = jvm.org.openeo.geotrelliscommon.DataCubeParameters()
-        result = p.applySparseSpacetimePartitioner(self.tiled_raster_rdd.srdd.rdd(),[spk(0,0,0),spk(1,0,100000),spk(10000000,454874414,100000)],datacubeParams.partitionerIndexReduction())
+        index_reduction = 7
+        result = p.applySparseSpacetimePartitioner(self.tiled_raster_rdd.srdd.rdd(),
+                                                   [spk(0, 0, 0), spk(1, 0, 100000), spk(10000000, 454874414, 100000)],
+                                                   index_reduction)
         assert result is not None
         assert "SpacePartitioner(KeyBounds(SpaceTimeKey(0,0,0),SpaceTimeKey(10000000,454874414,100000)))" == str(result.partitioner().get())
         assert "SparseSpaceTimePartitioner 2 true" == str(result.partitioner().get().index())

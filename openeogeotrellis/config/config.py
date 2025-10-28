@@ -125,7 +125,7 @@ class GpsBackendConfig(OpenEoBackendConfig):
 
     ejr_api: Optional[str] = os.environ.get("OPENEO_EJR_API")
     ejr_backend_id: str = "unknown"
-    ejr_credentials_vault_path: Optional[str] = os.environ.get("OPENEO_EJR_CREDENTIALS_VAULT_PATH")
+    ejr_credentials_vault_path: Optional[str] = "UNUSED_AND_TO_BE_REMOVED"
     ejr_preserialize_process: bool = False
 
     # TODO: eliminate hardcoded Terrascope references
@@ -249,15 +249,33 @@ class GpsBackendConfig(OpenEoBackendConfig):
         ),
     )
 
+    # TODO #1387 deprecate this processing_container_image in favor of container_images_and_udf_runtimes?
+    processing_container_image: Optional[str] = attrs.field(
+        default=None,
+        metadata={
+            "description": "Docker image to use for batch/synchronous processing jobs when started from web app. If not specified, the same image the web app is running in will be used."
+        },
+    )
+
     """
     Maps the name of a UDF runtime to the image to use for the batch job.
     Also used to map image-name job option to batch job image.
     """
+    # TODO #1387 deprecate this in favor of container_images_and_udf_runtimes?
     batch_runtime_to_image: dict = {
+        # TODO: eliminate this hardcoded VITO default?
         "python311" : "vito-docker.artifactory.vgt.vito.be/openeo-geotrellis-kube-python311:latest"
     }
 
     batch_image_regex: str = "^vito-docker.artifactory.vgt.vito.be/openeo-.+$"
+
+    container_images_and_udf_runtimes: List[dict] = attrs.field(
+        factory=list,
+        metadata={
+            "doc": """List of container image information, including corresponding UDF runtimes.
+                See `ContainerImageRecord.from_dict()` for expected/optional fields"""
+        },
+    )
 
     """
     Only used by YARN, allows to specify paths to mount in batch job docker containers.
@@ -280,9 +298,7 @@ class GpsBackendConfig(OpenEoBackendConfig):
     batch_spark_yarn_historyserver_address: str = ""
     batch_yarn_container_runtime_docker_client_config: str = ""
     gdalinfo_from_file: bool = True
-    gdalinfo_python_call: bool = False
     gdalinfo_use_subprocess: bool = False
-    gdalinfo_use_python_subprocess: bool = False
 
     # TODO #1009 make None by default, when appropriate configs are set.
     calrissian_config: Optional[CalrissianConfig] = CalrissianConfig()

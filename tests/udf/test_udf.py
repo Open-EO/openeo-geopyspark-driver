@@ -10,6 +10,8 @@ import dirty_equals
 import pyspark
 import pytest
 from openeo.udf import StructuredData, UdfData
+from openeo_driver.ProcessGraphDeserializer import custom_process_from_process_graph
+from openeo_driver.processes import ProcessRegistry
 from openeo_driver.util.logging import LOG_HANDLER_FILE_JSON, get_logging_config
 
 from openeogeotrellis.backend import JOB_METADATA_FILENAME
@@ -24,6 +26,9 @@ from openeogeotrellis.udf import (
     install_python_udf_dependencies,
     python_udf_dependency_context_from_archive,
     run_udf_code,
+    collect_udfs,
+    UdfSpecified,
+    UdfRuntimeSpecified,
 )
 
 
@@ -83,6 +88,183 @@ def test_run_udf_code_in_executor_single_udf_data(spark_context):
 
 
 class TestUdfCollection:
+    def test_collect_udfs_no_udfs(self):
+        pg = {
+            "loadcollection1": {
+                "process_id": "load_collection",
+                "arguments": {"id": "SENTINEL123"},
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "loadcollection1"}, "format": "GTiff", "options": {}},
+                "result": True,
+            },
+        }
+        assert list(collect_udfs(pg)) == []
+
+    def test_collect_udfs_single_udf(self):
+        pg = {
+            "loadcollection1": {
+                "process_id": "load_collection",
+                "arguments": {"id": "SENTINEL123"},
+            },
+            "apply1": {
+                "process_id": "apply",
+                "arguments": {
+                    "data": {"from_node": "loadcollection1"},
+                    "process": {
+                        "process_graph": {
+                            "runudf1": {
+                                "process_id": "run_udf",
+                                "arguments": {
+                                    "data": {"from_parameter": "x"},
+                                    "runtime": "Python",
+                                    "udf": "print('hello world')\n",
+                                },
+                                "result": True,
+                            }
+                        }
+                    },
+                },
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "apply1"}, "format": "GTiff", "options": {}},
+                "result": True,
+            },
+        }
+        assert list(collect_udfs(pg)) == [
+            UdfSpecified(code="print('hello world')\n", runtime=UdfRuntimeSpecified(name="Python", version=None)),
+        ]
+
+    def test_collect_udfs_direct_and_remote_udp(self, requests_mock):
+        udp_url = "https://udphub.test/apply_foo.udp.json"
+
+        udp = {
+            "id": "apply_foo",
+            "process_graph": {
+                "apply1": {
+                    "process_id": "apply",
+                    "arguments": {
+                        "data": {"from_parameter": "data"},
+                        "process": {
+                            "process_graph": {
+                                "runudf1": {
+                                    "process_id": "run_udf",
+                                    "arguments": {
+                                        "data": {"from_parameter": "x"},
+                                        "udf": "print('Hello 1')",
+                                        "runtime": "Python",
+                                    },
+                                    "result": True,
+                                }
+                            }
+                        },
+                    },
+                    "result": True,
+                }
+            },
+            "parameters": [
+                {"name": "data", "schema": {"type": "object", "subtype": "datacube"}},
+            ],
+            "returns": {"schema": {"type": "object", "subtype": "datacube"}},
+        }
+        requests_mock.get(udp_url, json=udp)
+
+        pg = {
+            "loadcollection1": {
+                "process_id": "load_collection",
+                "arguments": {"id": "SENTINEL123"},
+            },
+            "applyfoo1": {
+                "process_id": "apply_foo",
+                "namespace": udp_url,
+                "arguments": {"data": {"from_node": "loadcollection1"}},
+            },
+            "apply2": {
+                "process_id": "apply",
+                "arguments": {
+                    "data": {"from_node": "applyfoo1"},
+                    "process": {
+                        "process_graph": {
+                            "runudf1": {
+                                "process_id": "run_udf",
+                                "arguments": {
+                                    "data": {"from_parameter": "x"},
+                                    "udf": "print('Hello 2')",
+                                    "runtime": "Python",
+                                },
+                                "result": True,
+                            }
+                        }
+                    },
+                },
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "apply2"}, "format": "GTiff", "options": {}},
+                "result": True,
+            },
+        }
+        assert sorted(collect_udfs(pg)) == [
+            UdfSpecified(code="print('Hello 1')", runtime=UdfRuntimeSpecified(name="Python", version=None)),
+            UdfSpecified(code="print('Hello 2')", runtime=UdfRuntimeSpecified(name="Python", version=None)),
+        ]
+
+    def test_collect_udfs_from_custom_process(self):
+        process_registry = ProcessRegistry()
+        process_spec = {
+            "id": "custom123",
+            "parameters": [
+                {"name": "zecube", "schema": {"type": "object", "subtype": "datacube"}},
+            ],
+            "process_graph": {
+                "apply1": {
+                    "process_id": "apply",
+                    "arguments": {
+                        "data": {"from_parameter": "zecube"},
+                        "process": {
+                            "process_graph": {
+                                "runudf1": {
+                                    "process_id": "run_udf",
+                                    "arguments": {
+                                        "data": {"from_parameter": "x"},
+                                        "udf": "print('Hello 123')",
+                                        "runtime": "Python",
+                                    },
+                                    "result": True,
+                                }
+                            }
+                        },
+                    },
+                    "result": True,
+                }
+            },
+        }
+        custom_process_from_process_graph(
+            process_spec=process_spec, process_registries=[process_registry], namespace="ns123"
+        )
+
+        pg = {
+            "loadcollection1": {
+                "process_id": "load_collection",
+                "arguments": {"id": "SENTINEL123"},
+            },
+            "custom123": {
+                "process_id": "custom123",
+                "namespace": "ns123",
+                "arguments": {"data": {"from_node": "loadcollection1"}},
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "custom123"}, "format": "GTiff", "options": {}},
+                "result": True,
+            },
+        }
+        assert sorted(collect_udfs(pg, process_registry=process_registry)) == [
+            UdfSpecified(code="print('Hello 123')", runtime=UdfRuntimeSpecified(name="Python", version=None)),
+        ]
+
     def test_collect_python_udf_dependencies_no_udfs(self):
         pg = {
             "loadcollection1": {
@@ -134,7 +316,7 @@ class TestUdfCollection:
                 "result": True,
             },
         }
-        assert collect_python_udf_dependencies(pg) == {("Python", None): set()}
+        assert collect_python_udf_dependencies(pg) == {UdfRuntimeSpecified(name="Python", version=None): set()}
 
     @pytest.mark.parametrize(
         ["run_udf_args", "expected"],
@@ -155,7 +337,7 @@ class TestUdfCollection:
                     ),
                     "runtime": "Python",
                 },
-                {("Python", None): {"numpy", "pandas"}},
+                {UdfRuntimeSpecified(name="Python", version=None): {"numpy", "pandas"}},
             ),
             (
                 {
@@ -171,7 +353,7 @@ class TestUdfCollection:
                     "runtime": "Python3",
                     "version": "3.1415",
                 },
-                {("Python3", "3.1415"): {"numpy", "pandas>=1.2.3"}},
+                {UdfRuntimeSpecified(name="Python3", version="3.1415"): {"numpy", "pandas>=1.2.3"}},
             ),
         ],
     )
@@ -270,7 +452,9 @@ class TestUdfCollection:
                 "result": True,
             },
         }
-        assert collect_python_udf_dependencies(pg) == {("Python", None): {"numpy", "pandas", "scipy"}}
+        assert collect_python_udf_dependencies(pg) == {
+            UdfRuntimeSpecified(name="Python", version=None): {"numpy", "pandas", "scipy"}
+        }
 
     def test_collect_python_udf_dependencies_from_remote_udp(self, requests_mock):
         udp_url = "https://udphub.test/apply_foo.udp.json"
@@ -329,7 +513,9 @@ class TestUdfCollection:
                 "result": True,
             },
         }
-        assert collect_python_udf_dependencies(pg) == {("Python", None): {"numpy", "pandas"}}
+        assert collect_python_udf_dependencies(pg) == {
+            UdfRuntimeSpecified(name="Python", version=None): {"numpy", "pandas"}
+        }
 
     def test_collect_python_udf_dependencies_direct_and_remote_udp(self, requests_mock):
         udp_url = "https://udphub.test/apply_foo.udp.json"
@@ -409,7 +595,9 @@ class TestUdfCollection:
                 "result": True,
             },
         }
-        assert collect_python_udf_dependencies(pg) == {("Python", None): {"numpy", "pandas", "scipy"}}
+        assert collect_python_udf_dependencies(pg) == {
+            UdfRuntimeSpecified(name="Python", version=None): {"numpy", "pandas", "scipy"}
+        }
 
     def test_collect_python_udf_dependencies_from_remote_udp_resilience(self, requests_mock, caplog):
         caplog.set_level(logging.WARNING)
@@ -457,7 +645,7 @@ class TestUdfCollection:
                 "result": True,
             },
         }
-        assert collect_python_udf_dependencies(pg) == {("Python", None): {"scipy"}}
+        assert collect_python_udf_dependencies(pg) == {UdfRuntimeSpecified(name="Python", version=None): {"scipy"}}
 
         assert caplog.text == dirty_equals.IsStr(
             regex=r".*collect_udf: skipping failure.*https://udphub.test/apply_foo.udp.json.*ProcessNamespaceInvalid.*",
@@ -466,7 +654,6 @@ class TestUdfCollection:
 
 
 class TestInstallPythonUdfDependencies:
-
 
     def test_install_python_udf_dependencies_basic(self, tmp_path, dummy_pypi, caplog):
         caplog.set_level("DEBUG")
@@ -488,7 +675,9 @@ class TestInstallPythonUdfDependencies:
     def test_install_python_udf_dependencies_fail(self, tmp_path, dummy_pypi, caplog):
         caplog.set_level("DEBUG")
         install_target = tmp_path / "target"
-        with pytest.raises(UdfDependencyHandlingFailure, match="pip install of UDF dependencies failed with exit_code=1"):
+        with pytest.raises(
+            UdfDependencyHandlingFailure, match="pip install of UDF dependencies failed with exit_code=1"
+        ):
             install_python_udf_dependencies(["nope-nope"], target=install_target, index=dummy_pypi)
         assert (
             "pip install output: ERROR: Could not find a version that satisfies the requirement nope-nope"

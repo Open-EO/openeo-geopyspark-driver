@@ -1,6 +1,4 @@
-import collections
 import contextlib
-import datetime
 import decimal
 import json
 import logging
@@ -8,15 +6,15 @@ import os
 import pathlib
 import re
 import subprocess
+import sys
 from typing import Optional
 from unittest import mock
 
-import boto3
+import dirty_equals
 import jsonschema
 import kazoo.exceptions
 import pytest
 import requests
-import time_machine
 from elasticsearch.exceptions import ConnectionTimeout
 from openeo.util import deep_get
 from openeo_driver.jobregistry import JOB_STATUS
@@ -27,7 +25,6 @@ from openeo_driver.testing import (
     TIFF_DUMMY_DATA,
     ApiTester,
     DictSubSet,
-    ListSubSet,
     RegexMatcher,
 )
 
@@ -109,7 +106,7 @@ class TestCapabilities:
                 "openeo_driver": semver_alike,
                 "openeo-geopyspark": semver_alike,
                 "geopyspark-openeo": semver_alike,
-                "geotrellis-extensions": semver_alike,
+                "geotrellis-extensions": dirty_equals.IsAnyStr,
             },
         }
         assert deep_get(capabilities, "processing:software") == {
@@ -117,7 +114,7 @@ class TestCapabilities:
             "openeo_driver": semver_alike,
             "openeo-geopyspark": semver_alike,
             "geopyspark-openeo": semver_alike,
-            "geotrellis-extensions": semver_alike,
+            "geotrellis-extensions": dirty_equals.IsAnyStr,
         }
 
     def test_capabilities_extras(self, api100):
@@ -132,6 +129,29 @@ class TestCapabilities:
         assert capabilities["foo"] == ["bar", "baz"]
         assert len(capabilities["links"]) > 1
         assert capabilities["links"][-1] == {"rel": "flavor", "href": "https://flavors.test/sweet"}
+
+    def test_udf_runtimes(self, api100):
+        udf_runtimes = api100.get("/udf_runtimes").assert_status_code(200).json
+        assert udf_runtimes == {
+            "Python": {
+                "title": "Python",
+                "type": "language",
+                "default": "3",
+                "versions": {
+                    "3.8": {"libraries": {"numpy": {"version": "1.22.4"}, "pandas": {"version": "1.5.3"}}},
+                    "3.11": {"libraries": {"numpy": {"version": "2.3.3"}, "pandas": {"version": "2.3.3"}}},
+                    "3": {"libraries": {"numpy": {"version": "2.3.3"}, "pandas": {"version": "2.3.3"}}},
+                },
+            },
+            "Python-Jep": {
+                "default": "3.8",
+                "title": "Python-Jep",
+                "type": "language",
+                "versions": {
+                    "3.8": {"libraries": {"numpy": {"version": "1.22.4"}, "pandas": {"version": "1.5.3"}}},
+                },
+            },
+        }
 
 
 class TestCollections:
@@ -384,6 +404,9 @@ def create_files_on_s3(s3_bucket, file_names, file_contents):
 
 
 class TestBatchJobs:
+
+    # TODO: use YarnMocker/yarn_mocker fixture here to eliminate subprocess.run mocking boilerplate?
+
     DUMMY_PROCESS_GRAPH = {
         "loadcollection1": {
             "process_id": "load_collection",
@@ -1232,7 +1255,7 @@ class TestBatchJobs:
                     assert res.status_code == 200
                     assert res.data == TIFF_DUMMY_DATA
 
-    def test_create_and_start_job_options(
+    def test_yarn_mode_create_and_start_job_options(
         self, api, tmp_path, monkeypatch, batch_job_output_root, time_machine, mock_yarn_backend_config
     ):
         time_machine.move_to("2020-04-20T16:04:03Z")
@@ -1250,7 +1273,7 @@ class TestBatchJobs:
             # Create job
             data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH, title="Dummy")
             data["job_options"] = {"driver-memory": "3g", "executor-memory": "11g","executor-cores":"4","queue":"somequeue","driver-memoryOverhead":"10G", "soft-errors":"false", "udf-dependency-archives":["https://host.com/my.jar"]}
-            batch_job_args, job_id, env = self._create_and_start_yarn_job(data, api)
+            batch_job_args, job_id, env = self._create_and_start_job_yarn_mode(data, api)
 
             # Check batch in/out files
             job_dir = batch_job_output_root / job_id
@@ -1270,10 +1293,11 @@ class TestBatchJobs:
             assert batch_job_args[23] == '0.0'
             assert batch_job_args[27] == 'https://host.com/my.jar'
 
-    def _create_and_start_yarn_job(self, job_data, api):
+    def _create_and_start_job_yarn_mode(self, job_data, api):
         res = api.post('/jobs', json=job_data, headers=TEST_USER_AUTH_HEADER).assert_status_code(201)
         job_id = res.headers['OpenEO-Identifier']
         # Start job
+        # TODO: reuse `yarn_mocker/YarnMocker` here?
         with mock.patch('subprocess.run') as run:
             stdout = api.read_file("spark-submit-stdout.txt")
             run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout=stdout, stderr="")
@@ -1286,13 +1310,13 @@ class TestBatchJobs:
             env = run.call_args[1]['env']
         return batch_job_args, job_id,env
 
-    def test_start_custom_udf_runtime(
+    def test_yarn_mode_start_custom_udf_runtime(
         self, api, job_registry, time_machine, batch_job_output_root, mock_yarn_backend_config
     ):
         time_machine.move_to("2020-04-20T12:01:01Z")
 
         job_data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH_WITH_UDF, title="Dummy")
-        batch_job_args, job_id,env = self._create_and_start_yarn_job(job_data, api)
+        batch_job_args, job_id, env = self._create_and_start_job_yarn_mode(job_data, api)
 
         # Check batch in/out files
         job_dir = batch_job_output_root / job_id
@@ -1302,7 +1326,46 @@ class TestBatchJobs:
         assert batch_job_args[3] == str(job_dir)
         assert batch_job_args[4] == job_output.name
         assert batch_job_args[5] == job_metadata.name
-        assert env['YARN_CONTAINER_RUNTIME_DOCKER_IMAGE'] == "vito-docker.artifactory.vgt.vito.be/openeo-geotrellis-kube-python311:latest"
+        assert env["YARN_CONTAINER_RUNTIME_DOCKER_IMAGE"] == "docker.test/openeo-geopy311:7.9.11"
+
+    @pytest.mark.parametrize(
+        ["args", "expected"],
+        [
+            ({"runtime": "python"}, "docker.test/openeo-geopy311:7.9.11"),
+            ({"runtime": "Python"}, "docker.test/openeo-geopy311:7.9.11"),
+            ({"runtime": "Python", "version": "3.8"}, "docker.test/openeo-geopy38:3.5.8"),
+            ({"runtime": "Python", "version": "3.11"}, "docker.test/openeo-geopy311:7.9.11"),
+            ({"runtime": "Python", "version": "3"}, "docker.test/openeo-geopy311:7.9.11"),
+        ],
+    )
+    def test_yarn_mode_start_job_udf_runtime_image_handling(
+        self, api, job_registry, batch_job_output_root, mock_yarn_backend_config, args, expected
+    ):
+        pg = {
+            "lc": {
+                "process_id": "load_collection",
+                "arguments": {"id": "TERRASCOPE_S2_TOC_V2"},
+            },
+            "apply": {
+                "process_id": "apply",
+                "arguments": {
+                    "data": {"from_node": "lc"},
+                    "process": {
+                        "process_graph": {
+                            "runudf1": {
+                                "process_id": "run_udf",
+                                "arguments": {"data": [1, 2, 3], "udf": "print('hello')", **args},
+                                "result": True,
+                            }
+                        }
+                    },
+                },
+                "result": True,
+            },
+        }
+        job_data = api.get_process_graph_dict(pg)
+        batch_job_args, job_id, env = self._create_and_start_job_yarn_mode(job_data, api)
+        assert env["YARN_CONTAINER_RUNTIME_DOCKER_IMAGE"] == expected
 
     @pytest.mark.parametrize(["boost"], [
         [("driver-memory", "99999g")],

@@ -7,10 +7,9 @@ import os
 import pathlib
 import re
 import shutil
-import subprocess
 import tempfile
 import uuid
-from datetime import datetime, date
+import datetime
 from functools import partial
 from typing import Dict, List, Union, Tuple, Iterable, Callable, Optional
 
@@ -21,9 +20,9 @@ import geopandas as gpd
 import pyproj
 import pytz
 import xarray as xr
-from geopyspark import TiledRasterLayer, Pyramid, Tile, SpaceTimeKey, SpatialKey, Metadata
+from geopyspark import TiledRasterLayer, Pyramid, Tile, SpaceTimeKey, SpatialKey, Metadata, zfactor_lat_lng_calculator
 from geopyspark.geotrellis import Extent, ResampleMethod
-from geopyspark.geotrellis.constants import CellType
+from geopyspark.geotrellis.constants import CellType, Unit
 from pandas import Series
 from pyproj import CRS
 from shapely.geometry import mapping, Point, Polygon, MultiPolygon, GeometryCollection, box
@@ -49,6 +48,7 @@ from openeogeotrellis.geopysparkcubemetadata import GeopysparkCubeMetadata
 from openeogeotrellis.ml.geopysparkmlmodel import GeopysparkMlModel
 from openeogeotrellis.processgraphvisiting import GeotrellisTileProcessGraphVisitor, SingleNodeUDFProcessGraphVisitor
 from openeogeotrellis.ml.aggregatespatialvectorcube import AggregateSpatialVectorCube
+from openeogeotrellis.util.datetime import to_datetime_utc
 from openeogeotrellis.utils import (
     to_projected_polygons,
     log_memory,
@@ -58,7 +58,6 @@ from openeogeotrellis.utils import (
     reproject_cellsize,
     normalize_temporal_extent,
     GDALINFO_SUFFIX,
-    to_tuple,
 )
 from openeogeotrellis.udf import run_udf_code
 from openeogeotrellis._version import __version__ as softwareversion
@@ -158,19 +157,19 @@ class GeopysparkDataCube(DriverDataCube):
     def _data_source_type(self):
         return self.metadata.get("_vito", "data_source", "type", default="Accumulo")
 
-    # TODO: deprecated
-    def date_range_filter(
-            self, start_date: Union[str, datetime, date], end_date: Union[str, datetime, date]
-    ) -> 'GeopysparkDataCube':
-        return self.apply_to_levels(lambda rdd: rdd.filter_by_times([pd.to_datetime(start_date),pd.to_datetime(end_date)]))
-
     @callsite
     def filter_temporal(self, start: str, end: str) -> 'GeopysparkDataCube':
-        # TODO: is this necessary? Temporal range is handled already at load_collection time
         start, end = normalize_temporal_extent((start, end))
-
+        if start < end:
+            time_intervals = [
+                to_datetime_utc(start),
+                to_datetime_utc(end) - datetime.timedelta(seconds=1),
+            ]
+        else:
+            _log.warning(f"filter_temporal with invalid extent {start=} {end=}")
+            time_intervals = [to_datetime_utc(start), to_datetime_utc(end)]
         return self.apply_to_levels(
-            lambda rdd: rdd.filter_by_times([pd.to_datetime(start), pd.to_datetime(end)]),
+            lambda rdd: rdd.filter_by_times(time_intervals=time_intervals),
             metadata=self.metadata.filter_temporal(start, end)
         )
 
@@ -589,13 +588,22 @@ class GeopysparkDataCube(DriverDataCube):
             _log.debug(f"[apply_tiles_spatiotemporal] UDF resulted in {result_array}!r")
             if 't' in result_array.dims:
                 result_array = result_array.transpose(*('t' ,'bands','y', 'x'))
+                #TODO remove check on shape once we drop support for old xarray
                 return [(SpaceTimeKey(col=tiles[0].col, row=tiles[0].row, instant=pd.Timestamp(timestamp)),
-                         Tile(array_slice.values, CellType.FLOAT32, tile_list[0][1].no_data_value))
+                         Tile(array_slice.values[0] if len(array_slice.values.shape)==4 else array_slice.values, CellType.FLOAT32, tile_list[0][1].no_data_value))
                         for timestamp, array_slice in result_array.groupby('t')]
             else:
-                result_array = result_array.transpose(*( 'bands', 'y', 'x'))
-                return [(SpaceTimeKey(col=tiles[0].col, row=tiles[0].row, instant=datetime.fromisoformat('2020-01-01T00:00:00')),
-                         Tile(result_array.values, CellType.FLOAT32, tile_list[0][1].no_data_value))]
+                result_array = result_array.transpose(*("bands", "y", "x"))
+                return [
+                    (
+                        SpaceTimeKey(
+                            col=tiles[0].col,
+                            row=tiles[0].row,
+                            instant=datetime.datetime.fromisoformat("2020-01-01T00:00:00"),
+                        ),
+                        Tile(result_array.values, CellType.FLOAT32, tile_list[0][1].no_data_value),
+                    )
+                ]
 
         def rdd_function(openeo_metadata: GeopysparkCubeMetadata, rdd: TiledRasterLayer) -> TiledRasterLayer:
             converted = rdd.convert_data_type(CellType.FLOAT32)
@@ -1171,7 +1179,9 @@ class GeopysparkDataCube(DriverDataCube):
 
         pysc = gps.get_spark_context()
         metadata = self.metadata
-        _log.info(f"run_udf: detected use of apply_metadata to transform: {self.metadata}")
+        _log.info(f"run_udf: detected use of apply_metadata to transform: {self.metadata._orig_metadata}")
+
+        @ensure_executor_logging
         def get_metadata(x):
             from openeo.udf.run_code import load_module_from_string
             module = load_module_from_string(udf_code)
@@ -1253,11 +1263,11 @@ class GeopysparkDataCube(DriverDataCube):
             runtime = process.udf_args.get('runtime', 'Python')
             udf, udf_context = self._extract_udf_code_and_context(process=process, context=context, env=env)
 
-            if sizeX < 32 or sizeY < 32:
+            if sizeX < 4 or sizeY < 4:
                 raise ProcessParameterInvalidException(
                     parameter="size",
                     process="apply_neighborhood",
-                    reason=f"window sizes smaller then 32 are not yet supported for UDFs (got {size!r}).",
+                    reason=f"window sizes smaller then 4 are not yet supported for UDFs (got {size!r}).",
                 )
 
             if has_time_dim and (temporal_size is None or temporal_size.get('value',None) is None):
@@ -1364,7 +1374,10 @@ class GeopysparkDataCube(DriverDataCube):
             level_rdd_tuple = get_jvm().org.openeo.geotrellis.OpenEOProcesses().resampleCubeSpatial_spatial(
                 max_level.srdd.rdd(), crs, layout, resample_method, partitioner)
         else:
-            raise FeatureUnsupportedException(message='resample_cube_spatial - Unsupported combination of two cubes of type: ' + str(self.pyramid.layer_type) + ' and ' + str(target.pyramid.layer_type))
+            layout = target_max_level.srdd.rdd().metadata().layout()
+            crs = target_max_level.srdd.rdd().metadata().crs()
+            level_rdd_tuple = get_jvm().org.openeo.geotrellis.OpenEOProcesses().resampleCubeSpatial_spatial(
+                max_level.srdd.rdd(), crs, layout, resample_method, None)
 
         layer = self._create_tilelayer(level_rdd_tuple._2(),max_level.layer_type,target.pyramid.max_zoom)
         pyramid = Pyramid({target.pyramid.max_zoom:layer})
@@ -1934,7 +1947,7 @@ class GeopysparkDataCube(DriverDataCube):
 
             return latlng_extent.xmin, latlng_extent.ymin, latlng_extent.xmax, latlng_extent.ymax
 
-        def return_netcdf_items(java_items, bands, nodata) -> dict:
+        def return_netcdf_items(java_items, nodata) -> dict:
             items = {}
 
             for java_item in java_items:
@@ -1952,8 +1965,18 @@ class GeopysparkDataCube(DriverDataCube):
                         "bbox": bbox,
                         "geometry": geometry,
                     }
-                    if bands is not None:
-                        assets[asset_key]["bands"] = bands
+                    bands = []
+                    asset_metadata = asset.metadata()
+                    for band in asset_metadata.get("bands"):
+                        band = dict(band)
+                        if "statistics" in band:
+                            band["statistics"] = dict(band.get("statistics"))
+                        bands.append(band)
+                    assets[asset_key]["bands"] = bands
+                    assets[asset_key]["proj:bbox"] = tuple(asset_metadata.get("proj:bbox"))
+                    assets[asset_key]["proj:shape"] = tuple(asset_metadata.get("proj:shape"))
+                    assets[asset_key]["proj:epsg"] = asset_metadata.get("proj:epsg")
+                    assets[asset_key] = dict_no_none(assets[asset_key])
 
                 items[java_item.id()] = {
                     "id": java_item.id(),
@@ -2038,6 +2061,8 @@ class GeopysparkDataCube(DriverDataCube):
                 max_level = max_level.to_spatial_layer()
 
             if format == "GTIFF":
+                compression = format_options.get("compression", "deflate")
+                predictor = format_options.get("predictor", 1)
                 zlevel = format_options.get("ZLEVEL", 6)
                 tile_size = format_options.get("tile_size")
 
@@ -2064,6 +2089,7 @@ class GeopysparkDataCube(DriverDataCube):
 
                 if stitch:
                     gtiff_options = get_jvm().org.openeo.geotrellis.geotiff.GTiffOptions()
+                    gtiff_options.setCompression(compression, zlevel, predictor)
                     if filename_prefix.isDefined():
                         gtiff_options.setFilenamePrefix(filename_prefix.get())
                     gtiff_options.setResampleMethod(overview_resample)
@@ -2139,6 +2165,7 @@ class GeopysparkDataCube(DriverDataCube):
                 else:
                     _log.info("save_result: saveRDD")
                     gtiff_options = get_jvm().org.openeo.geotrellis.geotiff.GTiffOptions()
+                    gtiff_options.setCompression(compression, zlevel, predictor)
                     if filename_prefix.isDefined():
                         gtiff_options.setFilenamePrefix(filename_prefix.get())
                     gtiff_options.setSeparateAssetPerBand(separate_asset_per_band)
@@ -2370,6 +2397,7 @@ class GeopysparkDataCube(DriverDataCube):
             nodata = max_level.layer_metadata.no_data_value
             global_metadata = format_options.get("file_metadata",{})
             zlevel = format_options.get("ZLEVEL", 6)
+            add_bands_statistics = format_options.get("add_bands_statistics",False)
             for band_name, band_metadata in bands_metadata.items():
                 for tag, value in band_metadata.items():
                     bands_metadata[band_name][tag] = str(value)
@@ -2381,6 +2409,12 @@ class GeopysparkDataCube(DriverDataCube):
                     geometries = GeometryCollection(geometries.geoms)
                 projected_polygons = to_projected_polygons(get_jvm(), geometries)
                 labels = self.get_labels(geometries,feature_id_property)
+                options = get_jvm().org.openeo.geotrellis.netcdf.NetCDFOptions()
+                options.setBandNames(band_names)
+                options.setDimensionNames(dim_names)
+                options.setAttributes(global_metadata)
+                options.setBandsMetadata(bands_metadata)
+                options.setAddBandStatistics(add_bands_statistics)
                 if max_level.layer_type != gps.LayerType.SPATIAL:
                     _log.debug(f"projected_polygons carries {len(projected_polygons.polygons())} polygons")
                     java_items = get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.saveSamples(
@@ -2388,10 +2422,7 @@ class GeopysparkDataCube(DriverDataCube):
                         save_directory,
                         projected_polygons,
                         labels,
-                        band_names,
-                        dim_names,
-                        global_metadata,
-                        bands_metadata,
+                        options,
                         filename_prefix,
                     )
                 else:
@@ -2400,26 +2431,24 @@ class GeopysparkDataCube(DriverDataCube):
                         save_directory,
                         projected_polygons,
                         labels,
-                        band_names,
-                        dim_names,
-                        global_metadata,
-                        bands_metadata,
+                        options,
                         filename_prefix,
                     )
 
-                return return_netcdf_items(java_items, bands, nodata)
+                return return_netcdf_items(java_items, nodata)
             else:
                 originalName = pathlib.Path(filename)
                 filename_tmp = format_options.get("filename_prefix", "openEO") + ".nc" if originalName.name == "out" else originalName.name
                 if not stitch:
                     filename = save_directory + "/" + filename_tmp
+                    options = get_jvm().org.openeo.geotrellis.netcdf.NetCDFOptions()
+                    options.setBandNames(band_names)
+                    options.setDimensionNames(dim_names)
+                    options.setAttributes(global_metadata)
+                    options.setBandsMetadata(bands_metadata)
+                    options.setZLevel(zlevel)
+                    options.setAddBandStatistics(add_bands_statistics)
                     if strict_cropping:
-                        options = get_jvm().org.openeo.geotrellis.netcdf.NetCDFOptions()
-                        options.setBandNames(band_names)
-                        options.setDimensionNames(dim_names)
-                        options.setAttributes(global_metadata)
-                        options.setBandsMetadata(bands_metadata)
-                        options.setZLevel(zlevel)
                         options.setCropBounds(crop_extent)
                         java_items = get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.writeRasters(
                             max_level.srdd.rdd(),
@@ -2430,23 +2459,15 @@ class GeopysparkDataCube(DriverDataCube):
                             java_items = get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.saveSingleNetCDF(
                                 max_level.srdd.rdd(),
                                 filename,
-                                band_names,
-                                dim_names,
-                                global_metadata,
-                                bands_metadata,
-                                zlevel,
+                                options,
                             )
                         else:
                             java_items = get_jvm().org.openeo.geotrellis.netcdf.NetCDFRDDWriter.saveSingleNetCDFSpatial(
                                 max_level.srdd.rdd(),
                                 filename,
-                                band_names,
-                                dim_names,
-                                global_metadata,
-                                bands_metadata,
-                                zlevel,
+                                options,
                             )
-                    return return_netcdf_items(java_items, bands, nodata)
+                    return return_netcdf_items(java_items, nodata)
 
                 else:
                     if not tiled:
@@ -2887,7 +2908,7 @@ class GeopysparkDataCube(DriverDataCube):
         mission_id = options.get("mission_id") or supported_missons[0]
         append_debug_bands = bool(options.get("append_debug_bands"))
 
-        def get_float(d: dict, key: str, default: float = np.NaN) -> float:
+        def get_float(d: dict, key: str, default: float = np.nan) -> float:
             value = d.get(key)
             if value is None:
                 value = default
@@ -2931,6 +2952,28 @@ class GeopysparkDataCube(DriverDataCube):
             )
         )
         return atmo_corrected
+
+    @callsite
+    def aspect(self):
+        new_metadata = self.metadata
+        if self.metadata.has_band_dimension():
+            band_names = [band_name + '_aspect' for band_name in self.metadata.band_names]
+            new_metadata = self.metadata.with_new_band_names(band_names)
+        def compute_aspect(rdd, level):
+            pr = gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses()
+            return pr.aspect(rdd)
+        return self._apply_to_levels_geotrellis_rdd(compute_aspect, metadata=new_metadata)
+
+    @callsite
+    def slope(self):
+        new_metadata = self.metadata
+        if self.metadata.has_band_dimension():
+            band_names = [band_name + '_slope' for band_name in self.metadata.band_names]
+            new_metadata = self.metadata.with_new_band_names(band_names)
+        def compute_slope(rdd, level):
+            pr = gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses()
+            return pr.slope(rdd)
+        return self._apply_to_levels_geotrellis_rdd(compute_slope, metadata=new_metadata)
 
     def sar_backscatter(self, args: SarBackscatterArgs) -> 'GeopysparkDataCube':
         # Nothing to do: the actual SAR backscatter processing already happened in `load_collection`

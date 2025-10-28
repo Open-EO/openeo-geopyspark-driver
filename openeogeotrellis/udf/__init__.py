@@ -4,18 +4,19 @@ import logging
 import os
 import shutil
 import subprocess
+import typing
 import sys
 import tempfile
 import textwrap
-import time
 from pathlib import Path
-from typing import Dict, Iterable, Iterator, Optional, Tuple, Union
+from typing import Dict, Iterable, Iterator, Optional, Tuple, Union, Set
 
 import openeo.udf
 import pyspark
 from openeo.udf.run_code import extract_udf_dependencies
 from openeo.util import TimingLogger
 from openeo_driver.errors import OpenEOApiException
+from openeo_driver.processes import ProcessRegistry
 from openeo_driver.processgraph import get_process_definition_from_url
 from openeo_driver.util.http import is_http_url
 
@@ -59,9 +60,7 @@ def run_udf_code(code: str, data: openeo.udf.UdfData, require_executor_context: 
             context = python_udf_dependency_context_from_archive(archive=udf_python_dependencies_archive_path)
         else:
             # TODO: make this an exception instead of warning?
-            _log.warning(
-                f"Empty/non-existent UDF_PYTHON_DEPENDENCIES_ARCHIVE_PATH {udf_python_dependencies_archive_path}"
-            )
+            _log.info(f"Empty/non-existent UDF_PYTHON_DEPENDENCIES_ARCHIVE_PATH {udf_python_dependencies_archive_path}")
 
     with context:
         return openeo.udf.run_udf_code(code=code, data=data)
@@ -77,39 +76,84 @@ def assert_running_in_executor():
         raise RuntimeError("Not running in PySpark executor context.")
 
 
-def collect_udfs(process_graph: dict) -> Iterator[Tuple[str, str, Union[str, None]]]:
+class UdfRuntimeSpecified(typing.NamedTuple):
+    """
+    UDF runtime as specified in a `run_udf` process in a process graph
+    (runtime is required, but version is optional)
+    """
+
+    # Runtime name, e.g. "Python", "Python-Jep", ...
+    name: str
+
+    # Runtime version (if explicitly specified), e.g. "3.8", "3.11"
+    version: Optional[str] = None
+
+
+class UdfSpecified(typing.NamedTuple):
+    """
+    UDF code and runtime info as specified in a `run_udf` process in a process graph
+    """
+
+    # UDF source code
+    code: str
+
+    # UDF runtime info
+    runtime: UdfRuntimeSpecified
+
+
+def collect_udfs(process_graph: dict, process_registry: Optional[ProcessRegistry] = None) -> Iterator[UdfSpecified]:
     """
     Recursively traverse a process graph in flat graph representation and collect UDFs.
 
-    :return: Iterator of (udf, runtime, version) tuples
+    :return: Iterator of `UdfSpecified` entries (containing UDF source, code, runtime name and version)
     """
     for node_id, node in process_graph.items():
-        if node["process_id"] == "run_udf":
-            yield tuple(node["arguments"].get(k) for k in ["udf", "runtime", "version"])
-        for argument_id, argument in node.get("arguments", {}).items():
+        process_id = node["process_id"]
+        arguments = node.get("arguments", {})
+        namespace = node.get("namespace")
+
+        if process_id == "run_udf":
+            yield UdfSpecified(
+                code=arguments.get("udf"),
+                runtime=UdfRuntimeSpecified(
+                    name=arguments.get("runtime"),
+                    version=arguments.get("version"),
+                ),
+            )
+
+        for argument_id, argument in arguments.items():
             if isinstance(argument, dict) and "process_graph" in argument:
                 yield from collect_udfs(argument["process_graph"])
 
-        if "namespace" in node and is_http_url(node["namespace"]):
+        # Try to detect UDF usage from remote process definitions (URL as namespace)
+        if namespace and is_http_url(namespace):
             try:
-                process_definition = get_process_definition_from_url(
-                    process_id=node["process_id"], url=node["namespace"]
-                )
+                process_definition = get_process_definition_from_url(process_id=process_id, url=namespace)
                 yield from collect_udfs(process_definition.process_graph)
             except Exception as e:
                 _log.warning(f"collect_udf: skipping failure on {node=} ({node_id=}): {e!r}")
 
+        # Try to detect UDF usage hidden in custom processes from the process registry
+        # TODO: this is intentionally limited to namespaced custom processes. Also support namespace=None?
+        if namespace and process_registry and process_registry.contains(name=process_id, namespace=namespace):
+            try:
+                spec = process_registry.get_spec(name=process_id, namespace=namespace)
+                if pg := spec.get("process_graph"):
+                    yield from collect_udfs(pg)
+            except Exception as e:
+                _log.warning(f"collect_udf: skipping failure on {node=} ({node_id=}): {e!r}")
 
-def collect_python_udf_dependencies(process_graph: dict) -> Dict[Tuple[str, str], set]:
+
+def collect_python_udf_dependencies(process_graph: dict) -> Dict[UdfRuntimeSpecified, Set[str]]:
     """
     Collect dependencies (imports) from Python UDFs in a given process graph,
 
-    :return: Dictionary of dependencies (set) per (runtime, version) tuple
+    :return: Dictionary of dependencies (set) per `UdfRuntimeSpecified`
     """
     dependencies = collections.defaultdict(set)
-    for udf, runtime, version in collect_udfs(process_graph):
-        if runtime.lower().startswith("python"):
-            dependencies[(runtime, version)].update(extract_udf_dependencies(udf) or [])
+    for udf in collect_udfs(process_graph):
+        if udf.runtime.name.lower().startswith("python"):
+            dependencies[udf.runtime].update(extract_udf_dependencies(udf.code) or [])
 
     return dict(dependencies)
 

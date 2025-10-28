@@ -3,8 +3,8 @@ import attrs
 DEFAULT_NAMESPACE = "calrissian-demo-project"
 DEFAULT_INPUT_STAGING_IMAGE = "alpine:3"
 # TODO #1007 proper calrissian image? Official one doesn't work due to https://github.com/Duke-GCB/calrissian/issues/124#issuecomment-947008286
-DEFAULT_CALRISSIAN_IMAGE = "ghcr.io/duke-gcb/calrissian/calrissian:0.17.1"
-DEFAULT_SECURITY_CONTEXT = dict(run_as_user=1000, run_as_group=1000)
+DEFAULT_CALRISSIAN_IMAGE = "ghcr.io/duke-gcb/calrissian/calrissian:0.18.1"
+DEFAULT_SECURITY_CONTEXT = dict(run_as_user=1000, fs_group=0, run_as_group=0)
 DEFAULT_CALRISSIAN_S3_BUCKET = "calrissian"
 DEFAULT_CALRISSIAN_BASE_ARGUMENTS = (
     "--debug",
@@ -13,6 +13,7 @@ DEFAULT_CALRISSIAN_BASE_ARGUMENTS = (
     "--max-cores",
     "4",
     "--force-docker-pull",
+    # "--leave-container"  # For debugging purposes
 )
 
 

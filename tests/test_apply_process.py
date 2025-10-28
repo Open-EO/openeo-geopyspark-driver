@@ -19,7 +19,6 @@ from openeogeotrellis.geopysparkdatacube import (
     GeopysparkDataCube,
 )
 from openeogeotrellis.processgraphvisiting import GeotrellisTileProcessGraphVisitor
-from openeogeotrellis.service_registry import InMemoryServiceRegistry
 
 
 def _build_metadata(bands: List[str] = ["B01", "B02"]) -> GeopysparkCubeMetadata:
@@ -368,6 +367,23 @@ def create_red_nir_layer():
     imagecollection = GeopysparkDataCube(pyramid=pyramid, metadata=metadata)
     return imagecollection
 
+def create_elevation_layer():
+    elevation_1, elevation_2 = np.mgrid[0:10, 0:10]
+    layer = _create_spacetime_layer(cells=np.array([[elevation_1], [elevation_2]]))
+    pyramid = gps.Pyramid({0: layer})
+    metadata = GeopysparkCubeMetadata(
+        {
+            "cube:dimensions": {
+                "x": {"type": "spatial", "axis": "x"},
+                "y": {"type": "spatial", "axis": "y"},
+                "bands": {"type": "bands", "values": ["elevation_1", "elevation_2"]},
+            }
+        }
+    )
+    imagecollection = GeopysparkDataCube(pyramid=pyramid, metadata=metadata)
+    return imagecollection
+
+
 
 def test_linear_scale_range():
     imagecollection = create_red_nir_layer()
@@ -519,3 +535,23 @@ def test_merge_cubes_error():
         cube1 = GeopysparkDataCube(pyramid=gps.Pyramid({0: layer1}), metadata=metadata1)
         cube2 = GeopysparkDataCube(pyramid=gps.Pyramid({0: layer2}), metadata=metadata2)
         cube1.merge_cubes(cube2)
+
+def test_aspect():
+    elevation_cube = create_elevation_layer()
+    aspect_cube = elevation_cube.aspect()
+    assert aspect_cube.metadata.band_names == ['elevation_1_aspect', 'elevation_2_aspect']
+    cells = aspect_cube.pyramid.levels[0].to_spatial_layer(now).lookup(0, 0)[0].cells
+    cells_of_elevation_1_aspect = cells[0]
+    assert cells_of_elevation_1_aspect[2, 2] == 0
+    cells_of_elevation_2_aspect = cells[1]
+    assert cells_of_elevation_2_aspect[2, 2] == 270
+
+def test_slope():
+    elevation_cube = create_elevation_layer()
+    slope_cube = elevation_cube.slope()
+    assert slope_cube.metadata.band_names == ['elevation_1_slope', 'elevation_2_slope']
+    cells = slope_cube.pyramid.levels[0].to_spatial_layer(0).lookup(0, 0)[0].cells
+    cells_of_elevation_1_slope = cells[0]
+    assert pytest.approx(cells_of_elevation_1_slope[5, 5], abs=0.0001) == 0.0005
+    cells_of_elevation_2_slope = cells[1]
+    assert pytest.approx(cells_of_elevation_2_slope[5, 5], abs=0.0001) == 0.0005

@@ -15,7 +15,7 @@ def create(load_params: LoadParameters, env: EvalEnv, jvm: JVMView):
     feature_flags = load_params.get("featureflags", {})
     tilesize = feature_flags.get("tilesize", 256)
     default_temporal_resolution = "ByDay"
-    default_indexReduction = 6
+    default_indexReduction = 7
     # if len(load_params.process_types) == 1 and ProcessType.GLOBAL_TIME in load_params.process_types:
     # for pure timeseries processing, adjust partitioning strategy
     # default_temporal_resolution = "None"
@@ -23,6 +23,7 @@ def create(load_params: LoadParameters, env: EvalEnv, jvm: JVMView):
     indexReduction = feature_flags.get("indexreduction", default_indexReduction)
     temporalResolution = feature_flags.get("temporalresolution", default_temporal_resolution)
     datacubeParams = jvm.org.openeo.geotrelliscommon.DataCubeParameters()
+    datacubeParams.setPartitionerIndexReduction(default_indexReduction)
     # WTF simple assignment to a var in a scala class doesn't work??
     getattr(datacubeParams, "tileSize_$eq")(tilesize)
     getattr(datacubeParams, "maskingStrategyParameters_$eq")(load_params.custom_mask)

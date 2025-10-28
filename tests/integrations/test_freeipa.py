@@ -2,6 +2,7 @@ import base64
 import textwrap
 from pathlib import Path
 from typing import List, Optional
+from unittest import mock
 
 import dirty_equals
 import pytest
@@ -11,7 +12,9 @@ from openeogeotrellis.integrations.freeipa import (
     get_freeipa_server_from_env,
     get_verify_tls_from_env,
     temp_keytab_from_env,
+    acquire_gssapi_creds,
 )
+from openeogeotrellis.testing import skip_if_package_not_available
 
 
 class TestFreeIpaClient:
@@ -200,3 +203,15 @@ def test_temp_keytab_from_env(monkeypatch):
         assert path.read_text(encoding="utf8") == "Ola señor"
 
     assert not path.exists()
+
+
+@skip_if_package_not_available("gssapi")
+@mock.patch("gssapi.Credentials")
+def test_acquire_gssapi_creds_memory_per_principal(Credentials):
+    acquire_gssapi_creds(principal="foo@BAR.EXAMPLE", keytab_path="/tmp/foo.keytab")
+    acquire_gssapi_creds(principal="foo-admin@BAZZ.EXAMPLE", keytab_path="/tmp/admin.keytab")
+
+    assert [call.kwargs["store"] for call in Credentials.call_args_list] == [
+        {"client_keytab": "FILE:/tmp/foo.keytab", "ccache": "MEMORY:fooBAREXAMPLE"},
+        {"client_keytab": "FILE:/tmp/admin.keytab", "ccache": "MEMORY:fooadminBAZZEXAMPLE"},
+    ]
