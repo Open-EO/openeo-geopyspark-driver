@@ -3659,7 +3659,7 @@ def test_export_workspace_derived_from(tmp_path, requests_mock, mock_s3_bucket, 
             derived_from_document_link = links[0]
 
             assert derived_from_document_link["rel"] == "custom"  # TODO
-            assert derived_from_document_link["type"] == "application/json"  # TODO
+            assert derived_from_document_link["type"] == "application/geo+json"
             assert (
                 derived_from_document_link["href"] == f"s3://{mock_s3_bucket.name}/{merge}/unknown-job_input_items.json"
             )
@@ -3702,7 +3702,7 @@ def test_export_workspace_derived_from(tmp_path, requests_mock, mock_s3_bucket, 
     derived_from_document_file = tmp_path / "unknown-job_input_items.json"
     with open(derived_from_document_file, "w") as f:
         f.write("your derived_from document here")  # actual contents do not matter: Scala will write this file
-    metadata_tracker.addInternalFile(str(derived_from_document_file), "application/json")
+    metadata_tracker.addInternalFile(str(derived_from_document_file), "application/geo+json")
 
     metadata_file = tmp_path / "job_metadata.json"
 
@@ -3731,15 +3731,11 @@ def test_export_workspace_derived_from(tmp_path, requests_mock, mock_s3_bucket, 
 
             # these should get rendered in the job result items STAC documents
             for item in results_metadata["items"]:
-                exposable_link_hrefs = [
-                    link["href"] for link in item.get("links", []) if link.get("_expose_internal", False)
-                ]
-                assert (
-                    len(exposable_link_hrefs) == 1
-                ), f"expected one link to an ItemCollection but got {exposable_link_hrefs}"
-                assert (
-                    Path(exposable_link_hrefs[0]).name == "unknown-job_input_items.json"
-                )  # TODO: currently assumed to be an absolute file path
+                exposable_links = [link for link in item.get("links", []) if link.get("_expose_internal", False)]
+                assert len(exposable_links) == 1, f"expected one link to an ItemCollection but got {exposable_links}"
+
+                assert (Path(exposable_links[0]["href"]).name == "unknown-job_input_items.json")  # TODO: currently assumed to be an absolute file path
+                assert exposable_links[0]["type"] == "application/geo+json"
         else:
             # these get rendered in the /jobs/<job_id>/results STAC Collection document
             assert derived_from_hrefs == ["http://s2.test/p1", "http://s2.test/p2"]
@@ -3807,12 +3803,15 @@ def test_input_item_collection(tmp_path, metadata_tracker):
 
     assert len(internal_links) == 1, internal_links
     derived_from_document_link = internal_links[0]
+    print(json.dumps(derived_from_document_link, indent=2))
     assert derived_from_document_link["rel"] == "custom"
-    assert derived_from_document_link["type"] == "application/json"
+    assert derived_from_document_link["type"] == "application/geo+json"
 
     with open(derived_from_document_link["href"]) as f:
         derived_from_document = json.load(f)
 
-    print(derived_from_document)
+    print(json.dumps(derived_from_document, indent=2))
     assert len(derived_from_document)
-    assert all(item["type"] == "Feature" for item in derived_from_document)
+
+    assert derived_from_document["type"] == "FeatureCollection"
+    assert all(item["type"] == "Feature" for item in derived_from_document["features"])
