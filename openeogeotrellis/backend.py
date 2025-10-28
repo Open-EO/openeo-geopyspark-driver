@@ -2024,6 +2024,11 @@ class GpsBatchJobs(backend.BatchJobs):
 
             batch_job_cfg_secret_name = k8s_get_batch_job_cfg_secret_name(spark_app_id)
 
+            max_result_size = '5g'
+            from pyspark.util import _parse_memory
+            if _parse_memory(max_result_size) < _parse_memory(options.executor_memory):
+                max_result_size = options.executor_memory
+
             sparkapplication_dict = k8s_render_manifest_template(
                 "sparkapplication.yaml.j2",
                 job_name=spark_app_id,
@@ -2036,6 +2041,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 job_id_full=job_id,
                 driver_cores=str(options.driver_cores),
                 driver_memory=options.driver_memory,
+                max_result_size=max_result_size,
                 driver_memory_overhead=options.driver_memory_overhead,
                 executor_cores=options.executor_cores,
                 executor_corerequest=executor_corerequest,
