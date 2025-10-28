@@ -13,6 +13,7 @@ import kubernetes.client
 import requests
 import yaml
 from openeo.util import ContextTimer
+from openeo_driver.backend import ErrorSummary
 from openeo_driver.config import ConfigException
 from openeo_driver.utils import generate_unique_id
 from openeo_driver.utils import EvalEnv
@@ -283,9 +284,19 @@ class CalrissianJobLauncher:
             raise ConfigException("No calrissian (sub)config.")
 
         # To avoid custom logic in every calrissian container the default environment variables for S3 access are set.
-        env_vars = CalrissianJobLauncher.get_s3proxy_access_env_vars(
-            user_id=str(env.get("user", "unknown")) if env is not None else "", correlation_id=correlation_id
-        )
+        try:
+            env_vars = CalrissianJobLauncher.get_s3proxy_access_env_vars(
+                user_id=str(env.get("user", "unknown")) if env is not None else "", correlation_id=correlation_id
+            )
+        except Exception as e:
+            detail = f"{e!r}"
+            if env:
+                error_summary = env.backend_implementation.summarize_exception(e)
+                if isinstance(error_summary, ErrorSummary):
+                    detail = error_summary.summary
+            _log.warning(f"Failed to get s3 credentials: {detail}")
+            env_vars = []
+
         launch_config = CalrissianLaunchConfigBuilder(
             config=config,
             correlation_id=correlation_id,
