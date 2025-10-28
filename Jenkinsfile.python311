@@ -18,7 +18,7 @@ pythonPipeline {
     /* Set pytest `basetemp` inside Jenkins workspace. (Note: this is intentionally Jenkins specific, instead of a global pytest.ini thing.) */
     "PYTEST_DEBUG_TEMPROOT=pytest-tmp",
     "PYTHON_VERSION=3.11",
-    "OPENEO_JARS_VARIANT=spark35-scala213",
+    "OPENEO_JARS_VARIANT=spark4-scala213",
   ]
   python_version = ["3.11"]
   docker_registry = 'vito-docker-private.artifactory.vgt.vito.be'
@@ -26,12 +26,12 @@ pythonPipeline {
   wheel_repo = ''
   wheel_repo_dev = ''
   test_module_name = 'openeogeotrellis'
-  extras_require = 'dev'
+  extras_require = 'dev,spark4'
   upload_dev_wheels = false
   build_wheel = false
   pep440 = true
   venv_rpm_deps = ['gcc-c++', 'kstart', 'krb5-devel']
-  custom_test_image = 'vito-docker.artifactory.vgt.vito.be/almalinux9-spark-py-openeo:3.5.10'
+  custom_test_image = 'vito-docker.artifactory.vgt.vito.be/almalinux9-spark4-py311-openeo:1.0.9'
   extra_container_volumes = [
     '/data/MTDA:/data/MTDA:ro'
   ]

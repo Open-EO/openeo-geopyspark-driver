@@ -69,9 +69,10 @@ setup(
     ],
     tests_require=tests_require,
     install_requires=[
+        # TODO: avoid excessive `python_version` based version constraints. https://github.com/Open-EO/openeo-geopyspark-driver/issues/1395
         "openeo>=0.43.0.dev",
         "openeo_driver>=0.136.0a1.dev",
-        'pyspark<4.0.0; python_version>"3.8"',
+        'pyspark>=4.0.0; python_version>"3.8"',
         'pyspark>=3.5.0,<4.0.0; python_version<="3.8"',
         'geopyspark_openeo==0.4.3.post1',
         # rasterio is an undeclared but required dependency for geopyspark
@@ -127,6 +128,8 @@ setup(
             "PyYAML",
         ],
         "yarn": yarn_require,
+        "spark35": ["pyspark>=3.5.0,<4.0.0"],
+        "spark4": ["pyspark>=4.0.0,<5.0.0"],
     },
     entry_points={
         "console_scripts": [

@@ -5,6 +5,7 @@ import dataclasses
 import logging
 import textwrap
 import time
+from copy import deepcopy
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple, Union
 
@@ -12,10 +13,12 @@ import kubernetes.client
 import requests
 import yaml
 from openeo.util import ContextTimer
+from openeo_driver.backend import ErrorSummary
 from openeo_driver.config import ConfigException
 from openeo_driver.utils import generate_unique_id
+from openeo_driver.utils import EvalEnv
 
-from openeogeotrellis.config import get_backend_config
+from openeogeotrellis.config import get_backend_config, s3_config
 from openeogeotrellis.config.integrations.calrissian_config import (
     DEFAULT_CALRISSIAN_BASE_ARGUMENTS,
     DEFAULT_CALRISSIAN_IMAGE,
@@ -26,6 +29,7 @@ from openeogeotrellis.config.integrations.calrissian_config import (
 )
 from openeogeotrellis.util.runtime import get_job_id, get_request_id
 from openeogeotrellis.utils import s3_client
+from openeogeotrellis.integrations.s3proxy import sts
 
 try:
     # TODO #1060 importlib.resources on Python 3.8 is pretty limited so we need backport
@@ -37,6 +41,66 @@ except ImportError:
 
 
 _log = logging.getLogger(__name__)
+
+
+class CalrissianLaunchConfigBuilder:
+    """
+    A helper to create config files that can be staged within a path that is mounted in the container that
+    issues the calrissian command. It also helps to provide the calrissian arguments to use these files.
+    """
+
+    _BASE_PATH = "/calrissian/config"
+    _VOLUME_NAME = "calrissian-launch-config"
+    _ENVIRONMENT_FILE = "environment.yaml"
+
+    def __init__(self, *, config: CalrissianConfig, correlation_id: str, env_vars: Optional[dict] = None):
+        self.correlation_id = correlation_id
+        self._config = config
+        self._env_vars = deepcopy(env_vars or {})
+
+    def get_files_dict(self):
+        """
+        Get a dictionary that maps filenames that are relative to the /calrissian/config directory to their content
+        """
+        return {self._ENVIRONMENT_FILE: yaml.safe_dump(self._env_vars)}
+
+    def get_k8s_manifest(self, job: str):
+        return kubernetes.client.V1Secret(
+            metadata=kubernetes.client.V1ObjectMeta(
+                name=self.correlation_id, namespace=self._config.namespace, labels={"calrissian-job": job}
+            ),
+            string_data=self.get_files_dict(),
+        )
+
+    def create_secret_for_files(self, job: str):
+        kubernetes.client.CoreV1Api().create_namespaced_secret(
+            namespace=self._config.namespace, body=self.get_k8s_manifest(job=job)
+        )
+        _log.debug(f"Secret created for calrissian {self.correlation_id=}")
+
+    def cleanup_secret_for_files(self):
+        try:
+            kubernetes.client.CoreV1Api().delete_namespaced_secret(
+                name=self.correlation_id,
+                namespace=self._config.namespace,
+            )
+        except Exception as e:
+            _log.warning(f"Exception when cleaning up calrissian secret {self.correlation_id}", exc_info=e)
+
+    def get_volume_mount(self) -> kubernetes.client.V1VolumeMount:
+        return kubernetes.client.V1VolumeMount(name=self._VOLUME_NAME, mount_path=self._BASE_PATH, read_only=True)
+
+    def get_volume(self) -> kubernetes.client.V1Volume:
+        return kubernetes.client.V1Volume(
+            name=self._VOLUME_NAME,
+            secret=kubernetes.client.V1SecretVolumeSource(
+                secret_name=self.correlation_id,
+                default_mode=0o444,
+            ),
+        )
+
+    def get_calrissian_args(self) -> list[str]:
+        return ["--pod-env-vars", f"{self._BASE_PATH}/{self._ENVIRONMENT_FILE}"]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -136,6 +200,7 @@ class CalrissianJobLauncher:
         self,
         *,
         namespace: str,
+        launch_config: CalrissianLaunchConfigBuilder,
         name_base: Optional[str] = None,
         s3_bucket: str = DEFAULT_CALRISSIAN_S3_BUCKET,
         calrissian_image: str = DEFAULT_CALRISSIAN_IMAGE,
@@ -153,6 +218,7 @@ class CalrissianJobLauncher:
         self._input_staging_image = input_staging_image
         self._backoff_limit = backoff_limit
         self._calrissian_base_arguments = list(calrissian_base_arguments)
+        self._calrissian_launch_config = launch_config
 
         self._volume_input = VolumeInfo(
             name="calrissian-input-data",
@@ -175,7 +241,37 @@ class CalrissianJobLauncher:
         )
 
     @staticmethod
-    def from_context() -> CalrissianJobLauncher:
+    def get_s3proxy_access_env_vars(user_id: str, correlation_id: str) -> dict:
+        """
+        Get environment variables which configure S3 SDKs to allow access to earth observation data provided via an
+        S3 proxy/endpoint
+        """
+        s3_endpoint = s3_config.AWSConfig.get_s3_endpoint_url()
+        sts_endpoint = s3_config.AWSConfig.get_sts_endpoint_url()
+
+        credential_session_details = {
+            "role_arn": "arn:openeo:iam:::role/eodata",
+            "session_name": "calrissian-eodata-access",
+        }
+
+        if get_job_id(default=None) is None:
+            # Synchronous request so we are on webappdriver
+            s3_credentials = sts.get_job_aws_credentials_for_proxy(
+                job_id=correlation_id, user_id=user_id, **credential_session_details
+            )
+        else:
+            s3_credentials = sts.get_aws_credentials_for_proxy_for_running_job(**credential_session_details)
+
+        return {
+            "AWS_ENDPOINT_URL_S3": s3_endpoint,
+            "AWS_ENDPOINT_URL_STS": sts_endpoint,
+            "AWS_REGION": "eodata",
+            "AWS_VIRTUAL_HOSTING": "FALSE",
+            **s3_credentials.as_env_vars(),
+        }
+
+    @staticmethod
+    def from_context(env: Optional[EvalEnv] = None) -> CalrissianJobLauncher:
         """
         Factory for creating a CalrissianJobLauncher from the current context
         (e.g. using job_id/request_id for base name).
@@ -187,8 +283,29 @@ class CalrissianJobLauncher:
         if not config:
             raise ConfigException("No calrissian (sub)config.")
 
+        # To avoid custom logic in every calrissian container the default environment variables for S3 access are set.
+        try:
+            env_vars = CalrissianJobLauncher.get_s3proxy_access_env_vars(
+                user_id=str(env.get("user", "unknown")) if env is not None else "", correlation_id=correlation_id
+            )
+        except Exception as e:
+            detail = f"{e!r}"
+            if env:
+                error_summary = env.backend_implementation.summarize_exception(e)
+                if isinstance(error_summary, ErrorSummary):
+                    detail = error_summary.summary
+            _log.warning(f"Failed to get s3 credentials: {detail}")
+            env_vars = []
+
+        launch_config = CalrissianLaunchConfigBuilder(
+            config=config,
+            correlation_id=correlation_id,
+            env_vars=env_vars,
+        )
+
         return CalrissianJobLauncher(
             namespace=config.namespace,
+            launch_config=launch_config,
             name_base=name_base,
             s3_bucket=config.s3_bucket,
             security_context=config.security_context,
@@ -301,6 +418,7 @@ class CalrissianJobLauncher:
 
         calrissian_arguments = (
             self._calrissian_base_arguments
+            + self._calrissian_launch_config.get_calrissian_args()
             + [
                 "--tmp-outdir-prefix",
                 tmp_dir,
@@ -342,7 +460,8 @@ class CalrissianJobLauncher:
                     name=volume_info.name, mount_path=volume_info.mount_path, read_only=read_only
                 )
                 for volume_info, read_only in volumes
-            ],
+            ]
+            + [self._calrissian_launch_config.get_volume_mount()],
             env=container_env_vars,
         )
         manifest = kubernetes.client.V1Job(
@@ -364,7 +483,8 @@ class CalrissianJobLauncher:
                                 ),
                             )
                             for volume_info, read_only in volumes
-                        ],
+                        ]
+                        + [self._calrissian_launch_config.get_volume()],
                     )
                 ),
                 backoff_limit=self._backoff_limit,
@@ -455,6 +575,8 @@ class CalrissianJobLauncher:
 
         :param cwl_content: CWL content as a string.
         :param cwl_arguments: arguments to pass to the CWL workflow.
+        :param env_vars: environment variables set to the pod that runs calrissian these are not passsed to pods spawned
+                         by calrissian.
         :return: output of the CWL workflow as a string.
         """
         # Input staging
@@ -467,7 +589,12 @@ class CalrissianJobLauncher:
             cwl_arguments=cwl_arguments,
             env_vars=env_vars,
         )
+
+        # Calrissian secret for launch config file
+        self._calrissian_launch_config.create_secret_for_files(job=cwl_manifest.metadata.name)
+
         cwl_job = self.launch_job_and_wait(manifest=cwl_manifest)
+        self._calrissian_launch_config.cleanup_secret_for_files()
 
         # Collect results
         # TODO #1126 leverage relative_cwl_outputs_listing to collect results (instead of hardcoding output_paths)

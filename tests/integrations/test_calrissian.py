@@ -1,3 +1,4 @@
+import datetime
 import re
 from pathlib import Path
 from typing import Dict, Iterator
@@ -8,6 +9,7 @@ import dirty_equals
 import kubernetes.client
 import moto
 import pytest
+import yaml
 
 from openeogeotrellis.config.integrations.calrissian_config import (
     CalrissianConfig,
@@ -17,9 +19,11 @@ from openeogeotrellis.integrations.calrissian import (
     CalrissianJobLauncher,
     CalrissianS3Result,
     CwLSource,
+    CalrissianLaunchConfigBuilder,
 )
 from openeogeotrellis.testing import gps_config_overrides
 from openeogeotrellis.util.runtime import ENV_VAR_OPENEO_BATCH_JOB_ID
+from openeogeotrellis.integrations.s3proxy.sts import STSCredentials
 
 
 @pytest.fixture
@@ -34,17 +38,49 @@ def generate_unique_id_mock() -> Iterator[str]:
 
 class TestCalrissianJobLauncher:
     NAMESPACE = "test-calrissian"
+    BUCKET = "test-calrissian-bucket"
+    AWS_ACCESS_KEY_ID = "akid"
+    AWS_SECRET_ACCESS_KEY = "secret"
+    AWS_SESSION_TOKEN = "token"
+    JOB_NAME = "j-hello123"
 
     @pytest.fixture
     def s3_calrissian_bucket(self):
         with moto.mock_aws():
             s3 = boto3.client("s3")
-            bucket = "test-calrissian-bucket"
+            bucket = self.BUCKET
             s3.create_bucket(Bucket=bucket)
             yield bucket
 
-    def test_create_input_staging_job_manifest(self, generate_unique_id_mock, s3_calrissian_bucket):
-        launcher = CalrissianJobLauncher(namespace=self.NAMESPACE, name_base="r-1234", s3_bucket=s3_calrissian_bucket)
+    @pytest.fixture
+    def mock_sts(self, monkeypatch) -> Iterator[STSCredentials]:
+        c = STSCredentials(
+            access_key_id=self.AWS_ACCESS_KEY_ID,
+            secret_access_key=self.AWS_SECRET_ACCESS_KEY,
+            session_token=self.AWS_SESSION_TOKEN,
+            expiration=datetime.datetime.now(),
+        )
+
+        with mock.patch("openeogeotrellis.integrations.s3proxy.sts._get_aws_credentials_for_proxy") as g:
+            g.return_value = c
+            yield c
+
+    @pytest.fixture
+    def calrissian_launch_config(self):
+        yield CalrissianLaunchConfigBuilder(
+            config=CalrissianConfig(s3_bucket=self.BUCKET),
+            correlation_id="r-12345678",
+        )
+
+    def test_create_input_staging_job_manifest(
+        self, generate_unique_id_mock, s3_calrissian_bucket, calrissian_launch_config
+    ):
+        launcher = CalrissianJobLauncher(
+            launch_config=calrissian_launch_config,
+            namespace=self.NAMESPACE,
+            name_base="r-1234",
+            s3_bucket=s3_calrissian_bucket,
+        )
 
         manifest, cwl_path = launcher.create_input_staging_job_manifest(
             cwl_source=CwLSource.from_string("class: Dummy")
@@ -102,8 +138,10 @@ class TestCalrissianJobLauncher:
             }
         )
 
-    def test_create_cwl_job_manifest(self, generate_unique_id_mock):
-        launcher = CalrissianJobLauncher(namespace=self.NAMESPACE, name_base="r-123")
+    def test_create_cwl_job_manifest(self, generate_unique_id_mock, calrissian_launch_config):
+        launcher = CalrissianJobLauncher(
+            launch_config=calrissian_launch_config, namespace=self.NAMESPACE, name_base="r-123"
+        )
 
         manifest, output_dir, cwl_outputs_listing = launcher.create_cwl_job_manifest(
             cwl_path="/calrissian/input-data/r-1234-cal-inp-01234567.cwl",
@@ -147,7 +185,7 @@ class TestCalrissianJobLauncher:
                                 "--message",
                                 "Howdy Earth!",
                             ),
-                            "volume_mounts": [
+                            "volume_mounts": dirty_equals.Contains(
                                 dirty_equals.IsPartialDict(
                                     {
                                         "mount_path": "/calrissian/input-data",
@@ -169,11 +207,11 @@ class TestCalrissianJobLauncher:
                                         "read_only": False,
                                     }
                                 ),
-                            ],
+                            ),
                         }
                     )
                 ],
-                "volumes": [
+                "volumes": dirty_equals.Contains(
                     dirty_equals.IsPartialDict(
                         {
                             "name": "calrissian-input-data",
@@ -192,12 +230,13 @@ class TestCalrissianJobLauncher:
                             "persistent_volume_claim": {"claim_name": "calrissian-output-data", "read_only": False},
                         }
                     ),
-                ],
+                ),
             }
         )
 
-    def test_create_cwl_job_manifest_base_arguments(self, generate_unique_id_mock):
+    def test_create_cwl_job_manifest_base_arguments(self, generate_unique_id_mock, calrissian_launch_config):
         launcher = CalrissianJobLauncher(
+            launch_config=calrissian_launch_config,
             namespace=self.NAMESPACE,
             name_base="r-123",
             calrissian_base_arguments=["--max-ram", "64kB", "--max-cores", "42", "--flavor", "chocolate"],
@@ -216,7 +255,7 @@ class TestCalrissianJobLauncher:
                 {
                     "name": "r-123-cal-cwl-01234567",
                     "command": ["calrissian"],
-                    "args": [
+                    "args": dirty_equals.Contains(
                         "--max-ram",
                         "64kB",
                         "--max-cores",
@@ -232,13 +271,19 @@ class TestCalrissianJobLauncher:
                         "/calrissian/input-data/r-1234-cal-inp-01234567.cwl",
                         "--message",
                         "Howdy Earth!",
-                    ],
+                    ),
                 }
             )
         ]
 
     @pytest.fixture()
-    def k8_pvc_api(self):
+    def k8s_core_v1_api(self):
+        """Mock k8s interactions with CoreV1API but don't do special checks"""
+        with mock.patch("kubernetes.client.CoreV1Api") as CoreV1Api:
+            yield CoreV1Api
+
+    @pytest.fixture()
+    def k8s_pvc_api(self, k8s_core_v1_api):
         """Mock for PVC API in kubernetes.client.CoreV1Api"""
         pvc_to_volume_name = {
             "calrissian-output-data": "1234-abcd-5678-efgh",
@@ -250,12 +295,25 @@ class TestCalrissianJobLauncher:
                 spec=kubernetes.client.V1PersistentVolumeClaimSpec(volume_name=pvc_to_volume_name[name])
             )
 
-        with mock.patch("kubernetes.client.CoreV1Api") as CoreV1Api:
-            CoreV1Api.return_value.read_namespaced_persistent_volume_claim = read_namespaced_persistent_volume_claim
-            yield
+        k8s_core_v1_api.return_value.read_namespaced_persistent_volume_claim = read_namespaced_persistent_volume_claim
 
-    def test_get_output_volume_name(self, k8_pvc_api):
-        launcher = CalrissianJobLauncher(namespace=self.NAMESPACE, name_base="r-123")
+    @pytest.fixture()
+    def k8s_secret_api_verify_mocked_sts(self, k8s_core_v1_api, mock_sts):
+        def create_namespaced_secret(namespace: str, body: kubernetes.client.V1Secret):
+            assert namespace == self.NAMESPACE
+            assert CalrissianLaunchConfigBuilder._ENVIRONMENT_FILE in body.string_data
+            env = yaml.safe_load(body.string_data[CalrissianLaunchConfigBuilder._ENVIRONMENT_FILE])
+            for cred_part in ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN"]:
+                assert cred_part in env
+                assert getattr(self, cred_part) == env[cred_part]
+
+        k8s_core_v1_api.return_value.create_namespaced_secret = create_namespaced_secret
+        yield
+
+    def test_get_output_volume_name(self, k8s_pvc_api, calrissian_launch_config):
+        launcher = CalrissianJobLauncher(
+            launch_config=calrissian_launch_config, namespace=self.NAMESPACE, name_base="r-123"
+        )
         assert launcher.get_output_volume_name() == "1234-abcd-5678-efgh"
 
     @pytest.fixture()
@@ -294,8 +352,10 @@ class TestCalrissianJobLauncher:
         with mock.patch("kubernetes.client.BatchV1Api", new=BatchV1Api):
             yield
 
-    def test_launch_job_and_wait_basic(self, k8s_batch_api, caplog):
-        launcher = CalrissianJobLauncher(namespace=self.NAMESPACE, name_base="r-456")
+    def test_launch_job_and_wait_basic(self, k8s_batch_api, caplog, calrissian_launch_config):
+        launcher = CalrissianJobLauncher(
+            launch_config=calrissian_launch_config, namespace=self.NAMESPACE, name_base="r-456"
+        )
         job_manifest = kubernetes.client.V1Job(
             metadata=kubernetes.client.V1ObjectMeta(name="cal-123", namespace=self.NAMESPACE)
         )
@@ -304,8 +364,10 @@ class TestCalrissianJobLauncher:
 
         assert caplog.messages[-1] == dirty_equals.IsStr(regex=".*job_name='cal-123'.*final_status='complete'.*")
 
-    def test_launch_job_and_wait_fail(self, k8s_batch_api, caplog):
-        launcher = CalrissianJobLauncher(namespace=self.NAMESPACE, name_base="r-456")
+    def test_launch_job_and_wait_fail(self, k8s_batch_api, caplog, calrissian_launch_config):
+        launcher = CalrissianJobLauncher(
+            launch_config=calrissian_launch_config, namespace=self.NAMESPACE, name_base="r-456"
+        )
         job_manifest = kubernetes.client.V1Job(
             metadata=kubernetes.client.V1ObjectMeta(name="cal-123-instant-fail", namespace=self.NAMESPACE)
         )
@@ -313,9 +375,20 @@ class TestCalrissianJobLauncher:
             launcher.launch_job_and_wait(manifest=job_manifest)
 
     def test_run_cwl_workflow_basic(
-        self, k8_pvc_api, k8s_batch_api, generate_unique_id_mock, caplog, s3_calrissian_bucket
+        self,
+        k8s_pvc_api,
+        k8s_batch_api,
+        generate_unique_id_mock,
+        caplog,
+        s3_calrissian_bucket,
+        calrissian_launch_config,
     ):
-        launcher = CalrissianJobLauncher(namespace=self.NAMESPACE, name_base="r-456", s3_bucket=s3_calrissian_bucket)
+        launcher = CalrissianJobLauncher(
+            launch_config=calrissian_launch_config,
+            namespace=self.NAMESPACE,
+            name_base="r-456",
+            s3_bucket=s3_calrissian_bucket,
+        )
         res = launcher.run_cwl_workflow(
             cwl_source=CwLSource.from_string("class: Dummy"),
             cwl_arguments=["--message", "Howdy Earth!"],
@@ -328,8 +401,26 @@ class TestCalrissianJobLauncher:
             ),
         }
 
-    def test_from_context(self, monkeypatch, generate_unique_id_mock, s3_calrissian_bucket):
-        monkeypatch.setenv(ENV_VAR_OPENEO_BATCH_JOB_ID, "j-hello123")
+    @pytest.fixture()
+    def job_context(self, monkeypatch, tmp_path):
+        monkeypatch.setenv(ENV_VAR_OPENEO_BATCH_JOB_ID, self.JOB_NAME)
+        cfg_dir = tmp_path / "config"
+        cfg_dir.mkdir()
+        with open(cfg_dir / "token", "w") as token_fh:
+            token_fh.write("secretToken134")
+        with gps_config_overrides(batch_job_config_dir=cfg_dir):
+            yield
+
+    def test_from_context(
+        self,
+        monkeypatch,
+        generate_unique_id_mock,
+        s3_calrissian_bucket,
+        k8s_core_v1_api,
+        calrissian_launch_config,
+        mock_sts,
+        job_context,
+    ):
         calrissian_config = CalrissianConfig(
             namespace="namezpace",
             input_staging_image="albino:3.14",
@@ -365,6 +456,90 @@ class TestCalrissianJobLauncher:
             }
         )
 
+    def test_from_context_sets_environment_variables(
+        self,
+        monkeypatch,
+        generate_unique_id_mock,
+        s3_calrissian_bucket,
+        k8s_core_v1_api,
+        calrissian_launch_config,
+        mock_sts,
+        job_context,
+    ):
+        calrissian_config = CalrissianConfig(
+            namespace="namezpace",
+            input_staging_image="albino:3.14",
+            s3_bucket=s3_calrissian_bucket,
+        )
+
+        with gps_config_overrides(calrissian_config=calrissian_config):
+            launcher = CalrissianJobLauncher.from_context()
+            manifest, output_dir, cwl_outputs_listing = launcher.create_cwl_job_manifest(
+                cwl_path="/calrissian/input-data/r-1234-cal-inp-01234567.cwl",
+                cwl_arguments=["--message", "Howdy Earth!"],
+            )
+
+        assert isinstance(manifest, kubernetes.client.V1Job)
+        manifest_dict = manifest.to_dict()
+
+        pod_template_spec = manifest_dict["spec"]["template"]["spec"]
+
+        assert pod_template_spec["containers"] == [
+            dirty_equals.IsPartialDict(
+                {
+                    "name": "j-hello123-cal-cwl-01234567",
+                    "command": ["calrissian"],
+                    "args": dirty_equals.Contains(
+                        "--pod-env-vars",
+                        "/calrissian/config/environment.yaml",
+                        "--message",
+                        "Howdy Earth!",
+                    ),
+                }
+            )
+        ]
+        assert pod_template_spec["volumes"] == dirty_equals.Contains(
+            dirty_equals.IsPartialDict(
+                {
+                    "name": "calrissian-launch-config",
+                    "secret": dirty_equals.IsPartialDict({"secret_name": self.JOB_NAME}),
+                }
+            )
+        )
+
+        assert pod_template_spec["containers"][0]["volume_mounts"] == dirty_equals.Contains(
+            dirty_equals.IsPartialDict(
+                {
+                    "mount_path": "/calrissian/config",
+                    "name": "calrissian-launch-config",
+                    "read_only": True,
+                }
+            )
+        )
+
+    def test_launch_from_context_passes_sts_values(
+        self,
+        monkeypatch,
+        generate_unique_id_mock,
+        s3_calrissian_bucket,
+        k8s_batch_api,
+        k8s_secret_api_verify_mocked_sts,
+        calrissian_launch_config,
+        job_context,
+    ):
+        calrissian_config = CalrissianConfig(
+            namespace=self.NAMESPACE,
+            input_staging_image="albino:3.14",
+            s3_bucket=s3_calrissian_bucket,
+        )
+
+        with gps_config_overrides(calrissian_config=calrissian_config):
+            launcher = CalrissianJobLauncher.from_context()
+            launcher.run_cwl_workflow(
+                cwl_source=CwLSource.from_string("class: Dummy"),
+                cwl_arguments=["--message", "Howdy Earth!"],
+                output_paths=["output.txt"],
+            )
 
 class TestCalrissianS3Result:
     @pytest.fixture

@@ -38,10 +38,24 @@ def apply_datacube(cube: XarrayDataCube, context: dict) -> XarrayDataCube:
         cubearray = cubearray[0]
     predicted_array = fancy_upsample_function(cubearray.data, 2)
 
-    coord_x = np.linspace(start=cube.get_array().coords['x'].min(), stop=cube.get_array().coords['x'].max() + init_pixel_size_x,
-                          num=predicted_array.shape[-1], endpoint=False)
-    coord_y = np.linspace(start=cube.get_array().coords['y'].min(), stop=cube.get_array().coords['y'].max() + init_pixel_size_y,
-                          num=predicted_array.shape[-2], endpoint=False)
+    x_min = float(cube.get_array().coords["x"].min().values)
+    x_max = float(cube.get_array().coords["x"].max().values)
+    y_min = float(cube.get_array().coords["y"].min().values)
+    y_max = float(cube.get_array().coords["y"].max().values)
+
+    coord_x = np.linspace(
+        start=x_min,
+        stop=x_max + float(init_pixel_size_x),
+        num=predicted_array.shape[-1],
+        endpoint=False,
+    )
+
+    coord_y = np.linspace(
+        start=y_min,
+        stop=y_max + float(init_pixel_size_y),
+        num=predicted_array.shape[-2],
+        endpoint=False,
+    )
 
     if cube.get_array().data.ndim == 4:
         # Add a new dimension for time.
