@@ -37,14 +37,24 @@ from openeogeotrellis.load_stac import (
 from openeogeotrellis.testing import DummyStacApiServer, gps_config_overrides
 
 
-@pytest.mark.parametrize("url, user_id, job_info_id",
-                         [
-                             ("https://oeo.net/openeo/1.1/jobs/j-20240201abc123/results", 'alice', 'j-20240201abc123'),
-                             ("https://oeo.net/openeo/1.1/jobs/j-20240201abc123/results", 'bob', None),
-                             ("https://oeo.net/openeo/1.1/jobs/j-20240201abc123/results/N2Q1MjMzODEzNzRiNjJlNmYyYWFkMWYyZjlmYjZlZGRmNjI0ZDM4MmE4ZjcxZGI2Z/095be1c7a37baf63b2044?expires=1707382334", 'alice', None),
-                             ("https://oeo.net/openeo/1.1/jobs/j-20240201abc123/results/N2Q1MjMzODEzNzRiNjJlNmYyYWFkMWYyZjlmYjZlZGRmNjI0ZDM4MmE4ZjcxZGI2Z/095be1c7a37baf63b2044?expires=1707382334", 'bob', None),
-                             ("https://earth-search.aws.element84.com/v1/collections/sentinel-2-l2a", 'alice', None)
-                         ])
+@pytest.mark.parametrize(
+    "url, user_id, job_info_id",
+    [
+        ("https://oeo.net/openeo/1.1/jobs/j-20240201abc123/results", "alice", "j-20240201abc123"),
+        ("https://oeo.net/openeo/1.1/jobs/j-20240201abc123/results", "bob", None),
+        (
+            "https://oeo.net/openeo/1.1/jobs/j-20240201abc123/results/N2Q1MjMzODEzNzRiNjJlNmYyYWFkMWYyZjlmYjZlZGRmNjI0ZDM4MmE4ZjcxZGI2Z/095be1c7a37baf63b2044?expires=1707382334",
+            "alice",
+            None,
+        ),
+        (
+            "https://oeo.net/openeo/1.1/jobs/j-20240201abc123/results/N2Q1MjMzODEzNzRiNjJlNmYyYWFkMWYyZjlmYjZlZGRmNjI0ZDM4MmE4ZjcxZGI2Z/095be1c7a37baf63b2044?expires=1707382334",
+            "bob",
+            None,
+        ),
+        ("https://earth-search.aws.element84.com/v1/collections/sentinel-2-l2a", "alice", None),
+    ],
+)
 def test_extract_own_job_info(url, user_id, job_info_id):
     batch_jobs = mock.Mock(spec=BatchJobs)
 
@@ -89,7 +99,7 @@ def test_property_filter_from_parameter(requests_mock):
                     "process_id": "eq",
                     "arguments": {
                         "x": {"from_parameter": "value"},
-                        "y": {"from_parameter": "tile_id"}
+                        "y": {"from_parameter": "tile_id"},
                     },
                     "result": True,
                 }
@@ -1400,7 +1410,6 @@ class TestPropertyFilter:
 
 
 class TestItemCollection:
-
     def test_from_stac_item_basic(self):
         item = pystac.Item.from_dict(StacDummyBuilder.item())
         spatiotemporal_extent = _SpatioTemporalExtent(bbox=None, from_date=None, to_date=None)
@@ -1592,7 +1601,6 @@ class TestItemCollection:
     def dummy_stac_api(self, dummy_stac_api_server) -> Iterator[str]:
         with dummy_stac_api_server.serve() as root_url:
             yield root_url
-
 
     def test_from_stac_api_basic(self, dummy_stac_api):
         given_url = f"{dummy_stac_api}/collections/collection-123"

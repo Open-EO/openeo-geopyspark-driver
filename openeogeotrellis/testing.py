@@ -39,7 +39,7 @@ from openeogeotrellis.util.runtime import is_package_available
 
 def random_name(prefix: str = "") -> str:
     """Generate random name (with given prefix)"""
-    return '{p}{r}'.format(p=prefix, r=uuid.uuid4().hex[:8])
+    return "{p}{r}".format(p=prefix, r=uuid.uuid4().hex[:8])
 
 
 class _ZNodeStat:
@@ -54,7 +54,7 @@ class _ZNodeStat:
         self._version += 1
 
     def __repr__(self):
-        return '{c}({v})'.format(c=self.__class__.__name__, v=self.version)
+        return "{c}({v})".format(c=self.__class__.__name__, v=self.version)
 
     def __eq__(self, other):
         return isinstance(other, _ZNodeStat) and (self.version,) == (other.version,)
@@ -68,7 +68,7 @@ class _ZNode:
         self.children = children or {}
         self.stat = _ZNodeStat(version=1)
 
-    def assert_version(self, version=-1) -> '_ZNode':
+    def assert_version(self, version=-1) -> "_ZNode":
         if version not in [-1, self.stat.version]:
             raise kazoo.exceptions.BadVersionError
         return self
@@ -234,7 +234,6 @@ class DummyCubeBuilder:
         dates: Union[int, List[Union[str, datetime.date, datetime.datetime]]] = 3,
         extent: Union[geopyspark.geotrellis.Extent, dict, None] = None,
     ) -> GeopysparkDataCube:
-
         dates: List[datetime.datetime] = self.to_datetime_list(dates)
 
         # TODO: option to customize tile building

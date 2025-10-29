@@ -110,14 +110,15 @@ def load_stac(
 
     user: Optional[User] = env.get("user")
 
-    requested_bbox = BoundingBox.from_dict_or_none(
-        load_params.spatial_extent, default_crs="EPSG:4326"
-    )
+    requested_bbox = BoundingBox.from_dict_or_none(load_params.spatial_extent, default_crs="EPSG:4326")
 
     temporal_extent = load_params.temporal_extent
     from_date, until_date = map(dt.datetime.fromisoformat, normalize_temporal_extent(temporal_extent))
-    to_date = (dt.datetime.combine(until_date, dt.time.max, until_date.tzinfo) if from_date == until_date
-               else until_date - dt.timedelta(milliseconds=1))
+    to_date = (
+        dt.datetime.combine(until_date, dt.time.max, until_date.tzinfo)
+        if from_date == until_date
+        else until_date - dt.timedelta(milliseconds=1)
+    )
 
     spatiotemporal_extent = _SpatioTemporalExtent(bbox=requested_bbox, from_date=from_date, to_date=to_date)
 
@@ -128,7 +129,6 @@ def load_stac(
         return raster_offset / raster_scale
 
     property_filter = PropertyFilter(properties=all_properties, env=env)
-
 
     collection = None
     metadata = None
@@ -202,7 +202,9 @@ def load_stac(
             else:
                 assert isinstance(stac_object, pystac.Catalog)  # static Catalog + Collection
                 catalog = stac_object
-                metadata = GeopysparkCubeMetadata(metadata=catalog.to_dict(include_self_link=False, transform_hrefs=False))
+                metadata = GeopysparkCubeMetadata(
+                    metadata=catalog.to_dict(include_self_link=False, transform_hrefs=False)
+                )
 
                 if load_params.properties:
                     # as dictated by the load_stac spec
@@ -227,14 +229,16 @@ def load_stac(
         proj_bbox = None
         proj_shape = None
 
-        band_cell_size: Dict[str, Tuple[float, float]] = {}  # assumes a band has the same resolution across features/assets
+        # assumes a band has the same resolution across features/assets
+        band_cell_size: Dict[str, Tuple[float, float]] = {}
         band_epsgs: Dict[str, Set[int]] = {}
-
 
         for itm in item_collection.items:
             items_found = True
 
-            item_start_datetime = dateutil.parser.parse(itm.properties.get("datetime") or itm.properties["start_datetime"])
+            item_start_datetime = dateutil.parser.parse(
+                itm.properties.get("datetime") or itm.properties["start_datetime"]
+            )
             item_end_datetime = dateutil.parser.parse(itm.properties.get("datetime") or itm.properties["end_datetime"])
 
             if not start_datetime or item_start_datetime < start_datetime:
@@ -246,9 +250,11 @@ def load_stac(
                 asset_id: asset for asset_id, asset in dict(sorted(itm.assets.items())).items() if _is_band_asset(asset)
             }
 
-            builder = (jvm.org.openeo.opensearch.OpenSearchResponses.featureBuilder()
-                       .withId(itm.id)
-                       .withNominalDate(itm.properties.get("datetime") or itm.properties["start_datetime"]))
+            builder = (
+                jvm.org.openeo.opensearch.OpenSearchResponses.featureBuilder()
+                .withId(itm.id)
+                .withNominalDate(itm.properties.get("datetime") or itm.properties["start_datetime"])
+            )
 
             band_names_tracker = NoveltyTracker()
             for asset_id, asset in sorted(
@@ -261,9 +267,7 @@ def load_stac(
                     kv[0],
                 ),
             ):
-                proj_epsg, proj_bbox, proj_shape = _get_proj_metadata(
-                    asset=asset, item=itm
-                )
+                proj_epsg, proj_bbox, proj_shape = _get_proj_metadata(asset=asset, item=itm)
 
                 asset_band_names_from_metadata = stac_metadata_parser.bands_from_stac_asset(asset=asset).band_names()
                 logger.debug(f"from intersecting_items: {itm.id=} {asset_id=} {asset_band_names_from_metadata=}")
@@ -312,7 +316,7 @@ def load_stac(
                 cell_width, cell_height = _compute_cellsize(proj_bbox, proj_shape)
                 builder = builder.withResolution(cell_width)
 
-            latlon_bbox = BoundingBox.from_wsen_tuple(itm.bbox,4326) if itm.bbox else None
+            latlon_bbox = BoundingBox.from_wsen_tuple(itm.bbox, 4326) if itm.bbox else None
             item_bbox = latlon_bbox
             if proj_bbox is not None and proj_epsg is not None:
                 item_bbox = BoundingBox.from_wsen_tuple(proj_bbox, crs=proj_epsg)
@@ -326,15 +330,18 @@ def load_stac(
 
             opensearch_client.addFeature(builder.build())
 
-            stac_bbox = (item_bbox if stac_bbox is None
-                         else BoundingBox.from_wsen_tuple(item_bbox.as_polygon().union(stac_bbox.as_polygon()).bounds,
-                                                          stac_bbox.crs))
+            stac_bbox = (
+                item_bbox
+                if stac_bbox is None
+                else BoundingBox.from_wsen_tuple(
+                    item_bbox.as_polygon().union(stac_bbox.as_polygon()).bounds, stac_bbox.crs
+                )
+            )
 
     except LoadStacException:
         raise
     except Exception as e:
         raise LoadStacException(url=url, info=repr(e)) from e
-
 
     if not allow_empty_cubes and not items_found:
         raise NoDataAvailableException()
@@ -343,11 +350,11 @@ def load_stac(
 
     if not target_bbox:
         raise ProcessParameterInvalidException(
-            process='load_stac',
-            parameter='spatial_extent',
-            reason=f'Unable to derive a spatial extent from provided STAC metadata: {url}, '
-                   f'please provide a spatial extent.'
-            )
+            process="load_stac",
+            parameter="spatial_extent",
+            reason=f"Unable to derive a spatial extent from provided STAC metadata: {url}, "
+            f"please provide a spatial extent.",
+        )
 
     if not metadata:
         metadata = GeopysparkCubeMetadata(metadata={})
@@ -482,13 +489,11 @@ def load_stac(
     if not geometries:
         projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.fromExtent(extent, extent_crs)
     else:
-        projected_polygons = to_projected_polygons(
-            jvm, geometries, crs=extent_crs, buffer_points=True
-        )
+        projected_polygons = to_projected_polygons(jvm, geometries, crs=extent_crs, buffer_points=True)
 
-    projected_polygons = getattr(
-        getattr(jvm.org.openeo.geotrellis, "ProjectedPolygons$"), "MODULE$"
-    ).reproject(projected_polygons, target_epsg)
+    projected_polygons = getattr(getattr(jvm.org.openeo.geotrellis, "ProjectedPolygons$"), "MODULE$").reproject(
+        projected_polygons, target_epsg
+    )
 
     metadata_properties = {}
     correlation_id = env.get(EVAL_ENV_KEY.CORRELATION_ID, "")
@@ -502,9 +507,15 @@ def load_stac(
 
     try:
         if netcdf_with_time_dimension:
-            pyramid = pyramid_factory.datacube_seq(projected_polygons, from_date.isoformat(), to_date.isoformat(),
-                                                   metadata_properties, correlation_id, data_cube_parameters,
-                                                   opensearch_client)
+            pyramid = pyramid_factory.datacube_seq(
+                projected_polygons,
+                from_date.isoformat(),
+                to_date.isoformat(),
+                metadata_properties,
+                correlation_id,
+                data_cube_parameters,
+                opensearch_client,
+            )
         elif single_level:
             if not items_found and allow_empty_cubes:
                 pyramid = pyramid_factory.empty_datacube_seq(
@@ -531,7 +542,9 @@ def load_stac(
                 extent_crs = "EPSG:4326"
 
             if not items_found and allow_empty_cubes:
-                pyramid = pyramid_factory.empty_pyramid_seq(extent, extent_crs, from_date.isoformat(), to_date.isoformat())
+                pyramid = pyramid_factory.empty_pyramid_seq(
+                    extent, extent_crs, from_date.isoformat(), to_date.isoformat()
+                )
             else:
                 pyramid = pyramid_factory.pyramid_seq(
                     extent, extent_crs, from_date.isoformat(), to_date.isoformat(), metadata_properties, correlation_id
@@ -541,7 +554,6 @@ def load_stac(
             message=f"load_stac: Error when constructing datacube from {url}: {e}",
             status_code=500,
         ) from e
-
 
     metadata = metadata.filter_temporal(from_date.isoformat(), to_date.isoformat())
 
@@ -557,9 +569,13 @@ def load_stac(
     option = jvm.scala.Option
 
     # noinspection PyProtectedMember
-    levels = {pyramid.apply(index)._1(): TiledRasterLayer(LayerType.SPACETIME, temporal_tiled_raster_layer(
-        option.apply(pyramid.apply(index)._1()), pyramid.apply(index)._2())) for index in
-              range(0, pyramid.size())}
+    levels = {
+        pyramid.apply(index)._1(): TiledRasterLayer(
+            LayerType.SPACETIME,
+            temporal_tiled_raster_layer(option.apply(pyramid.apply(index)._1()), pyramid.apply(index)._2()),
+        )
+        for index in range(0, pyramid.size())
+    }
 
     return GeopysparkDataCube(pyramid=gps.Pyramid(levels), metadata=metadata)
 
@@ -575,6 +591,7 @@ class _TemporalExtent:
     - https://github.com/radiantearth/stac-spec/blob/master/item-spec/item-spec.md#datetime
     - https://github.com/radiantearth/stac-spec/blob/master/commons/common-metadata.md#date-and-time-range
     """
+
     # TODO: move this to a more generic location for better reuse
 
     __slots__ = ("from_date", "to_date")
@@ -628,6 +645,7 @@ class _SpatialExtent:
     Helper to represent a spatial extent with a bounding box
     and calculate intersection with STAC entities (e.g. bbox of a STAC Item).
     """
+
     # TODO: move this to a more generic location for better reuse
 
     __slots__ = ("_bbox", "_bbox_lonlat_shape")
@@ -764,7 +782,6 @@ class ItemCollection:
 
     @staticmethod
     def from_stac_catalog(catalog: pystac.Catalog, *, spatiotemporal_extent: _SpatioTemporalExtent) -> ItemCollection:
-
         def intersecting_catalogs(root: pystac.Catalog) -> Iterator[pystac.Catalog]:
             if isinstance(root, pystac.Collection) and not spatiotemporal_extent.collection_intersects(root):
                 return
@@ -858,6 +875,7 @@ class ItemCollection:
 
         return ItemCollection(items)
 
+
 def _is_supported_raster_mime_type(mime_type: str) -> bool:
     mime_type = mime_type.lower()
     # https://github.com/radiantearth/stac-spec/blob/master/best-practices.md#common-media-types-in-stac
@@ -949,8 +967,14 @@ def contains_netcdf_with_time_dimension(collection: pystac.Collection) -> bool:
     if collection is not None:
         # we found some collection level metadata
         item_assets = collection.extra_fields.get("item_assets", {})
-        dimensions = set([tuple(v.get("dimensions")) for i in item_assets.values() if "cube:variables" in i for v in
-                          i.get("cube:variables", {}).values()])
+        dimensions = set(
+            [
+                tuple(v.get("dimensions"))
+                for i in item_assets.values()
+                if "cube:variables" in i
+                for v in i.get("cube:variables", {}).values()
+            ]
+        )
         # this is one way to determine if a time dimension is used, but it does depend on the use of item_assets and datacube extension.
         return len(dimensions) == 1 and "time" in dimensions.pop()
     return False
@@ -985,7 +1009,8 @@ def get_best_url(asset: pystac.Asset):
     href = asset.get_absolute_href() or asset.href
 
     return (
-        href.replace("s3://eodata/", "/vsis3/EODATA/") if os.environ.get("AWS_DIRECT") == "TRUE"
+        href.replace("s3://eodata/", "/vsis3/EODATA/")
+        if os.environ.get("AWS_DIRECT") == "TRUE"
         else href.replace("s3://eodata/", "/eodata/")
     )
 
@@ -1050,9 +1075,11 @@ def _await_dependency_job(
 
         # still running: continue polling
         if time.time() >= max_poll_time:
-            max_poll_delay_reached_error = (f"OpenEO batch job results dependency of"
-                                            f"own job {dependency_job_info.id} was not satisfied after"
-                                            f" {max_poll_delay_seconds} s, aborting")
+            max_poll_delay_reached_error = (
+                f"OpenEO batch job results dependency of"
+                f"own job {dependency_job_info.id} was not satisfied after"
+                f" {max_poll_delay_seconds} s, aborting"
+            )
 
             raise Exception(max_poll_delay_reached_error)
 
@@ -1071,7 +1098,6 @@ def _await_stac_object(
     max_poll_time: float,
     stac_io: Optional[pystac.stac_io.StacIO] = None,
 ) -> STACObject:
-
     if stac_io is None:
         session = requests_with_retry(total=5, backoff_factor=0.1, status_forcelist={500, 502, 503, 504})
         stac_io = ResilientStacIO(session)
@@ -1093,8 +1119,10 @@ def _await_stac_object(
 
         # still running: continue polling
         if time.time() >= max_poll_time:
-            max_poll_delay_reached_error = (f"OpenEO batch job results dependency at {url} was not satisfied after"
-                                            f" {max_poll_delay_seconds} s, aborting")
+            max_poll_delay_reached_error = (
+                f"OpenEO batch job results dependency at {url} was not satisfied after"
+                f" {max_poll_delay_seconds} s, aborting"
+            )
 
             raise Exception(max_poll_delay_reached_error)
 
@@ -1232,8 +1260,6 @@ class PropertyFilter:
             "op": "and",
             "args": filters,
         }
-
-
 
 
 class NoveltyTracker:
