@@ -1,43 +1,40 @@
-from typing import Iterator, Tuple
-
-import dirty_equals
-import pystac
-import pystac_client
-from contextlib import nullcontext
 import datetime
+from contextlib import nullcontext
+from typing import Iterator
 from unittest import mock
 
-import pytest
-
+import dirty_equals
 import openeo.metadata
+import pystac
+import pystac_client
+import pytest
 import responses
 from openeo.testing.stac import StacDummyBuilder
-from openeo_driver.ProcessGraphDeserializer import DEFAULT_TEMPORAL_EXTENT
 from openeo_driver.backend import BatchJobMetadata, BatchJobs, LoadParameters
-from openeo_driver.dummy.dummy_backend import DummyBatchJobs
 from openeo_driver.errors import OpenEOApiException
+from openeo_driver.ProcessGraphDeserializer import DEFAULT_TEMPORAL_EXTENT
 from openeo_driver.users import User
 from openeo_driver.util.date_math import now_utc
 from openeo_driver.util.geometry import BoundingBox
 from openeo_driver.utils import EvalEnv
+
 from openeogeotrellis.backend import GpsBatchJobs
 from openeogeotrellis.job_registry import InMemoryJobRegistry
-
 from openeogeotrellis.load_stac import (
+    ItemCollection,
+    PropertyFilter,
+    _get_proj_metadata,
+    _is_band_asset,
+    _is_supported_raster_mime_type,
+    _SpatialExtent,
+    _SpatioTemporalExtent,
+    _StacMetadataParser,
+    _supports_item_search,
+    _TemporalExtent,
     extract_own_job_info,
     load_stac,
-    _StacMetadataParser,
-    _is_supported_raster_mime_type,
-    _is_band_asset,
-    _supports_item_search,
-    _get_proj_metadata,
-    _TemporalExtent,
-    _SpatioTemporalExtent,
-    _SpatialExtent,
-    PropertyFilter,
-    ItemCollection,
 )
-from openeogeotrellis.testing import gps_config_overrides, DummyStacApiServer
+from openeogeotrellis.testing import DummyStacApiServer, gps_config_overrides
 
 
 @pytest.mark.parametrize("url, user_id, job_info_id",

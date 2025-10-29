@@ -1,17 +1,19 @@
 from __future__ import annotations
-import re
-import datetime as dt
+
 import datetime
-import json
-import time
-from functools import partial
+import datetime as dt
 import logging
 import os
-from typing import Union, Optional, Tuple, Dict, List, Iterable, Any, Set, Callable, Iterator
+import re
+import time
+from functools import partial
+from pathlib import Path
+from typing import Any, Callable, Dict, Iterator, List, Optional, Set, Tuple, Union
 from urllib.parse import urlparse
 
 import dateutil.parser
 import geopyspark as gps
+import openeo_driver.backend
 import planetary_computer
 import pyproj
 import pystac
@@ -20,18 +22,17 @@ import pystac_client
 import pystac_client.stac_api_io
 import requests.adapters
 from geopyspark import LayerType, TiledRasterLayer
-from openeo.util import dict_no_none, Rfc3339, rfc3339
 from openeo.metadata import _StacMetadataParser
-import openeo_driver.backend
+from openeo.util import Rfc3339, dict_no_none
 from openeo_driver import filter_properties
+from openeo_driver.backend import BatchJobMetadata, LoadParameters
 from openeo_driver.datacube import DriverVectorCube
-from openeo_driver.backend import LoadParameters, BatchJobMetadata
 from openeo_driver.errors import (
-    OpenEOApiException,
-    ProcessParameterUnsupportedException,
     JobNotFoundException,
+    OpenEOApiException,
     ProcessParameterInvalidException,
     ProcessParameterRequiredException,
+    ProcessParameterUnsupportedException,
 )
 from openeo_driver.jobregistry import PARTIAL_JOB_STATUS
 from openeo_driver.ProcessGraphDeserializer import DEFAULT_TEMPORAL_EXTENT
@@ -40,7 +41,6 @@ from openeo_driver.util.geometry import BoundingBox, GeometryBufferer
 from openeo_driver.util.http import requests_with_retry
 from openeo_driver.util.utm import utm_zone_from_epsg
 from openeo_driver.utils import EvalEnv
-from pathlib import Path
 from pystac import STACObject
 from shapely.geometry import Polygon, shape
 from urllib3 import Retry
@@ -50,9 +50,9 @@ from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.constants import EVAL_ENV_KEY
 from openeogeotrellis.geopysparkcubemetadata import GeopysparkCubeMetadata
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
-from openeogeotrellis.util.datetime import to_datetime_utc_unless_none, DateTimeLikeOrNone
-from openeogeotrellis.utils import normalize_temporal_extent, get_jvm, to_projected_polygons, map_optional, unzip
 from openeogeotrellis.integrations.stac import ResilientStacIO
+from openeogeotrellis.util.datetime import DateTimeLikeOrNone, to_datetime_utc_unless_none
+from openeogeotrellis.utils import get_jvm, map_optional, normalize_temporal_extent, to_projected_polygons, unzip
 
 logger = logging.getLogger(__name__)
 REQUESTS_TIMEOUT_SECONDS = 60
