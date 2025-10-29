@@ -3699,26 +3699,23 @@ def test_export_workspace_derived_from(tmp_path, requests_mock, mock_s3_bucket, 
 
     metadata_tracker.addInputProducts("S2", ["http://s2.test/p1", "http://s2.test/p2"])
 
-    tmp = tmp_path / "tmp"
-    tmp.mkdir()
+    with tempfile.TemporaryDirectory() as tmp:
+        derived_from_document_file = Path(tmp) / "unknown-job_input_items.json"
+        with open(derived_from_document_file, "w") as f:
+            f.write("your derived_from document here")  # actual contents do not matter: Scala will write this file
+        metadata_tracker.addInternalFile(str(derived_from_document_file), "application/geo+json")
 
-    job_dir = tmp_path
+        job_dir = tmp_path
+        metadata_file = job_dir / "job_metadata.json"
 
-    derived_from_document_file = tmp / "unknown-job_input_items.json"
-    with open(derived_from_document_file, "w") as f:
-        f.write("your derived_from document here")  # actual contents do not matter: Scala will write this file
-    metadata_tracker.addInternalFile(str(derived_from_document_file), "application/geo+json")
-
-    metadata_file = job_dir / "job_metadata.json"
-
-    run_job(
-        process,
-        output_file=job_dir / "out",
-        metadata_file=metadata_file,
-        api_version="2.0.0",
-        job_dir=job_dir,
-        dependencies=[],
-    )
+        run_job(
+            process,
+            output_file=job_dir / "out",
+            metadata_file=metadata_file,
+            api_version="2.0.0",
+            job_dir=job_dir,
+            dependencies=[],
+        )
 
     assert create_collection.call_count == 1, "expected creation of one new collection"
     assert update_collection.call_count == 1, "expected one update of this collection"
@@ -3743,7 +3740,7 @@ def test_export_workspace_derived_from(tmp_path, requests_mock, mock_s3_bucket, 
                 assert (
                     Path(derived_from_document_link["href"]).parent == job_dir
                 ), "derived_from document is not in job directory"
-                assert (Path(derived_from_document_link["href"]).name == "unknown-job_input_items.json")  # TODO: currently assumed to be an absolute file path
+                assert Path(derived_from_document_link["href"]).name == Path(derived_from_document_file.name).name  # TODO: currently assumed to be an absolute file path
                 assert derived_from_document_link["type"] == "application/geo+json"
         else:
             # these get rendered in the /jobs/<job_id>/results STAC Collection document
