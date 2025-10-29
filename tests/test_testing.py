@@ -1,10 +1,20 @@
 import datetime
 
+import dirty_equals
+import pystac_client
+import pystac_client.exceptions
 import pytest
+import requests
 from kazoo.exceptions import BadVersionError, NoNodeError
 
 from openeogeotrellis.config import get_backend_config
-from openeogeotrellis.testing import KazooClientMock, _ZNodeStat, gps_config_overrides, DummyCubeBuilder
+from openeogeotrellis.testing import (
+    DummyCubeBuilder,
+    DummyStacApiServer,
+    KazooClientMock,
+    _ZNodeStat,
+    gps_config_overrides,
+)
 
 
 def test_kazoo_mock_basic():
@@ -150,3 +160,198 @@ class TestDummyCubeBuilder:
             datetime.datetime(2022, 3, 4, tzinfo=datetime.timezone.utc),
             datetime.datetime(2022, 4, 5, tzinfo=datetime.timezone.utc),
         ]
+
+
+class TestDummyStacApiServer:
+    def test_basic(self):
+        with DummyStacApiServer().serve() as root_url:
+            response = requests.get(root_url)
+        assert response.status_code == 200
+        assert response.json() == dirty_equals.IsPartialDict(
+            {
+                "id": "stac-api-123",
+                "stac_version": "1.0.0",
+                "type": "Catalog",
+                "links": [
+                    {"rel": "root", "href": f"{root_url}/"},
+                    {"rel": "search", "href": f"{root_url}/search", "method": "GET"},
+                    {"rel": "search", "href": f"{root_url}/search", "method": "POST"},
+                    {"rel": "self", "href": f"{root_url}/"},
+                ],
+            }
+        )
+
+    def test_get_collections_raw(self):
+        with DummyStacApiServer().serve() as root_url:
+            response = requests.get(f"{root_url}/collections")
+        assert response.status_code == 200
+        assert response.json() == dirty_equals.IsPartialDict(
+            {
+                "collections": [
+                    dirty_equals.IsPartialDict(
+                        {
+                            "id": "collection-123",
+                            "stac_version": "1.0.0",
+                            "type": "Collection",
+                            "links": [
+                                {"rel": "root", "href": f"{root_url}/"},
+                                {"rel": "self", "href": f"{root_url}/collections/collection-123"},
+                            ],
+                        }
+                    ),
+                ],
+                "links": [
+                    {"rel": "root", "href": f"{root_url}/"},
+                    {"rel": "self", "href": f"{root_url}/collections"},
+                ],
+            }
+        )
+
+    def test_get_collections_pystac(self):
+        with DummyStacApiServer().serve() as root_url:
+            client = pystac_client.Client.open(root_url)
+            collections = list(client.get_collections())
+            assert [c.id for c in collections] == ["collection-123"]
+
+    def test_get_collection_raw(self):
+        with DummyStacApiServer().serve() as root_url:
+            response = requests.get(f"{root_url}/collections/collection-123")
+        assert response.status_code == 200
+        assert response.json() == dirty_equals.IsPartialDict(
+            {
+                "id": "collection-123",
+                "stac_version": "1.0.0",
+                "type": "Collection",
+                "links": [
+                    {"rel": "root", "href": f"{root_url}/"},
+                    {"rel": "self", "href": f"{root_url}/collections/collection-123"},
+                ],
+            }
+        )
+
+    def test_get_collection_pystac(self):
+        with DummyStacApiServer().serve() as root_url:
+            client = pystac_client.Client.open(root_url)
+            collection = client.get_collection("collection-123")
+            assert isinstance(collection, pystac_client.CollectionClient)
+            assert collection.id == "collection-123"
+
+    def test_get_collection_pystac_not_found(self):
+        with DummyStacApiServer().serve() as root_url:
+            client = pystac_client.Client.open(root_url)
+            with pytest.raises(pystac_client.exceptions.APIError):
+                _ = client.get_collection("collection-nope")
+
+    @pytest.mark.parametrize("method", ["GET", "POST"])
+    def test_item_search_basic(self, method):
+        with DummyStacApiServer().serve() as root_url:
+            client = pystac_client.Client.open(root_url)
+            result = client.search(method=method, collections=["collection-123"])
+            items = list(result.items())
+
+        assert [item.id for item in items] == ["item-1", "item-2", "item-3"]
+
+    @pytest.mark.parametrize("method", ["GET", "POST"])
+    def test_item_search_item_metadata(self, method):
+        with DummyStacApiServer().serve() as root_url:
+            client = pystac_client.Client.open(root_url)
+            result = client.search(method=method, collections=["collection-123"])
+            items = list(result.items())
+
+        assert [(item.id, item.datetime, item.bbox, item.properties) for item in items] == [
+            (
+                "item-1",
+                datetime.datetime(2024, 5, 1, tzinfo=datetime.timezone.utc),
+                [2, 49, 3, 50],
+                {"datetime": "2024-05-01T00:00:00Z", "flavor": "apple"},
+            ),
+            (
+                "item-2",
+                datetime.datetime(2024, 6, 2, tzinfo=datetime.timezone.utc),
+                [3, 50, 5, 51],
+                {"datetime": "2024-06-02T00:00:00Z", "flavor": "banana"},
+            ),
+            (
+                "item-3",
+                datetime.datetime(2024, 7, 3, tzinfo=datetime.timezone.utc),
+                [4, 51, 7, 52],
+                {"datetime": "2024-07-03T00:00:00Z", "flavor": "coconut"},
+            ),
+        ]
+
+    @pytest.mark.parametrize("method", ["GET", "POST"])
+    @pytest.mark.parametrize(
+        ["limit", "expected_items"],
+        [
+            (1, ["item-1"]),
+            (2, ["item-1", "item-2"]),
+            (3, ["item-1", "item-2", "item-3"]),
+            (10, ["item-1", "item-2", "item-3"]),
+        ],
+    )
+    def test_item_search_limit(self, method, limit, expected_items):
+        with DummyStacApiServer().serve() as root_url:
+            client = pystac_client.Client.open(root_url)
+            result = client.search(method=method, collections=["collection-123"], limit=limit)
+            items = list(result.items())
+
+        assert [item.id for item in items] == expected_items
+
+    @pytest.mark.parametrize("method", ["GET", "POST"])
+    @pytest.mark.parametrize(
+        ["search_datetime", "expected_items"],
+        [
+            (("2024-06-01", None), ["item-2", "item-3"]),
+            ((None, "2024-07-01"), ["item-1", "item-2"]),
+            (("2024-05-20", "2024-07-01"), ["item-2"]),
+        ],
+    )
+    def test_item_search_datetime(self, method, search_datetime, expected_items):
+        with DummyStacApiServer().serve() as root_url:
+            client = pystac_client.Client.open(root_url)
+            result = client.search(method=method, collections=["collection-123"], datetime=search_datetime)
+            items = list(result.items())
+
+        assert [item.id for item in items] == expected_items
+
+    @pytest.mark.parametrize("method", ["GET", "POST"])
+    @pytest.mark.parametrize(
+        ["bbox", "expected_items"],
+        [
+            ([2.5, 48, 3.5, 49.5], ["item-1"]),
+            ([4.5, 49.9, 4.6, 51.1], ["item-2", "item-3"]),
+            ([77, 4, 88, 6], []),
+        ],
+    )
+    def test_item_search_bbox(self, method, bbox, expected_items):
+        with DummyStacApiServer().serve() as root_url:
+            client = pystac_client.Client.open(root_url)
+            result = client.search(method=method, collections=["collection-123"], bbox=bbox)
+            items = list(result.items())
+
+        assert [item.id for item in items] == expected_items
+
+    @pytest.mark.parametrize(
+        ["method", "filter", "expected_items"],
+        [
+            # GET with CQL2-text
+            ("GET", "\"properties.flavor\" = 'banana'", ["item-2"]),
+            ("GET", "\"properties.flavor\" = 'coconut'", ["item-3"]),
+            ("GET", "\"properties.topping\" = 'chocolate'", []),
+            # POST with CQL2-JSON
+            ("POST", {"op": "=", "args": [{"property": "properties.flavor"}, "apple"]}, ["item-1"]),
+            ("POST", {"op": "=", "args": [{"property": "properties.flavor"}, "banana"]}, ["item-2"]),
+            ("POST", {"op": "=", "args": [{"property": "properties.topping"}, "chocolate"]}, []),
+        ],
+    )
+    def test_item_search_filter_get_cql2_text(self, method, filter, expected_items):
+        with DummyStacApiServer().serve() as root_url:
+            client = pystac_client.Client.open(root_url)
+            result = client.search(
+                method=method,
+                collections=["collection-123"],
+                filter=filter,
+            )
+            items = list(result.items())
+
+        assert [item.id for item in items] == expected_items
