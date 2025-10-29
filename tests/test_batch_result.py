@@ -3740,8 +3740,8 @@ def test_export_workspace_derived_from(tmp_path, requests_mock, mock_s3_bucket, 
                 assert len(exposable_links) == 1, f"expected one link to an ItemCollection but got {exposable_links}"
 
                 derived_from_document_link = exposable_links[0]
-                assert Path(derived_from_document_link["href"]).is_relative_to(
-                    job_dir
+                assert (
+                    Path(derived_from_document_link["href"]).parent == job_dir
                 ), "derived_from document is not in job directory"
                 assert (Path(derived_from_document_link["href"]).name == "unknown-job_input_items.json")  # TODO: currently assumed to be an absolute file path
                 assert derived_from_document_link["type"] == "application/geo+json"
@@ -3813,9 +3813,7 @@ def test_input_item_collection(tmp_path, metadata_tracker):
     assert derived_from_document_link["rel"] == "custom"
     assert derived_from_document_link["type"] == "application/geo+json"
 
-    assert Path(derived_from_document_link["href"]).is_relative_to(
-        job_dir
-    ), "derived_from document is not in job directory"
+    assert Path(derived_from_document_link["href"]).parent == job_dir, "derived_from document is not in job directory"
     with open(derived_from_document_link["href"]) as f:
         derived_from_document = json.load(f)
 
