@@ -3699,19 +3699,24 @@ def test_export_workspace_derived_from(tmp_path, requests_mock, mock_s3_bucket, 
 
     metadata_tracker.addInputProducts("S2", ["http://s2.test/p1", "http://s2.test/p2"])
 
-    derived_from_document_file = tmp_path / "unknown-job_input_items.json"
+    tmp = tmp_path / "tmp"
+    tmp.mkdir()
+
+    job_dir = tmp_path
+
+    derived_from_document_file = tmp / "unknown-job_input_items.json"
     with open(derived_from_document_file, "w") as f:
         f.write("your derived_from document here")  # actual contents do not matter: Scala will write this file
     metadata_tracker.addInternalFile(str(derived_from_document_file), "application/geo+json")
 
-    metadata_file = tmp_path / "job_metadata.json"
+    metadata_file = job_dir / "job_metadata.json"
 
     run_job(
         process,
-        output_file=tmp_path / "out",
+        output_file=job_dir / "out",
         metadata_file=metadata_file,
         api_version="2.0.0",
-        job_dir=tmp_path,
+        job_dir=job_dir,
         dependencies=[],
     )
 
@@ -3734,8 +3739,12 @@ def test_export_workspace_derived_from(tmp_path, requests_mock, mock_s3_bucket, 
                 exposable_links = [link for link in item.get("links", []) if link.get("_expose_internal", False)]
                 assert len(exposable_links) == 1, f"expected one link to an ItemCollection but got {exposable_links}"
 
-                assert (Path(exposable_links[0]["href"]).name == "unknown-job_input_items.json")  # TODO: currently assumed to be an absolute file path
-                assert exposable_links[0]["type"] == "application/geo+json"
+                derived_from_document_link = exposable_links[0]
+                assert Path(derived_from_document_link["href"]).is_relative_to(
+                    job_dir
+                ), "derived_from document is not in job directory"
+                assert (Path(derived_from_document_link["href"]).name == "unknown-job_input_items.json")  # TODO: currently assumed to be an absolute file path
+                assert derived_from_document_link["type"] == "application/geo+json"
         else:
             # these get rendered in the /jobs/<job_id>/results STAC Collection document
             assert derived_from_hrefs == ["http://s2.test/p1", "http://s2.test/p2"]
@@ -3774,9 +3783,6 @@ def test_input_item_collection(tmp_path, metadata_tracker):
         },
     }
 
-    print(json.dumps(process))
-    # return
-
     job_dir = tmp_path
     metadata_file = job_dir / "job_metadata.json"
 
@@ -3807,6 +3813,9 @@ def test_input_item_collection(tmp_path, metadata_tracker):
     assert derived_from_document_link["rel"] == "custom"
     assert derived_from_document_link["type"] == "application/geo+json"
 
+    assert Path(derived_from_document_link["href"]).is_relative_to(
+        job_dir
+    ), "derived_from document is not in job directory"
     with open(derived_from_document_link["href"]) as f:
         derived_from_document = json.load(f)
 

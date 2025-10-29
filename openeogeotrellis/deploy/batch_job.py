@@ -658,7 +658,7 @@ def write_metadata(metadata: dict, metadata_file: Path, is_stac11: bool):
     log_asset_hrefs("output")
 
     if is_stac11:
-        out_metadata = _replace_derived_from_links_with_internal_file(out_metadata)
+        out_metadata = _replace_derived_from_links_with_internal_file(out_metadata, job_dir=metadata_file.parent)  # TODO: ugly way to get job_dir
 
     with open(metadata_file, "w") as f:
         json.dump(out_metadata, f, default=json_default)
@@ -676,15 +676,22 @@ def write_metadata(metadata: dict, metadata_file: Path, is_stac11: bool):
         # TODO: upload derived_from_document as well
 
 
-def _replace_derived_from_links_with_internal_file(metadata: dict) -> dict:
+def _replace_derived_from_links_with_internal_file(metadata: dict, job_dir: Path) -> dict:
     metadata = deepcopy(metadata)  # avoid mutating an object that is going to be reused
 
     non_derived_from_links = [link for link in metadata.get("links", []) if link.get("rel") != "derived_from"]
     metadata["links"] = list(non_derived_from_links)  # remove top-level derived_from links
 
-    # add link to derived_from document to each item
-    for item in metadata.get("items", []):
-        for internal_link in metadata.get("internal_links", []):
+    # add link to derived_from documents to each item
+    for internal_link in metadata.get("internal_links", []):
+        # file should be downloadable from the web app driver
+        downloadable_href = str(job_dir / Path(internal_link["href"]).name)
+        shutil.copy(internal_link["href"], downloadable_href)  # TODO: avoid unnecessary copy operations?
+        # TODO: set permissions?
+        logger.debug(f"copied {internal_link['href']} to {downloadable_href}")
+        internal_link["href"] = downloadable_href
+
+        for item in metadata.get("items", []):
             item.setdefault("links", []).append(internal_link)
 
     return metadata
