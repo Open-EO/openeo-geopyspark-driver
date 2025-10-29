@@ -174,7 +174,8 @@ class TestDummyStacApiServer:
                 "type": "Catalog",
                 "links": [
                     {"rel": "root", "href": f"{root_url}/"},
-                    {"rel": "search", "href": f"{root_url}/search"},
+                    {"rel": "search", "href": f"{root_url}/search", "method": "GET"},
+                    {"rel": "search", "href": f"{root_url}/search", "method": "POST"},
                     {"rel": "self", "href": f"{root_url}/"},
                 ],
             }

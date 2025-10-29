@@ -1148,11 +1148,17 @@ class PropertyFilter:
         use_filter_extension: Union[bool, str],
         client: pystac_client.Client,
     ) -> Union[str, dict, None]:
+        # TODO: the strong coupling between GET+CQL2-text and POST+CQL2-JSON is a bit off here:
+        #       per [STAC API filter spec](https://github.com/stac-api-extensions/filter?tab=readme-ov-file#get-query-parameters-and-post-json-fields)
+        #       GET can use both CQL2 text and JSON, but POST should only use JSON.
+        #       Method and CQL2 format should ideally be decoupled.
         if use_filter_extension == "cql2-json":  # force POST JSON
             return self.to_cql2_json()
         elif use_filter_extension == "cql2-text":  # force GET text
             return self.to_cql2_text()
         elif use_filter_extension == True:  # auto-detect, favor POST
+            # TODO: CQL2 format detection should be done through conformance classes instead of link rels
+            #      also see https://github.com/stac-api-extensions/filter?tab=readme-ov-file#get-query-parameters-and-post-json-fields
             search_links = client.get_links(rel="search")
             supports_post_search = any(link.extra_fields.get("method") == "POST" for link in search_links)
             if supports_post_search:

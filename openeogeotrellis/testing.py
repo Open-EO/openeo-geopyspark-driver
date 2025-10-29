@@ -366,6 +366,8 @@ class DummyStacApiServer:
         # Mapping of collection id -> (collection dict, list of item dicts)
         self._collections: Dict[str, DummyStacApiServer._CollectionData] = {}
 
+        self.request_history: List[dict] = []
+
         # TODO: don't do this here, but move to a fixture?
         self.default_setup()
 
@@ -415,6 +417,17 @@ class DummyStacApiServer:
     def _build_flask_app(self) -> flask.Flask:
         app = flask.Flask(__name__)
 
+        @app.before_request
+        def track_request():
+            self.request_history.append(
+                {
+                    "method": flask.request.method,
+                    "path": flask.request.path,
+                    "url_params": flask.request.args.to_dict(),
+                    "json": flask.request.get_json(silent=True),
+                }
+            )
+
         # Use JSON formatted errors to eliminate the unnecessary verbosity of default HTML error pages
         @app.errorhandler(Exception)
         def error(e):
@@ -426,9 +439,9 @@ class DummyStacApiServer:
                 body["description"] = e.description
             return flask.jsonify(body), http_code
 
-        def link(rel: str, endpoint: str, **kwargs) -> dict:
+        def link(rel: str, endpoint: str, *, method: Optional[str] = None, **kwargs) -> dict:
             """Helper to build a link dict"""
-            return {
+            link = {
                 "rel": rel,
                 "href": flask.url_for(
                     endpoint,
@@ -436,6 +449,9 @@ class DummyStacApiServer:
                     _external=True,
                 ),
             }
+            if method:
+                link["method"] = method
+            return link
 
         def with_links(data: dict, *, links: List[dict]) -> dict:
             """Helper to add links to the root of a dict"""
@@ -454,13 +470,17 @@ class DummyStacApiServer:
                 "https://api.stacspec.org/v1.0.0/collections",
                 "https://api.stacspec.org/v1.0.0/item-search",
                 "https://api.stacspec.org/v1.0.0/item-search#filter",
+                "http://www.opengis.net/spec/cql2/1.0/conf/basic-cql2",
+                "http://www.opengis.net/spec/cql2/1.0/conf/cql2-json",
+                "http://www.opengis.net/spec/cql2/1.0/conf/cql2-text",
             ]
             root_catalog = with_links(
                 root_catalog,
                 links=[
                     link(rel="root", endpoint="get_index"),
                     link(rel="self", endpoint="get_index"),
-                    link(rel="search", endpoint="get_search"),
+                    link(rel="search", endpoint="get_search", method="GET"),
+                    link(rel="search", endpoint="get_search", method="POST"),
                 ],
             )
             return flask.jsonify(root_catalog)

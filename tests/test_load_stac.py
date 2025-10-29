@@ -1,4 +1,4 @@
-from typing import Iterator
+from typing import Iterator, Tuple
 
 import dirty_equals
 import pystac
@@ -1570,7 +1570,7 @@ class TestItemCollection:
         assert item_collection.items == expected
 
     @pytest.fixture
-    def dummy_stac_api(self) -> Iterator[str]:
+    def dummy_stac_api_server(self) -> DummyStacApiServer:
         dummy_server = DummyStacApiServer()
 
         dummy_server.define_collection(
@@ -1589,9 +1589,13 @@ class TestItemCollection:
                     bbox=[x + 0.1, 50.1, x + 0.9, 50.9],
                     properties={"flavor": {0: "apple", 1: "banana", 2: "coconut"}[(m + x) % 3]},
                 )
+        return dummy_server
 
-        with dummy_server.serve() as root_url:
+    @pytest.fixture
+    def dummy_stac_api(self, dummy_stac_api_server) -> Iterator[str]:
+        with dummy_stac_api_server.serve() as root_url:
             yield root_url
+
 
     def test_from_stac_api_basic(self, dummy_stac_api):
         given_url = f"{dummy_stac_api}/collections/collection-123"
@@ -1653,8 +1657,74 @@ class TestItemCollection:
         )
         assert set(item.id for item in item_collection.items) == expected_items
 
-    @pytest.mark.parametrize("use_filter_extension", ["cql2-json", "cql2-text"])
-    def test_from_stac_api_property_filter(self, dummy_stac_api, use_filter_extension):
+    @pytest.mark.parametrize(
+        ["use_filter_extension", "expected_search"],
+        [
+            (
+                "cql2-json",
+                {
+                    "method": "POST",
+                    "path": "/search",
+                    "url_params": {},
+                    "json": {
+                        "collections": ["custom-s2"],
+                        "datetime": "2024-01-01T00:00:00Z/2025-01-01T00:00:00Z",
+                        "limit": 20,
+                        "filter-lang": "cql2-json",
+                        "filter": {"op": "=", "args": [{"property": "properties.flavor"}, "banana"]},
+                    },
+                },
+            ),
+            (
+                "cql2-text",
+                {
+                    "method": "GET",
+                    "path": "/search",
+                    "url_params": {
+                        "collections": "custom-s2",
+                        "datetime": "2024-01-01T00:00:00Z/2025-01-01T00:00:00Z",
+                        "limit": "20",
+                        "filter-lang": "cql2-text",
+                        "filter": "\"properties.flavor\" = 'banana'",
+                    },
+                    "json": None,
+                },
+            ),
+            (
+                # Auto mode: Prefer POST with cql2-json if supported by server
+                True,
+                {
+                    "method": "POST",
+                    "path": "/search",
+                    "url_params": {},
+                    "json": {
+                        "collections": ["custom-s2"],
+                        "datetime": "2024-01-01T00:00:00Z/2025-01-01T00:00:00Z",
+                        "limit": 20,
+                        "filter-lang": "cql2-json",
+                        "filter": {"op": "=", "args": [{"property": "properties.flavor"}, "banana"]},
+                    },
+                },
+            ),
+            (
+                # No usage of filter extension
+                False,
+                {
+                    "method": "GET",
+                    "path": "/search",
+                    "url_params": {
+                        "collections": "custom-s2",
+                        "datetime": "2024-01-01T00:00:00Z/2025-01-01T00:00:00Z",
+                        "limit": "20",
+                    },
+                    "json": None,
+                },
+            ),
+        ],
+    )
+    def test_from_stac_api_property_filter(
+        self, dummy_stac_api, dummy_stac_api_server, use_filter_extension, expected_search
+    ):
         given_url = f"{dummy_stac_api}/collections/custom-s2"
         collection: pystac.Collection = pystac.read_file(given_url)
         property_filter = PropertyFilter(
@@ -1686,3 +1756,7 @@ class TestItemCollection:
             "item-9-4",
             "item-10-3",
         }
+
+        # Check search requests made to the STAC API server
+        search_requests = [r for r in dummy_stac_api_server.request_history if r["path"] == "/search"]
+        assert search_requests == [expected_search]
