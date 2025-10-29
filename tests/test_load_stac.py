@@ -1587,6 +1587,7 @@ class TestItemCollection:
                     item_id=f"item-{m}-{x}",
                     datetime=f"2024-{m:02d}-20T12:00:00Z",
                     bbox=[x + 0.1, 50.1, x + 0.9, 50.9],
+                    properties={"flavor": {0: "apple", 1: "banana", 2: "coconut"}[(m + x) % 3]},
                 )
 
         with dummy_server.serve() as root_url:
@@ -1651,3 +1652,37 @@ class TestItemCollection:
             spatiotemporal_extent=spatiotemporal_extent,
         )
         assert set(item.id for item in item_collection.items) == expected_items
+
+    @pytest.mark.parametrize("use_filter_extension", ["cql2-json", "cql2-text"])
+    def test_from_stac_api_property_filter(self, dummy_stac_api, use_filter_extension):
+        given_url = f"{dummy_stac_api}/collections/custom-s2"
+        collection: pystac.Collection = pystac.read_file(given_url)
+        property_filter = PropertyFilter(
+            properties={
+                "flavor": {
+                    "process_graph": {
+                        "eq": {
+                            "process_id": "eq",
+                            "arguments": {"x": {"from_parameter": "value"}, "y": "banana"},
+                            "result": True,
+                        }
+                    }
+                }
+            }
+        )
+        spatiotemporal_extent = _SpatioTemporalExtent(bbox=None, from_date="2024-01-01", to_date="2025-01-01")
+        item_collection = ItemCollection.from_stac_api(
+            collection,
+            original_url=given_url,
+            property_filter=property_filter,
+            spatiotemporal_extent=spatiotemporal_extent,
+            use_filter_extension=use_filter_extension,
+        )
+        assert set(item.id for item in item_collection.items) == {
+            "item-3-4",
+            "item-4-3",
+            "item-6-4",
+            "item-7-3",
+            "item-9-4",
+            "item-10-3",
+        }

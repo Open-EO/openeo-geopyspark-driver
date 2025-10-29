@@ -9,11 +9,11 @@ import dataclasses
 import datetime
 import json
 import logging
-import shapely
+import re
 import subprocess
 import uuid
 from pathlib import Path
-from typing import Dict, Iterator, List, Optional, Tuple, Union
+from typing import Callable, Dict, Iterator, List, Optional, Tuple, Union
 from unittest import mock
 
 import flask
@@ -27,6 +27,7 @@ import openeo_driver.testing
 import pyspark
 import pystac
 import pytest
+import shapely
 import werkzeug.exceptions
 from openeo.testing.stac import StacDummyBuilder
 from openeo_driver.testing import ephemeral_flask_server
@@ -338,6 +339,19 @@ class DummyStacApiServer:
     This allows making real HTTP requests
     and eliminates the need to mock HTTP calls,
     which is complicated as pystac and pystac_client build on different HTTP libraries.
+
+    Usage example:
+
+        dummy_stac_api = DummyStacApiServer()
+        # Optionally define collections and items
+        dummy_stac_api.define_collection(id="my-collection")
+        dummy_stac_api.define_item(collection_id="my-collection", item_id="item-1")
+
+        with dummy_stac_api.serve() as root_url:
+            response = requests.get(f"{root_url}/...")
+            # Or use pystac_client to access the dummy STAC API
+            client = pystac_client.Client.open(root_url)
+            ...
     """
 
     DEFAULT_BBOX = [2, 49, 7, 52]
@@ -352,12 +366,33 @@ class DummyStacApiServer:
         # Mapping of collection id -> (collection dict, list of item dicts)
         self._collections: Dict[str, DummyStacApiServer._CollectionData] = {}
 
-        # Predefine a default collection
         # TODO: don't do this here, but move to a fixture?
+        self.default_setup()
+
+    def default_setup(self):
+        """Predefine a default collection with items"""
         self.define_collection(id="collection-123")
-        self.define_item(collection_id="collection-123", item_id="item-1", datetime="2024-05-01", bbox=[2, 49, 3, 50])
-        self.define_item(collection_id="collection-123", item_id="item-2", datetime="2024-06-02", bbox=[3, 50, 5, 51])
-        self.define_item(collection_id="collection-123", item_id="item-3", datetime="2024-07-03", bbox=[4, 51, 7, 52])
+        self.define_item(
+            collection_id="collection-123",
+            item_id="item-1",
+            datetime="2024-05-01",
+            bbox=[2, 49, 3, 50],
+            properties={"flavor": "apple"},
+        )
+        self.define_item(
+            collection_id="collection-123",
+            item_id="item-2",
+            datetime="2024-06-02",
+            bbox=[3, 50, 5, 51],
+            properties={"flavor": "banana"},
+        )
+        self.define_item(
+            collection_id="collection-123",
+            item_id="item-3",
+            datetime="2024-07-03",
+            bbox=[4, 51, 7, 52],
+            properties={"flavor": "coconut"},
+        )
 
     def define_collection(self, id: str, *, extent: Optional[dict] = None, **kwargs):
         """Define a new collection in the dummy STAC API server."""
@@ -463,22 +498,50 @@ class DummyStacApiServer:
             )
             return flask.jsonify(response)
 
-        @app.route("/search", methods=["GET", "POST"])
+        @app.route("/search", methods=["GET"])
         def get_search():
-            limit = flask.request.args.get("limit")
-            query_datetime = flask.request.args.get("datetime")
+            collections = flask.request.args.get("collections")
+            collections = collections.split(",") if collections else []
             bbox = flask.request.args.get("bbox")
-            collections = flask.request.args.getlist("collections")
-            filter = flask.request.args.get("filter")
-            filter_language = flask.request.args.get("filter-lang")
+            bbox = [float(x) for x in bbox.split(",")] if bbox else None
+            item_collection = _search(
+                collections=collections,
+                date_range=flask.request.args.get("datetime"),
+                bbox=bbox,
+                filter=flask.request.args.get("filter"),
+                filter_language=flask.request.args.get("filter-lang"),
+                limit=flask.request.args.get("limit", type=int),
+            )
+            return flask.jsonify(item_collection.to_dict())
 
+        @app.route("/search", methods=["POST"])
+        def post_search():
+            body = flask.request.get_json()
+            item_collection = _search(
+                collections=body.get("collections", []),
+                date_range=body.get("datetime"),
+                bbox=body.get("bbox"),
+                filter=body.get("filter"),
+                filter_language=body.get("filter-lang"),
+                limit=body.get("limit"),
+            )
+            return flask.jsonify(item_collection.to_dict())
+
+        def _search(
+            collections: List[str],
+            date_range: Optional[str] = None,
+            bbox: Optional[List[float]] = None,
+            filter: Optional[Union[str, dict]] = None,
+            filter_language: Optional[str] = None,
+            limit: Optional[int] = None,
+        ) -> pystac.ItemCollection:
             collection_ids = [cid for cid in collections if cid in self._collections]
 
             items = [pystac.Item.from_dict(item) for cid in collection_ids for item in self._collections[cid].items]
 
-            if query_datetime:
-                if "/" in query_datetime:
-                    start_dt, end_dt = [to_datetime_utc(d) if d != ".." else None for d in query_datetime.split("/", 1)]
+            if date_range:
+                if "/" in date_range:
+                    start_dt, end_dt = [to_datetime_utc(d) if d != ".." else None for d in date_range.split("/", 1)]
                     items = [
                         item
                         for item in items
@@ -486,25 +549,51 @@ class DummyStacApiServer:
                         and (end_dt is None or to_datetime_utc(item.datetime) <= end_dt)
                     ]
                 else:
-                    target_dt = to_datetime_utc(query_datetime)
+                    target_dt = to_datetime_utc(date_range)
                     items = [item for item in items if item.datetime == target_dt]
 
             if bbox:
-                bbox = [float(coord) for coord in bbox.split(",")]
                 assert len(bbox) == 4
                 bbox = shapely.box(*bbox)
                 # TODO: also support item geometry fields (not just bbox)
                 items = [item for item in items if item.bbox and bbox.intersects(shapely.box(*item.bbox))]
 
-            # TODO: filter and filter-lang support (e.g. CQL JSON)
+            if filter:
+                filter = self._build_property_filter(filter=filter, filter_language=filter_language)
+                items = [item for item in items if filter(item)]
 
             if limit:
                 items = items[: int(limit)]
 
-            item_collection = pystac.ItemCollection(items)
-            return flask.jsonify(item_collection.to_dict())
+            return pystac.ItemCollection(items)
 
         return app
+
+    def _build_property_filter(self, filter: Union[str, dict], filter_language: str) -> Callable[[pystac.Item], bool]:
+        if filter_language == "cql2-text":
+            # Just very basic filter support here: single property equality check, e.g.:
+            #     "properties.flavor" = 'banana'
+            if m := re.fullmatch(r"['\"]properties.(?P<property>\w+)['\"]\s*=\s*'(?P<value>[^']+)'", filter):
+                prop = m.group("property")
+                value = m.group("value")
+                return lambda item: item.properties.get(prop) == value
+        elif filter_language == "cql2-json":
+            # Just very basic filter support here: single property equality check, e.g.:
+            #     {"op": "=", "args": [{"property": "properties.flavor"}, "banana"]}
+            if (
+                isinstance(filter, dict)
+                and filter.get("op") == "="
+                and isinstance(filter.get("args"), list)
+                and len(filter["args"]) == 2
+            ):
+                arg1, arg2 = filter["args"]
+                if not isinstance(arg1, dict):
+                    arg1, arg2 = arg2, arg1
+                if isinstance(arg1, dict) and isinstance(arg2, str) and arg1.get("property").startswith("properties."):
+                    prop = arg1["property"].split(".", 1)[-1]
+                    value = arg2
+                    return lambda item: item.properties.get(prop) == value
+        raise ValueError(f"Unsupported CQL filter: {filter_language=} {filter=}")
 
     def serve(self) -> Iterator[str]:
         """
