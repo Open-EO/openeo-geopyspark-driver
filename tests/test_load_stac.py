@@ -184,13 +184,6 @@ def jvm_mock():
 
 
 @pytest.mark.parametrize(
-    ["enable_by_catalog", "enable_by_eval_env"],
-    [
-        (True, {}),
-        (False, {"load_stac_apply_lcfm_improvements": True}),
-    ],
-)
-@pytest.mark.parametrize(
     ["band_names", "resolution", "expected_add_links"],
     [
         (
@@ -250,16 +243,18 @@ def jvm_mock():
         ),
     ],
 )
-def test_lcfm_improvements(  # resolution and offset behind a feature flag; alphabetical head tags are tested elsewhere
+def test_resolution_and_offset_handling(
     requests_mock,
     test_data,
     jvm_mock,
     band_names,
     resolution,
-    enable_by_catalog,
-    enable_by_eval_env,
     expected_add_links,
 ):
+    """
+    resolution and offset behind a feature flag; alphabetical head tags are tested elsewhere
+    Originally referred to as "LCFM Improvements"
+    """
     stac_api_root_url = "https://stac.test"
     stac_collection_url = f"{stac_api_root_url}/collections/collection"
 
@@ -284,10 +279,9 @@ def test_lcfm_improvements(  # resolution and offset behind a feature flag; alph
     data_cube = load_stac(
         url=stac_collection_url,
         load_params=LoadParameters(bands=band_names),
-        env=EvalEnv(dict(enable_by_eval_env, pyramid_levels="highest")),
+        env=EvalEnv(dict(pyramid_levels="highest")),
         layer_properties={},
         batch_jobs=None,
-        apply_lcfm_improvements=enable_by_catalog,
     )
 
     # TODO: how to check the actual argument to PyramidFactory()?

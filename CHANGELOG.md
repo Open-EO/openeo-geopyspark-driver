@@ -13,7 +13,12 @@ without compromising stable operations.
 <!-- start-of-changelog -->
 
 
-## In progress: 0.69.0
+## In progress: 0.70.0
+
+- `load_stac`: remove `load_stac_apply_lcfm_improvements` feature flag and make it the standard behavior ([#1306](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1306))
+
+
+## 0.69.0
 
 - Added new API `UdfRuntimeImageRepository` for centralized configuration and handling of container images and corresponding UDF runtimes ([#1279](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1279), [Open-EO/openeo-python-driver#415](https://github.com/Open-EO/openeo-python-driver/issues/415), eu-cdse/openeo-cdse-infra#721)
 - Support overriding default ETL source ID from K8s app label ([eu-cdse/openeo-cdse-infra#612](https://github.com/eu-cdse/openeo-cdse-infra/issues/612))
@@ -22,6 +27,7 @@ without compromising stable operations.
 - Port STAC Collection/Catalog part of `load_stac` to new (experimental) `ItemCollection` API ([#1307](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1307))
 - `run_udf` inspect calls in `apply_metadata`did not show up in logs ([#1394](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1394))
 - Port STAC API part of `load_stac` to new (experimental) `ItemCollection` API ([#1307](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1307))
+
 
 ## 0.68.0
 

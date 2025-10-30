@@ -71,7 +71,6 @@ WHITELIST = [
     EVAL_ENV_KEY.ALLOW_EMPTY_CUBES,
     EVAL_ENV_KEY.DO_EXTENT_CHECK,
     EVAL_ENV_KEY.PARAMETERS,
-    EVAL_ENV_KEY.LOAD_STAC_APPLY_LCFM_IMPROVEMENTS,
     EVAL_ENV_KEY.OPENEO_API_VERSION,
 ]
 LARGE_LAYER_THRESHOLD_IN_PIXELS = pow(10, 11)
@@ -718,7 +717,6 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 layer_properties=metadata.get("_vito", "properties", default={}),
                 batch_jobs=None,
                 override_band_names=metadata.band_names,
-                apply_lcfm_improvements=layer_source_info.get("load_stac_apply_lcfm_improvements", False),
             )
             pyramid = cube.pyramid.levels
             metadata = cube.metadata
