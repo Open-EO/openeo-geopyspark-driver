@@ -3735,7 +3735,7 @@ def test_export_workspace_derived_from(
 
             # these should get rendered in the job result items STAC documents
             for item in results_metadata["items"]:
-                exposable_links = [link for link in item.get("links", []) if link.get("_expose_internal", False)]
+                exposable_links = [link for link in item.get("links", []) if link.get("_expose_auxiliary", False)]
                 assert len(exposable_links) == 1, f"expected one link to an ItemCollection but got {exposable_links}"
 
                 derived_from_document_link = exposable_links[0]
@@ -3799,15 +3799,15 @@ def test_input_item_collection(tmp_path, metadata_tracker):
     with open(metadata_file) as f:
         job_metadata = json.load(f)
 
-    internal_links = [
+    auxiliary_links = [
         link
         for item in job_metadata.get("items", {})
         for link in item.get("links", [])
-        if link.get("_expose_internal", False)
+        if link.get("_expose_auxiliary", False)
     ]
 
-    assert len(internal_links) == 1, internal_links
-    derived_from_document_link = internal_links[0]
+    assert len(auxiliary_links) == 1, auxiliary_links
+    derived_from_document_link = auxiliary_links[0]
     print(json.dumps(derived_from_document_link, indent=2))
     assert derived_from_document_link["rel"] == "aux"
     assert derived_from_document_link["type"] == "application/geo+json"

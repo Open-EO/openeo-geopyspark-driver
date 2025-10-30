@@ -659,7 +659,7 @@ def write_metadata(metadata: dict, metadata_file: Path, is_stac11: bool, attach_
     log_asset_hrefs("output")
 
     if attach_derived_from_document:
-        out_metadata = _replace_derived_from_links_with_internal_file(out_metadata, job_dir=metadata_file.parent)  # TODO: ugly way to get job_dir
+        out_metadata = _replace_derived_from_links_with_auxiliary_link(out_metadata, job_dir=metadata_file.parent)  # TODO: ugly way to get job_dir
 
     with open(metadata_file, "w") as f:
         json.dump(out_metadata, f, default=json_default)
@@ -677,23 +677,23 @@ def write_metadata(metadata: dict, metadata_file: Path, is_stac11: bool, attach_
         # TODO: upload derived_from_document as well
 
 
-def _replace_derived_from_links_with_internal_file(metadata: dict, job_dir: Path) -> dict:
+def _replace_derived_from_links_with_auxiliary_link(metadata: dict, job_dir: Path) -> dict:
     metadata = deepcopy(metadata)  # avoid mutating an object that is going to be reused
 
     non_derived_from_links = [link for link in metadata.get("links", []) if link.get("rel") != "derived_from"]
     metadata["links"] = list(non_derived_from_links)  # remove top-level derived_from links
 
     # add link to derived_from documents to each item
-    for internal_link in metadata.get("internal_links", []):
+    for auxiliary_link in metadata.get("auxiliary_links", []):
         # file should be downloadable from the web app driver
-        downloadable_href = str(job_dir / Path(internal_link["href"]).name)
-        shutil.copy(internal_link["href"], downloadable_href)  # TODO: avoid unnecessary copy operations?
+        downloadable_href = str(job_dir / Path(auxiliary_link["href"]).name)
+        shutil.copy(auxiliary_link["href"], downloadable_href)  # TODO: avoid unnecessary copy operations?
         # TODO: set permissions?
-        logger.debug(f"copied {internal_link['href']} to {downloadable_href}")
-        internal_link["href"] = downloadable_href
+        logger.debug(f"copied {auxiliary_link['href']} to {downloadable_href}")
+        auxiliary_link["href"] = downloadable_href
 
         for item in metadata.get("items", []):
-            item.setdefault("links", []).append(internal_link)
+            item.setdefault("links", []).append(auxiliary_link)
 
     return metadata
 
@@ -1033,7 +1033,7 @@ def _write_exported_stac_collection_from_item(
             "bbox": item.get("bbox"),
             "properties": item.get("properties", {"datetime": result_metadata.get("start_datetime")}),
             "links": (
-                _get_tracker_metadata("", omit_derived_from_links=omit_derived_from_links).get("internal_links", [])
+                _get_tracker_metadata("", omit_derived_from_links=omit_derived_from_links).get("auxiliary_links", [])
                 if attach_derived_from_document
                 else []
             ),

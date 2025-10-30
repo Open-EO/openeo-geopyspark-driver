@@ -366,7 +366,7 @@ def _get_tracker_metadata(tracker_id: str = "", *, omit_derived_from_links: bool
     tracker = _get_tracker(tracker_id)
     usage = {}
     all_links = []
-    internal_links = []
+    auxiliary_links = []
 
     if tracker is not None:
         tracker_results = tracker.asDict()
@@ -394,19 +394,19 @@ def _get_tracker_metadata(tracker_id: str = "", *, omit_derived_from_links: bool
                 for link in links
             )
 
-        def _as_python(internal_files) -> List[dict]:  # TODO: add to GeopysparkDataCube._as_python and put in utils
+        def _as_auxiliary_links(auxiliary_files) -> List[dict]:
             return [
                 {
-                    "href": str(internal_file.getPath()),
-                    "type": internal_file.getMediaType(),
+                    "href": str(auxiliary_file.getPath()),
+                    "type": auxiliary_file.getMediaType(),
                     # TODO: "title", get from Java object and add
                     "rel": "aux",  # TODO: get from Java object
-                    "_expose_internal": True,
+                    "_expose_auxiliary": True,
                 }
-                for internal_file in internal_files
+                for auxiliary_file in auxiliary_files
             ]
 
-        internal_links = map_optional(_as_python, tracker_results.get("auxiliary_files"))
+        auxiliary_links = map_optional(_as_auxiliary_links, tracker_results.get("auxiliary_files"))
 
     from openeogeotrellis.metrics_tracking import global_tracker
 
@@ -425,4 +425,4 @@ def _get_tracker_metadata(tracker_id: str = "", *, omit_derived_from_links: bool
             usage["input_pixel"]["value"] += sar_backscatter_inputpixels / (1024 * 1024)
         else:
             usage["input_pixel"] = {"value": sar_backscatter_inputpixels / (1024 * 1024), "unit": "mega-pixel"}
-    return dict_no_none(usage=usage or None, links=all_links, internal_links=internal_links or None)
+    return dict_no_none(usage=usage or None, links=all_links, auxiliary_links=auxiliary_links or None)

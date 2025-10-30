@@ -131,7 +131,7 @@ class StacApiWorkspace(Workspace):
                         asset.href = workspace_uri
 
                     for link in new_item.links:
-                        if link.extra_fields.pop("_expose_internal", False):  # TODO: put in a constant somewhere (most likely in openeo-python-driver)
+                        if link.extra_fields.pop("_expose_auxiliary", False):  # TODO: put in a constant somewhere (most likely in openeo-python-driver)
                             workspace_uri = self._export_link(link, target, remove_original)
                             _log.info(f"exported link {link.get_absolute_href()} as {workspace_uri}")
                             link.target = workspace_uri
