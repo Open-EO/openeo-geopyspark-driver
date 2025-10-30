@@ -3660,7 +3660,7 @@ def test_export_workspace_derived_from(
             assert len(links) == 1, f"expected one link to an ItemCollection but got {links}"
             derived_from_document_link = links[0]
 
-            assert derived_from_document_link["rel"] == "custom"  # TODO
+            assert derived_from_document_link["rel"] == "aux"
             assert derived_from_document_link["type"] == "application/geo+json"
             assert (
                 derived_from_document_link["href"] == f"s3://{mock_s3_bucket.name}/{merge}/unknown-job_input_items.json"
@@ -3809,7 +3809,7 @@ def test_input_item_collection(tmp_path, metadata_tracker):
     assert len(internal_links) == 1, internal_links
     derived_from_document_link = internal_links[0]
     print(json.dumps(derived_from_document_link, indent=2))
-    assert derived_from_document_link["rel"] == "custom"
+    assert derived_from_document_link["rel"] == "aux"
     assert derived_from_document_link["type"] == "application/geo+json"
 
     assert Path(derived_from_document_link["href"]).parent == job_dir, "derived_from document is not in job directory"

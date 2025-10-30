@@ -399,7 +399,8 @@ def _get_tracker_metadata(tracker_id: str = "", *, omit_derived_from_links: bool
                 {
                     "href": str(internal_file.getPath()),
                     "type": internal_file.getMediaType(),
-                    "rel": "custom",
+                    # TODO: "title", get from Java object and add
+                    "rel": "aux",  # TODO: get from Java object
                     "_expose_internal": True,
                 }
                 for internal_file in internal_files
