@@ -1848,7 +1848,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 process_graph=job_process_graph, api_version=api_version
             )
             if image_name:
-                log.info(f'Forcing job_options["image-name"]={image_name!r}')
+                log.info(f'No job_options["image-name"] specified, setting fallback {image_name!r}')
                 job_options["image-name"] = image_name
 
         if (dependencies is None
@@ -2205,7 +2205,7 @@ class GpsBatchJobs(backend.BatchJobs):
             image_name = self._udf_runtimes.udf_runtime_image_repository.get_image_from_udf_runtimes(
                 runtimes=udf_runtimes
             )
-            logger.info(f"Determined container image {image_name!r} from process graph with {set(udf_runtimes)}")
+            logger.info(f"Determined container image {image_name!r} from process graph with {set(udf_runtimes)=}")
             return image_name
         except Exception as e:
             logger.warning(f"Failed to determine container image from process graph: {e}", exc_info=True)
