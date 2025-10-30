@@ -71,6 +71,7 @@ from pandas import Timedelta
 from py4j.java_gateway import JVMView
 from py4j.protocol import Py4JJavaError
 from pyspark import SparkContext
+from pyspark.util import _parse_memory
 from shapely.geometry import Polygon
 from urllib3 import Retry
 from xarray import DataArray
@@ -2025,9 +2026,8 @@ class GpsBatchJobs(backend.BatchJobs):
             batch_job_cfg_secret_name = k8s_get_batch_job_cfg_secret_name(spark_app_id)
 
             max_result_size = '5g'
-            from pyspark.util import _parse_memory
-            if _parse_memory(max_result_size) < _parse_memory(options.executor_memory):
-                max_result_size = options.executor_memory
+            if _parse_memory(max_result_size) < _parse_memory(options.driver_memory):
+                max_result_size = options.driver_memory
 
             sparkapplication_dict = k8s_render_manifest_template(
                 "sparkapplication.yaml.j2",
