@@ -3515,8 +3515,10 @@ def test_netcdf_sample_by_feature_asset_bbox_geometry(tmp_path):
     }
 
 
-@pytest.mark.parametrize("stac_version", [None, "1.1"])
-def test_export_workspace_derived_from(tmp_path, requests_mock, mock_s3_bucket, metadata_tracker, stac_version):
+@pytest.mark.parametrize("derived_from_document_experimental", [False, True])
+def test_export_workspace_derived_from(
+    tmp_path, requests_mock, mock_s3_bucket, metadata_tracker, derived_from_document_experimental
+):
     stac_api_workspace_id = "stac_api_workspace"
     stac_api_workspace = get_backend_config().workspaces[stac_api_workspace_id]
     assert isinstance(stac_api_workspace, StacApiWorkspace)
@@ -3601,7 +3603,7 @@ def test_export_workspace_derived_from(tmp_path, requests_mock, mock_s3_bucket, 
         nonlocal new_collection
         new_collection = request.json()  # save it for second "get existing collection"
 
-        if stac_version == "1.1":
+        if derived_from_document_experimental:
             assert new_collection["links"] == []  # items get a link to a derived_from document instead
         else:
             assert new_collection["links"] == [  # input products for the _entire_ job
@@ -3625,7 +3627,7 @@ def test_export_workspace_derived_from(tmp_path, requests_mock, mock_s3_bucket, 
     def update_collection_callback(request, context) -> dict:
         updated_collection = request.json()
 
-        if stac_version == "1.1":
+        if derived_from_document_experimental:
             assert updated_collection["links"] == []
         else:
             assert updated_collection["links"] == [  # the same because export_workspace avoids duplicates
@@ -3654,7 +3656,7 @@ def test_export_workspace_derived_from(tmp_path, requests_mock, mock_s3_bucket, 
 
         links = new_item.get("links")
 
-        if stac_version == "1.1":
+        if derived_from_document_experimental:
             assert len(links) == 1, f"expected one link to an ItemCollection but got {links}"
             derived_from_document_link = links[0]
 
@@ -3693,7 +3695,7 @@ def test_export_workspace_derived_from(tmp_path, requests_mock, mock_s3_bucket, 
         "process_graph": process_graph,
         "job_options": {
             "export-workspace-enable-merge": enable_merge,
-            "stac-version-experimental": stac_version,
+            "derived-from-document-experimental": derived_from_document_experimental,
         }
     }
 
@@ -3726,10 +3728,10 @@ def test_export_workspace_derived_from(tmp_path, requests_mock, mock_s3_bucket, 
 
         derived_from_hrefs = [link["href"] for link in results_metadata["links"] if link["rel"] == "derived_from"]
 
-        if stac_version == "1.1":
+        if derived_from_document_experimental:
             assert (
                 not derived_from_hrefs
-            ), f'expected no Collection-level "derived_from" links for stac_version {stac_version}'
+            ), f'expected no Collection-level "derived_from" links for stac_version {derived_from_document_experimental=}'
 
             # these should get rendered in the job result items STAC documents
             for item in results_metadata["items"]:
@@ -3776,7 +3778,7 @@ def test_input_item_collection(tmp_path, metadata_tracker):
     process = {
         "process_graph": process_graph,
         "job_options": {
-            "stac-version-experimental": "1.1",
+            "derived-from-document-experimental": True,
         },
     }
 
