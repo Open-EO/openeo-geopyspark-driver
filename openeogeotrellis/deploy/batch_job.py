@@ -686,11 +686,11 @@ def _replace_derived_from_links_with_auxiliary_link(metadata: dict, job_dir: Pat
     # add link to derived_from documents to each item
     for auxiliary_link in metadata.get("auxiliary_links", []):
         # file should be downloadable from the web app driver
-        downloadable_href = str(job_dir / Path(auxiliary_link["href"]).name)
-        shutil.copy(auxiliary_link["href"], downloadable_href)  # TODO: avoid unnecessary copy operations?
-        # TODO: set permissions?
-        logger.debug(f"copied {auxiliary_link['href']} to {downloadable_href}")
-        auxiliary_link["href"] = downloadable_href
+        downloadable_href = job_dir / Path(auxiliary_link["href"]).name
+        shutil.copy(auxiliary_link["href"], downloadable_href)
+        add_permissions(downloadable_href, stat.S_IWGRP)
+        logger.debug(f"copied {auxiliary_link['href']} to {downloadable_href}")  # TODO: avoid unnecessary copy operations?
+        auxiliary_link["href"] = str(downloadable_href)
 
         for item in metadata.get("items", []):
             item.setdefault("links", []).append(auxiliary_link)
