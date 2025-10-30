@@ -3703,7 +3703,7 @@ def test_export_workspace_derived_from(tmp_path, requests_mock, mock_s3_bucket, 
         derived_from_document_file = Path(tmp) / "unknown-job_input_items.json"
         with open(derived_from_document_file, "w") as f:
             f.write("your derived_from document here")  # actual contents do not matter: Scala will write this file
-        metadata_tracker.addInternalFile(str(derived_from_document_file), "application/geo+json")
+        metadata_tracker.addAuxiliaryFile(str(derived_from_document_file), "application/geo+json")
 
         job_dir = tmp_path
         metadata_file = job_dir / "job_metadata.json"

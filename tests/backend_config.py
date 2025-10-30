@@ -79,7 +79,7 @@ config = GpsBackendConfig(
     layer_catalog_files=[str(Path(__file__).parent / "layercatalog.json")],
     opensearch_enrich=False,
     # TODO: avoid hardcoded reference to VITO/Terrascope resource
-    default_opensearch_endpoint="https://services.terrascope.be/catalogue/",
+    default_opensearch_endpoint="https://services.terrascope.be/catalogue",
     oidc_providers=oidc_providers,
     zookeeper_hosts=["zk.test"],
     zookeeper_root_path="/openeo-test",

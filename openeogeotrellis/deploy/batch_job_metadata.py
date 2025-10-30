@@ -405,7 +405,7 @@ def _get_tracker_metadata(tracker_id: str = "", *, omit_derived_from_links: bool
                 for internal_file in internal_files
             ]
 
-        internal_links = map_optional(_as_python, tracker_results.get("internal_files"))
+        internal_links = map_optional(_as_python, tracker_results.get("auxiliary_files"))
 
     from openeogeotrellis.metrics_tracking import global_tracker
 
