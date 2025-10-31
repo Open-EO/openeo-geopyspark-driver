@@ -3820,4 +3820,20 @@ def test_input_item_collection(tmp_path, metadata_tracker):
     assert len(derived_from_document)
 
     assert derived_from_document["type"] == "FeatureCollection"
+    assert derived_from_document["features"]
     assert all(item["type"] == "Feature" for item in derived_from_document["features"])
+
+    derived_from_links = [link for feature in derived_from_document["features"] for link in feature["links"]]
+    assert derived_from_links
+
+    collection_id = "urn:eop:VITO:TERRASCOPE_S2_TOC_V2"
+
+    for link in derived_from_links:
+        assert link["rel"] == "derived_from"
+        feature_id = link["title"]
+        assert feature_id.startswith(f"{collection_id}:")
+        assert link["href"] == (
+            f"https://services.terrascope.be/catalogue/products"
+            f"?collection={collection_id.replace(':', '%3A')}"
+            f"&uid={feature_id.replace(':', '%3A')}"
+        )
