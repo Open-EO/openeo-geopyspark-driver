@@ -8,6 +8,7 @@ import uuid
 from pathlib import Path, PurePath
 from typing import Set
 from unittest import mock
+from urllib.parse import urlparse
 
 import geopandas as gpd
 import pystac
@@ -3650,10 +3651,6 @@ def test_export_workspace_derived_from(
     def create_item_callback(request, context) -> dict:
         new_item = request.json()
 
-        # TODO: just a sanity check of the workspace URI, remove
-        for asset in new_item["assets"].values():
-            assert asset["href"].startswith(f"s3://{mock_s3_bucket.name}/{merge}/openEO"), asset["href"]
-
         links = new_item.get("links")
 
         if derived_from_document_experimental:
@@ -3740,9 +3737,8 @@ def test_export_workspace_derived_from(
 
                 derived_from_document_link = exposable_links[0]
                 assert (
-                    Path(derived_from_document_link["href"]).parent == job_dir
+                    Path(urlparse(derived_from_document_link["href"]).path) == job_dir / derived_from_document_file.name
                 ), "derived_from document is not in job directory"
-                assert Path(derived_from_document_link["href"]).name == Path(derived_from_document_file.name).name  # TODO: currently assumed to be an absolute file path
                 assert derived_from_document_link["type"] == "application/geo+json"
         else:
             # these get rendered in the /jobs/<job_id>/results STAC Collection document
@@ -3812,8 +3808,9 @@ def test_input_item_collection(tmp_path, metadata_tracker):
     assert derived_from_document_link["rel"] == "aux"
     assert derived_from_document_link["type"] == "application/geo+json"
 
-    assert Path(derived_from_document_link["href"]).parent == job_dir, "derived_from document is not in job directory"
-    with open(derived_from_document_link["href"]) as f:
+    derived_from_document_file = Path(urlparse(derived_from_document_link["href"]).path)
+    assert derived_from_document_file.parent == job_dir, "derived_from document is not in job directory"
+    with derived_from_document_file.open() as f:
         derived_from_document = json.load(f)
 
     print(json.dumps(derived_from_document, indent=2))

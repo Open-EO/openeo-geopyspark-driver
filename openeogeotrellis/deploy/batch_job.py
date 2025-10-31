@@ -700,12 +700,13 @@ def _replace_derived_from_links_with_auxiliary_link(metadata: dict, job_dir: Pat
                 s3_instance.upload_file(str(auxiliary_file), job_bucket, str(auxiliary_file).strip("/"))
                 logger.debug(f"uploaded {auxiliary_file} to {downloadable_href}")
         else:
-            downloadable_href = job_dir / auxiliary_file.name  # TODO: add file: scheme?
-            shutil.copy(auxiliary_file, downloadable_href)
-            add_permissions(downloadable_href, stat.S_IWGRP)
-            logger.debug(f"copied {auxiliary_file} to {downloadable_href}")
+            downloadable_file = job_dir / auxiliary_file.name
+            shutil.copy(auxiliary_file, downloadable_file)
+            add_permissions(downloadable_file, stat.S_IWGRP)
+            logger.debug(f"copied {auxiliary_file} to {downloadable_file}")
+            downloadable_href = f"file://{downloadable_file}"
 
-        auxiliary_link["href"] = str(downloadable_href)
+        auxiliary_link["href"] = downloadable_href
 
         for item in metadata.get("items", []):
             item.setdefault("links", []).append(auxiliary_link)
