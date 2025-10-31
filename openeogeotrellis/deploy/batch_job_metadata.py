@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 
 import pyproj
 from openeo.util import Rfc3339, dict_no_none
+from openeo_driver.constants import ITEM_LINK_PROPERTY
 from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import DryRunDataTracer
@@ -401,7 +402,7 @@ def _get_tracker_metadata(tracker_id: str = "", *, omit_derived_from_links: bool
                     "type": auxiliary_file.getMediaType(),
                     # TODO: "title", get from Java object and add
                     "rel": "aux",  # TODO: get from Java object
-                    "_expose_auxiliary": True,
+                    ITEM_LINK_PROPERTY.EXPOSE_AUXILIARY: True,
                 }
                 for auxiliary_file in auxiliary_files
             ]
