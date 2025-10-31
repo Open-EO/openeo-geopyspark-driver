@@ -340,7 +340,6 @@ def run_job(
             "node_caching",
             EVAL_ENV_KEY.ALLOW_EMPTY_CUBES,
             EVAL_ENV_KEY.DO_EXTENT_CHECK,
-            EVAL_ENV_KEY.LOAD_STAC_APPLY_LCFM_IMPROVEMENTS,
         ]
         env_values.update({k: job_options[k] for k in job_option_whitelist if k in job_options})
         env = EvalEnv(env_values)
