@@ -3748,7 +3748,7 @@ def test_export_workspace_derived_from(
             assert derived_from_hrefs == ["http://s2.test/p1", "http://s2.test/p2"]
 
 
-def test_input_item_collection(tmp_path, metadata_tracker):
+def test_webapp_derived_from(tmp_path, metadata_tracker):
     process_graph = {
         "loadcollection1": {
             "process_id": "load_collection",

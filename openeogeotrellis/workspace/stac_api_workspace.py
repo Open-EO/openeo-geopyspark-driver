@@ -37,7 +37,7 @@ class StacApiWorkspace(Workspace):
         asset_alternate_id: str,
         export_link: Callable[
             [Link, PurePath, bool], str  # (link, merge, remove_original) => workspace URI
-        ] = lambda link: link.href,
+        ] = lambda link, merge, remove_original: link.href,
         additional_collection_properties: dict = None,
         get_access_token: Callable[[bool], str] = None,  # fresh => access_token
     ):
