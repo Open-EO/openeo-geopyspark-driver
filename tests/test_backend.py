@@ -894,9 +894,9 @@ class TestGpsBatchJobs:
 
         item_id, item = next(
             iter(
-                backend_implementation.batch_jobs.get_result_items(
+                backend_implementation.batch_jobs.get_result_metadata(
                     job_id=job_id, user_id=self._dummy_user.user_id
-                ).items()
+                ).items.items()
             )
         )
 
