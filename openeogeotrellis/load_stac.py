@@ -325,6 +325,12 @@ def load_stac(
             if itm.geometry is not None:
                 builder = builder.withGeometryFromWkt(str(shape(itm.geometry)))
 
+            self_links = itm.get_links(rel="self")
+            self_url = self_links[0].href if self_links else None
+
+            if self_url:
+                builder = builder.withSelfUrl(self_url)
+
             opensearch_client.addFeature(builder.build())
 
             stac_bbox = (

@@ -16,6 +16,7 @@ without compromising stable operations.
 ## In progress: 0.70.0
 
 - `load_stac`: remove `load_stac_apply_lcfm_improvements` feature flag and make it the standard behavior ([#1306](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1306))
+- Experimental support for dropping `derived_from` links on the STAC Collection level in favor of a link, to a dedicated document with input features, on the item level ([#1278](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1278))
 
 
 ## 0.69.0

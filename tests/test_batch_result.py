@@ -8,6 +8,7 @@ import uuid
 from pathlib import Path, PurePath
 from typing import Set
 from unittest import mock
+from urllib.parse import urlparse
 
 import geopandas as gpd
 import pystac
@@ -16,6 +17,7 @@ import rasterio
 import xarray
 from openeo.metadata import Band
 from openeo.util import ensure_dir
+from openeo_driver.constants import ITEM_LINK_PROPERTY
 from openeo_driver.dry_run import DryRunDataTracer
 from openeo_driver.errors import OpenEOApiException
 from openeo_driver.ProcessGraphDeserializer import ENV_DRY_RUN_TRACER, evaluate
@@ -3513,3 +3515,325 @@ def test_netcdf_sample_by_feature_asset_bbox_geometry(tmp_path):
         "type": "Polygon",
         "coordinates": [[[4.0, 4.0], [4.0, 5.0], [5.0, 5.0], [5.0, 4.0], [4.0, 4.0]]],
     }
+
+
+@pytest.mark.parametrize("derived_from_document_experimental", [False, True])
+def test_export_workspace_derived_from(
+    tmp_path, requests_mock, mock_s3_bucket, metadata_tracker, derived_from_document_experimental
+):
+    stac_api_workspace_id = "stac_api_workspace"
+    stac_api_workspace = get_backend_config().workspaces[stac_api_workspace_id]
+    assert isinstance(stac_api_workspace, StacApiWorkspace)
+
+    enable_merge = True
+
+    merge = _random_merge(is_actual_collection_document=enable_merge)
+    collection_id = merge.name
+
+    process_graph = {
+        "loadcollection1": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "TestCollection-LonLat16x16",
+                "temporal_extent": ["2021-01-05", "2021-01-06"],
+                "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 2.0},
+                "bands": ["Longitude"],
+            },
+        },
+        "saveresult1": {
+            "process_id": "save_result",
+            "arguments": {
+                "data": {"from_node": "loadcollection1"},
+                "format": "GTiff",
+            },
+        },
+        "exportworkspace1": {
+            "process_id": "export_workspace",
+            "arguments": {
+                "data": {"from_node": "saveresult1"},
+                "workspace": stac_api_workspace_id,
+                "merge": str(merge),
+            },
+        },
+        "saveresult2": {
+            "process_id": "save_result",
+            "arguments": {
+                "data": {"from_node": "loadcollection1"},
+                "format": "netCDF",
+            },
+        },
+        "exportworkspace2": {
+            "process_id": "export_workspace",
+            "arguments": {
+                "data": {"from_node": "saveresult2"},
+                "workspace": stac_api_workspace_id,
+                "merge": str(merge),
+            },
+            "result": True,
+        },
+    }
+
+    # the root Catalog
+    requests_mock.get(stac_api_workspace.root_url, json={
+        "type": "Catalog",
+        "stac_version": "1.0.0",
+        "id": "stac.test",
+        "description": "stac.test",
+        "conformsTo": [
+            "https://api.stacspec.org/v1.0.0/collections",
+            "https://api.stacspec.org/v1.0.0/collections/extensions/transaction",
+            "https://api.stacspec.org/v1.0.0/ogcapi-features/extensions/transaction",
+        ],
+        "links": [],
+    })
+
+    new_collection = None
+
+    # does the Collection already exist?
+    requests_mock.get(
+        f"{stac_api_workspace.root_url}/collections/{collection_id}",
+        [
+            {"status_code": 404, "text": "Not Found"},  # first export_workspace provokes a POST
+            {
+                "status_code": 200,  # second export_workspace provokes a PUT
+                "json": lambda request, context: new_collection,
+            },
+        ],
+    )
+
+    def create_collection_callback(request, context) -> dict:
+        nonlocal new_collection
+        new_collection = request.json()  # save it for second "get existing collection"
+
+        if derived_from_document_experimental:
+            assert new_collection["links"] == []  # items get a link to a derived_from document instead
+        else:
+            assert new_collection["links"] == [  # input products for the _entire_ job
+                DictSubSet(
+                    {
+                        "rel": "derived_from",
+                        "href": "http://s2.test/p1",
+                    }
+                ),
+                DictSubSet(
+                    {
+                        "rel": "derived_from",
+                        "href": "http://s2.test/p2",
+                    }
+                ),
+            ]
+
+        context.status_code = 201
+        return new_collection
+
+    def update_collection_callback(request, context) -> dict:
+        updated_collection = request.json()
+
+        if derived_from_document_experimental:
+            assert updated_collection["links"] == []
+        else:
+            assert updated_collection["links"] == [  # the same because export_workspace avoids duplicates
+                DictSubSet(
+                    {
+                        "rel": "derived_from",
+                        "href": "http://s2.test/p1",
+                    }
+                ),
+                DictSubSet(
+                    {
+                        "rel": "derived_from",
+                        "href": "http://s2.test/p2",
+                    }
+                ),
+            ]
+
+        return updated_collection
+
+    def create_item_callback(request, context) -> dict:
+        new_item = request.json()
+
+        links = new_item.get("links")
+
+        if derived_from_document_experimental:
+            assert len(links) == 1, f"expected one link to an ItemCollection but got {links}"
+            derived_from_document_link = links[0]
+
+            assert derived_from_document_link["rel"] == "aux"
+            assert derived_from_document_link["type"] == "application/geo+json"
+            assert (
+                derived_from_document_link["href"] == f"s3://{mock_s3_bucket.name}/{merge}/unknown-job_input_items.json"
+            )
+
+            # check file is exported and downloadable
+            derived_from_document_file = tmp_path / "unknown-job_input_items.json.downloaded"
+            with open(derived_from_document_file, "wb") as f:
+                derived_from_document_obj = mock_s3_bucket.Object(key=f"{merge}/unknown-job_input_items.json")
+                derived_from_document_obj.download_fileobj(f)
+
+            with open(derived_from_document_file) as f:
+                assert f.read() == "your derived_from document here"
+        else:
+            assert not links  # current behavior: no links on item, only on Collection
+
+        context.status_code = 201
+        return new_item
+
+    # create STAC objects
+    create_collection = requests_mock.post(
+        f"{stac_api_workspace.root_url}/collections", json=create_collection_callback
+    )
+    update_collection = requests_mock.put(
+        f"{stac_api_workspace.root_url}/collections/{collection_id}", json=update_collection_callback
+    )
+    create_item = requests_mock.post(
+        f"{stac_api_workspace.root_url}/collections/{collection_id}/items", json=create_item_callback
+    )
+
+    process = {
+        "process_graph": process_graph,
+        "job_options": {
+            "export-workspace-enable-merge": enable_merge,
+            "derived-from-document-experimental": derived_from_document_experimental,
+        }
+    }
+
+    metadata_tracker.addInputProducts("S2", ["http://s2.test/p1", "http://s2.test/p2"])
+
+    with tempfile.TemporaryDirectory() as tmp:
+        derived_from_document_file = Path(tmp) / "unknown-job_input_items.json"
+        with open(derived_from_document_file, "w") as f:
+            f.write("your derived_from document here")  # actual contents do not matter: Scala will write this file
+        metadata_tracker.addAuxiliaryFile(str(derived_from_document_file), "application/geo+json")
+
+        job_dir = tmp_path
+        metadata_file = job_dir / "job_metadata.json"
+
+        run_job(
+            process,
+            output_file=job_dir / "out",
+            metadata_file=metadata_file,
+            api_version="2.0.0",
+            job_dir=job_dir,
+            dependencies=[],
+        )
+
+    assert create_collection.call_count == 1, "expected creation of one new collection"
+    assert update_collection.call_count == 1, "expected one update of this collection"
+    assert create_item.call_count == 2, "expected creation of one item for each export_workspace"
+
+    with open(metadata_file) as f:
+        results_metadata = json.load(f)
+
+        derived_from_hrefs = [link["href"] for link in results_metadata["links"] if link["rel"] == "derived_from"]
+
+        if derived_from_document_experimental:
+            assert (
+                not derived_from_hrefs
+            ), f'expected no Collection-level "derived_from" links for stac_version {derived_from_document_experimental=}'
+
+            # these should get rendered in the job result items STAC documents
+            for item in results_metadata["items"]:
+                exposable_links = [
+                    link for link in item.get("links", []) if link.get(ITEM_LINK_PROPERTY.EXPOSE_AUXILIARY, False)
+                ]
+                assert len(exposable_links) == 1, f"expected one link to an ItemCollection but got {exposable_links}"
+
+                derived_from_document_link = exposable_links[0]
+                assert (
+                    Path(urlparse(derived_from_document_link["href"]).path) == job_dir / derived_from_document_file.name
+                ), "derived_from document is not in job directory"
+                assert derived_from_document_link["type"] == "application/geo+json"
+        else:
+            # these get rendered in the /jobs/<job_id>/results STAC Collection document
+            assert derived_from_hrefs == ["http://s2.test/p1", "http://s2.test/p2"]
+
+
+def test_webapp_derived_from(tmp_path, metadata_tracker):
+    process_graph = {
+        "loadcollection1": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "TERRASCOPE_S2_TOC_V2",
+                "temporal_extent": ["2024-01-05", "2024-01-06"],
+                "spatial_extent": {
+                    "west": 5,
+                    "south": 50,
+                    "east": 5.05,
+                    "north": 50.05,
+                },
+                "bands": ["B04", "B03", "B02"],
+            },
+        },
+        "saveresult1": {
+            "process_id": "save_result",
+            "arguments": {
+                "data": {"from_node": "loadcollection1"},
+                "format": "GTiff",
+            },
+            "result": True,
+        },
+    }
+
+    process = {
+        "process_graph": process_graph,
+        "job_options": {
+            "derived-from-document-experimental": True,
+        },
+    }
+
+    job_dir = tmp_path
+    metadata_file = job_dir / "job_metadata.json"
+
+    run_job(
+        process,
+        output_file=job_dir / "out",
+        metadata_file=metadata_file,
+        api_version="2.0.0",
+        job_dir=tmp_path,
+        dependencies=[],
+    )
+
+    assert "openEO_2024-01-05Z.tif" in os.listdir(job_dir)
+
+    with open(metadata_file) as f:
+        job_metadata = json.load(f)
+
+    auxiliary_links = [
+        link
+        for item in job_metadata.get("items", {})
+        for link in item.get("links", [])
+        if link.get(ITEM_LINK_PROPERTY.EXPOSE_AUXILIARY, False)
+    ]
+
+    assert len(auxiliary_links) == 1, auxiliary_links
+    derived_from_document_link = auxiliary_links[0]
+    print(json.dumps(derived_from_document_link, indent=2))
+    assert derived_from_document_link["rel"] == "aux"
+    assert derived_from_document_link["type"] == "application/geo+json"
+
+    derived_from_document_file = Path(urlparse(derived_from_document_link["href"]).path)
+    assert derived_from_document_file.parent == job_dir, "derived_from document is not in job directory"
+    with derived_from_document_file.open() as f:
+        derived_from_document = json.load(f)
+
+    print(json.dumps(derived_from_document, indent=2))
+    assert len(derived_from_document)
+
+    assert derived_from_document["type"] == "FeatureCollection"
+    assert derived_from_document["features"]
+    assert all(item["type"] == "Feature" for item in derived_from_document["features"])
+
+    derived_from_links = [link for feature in derived_from_document["features"] for link in feature["links"]]
+    assert derived_from_links
+
+    collection_id = "urn:eop:VITO:TERRASCOPE_S2_TOC_V2"
+
+    for link in derived_from_links:
+        assert link["rel"] == "derived_from"
+        feature_id = link["title"]
+        assert feature_id.startswith(f"{collection_id}:")
+        assert link["href"] == (
+            f"https://services.terrascope.be/catalogue/products"
+            f"?collection={collection_id.replace(':', '%3A')}"
+            f"&uid={feature_id.replace(':', '%3A')}"
+        )

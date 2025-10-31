@@ -20,6 +20,7 @@ _log = logging.getLogger(__name__)
 
 
 class ObjectStorageWorkspace(Workspace):
+    # TODO: support exporting auxiliary files ("_expose_auxiliary")
 
     MULTIPART_THRESHOLD_IN_MB = 50
 
