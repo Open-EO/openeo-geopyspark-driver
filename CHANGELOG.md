@@ -22,6 +22,7 @@ without compromising stable operations.
 - Port STAC Collection/Catalog part of `load_stac` to new (experimental) `ItemCollection` API ([#1307](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1307))
 - `run_udf` inspect calls in `apply_metadata`did not show up in logs ([#1394](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1394))
 - Port STAC API part of `load_stac` to new (experimental) `ItemCollection` API ([#1307](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1307))
+- Experimental support for dropping `derived_from` links on the STAC Collection level in favor of a link, to a dedicated document with input features, on the item level ([#1278](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1278))
 
 ## 0.68.0
 
