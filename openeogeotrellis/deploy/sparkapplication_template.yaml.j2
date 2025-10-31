@@ -51,7 +51,7 @@ spec:
     "spark.network.timeout": "300s"
     "spark.rpc.message.maxSize": "200"
     "spark.rdd.compress": "true"
-    "spark.driver.maxResultSize": "5g"
+    "spark.driver.maxResultSize": {{ max_result_size }}
     "spark.excludeOnFailure.enabled": "false"
     "spark.excludeOnFailure.killExcludedExecutors": "true"
     "spark.speculation": "true"
