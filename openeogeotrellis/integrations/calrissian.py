@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import base64
 import dataclasses
 import logging
@@ -389,7 +390,7 @@ class CalrissianJobLauncher:
     def create_cwl_job_manifest(
         self,
         cwl_path: str,
-        cwl_arguments: List[str],
+        cwl_arguments: Union[List[str], dict],
         env_vars: Optional[Dict[str, str]] = None,
     ) -> Tuple[kubernetes.client.V1Job, str, str]:
         """
@@ -565,7 +566,7 @@ class CalrissianJobLauncher:
     def run_cwl_workflow(
         self,
         cwl_source: CwLSource,
-        cwl_arguments: List[str],
+        cwl_arguments: Union[List[str], dict],
         # TODO #1126 eliminate need to list expected output paths, leverage CWL outputs listing
         output_paths: List[str],
         env_vars: Optional[Dict[str, str]] = None,
@@ -582,6 +583,15 @@ class CalrissianJobLauncher:
         # Input staging
         input_staging_manifest, cwl_path = self.create_input_staging_job_manifest(cwl_source=cwl_source)
         input_staging_job = self.launch_job_and_wait(manifest=input_staging_manifest)
+
+        if isinstance(cwl_arguments, dict):
+            cwl_source_arguments = CwLSource.from_string(json.dumps(cwl_arguments))
+
+            input_staging_arguments_manifest, cwl_arguments_path = self.create_input_staging_job_manifest(
+                cwl_source=cwl_source_arguments
+            )
+            input_staging_arguments_job = self.launch_job_and_wait(manifest=input_staging_arguments_manifest)
+            cwl_arguments = [cwl_arguments_path]
 
         # CWL job
         cwl_manifest, relative_output_dir, relative_cwl_outputs_listing = self.create_cwl_job_manifest(
