@@ -7,5 +7,6 @@
 
 FROM python:3.11
 
+RUN pip install pystac jsonschema
 RUN mkdir /data
 COPY collection.json openEO*.tif openEO*.json *.py /data/
