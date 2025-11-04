@@ -1228,8 +1228,8 @@ class GeopysparkDataCube(DriverDataCube):
                 process="apply_neighborhood",
                 reason=f"only 'px' is currently supported for spatial window size (got {size!r})",
             )
-        sizeX = int(size_dict[x.name]['value'])
-        sizeY = int(size_dict[y.name]['value'])
+        sizeX = int(size_dict[x.name]['value'] + (2*overlap_dict[x.name]['value']))
+        sizeY = int(size_dict[y.name]['value'] + (2*overlap_dict[y.name]['value']))
 
         overlap_x_dict = overlap_dict.get(x.name,{'value': 0, 'unit': 'px'})
         overlap_y_dict = overlap_dict.get(y.name,{'value': 0, 'unit': 'px'})
