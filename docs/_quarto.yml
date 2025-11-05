@@ -45,6 +45,8 @@ website:
         text: Collection configuration
       - href: configuration.md
         text: Configuration
+        contents:
+            - href: configuration/container_images_and_udf_runtimes.md
+              text: Images and UDF runtimes
       - href: testing.md
         text: Testing
-
