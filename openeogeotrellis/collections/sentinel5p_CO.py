@@ -39,7 +39,7 @@ Algorithm:
 
 from pathlib import Path
 from datetime import datetime
-from .sentinel5p_dataloading import (
+from .sentinel5p_functions import (
     load_data_from_file,
     resample_data,
     apply_quality_filter,

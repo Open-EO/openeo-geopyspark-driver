@@ -15,7 +15,6 @@ if __name__ == "__main__":
     # The SparkContext is only needed to make imports work, but is actually not used for the tests
     openeogeotrellis.deploy.local.setup_environment()
 
-from openeogeotrellis.collections.sentinel5p_dataloading import *
 from openeogeotrellis.collections.sentinel5p_CO import *
 from numpy.testing import assert_allclose
 
