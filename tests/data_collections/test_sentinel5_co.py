@@ -19,17 +19,16 @@ from openeogeotrellis.collections.sentinel5p_dataloading import *
 from openeogeotrellis.collections.sentinel5p_CO import *
 from numpy.testing import assert_allclose
 
+# important to get these files locally for testing
+filename = "Sentinel5data/S5P_OFFL_L2__CO_____20240902T094132_20240902T112301_35696_03_020600_20240903T232407.nc"
+filename_anti = "Sentinel5data/S5P_RPRO_L2__CO_____20180430T001950_20180430T020120_02818_03_020400_20220901T170054.nc"
+temporal_extent_anti = [datetime(2018, 4, 30, 0, 50, 0), datetime(2018, 4, 30, 1, 30, 0)]
+spatial_extent_anti = [179.5, 22, -179.5, 23]  # min_lon, min_lat, max_lon, max_lat
 
-filename = "/home/manu/Documents/git/OpenEO/Sentinel5data/S5P_OFFL_L2__CO_____20240902T094132_20240902T112301_35696_03_020600_20240903T232407.nc"
 temporal_extent_valid = [datetime(2024, 9, 2, 10, 30, 0), datetime(2024, 9, 2, 11, 0, 0)]
 temporal_extent_invalid = [datetime(2024, 9, 2, 11, 30, 0), datetime(2024, 9, 2, 11, 35, 0)]
 spatial_extent = [30.0, 25.0, 30.05, 25.05]  # min_lon, min_lat, max_lon, max_lat
 spatial_extent_invalid = [22.0, 24.0, 24.0, 26.0]  # min_lon, min_lat, max_lon, max_lat
-
-
-filename_anti = "/home/manu/Documents/git/OpenEO/Sentinel5data/S5P_RPRO_L2__CO_____20180430T001950_20180430T020120_02818_03_020400_20220901T170054.nc"
-temporal_extent_anti = [datetime(2018, 4, 30, 0, 50, 0), datetime(2018, 4, 30, 1, 30, 0)]
-spatial_extent_anti = [179.5, 22, -179.5, 23]  # min_lon, min_lat, max_lon, max_lat
 
 
 def test_co_invalid_time_exception():
