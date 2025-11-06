@@ -11,9 +11,61 @@ from pathlib import Path
 import numpy as np
 from netCDF4 import Dataset, num2date
 
+############# DO NOT CHANGE THE VARIABLE NAMES BELOW #############
+# The following variables are defined to specify the paths
+# to various data fields within the NetCDF file. These are also
+# possible bands
+COMMON_VARIABLES_IN_FILE = {
+    "time": "PRODUCT/time",
+    "delta_time": "PRODUCT/delta_time",
+    "latitude": "PRODUCT/latitude",
+    "longitude": "PRODUCT/longitude",
+    "qa_value": "PRODUCT/qa_value",
+}
+
+all_gases = {
+    # CO gas variables
+    "gas_co": {
+        "VARIABLE_LOC_IN_FILE": {
+            "carbonmonoxide_total_column": "PRODUCT/carbonmonoxide_total_column",  # raw data
+            "carbonmonoxide_total_column_corrected": "PRODUCT/carbonmonoxide_total_column_corrected",
+        },
+        "DEFAULT_BANDS": ["carbonmonoxide_total_column_corrected"],
+        "FILTER_VALUE": 0.5,  # default filter value for CO as per documentation
+    },
+    # NO2 gas variables
+    "gas_no2": {
+        "VARIABLE_LOC_IN_FILE": {
+            "nitrogendioxide_tropospheric_column": "PRODUCT/nitrogendioxide_tropospheric_column",  # raw data
+        },
+        "DEFAULT_BANDS": ["nitrogendioxide_tropospheric_column"],
+        "FILTER_VALUE": 0.75,  # default filter value for NO2 as per documentation
+    },
+}
+############# DO NOT CHANGE THE VARIABLE NAMES ABOVE #############
+
+
+def get_gas_variables(gas_type):
+    """Get gas variable locations, default bands, and filter values.
+
+    Returns:
+        gas_variables (dict): Dictionary containing gas variable locations in file.
+        default_bands (list): List of default bands for the gas.
+        filter_value (float): Default filter value for the gas.
+    """
+    gas_type = "gas_" + gas_type.lower()
+    gas_vars = all_gases.get(gas_type)
+    if gas_vars is None:
+        raise ValueError(f"Unknown gas type: {gas_type}")
+    variable_loc = gas_vars.get("VARIABLE_LOC_IN_FILE")
+    if variable_loc is None:
+        raise ValueError("No mapping band variable")
+    variable_locs = {**variable_loc, **COMMON_VARIABLES_IN_FILE}
+    return variable_locs, gas_vars.get("DEFAULT_BANDS"), gas_vars.get("FILTER_VALUE")
+
 
 def load_data_from_file(
-    file_path:Path, spatial_extent, temporal_extent, bands, variable_loc_in_file, filter_value=0.5, resample=False
+    file_path: Path, spatial_extent, temporal_extent, bands, variable_loc_in_file, filter_value=0.5
 ):
     """Load bands data from the NetCDF file.
 
@@ -34,7 +86,7 @@ def load_data_from_file(
         name_list (dict): A dictionary mapping standard band names to NetCDF variable names.
         filter_value (float): Minimum acceptable quality value (0.0, 0.4
                                 0.7, 1.0).
-        resample (bool): Whether to resample the data or not.
+
     Returns:
         data (dict): Dictionary containing loaded data arrays for the specified bands.
 
@@ -51,20 +103,22 @@ def load_data_from_file(
         # If there is no valid data, raise exception with appropriate message
         # if there is valid data, get the pixel indices representing the spatial extents
         # Load time for each row
-        var_path = variable_loc_in_file.get("deltatime")
-        time_array = num2date(
-            f[var_path][0],
-            f[var_path].units,
-            only_use_cftime_datetimes=False,
-        ).data
+        var_path = variable_loc_in_file.get("delta_time")
+        time_array = np.array(
+            num2date(
+                f[var_path][0],
+                f[var_path].units,
+                only_use_cftime_datetimes=False,
+            )
+        )
         # get temporal mask
         temporal_mask = get_temporal_mask_and_time(time_array, temporal_extent)  # to set the start time
         if not temporal_mask.any():
             raise Exception(f"Input temporal extent is not in the file {file_path.name}.")
 
         # Define a mask where data is present based on spatial extent and temporal extents
-        lat_path = variable_loc_in_file.get("lat")
-        lon_path = variable_loc_in_file.get("lon")
+        lat_path = variable_loc_in_file.get("latitude")
+        lon_path = variable_loc_in_file.get("longitude")
         file_lat = f[lat_path][0]  # lat and lon are 2-d arrays
         file_lon = f[lon_path][0]
         spatial_mask = get_spatial_extent_mask(file_lat, file_lon, spatial_extent)
@@ -98,8 +152,8 @@ def load_data_from_file(
                 raise KeyError(f"Band {band} not found in the NetCDF file.") from e
 
         # Load lat and lon based on combined mask
-        data["lat"] = _get_2d_data_from_mask(file_lat, spatio_temporal_mask)
-        data["lon"] = _get_2d_data_from_mask(file_lon, spatio_temporal_mask)
+        data["latitude"] = _get_2d_data_from_mask(file_lat, spatio_temporal_mask)
+        data["longitude"] = _get_2d_data_from_mask(file_lon, spatio_temporal_mask)
         # trim qa_value mask to spatio-temporal mask
         data["qa_value_mask"] = _get_2d_data_from_mask(filter_mask, spatio_temporal_mask)
 
@@ -225,7 +279,7 @@ def fill_and_mask_data(band_data, spatio_temporal_mask):
     Returns:
         data (Array of float): 2-d array of band data after filling and masking.
 
-    """ 
+    """
     # fill nan values where data is not valid
     if hasattr(band_data, "filled"):
         band_data = band_data.filled(np.nan)
@@ -255,7 +309,7 @@ def create_resample_grid(bbox, resolution, pad_pixel=0):
         grid_y (Array of float): 2-d array representing the latitude grid.
     """
     xmin, ymin, xmax, ymax = bbox
-    if xmin > xmax:  # anti-meridian crossing 
+    if xmin > xmax:  # anti-meridian crossing
         xmax += 360  # temporarily shift to continuous range
     xx = np.arange(xmin + resolution / 2 - pad_pixel * resolution, xmax + pad_pixel * resolution, resolution)
     yy = np.arange(ymax - resolution / 2 + pad_pixel * resolution, ymin - pad_pixel * resolution, -resolution)
@@ -279,6 +333,7 @@ def interpolate(source_coordinates, source_data, target_coordinates, method="nea
         interpolated_data (Array of float): 1-d array of shape (m,) representing interpolated data values at target coordinates.
     """
     from scipy.interpolate import griddata
+
     method = method.lower()
     interpolated_data = griddata(
         source_coordinates,
@@ -325,12 +380,12 @@ def resample_data(data, bands, spatial_extent, resample_resolution, interpolatio
     """
     interpolated_data = {}  # dictionary to hold resampled data
     # create new grid for resampled data
-    resampled_lon, resampled_lat  = create_resample_grid(spatial_extent, resample_resolution)
-    interpolated_data["lat"] = resampled_lat
-    interpolated_data["lon"] = resampled_lon
+    resampled_lon, resampled_lat = create_resample_grid(spatial_extent, resample_resolution)
+    interpolated_data["latitude"] = resampled_lat
+    interpolated_data["longitude"] = resampled_lon
 
     # Prepare coordinates for interpolation
-    source_coordinates = np.stack((data["lon"].ravel(), data["lat"].ravel()), axis=-1)
+    source_coordinates = np.stack((data["longitude"].ravel(), data["latitude"].ravel()), axis=-1)
     target_coordinates = np.stack((resampled_lon.ravel(), resampled_lat.ravel()), axis=-1)
     target_shape = resampled_lat.shape
     if spatial_extent[0] > spatial_extent[2]:  # anti-meridian crossing
@@ -340,21 +395,15 @@ def resample_data(data, bands, spatial_extent, resample_resolution, interpolatio
     # Do not use other methods as it can create intermediate values
     # which can lead to incorrect masking.
     interpolated_data["qa_value_mask"] = interpolate(
-                source_coordinates,
-                data["qa_value_mask"].ravel(),
-                target_coordinates,
-                method="nearest"
-            ).reshape(target_shape)
-    
+        source_coordinates, data["qa_value_mask"].ravel(), target_coordinates, method="nearest"
+    ).reshape(target_shape)
+
     # all other bands
     for key, val in data.items():
         if key in bands:
             # interpolate to new grid
             interpolated_data[key] = interpolate(
-                source_coordinates,
-                val.ravel(),
-                target_coordinates,
-                method=interpolation_method
+                source_coordinates, val.ravel(), target_coordinates, method=interpolation_method
             ).reshape(target_shape)
     return interpolated_data
 
@@ -375,6 +424,6 @@ def apply_quality_filter(data, bands, quality_band="qa_value_mask"):
     for key, val in data.items():
         if key in bands:
             filtered_data[key] = np.where(quality_mask, val, np.nan)
-        elif key not in bands:
+        elif (key not in bands) & (key != quality_band):
             filtered_data[key] = val  # copy metadata
     return filtered_data
