@@ -18,6 +18,7 @@ without compromising stable operations.
 - `load_stac`: remove `load_stac_apply_lcfm_improvements` feature flag and make it the standard behavior ([#1306](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1306))
 - Experimental support for dropping `derived_from` links on the STAC Collection level in favor of a link, to a dedicated document with input features, on the item level ([#1278](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1278))
 - `sar_backscatter`: under specific circumstances, data was cropped during processing, leading to missing outputs ([#1403](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1403))
+- Improve vector cube support in `export_workspace` ([#1404](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1404))
 
 
 ## 0.69.0

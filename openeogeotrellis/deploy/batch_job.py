@@ -908,9 +908,9 @@ def _export_to_workspaces(
 
 
 def _export_to_workspace(
-    common_path: str, source_uri: str, target: Workspace, merge: str, remove_original: bool
+    common_path: str, source_uri: Union[str, Path], target: Workspace, merge: str, remove_original: bool
 ) -> str:
-    uri_parts = urlparse(source_uri)
+    uri_parts = urlparse(str(source_uri))
 
     if not uri_parts.scheme or uri_parts.scheme.lower() == "file":
         return target.import_file(common_path, Path(uri_parts.path), merge, remove_original)
