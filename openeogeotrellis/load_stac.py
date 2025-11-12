@@ -216,12 +216,15 @@ def load_stac(
 
                 item_collection = ItemCollection.from_stac_catalog(catalog, spatiotemporal_extent=spatiotemporal_extent)
 
+        items_found = len(item_collection.items) > 0
+        if not allow_empty_cubes and not items_found:
+            raise NoDataAvailableException()
+
         jvm = get_jvm()
 
         opensearch_client = jvm.org.openeo.geotrellis.file.FixedFeaturesOpenSearchClient()
 
         stac_bbox = None
-        items_found = False
         proj_epsg = None
         proj_bbox = None
         proj_shape = None
@@ -231,7 +234,6 @@ def load_stac(
         band_epsgs: Dict[str, Set[int]] = {}
 
         for itm in item_collection.items:
-            items_found = True
 
             band_assets = {
                 asset_id: asset for asset_id, asset in dict(sorted(itm.assets.items())).items() if _is_band_asset(asset)
@@ -275,7 +277,7 @@ def load_stac(
                     continue
 
                 if band_names_tracker.already_seen(sorted(asset_band_names)):
-                    # We've already seen these bands (e.g. at finer GSD), so skip this asset.
+                    # We've already seen this set of bands (e.g. at finer GSD), so skip this asset.
                     continue
 
                 for asset_band_name in asset_band_names:
@@ -331,13 +333,11 @@ def load_stac(
                 )
             )
 
-    except LoadStacException:
+    except OpenEOApiException:
         raise
     except Exception as e:
         raise LoadStacException(url=url, info=repr(e)) from e
 
-    if not allow_empty_cubes and not items_found:
-        raise NoDataAvailableException()
 
     target_bbox = requested_bbox or stac_bbox
 
