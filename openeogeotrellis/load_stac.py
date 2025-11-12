@@ -18,6 +18,7 @@ import planetary_computer
 import pyproj
 import pystac
 import pystac.stac_io
+import pystac.utils
 import pystac_client
 import pystac_client.stac_api_io
 import requests.adapters
@@ -221,7 +222,6 @@ def load_stac(
 
         stac_bbox = None
         items_found = False
-        start_datetime = end_datetime = None
         proj_epsg = None
         proj_bbox = None
         proj_shape = None
@@ -232,16 +232,6 @@ def load_stac(
 
         for itm in item_collection.items:
             items_found = True
-
-            item_start_datetime = dateutil.parser.parse(
-                itm.properties.get("datetime") or itm.properties["start_datetime"]
-            )
-            item_end_datetime = dateutil.parser.parse(itm.properties.get("datetime") or itm.properties["end_datetime"])
-
-            if not start_datetime or item_start_datetime < start_datetime:
-                start_datetime = item_start_datetime
-            if not end_datetime or item_end_datetime > end_datetime:
-                end_datetime = item_end_datetime
 
             band_assets = {
                 asset_id: asset for asset_id, asset in dict(sorted(itm.assets.items())).items() if _is_band_asset(asset)
@@ -367,10 +357,11 @@ def load_stac(
     if "y" not in metadata.dimension_names():
         metadata = metadata.add_spatial_dimension(name="y", extent=[])
 
+    item_collection_temporal_extent = item_collection.get_temporal_extent()
     metadata = metadata.with_temporal_extent(
         temporal_extent=(
-            map_optional(dt.datetime.isoformat, start_datetime) or temporal_extent[0],
-            map_optional(dt.datetime.isoformat, end_datetime) or temporal_extent[1],
+            map_optional(dt.datetime.isoformat, item_collection_temporal_extent[0]) or temporal_extent[0],
+            map_optional(dt.datetime.isoformat, item_collection_temporal_extent[1]) or temporal_extent[1],
         ),
         allow_adding_dimension=True,
     )
@@ -688,6 +679,18 @@ class _SpatioTemporalExtent:
         )
 
 
+def _get_item_temporal_extent(item: pystac.Item) -> Tuple[datetime.datetime, datetime.datetime]:
+    if start := item.properties.get("start_datetime"):
+        start = pystac.utils.str_to_datetime(start)
+    else:
+        start = item.datetime
+    if end := item.properties.get("end_datetime"):
+        end = pystac.utils.str_to_datetime(end)
+    else:
+        end = item.datetime
+    return start, end
+
+
 class ItemCollection:
     """
     Collection of STAC Items.
@@ -858,6 +861,17 @@ class ItemCollection:
 
         return ItemCollection(items)
 
+    def get_temporal_extent(self) -> Tuple[Union[datetime.datetime, None], Union[datetime.datetime, None]]:
+        """Get overall tempoarl extent of all items in the collection."""
+        start = None
+        end = None
+        for item in self.items:
+            item_start, item_end = _get_item_temporal_extent(item=item)
+            if not start or item_start < start:
+                start = item_start
+            if not end or item_end > end:
+                end = item_end
+        return start, end
 
 def _is_supported_raster_mime_type(mime_type: str) -> bool:
     mime_type = mime_type.lower()
