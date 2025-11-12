@@ -26,6 +26,7 @@ from openeogeotrellis.load_stac import (
     _get_proj_metadata,
     _is_band_asset,
     _is_supported_raster_mime_type,
+    _proj_code_to_epsg,
     _SpatialExtent,
     _SpatioTemporalExtent,
     _StacMetadataParser,
@@ -722,19 +723,73 @@ def test_supports_item_search(tmp_path, catalog, expected):
     assert _supports_item_search(collection) == expected
 
 
+def test_proj_code_to_epsg():
+    assert _proj_code_to_epsg("EPSG:32631") == 32631
+    assert _proj_code_to_epsg("EPSG:4326!") is None
+    assert _proj_code_to_epsg("EPSG:onetwothree") is None
+    assert _proj_code_to_epsg("IAU_2015:30100") is None
+    assert _proj_code_to_epsg(None) is None
+    assert _proj_code_to_epsg(1234) is None
+
+
 def test_get_proj_metadata_minimal():
     asset = pystac.Asset(href="https://example.com/asset.tif")
     item = pystac.Item.from_dict(StacDummyBuilder.item())
     assert _get_proj_metadata(asset, item=item) == (None, None, None)
 
 
-def test_get_proj_metadata_from_asset():
-    asset = pystac.Asset(
-        href="https://example.com/asset.tif",
-        extra_fields={"proj:epsg": 32631, "proj:shape": [12, 34], "proj:bbox": [12, 34, 56, 78]},
-    )
-    item = pystac.Item.from_dict(StacDummyBuilder.item())
-    assert _get_proj_metadata(asset, item=item) == (32631, (12.0, 34.0, 56.0, 78.0), (12, 34))
+@pytest.mark.parametrize(
+    ["item_properties", "asset_extra_fields", "expected"],
+    [
+        ({}, {}, (None, None, None)),
+        (
+            # at item level
+            {"proj:epsg": 32631, "proj:shape": [12, 34], "proj:bbox": [12, 34, 56, 78]},
+            {},
+            (32631, (12, 34, 56, 78), (12, 34)),
+        ),
+        (
+            # at asset level
+            {},
+            {"proj:epsg": 32631, "proj:shape": [12, 34], "proj:bbox": [12, 34, 56, 78]},
+            (32631, (12, 34, 56, 78), (12, 34)),
+        ),
+        (
+            # At bands level
+            # (https://github.com/Open-EO/openeo-geopyspark-driver/issues/1391, https://github.com/stac-extensions/projection/issues/25)
+            {},
+            {
+                "bands": [
+                    {"name": "B04", "proj:epsg": 32631, "proj:shape": [12, 34], "proj:bbox": [12, 34, 56, 78]},
+                    {"name": "B02", "proj:epsg": 32631, "proj:shape": [12, 34], "proj:bbox": [12, 34, 56, 78]},
+                ]
+            },
+            (32631, (12, 34, 56, 78), (12, 34)),
+        ),
+        (
+            # Mixed
+            {"proj:epsg": 32631},
+            {
+                "proj:shape": [12, 34],
+                "bands": [
+                    {"name": "B04", "proj:bbox": [12, 34, 56, 78]},
+                ],
+            },
+            (32631, (12, 34, 56, 78), (12, 34)),
+        ),
+        (
+            # Mixed and precedence
+            {"proj:epsg": 32601, "proj:shape": [10, 10]},
+            {"proj:code": "EPSG:32602", "proj:shape": [32, 32]},
+            (32602, None, (32, 32)),
+        ),
+    ],
+)
+def test_get_proj_metadata_from_asset(item_properties, asset_extra_fields, expected):
+    """ """
+    asset = pystac.Asset(href="https://example.com/asset.tif", extra_fields=asset_extra_fields)
+    item = pystac.Item.from_dict(StacDummyBuilder.item(properties=item_properties))
+    assert _get_proj_metadata(asset, item=item) == expected
 
 
 class TestTemporalExtent:

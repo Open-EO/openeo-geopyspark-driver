@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime
 import datetime as dt
+import functools
 import logging
 import os
 import re
@@ -919,29 +920,67 @@ def _is_band_asset(asset: pystac.Asset) -> bool:
     )
 
 
+_REGEX_EPSG_CODE = re.compile(r"^EPSG:(\d+)$", re.IGNORECASE)
+
+
+@functools.lru_cache
+def _proj_code_to_epsg(proj_code: str) -> Optional[int]:
+    if isinstance(proj_code, str) and (match := _REGEX_EPSG_CODE.match(proj_code)):
+        return int(match.group(1))
+    # TODO pass-through integers as-is?
+    return None
+
+
 def _get_proj_metadata(
     asset: pystac.Asset, *, item: pystac.Item
 ) -> Tuple[Optional[int], Optional[Tuple[float, float, float, float]], Optional[Tuple[int, int]]]:
-    """Returns EPSG code, bbox (in that EPSG) and number of pixels (rows, cols), if available."""
+    """
+    Get projection metadata from asset:
+    EPSG code (int), bbox (in that EPSG) and number of pixels (rows, cols), if available.
+    """
     # TODO: possible to avoid item argument and just use asset.owner?
 
-    def to_epsg(proj_code: str) -> Optional[int]:
-        prefix = "EPSG:"
-        return int(proj_code[len(prefix) :]) if proj_code.upper().startswith(prefix) else None
+    def _get_asset_property(asset: pystac.Asset, field: str) -> Optional:
+        """Helper to get a property directly from asset, or from bands (if consistent across all bands)"""
+        # TODO: Is band peeking feature general enough to make this a more reusable helper?
+        if field in asset.extra_fields:
+            return asset.extra_fields.get(field)
+        if "bands" in asset.extra_fields:
+            # TODO: Is it actually ok to look for projection properties at bands level?
+            #       See https://github.com/stac-extensions/projection/issues/25
+            values = []
+            for band in asset.extra_fields["bands"]:
+                if field in band and band[field] and band[field] not in values:
+                    values.append(band.get(field))
+            if len(values) == 1:
+                return values[0]
+            if len(values) > 1:
+                # For now, using debug level here instead of warning,
+                # as this can be done for each asset, which might be too much
+                logger.debug(f"Multiple differing values for {field=} found in asset bands: {values=}")
 
-    code = asset.extra_fields.get("proj:code") or item.properties.get("proj:code")
-    epsg = map_optional(to_epsg, code) or asset.extra_fields.get("proj:epsg") or item.properties.get("proj:epsg")
-    bbox = asset.extra_fields.get("proj:bbox") or item.properties.get("proj:bbox")
+        return None
 
-    if not bbox and epsg == 4326:
-        bbox = item.bbox
+    # Note: The field `proj:epsg` has been deprecated in v1.2.0 of projection extension
+    # in favor of `proj:code` and has been removed in v2.0.0.
+    proj_code = _get_asset_property(asset, field="proj:code") or item.properties.get("proj:code")
+    epsg = (
+        _proj_code_to_epsg(proj_code)
+        or _get_asset_property(asset, field="proj:epsg")
+        or item.properties.get("proj:epsg")
+    )
 
-    shape = asset.extra_fields.get("proj:shape") or item.properties.get("proj:shape")
+    proj_bbox = _get_asset_property(asset, field="proj:bbox") or item.properties.get("proj:bbox")
+
+    if not proj_bbox and epsg == 4326:
+        proj_bbox = item.bbox
+
+    proj_shape = _get_asset_property(asset, field="proj:shape") or item.properties.get("proj:shape")
 
     return (
         epsg,
-        tuple(map(float, bbox)) if bbox else None,
-        tuple(shape) if shape else None,
+        tuple(map(float, proj_bbox)) if proj_bbox else None,
+        tuple(proj_shape) if proj_shape else None,
     )
 
 
