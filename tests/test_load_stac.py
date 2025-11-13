@@ -1759,3 +1759,49 @@ class TestItemCollection:
         # Check search requests made to the STAC API server
         search_requests = [r for r in dummy_stac_api_server.request_history if r["path"] == "/search"]
         assert search_requests == [expected_search]
+
+    def test_get_temporal_extent_empty(self):
+        item_collection = ItemCollection(items=[])
+        assert item_collection.get_temporal_extent() == (None, None)
+
+    def test_get_temporal_extent_just_datetime(self):
+        item_collection = ItemCollection(
+            items=[
+                pystac.Item.from_dict(StacDummyBuilder.item(datetime="2025-11-11T00:00:00Z")),
+                pystac.Item.from_dict(StacDummyBuilder.item(datetime="2025-11-12T00:00:00Z")),
+            ]
+        )
+
+        assert item_collection.get_temporal_extent() == (
+            datetime.datetime(2025, 11, 11, tzinfo=datetime.timezone.utc),
+            datetime.datetime(2025, 11, 12, tzinfo=datetime.timezone.utc),
+        )
+
+    def test_get_temporal_extent_start_and_end(self):
+        item_collection = ItemCollection(
+            items=[
+                pystac.Item.from_dict(
+                    StacDummyBuilder.item(
+                        datetime="2025-11-11T00:00:00Z",
+                        properties={
+                            "start_datetime": "2025-11-10T10:00:00Z",
+                            "end_datetime": "2025-11-12T12:00:00Z",
+                        },
+                    )
+                ),
+                pystac.Item.from_dict(
+                    StacDummyBuilder.item(
+                        datetime="2025-11-15T00:00:00Z",
+                        properties={
+                            "start_datetime": "2025-11-14T14:00:00Z",
+                            "end_datetime": "2025-11-16T16:00:00Z",
+                        },
+                    )
+                ),
+            ]
+        )
+
+        assert item_collection.get_temporal_extent() == (
+            datetime.datetime(2025, 11, 10, hour=10, tzinfo=datetime.timezone.utc),
+            datetime.datetime(2025, 11, 16, hour=16, tzinfo=datetime.timezone.utc),
+        )
