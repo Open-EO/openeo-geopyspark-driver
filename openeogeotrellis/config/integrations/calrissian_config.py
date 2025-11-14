@@ -1,3 +1,5 @@
+from typing import Optional
+
 import attrs
 
 DEFAULT_NAMESPACE = "calrissian-demo-project"
@@ -5,6 +7,7 @@ DEFAULT_INPUT_STAGING_IMAGE = "alpine:3"
 # TODO #1007 proper calrissian image? Official one doesn't work due to https://github.com/Duke-GCB/calrissian/issues/124#issuecomment-947008286
 DEFAULT_CALRISSIAN_IMAGE = "ghcr.io/duke-gcb/calrissian/calrissian:0.18.1"
 DEFAULT_SECURITY_CONTEXT = dict(run_as_user=1000, fs_group=0, run_as_group=0)
+DEFAULT_CALRISSIAN_S3_REGION = None
 DEFAULT_CALRISSIAN_S3_BUCKET = "calrissian"
 DEFAULT_CALRISSIAN_BASE_ARGUMENTS = (
     "--debug",
@@ -39,6 +42,12 @@ class CalrissianConfig:
     Docker image providing the Calrissian tool
     """
     calrissian_image: str = DEFAULT_CALRISSIAN_IMAGE
+
+    """
+    S3 region associated with `StorageClass` that is used for the `PersistentVolumeClaim`s
+    used by the Calrissian jobs.
+    """
+    s3_region: Optional[str] = DEFAULT_CALRISSIAN_S3_REGION
 
     """
     S3 bucket associated with `StorageClass` that is used for the `PersistentVolumeClaim`s
