@@ -16,7 +16,7 @@ import openeo_driver.config.load
 from openeo_driver.server import run_gunicorn
 from openeo_driver.util.logging import get_logging_config, setup_logging, show_log_level, LOG_HANDLER_STDERR_JSON
 from openeo_driver.utils import smart_bool
-from openeo_driver.views import build_app
+from openeo_driver.views import build_app, OpenEoApiApp
 from openeogeotrellis.config import get_backend_config
 
 _log = logging.getLogger(__name__)
@@ -196,6 +196,25 @@ def get_minikube_ip() -> Optional[str]:
         return None
 
 def setup_environment(log_dir: Path = Path.cwd()):
+    root_handlers = [LOG_HANDLER_STDERR_JSON]
+    if smart_bool(os.environ.get("OPENEO_DRIVER_SIMPLE_LOGGING")):
+        root_handlers = None
+
+    setup_logging(
+        get_logging_config(
+            root_handlers=root_handlers,
+            loggers={
+                "openeo": {"level": "DEBUG"},
+                "openeo_driver": {"level": "DEBUG"},
+                "openeogeotrellis": {"level": "DEBUG"},
+                "flask": {"level": "DEBUG"},
+                "werkzeug": {"level": "DEBUG"},
+                "gunicorn": {"level": "INFO"},
+                "kazoo": {"level": "WARN"},
+            },
+        )
+    )
+
     repository_root = Path(__file__).parent.parent.parent
     if os.path.exists(repository_root / "jars"):
         previous = (":" + os.environ["GEOPYSPARK_JARS_PATH"]) if "GEOPYSPARK_JARS_PATH" in os.environ else ""
@@ -221,30 +240,6 @@ def setup_environment(log_dir: Path = Path.cwd()):
         openeo_driver.config.load.ConfigGetter.OPENEO_BACKEND_CONFIG,
         str(Path(__file__).parent / "local_backend_config.py"),
     )
-
-
-def main():
-    root_handlers = [LOG_HANDLER_STDERR_JSON]
-    if smart_bool(os.environ.get("OPENEO_DRIVER_SIMPLE_LOGGING")):
-        root_handlers = None
-
-    setup_logging(
-        get_logging_config(
-            root_handlers=root_handlers,
-            loggers={
-                "openeo": {"level": "DEBUG"},
-                "openeo_driver": {"level": "DEBUG"},
-                "openeogeotrellis": {"level": "DEBUG"},
-                "flask": {"level": "DEBUG"},
-                "werkzeug": {"level": "DEBUG"},
-                "gunicorn": {"level": "INFO"},
-                "kazoo": {"level": "WARN"},
-            },
-        )
-    )
-
-    setup_environment()
-
     # Note: local import is necessary because `openeogeotrellis.backend` requires `SPARK_HOME` env var
     # which we want to set up just in time
     from openeogeotrellis.backend import GeoPySparkBackendImplementation
@@ -262,9 +257,13 @@ def main():
     show_log_level(logging.getLogger("openeogeotrellis"))
     show_log_level(app.logger)
 
-    host = os.environ.get("OPENEO_DEV_GUNICORN_HOST", "127.0.0.1")
+    # host = os.environ.get("OPENEO_DEV_GUNICORN_HOST", "127.0.0.1")
+    #
+    # run_gunicorn(app, threads=4, host=host, port=8080, on_started=on_started)
 
-    run_gunicorn(app, threads=4, host=host, port=8080, on_started=on_started)
+
+def main():
+    setup_environment()
 
 
 if __name__ == "__main__":
