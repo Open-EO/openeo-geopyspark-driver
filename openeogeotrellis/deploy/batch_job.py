@@ -701,7 +701,7 @@ def _replace_derived_from_links_with_auxiliary_link(metadata: dict, job_dir: Pat
         else:
             downloadable_file = job_dir / auxiliary_file.name
             shutil.copy(auxiliary_file, downloadable_file)
-            add_permissions(downloadable_file, stat.S_IWGRP)
+            add_permissions(downloadable_file, stat.S_IWGRP | stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
             logger.debug(f"copied {auxiliary_file} to {downloadable_file}")
             downloadable_href = f"file://{downloadable_file}"
 
