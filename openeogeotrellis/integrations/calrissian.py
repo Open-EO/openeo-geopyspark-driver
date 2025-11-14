@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import json
 import base64
 import dataclasses
+import json
 import logging
 import os
 import subprocess
@@ -19,21 +19,21 @@ import yaml
 from openeo.util import ContextTimer
 from openeo_driver.backend import ErrorSummary
 from openeo_driver.config import ConfigException
-from openeo_driver.utils import generate_unique_id
-from openeo_driver.utils import EvalEnv
+from openeo_driver.utils import EvalEnv, generate_unique_id
 
 from openeogeotrellis.config import get_backend_config, s3_config
 from openeogeotrellis.config.integrations.calrissian_config import (
     DEFAULT_CALRISSIAN_BASE_ARGUMENTS,
     DEFAULT_CALRISSIAN_IMAGE,
     DEFAULT_CALRISSIAN_S3_BUCKET,
+    DEFAULT_CALRISSIAN_S3_REGION,
     DEFAULT_INPUT_STAGING_IMAGE,
     DEFAULT_SECURITY_CONTEXT,
     CalrissianConfig,
 )
+from openeogeotrellis.integrations.s3proxy import sts
 from openeogeotrellis.util.runtime import get_job_id, get_request_id
 from openeogeotrellis.utils import s3_client
-from openeogeotrellis.integrations.s3proxy import sts
 
 try:
     # TODO #1060 importlib.resources on Python 3.8 is pretty limited so we need backport
@@ -118,6 +118,7 @@ class VolumeInfo:
 class CalrissianS3Result:
     s3_bucket: str
     s3_key: str
+    s3_region: Optional[str] = None
 
     def s3_uri(self) -> str:
         return f"s3://{self.s3_bucket}/{self.s3_key}"
@@ -206,6 +207,7 @@ class CalrissianJobLauncher:
         namespace: str,
         launch_config: CalrissianLaunchConfigBuilder,
         name_base: Optional[str] = None,
+        s3_region: Optional[str] = DEFAULT_CALRISSIAN_S3_REGION,
         s3_bucket: str = DEFAULT_CALRISSIAN_S3_BUCKET,
         calrissian_image: str = DEFAULT_CALRISSIAN_IMAGE,
         input_staging_image: str = DEFAULT_INPUT_STAGING_IMAGE,
@@ -215,6 +217,7 @@ class CalrissianJobLauncher:
     ):
         self._namespace = namespace
         self._name_base = name_base or generate_unique_id(prefix="cal")[:20]
+        self._s3_region = s3_region
         self._s3_bucket = s3_bucket
         _log.info(f"CalrissianJobLauncher.__init__: {self._namespace=} {self._name_base=} {self._s3_bucket=}")
 
@@ -311,6 +314,7 @@ class CalrissianJobLauncher:
             namespace=config.namespace,
             launch_config=launch_config,
             name_base=name_base,
+            s3_region=config.s3_region,
             s3_bucket=config.s3_bucket,
             security_context=config.security_context,
             calrissian_image=config.calrissian_image,
@@ -657,10 +661,10 @@ class CalrissianJobLauncher:
         _log.info(f"run_cwl_workflow: building S3 references to output files from {output_paths}")
         _log.info(f"run_cwl_workflow: {relative_cwl_outputs_listing}")
         output_volume_name = self.get_output_volume_name()
-        s3_bucket = self._s3_bucket
         results = {
             output_path: CalrissianS3Result(
-                s3_bucket=s3_bucket,
+                s3_region=self._s3_region,
+                s3_bucket=self._s3_bucket,
                 s3_key=f"{output_volume_name}/{relative_output_dir.strip('/')}/{output_path.strip('/')}",
             )
             for output_path in output_paths
