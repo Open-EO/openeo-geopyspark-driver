@@ -121,12 +121,6 @@ def load_stac(
 
     spatiotemporal_extent = _SpatioTemporalExtent(bbox=requested_bbox, from_date=from_date, to_date=to_date)
 
-    def get_pixel_value_offset(itm: pystac.Item, asst: pystac.Asset) -> float:
-        raster_scale = asst.extra_fields.get("raster:scale", itm.properties.get("raster:scale", 1.0))
-        raster_offset = asst.extra_fields.get("raster:offset", itm.properties.get("raster:offset", 0.0))
-
-        return raster_offset / raster_scale
-
     property_filter = PropertyFilter(properties=all_properties, env=env)
 
     collection = None
@@ -290,7 +284,7 @@ def load_stac(
                     if proj_epsg:
                         band_epsgs.setdefault(asset_band_name, set()).add(proj_epsg)
 
-                pixel_value_offset = get_pixel_value_offset(itm, asset)
+                pixel_value_offset = _get_pixel_value_offset(item=itm, asset=asset)
                 logger.debug(
                     f"FeatureBuilder.addlink {itm.id=} {asset_id=} {asset_band_names_from_metadata=} {asset_band_names=}"
                 )
@@ -874,6 +868,7 @@ class ItemCollection:
                 end = item_end
         return start, end
 
+
 def _is_supported_raster_mime_type(mime_type: str) -> bool:
     mime_type = mime_type.lower()
     # https://github.com/radiantearth/stac-spec/blob/master/best-practices.md#common-media-types-in-stac
@@ -982,6 +977,12 @@ def _get_proj_metadata(
         tuple(map(float, proj_bbox)) if proj_bbox else None,
         tuple(proj_shape) if proj_shape else None,
     )
+
+
+def _get_pixel_value_offset(*, item: pystac.Item, asset: pystac.Asset) -> float:
+    raster_scale = asset.extra_fields.get("raster:scale", item.properties.get("raster:scale", 1.0))
+    raster_offset = asset.extra_fields.get("raster:offset", item.properties.get("raster:offset", 0.0))
+    return raster_offset / raster_scale
 
 
 def _supports_item_search(collection: pystac.Collection) -> bool:
