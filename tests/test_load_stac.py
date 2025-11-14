@@ -1860,3 +1860,11 @@ class TestItemCollection:
             datetime.datetime(2025, 11, 10, hour=10, tzinfo=datetime.timezone.utc),
             datetime.datetime(2025, 11, 16, hour=16, tzinfo=datetime.timezone.utc),
         )
+
+    def test_deduplicate_basic(self):
+        item10 = pystac.Item.from_dict(StacDummyBuilder.item(id="item-10", datetime="2025-11-10T00:00:00Z"))
+        item10b = pystac.Item.from_dict(StacDummyBuilder.item(id="item-10b", datetime="2025-11-10T00:00:00Z"))
+        item11 = pystac.Item.from_dict(StacDummyBuilder.item(id="item-11", datetime="2025-11-11T00:00:00Z"))
+        item_collection = ItemCollection(items=[item10, item10b, item11])
+        deduplicated = item_collection.deduplicate()
+        assert deduplicated.items == [item10, item11]
