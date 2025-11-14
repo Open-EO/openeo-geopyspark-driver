@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Iterator, List, Optional, Set, Tuple, Union
 from urllib.parse import urlparse
 
-import dateutil.parser
 import geopyspark as gps
 import openeo_driver.backend
 import planetary_computer
@@ -867,6 +866,56 @@ class ItemCollection:
             if not end or item_end > end:
                 end = item_end
         return start, end
+
+    def deduplicate(self, *, time_shift_max: float = 30) -> ItemCollection:
+        """Create new ItemCollection by deduplicating items."""
+
+        def item_nominal_date(item: pystac.Item) -> datetime.datetime:
+            return item.datetime or pystac.utils.str_to_datetime(item.properties["start_datetime"])
+
+        duplication_properties = [
+            "sar:instrument_mode",
+            "sat:orbit_state",
+            "proj:code",
+            "sat:absolute_orbit",
+            "constellation",
+            "gsd",
+            "processing:level",
+        ]
+
+        def is_duplicate(item1: pystac.Item, item2: pystac.Item) -> bool:
+            return all(item1.properties.get(prop) == item2.properties.get(prop) for prop in duplication_properties)
+
+        def group_duplicates(items: List[pystac.Item]) -> Iterator[List[pystac.Item]]:
+            """Produce groups of duplicate items."""
+            items = sorted(items, key=item_nominal_date)
+            handled = set()
+            for i, item_i in enumerate(items):
+                if i in handled:
+                    continue
+                group = [item_i]
+                horizon = item_nominal_date(item_i) + datetime.timedelta(seconds=time_shift_max)
+                for j in range(i + 1, len(items)):
+                    item_j = items[j]
+                    if item_nominal_date(item_j) > horizon:
+                        break
+                    if is_duplicate(item_i, item_j):
+                        group.append(item_j)
+                        handled.add(j)
+                yield group
+
+        def score(item: pystac.Item):
+            return item.properties.get("updated", "")
+
+        items = []
+        for group in group_duplicates(self.items):
+            if len(group) > 1:
+                best = max(group, key=score)
+                logger.debug(f"Deduplicate: keeping {best.id=} from {len(group)=}")
+            else:
+                best = group[0]
+            items.append(best)
+        return ItemCollection(items)
 
 
 def _is_supported_raster_mime_type(mime_type: str) -> bool:
