@@ -43,7 +43,7 @@ from openeo_driver.util.http import requests_with_retry
 from openeo_driver.util.utm import utm_zone_from_epsg
 from openeo_driver.utils import EvalEnv
 from pystac import STACObject
-from shapely.geometry import Polygon, shape
+import shapely.geometry
 from urllib3 import Retry
 
 from openeogeotrellis import datacube_parameters
@@ -309,7 +309,7 @@ def load_stac(
                 builder = builder.withBBox(*map(float, latlon_bbox.as_wsen_tuple()))
 
             if itm.geometry is not None:
-                builder = builder.withGeometryFromWkt(str(shape(itm.geometry)))
+                builder = builder.withGeometryFromWkt(str(shapely.geometry.shape(itm.geometry)))
 
             self_links = itm.get_links(rel="self")
             self_url = self_links[0].href if self_links else None
@@ -634,7 +634,7 @@ class _SpatialExtent:
         # TODO: this assumes bbox is in lon/lat coordinates, also support other CRSes?
         if not self._bbox or bbox is None:
             return True
-        return self._bbox_lonlat_shape.intersects(Polygon.from_bounds(*bbox))
+        return self._bbox_lonlat_shape.intersects(shapely.geometry.Polygon.from_bounds(*bbox))
 
 
 class _SpatioTemporalExtent:
@@ -903,14 +903,37 @@ class ItemDeduplicator:
     def _item_nominal_date(item: pystac.Item) -> datetime.datetime:
         return item.datetime or pystac.utils.str_to_datetime(item.properties["start_datetime"])
 
-    def _is_duplicate(self, item1: pystac.Item, item2: pystac.Item) -> bool:
-        if (
-            abs((self._item_nominal_date(item1) - self._item_nominal_date(item2)).total_seconds())
-            > self._time_shift_max
-        ):
+    def _is_duplicate_item(self, item1: pystac.Item, item2: pystac.Item) -> bool:
+        try:
+            return (
+                (
+                    abs((self._item_nominal_date(item1) - self._item_nominal_date(item2)).total_seconds())
+                    < self._time_shift_max
+                )
+                and all(item1.properties.get(p) == item2.properties.get(p) for p in self._duplication_properties)
+                and self._is_same_bbox(item1.bbox, item2.bbox)
+                and self._is_same_geometry(item1.geometry, item2.geometry)
+            )
+        except Exception as e:
+            logger.warning(f"Failed to compare {item1.id=} and {item2.id=} for duplication: {e=}", exc_info=True)
             return False
-        return all(item1.properties.get(prop) == item2.properties.get(prop) for prop in self._duplication_properties)
-        # TODO: also check geometry/bbox similarity?
+
+    def _is_same_bbox(self, bbox1: Optional[List[float]], bbox2: Optional[List[float]], epsilon=1e-6) -> bool:
+        if isinstance(bbox1, list) and isinstance(bbox2, list):
+            return len(bbox1) == 4 and len(bbox2) == 4 and all(abs(a - b) <= epsilon for a, b in zip(bbox1, bbox2))
+        elif bbox1 is None and bbox2 is None:
+            return True
+        else:
+            return False
+
+    def _is_same_geometry(self, geom1: Optional[Dict], geom2: Optional[Dict]) -> bool:
+        if isinstance(geom1, dict) and isinstance(geom2, dict):
+            # TODO: need for smarter geometry comparison (e.g. within some epsilon)?
+            return shapely.equals(shapely.geometry.shape(geom1), shapely.geometry.shape(geom2))
+        elif geom1 is None and geom2 is None:
+            return True
+        else:
+            return False
 
     def _score(self, item: pystac.Item):
         """Score an item for deduplication preference (higher is better)."""
@@ -934,7 +957,7 @@ class ItemDeduplicator:
                 item_j = items[j]
                 if self._item_nominal_date(item_j) > horizon:
                     break
-                if self._is_duplicate(item_i, item_j):
+                if self._is_duplicate_item(item_i, item_j):
                     group.append(item_j)
                     handled.add(j)
             yield group

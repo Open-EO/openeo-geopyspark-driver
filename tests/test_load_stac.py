@@ -1909,3 +1909,75 @@ class TestItemDeduplicator:
         depuplicator = ItemDeduplicator()
         result = depuplicator.deduplicate([item1, item2])
         assert [r.id for r in result] == [best]
+
+    @pytest.mark.parametrize(
+        ["bbox2", "expected"],
+        [
+            ([3, 50, 4, 51], ["item2", "item3"]),
+            ([4, 50, 5, 51], ["item1", "item3"]),
+            (None, ["item1", "item2", "item3"]),
+            ([8, 40, 9, 41], ["item1", "item2", "item3"]),
+            # Invalid bboxes, but should not break deduplication
+            (123, ["item1", "item2", "item3"]),
+            ([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], ["item1", "item2", "item3"]),
+            (["one", "two", "three"], ["item1", "item2", "item3"]),
+        ],
+    )
+    def test_duplicate_by_bbox(self, bbox2, expected):
+        item1 = pystac.Item.from_dict(
+            StacDummyBuilder.item(id="item1", bbox=[3, 50, 4, 51], properties={"updated": "2025-11-01"})
+        )
+        item2 = pystac.Item.from_dict(
+            StacDummyBuilder.item(id="item2", bbox=bbox2, properties={"updated": "2025-11-02"})
+        )
+        item3 = pystac.Item.from_dict(
+            StacDummyBuilder.item(id="item3", bbox=[4, 50, 5, 51], properties={"updated": "2025-11-03"})
+        )
+
+        depuplicator = ItemDeduplicator()
+        result = depuplicator.deduplicate([item1, item2, item3])
+        assert [r.id for r in result] == expected
+
+    @pytest.mark.parametrize(
+        ["geometry2", "expected"],
+        [
+            (
+                {"type": "Polygon", "coordinates": [[[3, 50], [4, 50], [4, 51], [3, 51], [3, 50]]]},
+                ["item2", "item3"],
+            ),
+            (
+                {"type": "Polygon", "coordinates": [[[4, 50], [5, 50], [5, 51], [4, 51], [4, 50]]]},
+                ["item1", "item3"],
+            ),
+            (None, ["item1", "item2", "item3"]),
+            (
+                {"type": "Polygon", "coordinates": [[[8, 40], [9, 40], [9, 41], [8, 41], [8, 40]]]},
+                ["item1", "item2", "item3"],
+            ),
+            # Invalid geometry, but should not break deduplication
+            ({"type": "MobiusRing"}, ["item1", "item2", "item3"]),
+            ([666, 777], ["item1", "item2", "item3"]),
+        ],
+    )
+    def test_duplicate_by_geometry(self, geometry2, expected):
+        item1 = pystac.Item.from_dict(
+            StacDummyBuilder.item(
+                id="item1",
+                geometry={"type": "Polygon", "coordinates": [[[3, 50], [4, 50], [4, 51], [3, 51], [3, 50]]]},
+                properties={"updated": "2025-11-01"},
+            )
+        )
+        item2 = pystac.Item.from_dict(
+            StacDummyBuilder.item(id="item2", geometry=geometry2, properties={"updated": "2025-11-02"})
+        )
+        item3 = pystac.Item.from_dict(
+            StacDummyBuilder.item(
+                id="item3",
+                geometry={"type": "Polygon", "coordinates": [[[4, 50], [5, 50], [5, 51], [4, 51], [4, 50]]]},
+                properties={"updated": "2025-11-03"},
+            )
+        )
+
+        depuplicator = ItemDeduplicator()
+        result = depuplicator.deduplicate([item1, item2, item3])
+        assert [r.id for r in result] == expected
