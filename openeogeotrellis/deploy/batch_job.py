@@ -933,7 +933,7 @@ def _write_exported_stac_collection(
         properties = {"datetime": asset.get("datetime")}
 
         if properties["datetime"] is None:
-            start_datetime = asset.get("start_datetime") or result_metadata.get("start_datetime")
+            start_datetime = asset.get("start_datetime") or result_metadata.get("start_datetime") or "1970-01-01T00:00:00Z"
             properties["datetime"] = start_datetime
 
         stac_item = {
