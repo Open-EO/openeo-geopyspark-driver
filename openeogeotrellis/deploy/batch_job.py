@@ -1048,7 +1048,7 @@ def _write_exported_stac_collection_from_item(
             "bbox": item.get("bbox"),
             "properties": item.get("properties", {"datetime": result_metadata.get("start_datetime")}),
             "links": (
-                _get_tracker_metadata("", omit_derived_from_links=omit_derived_from_links).get("auxiliary_links", [])
+                _get_tracker_metadata("", omit_derived_from_links=omit_derived_from_links).get("auxiliary_links", [])  # FIXME: should be the copied (workdir -> jobdir) links instead
                 if attach_derived_from_document
                 else []
             ),
