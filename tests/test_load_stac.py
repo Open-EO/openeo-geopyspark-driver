@@ -34,6 +34,7 @@ from openeogeotrellis.load_stac import (
     _TemporalExtent,
     extract_own_job_info,
     load_stac,
+    ItemDeduplicator,
 )
 from openeogeotrellis.testing import DummyStacApiServer, gps_config_overrides
 
@@ -1861,10 +1862,50 @@ class TestItemCollection:
             datetime.datetime(2025, 11, 16, hour=16, tzinfo=datetime.timezone.utc),
         )
 
-    def test_deduplicate_basic(self):
+
+class TestItemDeduplicator:
+    def test_trivial(self):
+        item = pystac.Item.from_dict(StacDummyBuilder.item())
+        depuplicator = ItemDeduplicator()
+        assert depuplicator.deduplicate([item]) == [item]
+
+    def test_basic(self):
         item10 = pystac.Item.from_dict(StacDummyBuilder.item(id="item-10", datetime="2025-11-10T00:00:00Z"))
-        item10b = pystac.Item.from_dict(StacDummyBuilder.item(id="item-10b", datetime="2025-11-10T00:00:00Z"))
+        item10_1s = pystac.Item.from_dict(StacDummyBuilder.item(id="item-10+1s", datetime="2025-11-10T00:00:01Z"))
+        item10_1h = pystac.Item.from_dict(StacDummyBuilder.item(id="item-10+1h", datetime="2025-11-10T01:00:00Z"))
         item11 = pystac.Item.from_dict(StacDummyBuilder.item(id="item-11", datetime="2025-11-11T00:00:00Z"))
-        item_collection = ItemCollection(items=[item10, item10b, item11])
-        deduplicated = item_collection.deduplicate()
-        assert deduplicated.items == [item10, item11]
+
+        depuplicator = ItemDeduplicator()
+        assert depuplicator.deduplicate([item10, item10_1s, item11]) == [item10, item11]
+        assert depuplicator.deduplicate([item10, item10_1h, item11]) == [item10, item10_1h, item11]
+
+    def test_property_based(self):
+        item600 = pystac.Item.from_dict(
+            StacDummyBuilder.item(id="item1", properties={"proj:code": "EPSG:32600", "flavor": "apple"})
+        )
+        item600b = pystac.Item.from_dict(
+            StacDummyBuilder.item(id="item2", properties={"proj:code": "EPSG:32600", "flavor": "banana"})
+        )
+        item601 = pystac.Item.from_dict(
+            StacDummyBuilder.item(id="item3", properties={"proj:code": "EPSG:32601", "flavor": "apple"})
+        )
+
+        depuplicator = ItemDeduplicator()
+        assert depuplicator.deduplicate([item600, item600b, item601]) == [item600, item601]
+
+        depuplicator = ItemDeduplicator(duplication_properties=["flavor"])
+        assert depuplicator.deduplicate([item600, item600b, item601]) == [item600, item600b]
+
+    @pytest.mark.parametrize(
+        ["item2_updated", "best"],
+        [
+            ("2025-11-12T12:00:10Z", "item2"),
+            ("2025-11-12T11:00:00Z", "item1"),
+        ],
+    )
+    def test_updated(self, item2_updated, best):
+        item1 = pystac.Item.from_dict(StacDummyBuilder.item(id="item1", properties={"updated": "2025-11-12T12:00:00Z"}))
+        item2 = pystac.Item.from_dict(StacDummyBuilder.item(id="item2", properties={"updated": item2_updated}))
+        depuplicator = ItemDeduplicator()
+        result = depuplicator.deduplicate([item1, item2])
+        assert [r.id for r in result] == [best]

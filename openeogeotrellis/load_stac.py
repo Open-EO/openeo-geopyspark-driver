@@ -9,7 +9,7 @@ import re
 import time
 from functools import partial
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterator, List, Optional, Set, Tuple, Union
+from typing import Any, Callable, Dict, Iterator, List, Optional, Set, Tuple, Union, Iterable
 from urllib.parse import urlparse
 
 import geopyspark as gps
@@ -867,55 +867,90 @@ class ItemCollection:
                 end = item_end
         return start, end
 
-    def deduplicate(self, *, time_shift_max: float = 30) -> ItemCollection:
-        """Create new ItemCollection by deduplicating items."""
 
-        def item_nominal_date(item: pystac.Item) -> datetime.datetime:
-            return item.datetime or pystac.utils.str_to_datetime(item.properties["start_datetime"])
+class ItemDeduplicator:
+    """
+    Deduplicate STAC Items based on nominal datetime and selected properties.
+    """
 
-        duplication_properties = [
-            "sar:instrument_mode",
-            "sat:orbit_state",
-            "proj:code",
-            "sat:absolute_orbit",
-            "constellation",
-            "gsd",
-            "processing:level",
-        ]
+    DEFAULT_DUPLICATION_PROPERTIES = [
+        "platform",
+        "constellation",
+        "gsd",
+        "processing:level",
+        "product:timeliness",
+        "product:type",
+        "proj:code",
+        "sar:frequency_band",
+        "sar:instrument_mode",
+        "sar:observation_direction",
+        "sar:polarizations",
+        "sat:absolute_orbit",
+        "sat:orbit_state",
+    ]
 
-        def is_duplicate(item1: pystac.Item, item2: pystac.Item) -> bool:
-            return all(item1.properties.get(prop) == item2.properties.get(prop) for prop in duplication_properties)
+    def __init__(self, *, time_shift_max: float = 30, duplication_properties: Optional[List[str]] = None):
+        self._time_shift_max = time_shift_max
 
-        def group_duplicates(items: List[pystac.Item]) -> Iterator[List[pystac.Item]]:
-            """Produce groups of duplicate items."""
-            items = sorted(items, key=item_nominal_date)
-            handled = set()
-            for i, item_i in enumerate(items):
-                if i in handled:
-                    continue
-                group = [item_i]
-                horizon = item_nominal_date(item_i) + datetime.timedelta(seconds=time_shift_max)
-                for j in range(i + 1, len(items)):
-                    item_j = items[j]
-                    if item_nominal_date(item_j) > horizon:
-                        break
-                    if is_duplicate(item_i, item_j):
-                        group.append(item_j)
-                        handled.add(j)
-                yield group
+        # Duplication properties: properties that will be compared
+        # with simple equality to determine duplication (among other criteria).
+        if duplication_properties is None:
+            self._duplication_properties = self.DEFAULT_DUPLICATION_PROPERTIES
+        else:
+            self._duplication_properties = duplication_properties
 
-        def score(item: pystac.Item):
-            return item.properties.get("updated", "")
+    @staticmethod
+    def _item_nominal_date(item: pystac.Item) -> datetime.datetime:
+        return item.datetime or pystac.utils.str_to_datetime(item.properties["start_datetime"])
 
-        items = []
-        for group in group_duplicates(self.items):
+    def _is_duplicate(self, item1: pystac.Item, item2: pystac.Item) -> bool:
+        if (
+            abs((self._item_nominal_date(item1) - self._item_nominal_date(item2)).total_seconds())
+            > self._time_shift_max
+        ):
+            return False
+        return all(item1.properties.get(prop) == item2.properties.get(prop) for prop in self._duplication_properties)
+        # TODO: also check geometry/bbox similarity?
+
+    def _score(self, item: pystac.Item):
+        """Score an item for deduplication preference (higher is better)."""
+        # Prefer more recently updated items
+        return item.properties.get("updated", "")
+
+    def _group_duplicates(self, items: Iterable[pystac.Item]) -> Iterator[List[pystac.Item]]:
+        """Produce groups of duplicate items."""
+        # Pre-sort items, to allow quick breaking out of inner loop
+        items = sorted(items, key=self._item_nominal_date)
+        handled = set()
+        time_shift_max = datetime.timedelta(seconds=self._time_shift_max)
+        stats = {"items": 0, "groups": 0}
+        for i, item_i in enumerate(items):
+            stats["items"] += 1
+            if i in handled:
+                continue
+            group = [item_i]
+            horizon = self._item_nominal_date(item_i) + time_shift_max
+            for j in range(i + 1, len(items)):
+                item_j = items[j]
+                if self._item_nominal_date(item_j) > horizon:
+                    break
+                if self._is_duplicate(item_i, item_j):
+                    group.append(item_j)
+                    handled.add(j)
+            yield group
+            stats["groups"] += 1
+        logger.debug(f"ItemDeduplicator._group_duplicates {stats=}")
+
+    def deduplicate(self, items: Iterable[pystac.Item]) -> List[pystac.Item]:
+        result = []
+        for group in self._group_duplicates(items):
             if len(group) > 1:
-                best = max(group, key=score)
+                best = max(group, key=self._score)
                 logger.debug(f"Deduplicate: keeping {best.id=} from {len(group)=}")
             else:
                 best = group[0]
-            items.append(best)
-        return ItemCollection(items)
+            result.append(best)
+        return result
 
 
 def _is_supported_raster_mime_type(mime_type: str) -> bool:
