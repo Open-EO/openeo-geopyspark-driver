@@ -1876,7 +1876,7 @@ class TestItemDeduplicator:
         item11 = pystac.Item.from_dict(StacDummyBuilder.item(id="item-11", datetime="2025-11-11T00:00:00Z"))
 
         depuplicator = ItemDeduplicator()
-        assert depuplicator.deduplicate([item10, item10_1s, item11]) == [item10, item11]
+        assert depuplicator.deduplicate([item10, item10_1s, item11]) == [item10_1s, item11]
         assert depuplicator.deduplicate([item10, item10_1h, item11]) == [item10, item10_1h, item11]
 
     def test_property_based(self):
@@ -1891,10 +1891,10 @@ class TestItemDeduplicator:
         )
 
         depuplicator = ItemDeduplicator()
-        assert depuplicator.deduplicate([item600, item600b, item601]) == [item600, item601]
+        assert depuplicator.deduplicate([item600, item600b, item601]) == [item600b, item601]
 
         depuplicator = ItemDeduplicator(duplication_properties=["flavor"])
-        assert depuplicator.deduplicate([item600, item600b, item601]) == [item600, item600b]
+        assert depuplicator.deduplicate([item600, item600b, item601]) == [item601, item600b]
 
     @pytest.mark.parametrize(
         ["item2_updated", "best"],
@@ -1977,6 +1977,28 @@ class TestItemDeduplicator:
                 properties={"updated": "2025-11-03"},
             )
         )
+
+        depuplicator = ItemDeduplicator()
+        result = depuplicator.deduplicate([item1, item2, item3])
+        assert [r.id for r in result] == expected
+
+    @pytest.mark.parametrize(
+        ["datetime2", "expected"],
+        [
+            ("2025-11-10T00:00:00Z", ["item2", "item3"]),
+            ("2025-11-10T12:00:00Z", ["item1", "item2", "item3"]),
+            ("2025-11-11T00:00:00Z", ["item1", "item3"]),
+            ("2025-11-12T00:00:00Z", ["item1", "item3", "item2"]),
+            ("2025-11-10T00:00:00+00", ["item2", "item3"]),
+            ("2025-11-10T00:00:00+07", ["item2", "item1", "item3"]),
+            ("2025-11-10", ["item2", "item3"]),
+            ("2025-11-11", ["item1", "item3"]),
+        ],
+    )
+    def test_datetime_and_timezones(self, datetime2, expected):
+        item1 = pystac.Item.from_dict(StacDummyBuilder.item(id="item1", datetime="2025-11-10T00:00:00Z"))
+        item2 = pystac.Item.from_dict(StacDummyBuilder.item(id="item2", datetime=datetime2))
+        item3 = pystac.Item.from_dict(StacDummyBuilder.item(id="item3", datetime="2025-11-11T00:00:00Z"))
 
         depuplicator = ItemDeduplicator()
         result = depuplicator.deduplicate([item1, item2, item3])

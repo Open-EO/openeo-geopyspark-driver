@@ -901,7 +901,12 @@ class ItemDeduplicator:
 
     @staticmethod
     def _item_nominal_date(item: pystac.Item) -> datetime.datetime:
-        return item.datetime or pystac.utils.str_to_datetime(item.properties["start_datetime"])
+        # TODO: cache result (e.g. by item id)?
+        dt = item.datetime or pystac.utils.str_to_datetime(item.properties["start_datetime"])
+        # ensure UTC timezone for proper comparison
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=datetime.timezone.utc)
+        return dt
 
     def _is_duplicate_item(self, item1: pystac.Item, item2: pystac.Item) -> bool:
         try:
@@ -935,10 +940,11 @@ class ItemDeduplicator:
         else:
             return False
 
-    def _score(self, item: pystac.Item):
+    def _score(self, item: pystac.Item) -> tuple:
         """Score an item for deduplication preference (higher is better)."""
         # Prefer more recently updated items
-        return item.properties.get("updated", "")
+        # use item id as tie breaker
+        return (item.properties.get("updated", ""), item.id)
 
     def _group_duplicates(self, items: Iterable[pystac.Item]) -> Iterator[List[pystac.Item]]:
         """Produce groups of duplicate items."""
