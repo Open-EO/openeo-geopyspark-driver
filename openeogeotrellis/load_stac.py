@@ -130,7 +130,6 @@ def load_stac(
     metadata = None
 
     netcdf_with_time_dimension = False
-    asset_band_names = None
 
     backend_config = get_backend_config()
     poll_interval_seconds = backend_config.job_dependencies_poll_interval_seconds
@@ -229,6 +228,7 @@ def load_stac(
 
         opensearch_client = jvm.org.openeo.geotrellis.file.FixedFeaturesOpenSearchClient()
 
+        asset_band_names = None
         stac_bbox = None
         proj_epsg = None
         proj_bbox = None
@@ -290,8 +290,10 @@ def load_stac(
                         band_names.append(asset_band_name)
 
                     if proj_bbox and proj_shape:
+                        # TODO: risk on overwriting/conflict
                         band_cell_size[asset_band_name] = _compute_cellsize(proj_bbox, proj_shape)
                     if proj_epsg:
+                        # TODO: risk on overwriting/conflict
                         band_epsgs.setdefault(asset_band_name, set()).add(proj_epsg)
 
                 pixel_value_offset = _get_pixel_value_offset(item=itm, asset=asset)
@@ -436,6 +438,7 @@ def load_stac(
                 target_epsg = pyproj.CRS.from_user_input(load_params.target_crs).to_epsg()
 
     if netcdf_with_time_dimension:
+        # TODO: avoid `asset_band_names` as it is an ill-defined here (outside its original for-loop scoped life cycle)
         if asset_band_names:  # When no products are found, asset_band_names is None
             sorted_bands_from_catalog = sorted(asset_band_names)
             if band_names != sorted_bands_from_catalog:
