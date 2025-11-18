@@ -95,13 +95,17 @@ def load_stac(
     batch_jobs: Optional[openeo_driver.backend.BatchJobs] = None,
     override_band_names: Optional[List[str]] = None,
     stac_io: Optional[pystac.stac_io.StacIO] = None,
+    feature_flags: Optional[Dict[str, Any]] = None,
 ) -> GeopysparkDataCube:
     if override_band_names is None:
         override_band_names = []
 
     logger.info("load_stac from url {u!r} with load params {p!r}".format(u=url, p=load_params))
 
-    feature_flags = load_params.get("featureflags", {})
+    # Feature flags: merge global (e.g. from layer catalog info) and user-provided (higher precedence)
+    feature_flags = {**(feature_flags or {}), **load_params.get("featureflags", {})}
+    logger.info(f"load_stac {feature_flags=}")
+
     allow_empty_cubes = feature_flags.get("allow_empty_cube", env.get(EVAL_ENV_KEY.ALLOW_EMPTY_CUBES, False))
 
     all_properties = {**layer_properties, **load_params.properties} if layer_properties else load_params.properties
