@@ -210,6 +210,13 @@ def load_stac(
 
                 item_collection = ItemCollection.from_stac_catalog(catalog, spatiotemporal_extent=spatiotemporal_extent)
 
+        # Deduplicate items
+        # TODO: smarter and more fine-grained deduplication behavior?
+        #       - enable by default or only do it on STAC API usage?
+        #       - allow custom deduplicators (e.g. based on layer catalog info about openeo collections)
+        if feature_flags.get("deduplicate_items", False):
+            item_collection = item_collection.deduplicated(deduplicator=ItemDeduplicator())
+
         items_found = len(item_collection.items) > 0
         if not allow_empty_cubes and not items_found:
             raise NoDataAvailableException()
@@ -866,6 +873,13 @@ class ItemCollection:
             if not end or item_end > end:
                 end = item_end
         return start, end
+
+    def deduplicated(self, deduplicator: "ItemDeduplicator") -> ItemCollection:
+        """Create new ItemCollection by deduplicating items using the given deduplicator."""
+        orig_count = len(self.items)
+        items = deduplicator.deduplicate(items=self.items)
+        logger.debug(f"ItemCollection.deduplicated: from {orig_count} to {len(items)}")
+        return ItemCollection(items=items)
 
 
 class ItemDeduplicator:

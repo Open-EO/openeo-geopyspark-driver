@@ -1862,6 +1862,41 @@ class TestItemCollection:
             datetime.datetime(2025, 11, 16, hour=16, tzinfo=datetime.timezone.utc),
         )
 
+    def test_deduplicated(self, dummy_stac_api_server, dummy_stac_api):
+        collection_id = "with-dups"
+        dummy_stac_api_server.define_collection(collection_id)
+        for i in range(6):
+            dummy_stac_api_server.define_item(
+                collection_id=collection_id,
+                item_id=f"item-{i}",
+                datetime=f"2025-11-{(i // 2) + 1:02d}",
+            )
+
+        given_url = f"{dummy_stac_api}/collections/{collection_id}"
+        collection: pystac.Collection = pystac.read_file(given_url)
+        orig = ItemCollection.from_stac_api(
+            collection,
+            original_url=given_url,
+            property_filter=PropertyFilter(properties={}),
+            spatiotemporal_extent=_SpatioTemporalExtent(bbox=None, from_date="2025-01-01", to_date=None),
+        )
+        assert set(item.id for item in orig.items) == {
+            "item-0",
+            "item-1",
+            "item-2",
+            "item-3",
+            "item-4",
+            "item-5",
+        }
+
+        deduplicator = ItemDeduplicator()
+        deduped = orig.deduplicated(deduplicator=deduplicator)
+        assert set(item.id for item in deduped.items) == {
+            "item-1",
+            "item-3",
+            "item-5",
+        }
+
 
 class TestItemDeduplicator:
     def test_trivial(self):
