@@ -148,6 +148,7 @@ from openeogeotrellis.utils import (
     single_value,
     to_projected_polygons,
     zk_client,
+    BadlyHashable,
 )
 from openeogeotrellis.vault import Vault
 
@@ -2440,24 +2441,6 @@ class GpsBatchJobs(backend.BatchJobs):
                         projected_polygons = to_projected_polygons(self._jvm, geometry=geometries, crs=crs, buffer_points=True)
                         geometry = projected_polygons.polygons()
                         crs = projected_polygons.crs()
-
-                    class BadlyHashable:
-                        """
-                        Simplifies implementation by allowing unhashable types in a dict-based cache. The number of
-                        items in this cache is very small anyway.
-                        """
-
-                        def __init__(self, target):
-                            self.target = target
-
-                        def __eq__(self, other):
-                            return isinstance(other, BadlyHashable) and self.target == other.target
-
-                        def __hash__(self):
-                            return 0
-
-                        def __repr__(self):
-                            return f"BadlyHashable({repr(self.target)})"
 
                     if not geometries:
                         hashable_geometry = (bbox.xmin(), bbox.ymin(), bbox.xmax(), bbox.ymax())

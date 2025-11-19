@@ -3519,8 +3519,10 @@ def test_netcdf_sample_by_feature_asset_bbox_geometry(tmp_path):
 
 @pytest.mark.parametrize("derived_from_document_experimental", [False, True])
 def test_export_workspace_derived_from(
-    tmp_path, requests_mock, mock_s3_bucket, metadata_tracker, derived_from_document_experimental
+    tmp_path, requests_mock, mock_s3_bucket, metadata_tracker, derived_from_document_experimental, caplog
 ):
+    caplog.set_level("DEBUG")
+
     stac_api_workspace_id = "stac_api_workspace"
     stac_api_workspace = get_backend_config().workspaces[stac_api_workspace_id]
     assert isinstance(stac_api_workspace, StacApiWorkspace)
@@ -3746,6 +3748,16 @@ def test_export_workspace_derived_from(
         else:
             # these get rendered in the /jobs/<job_id>/results STAC Collection document
             assert derived_from_hrefs == ["http://s2.test/p1", "http://s2.test/p2"]
+
+    if derived_from_document_experimental:
+        copy_derived_from_document_logs = [
+            log
+            for log in caplog.records
+            if log.name == "openeogeotrellis.deploy.batch_job"
+            and log.levelname == "DEBUG"
+            and log.message.startswith("copied ")
+        ]
+        assert len(copy_derived_from_document_logs) == 1
 
 
 def test_webapp_derived_from(tmp_path, metadata_tracker):

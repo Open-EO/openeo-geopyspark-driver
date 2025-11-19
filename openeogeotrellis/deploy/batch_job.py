@@ -7,7 +7,7 @@ import stat
 import sys
 import time
 from copy import deepcopy
-from functools import partial
+from functools import lru_cache, partial
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 from urllib.parse import urlparse
@@ -82,6 +82,7 @@ from openeogeotrellis.utils import (
     unzip,
     wait_till_path_available,
     add_permissions_with_failsafe,
+    BadlyHashable,
 )
 
 logger = logging.getLogger("openeogeotrellis.deploy.batch_job")
@@ -661,7 +662,8 @@ def write_metadata(metadata: dict, metadata_file: Path, is_stac11: bool, attach_
         out_metadata = deepcopy(out_metadata)  # avoid mutating an object that is going to be reused
 
         for auxiliary_link in _copy_auxiliary_links(
-            out_metadata.get("auxiliary_links", []), job_dir=metadata_file.parent  # TODO: ugly way to get job_dir
+            auxiliary_links=BadlyHashable(out_metadata.get("auxiliary_links", [])),
+            job_dir=metadata_file.parent,  # TODO: ugly way to get job_dir
         ):
             for item in out_metadata.get("items", []):
                 item.setdefault("links", []).append(auxiliary_link)
@@ -681,13 +683,16 @@ def write_metadata(metadata: dict, metadata_file: Path, is_stac11: bool, attach_
         s3_instance.upload_file(str(metadata_file), bucket, str(metadata_file).strip("/"))
 
 
-# TODO: execute at most once
-def _copy_auxiliary_links(auxiliary_links: List[dict], job_dir: Path) -> List[dict]:
+@lru_cache
+def _copy_auxiliary_links(*, auxiliary_links: BadlyHashable, job_dir: Path) -> List[dict]:
     """files should be downloadable from the web app driver"""
+    # enforce keyword arguments because distinct argument patterns lead to separate cache entries in lru_cache
+
+    print(f"hashes: {hash(auxiliary_links)} {hash(job_dir)}")
 
     copied_auxiliary_links = []
 
-    for auxiliary_link in auxiliary_links:
+    for auxiliary_link in auxiliary_links.target:
         auxiliary_file = Path(auxiliary_link["href"])
 
         if ConfigParams().is_kube_deploy:
@@ -710,6 +715,7 @@ def _copy_auxiliary_links(auxiliary_links: List[dict], job_dir: Path) -> List[di
         copied_auxiliary_links.append(dict(auxiliary_link, href=downloadable_href))
 
     return copied_auxiliary_links
+
 
 def _export_to_workspaces_item(
     result: SaveResult,
@@ -1046,7 +1052,9 @@ def _write_exported_stac_collection_from_item(
             "bbox": item.get("bbox"),
             "properties": item.get("properties", {"datetime": result_metadata.get("start_datetime")}),
             "links": (
-                _copy_auxiliary_links(_get_tracker_metadata("").get("auxiliary_links", []), job_dir)
+                _copy_auxiliary_links(
+                    auxiliary_links=BadlyHashable(_get_tracker_metadata("").get("auxiliary_links", [])), job_dir=job_dir
+                )
                 if attach_derived_from_document
                 else []
             ),
