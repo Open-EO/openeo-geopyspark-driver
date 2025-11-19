@@ -688,8 +688,6 @@ def _copy_auxiliary_links(*, auxiliary_links: BadlyHashable, job_dir: Path) -> L
     """files should be downloadable from the web app driver"""
     # enforce keyword arguments because distinct argument patterns lead to separate cache entries in lru_cache
 
-    print(f"hashes: {hash(auxiliary_links)} {hash(job_dir)}")
-
     copied_auxiliary_links = []
 
     for auxiliary_link in auxiliary_links.target:
