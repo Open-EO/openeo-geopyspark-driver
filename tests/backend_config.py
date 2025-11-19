@@ -30,6 +30,7 @@ oidc_providers = [
 def _stac_api_workspace() -> StacApiWorkspace:
     import pystac
     from pathlib import Path
+    from urllib.parse import urlparse
     from openeogeotrellis.utils import s3_client
 
     target_bucket = "openeo-fake-bucketname"
@@ -54,7 +55,10 @@ def _stac_api_workspace() -> StacApiWorkspace:
         if remove_original:
             raise NotImplementedError
 
-        source_path = Path(link.href)  # assumes file on disk
+        uri_parts = urlparse(link.href)
+        assert uri_parts.scheme == "file"
+
+        source_path = Path(uri_parts.path)
         s3_client().upload_file(str(source_path), target_bucket, str(merge / source_path.name))
 
         return f"s3://{target_bucket}/{merge / source_path.name}"
