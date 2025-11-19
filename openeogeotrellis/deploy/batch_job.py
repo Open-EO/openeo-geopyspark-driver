@@ -7,7 +7,7 @@ import stat
 import sys
 import time
 from copy import deepcopy
-from functools import partial
+from functools import lru_cache, partial
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 from urllib.parse import urlparse
@@ -82,6 +82,7 @@ from openeogeotrellis.utils import (
     unzip,
     wait_till_path_available,
     add_permissions_with_failsafe,
+    BadlyHashable,
 )
 
 logger = logging.getLogger("openeogeotrellis.deploy.batch_job")
@@ -292,6 +293,7 @@ def run_job(
     parsed_job_options: JobOptions = JobOptions.from_dict(job_options)
 
     attach_derived_from_document = job_options.get("derived-from-document-experimental", False)
+    omit_derived_from_links = parsed_job_options.omit_derived_from_links or attach_derived_from_document
     is_stac11 = job_options.get("stac-version-experimental", "1.0") == "1.1" or attach_derived_from_document
 
     try:
@@ -387,7 +389,7 @@ def run_job(
             is_item=is_stac11,
         )
         # perform a first metadata write _before_ actually computing the result. This provides a bit more info, even if the job fails.
-        tracker_metadata = _get_tracker_metadata("", omit_derived_from_links=parsed_job_options.omit_derived_from_links)
+        tracker_metadata = _get_tracker_metadata("", omit_derived_from_links=omit_derived_from_links)
         write_metadata({**result_metadata, **tracker_metadata}, metadata_file, is_stac11, attach_derived_from_document)
 
         for result in results:
@@ -570,7 +572,7 @@ def run_job(
             is_item=is_stac11,
         )
 
-        tracker_metadata = _get_tracker_metadata("", omit_derived_from_links=parsed_job_options.omit_derived_from_links)
+        tracker_metadata = _get_tracker_metadata("", omit_derived_from_links=omit_derived_from_links)
         if "sar_backscatter_soft_errors" in tracker_metadata.get("usage", {}):
             soft_errors = tracker_metadata["usage"]["sar_backscatter_soft_errors"]["value"]
             if soft_errors > max_soft_errors_ratio:
@@ -616,7 +618,7 @@ def run_job(
                     job_dir=job_dir,
                     remove_exported_assets=job_options.get("remove-exported-assets", False),
                     enable_merge=job_options.get("export-workspace-enable-merge", False),
-                    omit_derived_from_links=parsed_job_options.omit_derived_from_links,
+                    omit_derived_from_links=omit_derived_from_links,
                     attach_derived_from_document=attach_derived_from_document,
                 )
             else:
@@ -627,13 +629,11 @@ def run_job(
                     job_dir=job_dir,
                     remove_exported_assets=job_options.get("remove-exported-assets", False),
                     enable_merge=job_options.get("export-workspace-enable-merge", False),
-                    omit_derived_from_links=parsed_job_options.omit_derived_from_links,
+                    omit_derived_from_links=omit_derived_from_links,
                 )
     finally:
         if len(tracker_metadata) == 0:
-            tracker_metadata = _get_tracker_metadata(
-                "", omit_derived_from_links=parsed_job_options.omit_derived_from_links
-            )
+            tracker_metadata = _get_tracker_metadata("", omit_derived_from_links=omit_derived_from_links)
         meta = (
             {**result_metadata, **tracker_metadata, **{"items": items}}
             if is_stac11
@@ -659,7 +659,14 @@ def write_metadata(metadata: dict, metadata_file: Path, is_stac11: bool, attach_
     log_asset_hrefs("output")
 
     if attach_derived_from_document:
-        out_metadata = _replace_derived_from_links_with_auxiliary_link(out_metadata, job_dir=metadata_file.parent)  # TODO: ugly way to get job_dir
+        out_metadata = deepcopy(out_metadata)  # avoid mutating an object that is going to be reused
+
+        for auxiliary_link in _copy_auxiliary_links(
+            auxiliary_links=BadlyHashable(out_metadata.get("auxiliary_links", [])),
+            job_dir=metadata_file.parent,  # TODO: ugly way to get job_dir
+        ):
+            for item in out_metadata.get("items", []):
+                item.setdefault("links", []).append(auxiliary_link)
 
     with open(metadata_file, "w") as f:
         json.dump(out_metadata, f, default=json_default)
@@ -676,16 +683,14 @@ def write_metadata(metadata: dict, metadata_file: Path, is_stac11: bool, attach_
         s3_instance.upload_file(str(metadata_file), bucket, str(metadata_file).strip("/"))
 
 
-def _replace_derived_from_links_with_auxiliary_link(metadata: dict, job_dir: Path) -> dict:  # TODO: copies/uploads as well; rename or split up?
-    metadata = deepcopy(metadata)  # avoid mutating an object that is going to be reused
+@lru_cache
+def _copy_auxiliary_links(*, auxiliary_links: BadlyHashable, job_dir: Path) -> List[dict]:
+    """files should be downloadable from the web app driver"""
+    # enforce keyword arguments because distinct argument patterns lead to separate cache entries in lru_cache
 
-    non_derived_from_links = [link for link in metadata.get("links", []) if link.get("rel") != "derived_from"]
-    metadata["links"] = list(non_derived_from_links)  # remove top-level derived_from links
+    copied_auxiliary_links = []
 
-    # add link to derived_from documents to each item
-    for auxiliary_link in metadata.get("auxiliary_links", []):
-        # TODO: any redundant copy operations to avoid?
-        # file should be downloadable from the web app driver
+    for auxiliary_link in auxiliary_links.target:
         auxiliary_file = Path(auxiliary_link["href"])
 
         if ConfigParams().is_kube_deploy:
@@ -705,12 +710,9 @@ def _replace_derived_from_links_with_auxiliary_link(metadata: dict, job_dir: Pat
             logger.debug(f"copied {auxiliary_file} to {downloadable_file}")
             downloadable_href = f"file://{downloadable_file}"
 
-        auxiliary_link["href"] = downloadable_href
+        copied_auxiliary_links.append(dict(auxiliary_link, href=downloadable_href))
 
-        for item in metadata.get("items", []):
-            item.setdefault("links", []).append(auxiliary_link)
-
-    return metadata
+    return copied_auxiliary_links
 
 
 def _export_to_workspaces_item(
@@ -1048,7 +1050,9 @@ def _write_exported_stac_collection_from_item(
             "bbox": item.get("bbox"),
             "properties": item.get("properties", {"datetime": result_metadata.get("start_datetime")}),
             "links": (
-                _get_tracker_metadata("", omit_derived_from_links=omit_derived_from_links).get("auxiliary_links", [])
+                _copy_auxiliary_links(
+                    auxiliary_links=BadlyHashable(_get_tracker_metadata("").get("auxiliary_links", [])), job_dir=job_dir
+                )
                 if attach_derived_from_document
                 else []
             ),
@@ -1065,7 +1069,9 @@ def _write_exported_stac_collection_from_item(
 
     derived_from_links = [
         link
-        for link in _get_tracker_metadata("", omit_derived_from_links=omit_derived_from_links).get("links", [])
+        for link in _get_tracker_metadata(
+            "", omit_derived_from_links=omit_derived_from_links or attach_derived_from_document
+        ).get("links", [])
         if link["rel"] == "derived_from"
     ]
 
@@ -1087,8 +1093,7 @@ def _write_exported_stac_collection_from_item(
             "spatial": {"bbox": [result_metadata.get("bbox", [-180, -90, 180, 90])]},
             "temporal": {"interval": [[result_metadata.get("start_datetime"), result_metadata.get("end_datetime")]]},
         },
-        "links": [item_link(item_file) for item_file in item_files]
-        + ([] if attach_derived_from_document else derived_from_links),
+        "links": [item_link(item_file) for item_file in item_files] + derived_from_links,
     }
 
     collection_file = job_dir / "collection.json"  # TODO: file is reused for each result

@@ -913,3 +913,24 @@ def md5_checksum(file: Path) -> str:
         for chunk in iter(lambda: f.read(4096), b""):
             hash_md5.update(chunk)
     return hash_md5.hexdigest()
+
+
+class BadlyHashable:
+    """
+    Simplifies implementation by allowing unhashable types in a dict-based cache. The number of
+    items in this cache is very small anyway.
+    """
+
+    def __init__(self, target):
+        self.target = target
+
+    def __eq__(self, other):
+        equal = isinstance(other, BadlyHashable) and self.target == other.target
+        print(f"{equal=}")
+        return equal
+
+    def __hash__(self):
+        return 0
+
+    def __repr__(self):
+        return f"BadlyHashable({repr(self.target)})"
