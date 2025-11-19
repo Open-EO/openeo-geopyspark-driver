@@ -56,7 +56,6 @@ class GeopysparkCubeMetadata(CollectionMetadata):
         return {
             "_orig_metadata": self._orig_metadata,
             "dimensions": [str(d) for d in self._dimensions],
-            "federation": self._federation,
             "spatial_extent": self._spatial_extent,
             "temporal_extent": self._temporal_extent,
         }
