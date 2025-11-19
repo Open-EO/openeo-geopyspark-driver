@@ -34,6 +34,7 @@ from openeogeotrellis.load_stac import (
     _TemporalExtent,
     extract_own_job_info,
     load_stac,
+    ItemDeduplicator,
 )
 from openeogeotrellis.testing import DummyStacApiServer, gps_config_overrides
 
@@ -1860,3 +1861,180 @@ class TestItemCollection:
             datetime.datetime(2025, 11, 10, hour=10, tzinfo=datetime.timezone.utc),
             datetime.datetime(2025, 11, 16, hour=16, tzinfo=datetime.timezone.utc),
         )
+
+    def test_deduplicated(self, dummy_stac_api_server, dummy_stac_api):
+        collection_id = "with-dups"
+        dummy_stac_api_server.define_collection(collection_id)
+        for i in range(6):
+            dummy_stac_api_server.define_item(
+                collection_id=collection_id,
+                item_id=f"item-{i}",
+                datetime=f"2025-11-{(i // 2) + 1:02d}",
+            )
+
+        given_url = f"{dummy_stac_api}/collections/{collection_id}"
+        collection: pystac.Collection = pystac.read_file(given_url)
+        orig = ItemCollection.from_stac_api(
+            collection,
+            original_url=given_url,
+            property_filter=PropertyFilter(properties={}),
+            spatiotemporal_extent=_SpatioTemporalExtent(bbox=None, from_date="2025-01-01", to_date=None),
+        )
+        assert set(item.id for item in orig.items) == {
+            "item-0",
+            "item-1",
+            "item-2",
+            "item-3",
+            "item-4",
+            "item-5",
+        }
+
+        deduplicator = ItemDeduplicator()
+        deduped = orig.deduplicated(deduplicator=deduplicator)
+        assert set(item.id for item in deduped.items) == {
+            "item-1",
+            "item-3",
+            "item-5",
+        }
+
+
+class TestItemDeduplicator:
+    def test_trivial(self):
+        item = pystac.Item.from_dict(StacDummyBuilder.item())
+        depuplicator = ItemDeduplicator()
+        assert depuplicator.deduplicate([item]) == [item]
+
+    def test_basic(self):
+        item10 = pystac.Item.from_dict(StacDummyBuilder.item(id="item-10", datetime="2025-11-10T00:00:00Z"))
+        item10_1s = pystac.Item.from_dict(StacDummyBuilder.item(id="item-10+1s", datetime="2025-11-10T00:00:01Z"))
+        item10_1h = pystac.Item.from_dict(StacDummyBuilder.item(id="item-10+1h", datetime="2025-11-10T01:00:00Z"))
+        item11 = pystac.Item.from_dict(StacDummyBuilder.item(id="item-11", datetime="2025-11-11T00:00:00Z"))
+
+        depuplicator = ItemDeduplicator()
+        assert depuplicator.deduplicate([item10, item10_1s, item11]) == [item10_1s, item11]
+        assert depuplicator.deduplicate([item10, item10_1h, item11]) == [item10, item10_1h, item11]
+
+    def test_property_based(self):
+        item600 = pystac.Item.from_dict(
+            StacDummyBuilder.item(id="item1", properties={"proj:code": "EPSG:32600", "flavor": "apple"})
+        )
+        item600b = pystac.Item.from_dict(
+            StacDummyBuilder.item(id="item2", properties={"proj:code": "EPSG:32600", "flavor": "banana"})
+        )
+        item601 = pystac.Item.from_dict(
+            StacDummyBuilder.item(id="item3", properties={"proj:code": "EPSG:32601", "flavor": "apple"})
+        )
+
+        depuplicator = ItemDeduplicator()
+        assert depuplicator.deduplicate([item600, item600b, item601]) == [item600b, item601]
+
+        depuplicator = ItemDeduplicator(duplication_properties=["flavor"])
+        assert depuplicator.deduplicate([item600, item600b, item601]) == [item601, item600b]
+
+    @pytest.mark.parametrize(
+        ["item2_updated", "best"],
+        [
+            ("2025-11-12T12:00:10Z", "item2"),
+            ("2025-11-12T11:00:00Z", "item1"),
+        ],
+    )
+    def test_updated(self, item2_updated, best):
+        item1 = pystac.Item.from_dict(StacDummyBuilder.item(id="item1", properties={"updated": "2025-11-12T12:00:00Z"}))
+        item2 = pystac.Item.from_dict(StacDummyBuilder.item(id="item2", properties={"updated": item2_updated}))
+        depuplicator = ItemDeduplicator()
+        result = depuplicator.deduplicate([item1, item2])
+        assert [r.id for r in result] == [best]
+
+    @pytest.mark.parametrize(
+        ["bbox2", "expected"],
+        [
+            ([3, 50, 4, 51], ["item2", "item3"]),
+            ([4, 50, 5, 51], ["item1", "item3"]),
+            (None, ["item1", "item2", "item3"]),
+            ([8, 40, 9, 41], ["item1", "item2", "item3"]),
+            # Invalid bboxes, but should not break deduplication
+            (123, ["item1", "item2", "item3"]),
+            ([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], ["item1", "item2", "item3"]),
+            (["one", "two", "three"], ["item1", "item2", "item3"]),
+        ],
+    )
+    def test_duplicate_by_bbox(self, bbox2, expected):
+        item1 = pystac.Item.from_dict(
+            StacDummyBuilder.item(id="item1", bbox=[3, 50, 4, 51], properties={"updated": "2025-11-01"})
+        )
+        item2 = pystac.Item.from_dict(
+            StacDummyBuilder.item(id="item2", bbox=bbox2, properties={"updated": "2025-11-02"})
+        )
+        item3 = pystac.Item.from_dict(
+            StacDummyBuilder.item(id="item3", bbox=[4, 50, 5, 51], properties={"updated": "2025-11-03"})
+        )
+
+        depuplicator = ItemDeduplicator()
+        result = depuplicator.deduplicate([item1, item2, item3])
+        assert [r.id for r in result] == expected
+
+    @pytest.mark.parametrize(
+        ["geometry2", "expected"],
+        [
+            (
+                {"type": "Polygon", "coordinates": [[[3, 50], [4, 50], [4, 51], [3, 51], [3, 50]]]},
+                ["item2", "item3"],
+            ),
+            (
+                {"type": "Polygon", "coordinates": [[[4, 50], [5, 50], [5, 51], [4, 51], [4, 50]]]},
+                ["item1", "item3"],
+            ),
+            (None, ["item1", "item2", "item3"]),
+            (
+                {"type": "Polygon", "coordinates": [[[8, 40], [9, 40], [9, 41], [8, 41], [8, 40]]]},
+                ["item1", "item2", "item3"],
+            ),
+            # Invalid geometry, but should not break deduplication
+            ({"type": "MobiusRing"}, ["item1", "item2", "item3"]),
+            ([666, 777], ["item1", "item2", "item3"]),
+        ],
+    )
+    def test_duplicate_by_geometry(self, geometry2, expected):
+        item1 = pystac.Item.from_dict(
+            StacDummyBuilder.item(
+                id="item1",
+                geometry={"type": "Polygon", "coordinates": [[[3, 50], [4, 50], [4, 51], [3, 51], [3, 50]]]},
+                properties={"updated": "2025-11-01"},
+            )
+        )
+        item2 = pystac.Item.from_dict(
+            StacDummyBuilder.item(id="item2", geometry=geometry2, properties={"updated": "2025-11-02"})
+        )
+        item3 = pystac.Item.from_dict(
+            StacDummyBuilder.item(
+                id="item3",
+                geometry={"type": "Polygon", "coordinates": [[[4, 50], [5, 50], [5, 51], [4, 51], [4, 50]]]},
+                properties={"updated": "2025-11-03"},
+            )
+        )
+
+        depuplicator = ItemDeduplicator()
+        result = depuplicator.deduplicate([item1, item2, item3])
+        assert [r.id for r in result] == expected
+
+    @pytest.mark.parametrize(
+        ["datetime2", "expected"],
+        [
+            ("2025-11-10T00:00:00Z", ["item2", "item3"]),
+            ("2025-11-10T12:00:00Z", ["item1", "item2", "item3"]),
+            ("2025-11-11T00:00:00Z", ["item1", "item3"]),
+            ("2025-11-12T00:00:00Z", ["item1", "item3", "item2"]),
+            ("2025-11-10T00:00:00+00", ["item2", "item3"]),
+            ("2025-11-10T00:00:00+07", ["item2", "item1", "item3"]),
+            ("2025-11-10", ["item2", "item3"]),
+            ("2025-11-11", ["item1", "item3"]),
+        ],
+    )
+    def test_datetime_and_timezones(self, datetime2, expected):
+        item1 = pystac.Item.from_dict(StacDummyBuilder.item(id="item1", datetime="2025-11-10T00:00:00Z"))
+        item2 = pystac.Item.from_dict(StacDummyBuilder.item(id="item2", datetime=datetime2))
+        item3 = pystac.Item.from_dict(StacDummyBuilder.item(id="item3", datetime="2025-11-11T00:00:00Z"))
+
+        depuplicator = ItemDeduplicator()
+        result = depuplicator.deduplicate([item1, item2, item3])
+        assert [r.id for r in result] == expected

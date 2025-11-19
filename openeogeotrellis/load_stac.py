@@ -9,10 +9,9 @@ import re
 import time
 from functools import partial
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterator, List, Optional, Set, Tuple, Union
+from typing import Any, Callable, Dict, Iterator, List, Optional, Set, Tuple, Union, Iterable
 from urllib.parse import urlparse
 
-import dateutil.parser
 import geopyspark as gps
 import openeo_driver.backend
 import planetary_computer
@@ -44,7 +43,7 @@ from openeo_driver.util.http import requests_with_retry
 from openeo_driver.util.utm import utm_zone_from_epsg
 from openeo_driver.utils import EvalEnv
 from pystac import STACObject
-from shapely.geometry import Polygon, shape
+import shapely.geometry
 from urllib3 import Retry
 
 from openeogeotrellis import datacube_parameters
@@ -96,13 +95,17 @@ def load_stac(
     batch_jobs: Optional[openeo_driver.backend.BatchJobs] = None,
     override_band_names: Optional[List[str]] = None,
     stac_io: Optional[pystac.stac_io.StacIO] = None,
+    feature_flags: Optional[Dict[str, Any]] = None,
 ) -> GeopysparkDataCube:
     if override_band_names is None:
         override_band_names = []
 
     logger.info("load_stac from url {u!r} with load params {p!r}".format(u=url, p=load_params))
 
-    feature_flags = load_params.get("featureflags", {})
+    # Feature flags: merge global (e.g. from layer catalog info) and user-provided (higher precedence)
+    feature_flags = {**(feature_flags or {}), **load_params.get("featureflags", {})}
+    logger.info(f"load_stac {feature_flags=}")
+
     allow_empty_cubes = feature_flags.get("allow_empty_cube", env.get(EVAL_ENV_KEY.ALLOW_EMPTY_CUBES, False))
 
     all_properties = {**layer_properties, **load_params.properties} if layer_properties else load_params.properties
@@ -127,7 +130,6 @@ def load_stac(
     metadata = None
 
     netcdf_with_time_dimension = False
-    asset_band_names = None
 
     backend_config = get_backend_config()
     poll_interval_seconds = backend_config.job_dependencies_poll_interval_seconds
@@ -211,6 +213,13 @@ def load_stac(
 
                 item_collection = ItemCollection.from_stac_catalog(catalog, spatiotemporal_extent=spatiotemporal_extent)
 
+        # Deduplicate items
+        # TODO: smarter and more fine-grained deduplication behavior?
+        #       - enable by default or only do it on STAC API usage?
+        #       - allow custom deduplicators (e.g. based on layer catalog info about openeo collections)
+        if feature_flags.get("deduplicate_items", False):
+            item_collection = item_collection.deduplicated(deduplicator=ItemDeduplicator())
+
         items_found = len(item_collection.items) > 0
         if not allow_empty_cubes and not items_found:
             raise NoDataAvailableException()
@@ -219,6 +228,7 @@ def load_stac(
 
         opensearch_client = jvm.org.openeo.geotrellis.file.FixedFeaturesOpenSearchClient()
 
+        asset_band_names = None
         stac_bbox = None
         proj_epsg = None
         proj_bbox = None
@@ -280,8 +290,10 @@ def load_stac(
                         band_names.append(asset_band_name)
 
                     if proj_bbox and proj_shape:
+                        # TODO: risk on overwriting/conflict
                         band_cell_size[asset_band_name] = _compute_cellsize(proj_bbox, proj_shape)
                     if proj_epsg:
+                        # TODO: risk on overwriting/conflict
                         band_epsgs.setdefault(asset_band_name, set()).add(proj_epsg)
 
                 pixel_value_offset = _get_pixel_value_offset(item=itm, asset=asset)
@@ -310,7 +322,7 @@ def load_stac(
                 builder = builder.withBBox(*map(float, latlon_bbox.as_wsen_tuple()))
 
             if itm.geometry is not None:
-                builder = builder.withGeometryFromWkt(str(shape(itm.geometry)))
+                builder = builder.withGeometryFromWkt(str(shapely.geometry.shape(itm.geometry)))
 
             self_links = itm.get_links(rel="self")
             self_url = self_links[0].href if self_links else None
@@ -426,6 +438,7 @@ def load_stac(
                 target_epsg = pyproj.CRS.from_user_input(load_params.target_crs).to_epsg()
 
     if netcdf_with_time_dimension:
+        # TODO: avoid `asset_band_names` as it is an ill-defined here (outside its original for-loop scoped life cycle)
         if asset_band_names:  # When no products are found, asset_band_names is None
             sorted_bands_from_catalog = sorted(asset_band_names)
             if band_names != sorted_bands_from_catalog:
@@ -635,7 +648,7 @@ class _SpatialExtent:
         # TODO: this assumes bbox is in lon/lat coordinates, also support other CRSes?
         if not self._bbox or bbox is None:
             return True
-        return self._bbox_lonlat_shape.intersects(Polygon.from_bounds(*bbox))
+        return self._bbox_lonlat_shape.intersects(shapely.geometry.Polygon.from_bounds(*bbox))
 
 
 class _SpatioTemporalExtent:
@@ -867,6 +880,127 @@ class ItemCollection:
             if not end or item_end > end:
                 end = item_end
         return start, end
+
+    def deduplicated(self, deduplicator: "ItemDeduplicator") -> ItemCollection:
+        """Create new ItemCollection by deduplicating items using the given deduplicator."""
+        orig_count = len(self.items)
+        items = deduplicator.deduplicate(items=self.items)
+        logger.debug(f"ItemCollection.deduplicated: from {orig_count} to {len(items)}")
+        return ItemCollection(items=items)
+
+
+class ItemDeduplicator:
+    """
+    Deduplicate STAC Items based on nominal datetime and selected properties.
+    """
+
+    DEFAULT_DUPLICATION_PROPERTIES = [
+        "platform",
+        "constellation",
+        "gsd",
+        "processing:level",
+        "product:timeliness",
+        "product:type",
+        "proj:code",
+        "sar:frequency_band",
+        "sar:instrument_mode",
+        "sar:observation_direction",
+        "sar:polarizations",
+        "sat:absolute_orbit",
+        "sat:orbit_state",
+    ]
+
+    def __init__(self, *, time_shift_max: float = 30, duplication_properties: Optional[List[str]] = None):
+        self._time_shift_max = time_shift_max
+
+        # Duplication properties: properties that will be compared
+        # with simple equality to determine duplication (among other criteria).
+        if duplication_properties is None:
+            self._duplication_properties = self.DEFAULT_DUPLICATION_PROPERTIES
+        else:
+            self._duplication_properties = duplication_properties
+
+    @staticmethod
+    def _item_nominal_date(item: pystac.Item) -> datetime.datetime:
+        # TODO: cache result (e.g. by item id)?
+        dt = item.datetime or pystac.utils.str_to_datetime(item.properties["start_datetime"])
+        # ensure UTC timezone for proper comparison
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=datetime.timezone.utc)
+        return dt
+
+    def _is_duplicate_item(self, item1: pystac.Item, item2: pystac.Item) -> bool:
+        try:
+            return (
+                (
+                    abs((self._item_nominal_date(item1) - self._item_nominal_date(item2)).total_seconds())
+                    < self._time_shift_max
+                )
+                and all(item1.properties.get(p) == item2.properties.get(p) for p in self._duplication_properties)
+                and self._is_same_bbox(item1.bbox, item2.bbox)
+                and self._is_same_geometry(item1.geometry, item2.geometry)
+            )
+        except Exception as e:
+            logger.warning(f"Failed to compare {item1.id=} and {item2.id=} for duplication: {e=}", exc_info=True)
+            return False
+
+    def _is_same_bbox(self, bbox1: Optional[List[float]], bbox2: Optional[List[float]], epsilon=1e-6) -> bool:
+        if isinstance(bbox1, list) and isinstance(bbox2, list):
+            return len(bbox1) == 4 and len(bbox2) == 4 and all(abs(a - b) <= epsilon for a, b in zip(bbox1, bbox2))
+        elif bbox1 is None and bbox2 is None:
+            return True
+        else:
+            return False
+
+    def _is_same_geometry(self, geom1: Optional[Dict], geom2: Optional[Dict]) -> bool:
+        if isinstance(geom1, dict) and isinstance(geom2, dict):
+            # TODO: need for smarter geometry comparison (e.g. within some epsilon)?
+            return shapely.equals(shapely.geometry.shape(geom1), shapely.geometry.shape(geom2))
+        elif geom1 is None and geom2 is None:
+            return True
+        else:
+            return False
+
+    def _score(self, item: pystac.Item) -> tuple:
+        """Score an item for deduplication preference (higher is better)."""
+        # Prefer more recently updated items
+        # use item id as tie breaker
+        return (item.properties.get("updated", ""), item.id)
+
+    def _group_duplicates(self, items: Iterable[pystac.Item]) -> Iterator[List[pystac.Item]]:
+        """Produce groups of duplicate items."""
+        # Pre-sort items, to allow quick breaking out of inner loop
+        items = sorted(items, key=self._item_nominal_date)
+        handled = set()
+        time_shift_max = datetime.timedelta(seconds=self._time_shift_max)
+        stats = {"items": 0, "groups": 0}
+        for i, item_i in enumerate(items):
+            stats["items"] += 1
+            if i in handled:
+                continue
+            group = [item_i]
+            horizon = self._item_nominal_date(item_i) + time_shift_max
+            for j in range(i + 1, len(items)):
+                item_j = items[j]
+                if self._item_nominal_date(item_j) > horizon:
+                    break
+                if self._is_duplicate_item(item_i, item_j):
+                    group.append(item_j)
+                    handled.add(j)
+            yield group
+            stats["groups"] += 1
+        logger.debug(f"ItemDeduplicator._group_duplicates {stats=}")
+
+    def deduplicate(self, items: Iterable[pystac.Item]) -> List[pystac.Item]:
+        result = []
+        for group in self._group_duplicates(items):
+            if len(group) > 1:
+                best = max(group, key=self._score)
+                logger.debug(f"Deduplicate: keeping {best.id=} from {len(group)=}")
+            else:
+                best = group[0]
+            result.append(best)
+        return result
 
 
 def _is_supported_raster_mime_type(mime_type: str) -> bool:

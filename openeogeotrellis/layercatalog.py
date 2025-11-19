@@ -717,6 +717,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 layer_properties=metadata.get("_vito", "properties", default={}),
                 batch_jobs=None,
                 override_band_names=metadata.band_names,
+                feature_flags=layer_source_info.get("load_stac_feature_flags"),
             )
             pyramid = cube.pyramid.levels
             metadata = cube.metadata

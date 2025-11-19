@@ -4,7 +4,8 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-
+from openeo_driver.util.logging import FlaskRequestCorrelationIdLogging
+from openeo_driver.views import OpenEoApiApp
 from openeogeotrellis.deploy.local import setup_environment
 from openeo.internal.graph_building import as_flat_graph
 from openeo.util import ensure_dir
@@ -22,15 +23,18 @@ def run_graph_locally(process_graph, output_dir):
     process_graph = as_flat_graph(process_graph)
     if "process_graph" not in process_graph:
         process_graph = {"process_graph": process_graph}
-    run_job(
-        process_graph,
-        output_file=output_dir / "out",  # just like in backend.py
-        metadata_file=output_dir / JOB_METADATA_FILENAME,
-        api_version="2.0.0",
-        job_dir=output_dir,
-        dependencies=[],
-        user_id="run_graph_locally",
-    )
+    app = OpenEoApiApp(import_name=__name__)
+    with app.test_request_context():
+        FlaskRequestCorrelationIdLogging.before_request()
+        run_job(
+            process_graph,
+            output_file=output_dir / "out",  # just like in backend.py
+            metadata_file=output_dir / JOB_METADATA_FILENAME,
+            api_version="2.0.0",
+            job_dir=output_dir,
+            dependencies=[],
+            user_id="run_graph_locally",
+        )
     # Set the permissions so any user can read and delete the files:
     # For when running inside a docker container.
     files_now = set(output_dir.rglob("*"))
