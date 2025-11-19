@@ -2995,6 +2995,18 @@ class GeopysparkDataCube(DriverDataCube):
         )
         return merged
 
+    @callsite
+    def convert_data_type(self, data_type: str) -> 'GeopysparkDataCube':
+        converted = self._apply_to_levels_geotrellis_rdd(
+            lambda rdd,
+                   level: gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses().convertDataType(
+                rdd,
+                data_type
+            )
+        )
+        return converted
+
+
     def __str__(self):
         super_str = super().__str__()
         return f"{super_str} data type: {self.get_max_level().layer_metadata.cell_type}"
