@@ -985,9 +985,10 @@ def _get_layer_catalog(
                 stac_url = data_source.get("url")
                 logger.debug(f"Enrich {cid=} ({data_source_type=}): {stac_url=}")
                 try:
-                    resp = requests.get(url=stac_url, timeout=10)
-                    resp.raise_for_status()
-                    enrichment_metadata[cid] = resp.json()
+                    enrichment_metadata[cid] = _enrichment_metadata_from_stac(
+                        stac_url,
+                        band_aliases=data_source.get("enrichment_band_aliases"),
+                    )
                 except Exception as e:
                     logger.warning(f"Failed to enrich collection metadata of {cid}: {e}", exc_info=True)
 
@@ -1039,6 +1040,42 @@ def _get_layer_catalog(
             metadata = dict_merge_recursive(enrichment_metadata, metadata, overwrite=True)
 
     metadata = _merge_layers_with_common_name(metadata)
+
+    return metadata
+
+
+def _enrichment_metadata_from_stac(stac_url: str, *, band_aliases: Optional[Dict[str, List[str]]] = None) -> dict:
+    resp = requests.get(url=stac_url, timeout=10)
+    resp.raise_for_status()
+    metadata: dict = resp.json()
+
+    # Normalize band metadata a bit (as there are multiple ways to specify bands in STAC):
+    bands_from_cube_dimensions = deep_get(metadata, "cube:dimensions", "bands", "values", default=None)
+    if bands := deep_get(metadata, "summaries", "bands", default=None):
+        bands_from_summaries_bands = [b["name"] for b in bands]
+    else:
+        bands_from_summaries_bands = None
+    if bands := deep_get(metadata, "summaries", "eo:bands", default=None):
+        bands_from_summaries_eobands = [b["name"] for b in bands]
+    else:
+        bands_from_summaries_eobands = None
+
+    if bands_from_cube_dimensions is None and (bands_from_summaries_bands or bands_from_summaries_eobands):
+        metadata.setdefault("cube:dimensions", {})["bands"] = {
+            "type": "bands",
+            "values": bands_from_summaries_bands or bands_from_summaries_eobands,
+        }
+
+    # Inject band aliases (which is non-standard STAC at the moment)
+    if band_aliases:
+        if bands := deep_get(metadata, "summaries", "bands", default=None):
+            for band in bands:
+                if aliases := band_aliases.get(band["name"]):
+                    band.setdefault("aliases", []).extend(aliases)
+        if bands := deep_get(metadata, "summaries", "eo:bands", default=None):
+            for band in bands:
+                if aliases := band_aliases.get(band["name"]):
+                    band.setdefault("aliases", []).extend(aliases)
 
     return metadata
 
