@@ -493,8 +493,19 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                         },
                         "ZLEVEL": {
                             "type": "integer",
-                            "description": "Specifies the compression level used for DEFLATE compression. As a number from 1 to 9, lowest and fastest compression is 1 while 9 is highest and slowest compression.",
+                            "description": "Specifies the compression level used for compression. For deflate compression, use a number from 1 (lowest/fastest) to 9 (highest/slowest). For zstd compression, use a number from -7 (lowest/fastest) to 22 (highest/slowest).",
                             "default": 6
+                        },
+                        "compression": {
+                            "type": "string",
+                            "description": "Specifies the compression algorithm to use.",
+                            "default": "deflate",
+                            "enum": ["deflate", "zstd"]
+                        },
+                        "predictor": {
+                            "type": "integer",
+                            "description": "Specifies the GTiff prediction type: 1 (none), 2 ((integer) horizontal differencing) or 3 (floating point prediction)",
+                            "default": 1
                         },
                         "sample_by_feature": {
                             "type": "boolean",
