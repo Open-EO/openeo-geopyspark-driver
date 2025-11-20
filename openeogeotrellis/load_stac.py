@@ -156,7 +156,7 @@ def load_stac(
             item_collection = ItemCollection.from_own_job(
                 job=dependency_job_info, spatiotemporal_extent=spatiotemporal_extent, batch_jobs=batch_jobs, user=user
             )
-            band_names = []
+            collection_band_names = []
         else:
             logger.info(f"load_stac of arbitrary URL {url}")
 
@@ -175,7 +175,7 @@ def load_stac(
                     raise ProcessParameterUnsupportedException(process="load_stac", parameter="properties")
 
                 item = stac_object
-                band_names = stac_metadata_parser.bands_from_stac_item(item=item).band_names()
+                collection_band_names = stac_metadata_parser.bands_from_stac_item(item=item).band_names()
                 item_collection = ItemCollection.from_stac_item(item=item, spatiotemporal_extent=spatiotemporal_extent)
             elif isinstance(stac_object, pystac.Collection) and _supports_item_search(stac_object):
                 collection = stac_object
@@ -184,7 +184,7 @@ def load_stac(
                     metadata=collection.to_dict(include_self_link=False, transform_hrefs=False)
                 )
 
-                band_names = stac_metadata_parser.bands_from_stac_collection(collection=collection).band_names()
+                collection_band_names = stac_metadata_parser.bands_from_stac_collection(collection=collection).band_names()
 
                 item_collection = ItemCollection.from_stac_api(
                     collection=stac_object,
@@ -209,7 +209,7 @@ def load_stac(
                 if isinstance(catalog, pystac.Collection):
                     netcdf_with_time_dimension = contains_netcdf_with_time_dimension(collection=catalog)
 
-                band_names = stac_metadata_parser.bands_from_stac_object(obj=stac_object).band_names()
+                collection_band_names = stac_metadata_parser.bands_from_stac_object(obj=stac_object).band_names()
 
                 item_collection = ItemCollection.from_stac_catalog(catalog, spatiotemporal_extent=spatiotemporal_extent)
 
@@ -264,6 +264,14 @@ def load_stac(
                 proj_epsg, proj_bbox, proj_shape = _get_proj_metadata(asset=asset, item=itm)
 
                 asset_band_names_from_metadata = stac_metadata_parser.bands_from_stac_asset(asset=asset).band_names()
+                if not asset_band_names_from_metadata:
+                    # In the case that the assets have no information about the band that they represent.
+                    if len(collection_band_names) == 1:
+                        asset_band_names_from_metadata = collection_band_names
+                    elif not collection_band_names and len(override_band_names) == 1:
+                        # For example, in the DEM collections on CDSE. Assume that the asset relates to the DEM band.
+                        asset_band_names_from_metadata = override_band_names
+
                 logger.debug(f"from intersecting_items: {itm.id=} {asset_id=} {asset_band_names_from_metadata=}")
 
                 if not load_params.bands:
@@ -271,7 +279,7 @@ def load_stac(
                     asset_band_names = asset_band_names_from_metadata or [asset_id]
                 elif isinstance(load_params.bands, list) and asset_id in load_params.bands:
                     # User-specified asset_id as band name: use that directly
-                    if asset_id not in band_names:
+                    if asset_id not in collection_band_names:
                         logger.warning(f"Using asset key {asset_id!r} as band name.")
                     asset_band_names = [asset_id]
                 elif set(asset_band_names_from_metadata).intersection(load_params.bands or []):
@@ -286,8 +294,8 @@ def load_stac(
                     continue
 
                 for asset_band_name in asset_band_names:
-                    if asset_band_name not in band_names:
-                        band_names.append(asset_band_name)
+                    if asset_band_name not in collection_band_names:
+                        collection_band_names.append(asset_band_name)
 
                     if proj_bbox and proj_shape:
                         # TODO: risk on overwriting/conflict
@@ -373,7 +381,7 @@ def load_stac(
         allow_adding_dimension=True,
     )
     # Overwrite band_names because new bands could be detected in stac items:
-    metadata = metadata.with_new_band_names(override_band_names or band_names)
+    metadata = metadata.with_new_band_names(override_band_names or collection_band_names)
 
     if allow_empty_cubes and not metadata.band_names:
         # no knowledge of bands except for what the user requested
@@ -391,11 +399,11 @@ def load_stac(
     if load_params.bands:
         metadata = metadata.filter_bands(load_params.bands)
 
-    band_names = metadata.band_names
+    requested_band_names = metadata.band_names
 
-    requested_band_epsgs = [epsgs for band_name, epsgs in band_epsgs.items() if band_name in band_names]
+    requested_band_epsgs = [epsgs for band_name, epsgs in band_epsgs.items() if band_name in requested_band_names]
     unique_epsgs = {epsg for epsgs in requested_band_epsgs for epsg in epsgs}
-    requested_band_cell_sizes = [size for band_name, size in band_cell_size.items() if band_name in band_names]
+    requested_band_cell_sizes = [size for band_name, size in band_cell_size.items() if band_name in requested_band_names]
 
     if len(unique_epsgs) == 1 and requested_band_cell_sizes:  # exact resolution
         target_epsg = unique_epsgs.pop()
@@ -441,11 +449,11 @@ def load_stac(
         # TODO: avoid `asset_band_names` as it is an ill-defined here (outside its original for-loop scoped life cycle)
         if asset_band_names:  # When no products are found, asset_band_names is None
             sorted_bands_from_catalog = sorted(asset_band_names)
-            if band_names != sorted_bands_from_catalog:
+            if requested_band_names != sorted_bands_from_catalog:
                 # TODO: Pass band_names to NetCDFCollection, just like PyramidFactory.
                 logger.warning(
                     f"load_stac: Band order should be alphabetical for NetCDF STAC-catalog with a time dimension. "
-                    f"Was {band_names}, but should be {sorted_bands_from_catalog} instead.",
+                    f"Was {requested_band_names}, but should be {sorted_bands_from_catalog} instead.",
                 )
         pyramid_factory = jvm.org.openeo.geotrellis.layers.NetCDFCollection
     else:
@@ -454,7 +462,7 @@ def load_stac(
         pyramid_factory = jvm.org.openeo.geotrellis.file.PyramidFactory(
             opensearch_client,
             url,  # openSearchCollectionId, not important
-            band_names,  # openSearchLinkTitles
+            requested_band_names,  # openSearchLinkTitles
             None,  # rootPath, not important
             jvm.geotrellis.raster.CellSize(cell_width, cell_height),
             False,  # experimental
