@@ -919,15 +919,16 @@ CollectionMetadataDict = Dict[str, Union[str, dict, list]]
 CatalogDict = Dict[CollectionId, CollectionMetadataDict]
 
 
+@TimingLogger(title="_get_layer_catalog", logger=logger.debug)
 def _get_layer_catalog(
     catalog_files: Optional[List[str]] = None,
-    opensearch_enrich: Optional[bool] = None,
+    enrich_metadata: Optional[bool] = None,
 ) -> CatalogDict:
     """
     Get layer catalog (from JSON files)
     """
-    if opensearch_enrich is None:
-        opensearch_enrich = get_backend_config().opensearch_enrich
+    if enrich_metadata is None:
+        enrich_metadata = get_backend_config().opensearch_enrich
     if catalog_files is None:
         catalog_files = get_backend_config().layer_catalog_files
 
@@ -946,9 +947,9 @@ def _get_layer_catalog(
         metadata = dict_merge_recursive(metadata, read_catalog_file(path), overwrite=True)
         logger.debug(f"_get_layer_catalog: collected {len(metadata)} collections")
 
-    logger.debug(f"_get_layer_catalog: {opensearch_enrich=}")
-    if opensearch_enrich:
-        opensearch_metadata = {}
+    logger.debug(f"_get_layer_catalog: {enrich_metadata=}")
+    if enrich_metadata:
+        enrichment_metadata = {}
         sh_collection_metadatas = None
 
         @functools.lru_cache
@@ -971,25 +972,28 @@ def _get_layer_catalog(
             os_cid = data_source.get("opensearch_collection_id")
             os_endpoint = data_source.get("opensearch_endpoint") or get_backend_config().default_opensearch_endpoint
             os_variant = data_source.get("opensearch_variant")
+            data_source_type = data_source.get("type")
             if os_cid and os_endpoint and os_variant != "disabled":
+                logger.debug(f"Enrich {cid=} ({data_source_type=}): {os_cid=} {os_endpoint=}")
                 try:
-                    opensearch_metadata[cid] = opensearch_instance(
+                    enrichment_metadata[cid] = opensearch_instance(
                         endpoint=os_endpoint, variant=os_variant
                     ).get_metadata(collection_id=os_cid)
                 except Exception as e:
                     logger.warning(f"Failed to enrich collection metadata of {cid}: {e}", exc_info=True)
-            elif data_source.get("type") == "stac":
-                url = data_source.get("url")
-                logger.debug(f"Getting collection metadata from {url}")
+            elif data_source_type == "stac":
+                stac_url = data_source.get("url")
+                logger.debug(f"Enrich {cid=} ({data_source_type=}): {stac_url=}")
                 try:
-                    resp = requests.get(url=url, timeout=10)
+                    resp = requests.get(url=stac_url, timeout=10)
                     resp.raise_for_status()
-                    opensearch_metadata[cid] = resp.json()
+                    enrichment_metadata[cid] = resp.json()
                 except Exception as e:
                     logger.warning(f"Failed to enrich collection metadata of {cid}: {e}", exc_info=True)
 
-            elif data_source.get("type") == "sentinel-hub":
+            elif data_source_type == "sentinel-hub":
                 sh_stac_endpoint = "https://collections.eurodatacube.com/stac/index.json"
+                logger.debug(f"Enrich {cid=} ({data_source_type=}): {sh_stac_endpoint=}")
 
                 # TODO: improve performance by only fetching necessary STACs
                 if sh_collection_metadatas is None:
@@ -1024,15 +1028,15 @@ def _get_layer_catalog(
 
                     sh_metadata = sh_metadatas[0]
 
-                opensearch_metadata[cid] = sh_metadata
+                enrichment_metadata[cid] = sh_metadata
                 if not data_source.get("endpoint"):
-                    endpoint = opensearch_metadata[cid]["providers"][0]["url"]
+                    endpoint = enrichment_metadata[cid]["providers"][0]["url"]
                     endpoint = endpoint if endpoint.startswith("http") else "https://{}".format(endpoint)
                     data_source["endpoint"] = endpoint
-                data_source["dataset_id"] = data_source.get("dataset_id") or opensearch_metadata[cid]["datasource_type"]
+                data_source["dataset_id"] = data_source.get("dataset_id") or enrichment_metadata[cid]["datasource_type"]
 
-        if opensearch_metadata:
-            metadata = dict_merge_recursive(opensearch_metadata, metadata, overwrite=True)
+        if enrichment_metadata:
+            metadata = dict_merge_recursive(enrichment_metadata, metadata, overwrite=True)
 
     metadata = _merge_layers_with_common_name(metadata)
 
@@ -1041,9 +1045,10 @@ def _get_layer_catalog(
 
 def get_layer_catalog(
     vault: Vault = None,
+    # TODO: just call this arg `enrich_metadata` is this is about more than just OpenSearch
     opensearch_enrich: Optional[bool] = None,
 ) -> GeoPySparkLayerCatalog:
-    metadata = _get_layer_catalog(opensearch_enrich=opensearch_enrich)
+    metadata = _get_layer_catalog(enrich_metadata=opensearch_enrich)
     return GeoPySparkLayerCatalog(
         all_metadata=list(metadata.values()),
         vault=vault,
@@ -1051,9 +1056,9 @@ def get_layer_catalog(
 
 
 def dump_layer_catalog():
-    """CLI tool to dump layer catalog"""
+    """CLI tool to dump layer catalog with enrichment"""
     cli = argparse.ArgumentParser()
-    cli.add_argument("--opensearch-enrich", action="store_true", help="Enable OpenSearch based enriching.")
+    cli.add_argument("--enrich", action="store_true", help="Enable metadata enrichment.")
     cli.add_argument(
         "--catalog-file", action="append", help="Path to catalog JSON file. Can be specified multiple times."
     )
@@ -1068,7 +1073,7 @@ def dump_layer_catalog():
 
     logging.basicConfig(level=logging.DEBUG if arguments.verbose else logging.DEBUG)
 
-    metadata = _get_layer_catalog(catalog_files=arguments.catalog_file, opensearch_enrich=arguments.opensearch_enrich)
+    metadata = _get_layer_catalog(catalog_files=arguments.catalog_file, enrich_metadata=arguments.enrich)
     if arguments.container == "list":
         metadata = list(metadata.values())
     json.dump(metadata, fp=sys.stdout, indent=2)
