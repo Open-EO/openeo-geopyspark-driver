@@ -694,15 +694,14 @@ def _copy_auxiliary_links(*, auxiliary_links: BadlyHashable, job_dir: Path) -> L
         auxiliary_file = Path(auxiliary_link["href"])
 
         if ConfigParams().is_kube_deploy:
+            from openeogeotrellis.utils import s3_client
+
             job_bucket = get_backend_config().s3_bucket_name
-            downloadable_href = to_s3_url(auxiliary_file, job_bucket)
-
-            if not get_backend_config().fuse_mount_batchjob_s3_bucket:
-                from openeogeotrellis.utils import s3_client
-
-                s3_instance = s3_client()
-                s3_instance.upload_file(str(auxiliary_file), job_bucket, str(auxiliary_file).strip("/"))
-                logger.debug(f"uploaded {auxiliary_file} to {downloadable_href}")
+            auxiliary_prefix = str(job_dir / auxiliary_file.name).strip("/")
+            s3_instance = s3_client()
+            s3_instance.upload_file(str(auxiliary_file), job_bucket, auxiliary_prefix)
+            downloadable_href = to_s3_url(auxiliary_prefix, job_bucket)
+            logger.debug(f"uploaded {auxiliary_file} to {downloadable_href}")
         else:
             downloadable_file = job_dir / auxiliary_file.name
             shutil.copy(auxiliary_file, downloadable_file)
