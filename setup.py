@@ -28,7 +28,7 @@ tests_require = [
     'schema',
     'requests-mock>=1.8.0',
     'openeo_udf>=1.0.0rc3',
-    "time_machine>=2.8.0",
+    "time_machine>=2.8.0,<3.0.0",
     "kubernetes",
     "re-assert",
     "dirty-equals>=0.6",
