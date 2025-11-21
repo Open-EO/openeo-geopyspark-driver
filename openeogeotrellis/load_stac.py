@@ -234,7 +234,7 @@ def load_stac(
         proj_bbox = None
         proj_shape = None
 
-        # assumes a band has the same resolution across features/assets
+        # The minimum cell size per band name across all assets
         band_cell_size: Dict[str, Tuple[float, float]] = {}
         band_epsgs: Dict[str, Set[int]] = {}
 
