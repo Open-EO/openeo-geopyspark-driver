@@ -21,6 +21,7 @@ without compromising stable operations.
 - Improve vector cube support in `export_workspace` ([#1404](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1404))
 - `load_stac`: support detection of projection metadata from asset "bands" ([#1391](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1391))
 - `load_stac`: support item deduplication (for now with opt-in feature flag "deduplicate_items") ([#1361](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1361))
+- `load_collection`: the COPERNICUS_30 collection is now STAC based. Pixel sizes are no longer static and are now correctly derived from the source assets. In case of multiple assets it will take the minimum pixel size available. 
 
 
 ## 0.69.0
