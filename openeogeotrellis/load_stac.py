@@ -216,7 +216,7 @@ def load_stac(
         # TODO: smarter and more fine-grained deduplication behavior?
         #       - enable by default or only do it on STAC API usage?
         #       - allow custom deduplicators (e.g. based on layer catalog info about openeo collections)
-        if feature_flags.get("deduplicate_items", False):
+        if feature_flags.get("deduplicate_items", backend_config.load_stac_deduplicate_items_default):
             item_collection = item_collection.deduplicated(deduplicator=ItemDeduplicator())
 
         items_found = len(item_collection.items) > 0
@@ -397,6 +397,7 @@ def load_stac(
         layer_native_extent = metadata.get_layer_native_extent()
         if layer_native_extent:
             load_params = load_params.copy()
+            logger.info(f"global_extent fallback: {layer_native_extent=}")
             load_params.global_extent = layer_native_extent.as_dict()
 
     if load_params.bands:

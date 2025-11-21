@@ -331,3 +331,5 @@ class GpsBackendConfig(OpenEoBackendConfig):
     supports_async_tasks: bool = False
 
     read_results_metadata_file_retry_settings: dict = attrs.Factory(lambda: dict(tries=1))  # fail immediately
+
+    load_stac_deduplicate_items_default: bool = False
