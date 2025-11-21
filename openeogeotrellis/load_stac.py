@@ -415,17 +415,23 @@ def load_stac(
         cell_height = min(cell_heights)
     elif len(unique_epsgs) == 1:  # about 10m in given CRS
         target_epsg = unique_epsgs.pop()
+        # Fall back to the cell size from the layercatalog or provided by user.
+        (cell_width, cell_height) = feature_flags.get("cellsize", (10.0, 10.0))
         try:
             utm_zone_from_epsg(proj_epsg)
-            cell_width = cell_height = 10.0
         except ValueError:
+            # Cannot convert EPSG to UTM zone. Use unit from CRS instead of meters.
             target_bbox_center = target_bbox.as_polygon().centroid
-            cell_width = cell_height = GeometryBufferer.transform_meter_to_crs(
-                10.0, f"EPSG:{proj_epsg}", loi=(target_bbox_center.x, target_bbox_center.y)
+            cell_width = GeometryBufferer.transform_meter_to_crs(
+                cell_width, f"EPSG:{proj_epsg}", loi=(target_bbox_center.x, target_bbox_center.y)
             )
-    else:  # 10m UTM
+            cell_height = GeometryBufferer.transform_meter_to_crs(
+                cell_height, f"EPSG:{proj_epsg}", loi=(target_bbox_center.x, target_bbox_center.y)
+            )
+    else:
+        # Fall back to the cell size from the layercatalog or provided by user.
         target_epsg = target_bbox.best_utm()
-        cell_width = cell_height = 10.0
+        (cell_width, cell_height) = feature_flags.get("cellsize", (10.0, 10.0))
 
     if load_params.target_resolution is not None:
         if load_params.target_resolution[0] != 0.0 and load_params.target_resolution[1] != 0.0:

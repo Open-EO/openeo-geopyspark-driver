@@ -710,6 +710,11 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                                         native_cell_size, feature_flags, jvm,
                                         )
         elif layer_source_type == "stac":
+            layer_source_info_feature_flags = layer_source_info.get("load_stac_feature_flags", {})
+            # We use the cell_size calculated from the layercatalog as a fallback if it can't be retrieved from the STAC metadata.
+            layer_source_info_feature_flags["cellsize"] = layer_source_info_feature_flags.get(
+                "cellsize", (cell_width, cell_height)
+            )
             cube = load_stac(
                 url=layer_source_info["url"],
                 load_params=load_params,
@@ -717,7 +722,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 layer_properties=metadata.get("_vito", "properties", default={}),
                 batch_jobs=None,
                 override_band_names=metadata.band_names,
-                feature_flags=layer_source_info.get("load_stac_feature_flags"),
+                feature_flags=layer_source_info_feature_flags,
             )
             pyramid = cube.pyramid.levels
             metadata = cube.metadata
