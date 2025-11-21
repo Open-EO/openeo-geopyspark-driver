@@ -100,11 +100,10 @@ def load_stac(
     if override_band_names is None:
         override_band_names = []
 
-    logger.info("load_stac from url {u!r} with load params {p!r}".format(u=url, p=load_params))
-
     # Feature flags: merge global (e.g. from layer catalog info) and user-provided (higher precedence)
     feature_flags = {**(feature_flags or {}), **load_params.get("featureflags", {})}
-    logger.info(f"load_stac {feature_flags=}")
+
+    logger.info(f"load_stac with {url=} {load_params=} {feature_flags=}")
 
     allow_empty_cubes = feature_flags.get("allow_empty_cube", env.get(EVAL_ENV_KEY.ALLOW_EMPTY_CUBES, False))
 
