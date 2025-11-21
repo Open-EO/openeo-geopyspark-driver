@@ -298,8 +298,12 @@ def load_stac(
                         collection_band_names.append(asset_band_name)
 
                     if proj_bbox and proj_shape:
-                        # TODO: risk on overwriting/conflict
-                        band_cell_size[asset_band_name] = _compute_cellsize(proj_bbox, proj_shape)
+                        asset_cell_size = _compute_cellsize(proj_bbox, proj_shape)
+                        band_cell_width, band_cell_height = band_cell_size.get(asset_band_name, (float("inf"), float("inf")))
+                        band_cell_size[asset_band_name] = (
+                            min(band_cell_width, asset_cell_size[0]),
+                            min(band_cell_height, asset_cell_size[1]),
+                        )
                     if proj_epsg:
                         # TODO: risk on overwriting/conflict
                         band_epsgs.setdefault(asset_band_name, set()).add(proj_epsg)
