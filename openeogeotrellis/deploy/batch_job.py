@@ -693,7 +693,7 @@ def _copy_auxiliary_links(*, auxiliary_links: BadlyHashable, job_dir: Path) -> L
     for auxiliary_link in auxiliary_links.target:
         auxiliary_file = Path(auxiliary_link["href"])
 
-        if ConfigParams().is_kube_deploy:
+        if ConfigParams().is_kube_deploy and not get_backend_config().fuse_mount_batchjob_s3_bucket:
             from openeogeotrellis.utils import s3_client
 
             job_bucket = get_backend_config().s3_bucket_name
