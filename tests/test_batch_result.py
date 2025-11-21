@@ -3757,7 +3757,7 @@ def test_export_workspace_derived_from(
             and log.levelname == "DEBUG"
             and log.message.startswith("copied ")
         ]
-        assert len(copy_derived_from_document_logs) == 1
+        assert len(copy_derived_from_document_logs) == 2
 
 
 def test_webapp_derived_from(tmp_path, metadata_tracker):
