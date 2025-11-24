@@ -299,10 +299,15 @@ def test_vito_stac_api_workspace_helper(tmp_path, requests_mock, mock_s3_bucket)
         Metadata={"md5": "187812e0004062471a40ed0063f6f9d8", "mtime": "1756477082123456789"},
     )
 
+    auxiliary_file_path = tmp_path / "auxiliary_file"
+    with open(auxiliary_file_path, "w") as f:
+        f.write("auxiliary_file\n")
+
     collection = _collection(
         root_path=tmp_path / "collection",
         collection_id="collection",
         asset_hrefs=[str(disk_asset_path), f"s3://{mock_s3_bucket.name}/{source_key}"],
+        auxiliary_href=str(auxiliary_file_path),  # TODO: drop (parametrize) to test backwards compatibility
     )
 
     oidc_issuer = "https://auth.test/realms/test"
@@ -361,11 +366,20 @@ def test_vito_stac_api_workspace_helper(tmp_path, requests_mock, mock_s3_bucket)
     )
     assert create_item_mock.call_count == 3  # two items of which the first one is retried with a new access token
 
+    for create_item_request in create_item_mock.request_history:
+        assert create_item_request.json()["links"] == [
+            {
+                "rel": "aux",
+                "href": f"s3://openeo-fake-bucketname/assets/path/to/collection/auxiliary_file",
+            }
+        ]
+
     object_keys = {obj.key for obj in mock_s3_bucket.objects.all()}
     assert object_keys == {
         source_key,  # the original is still there
         "assets/path/to/collection/disk_asset.tif",
         "assets/path/to/collection/object_asset.tif",
+        "assets/path/to/collection/auxiliary_file",
     }
 
     disk_asset_object_metadata = mock_s3_bucket.Object(key="assets/path/to/collection/disk_asset.tif").metadata

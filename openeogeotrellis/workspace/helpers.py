@@ -35,9 +35,17 @@ def vito_stac_api_workspace(  # for lack of a better name, can still be aliased
     """
 
     def export_asset(asset: pystac.Asset, merge: PurePath, relative_asset_path: PurePath, remove_original: bool) -> str:
-        asset_uri = asset.get_absolute_href()
-        source_uri_parts = urlparse(asset_uri)
+        return export_file(asset.get_absolute_href(), merge, remove_original, relative_asset_path)
+
+    def export_link(link: pystac.Link, merge: PurePath, remove_original: bool) -> str:
+        return export_file(link.get_absolute_href(), merge, remove_original)
+
+    def export_file(file_uri: str, merge: PurePath, remove_original: bool, relative_asset_path: PurePath = None) -> str:
+        source_uri_parts = urlparse(file_uri)
         source_path = Path(source_uri_parts.path)
+
+        if not relative_asset_path:
+            relative_asset_path = source_path.name
 
         target_prefix = asset_prefix(merge)
         target_key = f"{target_prefix}/{relative_asset_path}"
@@ -66,15 +74,17 @@ def vito_stac_api_workspace(  # for lack of a better name, can still be aliased
             if remove_original:
                 s3.delete_object(Bucket=source_bucket, Key=source_key)
         else:
-            raise ValueError(asset_uri)
+            raise ValueError(file_uri)
 
         workspace_uri = f"s3://{asset_bucket}/{target_key}"
         return workspace_uri
+
 
     return StacApiWorkspace(
         root_url=root_url,
         export_asset=export_asset,
         asset_alternate_id="s3",
+        export_link=export_link,
         additional_collection_properties=additional_collection_properties,
         get_access_token=get_oidc_access_token(oidc_issuer, oidc_client_id, oidc_client_secret),
     )
