@@ -120,6 +120,9 @@ class TestCollectionLonLat:
     Tile builder for collections defined in LonLat
     """
 
+    # Avoid pytest collecting this class as a test case (as it starts with "Test" prefix)
+    __test__ = False
+
     def __init__(
         self,
         tile_size: int = 4,

@@ -13,13 +13,28 @@ without compromising stable operations.
 <!-- start-of-changelog -->
 
 
-## In progress: 0.69.0
+## In progress: 0.70.0
+
+- `load_stac`: remove `load_stac_apply_lcfm_improvements` feature flag and make it the standard behavior ([#1306](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1306))
+- Experimental support for dropping `derived_from` links on the STAC Collection level in favor of a link, to a dedicated document with input features, on the item level ([#1278](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1278))
+- `sar_backscatter`: under specific circumstances, data was cropped during processing, leading to missing outputs ([#1403](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1403))
+- Improve vector cube support in `export_workspace` ([#1404](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1404))
+- `load_stac`: support detection of projection metadata from asset "bands" ([#1391](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1391))
+- `load_stac`: support item deduplication (for now with opt-in feature flag "deduplicate_items") ([#1361](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1361))
+- `load_collection`: the COPERNICUS_30 collection is now STAC based. Pixel sizes are no longer static and are now correctly derived from the source assets. In case of multiple assets it will take the minimum pixel size available. 
+- `load_stac`: added `cellsize` feature flag. It will be used as fallback when no pixel size can be derived from the source assets. 
+- `load_stac`: the `cellsize` feature flag is automatically taken from the layercatalog when available, if not set explicitly in the process graph.
+
+## 0.69.0
 
 - Added new API `UdfRuntimeImageRepository` for centralized configuration and handling of container images and corresponding UDF runtimes ([#1279](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1279), [Open-EO/openeo-python-driver#415](https://github.com/Open-EO/openeo-python-driver/issues/415), eu-cdse/openeo-cdse-infra#721)
 - Support overriding default ETL source ID from K8s app label ([eu-cdse/openeo-cdse-infra#612](https://github.com/eu-cdse/openeo-cdse-infra/issues/612))
 - Add `S3StacIO` and support custom `StacIO` in `openeogeotrellis.load_stac.load_stac` ([#1133](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1133))
 - Drop override to "python38" image for batch jobs with UDFs (eu-cdse/openeo-cdse-infra#763, eu-cdse/openeo-cdse-infra#169, [#1387](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1387))
+- Port STAC Collection/Catalog part of `load_stac` to new (experimental) `ItemCollection` API ([#1307](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1307))
 - `run_udf` inspect calls in `apply_metadata`did not show up in logs ([#1394](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1394))
+- Port STAC API part of `load_stac` to new (experimental) `ItemCollection` API ([#1307](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1307))
+
 
 ## 0.68.0
 
@@ -33,6 +48,8 @@ without compromising stable operations.
 - Log warning when requesting bands in unexpected order for temporal NetCDF STAC catalogs. ([#1153](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1153))
 - Expose `get_oidc_access_token` helper method for use with `StacApiWorkspace` ([eu-cdse/openeo-cdse-infra#633](https://github.com/eu-cdse/openeo-cdse-infra/issues/633))
 - Add `integrations.vault.VaultClient` with "cert" auth support (eu-cdse/openeo-cdse-infra#671)
+- Port single STAC Item part of `load_stac` to new (experimental) `ItemCollection` API ([#1307](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1307))
+- Port "own job" part of `load_stac` to new (experimental) `ItemCollection` API ([#1307](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1307))
 - Avoid ZeroDivisionError with resample_spatial with resolution 0 for UTM layers. ([openeo-geotrellis-extensions#506](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/506))
 - Less often used Spark metrics for batch jobs are now disabled by default. They are enabled when log-level is set to 'debug'.
 - `filter_temporal` should also work in half-open fashion when applied after `load_collection`/`load_stac` with non-empty `temporal_extent` ([Open-EO/openeo-geotrellis-extensions#498](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/498))

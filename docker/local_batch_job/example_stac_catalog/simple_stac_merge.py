@@ -61,11 +61,21 @@ def main(argv: List[str]) -> None:
         os.chdir(tmp_sub_collection_output_2)
         sub_collection_maker.main(["2023-06-04"])
 
-        input_directories = [tmp_sub_collection_output_1, tmp_sub_collection_output_2]
+        input_arguments = [
+            "S1_2images_collection.json",
+            str(tmp_sub_collection_output_1),
+            str(tmp_sub_collection_output_2),
+        ]
         print(f"Using defaults tmp_sub_collection_output_1 / tmp_sub_collection_output_2 for testing purposes.")
     else:
-        input_directories = argv[1:]
+        input_arguments = argv[1:]
         os.chdir(output_folder)
+    collection_filename = list(filter(lambda x: x.endswith(".json"), input_arguments))
+    if collection_filename:
+        collection_filename = collection_filename[0]
+    else:
+        collection_filename = "collection.json"
+    input_directories = list(filter(lambda x: not x.endswith(".json"), input_arguments))
     input_directories = [Path(c) for c in input_directories]
 
     collections = [d / "collection.json" for d in input_directories]
@@ -75,7 +85,8 @@ def main(argv: List[str]) -> None:
     for other_json_path in collections[1:]:
         other_json = json.loads(other_json_path.read_text())
         first_json["links"].extend(other_json["links"])
-        assert first_json["extent"] == other_json["extent"]
+        if first_json["extent"] != other_json["extent"]:
+            print(f"Warning: extents differ: {first_json['extent']} vs {other_json['extent']}. Using the first one.")
 
     for collection_path in collections:
         files = get_files_from_stac_catalog(collection_path)
@@ -85,6 +96,8 @@ def main(argv: List[str]) -> None:
             shutil.copy(f, output_folder / f.name)
 
     (output_folder / "collection.json").write_text(json.dumps(first_json, indent=2))
+    # TODO: Remove duplicate collection output once sar_coherence is fixed.
+    (output_folder / collection_filename).write_text(json.dumps(first_json, indent=2))
 
     try:
         print("Trying pystac validation...")

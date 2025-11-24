@@ -1,51 +1,62 @@
-import dirty_equals
-import pystac
-import pystac_client
-from contextlib import nullcontext
 import datetime
+from contextlib import nullcontext
+from typing import Iterator
 from unittest import mock
 
-import pytest
-
+import dirty_equals
 import openeo.metadata
+import pystac
+import pystac_client
+import pytest
 import responses
 from openeo.testing.stac import StacDummyBuilder
-from openeo_driver.ProcessGraphDeserializer import DEFAULT_TEMPORAL_EXTENT
 from openeo_driver.backend import BatchJobMetadata, BatchJobs, LoadParameters
-from openeo_driver.dummy.dummy_backend import DummyBatchJobs
 from openeo_driver.errors import OpenEOApiException
+from openeo_driver.ProcessGraphDeserializer import DEFAULT_TEMPORAL_EXTENT
 from openeo_driver.users import User
 from openeo_driver.util.date_math import now_utc
 from openeo_driver.util.geometry import BoundingBox
 from openeo_driver.utils import EvalEnv
+
 from openeogeotrellis.backend import GpsBatchJobs
 from openeogeotrellis.job_registry import InMemoryJobRegistry
-
 from openeogeotrellis.load_stac import (
+    ItemCollection,
+    PropertyFilter,
+    _get_proj_metadata,
+    _is_band_asset,
+    _is_supported_raster_mime_type,
+    _proj_code_to_epsg,
+    _SpatialExtent,
+    _SpatioTemporalExtent,
+    _StacMetadataParser,
+    _supports_item_search,
+    _TemporalExtent,
     extract_own_job_info,
     load_stac,
-    _StacMetadataParser,
-    _is_supported_raster_mime_type,
-    _is_band_asset,
-    _supports_item_search,
-    _get_proj_metadata,
-    _TemporalExtent,
-    _SpatioTemporalExtent,
-    _SpatialExtent,
-    PropertyFilter,
-    ItemCollection,
+    ItemDeduplicator,
 )
-from openeogeotrellis.testing import gps_config_overrides
+from openeogeotrellis.testing import DummyStacApiServer, gps_config_overrides
 
 
-@pytest.mark.parametrize("url, user_id, job_info_id",
-                         [
-                             ("https://oeo.net/openeo/1.1/jobs/j-20240201abc123/results", 'alice', 'j-20240201abc123'),
-                             ("https://oeo.net/openeo/1.1/jobs/j-20240201abc123/results", 'bob', None),
-                             ("https://oeo.net/openeo/1.1/jobs/j-20240201abc123/results/N2Q1MjMzODEzNzRiNjJlNmYyYWFkMWYyZjlmYjZlZGRmNjI0ZDM4MmE4ZjcxZGI2Z/095be1c7a37baf63b2044?expires=1707382334", 'alice', None),
-                             ("https://oeo.net/openeo/1.1/jobs/j-20240201abc123/results/N2Q1MjMzODEzNzRiNjJlNmYyYWFkMWYyZjlmYjZlZGRmNjI0ZDM4MmE4ZjcxZGI2Z/095be1c7a37baf63b2044?expires=1707382334", 'bob', None),
-                             ("https://earth-search.aws.element84.com/v1/collections/sentinel-2-l2a", 'alice', None)
-                         ])
+@pytest.mark.parametrize(
+    "url, user_id, job_info_id",
+    [
+        ("https://oeo.net/openeo/1.1/jobs/j-20240201abc123/results", "alice", "j-20240201abc123"),
+        ("https://oeo.net/openeo/1.1/jobs/j-20240201abc123/results", "bob", None),
+        (
+            "https://oeo.net/openeo/1.1/jobs/j-20240201abc123/results/N2Q1MjMzODEzNzRiNjJlNmYyYWFkMWYyZjlmYjZlZGRmNjI0ZDM4MmE4ZjcxZGI2Z/095be1c7a37baf63b2044?expires=1707382334",
+            "alice",
+            None,
+        ),
+        (
+            "https://oeo.net/openeo/1.1/jobs/j-20240201abc123/results/N2Q1MjMzODEzNzRiNjJlNmYyYWFkMWYyZjlmYjZlZGRmNjI0ZDM4MmE4ZjcxZGI2Z/095be1c7a37baf63b2044?expires=1707382334",
+            "bob",
+            None,
+        ),
+        ("https://earth-search.aws.element84.com/v1/collections/sentinel-2-l2a", "alice", None),
+    ],
+)
 def test_extract_own_job_info(url, user_id, job_info_id):
     batch_jobs = mock.Mock(spec=BatchJobs)
 
@@ -90,7 +101,7 @@ def test_property_filter_from_parameter(requests_mock):
                     "process_id": "eq",
                     "arguments": {
                         "x": {"from_parameter": "value"},
-                        "y": {"from_parameter": "tile_id"}
+                        "y": {"from_parameter": "tile_id"},
                     },
                     "result": True,
                 }
@@ -175,13 +186,6 @@ def jvm_mock():
 
 
 @pytest.mark.parametrize(
-    ["enable_by_catalog", "enable_by_eval_env"],
-    [
-        (True, {}),
-        (False, {"load_stac_apply_lcfm_improvements": True}),
-    ],
-)
-@pytest.mark.parametrize(
     ["band_names", "resolution", "expected_add_links"],
     [
         (
@@ -241,16 +245,18 @@ def jvm_mock():
         ),
     ],
 )
-def test_lcfm_improvements(  # resolution and offset behind a feature flag; alphabetical head tags are tested elsewhere
+def test_resolution_and_offset_handling(
     requests_mock,
     test_data,
     jvm_mock,
     band_names,
     resolution,
-    enable_by_catalog,
-    enable_by_eval_env,
     expected_add_links,
 ):
+    """
+    resolution and offset behind a feature flag; alphabetical head tags are tested elsewhere
+    Originally referred to as "LCFM Improvements"
+    """
     stac_api_root_url = "https://stac.test"
     stac_collection_url = f"{stac_api_root_url}/collections/collection"
 
@@ -275,10 +281,9 @@ def test_lcfm_improvements(  # resolution and offset behind a feature flag; alph
     data_cube = load_stac(
         url=stac_collection_url,
         load_params=LoadParameters(bands=band_names),
-        env=EvalEnv(dict(enable_by_eval_env, pyramid_levels="highest")),
+        env=EvalEnv(dict(pyramid_levels="highest")),
         layer_properties={},
         batch_jobs=None,
-        apply_lcfm_improvements=enable_by_catalog,
     )
 
     # TODO: how to check the actual argument to PyramidFactory()?
@@ -719,19 +724,73 @@ def test_supports_item_search(tmp_path, catalog, expected):
     assert _supports_item_search(collection) == expected
 
 
+def test_proj_code_to_epsg():
+    assert _proj_code_to_epsg("EPSG:32631") == 32631
+    assert _proj_code_to_epsg("EPSG:4326!") is None
+    assert _proj_code_to_epsg("EPSG:onetwothree") is None
+    assert _proj_code_to_epsg("IAU_2015:30100") is None
+    assert _proj_code_to_epsg(None) is None
+    assert _proj_code_to_epsg(1234) is None
+
+
 def test_get_proj_metadata_minimal():
     asset = pystac.Asset(href="https://example.com/asset.tif")
     item = pystac.Item.from_dict(StacDummyBuilder.item())
     assert _get_proj_metadata(asset, item=item) == (None, None, None)
 
 
-def test_get_proj_metadata_from_asset():
-    asset = pystac.Asset(
-        href="https://example.com/asset.tif",
-        extra_fields={"proj:epsg": 32631, "proj:shape": [12, 34], "proj:bbox": [12, 34, 56, 78]},
-    )
-    item = pystac.Item.from_dict(StacDummyBuilder.item())
-    assert _get_proj_metadata(asset, item=item) == (32631, (12.0, 34.0, 56.0, 78.0), (12, 34))
+@pytest.mark.parametrize(
+    ["item_properties", "asset_extra_fields", "expected"],
+    [
+        ({}, {}, (None, None, None)),
+        (
+            # at item level
+            {"proj:epsg": 32631, "proj:shape": [12, 34], "proj:bbox": [12, 34, 56, 78]},
+            {},
+            (32631, (12, 34, 56, 78), (12, 34)),
+        ),
+        (
+            # at asset level
+            {},
+            {"proj:epsg": 32631, "proj:shape": [12, 34], "proj:bbox": [12, 34, 56, 78]},
+            (32631, (12, 34, 56, 78), (12, 34)),
+        ),
+        (
+            # At bands level
+            # (https://github.com/Open-EO/openeo-geopyspark-driver/issues/1391, https://github.com/stac-extensions/projection/issues/25)
+            {},
+            {
+                "bands": [
+                    {"name": "B04", "proj:epsg": 32631, "proj:shape": [12, 34], "proj:bbox": [12, 34, 56, 78]},
+                    {"name": "B02", "proj:epsg": 32631, "proj:shape": [12, 34], "proj:bbox": [12, 34, 56, 78]},
+                ]
+            },
+            (32631, (12, 34, 56, 78), (12, 34)),
+        ),
+        (
+            # Mixed
+            {"proj:epsg": 32631},
+            {
+                "proj:shape": [12, 34],
+                "bands": [
+                    {"name": "B04", "proj:bbox": [12, 34, 56, 78]},
+                ],
+            },
+            (32631, (12, 34, 56, 78), (12, 34)),
+        ),
+        (
+            # Mixed and precedence
+            {"proj:epsg": 32601, "proj:shape": [10, 10]},
+            {"proj:code": "EPSG:32602", "proj:shape": [32, 32]},
+            (32602, None, (32, 32)),
+        ),
+    ],
+)
+def test_get_proj_metadata_from_asset(item_properties, asset_extra_fields, expected):
+    """ """
+    asset = pystac.Asset(href="https://example.com/asset.tif", extra_fields=asset_extra_fields)
+    item = pystac.Item.from_dict(StacDummyBuilder.item(properties=item_properties))
+    assert _get_proj_metadata(asset, item=item) == expected
 
 
 class TestTemporalExtent:
@@ -1401,7 +1460,6 @@ class TestPropertyFilter:
 
 
 class TestItemCollection:
-
     def test_from_stac_item_basic(self):
         item = pystac.Item.from_dict(StacDummyBuilder.item())
         spatiotemporal_extent = _SpatioTemporalExtent(bbox=None, from_date=None, to_date=None)
@@ -1566,3 +1624,417 @@ class TestItemCollection:
 
         expected = [{1: item1, 2: item2}[x] for x in expected]
         assert item_collection.items == expected
+
+    @pytest.fixture
+    def dummy_stac_api_server(self) -> DummyStacApiServer:
+        dummy_server = DummyStacApiServer()
+
+        dummy_server.define_collection(
+            "custom-s2",
+            extent={
+                "spatial": {"bbox": [[3, 50, 5, 51]]},
+                "temporal": {"interval": [["2024-02-01T00:00:00Z", "2024-12-01"]]},
+            },
+        )
+        for m in [2, 3, 4, 5, 6, 7, 8, 9, 10, 11]:
+            for x in [3, 4]:
+                dummy_server.define_item(
+                    collection_id="custom-s2",
+                    item_id=f"item-{m}-{x}",
+                    datetime=f"2024-{m:02d}-20T12:00:00Z",
+                    bbox=[x + 0.1, 50.1, x + 0.9, 50.9],
+                    properties={"flavor": {0: "apple", 1: "banana", 2: "coconut"}[(m + x) % 3]},
+                )
+        return dummy_server
+
+    @pytest.fixture
+    def dummy_stac_api(self, dummy_stac_api_server) -> Iterator[str]:
+        with dummy_stac_api_server.serve() as root_url:
+            yield root_url
+
+    def test_from_stac_api_basic(self, dummy_stac_api):
+        given_url = f"{dummy_stac_api}/collections/collection-123"
+        collection: pystac.Collection = pystac.read_file(given_url)
+        property_filter = PropertyFilter(properties={})
+        spatiotemporal_extent = _SpatioTemporalExtent(bbox=None, from_date="2024-01-01", to_date="2025-01-01")
+        item_collection = ItemCollection.from_stac_api(
+            collection,
+            original_url=given_url,
+            property_filter=property_filter,
+            spatiotemporal_extent=spatiotemporal_extent,
+        )
+        assert [item.id for item in item_collection.items] == ["item-1", "item-2", "item-3"]
+
+    @pytest.mark.parametrize(
+        ["from_date", "to_date", "expected_items"],
+        [
+            ("2024-06-01", "2024-09-01", {"item-6-3", "item-6-4", "item-7-3", "item-7-4", "item-8-3", "item-8-4"}),
+            (None, "2024-04-01", {"item-2-3", "item-2-4", "item-3-3", "item-3-4"}),
+            ("2024-09-01", None, {"item-9-3", "item-9-4", "item-10-3", "item-10-4", "item-11-3", "item-11-4"}),
+        ],
+    )
+    def test_from_stac_api_temporal_filter(self, dummy_stac_api, from_date, to_date, expected_items):
+        given_url = f"{dummy_stac_api}/collections/custom-s2"
+        collection: pystac.Collection = pystac.read_file(given_url)
+        property_filter = PropertyFilter(properties={})
+        spatiotemporal_extent = _SpatioTemporalExtent(bbox=None, from_date=from_date, to_date=to_date)
+        item_collection = ItemCollection.from_stac_api(
+            collection,
+            original_url=given_url,
+            property_filter=property_filter,
+            spatiotemporal_extent=spatiotemporal_extent,
+        )
+        assert set(item.id for item in item_collection.items) == expected_items
+
+    @pytest.mark.parametrize(
+        ["bbox", "expected_items"],
+        [
+            (
+                BoundingBox(3, 50, 4, 51, crs=4326),
+                {f"item-{x}-3" for x in range(2, 12)},
+            ),
+            (
+                BoundingBox(4, 50, 5, 51, crs=4326),
+                {f"item-{x}-4" for x in range(2, 12)},
+            ),
+        ],
+    )
+    def test_from_stac_api_spatial_filter(self, dummy_stac_api, bbox, expected_items):
+        given_url = f"{dummy_stac_api}/collections/custom-s2"
+        collection: pystac.Collection = pystac.read_file(given_url)
+        property_filter = PropertyFilter(properties={})
+        spatiotemporal_extent = _SpatioTemporalExtent(bbox=bbox, from_date="2024-01-01", to_date="2025-01-01")
+        item_collection = ItemCollection.from_stac_api(
+            collection,
+            original_url=given_url,
+            property_filter=property_filter,
+            spatiotemporal_extent=spatiotemporal_extent,
+        )
+        assert set(item.id for item in item_collection.items) == expected_items
+
+    @pytest.mark.parametrize(
+        ["use_filter_extension", "expected_search"],
+        [
+            (
+                "cql2-json",
+                {
+                    "method": "POST",
+                    "path": "/search",
+                    "url_params": {},
+                    "json": {
+                        "collections": ["custom-s2"],
+                        "datetime": "2024-01-01T00:00:00Z/2025-01-01T00:00:00Z",
+                        "limit": 20,
+                        "filter-lang": "cql2-json",
+                        "filter": {"op": "=", "args": [{"property": "properties.flavor"}, "banana"]},
+                    },
+                },
+            ),
+            (
+                "cql2-text",
+                {
+                    "method": "GET",
+                    "path": "/search",
+                    "url_params": {
+                        "collections": "custom-s2",
+                        "datetime": "2024-01-01T00:00:00Z/2025-01-01T00:00:00Z",
+                        "limit": "20",
+                        "filter-lang": "cql2-text",
+                        "filter": "\"properties.flavor\" = 'banana'",
+                    },
+                    "json": None,
+                },
+            ),
+            (
+                # Auto mode: Prefer POST with cql2-json if supported by server
+                True,
+                {
+                    "method": "POST",
+                    "path": "/search",
+                    "url_params": {},
+                    "json": {
+                        "collections": ["custom-s2"],
+                        "datetime": "2024-01-01T00:00:00Z/2025-01-01T00:00:00Z",
+                        "limit": 20,
+                        "filter-lang": "cql2-json",
+                        "filter": {"op": "=", "args": [{"property": "properties.flavor"}, "banana"]},
+                    },
+                },
+            ),
+            (
+                # No usage of filter extension
+                False,
+                {
+                    "method": "GET",
+                    "path": "/search",
+                    "url_params": {
+                        "collections": "custom-s2",
+                        "datetime": "2024-01-01T00:00:00Z/2025-01-01T00:00:00Z",
+                        "limit": "20",
+                    },
+                    "json": None,
+                },
+            ),
+        ],
+    )
+    def test_from_stac_api_property_filter(
+        self, dummy_stac_api, dummy_stac_api_server, use_filter_extension, expected_search
+    ):
+        given_url = f"{dummy_stac_api}/collections/custom-s2"
+        collection: pystac.Collection = pystac.read_file(given_url)
+        property_filter = PropertyFilter(
+            properties={
+                "flavor": {
+                    "process_graph": {
+                        "eq": {
+                            "process_id": "eq",
+                            "arguments": {"x": {"from_parameter": "value"}, "y": "banana"},
+                            "result": True,
+                        }
+                    }
+                }
+            }
+        )
+        spatiotemporal_extent = _SpatioTemporalExtent(bbox=None, from_date="2024-01-01", to_date="2025-01-01")
+        item_collection = ItemCollection.from_stac_api(
+            collection,
+            original_url=given_url,
+            property_filter=property_filter,
+            spatiotemporal_extent=spatiotemporal_extent,
+            use_filter_extension=use_filter_extension,
+        )
+        assert set(item.id for item in item_collection.items) == {
+            "item-3-4",
+            "item-4-3",
+            "item-6-4",
+            "item-7-3",
+            "item-9-4",
+            "item-10-3",
+        }
+
+        # Check search requests made to the STAC API server
+        search_requests = [r for r in dummy_stac_api_server.request_history if r["path"] == "/search"]
+        assert search_requests == [expected_search]
+
+    def test_get_temporal_extent_empty(self):
+        item_collection = ItemCollection(items=[])
+        assert item_collection.get_temporal_extent() == (None, None)
+
+    def test_get_temporal_extent_just_datetime(self):
+        item_collection = ItemCollection(
+            items=[
+                pystac.Item.from_dict(StacDummyBuilder.item(datetime="2025-11-11T00:00:00Z")),
+                pystac.Item.from_dict(StacDummyBuilder.item(datetime="2025-11-12T00:00:00Z")),
+            ]
+        )
+
+        assert item_collection.get_temporal_extent() == (
+            datetime.datetime(2025, 11, 11, tzinfo=datetime.timezone.utc),
+            datetime.datetime(2025, 11, 12, tzinfo=datetime.timezone.utc),
+        )
+
+    def test_get_temporal_extent_start_and_end(self):
+        item_collection = ItemCollection(
+            items=[
+                pystac.Item.from_dict(
+                    StacDummyBuilder.item(
+                        datetime="2025-11-11T00:00:00Z",
+                        properties={
+                            "start_datetime": "2025-11-10T10:00:00Z",
+                            "end_datetime": "2025-11-12T12:00:00Z",
+                        },
+                    )
+                ),
+                pystac.Item.from_dict(
+                    StacDummyBuilder.item(
+                        datetime="2025-11-15T00:00:00Z",
+                        properties={
+                            "start_datetime": "2025-11-14T14:00:00Z",
+                            "end_datetime": "2025-11-16T16:00:00Z",
+                        },
+                    )
+                ),
+            ]
+        )
+
+        assert item_collection.get_temporal_extent() == (
+            datetime.datetime(2025, 11, 10, hour=10, tzinfo=datetime.timezone.utc),
+            datetime.datetime(2025, 11, 16, hour=16, tzinfo=datetime.timezone.utc),
+        )
+
+    def test_deduplicated(self, dummy_stac_api_server, dummy_stac_api):
+        collection_id = "with-dups"
+        dummy_stac_api_server.define_collection(collection_id)
+        for i in range(6):
+            dummy_stac_api_server.define_item(
+                collection_id=collection_id,
+                item_id=f"item-{i}",
+                datetime=f"2025-11-{(i // 2) + 1:02d}",
+            )
+
+        given_url = f"{dummy_stac_api}/collections/{collection_id}"
+        collection: pystac.Collection = pystac.read_file(given_url)
+        orig = ItemCollection.from_stac_api(
+            collection,
+            original_url=given_url,
+            property_filter=PropertyFilter(properties={}),
+            spatiotemporal_extent=_SpatioTemporalExtent(bbox=None, from_date="2025-01-01", to_date=None),
+        )
+        assert set(item.id for item in orig.items) == {
+            "item-0",
+            "item-1",
+            "item-2",
+            "item-3",
+            "item-4",
+            "item-5",
+        }
+
+        deduplicator = ItemDeduplicator()
+        deduped = orig.deduplicated(deduplicator=deduplicator)
+        assert set(item.id for item in deduped.items) == {
+            "item-1",
+            "item-3",
+            "item-5",
+        }
+
+
+class TestItemDeduplicator:
+    def test_trivial(self):
+        item = pystac.Item.from_dict(StacDummyBuilder.item())
+        depuplicator = ItemDeduplicator()
+        assert depuplicator.deduplicate([item]) == [item]
+
+    def test_basic(self):
+        item10 = pystac.Item.from_dict(StacDummyBuilder.item(id="item-10", datetime="2025-11-10T00:00:00Z"))
+        item10_1s = pystac.Item.from_dict(StacDummyBuilder.item(id="item-10+1s", datetime="2025-11-10T00:00:01Z"))
+        item10_1h = pystac.Item.from_dict(StacDummyBuilder.item(id="item-10+1h", datetime="2025-11-10T01:00:00Z"))
+        item11 = pystac.Item.from_dict(StacDummyBuilder.item(id="item-11", datetime="2025-11-11T00:00:00Z"))
+
+        depuplicator = ItemDeduplicator()
+        assert depuplicator.deduplicate([item10, item10_1s, item11]) == [item10_1s, item11]
+        assert depuplicator.deduplicate([item10, item10_1h, item11]) == [item10, item10_1h, item11]
+
+    def test_property_based(self):
+        item600 = pystac.Item.from_dict(
+            StacDummyBuilder.item(id="item1", properties={"proj:code": "EPSG:32600", "flavor": "apple"})
+        )
+        item600b = pystac.Item.from_dict(
+            StacDummyBuilder.item(id="item2", properties={"proj:code": "EPSG:32600", "flavor": "banana"})
+        )
+        item601 = pystac.Item.from_dict(
+            StacDummyBuilder.item(id="item3", properties={"proj:code": "EPSG:32601", "flavor": "apple"})
+        )
+
+        depuplicator = ItemDeduplicator()
+        assert depuplicator.deduplicate([item600, item600b, item601]) == [item600b, item601]
+
+        depuplicator = ItemDeduplicator(duplication_properties=["flavor"])
+        assert depuplicator.deduplicate([item600, item600b, item601]) == [item601, item600b]
+
+    @pytest.mark.parametrize(
+        ["item2_updated", "best"],
+        [
+            ("2025-11-12T12:00:10Z", "item2"),
+            ("2025-11-12T11:00:00Z", "item1"),
+        ],
+    )
+    def test_updated(self, item2_updated, best):
+        item1 = pystac.Item.from_dict(StacDummyBuilder.item(id="item1", properties={"updated": "2025-11-12T12:00:00Z"}))
+        item2 = pystac.Item.from_dict(StacDummyBuilder.item(id="item2", properties={"updated": item2_updated}))
+        depuplicator = ItemDeduplicator()
+        result = depuplicator.deduplicate([item1, item2])
+        assert [r.id for r in result] == [best]
+
+    @pytest.mark.parametrize(
+        ["bbox2", "expected"],
+        [
+            ([3, 50, 4, 51], ["item2", "item3"]),
+            ([4, 50, 5, 51], ["item1", "item3"]),
+            (None, ["item1", "item2", "item3"]),
+            ([8, 40, 9, 41], ["item1", "item2", "item3"]),
+            # Invalid bboxes, but should not break deduplication
+            (123, ["item1", "item2", "item3"]),
+            ([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], ["item1", "item2", "item3"]),
+            (["one", "two", "three"], ["item1", "item2", "item3"]),
+        ],
+    )
+    def test_duplicate_by_bbox(self, bbox2, expected):
+        item1 = pystac.Item.from_dict(
+            StacDummyBuilder.item(id="item1", bbox=[3, 50, 4, 51], properties={"updated": "2025-11-01"})
+        )
+        item2 = pystac.Item.from_dict(
+            StacDummyBuilder.item(id="item2", bbox=bbox2, properties={"updated": "2025-11-02"})
+        )
+        item3 = pystac.Item.from_dict(
+            StacDummyBuilder.item(id="item3", bbox=[4, 50, 5, 51], properties={"updated": "2025-11-03"})
+        )
+
+        depuplicator = ItemDeduplicator()
+        result = depuplicator.deduplicate([item1, item2, item3])
+        assert [r.id for r in result] == expected
+
+    @pytest.mark.parametrize(
+        ["geometry2", "expected"],
+        [
+            (
+                {"type": "Polygon", "coordinates": [[[3, 50], [4, 50], [4, 51], [3, 51], [3, 50]]]},
+                ["item2", "item3"],
+            ),
+            (
+                {"type": "Polygon", "coordinates": [[[4, 50], [5, 50], [5, 51], [4, 51], [4, 50]]]},
+                ["item1", "item3"],
+            ),
+            (None, ["item1", "item2", "item3"]),
+            (
+                {"type": "Polygon", "coordinates": [[[8, 40], [9, 40], [9, 41], [8, 41], [8, 40]]]},
+                ["item1", "item2", "item3"],
+            ),
+            # Invalid geometry, but should not break deduplication
+            ({"type": "MobiusRing"}, ["item1", "item2", "item3"]),
+            ([666, 777], ["item1", "item2", "item3"]),
+        ],
+    )
+    def test_duplicate_by_geometry(self, geometry2, expected):
+        item1 = pystac.Item.from_dict(
+            StacDummyBuilder.item(
+                id="item1",
+                geometry={"type": "Polygon", "coordinates": [[[3, 50], [4, 50], [4, 51], [3, 51], [3, 50]]]},
+                properties={"updated": "2025-11-01"},
+            )
+        )
+        item2 = pystac.Item.from_dict(
+            StacDummyBuilder.item(id="item2", geometry=geometry2, properties={"updated": "2025-11-02"})
+        )
+        item3 = pystac.Item.from_dict(
+            StacDummyBuilder.item(
+                id="item3",
+                geometry={"type": "Polygon", "coordinates": [[[4, 50], [5, 50], [5, 51], [4, 51], [4, 50]]]},
+                properties={"updated": "2025-11-03"},
+            )
+        )
+
+        depuplicator = ItemDeduplicator()
+        result = depuplicator.deduplicate([item1, item2, item3])
+        assert [r.id for r in result] == expected
+
+    @pytest.mark.parametrize(
+        ["datetime2", "expected"],
+        [
+            ("2025-11-10T00:00:00Z", ["item2", "item3"]),
+            ("2025-11-10T12:00:00Z", ["item1", "item2", "item3"]),
+            ("2025-11-11T00:00:00Z", ["item1", "item3"]),
+            ("2025-11-12T00:00:00Z", ["item1", "item3", "item2"]),
+            ("2025-11-10T00:00:00+00", ["item2", "item3"]),
+            ("2025-11-10T00:00:00+07", ["item2", "item1", "item3"]),
+            ("2025-11-10", ["item2", "item3"]),
+            ("2025-11-11", ["item1", "item3"]),
+        ],
+    )
+    def test_datetime_and_timezones(self, datetime2, expected):
+        item1 = pystac.Item.from_dict(StacDummyBuilder.item(id="item1", datetime="2025-11-10T00:00:00Z"))
+        item2 = pystac.Item.from_dict(StacDummyBuilder.item(id="item2", datetime=datetime2))
+        item3 = pystac.Item.from_dict(StacDummyBuilder.item(id="item3", datetime="2025-11-11T00:00:00Z"))
+
+        depuplicator = ItemDeduplicator()
+        result = depuplicator.deduplicate([item1, item2, item3])
+        assert [r.id for r in result] == expected

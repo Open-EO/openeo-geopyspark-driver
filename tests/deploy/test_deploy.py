@@ -160,7 +160,7 @@ def test_build_gps_backend_deploy_metadata():
         {
             "versions": DictSubSet(
                 {
-                    "openeo": RegexMatcher("\d+.\d+.\d+"),
+                    "openeo": RegexMatcher(r"\d+.\d+.\d+"),
                     "geotrellis-extensions": dirty_equals.IsStr(regex=r"(\d+\.\d+.\d+_\d+\.\d+|PR-\d+).*"),
                 }
             )

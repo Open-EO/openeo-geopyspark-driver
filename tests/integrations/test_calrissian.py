@@ -12,18 +12,18 @@ import pytest
 import yaml
 
 from openeogeotrellis.config.integrations.calrissian_config import (
-    CalrissianConfig,
     DEFAULT_CALRISSIAN_IMAGE,
+    CalrissianConfig,
 )
 from openeogeotrellis.integrations.calrissian import (
     CalrissianJobLauncher,
+    CalrissianLaunchConfigBuilder,
     CalrissianS3Result,
     CwLSource,
-    CalrissianLaunchConfigBuilder,
 )
+from openeogeotrellis.integrations.s3proxy.sts import STSCredentials
 from openeogeotrellis.testing import gps_config_overrides
 from openeogeotrellis.util.runtime import ENV_VAR_OPENEO_BATCH_JOB_ID
-from openeogeotrellis.integrations.s3proxy.sts import STSCredentials
 
 
 @pytest.fixture
@@ -45,7 +45,7 @@ class TestCalrissianJobLauncher:
     JOB_NAME = "j-hello123"
 
     @pytest.fixture
-    def s3_calrissian_bucket(self):
+    def s3_calrissian_bucket(self) -> str:
         with moto.mock_aws():
             s3 = boto3.client("s3")
             bucket = self.BUCKET
@@ -387,6 +387,7 @@ class TestCalrissianJobLauncher:
             launch_config=calrissian_launch_config,
             namespace=self.NAMESPACE,
             name_base="r-456",
+            s3_region="tatooine-east-1",
             s3_bucket=s3_calrissian_bucket,
         )
         res = launcher.run_cwl_workflow(
@@ -396,6 +397,7 @@ class TestCalrissianJobLauncher:
         )
         assert res == {
             "output.txt": CalrissianS3Result(
+                s3_region="tatooine-east-1",
                 s3_bucket=s3_calrissian_bucket,
                 s3_key="1234-abcd-5678-efgh/r-456-cal-cwl-01234567/output.txt",
             ),
@@ -540,6 +542,7 @@ class TestCalrissianJobLauncher:
                 cwl_arguments=["--message", "Howdy Earth!"],
                 output_paths=["output.txt"],
             )
+
 
 class TestCalrissianS3Result:
     @pytest.fixture

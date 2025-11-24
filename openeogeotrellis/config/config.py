@@ -94,6 +94,7 @@ class GpsBackendConfig(OpenEoBackendConfig):
     setup_kerberos_auth: bool = not _is_kube_deploy
 
     # TODO: possible to disable enrichment by default?
+    # TODO: bad config name: enrichment is not only about opensearch anymore (it's even being phased out completely)
     opensearch_enrich: bool = True
     # TODO: eliminate hardcoded VITO/Terrascope resources
     default_opensearch_endpoint: str = "https://services.terrascope.be/catalogue"
@@ -330,3 +331,5 @@ class GpsBackendConfig(OpenEoBackendConfig):
     supports_async_tasks: bool = False
 
     read_results_metadata_file_retry_settings: dict = attrs.Factory(lambda: dict(tries=1))  # fail immediately
+
+    load_stac_deduplicate_items_default: bool = False

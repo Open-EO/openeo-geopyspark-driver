@@ -7,7 +7,7 @@ import stat
 import sys
 import time
 from copy import deepcopy
-from functools import partial
+from functools import lru_cache, partial
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 from urllib.parse import urlparse
@@ -78,9 +78,11 @@ from openeogeotrellis.utils import (
     json_default,
     log_memory,
     to_jsonable,
+    to_s3_url,
     unzip,
     wait_till_path_available,
     add_permissions_with_failsafe,
+    BadlyHashable,
 )
 
 logger = logging.getLogger("openeogeotrellis.deploy.batch_job")
@@ -290,7 +292,9 @@ def run_job(
     job_options = job_specification.get("job_options", {})
     parsed_job_options: JobOptions = JobOptions.from_dict(job_options)
 
-    is_stac11 = job_options.get("stac-version-experimental", "1.0") == "1.1"
+    attach_derived_from_document = job_options.get("derived-from-document-experimental", False)
+    omit_derived_from_links = parsed_job_options.omit_derived_from_links or attach_derived_from_document
+    is_stac11 = job_options.get("stac-version-experimental", "1.0") == "1.1" or attach_derived_from_document
 
     try:
         # We actually expect type Path, but in reality paths as strings tend to
@@ -338,7 +342,6 @@ def run_job(
             "node_caching",
             EVAL_ENV_KEY.ALLOW_EMPTY_CUBES,
             EVAL_ENV_KEY.DO_EXTENT_CHECK,
-            EVAL_ENV_KEY.LOAD_STAC_APPLY_LCFM_IMPROVEMENTS,
         ]
         env_values.update({k: job_options[k] for k in job_option_whitelist if k in job_options})
         env = EvalEnv(env_values)
@@ -386,14 +389,8 @@ def run_job(
             is_item=is_stac11,
         )
         # perform a first metadata write _before_ actually computing the result. This provides a bit more info, even if the job fails.
-        write_metadata(
-            {
-                **result_metadata,
-                **_get_tracker_metadata("", omit_derived_from_links=parsed_job_options.omit_derived_from_links),
-            },
-            metadata_file,
-            is_stac11,
-        )
+        tracker_metadata = _get_tracker_metadata("", omit_derived_from_links=omit_derived_from_links)
+        write_metadata({**result_metadata, **tracker_metadata}, metadata_file, is_stac11, attach_derived_from_document)
 
         for result in results:
             result.options["batch_mode"] = True
@@ -575,7 +572,7 @@ def run_job(
             is_item=is_stac11,
         )
 
-        tracker_metadata = _get_tracker_metadata("", omit_derived_from_links=parsed_job_options.omit_derived_from_links)
+        tracker_metadata = _get_tracker_metadata("", omit_derived_from_links=omit_derived_from_links)
         if "sar_backscatter_soft_errors" in tracker_metadata.get("usage", {}):
             soft_errors = tracker_metadata["usage"]["sar_backscatter_soft_errors"]["value"]
             if soft_errors > max_soft_errors_ratio:
@@ -586,7 +583,7 @@ def run_job(
             if is_stac11
             else {**result_metadata, **tracker_metadata}
         )
-        write_metadata(meta, metadata_file, is_stac11)
+        write_metadata(meta, metadata_file, is_stac11, attach_derived_from_document)
         logger.debug("Starting GDAL-based retrieval of asset metadata")
 
         assets_for_result_metadata = {
@@ -621,7 +618,8 @@ def run_job(
                     job_dir=job_dir,
                     remove_exported_assets=job_options.get("remove-exported-assets", False),
                     enable_merge=job_options.get("export-workspace-enable-merge", False),
-                    omit_derived_from_links=parsed_job_options.omit_derived_from_links,
+                    omit_derived_from_links=omit_derived_from_links,
+                    attach_derived_from_document=attach_derived_from_document,
                 )
             else:
                 _export_to_workspaces(
@@ -631,22 +629,20 @@ def run_job(
                     job_dir=job_dir,
                     remove_exported_assets=job_options.get("remove-exported-assets", False),
                     enable_merge=job_options.get("export-workspace-enable-merge", False),
-                    omit_derived_from_links=parsed_job_options.omit_derived_from_links,
+                    omit_derived_from_links=omit_derived_from_links,
                 )
     finally:
         if len(tracker_metadata) == 0:
-            tracker_metadata = _get_tracker_metadata(
-                "", omit_derived_from_links=parsed_job_options.omit_derived_from_links
-            )
+            tracker_metadata = _get_tracker_metadata("", omit_derived_from_links=omit_derived_from_links)
         meta = (
             {**result_metadata, **tracker_metadata, **{"items": items}}
             if is_stac11
             else {**result_metadata, **tracker_metadata}
         )
-        write_metadata(meta, metadata_file, is_stac11)
+        write_metadata(meta, metadata_file, is_stac11, attach_derived_from_document)
 
 
-def write_metadata(metadata: dict, metadata_file: Path, is_stac11:bool):
+def write_metadata(metadata: dict, metadata_file: Path, is_stac11: bool, attach_derived_from_document: bool):
     def log_asset_hrefs(context: str):
         if is_stac11:
             items = {item["id"]: item for item in metadata.get("items", [])}
@@ -661,6 +657,17 @@ def write_metadata(metadata: dict, metadata_file: Path, is_stac11:bool):
     if ConfigParams().is_kube_deploy:
         out_metadata = _convert_asset_outputs_to_s3_urls(metadata)
     log_asset_hrefs("output")
+
+    if attach_derived_from_document:
+        out_metadata = deepcopy(out_metadata)  # avoid mutating an object that is going to be reused
+
+        for auxiliary_link in _copy_auxiliary_links(
+            auxiliary_links=BadlyHashable(out_metadata.get("auxiliary_links", [])),
+            job_dir=metadata_file.parent,  # TODO: ugly way to get job_dir
+            for_export_workspace=False,
+        ):
+            for item in out_metadata.get("items", []):
+                item.setdefault("links", []).append(auxiliary_link)
 
     with open(metadata_file, "w") as f:
         json.dump(out_metadata, f, default=json_default)
@@ -677,6 +684,38 @@ def write_metadata(metadata: dict, metadata_file: Path, is_stac11:bool):
         s3_instance.upload_file(str(metadata_file), bucket, str(metadata_file).strip("/"))
 
 
+@lru_cache
+def _copy_auxiliary_links(*, auxiliary_links: BadlyHashable, job_dir: Path, for_export_workspace: bool) -> List[dict]:
+    """files should be downloadable from the web app driver"""
+    # enforce keyword arguments because distinct argument patterns lead to separate cache entries in lru_cache
+
+    copied_auxiliary_links = []
+
+    for auxiliary_link in auxiliary_links.target:
+        auxiliary_file = Path(auxiliary_link["href"])
+
+        # TODO: add proper cross-region support
+        if ConfigParams().is_kube_deploy and not for_export_workspace:
+            from openeogeotrellis.utils import s3_client
+
+            job_bucket = get_backend_config().s3_bucket_name
+            auxiliary_prefix = str(job_dir / auxiliary_file.name).strip("/")
+            s3_instance = s3_client()
+            s3_instance.upload_file(str(auxiliary_file), job_bucket, auxiliary_prefix)
+            downloadable_href = to_s3_url(auxiliary_prefix, job_bucket)
+            logger.debug(f"uploaded {auxiliary_file} to {downloadable_href}")
+        else:
+            downloadable_file = job_dir / auxiliary_file.name
+            shutil.copy(auxiliary_file, downloadable_file)
+            add_permissions(downloadable_file, stat.S_IWGRP | stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
+            logger.debug(f"copied {auxiliary_file} to {downloadable_file}")
+            downloadable_href = f"file://{downloadable_file}"
+
+        copied_auxiliary_links.append(dict(auxiliary_link, href=downloadable_href))
+
+    return copied_auxiliary_links
+
+
 def _export_to_workspaces_item(
     result: SaveResult,
     result_metadata: dict,
@@ -685,7 +724,8 @@ def _export_to_workspaces_item(
     job_dir: Path,
     remove_exported_assets: bool,
     enable_merge: bool,
-    omit_derived_from_links: bool = False,
+    omit_derived_from_links: bool,
+    attach_derived_from_document: bool,
 ):
     workspace_repository: WorkspaceRepository = backend_config_workspace_repository
     workspace_exports = sorted(
@@ -703,6 +743,7 @@ def _export_to_workspaces_item(
             result_metadata,
             item_metadata=result_items_metadata,
             omit_derived_from_links=omit_derived_from_links,
+            attach_derived_from_document=attach_derived_from_document,
         )
     ]
 
@@ -870,9 +911,9 @@ def _export_to_workspaces(
 
 
 def _export_to_workspace(
-    common_path: str, source_uri: str, target: Workspace, merge: str, remove_original: bool
+    common_path: str, source_uri: Union[str, Path], target: Workspace, merge: str, remove_original: bool
 ) -> str:
-    uri_parts = urlparse(source_uri)
+    uri_parts = urlparse(str(source_uri))
 
     if not uri_parts.scheme or uri_parts.scheme.lower() == "file":
         return target.import_file(common_path, Path(uri_parts.path), merge, remove_original)
@@ -895,7 +936,7 @@ def _write_exported_stac_collection(
         properties = {"datetime": asset.get("datetime")}
 
         if properties["datetime"] is None:
-            start_datetime = asset.get("start_datetime") or result_metadata.get("start_datetime")
+            start_datetime = asset.get("start_datetime") or result_metadata.get("start_datetime") or "1970-01-01T00:00:00Z"
             properties["datetime"] = start_datetime
 
         stac_item = {
@@ -971,8 +1012,11 @@ def _write_exported_stac_collection_from_item(
     result_metadata: dict,
     *,
     item_metadata: dict,
-    omit_derived_from_links: bool = False,
+    omit_derived_from_links: bool,
+    attach_derived_from_document: bool,
 ) -> List[Path]:  # TODO: change to Set?
+    job_id = get_job_id(default="unknown-job")
+
     def write_stac_item_file(item: dict) -> Path:
         assets = dict()
         asset_datetimes = set()
@@ -1008,10 +1052,18 @@ def _write_exported_stac_collection_from_item(
             "stac_version": "1.1.0",
             "id": item["id"],
             "geometry": item.get("geometry"),
-            "bbox":item.get("bbox"),
-            "properties":item.get("properties",{"datetime": result_metadata.get("start_datetime")}),
-            "links":[],
-            "assets":assets
+            "bbox": item.get("bbox"),
+            "properties": item.get("properties", {"datetime": result_metadata.get("start_datetime")}),
+            "links": (
+                _copy_auxiliary_links(
+                    auxiliary_links=BadlyHashable(_get_tracker_metadata("").get("auxiliary_links", [])),
+                    job_dir=job_dir,
+                    for_export_workspace=True,
+                )
+                if attach_derived_from_document
+                else []
+            ),
+            "assets": assets,
         }
         item_file = get_abs_path_of_asset(Path(f"{item['id']}.json"), job_dir)
         item_file.parent.mkdir(parents=True, exist_ok=True)
@@ -1020,8 +1072,14 @@ def _write_exported_stac_collection_from_item(
 
         return item_file
 
-    item_files = [
-        write_stac_item_file(item) for item in item_metadata.values()
+    item_files = [write_stac_item_file(item) for item in item_metadata.values()]
+
+    derived_from_links = [
+        link
+        for link in _get_tracker_metadata(
+            "", omit_derived_from_links=omit_derived_from_links or attach_derived_from_document
+        ).get("links", [])
+        if link["rel"] == "derived_from"
     ]
 
     def item_link(item_file: Path) -> dict:
@@ -1031,8 +1089,6 @@ def _write_exported_stac_collection_from_item(
             "rel": "item",
             "type": "application/geo+json",
         }
-
-    job_id = get_job_id(default="unknown-job")
 
     stac_collection = {
         "type": "Collection",
@@ -1044,14 +1100,7 @@ def _write_exported_stac_collection_from_item(
             "spatial": {"bbox": [result_metadata.get("bbox", [-180, -90, 180, 90])]},
             "temporal": {"interval": [[result_metadata.get("start_datetime"), result_metadata.get("end_datetime")]]},
         },
-        "links": (
-            [item_link(item_file) for item_file in item_files]
-            + [
-                link
-                for link in _get_tracker_metadata("", omit_derived_from_links=omit_derived_from_links).get("links", [])
-                if link["rel"] == "derived_from"
-            ]
-        ),
+        "links": [item_link(item_file) for item_file in item_files] + derived_from_links,
     }
 
     collection_file = job_dir / "collection.json"  # TODO: file is reused for each result

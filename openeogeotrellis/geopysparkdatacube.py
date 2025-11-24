@@ -42,6 +42,8 @@ from openeo_driver.errors import FeatureUnsupportedException, OpenEOApiException
 from openeo_driver.ProcessGraphDeserializer import convert_node, _period_to_intervals
 from openeo_driver.save_result import AggregatePolygonResult
 from openeo_driver.utils import EvalEnv, smart_bool
+from openeogeotrellis.collections import convert_scala_metadata
+from openeogeotrellis.collections.sentinel3 import _instant_ms_to_minute
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.geopysparkcubemetadata import GeopysparkCubeMetadata
@@ -2528,6 +2530,18 @@ class GeopysparkDataCube(DriverDataCube):
                 return {str(os.path.basename(zarr_file + ".zip")):{"href": zarr_file + ".zip", "roles": ["data"]}}
             return {str(os.path.basename(zarr_file)):{"href": zarr_file, "roles": ["data"]}}
 
+        elif format == "DEBUG_GENERAL":
+            # Write debug information to a json file without going through spark.
+            debug_output = {"layer_metadata": {}, "cube_metadata": {}}
+            metadata_sc = max_level.layer_metadata
+            layer_metadata_py: gps.Metadata = convert_scala_metadata(
+                metadata_sc, epoch_ms_to_datetime=_instant_ms_to_minute, logger=_log
+            )
+            debug_output["layer_metadata"] = layer_metadata_py.to_dict()
+            if self.metadata:
+                debug_output["cube_metadata"] = self.metadata.to_dict()
+            with open(filename, "w") as f:
+                json.dump(debug_output, f, indent=4, default=str)
         else:
             raise OpenEOApiException(
                 message="Format {f!r} is not supported".format(f=format),

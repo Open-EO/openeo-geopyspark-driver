@@ -6,6 +6,7 @@ import dataclasses
 import datetime
 import grp
 import hashlib
+import itertools
 import json
 import logging
 import math
@@ -897,6 +898,13 @@ def unzip(*iterables: Iterable) -> Iterator:
     return zip(*iterables)
 
 
+def partition(pred: Callable[[T], bool], iterable: Iterable[T]) -> Tuple[Iterator[T], Iterator[T]]:
+    """Use a predicate to partition entries into true entries and false entries."""
+
+    t1, t2 = itertools.tee(iterable)
+    return filter(pred, t1), itertools.filterfalse(pred, t2)
+
+
 def md5_checksum(file: Path) -> str:
     """Computes the MD5 checksum of a (potentially large) file."""
 
@@ -905,3 +913,24 @@ def md5_checksum(file: Path) -> str:
         for chunk in iter(lambda: f.read(4096), b""):
             hash_md5.update(chunk)
     return hash_md5.hexdigest()
+
+
+class BadlyHashable:
+    """
+    Simplifies implementation by allowing unhashable types in a dict-based cache. The number of
+    items in this cache is very small anyway.
+    """
+
+    def __init__(self, target):
+        self.target = target
+
+    def __eq__(self, other):
+        equal = isinstance(other, BadlyHashable) and self.target == other.target
+        print(f"{equal=}")
+        return equal
+
+    def __hash__(self):
+        return 0
+
+    def __repr__(self):
+        return f"BadlyHashable({repr(self.target)})"

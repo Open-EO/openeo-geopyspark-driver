@@ -52,6 +52,14 @@ class GeopysparkCubeMetadata(CollectionMetadata):
         if self.has_temporal_dimension() and temporal_extent is not None:
             self.temporal_dimension.extent = temporal_extent
 
+    def to_dict(self) -> dict:
+        return {
+            "_orig_metadata": self._orig_metadata,
+            "dimensions": [str(d) for d in self._dimensions],
+            "spatial_extent": self._spatial_extent,
+            "temporal_extent": self._temporal_extent,
+        }
+
     def _clone_and_update(
             self, metadata: dict = None, dimensions: List[Dimension] = None,
             spatial_extent: dict = None, temporal_extent: tuple = None, **kwargs

@@ -61,7 +61,7 @@ class ContainerImageRecord:
     preference: int = 0
 
     # UDF runtimes supported by this image
-    # Used (after filtering and massaging) to expose to end user in ``ET /udf_runtimes` response
+    # Used (after filtering and massaging) to expose to end user in ``GET /udf_runtimes` response
     udf_runtimes: List[_UdfRuntimeAndVersion] = dataclasses.field(default_factory=list)
 
     # Mapping of UDF runtime library names to versions included in this image

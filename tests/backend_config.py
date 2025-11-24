@@ -30,7 +30,10 @@ oidc_providers = [
 def _stac_api_workspace() -> StacApiWorkspace:
     import pystac
     from pathlib import Path
+    from urllib.parse import urlparse
     from openeogeotrellis.utils import s3_client
+
+    target_bucket = "openeo-fake-bucketname"
 
     def export_asset(asset: pystac.Asset, merge: PurePath, relative_asset_path: PurePath, remove_original: bool) -> str:
         assert isinstance(merge, PurePath)
@@ -42,14 +45,25 @@ def _stac_api_workspace() -> StacApiWorkspace:
         assert not asset.get_absolute_href().startswith("s3://")
 
         source_path = Path(asset.get_absolute_href())
-        target_bucket = "openeo-fake-bucketname"
         target_key = str(merge / relative_asset_path)
 
         s3_client().upload_file(str(source_path), target_bucket, target_key)
 
         return f"s3://{target_bucket}/{target_key}"
 
-    return StacApiWorkspace("https://stac.test", export_asset, asset_alternate_id="s3")
+    def export_link(link: pystac.Link, merge: PurePath, remove_original: bool) -> str:
+        if remove_original:
+            raise NotImplementedError
+
+        uri_parts = urlparse(link.href)
+        assert uri_parts.scheme == "file"
+
+        source_path = Path(uri_parts.path)
+        s3_client().upload_file(str(source_path), target_bucket, str(merge / source_path.name))
+
+        return f"s3://{target_bucket}/{merge / source_path.name}"
+
+    return StacApiWorkspace("https://stac.test", export_asset, asset_alternate_id="s3", export_link=export_link)
 
 
 os.makedirs("/tmp/workspace", exist_ok=True)
@@ -69,7 +83,7 @@ config = GpsBackendConfig(
     layer_catalog_files=[str(Path(__file__).parent / "layercatalog.json")],
     opensearch_enrich=False,
     # TODO: avoid hardcoded reference to VITO/Terrascope resource
-    default_opensearch_endpoint="https://services.terrascope.be/catalogue/",
+    default_opensearch_endpoint="https://services.terrascope.be/catalogue",
     oidc_providers=oidc_providers,
     zookeeper_hosts=["zk.test"],
     zookeeper_root_path="/openeo-test",

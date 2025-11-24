@@ -142,11 +142,11 @@ def setup_local_spark(log_dir: Path = Path.cwd(), verbosity=0):
         -Dscala.concurrent.context.numThreads=8"
     conf.set("spark.executor.extraJavaOptions", sparkExecutorJavaOptions)
 
-    _log.info("[conftest.py] SparkContext.getOrCreate with {c!r}".format(c=conf.getAll()))
+    _log.info("[local.py] SparkContext.getOrCreate with {c!r}".format(c=conf.getAll()))
     context = SparkContext.getOrCreate(conf)
     context.setLogLevel(logging_threshold)
     _log.info(
-        "[conftest.py] JVM info: {d!r}".format(
+        "[local.py] JVM info: {d!r}".format(
             d={
                 f: context._jvm.System.getProperty(f)
                 for f in [
@@ -164,17 +164,17 @@ def setup_local_spark(log_dir: Path = Path.cwd(), verbosity=0):
         scala_version = context._jvm.scala.util.Properties.versionNumberString()
     except Exception as e:
         scala_version = str(e)
-    _log.info("[conftest.py] Scala version: " + scala_version)
+    _log.info("[local.py] Scala version: " + scala_version)
 
     if OPENEO_LOCAL_DEBUGGING:
         # TODO: Activate default logging for this message
         print("Spark web UI: " + str(context.uiWebUrl))
 
     if OPENEO_LOCAL_DEBUGGING:
-        _log.info("[conftest.py] Validating the Spark context")
+        _log.info("[local.py] Validating the Spark context")
         dummy = context._jvm.org.openeo.geotrellis.OpenEOProcesses()
         answer = context.parallelize([9, 10, 11, 12]).sum()
-        _log.info("[conftest.py] " + repr((answer, dummy)))
+        _log.info("[local.py] " + repr((answer, dummy)))
 
     return context
 

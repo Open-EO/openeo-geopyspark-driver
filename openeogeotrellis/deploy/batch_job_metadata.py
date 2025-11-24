@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 
 import pyproj
 from openeo.util import Rfc3339, dict_no_none
+from openeo_driver.constants import ITEM_LINK_PROPERTY
 from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import DryRunDataTracer
@@ -26,7 +27,7 @@ from openeogeotrellis._version import __version__
 from openeogeotrellis.backend import JOB_METADATA_FILENAME, GeoPySparkBackendImplementation
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.integrations.gdal import _extract_gdal_asset_raster_metadata
-from openeogeotrellis.utils import _make_set_for_key, get_jvm, to_s3_url
+from openeogeotrellis.utils import _make_set_for_key, get_jvm, to_s3_url, map_optional
 
 logger = logging.getLogger(__name__)
 
@@ -366,6 +367,7 @@ def _get_tracker_metadata(tracker_id: str = "", *, omit_derived_from_links: bool
     tracker = _get_tracker(tracker_id)
     usage = {}
     all_links = []
+    auxiliary_links = []
 
     if tracker is not None:
         tracker_results = tracker.asDict()
@@ -393,6 +395,20 @@ def _get_tracker_metadata(tracker_id: str = "", *, omit_derived_from_links: bool
                 for link in links
             )
 
+        def _as_auxiliary_links(auxiliary_files) -> List[dict]:
+            return [
+                {
+                    "href": str(auxiliary_file.getPath()),
+                    "type": auxiliary_file.getMediaType(),
+                    # TODO: "title", get from Java object and add
+                    "rel": "aux",  # TODO: get from Java object
+                    ITEM_LINK_PROPERTY.EXPOSE_AUXILIARY: True,
+                }
+                for auxiliary_file in auxiliary_files
+            ]
+
+        auxiliary_links = map_optional(_as_auxiliary_links, tracker_results.get("auxiliary_files"))
+
     from openeogeotrellis.metrics_tracking import global_tracker
 
     python_metrics = global_tracker().as_dict()
@@ -410,4 +426,4 @@ def _get_tracker_metadata(tracker_id: str = "", *, omit_derived_from_links: bool
             usage["input_pixel"]["value"] += sar_backscatter_inputpixels / (1024 * 1024)
         else:
             usage["input_pixel"] = {"value": sar_backscatter_inputpixels / (1024 * 1024), "unit": "mega-pixel"}
-    return dict_no_none(usage=usage if usage != {} else None, links=all_links)
+    return dict_no_none(usage=usage or None, links=all_links, auxiliary_links=auxiliary_links or None)

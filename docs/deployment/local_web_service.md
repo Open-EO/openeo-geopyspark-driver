@@ -2,7 +2,7 @@
 
 ## Limitations
 
-1. Data will have to be loaded via load_stac, or you configure own collections
+1. Data will have to be loaded via `load_stac`, or you configure own collections
 2. No batch job support, only synchronous
 3. Resources are limited to single machine
 
@@ -23,7 +23,6 @@ sh local_service.sh
 ```
 
 ### Using Docker Compose
-
 
 
 ```shell

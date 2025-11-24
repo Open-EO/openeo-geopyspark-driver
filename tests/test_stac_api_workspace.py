@@ -7,6 +7,7 @@ import pytest
 import responses
 from mock import ANY, MagicMock
 from openeo_driver.testing import DictSubSet
+from openeo_driver.constants import ITEM_LINK_PROPERTY
 from pystac import Collection, Extent, SpatialExtent, TemporalExtent, Item, Asset, Link, RelType
 
 from openeogeotrellis.workspace import StacApiWorkspace
@@ -285,7 +286,8 @@ def test_merge_target_supports_path(requests_mock, tmp_path):
     export_asset_mock.assert_called_once_with(ANY, target, ANY, ANY)
 
 
-def test_vito_stac_api_workspace_helper(tmp_path, requests_mock, mock_s3_bucket):
+@pytest.mark.parametrize("add_auxiliary_file", [False, True])
+def test_vito_stac_api_workspace_helper(tmp_path, requests_mock, mock_s3_bucket, add_auxiliary_file):
     disk_asset_path = tmp_path / "disk_asset.tif"
     with open(disk_asset_path, "wb") as f:
         f.write(b"disk_asset.tif\n")
@@ -298,10 +300,15 @@ def test_vito_stac_api_workspace_helper(tmp_path, requests_mock, mock_s3_bucket)
         Metadata={"md5": "187812e0004062471a40ed0063f6f9d8", "mtime": "1756477082123456789"},
     )
 
+    auxiliary_file_path = tmp_path / "auxiliary_file"
+    with open(auxiliary_file_path, "w") as f:
+        f.write("auxiliary_file\n")
+
     collection = _collection(
         root_path=tmp_path / "collection",
         collection_id="collection",
         asset_hrefs=[str(disk_asset_path), f"s3://{mock_s3_bucket.name}/{source_key}"],
+        auxiliary_href=str(auxiliary_file_path) if add_auxiliary_file else None,
     )
 
     oidc_issuer = "https://auth.test/realms/test"
@@ -360,12 +367,24 @@ def test_vito_stac_api_workspace_helper(tmp_path, requests_mock, mock_s3_bucket)
     )
     assert create_item_mock.call_count == 3  # two items of which the first one is retried with a new access token
 
+    for create_item_request in create_item_mock.request_history:
+        assert create_item_request.json()["links"] == (
+            [
+                {
+                    "rel": "aux",
+                    "href": f"s3://openeo-fake-bucketname/assets/path/to/collection/auxiliary_file",
+                }
+            ]
+            if add_auxiliary_file
+            else []
+        )
+
     object_keys = {obj.key for obj in mock_s3_bucket.objects.all()}
     assert object_keys == {
         source_key,  # the original is still there
         "assets/path/to/collection/disk_asset.tif",
         "assets/path/to/collection/object_asset.tif",
-    }
+    } | ({"assets/path/to/collection/auxiliary_file"} if add_auxiliary_file else set())
 
     disk_asset_object_metadata = mock_s3_bucket.Object(key="assets/path/to/collection/disk_asset.tif").metadata
     object_asset_object_metadata = mock_s3_bucket.Object(key="assets/path/to/collection/object_asset.tif").metadata
@@ -375,6 +394,46 @@ def test_vito_stac_api_workspace_helper(tmp_path, requests_mock, mock_s3_bucket)
 
     assert object_asset_object_metadata["md5"] == "187812e0004062471a40ed0063f6f9d8"
     assert object_asset_object_metadata["mtime"] == "1756477082123456789"
+
+
+def test_merge_with_auxiliary_file(requests_mock, tmp_path):
+    asset_path = Path("/path") / "to" / "asset.tif"
+    collection = _collection(
+        root_path=tmp_path / "collection",
+        collection_id="collection",
+        asset_hrefs=[str(asset_path)],
+        auxiliary_href="/path/to/auxiliary_file",
+    )
+
+    export_link_mock = MagicMock(wraps=_export_link)
+
+    stac_api_workspace = StacApiWorkspace(
+        root_url="https://stacapi.test",
+        export_asset=_export_asset,
+        asset_alternate_id="file",
+        export_link=export_link_mock,
+    )
+
+    target = PurePath("new_collection")
+
+    _mock_stac_api_root_catalog(requests_mock, stac_api_workspace.root_url)
+    requests_mock.get(f"{stac_api_workspace.root_url}/collections/{target.name}", status_code=404)
+    create_collection_mock = requests_mock.post(f"{stac_api_workspace.root_url}/collections")
+    create_item_mock = requests_mock.post(f"{stac_api_workspace.root_url}/collections/{target.name}/items")
+
+    stac_api_workspace.merge(collection, target)
+
+    assert create_collection_mock.called_once
+
+    assert create_item_mock.called_once
+    assert create_item_mock.last_request.json()["links"] == [
+        {
+            "rel": "aux",
+            "href": "/path/to/auxiliary_file",
+        }
+    ]
+
+    export_link_mock.assert_called_once_with(ANY, target, False)
 
 
 def _mock_stac_api_root_catalog(requests_mock, root_url: str):
@@ -396,11 +455,20 @@ def _mock_stac_api_root_catalog(requests_mock, root_url: str):
 
 
 def _export_asset(asset: Asset, merge: PurePath, relative_asset_path: PurePath, remove_original: bool) -> str:
+    assert isinstance(asset, Asset)
     assert isinstance(merge, PurePath)
     assert isinstance(relative_asset_path, PurePath)
     assert isinstance(remove_original, bool)
     # actual copying behaviour is the responsibility of the workspace creator
     return asset.get_absolute_href()
+
+
+def _export_link(link: Link, merge: PurePath, remove_original: bool) -> str:
+    assert isinstance(link, Link)
+    assert isinstance(merge, PurePath)
+    assert isinstance(remove_original, bool)
+    # actual copying behaviour is the responsibility of the workspace creator
+    return link.get_absolute_href()
 
 
 def _asset_workspace_uris(collection: Collection, alternate_key: str) -> Dict[str, str]:
@@ -417,6 +485,7 @@ def _collection(
     asset_hrefs: List[str] = None,
     spatial_extent: SpatialExtent = SpatialExtent([[-180, -90, 180, 90]]),
     temporal_extent: TemporalExtent = TemporalExtent([[None, None]]),
+    auxiliary_href: str = None,
 ) -> Collection:
     if asset_hrefs is None:
         asset_hrefs = []
@@ -434,9 +503,16 @@ def _collection(
         item_id = asset_key = asset_filename
 
         item = Item(id=item_id, geometry=None, bbox=None, datetime=dt.datetime.now(dt.timezone.utc), properties={})
-        asset = Asset(href=asset_href)
 
+        asset = Asset(href=asset_href)
         item.add_asset(asset_key, asset)
+
+        if auxiliary_href is not None:
+            auxiliary_link = Link(
+                rel="aux", target=auxiliary_href, extra_fields={ITEM_LINK_PROPERTY.EXPOSE_AUXILIARY: True}
+            )
+            item.add_link(auxiliary_link)
+
         collection.add_item(item)
 
         collection.add_link(Link(rel=RelType.DERIVED_FROM, target=f"https://src.test/{asset_filename}"))

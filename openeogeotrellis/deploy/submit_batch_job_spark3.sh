@@ -104,9 +104,19 @@ sparkDriverJavaOptions="-Dscala.concurrent.context.maxThreads=2 -Dpixels.treshol
  -Dopeneo.logging.threshold=$logging_threshold\
  --add-opens=java.base/sun.net.util=ALL-UNNAMED"
 
+
+if [[ $YARN_CONTAINER_RUNTIME_DOCKER_IMAGE =~ .*python([0-9]{3}).* ]]; then
+  PYTHON_VERSION="${BASH_REMATCH[1]}"
+  FORMATTED_PYTHON_VERSION="${PYTHON_VERSION:0:1}.${PYTHON_VERSION:1}"
+else
+  FORMATTED_PYTHON_VERSION="3.8"
+fi
+JEP_DIR="/opt/venv/lib64/python${FORMATTED_PYTHON_VERSION}/site-packages/jep"
+
+
 sparkExecutorJavaOptions="-Dlog4j2.configurationFile=file:/opt/venv/openeo-geopyspark-driver/batch_job_log4j2.xml\
  -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService\
- -Dscala.concurrent.context.numThreads=8 -Djava.library.path=/opt/venv/lib/python3.8/site-packages/jep\
+ -Dscala.concurrent.context.numThreads=8 -Djava.library.path=${JEP_DIR}\
  -Dopeneo.logging.threshold=$logging_threshold"
 
 
@@ -142,6 +152,15 @@ docker_client_config_args()
     echo "--conf spark.yarn.appMasterEnv.YARN_CONTAINER_RUNTIME_DOCKER_CLIENT_CONFIG=${yarn_container_runtime_docker_client_config} --conf spark.executorEnv.YARN_CONTAINER_RUNTIME_DOCKER_CLIENT_CONFIG=${yarn_container_runtime_docker_client_config}"
   fi
 }
+
+if [ "${CLUSTER_VERSION}" == "new" ]; then
+    export SPARK_SHUFFLE_SERVICE_NAME="spark_shuffle_350"
+    export SPARK_SHUFFLE_SERVICE_PORT=7668
+else
+    export SPARK_SHUFFLE_SERVICE_NAME="spark_shuffle_320"
+    export SPARK_SHUFFLE_SERVICE_PORT=7557
+fi
+
 
 spark-submit \
  --master yarn --deploy-mode cluster \
@@ -212,7 +231,7 @@ spark-submit \
  --conf spark.executor.extraClassPath=${logging_jar:-} \
  --conf spark.hadoop.yarn.timeline-service.enabled=false \
  --conf spark.hadoop.yarn.client.failover-proxy-provider=org.apache.hadoop.yarn.client.ConfiguredRMFailoverProxyProvider \
- --conf spark.shuffle.service.name=spark_shuffle_320 --conf spark.shuffle.service.port=7557 \
+ --conf spark.shuffle.service.name=${SPARK_SHUFFLE_SERVICE_NAME} --conf spark.shuffle.service.port=${SPARK_SHUFFLE_SERVICE_PORT} \
  --conf spark.eventLog.enabled=true \
  --conf spark.eventLog.dir=${spark_eventlog_dir} \
  --conf spark.history.fs.logDirectory=${spark_history_fs_logdirectory} \

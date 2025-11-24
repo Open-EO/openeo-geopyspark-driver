@@ -71,6 +71,7 @@ from pandas import Timedelta
 from py4j.java_gateway import JVMView
 from py4j.protocol import Py4JJavaError
 from pyspark import SparkContext
+from pyspark.util import _parse_memory
 from shapely.geometry import Polygon
 from urllib3 import Retry
 from xarray import DataArray
@@ -147,6 +148,7 @@ from openeogeotrellis.utils import (
     single_value,
     to_projected_polygons,
     zk_client,
+    BadlyHashable,
 )
 from openeogeotrellis.vault import Vault
 
@@ -491,8 +493,19 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                         },
                         "ZLEVEL": {
                             "type": "integer",
-                            "description": "Specifies the compression level used for DEFLATE compression. As a number from 1 to 9, lowest and fastest compression is 1 while 9 is highest and slowest compression.",
+                            "description": "Specifies the compression level used for compression. For deflate compression, use a number from 1 (lowest/fastest) to 9 (highest/slowest). For zstd compression, use a number from -7 (lowest/fastest) to 22 (highest/slowest).",
                             "default": 6
+                        },
+                        "compression": {
+                            "type": "string",
+                            "description": "Specifies the compression algorithm to use.",
+                            "default": "deflate",
+                            "enum": ["deflate", "zstd"]
+                        },
+                        "predictor": {
+                            "type": "integer",
+                            "description": "Specifies the GTiff prediction type: 1 (none), 2 ((integer) horizontal differencing) or 3 (floating point prediction)",
+                            "default": 1
                         },
                         "sample_by_feature": {
                             "type": "boolean",
@@ -1848,7 +1861,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 process_graph=job_process_graph, api_version=api_version
             )
             if image_name:
-                log.info(f'Forcing job_options["image-name"]={image_name!r}')
+                log.info(f'No job_options["image-name"] specified, setting fallback {image_name!r}')
                 job_options["image-name"] = image_name
 
         if (dependencies is None
@@ -2024,6 +2037,10 @@ class GpsBatchJobs(backend.BatchJobs):
 
             batch_job_cfg_secret_name = k8s_get_batch_job_cfg_secret_name(spark_app_id)
 
+            max_result_size = '5g'
+            if _parse_memory(max_result_size) < _parse_memory(options.driver_memory):
+                max_result_size = options.driver_memory
+
             sparkapplication_dict = k8s_render_manifest_template(
                 "sparkapplication.yaml.j2",
                 job_name=spark_app_id,
@@ -2036,6 +2053,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 job_id_full=job_id,
                 driver_cores=str(options.driver_cores),
                 driver_memory=options.driver_memory,
+                max_result_size=max_result_size,
                 driver_memory_overhead=options.driver_memory_overhead,
                 executor_cores=options.executor_cores,
                 executor_corerequest=executor_corerequest,
@@ -2205,7 +2223,7 @@ class GpsBatchJobs(backend.BatchJobs):
             image_name = self._udf_runtimes.udf_runtime_image_repository.get_image_from_udf_runtimes(
                 runtimes=udf_runtimes
             )
-            logger.info(f"Determined container image {image_name!r} from process graph with {set(udf_runtimes)}")
+            logger.info(f"Determined container image {image_name!r} from process graph with {set(udf_runtimes)=}")
             return image_name
         except Exception as e:
             logger.warning(f"Failed to determine container image from process graph: {e}", exc_info=True)
@@ -2434,24 +2452,6 @@ class GpsBatchJobs(backend.BatchJobs):
                         projected_polygons = to_projected_polygons(self._jvm, geometry=geometries, crs=crs, buffer_points=True)
                         geometry = projected_polygons.polygons()
                         crs = projected_polygons.crs()
-
-                    class BadlyHashable:
-                        """
-                        Simplifies implementation by allowing unhashable types in a dict-based cache. The number of
-                        items in this cache is very small anyway.
-                        """
-
-                        def __init__(self, target):
-                            self.target = target
-
-                        def __eq__(self, other):
-                            return isinstance(other, BadlyHashable) and self.target == other.target
-
-                        def __hash__(self):
-                            return 0
-
-                        def __repr__(self):
-                            return f"BadlyHashable({repr(self.target)})"
 
                     if not geometries:
                         hashable_geometry = (bbox.xmin(), bbox.ymin(), bbox.xmax(), bbox.ymax())
