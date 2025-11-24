@@ -286,7 +286,8 @@ def test_merge_target_supports_path(requests_mock, tmp_path):
     export_asset_mock.assert_called_once_with(ANY, target, ANY, ANY)
 
 
-def test_vito_stac_api_workspace_helper(tmp_path, requests_mock, mock_s3_bucket):
+@pytest.mark.parametrize("add_auxiliary_file", [False, True])
+def test_vito_stac_api_workspace_helper(tmp_path, requests_mock, mock_s3_bucket, add_auxiliary_file):
     disk_asset_path = tmp_path / "disk_asset.tif"
     with open(disk_asset_path, "wb") as f:
         f.write(b"disk_asset.tif\n")
@@ -307,7 +308,7 @@ def test_vito_stac_api_workspace_helper(tmp_path, requests_mock, mock_s3_bucket)
         root_path=tmp_path / "collection",
         collection_id="collection",
         asset_hrefs=[str(disk_asset_path), f"s3://{mock_s3_bucket.name}/{source_key}"],
-        auxiliary_href=str(auxiliary_file_path),  # TODO: drop (parametrize) to test backwards compatibility
+        auxiliary_href=str(auxiliary_file_path) if add_auxiliary_file else None,
     )
 
     oidc_issuer = "https://auth.test/realms/test"
@@ -367,20 +368,23 @@ def test_vito_stac_api_workspace_helper(tmp_path, requests_mock, mock_s3_bucket)
     assert create_item_mock.call_count == 3  # two items of which the first one is retried with a new access token
 
     for create_item_request in create_item_mock.request_history:
-        assert create_item_request.json()["links"] == [
-            {
-                "rel": "aux",
-                "href": f"s3://openeo-fake-bucketname/assets/path/to/collection/auxiliary_file",
-            }
-        ]
+        assert create_item_request.json()["links"] == (
+            [
+                {
+                    "rel": "aux",
+                    "href": f"s3://openeo-fake-bucketname/assets/path/to/collection/auxiliary_file",
+                }
+            ]
+            if add_auxiliary_file
+            else []
+        )
 
     object_keys = {obj.key for obj in mock_s3_bucket.objects.all()}
     assert object_keys == {
         source_key,  # the original is still there
         "assets/path/to/collection/disk_asset.tif",
         "assets/path/to/collection/object_asset.tif",
-        "assets/path/to/collection/auxiliary_file",
-    }
+    } | ({"assets/path/to/collection/auxiliary_file"} if add_auxiliary_file else set())
 
     disk_asset_object_metadata = mock_s3_bucket.Object(key="assets/path/to/collection/disk_asset.tif").metadata
     object_asset_object_metadata = mock_s3_bucket.Object(key="assets/path/to/collection/object_asset.tif").metadata
