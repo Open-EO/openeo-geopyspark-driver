@@ -112,7 +112,6 @@ def load_stac(
     user: Optional[User] = env.get("user")
 
     requested_bbox = BoundingBox.from_dict_or_none(load_params.spatial_extent, default_crs="EPSG:4326")
-
     temporal_extent = load_params.temporal_extent
     from_date, until_date = map(dt.datetime.fromisoformat, normalize_temporal_extent(temporal_extent))
     to_date = (
@@ -121,37 +120,34 @@ def load_stac(
         else until_date - dt.timedelta(milliseconds=1)
     )
 
-    spatiotemporal_extent = _SpatioTemporalExtent(bbox=requested_bbox, from_date=from_date, to_date=to_date)
-
-    property_filter = PropertyFilter(properties=all_properties, env=env)
-
-    collection = None
-    metadata = None
-
-    netcdf_with_time_dimension = False
-
-    backend_config = get_backend_config()
-    poll_interval_seconds = backend_config.job_dependencies_poll_interval_seconds
-    max_poll_delay_seconds = backend_config.job_dependencies_max_poll_delay_seconds
-    max_poll_time = time.time() + max_poll_delay_seconds
-
-    dependency_job_info = (
-        _await_dependency_job(
-            url=url,
-            user=user,
-            batch_jobs=batch_jobs,
-            poll_interval_seconds=poll_interval_seconds,
-            max_poll_delay_seconds=max_poll_delay_seconds,
-            max_poll_time=max_poll_time,
-        )
-        if user and batch_jobs
-        else None
-    )
-
-    stac_metadata_parser = _StacMetadataParser(logger=logger)
-
     try:
+        spatiotemporal_extent = _spatiotemporal_extent_from_load_params(load_params)
+
+        netcdf_with_time_dimension = False
+
+        backend_config = get_backend_config()
+        poll_interval_seconds = backend_config.job_dependencies_poll_interval_seconds
+        max_poll_delay_seconds = backend_config.job_dependencies_max_poll_delay_seconds
+        max_poll_time = time.time() + max_poll_delay_seconds
+
+        dependency_job_info = (
+            _await_dependency_job(
+                url=url,
+                user=user,
+                batch_jobs=batch_jobs,
+                poll_interval_seconds=poll_interval_seconds,
+                max_poll_delay_seconds=max_poll_delay_seconds,
+                max_poll_time=max_poll_time,
+            )
+            if user and batch_jobs
+            else None
+        )
+
+        stac_metadata_parser = _StacMetadataParser(logger=logger)
+
         if dependency_job_info and batch_jobs:
+            # TODO: improve metadata for this case
+            metadata = GeopysparkCubeMetadata(metadata={})
             item_collection = ItemCollection.from_own_job(
                 job=dependency_job_info, spatiotemporal_extent=spatiotemporal_extent, batch_jobs=batch_jobs, user=user
             )
@@ -174,6 +170,8 @@ def load_stac(
                     raise ProcessParameterUnsupportedException(process="load_stac", parameter="properties")
 
                 item = stac_object
+                # TODO: improve metadata for this case
+                metadata = GeopysparkCubeMetadata(metadata={})
                 collection_band_names = stac_metadata_parser.bands_from_stac_item(item=item).band_names()
                 item_collection = ItemCollection.from_stac_item(item=item, spatiotemporal_extent=spatiotemporal_extent)
             elif isinstance(stac_object, pystac.Collection) and _supports_item_search(stac_object):
@@ -184,6 +182,7 @@ def load_stac(
                 )
 
                 collection_band_names = stac_metadata_parser.bands_from_stac_collection(collection=collection).band_names()
+                property_filter = PropertyFilter(properties=all_properties, env=env)
 
                 item_collection = ItemCollection.from_stac_api(
                     collection=stac_object,
@@ -191,7 +190,9 @@ def load_stac(
                     property_filter=property_filter,
                     spatiotemporal_extent=spatiotemporal_extent,
                     use_filter_extension=feature_flags.get("use-filter-extension", True),
-                    skip_datetime_filter=((temporal_extent is DEFAULT_TEMPORAL_EXTENT) or netcdf_with_time_dimension),
+                    skip_datetime_filter=(
+                        (load_params.temporal_extent is DEFAULT_TEMPORAL_EXTENT) or netcdf_with_time_dimension
+                    ),
                 )
             else:
                 assert isinstance(stac_object, pystac.Catalog)  # static Catalog + Collection
@@ -216,7 +217,7 @@ def load_stac(
         # TODO: smarter and more fine-grained deduplication behavior?
         #       - enable by default or only do it on STAC API usage?
         #       - allow custom deduplicators (e.g. based on layer catalog info about openeo collections)
-        if feature_flags.get("deduplicate_items", backend_config.load_stac_deduplicate_items_default):
+        if feature_flags.get("deduplicate_items", get_backend_config().load_stac_deduplicate_items_default):
             item_collection = item_collection.deduplicated(deduplicator=ItemDeduplicator())
 
         items_found = len(item_collection.items) > 0
@@ -232,6 +233,8 @@ def load_stac(
         proj_epsg = None
         proj_bbox = None
         proj_shape = None
+
+        stac_metadata_parser = _StacMetadataParser(logger=logger)
 
         # The minimum cell size per band name across all assets
         band_cell_size: Dict[str, Tuple[float, float]] = {}
@@ -358,9 +361,6 @@ def load_stac(
             reason=f"Unable to derive a spatial extent from provided STAC metadata: {url}, "
             f"please provide a spatial extent.",
         )
-
-    if not metadata:
-        metadata = GeopysparkCubeMetadata(metadata={})
 
     if "x" not in metadata.dimension_names():
         metadata = metadata.add_spatial_dimension(name="x", extent=[])
@@ -695,6 +695,17 @@ class _SpatioTemporalExtent:
         return any(self._spatial_extent.intersects(bbox) for bbox in bboxes) and any(
             self._temporal_extent.intersects_interval(interval) for interval in intervals
         )
+
+
+def _spatiotemporal_extent_from_load_params(load_params: LoadParameters) -> _SpatioTemporalExtent:
+    bbox = BoundingBox.from_dict_or_none(load_params.spatial_extent, default_crs="EPSG:4326")
+    from_date, until_date = map(dt.datetime.fromisoformat, normalize_temporal_extent(load_params.temporal_extent))
+    to_date = (
+        dt.datetime.combine(until_date, dt.time.max, until_date.tzinfo)
+        if from_date == until_date
+        else until_date - dt.timedelta(milliseconds=1)
+    )
+    return _SpatioTemporalExtent(bbox=bbox, from_date=from_date, to_date=to_date)
 
 
 def _get_item_temporal_extent(item: pystac.Item) -> Tuple[datetime.datetime, datetime.datetime]:

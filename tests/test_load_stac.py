@@ -35,6 +35,7 @@ from openeogeotrellis.load_stac import (
     extract_own_job_info,
     load_stac,
     ItemDeduplicator,
+    _spatiotemporal_extent_from_load_params,
 )
 from openeogeotrellis.testing import DummyStacApiServer, gps_config_overrides
 
@@ -794,6 +795,17 @@ def test_get_proj_metadata_from_asset(item_properties, asset_extra_fields, expec
 
 
 class TestTemporalExtent:
+    def test_as_tuple_empty(self):
+        extent = _TemporalExtent(None, None)
+        assert extent.as_tuple() == (None, None)
+
+    def test_as_tuple(self):
+        extent = _TemporalExtent("2025-03-04T11:11:11", "2025-05-06T22:22:22")
+        assert extent.as_tuple() == (
+            datetime.datetime(2025, 3, 4, 11, 11, 11, tzinfo=datetime.timezone.utc),
+            datetime.datetime(2025, 5, 6, 22, 22, 22, tzinfo=datetime.timezone.utc),
+        )
+
     def test_intersects_empty(self):
         extent = _TemporalExtent(None, None)
         assert extent.intersects("1789-07-14") == True
@@ -1020,6 +1032,40 @@ class TestSpatioTemporalExtent:
             ),
         )
         assert extent.collection_intersects(collection) == expected
+
+
+@pytest.mark.parametrize(
+    ["load_params", "expected"],
+    [
+        (
+            LoadParameters(),
+            (
+                None,
+                (
+                    datetime.datetime(2000, 1, 1, tzinfo=datetime.timezone.utc),
+                    datetime.datetime(2024, 1, 2, 3, 4, 4, microsecond=999000, tzinfo=datetime.timezone.utc),
+                ),
+            ),
+        ),
+        (
+            LoadParameters(
+                spatial_extent={"west": 10, "south": 20, "east": 30, "north": 40},
+                temporal_extent=("2025-09-01", "2025-10-11"),
+            ),
+            (
+                BoundingBox(west=10, south=20, east=30, north=40, crs=4326),
+                (
+                    datetime.datetime(2025, 9, 1, tzinfo=datetime.timezone.utc),
+                    datetime.datetime(2025, 10, 10, 23, 59, 59, microsecond=999000, tzinfo=datetime.timezone.utc),
+                ),
+            ),
+        ),
+    ],
+)
+def test_spatiotemporal_extent_from_load_params(load_params, expected, time_machine):
+    time_machine.move_to("2024-01-02T03:04:05Z")
+    extent = _spatiotemporal_extent_from_load_params(load_params)
+    assert (extent.spatial_extent.as_bbox(), extent.temporal_extent.as_tuple()) == expected
 
 
 class TestPropertyFilter:
