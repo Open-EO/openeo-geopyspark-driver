@@ -263,14 +263,6 @@ def load_stac(
                 proj_epsg, proj_bbox, proj_shape = _get_proj_metadata(asset=asset, item=itm)
 
                 asset_band_names_from_metadata = stac_metadata_parser.bands_from_stac_asset(asset=asset).band_names()
-                if not asset_band_names_from_metadata:
-                    # In the case that the assets have no information about the band that they represent.
-                    if len(collection_band_names) == 1:
-                        asset_band_names_from_metadata = collection_band_names
-                    elif not collection_band_names and len(override_band_names) == 1:
-                        # For example, in the DEM collections on CDSE. Assume that the asset relates to the DEM band.
-                        asset_band_names_from_metadata = override_band_names
-
                 logger.debug(f"from intersecting_items: {itm.id=} {asset_id=} {asset_band_names_from_metadata=}")
 
                 if not load_params.bands:
