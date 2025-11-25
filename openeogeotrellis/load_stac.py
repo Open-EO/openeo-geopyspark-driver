@@ -263,19 +263,17 @@ def load_stac(
                 proj_epsg, proj_bbox, proj_shape = _get_proj_metadata(asset=asset, item=itm)
 
                 asset_band_names_from_metadata = stac_metadata_parser.bands_from_stac_asset(asset=asset).band_names()
-                if not asset_band_names_from_metadata:
-                    # In the case that the assets have no information about the band that they represent.
-                    if len(collection_band_names) == 1:
-                        asset_band_names_from_metadata = collection_band_names
-                    elif not collection_band_names and len(override_band_names) == 1:
-                        # For example, in the DEM collections on CDSE. Assume that the asset relates to the DEM band.
-                        asset_band_names_from_metadata = override_band_names
-
                 logger.debug(f"from intersecting_items: {itm.id=} {asset_id=} {asset_band_names_from_metadata=}")
 
                 if not load_params.bands:
                     # No user-specified band filtering: follow band names from metadata (if possible)
-                    asset_band_names = asset_band_names_from_metadata or [asset_id]
+                    if not asset_band_names_from_metadata and asset_id not in collection_band_names and asset_id not in override_band_names:
+                        if len(override_band_names) == 1:
+                            asset_band_names = override_band_names
+                        elif len(collection_band_names) == 1:
+                            asset_band_names = collection_band_names
+                    else:
+                        asset_band_names = asset_band_names_from_metadata or [asset_id]
                 elif isinstance(load_params.bands, list) and asset_id in load_params.bands:
                     # User-specified asset_id as band name: use that directly
                     if asset_id not in collection_band_names:
@@ -285,8 +283,19 @@ def load_stac(
                     # User-specified bands match with band names in metadata
                     asset_band_names = asset_band_names_from_metadata
                 else:
-                    # No match with load_params.bands in some way -> skip this asset
-                    continue
+                    # No match with load_params.bands in some way
+                    if not asset_band_names_from_metadata:
+                        # In the case that the assets have no information about the band that they represent.
+                        if len(collection_band_names) == 1:
+                            asset_band_names_from_metadata = collection_band_names
+                            asset_band_names = asset_band_names_from_metadata
+                        elif not collection_band_names and len(override_band_names) == 1:
+                            # For example, in the DEM collections on CDSE. Assume that the asset relates to the DEM band.
+                            asset_band_names_from_metadata = override_band_names
+                            asset_band_names = asset_band_names_from_metadata
+                        else:
+                            # Skip this asset
+                            continue
 
                 if band_names_tracker.already_seen(sorted(asset_band_names)):
                     # We've already seen this set of bands (e.g. at finer GSD), so skip this asset.
