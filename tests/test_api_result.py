@@ -4799,6 +4799,35 @@ class TestLoadStac:
             assert b02_10m is None
             assert b03_10m is None
 
+    def test_load_stac_ogd1299(self, api110, tmp_path):
+        """Use case from https://github.com/Open-EO/openeo-geopyspark-driver/issues/1299"""
+        process_graph = {
+            "loadstac1": {
+                "process_id": "load_stac",
+                "arguments": {
+                    "url": "https://stac.terrascope.be/collections/terrascope-s5p-l3-ch4-td-v2",
+                    "spatial_extent": {
+                        "crs": "EPSG:4326",
+                        "east": 6.5154,
+                        "north": 51.5678,
+                        "south": 49.51234,
+                        "west": 2.54578,
+                    },
+                    "temporal_extent": ["2024-06-02", "2024-06-09"],
+                    "bands": ["CH4"],
+                },
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "loadstac1"}, "format": "GTiff"},
+                "result": True,
+            },
+        }
+
+        res = api110.result(process_graph).assert_status_code(200)
+        res_path = tmp_path / "res.nc"
+        res_path.write_bytes(res.data)
+
 
 class TestEtlApiReporting:
     @pytest.fixture(autouse=True)
