@@ -36,6 +36,7 @@ from openeogeotrellis.load_stac import (
     load_stac,
     ItemDeduplicator,
     _spatiotemporal_extent_from_load_params,
+    construct_item_collection,
 )
 from openeogeotrellis.testing import DummyStacApiServer, gps_config_overrides
 
@@ -1942,6 +1943,14 @@ class TestItemCollection:
             "item-3",
             "item-5",
         }
+
+
+def test_construct_item_collection_minimal(dummy_stac_api):
+    url = f"{dummy_stac_api}/collections/collection-123"
+    item_collection, metadata, bands, netcdf_with_time_dimension = construct_item_collection(url=url)
+    assert set(item.id for item in item_collection.items) == {"item-1", "item-2", "item-3"}
+    assert bands == []
+    # TODO deeper tests that also involve various band metadata detection aspects
 
 
 class TestItemDeduplicator:
