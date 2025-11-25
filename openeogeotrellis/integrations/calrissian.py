@@ -588,7 +588,7 @@ class CalrissianJobLauncher:
 
                 try:
                     output = subprocess.check_output(
-                        ["python", "-m", "cwltool", "--disable-color", "--validate", cwl_file_path, args_file_path],
+                        ["cwltool", "--disable-color", "--validate", cwl_file_path, args_file_path],
                         text=True,
                         stderr=subprocess.PIPE,
                         cwd=str(Path(cwl_file_path).parent),
