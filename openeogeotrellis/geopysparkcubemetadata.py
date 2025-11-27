@@ -83,19 +83,21 @@ class GeopysparkCubeMetadata(CollectionMetadata):
     def spatial_extent(self) -> dict:
         return self._spatial_extent
 
-    def filter_temporal(self, start, end) -> 'GeopysparkCubeMetadata':
+    def filter_temporal(self, start: Union[str, None], end: Union[str, None]) -> "GeopysparkCubeMetadata":
         """Create new metadata instance with temporal extent"""
-        if self._temporal_extent is None:  # TODO: only for backwards compatibility
-            return self._clone_and_update(temporal_extent=(start, end))
-
-        this_start, this_end = self._temporal_extent
-
         # TODO: support time zones other than UTC
-        if this_start > end or this_end < start:  # compared lexicographically
-            # no overlap
-            raise ValueError(start, end)
+        # TODO: support date/datetime objects too
+        # TODO: move this implementation up the class hierarchy?
+        this_start, this_end = self._temporal_extent or (None, None)
 
-        return self._clone_and_update(temporal_extent=(max(this_start, start), min(this_end, end)))
+        filtered_extent = (
+            this_start if (start is None or (this_start and start and start < this_start)) else start,
+            this_end if (end is None or (this_end and end and this_end < end)) else end,
+        )
+        if all(filtered_extent) and filtered_extent[1] < filtered_extent[0]:
+            raise ValueError(f"Empty temporal extent after filtering {self._temporal_extent} with {(start, end)}.")
+
+        return self._clone_and_update(temporal_extent=filtered_extent)
 
     @property
     def temporal_extent(self) -> tuple:

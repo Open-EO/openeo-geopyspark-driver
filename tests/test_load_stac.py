@@ -12,7 +12,6 @@ import responses
 from openeo.testing.stac import StacDummyBuilder
 from openeo_driver.backend import BatchJobMetadata, BatchJobs, LoadParameters
 from openeo_driver.errors import OpenEOApiException
-from openeo_driver.ProcessGraphDeserializer import DEFAULT_TEMPORAL_EXTENT
 from openeo_driver.users import User
 from openeo_driver.util.date_math import now_utc
 from openeo_driver.util.geometry import BoundingBox
@@ -381,7 +380,6 @@ def test_empty_cube_from_stac_api(requests_mock, featureflags, env, expectation)
             url=stac_collection_url,
             load_params=LoadParameters(
                 spatial_extent={"west": 0.0, "south": 50.0, "east": 1.0, "north": 51.0},
-                temporal_extent=DEFAULT_TEMPORAL_EXTENT,
                 bands=["B04", "B03", "B02"],  # required if empty cubes allowed
                 featureflags=featureflags,
             ),
@@ -425,7 +423,6 @@ def test_empty_cube_from_non_intersecting_item(requests_mock, test_data, feature
             url=stac_item_url,
             load_params=LoadParameters(
                 spatial_extent={"west": 0.0, "south": 50.0, "east": 1.0, "north": 51.0},
-                temporal_extent=DEFAULT_TEMPORAL_EXTENT,
                 featureflags=featureflags,
             ),
             env=env,
@@ -1040,13 +1037,7 @@ class TestSpatioTemporalExtent:
     [
         (
             LoadParameters(),
-            (
-                None,
-                (
-                    datetime.datetime(2000, 1, 1, tzinfo=datetime.timezone.utc),
-                    datetime.datetime(2024, 1, 2, 3, 4, 4, microsecond=999000, tzinfo=datetime.timezone.utc),
-                ),
-            ),
+            (None, (None, None)),
         ),
         (
             LoadParameters(
@@ -1058,6 +1049,36 @@ class TestSpatioTemporalExtent:
                 (
                     datetime.datetime(2025, 9, 1, tzinfo=datetime.timezone.utc),
                     datetime.datetime(2025, 10, 10, 23, 59, 59, microsecond=999000, tzinfo=datetime.timezone.utc),
+                ),
+            ),
+        ),
+        (
+            LoadParameters(temporal_extent=("2025-09-01", "2025-09-01")),
+            (
+                None,
+                (
+                    datetime.datetime(2025, 9, 1, tzinfo=datetime.timezone.utc),
+                    datetime.datetime(2025, 9, 1, 23, 59, 59, microsecond=999999, tzinfo=datetime.timezone.utc),
+                ),
+            ),
+        ),
+        (
+            LoadParameters(temporal_extent=(None, "2025-09-05")),
+            (
+                None,
+                (
+                    None,
+                    datetime.datetime(2025, 9, 4, 23, 59, 59, microsecond=999000, tzinfo=datetime.timezone.utc),
+                ),
+            ),
+        ),
+        (
+            LoadParameters(temporal_extent=("2025-09-01", None)),
+            (
+                None,
+                (
+                    datetime.datetime(2025, 9, 1, tzinfo=datetime.timezone.utc),
+                    None,
                 ),
             ),
         ),
