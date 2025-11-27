@@ -591,7 +591,8 @@ def construct_item_collection(
                 spatiotemporal_extent=spatiotemporal_extent,
                 use_filter_extension=feature_flags.get("use-filter-extension", True),
                 skip_datetime_filter=(
-                    (load_params.temporal_extent is DEFAULT_TEMPORAL_EXTENT) or netcdf_with_time_dimension
+                    (load_params.temporal_extent in [DEFAULT_TEMPORAL_EXTENT, (None, None)])
+                    or netcdf_with_time_dimension
                 ),
             )
         else:
