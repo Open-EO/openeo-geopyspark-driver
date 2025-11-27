@@ -129,11 +129,13 @@ def load_stac(
         if from_date == until_date
         else until_date - dt.timedelta(milliseconds=1)
     )
+    spatiotemporal_extent = _spatiotemporal_extent_from_load_params(load_params)
 
     try:
         item_collection, metadata, collection_band_names, netcdf_with_time_dimension = construct_item_collection(
             url=url,
             load_params=load_params,
+            spatiotemporal_extent=spatiotemporal_extent,
             property_filter_pg_map=property_filter_pg_map,
             batch_jobs=batch_jobs,
             env=env,
@@ -505,6 +507,7 @@ def construct_item_collection(
     url: str,
     *,
     load_params: Optional[LoadParameters] = None,
+    spatiotemporal_extent: Optional[_SpatioTemporalExtent] = None,
     property_filter_pg_map: Optional[PropertyFilterPGMap] = None,
     batch_jobs: Optional[openeo_driver.backend.BatchJobs] = None,
     env: Optional[EvalEnv] = None,
@@ -516,11 +519,10 @@ def construct_item_collection(
     Construct Stac ItemCollection from given load_stac URL
     """
     load_params = load_params or LoadParameters()
+    spatiotemporal_extent = spatiotemporal_extent or _SpatioTemporalExtent()
     property_filter_pg_map = property_filter_pg_map or {}
     env = env or EvalEnv()
     feature_flags = feature_flags or {}
-
-    spatiotemporal_extent = _spatiotemporal_extent_from_load_params(load_params)
 
     netcdf_with_time_dimension = False
 
@@ -591,6 +593,7 @@ def construct_item_collection(
                 spatiotemporal_extent=spatiotemporal_extent,
                 use_filter_extension=feature_flags.get("use-filter-extension", True),
                 skip_datetime_filter=(
+                    # TODO: How to eliminate this load_params case?
                     (load_params.temporal_extent in [DEFAULT_TEMPORAL_EXTENT, (None, None)])
                     or netcdf_with_time_dimension
                 ),
@@ -707,7 +710,13 @@ class _SpatialExtent:
 
 class _SpatioTemporalExtent:
     # TODO: move this to a more generic location for better reuse
-    def __init__(self, *, bbox: Union[BoundingBox, None], from_date: DateTimeLikeOrNone, to_date: DateTimeLikeOrNone):
+    def __init__(
+        self,
+        *,
+        bbox: Union[BoundingBox, None] = None,
+        from_date: DateTimeLikeOrNone = None,
+        to_date: DateTimeLikeOrNone = None,
+    ):
         self._spatial_extent = _SpatialExtent(bbox=bbox)
         self._temporal_extent = _TemporalExtent(from_date=from_date, to_date=to_date)
 
