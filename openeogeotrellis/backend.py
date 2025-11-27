@@ -684,7 +684,7 @@ Example usage:
         ])
 
         # TODO: eliminate duplication with GeoPySparkLayerCatalog.load_collection
-        temporal_extent = load_params.temporal_extent
+        temporal_extent = load_params.temporal_extent or (None, None)
         from_date, to_date = normalize_temporal_extent(temporal_extent)
         metadata = metadata.filter_temporal(from_date, to_date)
 
@@ -829,7 +829,7 @@ Example usage:
         ])
 
         # TODO: eliminate duplication with load_disk_data
-        temporal_extent = load_params.temporal_extent
+        temporal_extent = load_params.temporal_extent or (None, None)
         from_date, to_date = normalize_temporal_extent(temporal_extent)
         metadata = metadata.filter_temporal(from_date, to_date)
 
