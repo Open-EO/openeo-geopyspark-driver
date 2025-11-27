@@ -86,12 +86,18 @@ class LoadStacException(OpenEOApiException):
         self.url = url
 
 
+# Some type aliases related to property filters expressed as process graphs
+# (e.g. like the `properties` argument of `load_collection`/`load_stac` processes).
+FlatProcessGraph = Dict[str, dict]
+PropertyFilterPGMap = Dict[str, FlatProcessGraph]
+
+
 def load_stac(
     url: str,
     *,
     load_params: LoadParameters,
     env: EvalEnv,
-    layer_properties: Optional[Dict[str, Any]] = None,
+    layer_properties: Optional[PropertyFilterPGMap] = None,
     batch_jobs: Optional[openeo_driver.backend.BatchJobs] = None,
     override_band_names: Optional[List[str]] = None,
     stac_io: Optional[pystac.stac_io.StacIO] = None,
@@ -107,7 +113,11 @@ def load_stac(
 
     allow_empty_cubes = feature_flags.get("allow_empty_cube", env.get(EVAL_ENV_KEY.ALLOW_EMPTY_CUBES, False))
 
-    all_properties = {**layer_properties, **load_params.properties} if layer_properties else load_params.properties
+    # Merge property filters from layer catalog and user-provided load_params (with precedence to load_params)
+    property_filter_pg_map: PropertyFilterPGMap = {
+        **(layer_properties or {}),
+        **(load_params.properties or {}),
+    }
 
     user: Optional[User] = env.get("user")
 
@@ -124,7 +134,7 @@ def load_stac(
         item_collection, metadata, collection_band_names, netcdf_with_time_dimension = construct_item_collection(
             url=url,
             load_params=load_params,
-            all_properties=all_properties,
+            property_filter_pg_map=property_filter_pg_map,
             batch_jobs=batch_jobs,
             env=env,
             feature_flags=feature_flags,
@@ -495,7 +505,7 @@ def construct_item_collection(
     url: str,
     *,
     load_params: Optional[LoadParameters] = None,
-    all_properties: Optional[Dict[str, Any]] = None,
+    property_filter_pg_map: Optional[PropertyFilterPGMap] = None,
     batch_jobs: Optional[openeo_driver.backend.BatchJobs] = None,
     env: Optional[EvalEnv] = None,
     feature_flags: Optional[Dict[str, Any]] = None,
@@ -506,7 +516,7 @@ def construct_item_collection(
     Construct Stac ItemCollection from given load_stac URL
     """
     load_params = load_params or LoadParameters()
-    all_properties = all_properties or {}
+    property_filter_pg_map = property_filter_pg_map or {}
     env = env or EvalEnv()
     feature_flags = feature_flags or {}
 
@@ -554,7 +564,7 @@ def construct_item_collection(
         )
 
         if isinstance(stac_object, pystac.Item):
-            if load_params.properties:
+            if property_filter_pg_map:
                 # as dictated by the load_stac spec
                 # TODO: it's not that simple see https://github.com/Open-EO/openeo-processes/issues/536 and https://github.com/Open-EO/openeo-processes/pull/547
                 raise ProcessParameterUnsupportedException(process="load_stac", parameter="properties")
@@ -572,7 +582,7 @@ def construct_item_collection(
             )
 
             band_names = stac_metadata_parser.bands_from_stac_collection(collection=collection).band_names()
-            property_filter = PropertyFilter(properties=all_properties, env=env)
+            property_filter = PropertyFilter(properties=property_filter_pg_map, env=env)
 
             item_collection = ItemCollection.from_stac_api(
                 collection=stac_object,
@@ -589,7 +599,7 @@ def construct_item_collection(
             catalog = stac_object
             metadata = GeopysparkCubeMetadata(metadata=catalog.to_dict(include_self_link=False, transform_hrefs=False))
 
-            if load_params.properties:
+            if property_filter_pg_map:
                 # as dictated by the load_stac spec
                 # TODO: it's not that simple see https://github.com/Open-EO/openeo-processes/issues/536 and https://github.com/Open-EO/openeo-processes/pull/547
                 raise ProcessParameterUnsupportedException(process="load_stac", parameter="properties")
@@ -1369,7 +1379,7 @@ class PropertyFilter:
 
     # TODO: move this utility to a more generic location for better reuse
 
-    def __init__(self, properties: Dict[str, dict], *, env: Optional[EvalEnv] = None):
+    def __init__(self, properties: PropertyFilterPGMap, *, env: Optional[EvalEnv] = None):
         self._properties = properties
         self._env = env or EvalEnv()
 
