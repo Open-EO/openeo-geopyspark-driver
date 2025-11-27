@@ -1040,13 +1040,7 @@ class TestSpatioTemporalExtent:
     [
         (
             LoadParameters(),
-            (
-                None,
-                (
-                    datetime.datetime(2000, 1, 1, tzinfo=datetime.timezone.utc),
-                    datetime.datetime(2024, 1, 2, 3, 4, 4, microsecond=999000, tzinfo=datetime.timezone.utc),
-                ),
-            ),
+            (None, (None, None)),
         ),
         (
             LoadParameters(
@@ -1058,6 +1052,36 @@ class TestSpatioTemporalExtent:
                 (
                     datetime.datetime(2025, 9, 1, tzinfo=datetime.timezone.utc),
                     datetime.datetime(2025, 10, 10, 23, 59, 59, microsecond=999000, tzinfo=datetime.timezone.utc),
+                ),
+            ),
+        ),
+        (
+            LoadParameters(temporal_extent=("2025-09-01", "2025-09-01")),
+            (
+                None,
+                (
+                    datetime.datetime(2025, 9, 1, tzinfo=datetime.timezone.utc),
+                    datetime.datetime(2025, 9, 1, 23, 59, 59, microsecond=999999, tzinfo=datetime.timezone.utc),
+                ),
+            ),
+        ),
+        (
+            LoadParameters(temporal_extent=(None, "2025-09-05")),
+            (
+                None,
+                (
+                    None,
+                    datetime.datetime(2025, 9, 4, 23, 59, 59, microsecond=999000, tzinfo=datetime.timezone.utc),
+                ),
+            ),
+        ),
+        (
+            LoadParameters(temporal_extent=("2025-09-01", None)),
+            (
+                None,
+                (
+                    datetime.datetime(2025, 9, 1, tzinfo=datetime.timezone.utc),
+                    None,
                 ),
             ),
         ),

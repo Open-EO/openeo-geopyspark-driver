@@ -36,7 +36,6 @@ from openeo_driver.errors import (
     ProcessParameterUnsupportedException,
 )
 from openeo_driver.jobregistry import PARTIAL_JOB_STATUS
-from openeo_driver.ProcessGraphDeserializer import DEFAULT_TEMPORAL_EXTENT
 from openeo_driver.users import User
 from openeo_driver.util.geometry import BoundingBox, GeometryBufferer
 from openeo_driver.util.http import requests_with_retry
@@ -134,7 +133,6 @@ def load_stac(
     try:
         item_collection, metadata, collection_band_names, netcdf_with_time_dimension = construct_item_collection(
             url=url,
-            load_params=load_params,
             spatiotemporal_extent=spatiotemporal_extent,
             property_filter_pg_map=property_filter_pg_map,
             batch_jobs=batch_jobs,
@@ -506,7 +504,6 @@ def load_stac(
 def construct_item_collection(
     url: str,
     *,
-    load_params: Optional[LoadParameters] = None,
     spatiotemporal_extent: Optional[_SpatioTemporalExtent] = None,
     property_filter_pg_map: Optional[PropertyFilterPGMap] = None,
     batch_jobs: Optional[openeo_driver.backend.BatchJobs] = None,
@@ -518,7 +515,6 @@ def construct_item_collection(
     """
     Construct Stac ItemCollection from given load_stac URL
     """
-    load_params = load_params or LoadParameters()
     spatiotemporal_extent = spatiotemporal_extent or _SpatioTemporalExtent()
     property_filter_pg_map = property_filter_pg_map or {}
     env = env or EvalEnv()
@@ -592,11 +588,8 @@ def construct_item_collection(
                 property_filter=property_filter,
                 spatiotemporal_extent=spatiotemporal_extent,
                 use_filter_extension=feature_flags.get("use-filter-extension", True),
-                skip_datetime_filter=(
-                    # TODO: How to eliminate this load_params case?
-                    (load_params.temporal_extent in [DEFAULT_TEMPORAL_EXTENT, (None, None)])
-                    or netcdf_with_time_dimension
-                ),
+                # TODO #1312 why skipping datetime filter especially for netcdf with time dimension?
+                skip_datetime_filter=netcdf_with_time_dimension,
             )
         else:
             assert isinstance(stac_object, pystac.Catalog)  # static Catalog + Collection
@@ -641,6 +634,9 @@ class _TemporalExtent:
 
     def as_tuple(self) -> Tuple[Union[datetime.datetime, None], Union[datetime.datetime, None]]:
         return self.from_date, self.to_date
+
+    def is_unbounded(self) -> bool:
+        return self.from_date is None and self.to_date is None
 
     def intersects(
         self,
@@ -752,12 +748,18 @@ class _SpatioTemporalExtent:
 
 def _spatiotemporal_extent_from_load_params(load_params: LoadParameters) -> _SpatioTemporalExtent:
     bbox = BoundingBox.from_dict_or_none(load_params.spatial_extent, default_crs="EPSG:4326")
-    from_date, until_date = map(dt.datetime.fromisoformat, normalize_temporal_extent(load_params.temporal_extent))
-    to_date = (
-        dt.datetime.combine(until_date, dt.time.max, until_date.tzinfo)
-        if from_date == until_date
-        else until_date - dt.timedelta(milliseconds=1)
-    )
+    (from_date, until_date) = (to_datetime_utc_unless_none(d) for d in load_params.temporal_extent)
+    if until_date is None:
+        to_date = None
+    elif from_date == until_date:
+        # Fallback mechanism for legacy usage patterns
+        to_date = datetime.datetime.combine(until_date, datetime.time.max, until_date.tzinfo)
+        logger.warning(
+            f"Invalid temporal extent (identical start and end: {from_date!r}). Normalized end to {to_date!r}."
+        )
+    else:
+        # Convert openEO temporal extent convention (end-exclusive) to internal(?) convention (end-inclusive)
+        to_date = until_date - datetime.timedelta(milliseconds=1)
     return _SpatioTemporalExtent(bbox=bbox, from_date=from_date, to_date=to_date)
 
 
@@ -872,6 +874,7 @@ class ItemCollection:
         property_filter: PropertyFilter,
         spatiotemporal_extent: _SpatioTemporalExtent,
         use_filter_extension: Union[bool, str] = True,
+        # TODO: is it possible to eliminate the need for this parameter?
         skip_datetime_filter: bool = False,
         original_url: str = "n/a",
     ) -> ItemCollection:
@@ -919,12 +922,17 @@ class ItemCollection:
 
             bbox = spatiotemporal_extent.spatial_extent.as_bbox(crs="EPSG:4326")
             bbox = bbox.as_wsen_tuple() if bbox else None
+            query_datetime = (
+                None
+                if spatiotemporal_extent.temporal_extent.is_unbounded() or skip_datetime_filter
+                else spatiotemporal_extent.temporal_extent.as_tuple()
+            )
             search_request = client.search(
                 method=method,
                 collections=collection.id,
                 bbox=bbox,
                 limit=20,
-                datetime=None if skip_datetime_filter else spatiotemporal_extent.temporal_extent.as_tuple(),
+                datetime=query_datetime,
                 filter=cql2_filter,
                 fields=fields,
             )
