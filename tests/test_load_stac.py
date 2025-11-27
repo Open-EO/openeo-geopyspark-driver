@@ -12,7 +12,6 @@ import responses
 from openeo.testing.stac import StacDummyBuilder
 from openeo_driver.backend import BatchJobMetadata, BatchJobs, LoadParameters
 from openeo_driver.errors import OpenEOApiException
-from openeo_driver.ProcessGraphDeserializer import DEFAULT_TEMPORAL_EXTENT
 from openeo_driver.users import User
 from openeo_driver.util.date_math import now_utc
 from openeo_driver.util.geometry import BoundingBox
@@ -381,7 +380,6 @@ def test_empty_cube_from_stac_api(requests_mock, featureflags, env, expectation)
             url=stac_collection_url,
             load_params=LoadParameters(
                 spatial_extent={"west": 0.0, "south": 50.0, "east": 1.0, "north": 51.0},
-                temporal_extent=DEFAULT_TEMPORAL_EXTENT,
                 bands=["B04", "B03", "B02"],  # required if empty cubes allowed
                 featureflags=featureflags,
             ),
@@ -425,7 +423,6 @@ def test_empty_cube_from_non_intersecting_item(requests_mock, test_data, feature
             url=stac_item_url,
             load_params=LoadParameters(
                 spatial_extent={"west": 0.0, "south": 50.0, "east": 1.0, "north": 51.0},
-                temporal_extent=DEFAULT_TEMPORAL_EXTENT,
                 featureflags=featureflags,
             ),
             env=env,
