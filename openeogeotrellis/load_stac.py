@@ -142,13 +142,6 @@ def load_stac(
             user=user,
         )
 
-        # Deduplicate items
-        # TODO: smarter and more fine-grained deduplication behavior?
-        #       - enable by default or only do it on STAC API usage?
-        #       - allow custom deduplicators (e.g. based on layer catalog info about openeo collections)
-        if feature_flags.get("deduplicate_items", get_backend_config().load_stac_deduplicate_items_default):
-            item_collection = item_collection.deduplicated(deduplicator=ItemDeduplicator())
-
         items_found = len(item_collection.items) > 0
         if not allow_empty_cubes and not items_found:
             raise NoDataAvailableException()
@@ -607,6 +600,13 @@ def construct_item_collection(
             band_names = stac_metadata_parser.bands_from_stac_object(obj=stac_object).band_names()
 
             item_collection = ItemCollection.from_stac_catalog(catalog, spatiotemporal_extent=spatiotemporal_extent)
+
+    # Deduplicate items
+    # TODO: smarter and more fine-grained deduplication behavior?
+    #       - enable by default or only do it on STAC API usage?
+    #       - allow custom deduplicators (e.g. based on layer catalog info about openeo collections)
+    if feature_flags.get("deduplicate_items", get_backend_config().load_stac_deduplicate_items_default):
+        item_collection = item_collection.deduplicated(deduplicator=ItemDeduplicator())
 
     # TODO: possible to embed band names in metadata directly?
     return item_collection, metadata, band_names, netcdf_with_time_dimension
