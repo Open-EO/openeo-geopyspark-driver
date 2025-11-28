@@ -20,9 +20,10 @@ _log = logging.getLogger(__name__)
 
 
 @dataclasses.dataclass(frozen=True)
-class _SamplingInfo:
+class _GridInfo:
     """
-    Container of raster/sampling info in style of the STAC datacube extension ("cube:dimensions").
+    Container of raster/sampling/grid info
+    in style of the STAC datacube extension ("cube:dimensions").
     """
 
     crs: Union[str, int]
@@ -31,7 +32,7 @@ class _SamplingInfo:
     resolution: Union[Tuple[float, float], None] = None
 
     @classmethod
-    def from_datacube_metadata(cls, metadata: dict) -> _SamplingInfo:
+    def from_datacube_metadata(cls, metadata: dict) -> _GridInfo:
         """Construct from STAC-style 'datacube' metadata ("cube:dimensions")."""
         # TODO: leverage pystac here instead of DIY parsing?
         [dim_x] = [d for d in metadata["cube:dimensions"].values() if d["type"] == "spatial" and d["axis"] == "x"]
@@ -63,61 +64,71 @@ class _SamplingInfo:
 def _align_extent(
     extent: BoundingBox,
     *,
-    source_sampling: _SamplingInfo,
-    target_sampling: _SamplingInfo,
+    source_grid: _GridInfo,
+    target_grid: _GridInfo,
 ) -> BoundingBox:
 
-    if target_sampling.resolution is not None and source_sampling.resolution is None:
+    if target_grid.resolution is None and source_grid.resolution is None:
+        _log.info(f"Not realigning {extent=} ({source_grid=})")
         return extent
 
     if (
-        source_sampling.crs == 4326
+        source_grid.crs == 4326
         and extent.crs == "EPSG:4326"
-        and source_sampling.extent_x
-        and source_sampling.extent_y
-        and (target_sampling.resolution is None or target_sampling.resolution == source_sampling.resolution)
+        and source_grid.extent_x
+        and source_grid.extent_y
+        and (target_grid.resolution is None or target_grid.resolution == source_grid.resolution)
     ):
-
-        target_resolution = target_sampling.resolution or source_sampling.resolution
-
-        def snap(v: float, v_extent: Tuple[float, float], rounding: Callable, resolution: float):
-            vmin, vmax = v_extent
-            if v < vmin:
-                v = vmin
-            elif v > vmax:
-                v = vmax
-            else:
-                v = vmin + resolution * rounding((v - vmin) / resolution)
-            return v
-
-        aligned = BoundingBox(
-            west=snap(extent.west, source_sampling.extent_x, math.floor, target_resolution[0]),
-            east=snap(extent.east, source_sampling.extent_x, math.ceil, target_resolution[0]),
-            south=snap(extent.south, source_sampling.extent_y, math.floor, target_resolution[1]),
-            north=snap(extent.north, source_sampling.extent_y, math.ceil, target_resolution[1]),
-            crs=extent.crs,
+        aligned = _snap_bbox(
+            bbox=extent,
+            resolution=target_grid.resolution or source_grid.resolution,
+            extent_x=source_grid.extent_x,
+            extent_y=source_grid.extent_y,
         )
-
         _log.info(f"Realigned input extent {extent} into {aligned}")
-
         return aligned
-    elif is_auto_utm_crs(source_sampling.crs):
-        if collection_resolution[0] <= 20 and target_resolution[0] <= 20:
-            bbox = BoundingBox.from_dict(extent, default_crs=4326)
-            bbox_utm = bbox.reproject_to_best_utm()
-
-            res = target_resolution if target_resolution[0] > 0 else collection_resolution
-
-            new_extent = bbox_utm.round_to_resolution(res[0], res[1])
-
-            _log.info(f"Realigned input extent {extent} into {new_extent}")
-            return new_extent.as_dict()
-        else:
-            _log.info(f"Not realigning input extent {extent} because crs is UTM and resolution > 20m")
+    elif is_auto_utm_crs(source_grid.crs):
+        if not source_grid.resolution or any(r > 20 for r in source_grid.resolution):
+            _log.info(f"Not realigning {extent=} because auto-UTM (AUTO:42001) and {source_grid.resolution}")
             return extent
+        res = target_grid.resolution if all(target_grid.resolution) else source_grid.resolution
+        aligned = extent.reproject_to_best_utm().round_to_resolution(res[0], res[1])
+        _log.info(f"Realigned input extent {extent} into {aligned}")
+        return aligned
     else:
-        _log.info(f"Not realigning input extent {extent} (collection crs: {crs}, resolution: {collection_resolution})")
+        _log.info(f"Not realigning {extent=} ({source_grid=})")
         return extent
+
+
+def _snap_bbox(
+    bbox: BoundingBox,
+    *,
+    resolution: tuple[float, float],
+    extent_x: Tuple[float, float],
+    extent_y: Tuple[float, float],
+) -> BoundingBox:
+    """
+    Snap (aka align) given bbox bounds to grid defined by the resolution and extents
+    """
+
+    def snap(v: float, extent_v: Tuple[float, float], rounding: Callable, resolution: float):
+        v_min, vmax = extent_v
+        if v < v_min:
+            v = v_min
+        elif v > vmax:
+            v = vmax
+        else:
+            v = v_min + resolution * rounding((v - v_min) / resolution)
+        return v
+
+    aligned = BoundingBox(
+        west=snap(bbox.west, extent_x, math.floor, resolution[0]),
+        east=snap(bbox.east, extent_x, math.ceil, resolution[0]),
+        south=snap(bbox.south, extent_y, math.floor, resolution[1]),
+        north=snap(bbox.north, extent_y, math.ceil, resolution[1]),
+        crs=bbox.crs,
+    )
+    return aligned
 
 
 def _extract_target_extent_from_constraint(
@@ -133,45 +144,46 @@ def _extract_target_extent_from_constraint(
             metadata = catalog.get_collection_metadata(collection_id)
         except CollectionNotFoundException:
             metadata = {}
-        source_sampling = _SamplingInfo.from_datacube_metadata(metadata=metadata)
+        source_grid = _GridInfo.from_datacube_metadata(metadata=metadata)
         # TODO #275 eliminate this VITO specific handling?
         do_realign = deep_get(metadata, "_vito", "data_source", "realign", default=True)
-
     elif source_process == "load_stac":
-        raise NotImplementedError  # TODO?
+        raise NotImplementedError("TODO")
     else:
-        raise NotImplementedError  # TODO?
+        raise NotImplementedError("TODO")
 
     extent_from_pg = constraint.get("spatial_extent") or constraint.get("weak_spatial_extent")
     if not extent_from_pg:
         return None
     extent: BoundingBox = BoundingBox.from_dict(extent_from_pg, default_crs=4326)
 
-    target_sampling = _SamplingInfo(
-        crs=constraint.get("resample", {}).get("target_crs", source_sampling.crs),
-        resolution=constraint.get("resample", {}).get("resolution", source_sampling.resolution),
+    target_grid = _GridInfo(
+        crs=constraint.get("resample", {}).get("target_crs", source_grid.crs),
+        extent_x=["TODO?", "TODO?"],
+        extent_y=["TODO?", "TODO?"],
+        resolution=constraint.get("resample", {}).get("resolution", source_grid.resolution),
     )
 
     # TODO: shouldn't the pixel buffering be applied after the alignment?
     if pixel_buffer_size := deep_get(constraint, "pixel_buffer", "buffer_size", default=None):
-        extent = _buffer_extent(extent, buffer=pixel_buffer_size, sampling=target_sampling)
+        extent = _buffer_extent(extent, buffer=pixel_buffer_size, grid=target_grid)
 
-    load_in_native_grid = (target_sampling.crs == source_sampling.crs) or (
-        is_auto_utm_crs(source_sampling.crs) and is_utm_crs(target_sampling.crs)
+    load_in_native_grid = (target_grid.crs == source_grid.crs) or (
+        is_auto_utm_crs(source_grid.crs) and is_utm_crs(target_grid.crs)
     )
     if load_in_native_grid and do_realign:
-        extent = _align_extent(extent=extent)
+        extent = _align_extent(extent=extent, source_grid=source_grid, target_grid=target_grid)
 
     return extent
 
 
-def _buffer_extent(extent: BoundingBox, *, buffer: Tuple[float, float], sampling: _SamplingInfo) -> BoundingBox:
-    if sampling.crs and sampling.resolution:
+def _buffer_extent(extent: BoundingBox, *, buffer: Tuple[float, float], grid: _GridInfo) -> BoundingBox:
+    if grid.crs and grid.resolution:
         # Scale buffer from pixels to target CRS units
-        dx, dy = [r * math.ceil(s) for r, s in zip(sampling.resolution, buffer)]
-        extent = extent.reproject(sampling.crs).buffer(dx=dx, dy=dy)
+        dx, dy = [r * math.ceil(s) for r, s in zip(grid.resolution, buffer)]
+        extent = extent.reproject(grid.crs).buffer(dx=dx, dy=dy)
     else:
-        _log.warning(f"Not buffering extent with {buffer=} because incomplete {sampling=}.")
+        _log.warning(f"Not buffering extent with {buffer=} because incomplete {grid=}.")
     return extent
 
 
@@ -181,59 +193,9 @@ def determine_global_extent(
     global_extent = None
 
     for source_id, constraint in source_constraints:
-        if source_id[0] == "load_collection":
-            collection_id = source_id[1][0]
-        elif source_id[0] == "load_stac":
-            # TODO: cover this case better?
-            collection_id = "_load_stac_no_collection_id"
-        else:
-            # TODO: cover this as well?
-            collection_id = "_unknown_no_collection_id"
-
-        extent = None
-        if "spatial_extent" in constraint:
-            extent = BoundingBox.from_dict(constraint["spatial_extent"])
-        elif "weak_spatial_extent" in constraint:
-            extent = BoundingBox.from_dict(constraint["weak_spatial_extent"])
-
-        if extent is not None:
-            collection_crs = _collection_crs(collection_id=collection_id, catalog=catalog)
-            target_crs = constraint.get("resample", {}).get("target_crs", collection_crs) or collection_crs
-            target_resolution = constraint.get("resample", {}).get("resolution", None) or _collection_resolution(
-                collection_id=collection_id, catalog=catalog
-            )
-
-            if "pixel_buffer" in constraint:
-                buffer = constraint["pixel_buffer"]["buffer_size"]
-
-                if (target_crs is not None) and target_resolution:
-                    bbox = BoundingBox.from_dict(extent, default_crs=4326)
-                    extent = bbox.reproject(target_crs).as_dict()
-
-                    extent = {
-                        "west": extent["west"] - target_resolution[0] * math.ceil(buffer[0]),
-                        "east": extent["east"] + target_resolution[0] * math.ceil(buffer[0]),
-                        "south": extent["south"] - target_resolution[1] * math.ceil(buffer[1]),
-                        "north": extent["north"] + target_resolution[1] * math.ceil(buffer[1]),
-                        "crs": extent["crs"],
-                    }
-                else:
-                    _log.warning("Not applying buffer to extent because the target CRS is not known.")
-
-            load_collection_in_native_grid = "resample" not in constraint or target_crs == collection_crs
-            if (not load_collection_in_native_grid) and collection_crs is not None and ("42001" in str(collection_crs)):
-                # resampling auto utm to utm means we are loading in native grid
-                try:
-                    load_collection_in_native_grid = "UTM zone" in pyproj.CRS.from_user_input(target_crs).to_wkt()
-                except pyproj.exceptions.CRSError as e:
-                    pass
-
-            if load_collection_in_native_grid:
-                # Ensure that the extent that the user provided is aligned with the collection's native grid.
-                extent = _align_extent(
-                    extent=extent, collection_id=collection_id, catalog=catalog, target_resolution=target_resolution
-                )
-
+        extent = _extract_target_extent_from_constraint((source_id, constraint), catalog=catalog)
+        if extent:
+            # TODO spatial_extent_union does not support BoundingBox yet
             global_extent = spatial_extent_union(global_extent, extent) if global_extent else extent
 
     return global_extent
