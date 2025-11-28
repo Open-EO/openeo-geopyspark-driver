@@ -1,105 +1,107 @@
+from __future__ import annotations
+import dataclasses
+
 import logging
 
 import math
 
-from typing import Union, Optional, List
+from typing import Union, Optional, List, Tuple, Callable
 import pyproj.exceptions
 import pyproj
 
+from openeo.util import deep_get
 from openeo_driver.backend import AbstractCollectionCatalog
 from openeo_driver.dry_run import SourceConstraint
 from openeo_driver.errors import CollectionNotFoundException
 from openeo_driver.util.geometry import BoundingBox, spatial_extent_union
-
+from openeo_driver.util.utm import is_auto_utm_crs, is_utm_crs
 
 _log = logging.getLogger(__name__)
 
 
-def _collection_crs(collection_id: str, *, catalog: AbstractCollectionCatalog) -> Union[None, str, int]:
+@dataclasses.dataclass(frozen=True)
+class _SamplingInfo:
     """
-    Get spatial reference system from of the data in openEO collection metadata (based on datacube STAC extension)
+    Container of raster/sampling info in style of the STAC datacube extension ("cube:dimensions").
     """
-    # TODO: this only works for predefined openEO collections,
-    #       so this is source of inconsistency with direct `load_stac` usage
-    try:
-        metadata = catalog.get_collection_metadata(collection_id)
-    except CollectionNotFoundException:
-        return None
-    # TODO: the default reference_system according to the datacube spec is 4326 (EPSG code as integer)
-    #       but changing that here might have unintended side-effects.
-    crs = metadata.get("cube:dimensions", {}).get("x", {}).get("reference_system", None)
-    return crs
 
+    crs: Union[str, int]
+    extent_x: Tuple[float, float]
+    extent_y: Tuple[float, float]
+    resolution: Union[Tuple[float, float], None] = None
 
-def _collection_resolution(collection_id: str, *, catalog: AbstractCollectionCatalog) -> Optional[List[int]]:
-    # TODO: this only works for predefined openEO collections,
-    #       so this is source of inconsistency with direct `load_stac` usage
-    try:
-        metadata = catalog.get_collection_metadata(collection_id)
-    except CollectionNotFoundException:
-        return None
-    x = metadata.get("cube:dimensions", {}).get("x", {})
-    y = metadata.get("cube:dimensions", {}).get("y", {})
-    if "step" in x and "step" in y:
-        return [x["step"], y["step"]]
-    else:
-        return None
+    @classmethod
+    def from_datacube_metadata(cls, metadata: dict) -> _SamplingInfo:
+        """Construct from STAC-style 'datacube' metadata ("cube:dimensions")."""
+        # TODO: leverage pystac here instead of DIY parsing?
+        [dim_x] = [d for d in metadata["cube:dimensions"].values() if d["type"] == "spatial" and d["axis"] == "x"]
+        [dim_y] = [d for d in metadata["cube:dimensions"].values() if d["type"] == "spatial" and d["axis"] == "y"]
+
+        # reference_system is optional, but defaults to EPSG code 4326.
+        crses = {dim_x.get("reference_system", 4326), dim_y.get("reference_system", 4326)}
+        if len(crses) != 1:
+            raise ValueError(f"Found multiple CRSes across spatial dimensions: {crses}")
+        crs = crses.pop()
+
+        # Extent is required for both dimensions
+        extent_x = tuple(dim_x.get("extent"))
+        extent_y = tuple(dim_y.get("extent"))
+        if not extent_x:
+            _log.warning(f"No 'x' extent found ({dim_x=})")
+        if not extent_y:
+            _log.warning(f"No 'y' extent found ({dim_y=})")
+
+        # Step is optional
+        if "step" in dim_x and "step" in dim_y:
+            resolution = dim_x.get("step"), dim_y.get("step")
+        else:
+            resolution = None
+
+        return cls(crs=crs, extent_x=extent_x, extent_y=extent_y, resolution=resolution)
 
 
 def _align_extent(
-    extent: dict, collection_id: str, *, catalog: AbstractCollectionCatalog, target_resolution=None
-) -> dict:
-    try:
-        metadata = catalog.get_collection_metadata(collection_id)
-    except CollectionNotFoundException:
-        metadata = None
+    extent: BoundingBox,
+    *,
+    source_sampling: _SamplingInfo,
+    target_sampling: _SamplingInfo,
+) -> BoundingBox:
 
-    # TODO #275 eliminate this VITO specific handling?
-    if metadata is None or not metadata.get("_vito", {}).get("data_source", {}).get("realign", True):
-        return extent
-
-    crs = _collection_crs(collection_id=collection_id, catalog=catalog)
-    collection_resolution = _collection_resolution(collection_id=collection_id, catalog=catalog)
-    isUTM = crs == "AUTO:42001" or "Auto42001" in str(crs)
-
-    x = metadata.get("cube:dimensions", {}).get("x", {})
-    y = metadata.get("cube:dimensions", {}).get("y", {})
-
-    if target_resolution is None and collection_resolution is None:
+    if target_sampling.resolution is not None and source_sampling.resolution is None:
         return extent
 
     if (
-        crs == 4326
-        and extent.get("crs", "") == "EPSG:4326"
-        and "extent" in x
-        and "extent" in y
-        and (target_resolution is None or target_resolution == collection_resolution)
+        source_sampling.crs == 4326
+        and extent.crs == "EPSG:4326"
+        and source_sampling.extent_x
+        and source_sampling.extent_y
+        and (target_sampling.resolution is None or target_sampling.resolution == source_sampling.resolution)
     ):
-        # only align to collection resolution
-        target_resolution = collection_resolution
 
-        def align(v, dimension, rounding, resolution):
-            range = dimension.get("extent", [])
-            if v < range[0]:
-                v = range[0]
-            elif v > range[1]:
-                v = range[1]
+        target_resolution = target_sampling.resolution or source_sampling.resolution
+
+        def snap(v: float, v_extent: Tuple[float, float], rounding: Callable, resolution: float):
+            vmin, vmax = v_extent
+            if v < vmin:
+                v = vmin
+            elif v > vmax:
+                v = vmax
             else:
-                index = rounding((v - range[0]) / resolution)
-                v = range[0] + index * resolution
+                v = vmin + resolution * rounding((v - vmin) / resolution)
             return v
 
-        new_extent = {
-            "west": align(extent["west"], x, math.floor, target_resolution[0]),
-            "east": align(extent["east"], x, math.ceil, target_resolution[0]),
-            "south": align(extent["south"], y, math.floor, target_resolution[1]),
-            "north": align(extent["north"], y, math.ceil, target_resolution[1]),
-            "crs": extent["crs"],
-        }
-        _log.info(f"Realigned input extent {extent} into {new_extent}")
+        aligned = BoundingBox(
+            west=snap(extent.west, source_sampling.extent_x, math.floor, target_resolution[0]),
+            east=snap(extent.east, source_sampling.extent_x, math.ceil, target_resolution[0]),
+            south=snap(extent.south, source_sampling.extent_y, math.floor, target_resolution[1]),
+            north=snap(extent.north, source_sampling.extent_y, math.ceil, target_resolution[1]),
+            crs=extent.crs,
+        )
 
-        return new_extent
-    elif isUTM:
+        _log.info(f"Realigned input extent {extent} into {aligned}")
+
+        return aligned
+    elif is_auto_utm_crs(source_sampling.crs):
         if collection_resolution[0] <= 20 and target_resolution[0] <= 20:
             bbox = BoundingBox.from_dict(extent, default_crs=4326)
             bbox_utm = bbox.reproject_to_best_utm()
@@ -118,15 +120,70 @@ def _align_extent(
         return extent
 
 
+def _extract_target_extent_from_constraint(
+    source_constraint: SourceConstraint, *, catalog: AbstractCollectionCatalog
+) -> Union[BoundingBox, None]:
+    source_id, constraint = source_constraint
+
+    source_process = source_id[0]
+    do_realign = True
+    if source_process == "load_collection":
+        collection_id = source_id[1][0]
+        try:
+            metadata = catalog.get_collection_metadata(collection_id)
+        except CollectionNotFoundException:
+            metadata = {}
+        source_sampling = _SamplingInfo.from_datacube_metadata(metadata=metadata)
+        # TODO #275 eliminate this VITO specific handling?
+        do_realign = deep_get(metadata, "_vito", "data_source", "realign", default=True)
+
+    elif source_process == "load_stac":
+        raise NotImplementedError  # TODO?
+    else:
+        raise NotImplementedError  # TODO?
+
+    extent_from_pg = constraint.get("spatial_extent") or constraint.get("weak_spatial_extent")
+    if not extent_from_pg:
+        return None
+    extent: BoundingBox = BoundingBox.from_dict(extent_from_pg, default_crs=4326)
+
+    target_sampling = _SamplingInfo(
+        crs=constraint.get("resample", {}).get("target_crs", source_sampling.crs),
+        resolution=constraint.get("resample", {}).get("resolution", source_sampling.resolution),
+    )
+
+    # TODO: shouldn't the pixel buffering be applied after the alignment?
+    if pixel_buffer_size := deep_get(constraint, "pixel_buffer", "buffer_size", default=None):
+        extent = _buffer_extent(extent, buffer=pixel_buffer_size, sampling=target_sampling)
+
+    load_in_native_grid = (target_sampling.crs == source_sampling.crs) or (
+        is_auto_utm_crs(source_sampling.crs) and is_utm_crs(target_sampling.crs)
+    )
+    if load_in_native_grid and do_realign:
+        extent = _align_extent(extent=extent)
+
+    return extent
+
+
+def _buffer_extent(extent: BoundingBox, *, buffer: Tuple[float, float], sampling: _SamplingInfo) -> BoundingBox:
+    if sampling.crs and sampling.resolution:
+        # Scale buffer from pixels to target CRS units
+        dx, dy = [r * math.ceil(s) for r, s in zip(sampling.resolution, buffer)]
+        extent = extent.reproject(sampling.crs).buffer(dx=dx, dy=dy)
+    else:
+        _log.warning(f"Not buffering extent with {buffer=} because incomplete {sampling=}.")
+    return extent
+
+
 def determine_global_extent(
     *, source_constraints: List[SourceConstraint], catalog: AbstractCollectionCatalog
 ) -> Optional[dict]:
     global_extent = None
 
-    for sid, constraint in source_constraints:
-        if sid[0] == "load_collection":
-            collection_id = sid[1][0]
-        elif sid[0] == "load_stac":
+    for source_id, constraint in source_constraints:
+        if source_id[0] == "load_collection":
+            collection_id = source_id[1][0]
+        elif source_id[0] == "load_stac":
             # TODO: cover this case better?
             collection_id = "_load_stac_no_collection_id"
         else:
@@ -135,9 +192,9 @@ def determine_global_extent(
 
         extent = None
         if "spatial_extent" in constraint:
-            extent = constraint["spatial_extent"]
+            extent = BoundingBox.from_dict(constraint["spatial_extent"])
         elif "weak_spatial_extent" in constraint:
-            extent = constraint["weak_spatial_extent"]
+            extent = BoundingBox.from_dict(constraint["weak_spatial_extent"])
 
         if extent is not None:
             collection_crs = _collection_crs(collection_id=collection_id, catalog=catalog)
