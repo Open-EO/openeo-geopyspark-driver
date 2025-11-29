@@ -128,10 +128,13 @@ def _align_extent(
         _log.info(f"Realigned input extent {extent} into {aligned}")
         return aligned
     elif is_auto_utm_crs(source.crs_raw):
+        # TODO: also align non-auto UTM
+        # TODO: why not realign above 20m?
         if not source.resolution or any(r > 20 for r in source.resolution):
             _log.info(f"Not realigning {extent=} because auto-UTM (AUTO:42001) and {source.resolution}")
             return extent
         res = target.resolution if all(target.resolution) else source.resolution
+        # TODO: support reprojection to user specified UTM instead of "best" UTM?
         aligned = extent.reproject_to_best_utm().round_to_resolution(res[0], res[1])
         _log.info(f"Realigned input extent {extent} into {aligned}")
         return aligned
@@ -141,10 +144,10 @@ def _align_extent(
 
 
 def _buffer_extent(extent: BoundingBox, *, buffer: Tuple[float, float], sampling: _GridInfo) -> BoundingBox:
-    if sampling.crs and sampling.resolution:
+    if sampling.crs_epsg and sampling.resolution:
         # Scale buffer from pixels to target CRS units
         dx, dy = [r * math.ceil(s) for r, s in zip(sampling.resolution, buffer)]
-        extent = extent.reproject(sampling.crs).buffer(dx=dx, dy=dy)
+        extent = extent.reproject(sampling.crs_epsg).buffer(dx=dx, dy=dy)
     else:
         _log.warning(f"Not buffering extent with {buffer=} because incomplete {sampling=}.")
     return extent
@@ -176,20 +179,20 @@ def _extract_target_extent_from_constraint(
         return None
     extent: BoundingBox = BoundingBox.from_dict(extent_from_pg, default_crs=4326)
 
-    target_sampling = _SamplingInfo(
-        crs=constraint.get("resample", {}).get("target_crs", source_grid.crs),
+    target_grid = _GridInfo(
+        crs=constraint.get("resample", {}).get("target_crs", source_grid.crs_raw),
         resolution=constraint.get("resample", {}).get("resolution", source_grid.resolution),
     )
 
     # TODO: shouldn't the pixel buffering be applied after the alignment?
     if pixel_buffer_size := deep_get(constraint, "pixel_buffer", "buffer_size", default=None):
-        extent = _buffer_extent(extent, buffer=pixel_buffer_size, sampling=target_sampling)
+        extent = _buffer_extent(extent, buffer=pixel_buffer_size, sampling=target_grid)
 
-    load_in_native_grid = (target_sampling.crs == source_grid.crs) or (
-        is_auto_utm_crs(source_grid.crs) and is_utm_crs(target_sampling.crs)
+    load_in_native_grid = (target_grid.crs_raw == source_grid.crs_raw) or (
+        is_auto_utm_crs(source_grid.crs_raw) and (is_utm_crs(target_grid.crs_epsg))
     )
     if load_in_native_grid and do_realign:
-        extent = _align_extent(extent=extent, source=source_grid, target=target_sampling)
+        extent = _align_extent(extent=extent, source=source_grid, target=target_grid)
 
     return extent
 
