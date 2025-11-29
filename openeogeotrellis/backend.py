@@ -1,3 +1,5 @@
+import dataclasses
+
 import sys
 import datetime as dt
 import io
@@ -19,7 +21,7 @@ from decimal import Decimal
 from functools import lru_cache, partial, reduce
 from pathlib import Path
 from subprocess import CalledProcessError
-from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union, Set
+from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union, Set, Any
 from urllib.parse import urlparse
 
 import flask
@@ -45,21 +47,38 @@ from openeo_driver.backend import (
     LoadParameters,
     OidcProvider,
     ServiceMetadata,
-    JobListing, BatchJobResultMetadata,
+    JobListing,
+    BatchJobResultMetadata,
+    AbstractCollectionCatalog,
 )
 from openeo_driver.config.load import ConfigGetter
 from openeo_driver.constants import DEFAULT_LOG_LEVEL_RETRIEVAL, DEFAULT_LOG_LEVEL_PROCESSING
 from openeo_driver.datacube import DriverDataCube, DriverVectorCube
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.delayed_vector import DelayedVector
-from openeo_driver.dry_run import SourceConstraint
-from openeo_driver.errors import (InternalException, JobNotFinishedException, OpenEOApiException,
-                                  ServiceUnsupportedException,
-                                  ProcessParameterInvalidException, )
-from openeo_driver.jobregistry import (DEPENDENCY_STATUS, JOB_STATUS, ElasticJobRegistry, PARTIAL_JOB_STATUS,
-                                       get_ejr_credentials_from_env)
-from openeo_driver.ProcessGraphDeserializer import ENV_FINAL_RESULT, ENV_SAVE_RESULT, ConcreteProcessing, \
-    _extract_load_parameters, ENV_MAX_BUFFER
+from openeo_driver.dry_run import SourceConstraint, DryRunDataCube, DryRunDataTracer
+from openeo_driver.errors import (
+    InternalException,
+    JobNotFinishedException,
+    OpenEOApiException,
+    ServiceUnsupportedException,
+    ProcessParameterInvalidException,
+    CollectionNotFoundException,
+)
+from openeo_driver.jobregistry import (
+    DEPENDENCY_STATUS,
+    JOB_STATUS,
+    ElasticJobRegistry,
+    PARTIAL_JOB_STATUS,
+    get_ejr_credentials_from_env,
+)
+from openeo_driver.ProcessGraphDeserializer import (
+    ENV_FINAL_RESULT,
+    ENV_SAVE_RESULT,
+    ConcreteProcessing,
+    _extract_load_parameters,
+    ENV_MAX_BUFFER,
+)
 from openeo_driver.save_result import ImageCollectionResult
 from openeo_driver.users import User
 from openeo_driver.util.date_math import now_utc
@@ -1338,6 +1357,124 @@ Example usage:
             )
 
             return costs
+
+    def post_dry_run(
+        self,
+        *,
+        dry_run_result: Union[DryRunDataCube, Any],
+        dry_run_tracer: DryRunDataTracer,
+        env: EvalEnv,
+        source_constraints: List[SourceConstraint],
+    ) -> Union[None, dict]:
+
+        # WIP let's move to  subpackage to keep things more encapsulated, yet testable
+        import openeogeotrellis._backend.post_dry_run
+
+        openeogeotrellis._backend.post_dry_run.determine_global_extent(
+            source_constraints=source_constraints, catalog=self.catalog
+        )
+
+        # FYI Initial WIP attempt to refactor crs/resolution extraction in a way that can be extended to STAC
+
+        @dataclasses.dataclass(frozen=True)
+        class SamplingInfo:
+            crs: Union[str, int]
+            resolution: Union[Tuple[float, float], None] = None
+
+            @classmethod
+            def from_collection_id(
+                cls, collection_id: str, catalog: AbstractCollectionCatalog = self.catalog
+            ) -> "SamplingInfo":
+                try:
+                    metadata = catalog.get_collection_metadata(collection_id=collection_id)
+                except CollectionNotFoundException:
+                    return None
+                return cls.from_metadata(metadata)
+
+            @classmethod
+            def from_metadata(cls, metadata: dict) -> "SamplingInfo":
+                """From STAC-style 'datacube' metadata."""
+                [dim_x] = [
+                    d for d in metadata["cube:dimensions"].values() if d["type"] == "spatial" and d["axis"] == "x"
+                ]
+                [dim_y] = [
+                    d for d in metadata["cube:dimensions"].values() if d["type"] == "spatial" and d["axis"] == "y"
+                ]
+
+                crses = {
+                    dim_x.get("reference_system", 4326),
+                    dim_y.get("reference_system", 4326),
+                }
+                assert len(crses) == 1
+                crs = crses.pop()
+
+                if "step" in dim_x and "step" in dim_y:
+                    resolution = dim_x.get("step"), dim_y.get("step")
+                else:
+                    resolution = None
+
+                return cls(crs=crs, resolution=resolution)
+
+        # Determine global extent and alignment
+        for sid, constraint in source_constraints:
+            if sid[0] == "load_collection":
+                collection_id = sid[1][0]
+            elif sid[0] == "load_stac":
+                # TODO: cover this case better?
+                collection_id = "_load_stac_no_collection_id"
+            else:
+                # TODO: cover this as well?
+                collection_id = "_unknown_no_collection_id"
+
+            extent = None
+            if "spatial_extent" in constraint:
+                extent = constraint["spatial_extent"]
+            elif "weak_spatial_extent" in constraint:
+                extent = constraint["weak_spatial_extent"]
+
+            if extent is not None:
+                collection_sampling = SamplingInfo.from_collection_id(collection_id)
+                target_sampling = SamplingInfo(
+                    crs=deep_get(constraint, "resample", "target_crs", default=collection_sampling.crs),
+                    resolution=deep_get(constraint, "resample", "resolution", default=collection_sampling.resolution),
+                )
+
+                if "pixel_buffer" in constraint:
+                    buffer = constraint["pixel_buffer"]["buffer_size"]
+
+                    if (target_crs is not None) and target_resolution:
+                        bbox = BoundingBox.from_dict(extent, default_crs=4326)
+                        extent = bbox.reproject(target_crs).as_dict()
+
+                        extent = {
+                            "west": extent["west"] - target_resolution[0] * math.ceil(buffer[0]),
+                            "east": extent["east"] + target_resolution[0] * math.ceil(buffer[0]),
+                            "south": extent["south"] - target_resolution[1] * math.ceil(buffer[1]),
+                            "north": extent["north"] + target_resolution[1] * math.ceil(buffer[1]),
+                            "crs": extent["crs"],
+                        }
+                    else:
+                        _log.warning("Not applying buffer to extent because the target CRS is not known.")
+
+                load_collection_in_native_grid = "resample" not in constraint or target_crs == collection_crs
+                if (
+                    (not load_collection_in_native_grid)
+                    and collection_crs is not None
+                    and ("42001" in str(collection_crs))
+                ):
+                    # resampling auto utm to utm means we are loading in native grid
+                    try:
+                        load_collection_in_native_grid = "UTM zone" in CRS.from_user_input(target_crs).to_wkt()
+                    except CRSError as e:
+                        pass
+
+                if load_collection_in_native_grid:
+                    # Ensure that the extent that the user provided is aligned with the collection's native grid.
+                    extent = _align_extent(
+                        extent=extent, collection_id=collection_id, env=env, target_resolution=target_resolution
+                    )
+
+                global_extent = spatial_extent_union(global_extent, extent) if global_extent else extent
 
 
 class GpsProcessing(ConcreteProcessing):
