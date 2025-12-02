@@ -82,7 +82,7 @@ def _get_aws_credentials_for_proxy(token: str, role_arn: str, session_name: Opti
             RoleArn=role_arn,
             RoleSessionName=session_name,
             WebIdentityToken=token,
-            DurationSeconds=7200,  # same timeout as in calrissian launch_job_and_wait.
+            DurationSeconds=14400,  # Longer timeout as in calrissian launch_job_and_wait.
         )["Credentials"]
     )
 
