@@ -671,7 +671,7 @@ class CalrissianJobLauncher:
             r.raise_for_status()
             outputs_listing_result_paths = parse_cwl_outputs_listing(r.json())
             prefix = relative_output_dir.strip("/") + "/"
-            output_paths = [str(p).removeprefix(prefix) for p in outputs_listing_result_paths]
+            output_paths = [p[len(prefix)] for p in outputs_listing_result_paths]
         except Exception as e:
             # Happens when running in unit tests, but safe to do anyway.
             _log.warning(
@@ -706,7 +706,7 @@ def parse_cwl_outputs_listing(cwl_outputs_listing: dict) -> List[str]:
 
     results = recurse(cwl_outputs_listing["output"])
     prefix = "/calrissian/output-data/"
-    results = [str(p).removeprefix(prefix) for p in results]
+    results = [p[len(prefix)] for p in results]
     return results
 
 
