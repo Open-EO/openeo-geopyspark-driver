@@ -229,7 +229,10 @@ def load_stac(
                         # TODO: risk on overwriting/conflict
                         band_epsgs.setdefault(asset_band_name, set()).add(proj_epsg)
 
-                pixel_value_offset = _get_pixel_value_offset(item=itm, asset=asset)
+                if feature_flags.get("apply_pixel_value_offset", False):
+                    pixel_value_offset = _get_pixel_value_offset(item=itm, asset=asset)
+                else:
+                    pixel_value_offset = 1.0
                 logger.debug(
                     f"FeatureBuilder.addlink {itm.id=} {asset_id=} {asset_band_names_from_metadata=} {asset_band_names=}"
                 )
