@@ -190,7 +190,12 @@ def load_stac(
                 asset_band_names_from_metadata = stac_metadata_parser.bands_from_stac_asset(asset=asset).band_names()
                 logger.debug(f"from intersecting_items: {itm.id=} {asset_id=} {asset_band_names_from_metadata=}")
 
-                if not load_params.bands:
+                if len(override_band_names) == 1:
+                    # In the special case that there is a singular band name override, we can assume that
+                    # this band name applies to all assets.
+                    # For example, in the DEM collections on CDSE. Assume that the asset relates to the DEM band.
+                    asset_band_names = override_band_names
+                elif not load_params.bands:
                     # No user-specified band filtering: follow band names from metadata (if possible)
                     asset_band_names = asset_band_names_from_metadata or [asset_id]
                 elif isinstance(load_params.bands, list) and asset_id in load_params.bands:
