@@ -764,16 +764,50 @@ class TestCalrissianUtils:
             },
         ]
     }
+    cwl_outputs_listing_directory_force = {
+        "force_level2_ard": {
+            "location": "file:///calrissian/output-data/r-25120213093944ef8f-cal-cwl-240fb366/l2-ard",
+            "basename": "l2-ard",
+            "class": "Directory",
+            "listing": [
+                {
+                    "class": "File",
+                    "location": "file:///calrissian/output-data/r-25120213093944ef8f-cal-cwl-240fb366/l2-ard/bologna-l2-ard.json",
+                    "basename": "bologna-l2-ard.json",
+                    "size": 2569,
+                    "checksum": "sha1$affd3c0af0bfef6e38d14d0e711d029e3d967456",
+                    "path": "/calrissian/output-data/r-25120213093944ef8f-cal-cwl-240fb366/l2-ard/bologna-l2-ard.json",
+                },
+                {
+                    "class": "File",
+                    "location": "file:///calrissian/output-data/r-25120213093944ef8f-cal-cwl-240fb366/l2-ard/catalogue.json",
+                    "basename": "catalogue.json",
+                    "size": 226,
+                    "checksum": "sha1$84f60d4ba6da2e051d32f3df8aaaba4f93766869",
+                    "path": "/calrissian/output-data/r-25120213093944ef8f-cal-cwl-240fb366/l2-ard/catalogue.json",
+                },
+            ],
+            "path": "/calrissian/output-data/r-25120213093944ef8f-cal-cwl-240fb366/l2-ard",
+        }
+    }
 
     def test_parse_cwl_outputs_listing_directory(self):
-        result = parse_cwl_outputs_listing(self.cwl_outputs_listing_directory)
-        print(result)
-        assert len(result) == 7
+        results = parse_cwl_outputs_listing(self.cwl_outputs_listing_directory)
+        print(results)
+        assert len(results) == 7
+        assert results[0].startswith("r-")
+
+    def test_parse_cwl_outputs_listing_directory_force(self):
+        results = parse_cwl_outputs_listing(self.cwl_outputs_listing_directory_force)
+        print(results)
+        assert len(results) == 2
+        assert results[0].startswith("r-")
 
     def test_parse_cwl_outputs_listing_file_array(self):
-        result = parse_cwl_outputs_listing(self.cwl_outputs_listing_file_array)
-        print(result)
-        assert len(result) == 7
+        results = parse_cwl_outputs_listing(self.cwl_outputs_listing_file_array)
+        print(results)
+        assert len(results) == 7
+        assert results[0].startswith("r-")
 
     def test_find_stac_root_dictionary(self):
         listing_directory = [
