@@ -229,14 +229,14 @@ def load_stac(
                         # TODO: risk on overwriting/conflict
                         band_epsgs.setdefault(asset_band_name, set()).add(proj_epsg)
 
-                if feature_flags.get("apply_pixel_value_offset", False):
+                if feature_flags.get("apply_pixel_value_scale_and_offset", True):
                     pixel_value_offset = _get_pixel_value_offset(item=itm, asset=asset)
                 else:
-                    pixel_value_offset = 1.0
+                    pixel_value_offset = (1.0, 0.0)
                 logger.debug(
                     f"FeatureBuilder.addlink {itm.id=} {asset_id=} {asset_band_names_from_metadata=} {asset_band_names=}"
                 )
-                builder = builder.addLink(get_best_url(asset), asset_id, pixel_value_offset, asset_band_names)
+                builder = builder.addLink(get_best_url(asset), asset_id, pixel_value_offset[0], pixel_value_offset[1], asset_band_names)
 
             if proj_epsg:
                 builder = builder.withCRS(f"EPSG:{proj_epsg}")
@@ -1203,10 +1203,10 @@ def _get_proj_metadata(
     )
 
 
-def _get_pixel_value_offset(*, item: pystac.Item, asset: pystac.Asset) -> float:
+def _get_pixel_value_offset(*, item: pystac.Item, asset: pystac.Asset) -> (float, float):
     raster_scale = asset.extra_fields.get("raster:scale", item.properties.get("raster:scale", 1.0))
     raster_offset = asset.extra_fields.get("raster:offset", item.properties.get("raster:offset", 0.0))
-    return raster_offset / raster_scale
+    return raster_scale, raster_offset
 
 
 def _supports_item_search(collection: pystac.Collection) -> bool:
