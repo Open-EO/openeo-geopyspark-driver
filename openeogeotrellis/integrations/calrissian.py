@@ -301,8 +301,18 @@ class CalrissianJobLauncher:
                 error_summary = env.backend_implementation.summarize_exception(e)
                 if isinstance(error_summary, ErrorSummary):
                     detail = error_summary.summary
-            _log.warning(f"Failed to get s3 credentials: {detail}")
-            env_vars = []
+            env_vars = {}
+            if (
+                "AWS_ENDPOINT_URL_S3" in os.environ
+                and "AWS_ACCESS_KEY_ID" in os.environ
+                and "AWS_SECRET_ACCESS_KEY" in os.environ
+            ):
+                env_vars["AWS_ENDPOINT_URL_S3"] = os.environ["AWS_ENDPOINT_URL_S3"]
+                env_vars["AWS_ACCESS_KEY_ID"] = os.environ["AWS_ACCESS_KEY_ID"]
+                env_vars["AWS_SECRET_ACCESS_KEY"] = os.environ["AWS_SECRET_ACCESS_KEY"]
+                _log.info(f"Falling back to local s3 credentials.")  # for local debugging
+            else:
+                _log.warning(f"Failed to get s3 credentials: {detail}")
 
         launch_config = CalrissianLaunchConfigBuilder(
             config=config,
