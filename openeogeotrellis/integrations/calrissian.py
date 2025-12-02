@@ -671,6 +671,23 @@ class CalrissianJobLauncher:
         _log.info(f"run_cwl_workflow: building S3 references to output files from {output_paths}")
         _log.info(f"run_cwl_workflow: {relative_cwl_outputs_listing}")
         output_volume_name = self.get_output_volume_name()
+        outputs_listing_result_url = CalrissianS3Result(
+            s3_region=self._s3_region,
+            s3_bucket=self._s3_bucket,
+            s3_key=f"{output_volume_name}/{relative_cwl_outputs_listing.strip('/')}",
+        ).generate_public_url()
+        try:
+            r = requests.get(outputs_listing_result_url)
+            r.raise_for_status()
+            outputs_listing_result_paths = parse_cwl_outputs_listing(r.json())
+            prefix = relative_output_dir.strip("/") + "/"
+            output_paths = [p[len(prefix) :] if p.startswith(prefix) else p for p in outputs_listing_result_paths]
+        except Exception as e:
+            # Happens when running in unit tests, but safe to do anyway.
+            _log.warning(
+                f"Failed to get outputs listing from {outputs_listing_result_url=}: {e!r}. Falling back to expected output paths."
+            )
+
         results = {
             output_path: CalrissianS3Result(
                 s3_region=self._s3_region,
@@ -680,3 +697,52 @@ class CalrissianJobLauncher:
             for output_path in output_paths
         }
         return results
+
+
+def parse_cwl_outputs_listing(cwl_outputs_listing: dict) -> List[str]:
+    def recurse(obj):
+        if isinstance(obj, list):
+            list_list = [recurse(item) for item in obj]
+            # flatten lists:
+            return [item for sublist in list_list for item in sublist]
+        if obj["class"] == "File":
+            return [obj["path"]]
+        elif obj["class"] == "Directory":
+            list_list = [recurse(item) for item in obj.get("listing", [])]
+            # flatten lists:
+            return [item for sublist in list_list for item in sublist]
+        else:
+            raise ValueError(f"Unknown class in CWL output: {obj['class']}")
+
+    results_list = [recurse(cwl_outputs_listing[key]) for key in cwl_outputs_listing.keys()]
+    results = [item for sublist in results_list for item in sublist]
+    prefix = "/calrissian/output-data/"
+    results = [p[len(prefix) :] if p.startswith(prefix) else p for p in results]
+    return results
+
+
+def find_stac_root(paths: list, stac_root_filename: Optional[str] = "catalog.json") -> Optional[str]:
+    paths = [Path(p) for p in paths]
+
+    def search(stac_root_filename_local: str):
+        matches = [x for x in paths if x.name == stac_root_filename_local]
+        if matches:
+            if len(matches) > 1:
+                _log.warning(f"Multiple STAC root files found: {[str(x) for x in matches]}. Using the first one.")
+            return str(matches[0])
+        return None
+
+    if stac_root_filename:
+        ret = search(stac_root_filename)
+        if ret:
+            return ret
+    ret = search("catalog.json")
+    if ret:
+        return ret
+    ret = search("catalogue.json")
+    if ret:
+        return ret
+    ret = search("collection.json")
+    if ret:
+        return ret
+    return None
