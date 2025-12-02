@@ -666,16 +666,25 @@ class CalrissianJobLauncher:
             s3_bucket=self._s3_bucket,
             s3_key=f"{output_volume_name}/{relative_cwl_outputs_listing.strip('/')}",
         ).generate_public_url()
-        outputs_listing_result_json = requests.get(outputs_listing_result_url).json()
-        outputs_listing_result_paths = parse_cwl_outputs_listing(outputs_listing_result_json)
+        try:
+            r = requests.get(outputs_listing_result_url)
+            r.raise_for_status()
+            outputs_listing_result_paths = parse_cwl_outputs_listing(r.json())
+            prefix = relative_output_dir.strip("/") + "/"
+            output_paths = [str(p).removeprefix(prefix) for p in outputs_listing_result_paths]
+        except Exception as e:
+            # Happens when running in unit tests, but safe to do anyway.
+            _log.warning(
+                f"Failed to get outputs listing from {outputs_listing_result_url=}: {e!r}. Falling back to expected output paths."
+            )
 
         results = {
             output_path: CalrissianS3Result(
                 s3_region=self._s3_region,
                 s3_bucket=self._s3_bucket,
-                s3_key=f"{output_volume_name}/{output_path.strip('/')}",
+                s3_key=f"{output_volume_name}/{relative_output_dir.strip('/')}/{output_path.strip('/')}",
             )
-            for output_path in outputs_listing_result_paths
+            for output_path in output_paths
         }
         return results
 
