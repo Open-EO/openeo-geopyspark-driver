@@ -641,6 +641,8 @@ class InMemoryJobRegistry(JobRegistryInterface):
 
     def _update(self, job_id: str, **kwargs) -> JobDict:
         assert job_id in self.db
+        if "usage" in kwargs:
+            kwargs["input_pixel"] = kwargs["usage"].get("input_pixel", {}).get("value", 0.0)
         self.db[job_id].update(**kwargs)
         return self.db[job_id]
 

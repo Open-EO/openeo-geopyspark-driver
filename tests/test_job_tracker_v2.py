@@ -548,6 +548,7 @@ class TestYarnJobTracker:
                     "cpu": {"unit": "cpu-seconds", "value": 32},
                     "memory": {"unit": "mb-seconds", "value": 1234},
                 },
+                "input_pixel": 1.125,
                 "costs": 129.95
             }
         )
