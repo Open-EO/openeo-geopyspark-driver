@@ -1,0 +1,66 @@
+{
+  "output": {
+    "location": "file:///calrissian/output-data/r-2512020921004d489e-cal-cwl-e706a8a7/o1kip6_h",
+    "basename": "o1kip6_h",
+    "class": "Directory",
+    "listing": [
+      {
+        "class": "File",
+        "location": "file:///calrissian/output-data/r-2512020921004d489e-cal-cwl-e706a8a7/o1kip6_h/collection.json",
+        "basename": "collection.json",
+        "size": 778,
+        "checksum": "sha1$df7cd5c015b75f26dd43909e279698b6bdf9167d",
+        "path": "/calrissian/output-data/r-2512020921004d489e-cal-cwl-e706a8a7/o1kip6_h/collection.json"
+      },
+      {
+        "class": "File",
+        "location": "file:///calrissian/output-data/r-2512020921004d489e-cal-cwl-e706a8a7/o1kip6_h/openEO_2023-06-01Z.tif",
+        "basename": "openEO_2023-06-01Z.tif",
+        "size": 20867,
+        "checksum": "sha1$4a976bc060ab8b664b731fba9b68672057d9e0e5",
+        "path": "/calrissian/output-data/r-2512020921004d489e-cal-cwl-e706a8a7/o1kip6_h/openEO_2023-06-01Z.tif"
+      },
+      {
+        "class": "File",
+        "location": "file:///calrissian/output-data/r-2512020921004d489e-cal-cwl-e706a8a7/o1kip6_h/openEO_2023-06-01Z.tif.json",
+        "basename": "openEO_2023-06-01Z.tif.json",
+        "size": 1439,
+        "checksum": "sha1$2b1f5f73715ad3c4eaa3a3caf20646a3b1de4e82",
+        "path": "/calrissian/output-data/r-2512020921004d489e-cal-cwl-e706a8a7/o1kip6_h/openEO_2023-06-01Z.tif.json"
+      },
+      {
+        "class": "File",
+        "location": "file:///calrissian/output-data/r-2512020921004d489e-cal-cwl-e706a8a7/o1kip6_h/openEO_2023-06-04Z.tif",
+        "basename": "openEO_2023-06-04Z.tif",
+        "size": 20772,
+        "checksum": "sha1$d8a161a840e9803661ae5ada58b8e24f4b43c285",
+        "path": "/calrissian/output-data/r-2512020921004d489e-cal-cwl-e706a8a7/o1kip6_h/openEO_2023-06-04Z.tif"
+      },
+      {
+        "class": "File",
+        "location": "file:///calrissian/output-data/r-2512020921004d489e-cal-cwl-e706a8a7/o1kip6_h/openEO_2023-06-04Z.tif.json",
+        "basename": "openEO_2023-06-04Z.tif.json",
+        "size": 1439,
+        "checksum": "sha1$55547bfa603f39e652b168b4f68d86c0d91e39c0",
+        "path": "/calrissian/output-data/r-2512020921004d489e-cal-cwl-e706a8a7/o1kip6_h/openEO_2023-06-04Z.tif.json"
+      },
+      {
+        "class": "File",
+        "location": "file:///calrissian/output-data/r-2512020921004d489e-cal-cwl-e706a8a7/o1kip6_h/openEO_2023-06-06Z.tif",
+        "basename": "openEO_2023-06-06Z.tif",
+        "size": 20903,
+        "checksum": "sha1$1e97f3866b7bdea25726f34873c44df6aeff0101",
+        "path": "/calrissian/output-data/r-2512020921004d489e-cal-cwl-e706a8a7/o1kip6_h/openEO_2023-06-06Z.tif"
+      },
+      {
+        "class": "File",
+        "location": "file:///calrissian/output-data/r-2512020921004d489e-cal-cwl-e706a8a7/o1kip6_h/openEO_2023-06-06Z.tif.json",
+        "basename": "openEO_2023-06-06Z.tif.json",
+        "size": 1439,
+        "checksum": "sha1$c62ccbe3baa97c9df43ca925a6b0d7d9a66cbe00",
+        "path": "/calrissian/output-data/r-2512020921004d489e-cal-cwl-e706a8a7/o1kip6_h/openEO_2023-06-06Z.tif.json"
+      }
+    ],
+    "path": "/calrissian/output-data/r-2512020921004d489e-cal-cwl-e706a8a7/o1kip6_h"
+  }
+}

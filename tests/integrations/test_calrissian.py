@@ -1,4 +1,5 @@
 import datetime
+import json
 import re
 from pathlib import Path
 from typing import Dict, Iterator
@@ -26,6 +27,7 @@ from openeogeotrellis.integrations.calrissian import (
 from openeogeotrellis.integrations.s3proxy.sts import STSCredentials
 from openeogeotrellis.testing import gps_config_overrides
 from openeogeotrellis.util.runtime import ENV_VAR_OPENEO_BATCH_JOB_ID
+from tests.data import get_test_data_file
 
 
 @pytest.fixture
@@ -638,255 +640,27 @@ class TestCwlSource:
 
 
 class TestCalrissianUtils:
-    cwl_outputs_listing_directory = {
-        "output": {
-            "location": "file:///calrissian/output-data/r-2512020921004d489e-cal-cwl-e706a8a7/o1kip6_h",
-            "basename": "o1kip6_h",
-            "class": "Directory",
-            "listing": [
-                {
-                    "class": "File",
-                    "location": "file:///calrissian/output-data/r-2512020921004d489e-cal-cwl-e706a8a7/o1kip6_h/collection.json",
-                    "basename": "collection.json",
-                    "size": 778,
-                    "checksum": "sha1$df7cd5c015b75f26dd43909e279698b6bdf9167d",
-                    "path": "/calrissian/output-data/r-2512020921004d489e-cal-cwl-e706a8a7/o1kip6_h/collection.json",
-                },
-                {
-                    "class": "File",
-                    "location": "file:///calrissian/output-data/r-2512020921004d489e-cal-cwl-e706a8a7/o1kip6_h/openEO_2023-06-01Z.tif",
-                    "basename": "openEO_2023-06-01Z.tif",
-                    "size": 20867,
-                    "checksum": "sha1$4a976bc060ab8b664b731fba9b68672057d9e0e5",
-                    "path": "/calrissian/output-data/r-2512020921004d489e-cal-cwl-e706a8a7/o1kip6_h/openEO_2023-06-01Z.tif",
-                },
-                {
-                    "class": "File",
-                    "location": "file:///calrissian/output-data/r-2512020921004d489e-cal-cwl-e706a8a7/o1kip6_h/openEO_2023-06-01Z.tif.json",
-                    "basename": "openEO_2023-06-01Z.tif.json",
-                    "size": 1439,
-                    "checksum": "sha1$2b1f5f73715ad3c4eaa3a3caf20646a3b1de4e82",
-                    "path": "/calrissian/output-data/r-2512020921004d489e-cal-cwl-e706a8a7/o1kip6_h/openEO_2023-06-01Z.tif.json",
-                },
-                {
-                    "class": "File",
-                    "location": "file:///calrissian/output-data/r-2512020921004d489e-cal-cwl-e706a8a7/o1kip6_h/openEO_2023-06-04Z.tif",
-                    "basename": "openEO_2023-06-04Z.tif",
-                    "size": 20772,
-                    "checksum": "sha1$d8a161a840e9803661ae5ada58b8e24f4b43c285",
-                    "path": "/calrissian/output-data/r-2512020921004d489e-cal-cwl-e706a8a7/o1kip6_h/openEO_2023-06-04Z.tif",
-                },
-                {
-                    "class": "File",
-                    "location": "file:///calrissian/output-data/r-2512020921004d489e-cal-cwl-e706a8a7/o1kip6_h/openEO_2023-06-04Z.tif.json",
-                    "basename": "openEO_2023-06-04Z.tif.json",
-                    "size": 1439,
-                    "checksum": "sha1$55547bfa603f39e652b168b4f68d86c0d91e39c0",
-                    "path": "/calrissian/output-data/r-2512020921004d489e-cal-cwl-e706a8a7/o1kip6_h/openEO_2023-06-04Z.tif.json",
-                },
-                {
-                    "class": "File",
-                    "location": "file:///calrissian/output-data/r-2512020921004d489e-cal-cwl-e706a8a7/o1kip6_h/openEO_2023-06-06Z.tif",
-                    "basename": "openEO_2023-06-06Z.tif",
-                    "size": 20903,
-                    "checksum": "sha1$1e97f3866b7bdea25726f34873c44df6aeff0101",
-                    "path": "/calrissian/output-data/r-2512020921004d489e-cal-cwl-e706a8a7/o1kip6_h/openEO_2023-06-06Z.tif",
-                },
-                {
-                    "class": "File",
-                    "location": "file:///calrissian/output-data/r-2512020921004d489e-cal-cwl-e706a8a7/o1kip6_h/openEO_2023-06-06Z.tif.json",
-                    "basename": "openEO_2023-06-06Z.tif.json",
-                    "size": 1439,
-                    "checksum": "sha1$c62ccbe3baa97c9df43ca925a6b0d7d9a66cbe00",
-                    "path": "/calrissian/output-data/r-2512020921004d489e-cal-cwl-e706a8a7/o1kip6_h/openEO_2023-06-06Z.tif.json",
-                },
-            ],
-            "path": "/calrissian/output-data/r-2512020921004d489e-cal-cwl-e706a8a7/o1kip6_h",
-        }
-    }
-    cwl_outputs_listing_file_array = {
-        "output": [
-            {
-                "basename": "collection.json",
-                "checksum": "sha1$df7cd5c015b75f26dd43909e279698b6bdf9167d",
-                "class": "File",
-                "location": "file:///calrissian/output-data/r-2512021007544f44a0-cal-cwl-af50c185/collection.json",
-                "path": "/calrissian/output-data/r-2512021007544f44a0-cal-cwl-af50c185/collection.json",
-                "size": 778,
-            },
-            {
-                "basename": "openEO_2023-06-01Z.tif.json",
-                "checksum": "sha1$2b1f5f73715ad3c4eaa3a3caf20646a3b1de4e82",
-                "class": "File",
-                "location": "file:///calrissian/output-data/r-2512021007544f44a0-cal-cwl-af50c185/openEO_2023-06-01Z.tif.json",
-                "path": "/calrissian/output-data/r-2512021007544f44a0-cal-cwl-af50c185/openEO_2023-06-01Z.tif.json",
-                "size": 1439,
-            },
-            {
-                "basename": "openEO_2023-06-04Z.tif.json",
-                "checksum": "sha1$55547bfa603f39e652b168b4f68d86c0d91e39c0",
-                "class": "File",
-                "location": "file:///calrissian/output-data/r-2512021007544f44a0-cal-cwl-af50c185/openEO_2023-06-04Z.tif.json",
-                "path": "/calrissian/output-data/r-2512021007544f44a0-cal-cwl-af50c185/openEO_2023-06-04Z.tif.json",
-                "size": 1439,
-            },
-            {
-                "basename": "openEO_2023-06-06Z.tif.json",
-                "checksum": "sha1$c62ccbe3baa97c9df43ca925a6b0d7d9a66cbe00",
-                "class": "File",
-                "location": "file:///calrissian/output-data/r-2512021007544f44a0-cal-cwl-af50c185/openEO_2023-06-06Z.tif.json",
-                "path": "/calrissian/output-data/r-2512021007544f44a0-cal-cwl-af50c185/openEO_2023-06-06Z.tif.json",
-                "size": 1439,
-            },
-            {
-                "basename": "openEO_2023-06-01Z.tif",
-                "checksum": "sha1$4a976bc060ab8b664b731fba9b68672057d9e0e5",
-                "class": "File",
-                "location": "file:///calrissian/output-data/r-2512021007544f44a0-cal-cwl-af50c185/openEO_2023-06-01Z.tif",
-                "path": "/calrissian/output-data/r-2512021007544f44a0-cal-cwl-af50c185/openEO_2023-06-01Z.tif",
-                "size": 20867,
-            },
-            {
-                "basename": "openEO_2023-06-04Z.tif",
-                "checksum": "sha1$d8a161a840e9803661ae5ada58b8e24f4b43c285",
-                "class": "File",
-                "location": "file:///calrissian/output-data/r-2512021007544f44a0-cal-cwl-af50c185/openEO_2023-06-04Z.tif",
-                "path": "/calrissian/output-data/r-2512021007544f44a0-cal-cwl-af50c185/openEO_2023-06-04Z.tif",
-                "size": 20772,
-            },
-            {
-                "basename": "openEO_2023-06-06Z.tif",
-                "checksum": "sha1$1e97f3866b7bdea25726f34873c44df6aeff0101",
-                "class": "File",
-                "location": "file:///calrissian/output-data/r-2512021007544f44a0-cal-cwl-af50c185/openEO_2023-06-06Z.tif",
-                "path": "/calrissian/output-data/r-2512021007544f44a0-cal-cwl-af50c185/openEO_2023-06-06Z.tif",
-                "size": 20903,
-            },
-        ]
-    }
-    cwl_outputs_listing_directory_force = {
-        "force_level2_ard": {
-            "location": "file:///calrissian/output-data/r-25120213093944ef8f-cal-cwl-240fb366/l2-ard",
-            "basename": "l2-ard",
-            "class": "Directory",
-            "listing": [
-                {
-                    "class": "File",
-                    "location": "file:///calrissian/output-data/r-25120213093944ef8f-cal-cwl-240fb366/l2-ard/bologna-l2-ard.json",
-                    "basename": "bologna-l2-ard.json",
-                    "size": 2569,
-                    "checksum": "sha1$affd3c0af0bfef6e38d14d0e711d029e3d967456",
-                    "path": "/calrissian/output-data/r-25120213093944ef8f-cal-cwl-240fb366/l2-ard/bologna-l2-ard.json",
-                },
-                {
-                    "class": "File",
-                    "location": "file:///calrissian/output-data/r-25120213093944ef8f-cal-cwl-240fb366/l2-ard/catalogue.json",
-                    "basename": "catalogue.json",
-                    "size": 226,
-                    "checksum": "sha1$84f60d4ba6da2e051d32f3df8aaaba4f93766869",
-                    "path": "/calrissian/output-data/r-25120213093944ef8f-cal-cwl-240fb366/l2-ard/catalogue.json",
-                },
-            ],
-            "path": "/calrissian/output-data/r-25120213093944ef8f-cal-cwl-240fb366/l2-ard",
-        }
-    }
-
-    # JSON trimmed for brevity. Got json from cwltool without calrissian.
-    cwl_outputs_listing_directory_force2 = {
-        "force_level2_ard": {
-            "location": "file:///home/emile/openeo/apex-force-openeo/l2-ard",
-            "basename": "l2-ard",
-            "class": "Directory",
-            "listing": [
-                {
-                    "class": "Directory",
-                    "location": "file:///home/emile/openeo/apex-force-openeo/l2-ard/europe",
-                    "basename": "europe",
-                    "listing": [
-                        {
-                            "class": "Directory",
-                            "location": "file:///home/emile/openeo/apex-force-openeo/l2-ard/europe/X0031_Y0029",
-                            "basename": "X0031_Y0029",
-                            "listing": [
-                                {
-                                    "class": "File",
-                                    "location": "file:///home/emile/openeo/apex-force-openeo/l2-ard/europe/X0031_Y0029/20241113_LEVEL2_SEN2A_OVV.jpg",
-                                    "basename": "20241113_LEVEL2_SEN2A_OVV.jpg",
-                                    "size": 126508,
-                                    "checksum": "sha1$ceee8756fb6abf68a6d8541bd9a1ba7eb7b4ce8e",
-                                    "path": "/home/emile/openeo/apex-force-openeo/l2-ard/europe/X0031_Y0029/20241113_LEVEL2_SEN2A_OVV.jpg",
-                                },
-                                {
-                                    "class": "File",
-                                    "location": "file:///home/emile/openeo/apex-force-openeo/l2-ard/europe/X0031_Y0029/20241113_LEVEL2_SEN2A_QAI.tif",
-                                    "basename": "20241113_LEVEL2_SEN2A_QAI.tif",
-                                    "size": 1353789,
-                                    "checksum": "sha1$ba67833142335b83a0ea39b1b485f60d3e295bb5",
-                                    "path": "/home/emile/openeo/apex-force-openeo/l2-ard/europe/X0031_Y0029/20241113_LEVEL2_SEN2A_QAI.tif",
-                                },
-                            ],
-                            "path": "/home/emile/openeo/apex-force-openeo/l2-ard/europe/X0031_Y0029",
-                        },
-                        {
-                            "class": "Directory",
-                            "location": "file:///home/emile/openeo/apex-force-openeo/l2-ard/europe/X0032_Y0030",
-                            "basename": "X0032_Y0030",
-                            "listing": [
-                                {
-                                    "class": "File",
-                                    "location": "file:///home/emile/openeo/apex-force-openeo/l2-ard/europe/X0032_Y0030/20241113_LEVEL2_SEN2A_OVV.jpg",
-                                    "basename": "20241113_LEVEL2_SEN2A_OVV.jpg",
-                                    "size": 14579,
-                                    "checksum": "sha1$62d993ccea99536ab641f51024350219561eb988",
-                                    "path": "/home/emile/openeo/apex-force-openeo/l2-ard/europe/X0032_Y0030/20241113_LEVEL2_SEN2A_OVV.jpg",
-                                }
-                            ],
-                            "path": "/home/emile/openeo/apex-force-openeo/l2-ard/europe/X0032_Y0030",
-                        },
-                        {
-                            "class": "File",
-                            "location": "file:///home/emile/openeo/apex-force-openeo/l2-ard/europe/datacube-definition.prj",
-                            "basename": "datacube-definition.prj",
-                            "size": 481,
-                            "checksum": "sha1$1bd59f244455a27108e2f0e29a5ebf5f86401dff",
-                            "path": "/home/emile/openeo/apex-force-openeo/l2-ard/europe/datacube-definition.prj",
-                        },
-                    ],
-                    "path": "/home/emile/openeo/apex-force-openeo/l2-ard/europe",
-                },
-                {
-                    "class": "File",
-                    "location": "file:///home/emile/openeo/apex-force-openeo/l2-ard/bologna-l2-ard.json",
-                    "basename": "bologna-l2-ard.json",
-                    "size": 51219,
-                    "checksum": "sha1$bb9a84dad829e7ad06ac38d06339604e4a49bd42",
-                    "path": "/home/emile/openeo/apex-force-openeo/l2-ard/bologna-l2-ard.json",
-                },
-            ],
-            "path": "/home/emile/openeo/apex-force-openeo/l2-ard",
-        }
-    }
-
     def test_parse_cwl_outputs_listing_directory(self):
-        results = parse_cwl_outputs_listing(self.cwl_outputs_listing_directory)
+        results = parse_cwl_outputs_listing(
+            json.load(get_test_data_file("parse_cwl_outputs_listing/cwl_outputs_listing_directory.json").open())
+        )
         print(results)
         assert len(results) == 7
         assert results[0].startswith("r-")
 
     def test_parse_cwl_outputs_listing_directory_force(self):
-        results = parse_cwl_outputs_listing(self.cwl_outputs_listing_directory_force)
-        print(results)
-        assert len(results) == 2
-        assert results[0].startswith("r-")
-
-    def test_parse_cwl_outputs_listing_directory_force2(self):
-        results = parse_cwl_outputs_listing(self.cwl_outputs_listing_directory_force2)
+        # JSON trimmed for brevity. Got json from cwltool without calrissian.
+        results = parse_cwl_outputs_listing(
+            json.load(get_test_data_file("parse_cwl_outputs_listing/cwl_outputs_listing_directory_force.json").open())
+        )
         print(results)
         assert len(results) == 5
-        assert results[0].startswith("force-openeo/l2-ard")
+        assert results[0].startswith("/home/emile/openeo/apex-force-openeo/l2-ard")
 
     def test_parse_cwl_outputs_listing_file_array(self):
-        results = parse_cwl_outputs_listing(self.cwl_outputs_listing_file_array)
+        results = parse_cwl_outputs_listing(
+            json.load(get_test_data_file("parse_cwl_outputs_listing/cwl_outputs_listing_file_array.json").open())
+        )
         print(results)
         assert len(results) == 7
         assert results[0].startswith("r-")
@@ -906,17 +680,45 @@ class TestCalrissianUtils:
         assert isinstance(result, str)
         assert result == "r-2512020921004d489e-cal-cwl-e706a8a7/o1kip6_h/collection.json"
 
-    def test_find_stac_root_file_array(self):
+    def test_find_stac_root_file_array_01(self):
         listing_directory = [
-            "r-2512021007544f44a0-cal-cwl-af50c185/collection.json",
-            "r-2512021007544f44a0-cal-cwl-af50c185/openEO_2023-06-01Z.tif.json",
-            "r-2512021007544f44a0-cal-cwl-af50c185/openEO_2023-06-04Z.tif.json",
-            "r-2512021007544f44a0-cal-cwl-af50c185/openEO_2023-06-06Z.tif.json",
-            "r-2512021007544f44a0-cal-cwl-af50c185/openEO_2023-06-01Z.tif",
-            "r-2512021007544f44a0-cal-cwl-af50c185/openEO_2023-06-04Z.tif",
-            "r-2512021007544f44a0-cal-cwl-af50c185/openEO_2023-06-06Z.tif",
+            "aaa/collection.json",
+            "bbb/collection-custom.json",
         ]
-        result = find_stac_root(listing_directory, "collection.json")
+        result = find_stac_root(listing_directory, "collection-custom.json")
         assert result
         assert isinstance(result, str)
-        assert result == "r-2512021007544f44a0-cal-cwl-af50c185/collection.json"
+        assert result == "bbb/collection-custom.json"
+
+    def test_find_stac_root_file_array_02(self):
+        listing_directory = [
+            "aaa/collection.json",
+            "bbb/collection-custom.json",
+        ]
+        result = find_stac_root(listing_directory)
+        assert result
+        assert isinstance(result, str)
+        assert result == "aaa/collection.json"
+
+    def test_find_stac_root_file_array_03(self):
+        listing_directory = [
+            "aaa/collection.json",
+            "bbb/collection-custom.json",
+            "ccc/catalog.json",
+            "ddd/catalogue.json",
+        ]
+        result = find_stac_root(listing_directory)
+        assert result
+        assert isinstance(result, str)
+        assert result == "ccc/catalog.json"
+
+    def test_find_stac_root_file_array_04(self):
+        listing_directory = [
+            "aaa/collection.json",
+            "bbb/collection-custom.json",
+            "ddd/catalogue.json",
+        ]
+        result = find_stac_root(listing_directory)
+        assert result
+        assert isinstance(result, str)
+        assert result == "ddd/catalogue.json"
