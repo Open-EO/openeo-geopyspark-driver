@@ -1,12 +1,11 @@
 import logging
-from typing import List, Union, Optional, Tuple
+from typing import List, Union, Optional, Tuple, NamedTuple
 
 from openeo.metadata import (
     CollectionMetadata,
     Dimension,
     TemporalDimension,
     BandDimension,
-    Band,
     DimensionAlreadyExistsException,
     SpatialDimension,
 )
@@ -284,3 +283,18 @@ class GeopysparkCubeMetadata(CollectionMetadata):
                     resolution_meters = reproject_cellsize(spatial_extent, dimensions_step, crs, "Auto42001")
                     return resolution_meters
         return None
+
+class Band(NamedTuple):
+    """
+    Simple container class for band metadata.
+    Based on https://github.com/stac-extensions/eo#band-object
+    """
+
+    name: str
+    common_name: Optional[str] = None
+    # wavelength in micrometer
+    wavelength_um: Optional[float] = None
+    aliases: Optional[List[str]] = None
+    # "openeo:gsd" field (https://github.com/Open-EO/openeo-stac-extensions#GSD-Object)
+    gsd: Optional[dict] = None
+    statistics:Optional[dict] = None
