@@ -443,3 +443,41 @@ class TestPostDryRun:
                 }
             ),
         }
+
+    def test_extract_spatial_extent_from_constraint_load_stac_basic(
+        self, dummy_catalog, extract_source_constraints, dummy_stac_api_server, dummy_stac_api
+    ):
+        """STAC collection with single item and single asset -> extract native footprint from proj metadata."""
+        dummy_stac_api_server.define_collection("collection-1234")
+        dummy_stac_api_server.define_item(
+            collection_id="collection-1234",
+            item_id="item-1",
+            bbox=[1, 2, 3, 4],
+            assets={
+                "asset-1": {
+                    "href": "https://stac.test/asset-1.tif",
+                    "type": "image/tiff; application=geotiff",
+                    "roles": ["data"],
+                    "proj:code": 4326,
+                    "proj:bbox": [1, 2, 3, 4],
+                    "proj:shape": [10, 10],
+                }
+            },
+        )
+        pg = {
+            "load_collection": {
+                "process_id": "load_stac",
+                "arguments": {
+                    "url": f"{dummy_stac_api}/collections/collection-1234",
+                    "spatial_extent": {"west": 1.1234, "south": 2.1234, "east": 3.1234, "north": 4.1234},
+                },
+                "result": True,
+            },
+        }
+        source_constraints = extract_source_constraints(pg)
+        [source_constraint] = source_constraints
+        extents = _extract_spatial_extent_from_constraint(source_constraint=source_constraint, catalog=dummy_catalog)
+        assert extents == (
+            BoundingBox(west=1.1234, south=2.1234, east=3.1234, north=4.1234, crs="EPSG:4326"),
+            BoundingBox(west=1, south=2, east=3, north=4, crs="EPSG:4326"),
+        )

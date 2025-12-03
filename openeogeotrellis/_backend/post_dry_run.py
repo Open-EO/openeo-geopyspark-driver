@@ -1,15 +1,22 @@
 from __future__ import annotations
 
+import collections
 import logging
 import math
-from typing import Callable, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 from openeo.util import deep_get
-from openeo_driver.backend import AbstractCollectionCatalog
+from openeo_driver.backend import AbstractCollectionCatalog, LoadParameters
 from openeo_driver.dry_run import SourceConstraint
 from openeo_driver.errors import CollectionNotFoundException
 from openeo_driver.util.geometry import BoundingBox, epsg_code_or_none, spatial_extent_union
 from openeo_driver.util.utm import is_auto_utm_crs, is_utm_crs
+
+from openeogeotrellis.load_stac import (
+    _ProjectionMetadata,
+    _spatiotemporal_extent_from_load_params,
+    construct_item_collection,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -175,26 +182,32 @@ def _extract_spatial_extent_from_constraint(
     Otherwise returns a tuple of (original_extent, aligned_extent).
     """
     source_id, constraint = source_constraint
-
     source_process = source_id[0]
-    do_realign = True
     if source_process == "load_collection":
         collection_id = source_id[1][0]
-        try:
-            metadata = catalog.get_collection_metadata(collection_id)
-        except CollectionNotFoundException:
-            metadata = {}
-        # TODO Extracting pixel grid info from collection metadata might might be unreliable
-        #       and should be replaced by more precise item-level metadata where possible.
-        source_grid = _GridInfo.from_datacube_metadata(metadata=metadata)
-        # TODO #275 eliminate this VITO specific handling?
-        do_realign = deep_get(metadata, "_vito", "data_source", "realign", default=True)
+        return _extract_spatial_extent_from_constraint_load_collection(
+            collection_id=collection_id, constraint=constraint, catalog=catalog
+        )
     elif source_process == "load_stac":
-        # TODO
-        return None
+        url = source_id[1][0]
+        return _extract_spatial_extent_from_constraint_load_stac(stac_url=url, constraint=constraint)
     else:
         # TODO?
         return None
+
+
+def _extract_spatial_extent_from_constraint_load_collection(
+    collection_id: str, *, constraint: dict, catalog: AbstractCollectionCatalog
+) -> Union[None, Tuple[BoundingBox, BoundingBox]]:
+    try:
+        metadata = catalog.get_collection_metadata(collection_id)
+    except CollectionNotFoundException:
+        metadata = {}
+    # TODO Extracting pixel grid info from collection metadata might might be unreliable
+    #       and should be replaced by more precise item-level metadata where possible.
+    source_grid = _GridInfo.from_datacube_metadata(metadata=metadata)
+    # TODO #275 eliminate this VITO specific handling?
+    do_realign = deep_get(metadata, "_vito", "data_source", "realign", default=True)
 
     extent_from_pg = constraint.get("spatial_extent") or constraint.get("weak_spatial_extent")
     if not extent_from_pg:
@@ -217,6 +230,44 @@ def _extract_spatial_extent_from_constraint(
     )
     if load_in_native_grid and do_realign:
         extent_aligned = _align_extent(extent=extent_aligned, source=source_grid, target=target_grid)
+
+    return extent_orig, extent_aligned
+
+
+def _extract_spatial_extent_from_constraint_load_stac(
+    stac_url: str, *, constraint: dict
+) -> Union[None, Tuple[BoundingBox, BoundingBox]]:
+    extent_from_pg = constraint.get("spatial_extent") or constraint.get("weak_spatial_extent")
+    if not extent_from_pg:
+        return None
+
+    extent_orig: BoundingBox = BoundingBox.from_dict(extent_from_pg, default_crs=4326)
+
+    spatiotemporal_extent = _spatiotemporal_extent_from_load_params(
+        # TODO: eliminate this silly `LoadParameters` roundtrip and avoid duplication with _extract_load_parameters
+        LoadParameters(
+            spatial_extent=extent_from_pg,
+            temporal_extent=constraint.get("temporal_extent") or (None, None),
+        )
+    )
+    property_filter_pg_map = None  # TODO
+    item_collection, _, _, _ = construct_item_collection(
+        url=stac_url, spatiotemporal_extent=spatiotemporal_extent, property_filter_pg_map=property_filter_pg_map
+    )
+
+    # Collect bounding boxes (per projection) to determine overall extent
+    bboxes_per_proj: Dict[str, List[dict]] = collections.defaultdict(list)
+    for item, band_assets in item_collection.iter_items_with_band_assets():
+        for asset_id, asset in band_assets.items():
+            projection_metadata = _ProjectionMetadata.from_asset(asset=asset, item=item)
+            bboxes_per_proj[projection_metadata.code].append(projection_metadata.to_bounding_box().as_dict())
+
+    if len(bboxes_per_proj) == 1:
+        # Simple case: all assets share the same projection
+        [bboxes] = bboxes_per_proj.values()
+        extent_aligned = BoundingBox.from_dict(spatial_extent_union(*bboxes))
+    else:
+        raise NotImplementedError("Merging extents from multiple projections is not yet implemented.")
 
     return extent_orig, extent_aligned
 

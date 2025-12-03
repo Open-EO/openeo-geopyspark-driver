@@ -36,6 +36,7 @@ from openeogeotrellis.load_stac import (
     ItemDeduplicator,
     _spatiotemporal_extent_from_load_params,
     construct_item_collection,
+    _ProjectionMetadata,
 )
 from openeogeotrellis.testing import DummyStacApiServer, gps_config_overrides
 
@@ -730,6 +731,128 @@ def test_proj_code_to_epsg():
     assert _proj_code_to_epsg("IAU_2015:30100") is None
     assert _proj_code_to_epsg(None) is None
     assert _proj_code_to_epsg(1234) is None
+
+
+class TestProjectionMetadata:
+    def test_code_from_epsg(self):
+        metadata = _ProjectionMetadata(epsg=32631)
+        assert metadata.code == "EPSG:32631"
+        assert metadata.epsg == 32631
+
+    def test_epsg_from_code(self):
+        metadata = _ProjectionMetadata(code="EPSG:32631")
+        assert metadata.code == "EPSG:32631"
+        assert metadata.epsg == 32631
+
+    def test_bbox_from_shape_and_transform(self):
+        # https://github.com/soxofaan/projection/blob/22ada42310b58c00d74f68250fd65c8ba6f178b3/examples/assets.json
+        metadata = _ProjectionMetadata(
+            code="EPSG:32659",
+            shape=[5558, 9559],
+            transform=[0.5, 0, 712710, 0, -0.5, 151406, 0, 0, 1],
+        )
+        assert metadata.bbox == (712710.0, 148627.0, 717489.5, 151406.0)
+
+    def test_cell_size_from_bbox_and_shape(self):
+        assert _ProjectionMetadata(
+            bbox=(100, 200, 300, 500),
+            shape=(30, 50),
+        ).cell_size() == (4, 10)
+
+        assert _ProjectionMetadata(
+            bbox=(1000, 2000, 5000, 8000),
+            shape=(100, 200),
+        ).cell_size() == (20.0, 60.0)
+
+    def test_cell_size_from_transform(self):
+        assert _ProjectionMetadata(
+            transform=[0.5, 0, 712710, 0, -0.5, 151406, 0, 0, 1],
+        ).cell_size() == (0.5, 0.5)
+
+    def test_from_item_minimal(self):
+        item = pystac.Item.from_dict(StacDummyBuilder.item())
+        metadata = _ProjectionMetadata.from_item(item)
+        assert metadata.code is None
+        assert metadata.epsg is None
+        assert metadata.bbox is None
+        assert metadata.shape is None
+
+    def test_from_item_full(self):
+        item = pystac.Item.from_dict(
+            StacDummyBuilder.item(
+                properties={
+                    "proj:epsg": 32631,
+                    "proj:bbox": [1200, 3400, 5600, 7800],
+                    "proj:shape": [100, 200],
+                }
+            )
+        )
+        metadata = _ProjectionMetadata.from_item(item)
+        assert metadata.code == "EPSG:32631"
+        assert metadata.epsg == 32631
+        assert metadata.bbox == (1200, 3400, 5600, 7800)
+        assert metadata.shape == (100, 200)
+
+    def test_from_asset_basic(self):
+        asset = pystac.Asset(
+            href="https://stac.test/asset.tif",
+            extra_fields={
+                "proj:epsg": 32631,
+                "proj:bbox": [1200, 3400, 5600, 7800],
+                "proj:shape": [100, 200],
+            },
+        )
+        metadata = _ProjectionMetadata.from_asset(asset)
+        assert metadata.code == "EPSG:32631"
+        assert metadata.epsg == 32631
+        assert metadata.bbox == (1200, 3400, 5600, 7800)
+        assert metadata.shape == (100, 200)
+
+    def test_from_asset_with_item(self):
+        asset = pystac.Asset(
+            href="https://stac.test/asset.tif",
+            extra_fields={
+                "proj:bbox": [1111, 2222, 3333, 4444],
+                "proj:shape": [10, 20],
+            },
+        )
+        item = pystac.Item.from_dict(
+            StacDummyBuilder.item(
+                properties={
+                    "proj:epsg": 32631,
+                    "proj:shape": [100, 200],
+                }
+            )
+        )
+        metadata = _ProjectionMetadata.from_asset(asset, item=item)
+        assert metadata.code == "EPSG:32631"
+        assert metadata.epsg == 32631
+        assert metadata.bbox == (1111, 2222, 3333, 4444)
+        assert metadata.shape == (10, 20)
+
+    def test_from_asset_with_owner_item(self):
+        asset = pystac.Asset(
+            href="https://stac.test/asset.tif",
+            extra_fields={
+                "proj:bbox": [1111, 2222, 3333, 4444],
+                "proj:shape": [10, 20],
+            },
+        )
+        asset.set_owner(
+            pystac.Item.from_dict(
+                StacDummyBuilder.item(
+                    properties={
+                        "proj:epsg": 32631,
+                        "proj:shape": [100, 200],
+                    }
+                )
+            )
+        )
+        metadata = _ProjectionMetadata.from_asset(asset)
+        assert metadata.code == "EPSG:32631"
+        assert metadata.epsg == 32631
+        assert metadata.bbox == (1111, 2222, 3333, 4444)
+        assert metadata.shape == (10, 20)
 
 
 def test_get_proj_metadata_minimal():
