@@ -9,7 +9,7 @@ import re
 import time
 from functools import partial
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterator, List, Optional, Set, Tuple, Union, Iterable
+from typing import Any, Callable, Dict, Iterator, List, Optional, Set, Tuple, Union, Iterable, Sequence
 from urllib.parse import urlparse
 
 import geopyspark as gps
@@ -150,6 +150,7 @@ def load_stac(
 
         opensearch_client = jvm.org.openeo.geotrellis.file.FixedFeaturesOpenSearchClient()
 
+        # TODO: code smell: (most of) these vars should not be initialized with None here
         asset_band_names = None
         stac_bbox = None
         proj_epsg = None
@@ -162,11 +163,8 @@ def load_stac(
         band_cell_size: Dict[str, Tuple[float, float]] = {}
         band_epsgs: Dict[str, Set[int]] = {}
 
-        for itm in item_collection.items:
 
-            band_assets = {
-                asset_id: asset for asset_id, asset in dict(sorted(itm.assets.items())).items() if _is_band_asset(asset)
-            }
+        for itm, band_assets in item_collection.iter_items_with_band_assets():
 
             builder = (
                 jvm.org.openeo.opensearch.OpenSearchResponses.featureBuilder()
@@ -179,6 +177,7 @@ def load_stac(
                 # Go through assets ordered by asset GSD (from finer to coarser) if possible,
                 # falling back on deterministic alphabetical asset_id order.
                 # see https://github.com/Open-EO/openeo-geopyspark-driver/pull/1213#discussion_r2107353442
+                # TODO: move this sorting feature inside iter_items_with_band_assets
                 band_assets.items(),
                 key=lambda kv: (
                     float(kv[1].extra_fields.get("gsd") or itm.properties.get("gsd") or 40e6),
@@ -230,12 +229,13 @@ def load_stac(
                 )
                 builder = builder.addLink(get_best_url(asset), asset_id, pixel_value_offset, asset_band_names)
 
+            # TODO: the proj_* values are assigned in inner per-asset loop,
+            #       so the values here are ill-defined (the values might even come from another item)
             if proj_epsg:
                 builder = builder.withCRS(f"EPSG:{proj_epsg}")
             if proj_bbox:
-                builder = builder.withRasterExtent(*proj_bbox)
+                builder = builder.withRasterExtent(*(float(b) for b in proj_bbox))
 
-            # TODO: does not seem right conceptually; an Item's assets can have different resolutions (and CRS)
             if proj_bbox and proj_shape:
                 cell_width, cell_height = _compute_cellsize(proj_bbox, proj_shape)
                 builder = builder.withResolution(cell_width)
@@ -971,6 +971,14 @@ class ItemCollection:
         return ItemCollection(items=items)
 
 
+    def iter_items_with_band_assets(self) -> Iterator[Tuple[pystac.Item, Dict[str, pystac.Asset]]]:
+        """Iterate over items along with their band assets only."""
+        for item in self.items:
+            band_assets = {asset_id: asset for asset_id, asset in sorted(item.assets.items()) if _is_band_asset(asset)}
+            if band_assets:
+                yield item, band_assets
+
+
 class ItemDeduplicator:
     """
     Deduplicate STAC Items based on nominal datetime and selected properties.
@@ -1135,11 +1143,155 @@ _REGEX_EPSG_CODE = re.compile(r"^EPSG:(\d+)$", re.IGNORECASE)
 
 
 @functools.lru_cache
-def _proj_code_to_epsg(proj_code: str) -> Optional[int]:
+def _proj_code_to_epsg(proj_code: str) -> Union[int, None]:
     if isinstance(proj_code, str) and (match := _REGEX_EPSG_CODE.match(proj_code)):
         return int(match.group(1))
     # TODO pass-through integers as-is?
     return None
+
+
+def _get_asset_property(asset: pystac.Asset, field: str) -> Union[Any, None]:
+    """
+    Helper to get a property directly from asset,
+    or from bands metadata embedded in asset metadata (if consistent across all bands).
+    """
+    if field in asset.extra_fields:
+        return asset.extra_fields.get(field)
+    if "bands" in asset.extra_fields:
+        # TODO: Is it actually ok to look for projection properties at bands level?
+        #       See https://github.com/stac-extensions/projection/issues/25
+        values = []
+        for band in asset.extra_fields["bands"]:
+            if field in band and band[field] and band[field] not in values:
+                values.append(band.get(field))
+        if len(values) == 1:
+            return values[0]
+        if len(values) > 1:
+            # For now, using debug level here instead of warning,
+            # as this can be done for each asset, which might be too much
+            logger.debug(f"Multiple differing values for {field=} found in asset bands: {values=}")
+
+    return None
+
+
+class _ProjectionMetadata:
+    """
+    Container of and conversion interface for projection metadata from STAC Projection Extension.
+    https://github.com/stac-extensions/projection
+
+    Covering these fields:
+    - "proj:code" (preferably, with (less ideal) alternative sources:
+        "proj:epsg" (deprecated), "proj:wkt2" or "proj:projjson")
+    - "proj:bbox"
+    - "proj:shape"
+    - "proj:transform"
+    """
+
+    __slots__ = ("_code", "_bbox", "_shape", "_transform")
+
+    def __init__(
+        self,
+        *,
+        code: Optional[str] = None,
+        epsg: Optional[int] = None,
+        bbox: Optional[Sequence[float]] = None,
+        shape: Optional[Sequence[int]] = None,
+        transform: Optional[Sequence[float]] = None,
+    ):
+        # TODO: support wkt2 and projjson as well in some way?
+        self._code = code or (f"EPSG:{epsg}" if epsg is not None else None)
+        self._bbox = tuple(bbox) if bbox else None
+        self._shape = tuple(shape) if shape else None
+        self._transform = tuple(transform) if transform else None
+
+    def __repr__(self) -> str:
+        return f"_ProjectionMetadata(code={self._code!r}, bbox={self._bbox!r}, shape={self._shape!r})"
+
+    @property
+    def code(self) -> Union[str, None]:
+        return self._code
+
+    @property
+    def epsg(self) -> Union[int, None]:
+        # Note: The field `proj:epsg` has been deprecated in v1.2.0 of projection extension
+        # in favor of `proj:code` and has been removed in v2.0.0.
+        return _proj_code_to_epsg(self._code) if self._code else None
+
+    @property
+    def bbox(self) -> Union[Tuple[float, float, float, float], None]:
+        """
+        Bounding box of the assets represented by this Item in the asset data CRS.
+        Specified as 4 or 6 coordinates ... e.g., [west, south, east, north], ...
+        """
+        if self._bbox and len(self._bbox) in {4, 6}:
+            # TODO: need for support of 6 values?
+            return self._bbox[:4]
+        elif self._shape and self._transform:
+            # per https://github.com/soxofaan/projection/blob/reformat-best-practices/README.md#projtransform
+            a0, a1, a2, a3, a4, a5 = self._transform[:6]
+
+            def project(x: float, y: float) -> Tuple[float, float]:
+                return a0 * x + a1 * y + a2, a3 * x + a4 * y + a5
+
+            sy, sx = self._shape
+            p00 = project(0, 0)
+            px0 = project(sx, 0)
+            p0y = project(0, sy)
+            pxy = project(sx, sy)
+            xs, ys = zip(p00, px0, p0y, pxy)
+            return (min(xs), min(ys), max(xs), max(ys))
+
+    def to_bounding_box(self) -> Union[BoundingBox, None]:
+        """Get bbox as BoundingBox object."""
+        if bbox := self.bbox:
+            return BoundingBox.from_wsen_tuple(bbox, crs=self.code)
+
+    @property
+    def shape(self) -> Union[Tuple[int, int], None]:
+        """Number of pixels in the most common pixel grid used by the assets (in Y, X order)."""
+        if self._shape and len(self._shape) == 2:
+            return self._shape
+        # TODO: calculate from bbox and transform?
+
+    def cell_size(self) -> Tuple[float, float]:
+        """Calculate (cell width, cell height) based on bbox and shape."""
+        if self._bbox and self._shape:
+            xmin, ymin, xmax, ymax = self._bbox[:4]
+            yn, xn = self.shape
+            return float(xmax - xmin) / xn, float(ymax - ymin) / yn
+        elif self._transform:
+            a0, _, _, _, a4, _ = self._transform[:6]
+            return abs(a0), abs(a4)
+        raise ValueError(f"Unable to calculate cell size with {self._shape=}, {self._bbox}, {self._transform}")
+
+    @classmethod
+    def from_item(cls, item: pystac.Item) -> "_ProjectionMetadata":
+        return cls(
+            code=item.properties.get("proj:code"),
+            epsg=item.properties.get("proj:epsg"),
+            bbox=item.properties.get("proj:bbox"),
+            shape=item.properties.get("proj:shape"),
+            transform=item.properties.get("proj:transform"),
+        )
+
+    @classmethod
+    def from_asset(cls, asset: pystac.Asset, *, item: Optional[pystac.Item] = None) -> "_ProjectionMetadata":
+        """
+        Extract projection metadata from asset (with fallback to asset bands or (owning) item).
+        """
+        if item is None:
+            item = asset.owner
+
+        def get(field):
+            return _get_asset_property(asset, field=field) or (item and item.properties.get(field))
+
+        return cls(
+            code=get("proj:code"),
+            epsg=get("proj:epsg"),
+            bbox=get("proj:bbox"),
+            shape=get("proj:shape"),
+            transform=get("proj:transform"),
+        )
 
 
 def _get_proj_metadata(
@@ -1149,50 +1301,10 @@ def _get_proj_metadata(
     Get projection metadata from asset:
     EPSG code (int), bbox (in that EPSG) and number of pixels (rows, cols), if available.
     """
-    # TODO: possible to avoid item argument and just use asset.owner?
+    # TODO: phase out usage and switch to using _ProjectionMetadata directly?
+    metadata = _ProjectionMetadata.from_asset(asset, item=item)
+    return metadata.epsg, metadata.bbox, metadata.shape
 
-    def _get_asset_property(asset: pystac.Asset, field: str) -> Optional:
-        """Helper to get a property directly from asset, or from bands (if consistent across all bands)"""
-        # TODO: Is band peeking feature general enough to make this a more reusable helper?
-        if field in asset.extra_fields:
-            return asset.extra_fields.get(field)
-        if "bands" in asset.extra_fields:
-            # TODO: Is it actually ok to look for projection properties at bands level?
-            #       See https://github.com/stac-extensions/projection/issues/25
-            values = []
-            for band in asset.extra_fields["bands"]:
-                if field in band and band[field] and band[field] not in values:
-                    values.append(band.get(field))
-            if len(values) == 1:
-                return values[0]
-            if len(values) > 1:
-                # For now, using debug level here instead of warning,
-                # as this can be done for each asset, which might be too much
-                logger.debug(f"Multiple differing values for {field=} found in asset bands: {values=}")
-
-        return None
-
-    # Note: The field `proj:epsg` has been deprecated in v1.2.0 of projection extension
-    # in favor of `proj:code` and has been removed in v2.0.0.
-    proj_code = _get_asset_property(asset, field="proj:code") or item.properties.get("proj:code")
-    epsg = (
-        _proj_code_to_epsg(proj_code)
-        or _get_asset_property(asset, field="proj:epsg")
-        or item.properties.get("proj:epsg")
-    )
-
-    proj_bbox = _get_asset_property(asset, field="proj:bbox") or item.properties.get("proj:bbox")
-
-    if not proj_bbox and epsg == 4326:
-        proj_bbox = item.bbox
-
-    proj_shape = _get_asset_property(asset, field="proj:shape") or item.properties.get("proj:shape")
-
-    return (
-        epsg,
-        tuple(map(float, proj_bbox)) if proj_bbox else None,
-        tuple(proj_shape) if proj_shape else None,
-    )
 
 
 def _get_pixel_value_offset(*, item: pystac.Item, asset: pystac.Asset) -> float:
@@ -1272,6 +1384,7 @@ def _compute_cellsize(
     proj_bbox: Tuple[float, float, float, float],
     proj_shape: Tuple[float, float],
 ) -> Tuple[float, float]:
+    # TODO: replace usage with _ProjectionMetadata.cell_size()?
     xmin, ymin, xmax, ymax = proj_bbox
     rows, cols = proj_shape
     cell_width = (xmax - xmin) / cols
