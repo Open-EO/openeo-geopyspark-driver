@@ -202,7 +202,8 @@ def jvm_mock():
                     dirty_equals.IsStr(regex=".*_B01_60m.jp2"),
                     "B01_60m",
                     # has "raster:scale": 0.0001 and "raster:offset": -0.1
-                    -1000.0,
+                    0.0001,
+                    -0.1,
                     ["B01_60m"],
                 )
             ],
@@ -210,31 +211,31 @@ def jvm_mock():
         (
             ["B01"],
             20.0,
-            [(dirty_equals.IsStr(regex=".*_B01_20m.jp2"), "B01_20m", -1000.0, ["B01"])],
+            [(dirty_equals.IsStr(regex=".*_B01_20m.jp2"), "B01_20m", 0.0001, -0.1, ["B01"])],
         ),
         (
             ["WVP_20m"],
             20.0,
-            [(dirty_equals.IsStr(regex=".*_WVP_20m.jp2"), "WVP_20m", -1000.0, ["WVP_20m"])],
+            [(dirty_equals.IsStr(regex=".*_WVP_20m.jp2"), "WVP_20m", 0.0001, -0.1, ["WVP_20m"])],
         ),
         (
             ["WVP_60m"],
             60.0,
-            [(dirty_equals.IsStr(regex=".*_WVP_60m.jp2"), "WVP_60m", -1000.0, ["WVP_60m"])],
+            [(dirty_equals.IsStr(regex=".*_WVP_60m.jp2"), "WVP_60m", 0.0001, -0.1, ["WVP_60m"])],
         ),
         (
             ["AOT_10m", "WVP_20m"],
             10.0,
             [
-                (dirty_equals.IsStr(regex=".*_AOT_10m.jp2"), "AOT_10m", -1000.0, ["AOT_10m"]),
-                (dirty_equals.IsStr(regex=".*_WVP_20m.jp2"), "WVP_20m", -1000.0, ["WVP_20m"]),
+                (dirty_equals.IsStr(regex=".*_AOT_10m.jp2"), "AOT_10m", 0.0001, -0.1, ["AOT_10m"]),
+                (dirty_equals.IsStr(regex=".*_WVP_20m.jp2"), "WVP_20m", 0.0001, -0.1, ["WVP_20m"]),
             ],
         ),
         (
             ["B01_20m", "SCL_20m"],
             20.0,
             [
-                (dirty_equals.IsStr(regex=".*_B01_20m.jp2"), "B01_20m", -1000.0, ["B01_20m"]),
+                (dirty_equals.IsStr(regex=".*_B01_20m.jp2"), "B01_20m", 0.0001, -0.1, ["B01_20m"]),
                 (
                     dirty_equals.IsStr(regex=".*_SCL_20m.jp2"),
                     "SCL_20m",
