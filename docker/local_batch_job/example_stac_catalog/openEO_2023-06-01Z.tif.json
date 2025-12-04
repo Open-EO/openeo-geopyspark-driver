@@ -36,6 +36,7 @@
     51.22021524164682
   ],
   "properties": {
+    "testing_custom_property": "https://github.com/cloudinsar/s1-workflows/issues/70",
     "datetime": "2023-06-01T00:00:00Z"
   },
   "links": [],
