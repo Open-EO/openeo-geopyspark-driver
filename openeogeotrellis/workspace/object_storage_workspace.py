@@ -43,7 +43,7 @@ class ObjectStorageWorkspace(Workspace):
 
         key = f"{subdirectory}/{file_relative}"
         S3ClientBuilder.from_region(self.region).upload_file(
-            str(file),
+            str(file_absolute),
             self.bucket,
             key,
             Config=config,
