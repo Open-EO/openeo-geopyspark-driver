@@ -192,7 +192,7 @@ def jvm_mock():
         (
             ["AOT_10m"],
             10.0,
-            [(dirty_equals.IsStr(regex=".*_AOT_10m.jp2"), "AOT_10m", -1000.0, ["AOT_10m"])],
+            [(dirty_equals.IsStr(regex=".*_AOT_10m.jp2"), "AOT_10m", 0.0001, -0.1, ["AOT_10m"])],
         ),
         (
             ["B01_60m"],
@@ -240,6 +240,7 @@ def jvm_mock():
                     dirty_equals.IsStr(regex=".*_SCL_20m.jp2"),
                     "SCL_20m",
                     # has neither "raster:scale" nor "raster:offset"
+                    1.0,
                     0.0,
                     ["SCL_20m"],
                 ),
