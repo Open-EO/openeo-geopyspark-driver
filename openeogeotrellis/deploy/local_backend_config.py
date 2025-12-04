@@ -47,7 +47,7 @@ config = GpsBackendConfig(
     calrissian_config=CalrissianConfig(
         namespace="calrissian-demo-project",
         input_staging_image="registry.stag.waw3-1.openeo-int.v1.dataspace.copernicus.eu/rand/alpine:3",
-        calrissian_image="registry.stag.waw3-1.openeo-int.v1.dataspace.copernicus.eu/rand/calrissian:latest",
+        calrissian_image="vito-docker.artifactory.vgt.vito.be/calrissian:0.18.1",
         s3_bucket="calrissian",
     ),
     enable_basic_auth=True,
