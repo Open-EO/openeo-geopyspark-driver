@@ -49,8 +49,10 @@ from py4j.java_gateway import JVMView
 from shapely.geometry import GeometryCollection, MultiPolygon, Point, Polygon, box
 from shapely.geometry.base import BaseGeometry
 
-from openeogeotrellis.config import get_backend_config
+from openeogeotrellis.config import get_backend_config, s3_config
 from openeogeotrellis.configparams import ConfigParams
+from openeogeotrellis.integrations.s3proxy import sts
+from openeogeotrellis.integrations.s3proxy.s3 import get_proxy_s3_client_for_job
 from openeogeotrellis.util.runtime import get_job_id
 
 # TODO split up this kitchen sink module into more focused modules
@@ -326,7 +328,8 @@ def download_s3_directory(s3_url: str, output_dir: str):
     bucket, input_dir = s3_url[5:].split("/", 1)
     logger.debug(f"Downloading directory from S3 object storage: {bucket=}, key={input_dir}")
 
-    s3_instance = S3ClientBuilder.from_region(BucketDetails.from_name(bucket).region)
+    s3_instance = create_s3_client()
+
     bucket_keys = s3_instance.list_objects_v2(Bucket=bucket, MaxKeys=1000, Prefix=input_dir)
     for obj in bucket_keys["Contents"]:
         key = obj["Key"]
@@ -335,6 +338,26 @@ def download_s3_directory(s3_url: str, output_dir: str):
         if not key.endswith("/"):
             output_file_path = os.path.join(output_dir, key)
             s3_instance.download_file(Bucket=bucket, Key=key, Filename=output_file_path)
+
+
+def create_s3_client():
+    credential_session_details = {
+        "role_arn": "arn:openeo:iam:::role/eodata",
+        "session_name": "calrissian-eodata-access",
+    }
+    if get_job_id(default=None) is None:
+        # Synchronous request so we are on webappdriver
+        s3_credentials = sts.get_job_aws_credentials_for_proxy(
+            job_id="", user_id="user", **credential_session_details
+        )
+    else:
+        s3_credentials = sts.get_aws_credentials_for_proxy_for_running_job(**credential_session_details)
+    import boto3
+    s3_instance = boto3.client("s3",
+                               aws_access_key_id=s3_credentials.access_key_id,
+                               aws_secret_access_key=s3_credentials.secret_access_key,
+                               endpoint_url=s3_config.AWSConfig.get_s3_endpoint_url())
+    return s3_instance
 
 
 def to_s3_url(file_or_dir_name: Union[os.PathLike,str], bucketname: str = None) -> str:
