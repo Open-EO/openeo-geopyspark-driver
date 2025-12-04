@@ -6,12 +6,12 @@ import pytest
 from openeo_driver.backend import CollectionCatalog, OpenEoBackendImplementation
 from openeo_driver.dry_run import DryRunDataTracer, SourceConstraint
 from openeo_driver.ProcessGraphDeserializer import ENV_DRY_RUN_TRACER, ConcreteProcessing
-from openeo_driver.testing import approxify
 from openeo_driver.util.geometry import BoundingBox
 from openeo_driver.utils import EvalEnv
 
 from openeogeotrellis._backend.post_dry_run import (
     _align_extent,
+    _BoundingBoxMerger,
     _buffer_extent,
     _extract_spatial_extent_from_constraint,
     _GridInfo,
@@ -397,8 +397,8 @@ class TestPostDryRun:
         source_constraints = extract_source_constraints(pg)
         global_extent = determine_global_extent(source_constraints=source_constraints, catalog=dummy_catalog)
         assert global_extent == {
-            "global_extent_original": {"west": 1, "south": 2, "east": 3.5, "north": 4.5, "crs": "EPSG:4326"},
-            "global_extent_aligned": {"west": 1, "south": 2, "east": 3.5, "north": 4.5, "crs": "EPSG:4326"},
+            "global_extent_original": BoundingBox(1, 2, 3.5, 4.5, crs="EPSG:4326"),
+            "global_extent_aligned": BoundingBox(1, 2, 3.5, 4.5, crs="EPSG:4326"),
         }
 
     def test_determine_global_extent_4326_millidegrees(self, dummy_catalog, extract_source_constraints):
@@ -426,22 +426,20 @@ class TestPostDryRun:
         source_constraints = extract_source_constraints(pg)
         global_extent = determine_global_extent(source_constraints=source_constraints, catalog=dummy_catalog)
         assert global_extent == {
-            "global_extent_original": {
-                "west": 11.123456,
-                "south": 22.123456,
-                "east": 66.123456,
-                "north": 66.123456,
-                "crs": "EPSG:4326",
-            },
-            "global_extent_aligned": approxify(
-                {
-                    "west": 11.123,
-                    "south": 22.123,
-                    "east": 66.124,
-                    "north": 66.124,
-                    "crs": "EPSG:4326",
-                }
+            "global_extent_original": BoundingBox(
+                11.123456,
+                22.123456,
+                66.123456,
+                66.123456,
+                crs="EPSG:4326",
             ),
+            "global_extent_aligned": BoundingBox(
+                11.123,
+                22.123,
+                66.124,
+                66.124,
+                crs="EPSG:4326",
+            ).approx(abs=1e-6),
         }
 
     def test_extract_spatial_extent_from_constraint_load_stac_basic(
@@ -481,3 +479,80 @@ class TestPostDryRun:
             BoundingBox(west=1.1234, south=2.1234, east=3.1234, north=4.1234, crs="EPSG:4326"),
             BoundingBox(west=1, south=2, east=3, north=4, crs="EPSG:4326"),
         )
+
+    def test_extract_spatial_extent_from_constraint_load_stac_issue_1299_3569441306(
+        self, dummy_catalog, extract_source_constraints, dummy_stac_api_server, dummy_stac_api
+    ):
+        """
+        use case from https://github.com/Open-EO/openeo-geopyspark-driver/issues/1299#issuecomment-3569441306
+        """
+        stac_collection_id = "terrascope-s5p-l3-ch4-td-v2"
+        dummy_stac_api_server.define_collection(stac_collection_id)
+        dummy_stac_api_server.define_item(
+            collection_id=stac_collection_id,
+            item_id="S5P_OFFL_L3_CH4_TD_20240602_V200",
+            bbox=[-180.0, -89.0, 180.0, 89.0],
+            properties={
+                "datetime": "2024-06-02T06:48:16Z",
+                "proj:code": "EPSG:4326",
+                "proj:bbox": [-180.0, -89.0, 180.0, 89.0],
+                "proj:shape": [3560, 7200],
+                "proj:transform": [0.05, 0.0, -180.0, 0.0, -0.05, 89.0, 0.0, 0.0, 1.0],
+            },
+            assets={
+                "CH4": {
+                    "href": "https://stac.test/data/asset-1.tif",
+                    "type": "image/tiff; application=geotiff",
+                    "roles": ["data"],
+                    "bands": [{"name": "CH4"}],
+                }
+            },
+        )
+        pg = {
+            "load_collection": {
+                "process_id": "load_stac",
+                "arguments": {
+                    "url": f"{dummy_stac_api}/collections/{stac_collection_id}",
+                    "bands": ["CH4"],
+                    "spatial_extent": {
+                        "crs": "EPSG:4326",
+                        "east": 6.5154,
+                        "north": 51.5678,
+                        "south": 49.51234,
+                        "west": 2.54578,
+                    },
+                    "temporal_extent": ["2024-06-02", "2024-06-09"],
+                },
+                "result": True,
+            },
+        }
+        source_constraints = extract_source_constraints(pg)
+        [source_constraint] = source_constraints
+        extents = _extract_spatial_extent_from_constraint(source_constraint=source_constraint, catalog=dummy_catalog)
+        assert extents == (
+            BoundingBox(west=2.54578, south=49.51234, east=6.5154, north=51.5678, crs="EPSG:4326"),
+            BoundingBox(west=2.5, south=49.5, east=6.55, north=51.60, crs="EPSG:4326").approx(abs=1e-6),
+        )
+
+
+class TestBoundingBoxMerger:
+    def test_empty(self):
+        merger = _BoundingBoxMerger()
+        assert merger.get() is None
+
+    def test_single(self):
+        merger = _BoundingBoxMerger()
+        merger.add(BoundingBox(1, 2, 3, 4))
+        assert merger.get() == BoundingBox(1, 2, 3, 4)
+
+    def test_multiple(self):
+        merger = _BoundingBoxMerger()
+        merger.add(BoundingBox(1, 2, 3, 4))
+        merger.add(BoundingBox(8, 4, 9, 6))
+        merger.add(BoundingBox(4, 10, 5, 12))
+        assert merger.get() == BoundingBox(1, 2, 9, 12)
+
+    def test_target_crs(self):
+        merger = _BoundingBoxMerger(crs="EPSG:32631")
+        merger.add(BoundingBox(3.1, 51.1, 3.2, 51.2, crs="EPSG:4326"))
+        assert merger.get() == BoundingBox(506986, 5660950, 514003, 5672085, crs="EPSG:32631").approx(abs=1)

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 import datetime
 import datetime as dt
 import functools
@@ -1187,6 +1189,9 @@ class _ProjectionMetadata:
     - "proj:transform"
     """
 
+    # TODO: move to more generic geometry/projection utility module for better reuse and cleaner separation?
+    # TODO: any added value to leverage projection extension support from pystac in some way?
+
     __slots__ = ("_code", "_bbox", "_shape", "_transform")
 
     def __init__(
@@ -1242,7 +1247,7 @@ class _ProjectionMetadata:
             return (min(xs), min(ys), max(xs), max(ys))
 
     def to_bounding_box(self) -> Union[BoundingBox, None]:
-        """Get bbox as BoundingBox object."""
+        """Get bbox (if any) as BoundingBox object."""
         if bbox := self.bbox:
             return BoundingBox.from_wsen_tuple(bbox, crs=self.code)
 
@@ -1277,7 +1282,7 @@ class _ProjectionMetadata:
     @classmethod
     def from_asset(cls, asset: pystac.Asset, *, item: Optional[pystac.Item] = None) -> "_ProjectionMetadata":
         """
-        Extract projection metadata from asset (with fallback to asset bands or (owning) item).
+        Extract projection metadata from asset, with fallback to asset bands or (owning) item.
         """
         if item is None:
             item = asset.owner
@@ -1292,6 +1297,66 @@ class _ProjectionMetadata:
             shape=get("proj:shape"),
             transform=get("proj:transform"),
         )
+
+    @functools.lru_cache
+    def _snappers(self) -> Tuple[_GridSnapper, _GridSnapper]:
+        """Lazy init of x and y coordinate snappers based on bbox and shape"""
+        cell_width, cell_height = self.cell_size()
+        xmin, ymin, xmax, ymax = self.bbox
+        x_snapper = _GridSnapper(origin=xmin, resolution=cell_width)
+        y_snapper = _GridSnapper(origin=ymin, resolution=cell_height)
+        return x_snapper, y_snapper
+
+    def coverage_for(self, extent: BoundingBox) -> Union[BoundingBox, None]:
+        """
+        Find the coverage (as bounding box) of the given extent
+        within the pixel grid defined by this `_ProjectionMetadata`,
+        including reprojection (if necessary), aligning/snapping to the pixel grid
+        and clamping to the bounds.
+
+        Returns None if no intersection or bbox.
+        """
+        bbox = self.to_bounding_box()
+        if not bbox:
+            logger.warning(f"coverage_for: missing bbox.")
+            return None
+        intersection = bbox.intersection(extent)
+        if not intersection:
+            return None
+
+        x_snapper, y_snapper = self._snappers()
+        return BoundingBox(
+            west=x_snapper.down(intersection.west),
+            south=y_snapper.down(intersection.south),
+            east=x_snapper.up(intersection.east),
+            north=y_snapper.up(intersection.north),
+            crs=self.code,
+        )
+
+
+class _GridSnapper:
+    """Utility to snap coordinates to a grid defined by origin and resolution."""
+
+    # TODO: move to more generic geometry/projection utility module for better reuse and cleaner separation?
+    # TODO: add clamping too? pre- or post-snap?
+
+    __slots__ = ("_orig", "_res")
+
+    def __init__(self, origin: float, resolution: float):
+        self._orig = origin
+        self._res = resolution
+
+    def down(self, v: float):
+        """Snap downwards"""
+        return self._orig + self._res * math.floor((v - self._orig) / self._res)
+
+    def round(self, v: float):
+        """Snap to nearest"""
+        return self._orig + self._res * round((v - self._orig) / self._res)
+
+    def up(self, v: float):
+        """Snap upwards"""
+        return self._orig + self._res * math.ceil((v - self._orig) / self._res)
 
 
 def _get_proj_metadata(
