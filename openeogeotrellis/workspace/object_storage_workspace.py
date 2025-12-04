@@ -32,7 +32,11 @@ class ObjectStorageWorkspace(Workspace):
     def import_file(self, common_path: Union[str, Path], file: Path, merge: str, remove_original: bool = False) -> str:
         merge = os.path.normpath(merge)
         subdirectory = remove_slash_prefix(merge)
-        file_relative = file.relative_to(common_path)
+        if file.is_absolute():
+            file_relative = file.relative_to(common_path)
+        else:
+            file_relative = file
+        file_absolute = Path(common_path) / file_relative
 
         MB = 1024 ** 2
         config = TransferConfig(multipart_threshold=self.MULTIPART_THRESHOLD_IN_MB * MB)
@@ -43,15 +47,15 @@ class ObjectStorageWorkspace(Workspace):
             self.bucket,
             key,
             Config=config,
-            ExtraArgs={"Metadata": self._object_metadata(file)},
+            ExtraArgs={"Metadata": self._object_metadata(file_absolute)},
         )
 
         if remove_original:
-            file.unlink()
+            file_absolute.unlink()
 
         workspace_uri = f"s3://{self.bucket}/{key}"
 
-        _log.debug(f"{'moved' if remove_original else 'uploaded'} {file.absolute()} to {workspace_uri}")
+        _log.debug(f"{'moved' if remove_original else 'uploaded'} {file_absolute} to {workspace_uri}")
         return workspace_uri
 
     def import_object(self, common_path: str, s3_uri: str, merge: str, remove_original: bool = False) -> str:
