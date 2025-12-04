@@ -515,7 +515,8 @@ class CalrissianJobLauncher:
         manifest: kubernetes.client.V1Job,
         *,
         sleep: float = 5,
-        timeout: float = 7200,  # insar_interferogram_coherence takes about 1 hour, so 2 hours should be enough
+        # 12h is also the max timeout for sts tokens. A bit shorter, so the process times out before the sts.
+        timeout: float = 60 * 60 * 12 - 120,
     ) -> kubernetes.client.V1Job:
         """
         Launch a k8s job and wait (with active polling) for it to finish.
