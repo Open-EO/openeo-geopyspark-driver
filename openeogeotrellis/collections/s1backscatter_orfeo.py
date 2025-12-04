@@ -901,7 +901,7 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
 
             if full_product_download:
                 tempdir = tempfile.mkdtemp()
-                download_s3_directory("s3:/" + creo_path,tempdir)
+                download_s3_directory("s3:/" + creo_path.replace("/vsis3","/"),tempdir)
                 creo_path = tempdir
 
             # Short ad-hoc product id for logging purposes.
