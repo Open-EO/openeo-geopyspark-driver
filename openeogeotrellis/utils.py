@@ -30,6 +30,8 @@ from kazoo.client import KazooClient
 from openeo.util import rfc3339
 from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.delayed_vector import DelayedVector
+from openeo_driver.integrations.s3.bucket_details import BucketDetails
+from openeo_driver.integrations.s3.client import S3ClientBuilder
 from openeo_driver.util.geometry import GeometryBufferer, reproject_bounding_box
 from openeo_driver.util.logging import (
     LOG_HANDLER_FILE_JSON,
@@ -324,7 +326,7 @@ def download_s3_directory(s3_url: str, output_dir: str):
     bucket, input_dir = s3_url[5:].split("/", 1)
     logger.debug(f"Downloading directory from S3 object storage: {bucket=}, key={input_dir}")
 
-    s3_instance = s3_client()
+    s3_instance = S3ClientBuilder.from_region(BucketDetails.from_name(bucket).region)
     bucket_keys = s3_instance.list_objects_v2(Bucket=bucket, MaxKeys=1000, Prefix=input_dir)
     for obj in bucket_keys["Contents"]:
         key = obj["Key"]

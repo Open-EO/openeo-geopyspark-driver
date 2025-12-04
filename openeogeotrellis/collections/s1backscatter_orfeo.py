@@ -35,7 +35,7 @@ from openeogeotrellis.collections import convert_scala_metadata
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.util.runtime import in_batch_job_context
 from openeogeotrellis.utils import lonlat_to_mercator_tile_indices, nullcontext, get_jvm, \
-    ensure_executor_logging
+    ensure_executor_logging, download_s3_directory
 
 logger = logging.getLogger(__name__)
 _SOFT_ERROR_TRACKER_ID = "orfeo_backscatter_soft_errors"
@@ -887,6 +887,8 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
         # a pair RDD of product -> tile
         per_product = feature_pyrdd.map(process_feature).groupByKey().mapValues(list)
 
+        full_product_download = smart_bool(sar_backscatter_arguments.options.get("local_copy"))
+
         # TODO: still split if full layout extent is too large for processing as a whole?
 
         # Apply Orfeo processing over product files as whole and splice up in tiles after that
@@ -896,6 +898,11 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
             import faulthandler;
             faulthandler.enable()
             creo_path, features = product
+
+            if full_product_download:
+                tempdir = tempfile.mkdtemp()
+                download_s3_directory("s3:/" + creo_path,tempdir)
+                creo_path = tempdir
 
             # Short ad-hoc product id for logging purposes.
             prod_id = re.sub(r"[^A-Z0-9]", "", creo_path.upper())[-10:]
