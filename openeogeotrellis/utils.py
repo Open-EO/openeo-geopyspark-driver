@@ -47,7 +47,7 @@ from py4j.java_gateway import JVMView
 from shapely.geometry import GeometryCollection, MultiPolygon, Point, Polygon, box
 from shapely.geometry.base import BaseGeometry
 
-from openeogeotrellis.config import get_backend_config, s3_config
+from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.util.runtime import get_job_id
 
