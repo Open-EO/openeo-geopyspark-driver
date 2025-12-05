@@ -261,6 +261,17 @@ def set_max_memory(max_total_memory_in_bytes: int):
 
     logger.info("set resource.RLIMIT_AS to {b} bytes".format(b=max_total_memory_in_bytes))
 
+def eodata_s3_client():
+    import boto3
+    aws_access_key_id =  os.environ.get("AWS_ACCESS_KEY_ID")
+    aws_secret_access_key =  os.environ.get("AWS_SECRET_ACCESS_KEY")
+    endpoint = os.environ.get("AWS_S3_ENDPOINT")
+    https = "http" if os.environ.get("AWS_HTTPS").lower() == "no" else "https"
+    s3_client = boto3.client("s3",
+                             aws_access_key_id=aws_access_key_id,
+                             aws_secret_access_key=aws_secret_access_key,
+                             endpoint_url=https + "://" + endpoint)
+    return s3_client
 
 def s3_client():
     # TODO: replace all use cases with openeodriver.integrations.s3.get_s3_client because all remaining calls
@@ -328,7 +339,10 @@ def download_s3_directory(s3_url: str, output_dir: str):
     bucket, input_dir = s3_url[5:].split("/", 1)
     logger.debug(f"Downloading directory from S3 object storage: {bucket=}, key={input_dir}")
 
-    s3_instance = create_s3_client()
+    if bucket.lower() == "eodata":
+        s3_instance = eodata_s3_client()
+    else:
+        s3_instance = s3_client()
 
     bucket_keys = s3_instance.list_objects_v2(Bucket=bucket, MaxKeys=1000, Prefix=input_dir)
     for obj in bucket_keys["Contents"]:
@@ -340,24 +354,6 @@ def download_s3_directory(s3_url: str, output_dir: str):
             s3_instance.download_file(Bucket=bucket, Key=key, Filename=output_file_path)
 
 
-def create_s3_client():
-    credential_session_details = {
-        "role_arn": "arn:openeo:iam:::role/eodata",
-        "session_name": "calrissian-eodata-access",
-    }
-    if get_job_id(default=None) is None:
-        # Synchronous request so we are on webappdriver
-        s3_credentials = sts.get_job_aws_credentials_for_proxy(
-            job_id="", user_id="user", **credential_session_details
-        )
-    else:
-        s3_credentials = sts.get_aws_credentials_for_proxy_for_running_job(**credential_session_details)
-    import boto3
-    s3_instance = boto3.client("s3",
-                               aws_access_key_id=s3_credentials.access_key_id,
-                               aws_secret_access_key=s3_credentials.secret_access_key,
-                               endpoint_url=s3_config.AWSConfig.get_s3_endpoint_url())
-    return s3_instance
 
 
 def to_s3_url(file_or_dir_name: Union[os.PathLike,str], bucketname: str = None) -> str:
