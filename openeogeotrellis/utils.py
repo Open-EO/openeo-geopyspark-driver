@@ -30,8 +30,6 @@ from kazoo.client import KazooClient
 from openeo.util import rfc3339
 from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.delayed_vector import DelayedVector
-from openeo_driver.integrations.s3.bucket_details import BucketDetails
-from openeo_driver.integrations.s3.client import S3ClientBuilder
 from openeo_driver.util.geometry import GeometryBufferer, reproject_bounding_box
 from openeo_driver.util.logging import (
     LOG_HANDLER_FILE_JSON,
@@ -51,8 +49,6 @@ from shapely.geometry.base import BaseGeometry
 
 from openeogeotrellis.config import get_backend_config, s3_config
 from openeogeotrellis.configparams import ConfigParams
-from openeogeotrellis.integrations.s3proxy import sts
-from openeogeotrellis.integrations.s3proxy.s3 import get_proxy_s3_client_for_job
 from openeogeotrellis.util.runtime import get_job_id
 
 # TODO split up this kitchen sink module into more focused modules
