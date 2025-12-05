@@ -6,6 +6,7 @@ import multiprocessing
 import os
 import pathlib
 import re
+import shutil
 import signal
 import sys
 import tempfile
@@ -1056,6 +1057,8 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
                                         tile = geopyspark.Tile(tile, cell_type, no_data_value=nodata)
                                         tiles.append((key, tile))
 
+            if full_product_download:
+                shutil.rmtree(creo_path)
             logger.info(f"{log_prefix} Layout extent split in {len(tiles)} tiles")
             return tiles
 
