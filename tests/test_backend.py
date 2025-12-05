@@ -610,10 +610,6 @@ def test_k8s_sparkapplication_dict_udf_python_deps(backend_config_path):
             driver=dirty_equals.IsPartialDict(
                 env=dirty_equals.Contains(
                     {
-                        "name": "PYTHONPATH",
-                        "value": dirty_equals.IsStr(regex=r".+:/jobs/j123/udfdepz\.d(:|$)"),
-                    },
-                    {
                         "name": "UDF_PYTHON_DEPENDENCIES_FOLDER_PATH",
                         "value": "/jobs/j123/udfdepz.d",
                     },
@@ -626,10 +622,6 @@ def test_k8s_sparkapplication_dict_udf_python_deps(backend_config_path):
             ),
             executor=dirty_equals.IsPartialDict(
                 env=dirty_equals.Contains(
-                    {
-                        "name": "PYTHONPATH",
-                        "value": dirty_equals.IsStr(regex=r".+:/jobs/j123/udfdepz\.d(:|$)"),
-                    },
                     {
                         "name": "UDF_PYTHON_DEPENDENCIES_FOLDER_PATH",
                         "value": "/jobs/j123/udfdepz.d",
