@@ -164,7 +164,6 @@ def load_stac_from_layercatalog(
         url: str,
         load_params: StacLoadParameters,
         env: StacEvalEnv,
-        layer_properties: Optional[PropertyFilterPGMap] = None,
         batch_jobs: Optional[openeo_driver.backend.BatchJobs] = None,
         override_band_names: Optional[List[str]] = None,
 ):
