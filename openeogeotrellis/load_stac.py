@@ -7,6 +7,7 @@ import logging
 import os
 import re
 import time
+from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterator, List, Optional, Set, Tuple, Union, Iterable
@@ -85,6 +86,119 @@ class LoadStacException(OpenEOApiException):
         self.url = url
 
 
+@dataclass(frozen=True)
+class StacLoadParameters:
+    spatial_extent: Optional[Dict[str, Any]]
+    temporal_extent: Tuple[Union[str, None], Union[str, None]]
+    bands: Optional[Union[List[str], str]]
+    properties: Optional[Dict[str, Any]]
+    target_crs: Optional[Union[int, Dict[str, Any]]]
+    target_resolution: Optional[Tuple[float, float]]
+    global_extent: Optional[Dict[str, Any]]
+    featureflags: StacFeatureFlags
+
+    @staticmethod
+    def from_load_parameters(
+        load_params: LoadParameters,
+    ) -> StacLoadParameters:
+        return StacLoadParameters(
+            spatial_extent=load_params.spatial_extent,
+            temporal_extent=load_params.temporal_extent,
+            bands=load_params.bands,
+            properties=load_params.properties,
+            target_crs=load_params.target_crs,
+            target_resolution=load_params.target_resolution,
+            global_extent=load_params.global_extent,
+            featureflags=load_params.get("featureflags", StacFeatureFlags()),
+        )
+
+
+@dataclass
+class StacFeatureFlags:
+    allow_empty_cube: bool = False
+    cellsize: Optional[Tuple[float, float]] = None
+    tilesize: Optional[int] = None
+    use_filter_extension: bool = True
+    deduplicate_items: bool = True
+
+    @staticmethod
+    def from_dict(flags: Dict[str, Any]) -> StacFeatureFlags:
+        return StacFeatureFlags(
+            allow_empty_cube=flags.get("allow_empty_cube", False),
+            cellsize=flags.get("cellsize"),
+            tilesize=flags.get("tilesize"),
+            use_filter_extension=flags.get("use-filter-extension", True),
+            deduplicate_items=flags.get("deduplicate_items", True),
+        )
+
+    def update(self, other: Dict[str, Any]) -> None:
+        # Update fields from a dict, ignoring unknown keys
+        for key, value in other.items():
+            if hasattr(self, key):
+                setattr(self, key, value)
+
+
+@dataclass
+class StacEvalEnv:
+    correlation_id: Optional[str] = None
+    user: Optional[User] = None
+    collected_parameters: Dict[str, Any] = None
+    allow_empty_cubes: bool = False
+    max_soft_errors_ratio: float = 0.0
+
+    @staticmethod
+    def from_eval_env(env: EvalEnv) -> StacEvalEnv:
+        return StacEvalEnv(
+            correlation_id=env.get(EVAL_ENV_KEY.CORRELATION_ID),
+            allow_empty_cubes=env.get(EVAL_ENV_KEY.ALLOW_EMPTY_CUBES, False),
+            max_soft_errors_ratio=env.get(EVAL_ENV_KEY.MAX_SOFT_ERRORS_RATIO, 0.0),
+            user=env.get(EVAL_ENV_KEY.USER),
+            collected_parameters=env.collect_parameters(),
+        )
+
+
+def load_stac_from_layercatalog(
+        url: str,
+        load_params: StacLoadParameters,
+        env: StacEvalEnv,
+        layer_properties: Optional[PropertyFilterPGMap] = None,
+        batch_jobs: Optional[openeo_driver.backend.BatchJobs] = None,
+        override_band_names: Optional[List[str]] = None,
+):
+    # User-provided (load_params) featureflags have precedence and will override layer catalog flags.
+    # TODO: layercatalog has to fill in the correct featureflags in load_params beforehand.
+    # TODO: layercatalog should also fill in load_params.properties based on its own property filters.
+    # Merge property filters from layer catalog and user-provided load_params (with precedence to load_params)
+    property_filter_pg_map: PropertyFilterPGMap = {
+        **(layer_properties or {}),
+        **(load_params.properties or {}),
+    }
+    return load_stac(
+        url=url,
+        load_params=load_params,
+        env=env,
+        property_filter_pg_map=property_filter_pg_map,
+        batch_jobs=batch_jobs,
+        override_band_names=override_band_names,
+    )
+
+
+def load_stac_from_process(
+        url: str,
+        *,
+        load_params: StacLoadParameters,
+        env: StacEvalEnv,
+        batch_jobs: Optional[openeo_driver.backend.BatchJobs] = None,
+    ):
+    return load_stac(
+        url=url,
+        load_params=load_params,
+        property_filter_pg_map=load_params.properties or {},
+        env=env,
+        batch_jobs=batch_jobs,
+    )
+
+
 # Some type aliases related to property filters expressed as process graphs
 # (e.g. like the `properties` argument of `load_collection`/`load_stac` processes).
 FlatProcessGraph = Dict[str, dict]
@@ -94,31 +208,21 @@ PropertyFilterPGMap = Dict[str, FlatProcessGraph]
 def load_stac(
     url: str,
     *,
-    load_params: LoadParameters,
-    env: EvalEnv,
-    layer_properties: Optional[PropertyFilterPGMap] = None,
+    load_params: StacLoadParameters,
+    env: StacEvalEnv,
+    property_filter_pg_map: Optional[PropertyFilterPGMap] = None,
     batch_jobs: Optional[openeo_driver.backend.BatchJobs] = None,
     override_band_names: Optional[List[str]] = None,
     stac_io: Optional[pystac.stac_io.StacIO] = None,
-    feature_flags: Optional[Dict[str, Any]] = None,
 ) -> GeopysparkDataCube:
     if override_band_names is None:
         override_band_names = []
-
-    # Feature flags: merge global (e.g. from layer catalog info) and user-provided (higher precedence)
-    feature_flags = {**(feature_flags or {}), **load_params.get("featureflags", {})}
+    feature_flags = load_params.featureflags
 
     logger.info(f"load_stac with {url=} {load_params=} {feature_flags=}")
 
-    allow_empty_cubes = feature_flags.get("allow_empty_cube", env.get(EVAL_ENV_KEY.ALLOW_EMPTY_CUBES, False))
-
-    # Merge property filters from layer catalog and user-provided load_params (with precedence to load_params)
-    property_filter_pg_map: PropertyFilterPGMap = {
-        **(layer_properties or {}),
-        **(load_params.properties or {}),
-    }
-
-    user: Optional[User] = env.get("user")
+    allow_empty_cubes: bool = feature_flags.allow_empty_cube or env.allow_empty_cubes
+    user: Optional[User] = env.user
 
     requested_bbox = BoundingBox.from_dict_or_none(load_params.spatial_extent, default_crs="EPSG:4326")
     temporal_extent = load_params.temporal_extent
@@ -751,7 +855,7 @@ class _SpatioTemporalExtent:
         )
 
 
-def _spatiotemporal_extent_from_load_params(load_params: LoadParameters) -> _SpatioTemporalExtent:
+def _spatiotemporal_extent_from_load_params(load_params: StacLoadParameters) -> _SpatioTemporalExtent:
     bbox = BoundingBox.from_dict_or_none(load_params.spatial_extent, default_crs="EPSG:4326")
     (from_date, until_date) = (to_datetime_utc_unless_none(d) for d in load_params.temporal_extent)
     if until_date is None:
