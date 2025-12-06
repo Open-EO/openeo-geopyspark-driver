@@ -119,7 +119,7 @@ class StacFeatureFlags:
     cellsize: Optional[Tuple[float, float]] = None
     tilesize: Optional[int] = None
     use_filter_extension: bool = True
-    deduplicate_items: bool = True
+    deduplicate_items: bool = get_backend_config().load_stac_deduplicate_items_default
 
     @staticmethod
     def from_dict(flags: Dict[str, Any]) -> StacFeatureFlags:
@@ -128,7 +128,7 @@ class StacFeatureFlags:
             cellsize=flags.get("cellsize"),
             tilesize=flags.get("tilesize"),
             use_filter_extension=flags.get("use-filter-extension", True),
-            deduplicate_items=flags.get("deduplicate_items", True),
+            deduplicate_items=flags.get("deduplicate_items", get_backend_config().load_stac_deduplicate_items_default),
         )
 
     def update(self, other: Dict[str, Any]) -> None:
@@ -156,6 +156,9 @@ class StacEvalEnv:
             collected_parameters=env.collect_parameters(),
         )
 
+    def collect_parameters(self):
+        return self.collected_parameters or {}
+
 
 def load_stac_from_layercatalog(
         url: str,
@@ -169,15 +172,15 @@ def load_stac_from_layercatalog(
     # TODO: layercatalog has to fill in the correct featureflags in load_params beforehand.
     # TODO: layercatalog should also fill in load_params.properties based on its own property filters.
     # Merge property filters from layer catalog and user-provided load_params (with precedence to load_params)
-    property_filter_pg_map: PropertyFilterPGMap = {
-        **(layer_properties or {}),
-        **(load_params.properties or {}),
-    }
+    # property_filter_pg_map: PropertyFilterPGMap = {
+    #     **(layer_properties or {}),
+    #     **(load_params.properties or {}),
+    # }
+    # load_params.properties = property_filter_pg_map
     return load_stac(
         url=url,
         load_params=load_params,
         env=env,
-        property_filter_pg_map=property_filter_pg_map,
         batch_jobs=batch_jobs,
         override_band_names=override_band_names,
     )
@@ -193,7 +196,6 @@ def load_stac_from_process(
     return load_stac(
         url=url,
         load_params=load_params,
-        property_filter_pg_map=load_params.properties or {},
         env=env,
         batch_jobs=batch_jobs,
     )
@@ -210,7 +212,6 @@ def load_stac(
     *,
     load_params: StacLoadParameters,
     env: StacEvalEnv,
-    property_filter_pg_map: Optional[PropertyFilterPGMap] = None,
     batch_jobs: Optional[openeo_driver.backend.BatchJobs] = None,
     override_band_names: Optional[List[str]] = None,
     stac_io: Optional[pystac.stac_io.StacIO] = None,
@@ -220,6 +221,8 @@ def load_stac(
     feature_flags = load_params.featureflags
 
     logger.info(f"load_stac with {url=} {load_params=} {feature_flags=}")
+
+    property_filter_pg_map = load_params.properties or {}
 
     allow_empty_cubes: bool = feature_flags.allow_empty_cube or env.allow_empty_cubes
     user: Optional[User] = env.user
@@ -609,8 +612,8 @@ def construct_item_collection(
     spatiotemporal_extent: Optional[_SpatioTemporalExtent] = None,
     property_filter_pg_map: Optional[PropertyFilterPGMap] = None,
     batch_jobs: Optional[openeo_driver.backend.BatchJobs] = None,
-    env: Optional[EvalEnv] = None,
-    feature_flags: Optional[Dict[str, Any]] = None,
+    env: Optional[StacEvalEnv] = None,
+    feature_flags: Optional[StacFeatureFlags] = None,
     stac_io: Optional[pystac.stac_io.StacIO] = None,
     user: Optional[User] = None,
 ) -> Tuple[ItemCollection, GeopysparkCubeMetadata, List[str], bool]:
@@ -619,8 +622,8 @@ def construct_item_collection(
     """
     spatiotemporal_extent = spatiotemporal_extent or _SpatioTemporalExtent()
     property_filter_pg_map = property_filter_pg_map or {}
-    env = env or EvalEnv()
-    feature_flags = feature_flags or {}
+    env = env or StacEvalEnv()
+    feature_flags = feature_flags or StacFeatureFlags()
 
     netcdf_with_time_dimension = False
 
@@ -689,7 +692,7 @@ def construct_item_collection(
                 original_url=url,
                 property_filter=property_filter,
                 spatiotemporal_extent=spatiotemporal_extent,
-                use_filter_extension=feature_flags.get("use-filter-extension", True),
+                use_filter_extension=feature_flags.use_filter_extension,
                 # TODO #1312 why skipping datetime filter especially for netcdf with time dimension?
                 skip_datetime_filter=netcdf_with_time_dimension,
             )
@@ -714,7 +717,7 @@ def construct_item_collection(
     # TODO: smarter and more fine-grained deduplication behavior?
     #       - enable by default or only do it on STAC API usage?
     #       - allow custom deduplicators (e.g. based on layer catalog info about openeo collections)
-    if feature_flags.get("deduplicate_items", get_backend_config().load_stac_deduplicate_items_default):
+    if feature_flags.deduplicate_items:
         item_collection = item_collection.deduplicated(deduplicator=ItemDeduplicator())
 
     # TODO: possible to embed band names in metadata directly?
@@ -1506,9 +1509,9 @@ class PropertyFilter:
 
     # TODO: move this utility to a more generic location for better reuse
 
-    def __init__(self, properties: PropertyFilterPGMap, *, env: Optional[EvalEnv] = None):
+    def __init__(self, properties: PropertyFilterPGMap, *, env: Optional[StacEvalEnv] = None):
         self._properties = properties
-        self._env = env or EvalEnv()
+        self._env = env or StacEvalEnv()
 
     @staticmethod
     def _build_callable(operator: str, value: Any) -> Callable[[Any], bool]:
