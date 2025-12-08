@@ -494,7 +494,6 @@ def run_job(
                     # fusemount could have some delay to make files accessible, so poll a bit:
                     asset_path = get_abs_path_of_asset(file_path, job_dir)
                     wait_till_path_available(asset_path)
-                    asset["href"] = asset_path
                 add_permissions_with_failsafe(Path(asset["href"]), stat.S_IWGRP)
             logger.info(f"wrote {len(the_assets_metadata)} assets to {output_file}")
 
