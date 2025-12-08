@@ -12,7 +12,7 @@ DEFAULT_CALRISSIAN_S3_BUCKET = "calrissian"
 DEFAULT_CALRISSIAN_BASE_ARGUMENTS = (
     "--debug",
     "--max-ram",
-    "15G",  # TODO: Use max_executor_or_driver_memory ?
+    "7G",  # TODO: Use max_executor_or_driver_memory ?
     "--max-cores",
     "4",
     "--force-docker-pull",

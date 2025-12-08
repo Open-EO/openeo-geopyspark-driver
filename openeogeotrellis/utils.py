@@ -257,6 +257,17 @@ def set_max_memory(max_total_memory_in_bytes: int):
 
     logger.info("set resource.RLIMIT_AS to {b} bytes".format(b=max_total_memory_in_bytes))
 
+def eodata_s3_client():
+    import boto3
+    aws_access_key_id =  os.environ.get("AWS_ACCESS_KEY_ID")
+    aws_secret_access_key =  os.environ.get("AWS_SECRET_ACCESS_KEY")
+    endpoint = os.environ.get("AWS_S3_ENDPOINT")
+    https = "http" if os.environ.get("AWS_HTTPS").lower() == "no" else "https"
+    s3_client = boto3.client("s3",
+                             aws_access_key_id=aws_access_key_id,
+                             aws_secret_access_key=aws_secret_access_key,
+                             endpoint_url=https + "://" + endpoint)
+    return s3_client
 
 def s3_client():
     # TODO: replace all use cases with openeodriver.integrations.s3.get_s3_client because all remaining calls
@@ -324,7 +335,11 @@ def download_s3_directory(s3_url: str, output_dir: str):
     bucket, input_dir = s3_url[5:].split("/", 1)
     logger.debug(f"Downloading directory from S3 object storage: {bucket=}, key={input_dir}")
 
-    s3_instance = s3_client()
+    if bucket.lower() == "eodata":
+        s3_instance = eodata_s3_client()
+    else:
+        s3_instance = s3_client()
+
     bucket_keys = s3_instance.list_objects_v2(Bucket=bucket, MaxKeys=1000, Prefix=input_dir)
     for obj in bucket_keys["Contents"]:
         key = obj["Key"]
@@ -333,6 +348,8 @@ def download_s3_directory(s3_url: str, output_dir: str):
         if not key.endswith("/"):
             output_file_path = os.path.join(output_dir, key)
             s3_instance.download_file(Bucket=bucket, Key=key, Filename=output_file_path)
+
+
 
 
 def to_s3_url(file_or_dir_name: Union[os.PathLike,str], bucketname: str = None) -> str:

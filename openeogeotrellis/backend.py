@@ -19,7 +19,7 @@ from decimal import Decimal
 from functools import lru_cache, partial, reduce
 from pathlib import Path
 from subprocess import CalledProcessError
-from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union, Set
+from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union, Set, Any
 from urllib.parse import urlparse
 
 import flask
@@ -35,7 +35,7 @@ from geopyspark import LayerType, Pyramid, TiledRasterLayer
 
 import openeo_driver.util.changelog
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
-from openeo.metadata import Band, BandDimension, Dimension, SpatialDimension, TemporalDimension
+from openeo.metadata import BandDimension, Dimension, SpatialDimension, TemporalDimension
 from openeo.util import TimingLogger, deep_get, dict_no_none, repr_truncate, rfc3339, str_truncate, Rfc3339
 from openeo.utils.version import ComparableVersion
 from openeo_driver import backend
@@ -52,7 +52,7 @@ from openeo_driver.constants import DEFAULT_LOG_LEVEL_RETRIEVAL, DEFAULT_LOG_LEV
 from openeo_driver.datacube import DriverDataCube, DriverVectorCube
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.delayed_vector import DelayedVector
-from openeo_driver.dry_run import SourceConstraint
+from openeo_driver.dry_run import SourceConstraint, DryRunDataCube, DryRunDataTracer
 from openeo_driver.errors import (InternalException, JobNotFinishedException, OpenEOApiException,
                                   ServiceUnsupportedException,
                                   ProcessParameterInvalidException, )
@@ -78,12 +78,14 @@ from xarray import DataArray
 import numpy as np
 
 import openeogeotrellis
+import openeogeotrellis._backend.post_dry_run
 from openeo_driver.views import OPENEO_API_VERSION_DEFAULT
 from openeogeotrellis import sentinel_hub, load_stac, datacube_parameters
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.config.s3_config import S3Config
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.constants import JOB_OPTION_LOG_LEVEL
+from openeogeotrellis.geopysparkcubemetadata import Band
 from openeogeotrellis.geopysparkdatacube import GeopysparkCubeMetadata, GeopysparkDataCube
 from openeogeotrellis.integrations.etl_api import get_etl_api, ETL_ORGANIZATION_ID_JOB_OPTION
 from openeogeotrellis.integrations.identity import IDP_TOKEN_ISSUER
@@ -684,7 +686,7 @@ Example usage:
         ])
 
         # TODO: eliminate duplication with GeoPySparkLayerCatalog.load_collection
-        temporal_extent = load_params.temporal_extent
+        temporal_extent = load_params.temporal_extent or (None, None)
         from_date, to_date = normalize_temporal_extent(temporal_extent)
         metadata = metadata.filter_temporal(from_date, to_date)
 
@@ -829,7 +831,7 @@ Example usage:
         ])
 
         # TODO: eliminate duplication with load_disk_data
-        temporal_extent = load_params.temporal_extent
+        temporal_extent = load_params.temporal_extent or (None, None)
         from_date, to_date = normalize_temporal_extent(temporal_extent)
         metadata = metadata.filter_temporal(from_date, to_date)
 
@@ -1338,6 +1340,24 @@ Example usage:
             )
 
             return costs
+
+    def post_dry_run(
+        self,
+        *,
+        dry_run_result: Union[DryRunDataCube, Any],
+        dry_run_tracer: DryRunDataTracer,
+        source_constraints: List[SourceConstraint],
+    ) -> Union[None, dict]:
+        # TODO #1299/#1437 remove try-except when stable
+        try:
+            post_dry_run_data = openeogeotrellis._backend.post_dry_run.post_dry_run(
+                source_constraints=source_constraints,
+                catalog=self.catalog,
+            )
+            logger.info(f"post_dry_run: {post_dry_run_data=}")
+            return post_dry_run_data
+        except Exception as e:
+            logger.error(f"post_dry_run failed: {e}", exc_info=True)
 
 
 class GpsProcessing(ConcreteProcessing):

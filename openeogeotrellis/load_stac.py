@@ -36,7 +36,6 @@ from openeo_driver.errors import (
     ProcessParameterUnsupportedException,
 )
 from openeo_driver.jobregistry import PARTIAL_JOB_STATUS
-from openeo_driver.ProcessGraphDeserializer import DEFAULT_TEMPORAL_EXTENT
 from openeo_driver.users import User
 from openeo_driver.util.geometry import BoundingBox, GeometryBufferer
 from openeo_driver.util.http import requests_with_retry
@@ -86,12 +85,18 @@ class LoadStacException(OpenEOApiException):
         self.url = url
 
 
+# Some type aliases related to property filters expressed as process graphs
+# (e.g. like the `properties` argument of `load_collection`/`load_stac` processes).
+FlatProcessGraph = Dict[str, dict]
+PropertyFilterPGMap = Dict[str, FlatProcessGraph]
+
+
 def load_stac(
     url: str,
     *,
     load_params: LoadParameters,
     env: EvalEnv,
-    layer_properties: Optional[Dict[str, object]] = None,
+    layer_properties: Optional[PropertyFilterPGMap] = None,
     batch_jobs: Optional[openeo_driver.backend.BatchJobs] = None,
     override_band_names: Optional[List[str]] = None,
     stac_io: Optional[pystac.stac_io.StacIO] = None,
@@ -100,20 +105,22 @@ def load_stac(
     if override_band_names is None:
         override_band_names = []
 
-    logger.info("load_stac from url {u!r} with load params {p!r}".format(u=url, p=load_params))
-
     # Feature flags: merge global (e.g. from layer catalog info) and user-provided (higher precedence)
     feature_flags = {**(feature_flags or {}), **load_params.get("featureflags", {})}
-    logger.info(f"load_stac {feature_flags=}")
+
+    logger.info(f"load_stac with {url=} {load_params=} {feature_flags=}")
 
     allow_empty_cubes = feature_flags.get("allow_empty_cube", env.get(EVAL_ENV_KEY.ALLOW_EMPTY_CUBES, False))
 
-    all_properties = {**layer_properties, **load_params.properties} if layer_properties else load_params.properties
+    # Merge property filters from layer catalog and user-provided load_params (with precedence to load_params)
+    property_filter_pg_map: PropertyFilterPGMap = {
+        **(layer_properties or {}),
+        **(load_params.properties or {}),
+    }
 
     user: Optional[User] = env.get("user")
 
     requested_bbox = BoundingBox.from_dict_or_none(load_params.spatial_extent, default_crs="EPSG:4326")
-
     temporal_extent = load_params.temporal_extent
     from_date, until_date = map(dt.datetime.fromisoformat, normalize_temporal_extent(temporal_extent))
     to_date = (
@@ -121,104 +128,19 @@ def load_stac(
         if from_date == until_date
         else until_date - dt.timedelta(milliseconds=1)
     )
-
-    spatiotemporal_extent = _SpatioTemporalExtent(bbox=requested_bbox, from_date=from_date, to_date=to_date)
-
-    property_filter = PropertyFilter(properties=all_properties, env=env)
-
-    collection = None
-    metadata = None
-
-    netcdf_with_time_dimension = False
-
-    backend_config = get_backend_config()
-    poll_interval_seconds = backend_config.job_dependencies_poll_interval_seconds
-    max_poll_delay_seconds = backend_config.job_dependencies_max_poll_delay_seconds
-    max_poll_time = time.time() + max_poll_delay_seconds
-
-    dependency_job_info = (
-        _await_dependency_job(
-            url=url,
-            user=user,
-            batch_jobs=batch_jobs,
-            poll_interval_seconds=poll_interval_seconds,
-            max_poll_delay_seconds=max_poll_delay_seconds,
-            max_poll_time=max_poll_time,
-        )
-        if user and batch_jobs
-        else None
-    )
-
-    stac_metadata_parser = _StacMetadataParser(logger=logger)
+    spatiotemporal_extent = _spatiotemporal_extent_from_load_params(load_params)
 
     try:
-        if dependency_job_info and batch_jobs:
-            item_collection = ItemCollection.from_own_job(
-                job=dependency_job_info, spatiotemporal_extent=spatiotemporal_extent, batch_jobs=batch_jobs, user=user
-            )
-            collection_band_names = []
-        else:
-            logger.info(f"load_stac of arbitrary URL {url}")
-
-            stac_object = _await_stac_object(
-                url=url,
-                poll_interval_seconds=poll_interval_seconds,
-                max_poll_delay_seconds=max_poll_delay_seconds,
-                max_poll_time=max_poll_time,
-                stac_io=stac_io,
-            )
-
-            if isinstance(stac_object, pystac.Item):
-                if load_params.properties:
-                    # as dictated by the load_stac spec
-                    # TODO: it's not that simple see https://github.com/Open-EO/openeo-processes/issues/536 and https://github.com/Open-EO/openeo-processes/pull/547
-                    raise ProcessParameterUnsupportedException(process="load_stac", parameter="properties")
-
-                item = stac_object
-                collection_band_names = stac_metadata_parser.bands_from_stac_item(item=item).band_names()
-                item_collection = ItemCollection.from_stac_item(item=item, spatiotemporal_extent=spatiotemporal_extent)
-            elif isinstance(stac_object, pystac.Collection) and _supports_item_search(stac_object):
-                collection = stac_object
-                netcdf_with_time_dimension = contains_netcdf_with_time_dimension(collection)
-                metadata = GeopysparkCubeMetadata(
-                    metadata=collection.to_dict(include_self_link=False, transform_hrefs=False)
-                )
-
-                collection_band_names = stac_metadata_parser.bands_from_stac_collection(collection=collection).band_names()
-
-                item_collection = ItemCollection.from_stac_api(
-                    collection=stac_object,
-                    original_url=url,
-                    property_filter=property_filter,
-                    spatiotemporal_extent=spatiotemporal_extent,
-                    use_filter_extension=feature_flags.get("use-filter-extension", True),
-                    skip_datetime_filter=((temporal_extent is DEFAULT_TEMPORAL_EXTENT) or netcdf_with_time_dimension),
-                )
-            else:
-                assert isinstance(stac_object, pystac.Catalog)  # static Catalog + Collection
-                catalog = stac_object
-                metadata = GeopysparkCubeMetadata(
-                    metadata=catalog.to_dict(include_self_link=False, transform_hrefs=False)
-                )
-
-                if load_params.properties:
-                    # as dictated by the load_stac spec
-                    # TODO: it's not that simple see https://github.com/Open-EO/openeo-processes/issues/536 and https://github.com/Open-EO/openeo-processes/pull/547
-                    raise ProcessParameterUnsupportedException(process="load_stac", parameter="properties")
-
-                if isinstance(catalog, pystac.Collection):
-                    netcdf_with_time_dimension = contains_netcdf_with_time_dimension(collection=catalog)
-
-                collection_band_names = stac_metadata_parser.bands_from_stac_object(obj=stac_object).band_names()
-
-                item_collection = ItemCollection.from_stac_catalog(catalog, spatiotemporal_extent=spatiotemporal_extent)
-
-        # Deduplicate items
-        # TODO: smarter and more fine-grained deduplication behavior?
-        #       - enable by default or only do it on STAC API usage?
-        #       - allow custom deduplicators (e.g. based on layer catalog info about openeo collections)
-        if feature_flags.get("deduplicate_items", False):
-            item_collection = item_collection.deduplicated(deduplicator=ItemDeduplicator())
+        item_collection, metadata, collection_band_names, netcdf_with_time_dimension = construct_item_collection(
+            url=url,
+            spatiotemporal_extent=spatiotemporal_extent,
+            property_filter_pg_map=property_filter_pg_map,
+            batch_jobs=batch_jobs,
+            env=env,
+            feature_flags=feature_flags,
+            stac_io=stac_io,
+            user=user,
+        )
 
         items_found = len(item_collection.items) > 0
         if not allow_empty_cubes and not items_found:
@@ -234,7 +156,9 @@ def load_stac(
         proj_bbox = None
         proj_shape = None
 
-        # assumes a band has the same resolution across features/assets
+        stac_metadata_parser = _StacMetadataParser(logger=logger)
+
+        # The minimum cell size per band name across all assets
         band_cell_size: Dict[str, Tuple[float, float]] = {}
         band_epsgs: Dict[str, Set[int]] = {}
 
@@ -264,14 +188,6 @@ def load_stac(
                 proj_epsg, proj_bbox, proj_shape = _get_proj_metadata(asset=asset, item=itm)
 
                 asset_band_names_from_metadata = stac_metadata_parser.bands_from_stac_asset(asset=asset).band_names()
-                if not asset_band_names_from_metadata:
-                    # In the case that the assets have no information about the band that they represent.
-                    if len(collection_band_names) == 1:
-                        asset_band_names_from_metadata = collection_band_names
-                    elif not collection_band_names and len(override_band_names) == 1:
-                        # For example, in the DEM collections on CDSE. Assume that the asset relates to the DEM band.
-                        asset_band_names_from_metadata = override_band_names
-
                 logger.debug(f"from intersecting_items: {itm.id=} {asset_id=} {asset_band_names_from_metadata=}")
 
                 if not load_params.bands:
@@ -298,8 +214,12 @@ def load_stac(
                         collection_band_names.append(asset_band_name)
 
                     if proj_bbox and proj_shape:
-                        # TODO: risk on overwriting/conflict
-                        band_cell_size[asset_band_name] = _compute_cellsize(proj_bbox, proj_shape)
+                        asset_cell_size = _compute_cellsize(proj_bbox, proj_shape)
+                        band_cell_width, band_cell_height = band_cell_size.get(asset_band_name, (float("inf"), float("inf")))
+                        band_cell_size[asset_band_name] = (
+                            min(band_cell_width, asset_cell_size[0]),
+                            min(band_cell_height, asset_cell_size[1]),
+                        )
                     if proj_epsg:
                         # TODO: risk on overwriting/conflict
                         band_epsgs.setdefault(asset_band_name, set()).add(proj_epsg)
@@ -364,9 +284,6 @@ def load_stac(
             f"please provide a spatial extent.",
         )
 
-    if not metadata:
-        metadata = GeopysparkCubeMetadata(metadata={})
-
     if "x" not in metadata.dimension_names():
         metadata = metadata.add_spatial_dimension(name="x", extent=[])
     if "y" not in metadata.dimension_names():
@@ -394,6 +311,7 @@ def load_stac(
         layer_native_extent = metadata.get_layer_native_extent()
         if layer_native_extent:
             load_params = load_params.copy()
+            logger.info(f"global_extent fallback: {layer_native_extent=}")
             load_params.global_extent = layer_native_extent.as_dict()
 
     if load_params.bands:
@@ -412,17 +330,23 @@ def load_stac(
         cell_height = min(cell_heights)
     elif len(unique_epsgs) == 1:  # about 10m in given CRS
         target_epsg = unique_epsgs.pop()
+        # Fall back to the cell size from the layercatalog or provided by user.
+        (cell_width, cell_height) = feature_flags.get("cellsize", (10.0, 10.0))
         try:
             utm_zone_from_epsg(proj_epsg)
-            cell_width = cell_height = 10.0
         except ValueError:
+            # Cannot convert EPSG to UTM zone. Use unit from CRS instead of meters.
             target_bbox_center = target_bbox.as_polygon().centroid
-            cell_width = cell_height = GeometryBufferer.transform_meter_to_crs(
-                10.0, f"EPSG:{proj_epsg}", loi=(target_bbox_center.x, target_bbox_center.y)
+            cell_width = GeometryBufferer.transform_meter_to_crs(
+                cell_width, f"EPSG:{proj_epsg}", loi=(target_bbox_center.x, target_bbox_center.y)
             )
-    else:  # 10m UTM
+            cell_height = GeometryBufferer.transform_meter_to_crs(
+                cell_height, f"EPSG:{proj_epsg}", loi=(target_bbox_center.x, target_bbox_center.y)
+            )
+    else:
+        # Fall back to the cell size from the layercatalog or provided by user.
         target_epsg = target_bbox.best_utm()
-        cell_width = cell_height = 10.0
+        (cell_width, cell_height) = feature_flags.get("cellsize", (10.0, 10.0))
 
     if load_params.target_resolution is not None:
         if load_params.target_resolution[0] != 0.0 and load_params.target_resolution[1] != 0.0:
@@ -570,6 +494,124 @@ def load_stac(
     return GeopysparkDataCube(pyramid=gps.Pyramid(levels), metadata=metadata)
 
 
+def construct_item_collection(
+    url: str,
+    *,
+    spatiotemporal_extent: Optional[_SpatioTemporalExtent] = None,
+    property_filter_pg_map: Optional[PropertyFilterPGMap] = None,
+    batch_jobs: Optional[openeo_driver.backend.BatchJobs] = None,
+    env: Optional[EvalEnv] = None,
+    feature_flags: Optional[Dict[str, Any]] = None,
+    stac_io: Optional[pystac.stac_io.StacIO] = None,
+    user: Optional[User] = None,
+) -> Tuple[ItemCollection, GeopysparkCubeMetadata, List[str], bool]:
+    """
+    Construct Stac ItemCollection from given load_stac URL
+    """
+    spatiotemporal_extent = spatiotemporal_extent or _SpatioTemporalExtent()
+    property_filter_pg_map = property_filter_pg_map or {}
+    env = env or EvalEnv()
+    feature_flags = feature_flags or {}
+
+    netcdf_with_time_dimension = False
+
+    backend_config = get_backend_config()
+    poll_interval_seconds = backend_config.job_dependencies_poll_interval_seconds
+    max_poll_delay_seconds = backend_config.job_dependencies_max_poll_delay_seconds
+    max_poll_time = time.time() + max_poll_delay_seconds
+
+    dependency_job_info = (
+        _await_dependency_job(
+            url=url,
+            user=user,
+            batch_jobs=batch_jobs,
+            poll_interval_seconds=poll_interval_seconds,
+            max_poll_delay_seconds=max_poll_delay_seconds,
+            max_poll_time=max_poll_time,
+        )
+        if user and batch_jobs
+        else None
+    )
+
+    stac_metadata_parser = _StacMetadataParser(logger=logger)
+
+    if dependency_job_info and batch_jobs:
+        # TODO: improve metadata for this case
+        metadata = GeopysparkCubeMetadata(metadata={})
+        item_collection = ItemCollection.from_own_job(
+            job=dependency_job_info, spatiotemporal_extent=spatiotemporal_extent, batch_jobs=batch_jobs, user=user
+        )
+        # TODO: improve band name detection for this case
+        band_names = []
+    else:
+        logger.info(f"load_stac of arbitrary URL {url}")
+
+        stac_object = _await_stac_object(
+            url=url,
+            poll_interval_seconds=poll_interval_seconds,
+            max_poll_delay_seconds=max_poll_delay_seconds,
+            max_poll_time=max_poll_time,
+            stac_io=stac_io,
+        )
+
+        if isinstance(stac_object, pystac.Item):
+            if property_filter_pg_map:
+                # as dictated by the load_stac spec
+                # TODO: it's not that simple see https://github.com/Open-EO/openeo-processes/issues/536 and https://github.com/Open-EO/openeo-processes/pull/547
+                raise ProcessParameterUnsupportedException(process="load_stac", parameter="properties")
+
+            item = stac_object
+            # TODO: improve metadata for this case
+            metadata = GeopysparkCubeMetadata(metadata={})
+            band_names = stac_metadata_parser.bands_from_stac_item(item=item).band_names()
+            item_collection = ItemCollection.from_stac_item(item=item, spatiotemporal_extent=spatiotemporal_extent)
+        elif isinstance(stac_object, pystac.Collection) and _supports_item_search(stac_object):
+            collection = stac_object
+            netcdf_with_time_dimension = contains_netcdf_with_time_dimension(collection)
+            metadata = GeopysparkCubeMetadata(
+                metadata=collection.to_dict(include_self_link=False, transform_hrefs=False)
+            )
+
+            band_names = stac_metadata_parser.bands_from_stac_collection(collection=collection).band_names()
+            property_filter = PropertyFilter(properties=property_filter_pg_map, env=env)
+
+            item_collection = ItemCollection.from_stac_api(
+                collection=stac_object,
+                original_url=url,
+                property_filter=property_filter,
+                spatiotemporal_extent=spatiotemporal_extent,
+                use_filter_extension=feature_flags.get("use-filter-extension", True),
+                # TODO #1312 why skipping datetime filter especially for netcdf with time dimension?
+                skip_datetime_filter=netcdf_with_time_dimension,
+            )
+        else:
+            assert isinstance(stac_object, pystac.Catalog)  # static Catalog + Collection
+            catalog = stac_object
+            metadata = GeopysparkCubeMetadata(metadata=catalog.to_dict(include_self_link=False, transform_hrefs=False))
+
+            if property_filter_pg_map:
+                # as dictated by the load_stac spec
+                # TODO: it's not that simple see https://github.com/Open-EO/openeo-processes/issues/536 and https://github.com/Open-EO/openeo-processes/pull/547
+                raise ProcessParameterUnsupportedException(process="load_stac", parameter="properties")
+
+            if isinstance(catalog, pystac.Collection):
+                netcdf_with_time_dimension = contains_netcdf_with_time_dimension(collection=catalog)
+
+            band_names = stac_metadata_parser.bands_from_stac_object(obj=stac_object).band_names()
+
+            item_collection = ItemCollection.from_stac_catalog(catalog, spatiotemporal_extent=spatiotemporal_extent)
+
+    # Deduplicate items
+    # TODO: smarter and more fine-grained deduplication behavior?
+    #       - enable by default or only do it on STAC API usage?
+    #       - allow custom deduplicators (e.g. based on layer catalog info about openeo collections)
+    if feature_flags.get("deduplicate_items", get_backend_config().load_stac_deduplicate_items_default):
+        item_collection = item_collection.deduplicated(deduplicator=ItemDeduplicator())
+
+    # TODO: possible to embed band names in metadata directly?
+    return item_collection, metadata, band_names, netcdf_with_time_dimension
+
+
 class _TemporalExtent:
     """
     Helper to represent a load_collection/load_stac-style temporal extent
@@ -592,6 +634,9 @@ class _TemporalExtent:
 
     def as_tuple(self) -> Tuple[Union[datetime.datetime, None], Union[datetime.datetime, None]]:
         return self.from_date, self.to_date
+
+    def is_unbounded(self) -> bool:
+        return self.from_date is None and self.to_date is None
 
     def intersects(
         self,
@@ -661,7 +706,13 @@ class _SpatialExtent:
 
 class _SpatioTemporalExtent:
     # TODO: move this to a more generic location for better reuse
-    def __init__(self, *, bbox: Union[BoundingBox, None], from_date: DateTimeLikeOrNone, to_date: DateTimeLikeOrNone):
+    def __init__(
+        self,
+        *,
+        bbox: Union[BoundingBox, None] = None,
+        from_date: DateTimeLikeOrNone = None,
+        to_date: DateTimeLikeOrNone = None,
+    ):
         self._spatial_extent = _SpatialExtent(bbox=bbox)
         self._temporal_extent = _TemporalExtent(from_date=from_date, to_date=to_date)
 
@@ -693,6 +744,23 @@ class _SpatioTemporalExtent:
         return any(self._spatial_extent.intersects(bbox) for bbox in bboxes) and any(
             self._temporal_extent.intersects_interval(interval) for interval in intervals
         )
+
+
+def _spatiotemporal_extent_from_load_params(load_params: LoadParameters) -> _SpatioTemporalExtent:
+    bbox = BoundingBox.from_dict_or_none(load_params.spatial_extent, default_crs="EPSG:4326")
+    (from_date, until_date) = (to_datetime_utc_unless_none(d) for d in load_params.temporal_extent)
+    if until_date is None:
+        to_date = None
+    elif from_date == until_date:
+        # Fallback mechanism for legacy usage patterns
+        to_date = datetime.datetime.combine(until_date, datetime.time.max, until_date.tzinfo)
+        logger.warning(
+            f"Invalid temporal extent (identical start and end: {from_date!r}). Normalized end to {to_date!r}."
+        )
+    else:
+        # Convert openEO temporal extent convention (end-exclusive) to internal(?) convention (end-inclusive)
+        to_date = until_date - datetime.timedelta(milliseconds=1)
+    return _SpatioTemporalExtent(bbox=bbox, from_date=from_date, to_date=to_date)
 
 
 def _get_item_temporal_extent(item: pystac.Item) -> Tuple[datetime.datetime, datetime.datetime]:
@@ -806,6 +874,7 @@ class ItemCollection:
         property_filter: PropertyFilter,
         spatiotemporal_extent: _SpatioTemporalExtent,
         use_filter_extension: Union[bool, str] = True,
+        # TODO: is it possible to eliminate the need for this parameter?
         skip_datetime_filter: bool = False,
         original_url: str = "n/a",
     ) -> ItemCollection:
@@ -853,12 +922,17 @@ class ItemCollection:
 
             bbox = spatiotemporal_extent.spatial_extent.as_bbox(crs="EPSG:4326")
             bbox = bbox.as_wsen_tuple() if bbox else None
+            query_datetime = (
+                None
+                if spatiotemporal_extent.temporal_extent.is_unbounded() or skip_datetime_filter
+                else spatiotemporal_extent.temporal_extent.as_tuple()
+            )
             search_request = client.search(
                 method=method,
                 collections=collection.id,
                 bbox=bbox,
                 limit=20,
-                datetime=None if skip_datetime_filter else spatiotemporal_extent.temporal_extent.as_tuple(),
+                datetime=query_datetime,
                 filter=cql2_filter,
                 fields=fields,
             )
@@ -1323,7 +1397,7 @@ class PropertyFilter:
 
     # TODO: move this utility to a more generic location for better reuse
 
-    def __init__(self, properties: Dict[str, dict], *, env: Optional[EvalEnv] = None):
+    def __init__(self, properties: PropertyFilterPGMap, *, env: Optional[EvalEnv] = None):
         self._properties = properties
         self._env = env or EvalEnv()
 

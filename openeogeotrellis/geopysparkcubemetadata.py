@@ -1,12 +1,11 @@
 import logging
-from typing import List, Union, Optional, Tuple
+from typing import List, Union, Optional, Tuple, NamedTuple
 
 from openeo.metadata import (
     CollectionMetadata,
     Dimension,
     TemporalDimension,
     BandDimension,
-    Band,
     DimensionAlreadyExistsException,
     SpatialDimension,
 )
@@ -83,19 +82,21 @@ class GeopysparkCubeMetadata(CollectionMetadata):
     def spatial_extent(self) -> dict:
         return self._spatial_extent
 
-    def filter_temporal(self, start, end) -> 'GeopysparkCubeMetadata':
+    def filter_temporal(self, start: Union[str, None], end: Union[str, None]) -> "GeopysparkCubeMetadata":
         """Create new metadata instance with temporal extent"""
-        if self._temporal_extent is None:  # TODO: only for backwards compatibility
-            return self._clone_and_update(temporal_extent=(start, end))
-
-        this_start, this_end = self._temporal_extent
-
         # TODO: support time zones other than UTC
-        if this_start > end or this_end < start:  # compared lexicographically
-            # no overlap
-            raise ValueError(start, end)
+        # TODO: support date/datetime objects too
+        # TODO: move this implementation up the class hierarchy?
+        this_start, this_end = self._temporal_extent or (None, None)
 
-        return self._clone_and_update(temporal_extent=(max(this_start, start), min(this_end, end)))
+        filtered_extent = (
+            this_start if (start is None or (this_start and start and start < this_start)) else start,
+            this_end if (end is None or (this_end and end and this_end < end)) else end,
+        )
+        if all(filtered_extent) and filtered_extent[1] < filtered_extent[0]:
+            raise ValueError(f"Empty temporal extent after filtering {self._temporal_extent} with {(start, end)}.")
+
+        return self._clone_and_update(temporal_extent=filtered_extent)
 
     @property
     def temporal_extent(self) -> tuple:
@@ -282,3 +283,18 @@ class GeopysparkCubeMetadata(CollectionMetadata):
                     resolution_meters = reproject_cellsize(spatial_extent, dimensions_step, crs, "Auto42001")
                     return resolution_meters
         return None
+
+class Band(NamedTuple):
+    """
+    Simple container class for band metadata.
+    Based on https://github.com/stac-extensions/eo#band-object
+    """
+
+    name: str
+    common_name: Optional[str] = None
+    # wavelength in micrometer
+    wavelength_um: Optional[float] = None
+    aliases: Optional[List[str]] = None
+    # "openeo:gsd" field (https://github.com/Open-EO/openeo-stac-extensions#GSD-Object)
+    gsd: Optional[dict] = None
+    statistics:Optional[dict] = None

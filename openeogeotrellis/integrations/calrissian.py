@@ -301,8 +301,18 @@ class CalrissianJobLauncher:
                 error_summary = env.backend_implementation.summarize_exception(e)
                 if isinstance(error_summary, ErrorSummary):
                     detail = error_summary.summary
-            _log.warning(f"Failed to get s3 credentials: {detail}")
-            env_vars = []
+            env_vars = {}
+            if (
+                "AWS_ENDPOINT_URL_S3" in os.environ
+                and "AWS_ACCESS_KEY_ID" in os.environ
+                and "AWS_SECRET_ACCESS_KEY" in os.environ
+            ):
+                env_vars["AWS_ENDPOINT_URL_S3"] = os.environ["AWS_ENDPOINT_URL_S3"]
+                env_vars["AWS_ACCESS_KEY_ID"] = os.environ["AWS_ACCESS_KEY_ID"]
+                env_vars["AWS_SECRET_ACCESS_KEY"] = os.environ["AWS_SECRET_ACCESS_KEY"]
+                _log.info(f"Falling back to local s3 credentials.")  # for local debugging
+            else:
+                _log.warning(f"Failed to get s3 credentials: {detail}")
 
         launch_config = CalrissianLaunchConfigBuilder(
             config=config,
@@ -505,7 +515,8 @@ class CalrissianJobLauncher:
         manifest: kubernetes.client.V1Job,
         *,
         sleep: float = 5,
-        timeout: float = 7200,  # insar_interferogram_coherence takes about 1 hour, so 2 hours should be enough
+        # 12h is also the max timeout for sts tokens. A bit shorter, so the process times out before the sts.
+        timeout: float = 60 * 60 * 12 - 120,
     ) -> kubernetes.client.V1Job:
         """
         Launch a k8s job and wait (with active polling) for it to finish.
@@ -588,7 +599,7 @@ class CalrissianJobLauncher:
 
                 try:
                     output = subprocess.check_output(
-                        ["python", "-m", "cwltool", "--disable-color", "--validate", cwl_file_path, args_file_path],
+                        ["cwltool", "--disable-color", "--validate", cwl_file_path, args_file_path],
                         text=True,
                         stderr=subprocess.PIPE,
                         cwd=str(Path(cwl_file_path).parent),
@@ -661,6 +672,23 @@ class CalrissianJobLauncher:
         _log.info(f"run_cwl_workflow: building S3 references to output files from {output_paths}")
         _log.info(f"run_cwl_workflow: {relative_cwl_outputs_listing}")
         output_volume_name = self.get_output_volume_name()
+        outputs_listing_result_url = CalrissianS3Result(
+            s3_region=self._s3_region,
+            s3_bucket=self._s3_bucket,
+            s3_key=f"{output_volume_name}/{relative_cwl_outputs_listing.strip('/')}",
+        ).generate_public_url()
+        try:
+            r = requests.get(outputs_listing_result_url)
+            r.raise_for_status()
+            outputs_listing_result_paths = parse_cwl_outputs_listing(r.json())
+            prefix = relative_output_dir.strip("/") + "/"
+            output_paths = [p[len(prefix) :] if p.startswith(prefix) else p for p in outputs_listing_result_paths]
+        except Exception as e:
+            # Happens when running in unit tests, but safe to do anyway.
+            _log.warning(
+                f"Failed to get outputs listing from {outputs_listing_result_url=}: {e!r}. Falling back to expected output paths."
+            )
+
         results = {
             output_path: CalrissianS3Result(
                 s3_region=self._s3_region,
@@ -670,3 +698,52 @@ class CalrissianJobLauncher:
             for output_path in output_paths
         }
         return results
+
+
+def parse_cwl_outputs_listing(cwl_outputs_listing: dict) -> List[str]:
+    def recurse(obj):
+        if isinstance(obj, list):
+            list_list = [recurse(item) for item in obj]
+            # flatten lists:
+            return [item for sublist in list_list for item in sublist]
+        if obj["class"] == "File":
+            return [obj["path"]]
+        elif obj["class"] == "Directory":
+            list_list = [recurse(item) for item in obj.get("listing", [])]
+            # flatten lists:
+            return [item for sublist in list_list for item in sublist]
+        else:
+            raise ValueError(f"Unknown class in CWL output: {obj['class']}")
+
+    results_list = [recurse(cwl_outputs_listing[key]) for key in cwl_outputs_listing.keys()]
+    results = [item for sublist in results_list for item in sublist]
+    prefix = "/calrissian/output-data/"
+    results = [p[len(prefix) :] if p.startswith(prefix) else p for p in results]
+    return results
+
+
+def find_stac_root(paths: list, stac_root_filename: Optional[str] = "catalog.json") -> Optional[str]:
+    paths = [Path(p) for p in paths]
+
+    def search(stac_root_filename_local: str):
+        matches = [x for x in paths if x.name == stac_root_filename_local]
+        if matches:
+            if len(matches) > 1:
+                _log.warning(f"Multiple STAC root files found: {[str(x) for x in matches]}. Using the first one.")
+            return str(matches[0])
+        return None
+
+    if stac_root_filename:
+        ret = search(stac_root_filename)
+        if ret:
+            return ret
+    ret = search("catalog.json")
+    if ret:
+        return ret
+    ret = search("catalogue.json")
+    if ret:
+        return ret
+    ret = search("collection.json")
+    if ret:
+        return ret
+    return None

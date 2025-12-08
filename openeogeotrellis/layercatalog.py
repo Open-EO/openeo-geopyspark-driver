@@ -710,6 +710,11 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                                         native_cell_size, feature_flags, jvm,
                                         )
         elif layer_source_type == "stac":
+            layer_source_info_feature_flags = layer_source_info.get("load_stac_feature_flags", {})
+            # We use the cell_size calculated from the layercatalog as a fallback if it can't be retrieved from the STAC metadata.
+            layer_source_info_feature_flags["cellsize"] = layer_source_info_feature_flags.get(
+                "cellsize", (cell_width, cell_height)
+            )
             cube = load_stac(
                 url=layer_source_info["url"],
                 load_params=load_params,
@@ -717,7 +722,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 layer_properties=metadata.get("_vito", "properties", default={}),
                 batch_jobs=None,
                 override_band_names=metadata.band_names,
-                feature_flags=layer_source_info.get("load_stac_feature_flags"),
+                feature_flags=layer_source_info_feature_flags,
             )
             pyramid = cube.pyramid.levels
             metadata = cube.metadata
@@ -919,15 +924,16 @@ CollectionMetadataDict = Dict[str, Union[str, dict, list]]
 CatalogDict = Dict[CollectionId, CollectionMetadataDict]
 
 
+@TimingLogger(title="_get_layer_catalog", logger=logger.debug)
 def _get_layer_catalog(
     catalog_files: Optional[List[str]] = None,
-    opensearch_enrich: Optional[bool] = None,
+    enrich_metadata: Optional[bool] = None,
 ) -> CatalogDict:
     """
     Get layer catalog (from JSON files)
     """
-    if opensearch_enrich is None:
-        opensearch_enrich = get_backend_config().opensearch_enrich
+    if enrich_metadata is None:
+        enrich_metadata = get_backend_config().opensearch_enrich
     if catalog_files is None:
         catalog_files = get_backend_config().layer_catalog_files
 
@@ -946,9 +952,9 @@ def _get_layer_catalog(
         metadata = dict_merge_recursive(metadata, read_catalog_file(path), overwrite=True)
         logger.debug(f"_get_layer_catalog: collected {len(metadata)} collections")
 
-    logger.debug(f"_get_layer_catalog: {opensearch_enrich=}")
-    if opensearch_enrich:
-        opensearch_metadata = {}
+    logger.debug(f"_get_layer_catalog: {enrich_metadata=}")
+    if enrich_metadata:
+        enrichment_metadata = {}
         sh_collection_metadatas = None
 
         @functools.lru_cache
@@ -971,25 +977,29 @@ def _get_layer_catalog(
             os_cid = data_source.get("opensearch_collection_id")
             os_endpoint = data_source.get("opensearch_endpoint") or get_backend_config().default_opensearch_endpoint
             os_variant = data_source.get("opensearch_variant")
+            data_source_type = data_source.get("type")
             if os_cid and os_endpoint and os_variant != "disabled":
+                logger.debug(f"Enrich {cid=} ({data_source_type=}): {os_cid=} {os_endpoint=}")
                 try:
-                    opensearch_metadata[cid] = opensearch_instance(
+                    enrichment_metadata[cid] = opensearch_instance(
                         endpoint=os_endpoint, variant=os_variant
                     ).get_metadata(collection_id=os_cid)
                 except Exception as e:
                     logger.warning(f"Failed to enrich collection metadata of {cid}: {e}", exc_info=True)
-            elif data_source.get("type") == "stac":
-                url = data_source.get("url")
-                logger.debug(f"Getting collection metadata from {url}")
+            elif data_source_type == "stac":
+                stac_url = data_source.get("url")
+                logger.debug(f"Enrich {cid=} ({data_source_type=}): {stac_url=}")
                 try:
-                    resp = requests.get(url=url, timeout=10)
-                    resp.raise_for_status()
-                    opensearch_metadata[cid] = resp.json()
+                    enrichment_metadata[cid] = _enrichment_metadata_from_stac(
+                        stac_url,
+                        band_aliases=data_source.get("enrichment_band_aliases"),
+                    )
                 except Exception as e:
                     logger.warning(f"Failed to enrich collection metadata of {cid}: {e}", exc_info=True)
 
-            elif data_source.get("type") == "sentinel-hub":
+            elif data_source_type == "sentinel-hub":
                 sh_stac_endpoint = "https://collections.eurodatacube.com/stac/index.json"
+                logger.debug(f"Enrich {cid=} ({data_source_type=}): {sh_stac_endpoint=}")
 
                 # TODO: improve performance by only fetching necessary STACs
                 if sh_collection_metadatas is None:
@@ -1024,26 +1034,63 @@ def _get_layer_catalog(
 
                     sh_metadata = sh_metadatas[0]
 
-                opensearch_metadata[cid] = sh_metadata
+                enrichment_metadata[cid] = sh_metadata
                 if not data_source.get("endpoint"):
-                    endpoint = opensearch_metadata[cid]["providers"][0]["url"]
+                    endpoint = enrichment_metadata[cid]["providers"][0]["url"]
                     endpoint = endpoint if endpoint.startswith("http") else "https://{}".format(endpoint)
                     data_source["endpoint"] = endpoint
-                data_source["dataset_id"] = data_source.get("dataset_id") or opensearch_metadata[cid]["datasource_type"]
+                data_source["dataset_id"] = data_source.get("dataset_id") or enrichment_metadata[cid]["datasource_type"]
 
-        if opensearch_metadata:
-            metadata = dict_merge_recursive(opensearch_metadata, metadata, overwrite=True)
+        if enrichment_metadata:
+            metadata = dict_merge_recursive(enrichment_metadata, metadata, overwrite=True)
 
     metadata = _merge_layers_with_common_name(metadata)
 
     return metadata
 
 
+def _enrichment_metadata_from_stac(stac_url: str, *, band_aliases: Optional[Dict[str, List[str]]] = None) -> dict:
+    resp = requests.get(url=stac_url, timeout=10)
+    resp.raise_for_status()
+    metadata: dict = resp.json()
+
+    # Normalize band metadata a bit (as there are multiple ways to specify bands in STAC):
+    bands_from_cube_dimensions = deep_get(metadata, "cube:dimensions", "bands", "values", default=None)
+    if bands := deep_get(metadata, "summaries", "bands", default=None):
+        bands_from_summaries_bands = [b["name"] for b in bands]
+    else:
+        bands_from_summaries_bands = None
+    if bands := deep_get(metadata, "summaries", "eo:bands", default=None):
+        bands_from_summaries_eobands = [b["name"] for b in bands]
+    else:
+        bands_from_summaries_eobands = None
+
+    if bands_from_cube_dimensions is None and (bands_from_summaries_bands or bands_from_summaries_eobands):
+        metadata.setdefault("cube:dimensions", {})["bands"] = {
+            "type": "bands",
+            "values": bands_from_summaries_bands or bands_from_summaries_eobands,
+        }
+
+    # Inject band aliases (which is non-standard STAC at the moment)
+    if band_aliases:
+        if bands := deep_get(metadata, "summaries", "bands", default=None):
+            for band in bands:
+                if aliases := band_aliases.get(band["name"]):
+                    band.setdefault("aliases", []).extend(aliases)
+        if bands := deep_get(metadata, "summaries", "eo:bands", default=None):
+            for band in bands:
+                if aliases := band_aliases.get(band["name"]):
+                    band.setdefault("aliases", []).extend(aliases)
+
+    return metadata
+
+
 def get_layer_catalog(
     vault: Vault = None,
+    # TODO: just call this arg `enrich_metadata` is this is about more than just OpenSearch
     opensearch_enrich: Optional[bool] = None,
 ) -> GeoPySparkLayerCatalog:
-    metadata = _get_layer_catalog(opensearch_enrich=opensearch_enrich)
+    metadata = _get_layer_catalog(enrich_metadata=opensearch_enrich)
     return GeoPySparkLayerCatalog(
         all_metadata=list(metadata.values()),
         vault=vault,
@@ -1051,9 +1098,9 @@ def get_layer_catalog(
 
 
 def dump_layer_catalog():
-    """CLI tool to dump layer catalog"""
+    """CLI tool to dump layer catalog with enrichment"""
     cli = argparse.ArgumentParser()
-    cli.add_argument("--opensearch-enrich", action="store_true", help="Enable OpenSearch based enriching.")
+    cli.add_argument("--enrich", action="store_true", help="Enable metadata enrichment.")
     cli.add_argument(
         "--catalog-file", action="append", help="Path to catalog JSON file. Can be specified multiple times."
     )
@@ -1068,7 +1115,7 @@ def dump_layer_catalog():
 
     logging.basicConfig(level=logging.DEBUG if arguments.verbose else logging.DEBUG)
 
-    metadata = _get_layer_catalog(catalog_files=arguments.catalog_file, opensearch_enrich=arguments.opensearch_enrich)
+    metadata = _get_layer_catalog(catalog_files=arguments.catalog_file, enrich_metadata=arguments.enrich)
     if arguments.container == "list":
         metadata = list(metadata.values())
     json.dump(metadata, fp=sys.stdout, indent=2)

@@ -12,13 +12,17 @@ from openeogeotrellis.workspace.custom_stac_io import CustomStacIO
 
 
 @pytest.mark.parametrize("remove_original", [False, True])
-def test_import_file(tmp_path, mock_s3_client, mock_s3_bucket, remove_original):
+@pytest.mark.parametrize("relative_source_file", [False, True])
+def test_import_file(tmp_path, mock_s3_client, mock_s3_bucket, remove_original, relative_source_file):
     source_directory = tmp_path / "src"
     source_directory.mkdir()
-    source_file = source_directory / "file"
-    source_file.touch()
-    source_file_mtime_ns = source_file.stat().st_mtime_ns
-
+    source_file_absolute = source_directory / "file"
+    source_file_absolute.touch()
+    source_file_mtime_ns = source_file_absolute.stat().st_mtime_ns
+    if relative_source_file:
+        source_file = source_file_absolute.relative_to(source_directory)
+    else:
+        source_file = source_file_absolute
     merge = "some/target"
 
     workspace = ObjectStorageWorkspace(bucket="openeo-fake-bucketname", region="waw3-1")
@@ -26,16 +30,16 @@ def test_import_file(tmp_path, mock_s3_client, mock_s3_bucket, remove_original):
         common_path=source_directory, file=source_file, merge=merge, remove_original=remove_original
     )
 
-    assert workspace_uri == f"s3://{workspace.bucket}/{merge}/{source_file.name}"
+    assert workspace_uri == f"s3://{workspace.bucket}/{merge}/{source_file_absolute.name}"
 
-    expected_asset_key = f"{merge}/{source_file.name}"
+    expected_asset_key = f"{merge}/{source_file_absolute.name}"
     assert _workspace_keys(mock_s3_client, workspace.bucket, prefix=merge) == {expected_asset_key}
 
     asset_object_metadata = mock_s3_bucket.Object(key=expected_asset_key).metadata
     assert asset_object_metadata["md5"] == "d41d8cd98f00b204e9800998ecf8427e"
     assert int(asset_object_metadata["mtime"]) == pytest.approx(source_file_mtime_ns, abs=1_000_000_000)  # 1s leeway
 
-    assert source_file.exists() != remove_original
+    assert source_file_absolute.exists() != remove_original
 
 
 @pytest.mark.parametrize("remove_original", [False, True])

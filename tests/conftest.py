@@ -37,7 +37,7 @@ from openeo_driver.views import build_app
 from openeogeotrellis.integrations.s3proxy.sts import _STSClient
 from openeogeotrellis.config import get_backend_config, GpsBackendConfig
 from openeogeotrellis.job_registry import InMemoryJobRegistry
-from openeogeotrellis.testing import gps_config_overrides, YarnMocker
+from openeogeotrellis.testing import gps_config_overrides, YarnMocker, DummyStacApiServer
 from openeogeotrellis.vault import Vault
 
 from .data import TEST_DATA_ROOT, get_test_data_file
@@ -751,3 +751,31 @@ def metadata_tracker():
     tracker = _get_tracker()
     yield tracker
     tracker.setGlobalTracking(False)
+
+
+@pytest.fixture
+def dummy_stac_api_server() -> DummyStacApiServer:
+    return DummyStacApiServer()
+
+
+@pytest.fixture
+def dummy_stac_api(dummy_stac_api_server) -> typing.Iterator[str]:
+    """
+    Fixture for a basic dummy STAC API (running as ephemeral server in side-thread).
+
+    By default: provides a dummy collection "collection-123"
+    with items "item-1", "item-2", "item-3".
+
+    To further customize: also fetch the `dummy_stac_api_server` fixture
+    and define collections/items there.
+
+    Yields the root URL of the dummy STAC API server.
+
+    Usage example:
+
+        def test_something(dummy_stac_api):
+            url = f"{dummy_stac_api}/collections/collection-123"
+            # Get/query/walk these STAC API URLs
+    """
+    with dummy_stac_api_server.serve() as root_url:
+        yield root_url

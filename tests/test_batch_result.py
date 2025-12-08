@@ -15,7 +15,6 @@ import pystac
 import pytest
 import rasterio
 import xarray
-from openeo.metadata import Band
 from openeo.util import ensure_dir
 from openeo_driver.constants import ITEM_LINK_PROPERTY
 from openeo_driver.dry_run import DryRunDataTracer
@@ -28,6 +27,7 @@ from openeo_driver.workspace import DiskWorkspace
 import osgeo.gdal
 from shapely.geometry import Point, Polygon, shape
 
+from openeogeotrellis.geopysparkcubemetadata import Band
 from openeogeotrellis.testing import gps_config_overrides
 from openeogeotrellis.workspace import StacApiWorkspace
 from openeogeotrellis._version import __version__
@@ -3757,7 +3757,7 @@ def test_export_workspace_derived_from(
             and log.levelname == "DEBUG"
             and log.message.startswith("copied ")
         ]
-        assert len(copy_derived_from_document_logs) == 1
+        assert len(copy_derived_from_document_logs) == 2
 
 
 def test_webapp_derived_from(tmp_path, metadata_tracker):

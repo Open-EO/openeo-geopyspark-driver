@@ -664,6 +664,7 @@ def write_metadata(metadata: dict, metadata_file: Path, is_stac11: bool, attach_
         for auxiliary_link in _copy_auxiliary_links(
             auxiliary_links=BadlyHashable(out_metadata.get("auxiliary_links", [])),
             job_dir=metadata_file.parent,  # TODO: ugly way to get job_dir
+            for_export_workspace=False,
         ):
             for item in out_metadata.get("items", []):
                 item.setdefault("links", []).append(auxiliary_link)
@@ -684,7 +685,7 @@ def write_metadata(metadata: dict, metadata_file: Path, is_stac11: bool, attach_
 
 
 @lru_cache
-def _copy_auxiliary_links(*, auxiliary_links: BadlyHashable, job_dir: Path) -> List[dict]:
+def _copy_auxiliary_links(*, auxiliary_links: BadlyHashable, job_dir: Path, for_export_workspace: bool) -> List[dict]:
     """files should be downloadable from the web app driver"""
     # enforce keyword arguments because distinct argument patterns lead to separate cache entries in lru_cache
 
@@ -693,16 +694,16 @@ def _copy_auxiliary_links(*, auxiliary_links: BadlyHashable, job_dir: Path) -> L
     for auxiliary_link in auxiliary_links.target:
         auxiliary_file = Path(auxiliary_link["href"])
 
-        if ConfigParams().is_kube_deploy:
+        # TODO: add proper cross-region support
+        if ConfigParams().is_kube_deploy and not for_export_workspace:
+            from openeogeotrellis.utils import s3_client
+
             job_bucket = get_backend_config().s3_bucket_name
-            downloadable_href = to_s3_url(auxiliary_file, job_bucket)
-
-            if not get_backend_config().fuse_mount_batchjob_s3_bucket:
-                from openeogeotrellis.utils import s3_client
-
-                s3_instance = s3_client()
-                s3_instance.upload_file(str(auxiliary_file), job_bucket, str(auxiliary_file).strip("/"))
-                logger.debug(f"uploaded {auxiliary_file} to {downloadable_href}")
+            auxiliary_prefix = str(job_dir / auxiliary_file.name).strip("/")
+            s3_instance = s3_client()
+            s3_instance.upload_file(str(auxiliary_file), job_bucket, auxiliary_prefix)
+            downloadable_href = to_s3_url(auxiliary_prefix, job_bucket)
+            logger.debug(f"uploaded {auxiliary_file} to {downloadable_href}")
         else:
             downloadable_file = job_dir / auxiliary_file.name
             shutil.copy(auxiliary_file, downloadable_file)
@@ -1051,7 +1052,9 @@ def _write_exported_stac_collection_from_item(
             "properties": item.get("properties", {"datetime": result_metadata.get("start_datetime")}),
             "links": (
                 _copy_auxiliary_links(
-                    auxiliary_links=BadlyHashable(_get_tracker_metadata("").get("auxiliary_links", [])), job_dir=job_dir
+                    auxiliary_links=BadlyHashable(_get_tracker_metadata("").get("auxiliary_links", [])),
+                    job_dir=job_dir,
+                    for_export_workspace=True,
                 )
                 if attach_derived_from_document
                 else []

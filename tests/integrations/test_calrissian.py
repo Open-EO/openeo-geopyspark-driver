@@ -1,4 +1,5 @@
 import datetime
+import json
 import re
 from pathlib import Path
 from typing import Dict, Iterator
@@ -20,10 +21,13 @@ from openeogeotrellis.integrations.calrissian import (
     CalrissianLaunchConfigBuilder,
     CalrissianS3Result,
     CwLSource,
+    parse_cwl_outputs_listing,
+    find_stac_root,
 )
 from openeogeotrellis.integrations.s3proxy.sts import STSCredentials
 from openeogeotrellis.testing import gps_config_overrides
 from openeogeotrellis.util.runtime import ENV_VAR_OPENEO_BATCH_JOB_ID
+from tests.data import get_test_data_file
 
 
 @pytest.fixture
@@ -633,3 +637,88 @@ class TestCwlSource:
     def test_from_resource(self):
         cwl = CwLSource.from_resource(anchor="openeogeotrellis.integrations", path="cwl/hello.cwl")
         assert "Hello World" in cwl.get_content()
+
+
+class TestCalrissianUtils:
+    def test_parse_cwl_outputs_listing_directory(self):
+        results = parse_cwl_outputs_listing(
+            json.load(get_test_data_file("parse_cwl_outputs_listing/cwl_outputs_listing_directory.json").open())
+        )
+        print(results)
+        assert len(results) == 7
+        assert results[0].startswith("r-")
+
+    def test_parse_cwl_outputs_listing_directory_force(self):
+        # JSON trimmed for brevity. Got json from cwltool without calrissian.
+        results = parse_cwl_outputs_listing(
+            json.load(get_test_data_file("parse_cwl_outputs_listing/cwl_outputs_listing_directory_force.json").open())
+        )
+        print(results)
+        assert len(results) == 5
+        assert results[0].startswith("/home/emile/openeo/apex-force-openeo/l2-ard")
+
+    def test_parse_cwl_outputs_listing_file_array(self):
+        results = parse_cwl_outputs_listing(
+            json.load(get_test_data_file("parse_cwl_outputs_listing/cwl_outputs_listing_file_array.json").open())
+        )
+        print(results)
+        assert len(results) == 7
+        assert results[0].startswith("r-")
+
+    def test_find_stac_root_dictionary(self):
+        listing_directory = [
+            "r-2512020921004d489e-cal-cwl-e706a8a7/o1kip6_h/collection.json",
+            "r-2512020921004d489e-cal-cwl-e706a8a7/o1kip6_h/openEO_2023-06-01Z.tif",
+            "r-2512020921004d489e-cal-cwl-e706a8a7/o1kip6_h/openEO_2023-06-01Z.tif.json",
+            "r-2512020921004d489e-cal-cwl-e706a8a7/o1kip6_h/openEO_2023-06-04Z.tif",
+            "r-2512020921004d489e-cal-cwl-e706a8a7/o1kip6_h/openEO_2023-06-04Z.tif.json",
+            "r-2512020921004d489e-cal-cwl-e706a8a7/o1kip6_h/openEO_2023-06-06Z.tif",
+            "r-2512020921004d489e-cal-cwl-e706a8a7/o1kip6_h/openEO_2023-06-06Z.tif.json",
+        ]
+        result = find_stac_root(listing_directory)
+        assert result
+        assert isinstance(result, str)
+        assert result == "r-2512020921004d489e-cal-cwl-e706a8a7/o1kip6_h/collection.json"
+
+    def test_find_stac_root_file_array_01(self):
+        listing_directory = [
+            "aaa/collection.json",
+            "bbb/collection-custom.json",
+        ]
+        result = find_stac_root(listing_directory, "collection-custom.json")
+        assert result
+        assert isinstance(result, str)
+        assert result == "bbb/collection-custom.json"
+
+    def test_find_stac_root_file_array_02(self):
+        listing_directory = [
+            "aaa/collection.json",
+            "bbb/collection-custom.json",
+        ]
+        result = find_stac_root(listing_directory)
+        assert result
+        assert isinstance(result, str)
+        assert result == "aaa/collection.json"
+
+    def test_find_stac_root_file_array_03(self):
+        listing_directory = [
+            "aaa/collection.json",
+            "bbb/collection-custom.json",
+            "ccc/catalog.json",
+            "ddd/catalogue.json",
+        ]
+        result = find_stac_root(listing_directory)
+        assert result
+        assert isinstance(result, str)
+        assert result == "ccc/catalog.json"
+
+    def test_find_stac_root_file_array_04(self):
+        listing_directory = [
+            "aaa/collection.json",
+            "bbb/collection-custom.json",
+            "ddd/catalogue.json",
+        ]
+        result = find_stac_root(listing_directory)
+        assert result
+        assert isinstance(result, str)
+        assert result == "ddd/catalogue.json"
