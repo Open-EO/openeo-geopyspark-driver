@@ -76,13 +76,12 @@ def get_assets_from_stac_catalog(catalog_path: Union[str, Path]) -> Dict[str, St
 
 def get_items_from_stac_catalog(catalog_path: Union[str, Path]) -> dict:
     if isinstance(catalog_path, str) and catalog_path.startswith("http"):
-
         response = requests.get(catalog_path)
         response.raise_for_status()
         catalog_json = response.json()
     else:
         catalog_path = str(catalog_path)
-        assert os.path.exists(catalog_path)
+        assert os.path.exists(catalog_path), f"catalog_path does not exist: {catalog_path}"
         catalog_json = json.loads(Path(catalog_path).read_text())
 
     all_items = {}
@@ -127,27 +126,36 @@ class StacSaveResult(SaveResult):
         if str(directory).endswith("out"):
             directory = str(directory)[:-4]
 
+        def parent(url) -> str:
+            parsed = urlparse(url)
+            path = parsed.path
+            parent_path = os.path.dirname(path)
+            # Reconstruct the URL with the parent path
+            return str(parsed._replace(path=parent_path).geturl())
+
+        root = parent(self.stac_root)
+
         def copy_asset(asset_path: str) -> str:
             asset_path_parsed = urlparse(asset_path)
+            relative_path = os.path.relpath(asset_path, root)
+            dest_path = urljoin(str(directory) + "/", relative_path)
+            Path(dest_path).parent.mkdir(parents=True, exist_ok=True)
             if asset_path_parsed.scheme in ("http", "https"):
                 response = requests.get(asset_path)
                 response.raise_for_status()
-                asset_data = response.content
-                asset_filename = os.path.basename(asset_path_parsed.path)
-                dest_path = Path(directory) / asset_filename
                 with open(dest_path, "wb") as f:
-                    f.write(asset_data)
-                return str(dest_path)
+                    f.write(response.content)
             else:
                 if asset_path.startswith("file://"):
                     asset_path = asset_path[7:]
-                shutil.copy(asset_path, directory)
-                return str(Path(directory) / os.path.basename(asset_path))
+                shutil.copy(asset_path, dest_path)
+            return str(dest_path)
+
+        self.stac_root_local = copy_asset(self.stac_root)
 
         for asset in stac_assets:
             copy_asset(asset)
 
-        self.stac_root_local = copy_asset(self.stac_root)
         return get_items_from_stac_catalog(self.stac_root_local)
 
     def create_flask_response(self) -> Response:
