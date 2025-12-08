@@ -25,6 +25,7 @@ without compromising stable operations.
 - `load_stac`: the `cellsize` feature flag is automatically taken from the layercatalog when available, if not set explicitly in the process graph.
 - Initial implementation of new "post-dry-run" hook to improve "global extent and alignment" computation for `load_collection` ([#1299](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1299))
 - Remove `udf_python_dependencies_folder_path` from `PYTHONPATH` in batch jobs (k8s context) (eu-cdse/openeo-cdse-infra#842)
+- Check UDF code for managed UDF dependencies before doing (possibly) more expensive IO/S3 operations (eu-cdse/openeo-cdse-infra#842)
 
 
 ## 0.69.0
