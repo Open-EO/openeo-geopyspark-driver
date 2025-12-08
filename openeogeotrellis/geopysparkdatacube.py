@@ -1906,7 +1906,7 @@ class GeopysparkDataCube(DriverDataCube):
         assets = [asset for item in result.values() for asset in item["assets"].values()]
         return assets[0]["href"]
 
-    def write_assets(self, filename: Union[str, pathlib.Path], format: str, format_options: dict = None) -> dict[str, StacAsset]:
+    def write_assets(self, filename: Union[str, pathlib.Path], format: str, format_options: dict = None) -> Dict[str, StacAsset]:
         """
         Save cube to disk, returns the resulting items, which can have multiple assets.
 
