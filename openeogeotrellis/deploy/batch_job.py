@@ -850,12 +850,8 @@ def _export_to_workspaces(
         ]
 
     # TODO: assemble pystac.STACObject and avoid file altogether?
-    collection_href_old = [href for href in stac_hrefs if "collection.json" in href][0]
     collection_href = find_stac_root(stac_hrefs)
-    if collection_href is None:
-        raise ValueError("could not find STAC root collection href among " + ", ".join(stac_hrefs))
-    if collection_href_old != collection_href:
-        logger.warning(f"STAC root collection href changed from {collection_href_old} to {collection_href}")
+    assert collection_href is not None
     collection = pystac.Collection.from_file(urlparse(collection_href).path)
 
     workspace_uris = {}
