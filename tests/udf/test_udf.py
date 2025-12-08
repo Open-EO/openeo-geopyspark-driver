@@ -735,6 +735,12 @@ class TestInstallPythonUdfDependencies:
         """Test automatic unpacking of UDF deps from archive, when using `run_udf_code`."""
         udf_code = textwrap.dedent(
             """
+            # /// script
+            # dependencies = [
+            #     "mehh",
+            # ]
+            # ///
+
             from openeo.udf import UdfData, StructuredData
             import mehh
 
