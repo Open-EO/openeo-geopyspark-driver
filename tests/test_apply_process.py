@@ -1,4 +1,5 @@
 import datetime
+import logging
 import math
 from typing import List
 
@@ -561,5 +562,6 @@ def test_convert_data_type():
     datacube = datacube.convert_data_type("uint8")
     stitched = datacube.pyramid.levels[0].to_spatial_layer().stitch()
     cells = stitched.cells[0, 0:4, 0:4]
-    assert True
+    assert isinstance(cells[2, 2], np.uint8)
+    assert cells[2, 2] == 2
 
