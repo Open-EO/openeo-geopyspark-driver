@@ -61,7 +61,6 @@ from openeogeotrellis.deploy.batch_job_metadata import (
     _get_tracker_metadata,
     _transform_stac_metadata,
 )
-from openeogeotrellis.integrations.calrissian import find_stac_root
 from openeogeotrellis.integrations.gdal import get_abs_path_of_asset
 from openeogeotrellis.integrations.hadoop import setup_kerberos_auth
 from openeogeotrellis.job_options import JobOptions
@@ -850,7 +849,7 @@ def _export_to_workspaces(
         ]
 
     # TODO: assemble pystac.STACObject and avoid file altogether?
-    collection_href = find_stac_root(stac_hrefs)
+    collection_href = [href for href in stac_hrefs if "collection.json" in href][0]
     assert collection_href is not None
     collection = pystac.Collection.from_file(urlparse(collection_href).path)
 
