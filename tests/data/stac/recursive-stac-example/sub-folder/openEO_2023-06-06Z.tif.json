@@ -1,0 +1,74 @@
+{
+  "type": "Feature",
+  "stac_version": "1.0.0",
+  "id": "openEO_2023-06-06Z.tif",
+  "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+      [
+        [
+          5.069685009564396,
+          51.21481793134414
+        ],
+        [
+          5.069685009564396,
+          51.22021524164682
+        ],
+        [
+          5.080364860947119,
+          51.22021524164682
+        ],
+        [
+          5.080364860947119,
+          51.21481793134414
+        ],
+        [
+          5.069685009564396,
+          51.21481793134414
+        ]
+      ]
+    ]
+  },
+  "bbox": [
+    5.069685009564396,
+    51.21481793134414,
+    5.080364860947119,
+    51.22021524164682
+  ],
+  "properties": {
+    "datetime": "2023-06-06T00:00:00Z"
+  },
+  "links": [],
+  "assets": {
+    "openEO_2023-06-06Z.tif": {
+      "href": "./openEO_2023-06-06Z.tif",
+      "roles": [
+        "data"
+      ],
+      "type": "image/tiff; application=geotiff",
+      "eo:bands": [
+        {
+          "name": "B04",
+          "common_name": null,
+          "wavelength_um": null,
+          "aliases": null,
+          "gsd": null
+        },
+        {
+          "name": "B03",
+          "common_name": null,
+          "wavelength_um": null,
+          "aliases": null,
+          "gsd": null
+        },
+        {
+          "name": "B02",
+          "common_name": null,
+          "wavelength_um": null,
+          "aliases": null,
+          "gsd": null
+        }
+      ]
+    }
+  }
+}

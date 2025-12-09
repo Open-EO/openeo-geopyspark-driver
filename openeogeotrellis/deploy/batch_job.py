@@ -61,9 +61,11 @@ from openeogeotrellis.deploy.batch_job_metadata import (
     _get_tracker_metadata,
     _transform_stac_metadata,
 )
+from openeogeotrellis.integrations.calrissian import find_stac_root
 from openeogeotrellis.integrations.gdal import get_abs_path_of_asset
 from openeogeotrellis.integrations.hadoop import setup_kerberos_auth
 from openeogeotrellis.job_options import JobOptions
+from openeogeotrellis.stac_save_result import StacSaveResult, get_files_from_stac_catalog
 from openeogeotrellis.udf import (
     UdfDependencyHandlingFailure,
     build_python_udf_dependencies_archive,
@@ -833,18 +835,23 @@ def _export_to_workspaces(
     if not workspace_exports:
         return
 
-    stac_hrefs = [
-        f"file:{path}"
-        for path in _write_exported_stac_collection(
-            job_dir,
-            result_metadata,
-            asset_keys=list(result_assets_metadata.keys()),
-            omit_derived_from_links=omit_derived_from_links,
-        )
-    ]
+    if isinstance(result, StacSaveResult):
+        stac_hrefs_raw = get_files_from_stac_catalog(result.stac_root_local)
+        stac_hrefs = [href for href in stac_hrefs_raw if href.endswith(".json")] + [result.stac_root_local]
+    else:
+        stac_hrefs = [
+            f"file:{path}"
+            for path in _write_exported_stac_collection(
+                job_dir,
+                result_metadata,
+                asset_keys=list(result_assets_metadata.keys()),
+                omit_derived_from_links=omit_derived_from_links,
+            )
+        ]
 
     # TODO: assemble pystac.STACObject and avoid file altogether?
-    collection_href = [href for href in stac_hrefs if "collection.json" in href][0]
+    collection_href = find_stac_root(stac_hrefs)
+    assert collection_href is not None
     collection = pystac.Collection.from_file(urlparse(collection_href).path)
 
     workspace_uris = {}
