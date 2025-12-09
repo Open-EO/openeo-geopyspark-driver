@@ -1258,8 +1258,9 @@ class _ProjectionMetadata:
             return self._shape
         # TODO: calculate from bbox and transform?
 
-    def cell_size(self) -> Tuple[float, float]:
-        """Calculate (cell width, cell height) based on bbox and shape."""
+    def cell_size(self, *, fail_on_miss: bool = True) -> Union[Tuple[float, float], None]:
+        """Calculate resolution (cell width, cell height) based on bbox and shape."""
+        # TODO: rename to resolution(), which is more self-descriptive than "cell size"?
         if self._bbox and self._shape:
             xmin, ymin, xmax, ymax = self._bbox[:4]
             yn, xn = self.shape
@@ -1267,7 +1268,11 @@ class _ProjectionMetadata:
         elif self._transform:
             a0, _, _, _, a4, _ = self._transform[:6]
             return abs(a0), abs(a4)
-        raise ValueError(f"Unable to calculate cell size with {self._shape=}, {self._bbox}, {self._transform}")
+
+        if fail_on_miss:
+            raise ValueError(f"Unable to calculate cell size with {self._shape=}, {self._bbox}, {self._transform}")
+        else:
+            return None
 
     @classmethod
     def from_item(cls, item: pystac.Item) -> "_ProjectionMetadata":
@@ -1307,7 +1312,7 @@ class _ProjectionMetadata:
         y_snapper = _GridSnapper(origin=ymin, resolution=cell_height)
         return x_snapper, y_snapper
 
-    def coverage_for(self, extent: BoundingBox) -> Union[BoundingBox, None]:
+    def coverage_for(self, extent: BoundingBox, snap: bool = True) -> Union[BoundingBox, None]:
         """
         Find the coverage (as bounding box) of the given extent
         within the pixel grid defined by this `_ProjectionMetadata`,
@@ -1324,21 +1329,29 @@ class _ProjectionMetadata:
         if not intersection:
             return None
 
-        x_snapper, y_snapper = self._snappers()
-        return BoundingBox(
-            west=x_snapper.down(intersection.west),
-            south=y_snapper.down(intersection.south),
-            east=x_snapper.up(intersection.east),
-            north=y_snapper.up(intersection.north),
-            crs=self.code,
-        )
+        if snap:
+            x_snapper, y_snapper = self._snappers()
+            return BoundingBox(
+                west=x_snapper.down(intersection.west),
+                south=y_snapper.down(intersection.south),
+                east=x_snapper.up(intersection.east),
+                north=y_snapper.up(intersection.north),
+                crs=self.code,
+            )
+        else:
+            return intersection
 
 
 class _GridSnapper:
-    """Utility to snap coordinates to a grid defined by origin and resolution."""
+    """
+    Utility to snap coordinates to a grid defined by origin and resolution.
+    Note: this utility works in 1 dimension only, so you need separate instances for x and y coordinates.
+    """
 
     # TODO: move to more generic geometry/projection utility module for better reuse and cleaner separation?
+    #       e.g. eliminate overlap with BoundingBox.round_to_resolution?
     # TODO: add clamping too? pre- or post-snap?
+    # TODO: also add a 2D variant that combines two of these, where "down" means "down" in both dimensions, etc?
 
     __slots__ = ("_orig", "_res")
 

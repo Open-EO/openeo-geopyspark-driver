@@ -754,6 +754,14 @@ class TestProjectionMetadata:
         )
         assert metadata.bbox == (712710.0, 148627.0, 717489.5, 151406.0)
 
+    def test_cell_size_empty(self):
+        pm = _ProjectionMetadata()
+
+        with pytest.raises(ValueError, match="Unable to calculate cell size"):
+            pm.cell_size()
+
+        assert pm.cell_size(fail_on_miss=False) is None
+
     def test_cell_size_from_bbox_and_shape(self):
         assert _ProjectionMetadata(
             bbox=(100, 200, 300, 500),
@@ -879,6 +887,19 @@ class TestProjectionMetadata:
         metadata = _ProjectionMetadata(epsg=4326, bbox=(10, 20, 30, 40), shape=shape)
         coverage = metadata.coverage_for(extent)
         assert coverage == expected
+
+    def test_coverage_for_snap_option(self):
+        metadata = _ProjectionMetadata(epsg=4326, bbox=(10, 20, 30, 40), shape=[100, 100])
+        extent = BoundingBox(12.345, 26.345, 27.345, 35.345, crs="EPSG:4326")
+
+        # Do snapping (default)
+        expected = BoundingBox(12.2, 26.2, 27.4, 35.4, crs="EPSG:4326").approx(abs=1e-6)
+        assert metadata.coverage_for(extent) == expected
+        assert metadata.coverage_for(extent, snap=True) == expected
+
+        # No snapping
+        expected = BoundingBox(12.345, 26.345, 27.345, 35.345, crs="EPSG:4326")
+        assert metadata.coverage_for(extent, snap=False) == expected
 
     @pytest.mark.parametrize(
         ["extent", "shape", "expected"],

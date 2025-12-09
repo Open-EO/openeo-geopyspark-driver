@@ -3,7 +3,7 @@ from __future__ import annotations
 import collections
 import logging
 import math
-from typing import Callable, List, Optional, Tuple, Union
+from typing import Callable, List, Tuple, Union
 
 from openeo.util import deep_get
 from openeo_driver.backend import AbstractCollectionCatalog, LoadParameters
@@ -30,16 +30,21 @@ def two_float_tuple(value) -> Tuple[float, float]:
 
 class _GridInfo:
     """
-    Container for basic sampling info: CRS, resolution, grid bounds
+    Container for basic sampling/grid info:
+    - required: CRS
+    - optional: resolution
+    - optional: grid bounds
     """
+
+    __slots__ = ("crs_raw", "crs_epsg", "resolution", "extent_x", "extent_y")
 
     def __init__(
         self,
         *,
         crs: Union[str, int],
-        resolution: Optional[Tuple[float, float]] = None,
-        extent_x: Optional[Tuple[float, float]] = None,
-        extent_y: Optional[Tuple[float, float]] = None,
+        resolution: Union[Tuple[float, float], List[float], None] = None,
+        extent_x: Union[Tuple[float, float], List[float], None] = None,
+        extent_y: Union[Tuple[float, float], List[float], None] = None,
     ):
         self.crs_raw: Union[str, int] = crs
         self.crs_epsg = epsg_code_or_none(crs)
@@ -49,6 +54,15 @@ class _GridInfo:
 
     def __repr__(self) -> str:
         return f"_GridInfo(crs={self.crs_raw!r}, resolution={self.resolution!r}, extent_x={self.extent_x!r}, extent_y={self.extent_y!r})"
+
+    def __eq__(self, other) -> bool:
+        return (
+            isinstance(other, _GridInfo)
+            and self.crs_raw == other.crs_raw
+            and self.resolution == other.resolution
+            and self.extent_x == other.extent_x
+            and self.extent_y == other.extent_y
+        )
 
     @classmethod
     def from_datacube_metadata(cls, metadata: dict) -> _GridInfo:
@@ -267,12 +281,11 @@ def _extract_spatial_extent_from_constraint_load_stac(
     ]
     _log.debug(f"Collected {len(item_collection.items)=} {len(projection_metadatas)=}")
 
-    # Determine most common crs among assets
-    crs_histogram = collections.Counter(p.code for p in projection_metadatas)
-    _log.debug(f"CRS histogram of assets: {crs_histogram}")
-    target_crs = crs_histogram.most_common(1)[0][0]
+    # Determine most common grid (CRS and resolution) among assets
+    target_grid = _determine_best_grid_from_proj_metadata(projection_metadatas)
+    target_crs = target_grid.crs_raw if target_grid else None
 
-    # Merge bounding boxes (full, and extent coverage)
+    # Merge asset bounding boxes (full native extent, and "aligned" part of covered extent)
     assets_full_bbox_merger = _BoundingBoxMerger(crs=target_crs)
     aligned_extent_coverage_merger = _BoundingBoxMerger(crs=target_crs)
     for proj_metadata in projection_metadatas:
@@ -284,7 +297,65 @@ def _extract_spatial_extent_from_constraint_load_stac(
     extent_aligned = aligned_extent_coverage_merger.get()
     _log.debug(f"Merged bounding boxes: {assets_full_bbox=} {extent_aligned=}")
 
+    if (
+        "resample" in constraint
+        and (resample_crs := constraint["resample"].get("target_crs"))
+        and (resample_resolution := constraint["resample"].get("resolution"))
+    ):
+        target_grid = _GridInfo(crs=resample_crs, resolution=resample_resolution)
+        extent_resampled = extent_orig.reproject(target_grid.crs_epsg).round_to_resolution(*target_grid.resolution)
+        _log.debug(f"Resampled extent {extent_orig=} into {extent_resampled=}")
+        extent_aligned = extent_resampled
+
+    if pixel_buffer_size := deep_get(constraint, "pixel_buffer", "buffer_size", default=None):
+        extent_aligned = _buffer_extent(extent_aligned, buffer=pixel_buffer_size, sampling=target_grid)
+
     return extent_orig, extent_aligned
+
+
+def _logarithmic_round(value: float, base=10, delta=0.01) -> float:
+    """
+    Round float value adaptively based on its order of magnitude,
+    e.g. to build histograms with "relatively" sized bins."
+    """
+    if value == 0:
+        return 0
+    sign = 1.0 if value >= 0 else -1.0
+    quantized = round(math.log(abs(value), base) / delta) * delta
+    return sign * math.pow(base, quantized)
+
+
+def _determine_best_grid_from_proj_metadata(
+    projection_metadatas: list[_ProjectionMetadata],
+) -> Union[_GridInfo, None]:
+    """
+    Determine best CRS+resolution (e.g. most common)
+    from list or projection metadata items
+    """
+
+    # Find most common CRS
+    crs_histogram = collections.Counter(p.code for p in projection_metadatas if p.code)
+    _log.debug(f"_determine_best_grid_from_proj_metadata: {crs_histogram=}")
+    if not crs_histogram:
+        return None
+    target_crs = crs_histogram.most_common(1)[0][0]
+
+    # Determine typical resolution in target CRS (using rounding to avoid precision issues)
+    resolution_bins = collections.defaultdict(list)
+    for p in projection_metadatas:
+        if res := p.cell_size(fail_on_miss=False):
+            res_rounded = tuple(_logarithmic_round(r, base=10, delta=0.0001) for r in res)
+            resolution_bins[res_rounded].append(res)
+    _log.debug(f"_determine_best_grid_from_proj_metadata: {resolution_bins.keys()=}")
+    if resolution_bins:
+        best_bin = max(resolution_bins.values(), key=len)
+        target_resolution = collections.Counter(best_bin).most_common(1)[0][0]
+    else:
+        target_resolution = None
+
+    grid = _GridInfo(crs=target_crs, resolution=target_resolution)
+    _log.debug(f"_determine_best_grid_from_proj_metadata: {grid=}")
+    return grid
 
 
 class _BoundingBoxMerger:
@@ -312,12 +383,13 @@ class _BoundingBoxMerger:
         """Get the merged bounding box (or None if no boxes were added)."""
         return self._bbox
 
+
 def determine_global_extent(
     *,
     source_constraints: List[SourceConstraint],
     catalog: AbstractCollectionCatalog,
 ) -> dict:
-
+    # TODO: how to determine best target CRS for global extent?
     orig_extents_merger = _BoundingBoxMerger()
     aligned_extents_merger = _BoundingBoxMerger()
     for source_id, constraint in source_constraints:
