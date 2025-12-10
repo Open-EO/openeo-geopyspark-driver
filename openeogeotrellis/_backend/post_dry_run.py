@@ -17,6 +17,8 @@ from openeogeotrellis.load_stac import (
     _spatiotemporal_extent_from_load_params,
     construct_item_collection,
 )
+from openeogeotrellis.util.geometry import BoundingBoxMerger
+from openeogeotrellis.util.math import logarithmic_round
 
 _log = logging.getLogger(__name__)
 
@@ -286,8 +288,8 @@ def _extract_spatial_extent_from_constraint_load_stac(
     target_crs = target_grid.crs_raw if target_grid else None
 
     # Merge asset bounding boxes (full native extent, and "aligned" part of covered extent)
-    assets_full_bbox_merger = _BoundingBoxMerger(crs=target_crs)
-    aligned_extent_coverage_merger = _BoundingBoxMerger(crs=target_crs)
+    assets_full_bbox_merger = BoundingBoxMerger(crs=target_crs)
+    aligned_extent_coverage_merger = BoundingBoxMerger(crs=target_crs)
     for proj_metadata in projection_metadatas:
         if asset_bbox := proj_metadata.to_bounding_box():
             assets_full_bbox_merger.add(asset_bbox)
@@ -313,18 +315,6 @@ def _extract_spatial_extent_from_constraint_load_stac(
     return extent_orig, extent_aligned
 
 
-def _logarithmic_round(value: float, base=10, delta=0.01) -> float:
-    """
-    Round float value adaptively based on its order of magnitude,
-    e.g. to build histograms with "relatively" sized bins."
-    """
-    if value == 0:
-        return 0
-    sign = 1.0 if value >= 0 else -1.0
-    quantized = round(math.log(abs(value), base) / delta) * delta
-    return sign * math.pow(base, quantized)
-
-
 def _determine_best_grid_from_proj_metadata(
     projection_metadatas: list[_ProjectionMetadata],
 ) -> Union[_GridInfo, None]:
@@ -344,7 +334,7 @@ def _determine_best_grid_from_proj_metadata(
     resolution_bins = collections.defaultdict(list)
     for p in projection_metadatas:
         if res := p.cell_size(fail_on_miss=False):
-            res_rounded = tuple(_logarithmic_round(r, base=10, delta=0.0001) for r in res)
+            res_rounded = tuple(logarithmic_round(r, base=10, delta=0.0001) for r in res)
             resolution_bins[res_rounded].append(res)
     _log.debug(f"_determine_best_grid_from_proj_metadata: {resolution_bins.keys()=}")
     if resolution_bins:
@@ -358,40 +348,14 @@ def _determine_best_grid_from_proj_metadata(
     return grid
 
 
-class _BoundingBoxMerger:
-    """Helper to easily build union of multiple BoundingBox objects."""
-
-    def __init__(self, *, crs: Union[None, str, int] = None):
-        """
-        :param crs: (optional) desired target CRS for the merged bounding box
-        """
-        self._crs = crs
-        self._bbox: Union[None, BoundingBox] = None
-
-    def add(self, bbox: BoundingBox):
-        """Add a bounding box to merge."""
-        if self._bbox is None:
-            if self._crs:
-                # Just ensure first bbox is in desired CRS (if any)
-                # (subsequent unions will follow automatically)
-                bbox = bbox.align_to(target=self._crs)
-            self._bbox = bbox
-        else:
-            self._bbox = self._bbox.union(bbox)
-
-    def get(self) -> Union[None, BoundingBox]:
-        """Get the merged bounding box (or None if no boxes were added)."""
-        return self._bbox
-
-
 def determine_global_extent(
     *,
     source_constraints: List[SourceConstraint],
     catalog: AbstractCollectionCatalog,
 ) -> dict:
     # TODO: how to determine best target CRS for global extent?
-    orig_extents_merger = _BoundingBoxMerger()
-    aligned_extents_merger = _BoundingBoxMerger()
+    orig_extents_merger = BoundingBoxMerger()
+    aligned_extents_merger = BoundingBoxMerger()
     for source_id, constraint in source_constraints:
         extents = _extract_spatial_extent_from_constraint((source_id, constraint), catalog=catalog)
         if extents:

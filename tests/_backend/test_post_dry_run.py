@@ -10,12 +10,10 @@ from openeo_driver.utils import EvalEnv
 
 from openeogeotrellis._backend.post_dry_run import (
     _align_extent,
-    _BoundingBoxMerger,
     _buffer_extent,
     _determine_best_grid_from_proj_metadata,
     _extract_spatial_extent_from_constraint,
     _GridInfo,
-    _logarithmic_round,
     _snap_bbox,
     determine_global_extent,
 )
@@ -698,78 +696,6 @@ class TestPostDryRun:
             BoundingBox(west=5.1234, south=51.1234, east=5.8234, north=51.5234, crs="EPSG:4326"),
             expected,
         )
-
-
-class TestBoundingBoxMerger:
-    def test_empty(self):
-        merger = _BoundingBoxMerger()
-        assert merger.get() is None
-
-    def test_single(self):
-        merger = _BoundingBoxMerger()
-        merger.add(BoundingBox(1, 2, 3, 4))
-        assert merger.get() == BoundingBox(1, 2, 3, 4)
-
-    def test_multiple(self):
-        merger = _BoundingBoxMerger()
-        merger.add(BoundingBox(1, 2, 3, 4))
-        merger.add(BoundingBox(8, 4, 9, 6))
-        merger.add(BoundingBox(4, 10, 5, 12))
-        assert merger.get() == BoundingBox(1, 2, 9, 12)
-
-    def test_target_crs(self):
-        merger = _BoundingBoxMerger(crs="EPSG:32631")
-        merger.add(BoundingBox(3.1, 51.1, 3.2, 51.2, crs="EPSG:4326"))
-        assert merger.get() == BoundingBox(506986, 5660950, 514003, 5672085, crs="EPSG:32631").approx(abs=1)
-
-
-class TestLogarithmicRound:
-    def test_base(self):
-        assert _logarithmic_round(1) == 1
-        assert _logarithmic_round(10) == 10
-        assert _logarithmic_round(0.1) == 0.1
-
-        assert _logarithmic_round(2, base=2) == 2
-        assert _logarithmic_round(8, base=2) == 8
-        assert _logarithmic_round(0.25, base=2) == 0.25
-
-    def test_zero(self):
-        assert _logarithmic_round(0) == 0
-
-    @pytest.mark.parametrize(
-        ["xs", "base", "delta", "expected_levels"],
-        [
-            (range(100, 1000), 10, 0.1, 11),
-            (range(100, 1000), 10, 0.01, 101),
-            (range(8, 32), 2, 0.01, 24),
-        ],
-    )
-    def test_quantization_and_error(self, xs, base, delta, expected_levels):
-        ys = [_logarithmic_round(x, base=base, delta=delta) for x in xs]
-        assert len(set(ys)) == expected_levels
-
-        # Max error is proportional to delta
-        max_error = max(abs(x - y) / x for (x, y) in zip(xs, ys))
-        assert max_error < 1.3 * delta
-
-    def test_sign(self):
-        assert _logarithmic_round(-10) == -_logarithmic_round(10)
-        assert _logarithmic_round(-12.34) == -_logarithmic_round(12.34)
-
-    def test_general(self):
-        assert 0.4 < _logarithmic_round(0.5, delta=0.1) < 0.6
-        assert 0.49 < _logarithmic_round(0.5, delta=0.01) < 0.51
-
-        assert _logarithmic_round(0.5, delta=0.1) == _logarithmic_round(0.51, delta=0.1)
-        assert _logarithmic_round(0.5, delta=0.01) < _logarithmic_round(0.51, delta=0.01)
-        assert _logarithmic_round(0.5, delta=0.01) == _logarithmic_round(0.501, delta=0.01)
-
-        assert _logarithmic_round(500, delta=0.1) == _logarithmic_round(510, delta=0.1)
-        assert _logarithmic_round(500, delta=0.1) < _logarithmic_round(510, delta=0.01)
-        assert _logarithmic_round(500, delta=0.1) == _logarithmic_round(501, delta=0.01)
-
-        assert 0.7 < _logarithmic_round(0.8, delta=0.1) < 0.9
-        assert 0.79 < _logarithmic_round(0.8, delta=0.01) < 0.81
 
 
 class TestDetermineBestGridFromProjMetadata:

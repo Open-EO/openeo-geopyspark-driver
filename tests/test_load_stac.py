@@ -21,23 +21,22 @@ from openeogeotrellis.backend import GpsBatchJobs
 from openeogeotrellis.job_registry import InMemoryJobRegistry
 from openeogeotrellis.load_stac import (
     ItemCollection,
+    ItemDeduplicator,
     PropertyFilter,
     _get_proj_metadata,
     _is_band_asset,
     _is_supported_raster_mime_type,
     _proj_code_to_epsg,
+    _ProjectionMetadata,
     _SpatialExtent,
+    _spatiotemporal_extent_from_load_params,
     _SpatioTemporalExtent,
     _StacMetadataParser,
     _supports_item_search,
     _TemporalExtent,
+    construct_item_collection,
     extract_own_job_info,
     load_stac,
-    ItemDeduplicator,
-    _spatiotemporal_extent_from_load_params,
-    construct_item_collection,
-    _ProjectionMetadata,
-    _GridSnapper,
 )
 from openeogeotrellis.testing import DummyStacApiServer, gps_config_overrides
 
@@ -937,31 +936,6 @@ class TestProjectionMetadata:
         assert coverage == expected
 
 
-class TestGridSnapper:
-    def test_simple(self):
-        snapper = _GridSnapper(origin=0, resolution=5)
-
-        def down_round_up(x):
-            return snapper.down(x), snapper.round(x), snapper.up(x)
-
-        assert down_round_up(0) == (0, 0, 0)
-        assert down_round_up(4.3) == (0, 5, 5)
-        assert down_round_up(16.3) == (15, 15, 20)
-        assert down_round_up(-4.3) == (-5, -5, 0)
-        assert down_round_up(-16.3) == (-20, -15, -15)
-
-    def test_orig_and_fractional_resolution(self):
-        snapper = _GridSnapper(origin=1.125, resolution=0.25)
-
-        def down_round_up(x):
-            return snapper.down(x), snapper.round(x), snapper.up(x)
-
-        assert down_round_up(0) == (-0.125, 0.125, 0.125)
-        assert down_round_up(1.12) == (0.875, 1.125, 1.125)
-        assert down_round_up(1.13) == (1.125, 1.125, 1.375)
-        assert down_round_up(4.3) == (4.125, 4.375, 4.375)
-        assert down_round_up(100) == (99.875, 100.125, 100.125)
-        assert down_round_up(-100) == (-100.125, -99.875, -99.875)
 
 
 def test_get_proj_metadata_minimal():

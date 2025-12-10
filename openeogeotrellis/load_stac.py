@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import math
-
 import datetime
 import datetime as dt
 import functools
@@ -54,6 +52,7 @@ from openeogeotrellis.geopysparkcubemetadata import GeopysparkCubeMetadata
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.integrations.stac import ResilientStacIO
 from openeogeotrellis.util.datetime import DateTimeLikeOrNone, to_datetime_utc_unless_none
+from openeogeotrellis.util.geometry import GridSnapper
 from openeogeotrellis.utils import get_jvm, map_optional, normalize_temporal_extent, to_projected_polygons, unzip
 
 logger = logging.getLogger(__name__)
@@ -1304,12 +1303,12 @@ class _ProjectionMetadata:
         )
 
     @functools.lru_cache
-    def _snappers(self) -> Tuple[_GridSnapper, _GridSnapper]:
+    def _snappers(self) -> Tuple[GridSnapper, GridSnapper]:
         """Lazy init of x and y coordinate snappers based on bbox and shape"""
         cell_width, cell_height = self.cell_size()
         xmin, ymin, xmax, ymax = self.bbox
-        x_snapper = _GridSnapper(origin=xmin, resolution=cell_width)
-        y_snapper = _GridSnapper(origin=ymin, resolution=cell_height)
+        x_snapper = GridSnapper(origin=xmin, resolution=cell_width)
+        y_snapper = GridSnapper(origin=ymin, resolution=cell_height)
         return x_snapper, y_snapper
 
     def coverage_for(self, extent: BoundingBox, snap: bool = True) -> Union[BoundingBox, None]:
@@ -1341,35 +1340,6 @@ class _ProjectionMetadata:
         else:
             return intersection
 
-
-class _GridSnapper:
-    """
-    Utility to snap coordinates to a grid defined by origin and resolution.
-    Note: this utility works in 1 dimension only, so you need separate instances for x and y coordinates.
-    """
-
-    # TODO: move to more generic geometry/projection utility module for better reuse and cleaner separation?
-    #       e.g. eliminate overlap with BoundingBox.round_to_resolution?
-    # TODO: add clamping too? pre- or post-snap?
-    # TODO: also add a 2D variant that combines two of these, where "down" means "down" in both dimensions, etc?
-
-    __slots__ = ("_orig", "_res")
-
-    def __init__(self, origin: float, resolution: float):
-        self._orig = origin
-        self._res = resolution
-
-    def down(self, v: float):
-        """Snap downwards"""
-        return self._orig + self._res * math.floor((v - self._orig) / self._res)
-
-    def round(self, v: float):
-        """Snap to nearest"""
-        return self._orig + self._res * round((v - self._orig) / self._res)
-
-    def up(self, v: float):
-        """Snap upwards"""
-        return self._orig + self._res * math.ceil((v - self._orig) / self._res)
 
 
 def _get_proj_metadata(
