@@ -888,8 +888,6 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
         # a pair RDD of product -> tile
         per_product = feature_pyrdd.map(process_feature).groupByKey().mapValues(list)
 
-        full_product_download = smart_bool(sar_backscatter_arguments.options.get("local_copy"))
-
         # TODO: still split if full layout extent is too large for processing as a whole?
 
         # Apply Orfeo processing over product files as whole and splice up in tiles after that
@@ -900,11 +898,6 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
             faulthandler.enable()
             creo_path, features = product
 
-            if full_product_download:
-                tempdir = tempfile.mkdtemp()
-                download_s3_directory("s3:/" + creo_path.replace("/vsis3","/"),tempdir)
-                creo_path = tempdir
-
             # Short ad-hoc product id for logging purposes.
             prod_id = re.sub(r"[^A-Z0-9]", "", creo_path.upper())[-10:]
             log_prefix = f"p{os.getpid()}-prod{prod_id}"
@@ -914,6 +907,15 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
             creo_path = pathlib.Path(creo_path)
             if not creo_path.exists():
                 raise OpenEOApiException(f"sar_backscatter: path {creo_path} does not exist on the cluster.")
+
+            full_product_download = smart_bool(sar_backscatter_arguments.options.get("local_copy", False))
+
+            if full_product_download:
+                logger.debug(f"{log_prefix} Download full product {creo_path} to local temp dir for processing")
+                tempdir = tempfile.mkdtemp()
+                download_s3_directory("s3:/" + str(creo_path).replace("/vsis3", "/"), tempdir)
+                creo_path = pathlib.Path(tempdir)
+
 
             # Get whole extent of tile layout
             col_min = min(f["key"]["col"] for f in features)
