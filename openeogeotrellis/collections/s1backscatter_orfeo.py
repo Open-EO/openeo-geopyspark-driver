@@ -913,7 +913,7 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
             if full_product_download:
                 logger.debug(f"{log_prefix} Download full product {creo_path} to local temp dir for processing")
                 tempdir = tempfile.mkdtemp()
-                download_s3_directory("s3:/" + str(creo_path).replace("/vsis3", "/"), tempdir)
+                download_s3_directory("s3:/" + str(creo_path).replace("/vsis3/", "/"), tempdir)
                 creo_path = pathlib.Path(tempdir)
 
 
