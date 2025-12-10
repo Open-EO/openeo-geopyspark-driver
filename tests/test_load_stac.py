@@ -21,21 +21,22 @@ from openeogeotrellis.backend import GpsBatchJobs
 from openeogeotrellis.job_registry import InMemoryJobRegistry
 from openeogeotrellis.load_stac import (
     ItemCollection,
+    ItemDeduplicator,
     PropertyFilter,
     _get_proj_metadata,
     _is_band_asset,
     _is_supported_raster_mime_type,
     _proj_code_to_epsg,
+    _ProjectionMetadata,
     _SpatialExtent,
+    _spatiotemporal_extent_from_load_params,
     _SpatioTemporalExtent,
     _StacMetadataParser,
     _supports_item_search,
     _TemporalExtent,
+    construct_item_collection,
     extract_own_job_info,
     load_stac,
-    ItemDeduplicator,
-    _spatiotemporal_extent_from_load_params,
-    construct_item_collection,
 )
 from openeogeotrellis.testing import DummyStacApiServer, gps_config_overrides
 
@@ -730,6 +731,211 @@ def test_proj_code_to_epsg():
     assert _proj_code_to_epsg("IAU_2015:30100") is None
     assert _proj_code_to_epsg(None) is None
     assert _proj_code_to_epsg(1234) is None
+
+
+class TestProjectionMetadata:
+    def test_code_from_epsg(self):
+        metadata = _ProjectionMetadata(epsg=32631)
+        assert metadata.code == "EPSG:32631"
+        assert metadata.epsg == 32631
+
+    def test_epsg_from_code(self):
+        metadata = _ProjectionMetadata(code="EPSG:32631")
+        assert metadata.code == "EPSG:32631"
+        assert metadata.epsg == 32631
+
+    def test_bbox_from_shape_and_transform(self):
+        # https://github.com/soxofaan/projection/blob/22ada42310b58c00d74f68250fd65c8ba6f178b3/examples/assets.json
+        metadata = _ProjectionMetadata(
+            code="EPSG:32659",
+            shape=[5558, 9559],
+            transform=[0.5, 0, 712710, 0, -0.5, 151406, 0, 0, 1],
+        )
+        assert metadata.bbox == (712710.0, 148627.0, 717489.5, 151406.0)
+
+    def test_resolution_empty(self):
+        pm = _ProjectionMetadata()
+
+        with pytest.raises(ValueError, match="Unable to calculate cell size"):
+            pm.resolution()
+
+        assert pm.resolution(fail_on_miss=False) is None
+
+    def test_resolution_from_bbox_and_shape(self):
+        assert _ProjectionMetadata(
+            bbox=(100, 200, 300, 500),
+            shape=(30, 50),
+        ).resolution() == (4, 10)
+
+        assert _ProjectionMetadata(
+            bbox=(1000, 2000, 5000, 8000),
+            shape=(100, 200),
+        ).resolution() == (20.0, 60.0)
+
+    def test_resolution_from_transform(self):
+        assert _ProjectionMetadata(
+            transform=[0.5, 0, 712710, 0, -0.5, 151406, 0, 0, 1],
+        ).resolution() == (0.5, 0.5)
+
+    def test_from_item_minimal(self):
+        item = pystac.Item.from_dict(StacDummyBuilder.item())
+        metadata = _ProjectionMetadata.from_item(item)
+        assert metadata.code is None
+        assert metadata.epsg is None
+        assert metadata.bbox is None
+        assert metadata.shape is None
+
+    def test_from_item_full(self):
+        item = pystac.Item.from_dict(
+            StacDummyBuilder.item(
+                properties={
+                    "proj:epsg": 32631,
+                    "proj:bbox": [1200, 3400, 5600, 7800],
+                    "proj:shape": [100, 200],
+                }
+            )
+        )
+        metadata = _ProjectionMetadata.from_item(item)
+        assert metadata.code == "EPSG:32631"
+        assert metadata.epsg == 32631
+        assert metadata.bbox == (1200, 3400, 5600, 7800)
+        assert metadata.shape == (100, 200)
+
+    def test_from_asset_basic(self):
+        asset = pystac.Asset(
+            href="https://stac.test/asset.tif",
+            extra_fields={
+                "proj:epsg": 32631,
+                "proj:bbox": [1200, 3400, 5600, 7800],
+                "proj:shape": [100, 200],
+            },
+        )
+        metadata = _ProjectionMetadata.from_asset(asset)
+        assert metadata.code == "EPSG:32631"
+        assert metadata.epsg == 32631
+        assert metadata.bbox == (1200, 3400, 5600, 7800)
+        assert metadata.shape == (100, 200)
+
+    def test_from_asset_with_item(self):
+        asset = pystac.Asset(
+            href="https://stac.test/asset.tif",
+            extra_fields={
+                "proj:bbox": [1111, 2222, 3333, 4444],
+                "proj:shape": [10, 20],
+            },
+        )
+        item = pystac.Item.from_dict(
+            StacDummyBuilder.item(
+                properties={
+                    "proj:epsg": 32631,
+                    "proj:shape": [100, 200],
+                }
+            )
+        )
+        metadata = _ProjectionMetadata.from_asset(asset, item=item)
+        assert metadata.code == "EPSG:32631"
+        assert metadata.epsg == 32631
+        assert metadata.bbox == (1111, 2222, 3333, 4444)
+        assert metadata.shape == (10, 20)
+
+    def test_from_asset_with_owner_item(self):
+        asset = pystac.Asset(
+            href="https://stac.test/asset.tif",
+            extra_fields={
+                "proj:bbox": [1111, 2222, 3333, 4444],
+                "proj:shape": [10, 20],
+            },
+        )
+        asset.set_owner(
+            pystac.Item.from_dict(
+                StacDummyBuilder.item(
+                    properties={
+                        "proj:epsg": 32631,
+                        "proj:shape": [100, 200],
+                    }
+                )
+            )
+        )
+        metadata = _ProjectionMetadata.from_asset(asset)
+        assert metadata.code == "EPSG:32631"
+        assert metadata.epsg == 32631
+        assert metadata.bbox == (1111, 2222, 3333, 4444)
+        assert metadata.shape == (10, 20)
+
+    @pytest.mark.parametrize(
+        ["extent", "shape", "expected"],
+        [
+            (
+                BoundingBox(12, 26, 37, 52, crs="EPSG:4326"),
+                [10, 10],
+                BoundingBox(12, 26, 30, 40, crs="EPSG:4326"),
+            ),
+            (
+                BoundingBox(12.345, 26.345, 27.345, 35.345, crs="EPSG:4326"),
+                [100, 100],
+                BoundingBox(12.2, 26.2, 27.4, 35.4, crs="EPSG:4326").approx(abs=1e-6),
+            ),
+            (
+                BoundingBox(12.3434, 26.3434, 27.3434, 35.3434, crs="EPSG:4326"),
+                [1000, 500],
+                BoundingBox(12.32, 26.34, 27.36, 35.36, crs="EPSG:4326"),
+            ),
+        ],
+    )
+    def test_coverage_for_simple(self, extent, shape, expected):
+        metadata = _ProjectionMetadata(epsg=4326, bbox=(10, 20, 30, 40), shape=shape)
+        coverage = metadata.coverage_for(extent)
+        assert coverage == expected
+
+    def test_coverage_for_snap_option(self):
+        metadata = _ProjectionMetadata(epsg=4326, bbox=(10, 20, 30, 40), shape=[100, 100])
+        extent = BoundingBox(12.345, 26.345, 27.345, 35.345, crs="EPSG:4326")
+
+        # Do snapping (default)
+        expected = BoundingBox(12.2, 26.2, 27.4, 35.4, crs="EPSG:4326").approx(abs=1e-6)
+        assert metadata.coverage_for(extent) == expected
+        assert metadata.coverage_for(extent, snap=True) == expected
+
+        # No snapping
+        expected = BoundingBox(12.345, 26.345, 27.345, 35.345, crs="EPSG:4326")
+        assert metadata.coverage_for(extent, snap=False) == expected
+
+    @pytest.mark.parametrize(
+        ["extent", "shape", "expected"],
+        [
+            (
+                # Fully inside UTM tile (10m resolution)
+                BoundingBox(5.1, 50.8, 5.2, 50.9, crs="EPSG:4326"),
+                [10980, 10980],
+                BoundingBox(647660, 5629680, 655030, 5641010, crs="EPSG:32631"),
+            ),
+            (
+                # At corer of UTM tile, partially outside (to be clipped in footprint)
+                BoundingBox(6.0, 51.4, 6.2, 51.6, crs="EPSG:4326"),
+                [10980, 10980],
+                BoundingBox(707760, 5698570, 709800, 5700000, crs="EPSG:32631"),
+            ),
+            (
+                # outside UTM tile
+                BoundingBox(20, 51, 20.1, 51.1, crs="EPSG:4326"),
+                [10980, 10980],
+                None,
+            ),
+            (
+                # Low res asset (200m) and clipping
+                BoundingBox(6.0, 51.4, 6.2, 51.6, crs="EPSG:4326"),
+                [549, 549],
+                BoundingBox(707600, 5698400, 709800, 5700000, crs="EPSG:32631"),
+            ),
+        ],
+    )
+    def test_coverage_for_lonlat_in_utm(self, extent, shape, expected):
+        # SENTINEL2_L2A-alike projection metadata
+        metadata = _ProjectionMetadata(epsg=32631, bbox=[600000, 5590200, 709800, 5700000], shape=shape)
+        coverage = metadata.coverage_for(extent)
+        assert coverage == expected
+
+
 
 
 def test_get_proj_metadata_minimal():
