@@ -16,6 +16,7 @@ from openeogeotrellis._backend.post_dry_run import (
     _GridInfo,
     _snap_bbox,
     determine_global_extent,
+    AlignedExtentResult,
 )
 from openeogeotrellis.load_stac import _ProjectionMetadata
 
@@ -324,9 +325,12 @@ class TestPostDryRun:
         source_constraints = extract_source_constraints(pg)
         [source_constraint] = source_constraints
         extents = _extract_spatial_extent_from_constraint(source_constraint=source_constraint, catalog=dummy_catalog)
-        assert extents == (
-            BoundingBox(1, 2, 3, 4, crs=4326),
-            BoundingBox(1, 2, 3, 4, crs=4326),
+        assert extents == AlignedExtentResult(
+            extent=BoundingBox(1, 2, 3, 4, crs=4326),
+            variants={
+                "original": BoundingBox(1, 2, 3, 4, crs=4326),
+                "target_aligned": BoundingBox(1, 2, 3, 4, crs=4326),
+            },
         )
 
     @pytest.mark.parametrize(
@@ -357,7 +361,13 @@ class TestPostDryRun:
         source_constraints = extract_source_constraints(pg)
         [source_constraint] = source_constraints
         extents = _extract_spatial_extent_from_constraint(source_constraint=source_constraint, catalog=dummy_catalog)
-        assert extents == (BoundingBox(5.067891, 51.213456, 5.0712345, 5.9876543, crs=4326), expected)
+        assert extents == AlignedExtentResult(
+            extent=expected,
+            variants={
+                "original": BoundingBox(5.067891, 51.213456, 5.0712345, 5.9876543, crs=4326),
+                "target_aligned": expected,
+            },
+        )
 
     @pytest.mark.parametrize(
         ["step_x", "step_y", "expected"],
@@ -398,39 +408,48 @@ class TestPostDryRun:
         source_constraints = extract_source_constraints(pg)
         [source_constraint] = source_constraints
         extents = _extract_spatial_extent_from_constraint(source_constraint=source_constraint, catalog=dummy_catalog)
-        assert extents == (
-            BoundingBox(5.067891, 51.213456, 5.0712345, 5.9876543, crs=4326),
-            expected,
+        assert extents == AlignedExtentResult(
+            extent=expected,
+            variants={
+                "original": BoundingBox(5.067891, 51.213456, 5.0712345, 5.9876543, crs=4326),
+                "target_aligned": expected,
+            },
         )
 
-    def test_determine_global_extent_minimal(self, dummy_catalog, extract_source_constraints):
+    def test_determine_global_extent_load_collection_minimal(self, dummy_catalog, extract_source_constraints):
         # Process graph with two load_collection sources with spatial extents
         pg = {
-            "load_collection_1": {
+            "lc1": {
                 "process_id": "load_collection",
                 "arguments": {
                     "id": "S2",
                     "spatial_extent": {"west": 1, "south": 2, "east": 3, "north": 4},
                 },
-                "result": False,
             },
-            "load_collection_2": {
+            "lc2": {
                 "process_id": "load_collection",
                 "arguments": {
                     "id": "S2",
                     "spatial_extent": {"west": 1.5, "south": 2.5, "east": 3.5, "north": 4.5},
                 },
+            },
+            "merge": {
+                "process_id": "merge_cubes",
+                "arguments": {"cube1": {"from_node": "lc1"}, "cube2": {"from_node": "lc2"}},
                 "result": True,
             },
         }
         source_constraints = extract_source_constraints(pg)
         global_extent = determine_global_extent(source_constraints=source_constraints, catalog=dummy_catalog)
         assert global_extent == {
-            "global_extent_original": BoundingBox(1, 2, 3.5, 4.5, crs="EPSG:4326"),
             "global_extent_aligned": BoundingBox(1, 2, 3.5, 4.5, crs="EPSG:4326"),
+            "global_extent_variants": {
+                "original": BoundingBox(1, 2, 3.5, 4.5, crs="EPSG:4326"),
+                "target_aligned": BoundingBox(1, 2, 3.5, 4.5, crs="EPSG:4326"),
+            },
         }
 
-    def test_determine_global_extent_4326_millidegrees(self, dummy_catalog, extract_source_constraints):
+    def test_determine_global_extent_load_collection_4326_millidegrees(self, dummy_catalog, extract_source_constraints):
         dummy_catalog.define_collection_metadata(
             "S123-millidegree", cube_dimensions={"x": {"step": 0.001}, "y": {"step": 0.001}}
         )
@@ -454,25 +473,46 @@ class TestPostDryRun:
         }
         source_constraints = extract_source_constraints(pg)
         global_extent = determine_global_extent(source_constraints=source_constraints, catalog=dummy_catalog)
+
+        expected_orig = BoundingBox(
+            11.123456,
+            22.123456,
+            66.123456,
+            66.123456,
+            crs="EPSG:4326",
+        )
+        expected_aligned = BoundingBox(
+            11.123,
+            22.123,
+            66.124,
+            66.124,
+            crs="EPSG:4326",
+        ).approx(abs=1e-6)
         assert global_extent == {
-            "global_extent_original": BoundingBox(
-                11.123456,
-                22.123456,
-                66.123456,
-                66.123456,
-                crs="EPSG:4326",
-            ),
-            "global_extent_aligned": BoundingBox(
-                11.123,
-                22.123,
-                66.124,
-                66.124,
-                crs="EPSG:4326",
-            ).approx(abs=1e-6),
+            "global_extent_aligned": expected_aligned,
+            "global_extent_variants": {
+                "original": expected_orig,
+                "target_aligned": expected_aligned,
+            },
         }
 
+    @pytest.mark.parametrize(
+        ["shift", "proj_shape", "expected"],
+        [
+            (0.1234, [10, 10], BoundingBox(1.0, 2.0, 3.0, 4.0, crs=4326)),
+            (0.5678, [10, 10], BoundingBox(1.4, 2.4, 3.0, 4.0, crs=4326)),
+            (0.5678, [200, 200], BoundingBox(1.56, 2.56, 3.0, 4.0, crs=4326)),
+        ],
+    )
     def test_extract_spatial_extent_from_constraint_load_stac_basic(
-        self, dummy_catalog, extract_source_constraints, dummy_stac_api_server, dummy_stac_api
+        self,
+        dummy_catalog,
+        extract_source_constraints,
+        dummy_stac_api_server,
+        dummy_stac_api,
+        shift,
+        proj_shape,
+        expected,
     ):
         """STAC collection with single item and single asset -> extract native footprint from proj metadata."""
         dummy_stac_api_server.define_collection("collection-1234")
@@ -487,7 +527,7 @@ class TestPostDryRun:
                     "roles": ["data"],
                     "proj:code": 4326,
                     "proj:bbox": [1, 2, 3, 4],
-                    "proj:shape": [10, 10],
+                    "proj:shape": proj_shape,
                 }
             },
         )
@@ -496,7 +536,7 @@ class TestPostDryRun:
                 "process_id": "load_stac",
                 "arguments": {
                     "url": f"{dummy_stac_api}/collections/collection-1234",
-                    "spatial_extent": {"west": 1.1234, "south": 2.1234, "east": 3.1234, "north": 4.1234},
+                    "spatial_extent": {"west": 1 + shift, "south": 2 + shift, "east": 3 + shift, "north": 4 + shift},
                 },
                 "result": True,
             },
@@ -504,9 +544,15 @@ class TestPostDryRun:
         source_constraints = extract_source_constraints(pg)
         [source_constraint] = source_constraints
         extents = _extract_spatial_extent_from_constraint(source_constraint=source_constraint, catalog=dummy_catalog)
-        assert extents == (
-            BoundingBox(west=1.1234, south=2.1234, east=3.1234, north=4.1234, crs="EPSG:4326"),
-            BoundingBox(west=1, south=2, east=3, north=4, crs="EPSG:4326"),
+        assert extents == AlignedExtentResult(
+            extent=expected,
+            variants={
+                "original": BoundingBox(
+                    west=1 + shift, south=2 + shift, east=3 + shift, north=4 + shift, crs="EPSG:4326"
+                ),
+                "assets_full_bbox": BoundingBox(west=1, south=2, east=3, north=4, crs="EPSG:4326"),
+                "assets_covered_bbox": expected,
+            },
         )
 
     def test_extract_spatial_extent_from_constraint_load_stac_issue_1299_3569441306(
@@ -558,9 +604,14 @@ class TestPostDryRun:
         source_constraints = extract_source_constraints(pg)
         [source_constraint] = source_constraints
         extents = _extract_spatial_extent_from_constraint(source_constraint=source_constraint, catalog=dummy_catalog)
-        assert extents == (
-            BoundingBox(west=2.54578, south=49.51234, east=6.5154, north=51.5678, crs="EPSG:4326"),
-            BoundingBox(west=2.5, south=49.5, east=6.55, north=51.60, crs="EPSG:4326").approx(abs=1e-6),
+        expected_aligned = BoundingBox(2.5, 49.5, 6.55, 51.60, crs="EPSG:4326").approx(abs=1e-6)
+        assert extents == AlignedExtentResult(
+            extent=expected_aligned,
+            variants={
+                "original": BoundingBox(2.54578, 49.51234, 6.5154, 51.5678, crs="EPSG:4326"),
+                "assets_full_bbox": BoundingBox(-180.0, -89.0, 180.0, 89.0, crs="EPSG:4326"),
+                "assets_covered_bbox": expected_aligned,
+            },
         )
 
     @pytest.mark.parametrize(
@@ -618,9 +669,14 @@ class TestPostDryRun:
         source_constraints = extract_source_constraints(pg)
         [source_constraint] = source_constraints
         extents = _extract_spatial_extent_from_constraint(source_constraint=source_constraint, catalog=dummy_catalog)
-        assert extents == (
-            BoundingBox(west=5.1234, south=51.1234, east=5.8234, north=51.5234, crs="EPSG:4326"),
-            expected,
+        assert extents == AlignedExtentResult(
+            extent=expected,
+            variants={
+                "original": BoundingBox(west=5.1234, south=51.1234, east=5.8234, north=51.5234, crs="EPSG:4326"),
+                "assets_covered_bbox": BoundingBox(west=5.123, south=51.123, east=5.824, north=51.524, crs="EPSG:4326"),
+                "assets_full_bbox": BoundingBox(west=5, south=51, east=6, north=52, crs="EPSG:4326"),
+                "resampled": expected,
+            },
         )
 
     @pytest.mark.parametrize(
@@ -692,10 +748,81 @@ class TestPostDryRun:
         source_constraints = extract_source_constraints(pg)
         [source_constraint] = source_constraints
         extents = _extract_spatial_extent_from_constraint(source_constraint=source_constraint, catalog=dummy_catalog)
-        assert extents == (
-            BoundingBox(west=5.1234, south=51.1234, east=5.8234, north=51.5234, crs="EPSG:4326"),
-            expected,
+
+        if kernel_size:
+            expected_variants = {
+                "original": BoundingBox(5.1234, 51.1234, 5.8234, 51.5234, crs="EPSG:4326"),
+                "assets_full_bbox": BoundingBox(5, 51, 6, 52, crs="EPSG:4326"),
+                "assets_covered_bbox": BoundingBox(5.12, 51.12, 5.83, 51.53, crs="EPSG:4326"),
+                "pixel_buffered": expected,
+            }
+        else:
+            expected_variants = {
+                "original": BoundingBox(5.1234, 51.1234, 5.8234, 51.5234, crs="EPSG:4326"),
+                "assets_full_bbox": BoundingBox(5, 51, 6, 52, crs="EPSG:4326"),
+                "assets_covered_bbox": expected,
+            }
+        assert extents == AlignedExtentResult(
+            extent=expected,
+            variants=expected_variants,
         )
+
+    def test_determine_global_extent_load_stac_minimal(
+        self,
+        dummy_catalog,
+        extract_source_constraints,
+        dummy_stac_api_server,
+        dummy_stac_api,
+    ):
+        dummy_stac_api_server.define_collection("collection-1234")
+        dummy_stac_api_server.define_item(
+            collection_id="collection-1234",
+            item_id="item-1",
+            bbox=[1, 2, 3, 4],
+            assets={
+                "asset-1": {
+                    "href": "https://stac.test/asset-1.tif",
+                    "type": "image/tiff; application=geotiff",
+                    "roles": ["data"],
+                    "proj:code": 4326,
+                    "proj:bbox": [1, 2, 3, 4],
+                    "proj:shape": [200, 200],
+                }
+            },
+        )
+        pg = {
+            "ls1": {
+                "process_id": "load_stac",
+                "arguments": {
+                    "url": f"{dummy_stac_api}/collections/collection-1234",
+                    "spatial_extent": {"west": 1.234, "south": 2.345, "east": 1.789, "north": 2.891},
+                },
+            },
+            "ls2": {
+                "process_id": "load_stac",
+                "arguments": {
+                    "url": f"{dummy_stac_api}/collections/collection-1234",
+                    "spatial_extent": {"west": 2.234, "south": 3.345, "east": 2.789, "north": 3.891},
+                },
+            },
+            "merge": {
+                "process_id": "merge_cubes",
+                "arguments": {"cube1": {"from_node": "ls1"}, "cube2": {"from_node": "ls2"}},
+                "result": True,
+            },
+        }
+
+        source_constraints = extract_source_constraints(pg)
+        global_extent = determine_global_extent(source_constraints=source_constraints, catalog=dummy_catalog)
+        expected = BoundingBox(1.23, 2.34, 2.79, 3.90, crs="EPSG:4326").approx(abs=1e-6)
+        assert global_extent == {
+            "global_extent_aligned": expected,
+            "global_extent_variants": {
+                "original": BoundingBox(1.234, 2.345, 2.789, 3.891, crs="EPSG:4326"),
+                "assets_full_bbox": BoundingBox(1, 2, 3, 4, crs="EPSG:4326"),
+                "assets_covered_bbox": expected,
+            },
+        }
 
 
 class TestDetermineBestGridFromProjMetadata:
