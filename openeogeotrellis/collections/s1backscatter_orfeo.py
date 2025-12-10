@@ -914,7 +914,7 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
                 logger.debug(f"{log_prefix} Download full product {creo_path} to local temp dir for processing")
                 tempdir = tempfile.mkdtemp()
                 download_s3_directory("s3:/" + str(creo_path).replace("/vsis3/", "/"), tempdir)
-                creo_path = pathlib.Path(tempdir)
+                creo_path = pathlib.Path(tempdir) / os.path.dirname(creo_path)
 
 
             # Get whole extent of tile layout
