@@ -753,29 +753,29 @@ class TestProjectionMetadata:
         )
         assert metadata.bbox == (712710.0, 148627.0, 717489.5, 151406.0)
 
-    def test_cell_size_empty(self):
+    def test_resolution_empty(self):
         pm = _ProjectionMetadata()
 
         with pytest.raises(ValueError, match="Unable to calculate cell size"):
-            pm.cell_size()
+            pm.resolution()
 
-        assert pm.cell_size(fail_on_miss=False) is None
+        assert pm.resolution(fail_on_miss=False) is None
 
-    def test_cell_size_from_bbox_and_shape(self):
+    def test_resolution_from_bbox_and_shape(self):
         assert _ProjectionMetadata(
             bbox=(100, 200, 300, 500),
             shape=(30, 50),
-        ).cell_size() == (4, 10)
+        ).resolution() == (4, 10)
 
         assert _ProjectionMetadata(
             bbox=(1000, 2000, 5000, 8000),
             shape=(100, 200),
-        ).cell_size() == (20.0, 60.0)
+        ).resolution() == (20.0, 60.0)
 
-    def test_cell_size_from_transform(self):
+    def test_resolution_from_transform(self):
         assert _ProjectionMetadata(
             transform=[0.5, 0, 712710, 0, -0.5, 151406, 0, 0, 1],
-        ).cell_size() == (0.5, 0.5)
+        ).resolution() == (0.5, 0.5)
 
     def test_from_item_minimal(self):
         item = pystac.Item.from_dict(StacDummyBuilder.item())

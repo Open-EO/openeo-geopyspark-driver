@@ -1257,8 +1257,11 @@ class _ProjectionMetadata:
             return self._shape
         # TODO: calculate from bbox and transform?
 
-    def cell_size(self, *, fail_on_miss: bool = True) -> Union[Tuple[float, float], None]:
-        """Calculate resolution (cell width, cell height) based on bbox and shape."""
+    def resolution(self, *, fail_on_miss: bool = True) -> Union[Tuple[float, float], None]:
+        """
+        Calculate resolution (xres, yres) expressed as distance in the projection CRS
+        based on bbox/shape/transform.
+        """
         # TODO: rename to resolution(), which is more self-descriptive than "cell size"?
         if self._bbox and self._shape:
             xmin, ymin, xmax, ymax = self._bbox[:4]
@@ -1305,10 +1308,10 @@ class _ProjectionMetadata:
     @functools.lru_cache
     def _snappers(self) -> Tuple[GridSnapper, GridSnapper]:
         """Lazy init of x and y coordinate snappers based on bbox and shape"""
-        cell_width, cell_height = self.cell_size()
+        xres, yres = self.resolution(fail_on_miss=True)
         xmin, ymin, xmax, ymax = self.bbox
-        x_snapper = GridSnapper(origin=xmin, resolution=cell_width)
-        y_snapper = GridSnapper(origin=ymin, resolution=cell_height)
+        x_snapper = GridSnapper(origin=xmin, resolution=xres)
+        y_snapper = GridSnapper(origin=ymin, resolution=yres)
         return x_snapper, y_snapper
 
     def coverage_for(self, extent: BoundingBox, snap: bool = True) -> Union[BoundingBox, None]:

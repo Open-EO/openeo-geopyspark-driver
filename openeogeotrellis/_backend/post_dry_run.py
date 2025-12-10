@@ -333,7 +333,7 @@ def _determine_best_grid_from_proj_metadata(
     # Determine typical resolution in target CRS (using rounding to avoid precision issues)
     resolution_bins = collections.defaultdict(list)
     for p in projection_metadatas:
-        if res := p.cell_size(fail_on_miss=False):
+        if res := p.resolution(fail_on_miss=False):
             res_rounded = tuple(logarithmic_round(r, base=10, delta=0.0001) for r in res)
             resolution_bins[res_rounded].append(res)
     _log.debug(f"_determine_best_grid_from_proj_metadata: {resolution_bins.keys()=}")
