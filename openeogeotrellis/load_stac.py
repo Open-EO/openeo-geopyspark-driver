@@ -315,13 +315,6 @@ def load_stac(
         else:
             raise ProcessParameterRequiredException(process="load_stac", parameter="bands")
 
-    if load_params.global_extent is None or len(load_params.global_extent) == 0:
-        layer_native_extent = metadata.get_layer_native_extent()
-        if layer_native_extent:
-            load_params = load_params.copy()
-            logger.info(f"global_extent fallback: {layer_native_extent=}")
-            load_params.global_extent = layer_native_extent.as_dict()
-
     if load_params.bands:
         metadata = metadata.filter_bands(load_params.bands)
 
