@@ -354,8 +354,6 @@ def load_stac(
             cell_width = float(load_params.target_resolution[0])
             cell_height = float(load_params.target_resolution[1])
 
-    (cell_width, cell_height) = (float(cell_width), float(cell_height))
-
     if load_params.target_crs is not None:
         if (
             load_params.target_resolution is not None
@@ -391,7 +389,7 @@ def load_stac(
             url,  # openSearchCollectionId, not important
             requested_band_names,  # openSearchLinkTitles
             None,  # rootPath, not important
-            jvm.geotrellis.raster.CellSize(cell_width, cell_height),
+            jvm.geotrellis.raster.CellSize(float(cell_width), float(cell_height)),
             False,  # experimental
             max_soft_errors_ratio,
         )
