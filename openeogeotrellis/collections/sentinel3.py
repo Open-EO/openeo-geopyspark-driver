@@ -483,7 +483,7 @@ def do_binning(
         This means that a flag value of zero cannot be masked with this mechanism.
         Ignored, if `flag_bands` is not set.
     """
-    logger.info(f"Binning {product_type}")
+    logger.info(f"Binning {product_type} with super sampling '{super_sampling}' flag band '{flag_band}' and flag bitmask '{flag_bitmask}'")
     if angle_source_coordinates is not None:
         raise NotImplementedError("Binning for angle coordinates is not supported.")
 
