@@ -422,7 +422,7 @@ def load_stac(
     metadata_properties = {}
     correlation_id = env.get(EVAL_ENV_KEY.CORRELATION_ID, "")
 
-    data_cube_parameters, single_level = datacube_parameters.create(load_params, env, jvm)
+    data_cube_parameters, single_level = datacube_parameters.create(load_params=load_params, env=env, jvm=jvm)
     getattr(data_cube_parameters, "layoutScheme_$eq")("FloatingLayoutScheme")
 
     tilesize = feature_flags.get("tilesize", None)

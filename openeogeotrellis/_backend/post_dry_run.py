@@ -12,6 +12,7 @@ from openeo_driver.dry_run import SourceConstraint
 from openeo_driver.errors import CollectionNotFoundException
 from openeo_driver.util.geometry import BoundingBox, epsg_code_or_none
 from openeo_driver.util.utm import is_auto_utm_crs, is_utm_crs
+from openeo_driver.utils import EvalEnv
 
 from openeogeotrellis.load_stac import (
     _ProjectionMetadata,
@@ -406,3 +407,20 @@ def post_dry_run(
     return {
         **global_extent,
     }
+
+
+def get_global_extent(*, load_params: LoadParameters, env: EvalEnv) -> Union[BoundingBox, None]:
+    """
+    Helper to get "global_extent" from load parameters (legacy approach)
+    or evaluation env (new post-dry-run approach).
+    """
+    # TODO this is a short-term adapter to migrate from load_params to env approach,
+    #      so ideally this can be removed once migration is completed
+    if global_extent_aligned := env.get("global_extent_aligned"):
+        _log.debug(f"get_global_extent from env: {global_extent_aligned=}")
+        return global_extent_aligned
+    elif load_params.global_extent:
+        _log.debug(f"get_global_extent from load_params: {load_params.global_extent=}")
+        return BoundingBox.from_dict(load_params.global_extent)
+    else:
+        return None
