@@ -152,6 +152,10 @@ def load_stac(
         opensearch_client = jvm.org.openeo.geotrellis.file.FixedFeaturesOpenSearchClient()
 
         # TODO: code smell: (most of) these vars should not be initialized with None here
+        # asset_band_names = the full list of band names contained by the asset
+        # in the same order as defined in the asset (e.g. NetCDF file) itself.
+        # Note that this list is not yet filtered by the requested bands, as the asset loader needs to know
+        # which band index in the file to read.
         asset_band_names = None
         stac_bbox = None
         proj_epsg = None
@@ -187,7 +191,10 @@ def load_stac(
             ):
                 proj_epsg, proj_bbox, proj_shape = _get_proj_metadata(asset=asset, item=itm)
 
-                asset_band_names_from_metadata = stac_metadata_parser.bands_from_stac_asset(asset=asset).band_names()
+                asset_band_names_from_metadata: List[str] = stac_metadata_parser.bands_from_stac_asset(asset=asset).band_names()
+                if not asset_band_names_from_metadata:
+                    asset_band_names_from_metadata = feature_flags.get("asset_id_to_bands_map", {}).get(asset_id, [])
+                    logger.debug(f"using `asset_id_to_bands_map`: mapping {asset_id} to {asset_band_names_from_metadata}")
                 logger.debug(f"from intersecting_items: {itm.id=} {asset_id=} {asset_band_names_from_metadata=}")
 
                 if not load_params.bands:
