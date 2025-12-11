@@ -354,6 +354,8 @@ def load_stac(
             cell_width = float(load_params.target_resolution[0])
             cell_height = float(load_params.target_resolution[1])
 
+    (cell_width, cell_height) = (float(cell_width), float(cell_height))
+
     if load_params.target_crs is not None:
         if (
             load_params.target_resolution is not None
