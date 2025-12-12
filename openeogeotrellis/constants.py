@@ -11,6 +11,7 @@ class EVAL_ENV_KEY:
     DO_EXTENT_CHECK = "do_extent_check"
     PARAMETERS = "parameters"
     OPENEO_API_VERSION = "openeo_api_version"
+    GLOBAL_EXTENT = "global_extent"
 
 
 JOB_OPTION_LOG_LEVEL = "log_level"
