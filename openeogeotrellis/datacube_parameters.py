@@ -4,7 +4,7 @@ from openeo_driver.backend import LoadParameters
 from openeo_driver.utils import EvalEnv
 from py4j.java_gateway import JVMView
 
-import openeogeotrellis._backend.post_dry_run
+from openeogeotrellis._backend import post_dry_run
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.constants import EVAL_ENV_KEY
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
@@ -41,7 +41,7 @@ def create(load_params: LoadParameters, env: EvalEnv, jvm: JVMView):
 
     # TODO: undocumented feature flag "global_bounds"
     if feature_flags.get("global_bounds", True):
-        if ge := openeogeotrellis._backend.post_dry_run.get_global_extent(load_params=load_params, env=env):
+        if ge := post_dry_run.get_global_extent(load_params=load_params, env=env):
             logger.debug(f"setGlobalExtent with {ge=}")
             datacubeParams.setGlobalExtent(
                 float(ge.west), float(ge.south), float(ge.east), float(ge.north), str(ge.crs)
