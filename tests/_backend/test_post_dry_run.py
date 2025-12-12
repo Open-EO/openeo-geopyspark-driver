@@ -767,6 +767,53 @@ class TestPostDryRun:
             variants=expected_variants,
         )
 
+    def test_extract_spatial_extent_from_constraint_load_stac_no_given_extent(
+        self,
+        dummy_catalog,
+        extract_source_constraints,
+        dummy_stac_api_server,
+        dummy_stac_api,
+    ):
+        """
+        Use case from https://github.com/Open-EO/openeo-geopyspark-driver/issues/648
+        """
+        dummy_stac_api_server.define_collection("collection-1234")
+        dummy_stac_api_server.define_item(
+            collection_id="collection-1234",
+            item_id="item-1",
+            bbox=[1, 2, 3, 4],
+            assets={
+                "asset-1": {
+                    "href": "https://stac.test/asset-1.tif",
+                    "type": "image/tiff; application=geotiff",
+                    "roles": ["data"],
+                    "proj:epsg": 32632,
+                    "proj:bbox": [631800, 5167700, 655800, 5184200],
+                    "proj:shape": [33, 48],
+                }
+            },
+        )
+        pg = {
+            "load_stac": {
+                "process_id": "load_stac",
+                "arguments": {"url": f"{dummy_stac_api}/collections/collection-1234"},
+                "result": True,
+            },
+        }
+        source_constraints = extract_source_constraints(pg)
+        [source_constraint] = source_constraints
+        extents = _extract_spatial_extent_from_constraint(source_constraint=source_constraint, catalog=dummy_catalog)
+        assert extents == AlignedExtentResult(
+            extent=BoundingBox(631800, 5167700, 655800, 5184200, crs="EPSG:32632"),
+            variants={
+                "original": None,
+                "assets_covered_bbox": None,
+                "assets_full_bbox": BoundingBox(
+                    west=631800, south=5167700, east=655800, north=5184200, crs="EPSG:32632"
+                ),
+            },
+        )
+
     def test_determine_global_extent_load_stac_minimal(
         self,
         dummy_catalog,
