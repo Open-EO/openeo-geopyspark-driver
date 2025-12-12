@@ -452,7 +452,7 @@ def do_binning(
         angle_data_mask,
         digital_numbers=True,
         super_sampling: int=DEFAULT_SUPER_SAMPLING,
-        flag_band: str | None=None,
+        flag_band: str=None,
         flag_bitmask: np.uint16=DEFAULT_FLAG_BITMASK,
     ):
     """
