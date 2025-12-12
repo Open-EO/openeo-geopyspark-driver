@@ -13,6 +13,7 @@ from openeo_driver.errors import CollectionNotFoundException
 from openeo_driver.util.geometry import BoundingBox, epsg_code_or_none
 from openeo_driver.util.utm import is_auto_utm_crs, is_utm_crs
 from openeo_driver.utils import EvalEnv
+from openeogeotrellis.constants import EVAL_ENV_KEY
 
 from openeogeotrellis.load_stac import (
     _ProjectionMetadata,
@@ -389,11 +390,11 @@ def determine_global_extent(
             for name, ext in aligned_extent_result.variants.items():
                 variant_mergers[name].add(ext)
 
-    global_extent_aligned: BoundingBox = aligned_merger.get()
+    global_extent: BoundingBox = aligned_merger.get()
     global_extent_variants: Dict[str, BoundingBox] = {name: merger.get() for name, merger in variant_mergers.items()}
 
     return {
-        "global_extent_aligned": global_extent_aligned,
+        EVAL_ENV_KEY.GLOBAL_EXTENT: global_extent,
         "global_extent_variants": global_extent_variants,
     }
 
@@ -416,9 +417,9 @@ def get_global_extent(*, load_params: LoadParameters, env: EvalEnv) -> Union[Bou
     """
     # TODO this is a short-term adapter to migrate from load_params to env approach,
     #      so ideally this can be removed once migration is completed
-    if global_extent_aligned := env.get("global_extent_aligned"):
-        _log.debug(f"get_global_extent from env: {global_extent_aligned=}")
-        return global_extent_aligned
+    if global_extent := env.get(EVAL_ENV_KEY.GLOBAL_EXTENT):
+        _log.debug(f"get_global_extent from env: {global_extent=}")
+        return global_extent
     elif load_params.global_extent:
         _log.debug(f"get_global_extent from load_params: {load_params.global_extent=}")
         return BoundingBox.from_dict(load_params.global_extent)
