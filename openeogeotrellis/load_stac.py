@@ -103,6 +103,81 @@ def load_stac(
     stac_io: Optional[pystac.stac_io.StacIO] = None,
     feature_flags: Optional[Dict[str, Any]] = None,
 ) -> GeopysparkDataCube:
+    """
+    Load a STAC resource (Collection, Item, Catalog, or batch job results) and return
+    it as a GeopysparkDataCube. Based on filters defined in load_params and layer_properties.
+
+    :param url: STAC URL to load from. Can point to:
+        - **STAC Collection**:
+          Items are queried from the STAC API that intersect the requested
+          spatiotemporal extent.
+
+        - **STAC Item**:
+          A single item is used if it intersects the requested spatiotemporal
+          extent.
+
+        - **STAC Catalog**:
+          The catalog and all of its subcatalogs are recursively searched for
+          items that intersect the requested spatiotemporal extent.
+          Multiple collections may contribute items to the resulting cube.
+
+        - **Dependency Job**:
+          URLs of the form `*/jobs/{job_id}/results`. If `user` and
+          `batch_jobs` are provided and the user owns the job, the job results
+          catalog is fetched. While fetching, it will wait for the job to
+          complete if necessary (up to a configured maximum).
+          Only items from the job results catalog intersecting the requested
+          extent are included.
+
+    :param load_params: Parameters and optimization hints for
+        load_collection/load_stac, derived from dry-run source constraints.
+        It contains the spatiotemporal extent provided by the user.
+        It also contains the global_extent, target_crs, target_resolution,
+        bands, properties, and aggregate_spatial_geometries parameters.
+        Note that the global_extent is divided into spatial keys and it is
+        important that it is aligned properly with the target resolution.
+
+    :param env: Evaluation environment containing user information, batch job
+        options, process-graph parameter values used for property filtering, etc.
+
+    :param layer_properties: Properties from the layer catalog's
+        `_vito.properties` field used to filter STAC items based on metadata
+        fields. These are merged with `load_params.properties` provided by the user.
+        Example filter (keeping only STAC items with `properties.season == "s1"`):
+
+            "properties": {
+                "season": {
+                    "process_graph": {
+                        "eq1": {
+                            "process_id": "eq",
+                            "arguments": {
+                                "x": {"from_parameter": "value"},
+                                "y": "s1"
+                            },
+                            "result": true
+                        }
+                    }
+                }
+            }
+
+    :param batch_jobs: Optional job registry used to resolve dependency-job
+        result URLs.
+
+    :param override_band_names: Optional list of band names to enforce in the
+        resulting data cube metadata. Currently only provided by the layer
+        catalog to enforce specific band names.
+
+    :param stac_io: Optional custom STAC I/O handler (e.g., to enable
+        authentication or caching).
+        TODO: Currently never provided in any load_stac call.
+
+    :param feature_flags: Optional flags to modify load_stac behavior.
+        TODO: Currently never provided in any load_stac call.
+
+    :return: A `GeopysparkDataCube` loaded from the provided STAC URL containing
+        only the items intersecting the requested spatiotemporal extent and the
+        requested property values.
+    """
     if override_band_names is None:
         override_band_names = []
 
