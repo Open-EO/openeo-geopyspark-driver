@@ -442,7 +442,7 @@ class TestPostDryRun:
         source_constraints = extract_source_constraints(pg)
         global_extent = determine_global_extent(source_constraints=source_constraints, catalog=dummy_catalog)
         assert global_extent == {
-            "global_extent_aligned": BoundingBox(1, 2, 3.5, 4.5, crs="EPSG:4326"),
+            "global_extent": BoundingBox(1, 2, 3.5, 4.5, crs="EPSG:4326"),
             "global_extent_variants": {
                 "original": BoundingBox(1, 2, 3.5, 4.5, crs="EPSG:4326"),
                 "target_aligned": BoundingBox(1, 2, 3.5, 4.5, crs="EPSG:4326"),
@@ -489,7 +489,7 @@ class TestPostDryRun:
             crs="EPSG:4326",
         ).approx(abs=1e-6)
         assert global_extent == {
-            "global_extent_aligned": expected_aligned,
+            "global_extent": expected_aligned,
             "global_extent_variants": {
                 "original": expected_orig,
                 "target_aligned": expected_aligned,
@@ -767,6 +767,53 @@ class TestPostDryRun:
             variants=expected_variants,
         )
 
+    def test_extract_spatial_extent_from_constraint_load_stac_no_given_extent(
+        self,
+        dummy_catalog,
+        extract_source_constraints,
+        dummy_stac_api_server,
+        dummy_stac_api,
+    ):
+        """
+        Use case from https://github.com/Open-EO/openeo-geopyspark-driver/issues/648
+        """
+        dummy_stac_api_server.define_collection("collection-1234")
+        dummy_stac_api_server.define_item(
+            collection_id="collection-1234",
+            item_id="item-1",
+            bbox=[1, 2, 3, 4],
+            assets={
+                "asset-1": {
+                    "href": "https://stac.test/asset-1.tif",
+                    "type": "image/tiff; application=geotiff",
+                    "roles": ["data"],
+                    "proj:epsg": 32632,
+                    "proj:bbox": [631800, 5167700, 655800, 5184200],
+                    "proj:shape": [33, 48],
+                }
+            },
+        )
+        pg = {
+            "load_stac": {
+                "process_id": "load_stac",
+                "arguments": {"url": f"{dummy_stac_api}/collections/collection-1234"},
+                "result": True,
+            },
+        }
+        source_constraints = extract_source_constraints(pg)
+        [source_constraint] = source_constraints
+        extents = _extract_spatial_extent_from_constraint(source_constraint=source_constraint, catalog=dummy_catalog)
+        assert extents == AlignedExtentResult(
+            extent=BoundingBox(631800, 5167700, 655800, 5184200, crs="EPSG:32632"),
+            variants={
+                "original": None,
+                "assets_covered_bbox": None,
+                "assets_full_bbox": BoundingBox(
+                    west=631800, south=5167700, east=655800, north=5184200, crs="EPSG:32632"
+                ),
+            },
+        )
+
     def test_determine_global_extent_load_stac_minimal(
         self,
         dummy_catalog,
@@ -816,7 +863,7 @@ class TestPostDryRun:
         global_extent = determine_global_extent(source_constraints=source_constraints, catalog=dummy_catalog)
         expected = BoundingBox(1.23, 2.34, 2.79, 3.90, crs="EPSG:4326").approx(abs=1e-6)
         assert global_extent == {
-            "global_extent_aligned": expected,
+            "global_extent": expected,
             "global_extent_variants": {
                 "original": BoundingBox(1.234, 2.345, 2.789, 3.891, crs="EPSG:4326"),
                 "assets_full_bbox": BoundingBox(1, 2, 3, 4, crs="EPSG:4326"),

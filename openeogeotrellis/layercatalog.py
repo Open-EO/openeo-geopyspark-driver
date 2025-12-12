@@ -37,6 +37,7 @@ from shapely.geometry.base import BaseGeometry
 
 from openeogeotrellis import sentinel_hub, datacube_parameters
 import openeogeotrellis.backend
+from openeogeotrellis._backend import post_dry_run
 from openeogeotrellis.catalogs.creo import CreoCatalogClient
 from openeogeotrellis.collections.s1backscatter_orfeo import get_implementation as get_s1_backscatter_orfeo
 from openeogeotrellis.collections.testing import load_test_collection
@@ -72,6 +73,7 @@ WHITELIST = [
     EVAL_ENV_KEY.DO_EXTENT_CHECK,
     EVAL_ENV_KEY.PARAMETERS,
     EVAL_ENV_KEY.OPENEO_API_VERSION,
+    EVAL_ENV_KEY.GLOBAL_EXTENT,
 ]
 LARGE_LAYER_THRESHOLD_IN_PIXELS = pow(10, 11)
 LARGE_LAYER_THRESHOLD_IN_PIXELS_SENTINELHUB = pow(10, 10)
@@ -1351,7 +1353,7 @@ def extra_validation_load_collection(collection_id: str, load_params: LoadParame
 
     spatial_extent = load_params.spatial_extent
     if spatial_extent is None or len(spatial_extent) == 0:
-        spatial_extent = load_params.global_extent
+        spatial_extent = post_dry_run.get_global_extent(load_params=load_params, env=env)
     if spatial_extent is None or len(spatial_extent) == 0:
         spatial_extent = metadata.get_overall_spatial_extent()
     load_params.spatial_extent = spatial_extent

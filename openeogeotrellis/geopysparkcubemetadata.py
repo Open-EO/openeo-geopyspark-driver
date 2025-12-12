@@ -224,23 +224,6 @@ class GeopysparkCubeMetadata(CollectionMetadata):
 
         return overall_extent
 
-    def get_layer_native_extent(self) -> Optional[BoundingBox]:
-        # TODO: misleading naming: we're working here with cube metadata, not a source "layer" nor its native properties
-        dims = self.spatial_dimensions
-        if not dims:
-            return None
-        x = dims[0]
-        y = dims[1]
-        if not x.extent or not y.extent:
-            return None
-        return BoundingBox(
-            west=x.extent[0],
-            south=y.extent[0],
-            east=x.extent[1],
-            north=y.extent[1],
-            crs=self.get_layer_crs(),
-        )
-
     def get_GSD_in_meters(self) -> Union[tuple, dict, None]:
         # TODO #1109 upgrade this implementation to "common" bands metadata
         #      instead of (soon to be) outdated STAC extension patterns like "eo:bands" and "raster:bands"

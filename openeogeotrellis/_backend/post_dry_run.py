@@ -12,6 +12,8 @@ from openeo_driver.dry_run import SourceConstraint
 from openeo_driver.errors import CollectionNotFoundException
 from openeo_driver.util.geometry import BoundingBox, epsg_code_or_none
 from openeo_driver.util.utm import is_auto_utm_crs, is_utm_crs
+from openeo_driver.utils import EvalEnv
+from openeogeotrellis.constants import EVAL_ENV_KEY
 
 from openeogeotrellis.load_stac import (
     _ProjectionMetadata,
@@ -194,7 +196,7 @@ class AlignedExtentResult:
     # The final "aligned" extent
     extent: BoundingBox
     # Intermediate results or variants, useful for debugging or other reasons
-    variants: Dict[str, BoundingBox]
+    variants: Dict[str, Union[BoundingBox, None]]
 
 
 def _extract_spatial_extent_from_constraint(
@@ -267,9 +269,8 @@ def _extract_spatial_extent_from_constraint_load_stac(
     stac_url: str, *, constraint: dict
 ) -> Union[None, AlignedExtentResult]:
     spatial_extent_from_pg = constraint.get("spatial_extent") or constraint.get("weak_spatial_extent")
-    if not spatial_extent_from_pg:
-        return None
-    extent_orig: BoundingBox = BoundingBox.from_dict(spatial_extent_from_pg, default_crs=4326)
+
+    extent_orig: Union[BoundingBox, None] = BoundingBox.from_dict_or_none(spatial_extent_from_pg, default_crs=4326)
     extent_variants = {"original": extent_orig}
     # TODO: improve logging: e.g. automatically include stac URL and what context we are in
     _log.debug(f"_extract_spatial_extent_from_constraint_load_stac {stac_url=} {extent_orig=}")
@@ -307,23 +308,24 @@ def _extract_spatial_extent_from_constraint_load_stac(
     for proj_metadata in projection_metadatas:
         if asset_bbox := proj_metadata.to_bounding_box():
             assets_full_bbox_merger.add(asset_bbox)
-            if extent_coverage := proj_metadata.coverage_for(extent_orig):
+            if extent_orig and (extent_coverage := proj_metadata.coverage_for(extent_orig)):
                 aligned_extent_coverage_merger.add(extent_coverage)
     assets_full_bbox = assets_full_bbox_merger.get()
     assets_covered_bbox = aligned_extent_coverage_merger.get()
     _log.debug(f"Merged bounding boxes: {assets_full_bbox=} {assets_covered_bbox=}")
     extent_variants["assets_full_bbox"] = assets_full_bbox
     extent_variants["assets_covered_bbox"] = assets_covered_bbox
-    extent_aligned = assets_covered_bbox
+    extent_aligned = assets_covered_bbox or assets_full_bbox
 
     if (
         "resample" in constraint
         and (resample_crs := constraint["resample"].get("target_crs"))
         and (resample_resolution := constraint["resample"].get("resolution"))
     ):
+        to_resample = extent_orig or extent_aligned
         target_grid = _GridInfo(crs=resample_crs, resolution=resample_resolution)
-        extent_resampled = extent_orig.reproject(target_grid.crs_epsg).round_to_resolution(*target_grid.resolution)
-        _log.debug(f"Resampled extent {extent_orig=} into {extent_resampled=}")
+        extent_resampled = to_resample.reproject(target_grid.crs_epsg).round_to_resolution(*target_grid.resolution)
+        _log.debug(f"Resampled extent {to_resample=} into {extent_resampled=}")
         extent_variants["resampled"] = extent_resampled
         extent_aligned = extent_resampled
 
@@ -388,11 +390,11 @@ def determine_global_extent(
             for name, ext in aligned_extent_result.variants.items():
                 variant_mergers[name].add(ext)
 
-    global_extent_aligned: BoundingBox = aligned_merger.get()
+    global_extent: BoundingBox = aligned_merger.get()
     global_extent_variants: Dict[str, BoundingBox] = {name: merger.get() for name, merger in variant_mergers.items()}
 
     return {
-        "global_extent_aligned": global_extent_aligned,
+        EVAL_ENV_KEY.GLOBAL_EXTENT: global_extent,
         "global_extent_variants": global_extent_variants,
     }
 
@@ -406,3 +408,20 @@ def post_dry_run(
     return {
         **global_extent,
     }
+
+
+def get_global_extent(*, load_params: LoadParameters, env: EvalEnv) -> Union[BoundingBox, None]:
+    """
+    Helper to get "global_extent" from load parameters (legacy approach)
+    or evaluation env (new post-dry-run approach).
+    """
+    # TODO this is a short-term adapter to migrate from load_params to env approach,
+    #      so ideally this can be removed once migration is completed
+    if global_extent := env.get(EVAL_ENV_KEY.GLOBAL_EXTENT):
+        _log.debug(f"get_global_extent from env: {global_extent=}")
+        return global_extent
+    elif load_params.global_extent:
+        _log.debug(f"get_global_extent from load_params: {load_params.global_extent=}")
+        return BoundingBox.from_dict(load_params.global_extent)
+    else:
+        return None

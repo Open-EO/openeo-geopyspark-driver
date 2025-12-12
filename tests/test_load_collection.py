@@ -431,6 +431,9 @@ def test_driver_vector_cube_supports_load_collection_caching(jvm_mock, catalog):
 
 
 def test_load_stac_pixel_shift(api110, tmp_path, flask_app):
+    """
+    https://github.com/Open-EO/openeo-geopyspark-driver/issues/648
+    """
     data_cube = openeo.DataCube.load_stac(
         url=str(get_test_data_file("stac/issue648-pixel-shift/collection.json")),
         temporal_extent=["2023-01-20", "2023-02-01"],
@@ -442,13 +445,12 @@ def test_load_stac_pixel_shift(api110, tmp_path, flask_app):
         metadata_file=tmp_path / JOB_METADATA_FILENAME,
         api_version="2.0.0",
         job_dir=tmp_path,
-        dependencies=[],
         user_id="jenkins",
     )
     with (tmp_path / JOB_METADATA_FILENAME).open("r", encoding="utf-8") as f:
         metadata = json.load(f)
     bbox = metadata["proj:bbox"]
-    assert bbox[0] == 631800
+    assert bbox == [631800, 5167700, 655800, 5184200]
 
 
 @pytest.mark.parametrize(["bands", "expected_bands"], [
