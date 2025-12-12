@@ -67,7 +67,7 @@ def setup_local_spark(log_dir: Path = Path.cwd(), verbosity=0):
 
     spark_jars = conf.get("spark.jars").split(",")
     # geotrellis-extensions needs to be loaded first to avoid "java.lang.NoClassDefFoundError: shapeless/lazily$"
-    spark_jars.sort(key=lambda x: "geotrellis-extensions" not in x)
+    spark_jars.sort(key=lambda x: "geotrellis-extensions" not in x and "geotrellis-dependencies" not in x)
     conf.set(key="spark.jars", value=",".join(spark_jars))
 
     # Use UTC timezone by default when formatting/parsing dates (e.g. CSV export of timeseries)
@@ -107,7 +107,7 @@ def setup_local_spark(log_dir: Path = Path.cwd(), verbosity=0):
     more_jars = [] if "GEOPYSPARK_JARS_PATH" not in os.environ else os.environ["GEOPYSPARK_JARS_PATH"].split(":")
     for jar_dir in more_jars:
         for jar_path in Path(jar_dir).iterdir():
-            if jar_path.match("openeo-logging-*.jar"):
+            if jar_path.match("openeo-logging-*.jar") or jar_path.match("geotrellis-dependencies-*.jar"):
                 jars.append(str(jar_path))
     extraClassPath = ":".join(jars)
     conf.set("spark.driver.extraClassPath", extraClassPath)
@@ -160,11 +160,7 @@ def setup_local_spark(log_dir: Path = Path.cwd(), verbosity=0):
         )
     )
 
-    try:
-        scala_version = context._jvm.scala.util.Properties.versionNumberString()
-    except Exception as e:
-        scala_version = str(e)
-    _log.info("[local.py] Scala version: " + scala_version)
+    _log.info("[local.py] Scala version: " + context._jvm.scala.util.Properties.versionNumberString())
 
     if OPENEO_LOCAL_DEBUGGING:
         # TODO: Activate default logging for this message
