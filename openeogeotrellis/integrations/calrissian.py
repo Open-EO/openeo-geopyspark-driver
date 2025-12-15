@@ -32,7 +32,7 @@ from openeogeotrellis.config.integrations.calrissian_config import (
     CalrissianConfig,
 )
 from openeogeotrellis.integrations.s3proxy import sts
-from openeogeotrellis.util.runtime import get_job_id, get_request_id
+from openeogeotrellis.util.runtime import get_job_id, get_request_id, ENV_VAR_OPENEO_BATCH_JOB_ID
 from openeogeotrellis.utils import s3_client
 
 try:
@@ -314,6 +314,10 @@ class CalrissianJobLauncher:
             else:
                 _log.warning(f"Failed to get s3 credentials: {detail}")
 
+        if ENV_VAR_OPENEO_BATCH_JOB_ID in os.environ:
+            env_vars[ENV_VAR_OPENEO_BATCH_JOB_ID] = os.environ[ENV_VAR_OPENEO_BATCH_JOB_ID]
+        if "OPENEO_USER_ID" in os.environ:
+            env_vars["OPENEO_USER_ID"] = os.environ["OPENEO_USER_ID"]
         launch_config = CalrissianLaunchConfigBuilder(
             config=config,
             correlation_id=correlation_id,
