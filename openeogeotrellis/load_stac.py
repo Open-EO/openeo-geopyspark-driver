@@ -315,13 +315,6 @@ def load_stac(
         else:
             raise ProcessParameterRequiredException(process="load_stac", parameter="bands")
 
-    if load_params.global_extent is None or len(load_params.global_extent) == 0:
-        layer_native_extent = metadata.get_layer_native_extent()
-        if layer_native_extent:
-            load_params = load_params.copy()
-            logger.info(f"global_extent fallback: {layer_native_extent=}")
-            load_params.global_extent = layer_native_extent.as_dict()
-
     if load_params.bands:
         metadata = metadata.filter_bands(load_params.bands)
 
@@ -361,8 +354,6 @@ def load_stac(
             cell_width = float(load_params.target_resolution[0])
             cell_height = float(load_params.target_resolution[1])
 
-    (cell_width, cell_height) = (float(cell_width), float(cell_height))
-
     if load_params.target_crs is not None:
         if (
             load_params.target_resolution is not None
@@ -398,7 +389,7 @@ def load_stac(
             url,  # openSearchCollectionId, not important
             requested_band_names,  # openSearchLinkTitles
             None,  # rootPath, not important
-            jvm.geotrellis.raster.CellSize(cell_width, cell_height),
+            jvm.geotrellis.raster.CellSize(float(cell_width), float(cell_height)),
             False,  # experimental
             max_soft_errors_ratio,
         )
@@ -422,7 +413,7 @@ def load_stac(
     metadata_properties = {}
     correlation_id = env.get(EVAL_ENV_KEY.CORRELATION_ID, "")
 
-    data_cube_parameters, single_level = datacube_parameters.create(load_params, env, jvm)
+    data_cube_parameters, single_level = datacube_parameters.create(load_params=load_params, env=env, jvm=jvm)
     getattr(data_cube_parameters, "layoutScheme_$eq")("FloatingLayoutScheme")
 
     tilesize = feature_flags.get("tilesize", None)

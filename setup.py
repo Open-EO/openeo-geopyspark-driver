@@ -70,8 +70,8 @@ setup(
     tests_require=tests_require,
     install_requires=[
         # TODO: avoid excessive `python_version` based version constraints. https://github.com/Open-EO/openeo-geopyspark-driver/issues/1395
-        "openeo>=0.43.0.dev",
-        "openeo_driver>=0.138.0a5.dev",
+        "openeo>=0.47.0.a4.dev",
+        "openeo_driver>=0.138.0a7.dev",
         'pyspark>=4.0.0; python_version>"3.8"',
         'pyspark>=3.5.0,<4.0.0; python_version<="3.8"',
         'geopyspark_openeo==0.4.3.post1',
