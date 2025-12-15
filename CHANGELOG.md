@@ -28,6 +28,8 @@ without compromising stable operations.
 - Check UDF code for managed UDF dependencies before doing (possibly) more expensive IO/S3 operations (eu-cdse/openeo-cdse-infra#842)
 - post-dry-run: initial support for global extent alignment with `load_stac` ([#1299](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1299), [openeo-python-driver#406](https://github.com/Open-EO/openeo-python-driver/issues/406))
 - `load_stac`: added `asset_id_to_bands_map` feature flag in order to support collections that do not contain band name information (e.g. COPERNICUS_30 on CDSE).
+- Start using "global_extent" calculated from post-dry-run phase when possible ([#1299](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1299), [openeo-python-driver#406](https://github.com/Open-EO/openeo-python-driver/issues/406))
+
 
 ## 0.69.0
 
