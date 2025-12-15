@@ -1,6 +1,8 @@
 from pathlib import Path
+import unittest
 
 import rasterio
+import numpy as np
 
 if __name__ == "__main__":
     import openeogeotrellis.deploy.local
@@ -87,8 +89,10 @@ def test_read_single_binned():
         ["LST_in:LST"],
         tile_size=1024,
         resolution=0.008928571428571,
-        reprojection_type="binning",
-        super_sampling=3
+        reprojection_type=REPROJECTION_TYPE_BINNING,
+        binning_args={
+            KEY_SUPER_SAMPLING: 3,
+        }
     )
 
     arr = result[0][1].cells
@@ -170,6 +174,64 @@ def test_read_single_edge_with_some_data():
         actual_result = arr
         assert expected_result.shape == actual_result.shape
         assert_allclose(expected_result, actual_result, atol=0.00001)
+
+
+@unittest.mock.patch("openeogeotrellis.collections.sentinel3.read_band")
+def test_mask_before_binning(mock_read_band):
+    value_to_be_masked = 5
+    value_to_keep = 1
+    fill_value = np.nan
+    mask_set = 0x01
+
+    shape = (4, 5)
+    out_shape = shape
+
+    band_data = np.full(shape, value_to_keep, dtype=np.float32)
+    mask_data = np.zeros(shape, dtype=np.uint16)
+
+    band_data[3, 3] = value_to_be_masked
+    band_data[3, 4] = value_to_be_masked
+    mask_data[3, 3] = mask_set
+    mask_data[3, 4] = mask_set
+
+    def return_value(_in_file, in_band, *args, **kwargs):
+        data = None
+        if in_band == "CLOUD_flags":
+            data = mask_data
+        elif in_band == "SDR_04":
+            data = band_data
+        else:
+            raise ValueError(f"in_band '{in_band}' not recognized")
+
+        return data, {}
+
+    mock_read_band.side_effect = return_value
+    #lat = np.tile(np.arange(shape[0], dtype=np.float64), (shape[1], 1))
+    lat = np.tile(np.arange(shape[0], 0, -1, dtype=np.float64), (shape[1], 1)).T
+    lon = np.tile(np.arange(shape[1], dtype=np.float64), (shape[0], 1))
+    source_coordinates = np.stack([lon, lat], axis=0)
+    target_coordinates = np.stack([lon, lat], axis=2)
+
+    binned_data_vars = do_binning(
+        product_type=SYNERGY_PRODUCT_TYPE,
+        final_grid_resolution=1.0,
+        creo_path=Path("fake_path"),
+        band_names=["CLOUD_flags", "SDR_04"],
+        source_coordinates=source_coordinates,
+        target_coordinates=target_coordinates,
+        data_mask=None,
+        angle_source_coordinates=None,
+        target_coordinates_with_rim=None,
+        angle_data_mask=None,
+        digital_numbers=True,
+        super_sampling=3,
+        flag_bitmask=np.uint16(0xff),
+        flag_band="CLOUD_flags",
+    )
+
+    assert binned_data_vars.shape == (1, *out_shape)
+    assert ((binned_data_vars == value_to_keep) | np.isnan(binned_data_vars)).all()
+    assert np.count_nonzero(np.isfinite(binned_data_vars)) > 0
 
 
 if __name__ == "__main__":
