@@ -3849,3 +3849,27 @@ def test_webapp_derived_from(tmp_path, metadata_tracker):
             f"?collection={collection_id.replace(':', '%3A')}"
             f"&uid={feature_id.replace(':', '%3A')}"
         )
+
+
+def test_corsa_compress():
+    job_dir = Path("/tmp/test_corsa_compress")
+
+    process_graph_file = "corsa_compress_resample_spatial_process_graph.json"
+    # process_graph_file = "corsa_compress_process_graph.json"
+
+    process_graph_path = (
+        f"/home/bossie/Documents/VITO/openeo-geotrellis-extensions/CORSA encode process #563/{process_graph_file}"
+    )
+    # process_graph_path = "/tmp/process_graph.json"
+
+    with open(process_graph_path) as f:
+        process = json.load(f)
+
+    run_job(
+        process,
+        output_file=job_dir / "out",
+        metadata_file=job_dir / "job_metadata.json",
+        api_version="2.0.0",
+        job_dir=job_dir,
+        dependencies=[],
+    )
