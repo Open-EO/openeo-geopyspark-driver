@@ -169,7 +169,7 @@ def _align_extent(
             _log.info(f"Not realigning {extent=} because auto-UTM (AUTO:42001) and {source.resolution=}")
             return extent
     else:
-        _log.info(f"Not realigning {extent=} ({source=})")
+        _log.info(f"Not realigning {extent=} ({source=}, {target=})")
         return extent
 
 
