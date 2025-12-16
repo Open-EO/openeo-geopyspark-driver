@@ -15,11 +15,7 @@ from openeo_driver.util.utm import is_auto_utm_crs, is_utm_crs
 from openeo_driver.utils import EvalEnv
 from openeogeotrellis.constants import EVAL_ENV_KEY
 
-from openeogeotrellis.load_stac import (
-    _ProjectionMetadata,
-    _spatiotemporal_extent_from_load_params,
-    construct_item_collection,
-)
+import openeogeotrellis.load_stac
 from openeogeotrellis.util.geometry import BoundingBoxMerger
 from openeogeotrellis.util.math import logarithmic_round
 
@@ -275,14 +271,14 @@ def _extract_spatial_extent_from_constraint_load_stac(
     # TODO: improve logging: e.g. automatically include stac URL and what context we are in
     _log.debug(f"_extract_spatial_extent_from_constraint_load_stac {stac_url=} {extent_orig=}")
 
-    spatiotemporal_extent = _spatiotemporal_extent_from_load_params(
+    spatiotemporal_extent = openeogeotrellis.load_stac._spatiotemporal_extent_from_load_params(
         # TODO: eliminate this silly `LoadParameters` roundtrip and avoid duplication with _extract_load_parameters
         LoadParameters(
             spatial_extent=spatial_extent_from_pg,
             temporal_extent=constraint.get("temporal_extent") or (None, None),
         )
     )
-    item_collection, _, _, _ = construct_item_collection(
+    item_collection, _, _, _ = openeogeotrellis.load_stac.construct_item_collection(
         url=stac_url,
         spatiotemporal_extent=spatiotemporal_extent,
         property_filter_pg_map=None,  # TODO?
@@ -291,8 +287,8 @@ def _extract_spatial_extent_from_constraint_load_stac(
     )
 
     # Collect asset projection metadata
-    projection_metadatas: List[_ProjectionMetadata] = [
-        _ProjectionMetadata.from_asset(asset=asset, item=item)
+    projection_metadatas: List[openeogeotrellis.load_stac._ProjectionMetadata] = [
+        openeogeotrellis.load_stac._ProjectionMetadata.from_asset(asset=asset, item=item)
         for item, band_assets in item_collection.iter_items_with_band_assets()
         for asset in band_assets.values()
     ]
@@ -338,7 +334,7 @@ def _extract_spatial_extent_from_constraint_load_stac(
 
 
 def _determine_best_grid_from_proj_metadata(
-    projection_metadatas: list[_ProjectionMetadata],
+    projection_metadatas: list[openeogeotrellis.load_stac._ProjectionMetadata],
 ) -> Union[_GridInfo, None]:
     """
     Determine best CRS+resolution (e.g. most common)
