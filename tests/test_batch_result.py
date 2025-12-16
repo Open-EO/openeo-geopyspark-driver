@@ -3854,6 +3854,8 @@ def test_webapp_derived_from(tmp_path, metadata_tracker):
 def test_corsa_compress():
     job_dir = Path("/tmp/test_corsa_compress")
 
+    larger = True
+
     process_graph_file = "corsa_compress_resample_spatial_process_graph.json"
     # process_graph_file = "corsa_compress_process_graph.json"
 
@@ -3864,6 +3866,48 @@ def test_corsa_compress():
 
     with open(process_graph_path) as f:
         process = json.load(f)
+
+    if larger:
+        process["process_graph"]["loadcollection1"]["arguments"]["spatial_extent"] = {
+            "crs": 32631,
+            "east": 658500,
+            "north": 5647500,
+            "south": 5643900,
+            "west": 654900,
+        }
+
+    run_job(
+        process,
+        output_file=job_dir / "out",
+        metadata_file=job_dir / "job_metadata.json",
+        api_version="2.0.0",
+        job_dir=job_dir,
+        dependencies=[],
+    )
+
+
+def test_corsa_decompress():
+    job_dir = Path("/tmp/test_corsa_decompress")
+
+    larger = True
+
+    process_graph_file = "corsa_decompress_process_graph.json"
+
+    process_graph_path = (
+        f"/home/bossie/Documents/VITO/openeo-geotrellis-extensions/CORSA encode process #563/{process_graph_file}"
+    )
+
+    with open(process_graph_path) as f:
+        process = json.load(f)
+
+    if larger:
+        process["process_graph"]["loadcollection1"]["arguments"]["spatial_extent"] = {
+            "crs": 32631,
+            "east": 658500,
+            "north": 5647500,
+            "south": 5643900,
+            "west": 654900,
+        }
 
     run_job(
         process,
