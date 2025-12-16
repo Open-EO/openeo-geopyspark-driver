@@ -21,16 +21,6 @@ from openeogeotrellis._backend.post_dry_run import (
 from openeogeotrellis.load_stac import _ProjectionMetadata
 
 
-def approxify_bbox(bbox: BoundingBox, rel=None, abs=1e-12) -> BoundingBox:
-    # TODO: cleaner why to integration/use this? e.g. make it a BoundingBox method?
-    return BoundingBox(
-        west=pytest.approx(bbox.west, rel=rel, abs=abs),
-        south=pytest.approx(bbox.south, rel=rel, abs=abs),
-        east=pytest.approx(bbox.east, rel=rel, abs=abs),
-        north=pytest.approx(bbox.north, rel=rel, abs=abs),
-        crs=bbox.crs,
-    )
-
 
 class TestGridInfo:
     def test_minimal(self):
@@ -147,7 +137,7 @@ def test_snap_bbox():
         resolution=(0.3, 0.7),
         extent_x=(0, 10),
         extent_y=(0, 10),
-    ) == approxify_bbox(BoundingBox(1.2, 2.8, 5.7, 8.4))
+    ) == (BoundingBox(1.2, 2.8, 5.7, 8.4).approx(abs=1e-6))
 
     assert _snap_bbox(
         bbox,
@@ -162,7 +152,7 @@ def test_align_extent_4326_basic():
     source = _GridInfo(crs=4326, extent_x=(0, 10), extent_y=(0, 10), resolution=(0.2, 0.3))
     target = _GridInfo(crs=4326, resolution=(0.2, 0.3))
     aligned = _align_extent(extent=extent, source=source, target=target)
-    assert aligned == approxify_bbox(BoundingBox(1.2, 3.3, 5.8, 8.1, crs="EPSG:4326"))
+    assert aligned == BoundingBox(1.2, 3.3, 5.8, 8.1, crs="EPSG:4326").approx(abs=1e-6)
 
 
 def test_align_extent_4326_no_target_resolution():
@@ -170,7 +160,7 @@ def test_align_extent_4326_no_target_resolution():
     source = _GridInfo(crs=4326, extent_x=(0, 10), extent_y=(0, 10), resolution=(0.2, 0.3))
     target = _GridInfo(crs=4326, resolution=None)
     aligned = _align_extent(extent=extent, source=source, target=target)
-    assert aligned == approxify_bbox(BoundingBox(1.2, 3.3, 5.8, 8.1, crs="EPSG:4326"))
+    assert aligned == BoundingBox(1.2, 3.3, 5.8, 8.1, crs="EPSG:4326").approx(abs=1e-6)
 
 
 def test_align_extent_auto_utm():
@@ -202,14 +192,14 @@ def test_buffer_extent_4326_to_utm():
 
     assert _buffer_extent(
         bbox, buffer=(3, 3), sampling=_GridInfo(crs="EPSG:32631", resolution=(10, 10))
-    ) == approxify_bbox(BoundingBox(500000 - 30, 5649824 - 30, 507016 + 30, 5660950 + 30, crs="EPSG:32631"), abs=1)
+    ) == BoundingBox(500000 - 30, 5649824 - 30, 507016 + 30, 5660950 + 30, crs="EPSG:32631").approx(abs=1)
 
 
 def test_buffer_extent_4326_to_auto_utm():
     bbox = BoundingBox(3, 51, 3.1, 51.1, crs="EPSG:4326")
     assert _buffer_extent(
         bbox, buffer=(3, 3), sampling=_GridInfo(crs="AUTO:42001", resolution=(10, 10))
-    ) == approxify_bbox(BoundingBox(500000 - 30, 5649824 - 30, 507016 + 30, 5660950 + 30, crs="EPSG:32631"), abs=1)
+    ) == BoundingBox(500000 - 30, 5649824 - 30, 507016 + 30, 5660950 + 30, crs="EPSG:32631").approx(abs=1)
 
 
 class DummyCatalog(CollectionCatalog):
@@ -344,8 +334,8 @@ class TestPostDryRun:
         ["step_x", "step_y", "expected"],
         [
             # TODO: possible to improve numerical precision and avoid need for approx?
-            (0.001, 0.001, approxify_bbox(BoundingBox(5.067, 51.213, 5.072, 5.988, crs=4326))),
-            (0.005, 0.010, approxify_bbox(BoundingBox(5.065, 51.210, 5.075, 5.990, crs=4326))),
+            (0.001, 0.001, BoundingBox(5.067, 51.213, 5.072, 5.988, crs=4326).approx(abs=1e-6)),
+            (0.005, 0.010, BoundingBox(5.065, 51.210, 5.075, 5.990, crs=4326).approx(abs=1e-6)),
         ],
     )
     def test_extract_spatial_extent_from_constraint_load_collection_4236_millidegrees(
