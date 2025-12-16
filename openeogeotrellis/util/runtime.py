@@ -17,8 +17,6 @@ def get_job_id(*, default: Union[None, str, Exception, Type[Exception]] = None) 
     Get job id from batch job context,
     or a default/exception if not in batch job context.
     """
-    if _is_exception_like(default):
-        raise Exception("Weird default for get_job_id: " + str(default))
     value = os.environ.get(ENV_VAR_OPENEO_BATCH_JOB_ID, default)
     if _is_exception_like(value):
         raise value
