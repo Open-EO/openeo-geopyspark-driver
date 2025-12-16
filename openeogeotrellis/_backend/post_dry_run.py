@@ -178,10 +178,10 @@ def _buffer_extent(
 ) -> BoundingBox:
     if isinstance(buffer, (int, float)):
         buffer = (buffer, buffer)
-    if sampling.crs_epsg and sampling.resolution:
+    if sampling.crs_raw and sampling.resolution:
         # Scale buffer from pixels to target CRS units
         dx, dy = [r * math.ceil(b) for r, b in zip(sampling.resolution, buffer)]
-        extent = extent.reproject(sampling.crs_epsg).buffer(dx=dx, dy=dy)
+        extent = extent.reproject(sampling.crs_raw).buffer(dx=dx, dy=dy)
     else:
         _log.warning(f"Not buffering extent with {buffer=} because incomplete {sampling=}.")
     return extent

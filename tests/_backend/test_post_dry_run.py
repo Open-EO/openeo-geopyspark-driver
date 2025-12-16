@@ -205,6 +205,13 @@ def test_buffer_extent_4326_to_utm():
     ) == approxify_bbox(BoundingBox(500000 - 30, 5649824 - 30, 507016 + 30, 5660950 + 30, crs="EPSG:32631"), abs=1)
 
 
+def test_buffer_extent_4326_to_auto_utm():
+    bbox = BoundingBox(3, 51, 3.1, 51.1, crs="EPSG:4326")
+    assert _buffer_extent(
+        bbox, buffer=(3, 3), sampling=_GridInfo(crs="AUTO:42001", resolution=(10, 10))
+    ) == approxify_bbox(BoundingBox(500000 - 30, 5649824 - 30, 507016 + 30, 5660950 + 30, crs="EPSG:32631"), abs=1)
+
+
 class DummyCatalog(CollectionCatalog):
     """
     Dummy collection catalog with helpers to easily set up  metadata relevant to the dry run (e.g. "cube:dimensions")
