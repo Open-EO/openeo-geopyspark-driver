@@ -39,6 +39,7 @@ import openeogeotrellis
 from openeogeotrellis.config import gps_config_getter
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.util.datetime import to_datetime_utc
+from openeogeotrellis.util.geometry import to_geojson_io_url
 from openeogeotrellis.util.runtime import is_package_available
 
 
@@ -377,6 +378,10 @@ class DummyStacApiServer:
     def default_setup(self):
         """Predefine a default collection with items"""
         # TODO: use real HTTP for asset hrefs intead of local file paths
+
+        # Set up collection-123:
+        # see coverage at https://geojson.io/#data=data:application/json,%7B%22type%22%3A%20%22FeatureCollection%22%2C%20%22features%22%3A%20%5B%7B%22type%22%3A%20%22Feature%22%2C%20%22properties%22%3A%20%7B%7D%2C%20%22geometry%22%3A%20%7B%22type%22%3A%20%22Polygon%22%2C%20%22coordinates%22%3A%20%5B%5B%5B3.0%2C%2049.0%5D%2C%20%5B3.0%2C%2050.0%5D%2C%20%5B2.0%2C%2050.0%5D%2C%20%5B2.0%2C%2049.0%5D%2C%20%5B3.0%2C%2049.0%5D%5D%5D%7D%7D%2C%20%7B%22type%22%3A%20%22Feature%22%2C%20%22properties%22%3A%20%7B%7D%2C%20%22geometry%22%3A%20%7B%22type%22%3A%20%22Polygon%22%2C%20%22coordinates%22%3A%20%5B%5B%5B5.0%2C%2050.0%5D%2C%20%5B5.0%2C%2051.0%5D%2C%20%5B3.0%2C%2051.0%5D%2C%20%5B3.0%2C%2050.0%5D%2C%20%5B5.0%2C%2050.0%5D%5D%5D%7D%7D%2C%20%7B%22type%22%3A%20%22Feature%22%2C%20%22properties%22%3A%20%7B%7D%2C%20%22geometry%22%3A%20%7B%22type%22%3A%20%22Polygon%22%2C%20%22coordinates%22%3A%20%5B%5B%5B7.0%2C%2051.0%5D%2C%20%5B7.0%2C%2052.0%5D%2C%20%5B4.0%2C%2052.0%5D%2C%20%5B4.0%2C%2051.0%5D%2C%20%5B7.0%2C%2051.0%5D%5D%5D%7D%7D%5D%7D
+        # (generated with `openeogeotrellis.testing.DummyStacApiServer().collection_as_geojson_io_url("collection-123")`)
         asset_root = Path(openeogeotrellis.__file__).parent.parent / "tests" / "data" / "dummy-stac" / "collection-123"
         self.define_collection(id="collection-123")
         self.define_item(
@@ -391,7 +396,7 @@ class DummyStacApiServer:
                     roles=["data"],
                     proj_code="EPSG:4326",
                     proj_bbox=[2, 49, 3, 50],
-                    proj_shape=[32, 32],
+                    proj_shape=[32, 1 * 32],
                 )
             },
         )
@@ -407,7 +412,7 @@ class DummyStacApiServer:
                     roles=["data"],
                     proj_code="EPSG:4326",
                     proj_bbox=[3, 50, 5, 51],
-                    proj_shape=[32, 32],
+                    proj_shape=[32, 2 * 32],
                 )
             },
         )
@@ -423,7 +428,7 @@ class DummyStacApiServer:
                     roles=["data"],
                     proj_code="EPSG:4326",
                     proj_bbox=[4, 51, 7, 52],
-                    proj_shape=[32, 32],
+                    proj_shape=[32, 3 * 32],
                 )
             },
         )
@@ -667,6 +672,12 @@ class DummyStacApiServer:
             for entry in self.request_history
             if (method is None or entry["method"] == method) and (path is None or path in entry["path"])
         ]
+
+    def collection_as_geojson_io_url(self, collection_id: str) -> str:
+        """Generate a geojson.io URL to quickly visualize the items of a given collection."""
+        assert collection_id in self._collections
+        items = [BoundingBox.from_wsen_tuple(item["bbox"]) for item in self._collections[collection_id].items]
+        return to_geojson_io_url(items)
 
 
 def create_dummy_geotiff(

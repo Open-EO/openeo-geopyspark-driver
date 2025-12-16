@@ -207,9 +207,13 @@ class DummyCatalog(CollectionCatalog):
     Dummy collection catalog with helpers to easily set up  metadata relevant to the dry run (e.g. "cube:dimensions")
     """
 
-    def define_collection_metadata(self, collection_id: str, **kwargs):
+    def define_collection_metadata(
+        self, collection_id: str, *, metadata: Optional[dict] = None, cube_dimensions: Optional[dict] = None
+    ):
         """Helper to define a collection"""
-        self._catalog[collection_id] = self.build_collection_metadata(collection_id, **kwargs)
+        self._catalog[collection_id] = self.build_collection_metadata(
+            collection_id=collection_id, metadata=metadata, cube_dimensions=cube_dimensions
+        )
 
     @classmethod
     def build_collection_metadata(
@@ -867,6 +871,93 @@ class TestPostDryRun:
                 "assets_covered_bbox": expected,
             },
         }
+
+    def test_extract_spatial_extent_from_constraint_load_collection_type_stac_minimal(
+        self, dummy_catalog, extract_source_constraints, dummy_stac_api
+    ):
+        """load_collection of a STAC based collection as is, without any spatiotemporal filtering"""
+        stac_url = f"{dummy_stac_api}/collections/collection-123"
+        dummy_catalog.define_collection_metadata(
+            collection_id="STAC123",
+            metadata={"_vito": {"data_source": {"type": "stac", "url": stac_url}}},
+        )
+        pg = {
+            "load_collection": {
+                "process_id": "load_collection",
+                "arguments": {"id": "STAC123"},
+                "result": True,
+            },
+        }
+        source_constraints = extract_source_constraints(pg)
+        [source_constraint] = source_constraints
+        extents = _extract_spatial_extent_from_constraint(source_constraint=source_constraint, catalog=dummy_catalog)
+        assert extents == AlignedExtentResult(
+            extent=BoundingBox(west=2, south=49, east=7, north=52, crs="EPSG:4326"),
+            variants={
+                "original": None,
+                "assets_full_bbox": BoundingBox(west=2, south=49, east=7, north=52, crs="EPSG:4326"),
+                "assets_covered_bbox": None,
+            },
+        )
+
+    @pytest.mark.parametrize(
+        ["load_collection_args", "expected_extents"],
+        [
+            (  # base case: no spatiotemporal filtering
+                {},
+                AlignedExtentResult(
+                    extent=BoundingBox(west=2, south=49, east=7, north=52, crs="EPSG:4326"),
+                    variants={
+                        "original": None,
+                        "assets_full_bbox": BoundingBox(west=2, south=49, east=7, north=52, crs="EPSG:4326"),
+                        "assets_covered_bbox": None,
+                    },
+                ),
+            ),
+            (  # Spatial extent that limits bboxes
+                {"spatial_extent": {"west": 2.5, "south": 49.5, "east": 6, "north": 51.5}},
+                AlignedExtentResult(
+                    extent=BoundingBox(west=2.5, south=49.5, east=6, north=51.5, crs="EPSG:4326"),
+                    variants={
+                        "original": BoundingBox(west=2.5, south=49.5, east=6, north=51.5, crs="EPSG:4326"),
+                        "assets_full_bbox": BoundingBox(west=2, south=49, east=7, north=52, crs="EPSG:4326"),
+                        "assets_covered_bbox": BoundingBox(west=2.5, south=49.5, east=6, north=51.5, crs="EPSG:4326"),
+                    },
+                ),
+            ),
+            (  # Temporal extent that limits assets of collection-123
+                {"temporal_extent": ["2024-06-01", "2024-07-10"]},
+                AlignedExtentResult(
+                    extent=BoundingBox(west=3, south=50, east=7, north=52, crs="EPSG:4326"),
+                    variants={
+                        "original": None,
+                        "assets_full_bbox": BoundingBox(west=3, south=50, east=7, north=52, crs="EPSG:4326"),
+                        "assets_covered_bbox": None,
+                    },
+                ),
+            ),
+        ],
+    )
+    def test_extract_spatial_extent_from_constraint_load_collection_type_stac_spatiotemporal_filtering(
+        self, dummy_catalog, extract_source_constraints, dummy_stac_api, load_collection_args, expected_extents
+    ):
+        """load_collection of a STAC based collection with additional (spatiotemporal) filtering"""
+        stac_url = f"{dummy_stac_api}/collections/collection-123"
+        dummy_catalog.define_collection_metadata(
+            collection_id="STAC123",
+            metadata={"_vito": {"data_source": {"type": "stac", "url": stac_url}}},
+        )
+        pg = {
+            "load_collection": {
+                "process_id": "load_collection",
+                "arguments": {"id": "STAC123", **load_collection_args},
+                "result": True,
+            },
+        }
+        source_constraints = extract_source_constraints(pg)
+        [source_constraint] = source_constraints
+        extents = _extract_spatial_extent_from_constraint(source_constraint=source_constraint, catalog=dummy_catalog)
+        assert extents == expected_extents
 
 
 class TestDetermineBestGridFromProjMetadata:

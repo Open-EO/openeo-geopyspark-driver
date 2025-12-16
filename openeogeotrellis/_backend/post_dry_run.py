@@ -226,6 +226,11 @@ def _extract_spatial_extent_from_constraint_load_collection(
         metadata = catalog.get_collection_metadata(collection_id)
     except CollectionNotFoundException:
         metadata = {}
+
+    if deep_get(metadata, "_vito", "data_source", "type", default=None) == "stac":
+        stac_url = deep_get(metadata, "_vito", "data_source", "url")
+        return _extract_spatial_extent_from_constraint_load_stac(stac_url=stac_url, constraint=constraint)
+
     # TODO Extracting pixel grid info from collection metadata might might be unreliable
     #       and should be replaced by more precise item-level metadata where possible.
     source_grid = _GridInfo.from_datacube_metadata(metadata=metadata)
