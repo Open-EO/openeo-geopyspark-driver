@@ -86,7 +86,7 @@ class _GridInfo:
         extent_x = dim_x.get("extent", None)
         extent_y = dim_y.get("extent", None)
         if not extent_x or not extent_y:
-            _log.warning(f"Missing (required) x or y extent metadata for {metadata.get('id')!r} in {dim_x=}, {dim_y=}")
+            _log.debug(f"Missing (required) x or y extent metadata for {metadata.get('id')!r} in {dim_x=}, {dim_y=}")
 
         # Step is optional
         if "step" in dim_x and "step" in dim_y:
