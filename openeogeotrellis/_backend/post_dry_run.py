@@ -246,8 +246,8 @@ def _extract_spatial_extent_from_constraint_load_collection(
     extent_aligned = extent_orig
 
     target_grid = _GridInfo(
-        crs=constraint.get("resample", {}).get("target_crs", source_grid.crs_raw),
-        resolution=constraint.get("resample", {}).get("resolution", source_grid.resolution),
+        crs=deep_get(constraint, "resample", "target_crs", default=None) or source_grid.crs_raw,
+        resolution=deep_get(constraint, "resample", "resolution", default=None) or source_grid.resolution,
     )
 
     # TODO: shouldn't the pixel buffering be applied after the alignment?

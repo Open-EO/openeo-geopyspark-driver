@@ -417,6 +417,60 @@ class TestPostDryRun:
             },
         )
 
+    @pytest.mark.parametrize(
+        ["resolution", "expected"],
+        [
+            (100, BoundingBox(west=644400, south=662200, east=729300, north=5675700, crs="EPSG:32631")),
+            (1000, BoundingBox(west=644000, south=662000, east=730000, north=5676000, crs="EPSG:32631")),
+            ((70, 700), BoundingBox(west=644420, south=662200, east=729330, north=5676300, crs="EPSG:32631")),
+        ],
+    )
+    def test_extract_spatial_extent_from_constraint_load_collection_resample(
+        self, dummy_catalog, extract_source_constraints, resolution, expected
+    ):
+        dummy_catalog.define_collection_metadata(
+            collection_id="S123-UTM",
+            cube_dimensions={
+                "x": {
+                    "reference_system": REFERENCE_SYSTEM_AUTO_UTM_PROJJSON,
+                    "extent": [166_000, 834_000],
+                    "step": 10,
+                },
+                "y": {
+                    "reference_system": REFERENCE_SYSTEM_AUTO_UTM_PROJJSON,
+                    "extent": [0, 10_000_000],
+                    "step": 10,
+                },
+            },
+        )
+        pg = {
+            "load_collection": {
+                "process_id": "load_collection",
+                "arguments": {
+                    "id": "S123-UTM",
+                    "spatial_extent": {"west": 5.067891, "south": 51.213456, "east": 5.0712345, "north": 5.9876543},
+                },
+            },
+            "resample": {
+                "process_id": "resample_spatial",
+                "arguments": {
+                    "data": {"from_node": "load_collection"},
+                    "projection": None,
+                    "resolution": resolution,
+                },
+                "result": True,
+            },
+        }
+        source_constraints = extract_source_constraints(pg)
+        [source_constraint] = source_constraints
+        extents = _extract_spatial_extent_from_constraint(source_constraint=source_constraint, catalog=dummy_catalog)
+        assert extents == AlignedExtentResult(
+            extent=expected,
+            variants={
+                "original": BoundingBox(5.067891, 51.213456, 5.0712345, 5.9876543, crs=4326),
+                "target_aligned": expected,
+            },
+        )
     def test_determine_global_extent_load_collection_minimal(self, dummy_catalog, extract_source_constraints):
         # Process graph with two load_collection sources with spatial extents
         pg = {
