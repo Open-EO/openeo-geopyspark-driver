@@ -98,6 +98,43 @@ def test_read_single_binned():
     arr = result[0][1].cells
     return
 
+def test_read_masked_binned():
+    tiles = [
+        {
+            "key":{
+                "col":10,
+                "row":10,
+                "instant":100,
+
+            },
+            #{"type":"Polygon","coordinates":[[[-180,73.130594],[-152.392,69.3935],[-165.135,59.9629],[-180,62.346828],[-180,73.130594]]]}
+            "key_extent":{
+                "xmin":-180.0,"xmax":-176.0,"ymin":60.0,"ymax":64.0,
+            },
+            "key_epsg":4326
+        }
+    ]
+    result = read_product(
+        (
+            Path(__file__).parent.parent
+            / "data/binary/Sentinel-3/S3A_SY_2_SYN____20250516T222406_20250516T222706_20250518T150818_0179_126_058_1800_PS1_O_NT_002.SEN3",
+            tiles,
+        ),
+        SYNERGY_PRODUCT_TYPE,
+        ["flags:CLOUD_flags", "Syn_Oa01_reflectance"],
+        tile_size=1024,
+        resolution=0.008928571428571,
+        reprojection_type=REPROJECTION_TYPE_BINNING,
+        binning_args={
+            KEY_SUPER_SAMPLING: 3,
+            KEY_FLAG_BAND: "CLOUD_flags",
+            KEY_FLAG_BITMASK: 0xff,
+        }
+    )
+
+    arr = result[0][1].cells
+
+
 def test_read_single_edge():
 
     tiles = [
