@@ -383,6 +383,7 @@ class CalrissianJobLauncher:
             metadata=kubernetes.client.V1ObjectMeta(
                 name=name,
                 namespace=self._namespace,
+                labels={"correlation_id": self._calrissian_launch_config.correlation_id},
             ),
             spec=kubernetes.client.V1JobSpec(
                 active_deadline_seconds=300,  # could be because target bucket does not exist
@@ -490,6 +491,7 @@ class CalrissianJobLauncher:
             metadata=kubernetes.client.V1ObjectMeta(
                 name=name,
                 namespace=self._namespace,
+                labels={"correlation_id": self._calrissian_launch_config.correlation_id},
             ),
             spec=kubernetes.client.V1JobSpec(
                 template=kubernetes.client.V1PodTemplateSpec(
