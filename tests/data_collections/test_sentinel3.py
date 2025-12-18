@@ -181,7 +181,7 @@ def test_mask_before_binning(mock_read_band):
     value_to_be_masked = 5
     value_to_keep = 1
     fill_value = np.nan
-    mask_set = 0x01
+    mask_set = 4
 
     shape = (4, 5)
     out_shape = shape
@@ -198,7 +198,7 @@ def test_mask_before_binning(mock_read_band):
         data = None
         if in_band == "CLOUD_flags":
             data = mask_data
-        elif in_band == "SDR_04":
+        elif in_band == "SDR_Oa04":
             data = band_data
         else:
             raise ValueError(f"in_band '{in_band}' not recognized")
@@ -216,7 +216,7 @@ def test_mask_before_binning(mock_read_band):
         product_type=SYNERGY_PRODUCT_TYPE,
         final_grid_resolution=1.0,
         creo_path=Path("fake_path"),
-        band_names=["CLOUD_flags", "SDR_04"],
+        band_names=["flags:CLOUD_flags", "Syn_Oa04_reflectance"],
         source_coordinates=source_coordinates,
         target_coordinates=target_coordinates,
         data_mask=None,
