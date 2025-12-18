@@ -443,6 +443,7 @@ class CalrissianJobLauncher:
         cwl_outputs_listing = str(Path(self._volume_output.mount_path) / relative_cwl_outputs_listing)
 
         labels_dict = {"correlation_id": self._calrissian_launch_config.correlation_id}
+        # TODO: Move this toCalrissianLaunchConfigBuilder?
         pod_labels_staging_manifest, pod_labels_staging_manifest_path = self.create_input_staging_job_manifest(
             cwl_source=CwLSource.from_string(json.dumps(labels_dict))
         )
