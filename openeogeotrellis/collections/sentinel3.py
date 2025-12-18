@@ -524,14 +524,12 @@ def do_binning(
             raise ValueError(f"Specified flag_band '{flag_band}', which was not found in specified bands '{band_names_parsed}'")
         data_band_names = set(band_names_parsed) - {flag_band}
 
-        flags = data_vars.pop(flag_band)[1]
-        if not np.issubdtype(flags.dtype, np.integer):
-            raise ValueError(f"flag_band must be an integer band. Flag band '{flag_band}' has dtype '{flags.dtype}'")
-
+        flags = data_vars[flag_band][1]
         for band_name in data_band_names:
-            fill_value = attrs.get(band_name, {}).get('_FillValue', np.nan)
+            fill_value = np.nan
             band_dims, band_data = data_vars[band_name]
-            masked_band_data = xr.where((flags & flag_bitmask) > 0, fill_value, band_data)
+            band_dtype = attrs[band_name]["dtype"]
+            masked_band_data = xr.where(np.isnan(flags) | (flags.astype(band_dtype) & flag_bitmask) > 0, fill_value, band_data)
             data_vars[band_name] = (band_dims, masked_band_data)
 
     ds_in = xr.Dataset(
