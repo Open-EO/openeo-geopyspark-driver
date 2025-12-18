@@ -401,7 +401,10 @@ class CalrissianJobLauncher:
                                 ),
                             )
                         ],
-                    )
+                    ),
+                    metadata=kubernetes.client.V1ObjectMeta(
+                        labels={"correlation_id": self._calrissian_launch_config.correlation_id},
+                    ),
                 ),
                 backoff_limit=self._backoff_limit,
             ),
@@ -439,10 +442,19 @@ class CalrissianJobLauncher:
         output_dir = str(Path(self._volume_output.mount_path) / relative_output_dir)
         cwl_outputs_listing = str(Path(self._volume_output.mount_path) / relative_cwl_outputs_listing)
 
+        labels_dict = {"correlation_id": self._calrissian_launch_config.correlation_id}
+        pod_labels_staging_manifest, pod_labels_staging_manifest_path = self.create_input_staging_job_manifest(
+            cwl_source=CwLSource.from_string(json.dumps(labels_dict))
+        )
+        if pod_labels_staging_manifest:
+            self.launch_job_and_wait(manifest=pod_labels_staging_manifest)
+
         calrissian_arguments = (
             self._calrissian_base_arguments
             + self._calrissian_launch_config.get_calrissian_args()
             + [
+                "--pod-labels",
+                pod_labels_staging_manifest_path,
                 "--tmp-outdir-prefix",
                 tmp_dir,
                 "--outdir",
@@ -491,7 +503,7 @@ class CalrissianJobLauncher:
             metadata=kubernetes.client.V1ObjectMeta(
                 name=name,
                 namespace=self._namespace,
-                labels={"correlation_id": self._calrissian_launch_config.correlation_id},
+                labels=labels_dict,
             ),
             spec=kubernetes.client.V1JobSpec(
                 template=kubernetes.client.V1PodTemplateSpec(
@@ -509,7 +521,10 @@ class CalrissianJobLauncher:
                             for volume_info, read_only in volumes
                         ]
                         + [self._calrissian_launch_config.get_volume()],
-                    )
+                    ),
+                    metadata=kubernetes.client.V1ObjectMeta(
+                        labels=labels_dict,
+                    ),
                 ),
                 backoff_limit=self._backoff_limit,
             ),
