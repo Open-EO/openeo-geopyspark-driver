@@ -104,12 +104,10 @@ def test_read_masked_binned():
             "key":{
                 "col":10,
                 "row":10,
-                "instant":100,
-
+                "instant":1717326516089,
             },
-            #{"type":"Polygon","coordinates":[[[-180,73.130594],[-152.392,69.3935],[-165.135,59.9629],[-180,62.346828],[-180,73.130594]]]}
             "key_extent":{
-                "xmin":-180.0,"xmax":-176.0,"ymin":60.0,"ymax":64.0,
+                "xmin":13.857467,"xmax":18.10,"ymin":47.096,"ymax":47.597925
             },
             "key_epsg":4326
         }
@@ -117,17 +115,17 @@ def test_read_masked_binned():
     result = read_product(
         (
             Path(__file__).parent.parent
-            / "data/binary/Sentinel-3/S3A_SY_2_SYN____20250516T222406_20250516T222706_20250518T150818_0179_126_058_1800_PS1_O_NT_002.SEN3",
+            / "data/binary/Sentinel-3/S3A_SL_2_LST____20240129T100540_20240129T100840_20240129T121848_0179_108_236_2160_PS1_O_NR_004.SEN3",
             tiles,
         ),
-        SYNERGY_PRODUCT_TYPE,
-        ["flags:CLOUD_flags", "Syn_Oa01_reflectance"],
+        SLSTR_PRODUCT_TYPE,
+        ["LST_in:LST", "flags_in:cloud_in"],
         tile_size=1024,
         resolution=0.008928571428571,
         reprojection_type=REPROJECTION_TYPE_BINNING,
         binning_args={
             KEY_SUPER_SAMPLING: 3,
-            KEY_FLAG_BAND: "CLOUD_flags",
+            KEY_FLAG_BAND: "cloud_in",
             KEY_FLAG_BITMASK: 0xff,
         }
     )
