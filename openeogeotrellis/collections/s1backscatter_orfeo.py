@@ -168,6 +168,23 @@ class S1BackscatterOrfeo:
         opensearch_client = self.jvm.org.openeo.opensearch.OpenSearchClient.apply(
             "https://catalogue.dataspace.copernicus.eu/resto", False, "", [], ""
         )
+
+        from openeogeotrellis.load_stac import _spatiotemporal_extent_from_load_params
+        from openeogeotrellis.load_stac import construct_item_collection
+
+        url = "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-1-grd"
+        property_filter_pg_map = {}
+        spatiotemporal_extent = _spatiotemporal_extent_from_load_params(load_params)
+
+        item_collection, metadata, collection_band_names, netcdf_with_time_dimension = construct_item_collection(
+            url=url,
+            spatiotemporal_extent=spatiotemporal_extent,
+            property_filter_pg_map=property_filter_pg_map,
+        )
+
+        jvm = get_jvm()
+        opensearch_client = jvm.org.openeo.geotrellis.file.FixedFeaturesOpenSearchClient()
+
         file_rdd_factory = self.jvm.org.openeo.geotrellis.file.FileRDDFactory(
             opensearch_client, collection_id, attributeValues, correlation_id,self.jvm.geotrellis.raster.CellSize(resolution[0], resolution[1])
         )
@@ -1150,8 +1167,10 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
 def get_implementation(version: str = "1", jvm=None) -> S1BackscatterOrfeo:
     jvm = jvm or get_jvm()
     if version == "1":
+        logger.info("using S1BackscatterOrfeo")
         return S1BackscatterOrfeo(jvm=jvm)
     elif version == "2":
+        logger.info("using S1BackscatterOrfeoV2")
         return S1BackscatterOrfeoV2(jvm=jvm)
     else:
         raise ValueError(version)
