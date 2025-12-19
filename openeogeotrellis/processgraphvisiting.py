@@ -54,6 +54,8 @@ class GeotrellisTileProcessGraphVisitor(ProcessGraphVisitor):
             pass
         elif isinstance(value, bool):
             self.builder.constantArgument(argument_id, value)
+        elif value is None:
+            pass
         else:
             raise ValueError("Unexpected value for {a!r}: got {v!r}".format(v=value, a=argument_id))
         return self
