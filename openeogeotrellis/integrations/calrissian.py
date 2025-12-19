@@ -587,49 +587,6 @@ class CalrissianJobLauncher:
         volume_name = pvc.spec.volume_name
         return volume_name
 
-    @staticmethod
-    def validate_cwl_workflow(
-        cwl_source: CwLSource,
-        cwl_arguments: Union[List[str], dict],
-    ) -> None:
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".cwl", delete=False) as cwl_file:
-            cwl_file.write(cwl_source.get_content())
-            cwl_file_path = cwl_file.name
-
-        try:
-            needle = "Invalid job input record:"
-            if isinstance(cwl_arguments, dict):
-                with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as args_file:
-                    json.dump(cwl_arguments, args_file)
-                    args_file_path = args_file.name
-
-                try:
-                    output = subprocess.check_output(
-                        ["cwltool", "--disable-color", "--validate", cwl_file_path, args_file_path],
-                        text=True,
-                        stderr=subprocess.PIPE,
-                        cwd=str(Path(cwl_file_path).parent),
-                    )
-                    if needle in output:
-                        error_msg = output.split(needle, maxsplit=1)[1].strip()
-                        raise RuntimeError(f"CWL validation failed: {error_msg}")
-                finally:
-                    os.unlink(args_file_path)
-            else:
-                # cwl_arguments is a list of strings (file paths)
-                output = subprocess.check_output(
-                    ["python", "-m", "cwltool", "--disable-color", "--validate", cwl_file_path]
-                    + (cwl_arguments if cwl_arguments else []),
-                    text=True,
-                    stderr=subprocess.PIPE,
-                    cwd=str(Path(cwl_file_path).parent),
-                )
-                if needle in output:
-                    error_msg = output.split(needle, maxsplit=1)[1].strip()
-                    raise RuntimeError(f"CWL validation failed: {error_msg}")
-        finally:
-            os.unlink(cwl_file_path)
-
     def run_cwl_workflow(
         self,
         cwl_source: CwLSource,
