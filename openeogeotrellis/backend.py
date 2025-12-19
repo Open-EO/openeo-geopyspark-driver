@@ -2727,6 +2727,9 @@ class GpsBatchJobs(backend.BatchJobs):
 
         if "results_metadata_uri" in job_dict:
             results_metadata = self._load_results_metadata_from_file(job_id, job_dict["results_metadata_uri"])  # TODO: expose a getter?
+            if "results_metadata" in job_dict:
+                # Some fields in results_metadata_uri can be outdated. Update those directly from the job registry.
+                results_metadata["usage"] = job_dict["results_metadata"].get("usage", results_metadata.get("usage"))
 
         if not results_metadata and "results_metadata" in job_dict:
             logger.debug("Loading results metadata from job registry", extra={"job_id": job_id})
