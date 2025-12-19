@@ -954,6 +954,10 @@ Example usage:
 
     @staticmethod
     def summarize_exception_static(error: Exception, width=2000) -> ErrorSummary:
+        # snippet to show the Python stack trace:
+        # tb_info = traceback.extract_tb(error.__traceback__)
+        # logger.warning("".join(traceback.format_list(tb_info)))
+
         if "Container killed on request. Exit code is 143" in str(error):
             is_client_error = False  # Give user the benefit of doubt.
             summary = "Your batch job failed because workers used too much memory. The same task was attempted multiple times. Consider increasing executor-memory, python-memory or executor-memoryOverhead or contact the developers to investigate."

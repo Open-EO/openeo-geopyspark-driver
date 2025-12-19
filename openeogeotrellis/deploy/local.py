@@ -52,6 +52,7 @@ def setup_local_spark(log_dir: Path = Path.cwd(), verbosity=0):
             "Failed to import kube. Some kubernetes specific processes might not get attached (CWL). error: " + str(e)
         )
     master_str = "local[*]"
+    # master_str = "local-cluster[4,1,10240]"
 
     if "PYSPARK_PYTHON" not in os.environ:
         os.environ["PYSPARK_PYTHON"] = sys.executable
