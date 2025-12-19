@@ -232,15 +232,17 @@ def test_mask_before_binning(mock_read_band):
     mask_data[3, 4] = mask_set
 
     def return_value(_in_file, in_band, *args, **kwargs):
-        data = None
+        data, attrs = None, {}
         if in_band == "CLOUD_flags":
             data = mask_data
+            attrs["dtype"] = "uint8"
         elif in_band == "SDR_Oa04":
             data = band_data
+            attrs["dtype"] = "float32"
         else:
             raise ValueError(f"in_band '{in_band}' not recognized")
 
-        return data, {}
+        return data, {"dtype": "uint"}
 
     mock_read_band.side_effect = return_value
     #lat = np.tile(np.arange(shape[0], dtype=np.float64), (shape[1], 1))
@@ -266,9 +268,10 @@ def test_mask_before_binning(mock_read_band):
         flag_band="CLOUD_flags",
     )
 
-    assert binned_data_vars.shape == (1, *out_shape)
-    assert ((binned_data_vars == value_to_keep) | np.isnan(binned_data_vars)).all()
-    assert np.count_nonzero(np.isfinite(binned_data_vars)) > 0
+    assert binned_data_vars.shape == (2, *out_shape)
+    binned_band = binned_data_vars[1]
+    assert ((binned_band == value_to_keep) | np.isnan(binned_band)).all()
+    assert np.count_nonzero(np.isfinite(binned_band)) > 0
 
 
 if __name__ == "__main__":
