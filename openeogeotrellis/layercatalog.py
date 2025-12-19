@@ -947,11 +947,13 @@ def _get_layer_catalog(
         except Exception as e:
             raise ValueError(f"Failed to read/parse {catalog_file=}: {e=}") from e
 
-
     logger.debug(f"_get_layer_catalog: {catalog_files=}")
     for path in catalog_files:
         logger.debug(f"_get_layer_catalog: reading {path}")
-        metadata = dict_merge_recursive(metadata, read_catalog_file(path), overwrite=True)
+        # Overwrite and extend the existing metadata, with later files taking precedence.
+        other_catalog: CatalogDict = read_catalog_file(path)
+        for collection_id, collection_metadata in other_catalog.items():
+            metadata[collection_id] = collection_metadata
         logger.debug(f"_get_layer_catalog: collected {len(metadata)} collections")
 
     logger.debug(f"_get_layer_catalog: {enrich_metadata=}")
