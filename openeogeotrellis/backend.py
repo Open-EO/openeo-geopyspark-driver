@@ -2157,7 +2157,12 @@ class GpsBatchJobs(backend.BatchJobs):
                     user_id=user_id,
                     results_metadata_uri=f"file://{job_work_dir}/{JOB_METADATA_FILENAME}",
                 )
-                dbl_registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.QUEUED)
+                try:
+                    dbl_registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.QUEUED)
+                except Exception as e:
+                    log.info(
+                        f"Failed to set job status to QUEUED in the job registry. The job still started so we continue anyway. {e}"
+                    )
 
     def _determine_container_image_from_process_graph(
         self, process_graph: dict, *, api_version: str = OPENEO_API_VERSION_DEFAULT
