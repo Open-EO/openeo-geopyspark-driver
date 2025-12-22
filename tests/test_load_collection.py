@@ -402,48 +402,8 @@ def test_load_collection_common_name_by_missing_products(
         assert collection.metadata.get('id') == expected_source
 
 
-def test_load_disk_collection_pyramid(
-    imagecollection_with_two_bands_and_three_dates, backend_implementation, tmp_path
-):
-    out = imagecollection_with_two_bands_and_three_dates.write_assets(
-        filename=tmp_path / "out.tif",
-        format="GTiff",
-        format_options=dict(batch_mode=True),
-    )
-    # example output path: /tmp/pytest-of-driesj/pytest-1/test_load_disk_collection0/openEO_2017-10-25Z.tif
-    cube = backend_implementation.load_disk_data(
-        format="GTiff",
-        glob_pattern=str(tmp_path / "openEO_*.tif"),
-        options=dict(date_regex=r".*\/openEO_(\d{4})(\d{2})(\d{2})T.*Z.tif"),
-        load_params=LoadParameters(),
-        env=EvalEnv(),
-    )
-    cube = cube.rename_labels("bands", ["band1", "bands"])
-
-    assert len(cube.metadata.spatial_dimensions) == 2
-    assert len(cube.pyramid.levels) == 4
 
 
-def test_load_disk_collection_batch(imagecollection_with_two_bands_and_three_dates,backend_implementation,tmp_path):
-    out = imagecollection_with_two_bands_and_three_dates.write_assets(filename=tmp_path/"out.tif",format="GTiff",format_options=dict(batch_mode=True))
-    #example output path: /tmp/pytest-of-driesj/pytest-1/test_load_disk_collection0/openEO_2017-10-25Z.tif
-    load_params = LoadParameters()
-
-    load_params.spatial_extent = dict(west=2,east=3,south=1,north=2)
-    env = EvalEnv(dict(pyramid_levels="1"))
-
-    cube = backend_implementation.load_disk_data(
-        format="GTiff",
-        glob_pattern=str(tmp_path / "openEO_*.tif"),
-        options=dict(date_regex=r".*\/openEO_(\d{4})(\d{2})(\d{2})T.*Z.tif"),
-        load_params=load_params,
-        env=env,
-    )
-    cube = cube.rename_labels("bands", ["band1", "bands"])
-
-    assert len(cube.metadata.spatial_dimensions) == 2
-    assert len(cube.pyramid.levels)==1
-    print(cube.get_max_level().layer_metadata)
 
 
 def test_driver_vector_cube_supports_load_collection_caching(jvm_mock, catalog):
@@ -471,6 +431,9 @@ def test_driver_vector_cube_supports_load_collection_caching(jvm_mock, catalog):
 
 
 def test_load_stac_pixel_shift(api110, tmp_path, flask_app):
+    """
+    https://github.com/Open-EO/openeo-geopyspark-driver/issues/648
+    """
     data_cube = openeo.DataCube.load_stac(
         url=str(get_test_data_file("stac/issue648-pixel-shift/collection.json")),
         temporal_extent=["2023-01-20", "2023-02-01"],
@@ -482,13 +445,12 @@ def test_load_stac_pixel_shift(api110, tmp_path, flask_app):
         metadata_file=tmp_path / JOB_METADATA_FILENAME,
         api_version="2.0.0",
         job_dir=tmp_path,
-        dependencies=[],
         user_id="jenkins",
     )
     with (tmp_path / JOB_METADATA_FILENAME).open("r", encoding="utf-8") as f:
         metadata = json.load(f)
     bbox = metadata["proj:bbox"]
-    assert bbox[0] == 631800
+    assert bbox == [631800, 5167700, 655800, 5184200]
 
 
 @pytest.mark.parametrize(["bands", "expected_bands"], [

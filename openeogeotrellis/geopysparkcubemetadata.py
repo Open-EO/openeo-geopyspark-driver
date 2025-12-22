@@ -194,6 +194,10 @@ class GeopysparkCubeMetadata(CollectionMetadata):
         return float(no_data_value)
 
     def get_layer_crs(self) -> str:
+        # TODO: improve naming: in openEO there are "collections", "bands" and "cubes",
+        #       it's unclear what "layer" means here: it seems to refer to the source "collection",
+        #       while were here in the context of "cube" metadata
+        #       (which already might have a different CRS than the source collection)
         crs = self.get("cube:dimensions", "x", "reference_system", default="EPSG:4326")
         if isinstance(crs, int):
             crs = "EPSG:%s" % str(crs)
@@ -202,38 +206,23 @@ class GeopysparkCubeMetadata(CollectionMetadata):
                 crs = "Auto42001"
         return crs
 
-    def get_overall_spatial_extent(self):
-        global_extent_latlon = {"west": -180.0, "south": -90, "east": 180, "north": 90}
+    def get_overall_spatial_extent(self) -> dict:
+        whole_world = {"west": -180.0, "south": -90, "east": 180, "north": 90, "crs": "EPSG:4326"}
         bboxes = self.get("extent", "spatial", "bbox")
         if not bboxes:
-            return global_extent_latlon
+            return whole_world
         # https://github.com/radiantearth/stac-spec/blob/master/collection-spec/collection-spec.md#spatial-extent-object
         # "The first bounding box always describes the overall spatial extent of the data"
         bbox = bboxes[0]
         overall_extent = dict(zip(["west", "south", "east", "north"], bbox))
 
+        # TODO: this is wonky:  extent>spatial>bbox is *per definition* in lonlat, regardless of "layer CRS"
         likely_latlon = abs(overall_extent["west"] + 180) < 0.01 and abs(overall_extent["east"] - 180) < 0.01
         if self.get_layer_crs() != "EPSG:4326" and not likely_latlon:
             # We can only trust bbox values in LatLon
-            return global_extent_latlon
+            return whole_world
 
         return overall_extent
-
-    def get_layer_native_extent(self) -> Optional[BoundingBox]:
-        dims = self.spatial_dimensions
-        if not dims:
-            return None
-        x = dims[0]
-        y = dims[1]
-        if not x.extent or not y.extent:
-            return None
-        return BoundingBox(
-            west=x.extent[0],
-            south=y.extent[0],
-            east=x.extent[1],
-            north=y.extent[1],
-            crs=self.get_layer_crs(),
-        )
 
     def get_GSD_in_meters(self) -> Union[tuple, dict, None]:
         # TODO #1109 upgrade this implementation to "common" bands metadata

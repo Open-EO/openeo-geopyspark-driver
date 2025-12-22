@@ -10,7 +10,7 @@ import time
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterator, List, Optional, Set, Tuple, Union, Iterable
+from typing import Any, Callable, Dict, Iterator, List, Optional, Set, Tuple, Union, Iterable, Sequence
 from urllib.parse import urlparse
 
 import geopyspark as gps
@@ -53,6 +53,7 @@ from openeogeotrellis.geopysparkcubemetadata import GeopysparkCubeMetadata
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.integrations.stac import ResilientStacIO
 from openeogeotrellis.util.datetime import DateTimeLikeOrNone, to_datetime_utc_unless_none
+from openeogeotrellis.util.geometry import GridSnapper
 from openeogeotrellis.utils import get_jvm, map_optional, normalize_temporal_extent, to_projected_polygons, unzip
 
 logger = logging.getLogger(__name__)
@@ -228,6 +229,7 @@ def load_stac(
 
     requested_bbox = BoundingBox.from_dict_or_none(load_params.spatial_extent, default_crs="EPSG:4326")
     temporal_extent = load_params.temporal_extent
+    #TODO normalize_temporal_extent replaces 'None' with "2000-01-01", which is not a good fallback date.
     from_date, until_date = map(dt.datetime.fromisoformat, normalize_temporal_extent(temporal_extent))
     to_date = (
         dt.datetime.combine(until_date, dt.time.max, until_date.tzinfo)
@@ -256,6 +258,11 @@ def load_stac(
 
         opensearch_client = jvm.org.openeo.geotrellis.file.FixedFeaturesOpenSearchClient()
 
+        # TODO: code smell: (most of) these vars should not be initialized with None here
+        # asset_band_names = the full list of band names contained by the asset
+        # in the same order as defined in the asset (e.g. NetCDF file) itself.
+        # Note that this list is not yet filtered by the requested bands, as the asset loader needs to know
+        # which band index in the file to read.
         asset_band_names = None
         stac_bbox = None
         proj_epsg = None
@@ -268,11 +275,8 @@ def load_stac(
         band_cell_size: Dict[str, Tuple[float, float]] = {}
         band_epsgs: Dict[str, Set[int]] = {}
 
-        for itm in item_collection.items:
 
-            band_assets = {
-                asset_id: asset for asset_id, asset in dict(sorted(itm.assets.items())).items() if _is_band_asset(asset)
-            }
+        for itm, band_assets in item_collection.iter_items_with_band_assets():
 
             builder = (
                 jvm.org.openeo.opensearch.OpenSearchResponses.featureBuilder()
@@ -285,6 +289,7 @@ def load_stac(
                 # Go through assets ordered by asset GSD (from finer to coarser) if possible,
                 # falling back on deterministic alphabetical asset_id order.
                 # see https://github.com/Open-EO/openeo-geopyspark-driver/pull/1213#discussion_r2107353442
+                # TODO: move this sorting feature inside iter_items_with_band_assets
                 band_assets.items(),
                 key=lambda kv: (
                     float(kv[1].extra_fields.get("gsd") or itm.properties.get("gsd") or 40e6),
@@ -293,15 +298,13 @@ def load_stac(
             ):
                 proj_epsg, proj_bbox, proj_shape = _get_proj_metadata(asset=asset, item=itm)
 
-                asset_band_names_from_metadata = stac_metadata_parser.bands_from_stac_asset(asset=asset).band_names()
+                asset_band_names_from_metadata: List[str] = stac_metadata_parser.bands_from_stac_asset(asset=asset).band_names()
+                if not asset_band_names_from_metadata:
+                    asset_band_names_from_metadata = feature_flags.get("asset_id_to_bands_map", {}).get(asset_id, [])
+                    logger.debug(f"using `asset_id_to_bands_map`: mapping {asset_id} to {asset_band_names_from_metadata}")
                 logger.debug(f"from intersecting_items: {itm.id=} {asset_id=} {asset_band_names_from_metadata=}")
 
-                if len(override_band_names) == 1:
-                    # In the special case that there is a singular band name override, we can assume that
-                    # this band name applies to all assets.
-                    # For example, in the DEM collections on CDSE. Assume that the asset relates to the DEM band.
-                    asset_band_names = override_band_names
-                elif not load_params.bands:
+                if not load_params.bands:
                     # No user-specified band filtering: follow band names from metadata (if possible)
                     asset_band_names = asset_band_names_from_metadata or [asset_id]
                 elif isinstance(load_params.bands, list) and asset_id in load_params.bands:
@@ -341,12 +344,13 @@ def load_stac(
                 )
                 builder = builder.addLink(get_best_url(asset), asset_id, pixel_value_offset, asset_band_names)
 
+            # TODO: the proj_* values are assigned in inner per-asset loop,
+            #       so the values here are ill-defined (the values might even come from another item)
             if proj_epsg:
                 builder = builder.withCRS(f"EPSG:{proj_epsg}")
             if proj_bbox:
-                builder = builder.withRasterExtent(*proj_bbox)
+                builder = builder.withRasterExtent(*(float(b) for b in proj_bbox))
 
-            # TODO: does not seem right conceptually; an Item's assets can have different resolutions (and CRS)
             if proj_bbox and proj_shape:
                 cell_width, cell_height = _compute_cellsize(proj_bbox, proj_shape)
                 builder = builder.withResolution(cell_width)
@@ -417,13 +421,6 @@ def load_stac(
             metadata = metadata.with_new_band_names(load_params.bands)
         else:
             raise ProcessParameterRequiredException(process="load_stac", parameter="bands")
-
-    if load_params.global_extent is None or len(load_params.global_extent) == 0:
-        layer_native_extent = metadata.get_layer_native_extent()
-        if layer_native_extent:
-            load_params = load_params.copy()
-            logger.info(f"global_extent fallback: {layer_native_extent=}")
-            load_params.global_extent = layer_native_extent.as_dict()
 
     if load_params.bands:
         metadata = metadata.filter_bands(load_params.bands)
@@ -499,7 +496,7 @@ def load_stac(
             url,  # openSearchCollectionId, not important
             requested_band_names,  # openSearchLinkTitles
             None,  # rootPath, not important
-            jvm.geotrellis.raster.CellSize(cell_width, cell_height),
+            jvm.geotrellis.raster.CellSize(float(cell_width), float(cell_height)),
             False,  # experimental
             max_soft_errors_ratio,
         )
@@ -523,7 +520,7 @@ def load_stac(
     metadata_properties = {}
     correlation_id = env.get(EVAL_ENV_KEY.CORRELATION_ID, "")
 
-    data_cube_parameters, single_level = datacube_parameters.create(load_params, env, jvm)
+    data_cube_parameters, single_level = datacube_parameters.create(load_params=load_params, env=env, jvm=jvm)
     getattr(data_cube_parameters, "layoutScheme_$eq")("FloatingLayoutScheme")
 
     tilesize = feature_flags.get("tilesize", None)
@@ -580,7 +577,10 @@ def load_stac(
             status_code=500,
         ) from e
 
-    metadata = metadata.filter_temporal(from_date.isoformat(), to_date.isoformat())
+    if not spatiotemporal_extent.temporal_extent.is_unbounded():
+        from_date_iso = spatiotemporal_extent._temporal_extent.from_date.isoformat() if spatiotemporal_extent._temporal_extent.from_date else None
+        to_date_iso = spatiotemporal_extent._temporal_extent.to_date.isoformat() if spatiotemporal_extent._temporal_extent.to_date else None
+        metadata = metadata.filter_temporal(from_date_iso, to_date_iso)
 
     metadata = metadata.filter_bbox(
         west=extent.xmin(),
@@ -1082,6 +1082,14 @@ class ItemCollection:
         return ItemCollection(items=items)
 
 
+    def iter_items_with_band_assets(self) -> Iterator[Tuple[pystac.Item, Dict[str, pystac.Asset]]]:
+        """Iterate over items along with their band assets only."""
+        for item in self.items:
+            band_assets = {asset_id: asset for asset_id, asset in sorted(item.assets.items()) if _is_band_asset(asset)}
+            if band_assets:
+                yield item, band_assets
+
+
 class ItemDeduplicator:
     """
     Deduplicate STAC Items based on nominal datetime and selected properties.
@@ -1246,11 +1254,205 @@ _REGEX_EPSG_CODE = re.compile(r"^EPSG:(\d+)$", re.IGNORECASE)
 
 
 @functools.lru_cache
-def _proj_code_to_epsg(proj_code: str) -> Optional[int]:
+def _proj_code_to_epsg(proj_code: str) -> Union[int, None]:
     if isinstance(proj_code, str) and (match := _REGEX_EPSG_CODE.match(proj_code)):
         return int(match.group(1))
     # TODO pass-through integers as-is?
     return None
+
+
+def _get_asset_property(asset: pystac.Asset, field: str) -> Union[Any, None]:
+    """
+    Helper to get a property directly from asset,
+    or from bands metadata embedded in asset metadata (if consistent across all bands).
+    """
+    if field in asset.extra_fields:
+        return asset.extra_fields.get(field)
+    if "bands" in asset.extra_fields:
+        # TODO: Is it actually ok to look for projection properties at bands level?
+        #       See https://github.com/stac-extensions/projection/issues/25
+        values = []
+        for band in asset.extra_fields["bands"]:
+            if field in band and band[field] and band[field] not in values:
+                values.append(band.get(field))
+        if len(values) == 1:
+            return values[0]
+        if len(values) > 1:
+            # For now, using debug level here instead of warning,
+            # as this can be done for each asset, which might be too much
+            logger.debug(f"Multiple differing values for {field=} found in asset bands: {values=}")
+
+    return None
+
+
+class _ProjectionMetadata:
+    """
+    Container of and conversion interface for projection metadata from STAC Projection Extension.
+    https://github.com/stac-extensions/projection
+
+    Covering these fields:
+    - "proj:code" (preferably, with (less ideal) alternative sources:
+        "proj:epsg" (deprecated), "proj:wkt2" or "proj:projjson")
+    - "proj:bbox"
+    - "proj:shape"
+    - "proj:transform"
+    """
+
+    # TODO: move to more generic geometry/projection utility module for better reuse and cleaner separation?
+    # TODO: any added value to leverage projection extension support from pystac in some way?
+
+    __slots__ = ("_code", "_bbox", "_shape", "_transform")
+
+    def __init__(
+        self,
+        *,
+        code: Optional[str] = None,
+        epsg: Optional[int] = None,
+        bbox: Optional[Sequence[float]] = None,
+        shape: Optional[Sequence[int]] = None,
+        transform: Optional[Sequence[float]] = None,
+    ):
+        # TODO: support wkt2 and projjson as well in some way?
+        self._code = code or (f"EPSG:{epsg}" if epsg is not None else None)
+        self._bbox = tuple(bbox) if bbox else None
+        self._shape = tuple(shape) if shape else None
+        self._transform = tuple(transform) if transform else None
+
+    def __repr__(self) -> str:
+        return f"_ProjectionMetadata(code={self._code!r}, bbox={self._bbox!r}, shape={self._shape!r})"
+
+    @property
+    def code(self) -> Union[str, None]:
+        return self._code
+
+    @property
+    def epsg(self) -> Union[int, None]:
+        # Note: The field `proj:epsg` has been deprecated in v1.2.0 of projection extension
+        # in favor of `proj:code` and has been removed in v2.0.0.
+        return _proj_code_to_epsg(self._code) if self._code else None
+
+    @property
+    def bbox(self) -> Union[Tuple[float, float, float, float], None]:
+        """
+        Bounding box of the assets represented by this Item in the asset data CRS.
+        Specified as 4 or 6 coordinates ... e.g., [west, south, east, north], ...
+        """
+        if self._bbox and len(self._bbox) in {4, 6}:
+            # TODO: need for support of 6 values?
+            return self._bbox[:4]
+        elif self._shape and self._transform:
+            # per https://github.com/soxofaan/projection/blob/reformat-best-practices/README.md#projtransform
+            a0, a1, a2, a3, a4, a5 = self._transform[:6]
+
+            def project(x: float, y: float) -> Tuple[float, float]:
+                return a0 * x + a1 * y + a2, a3 * x + a4 * y + a5
+
+            sy, sx = self._shape
+            p00 = project(0, 0)
+            px0 = project(sx, 0)
+            p0y = project(0, sy)
+            pxy = project(sx, sy)
+            xs, ys = zip(p00, px0, p0y, pxy)
+            return (min(xs), min(ys), max(xs), max(ys))
+
+    def to_bounding_box(self) -> Union[BoundingBox, None]:
+        """Get bbox (if any) as BoundingBox object."""
+        if bbox := self.bbox:
+            return BoundingBox.from_wsen_tuple(bbox, crs=self.code)
+
+    @property
+    def shape(self) -> Union[Tuple[int, int], None]:
+        """Number of pixels in the most common pixel grid used by the assets (in Y, X order)."""
+        if self._shape and len(self._shape) == 2:
+            return self._shape
+        # TODO: calculate from bbox and transform?
+
+    def resolution(self, *, fail_on_miss: bool = True) -> Union[Tuple[float, float], None]:
+        """
+        Calculate resolution (xres, yres) expressed as distance in the projection CRS
+        based on bbox/shape/transform.
+        """
+        # TODO: rename to resolution(), which is more self-descriptive than "cell size"?
+        if self._bbox and self._shape:
+            xmin, ymin, xmax, ymax = self._bbox[:4]
+            yn, xn = self.shape
+            return float(xmax - xmin) / xn, float(ymax - ymin) / yn
+        elif self._transform:
+            a0, _, _, _, a4, _ = self._transform[:6]
+            return abs(a0), abs(a4)
+
+        if fail_on_miss:
+            raise ValueError(f"Unable to calculate cell size with {self._shape=}, {self._bbox}, {self._transform}")
+        else:
+            return None
+
+    @classmethod
+    def from_item(cls, item: pystac.Item) -> "_ProjectionMetadata":
+        return cls(
+            code=item.properties.get("proj:code"),
+            epsg=item.properties.get("proj:epsg"),
+            bbox=item.properties.get("proj:bbox"),
+            shape=item.properties.get("proj:shape"),
+            transform=item.properties.get("proj:transform"),
+        )
+
+    @classmethod
+    def from_asset(cls, asset: pystac.Asset, *, item: Optional[pystac.Item] = None) -> "_ProjectionMetadata":
+        """
+        Extract projection metadata from asset, with fallback to asset bands or (owning) item.
+        """
+        if item is None:
+            item = asset.owner
+
+        def get(field):
+            return _get_asset_property(asset, field=field) or (item and item.properties.get(field))
+
+        return cls(
+            code=get("proj:code"),
+            epsg=get("proj:epsg"),
+            bbox=get("proj:bbox"),
+            shape=get("proj:shape"),
+            transform=get("proj:transform"),
+        )
+
+    @functools.lru_cache
+    def _snappers(self) -> Tuple[GridSnapper, GridSnapper]:
+        """Lazy init of x and y coordinate snappers based on bbox and shape"""
+        xres, yres = self.resolution(fail_on_miss=True)
+        xmin, ymin, xmax, ymax = self.bbox
+        x_snapper = GridSnapper(origin=xmin, resolution=xres)
+        y_snapper = GridSnapper(origin=ymin, resolution=yres)
+        return x_snapper, y_snapper
+
+    def coverage_for(self, extent: BoundingBox, snap: bool = True) -> Union[BoundingBox, None]:
+        """
+        Find the coverage (as bounding box) of the given extent
+        within the pixel grid defined by this `_ProjectionMetadata`,
+        including reprojection (if necessary), aligning/snapping to the pixel grid
+        and clamping to the bounds.
+
+        Returns None if no intersection or bbox.
+        """
+        bbox = self.to_bounding_box()
+        if not bbox:
+            logger.warning(f"coverage_for: missing bbox.")
+            return None
+        intersection = bbox.intersection(extent)
+        if not intersection:
+            return None
+
+        if snap:
+            x_snapper, y_snapper = self._snappers()
+            return BoundingBox(
+                west=x_snapper.down(intersection.west),
+                south=y_snapper.down(intersection.south),
+                east=x_snapper.up(intersection.east),
+                north=y_snapper.up(intersection.north),
+                crs=self.code,
+            )
+        else:
+            return intersection
+
 
 
 def _get_proj_metadata(
@@ -1260,50 +1462,10 @@ def _get_proj_metadata(
     Get projection metadata from asset:
     EPSG code (int), bbox (in that EPSG) and number of pixels (rows, cols), if available.
     """
-    # TODO: possible to avoid item argument and just use asset.owner?
+    # TODO: phase out usage and switch to using _ProjectionMetadata directly?
+    metadata = _ProjectionMetadata.from_asset(asset, item=item)
+    return metadata.epsg, metadata.bbox, metadata.shape
 
-    def _get_asset_property(asset: pystac.Asset, field: str) -> Optional:
-        """Helper to get a property directly from asset, or from bands (if consistent across all bands)"""
-        # TODO: Is band peeking feature general enough to make this a more reusable helper?
-        if field in asset.extra_fields:
-            return asset.extra_fields.get(field)
-        if "bands" in asset.extra_fields:
-            # TODO: Is it actually ok to look for projection properties at bands level?
-            #       See https://github.com/stac-extensions/projection/issues/25
-            values = []
-            for band in asset.extra_fields["bands"]:
-                if field in band and band[field] and band[field] not in values:
-                    values.append(band.get(field))
-            if len(values) == 1:
-                return values[0]
-            if len(values) > 1:
-                # For now, using debug level here instead of warning,
-                # as this can be done for each asset, which might be too much
-                logger.debug(f"Multiple differing values for {field=} found in asset bands: {values=}")
-
-        return None
-
-    # Note: The field `proj:epsg` has been deprecated in v1.2.0 of projection extension
-    # in favor of `proj:code` and has been removed in v2.0.0.
-    proj_code = _get_asset_property(asset, field="proj:code") or item.properties.get("proj:code")
-    epsg = (
-        _proj_code_to_epsg(proj_code)
-        or _get_asset_property(asset, field="proj:epsg")
-        or item.properties.get("proj:epsg")
-    )
-
-    proj_bbox = _get_asset_property(asset, field="proj:bbox") or item.properties.get("proj:bbox")
-
-    if not proj_bbox and epsg == 4326:
-        proj_bbox = item.bbox
-
-    proj_shape = _get_asset_property(asset, field="proj:shape") or item.properties.get("proj:shape")
-
-    return (
-        epsg,
-        tuple(map(float, proj_bbox)) if proj_bbox else None,
-        tuple(proj_shape) if proj_shape else None,
-    )
 
 
 def _get_pixel_value_offset(*, item: pystac.Item, asset: pystac.Asset) -> float:
@@ -1383,6 +1545,7 @@ def _compute_cellsize(
     proj_bbox: Tuple[float, float, float, float],
     proj_shape: Tuple[float, float],
 ) -> Tuple[float, float]:
+    # TODO: replace usage with _ProjectionMetadata.cell_size()?
     xmin, ymin, xmax, ymax = proj_bbox
     rows, cols = proj_shape
     cell_width = (xmax - xmin) / cols

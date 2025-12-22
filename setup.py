@@ -70,8 +70,8 @@ setup(
     tests_require=tests_require,
     install_requires=[
         # TODO: avoid excessive `python_version` based version constraints. https://github.com/Open-EO/openeo-geopyspark-driver/issues/1395
-        "openeo>=0.43.0.dev",
-        "openeo_driver>=0.138.0a4.dev",
+        "openeo>=0.47.0.a4.dev",
+        "openeo_driver>=0.138.0a7.dev",
         'pyspark>=4.0.0; python_version>"3.8"',
         'pyspark>=3.5.0,<4.0.0; python_version<="3.8"',
         'geopyspark_openeo==0.4.3.post1',
@@ -120,7 +120,6 @@ setup(
         "PyJWT[crypto]>=2.9.0",  # For identity tokens
         "urllib3>=1.26.20",
         "importlib_resources; python_version<'3.9'",  # #1060 on python 3.8 we need importlib_resources backport
-        "cwltool",  # for validation. cwl running is done via calrissian
     ],
     extras_require={
         "dev": tests_require + typing_require,

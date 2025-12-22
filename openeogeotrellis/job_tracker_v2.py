@@ -311,7 +311,7 @@ class K8sStatusGetter(JobMetadataGetterInterface):
                         extra={"job_id": job_id, "user_id": user_id}
                     )
                 else:
-                    _log.warning(f"Final application error message: {msg}", extra={"job_id": job_id, "user_id": user_id})
+                    _log.error(f"Final application error message: {msg}", extra={"job_id": job_id, "user_id": user_id})
 
             datetime_formatter = Rfc3339(propagate_none=True)
             start_time = datetime_formatter.parse_datetime(metadata["status"]["lastSubmissionAttemptTime"])

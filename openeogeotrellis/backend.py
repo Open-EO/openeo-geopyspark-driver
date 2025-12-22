@@ -665,82 +665,6 @@ Example usage:
             "create_synchronous_parameters": options,
         }
 
-    def load_disk_data(
-            self, format: str, glob_pattern: str, options: dict, load_params: LoadParameters, env: EvalEnv
-    ) -> GeopysparkDataCube:
-        logger.info("load_disk_data with format {f!r}, glob {g!r}, options {o!r} and load params {p!r}".format(
-            f=format, g=glob_pattern, o=options, p=load_params
-        ))
-        if format != 'GTiff':
-            raise NotImplementedError("The format is not supported by the backend: " + format)
-
-        date_regex = options['date_regex']
-
-        if glob_pattern.startswith("hdfs:") and get_backend_config().setup_kerberos_auth:
-            setup_kerberos_auth(self._principal, self._key_tab)
-
-        metadata = GeopysparkCubeMetadata(metadata={}, dimensions=[
-            # TODO: detect actual dimensions instead of this simple default?
-            SpatialDimension(name="x", extent=[]), SpatialDimension(name="y", extent=[]),
-            TemporalDimension(name='t', extent=[]), BandDimension(name="bands", bands=[Band("unknown")])
-        ])
-
-        # TODO: eliminate duplication with GeoPySparkLayerCatalog.load_collection
-        temporal_extent = load_params.temporal_extent or (None, None)
-        from_date, to_date = normalize_temporal_extent(temporal_extent)
-        metadata = metadata.filter_temporal(from_date, to_date)
-
-        spatial_extent = load_params.spatial_extent
-        if len(spatial_extent) == 0:
-            spatial_extent = load_params.global_extent
-
-        west = spatial_extent.get("west", None)
-        east = spatial_extent.get("east", None)
-        north = spatial_extent.get("north", None)
-        south = spatial_extent.get("south", None)
-        crs = spatial_extent.get("crs", None)
-        spatial_bounds_present = all(b is not None for b in [west, south, east, north])
-        if spatial_bounds_present:
-            metadata = metadata.filter_bbox(west=west, south=south, east=east, north=north, crs=crs)
-
-        bands = load_params.bands
-        if bands:
-            band_indices = [metadata.get_band_index(b) for b in bands]
-            metadata = metadata.filter_bands(bands)
-        else:
-            band_indices = None
-
-        jvm = get_jvm()
-
-        feature_flags = load_params.get("featureflags", {})
-        experimental = feature_flags.get("experimental", False)
-        datacubeParams, single_level = datacube_parameters.create(load_params, env, jvm)
-
-        extent = jvm.geotrellis.vector.Extent(float(west), float(south), float(east), float(north)) \
-            if spatial_bounds_present else None
-
-        factory = jvm.org.openeo.geotrellis.geotiff.PyramidFactory.from_disk(glob_pattern, date_regex)
-        if single_level:
-            if extent is None:
-                raise ValueError(f"Trying to load disk collection {glob_pattern} without extent.")
-            projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.fromExtent(extent, crs or "EPSG:4326")
-            pyramid = factory.datacube_seq(projected_polygons, from_date, to_date, {},"", datacubeParams)
-        else:
-            pyramid = (factory.pyramid_seq(extent, crs, from_date, to_date))
-
-        temporal_tiled_raster_layer = jvm.geopyspark.geotrellis.TemporalTiledRasterLayer
-        option = jvm.scala.Option
-        levels = {pyramid.apply(index)._1(): TiledRasterLayer(LayerType.SPACETIME, temporal_tiled_raster_layer(
-            option.apply(pyramid.apply(index)._1()), pyramid.apply(index)._2())) for index in
-                  range(0, pyramid.size())}
-
-        image_collection = GeopysparkDataCube(
-            pyramid=gps.Pyramid(levels),
-            metadata=metadata
-        )
-
-        return image_collection.filter_bands(band_indices) if band_indices else image_collection
-
     def load_result(self, job_id: str, user_id: Optional[str], load_params: LoadParameters,
                     env: EvalEnv) -> GeopysparkDataCube:
         logger.info("load_result from job ID {j!r} with load params {p!r}".format(j=job_id, p=load_params))
@@ -830,7 +754,6 @@ Example usage:
             BandDimension(name="bands", bands=[Band(band_name) for band_name in band_names])
         ])
 
-        # TODO: eliminate duplication with load_disk_data
         temporal_extent = load_params.temporal_extent or (None, None)
         from_date, to_date = normalize_temporal_extent(temporal_extent)
         metadata = metadata.filter_temporal(from_date, to_date)
@@ -1031,6 +954,10 @@ Example usage:
 
     @staticmethod
     def summarize_exception_static(error: Exception, width=2000) -> ErrorSummary:
+        # snippet to show the Python stack trace:
+        # tb_info = traceback.extract_tb(error.__traceback__)
+        # logger.warning("".join(traceback.format_list(tb_info)))
+
         if "Container killed on request. Exit code is 143" in str(error):
             is_client_error = False  # Give user the benefit of doubt.
             summary = "Your batch job failed because workers used too much memory. The same task was attempted multiple times. Consider increasing executor-memory, python-memory or executor-memoryOverhead or contact the developers to investigate."
@@ -2230,7 +2157,12 @@ class GpsBatchJobs(backend.BatchJobs):
                     user_id=user_id,
                     results_metadata_uri=f"file://{job_work_dir}/{JOB_METADATA_FILENAME}",
                 )
-                dbl_registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.QUEUED)
+                try:
+                    dbl_registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.QUEUED)
+                except Exception as e:
+                    log.info(
+                        f"Failed to set job status to QUEUED in the job registry. The job still started so we continue anyway. {e}"
+                    )
 
     def _determine_container_image_from_process_graph(
         self, process_graph: dict, *, api_version: str = OPENEO_API_VERSION_DEFAULT
@@ -2795,6 +2727,9 @@ class GpsBatchJobs(backend.BatchJobs):
 
         if "results_metadata_uri" in job_dict:
             results_metadata = self._load_results_metadata_from_file(job_id, job_dict["results_metadata_uri"])  # TODO: expose a getter?
+            if "results_metadata" in job_dict:
+                # Some fields in results_metadata_uri can be outdated. Update those directly from the job registry.
+                results_metadata["usage"] = job_dict["results_metadata"].get("usage", results_metadata.get("usage"))
 
         if not results_metadata and "results_metadata" in job_dict:
             logger.debug("Loading results metadata from job registry", extra={"job_id": job_id})

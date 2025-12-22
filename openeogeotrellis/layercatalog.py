@@ -37,6 +37,7 @@ from shapely.geometry.base import BaseGeometry
 
 from openeogeotrellis import sentinel_hub, datacube_parameters
 import openeogeotrellis.backend
+from openeogeotrellis._backend import post_dry_run
 from openeogeotrellis.catalogs.creo import CreoCatalogClient
 from openeogeotrellis.collections.s1backscatter_orfeo import get_implementation as get_s1_backscatter_orfeo
 from openeogeotrellis.collections.testing import load_test_collection
@@ -72,6 +73,7 @@ WHITELIST = [
     EVAL_ENV_KEY.DO_EXTENT_CHECK,
     EVAL_ENV_KEY.PARAMETERS,
     EVAL_ENV_KEY.OPENEO_API_VERSION,
+    EVAL_ENV_KEY.GLOBAL_EXTENT,
 ]
 LARGE_LAYER_THRESHOLD_IN_PIXELS = pow(10, 11)
 LARGE_LAYER_THRESHOLD_IN_PIXELS_SENTINELHUB = pow(10, 10)
@@ -945,11 +947,13 @@ def _get_layer_catalog(
         except Exception as e:
             raise ValueError(f"Failed to read/parse {catalog_file=}: {e=}") from e
 
-
     logger.debug(f"_get_layer_catalog: {catalog_files=}")
     for path in catalog_files:
         logger.debug(f"_get_layer_catalog: reading {path}")
-        metadata = dict_merge_recursive(metadata, read_catalog_file(path), overwrite=True)
+        # Overwrite and extend the existing metadata, with later files taking precedence.
+        other_catalog: CatalogDict = read_catalog_file(path)
+        for collection_id, collection_metadata in other_catalog.items():
+            metadata[collection_id] = collection_metadata
         logger.debug(f"_get_layer_catalog: collected {len(metadata)} collections")
 
     logger.debug(f"_get_layer_catalog: {enrich_metadata=}")
@@ -1351,7 +1355,7 @@ def extra_validation_load_collection(collection_id: str, load_params: LoadParame
 
     spatial_extent = load_params.spatial_extent
     if spatial_extent is None or len(spatial_extent) == 0:
-        spatial_extent = load_params.global_extent
+        spatial_extent = post_dry_run.get_global_extent(load_params=load_params, env=env)
     if spatial_extent is None or len(spatial_extent) == 0:
         spatial_extent = metadata.get_overall_spatial_extent()
     load_params.spatial_extent = spatial_extent

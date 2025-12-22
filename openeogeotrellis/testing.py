@@ -8,6 +8,7 @@ import contextlib
 import dataclasses
 import datetime
 import json
+import rasterio
 import re
 import subprocess
 import uuid
@@ -28,12 +29,17 @@ import pystac
 import pytest
 import shapely
 import werkzeug.exceptions
-from openeo.testing.stac import StacDummyBuilder
-from openeo_driver.testing import ephemeral_flask_server
 
+from openeo.testing.stac import StacDummyBuilder
+from openeo_driver.testing import ephemeral_flask_server, ApiResponse
+from openeo_driver.util.geometry import BoundingBox
+from openeo_driver.util.utm import is_utm_crs
+
+import openeogeotrellis
 from openeogeotrellis.config import gps_config_getter
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.util.datetime import to_datetime_utc
+from openeogeotrellis.util.geometry import to_geojson_io_url
 from openeogeotrellis.util.runtime import is_package_available
 
 
@@ -371,6 +377,12 @@ class DummyStacApiServer:
 
     def default_setup(self):
         """Predefine a default collection with items"""
+        # TODO: use real HTTP for asset hrefs intead of local file paths
+
+        # Set up collection-123:
+        # see coverage at https://geojson.io/#data=data:application/json,%7B%22type%22%3A%20%22FeatureCollection%22%2C%20%22features%22%3A%20%5B%7B%22type%22%3A%20%22Feature%22%2C%20%22properties%22%3A%20%7B%7D%2C%20%22geometry%22%3A%20%7B%22type%22%3A%20%22Polygon%22%2C%20%22coordinates%22%3A%20%5B%5B%5B3.0%2C%2049.0%5D%2C%20%5B3.0%2C%2050.0%5D%2C%20%5B2.0%2C%2050.0%5D%2C%20%5B2.0%2C%2049.0%5D%2C%20%5B3.0%2C%2049.0%5D%5D%5D%7D%7D%2C%20%7B%22type%22%3A%20%22Feature%22%2C%20%22properties%22%3A%20%7B%7D%2C%20%22geometry%22%3A%20%7B%22type%22%3A%20%22Polygon%22%2C%20%22coordinates%22%3A%20%5B%5B%5B5.0%2C%2050.0%5D%2C%20%5B5.0%2C%2051.0%5D%2C%20%5B3.0%2C%2051.0%5D%2C%20%5B3.0%2C%2050.0%5D%2C%20%5B5.0%2C%2050.0%5D%5D%5D%7D%7D%2C%20%7B%22type%22%3A%20%22Feature%22%2C%20%22properties%22%3A%20%7B%7D%2C%20%22geometry%22%3A%20%7B%22type%22%3A%20%22Polygon%22%2C%20%22coordinates%22%3A%20%5B%5B%5B7.0%2C%2051.0%5D%2C%20%5B7.0%2C%2052.0%5D%2C%20%5B4.0%2C%2052.0%5D%2C%20%5B4.0%2C%2051.0%5D%2C%20%5B7.0%2C%2051.0%5D%5D%5D%7D%7D%5D%7D
+        # (generated with `openeogeotrellis.testing.DummyStacApiServer().collection_as_geojson_io_url("collection-123")`)
+        asset_root = Path(openeogeotrellis.__file__).parent.parent / "tests" / "data" / "dummy-stac" / "collection-123"
         self.define_collection(id="collection-123")
         self.define_item(
             collection_id="collection-123",
@@ -378,6 +390,15 @@ class DummyStacApiServer:
             datetime="2024-05-01",
             bbox=[2, 49, 3, 50],
             properties={"flavor": "apple"},
+            assets={
+                "asset-1": StacDummyBuilder.asset(
+                    href=str(asset_root / "asset-1.tiff"),
+                    roles=["data"],
+                    proj_code="EPSG:4326",
+                    proj_bbox=[2, 49, 3, 50],
+                    proj_shape=[32, 1 * 32],
+                )
+            },
         )
         self.define_item(
             collection_id="collection-123",
@@ -385,6 +406,15 @@ class DummyStacApiServer:
             datetime="2024-06-02",
             bbox=[3, 50, 5, 51],
             properties={"flavor": "banana"},
+            assets={
+                "asset-2": StacDummyBuilder.asset(
+                    href=str(asset_root / "asset-2.tiff"),
+                    roles=["data"],
+                    proj_code="EPSG:4326",
+                    proj_bbox=[3, 50, 5, 51],
+                    proj_shape=[32, 2 * 32],
+                )
+            },
         )
         self.define_item(
             collection_id="collection-123",
@@ -392,6 +422,15 @@ class DummyStacApiServer:
             datetime="2024-07-03",
             bbox=[4, 51, 7, 52],
             properties={"flavor": "coconut"},
+            assets={
+                "asset-2": StacDummyBuilder.asset(
+                    href=str(asset_root / "asset-3.tiff"),
+                    roles=["data"],
+                    proj_code="EPSG:4326",
+                    proj_bbox=[4, 51, 7, 52],
+                    proj_shape=[32, 3 * 32],
+                )
+            },
         )
 
     def define_collection(self, id: str, *, extent: Optional[dict] = None, **kwargs):
@@ -613,7 +652,7 @@ class DummyStacApiServer:
                     return lambda item: item.properties.get(prop) == value
         raise ValueError(f"Unsupported CQL filter: {filter_language=} {filter=}")
 
-    def serve(self) -> Iterator[str]:
+    def serve(self) -> contextlib.AbstractContextManager[str]:
         """
         Run dummy STAC API as ephemeral server.
         To be used as context manager, that generates the root url of the server.
@@ -625,3 +664,79 @@ class DummyStacApiServer:
         """
         app = self._build_flask_app()
         return ephemeral_flask_server(app)
+
+    def history_has(self, *, method: Optional[str] = None, path: Optional[str] = None) -> List[dict]:
+        """Assert helper to find requests in the request history by method and/or path substring."""
+        return [
+            entry
+            for entry in self.request_history
+            if (method is None or entry["method"] == method) and (path is None or path in entry["path"])
+        ]
+
+    def collection_as_geojson_io_url(self, collection_id: str) -> str:
+        """Generate a geojson.io URL to quickly visualize the items of a given collection."""
+        assert collection_id in self._collections
+        items = [BoundingBox.from_wsen_tuple(item["bbox"]) for item in self._collections[collection_id].items]
+        return to_geojson_io_url(items)
+
+
+def create_dummy_geotiff(
+    path: Union[Path, str], bbox: BoundingBox, shape: Tuple[int, int] = (32, 32), scale: Optional[float] = None
+):
+    """
+    Create a dummy GeoTIFF file with synthetic data for testing purposes,
+    georeferenced according to given bounding box.
+    """
+    # TODO: support for multiple bands
+    xmin, ymin, xmax, ymax = bbox.as_wsen_tuple()
+    xn, yn = shape
+    xstep = (xmax - xmin) / xn
+    ystep = (ymax - ymin) / yn
+    y, x = numpy.ogrid[ymax - 0.5 * ystep : ymin : -ystep, xmin + 0.5 * xstep : xmax : xstep]
+    # Some multi-scale sine waves
+    if not scale:
+        scale = 0.001 if is_utm_crs(bbox.crs) else 1
+    data = (
+        (numpy.sin(scale * x) + numpy.sin(scale * y))
+        + 0.5 * numpy.sin(10 * scale * x) * numpy.sin(10 * scale * y)
+        + 0.25 * (numpy.sin(100 * scale * x) + numpy.sin(100 * scale * y))
+    )
+    data = 100 + 30 * data
+    data = data.astype(numpy.uint8)
+
+    transform = rasterio.transform.from_bounds(west=xmin, south=ymin, east=xmax, north=ymax, width=xn, height=yn)
+    with rasterio.open(
+        path,
+        mode="w",
+        driver="GTiff",
+        height=yn,
+        width=xn,
+        count=1,
+        dtype=data.dtype,
+        crs=bbox.crs,
+        transform=transform,
+        compress="deflate",
+    ) as writer:
+        writer.write(data, 1)
+    return path
+
+
+def rasterio_metadata_dump(source: Union[str, Path, bytes, ApiResponse]) -> dict:
+    """
+    Extract basic raster metadata using rasterio from a file path, raw bytes, or ApiResponse object.
+    """
+    # TODO: put this in a more central place for better reuse
+    if isinstance(source, ApiResponse):
+        source = source.data
+    if isinstance(source, bytes):
+        source_context = rasterio.io.MemoryFile(source)
+    else:
+        source_context = contextlib.nullcontext(source)
+
+    with source_context as fp:
+        with rasterio.open(fp) as ds:
+            return {
+                "epsg": ds.crs.to_epsg(),
+                "bounds": ds.bounds,
+                "shape": ds.shape,
+            }

@@ -25,9 +25,17 @@ OLCI_PRODUCT_TYPE = "OL_1_EFR___"
 SYNERGY_PRODUCT_TYPE = "SY_2_SYN___"
 SLSTR_PRODUCT_TYPE = "SL_2_LST___"
 
+REPROJECTION_TYPE_BINNING = "binning"
+KEY_REPROJECTION_TYPE = "reprojection_type"
+KEY_SUPER_SAMPLING = "super_sampling"
+KEY_FLAG_BAND = "flag_band"
+KEY_FLAG_BITMASK = "flag_bitmask"
+
 RIM_PIXELS = 60
 DEFAULT_REPROJECTION_TYPE = "nearest_neighbor"
 DEFAULT_SUPER_SAMPLING = 1 # no super sampling
+DEFAULT_FLAG_BITMASK = 0xff
+
 
 logger = logging.getLogger(__name__)
 
@@ -80,8 +88,14 @@ def main(product_type, native_resolution, bbox, from_date, to_date, band_names):
 
 def pyramid(metadata_properties, projected_polygons_native_crs, from_date, to_date, band_names, data_cube_parameters,
             native_cell_size, feature_flags, jvm):
-    reprojection_type = feature_flags.get("reprojection_type", DEFAULT_REPROJECTION_TYPE)
-    super_sampling = feature_flags.get("super_sampling", DEFAULT_SUPER_SAMPLING)
+
+    reprojection_type = feature_flags.get(KEY_REPROJECTION_TYPE, DEFAULT_REPROJECTION_TYPE)
+    binning_args = {
+        KEY_SUPER_SAMPLING: feature_flags.get(KEY_SUPER_SAMPLING, DEFAULT_SUPER_SAMPLING),
+        KEY_FLAG_BAND: feature_flags.get(KEY_FLAG_BAND, None),
+    }
+    if KEY_FLAG_BITMASK in feature_flags:
+        binning_args[KEY_FLAG_BITMASK] = feature_flags[KEY_FLAG_BITMASK]
 
     opensearch_client = jvm.org.openeo.opensearch.OpenSearchClient.apply(
         "https://catalogue.dataspace.copernicus.eu/resto", False, "", [], "",
@@ -152,7 +166,8 @@ def pyramid(metadata_properties, projected_polygons_native_crs, from_date, to_da
             tile_size=tile_size,
             resolution=native_cell_size.width(),
             reprojection_type=reprojection_type,
-            super_sampling=super_sampling,
+            binning_args=binning_args,
+
         )
     )
 
@@ -194,7 +209,7 @@ def _instant_ms_to_minute(instant: int) -> datetime:
 
 
 @ensure_executor_logging
-def read_product(product, product_type, band_names, tile_size, resolution, reprojection_type=DEFAULT_REPROJECTION_TYPE, super_sampling=DEFAULT_SUPER_SAMPLING):
+def read_product(product, product_type, band_names, tile_size, resolution, reprojection_type=DEFAULT_REPROJECTION_TYPE, binning_args=None):
     from openeogeotrellis.collections.s1backscatter_orfeo import get_total_extent
 
     creo_path, features = product  # better: "tiles"
@@ -260,7 +275,7 @@ def read_product(product, product_type, band_names, tile_size, resolution, repro
                     digital_numbers=digital_numbers,
                     final_grid_resolution=resolution,
                     reprojection_type=reprojection_type,
-                    super_sampling=super_sampling,
+                    binning_args=binning_args or {},
                 )
                 if orfeo_bands is None:
                     continue
@@ -307,7 +322,7 @@ def read_product(product, product_type, band_names, tile_size, resolution, repro
     return tiles
 
 
-def create_s3_toa(product_type, creo_path, band_names, bbox_tile, digital_numbers: bool, final_grid_resolution: float, reprojection_type=DEFAULT_REPROJECTION_TYPE, super_sampling=DEFAULT_SUPER_SAMPLING):
+def create_s3_toa(product_type, creo_path, band_names, bbox_tile, digital_numbers: bool, final_grid_resolution: float, reprojection_type=DEFAULT_REPROJECTION_TYPE, binning_args=None):
     if product_type == OLCI_PRODUCT_TYPE:
         geofile = 'geo_coordinates.nc'
         lat_band = 'latitude'
@@ -336,7 +351,7 @@ def create_s3_toa(product_type, creo_path, band_names, bbox_tile, digital_number
 
     geofile = os.path.join(creo_path, geofile)
 
-    flatten_lat_lon = reprojection_type != "binning"
+    flatten_lat_lon = reprojection_type != REPROJECTION_TYPE_BINNING
     bbox_original, source_coordinates, data_mask = _read_latlonfile(bbox_tile, geofile, lat_band, lon_band, flatten=flatten_lat_lon)
     if source_coordinates is None:
         return None
@@ -361,7 +376,12 @@ def create_s3_toa(product_type, creo_path, band_names, bbox_tile, digital_number
                                                   source_coordinates, tile_coordinates, data_mask,
                                                   angle_source_coordinates, tile_coordinates_with_rim, angle_data_mask,
                                                   digital_numbers)
-    elif reprojection_type == "binning":
+    elif reprojection_type == REPROJECTION_TYPE_BINNING:
+        _binning_args = binning_args or {}
+        super_sampling = _binning_args.get(KEY_SUPER_SAMPLING, DEFAULT_SUPER_SAMPLING)
+        flag_band = _binning_args.get(KEY_FLAG_BAND, None)
+        flag_bitmask = _binning_args.get(KEY_FLAG_BITMASK, DEFAULT_FLAG_BITMASK)
+
         reprojected_data = do_binning(
             product_type,
             final_grid_resolution,
@@ -375,6 +395,8 @@ def create_s3_toa(product_type, creo_path, band_names, bbox_tile, digital_number
             None,
             digital_numbers,
             super_sampling=super_sampling,
+            flag_band=flag_band,
+            flag_bitmask=flag_bitmask,
         )
     else:
         raise ValueError(f"reprojection_type must be either 'nearest_neighbor' or 'binning', found '{reprojection_type}'")
@@ -429,35 +451,62 @@ def do_binning(
         target_coordinates_with_rim,
         angle_data_mask,
         digital_numbers=True,
-        super_sampling=1, # TODO make a parameter!
+        super_sampling: int=DEFAULT_SUPER_SAMPLING,
+        flag_band: str=None,
+        flag_bitmask: np.uint16=DEFAULT_FLAG_BITMASK,
     ):
     """
     Assumes that we have a lat/lon grid
     Does not support angles
+
+    Parameters
+    ----------
+    super_sampling: int, default 1
+        Super sampling applied to the coordinate variables (linear super sampling) and band values (repeating).
+        When binning a values on a grid to finer or similarly scaled grid, not all output pixels may be assigned a value
+        if no super sampling is applied. This leads to missing values in the output. Super sampling interpolates the
+        input grid to fill these gaps. The larger the relative difference between pixel sizes, the higher the value
+        must be set to avoid missing values. Must be larger or equal to one.
+        (The default is 1, implying no super sampling)
+
+    flag_band: str, optional
+        If `flag_band` is a str, interpret this band as flags, to be compared with `flag_bitmask`.
+        Pixels in all bands except flag_band will be set to their fill value (NaN by default) if
+        the corresponding `flag_band` pixel has any bit in common with `flag_bitmask`, i.e.
+         `pixel_value & flag_bitmask > 0`
+        The band specified as `flag_band` will not be included in the output.
+        (The default is None, no band will be used for masking).
+
+    flag_bitmask: np.uint16, default 0xff
+        Bitmask to identify invalid pixels in `flag_band`. Pixels are considered invalid, if their `flag_band` value
+        has any bits set that are also set in `flag_bitmask`.
+        This means that a flag value of zero cannot be masked with this mechanism.
+        Ignored, if `flag_bands` is not set.
     """
-    logger.info(f"Binning {product_type}")
+    logger.info(f"Binning {product_type} with super sampling '{super_sampling}' flag band '{flag_band}' and flag bitmask '{flag_bitmask}'")
     if angle_source_coordinates is not None:
         raise NotImplementedError("Binning for angle coordinates is not supported.")
 
     data_vars = {}
-    # TODO check order
     dims = ("latitude", "longitude")
-    # TODO check handling of attrs
     attrs = {}
     coords = {
         "lon": (("y", "x"), source_coordinates[0, :]),
         "lat": (("y", "x"), source_coordinates[1, :]),
     }
+    band_names_parsed = []
 
     for band_name in band_names:
         logger.info(" Reprojecting %s" % band_name)
-        # TODO check for ":" in band_name
         base_name = band_name
         if ":" in band_name:
             base_name, band_name = band_name.split(":")
+
         in_file = creo_path /  (base_name + '.nc')
         if product_type == SYNERGY_PRODUCT_TYPE and not band_name.endswith("_flags"):
                 band_name = f"SDR_{band_name.split('_')[1]}"
+
+        band_names_parsed.append(band_name)
         band_data, band_settings = read_band(in_file, in_band=band_name, data_mask=data_mask)
 
         # We are rescaling before the binning in order to correctly handle fill values (not identifiable after binning)
@@ -468,6 +517,20 @@ def do_binning(
 
         data_vars[band_name] = (dims, band_data)
         attrs[band_name] = band_settings
+
+    if flag_band is not None:
+        logger.info(f"Interpreting band '{flag_band}' as flag, with bitmask '{flag_bitmask}'")
+        if flag_band not in band_names_parsed:
+            raise ValueError(f"Specified flag_band '{flag_band}', which was not found in specified bands '{band_names_parsed}'")
+        data_band_names = set(band_names_parsed) - {flag_band}
+
+        flags = data_vars[flag_band][1]
+        for band_name in data_band_names:
+            fill_value = np.nan
+            band_dims, band_data = data_vars[band_name]
+            band_dtype = attrs[band_name]["dtype"]
+            masked_band_data = xr.where(np.isnan(flags) | (flags.astype(band_dtype) & flag_bitmask) > 0, fill_value, band_data)
+            data_vars[band_name] = (band_dims, masked_band_data)
 
     ds_in = xr.Dataset(
         data_vars, coords, attrs
@@ -480,7 +543,6 @@ def do_binning(
     target_lon_edges = binning.compute_edges_from_pixel_centers(target_lon_centers, final_grid_resolution)
     target_lat_edges = binning.compute_edges_from_pixel_centers(target_lat_centers, final_grid_resolution)
     binned = binning.bin_to_grid(ds_in, bands=data_vars.keys(), lat_edges=target_lat_edges, lon_edges=target_lon_edges, super_sampling=super_sampling)
-
 
     # because lat was flipped, we need to the values it back
     binned_data_vars = np.array([np.flip(var, axis=0) for var in binned.data_vars.values()])

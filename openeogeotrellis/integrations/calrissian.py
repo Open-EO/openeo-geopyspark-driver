@@ -32,7 +32,7 @@ from openeogeotrellis.config.integrations.calrissian_config import (
     CalrissianConfig,
 )
 from openeogeotrellis.integrations.s3proxy import sts
-from openeogeotrellis.util.runtime import get_job_id, get_request_id
+from openeogeotrellis.util.runtime import get_job_id, get_request_id, ENV_VAR_OPENEO_BATCH_JOB_ID
 from openeogeotrellis.utils import s3_client
 
 try:
@@ -314,6 +314,10 @@ class CalrissianJobLauncher:
             else:
                 _log.warning(f"Failed to get s3 credentials: {detail}")
 
+        if ENV_VAR_OPENEO_BATCH_JOB_ID in os.environ:
+            env_vars[ENV_VAR_OPENEO_BATCH_JOB_ID] = os.environ[ENV_VAR_OPENEO_BATCH_JOB_ID]
+        if "OPENEO_USER_ID" in os.environ:
+            env_vars["OPENEO_USER_ID"] = os.environ["OPENEO_USER_ID"]
         launch_config = CalrissianLaunchConfigBuilder(
             config=config,
             correlation_id=correlation_id,
@@ -379,6 +383,7 @@ class CalrissianJobLauncher:
             metadata=kubernetes.client.V1ObjectMeta(
                 name=name,
                 namespace=self._namespace,
+                labels={"correlation_id": self._calrissian_launch_config.correlation_id},
             ),
             spec=kubernetes.client.V1JobSpec(
                 active_deadline_seconds=300,  # could be because target bucket does not exist
@@ -486,6 +491,7 @@ class CalrissianJobLauncher:
             metadata=kubernetes.client.V1ObjectMeta(
                 name=name,
                 namespace=self._namespace,
+                labels={"correlation_id": self._calrissian_launch_config.correlation_id},
             ),
             spec=kubernetes.client.V1JobSpec(
                 template=kubernetes.client.V1PodTemplateSpec(
@@ -515,7 +521,8 @@ class CalrissianJobLauncher:
         manifest: kubernetes.client.V1Job,
         *,
         sleep: float = 5,
-        timeout: float = 7200,  # insar_interferogram_coherence takes about 1 hour, so 2 hours should be enough
+        # 12h is also the max timeout for sts tokens. A bit shorter, so the process times out before the sts.
+        timeout: float = 60 * 60 * 12 - 120,
     ) -> kubernetes.client.V1Job:
         """
         Launch a k8s job and wait (with active polling) for it to finish.
@@ -579,49 +586,6 @@ class CalrissianJobLauncher:
         )
         volume_name = pvc.spec.volume_name
         return volume_name
-
-    @staticmethod
-    def validate_cwl_workflow(
-        cwl_source: CwLSource,
-        cwl_arguments: Union[List[str], dict],
-    ) -> None:
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".cwl", delete=False) as cwl_file:
-            cwl_file.write(cwl_source.get_content())
-            cwl_file_path = cwl_file.name
-
-        try:
-            needle = "Invalid job input record:"
-            if isinstance(cwl_arguments, dict):
-                with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as args_file:
-                    json.dump(cwl_arguments, args_file)
-                    args_file_path = args_file.name
-
-                try:
-                    output = subprocess.check_output(
-                        ["cwltool", "--disable-color", "--validate", cwl_file_path, args_file_path],
-                        text=True,
-                        stderr=subprocess.PIPE,
-                        cwd=str(Path(cwl_file_path).parent),
-                    )
-                    if needle in output:
-                        error_msg = output.split(needle, maxsplit=1)[1].strip()
-                        raise RuntimeError(f"CWL validation failed: {error_msg}")
-                finally:
-                    os.unlink(args_file_path)
-            else:
-                # cwl_arguments is a list of strings (file paths)
-                output = subprocess.check_output(
-                    ["python", "-m", "cwltool", "--disable-color", "--validate", cwl_file_path]
-                    + (cwl_arguments if cwl_arguments else []),
-                    text=True,
-                    stderr=subprocess.PIPE,
-                    cwd=str(Path(cwl_file_path).parent),
-                )
-                if needle in output:
-                    error_msg = output.split(needle, maxsplit=1)[1].strip()
-                    raise RuntimeError(f"CWL validation failed: {error_msg}")
-        finally:
-            os.unlink(cwl_file_path)
 
     def run_cwl_workflow(
         self,

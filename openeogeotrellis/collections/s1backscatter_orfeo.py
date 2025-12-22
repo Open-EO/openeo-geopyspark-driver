@@ -6,6 +6,7 @@ import multiprocessing
 import os
 import pathlib
 import re
+import shutil
 import signal
 import sys
 import tempfile
@@ -35,7 +36,7 @@ from openeogeotrellis.collections import convert_scala_metadata
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.util.runtime import in_batch_job_context
 from openeogeotrellis.utils import lonlat_to_mercator_tile_indices, nullcontext, get_jvm, \
-    ensure_executor_logging
+    ensure_executor_logging, download_s3_directory
 
 logger = logging.getLogger(__name__)
 _SOFT_ERROR_TRACKER_ID = "orfeo_backscatter_soft_errors"
@@ -907,6 +908,15 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
             if not creo_path.exists():
                 raise OpenEOApiException(f"sar_backscatter: path {creo_path} does not exist on the cluster.")
 
+            full_product_download = smart_bool(sar_backscatter_arguments.options.get("local_copy", False))
+
+            if full_product_download:
+                logger.debug(f"{log_prefix} Download full product {creo_path} to local temp dir for processing")
+                tempdir = tempfile.mkdtemp()
+                download_s3_directory("s3:/" + str(creo_path).replace("/vsis3/", "/"), tempdir)
+                creo_path = pathlib.Path(tempdir).joinpath(*creo_path.parts[3:])
+
+
             # Get whole extent of tile layout
             col_min = min(f["key"]["col"] for f in features)
             col_max = max(f["key"]["col"] for f in features)
@@ -1049,6 +1059,8 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
                                         tile = geopyspark.Tile(tile, cell_type, no_data_value=nodata)
                                         tiles.append((key, tile))
 
+            if full_product_download:
+                shutil.rmtree(creo_path)
             logger.info(f"{log_prefix} Layout extent split in {len(tiles)} tiles")
             return tiles
 

@@ -66,7 +66,7 @@ from openeogeotrellis.backend import JOB_METADATA_FILENAME
 from openeogeotrellis.config.config import EtlApiConfig
 from openeogeotrellis.integrations.gdal import read_gdal_info
 from openeogeotrellis.job_registry import ZkJobRegistry
-from openeogeotrellis.testing import KazooClientMock, gps_config_overrides, random_name
+from openeogeotrellis.testing import KazooClientMock, gps_config_overrides, random_name, rasterio_metadata_dump
 from openeogeotrellis.util.runtime import is_package_available
 from openeogeotrellis.utils import (
     drop_empty_from_aggregate_polygon_result,
@@ -3461,12 +3461,12 @@ class TestLoadStac:
 
         api110.result(process_graph).assert_status_code(200)
 
-    def test_stac_api_no_spatial_extent_specified(self, api110):
+    def test_stac_api_no_spatial_extent_specified(self, api110, dummy_stac_api_server, dummy_stac_api):
         process_graph = {
             "loadstac1": {
                 "process_id": "load_stac",
                 "arguments": {
-                    "url": "https://somestacapi/collections/BVL_v1",
+                    "url": f"{dummy_stac_api}/collections/collection-123",
                 }
             },
             "saveresult1": {
@@ -3476,13 +3476,13 @@ class TestLoadStac:
             }
         }
 
-        with mock.patch("pystac.read_file", return_value=self._mock_stac_api_collection()), mock.patch(
-                "pystac_client.Client.open") as mock_pystac_client_open:
-            api110.result(process_graph).assert_error(400, error_code="NoDataAvailable")
-
-        mock_stac_client = mock_pystac_client_open.return_value
-        mock_stac_client.search.assert_called_once()
-
+        res = api110.result(process_graph).assert_http_status_code(200)
+        assert rasterio_metadata_dump(res) == {
+            "epsg": 4326,
+            "bounds": (2.0, 49.0, 7.0, 52.0),
+            "shape": (3 * 32, 5 * 32),
+        }
+        assert dummy_stac_api_server.history_has(method="GET", path="/search")
 
     def test_stac_api_caching(self, imagecollection_with_two_bands_and_one_date, api110, tmp_path):
         with mock.patch("openeogeotrellis.load_stac.load_stac") as mock_load_stac:

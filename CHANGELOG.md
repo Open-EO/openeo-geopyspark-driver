@@ -24,6 +24,12 @@ without compromising stable operations.
 - `load_stac`: added `cellsize` feature flag. It will be used as fallback when no pixel size can be derived from the source assets.
 - `load_stac`: the `cellsize` feature flag is automatically taken from the layercatalog when available, if not set explicitly in the process graph.
 - Initial implementation of new "post-dry-run" hook to improve "global extent and alignment" computation for `load_collection` ([#1299](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1299))
+- Remove `udf_python_dependencies_folder_path` from `PYTHONPATH` in batch jobs (k8s context) (eu-cdse/openeo-cdse-infra#842)
+- Check UDF code for managed UDF dependencies before doing (possibly) more expensive IO/S3 operations (eu-cdse/openeo-cdse-infra#842)
+- post-dry-run: initial support for global extent alignment with `load_stac` ([#1299](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1299), [openeo-python-driver#406](https://github.com/Open-EO/openeo-python-driver/issues/406))
+- `load_stac`: added `asset_id_to_bands_map` feature flag in order to support collections that do not contain band name information (e.g. COPERNICUS_30 on CDSE).
+- Start using "global_extent" calculated from post-dry-run phase when possible ([#1299](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1299), [openeo-python-driver#406](https://github.com/Open-EO/openeo-python-driver/issues/406))
+- Handle "global_extent" calculation from STAC based `load_collection` through `load_stac` logic ([#1299](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1299), [openeo-python-driver#406](https://github.com/Open-EO/openeo-python-driver/issues/406))
 
 
 ## 0.69.0
