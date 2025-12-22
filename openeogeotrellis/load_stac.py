@@ -52,6 +52,10 @@ from openeogeotrellis.constants import EVAL_ENV_KEY
 from openeogeotrellis.geopysparkcubemetadata import GeopysparkCubeMetadata
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.integrations.stac import ResilientStacIO
+from openeogeotrellis.stac.fixed_features_open_search_client import (
+    FixedFeaturesOpenSearchClient,
+    JvmFixedFeaturesOpenSearchClient,
+)
 from openeogeotrellis.util.datetime import DateTimeLikeOrNone, to_datetime_utc_unless_none
 from openeogeotrellis.util.geometry import GridSnapper
 from openeogeotrellis.utils import get_jvm, map_optional, normalize_temporal_extent, to_projected_polygons, unzip
@@ -207,188 +211,214 @@ FlatProcessGraph = Dict[str, dict]
 PropertyFilterPGMap = Dict[str, FlatProcessGraph]
 
 
-def load_stac(
-    url: str,
+@dataclass
+class FeatureBuildResult:
+    """Result of building features from STAC item collection (JVM-free, testable)."""
+    collection_band_names: List[str]
+    band_cell_size: Dict[str, Tuple[float, float]]
+    band_epsgs: Dict[str, Set[int]]
+    stac_bbox: Optional[BoundingBox]
+    # Last seen values from iteration (ill-defined, TODO: improve)
+    asset_band_names: Optional[List[str]]
+    proj_epsg: Optional[int]
+    proj_bbox: Optional[Tuple[float, float, float, float]]
+    proj_shape: Optional[Tuple[int, int]]
+
+
+@dataclass
+class TargetProjection:
+    """Target projection parameters."""
+    target_epsg: int
+    cell_width: float
+    cell_height: float
+    target_bbox: BoundingBox
+
+
+def build_opensearch_features(
+    item_collection: ItemCollection,
+    opensearch_client: FixedFeaturesOpenSearchClient,
     *,
     load_params: StacLoadParameters,
-    env: StacEvalEnv,
-    batch_jobs: Optional[openeo_driver.backend.BatchJobs] = None,
-    override_band_names: Optional[List[str]] = None,
-    stac_io: Optional[pystac.stac_io.StacIO] = None,
-) -> GeopysparkDataCube:
-    if override_band_names is None:
-        override_band_names = []
+    collection_band_names: List[str],
+) -> FeatureBuildResult:
+    """
+    Populate opensearch client with features from STAC items.
+
+    Args:
+        item_collection: Collection of STAC items to process
+        opensearch_client: Client to populate (can be in-memory or JVM-backed)
+        load_params: Load parameters for filtering
+        collection_band_names: List of collection band names (modified in-place)
+
+    Returns:
+        FeatureBuildResult with metadata collected during feature building
+    """
     feature_flags = load_params.featureflags
 
-    logger.info(f"load_stac with {url=} {load_params=} {feature_flags=}")
 
-    property_filter_pg_map = load_params.properties or {}
+    # TODO: code smell: (most of) these vars should not be initialized with None here
+    # asset_band_names = the full list of band names contained by the asset
+    # in the same order as defined in the asset (e.g. NetCDF file) itself.
+    # Note that this list is not yet filtered by the requested bands, as the asset loader needs to know
+    # which band index in the file to read.
+    asset_band_names = None
+    stac_bbox = None
+    proj_epsg = None
+    proj_bbox = None
+    proj_shape = None
 
-    allow_empty_cubes: bool = feature_flags.allow_empty_cube or env.allow_empty_cubes
-    user: Optional[User] = env.user
+    stac_metadata_parser = _StacMetadataParser(logger=logger)
 
-    requested_bbox = BoundingBox.from_dict_or_none(load_params.spatial_extent, default_crs="EPSG:4326")
-    temporal_extent = load_params.temporal_extent
-    #TODO normalize_temporal_extent replaces 'None' with "2000-01-01", which is not a good fallback date.
-    from_date, until_date = map(dt.datetime.fromisoformat, normalize_temporal_extent(temporal_extent))
-    to_date = (
-        dt.datetime.combine(until_date, dt.time.max, until_date.tzinfo)
-        if from_date == until_date
-        else until_date - dt.timedelta(milliseconds=1)
-    )
-    spatiotemporal_extent = _spatiotemporal_extent_from_load_params(load_params)
+    # The minimum cell size per band name across all assets
+    band_cell_size: Dict[str, Tuple[float, float]] = {}
+    band_epsgs: Dict[str, Set[int]] = {}
 
-    try:
-        item_collection, metadata, collection_band_names, netcdf_with_time_dimension = construct_item_collection(
-            url=url,
-            spatiotemporal_extent=spatiotemporal_extent,
-            property_filter_pg_map=property_filter_pg_map,
-            batch_jobs=batch_jobs,
-            env=env,
-            feature_flags=feature_flags,
-            stac_io=stac_io,
-            user=user,
+    for itm, band_assets in item_collection.iter_items_with_band_assets():
+        builder = (
+            opensearch_client.feature_builder()
+            .withId(itm.id)
+            .withNominalDate(itm.properties.get("datetime") or itm.properties["start_datetime"])
         )
 
-        items_found = len(item_collection.items) > 0
-        if not allow_empty_cubes and not items_found:
-            raise NoDataAvailableException()
-
-        jvm = get_jvm()
-
-        opensearch_client = jvm.org.openeo.geotrellis.file.FixedFeaturesOpenSearchClient()
-
-        # TODO: code smell: (most of) these vars should not be initialized with None here
-        # asset_band_names = the full list of band names contained by the asset
-        # in the same order as defined in the asset (e.g. NetCDF file) itself.
-        # Note that this list is not yet filtered by the requested bands, as the asset loader needs to know
-        # which band index in the file to read.
-        asset_band_names = None
-        stac_bbox = None
-        proj_epsg = None
-        proj_bbox = None
-        proj_shape = None
-
-        stac_metadata_parser = _StacMetadataParser(logger=logger)
-
-        # The minimum cell size per band name across all assets
-        band_cell_size: Dict[str, Tuple[float, float]] = {}
-        band_epsgs: Dict[str, Set[int]] = {}
-
-
-        for itm, band_assets in item_collection.iter_items_with_band_assets():
-
-            builder = (
-                jvm.org.openeo.opensearch.OpenSearchResponses.featureBuilder()
-                .withId(itm.id)
-                .withNominalDate(itm.properties.get("datetime") or itm.properties["start_datetime"])
-            )
-
-            band_names_tracker = NoveltyTracker()
-            for asset_id, asset in sorted(
+        band_names_tracker = NoveltyTracker()
+        for asset_id, asset in sorted(
                 # Go through assets ordered by asset GSD (from finer to coarser) if possible,
                 # falling back on deterministic alphabetical asset_id order.
                 # see https://github.com/Open-EO/openeo-geopyspark-driver/pull/1213#discussion_r2107353442
                 # TODO: move this sorting feature inside iter_items_with_band_assets
-                band_assets.items(),
-                key=lambda kv: (
-                    float(kv[1].extra_fields.get("gsd") or itm.properties.get("gsd") or 40e6),
-                    kv[0],
-                ),
-            ):
-                proj_epsg, proj_bbox, proj_shape = _get_proj_metadata(asset=asset, item=itm)
+            band_assets.items(),
+            key=lambda kv: (
+                float(kv[1].extra_fields.get("gsd") or itm.properties.get("gsd") or 40e6),
+                kv[0],
+            ),
+        ):
+            proj_epsg, proj_bbox, proj_shape = _get_proj_metadata(asset=asset, item=itm)
 
-                asset_band_names_from_metadata: List[str] = stac_metadata_parser.bands_from_stac_asset(asset=asset).band_names()
-                if not asset_band_names_from_metadata:
-                    asset_band_names_from_metadata = feature_flags.get("asset_id_to_bands_map", {}).get(asset_id, [])
-                    logger.debug(f"using `asset_id_to_bands_map`: mapping {asset_id} to {asset_band_names_from_metadata}")
-                logger.debug(f"from intersecting_items: {itm.id=} {asset_id=} {asset_band_names_from_metadata=}")
+            asset_band_names_from_metadata: List[str] = stac_metadata_parser.bands_from_stac_asset(asset=asset).band_names()
+            if not asset_band_names_from_metadata:
+                asset_band_names_from_metadata = feature_flags.get("asset_id_to_bands_map", {}).get(asset_id, [])
+                logger.debug(f"using `asset_id_to_bands_map`: mapping {asset_id} to {asset_band_names_from_metadata}")
+            logger.debug(f"from intersecting_items: {itm.id=} {asset_id=} {asset_band_names_from_metadata=}")
 
-                if not load_params.bands:
-                    # No user-specified band filtering: follow band names from metadata (if possible)
-                    asset_band_names = asset_band_names_from_metadata or [asset_id]
-                elif isinstance(load_params.bands, list) and asset_id in load_params.bands:
-                    # User-specified asset_id as band name: use that directly
-                    if asset_id not in collection_band_names:
-                        logger.warning(f"Using asset key {asset_id!r} as band name.")
-                    asset_band_names = [asset_id]
-                elif set(asset_band_names_from_metadata).intersection(load_params.bands or []):
-                    # User-specified bands match with band names in metadata
-                    asset_band_names = asset_band_names_from_metadata
-                else:
-                    # No match with load_params.bands in some way -> skip this asset
-                    continue
+            if not load_params.bands:
+                asset_band_names = asset_band_names_from_metadata or [asset_id]
+            elif isinstance(load_params.bands, list) and asset_id in load_params.bands:
+                # No user-specified band filtering: follow band names from metadata (if possible)
+                if asset_id not in collection_band_names:
+                    logger.warning(f"Using asset key {asset_id!r} as band name.")
+                asset_band_names = [asset_id]
+            elif set(asset_band_names_from_metadata).intersection(load_params.bands or []):
+                # User-specified bands match with band names in metadata
+                asset_band_names = asset_band_names_from_metadata
+            else:
+                # No match with load_params.bands in some way -> skip this asset
+                continue
 
-                if band_names_tracker.already_seen(sorted(asset_band_names)):
-                    # We've already seen this set of bands (e.g. at finer GSD), so skip this asset.
-                    continue
+            if band_names_tracker.already_seen(sorted(asset_band_names)):
+                # We've already seen this set of bands (e.g. at finer GSD), so skip this asset.
+                continue
 
-                for asset_band_name in asset_band_names:
-                    if asset_band_name not in collection_band_names:
-                        collection_band_names.append(asset_band_name)
+            for asset_band_name in asset_band_names:
+                if asset_band_name not in collection_band_names:
+                    collection_band_names.append(asset_band_name)
 
-                    if proj_bbox and proj_shape:
-                        asset_cell_size = _compute_cellsize(proj_bbox, proj_shape)
-                        band_cell_width, band_cell_height = band_cell_size.get(asset_band_name, (float("inf"), float("inf")))
-                        band_cell_size[asset_band_name] = (
-                            min(band_cell_width, asset_cell_size[0]),
-                            min(band_cell_height, asset_cell_size[1]),
-                        )
-                    if proj_epsg:
-                        # TODO: risk on overwriting/conflict
-                        band_epsgs.setdefault(asset_band_name, set()).add(proj_epsg)
+                if proj_bbox and proj_shape:
+                    asset_cell_size = _compute_cellsize(proj_bbox, proj_shape)
+                    band_cell_width, band_cell_height = band_cell_size.get(asset_band_name, (float("inf"), float("inf")))
+                    band_cell_size[asset_band_name] = (
+                        min(band_cell_width, asset_cell_size[0]),
+                        min(band_cell_height, asset_cell_size[1]),
+                    )
+                if proj_epsg:
+                    # TODO: risk on overwriting/conflict
+                    band_epsgs.setdefault(asset_band_name, set()).add(proj_epsg)
 
-                pixel_value_offset = _get_pixel_value_offset(item=itm, asset=asset)
-                logger.debug(
-                    f"FeatureBuilder.addlink {itm.id=} {asset_id=} {asset_band_names_from_metadata=} {asset_band_names=}"
-                )
-                builder = builder.addLink(get_best_url(asset), asset_id, pixel_value_offset, asset_band_names)
-
-            # TODO: the proj_* values are assigned in inner per-asset loop,
-            #       so the values here are ill-defined (the values might even come from another item)
-            if proj_epsg:
-                builder = builder.withCRS(f"EPSG:{proj_epsg}")
-            if proj_bbox:
-                builder = builder.withRasterExtent(*(float(b) for b in proj_bbox))
-
-            if proj_bbox and proj_shape:
-                cell_width, cell_height = _compute_cellsize(proj_bbox, proj_shape)
-                builder = builder.withResolution(cell_width)
-
-            latlon_bbox = BoundingBox.from_wsen_tuple(itm.bbox, 4326) if itm.bbox else None
-            item_bbox = latlon_bbox
-            if proj_bbox is not None and proj_epsg is not None:
-                item_bbox = BoundingBox.from_wsen_tuple(proj_bbox, crs=proj_epsg)
-                latlon_bbox = item_bbox.reproject(4326)
-
-            if latlon_bbox is not None:
-                builder = builder.withBBox(*map(float, latlon_bbox.as_wsen_tuple()))
-
-            if itm.geometry is not None:
-                builder = builder.withGeometryFromWkt(str(shapely.geometry.shape(itm.geometry)))
-
-            self_links = itm.get_links(rel="self")
-            self_url = self_links[0].href if self_links else None
-
-            if self_url:
-                builder = builder.withSelfUrl(self_url)
-
-            opensearch_client.addFeature(builder.build())
-
-            stac_bbox = (
-                item_bbox
-                if stac_bbox is None
-                else BoundingBox.from_wsen_tuple(
-                    item_bbox.as_polygon().union(stac_bbox.as_polygon()).bounds, stac_bbox.crs
-                )
+            pixel_value_offset = _get_pixel_value_offset(item=itm, asset=asset)
+            logger.debug(
+                f"FeatureBuilder.addlink {itm.id=} {asset_id=} {asset_band_names_from_metadata=} {asset_band_names=}"
             )
+            builder = builder.addLink(get_best_url(asset), asset_id, pixel_value_offset, asset_band_names)
 
-    except OpenEOApiException:
-        raise
-    except Exception as e:
-        raise LoadStacException(url=url, info=repr(e)) from e
+        # TODO: the proj_* values are assigned in inner per-asset loop,
+        #       so the values here are ill-defined (the values might even come from another item)
+        if proj_epsg:
+            builder = builder.withCRS(f"EPSG:{proj_epsg}")
+        if proj_bbox:
+            builder = builder.withRasterExtent(*(float(b) for b in proj_bbox))
+
+        if proj_bbox and proj_shape:
+            cell_width, cell_height = _compute_cellsize(proj_bbox, proj_shape)
+            builder = builder.withResolution(cell_width)
+
+        latlon_bbox = BoundingBox.from_wsen_tuple(itm.bbox, 4326) if itm.bbox else None
+        item_bbox = latlon_bbox
+        if proj_bbox is not None and proj_epsg is not None:
+            item_bbox = BoundingBox.from_wsen_tuple(proj_bbox, crs=proj_epsg)
+            latlon_bbox = item_bbox.reproject(4326)
+
+        if latlon_bbox is not None:
+            builder = builder.withBBox(*map(float, latlon_bbox.as_wsen_tuple()))
+
+        if itm.geometry is not None:
+            builder = builder.withGeometryFromWkt(str(shapely.geometry.shape(itm.geometry)))
+
+        self_links = itm.get_links(rel="self")
+        self_url = self_links[0].href if self_links else None
+
+        if self_url:
+            builder = builder.withSelfUrl(self_url)
+
+        opensearch_client.add_feature(builder.build())
+
+        stac_bbox = (
+            item_bbox
+            if stac_bbox is None
+            else BoundingBox.from_wsen_tuple(
+                item_bbox.as_polygon().union(stac_bbox.as_polygon()).bounds, stac_bbox.crs
+            )
+        )
+
+    return FeatureBuildResult(
+        collection_band_names=collection_band_names,
+        band_cell_size=band_cell_size,
+        band_epsgs=band_epsgs,
+        stac_bbox=stac_bbox,
+        asset_band_names=asset_band_names,
+        proj_epsg=proj_epsg,
+        proj_bbox=proj_bbox,
+        proj_shape=proj_shape,
+    )
 
 
+def calculate_target_projection(
+    *,
+    requested_bbox: Optional[BoundingBox],
+    stac_bbox: Optional[BoundingBox],
+    band_epsgs: Dict[str, Set[int]],
+    band_cell_size: Dict[str, Tuple[float, float]],
+    requested_band_names: List[str],
+    load_params: StacLoadParameters,
+    feature_flags: StacFeatureFlags,
+    proj_epsg: Optional[int],
+    url: str,
+) -> TargetProjection:
+    """
+    Calculate target projection parameters (pure Python, no JVM).
+
+    Args:
+        requested_bbox: User-requested bounding box (if any)
+        stac_bbox: Bounding box derived from STAC items
+        band_epsgs: EPSG codes per band
+        band_cell_size: Cell sizes per band
+        requested_band_names: List of requested band names
+        load_params: Load parameters
+        feature_flags: Feature flags
+        proj_epsg: Last seen projection EPSG (ill-defined)
+        url: STAC URL (for error messages)
+
+    Returns:
+        TargetProjection with calculated parameters
+    """
     target_bbox = requested_bbox or stac_bbox
 
     if not target_bbox:
@@ -398,34 +428,6 @@ def load_stac(
             reason=f"Unable to derive a spatial extent from provided STAC metadata: {url}, "
             f"please provide a spatial extent.",
         )
-
-    if "x" not in metadata.dimension_names():
-        metadata = metadata.add_spatial_dimension(name="x", extent=[])
-    if "y" not in metadata.dimension_names():
-        metadata = metadata.add_spatial_dimension(name="y", extent=[])
-
-    item_collection_temporal_extent = item_collection.get_temporal_extent()
-    metadata = metadata.with_temporal_extent(
-        temporal_extent=(
-            map_optional(dt.datetime.isoformat, item_collection_temporal_extent[0]) or temporal_extent[0],
-            map_optional(dt.datetime.isoformat, item_collection_temporal_extent[1]) or temporal_extent[1],
-        ),
-        allow_adding_dimension=True,
-    )
-    # Overwrite band_names because new bands could be detected in stac items:
-    metadata = metadata.with_new_band_names(override_band_names or collection_band_names)
-
-    if allow_empty_cubes and not metadata.band_names:
-        # no knowledge of bands except for what the user requested
-        if load_params.bands:
-            metadata = metadata.with_new_band_names(load_params.bands)
-        else:
-            raise ProcessParameterRequiredException(process="load_stac", parameter="bands")
-
-    if load_params.bands:
-        metadata = metadata.filter_bands(load_params.bands)
-
-    requested_band_names = metadata.band_names
 
     requested_band_epsgs = [epsgs for band_name, epsgs in band_epsgs.items() if band_name in requested_band_names]
     unique_epsgs = {epsg for epsgs in requested_band_epsgs for epsg in epsgs}
@@ -477,22 +479,47 @@ def load_stac(
             else:
                 target_epsg = pyproj.CRS.from_user_input(load_params.target_crs).to_epsg()
 
-    if netcdf_with_time_dimension:
-        # TODO: avoid `asset_band_names` as it is an ill-defined here (outside its original for-loop scoped life cycle)
-        if asset_band_names:  # When no products are found, asset_band_names is None
-            sorted_bands_from_catalog = sorted(asset_band_names)
-            if requested_band_names != sorted_bands_from_catalog:
-                # TODO: Pass band_names to NetCDFCollection, just like PyramidFactory.
-                logger.warning(
-                    f"load_stac: Band order should be alphabetical for NetCDF STAC-catalog with a time dimension. "
-                    f"Was {requested_band_names}, but should be {sorted_bands_from_catalog} instead.",
-                )
-        pyramid_factory = jvm.org.openeo.geotrellis.layers.NetCDFCollection
-    else:
-        max_soft_errors_ratio = env.get(EVAL_ENV_KEY.MAX_SOFT_ERRORS_RATIO, 0.0)
+    return TargetProjection(
+        target_epsg=target_epsg,
+        cell_width=cell_width,
+        cell_height=cell_height,
+        target_bbox=target_bbox,
+    )
 
-        pyramid_factory = jvm.org.openeo.geotrellis.file.PyramidFactory(
-            opensearch_client,
+
+def create_pyramid_factory(
+    *,
+    jvm,
+    opensearch_client: JvmFixedFeaturesOpenSearchClient,
+    url: str,
+    requested_band_names: List[str],
+    cell_width: float,
+    cell_height: float,
+    max_soft_errors_ratio: float,
+    netcdf_with_time_dimension: bool,
+):
+    """
+    Create PyramidFactory (requires JVM).
+
+    Args:
+        jvm: JVM instance
+        opensearch_client: JVM-backed opensearch client
+        url: STAC URL
+        requested_band_names: List of requested band names
+        cell_width: Cell width in target CRS
+        cell_height: Cell height in target CRS
+        max_soft_errors_ratio: Maximum allowed soft errors ratio
+        netcdf_with_time_dimension: Whether using NetCDF with time dimension
+
+    Returns:
+        PyramidFactory JVM object
+    """
+    if netcdf_with_time_dimension:
+        return jvm.org.openeo.geotrellis.layers.NetCDFCollection
+    else:
+        jvm_opensearch_client = opensearch_client.get_jvm_client()
+        return jvm.org.openeo.geotrellis.file.PyramidFactory(
+            jvm_opensearch_client,
             url,  # openSearchCollectionId, not important
             requested_band_names,  # openSearchLinkTitles
             None,  # rootPath, not important
@@ -500,6 +527,51 @@ def load_stac(
             False,  # experimental
             max_soft_errors_ratio,
         )
+
+
+def create_datacube_from_pyramid(
+    *,
+    jvm,
+    pyramid_factory,
+    opensearch_client: JvmFixedFeaturesOpenSearchClient,
+    target_projection: TargetProjection,
+    load_params: StacLoadParameters,
+    env: StacEvalEnv,
+    from_date: dt.datetime,
+    to_date: dt.datetime,
+    items_found: bool,
+    allow_empty_cubes: bool,
+    netcdf_with_time_dimension: bool,
+    requested_bbox: Optional[BoundingBox],
+    feature_flags: StacFeatureFlags,
+    metadata: GeopysparkCubeMetadata,
+    spatiotemporal_extent: _SpatioTemporalExtent,
+) -> GeopysparkDataCube:
+    """
+    Create GeopysparkDataCube from pyramid factory (requires JVM).
+
+    Args:
+        jvm: JVM instance
+        pyramid_factory: JVM pyramid factory
+        opensearch_client: JVM-backed opensearch client
+        target_projection: Target projection parameters
+        load_params: Load parameters
+        env: Evaluation environment
+        from_date: Start date
+        to_date: End date
+        items_found: Whether items were found
+        allow_empty_cubes: Whether to allow empty cubes
+        netcdf_with_time_dimension: Whether using NetCDF with time dimension
+        requested_bbox: User-requested bounding box
+        feature_flags: Feature flags
+        metadata: Cube metadata
+        spatiotemporal_extent: Spatiotemporal extent
+
+    Returns:
+        GeopysparkDataCube
+    """
+    target_bbox = target_projection.target_bbox
+    target_epsg = target_projection.target_epsg
 
     extent = jvm.geotrellis.vector.Extent(*map(float, target_bbox.as_wsen_tuple()))
     extent_crs = target_bbox.crs
@@ -529,6 +601,7 @@ def load_stac(
 
     try:
         if netcdf_with_time_dimension:
+            jvm_opensearch_client = opensearch_client.get_jvm_client()
             pyramid = pyramid_factory.datacube_seq(
                 projected_polygons,
                 from_date.isoformat(),
@@ -536,7 +609,7 @@ def load_stac(
                 metadata_properties,
                 correlation_id,
                 data_cube_parameters,
-                opensearch_client,
+                jvm_opensearch_client,
             )
         elif single_level:
             if not items_found and allow_empty_cubes:
@@ -573,7 +646,7 @@ def load_stac(
                 )
     except Exception as e:
         raise OpenEOApiException(
-            message=f"load_stac: Error when constructing datacube from {url}: {e}",
+            message=f"load_stac: Error when constructing datacube from pyramid: {e}",
             status_code=500,
         ) from e
 
@@ -593,7 +666,6 @@ def load_stac(
     temporal_tiled_raster_layer = jvm.geopyspark.geotrellis.TemporalTiledRasterLayer
     option = jvm.scala.Option
 
-    # noinspection PyProtectedMember
     levels = {
         pyramid.apply(index)._1(): TiledRasterLayer(
             LayerType.SPACETIME,
@@ -603,6 +675,174 @@ def load_stac(
     }
 
     return GeopysparkDataCube(pyramid=gps.Pyramid(levels), metadata=metadata)
+
+
+def load_stac(
+    url: str,
+    *,
+    load_params: StacLoadParameters,
+    env: StacEvalEnv,
+    batch_jobs: Optional[openeo_driver.backend.BatchJobs] = None,
+    override_band_names: Optional[List[str]] = None,
+    stac_io: Optional[pystac.stac_io.StacIO] = None,
+    opensearch_client: Optional[FixedFeaturesOpenSearchClient] = None,
+) -> GeopysparkDataCube:
+    """
+    Load a STAC collection/catalog/item as a GeopysparkDataCube.
+
+    This function orchestrates the loading process by:
+    1. Constructing item collection from STAC metadata
+    2. Building features in opensearch client
+    3. Calculating target projection
+    4. Creating pyramid factory (requires JVM)
+    5. Creating datacube from pyramid (requires JVM)
+    """
+    if override_band_names is None:
+        override_band_names = []
+    feature_flags = load_params.featureflags
+
+    logger.info(f"load_stac with {url=} {load_params=} {feature_flags=}")
+
+    property_filter_pg_map = load_params.properties or {}
+    allow_empty_cubes: bool = feature_flags.allow_empty_cube or env.allow_empty_cubes
+    user: Optional[User] = env.user
+
+    requested_bbox = BoundingBox.from_dict_or_none(load_params.spatial_extent, default_crs="EPSG:4326")
+    temporal_extent = load_params.temporal_extent
+    # TODO normalize_temporal_extent replaces 'None' with "2000-01-01", which is not a good fallback date.
+    # TODO: Unify (from_date, to_date) and spatiotemporal_extent
+    from_date, until_date = map(dt.datetime.fromisoformat, normalize_temporal_extent(temporal_extent))
+    to_date = (
+        dt.datetime.combine(until_date, dt.time.max, until_date.tzinfo)
+        if from_date == until_date
+        else until_date - dt.timedelta(milliseconds=1)
+    )
+    spatiotemporal_extent = _spatiotemporal_extent_from_load_params(load_params)
+
+    try:
+        # Step 1: Construct item collection from STAC metadata.
+        item_collection, metadata, collection_band_names, netcdf_with_time_dimension = construct_item_collection(
+            url=url,
+            spatiotemporal_extent=spatiotemporal_extent,
+            property_filter_pg_map=property_filter_pg_map,
+            batch_jobs=batch_jobs,
+            env=env,
+            feature_flags=feature_flags,
+            stac_io=stac_io,
+            user=user,
+        )
+
+        items_found = len(item_collection.items) > 0
+        if not allow_empty_cubes and not items_found:
+            raise NoDataAvailableException()
+
+        # Step 2: Create opensearch client and build features (testable with InMemory)
+        if opensearch_client is None:
+            jvm = get_jvm()
+            opensearch_client = JvmFixedFeaturesOpenSearchClient(jvm)
+        feature_build_result: FeatureBuildResult = build_opensearch_features(
+            item_collection=item_collection,
+            opensearch_client=opensearch_client,
+            load_params=load_params,
+            collection_band_names=collection_band_names,
+        )
+
+    except OpenEOApiException:
+        raise
+    except Exception as e:
+        raise LoadStacException(url=url, info=repr(e)) from e
+
+    # Step 3: Prepare metadata
+    if "x" not in metadata.dimension_names():
+        metadata = metadata.add_spatial_dimension(name="x", extent=[])
+    if "y" not in metadata.dimension_names():
+        metadata = metadata.add_spatial_dimension(name="y", extent=[])
+
+    item_collection_temporal_extent = item_collection.get_temporal_extent()
+    metadata = metadata.with_temporal_extent(
+        temporal_extent=(
+            map_optional(dt.datetime.isoformat, item_collection_temporal_extent[0]) or temporal_extent[0],
+            map_optional(dt.datetime.isoformat, item_collection_temporal_extent[1]) or temporal_extent[1],
+        ),
+        allow_adding_dimension=True,
+    )
+    # Overwrite band_names because new bands could be detected in stac items:
+    metadata = metadata.with_new_band_names(override_band_names or feature_build_result.collection_band_names)
+
+    if allow_empty_cubes and not metadata.band_names:
+        # no knowledge of bands except for what the user requested
+        if load_params.bands:
+            metadata = metadata.with_new_band_names(load_params.bands)
+        else:
+            raise ProcessParameterRequiredException(process="load_stac", parameter="bands")
+
+    if load_params.bands:
+        metadata = metadata.filter_bands(load_params.bands)
+
+    requested_band_names = metadata.band_names
+
+    # Step 4: Calculate target projection
+    target_projection: TargetProjection = calculate_target_projection(
+        requested_bbox=requested_bbox,
+        stac_bbox=feature_build_result.stac_bbox,
+        band_epsgs=feature_build_result.band_epsgs,
+        band_cell_size=feature_build_result.band_cell_size,
+        requested_band_names=requested_band_names,
+        load_params=load_params,
+        feature_flags=feature_flags,
+        proj_epsg=feature_build_result.proj_epsg,
+        url=url,
+    )
+
+    # NetCDF band order validation
+    if netcdf_with_time_dimension and feature_build_result.asset_band_names:
+        # When no products are found, asset_band_names is None
+        # TODO: avoid `asset_band_names` as it is an ill-defined here (outside its original for-loop scoped life cycle)
+        sorted_bands_from_catalog = sorted(feature_build_result.asset_band_names)
+        if requested_band_names != sorted_bands_from_catalog:
+            # TODO: Pass band_names to NetCDFCollection, just like PyramidFactory.
+            logger.warning(
+                f"load_stac: Band order should be alphabetical for NetCDF STAC-catalog with a time dimension. "
+                f"Was {requested_band_names}, but should be {sorted_bands_from_catalog} instead.",
+            )
+
+    # Step 5: Create pyramid factory (requires JVM)
+    if not isinstance(opensearch_client, JvmFixedFeaturesOpenSearchClient):
+        raise TypeError(
+            f"PyramidFactory creation requires JvmFixedFeaturesOpenSearchClient, got {type(opensearch_client)}"
+        )
+
+    jvm = get_jvm()
+    max_soft_errors_ratio = env.get(EVAL_ENV_KEY.MAX_SOFT_ERRORS_RATIO, 0.0)
+    pyramid_factory = create_pyramid_factory(
+        jvm=jvm,
+        opensearch_client=opensearch_client,
+        url=url,
+        requested_band_names=requested_band_names,
+        cell_width=target_projection.cell_width,
+        cell_height=target_projection.cell_height,
+        max_soft_errors_ratio=max_soft_errors_ratio,
+        netcdf_with_time_dimension=netcdf_with_time_dimension,
+    )
+
+    # Step 6: Create datacube from pyramid (requires JVM)
+    return create_datacube_from_pyramid(
+        jvm=jvm,
+        pyramid_factory=pyramid_factory,
+        opensearch_client=opensearch_client,
+        target_projection=target_projection,
+        load_params=load_params,
+        env=env,
+        from_date=from_date,
+        to_date=to_date,
+        items_found=items_found,
+        allow_empty_cubes=allow_empty_cubes,
+        netcdf_with_time_dimension=netcdf_with_time_dimension,
+        requested_bbox=requested_bbox,
+        feature_flags=feature_flags,
+        metadata=metadata,
+        spatiotemporal_extent=spatiotemporal_extent,
+    )
 
 
 def construct_item_collection(
