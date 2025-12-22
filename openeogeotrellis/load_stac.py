@@ -537,15 +537,12 @@ def create_datacube_from_pyramid(
     target_projection: TargetProjection,
     load_params: StacLoadParameters,
     env: StacEvalEnv,
-    from_date: dt.datetime,
-    to_date: dt.datetime,
     items_found: bool,
     allow_empty_cubes: bool,
     netcdf_with_time_dimension: bool,
     requested_bbox: Optional[BoundingBox],
     feature_flags: StacFeatureFlags,
     metadata: GeopysparkCubeMetadata,
-    spatiotemporal_extent: _SpatioTemporalExtent,
 ) -> GeopysparkDataCube:
     """
     Create GeopysparkDataCube from pyramid factory (requires JVM).
@@ -557,21 +554,22 @@ def create_datacube_from_pyramid(
         target_projection: Target projection parameters
         load_params: Load parameters
         env: Evaluation environment
-        from_date: Start date
-        to_date: End date
         items_found: Whether items were found
         allow_empty_cubes: Whether to allow empty cubes
         netcdf_with_time_dimension: Whether using NetCDF with time dimension
         requested_bbox: User-requested bounding box
         feature_flags: Feature flags
         metadata: Cube metadata
-        spatiotemporal_extent: Spatiotemporal extent
 
     Returns:
         GeopysparkDataCube
     """
     target_bbox = target_projection.target_bbox
     target_epsg = target_projection.target_epsg
+    # From_date, to_date are only used to query the opensearch_client and possibly set layer metadata.
+    # The fixed opensearch client `getProducts` ignores date range anyway. So we just sync python and jvm metadata.
+    from_date = dt.datetime.fromisoformat(metadata.temporal_extent[0])
+    to_date = dt.datetime.fromisoformat(metadata.temporal_extent[1])
 
     extent = jvm.geotrellis.vector.Extent(*map(float, target_bbox.as_wsen_tuple()))
     extent_crs = target_bbox.crs
@@ -650,11 +648,6 @@ def create_datacube_from_pyramid(
             status_code=500,
         ) from e
 
-    if not spatiotemporal_extent.temporal_extent.is_unbounded():
-        from_date_iso = spatiotemporal_extent._temporal_extent.from_date.isoformat() if spatiotemporal_extent._temporal_extent.from_date else None
-        to_date_iso = spatiotemporal_extent._temporal_extent.to_date.isoformat() if spatiotemporal_extent._temporal_extent.to_date else None
-        metadata = metadata.filter_temporal(from_date_iso, to_date_iso)
-
     metadata = metadata.filter_bbox(
         west=extent.xmin(),
         south=extent.ymin(),
@@ -697,46 +690,31 @@ def load_stac(
     4. Creating pyramid factory (requires JVM)
     5. Creating datacube from pyramid (requires JVM)
     """
+    feature_flags = load_params.featureflags
+    logger.info(f"load_stac with {url=} {load_params=} {feature_flags=}")
     if override_band_names is None:
         override_band_names = []
-    feature_flags = load_params.featureflags
-
-    logger.info(f"load_stac with {url=} {load_params=} {feature_flags=}")
-
-    property_filter_pg_map = load_params.properties or {}
     allow_empty_cubes: bool = feature_flags.allow_empty_cube or env.allow_empty_cubes
-    user: Optional[User] = env.user
-
-    requested_bbox = BoundingBox.from_dict_or_none(load_params.spatial_extent, default_crs="EPSG:4326")
-    temporal_extent = load_params.temporal_extent
-    # TODO normalize_temporal_extent replaces 'None' with "2000-01-01", which is not a good fallback date.
-    # TODO: Unify (from_date, to_date) and spatiotemporal_extent
-    from_date, until_date = map(dt.datetime.fromisoformat, normalize_temporal_extent(temporal_extent))
-    to_date = (
-        dt.datetime.combine(until_date, dt.time.max, until_date.tzinfo)
-        if from_date == until_date
-        else until_date - dt.timedelta(milliseconds=1)
-    )
-    spatiotemporal_extent = _spatiotemporal_extent_from_load_params(load_params)
+    requested_spatiotemporal_extent = _spatiotemporal_extent_from_load_params(load_params)
 
     try:
         # Step 1: Construct item collection from STAC metadata.
         item_collection, metadata, collection_band_names, netcdf_with_time_dimension = construct_item_collection(
             url=url,
-            spatiotemporal_extent=spatiotemporal_extent,
-            property_filter_pg_map=property_filter_pg_map,
+            spatiotemporal_extent=requested_spatiotemporal_extent,
+            property_filter_pg_map=load_params.properties or {},
             batch_jobs=batch_jobs,
             env=env,
             feature_flags=feature_flags,
             stac_io=stac_io,
-            user=user,
+            user=env.user,
         )
 
         items_found = len(item_collection.items) > 0
         if not allow_empty_cubes and not items_found:
             raise NoDataAvailableException()
 
-        # Step 2: Create opensearch client and build features (testable with InMemory)
+        # Step 2: Convert items to features and add them to the opensearch_client.
         if opensearch_client is None:
             jvm = get_jvm()
             opensearch_client = JvmFixedFeaturesOpenSearchClient(jvm)
@@ -759,13 +737,16 @@ def load_stac(
         metadata = metadata.add_spatial_dimension(name="y", extent=[])
 
     item_collection_temporal_extent = item_collection.get_temporal_extent()
+    requested_temporal_extent_from = requested_spatiotemporal_extent.temporal_extent[0] or dt.datetime.min
+    requested_temporal_extent_to = requested_spatiotemporal_extent.temporal_extent[1] or dt.datetime.max
     metadata = metadata.with_temporal_extent(
         temporal_extent=(
-            map_optional(dt.datetime.isoformat, item_collection_temporal_extent[0]) or temporal_extent[0],
-            map_optional(dt.datetime.isoformat, item_collection_temporal_extent[1]) or temporal_extent[1],
+            dt.datetime.isoformat(item_collection_temporal_extent[0] or requested_temporal_extent_from),
+            dt.datetime.isoformat(item_collection_temporal_extent[1] or requested_temporal_extent_to),
         ),
         allow_adding_dimension=True,
     )
+
     # Overwrite band_names because new bands could be detected in stac items:
     metadata = metadata.with_new_band_names(override_band_names or feature_build_result.collection_band_names)
 
@@ -783,7 +764,7 @@ def load_stac(
 
     # Step 4: Calculate target projection
     target_projection: TargetProjection = calculate_target_projection(
-        requested_bbox=requested_bbox,
+        requested_bbox=requested_spatiotemporal_extent.spatial_extent.as_bbox(),
         stac_bbox=feature_build_result.stac_bbox,
         band_epsgs=feature_build_result.band_epsgs,
         band_cell_size=feature_build_result.band_cell_size,
@@ -833,15 +814,12 @@ def load_stac(
         target_projection=target_projection,
         load_params=load_params,
         env=env,
-        from_date=from_date,
-        to_date=to_date,
         items_found=items_found,
         allow_empty_cubes=allow_empty_cubes,
         netcdf_with_time_dimension=netcdf_with_time_dimension,
-        requested_bbox=requested_bbox,
+        requested_bbox=requested_spatiotemporal_extent.spatial_extent.as_bbox(),
         feature_flags=feature_flags,
         metadata=metadata,
-        spatiotemporal_extent=spatiotemporal_extent,
     )
 
 
