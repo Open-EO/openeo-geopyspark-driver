@@ -3851,13 +3851,15 @@ def test_webapp_derived_from(tmp_path, metadata_tracker):
         )
 
 
+@pytest.mark.skipif(not os.getenv("CORSA_MODEL_DIR"), reason="CORSA_MODEL_DIR is not set")
 def test_corsa_compress():
     job_dir = Path("/tmp/test_corsa_compress")
 
-    larger = True
+    larger = False
 
     process_graph_file = "corsa_compress_resample_spatial_process_graph.json"
-    # process_graph_file = "corsa_compress_process_graph.json"
+    process_graph_file = "corsa_compress_process_graph.json"
+    process_graph_file = "corsa_compress_spatial_process_graph.json"
 
     process_graph_path = (
         f"/home/bossie/Documents/VITO/openeo-geotrellis-extensions/CORSA encode process #563/{process_graph_file}"
@@ -3886,12 +3888,16 @@ def test_corsa_compress():
     )
 
 
+@pytest.mark.skipif(not os.getenv("CORSA_MODEL_DIR"), reason="CORSA_MODEL_DIR is not set")
 def test_corsa_decompress():
     job_dir = Path("/tmp/test_corsa_decompress")
 
-    larger = True
+    larger = False
+    longer = False
 
     process_graph_file = "corsa_decompress_process_graph.json"
+    process_graph_file = "corsa_decompress_intermediate_process_graph.json"
+    # process_graph_file = "load_stac_process_graph.json"
 
     process_graph_path = (
         f"/home/bossie/Documents/VITO/openeo-geotrellis-extensions/CORSA encode process #563/{process_graph_file}"
@@ -3908,6 +3914,9 @@ def test_corsa_decompress():
             "south": 5643900,
             "west": 654900,
         }
+
+    if longer:
+        process["process_graph"]["loadcollection1"]["arguments"]["temporal_extent"] = ["2021-09-01", "2021-12-01"]
 
     run_job(
         process,
