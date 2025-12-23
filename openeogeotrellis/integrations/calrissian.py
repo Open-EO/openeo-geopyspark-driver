@@ -644,14 +644,13 @@ class CalrissianJobLauncher:
         # Collect results
         _log.info(f"run_cwl_workflow: {relative_cwl_outputs_listing}")
         output_volume_name = self.get_output_volume_name()
-        outputs_listing_result_url = CalrissianS3Result(
+        outputs_listing_result = CalrissianS3Result(
             s3_region=self._s3_region,
             s3_bucket=self._s3_bucket,
             s3_key=f"{output_volume_name}/{relative_cwl_outputs_listing.strip('/')}",
-        ).generate_public_url()
-        r = requests.get(outputs_listing_result_url)
-        r.raise_for_status()
-        outputs_listing_result_paths = parse_cwl_outputs_listing(r.json())
+        )
+        j = json.loads(outputs_listing_result.read())
+        outputs_listing_result_paths = parse_cwl_outputs_listing(j)
         prefix = relative_output_dir.strip("/") + "/"
         output_paths = [p[len(prefix) :] if p.startswith(prefix) else p for p in outputs_listing_result_paths]
 

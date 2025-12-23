@@ -27,6 +27,7 @@ from openeogeotrellis.integrations.calrissian import (
 from openeogeotrellis.integrations.s3proxy.sts import STSCredentials
 from openeogeotrellis.testing import gps_config_overrides
 from openeogeotrellis.util.runtime import ENV_VAR_OPENEO_BATCH_JOB_ID
+from openeogeotrellis.utils import s3_client
 from tests.data import get_test_data_file
 
 
@@ -394,6 +395,12 @@ class TestCalrissianJobLauncher:
             s3_region="tatooine-east-1",
             s3_bucket=s3_calrissian_bucket,
         )
+        # mock calrissian output listing file in S3
+        s3_client().put_object(
+            Bucket=s3_calrissian_bucket,
+            Key="1234-abcd-5678-efgh/r-456-cal-cwl-01234567.cwl-outputs.json",
+            Body=get_test_data_file("parse_cwl_outputs_listing/cwl_outputs_listing_txt.json").open(mode="rb"),
+        )
         res = launcher.run_cwl_workflow(
             cwl_source=CwLSource.from_string("class: Dummy"),
             cwl_arguments=["--message", "Howdy Earth!"],
@@ -662,6 +669,13 @@ class TestCalrissianUtils:
         print(results)
         assert len(results) == 7
         assert results[0].startswith("r-")
+
+    def test_parse_cwl_outputs_listing_txt(self):
+        results = parse_cwl_outputs_listing(
+            json.load(get_test_data_file("parse_cwl_outputs_listing/cwl_outputs_listing_txt.json").open())
+        )
+        print(results)
+        assert len(results) == 1
 
     def test_find_stac_root_dictionary(self):
         listing_directory = [
