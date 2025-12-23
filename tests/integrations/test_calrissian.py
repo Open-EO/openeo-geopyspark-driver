@@ -397,7 +397,6 @@ class TestCalrissianJobLauncher:
         res = launcher.run_cwl_workflow(
             cwl_source=CwLSource.from_string("class: Dummy"),
             cwl_arguments=["--message", "Howdy Earth!"],
-            output_paths=["output.txt"],
         )
         assert res == {
             "output.txt": CalrissianS3Result(
@@ -544,7 +543,6 @@ class TestCalrissianJobLauncher:
             launcher.run_cwl_workflow(
                 cwl_source=CwLSource.from_string("class: Dummy"),
                 cwl_arguments=["--message", "Howdy Earth!"],
-                output_paths=["output.txt"],
             )
 
 

@@ -600,8 +600,6 @@ class CalrissianJobLauncher:
         self,
         cwl_source: CwLSource,
         cwl_arguments: Union[List[str], dict],
-        # TODO #1126 eliminate need to list expected output paths, leverage CWL outputs listing
-        output_paths: List[str],
         env_vars: Optional[Dict[str, str]] = None,
     ) -> Dict[str, CalrissianS3Result]:
         """
@@ -640,8 +638,6 @@ class CalrissianJobLauncher:
         self._calrissian_launch_config.cleanup_secret_for_files()
 
         # Collect results
-        # TODO #1126 leverage relative_cwl_outputs_listing to collect results (instead of hardcoding output_paths)
-        _log.info(f"run_cwl_workflow: building S3 references to output files from {output_paths}")
         _log.info(f"run_cwl_workflow: {relative_cwl_outputs_listing}")
         output_volume_name = self.get_output_volume_name()
         outputs_listing_result_url = CalrissianS3Result(
@@ -649,17 +645,11 @@ class CalrissianJobLauncher:
             s3_bucket=self._s3_bucket,
             s3_key=f"{output_volume_name}/{relative_cwl_outputs_listing.strip('/')}",
         ).generate_public_url()
-        try:
-            r = requests.get(outputs_listing_result_url)
-            r.raise_for_status()
-            outputs_listing_result_paths = parse_cwl_outputs_listing(r.json())
-            prefix = relative_output_dir.strip("/") + "/"
-            output_paths = [p[len(prefix) :] if p.startswith(prefix) else p for p in outputs_listing_result_paths]
-        except Exception as e:
-            # Happens when running in unit tests, but safe to do anyway.
-            _log.warning(
-                f"Failed to get outputs listing from {outputs_listing_result_url=}: {e!r}. Falling back to expected output paths."
-            )
+        r = requests.get(outputs_listing_result_url)
+        r.raise_for_status()
+        outputs_listing_result_paths = parse_cwl_outputs_listing(r.json())
+        prefix = relative_output_dir.strip("/") + "/"
+        output_paths = [p[len(prefix) :] if p.startswith(prefix) else p for p in outputs_listing_result_paths]
 
         results = {
             output_path: CalrissianS3Result(
