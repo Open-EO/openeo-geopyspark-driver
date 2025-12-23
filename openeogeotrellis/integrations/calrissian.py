@@ -600,17 +600,21 @@ class CalrissianJobLauncher:
         self,
         cwl_source: CwLSource,
         cwl_arguments: Union[List[str], dict],
+        output_paths: Optional[List[str]] = None,
         env_vars: Optional[Dict[str, str]] = None,
     ) -> Dict[str, CalrissianS3Result]:
         """
         Run a CWL workflow on Calrissian and return the output as a string.
 
-        :param cwl_content: CWL content as a string.
+        :param cwl_source:
         :param cwl_arguments: arguments to pass to the CWL workflow.
+        :param output_paths: Deprecated parameter
         :param env_vars: environment variables set to the pod that runs calrissian these are not passsed to pods spawned
                          by calrissian.
         :return: output of the CWL workflow as a string.
         """
+        if output_paths:
+            _log.warning("CalrissianJobLauncher.run_cwl_workflow: output_paths parameter is deprecated and will be removed.")
         # Input staging
         input_staging_manifest, cwl_path = self.create_input_staging_job_manifest(cwl_source=cwl_source)
         input_staging_job = self.launch_job_and_wait(manifest=input_staging_manifest)
