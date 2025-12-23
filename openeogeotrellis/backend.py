@@ -52,14 +52,14 @@ from openeo_driver.constants import DEFAULT_LOG_LEVEL_RETRIEVAL, DEFAULT_LOG_LEV
 from openeo_driver.datacube import DriverDataCube, DriverVectorCube
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.delayed_vector import DelayedVector
-from openeo_driver.dry_run import SourceConstraint, DryRunDataCube, DryRunDataTracer
+from openeo_driver.dry_run import SourceConstraint, DryRunDataCube, DryRunDataTracer, DataSource
 from openeo_driver.errors import (InternalException, JobNotFinishedException, OpenEOApiException,
                                   ServiceUnsupportedException,
                                   ProcessParameterInvalidException, )
 from openeo_driver.jobregistry import (DEPENDENCY_STATUS, JOB_STATUS, ElasticJobRegistry, PARTIAL_JOB_STATUS,
                                        get_ejr_credentials_from_env)
 from openeo_driver.ProcessGraphDeserializer import ENV_FINAL_RESULT, ENV_SAVE_RESULT, ConcreteProcessing, \
-    _extract_load_parameters, ENV_MAX_BUFFER
+    _extract_load_parameters, ENV_MAX_BUFFER, ENV_DRY_RUN_TRACER
 from openeo_driver.save_result import ImageCollectionResult
 from openeo_driver.users import User
 from openeo_driver.util.date_math import now_utc
@@ -87,6 +87,7 @@ from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.constants import JOB_OPTION_LOG_LEVEL
 from openeogeotrellis.geopysparkcubemetadata import Band
 from openeogeotrellis.geopysparkdatacube import GeopysparkCubeMetadata, GeopysparkDataCube
+from openeogeotrellis.integrations.calrissian import CwLSource
 from openeogeotrellis.integrations.etl_api import get_etl_api, ETL_ORGANIZATION_ID_JOB_OPTION
 from openeogeotrellis.integrations.identity import IDP_TOKEN_ISSUER
 from openeogeotrellis.integrations.hadoop import setup_kerberos_auth
@@ -96,6 +97,7 @@ from openeogeotrellis.integrations.kubernetes import (
     k8s_render_manifest_template,
     k8s_get_batch_job_cfg_secret_name,
     truncate_user_id_k8s,
+    ensure_kubernetes_config,
 )
 from openeogeotrellis.integrations.s3proxy.asset_urls import PresignedS3AssetUrls
 from openeogeotrellis.integrations.stac import ResilientStacIO
@@ -157,6 +159,52 @@ from openeogeotrellis.vault import Vault
 JOB_METADATA_FILENAME = "job_metadata.json"
 
 logger = logging.getLogger(__name__)
+
+
+def cwl_to_stac(
+    cwl_arguments: Union[List[str], dict],
+    env: EvalEnv,
+    cwl_source: CwLSource,
+    stac_root: str = "collection.json",
+    direct_s3_mode=False,
+) -> str:
+    dry_run_tracer: DryRunDataTracer = env.get(ENV_DRY_RUN_TRACER)
+    if dry_run_tracer:
+        # TODO: use something else than `dry_run_tracer.load_stac`
+        #       to avoid risk on conflict with "regular" load_stac code flows?
+        return "dummy"
+
+    ensure_kubernetes_config()
+
+    logger.info(f"Loading CWL from {cwl_source=}")
+
+    from openeogeotrellis.integrations.calrissian import CalrissianJobLauncher
+
+    launcher = CalrissianJobLauncher.from_context(env)
+    results = launcher.run_cwl_workflow(
+        cwl_source=cwl_source,
+        cwl_arguments=cwl_arguments,
+        output_paths=[stac_root],
+    )
+
+    # TODO: provide generic helper to log some info about the results
+    for k, v in results.items():
+        logger.info(f"result {k!r}: {v.generate_public_url()=} {v.generate_presigned_url()=}")
+
+    try:
+        from openeogeotrellis.integrations.calrissian import find_stac_root
+
+        stac_root_new = find_stac_root(set(results.keys()), stac_root)
+        if stac_root_new:
+            stac_root = stac_root_new
+    except Exception as e:
+        logger.warning(f"Error from find_stac_root {stac_root!r}: {e}")
+
+    if direct_s3_mode:
+        collection_url = results[stac_root].s3_uri()
+    else:
+        collection_url = results[stac_root].generate_public_url()
+    return collection_url
 
 
 class GpsSecondaryServices(backend.SecondaryServices):
@@ -938,6 +986,50 @@ Example usage:
             temporal_extent=time_dim.extent if time_dim else None,
         )
         return GeopysparkDataCube(pyramid, metadata)
+
+    def run_cwl(
+        self,
+        env: EvalEnv,
+        cwl_url: str,
+        context: dict,
+        stac_root: Optional[str] = None,
+        direct_s3_mode: Optional[bool] = False,
+    ) -> DriverDataCube:
+        collection_url = cwl_to_stac(
+            context,
+            env,
+            CwLSource.from_any(cwl_url),
+            stac_root,
+            direct_s3_mode,
+        )
+
+        load_stac_dummy_url = "dummy"
+        dry_run_tracer: DryRunDataTracer = env.get(ENV_DRY_RUN_TRACER)
+        if dry_run_tracer:
+            # TODO: use something else than `dry_run_tracer.load_stac`
+            #       to avoid risk on conflict with "regular" load_stac code flows?
+            return dry_run_tracer.load_stac(url=load_stac_dummy_url, arguments={})
+
+        if direct_s3_mode:
+            load_stac_kwargs = {"stac_io": openeogeotrellis.integrations.stac.S3StacIO()}
+        else:
+            load_stac_kwargs = {}
+
+        source_id = DataSource.load_stac(load_stac_dummy_url, properties={}, bands=[], env=env).get_source_id()
+        load_params = _extract_load_parameters(env, source_id=source_id)
+
+        env = env.push(
+            {
+                # TODO: this is apparently necessary to set explicitly, but shouldn't this be the default?
+                "pyramid_levels": "highest",
+            }
+        )
+        return openeogeotrellis.load_stac.load_stac(
+            url=collection_url,
+            load_params=load_params,
+            env=env,
+            **load_stac_kwargs,
+        )
 
     def visit_process_graph(self, process_graph: dict) -> ProcessGraphVisitor:
         return GeoPySparkBackendImplementation.accept_process_graph(process_graph)
