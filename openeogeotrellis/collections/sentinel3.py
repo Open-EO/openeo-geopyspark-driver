@@ -494,15 +494,19 @@ def do_binning(
         "lon": (("y", "x"), source_coordinates[0, :]),
         "lat": (("y", "x"), source_coordinates[1, :]),
     }
+    band_names_parsed = []
 
     for band_name in band_names:
         logger.info(" Reprojecting %s" % band_name)
         base_name = band_name
         if ":" in band_name:
             base_name, band_name = band_name.split(":")
+
         in_file = creo_path /  (base_name + '.nc')
         if product_type == SYNERGY_PRODUCT_TYPE and not band_name.endswith("_flags"):
                 band_name = f"SDR_{band_name.split('_')[1]}"
+
+        band_names_parsed.append(band_name)
         band_data, band_settings = read_band(in_file, in_band=band_name, data_mask=data_mask)
 
         # We are rescaling before the binning in order to correctly handle fill values (not identifiable after binning)
@@ -515,18 +519,17 @@ def do_binning(
         attrs[band_name] = band_settings
 
     if flag_band is not None:
-        if flag_band not in band_names:
-            raise ValueError(f"Specified flag_band '{flag_band}', which was not found in specified bands '{band_names}'")
-        data_band_names = set(band_names) - {flag_band}
+        logger.info(f"Interpreting band '{flag_band}' as flag, with bitmask '{flag_bitmask}'")
+        if flag_band not in band_names_parsed:
+            raise ValueError(f"Specified flag_band '{flag_band}', which was not found in specified bands '{band_names_parsed}'")
+        data_band_names = set(band_names_parsed) - {flag_band}
 
-        flags = data_vars.pop(flag_band)[1]
-        if not np.issubdtype(flags.dtype, np.integer):
-            raise ValueError(f"flag_band must be an integer band. Flag band '{flag_band}' has dtype '{flags.dtype}'")
-
+        flags = data_vars[flag_band][1]
         for band_name in data_band_names:
-            fill_value = attrs.get(band_name, {}).get('_FillValue', np.nan)
+            fill_value = np.nan
             band_dims, band_data = data_vars[band_name]
-            masked_band_data = xr.where((flags & flag_bitmask) > 0, fill_value, band_data)
+            band_dtype = attrs[band_name]["dtype"]
+            masked_band_data = xr.where(np.isnan(flags) | (flags.astype(band_dtype) & flag_bitmask) > 0, fill_value, band_data)
             data_vars[band_name] = (band_dims, masked_band_data)
 
     ds_in = xr.Dataset(

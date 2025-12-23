@@ -98,6 +98,41 @@ def test_read_single_binned():
     arr = result[0][1].cells
     return
 
+def test_read_masked_binned():
+    tiles = [
+        {
+            "key":{
+                "col":10,
+                "row":10,
+                "instant":1717326516089,
+            },
+            "key_extent":{
+                "xmin":13.857467,"xmax":18.10,"ymin":47.096,"ymax":47.597925
+            },
+            "key_epsg":4326
+        }
+    ]
+    result = read_product(
+        (
+            Path(__file__).parent.parent
+            / "data/binary/Sentinel-3/S3A_SL_2_LST____20240129T100540_20240129T100840_20240129T121848_0179_108_236_2160_PS1_O_NR_004.SEN3",
+            tiles,
+        ),
+        SLSTR_PRODUCT_TYPE,
+        ["LST_in:LST", "flags_in:cloud_in"],
+        tile_size=1024,
+        resolution=0.008928571428571,
+        reprojection_type=REPROJECTION_TYPE_BINNING,
+        binning_args={
+            KEY_SUPER_SAMPLING: 3,
+            KEY_FLAG_BAND: "cloud_in",
+            KEY_FLAG_BITMASK: 0xff,
+        }
+    )
+
+    arr = result[0][1].cells
+
+
 def test_read_single_edge():
 
     tiles = [
@@ -181,7 +216,7 @@ def test_mask_before_binning(mock_read_band):
     value_to_be_masked = 5
     value_to_keep = 1
     fill_value = np.nan
-    mask_set = 0x01
+    mask_set = 4
 
     shape = (4, 5)
     out_shape = shape
@@ -195,15 +230,17 @@ def test_mask_before_binning(mock_read_band):
     mask_data[3, 4] = mask_set
 
     def return_value(_in_file, in_band, *args, **kwargs):
-        data = None
+        data, attrs = None, {}
         if in_band == "CLOUD_flags":
             data = mask_data
-        elif in_band == "SDR_04":
+            attrs["dtype"] = "uint8"
+        elif in_band == "SDR_Oa04":
             data = band_data
+            attrs["dtype"] = "float32"
         else:
             raise ValueError(f"in_band '{in_band}' not recognized")
 
-        return data, {}
+        return data, {"dtype": "uint"}
 
     mock_read_band.side_effect = return_value
     #lat = np.tile(np.arange(shape[0], dtype=np.float64), (shape[1], 1))
@@ -216,7 +253,7 @@ def test_mask_before_binning(mock_read_band):
         product_type=SYNERGY_PRODUCT_TYPE,
         final_grid_resolution=1.0,
         creo_path=Path("fake_path"),
-        band_names=["CLOUD_flags", "SDR_04"],
+        band_names=["flags:CLOUD_flags", "Syn_Oa04_reflectance"],
         source_coordinates=source_coordinates,
         target_coordinates=target_coordinates,
         data_mask=None,
@@ -229,9 +266,10 @@ def test_mask_before_binning(mock_read_band):
         flag_band="CLOUD_flags",
     )
 
-    assert binned_data_vars.shape == (1, *out_shape)
-    assert ((binned_data_vars == value_to_keep) | np.isnan(binned_data_vars)).all()
-    assert np.count_nonzero(np.isfinite(binned_data_vars)) > 0
+    assert binned_data_vars.shape == (2, *out_shape)
+    binned_band = binned_data_vars[1]
+    assert ((binned_band == value_to_keep) | np.isnan(binned_band)).all()
+    assert np.count_nonzero(np.isfinite(binned_band)) > 0
 
 
 if __name__ == "__main__":

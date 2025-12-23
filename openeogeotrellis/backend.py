@@ -954,6 +954,10 @@ Example usage:
 
     @staticmethod
     def summarize_exception_static(error: Exception, width=2000) -> ErrorSummary:
+        # snippet to show the Python stack trace:
+        # tb_info = traceback.extract_tb(error.__traceback__)
+        # logger.warning("".join(traceback.format_list(tb_info)))
+
         if "Container killed on request. Exit code is 143" in str(error):
             is_client_error = False  # Give user the benefit of doubt.
             summary = "Your batch job failed because workers used too much memory. The same task was attempted multiple times. Consider increasing executor-memory, python-memory or executor-memoryOverhead or contact the developers to investigate."
@@ -2153,7 +2157,12 @@ class GpsBatchJobs(backend.BatchJobs):
                     user_id=user_id,
                     results_metadata_uri=f"file://{job_work_dir}/{JOB_METADATA_FILENAME}",
                 )
-                dbl_registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.QUEUED)
+                try:
+                    dbl_registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.QUEUED)
+                except Exception as e:
+                    log.info(
+                        f"Failed to set job status to QUEUED in the job registry. The job still started so we continue anyway. {e}"
+                    )
 
     def _determine_container_image_from_process_graph(
         self, process_graph: dict, *, api_version: str = OPENEO_API_VERSION_DEFAULT
@@ -2718,6 +2727,9 @@ class GpsBatchJobs(backend.BatchJobs):
 
         if "results_metadata_uri" in job_dict:
             results_metadata = self._load_results_metadata_from_file(job_id, job_dict["results_metadata_uri"])  # TODO: expose a getter?
+            if "results_metadata" in job_dict:
+                # Some fields in results_metadata_uri can be outdated. Update those directly from the job registry.
+                results_metadata["usage"] = job_dict["results_metadata"].get("usage", results_metadata.get("usage"))
 
         if not results_metadata and "results_metadata" in job_dict:
             logger.debug("Loading results metadata from job registry", extra={"job_id": job_id})

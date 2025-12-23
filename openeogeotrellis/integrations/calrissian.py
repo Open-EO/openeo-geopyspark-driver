@@ -57,7 +57,7 @@ class CalrissianLaunchConfigBuilder:
     _VOLUME_NAME = "calrissian-launch-config"
     _ENVIRONMENT_FILE = "environment.yaml"
 
-    def __init__(self, *, config: CalrissianConfig, correlation_id: str, env_vars: Optional[dict] = None):
+    def __init__(self, *, config: CalrissianConfig, correlation_id: str, env_vars: Optional[Dict[str, str]] = None):
         self.correlation_id = correlation_id
         self._config = config
         self._env_vars = deepcopy(env_vars or {})
@@ -401,7 +401,10 @@ class CalrissianJobLauncher:
                                 ),
                             )
                         ],
-                    )
+                    ),
+                    metadata=kubernetes.client.V1ObjectMeta(
+                        labels={"correlation_id": self._calrissian_launch_config.correlation_id},
+                    ),
                 ),
                 backoff_limit=self._backoff_limit,
             ),
@@ -412,7 +415,7 @@ class CalrissianJobLauncher:
     def create_cwl_job_manifest(
         self,
         cwl_path: str,
-        cwl_arguments: Union[List[str], dict],
+        cwl_arguments: List[str],
         env_vars: Optional[Dict[str, str]] = None,
     ) -> Tuple[kubernetes.client.V1Job, str, str]:
         """
@@ -421,6 +424,7 @@ class CalrissianJobLauncher:
         :param cwl_path: path to the CWL file to run (inside the input staging volume),
             as produced by `create_input_staging_job_manifest`
         :param cwl_arguments:
+        :param env_vars:
         :return: Tuple of
             - k8s job manifest
             - relative output directory (inside the output volume)
@@ -438,6 +442,8 @@ class CalrissianJobLauncher:
         relative_cwl_outputs_listing = f"{name}.cwl-outputs.json"
         output_dir = str(Path(self._volume_output.mount_path) / relative_output_dir)
         cwl_outputs_listing = str(Path(self._volume_output.mount_path) / relative_cwl_outputs_listing)
+
+        labels_dict = {"correlation_id": self._calrissian_launch_config.correlation_id}
 
         calrissian_arguments = (
             self._calrissian_base_arguments
@@ -491,7 +497,7 @@ class CalrissianJobLauncher:
             metadata=kubernetes.client.V1ObjectMeta(
                 name=name,
                 namespace=self._namespace,
-                labels={"correlation_id": self._calrissian_launch_config.correlation_id},
+                labels=labels_dict,
             ),
             spec=kubernetes.client.V1JobSpec(
                 template=kubernetes.client.V1PodTemplateSpec(
@@ -509,7 +515,10 @@ class CalrissianJobLauncher:
                             for volume_info, read_only in volumes
                         ]
                         + [self._calrissian_launch_config.get_volume()],
-                    )
+                    ),
+                    metadata=kubernetes.client.V1ObjectMeta(
+                        labels=labels_dict,
+                    ),
                 ),
                 backoff_limit=self._backoff_limit,
             ),
@@ -586,49 +595,6 @@ class CalrissianJobLauncher:
         )
         volume_name = pvc.spec.volume_name
         return volume_name
-
-    @staticmethod
-    def validate_cwl_workflow(
-        cwl_source: CwLSource,
-        cwl_arguments: Union[List[str], dict],
-    ) -> None:
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".cwl", delete=False) as cwl_file:
-            cwl_file.write(cwl_source.get_content())
-            cwl_file_path = cwl_file.name
-
-        try:
-            needle = "Invalid job input record:"
-            if isinstance(cwl_arguments, dict):
-                with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as args_file:
-                    json.dump(cwl_arguments, args_file)
-                    args_file_path = args_file.name
-
-                try:
-                    output = subprocess.check_output(
-                        ["cwltool", "--disable-color", "--validate", cwl_file_path, args_file_path],
-                        text=True,
-                        stderr=subprocess.PIPE,
-                        cwd=str(Path(cwl_file_path).parent),
-                    )
-                    if needle in output:
-                        error_msg = output.split(needle, maxsplit=1)[1].strip()
-                        raise RuntimeError(f"CWL validation failed: {error_msg}")
-                finally:
-                    os.unlink(args_file_path)
-            else:
-                # cwl_arguments is a list of strings (file paths)
-                output = subprocess.check_output(
-                    ["python", "-m", "cwltool", "--disable-color", "--validate", cwl_file_path]
-                    + (cwl_arguments if cwl_arguments else []),
-                    text=True,
-                    stderr=subprocess.PIPE,
-                    cwd=str(Path(cwl_file_path).parent),
-                )
-                if needle in output:
-                    error_msg = output.split(needle, maxsplit=1)[1].strip()
-                    raise RuntimeError(f"CWL validation failed: {error_msg}")
-        finally:
-            os.unlink(cwl_file_path)
 
     def run_cwl_workflow(
         self,

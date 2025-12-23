@@ -123,6 +123,7 @@ def load_stac(
 
     requested_bbox = BoundingBox.from_dict_or_none(load_params.spatial_extent, default_crs="EPSG:4326")
     temporal_extent = load_params.temporal_extent
+    #TODO normalize_temporal_extent replaces 'None' with "2000-01-01", which is not a good fallback date.
     from_date, until_date = map(dt.datetime.fromisoformat, normalize_temporal_extent(temporal_extent))
     to_date = (
         dt.datetime.combine(until_date, dt.time.max, until_date.tzinfo)
@@ -470,7 +471,10 @@ def load_stac(
             status_code=500,
         ) from e
 
-    metadata = metadata.filter_temporal(from_date.isoformat(), to_date.isoformat())
+    if not spatiotemporal_extent.temporal_extent.is_unbounded():
+        from_date_iso = spatiotemporal_extent._temporal_extent.from_date.isoformat() if spatiotemporal_extent._temporal_extent.from_date else None
+        to_date_iso = spatiotemporal_extent._temporal_extent.to_date.isoformat() if spatiotemporal_extent._temporal_extent.to_date else None
+        metadata = metadata.filter_temporal(from_date_iso, to_date_iso)
 
     metadata = metadata.filter_bbox(
         west=extent.xmin(),

@@ -2993,6 +2993,27 @@ class GeopysparkDataCube(DriverDataCube):
         # Nothing to do: the actual SAR backscatter processing already happened in `load_collection`
         return self
 
+    def corsa_compress(self) -> "GeopysparkDataCube":
+        def compute_corsa_compress(rdd, level):
+            pr = gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses()
+            return pr.corsaCompress(rdd)
+
+        return self._apply_to_levels_geotrellis_rdd(
+            compute_corsa_compress, metadata=self.metadata.with_new_band_names(["level_0", "level_1"])
+        )
+
+    def corsa_decompress(self) -> "GeopysparkDataCube":
+        def compute_corsa_decompress(rdd, level):
+            pr = gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses()
+            return pr.corsaDecompress(rdd)
+
+        return self._apply_to_levels_geotrellis_rdd(
+            compute_corsa_decompress,
+            metadata=self.metadata.with_new_band_names(
+                ["B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A", "B11", "B12"]
+            ),
+        )
+
     @callsite
     def resolution_merge(self, args: ResolutionMergeArgs) -> 'GeopysparkDataCube':
         high_band_indices = [self.metadata.get_band_index(b) for b in args.high_resolution_bands]
