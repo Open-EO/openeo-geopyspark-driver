@@ -52,4 +52,5 @@ config = GpsBackendConfig(
     ),
     enable_basic_auth=True,
     valid_basic_auth=lambda name, password: (name == "openeo" and password == "openeo"),
+    s3_bucket_name="openeo-data",
 )

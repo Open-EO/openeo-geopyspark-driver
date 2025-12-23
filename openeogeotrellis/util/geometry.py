@@ -1,6 +1,10 @@
+import json
+import urllib.parse
+
 import math
 from typing import Union
 
+import shapely.geometry
 from openeo_driver.util.geometry import BoundingBox
 
 
@@ -57,3 +61,44 @@ class GridSnapper:
     def up(self, v: float):
         """Snap upwards"""
         return self._orig + self._res * math.ceil((v - self._orig) / self._res)
+
+
+def to_geojson_dict(obj) -> dict:
+    """Convert various geometry-like objects to GeoJSON dictionary representation."""
+    if isinstance(obj, shapely.geometry.base.BaseGeometry):
+        return shapely.geometry.mapping(obj)
+    elif isinstance(obj, BoundingBox):
+        return obj.as_geojson()
+    elif isinstance(obj, list):
+        # Assume this is a collection of geometries
+        features = [
+            {
+                "type": "Feature",
+                "properties": {},
+                "geometry": to_geojson_dict(item),
+            }
+            for item in obj
+        ]
+        return {"type": "FeatureCollection", "features": features}
+    elif isinstance(obj, dict) and obj.get("type") in {
+        "Point",
+        "MultiPoint",
+        "LineString",
+        "MultiLineString",
+        "Polygon",
+        "MultiPolygon",
+        "Feature",
+        "FeatureCollection",
+    }:
+        return obj
+
+    # TODO: support other types?
+    raise ValueError(obj)
+
+
+def to_geojson_io_url(geometry):
+    """Encode geometry as a geojson.io URL for quick visualization."""
+    geojson_dict = to_geojson_dict(geometry)
+    geojson_str = json.dumps(geojson_dict)
+    encoded = urllib.parse.quote(geojson_str)
+    return f"https://geojson.io/#data=data:application/json,{encoded}"
