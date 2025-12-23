@@ -18,7 +18,8 @@ from openeogeotrellis.testing import gps_config_overrides
 def kubernetes_api():
     # TODO: avoid duplicate load_incluster_config mock (see below)?
     with mock.patch("kubernetes.config.load_incluster_config", return_value=mock.MagicMock()):
-        return kube_client("CustomObject")
+        with mock.patch("kubernetes.config.load_kube_config", return_value=mock.MagicMock()):
+            return kube_client("CustomObject")
 
 
 @pytest.fixture
