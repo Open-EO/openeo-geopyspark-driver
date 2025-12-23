@@ -42,6 +42,7 @@ def kube_no_zk(monkeypatch):
         yield
 
 
+@mock.patch("kubernetes.config.load_kube_config", return_value=mock.MagicMock())
 @mock.patch("kubernetes.config.load_incluster_config", return_value=mock.MagicMock())
 @mock.patch("kubernetes.client.CoreV1Api.read_namespaced_pod", return_value=mock.MagicMock())
 @mock.patch("kubernetes.client.CustomObjectsApi.create_namespaced_custom_object", return_value=mock.MagicMock())
