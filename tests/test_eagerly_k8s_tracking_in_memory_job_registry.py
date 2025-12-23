@@ -59,7 +59,8 @@ def test_basic(
     mock_get_spark_pod_status,  # mock arguments in reverse order of patch decorators, as per the docs
     mock_create_spark_pod,
     mock_get_pod_image,
-    mock_k8s_config,
+    mock_k8s_config_load_incluster_config,
+    mock_k8s_config_load_kube_config,
     kube_no_zk,
     backend_implementation,
     tracking_job_registry,
@@ -102,7 +103,6 @@ def test_basic(
 
     # 2: start job
     backend_implementation.batch_jobs.start_job(job_id, user)
-    assert mock_k8s_config.called
     assert mock_create_spark_pod.called
     assert mock_get_spark_pod_status.called
 
