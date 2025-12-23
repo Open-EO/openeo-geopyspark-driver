@@ -3849,3 +3849,80 @@ def test_webapp_derived_from(tmp_path, metadata_tracker):
             f"?collection={collection_id.replace(':', '%3A')}"
             f"&uid={feature_id.replace(':', '%3A')}"
         )
+
+
+@pytest.mark.skipif(not os.getenv("CORSA_MODEL_DIR"), reason="CORSA_MODEL_DIR is not set")
+def test_corsa_compress():
+    job_dir = Path("/tmp/test_corsa_compress")
+
+    larger = False
+
+    process_graph_file = "corsa_compress_resample_spatial_process_graph.json"
+    process_graph_file = "corsa_compress_process_graph.json"
+    process_graph_file = "corsa_compress_spatial_process_graph.json"
+
+    process_graph_path = (
+        f"/home/bossie/Documents/VITO/openeo-geotrellis-extensions/CORSA encode process #563/{process_graph_file}"
+    )
+    # process_graph_path = "/tmp/process_graph.json"
+
+    with open(process_graph_path) as f:
+        process = json.load(f)
+
+    if larger:
+        process["process_graph"]["loadcollection1"]["arguments"]["spatial_extent"] = {
+            "crs": 32631,
+            "east": 658500,
+            "north": 5647500,
+            "south": 5643900,
+            "west": 654900,
+        }
+
+    run_job(
+        process,
+        output_file=job_dir / "out",
+        metadata_file=job_dir / "job_metadata.json",
+        api_version="2.0.0",
+        job_dir=job_dir,
+        dependencies=[],
+    )
+
+
+@pytest.mark.skipif(not os.getenv("CORSA_MODEL_DIR"), reason="CORSA_MODEL_DIR is not set")
+def test_corsa_decompress():
+    job_dir = Path("/tmp/test_corsa_decompress")
+
+    larger = False
+    longer = False
+
+    process_graph_file = "corsa_decompress_process_graph.json"
+    process_graph_file = "corsa_decompress_intermediate_process_graph.json"
+    # process_graph_file = "load_stac_process_graph.json"
+
+    process_graph_path = (
+        f"/home/bossie/Documents/VITO/openeo-geotrellis-extensions/CORSA encode process #563/{process_graph_file}"
+    )
+
+    with open(process_graph_path) as f:
+        process = json.load(f)
+
+    if larger:
+        process["process_graph"]["loadcollection1"]["arguments"]["spatial_extent"] = {
+            "crs": 32631,
+            "east": 658500,
+            "north": 5647500,
+            "south": 5643900,
+            "west": 654900,
+        }
+
+    if longer:
+        process["process_graph"]["loadcollection1"]["arguments"]["temporal_extent"] = ["2021-09-01", "2021-12-01"]
+
+    run_job(
+        process,
+        output_file=job_dir / "out",
+        metadata_file=job_dir / "job_metadata.json",
+        api_version="2.0.0",
+        job_dir=job_dir,
+        dependencies=[],
+    )
