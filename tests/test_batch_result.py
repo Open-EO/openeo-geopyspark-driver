@@ -3926,3 +3926,125 @@ def test_corsa_decompress():
         job_dir=job_dir,
         dependencies=[],
     )
+
+
+def test_predict_onnx_double(tmp_path):
+    model = "https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis-extensions/test_model_double.onnx"
+    process_graph = {
+        "predictOnnx1": {
+            "arguments": {
+                "data": {
+                    "from_node": "loadcollection1"
+                },
+                "model": model
+            },
+            "process_id": "predict_onnx"
+        },
+        "loadcollection1": {
+            "process_id": "load_collection",
+            "arguments": {
+                "bands": ["Longitude"],
+                "id": "TestCollection-LonLat4x4",
+                "properties": {},
+                "spatial_extent": {"east": 5.08, "north": 51.22, "south": 51.215, "west": 5.07},
+                "temporal_extent": ["2023-06-01", "2023-06-06"],
+            },
+        },
+        "saveresult1": {
+            "arguments": {
+                "data": {
+                    "from_node": "predictOnnx1"
+                },
+                "format": "GTiff",
+            },
+            "process_id": "save_result",
+            "result": True
+        }
+    }
+
+    process = {
+        "process_graph": process_graph,
+        "job_options": {},
+    }
+
+    job_dir = tmp_path
+    metadata_file = job_dir / "job_metadata.json"
+
+    run_job(
+        process,
+        output_file=job_dir / "out",
+        metadata_file=metadata_file,
+        api_version="2.0.0",
+        job_dir=tmp_path,
+        dependencies=[],
+    )
+
+
+    with metadata_file.open() as f:
+        metadata = json.load(f)
+
+    bands = metadata["assets"]['openEO_2023-06-05Z.tif']["raster:bands"]
+    assert len(bands) == 1
+    assert bands[0]["statistics"]["minimum"] == 10
+    assert bands[0]["statistics"]["maximum"] == 10
+
+
+def test_predict_onnx_reduce_sum(tmp_path):
+    model = "https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis-extensions/test_model_sum_double.onnx"
+    process_graph = {
+        "predictOnnx1": {
+            "arguments": {
+                "data": {
+                    "from_node": "loadcollection1"
+                },
+                "model": model
+            },
+            "process_id": "predict_onnx"
+        },
+        "loadcollection1": {
+            "process_id": "load_collection",
+            "arguments": {
+                "bands": ["Longitude","Longitude","Longitude"],
+                "id": "TestCollection-LonLat4x4",
+                "properties": {},
+                "spatial_extent": {"east": 5.08, "north": 51.22, "south": 51.215, "west": 5.07},
+                "temporal_extent": ["2023-06-01", "2023-06-06"],
+            },
+        },
+        "saveresult1": {
+            "arguments": {
+                "data": {
+                    "from_node": "predictOnnx1"
+                },
+                "format": "GTiff",
+            },
+            "process_id": "save_result",
+            "result": True
+        }
+    }
+
+    process = {
+        "process_graph": process_graph,
+        "job_options": {},
+    }
+
+    job_dir = tmp_path
+    metadata_file = job_dir / "job_metadata.json"
+
+    run_job(
+        process,
+        output_file=job_dir / "out",
+        metadata_file=metadata_file,
+        api_version="2.0.0",
+        job_dir=tmp_path,
+        dependencies=[],
+    )
+
+
+    with metadata_file.open() as f:
+        metadata = json.load(f)
+
+    bands = metadata["assets"]['openEO_2023-06-05Z.tif']["raster:bands"]
+    assert len(bands) == 1
+    assert bands[0]["statistics"]["minimum"] == 15
+    assert bands[0]["statistics"]["maximum"] == 15

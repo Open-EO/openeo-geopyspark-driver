@@ -3041,6 +3041,17 @@ class GeopysparkDataCube(DriverDataCube):
         )
         return converted
 
+    @callsite
+    def predict_onnx(self, model: str) -> 'GeopysparkDataCube':
+        converted = self._apply_to_levels_geotrellis_rdd(
+            lambda rdd,
+                   level: gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses().predictONNX(
+                rdd,
+                model
+            )
+        )
+        return converted
+
 
     def __str__(self):
         super_str = super().__str__()
