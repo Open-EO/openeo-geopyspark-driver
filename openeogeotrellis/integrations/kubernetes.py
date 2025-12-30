@@ -15,10 +15,21 @@ from openeo_driver.utils import generate_unique_id
 
 _log = logging.getLogger(__name__)
 
-def kube_client(api_type):
-    from kubernetes import client, config
 
-    config.load_incluster_config()
+def ensure_kubernetes_config():
+    import kubernetes
+    from kubernetes.config.incluster_config import SERVICE_TOKEN_FILENAME
+
+    if os.path.exists(SERVICE_TOKEN_FILENAME):
+        kubernetes.config.load_incluster_config()
+    else:
+        kubernetes.config.load_kube_config()
+
+
+def kube_client(api_type):
+    from kubernetes import client
+
+    ensure_kubernetes_config()
 
     if api_type == "CustomObject":
         api_instance = client.CustomObjectsApi()

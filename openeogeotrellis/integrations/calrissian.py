@@ -171,6 +171,16 @@ class CwLSource:
         return self._cwl
 
     @classmethod
+    def from_any(cls, content: str) -> CwLSource:
+        # noinspection HttpUrlsUsage
+        if content.lower().startswith("http://") or content.lower().startswith("https://"):
+            return cls.from_url(content)
+        elif content.startswith("/"):
+            return cls.from_path(content)
+        else:
+            return cls(content=content)
+
+    @classmethod
     def from_string(cls, content: str, auto_dedent: bool = True) -> CwLSource:
         if auto_dedent:
             content = textwrap.dedent(content)
@@ -694,7 +704,7 @@ def parse_cwl_outputs_listing(cwl_outputs_listing: dict) -> List[str]:
     return results
 
 
-def find_stac_root(paths: list, stac_root_filename: Optional[str] = "catalog.json") -> Optional[str]:
+def find_stac_root(paths: set, stac_root_filename: Optional[str] = "catalog.json") -> Optional[str]:
     paths = [Path(p) for p in paths]
 
     def search(stac_root_filename_local: str):
