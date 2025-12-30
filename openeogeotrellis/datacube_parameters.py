@@ -80,4 +80,18 @@ def create(load_params: LoadParameters, env: EvalEnv, jvm: JVMView):
         datacubeParams.setTimeDimensionFilter(labels_filter.builder)
 
     datacubeParams.setRetainNoDataTiles(feature_flags.get("retain_nodata_tiles", False))
+
+    use_raster_source_providers = feature_flags.get("use_raster_source_providers", False)
+    datacubeParams.setUseRasterSourceProviders(use_raster_source_providers)
+
+    synthetic_data_override_celltype = feature_flags.get("synthetic_data_override_celltype", None)
+    if synthetic_data_override_celltype:
+        synthetic_data_override_udf = feature_flags.get("synthetic_data_override_udf", None)
+        option = jvm.scala.Option
+        option_synthetic_udf = option.apply(synthetic_data_override_udf) if synthetic_data_override_udf else option.empty()
+        syntheticDataOverride =  jvm.org.openeo.geotrelliscommon.SyntheticDataOverride(
+            synthetic_data_override_celltype, option_synthetic_udf
+        )
+        datacubeParams.setSyntheticDataOverride(syntheticDataOverride)
+
     return datacubeParams, single_level
