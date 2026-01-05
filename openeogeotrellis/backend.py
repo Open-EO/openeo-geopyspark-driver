@@ -3100,10 +3100,11 @@ class GpsUdfRuntimes(backend.UdfRuntimes):
 
     def get_udf_runtimes(self) -> dict:
         runtimes = self.udf_runtime_image_repository.get_udf_runtimes_response()
-        runtimes["EOAP-CWL"] = {
-            "default": "1",
-            "title": "EOAP-CWL",
-            "type": "language",
-            "versions": {"1": {"libraries": {}}},
-        }
+        if ConfigParams().is_kube_deploy:
+            runtimes["EOAP-CWL"] = {
+                "default": "1",
+                "title": "EOAP-CWL",
+                "type": "language",
+                "versions": {"1": {"libraries": {}}},
+            }
         return runtimes
