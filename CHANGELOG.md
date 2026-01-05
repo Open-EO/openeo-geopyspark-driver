@@ -12,8 +12,11 @@ without compromising stable operations.
 
 <!-- start-of-changelog -->
 
+## In progress: 0.71.0
 
-## In progress: 0.70.0
+- `sar_backscatter`: avoid segmentation fault on Sentinel-1 products with missing parts ([#1479](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1479))
+
+## 0.70.0
 
 - `load_stac`: remove `load_stac_apply_lcfm_improvements` feature flag and make it the standard behavior ([#1306](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1306))
 - Experimental support for dropping `derived_from` links on the STAC Collection level in favor of a link, to a dedicated document with input features, on the item level ([#1278](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1278))
