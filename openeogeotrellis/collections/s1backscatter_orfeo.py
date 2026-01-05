@@ -436,11 +436,13 @@ class S1BackscatterOrfeo:
 
         # Cut away corrupt data, to work around this issue: https://gitlab.orfeo-toolbox.org/orfeotoolbox/otb/-/issues/2509
         # Approach and parameters inspired by S1-Tiling
-        reset_margin = otb.Registry.CreateApplication('ResetMargin')
-        reset_margin.ConnectImage("in", sar_calibration, "out")
-        reset_margin.SetParameterInt('threshold.y.start', thr_y_s)
-        reset_margin.SetParameterInt('threshold.y.end', thr_y_e)
-        reset_margin.SetParameterString('mode', 'threshold')
+        reset_margin = sar_calibration
+        if crop1 or crop2:
+            reset_margin = otb.Registry.CreateApplication('ResetMargin')
+            reset_margin.ConnectImage("in", sar_calibration, "out")
+            reset_margin.SetParameterInt('threshold.y.start', thr_y_s)
+            reset_margin.SetParameterInt('threshold.y.end', thr_y_e)
+            reset_margin.SetParameterString('mode', 'threshold')
 
 
         # OrthoRectification
