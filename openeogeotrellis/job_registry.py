@@ -142,11 +142,6 @@ class ZkJobRegistry:
     def set_dependency_usage(self, job_id: str, user_id: str, processing_units: Decimal):
         self.patch(job_id, user_id, dependency_usage=str(processing_units))
 
-    @staticmethod
-    def get_dependency_usage(job_info: dict) -> Optional[Decimal]:
-        usage = job_info.get('dependency_usage')
-        return Decimal(usage) if usage is not None else None
-
     def set_dependencies(self, job_id: str, user_id: str, dependencies: List[Dict[str, str]]):
         self.patch(job_id, user_id, dependencies=dependencies)
 
@@ -819,7 +814,7 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
                 job_id=job_id,
                 user_id=user_id,
                 api_version=api_version,
-                specification=ZkJobRegistry.build_specification_dict(
+                specification=self.zk_job_registry.build_specification_dict(
                     process_graph=process["process_graph"],
                     job_options=job_options,
                 ),

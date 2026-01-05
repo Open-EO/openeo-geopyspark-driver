@@ -8,7 +8,6 @@ import argparse
 import collections
 import datetime as dt
 import logging
-from decimal import Decimal
 from pathlib import Path
 from typing import Any, List, NamedTuple, Optional, Union
 
@@ -561,8 +560,7 @@ class JobTracker:
                     .get("value", 0.0)
                 )
 
-                sentinelhub_batch_processing_units = float(ZkJobRegistry.get_dependency_usage(job_info)
-                                                           or Decimal("0.0"))
+                sentinelhub_batch_processing_units = float(job_info.get("dependency_usage") or 0.0)
 
                 sentinelhub_processing_units_to_report = (sentinelhub_processing_units +
                                                           sentinelhub_batch_processing_units) or None
