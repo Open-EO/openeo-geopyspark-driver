@@ -1534,7 +1534,6 @@ class TestK8sJobTracker:
     ):
         job_tracker = JobTracker(
             app_state_getter=K8sStatusGetter(k8s_mock, prometheus_mock),
-            zk_job_registry=None,
             principal="john@EXAMPLE.TEST",
             keytab="test/openeo.keytab",
             job_costs_calculator=job_costs_calculator,

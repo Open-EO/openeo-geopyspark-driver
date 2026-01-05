@@ -400,8 +400,9 @@ class K8sStatusGetter(JobMetadataGetterInterface):
 class JobTracker:
     def __init__(
         self,
+        *,
         app_state_getter: JobMetadataGetterInterface,
-        zk_job_registry: Optional[ZkJobRegistry],
+        zk_job_registry: Optional[ZkJobRegistry] = None,  # TODO #1165 remove ZkJobRegistry
         principal: str,
         keytab: str,
         job_costs_calculator: Optional[JobCostsCalculator] = None,
@@ -671,14 +672,6 @@ class CliApp:
             try:
                 config = get_backend_config()
 
-                # ZooKeeper Job Registry
-                if config.use_zk_job_registry:
-                    zk_root_path = args.zk_job_registry_root_path
-                    _log.info(f"Using {zk_root_path=}")
-                    zk_job_registry = ZkJobRegistry(root_path=zk_root_path)
-                else:
-                    zk_job_registry = None
-
                 requests_session = requests_with_retry(total=3, backoff_factor=2)
 
                 # Elastic Job Registry (EJR)
@@ -709,7 +702,6 @@ class CliApp:
 
                 job_tracker = JobTracker(
                     app_state_getter=app_state_getter,
-                    zk_job_registry=zk_job_registry,
                     principal=args.principal,
                     keytab=args.keytab,
                     elastic_job_registry=elastic_job_registry,
@@ -764,11 +756,6 @@ class CliApp:
             default=None,
             dest="rotating_log",
             help="Rotating log file (path).",
-        )
-        parser.add_argument(
-            "--zk-job-registry-root-path",
-            default=ConfigParams().batch_jobs_zookeeper_root_path,
-            help="ZooKeeper root path for the job registry",
         )
         parser.add_argument(
             "--run-id",
