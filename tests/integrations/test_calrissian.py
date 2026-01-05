@@ -536,6 +536,7 @@ class TestCalrissianJobLauncher:
         s3_calrissian_bucket,
         k8s_batch_api,
         k8s_secret_api_verify_mocked_sts,
+        k8s_pvc_api,
         calrissian_launch_config,
         job_context,
     ):
@@ -547,6 +548,14 @@ class TestCalrissianJobLauncher:
 
         with gps_config_overrides(calrissian_config=calrissian_config):
             launcher = CalrissianJobLauncher.from_context()
+
+            # Mock calrissian output listing file in S3.
+            s3_client().put_object(
+                Bucket=s3_calrissian_bucket,
+                Key="1234-abcd-5678-efgh/j-hello123-cal-cwl-01234567.cwl-outputs.json",
+                Body=get_test_data_file("parse_cwl_outputs_listing/cwl_outputs_listing_txt.json").open(mode="rb"),
+            )
+
             launcher.run_cwl_workflow(
                 cwl_source=CwLSource.from_string("class: Dummy"),
                 cwl_arguments=["--message", "Howdy Earth!"],

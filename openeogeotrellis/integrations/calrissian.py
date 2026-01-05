@@ -124,6 +124,10 @@ class CalrissianS3Result:
         return f"s3://{self.s3_bucket}/{self.s3_key}"
 
     def read(self, encoding: Union[None, str] = None) -> Union[bytes, str]:
+        # mocking might give invalid values. Check for them:
+        assert "<" not in self.s3_bucket, self.s3_bucket
+        assert "<" not in self.s3_key, self.s3_key
+
         _log.info(f"Reading from S3: {self.s3_bucket=}, {self.s3_key=}")
         s3_file_object = s3_client().get_object(Bucket=self.s3_bucket, Key=self.s3_key)
         body = s3_file_object["Body"]
@@ -369,7 +373,7 @@ class CalrissianJobLauncher:
         container = kubernetes.client.V1Container(
             name=name,
             image=self._input_staging_image,
-            image_pull_policy="Always",
+            image_pull_policy="IfNotPresent",  # Avoid 'Always' as artifactory might be down.
             security_context=self._security_context,
             command=["/bin/sh"],
             args=["-c", f"set -euxo pipefail; echo '{cwl_serialized}' | base64 -d > {cwl_path}"],
