@@ -160,53 +160,6 @@ JOB_METADATA_FILENAME = "job_metadata.json"
 
 logger = logging.getLogger(__name__)
 
-
-def cwl_to_stac(
-    cwl_arguments: Union[List[str], dict],
-    env: EvalEnv,
-    cwl_source: CwLSource,
-    stac_root: str = "collection.json",
-    direct_s3_mode=False,
-) -> str:
-    dry_run_tracer: DryRunDataTracer = env.get(ENV_DRY_RUN_TRACER)
-    if dry_run_tracer:
-        # TODO: use something else than `dry_run_tracer.load_stac`
-        #       to avoid risk on conflict with "regular" load_stac code flows?
-        return "dummy"
-
-    ensure_kubernetes_config()
-
-    logger.info(f"Loading CWL from {cwl_source=}")
-
-    from openeogeotrellis.integrations.calrissian import CalrissianJobLauncher
-
-    launcher = CalrissianJobLauncher.from_context(env)
-    results = launcher.run_cwl_workflow(
-        cwl_source=cwl_source,
-        cwl_arguments=cwl_arguments,
-        output_paths=[stac_root],
-    )
-
-    # TODO: provide generic helper to log some info about the results
-    for k, v in results.items():
-        logger.info(f"result {k!r}: {v.generate_public_url()=} {v.generate_presigned_url()=}")
-
-    try:
-        from openeogeotrellis.integrations.calrissian import find_stac_root
-
-        stac_root_new = find_stac_root(set(results.keys()), stac_root)
-        if stac_root_new:
-            stac_root = stac_root_new
-    except Exception as e:
-        logger.warning(f"Error from find_stac_root {stac_root!r}: {e}")
-
-    if direct_s3_mode:
-        collection_url = results[stac_root].s3_uri()
-    else:
-        collection_url = results[stac_root].generate_public_url()
-    return collection_url
-
-
 class GpsSecondaryServices(backend.SecondaryServices):
     """Secondary Services implementation for GeoPySpark backend"""
 
@@ -989,18 +942,18 @@ Example usage:
 
     def run_cwl(
         self,
+        *,
+        data,
         env: EvalEnv,
-        cwl_url: str,
+        cwl: str,
         context: dict,
-        stac_root: Optional[str] = None,
-        direct_s3_mode: Optional[bool] = False,
     ) -> DriverDataCube:
+        # local import to avoid importing kubernetes on yarn backends
+        from openeogeotrellis.integrations.calrissian import cwl_to_stac
         collection_url = cwl_to_stac(
             context,
             env,
-            CwLSource.from_any(cwl_url),
-            stac_root,
-            direct_s3_mode,
+            CwLSource.from_any(cwl),
         )
 
         load_stac_dummy_url = "dummy"
@@ -1010,6 +963,7 @@ Example usage:
             #       to avoid risk on conflict with "regular" load_stac code flows?
             return dry_run_tracer.load_stac(url=load_stac_dummy_url, arguments={})
 
+        direct_s3_mode = False
         if direct_s3_mode:
             load_stac_kwargs = {"stac_io": openeogeotrellis.integrations.stac.S3StacIO()}
         else:
@@ -3145,4 +3099,11 @@ class GpsUdfRuntimes(backend.UdfRuntimes):
         self.udf_runtime_image_repository = UdfRuntimeImageRepository.from_config()
 
     def get_udf_runtimes(self) -> dict:
-        return self.udf_runtime_image_repository.get_udf_runtimes_response()
+        runtimes = self.udf_runtime_image_repository.get_udf_runtimes_response()
+        runtimes["EOAP-CWL"] = {
+            "default": "1",
+            "title": "EOAP-CWL",
+            "type": "language",
+            "versions": {"1": {"libraries": {}}},
+        }
+        return runtimes

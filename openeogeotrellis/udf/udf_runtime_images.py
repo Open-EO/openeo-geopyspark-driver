@@ -144,31 +144,24 @@ class UdfRuntimeImageRepository:
         # TODO: toggle the Jep variant through config too?
         runtime_names = ["Python", "Python-Jep"]
         for alias, image_ref in batch_runtime_to_image.items():
-            if "calrissian" in image_ref.lower():
-                # for example: "vito-docker.artifactory.vgt.vito.be/calrissian:0.18.1"
-                # get version from tag
-                tag = image_ref.split(":")[-1]
-                udf_runtimes = [_UdfRuntimeAndVersion("CWL-Calrissian", version=tag)]
-                image_preference = 1000  # Prefer calrissian images highest
+            # Ad-hoc conversion of current "python311" alias to "3.11" UDF runtime version
+            match = re.match(r"^py(thon)?(?P<major>\d)\.?(?P<minor>\d{1,2})$", alias, flags=re.I)
+            if match:
+                udf_runtimes = [
+                    _UdfRuntimeAndVersion(
+                        name=n,
+                        version=v,
+                        # Prefer highest, but least specific major version
+                        preference=int(match.group("major")) * 10 - len(v),
+                    )
+                    for n in runtime_names
+                    for v in [f"{match.group('major')}.{match.group('minor')}", f"{match.group('major')}"]
+                ]
+                image_preference = int(match.group("major")) * 100 + int(match.group("minor"))
             else:
-                # Ad-hoc conversion of current "python311" alias to "3.11" UDF runtime version
-                match = re.match(r"^py(thon)?(?P<major>\d)\.?(?P<minor>\d{1,2})$", alias, flags=re.I)
-                if match:
-                    udf_runtimes = [
-                        _UdfRuntimeAndVersion(
-                            name=n,
-                            version=v,
-                            # Prefer highest, but least specific major version
-                            preference=int(match.group("major")) * 10 - len(v),
-                        )
-                        for n in runtime_names
-                        for v in [f"{match.group('major')}.{match.group('minor')}", f"{match.group('major')}"]
-                    ]
-                    image_preference = int(match.group("major")) * 100 + int(match.group("minor"))
-                else:
-                    _log.warning(f"Failed to guess python version from image alias {alias!r}.")
-                    udf_runtimes = [_UdfRuntimeAndVersion(name=n, version=alias) for n in runtime_names]
-                    image_preference = 0
+                _log.warning(f"Failed to guess python version from image alias {alias!r}.")
+                udf_runtimes = [_UdfRuntimeAndVersion(name=n, version=alias) for n in runtime_names]
+                image_preference = 0
 
             image_entries.append(
                 ContainerImageRecord(

@@ -264,7 +264,6 @@ class GpsBackendConfig(OpenEoBackendConfig):
     """
     # TODO #1387 deprecate this in favor of container_images_and_udf_runtimes?
     batch_runtime_to_image: dict = {
-        "CWL-Calrissian": "vito-docker.artifactory.vgt.vito.be/calrissian:0.18.1",
         # TODO: eliminate this hardcoded VITO default?
         "python311" : "vito-docker.artifactory.vgt.vito.be/openeo-geotrellis-kube-python311:latest"
     }
