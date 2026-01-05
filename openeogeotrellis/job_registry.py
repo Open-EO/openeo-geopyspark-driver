@@ -530,6 +530,7 @@ class ZkStrippedSpecification(Exception):
 
 def parse_zk_job_specification(job_info: dict, default_job_options=None) -> Tuple[dict, Union[dict, None]]:
     """Parse the JSON-encoded 'specification' field from ZK job info dict"""
+    # TODO #1165 eliminate this once unused
     specification_json = job_info["specification"]
     if specification_json.startswith(ZkStrippedSpecification.PAYLOAD_MARKER):
         raise ZkStrippedSpecification()
@@ -755,6 +756,7 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
 
     def __init__(
         self,
+        *,
         zk_job_registry_factory: Optional[Callable[[], ZkJobRegistry]] = None,
         elastic_job_registry: Optional[JobRegistryInterface] = None,
     ):
