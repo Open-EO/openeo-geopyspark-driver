@@ -105,6 +105,7 @@ from openeogeotrellis.integrations.yarn_jobrunner import YARNBatchJobRunner
 from openeogeotrellis.job_options import JobOptions, K8SOptions, JOB_OPTION_DISABLE
 from openeogeotrellis.job_registry import (
     DoubleJobRegistry,
+    ZkJobRegistry,
     get_deletable_dependency_sources,
     parse_zk_job_specification,
 )
@@ -1430,6 +1431,7 @@ class GpsBatchJobs(backend.BatchJobs):
         )
 
         self._double_job_registry = DoubleJobRegistry(
+            zk_job_registry_factory=ZkJobRegistry if get_backend_config().use_zk_job_registry else None,
             elastic_job_registry=elastic_job_registry,
         )
 
