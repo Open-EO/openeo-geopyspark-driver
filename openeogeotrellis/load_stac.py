@@ -472,9 +472,7 @@ def load_stac(
         ) from e
 
     if not spatiotemporal_extent.temporal_extent.is_unbounded():
-        from_date_iso = spatiotemporal_extent._temporal_extent.from_date.isoformat() if spatiotemporal_extent._temporal_extent.from_date else None
-        to_date_iso = spatiotemporal_extent._temporal_extent.to_date.isoformat() if spatiotemporal_extent._temporal_extent.to_date else None
-        metadata = metadata.filter_temporal(from_date_iso, to_date_iso)
+        metadata = metadata.filter_temporal(*spatiotemporal_extent.temporal_extent.isoformat())
 
     metadata = metadata.filter_bbox(
         west=extent.xmin(),
@@ -639,6 +637,12 @@ class _TemporalExtent:
 
     def as_tuple(self) -> Tuple[Union[datetime.datetime, None], Union[datetime.datetime, None]]:
         return self.from_date, self.to_date
+
+    def isoformat(self) -> Tuple[Union[str, None], Union[str, None]]:
+        return (
+            self.from_date.isoformat() if self.from_date else None,
+            self.to_date.isoformat() if self.to_date else None,
+        )
 
     def is_unbounded(self) -> bool:
         return self.from_date is None and self.to_date is None
