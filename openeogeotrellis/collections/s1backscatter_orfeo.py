@@ -394,7 +394,7 @@ class S1BackscatterOrfeo:
 
     @staticmethod
     @functools.lru_cache(10,False)
-    def configure_pipeline(dem_dir, elev_default, elev_geoid, input_tiff, log_prefix, noise_removal, orfeo_memory,
+    def configure_pipeline(dem_dir, elev_default, elev_geoid, input_tiff: pathlib.Path, log_prefix, noise_removal, orfeo_memory,
                            sar_calibration_lut, epsg:int, target_resolution = (10.0,10.0)):
         otb = _import_orfeo_toolbox()
 
@@ -406,20 +406,23 @@ class S1BackscatterOrfeo:
 
         import rasterio
         from rasterio.windows import Window
-        with rasterio.open(input_tiff, driver="GTiff") as ds:
+        crop1 = False
+        crop2 = False
 
-            cut_overlap_range = 1000  # Number of columns to cut on the sides. Here 500pixels = 5km
-            cut_overlap_azimuth = 1600  # Number of lines to cut at the top or the bottom
-            thr_nan_for_cropping = cut_overlap_range * 2  # When testing we having cut the NaN yet on the border hence this threshold.
+        if input_tiff.exists():
+            with rasterio.open(input_tiff, driver="GTiff") as ds:
 
-            north = ds.read(1,window=Window(col_off=0,row_off=100,width=ds.width + 1,height=1))
-            south = ds.read(1,window=Window(col_off=0,row_off=ds.height-100,width=ds.width +1,height=1))
-            crop1 = S1BackscatterOrfeo.has_too_many_NoData(north, thr_nan_for_cropping, 0)
-            crop2 = S1BackscatterOrfeo.has_too_many_NoData(south, thr_nan_for_cropping, 0)
-            del south
-            del north
+                cut_overlap_range = 1000  # Number of columns to cut on the sides. Here 500pixels = 5km
+                cut_overlap_azimuth = 1600  # Number of lines to cut at the top or the bottom
+                thr_nan_for_cropping = cut_overlap_range * 2  # When testing we having cut the NaN yet on the border hence this threshold.
 
-        thr_x = cut_overlap_range
+                north = ds.read(1,window=Window(col_off=0,row_off=100,width=ds.width + 1,height=1))
+                south = ds.read(1,window=Window(col_off=0,row_off=ds.height-100,width=ds.width +1,height=1))
+                crop1 = S1BackscatterOrfeo.has_too_many_NoData(north, thr_nan_for_cropping, 0)
+                crop2 = S1BackscatterOrfeo.has_too_many_NoData(south, thr_nan_for_cropping, 0)
+                del south
+                del north
+
         thr_y_s = cut_overlap_azimuth if crop1 else 0
         thr_y_e = cut_overlap_azimuth if crop2 else 0
 
