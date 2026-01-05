@@ -406,18 +406,18 @@ class S1BackscatterOrfeo:
 
         import rasterio
         from rasterio.windows import Window
-        ds = rasterio.open(input_tiff, driver="GTiff")
+        with rasterio.open(input_tiff, driver="GTiff") as ds:
 
-        cut_overlap_range = 1000  # Number of columns to cut on the sides. Here 500pixels = 5km
-        cut_overlap_azimuth = 1600  # Number of lines to cut at the top or the bottom
-        thr_nan_for_cropping = cut_overlap_range * 2  # When testing we having cut the NaN yet on the border hence this threshold.
+            cut_overlap_range = 1000  # Number of columns to cut on the sides. Here 500pixels = 5km
+            cut_overlap_azimuth = 1600  # Number of lines to cut at the top or the bottom
+            thr_nan_for_cropping = cut_overlap_range * 2  # When testing we having cut the NaN yet on the border hence this threshold.
 
-        north = ds.read(1,window=Window(col_off=0,row_off=100,width=None,height=1))
-        south = ds.read(1,window=Window(col_off=0,row_off=-1100,width=None,height=1))
-        crop1 = S1BackscatterOrfeo.has_too_many_NoData(north, thr_nan_for_cropping, 0)
-        crop2 = S1BackscatterOrfeo.has_too_many_NoData(south, thr_nan_for_cropping, 0)
-        del south
-        del north
+            north = ds.read(1,window=Window(col_off=0,row_off=100,width=ds.width + 1,height=1))
+            south = ds.read(1,window=Window(col_off=0,row_off=ds.height-100,width=ds.width +1,height=1))
+            crop1 = S1BackscatterOrfeo.has_too_many_NoData(north, thr_nan_for_cropping, 0)
+            crop2 = S1BackscatterOrfeo.has_too_many_NoData(south, thr_nan_for_cropping, 0)
+            del south
+            del north
 
         thr_x = cut_overlap_range
         thr_y_s = cut_overlap_azimuth if crop1 else 0
@@ -436,6 +436,7 @@ class S1BackscatterOrfeo:
         #reset_margin.SetParameterInt('threshold.x', thr_x)
         reset_margin.SetParameterInt('threshold.y.start', thr_y_s)
         reset_margin.SetParameterInt('threshold.y.end', thr_y_e)
+        reset_margin.SetParameterString('mode', 'threshold')
 
 
         # OrthoRectification
