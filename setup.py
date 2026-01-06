@@ -30,6 +30,7 @@ tests_require = [
     'openeo_udf>=1.0.0rc3',
     "time_machine>=2.8.0,<3.0.0",
     "kubernetes",
+    "google-auth<2.46.0; python_version<='3.8'",  # quick-fix for google-auth python 3.8 compatibility issue
     "re-assert",
     "dirty-equals>=0.6",
     "cryptography>=44.0.0",
