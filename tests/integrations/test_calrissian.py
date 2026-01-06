@@ -114,7 +114,7 @@ class TestCalrissianJobLauncher:
                         {
                             "name": "r-1234-cal-inp-01234567",
                             "image": "alpine:3",
-                            "image_pull_policy": "Always",
+                            "image_pull_policy": "IfNotPresent",
                             "command": ["/bin/sh"],
                             "args": [
                                 "-c",
