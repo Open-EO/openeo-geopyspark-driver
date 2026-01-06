@@ -5,8 +5,6 @@ import dataclasses
 import json
 import logging
 import os
-import subprocess
-import tempfile
 import textwrap
 import time
 from copy import deepcopy
@@ -17,8 +15,10 @@ import kubernetes.client
 import requests
 import yaml
 from openeo.util import ContextTimer
+from openeo_driver.ProcessGraphDeserializer import ENV_DRY_RUN_TRACER
 from openeo_driver.backend import ErrorSummary
 from openeo_driver.config import ConfigException
+from openeo_driver.dry_run import DryRunDataTracer
 from openeo_driver.utils import EvalEnv, generate_unique_id
 
 from openeogeotrellis.config import get_backend_config, s3_config
@@ -31,6 +31,7 @@ from openeogeotrellis.config.integrations.calrissian_config import (
     DEFAULT_SECURITY_CONTEXT,
     CalrissianConfig,
 )
+from openeogeotrellis.integrations.kubernetes import ensure_kubernetes_config
 from openeogeotrellis.integrations.s3proxy import sts
 from openeogeotrellis.util.runtime import get_job_id, get_request_id, ENV_VAR_OPENEO_BATCH_JOB_ID
 from openeogeotrellis.utils import s3_client
@@ -170,9 +171,26 @@ class CwLSource:
 
     def __init__(self, content: str):
         self._cwl = content
+        yaml_parsed = list(yaml.safe_load_all(self._cwl))
+        assert len(yaml_parsed) >= 1
 
     def get_content(self) -> str:
         return self._cwl
+
+    @classmethod
+    def from_any(cls, content: str) -> CwLSource:
+        # noinspection HttpUrlsUsage
+        if content.lower().startswith("http://") or content.lower().startswith("https://"):
+            return cls.from_url(content)
+        elif (
+            content.lower().endswith(".cwl")
+            or content.lower().endswith(".yaml")
+            and not "\n" in content
+            and not content.startswith("{")
+        ):
+            return cls.from_path(content)
+        else:
+            return cls(content=content)
 
     @classmethod
     def from_string(cls, content: str, auto_dedent: bool = True) -> CwLSource:
@@ -357,9 +375,6 @@ class CalrissianJobLauncher:
 
         name = self._build_unique_name(infix="cal-inp")
         _log.info(f"Creating input staging job manifest: {name=}")
-        yaml_parsed = list(yaml.safe_load_all(cwl_content))
-        assert len(yaml_parsed) >= 1
-
         # Serialize CWL content to string that is safe to pass as command line argument
         cwl_serialized = base64.b64encode(cwl_content.encode("utf8")).decode("ascii")
         # TODO #1008 cleanup procedure of these CWL files?
@@ -691,7 +706,7 @@ def parse_cwl_outputs_listing(cwl_outputs_listing: dict) -> List[str]:
     return results
 
 
-def find_stac_root(paths: list, stac_root_filename: Optional[str] = "catalog.json") -> Optional[str]:
+def find_stac_root(paths: set, stac_root_filename: Optional[str] = "catalog.json") -> Optional[str]:
     paths = [Path(p) for p in paths]
 
     def search(stac_root_filename_local: str):
@@ -716,3 +731,45 @@ def find_stac_root(paths: list, stac_root_filename: Optional[str] = "catalog.jso
     if ret:
         return ret
     return None
+
+
+def cwl_to_stac(
+    cwl_arguments: Union[List[str], dict],
+    env: EvalEnv,
+    cwl_source: CwLSource,
+    stac_root: str = "collection.json",
+    direct_s3_mode=False,
+) -> str:
+    dry_run_tracer: DryRunDataTracer = env.get(ENV_DRY_RUN_TRACER)
+    if dry_run_tracer:
+        # TODO: use something else than `dry_run_tracer.load_stac`
+        #       to avoid risk on conflict with "regular" load_stac code flows?
+        return "dummy"
+
+    ensure_kubernetes_config()
+
+    _log.info(f"Loading CWL from {cwl_source=}")
+
+    launcher = CalrissianJobLauncher.from_context(env)
+    results = launcher.run_cwl_workflow(
+        cwl_source=cwl_source,
+        cwl_arguments=cwl_arguments,
+        output_paths=[stac_root],
+    )
+
+    # TODO: provide generic helper to log some info about the results
+    for k, v in results.items():
+        _log.info(f"result {k!r}: {v.generate_public_url()=} {v.generate_presigned_url()=}")
+
+    try:
+        stac_root_new = find_stac_root(set(results.keys()), stac_root)
+        if stac_root_new:
+            stac_root = stac_root_new
+    except Exception as e:
+        _log.warning(f"Error from find_stac_root {stac_root!r}: {e}")
+
+    if direct_s3_mode:
+        collection_url = results[stac_root].s3_uri()
+    else:
+        collection_url = results[stac_root].generate_public_url()
+    return collection_url

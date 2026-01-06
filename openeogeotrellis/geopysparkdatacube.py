@@ -2533,7 +2533,7 @@ class GeopysparkDataCube(DriverDataCube):
         elif format == "DEBUG_GENERAL":
             # Write debug information to a json file without going through spark.
             debug_output = {"layer_metadata": {}, "cube_metadata": {}}
-            metadata_sc = max_level.layer_metadata
+            metadata_sc = max_level.srdd.rdd().metadata()
             layer_metadata_py: gps.Metadata = convert_scala_metadata(
                 metadata_sc, epoch_ms_to_datetime=_instant_ms_to_minute, logger=_log
             )

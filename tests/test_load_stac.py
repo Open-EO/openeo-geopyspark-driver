@@ -1010,6 +1010,15 @@ class TestTemporalExtent:
             datetime.datetime(2025, 5, 6, 22, 22, 22, tzinfo=datetime.timezone.utc),
         )
 
+    def test_isoformat(self):
+        assert _TemporalExtent("2025-03-04T11:11:11", "2025-05-06T22:22:22").isoformat() == (
+            "2025-03-04T11:11:11+00:00",
+            "2025-05-06T22:22:22+00:00",
+        )
+        assert _TemporalExtent(None, "2025-05-06").isoformat() == (None, "2025-05-06T00:00:00+00:00")
+        assert _TemporalExtent("2025-05-06", None).isoformat() == ("2025-05-06T00:00:00+00:00", None)
+        assert _TemporalExtent(None, None).isoformat() == (None, None)
+
     def test_intersects_empty(self):
         extent = _TemporalExtent(None, None)
         assert extent.intersects("1789-07-14") == True

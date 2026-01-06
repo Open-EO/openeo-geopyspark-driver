@@ -379,11 +379,22 @@ class S1BackscatterOrfeo:
             else:
                 return out_path, 0
 
+    @staticmethod
+    def has_too_many_NoData(image, threshold: int, nodata: Union[float, int]) -> bool:
+        """
+        Analyses whether an image contains NO DATA.
 
+            :param image:     np.array image to analyse
+            :param threshold: number of NoData searched
+            :param nodata:    no data value
+            :return:          whether the number of no-data pixel > threshold
+        """
+        nbNoData = len(np.argwhere(image == nodata))
+        return nbNoData > threshold
 
     @staticmethod
     @functools.lru_cache(10,False)
-    def configure_pipeline(dem_dir, elev_default, elev_geoid, input_tiff, log_prefix, noise_removal, orfeo_memory,
+    def configure_pipeline(dem_dir, elev_default, elev_geoid, input_tiff: pathlib.Path, log_prefix, noise_removal, orfeo_memory,
                            sar_calibration_lut, epsg:int, target_resolution = (10.0,10.0)):
         otb = _import_orfeo_toolbox()
 
@@ -393,6 +404,28 @@ class S1BackscatterOrfeo:
                 for (p, v) in app.GetParameters().items()
             }
 
+        import rasterio
+        from rasterio.windows import Window
+        crop1 = False
+        crop2 = False
+
+        if input_tiff.exists():
+            with rasterio.open(input_tiff, driver="GTiff") as ds:
+
+                cut_overlap_range = 1000  # Number of columns to cut on the sides. Here 500pixels = 5km
+                cut_overlap_azimuth = 1600  # Number of lines to cut at the top or the bottom
+                thr_nan_for_cropping = cut_overlap_range * 2  # When testing we having cut the NaN yet on the border hence this threshold.
+
+                north = ds.read(1,window=Window(col_off=0,row_off=100,width=ds.width + 1,height=1))
+                south = ds.read(1,window=Window(col_off=0,row_off=ds.height-100,width=ds.width +1,height=1))
+                crop1 = S1BackscatterOrfeo.has_too_many_NoData(north, thr_nan_for_cropping, 0)
+                crop2 = S1BackscatterOrfeo.has_too_many_NoData(south, thr_nan_for_cropping, 0)
+                del south
+                del north
+
+        thr_y_s = cut_overlap_azimuth if crop1 else 0
+        thr_y_e = cut_overlap_azimuth if crop2 else 0
+
         # SARCalibration
         sar_calibration = otb.Registry.CreateApplication('SARCalibration')
         sar_calibration.SetParameterString("in", str(input_tiff))
@@ -401,9 +434,20 @@ class S1BackscatterOrfeo:
         sar_calibration.SetParameterInt('ram', orfeo_memory)
         logger.info(f"{log_prefix} SARCalibration params: {otb_param_dump(sar_calibration)}")
 
+        # Cut away corrupt data, to work around this issue: https://gitlab.orfeo-toolbox.org/orfeotoolbox/otb/-/issues/2509
+        # Approach and parameters inspired by S1-Tiling
+        reset_margin = sar_calibration
+        if crop1 or crop2:
+            reset_margin = otb.Registry.CreateApplication('ResetMargin')
+            reset_margin.ConnectImage("in", sar_calibration, "out")
+            reset_margin.SetParameterInt('threshold.y.start', thr_y_s)
+            reset_margin.SetParameterInt('threshold.y.end', thr_y_e)
+            reset_margin.SetParameterString('mode', 'threshold')
+
+
         # OrthoRectification
         ortho_rect = otb.Registry.CreateApplication('OrthoRectification')
-        ortho_rect.ConnectImage("io.in", sar_calibration, "out")
+        ortho_rect.ConnectImage("io.in", reset_margin, "out")
 
         if dem_dir:
             ortho_rect.SetParameterString("elev.dem", dem_dir)
