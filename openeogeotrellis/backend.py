@@ -683,9 +683,7 @@ Example usage:
                     return True
 
                 requested_bbox_lonlat = requested_bbox.reproject("EPSG:4326")
-                return requested_bbox_lonlat.as_polygon().intersects(
-                    Polygon.from_bounds(*item.bbox)
-                )
+                return requested_bbox_lonlat.as_polygon().intersects(shapely.geometry.box(*item.bbox))
 
             uris_with_metadata = {asset.get_absolute_href(): (item.datetime.isoformat(),
                                                               asset.extra_fields.get("eo:bands", []))
