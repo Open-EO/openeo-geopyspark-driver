@@ -125,6 +125,10 @@ class CalrissianS3Result:
         return f"s3://{self.s3_bucket}/{self.s3_key}"
 
     def read(self, encoding: Union[None, str] = None) -> Union[bytes, str]:
+        # mocking might give invalid values. Check for them:
+        assert "<" not in self.s3_bucket, self.s3_bucket
+        assert "<" not in self.s3_key, self.s3_key
+
         _log.info(f"Reading from S3: {self.s3_bucket=}, {self.s3_key=}")
         s3_file_object = s3_client().get_object(Bucket=self.s3_bucket, Key=self.s3_key)
         body = s3_file_object["Body"]
@@ -384,7 +388,7 @@ class CalrissianJobLauncher:
         container = kubernetes.client.V1Container(
             name=name,
             image=self._input_staging_image,
-            image_pull_policy="Always",
+            image_pull_policy="IfNotPresent",  # Avoid 'Always' as artifactory might be down.
             security_context=self._security_context,
             command=["/bin/sh"],
             args=["-c", f"set -euxo pipefail; echo '{cwl_serialized}' | base64 -d > {cwl_path}"],
@@ -615,19 +619,21 @@ class CalrissianJobLauncher:
         self,
         cwl_source: CwLSource,
         cwl_arguments: Union[List[str], dict],
-        # TODO #1126 eliminate need to list expected output paths, leverage CWL outputs listing
-        output_paths: List[str],
+        output_paths: Optional[List[str]] = None,
         env_vars: Optional[Dict[str, str]] = None,
     ) -> Dict[str, CalrissianS3Result]:
         """
         Run a CWL workflow on Calrissian and return the output as a string.
 
-        :param cwl_content: CWL content as a string.
+        :param cwl_source:
         :param cwl_arguments: arguments to pass to the CWL workflow.
+        :param output_paths: Deprecated parameter
         :param env_vars: environment variables set to the pod that runs calrissian these are not passsed to pods spawned
                          by calrissian.
         :return: output of the CWL workflow as a string.
         """
+        if output_paths:
+            _log.warning("CalrissianJobLauncher.run_cwl_workflow: output_paths parameter is deprecated and will be removed.")
         # Input staging
         input_staging_manifest, cwl_path = self.create_input_staging_job_manifest(cwl_source=cwl_source)
         input_staging_job = self.launch_job_and_wait(manifest=input_staging_manifest)
@@ -655,26 +661,17 @@ class CalrissianJobLauncher:
         self._calrissian_launch_config.cleanup_secret_for_files()
 
         # Collect results
-        # TODO #1126 leverage relative_cwl_outputs_listing to collect results (instead of hardcoding output_paths)
-        _log.info(f"run_cwl_workflow: building S3 references to output files from {output_paths}")
         _log.info(f"run_cwl_workflow: {relative_cwl_outputs_listing}")
         output_volume_name = self.get_output_volume_name()
-        outputs_listing_result_url = CalrissianS3Result(
+        outputs_listing_result = CalrissianS3Result(
             s3_region=self._s3_region,
             s3_bucket=self._s3_bucket,
             s3_key=f"{output_volume_name}/{relative_cwl_outputs_listing.strip('/')}",
-        ).generate_public_url()
-        try:
-            r = requests.get(outputs_listing_result_url)
-            r.raise_for_status()
-            outputs_listing_result_paths = parse_cwl_outputs_listing(r.json())
-            prefix = relative_output_dir.strip("/") + "/"
-            output_paths = [p[len(prefix) :] if p.startswith(prefix) else p for p in outputs_listing_result_paths]
-        except Exception as e:
-            # Happens when running in unit tests, but safe to do anyway.
-            _log.warning(
-                f"Failed to get outputs listing from {outputs_listing_result_url=}: {e!r}. Falling back to expected output paths."
-            )
+        )
+        j = json.loads(outputs_listing_result.read())
+        outputs_listing_result_paths = parse_cwl_outputs_listing(j)
+        prefix = relative_output_dir.strip("/") + "/"
+        output_paths = [p[len(prefix) :] if p.startswith(prefix) else p for p in outputs_listing_result_paths]
 
         results = {
             output_path: CalrissianS3Result(
