@@ -34,6 +34,7 @@ without compromising stable operations.
 - Start using "global_extent" calculated from post-dry-run phase when possible ([#1299](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1299), [openeo-python-driver#406](https://github.com/Open-EO/openeo-python-driver/issues/406))
 - Handle "global_extent" calculation from STAC based `load_collection` through `load_stac` logic ([#1299](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1299), [openeo-python-driver#406](https://github.com/Open-EO/openeo-python-driver/issues/406))
 - Support experimental `corsa_compress` and `corsa_decompress` processes ([Open-EO/openeo-geotrellis-extensions#563](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/563), [Open-EO/openeo-geotrellis-extensions#577](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/577))
+- Ensure counter-clockwise bbox geometries in STAC metadata ([#1384](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1384))
 
 
 ## 0.69.0
