@@ -19,6 +19,7 @@ import pandas as pd
 import geopandas as gpd
 import pyproj
 import pytz
+import shapely.geometry
 import xarray as xr
 from geopyspark import TiledRasterLayer, Pyramid, Tile, SpaceTimeKey, SpatialKey, Metadata, zfactor_lat_lng_calculator
 from geopyspark.geotrellis import Extent, ResampleMethod
@@ -1956,7 +1957,7 @@ class GeopysparkDataCube(DriverDataCube):
                 assets = {}
                 extent = java_item.bbox()
                 bbox = to_latlng_bbox(extent) if extent else None
-                geometry = mapping(Polygon.from_bounds(*to_latlng_bbox(extent))) if extent else None
+                geometry = mapping(shapely.geometry.box(*to_latlng_bbox(extent))) if extent else None
 
                 for asset_key, asset in java_item.assets().items():
                     assets[asset_key] = {
