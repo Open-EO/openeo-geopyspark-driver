@@ -757,6 +757,7 @@ class TestGpsBatchJobs:
         bucket.create(CreateBucketConfiguration={"LocationConstraint": TEST_AWS_REGION_NAME})
         yield bucket
 
+    @mock.patch("kubernetes.config.load_kube_config", return_value=mock.MagicMock())
     @mock.patch("kubernetes.config.load_incluster_config", return_value=mock.MagicMock())
     @mock.patch("kubernetes.client.CoreV1Api.read_namespaced_pod", return_value=mock.MagicMock())
     @mock.patch("kubernetes.client.CustomObjectsApi.create_namespaced_custom_object", return_value=mock.MagicMock())
@@ -769,7 +770,8 @@ class TestGpsBatchJobs:
         mock_get_spark_pod_status,
         mock_create_spark_pod,
         mock_get_pod_image,
-        mock_k8s_config,
+        mock_k8s_config_incluster_config,
+        mock_k8s_config_load_kube_config,
         kube_no_zk,
         backend_implementation,
         job_registry,
