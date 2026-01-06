@@ -87,7 +87,6 @@ from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.constants import JOB_OPTION_LOG_LEVEL
 from openeogeotrellis.geopysparkcubemetadata import Band
 from openeogeotrellis.geopysparkdatacube import GeopysparkCubeMetadata, GeopysparkDataCube
-from openeogeotrellis.integrations.calrissian import CwLSource
 from openeogeotrellis.integrations.etl_api import get_etl_api, ETL_ORGANIZATION_ID_JOB_OPTION
 from openeogeotrellis.integrations.identity import IDP_TOKEN_ISSUER
 from openeogeotrellis.integrations.hadoop import setup_kerberos_auth
@@ -949,7 +948,7 @@ Example usage:
         context: dict,
     ) -> DriverDataCube:
         # local import to avoid importing kubernetes on yarn backends
-        from openeogeotrellis.integrations.calrissian import cwl_to_stac
+        from openeogeotrellis.integrations.calrissian import CwLSource, cwl_to_stac
         collection_url = cwl_to_stac(
             context,
             env,
