@@ -65,6 +65,7 @@ class GridSnapper:
 
 def to_geojson_dict(obj) -> dict:
     """Convert various geometry-like objects to GeoJSON dictionary representation."""
+    # TODO #1161 use `orient_polygons` to be sure about vertex order, once we require Shapely>=2.1.0
     if isinstance(obj, shapely.geometry.base.BaseGeometry):
         return shapely.geometry.mapping(obj)
     elif isinstance(obj, BoundingBox):
@@ -102,3 +103,24 @@ def to_geojson_io_url(geometry):
     geojson_str = json.dumps(geojson_dict)
     encoded = urllib.parse.quote(geojson_str)
     return f"https://geojson.io/#data=data:application/json,{encoded}"
+
+
+def bbox_to_geojson(*args) -> dict:
+    """
+    Convert bounding box (xmin, ymin, xmax, ymon),
+    given as separate arguments or a single tuple/list,
+    to a GeoJSON (Polygon) dict.
+
+    Note that given coordinates must be in lon-lat CRS (because GeoJSON).
+    """
+    if len(args) == 1:
+        xmin, ymin, xmax, ymax = args[0]
+    elif len(args) == 4:
+        xmin, ymin, xmax, ymax = args
+    else:
+        raise ValueError(args)
+
+    polygon = shapely.geometry.box(xmin, ymin, xmax, ymax, ccw=True)
+    # TODO #1161 use `orient_polygons` to be sure, once we require Shapely>=2.1.0
+    # polygon = shapely.orient_polygons(polygon)
+    return shapely.geometry.mapping(polygon)

@@ -51,6 +51,7 @@ from openeogeotrellis.ml.geopysparkmlmodel import GeopysparkMlModel
 from openeogeotrellis.processgraphvisiting import GeotrellisTileProcessGraphVisitor, SingleNodeUDFProcessGraphVisitor
 from openeogeotrellis.ml.aggregatespatialvectorcube import AggregateSpatialVectorCube
 from openeogeotrellis.util.datetime import to_datetime_utc
+from openeogeotrellis.util.geometry import bbox_to_geojson
 from openeogeotrellis.utils import (
     to_projected_polygons,
     log_memory,
@@ -1956,7 +1957,7 @@ class GeopysparkDataCube(DriverDataCube):
                 assets = {}
                 extent = java_item.bbox()
                 bbox = to_latlng_bbox(extent) if extent else None
-                geometry = mapping(Polygon.from_bounds(*to_latlng_bbox(extent))) if extent else None
+                geometry = bbox_to_geojson(bbox) if bbox else None
 
                 for asset_key, asset in java_item.assets().items():
                     assets[asset_key] = {
@@ -2119,7 +2120,7 @@ class GeopysparkDataCube(DriverDataCube):
                                 assets[asset_key] = {
                                     "href": asset.path(),
                                     "bbox": to_latlng_bbox(bbox),
-                                    "geometry": mapping(Polygon.from_bounds(*to_latlng_bbox(bbox))),
+                                    "geometry": bbox_to_geojson(to_latlng_bbox(bbox)),
                                     "type": "image/tiff; application=geotiff",
                                     "roles": ["data"],
                                 }
@@ -2129,7 +2130,7 @@ class GeopysparkDataCube(DriverDataCube):
                             item = {
                                 "id": java_item.id(),
                                 "properties": {"datetime": java_item.datetime()},
-                                "geometry": mapping(Polygon.from_bounds(*to_latlng_bbox(bbox))),
+                                "geometry": bbox_to_geojson(to_latlng_bbox(bbox)),
                                 "bbox": to_latlng_bbox(bbox),
                                 "assets": assets,
                             }
@@ -2148,7 +2149,7 @@ class GeopysparkDataCube(DriverDataCube):
                             assets[asset_key] = {
                                 "href": save_filename,
                                 "bbox": to_latlng_bbox(bbox),
-                                "geometry": mapping(Polygon.from_bounds(*to_latlng_bbox(bbox))),
+                                "geometry": bbox_to_geojson(to_latlng_bbox(bbox)),
                                 "type": "image/tiff; application=geotiff",
                                 "roles": ["data"],
                             }
@@ -2158,7 +2159,7 @@ class GeopysparkDataCube(DriverDataCube):
                         item = {
                             "id": java_item.id(),
                             "properties": {"datetime": java_item.datetime()},
-                            "geometry": mapping(Polygon.from_bounds(*to_latlng_bbox(bbox))),
+                            "geometry": bbox_to_geojson(to_latlng_bbox(bbox)),
                             "bbox": to_latlng_bbox(bbox),
                             "assets": assets,
                         }
@@ -2288,14 +2289,14 @@ class GeopysparkDataCube(DriverDataCube):
                                     "nodata": nodata,
                                     "datetime": stac_datetime,
                                     "bbox": to_latlng_bbox(bbox),
-                                    "geometry": mapping(Polygon.from_bounds(*to_latlng_bbox(bbox))),
+                                    "geometry": bbox_to_geojson(to_latlng_bbox(bbox)),
                                 }
                             assets = add_gdalinfo_objects(assets)
 
                             item = {
                                 "id": java_item.id(),
                                 "properties": {"datetime": stac_datetime},
-                                "geometry": mapping(Polygon.from_bounds(*to_latlng_bbox(bbox))),
+                                "geometry": bbox_to_geojson(to_latlng_bbox(bbox)),
                                 "bbox": to_latlng_bbox(bbox),
                                 "assets": assets,
                             }
@@ -2345,12 +2346,12 @@ class GeopysparkDataCube(DriverDataCube):
                                     ]
                                 if bbox:
                                     assets[asset_key]["bbox"] = to_latlng_bbox(bbox)
-                                    assets[asset_key]["geometry"] = mapping(Polygon.from_bounds(*to_latlng_bbox(bbox)))
+                                    assets[asset_key]["geometry"] = bbox_to_geojson(to_latlng_bbox(bbox))
 
                             assets = add_gdalinfo_objects(assets)
                             item = {
                                 "id": java_item.id(),
-                                "geometry": mapping(Polygon.from_bounds(*to_latlng_bbox(bbox))),
+                                "geometry": bbox_to_geojson(to_latlng_bbox(bbox)),
                                 "bbox": to_latlng_bbox(bbox),
                                 "assets": assets,
                             }

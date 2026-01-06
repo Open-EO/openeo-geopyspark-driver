@@ -97,7 +97,7 @@ def test_extract_result_metadata():
         "bbox": [4, 51, 5, 52],
         "geometry": {
             "type": "Polygon",
-            "coordinates": (((4.0, 51.0), (4.0, 52.0), (5.0, 52.0), (5.0, 51.0), (4.0, 51.0)),),
+            "coordinates": (((5.0, 51.0), (5.0, 52.0), (4.0, 52.0), (4.0, 51.0), (5.0, 51.0)),),
         },
         "area": {"value": approx(7725459381.443416, 0.01), "unit": "square meter"},
         "start_datetime": "2020-02-02T00:00:00Z",
@@ -155,7 +155,7 @@ def test_extract_result_metadata_aggregate_spatial_delayed_vector():
         "bbox": [5.0, 5.0, 45.0, 40.0],
         "geometry": {
             "type": "Polygon",
-            "coordinates": (((5.0, 5.0), (5.0, 40.0), (45.0, 40.0), (45.0, 5.0), (5.0, 5.0)),),
+            "coordinates": (((45.0, 5.0), (45.0, 40.0), (5.0, 40.0), (5.0, 5.0), (45.0, 5.0)),),
         },
         "area": {"value": approx(6763173869883.0, 1.0), "unit": "square meter"},
         "start_datetime": "2020-02-02T00:00:00Z",

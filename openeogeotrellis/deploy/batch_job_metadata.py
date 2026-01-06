@@ -20,6 +20,7 @@ from openeo_driver.save_result import (
 from openeo_driver.util.geometry import reproject_bounding_box, spatial_extent_union
 from openeo_driver.util.utm import area_in_square_meters
 from openeo_driver.utils import temporal_extent_union
+import shapely.geometry
 from shapely.geometry import Polygon, mapping
 from shapely.geometry.base import BaseGeometry
 
@@ -27,6 +28,7 @@ from openeogeotrellis._version import __version__
 from openeogeotrellis.backend import JOB_METADATA_FILENAME, GeoPySparkBackendImplementation
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.integrations.gdal import _extract_gdal_asset_raster_metadata
+from openeogeotrellis.util.geometry import bbox_to_geojson
 from openeogeotrellis.utils import _make_set_for_key, get_jvm, to_s3_url, map_optional
 
 logger = logging.getLogger(__name__)
@@ -141,8 +143,8 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
         temp_bbox = [spatial_extent[b] for b in ["west", "south", "east", "north"]]
         if all(b is not None for b in temp_bbox):
             bbox = temp_bbox  # Only set bbox once we are sure we have all the info
-            area = area_in_square_meters(Polygon.from_bounds(*bbox), bbox_crs)
-            lonlat_geometry = mapping(Polygon.from_bounds(*convert_bbox_to_lat_long(bbox, bbox_crs)))
+            area = area_in_square_meters(shapely.geometry.box(*bbox), bbox_crs)
+            lonlat_geometry = mapping(shapely.geometry.box(*convert_bbox_to_lat_long(bbox, bbox_crs)))
 
     start_date, end_date = [rfc3339.datetime(d) for d in temporal_extent]
 
@@ -165,7 +167,7 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
             bbox = agg_geometry.bounds
             bbox_crs = agg_geometry.crs
             # Intentionally don't return the complete vector file. https://github.com/Open-EO/openeo-api/issues/339
-            lonlat_geometry = mapping(Polygon.from_bounds(*convert_bbox_to_lat_long(bbox, bbox_crs)))
+            lonlat_geometry = bbox_to_geojson(convert_bbox_to_lat_long(bbox, bbox_crs))
             area = DriverVectorCube.from_fiona([agg_geometry.path]).get_area()
         elif isinstance(agg_geometry, DriverVectorCube):
             if agg_geometry.geometry_count() != 0:

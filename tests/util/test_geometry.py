@@ -1,6 +1,6 @@
 from openeo_driver.util.geometry import BoundingBox
 
-from openeogeotrellis.util.geometry import BoundingBoxMerger, GridSnapper
+from openeogeotrellis.util.geometry import BoundingBoxMerger, GridSnapper, bbox_to_geojson
 
 
 class TestBoundingBoxMerger:
@@ -51,3 +51,12 @@ class TestGridSnapper:
         assert down_round_up(4.3) == (4.125, 4.375, 4.375)
         assert down_round_up(100) == (99.875, 100.125, 100.125)
         assert down_round_up(-100) == (-100.125, -99.875, -99.875)
+
+
+def test_bbox_to_geojson():
+    expected = {
+        "type": "Polygon",
+        "coordinates": (((3, 2), (3, 4), (1, 4), (1, 2), (3, 2)),),
+    }
+    assert bbox_to_geojson(1, 2, 3, 4) == expected
+    assert bbox_to_geojson((1, 2, 3, 4)) == expected

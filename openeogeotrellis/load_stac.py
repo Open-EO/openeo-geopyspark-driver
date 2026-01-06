@@ -710,7 +710,7 @@ class _SpatialExtent:
         # TODO: this assumes bbox is in lon/lat coordinates, also support other CRSes?
         if not self._bbox or bbox is None:
             return True
-        return self._bbox_lonlat_shape.intersects(shapely.geometry.Polygon.from_bounds(*bbox))
+        return self._bbox_lonlat_shape.intersects(shapely.geometry.box(*bbox))
 
 
 class _SpatioTemporalExtent:

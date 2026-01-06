@@ -3507,13 +3507,13 @@ def test_netcdf_sample_by_feature_asset_bbox_geometry(tmp_path):
     assert assets["openEO_0.nc"]["bbox"] == [0.0, 0.0, 1.0, 1.0]
     assert assets["openEO_0.nc"]["geometry"] == {
         "type": "Polygon",
-        "coordinates": [[[0.0, 0.0], [0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]]],
+        "coordinates": [[[1.0, 0.0], [1.0, 1.0], [0.0, 1.0], [0.0, 0.0], [1.0, 0.0]]],
     }
 
     assert assets["openEO_1.nc"]["bbox"] == [4.0, 4.0, 5.0, 5.0]
     assert assets["openEO_1.nc"]["geometry"] == {
         "type": "Polygon",
-        "coordinates": [[[4.0, 4.0], [4.0, 5.0], [5.0, 5.0], [5.0, 4.0], [4.0, 4.0]]],
+        "coordinates": [[[5.0, 4.0], [5.0, 5.0], [4.0, 5.0], [4.0, 4.0], [5.0, 4.0]]],
     }
 
 
