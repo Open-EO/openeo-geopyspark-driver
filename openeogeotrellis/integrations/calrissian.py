@@ -336,8 +336,6 @@ class CalrissianJobLauncher:
             else:
                 _log.warning(f"Failed to get s3 credentials: {detail}")
 
-        if ENV_VAR_OPENEO_BATCH_JOB_ID in os.environ:
-            env_vars[ENV_VAR_OPENEO_BATCH_JOB_ID] = os.environ[ENV_VAR_OPENEO_BATCH_JOB_ID]
         if "OPENEO_USER_ID" in os.environ:
             env_vars["OPENEO_USER_ID"] = os.environ["OPENEO_USER_ID"]
         launch_config = CalrissianLaunchConfigBuilder(
