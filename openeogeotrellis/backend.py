@@ -1831,7 +1831,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
         if "specification" in job_info:
             # This is old-style (ZK based) job info with "specification" being a JSON string.
-            # TODO #498 eliminate ZK code path, or at least encapsulate this logic better
+            # TODO #498 #1165 eliminate ZK code path, or at least encapsulate this logic better
             job_specification_json = job_info["specification"]
             job_process_graph, job_options = parse_zk_job_specification(job_info, default_job_options={})
         else:
