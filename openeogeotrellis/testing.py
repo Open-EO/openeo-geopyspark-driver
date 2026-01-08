@@ -446,9 +446,9 @@ class DummyStacApiServer:
             items=[],
         )
 
-    def define_item(self, collection_id: str, item_id: str, **kwargs):
+    def define_item(self, collection_id: str, item_id: str, assets=Optional[Dict[str, dict]], **kwargs):
         assert collection_id in self._collections
-        item = StacDummyBuilder.item(id=item_id, **kwargs)
+        item = StacDummyBuilder.item(id=item_id, assets=assets, **kwargs)
         self._collections[collection_id].items.append(item)
 
     def _build_flask_app(self) -> flask.Flask:

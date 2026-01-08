@@ -17,6 +17,7 @@ without compromising stable operations.
 - `sar_backscatter`: avoid segmentation fault on Sentinel-1 products with missing parts ([#1479](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1479))
 - Ensure counter-clockwise bbox geometries in STAC metadata ([#1384](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1384))
 - "stac-version" job option is not considered experimental; a value of "1.1" also generates a `derived_from` document ([#1488](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1488))
+- `load_stac` based `load_collection`: support `granule_metadata` asset in SENTINEL2_L2A for azimuth/zenith angle bands (eu-cdse/openeo-cdse-infra#804)
 
 
 ## 0.70.0

@@ -1,6 +1,6 @@
 import datetime
 from contextlib import nullcontext
-from typing import Iterator
+from typing import Iterator, List
 from unittest import mock
 
 import dirty_equals
@@ -16,6 +16,7 @@ from openeo_driver.users import User
 from openeo_driver.util.date_math import now_utc
 from openeo_driver.util.geometry import BoundingBox
 from openeo_driver.utils import EvalEnv
+from py4j.java_gateway import JavaObject
 
 from openeogeotrellis.backend import GpsBatchJobs
 from openeogeotrellis.job_registry import InMemoryJobRegistry
@@ -37,6 +38,7 @@ from openeogeotrellis.load_stac import (
     construct_item_collection,
     extract_own_job_info,
     load_stac,
+    _prepare_context,
 )
 from openeogeotrellis.testing import DummyStacApiServer, gps_config_overrides
 
@@ -2329,3 +2331,165 @@ class TestItemDeduplicator:
         depuplicator = ItemDeduplicator()
         result = depuplicator.deduplicate([item1, item2, item3])
         assert [r.id for r in result] == expected
+
+
+class _OpenSearchClientDumper:
+    """Helper to extract/dump OpenSearchClient contents for testing."""
+
+    # TODO: move this to more general utility module?
+
+    def scala_iterate(self, iterator):
+        while iterator.hasNext():
+            yield iterator.next()
+
+    def dump_link(self, link: JavaObject) -> dict:
+        """dump org.openeo.opensearch.OpenSearchResponses.Link"""
+        return {
+            # "toString": l.toString(),
+            "href": link.href().toString(),
+            "title": link.title().get(),
+            "bandNames": list(self.scala_iterate(link.bandNames().get().iterator())),
+        }
+
+    def dump_feature(self, feature: JavaObject) -> dict:
+        """dump org.openeo.opensearch.OpenSearchResponses.Feature"""
+        return {
+            "id": feature.id(),
+            "links": [self.dump_link(link) for link in feature.links()],
+        }
+
+    def dump_opensearch_client_features(self, opensearch_client: JavaObject) -> List[dict]:
+        """Dump all features from org.openeo.opensearch.OpenSearchClient"""
+        feature_iterator = opensearch_client.features().iterator()
+        return [self.dump_feature(feature) for feature in self.scala_iterate(feature_iterator)]
+
+
+class TestPrepareContext:
+    def _define_collection_s2_with_granule_metadata(
+        self, dummy_server: DummyStacApiServer, collection_id: str = "s2-with-granule_metadata"
+    ):
+        dummy_server.define_collection(
+            collection_id,
+            extent={
+                "spatial": {"bbox": [[3, 50, 5, 51]]},
+                "temporal": {"interval": [["2024-02-01", "2024-12-01"]]},
+            },
+        )
+        dummy_server.define_item(
+            collection_id=collection_id,
+            item_id=f"item-123",
+            datetime=f"2024-10-20T12:00:00Z",
+            bbox=[3, 50, 5, 51],
+            assets={
+                "B02_10m": {
+                    "href": "https://stac.test/B02_10m.tif",
+                    "type": "image/tiff; application=geotiff",
+                    "roles": ["data"],
+                    "bands": [{"name": "B02"}],
+                    "gsd": 10,
+                    "proj:code": 4326,
+                    "proj:bbox": [5, 51, 6, 52],
+                    "proj:shape": [1000, 1000],
+                },
+                "B02_20m": {
+                    "href": "https://stac.test/B02_20m.tif",
+                    "type": "image/tiff; application=geotiff",
+                    "roles": ["data"],
+                    "bands": [{"name": "B02"}],
+                    "gsd": 20,
+                    "proj:code": 4326,
+                    "proj:bbox": [5, 51, 6, 52],
+                    "proj:shape": [500, 500],
+                },
+                "B03_10m": {
+                    "href": "https://stac.test/B03_10m.tif",
+                    "type": "image/tiff; application=geotiff",
+                    "roles": ["data"],
+                    "bands": [{"name": "B03"}],
+                    "gsd": 10,
+                    "proj:code": 4326,
+                    "proj:bbox": [5, 51, 6, 52],
+                    "proj:shape": [1000, 1000],
+                },
+                "granule_metadata": {
+                    "href": "https://stac.test/MTD_TL.xml",
+                    "type": "application/xml",
+                    "roles": ["metadata"],
+                    "title": "MTD_TL.xml",
+                },
+            },
+        )
+
+    @pytest.mark.parametrize(
+        ["user_requested_bands_names", "expected_links"],
+        [
+            (
+                None,
+                [
+                    {"title": "B02_10m", "href": "https://stac.test/B02_10m.tif", "bandNames": ["B02"]},
+                    {"title": "B03_10m", "href": "https://stac.test/B03_10m.tif", "bandNames": ["B03"]},
+                    {
+                        "title": "granule_metadata",
+                        "href": "https://stac.test/MTD_TL.xml",
+                        "bandNames": [
+                            "granule_metadata##0",
+                            "granule_metadata##1",
+                            "granule_metadata##2",
+                            "granule_metadata##3",
+                        ],
+                    },
+                ],
+            ),
+            (
+                ["B02"],
+                [{"title": "B02_10m", "href": "https://stac.test/B02_10m.tif", "bandNames": ["B02"]}],
+            ),
+            (
+                ["B02_20m"],
+                [{"title": "B02_20m", "href": "https://stac.test/B02_20m.tif", "bandNames": ["B02_20m"]}],
+            ),
+            (
+                ["B02", "sunAzimuthAngles", "viewZenithMean"],
+                [
+                    {"title": "B02_10m", "href": "https://stac.test/B02_10m.tif", "bandNames": ["B02"]},
+                    {
+                        "title": "granule_metadata",
+                        "href": "https://stac.test/MTD_TL.xml",
+                        "bandNames": [
+                            "granule_metadata##0",
+                            "granule_metadata##3",
+                        ],
+                    },
+                ],
+            ),
+        ],
+    )
+    def test_sentinel2_with_azimuth_and_zenith_bands(self, user_requested_bands_names, expected_links):
+        dummy_server = DummyStacApiServer()
+        collection_id = "s2-with-granule_metadata"
+        self._define_collection_s2_with_granule_metadata(dummy_server, collection_id=collection_id)
+        layercatalog_feature_flags = {
+            "granule_metadata_band_map": {
+                "sunAzimuthAngles": "granule_metadata##0",
+                "sunZenithAngles": "granule_metadata##1",
+                "viewAzimuthMean": "granule_metadata##2",
+                "viewZenithMean": "granule_metadata##3",
+            },
+        }
+        with dummy_server.serve() as dummy_stac_api:
+            context = _prepare_context(
+                url=f"{dummy_stac_api}/collections/{collection_id}",
+                load_params=LoadParameters(
+                    bands=user_requested_bands_names,
+                ),
+                env=EvalEnv(),
+                feature_flags=layercatalog_feature_flags,
+            )
+
+        dumper = _OpenSearchClientDumper()
+        assert dumper.dump_opensearch_client_features(context.opensearch_client) == [
+            {
+                "id": "item-123",
+                "links": expected_links,
+            }
+        ]

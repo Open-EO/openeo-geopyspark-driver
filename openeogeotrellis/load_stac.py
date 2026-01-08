@@ -199,6 +199,14 @@ def _prepare_context(
         band_epsgs: Dict[str, Set[int]] = {}
 
 
+        # layercatalog feature flag to handle "granule_metadata" assets.
+        # E.g. for azimuth/zenith "bands" in SENTINEL2_L2A:
+        #     {
+        #         "sunAzimuthAngles": "granule_metadata##0",
+        #         "sunZenithAngles": "granule_metadata##1",
+        #         ...
+        granule_metadata_band_map = feature_flags.get("granule_metadata_band_map")
+
         for itm, band_assets in item_collection.iter_items_with_band_assets():
 
             builder = (
@@ -266,6 +274,26 @@ def _prepare_context(
                     f"FeatureBuilder.addlink {itm.id=} {asset_id=} {asset_band_names_from_metadata=} {asset_band_names=}"
                 )
                 builder = builder.addLink(get_best_url(asset), asset_id, pixel_value_offset, asset_band_names)
+
+            # Optionally include additional special assets
+            for asset_id, asset in itm.assets.items():
+                # "granule_metadata" with S2 azimuth/zenit angle data
+                if (
+                    granule_metadata_band_map
+                    # TODO: less strict checking for wider applicability?
+                    and asset_id == "granule_metadata"
+                    and asset.title == "MTD_TL.xml"
+                    and "metadata" in (asset.roles or [])
+                    and (asset_href := get_best_url(asset)).endswith("/MTD_TL.xml")
+                ):
+                    bands_to_add = [
+                        b for b in granule_metadata_band_map.keys() if (not load_params.bands or b in load_params.bands)
+                    ]
+                    if bands_to_add:
+                        link_band_names = [granule_metadata_band_map[b] for b in bands_to_add]
+                        logger.debug(f"FeatureBuilder.addlink {itm.id=} {asset_id=} {link_band_names=}")
+                        builder = builder.addLink(asset_href, asset_id, link_band_names)
+                        collection_band_names.extend(bands_to_add)
 
             # TODO: the proj_* values are assigned in inner per-asset loop,
             #       so the values here are ill-defined (the values might even come from another item)
@@ -412,11 +440,14 @@ def _prepare_context(
                 )
         pyramid_factory = jvm.org.openeo.geotrellis.layers.NetCDFCollection
     else:
+        # TODO: support for other band to openSearchLinkTitles mapping too?
+        opensearch_link_titles_map = granule_metadata_band_map or {}
+        opensearch_link_titles = [opensearch_link_titles_map.get(b, b) for b in requested_band_names]
         max_soft_errors_ratio = env.get(EVAL_ENV_KEY.MAX_SOFT_ERRORS_RATIO, 0.0)
         pyramid_factory = jvm.org.openeo.geotrellis.file.PyramidFactory(
             opensearch_client,
             url,  # openSearchCollectionId, not important
-            requested_band_names,  # openSearchLinkTitles
+            opensearch_link_titles,  # openSearchLinkTitles
             None,  # rootPath, not important
             jvm.geotrellis.raster.CellSize(float(cell_width), float(cell_height)),
             False,  # experimental
