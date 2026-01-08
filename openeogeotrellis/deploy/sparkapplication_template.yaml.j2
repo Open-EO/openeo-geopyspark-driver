@@ -258,6 +258,7 @@ spec:
       name: {{ job_id_short }}-driver
       openeo-role: "batch-driver"
       job_id: {{ job_id_full }}
+      correlation_id: {{ job_id_full }}
       user_id: {{user_id}}
 {%- endblock %}
     volumeMounts:
@@ -399,6 +400,7 @@ spec:
       version: 3.2.0
       openeo-role: "executor"
       job_id: {{ job_id_full }}
+      correlation_id: {{ job_id_full }}
       user_id: {{user_id}}
 {%- endblock %}
     volumeMounts:
