@@ -7,6 +7,7 @@ import logging
 import os
 import re
 import time
+from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterator, List, Optional, Set, Tuple, Union, Iterable, Sequence
@@ -92,7 +93,32 @@ FlatProcessGraph = Dict[str, dict]
 PropertyFilterPGMap = Dict[str, FlatProcessGraph]
 
 
-def load_stac(
+@dataclass
+class _LoadStacContext:
+    """Context object containing all inputs needed to build a datacube."""
+    pyramid_factory: Any
+    projected_polygons: Any
+    from_date: dt.datetime
+    to_date: dt.datetime
+    metadata_properties: Dict[str, Any]
+    correlation_id: str
+    data_cube_parameters: Any
+    opensearch_client: Any
+    single_level: bool
+    items_found: bool
+    allow_empty_cubes: bool
+    extent: Any
+    extent_crs: Any
+    netcdf_with_time_dimension: bool
+    requested_bbox: Optional[BoundingBox]
+    metadata: GeopysparkCubeMetadata
+    spatiotemporal_extent: _SpatioTemporalExtent
+    cellsize: Tuple[float, float]
+    url: str
+    jvm: Any
+
+
+def _prepare_context(
     url: str,
     *,
     load_params: LoadParameters,
@@ -102,7 +128,10 @@ def load_stac(
     override_band_names: Optional[List[str]] = None,
     stac_io: Optional[pystac.stac_io.StacIO] = None,
     feature_flags: Optional[Dict[str, Any]] = None,
-) -> GeopysparkDataCube:
+) -> _LoadStacContext:
+    """
+    Prepare all metadata and inputs needed to build/load a datacube from raster files.
+    """
     if override_band_names is None:
         override_band_names = []
 
@@ -384,7 +413,6 @@ def load_stac(
         pyramid_factory = jvm.org.openeo.geotrellis.layers.NetCDFCollection
     else:
         max_soft_errors_ratio = env.get(EVAL_ENV_KEY.MAX_SOFT_ERRORS_RATIO, 0.0)
-
         pyramid_factory = jvm.org.openeo.geotrellis.file.PyramidFactory(
             opensearch_client,
             url,  # openSearchCollectionId, not important
@@ -420,6 +448,56 @@ def load_stac(
     tilesize = feature_flags.get("tilesize", None)
     if tilesize:
         getattr(data_cube_parameters, "tileSize_$eq")(tilesize)
+
+    return _LoadStacContext(
+        pyramid_factory=pyramid_factory,
+        projected_polygons=projected_polygons,
+        from_date=from_date,
+        to_date=to_date,
+        metadata_properties=metadata_properties,
+        correlation_id=correlation_id,
+        data_cube_parameters=data_cube_parameters,
+        opensearch_client=opensearch_client,
+        single_level=single_level,
+        items_found=items_found,
+        allow_empty_cubes=allow_empty_cubes,
+        extent=extent,
+        extent_crs=extent_crs,
+        netcdf_with_time_dimension=netcdf_with_time_dimension,
+        requested_bbox=requested_bbox,
+        metadata=metadata,
+        spatiotemporal_extent=spatiotemporal_extent,
+        cellsize=(float(cell_width), float(cell_height)),
+        url=url,
+        jvm=jvm,
+    )
+
+
+def _build_datacube(context: _LoadStacContext) -> GeopysparkDataCube:
+    """
+    Build the raster pyramid using (heavy) raster loading operations.
+    This function performs the actual calls to the PyramidFactory to load raster files.
+    """
+    # Unpack context
+    pyramid_factory = context.pyramid_factory
+    projected_polygons = context.projected_polygons
+    from_date = context.from_date
+    to_date = context.to_date
+    metadata_properties = context.metadata_properties
+    correlation_id = context.correlation_id
+    data_cube_parameters = context.data_cube_parameters
+    opensearch_client = context.opensearch_client
+    single_level = context.single_level
+    items_found = context.items_found
+    allow_empty_cubes = context.allow_empty_cubes
+    extent = context.extent
+    extent_crs = context.extent_crs
+    netcdf_with_time_dimension = context.netcdf_with_time_dimension
+    requested_bbox = context.requested_bbox
+    metadata = context.metadata
+    spatiotemporal_extent = context.spatiotemporal_extent
+    url = context.url
+    jvm = context.jvm
 
     try:
         if netcdf_with_time_dimension:
@@ -495,6 +573,30 @@ def load_stac(
     }
 
     return GeopysparkDataCube(pyramid=gps.Pyramid(levels), metadata=metadata)
+
+
+def load_stac(
+    url: str,
+    *,
+    load_params: LoadParameters,
+    env: EvalEnv,
+    layer_properties: Optional[PropertyFilterPGMap] = None,
+    batch_jobs: Optional[openeo_driver.backend.BatchJobs] = None,
+    override_band_names: Optional[List[str]] = None,
+    stac_io: Optional[pystac.stac_io.StacIO] = None,
+    feature_flags: Optional[Dict[str, Any]] = None,
+) -> GeopysparkDataCube:
+    context = _prepare_context(
+        url=url,
+        load_params=load_params,
+        env=env,
+        layer_properties=layer_properties,
+        batch_jobs=batch_jobs,
+        override_band_names=override_band_names,
+        stac_io=stac_io,
+        feature_flags=feature_flags,
+    )
+    return _build_datacube(context)
 
 
 def construct_item_collection(
