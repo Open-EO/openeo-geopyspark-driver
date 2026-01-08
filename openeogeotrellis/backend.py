@@ -66,7 +66,7 @@ from openeo_driver.util.date_math import now_utc
 from openeo_driver.util.geometry import BoundingBox
 from openeo_driver.util.http import requests_with_retry
 from openeo_driver.util.utm import area_in_square_meters
-from openeo_driver.utils import EvalEnv, generate_unique_id, to_hashable, WhiteListEvalEnv, get_package_versions
+from openeo_driver.utils import EvalEnv, generate_unique_id, to_hashable, WhiteListEvalEnv, smart_bool
 from pandas import Timedelta
 from py4j.java_gateway import JVMView
 from py4j.protocol import Py4JJavaError
@@ -3097,7 +3097,7 @@ class GpsUdfRuntimes(backend.UdfRuntimes):
 
     def get_udf_runtimes(self) -> dict:
         runtimes = self.udf_runtime_image_repository.get_udf_runtimes_response()
-        if ConfigParams().is_kube_deploy:
+        if ConfigParams().is_kube_deploy or smart_bool(os.environ.get("OPENEO_LOCAL_DEBUGGING", "false")):
             runtimes["EOAP-CWL"] = {
                 "default": "1",
                 "title": "EOAP-CWL",

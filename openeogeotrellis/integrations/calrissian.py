@@ -433,6 +433,7 @@ class CalrissianJobLauncher:
         self,
         cwl_path: str,
         cwl_arguments: List[str],
+        input_pod_labels_path: str,
         env_vars: Optional[Dict[str, str]] = None,
     ) -> Tuple[kubernetes.client.V1Job, str, str]:
         """
@@ -466,6 +467,8 @@ class CalrissianJobLauncher:
             self._calrissian_base_arguments
             + self._calrissian_launch_config.get_calrissian_args()
             + [
+                "--pod-labels",
+                input_pod_labels_path,
                 "--tmp-outdir-prefix",
                 tmp_dir,
                 "--outdir",
@@ -636,6 +639,12 @@ class CalrissianJobLauncher:
         input_staging_manifest, cwl_path = self.create_input_staging_job_manifest(cwl_source=cwl_source)
         input_staging_job = self.launch_job_and_wait(manifest=input_staging_manifest)
 
+        labels_dict = {"correlation_id": self._calrissian_launch_config.correlation_id}
+        input_pod_labels_manifest, input_pod_labels_path = self.create_input_staging_job_manifest(
+            cwl_source=CwLSource.from_any(json.dumps(labels_dict))
+        )
+        input_pod_labels_job = self.launch_job_and_wait(manifest=input_pod_labels_manifest)
+
         if isinstance(cwl_arguments, dict):
             cwl_source_arguments = CwLSource.from_string(json.dumps(cwl_arguments))
 
@@ -650,6 +659,7 @@ class CalrissianJobLauncher:
             cwl_path=cwl_path,
             cwl_arguments=cwl_arguments,
             env_vars=env_vars,
+            input_pod_labels_path=input_pod_labels_path,
         )
 
         # Calrissian secret for launch config file
