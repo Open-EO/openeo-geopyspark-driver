@@ -293,9 +293,8 @@ def run_job(
     job_options = job_specification.get("job_options", {})
     parsed_job_options: JobOptions = JobOptions.from_dict(job_options)
 
-    attach_derived_from_document = job_options.get("derived-from-document-experimental", False)
-    omit_derived_from_links = parsed_job_options.omit_derived_from_links or attach_derived_from_document
-    is_stac11 = job_options.get("stac-version-experimental", "1.0") == "1.1" or attach_derived_from_document
+    is_stac11 = job_options.get("stac-version-experimental", "1.0") == "1.1"
+    omit_derived_from_links = parsed_job_options.omit_derived_from_links or is_stac11
 
     try:
         # We actually expect type Path, but in reality paths as strings tend to
@@ -391,7 +390,7 @@ def run_job(
         )
         # perform a first metadata write _before_ actually computing the result. This provides a bit more info, even if the job fails.
         tracker_metadata = _get_tracker_metadata("", omit_derived_from_links=omit_derived_from_links)
-        write_metadata({**result_metadata, **tracker_metadata}, metadata_file, is_stac11, attach_derived_from_document)
+        write_metadata({**result_metadata, **tracker_metadata}, metadata_file, is_stac11)
 
         for result in results:
             result.options["batch_mode"] = True
@@ -584,7 +583,7 @@ def run_job(
             if is_stac11
             else {**result_metadata, **tracker_metadata}
         )
-        write_metadata(meta, metadata_file, is_stac11, attach_derived_from_document)
+        write_metadata(meta, metadata_file, is_stac11)
         logger.debug("Starting GDAL-based retrieval of asset metadata")
 
         assets_for_result_metadata = {
@@ -620,7 +619,7 @@ def run_job(
                     remove_exported_assets=job_options.get("remove-exported-assets", False),
                     enable_merge=job_options.get("export-workspace-enable-merge", False),
                     omit_derived_from_links=omit_derived_from_links,
-                    attach_derived_from_document=attach_derived_from_document,
+                    attach_derived_from_document=is_stac11,
                 )
             else:
                 _export_to_workspaces(
@@ -640,10 +639,10 @@ def run_job(
             if is_stac11
             else {**result_metadata, **tracker_metadata}
         )
-        write_metadata(meta, metadata_file, is_stac11, attach_derived_from_document)
+        write_metadata(meta, metadata_file, is_stac11)
 
 
-def write_metadata(metadata: dict, metadata_file: Path, is_stac11: bool, attach_derived_from_document: bool):
+def write_metadata(metadata: dict, metadata_file: Path, is_stac11: bool):
     def log_asset_hrefs(context: str):
         if is_stac11:
             items = {item["id"]: item for item in metadata.get("items", [])}
@@ -659,7 +658,7 @@ def write_metadata(metadata: dict, metadata_file: Path, is_stac11: bool, attach_
         out_metadata = _convert_asset_outputs_to_s3_urls(metadata)
     log_asset_hrefs("output")
 
-    if attach_derived_from_document:
+    if is_stac11:
         out_metadata = deepcopy(out_metadata)  # avoid mutating an object that is going to be reused
 
         for auxiliary_link in _copy_auxiliary_links(
