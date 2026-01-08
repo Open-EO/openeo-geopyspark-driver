@@ -135,7 +135,7 @@ def test_simple_math(tmp_path):
 def test_ep3899_netcdf_no_bands(tmp_path, stac_version, asset_name, bands_name):
 
     job_spec = {
-        "job_options": {"stac-version-experimental":stac_version},
+        "job_options": {"stac-version": stac_version},
         "title": "my job",
         "description": "*minimum band*",
         "process_graph":{
@@ -201,7 +201,7 @@ def test_ep3899_netcdf_no_bands(tmp_path, stac_version, asset_name, bands_name):
 ])
 def test_ep3874_sample_by_feature_filter_spatial_inline_geojson(prefix, tmp_path, stac_version, asset_name):
     job_spec = {
-        "job_options": {"stac-version-experimental": stac_version},
+        "job_options": {"stac-version": stac_version},
         "process_graph":{
         "lc": {
             "process_id": "load_collection",
@@ -295,7 +295,7 @@ def test_ep3874_sample_by_feature_filter_spatial_inline_geojson(prefix, tmp_path
 @pytest.mark.parametrize("stac_version", ["1.0","1.1",])
 def test_separate_asset_per_band(tmp_path, from_node, expected_filenames, stac_version):
     job_spec = {
-        "job_options": {"stac-version-experimental": stac_version},
+        "job_options": {"stac-version": stac_version},
         "process_graph": {
             "loadcollection_sentinel2": {
                 "process_id": "load_collection",
@@ -407,7 +407,7 @@ def test_sample_by_feature_filter_spatial_vector_cube_from_load_url(tmp_path, st
     """
     with ephemeral_fileserver(TEST_DATA_ROOT) as fileserver_root:
         job_spec = {
-            "job_options": {"stac-version-experimental": stac_version},
+            "job_options": {"stac-version": stac_version},
             "process_graph": {
                 "lc": {
                     "process_id": "load_collection",
@@ -721,7 +721,7 @@ def test_spatial_geoparquet(tmp_path):
 def test_spatial_cube_to_netcdf_sample_by_feature(tmp_path):
     job_spec = {
         "job_options": {
-            "stac-version-experimental": "1.1",
+            "stac-version": "1.1",
             "detailed_asset_metadata": False,
         },
         "process_graph": {
@@ -1007,7 +1007,7 @@ def test_export_workspace(tmp_path, remove_original, attach_gdalinfo_assets, sta
     process = {
         "process_graph": process_graph,
         "job_options": {
-            "stac-version-experimental": stac_version,
+            "stac-version": stac_version,
             "remove-exported-assets": remove_original,
         },
     }
@@ -1206,7 +1206,7 @@ def test_export_workspace_with_asset_per_band(tmp_path, stac_version, asset_name
     }
 
     process = {
-        "job_options": {"stac-version-experimental": stac_version},
+        "job_options": {"stac-version": stac_version},
         "process_graph": process_graph,
     }
 
@@ -1524,7 +1524,7 @@ def test_export_workspace_merge_into_existing(tmp_path, mock_s3_bucket, stac_ver
             "process_graph": process_graph,
             "job_options": {
                 "export-workspace-enable-merge": enable_merge,
-                "stac-version-experimental": stac_version
+                "stac-version": stac_version
             },
         }
 
@@ -1642,7 +1642,7 @@ def test_export_workspace_merge_filepath_per_band(tmp_path, mock_s3_bucket, stac
     process = {
         "process_graph": process_graph,
         "job_options": {
-            "stac-version-experimental": stac_version,
+            "stac-version": stac_version,
             "export-workspace-enable-merge": enable_merge,
             "concurrent-save-results": 4,  # TODO: Make this the default
         },
@@ -1667,7 +1667,7 @@ def test_export_workspace_merge_filepath_per_band(tmp_path, mock_s3_bucket, stac
             Path("lat.tif"),
         ])
 
-        # collection STAC document and assets have to remain in the same place, regardless of "stac-version-experimental" job_option
+        # collection STAC document and assets have to remain in the same place, regardless of "stac-version" job_option
         assert {
             Path("collection.json"),
             Path("collection.json_items") / "some/deeply/nested/folder" / "lon.tif",
@@ -1829,7 +1829,7 @@ def test_export_workspace_merge_into_stac_api(
     process = {
         "process_graph": process_graph,
         "job_options": {
-            "stac-version-experimental": stac_version,
+            "stac-version": stac_version,
             "export-workspace-enable-merge": enable_merge,
         },
     }
@@ -2105,7 +2105,7 @@ def test_results_geometry_from_load_collection_with_crs_not_wgs84(tmp_path):
 @pytest.mark.parametrize(["stac_version","asset_name"], [("1.0","out.tiff"),("1.1","openEO")])
 def test_load_ml_model_via_jobid(tmp_path, stac_version, asset_name):
     job_spec = {
-      "job_options": {"stac-version-experimental": stac_version},
+      "job_options": {"stac-version": stac_version},
       "process_graph": {
         "loadmlmodel1": {
           "process_id": "load_ml_model",
@@ -2246,7 +2246,7 @@ def test_load_stac_temporal_extent_in_result_metadata(tmp_path, requests_mock, s
 
     requests_mock.get(geoparquet_url, content=geoparquet_content)
 
-    process["job_options"] = {"stac-version-experimental": stac_version}
+    process["job_options"] = {"stac-version": stac_version}
 
     run_job(
         process,
@@ -2325,7 +2325,7 @@ def test_multiple_save_result_single_export_workspace(tmp_path, stac_version, as
     }
 
     process = {
-        "job_options": {"stac-version-experimental": stac_version},
+        "job_options": {"stac-version": stac_version},
         "process_graph": process_graph,
     }
 
@@ -2542,7 +2542,7 @@ def test_export_to_multiple_workspaces(tmp_path, remove_original, stac_version, 
         "process_graph": process_graph,
         "job_options": {
             "remove-exported-assets": remove_original,
-            "stac-version-experimental": stac_version
+            "stac-version": stac_version
         },
     }
 
@@ -2718,7 +2718,7 @@ def test_spatial_geotiff_metadata(tmp_path, stac_version, asset_name):
     }
 
     process = {
-        "job_options": {"stac-version-experimental": stac_version},
+        "job_options": {"stac-version": stac_version},
         "process_graph": process_graph,
     }
 
@@ -2909,7 +2909,7 @@ def test_unified_asset_keys_spatiotemporal_geotiff(
 
     process = {
         "process_graph": process_graph,
-        "job_options": {"stac-version-experimental": "1.1"},
+        "job_options": {"stac-version": "1.1"},
     }
 
     job_dir = tmp_path
@@ -2974,7 +2974,7 @@ def test_unified_asset_keys_tile_grid(tmp_path):
 
     process = {
         "process_graph": process_graph,
-        "job_options": {"stac-version-experimental": "1.1"},
+        "job_options": {"stac-version": "1.1"},
     }
 
     job_dir = tmp_path
@@ -3059,7 +3059,7 @@ def test_unified_asset_keys_tile_grid_spatial(tmp_path):
 
     process = {
         "process_graph": process_graph,
-        "job_options": {"stac-version-experimental": "1.1"},
+        "job_options": {"stac-version": "1.1"},
     }
 
     job_dir = tmp_path
@@ -3152,7 +3152,7 @@ def test_unified_asset_keys_sample_by_feature(tmp_path):
 
     process = {
         "process_graph": process_graph,
-        "job_options": {"stac-version-experimental": "1.1"},
+        "job_options": {"stac-version": "1.1"},
     }
 
     job_dir = tmp_path
@@ -3254,7 +3254,7 @@ def test_unified_asset_keys_spatial_geotiff(
 
     process = {
         "process_graph": process_graph,
-        "job_options": {"stac-version-experimental": "1.1"},
+        "job_options": {"stac-version": "1.1"},
     }
 
     job_dir = tmp_path
@@ -3322,7 +3322,7 @@ def test_unified_asset_keys_stitch_geotiff(tmp_path):
 
     process = {
         "process_graph": process_graph,
-        "job_options": {"stac-version-experimental": "1.1"},
+        "job_options": {"stac-version": "1.1"},
     }
 
     job_dir = tmp_path
@@ -3392,7 +3392,7 @@ def test_unified_asset_keys_stitch_tile_grid(tmp_path):
 
     process = {
         "process_graph": process_graph,
-        "job_options": {"stac-version-experimental": "1.1"},
+        "job_options": {"stac-version": "1.1"},
     }
 
     job_dir = tmp_path
@@ -3434,7 +3434,7 @@ def test_unified_asset_keys_stitch_tile_grid(tmp_path):
 def test_netcdf_sample_by_feature_asset_bbox_geometry(tmp_path):
     """
     An asset's bbox and geometry become those of the corresponding item in the openeo-python-driver
-    (this is pre-"stac-version-experimental": "1.1").
+    (this is pre-"stac-version": "1.1").
     """
 
     job_spec = {
@@ -3517,10 +3517,12 @@ def test_netcdf_sample_by_feature_asset_bbox_geometry(tmp_path):
     }
 
 
-@pytest.mark.parametrize("derived_from_document_experimental", [False, True])
+@pytest.mark.parametrize("stac_version", [None, "1.1"])
 def test_export_workspace_derived_from(
-    tmp_path, requests_mock, mock_s3_bucket, metadata_tracker, derived_from_document_experimental, caplog
+    tmp_path, requests_mock, mock_s3_bucket, metadata_tracker, stac_version, caplog
 ):
+    derived_from_document = stac_version == "1.1"
+
     caplog.set_level("DEBUG")
 
     stac_api_workspace_id = "stac_api_workspace"
@@ -3607,7 +3609,7 @@ def test_export_workspace_derived_from(
         nonlocal new_collection
         new_collection = request.json()  # save it for second "get existing collection"
 
-        if derived_from_document_experimental:
+        if derived_from_document:
             assert new_collection["links"] == []  # items get a link to a derived_from document instead
         else:
             assert new_collection["links"] == [  # input products for the _entire_ job
@@ -3631,7 +3633,7 @@ def test_export_workspace_derived_from(
     def update_collection_callback(request, context) -> dict:
         updated_collection = request.json()
 
-        if derived_from_document_experimental:
+        if derived_from_document:
             assert updated_collection["links"] == []
         else:
             assert updated_collection["links"] == [  # the same because export_workspace avoids duplicates
@@ -3656,7 +3658,7 @@ def test_export_workspace_derived_from(
 
         links = new_item.get("links")
 
-        if derived_from_document_experimental:
+        if derived_from_document:
             assert len(links) == 1, f"expected one link to an ItemCollection but got {links}"
             derived_from_document_link = links[0]
 
@@ -3695,7 +3697,7 @@ def test_export_workspace_derived_from(
         "process_graph": process_graph,
         "job_options": {
             "export-workspace-enable-merge": enable_merge,
-            "derived-from-document-experimental": derived_from_document_experimental,
+            "stac-version": stac_version,
         }
     }
 
@@ -3728,10 +3730,10 @@ def test_export_workspace_derived_from(
 
         derived_from_hrefs = [link["href"] for link in results_metadata["links"] if link["rel"] == "derived_from"]
 
-        if derived_from_document_experimental:
+        if derived_from_document:
             assert (
                 not derived_from_hrefs
-            ), f'expected no Collection-level "derived_from" links for stac_version {derived_from_document_experimental=}'
+            ), f'expected no Collection-level "derived_from" links for stac_version {derived_from_document=}'
 
             # these should get rendered in the job result items STAC documents
             for item in results_metadata["items"]:
@@ -3749,7 +3751,7 @@ def test_export_workspace_derived_from(
             # these get rendered in the /jobs/<job_id>/results STAC Collection document
             assert derived_from_hrefs == ["http://s2.test/p1", "http://s2.test/p2"]
 
-    if derived_from_document_experimental:
+    if derived_from_document:
         copy_derived_from_document_logs = [
             log
             for log in caplog.records
@@ -3789,7 +3791,7 @@ def test_webapp_derived_from(tmp_path, metadata_tracker):
     process = {
         "process_graph": process_graph,
         "job_options": {
-            "derived-from-document-experimental": True,
+            "stac-version": "1.1",
         },
     }
 
