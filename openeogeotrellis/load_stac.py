@@ -382,15 +382,19 @@ def _prepare_context(
     unique_epsgs = {epsg for epsgs in requested_band_epsgs for epsg in epsgs}
     requested_band_cell_sizes = [size for band_name, size in band_cell_size.items() if band_name in requested_band_names]
 
-    if len(unique_epsgs) == 1 and requested_band_cell_sizes:  # exact resolution
+    cellsize_override = feature_flags.get("cellsize")
+    if cellsize_override:
+        (cell_width, cell_height) = cellsize_override
+        target_epsg = unique_epsgs.pop() if len(unique_epsgs) == 1 else target_bbox.best_utm()
+    elif len(unique_epsgs) == 1 and requested_band_cell_sizes:  # exact resolution
         target_epsg = unique_epsgs.pop()
         cell_widths, cell_heights = unzip(*requested_band_cell_sizes)
         cell_width = min(cell_widths)
         cell_height = min(cell_heights)
-    elif len(unique_epsgs) == 1:  # about 10m in given CRS
+    elif len(unique_epsgs) == 1:
         target_epsg = unique_epsgs.pop()
-        # Fall back to the cell size from the layercatalog or provided by user.
-        (cell_width, cell_height) = feature_flags.get("cellsize", (10.0, 10.0))
+        # Fall back to default cellsize (about 10m in given CRS)
+        (cell_width, cell_height) = (10.0, 10.0)
         try:
             utm_zone_from_epsg(proj_epsg)
         except ValueError:
@@ -403,9 +407,9 @@ def _prepare_context(
                 cell_height, f"EPSG:{proj_epsg}", loi=(target_bbox_center.x, target_bbox_center.y)
             )
     else:
-        # Fall back to the cell size from the layercatalog or provided by user.
+        # Fall back to default cellsize.
         target_epsg = target_bbox.best_utm()
-        (cell_width, cell_height) = feature_flags.get("cellsize", (10.0, 10.0))
+        (cell_width, cell_height) = (10.0, 10.0)
 
     if load_params.target_resolution is not None:
         if load_params.target_resolution[0] != 0.0 and load_params.target_resolution[1] != 0.0:
