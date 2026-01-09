@@ -57,6 +57,7 @@ class CalrissianLaunchConfigBuilder:
     _BASE_PATH = "/calrissian/config"
     _VOLUME_NAME = "calrissian-launch-config"
     _ENVIRONMENT_FILE = "environment.yaml"
+    _POD_LABELS_FILE = "pod-labels.json"
 
     def __init__(self, *, config: CalrissianConfig, correlation_id: str, env_vars: Optional[Dict[str, str]] = None):
         self.correlation_id = correlation_id
@@ -67,7 +68,10 @@ class CalrissianLaunchConfigBuilder:
         """
         Get a dictionary that maps filenames that are relative to the /calrissian/config directory to their content
         """
-        return {self._ENVIRONMENT_FILE: yaml.safe_dump(self._env_vars)}
+        return {
+            self._ENVIRONMENT_FILE: yaml.safe_dump(self._env_vars),
+            self._POD_LABELS_FILE: json.dumps({"correlation_id": self.correlation_id}),
+        }
 
     def get_k8s_manifest(self, job: str):
         return kubernetes.client.V1Secret(
@@ -105,7 +109,10 @@ class CalrissianLaunchConfigBuilder:
         )
 
     def get_calrissian_args(self) -> list[str]:
-        return ["--pod-env-vars", f"{self._BASE_PATH}/{self._ENVIRONMENT_FILE}"]
+        return [
+            "--pod-env-vars", f"{self._BASE_PATH}/{self._ENVIRONMENT_FILE}",
+            "--pod-labels", f"{self._BASE_PATH}/{self._POD_LABELS_FILE}"
+        ]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -434,7 +441,6 @@ class CalrissianJobLauncher:
         cwl_path: str,
         cwl_arguments: List[str],
         env_vars: Optional[Dict[str, str]] = None,
-        input_pod_labels_path: Optional[str] = None,
     ) -> Tuple[kubernetes.client.V1Job, str, str]:
         """
         Create a k8s manifest for a Calrissian CWL job.
@@ -443,7 +449,6 @@ class CalrissianJobLauncher:
             as produced by `create_input_staging_job_manifest`
         :param cwl_arguments:
         :param env_vars:
-        :param input_pod_labels_path:
         :return: Tuple of
             - k8s job manifest
             - relative output directory (inside the output volume)
@@ -464,18 +469,9 @@ class CalrissianJobLauncher:
 
         labels_dict = {"correlation_id": self._calrissian_launch_config.correlation_id}
 
-        if input_pod_labels_path:
-            pod_labels_arguments = [
-                "--pod-labels",
-                input_pod_labels_path,
-            ]
-        else:
-            pod_labels_arguments = []
-
         calrissian_arguments = (
             self._calrissian_base_arguments
             + self._calrissian_launch_config.get_calrissian_args()
-            + pod_labels_arguments
             + [
                 "--tmp-outdir-prefix",
                 tmp_dir,
@@ -488,6 +484,7 @@ class CalrissianJobLauncher:
             + cwl_arguments
         )
 
+        print(f"create_cwl_job_manifest {calrissian_arguments=}")
         _log.info(f"create_cwl_job_manifest {calrissian_arguments=}")
 
         container_env_vars = [
@@ -647,12 +644,6 @@ class CalrissianJobLauncher:
         input_staging_manifest, cwl_path = self.create_input_staging_job_manifest(cwl_source=cwl_source)
         self.launch_job_and_wait(manifest=input_staging_manifest)
 
-        labels_dict = {"correlation_id": self._calrissian_launch_config.correlation_id}
-        input_pod_labels_manifest, input_pod_labels_path = self.create_input_staging_job_manifest(
-            cwl_source=CwLSource.from_any(json.dumps(labels_dict))  # CwLSource is used like a YAML source here.
-        )
-        self.launch_job_and_wait(manifest=input_pod_labels_manifest)
-
         if isinstance(cwl_arguments, dict):
             cwl_source_arguments = CwLSource.from_string(json.dumps(cwl_arguments))
 
@@ -667,7 +658,6 @@ class CalrissianJobLauncher:
             cwl_path=cwl_path,
             cwl_arguments=cwl_arguments,
             env_vars=env_vars,
-            input_pod_labels_path=input_pod_labels_path,
         )
 
         # Calrissian secret for launch config file
