@@ -109,7 +109,8 @@ setup(
         'kafka-python==1.4.6',
         'deprecated>=1.2.12',
         'elasticsearch==7.16.3',
-        "pystac>=1.8.4",  # TODO #1060 bump to more recent version (1.8.4 is from Sep 2023) once we can leave Python 3.8 behind
+        # TODO #1060 bump pystac to more recent version (1.8.4 is from Sep 2023) once we can leave Python 3.8 behind
+        "pystac>=1.8.4,<1.10.0",
         'pystac_client~=0.7.2',
         'boto3>=1.16.25,<2.0',
         "hvac>=1.0.2",
