@@ -1,8 +1,9 @@
 import datetime
 import json
 import re
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterator
+from typing import Dict, Iterator, Optional
 from unittest import mock
 
 import boto3
@@ -14,6 +15,7 @@ import yaml
 
 from openeogeotrellis.config.integrations.calrissian_config import (
     DEFAULT_CALRISSIAN_IMAGE,
+    DEFAULT_CALRISSIAN_RUNNER_RESOURCE_REQUIREMENTS,
     CalrissianConfig,
 )
 from openeogeotrellis.integrations.calrissian import (
@@ -129,6 +131,9 @@ class TestCalrissianJobLauncher:
                                     }
                                 ),
                             ],
+                            "resources": dirty_equals.IsPartialDict(
+                                CalrissianJobLauncher._HARD_CODED_STAGE_JOB_RESOURCES
+                            ),
                         }
                     )
                 ],
@@ -560,6 +565,71 @@ class TestCalrissianJobLauncher:
                 cwl_source=CwLSource.from_string("class: Dummy"),
                 cwl_arguments=["--message", "Howdy Earth!"],
             )
+
+    def test_from_context_sets_container_resources(
+        self,
+        monkeypatch,
+        generate_unique_id_mock,
+        s3_calrissian_bucket,
+        k8s_core_v1_api,
+        calrissian_launch_config,
+        mock_sts,
+        job_context,
+    ):
+        @dataclass
+        class TestCase:
+            description: str
+            givenConfigRunnerRequirents: Optional[dict]
+            expectedResourcesDict: dict
+
+        testcases = [
+            TestCase(
+                description="ConfigOverrides should be set",
+                givenConfigRunnerRequirents=dict(limits={"memory": "10Mi"}, requests={"cpu": "1m", "memory": "10Mi"}),
+                expectedResourcesDict={"limits": {"memory": "10Mi"}, "requests": {"memory": "10Mi", "cpu": "1m"}},
+            ),
+            TestCase(
+                description="If no config overrides we expect the defaults to be set",
+                givenConfigRunnerRequirents=None,
+                expectedResourcesDict=DEFAULT_CALRISSIAN_RUNNER_RESOURCE_REQUIREMENTS,
+            ),
+        ]
+
+        for testcase in testcases:
+            calrissian_config = CalrissianConfig(
+                namespace="namezpace",
+                input_staging_image="albino:3.14",
+                s3_bucket=s3_calrissian_bucket,
+                runner_resource_requirements=testcase.givenConfigRunnerRequirents,
+            )
+
+            with gps_config_overrides(calrissian_config=calrissian_config):
+                launcher = CalrissianJobLauncher.from_context()
+                manifest, output_dir, cwl_outputs_listing = launcher.create_cwl_job_manifest(
+                    cwl_path="/calrissian/input-data/r-1234-cal-inp-01234567.cwl",
+                    cwl_arguments=["--message", "Howdy Earth!"],
+                )
+
+            assert isinstance(manifest, kubernetes.client.V1Job)
+            manifest_dict = manifest.to_dict()
+
+            pod_template_spec = manifest_dict["spec"]["template"]["spec"]
+
+            assert pod_template_spec["containers"] == [
+                dirty_equals.IsPartialDict(
+                    {
+                        "name": "j-hello123-cal-cwl-01234567",
+                        "command": ["calrissian"],
+                        "args": dirty_equals.Contains(
+                            "--pod-env-vars",
+                            "/calrissian/config/environment.yaml",
+                            "--message",
+                            "Howdy Earth!",
+                        ),
+                        "resources": dirty_equals.IsPartialDict(testcase.expectedResourcesDict),
+                    }
+                )
+            ]
 
 
 class TestCalrissianS3Result:
