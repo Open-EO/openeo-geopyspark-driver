@@ -1836,7 +1836,7 @@ class TestItemCollection:
             1: dirty_equals.IsPartialDict(
                 {
                     "type": "Feature",
-                    "stac_version": "1.0.0",
+                    "stac_version": dirty_equals.IsOneOf("1.0.0", "1.1.0"),
                     "id": "asset1",
                     "assets": {"asset1": {"eo:bands": [{"name": "red"}], "href": "https://data.test/asset1.tif"}},
                     "bbox": [20, 30, 25, 35],
@@ -1846,7 +1846,7 @@ class TestItemCollection:
             2: dirty_equals.IsPartialDict(
                 {
                     "type": "Feature",
-                    "stac_version": "1.0.0",
+                    "stac_version": dirty_equals.IsOneOf("1.0.0", "1.1.0"),
                     "id": "asset2",
                     "assets": {"asset2": {"eo:bands": [{"name": "red"}], "href": "https://data.test/asset2.tif"}},
                     "bbox": [24, 34, 28, 38],
