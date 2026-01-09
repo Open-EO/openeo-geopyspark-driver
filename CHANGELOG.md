@@ -18,7 +18,7 @@ without compromising stable operations.
 - Ensure counter-clockwise bbox geometries in STAC metadata ([#1384](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1384))
 - "stac-version" job option is not considered experimental; a value of "1.1" also generates a `derived_from` document ([#1488](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1488))
 - `load_stac` based `load_collection`: support `granule_metadata` asset in SENTINEL2_L2A for azimuth/zenith angle bands (eu-cdse/openeo-cdse-infra#804)
-
+- `run_udf` now supports running CWL scripts. ([#1476](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1476))
 
 ## 0.70.0
 
