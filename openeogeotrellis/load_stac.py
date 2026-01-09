@@ -382,7 +382,7 @@ def _prepare_context(
     unique_epsgs = {epsg for epsgs in requested_band_epsgs for epsg in epsgs}
     requested_band_cell_sizes = [size for band_name, size in band_cell_size.items() if band_name in requested_band_names]
 
-    cellsize_override = feature_flags.get("cellsize")
+    cellsize_override = feature_flags.get("cellsize_override")
     if cellsize_override:
         (cell_width, cell_height) = cellsize_override
         target_epsg = unique_epsgs.pop() if len(unique_epsgs) == 1 else target_bbox.best_utm()
