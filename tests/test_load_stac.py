@@ -41,6 +41,7 @@ from openeogeotrellis.load_stac import (
     _prepare_context,
 )
 from openeogeotrellis.testing import DummyStacApiServer, gps_config_overrides
+from openeogeotrellis.util.geometry import bbox_to_geojson
 
 
 @pytest.mark.parametrize(
@@ -1809,6 +1810,7 @@ class TestItemCollection:
                 "assets": {
                     "asset1": {
                         "bbox": [20, 30, 25, 35],
+                        "geometry": bbox_to_geojson(20, 30, 25, 35),
                         "datetime": "2025-09-04T10:00:00Z",
                         "roles": ["data"],
                         "href": "https://data.test/asset1.tif",
@@ -1816,6 +1818,7 @@ class TestItemCollection:
                     },
                     "asset2": {
                         "bbox": [24, 34, 28, 38],
+                        "geometry": bbox_to_geojson(24, 34, 28, 38),
                         "datetime": "2025-09-08T10:00:00Z",
                         "roles": ["data"],
                         "href": "https://data.test/asset2.tif",

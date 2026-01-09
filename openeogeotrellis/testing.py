@@ -39,7 +39,7 @@ import openeogeotrellis
 from openeogeotrellis.config import gps_config_getter
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.util.datetime import to_datetime_utc
-from openeogeotrellis.util.geometry import to_geojson_io_url
+from openeogeotrellis.util.geometry import to_geojson_io_url, bbox_to_geojson
 from openeogeotrellis.util.runtime import is_package_available
 
 
@@ -448,6 +448,9 @@ class DummyStacApiServer:
 
     def define_item(self, collection_id: str, item_id: str, **kwargs):
         assert collection_id in self._collections
+        if (bbox := kwargs.get("bbox")) and not "geometry" in kwargs:
+            # Automatically set geometry from bbox if not provided
+            kwargs["geometry"] = bbox_to_geojson(bbox)
         item = StacDummyBuilder.item(id=item_id, **kwargs)
         self._collections[collection_id].items.append(item)
 
