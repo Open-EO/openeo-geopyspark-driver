@@ -9,6 +9,10 @@ DEFAULT_NAMESPACE = "calrissian-demo-project"
 DEFAULT_INPUT_STAGING_IMAGE = "alpine:3"
 # TODO #1007 proper calrissian image? Official one doesn't work due to https://github.com/Duke-GCB/calrissian/issues/124#issuecomment-947008286
 DEFAULT_CALRISSIAN_IMAGE = "ghcr.io/duke-gcb/calrissian/calrissian:0.18.1"
+DEFAULT_CALRISSIAN_RUNNER_RESOURCE_REQUIREMENTS = dict(
+    limits={"memory": "256Mi"}, requests={"cpu": "1m", "memory": "256Mi"}
+)
+
 DEFAULT_SECURITY_CONTEXT = dict(run_as_user=1000, fs_group=0, run_as_group=0)
 DEFAULT_CALRISSIAN_S3_REGION = None
 DEFAULT_CALRISSIAN_S3_BUCKET = "calrissian"
@@ -60,3 +64,9 @@ class CalrissianConfig:
     s3_bucket: str = DEFAULT_CALRISSIAN_S3_BUCKET
 
     security_context: dict = attrs.Factory(DEFAULT_SECURITY_CONTEXT.copy)
+
+    """
+    The pod that runs the calrissian tool is the runner of the CWL workflow and requires its own resources to drive
+    the resources that actually perform the work which are specified . Ideally a default
+    """
+    runner_resource_requirements: dict = attrs.Factory(DEFAULT_CALRISSIAN_RUNNER_RESOURCE_REQUIREMENTS.copy)

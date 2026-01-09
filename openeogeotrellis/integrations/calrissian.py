@@ -29,6 +29,7 @@ from openeogeotrellis.config.integrations.calrissian_config import (
     DEFAULT_CALRISSIAN_S3_REGION,
     DEFAULT_INPUT_STAGING_IMAGE,
     DEFAULT_SECURITY_CONTEXT,
+    DEFAULT_CALRISSIAN_RUNNER_RESOURCE_REQUIREMENTS,
     CalrissianConfig,
 )
 from openeogeotrellis.integrations.kubernetes import ensure_kubernetes_config
@@ -230,6 +231,12 @@ class CalrissianJobLauncher:
     Helper class to launch a Calrissian job on Kubernetes.
     """
 
+    # Hard code given the small but predictable requirements
+    _HARD_CODED_STAGE_JOB_RESOURCES = {
+        "limits": {"memory": "10Mi"},
+        "requests": {"cpu": "1m", "memory": "10Mi"},
+    }
+
     def __init__(
         self,
         *,
@@ -243,6 +250,7 @@ class CalrissianJobLauncher:
         security_context: Optional[dict] = None,
         backoff_limit: int = 1,
         calrissian_base_arguments: Sequence[str] = DEFAULT_CALRISSIAN_BASE_ARGUMENTS,
+        runner_resource_requirements: Optional[dict] = None,
     ):
         self._namespace = namespace
         self._name_base = name_base or generate_unique_id(prefix="cal")[:20]
@@ -274,6 +282,10 @@ class CalrissianJobLauncher:
 
         self._security_context = kubernetes.client.V1PodSecurityContext(
             **(security_context or DEFAULT_SECURITY_CONTEXT)
+        )
+
+        self._runner_resource_requirements = kubernetes.client.V1ResourceRequirements(
+            **(runner_resource_requirements or DEFAULT_CALRISSIAN_RUNNER_RESOURCE_REQUIREMENTS)
         )
 
     @staticmethod
@@ -360,6 +372,7 @@ class CalrissianJobLauncher:
             security_context=config.security_context,
             calrissian_image=config.calrissian_image,
             input_staging_image=config.input_staging_image,
+            runner_resource_requirements=config.runner_resource_requirements,
         )
 
     def _build_unique_name(self, infix: str) -> str:
@@ -402,6 +415,7 @@ class CalrissianJobLauncher:
                     name=self._volume_input.name, mount_path=self._volume_input.mount_path, read_only=False
                 )
             ],
+            resources=kubernetes.client.V1ResourceRequirements(**self._HARD_CODED_STAGE_JOB_RESOURCES),
         )
         manifest = kubernetes.client.V1Job(
             metadata=kubernetes.client.V1ObjectMeta(
@@ -517,6 +531,7 @@ class CalrissianJobLauncher:
             ]
             + [self._calrissian_launch_config.get_volume_mount()],
             env=container_env_vars,
+            resources=self._runner_resource_requirements,
         )
         manifest = kubernetes.client.V1Job(
             metadata=kubernetes.client.V1ObjectMeta(
