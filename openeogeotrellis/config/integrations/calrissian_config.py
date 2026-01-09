@@ -1,7 +1,7 @@
 from typing import Optional
 
 import attrs
-from coverage.annotate import os
+import os
 
 from openeo_driver.utils import smart_bool
 
