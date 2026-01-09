@@ -1,6 +1,9 @@
 from typing import Optional
 
 import attrs
+import os
+
+from openeo_driver.utils import smart_bool
 
 DEFAULT_NAMESPACE = "calrissian-demo-project"
 DEFAULT_INPUT_STAGING_IMAGE = "alpine:3"
@@ -16,8 +19,9 @@ DEFAULT_CALRISSIAN_BASE_ARGUMENTS = (
     "--max-cores",
     "4",
     "--force-docker-pull",
-    # "--leave-container"  # For debugging purposes
 )
+if smart_bool(os.environ.get("OPENEO_LOCAL_DEBUGGING", "false")):
+    DEFAULT_CALRISSIAN_BASE_ARGUMENTS += ("--leave-container", "--leave-tmpdir")
 
 
 @attrs.frozen(kw_only=True)
