@@ -393,8 +393,8 @@ def _prepare_context(
         cell_height = min(cell_heights)
     elif len(unique_epsgs) == 1:
         target_epsg = unique_epsgs.pop()
-        # Fall back to default cellsize (about 10m in given CRS)
-        (cell_width, cell_height) = (10.0, 10.0)
+        # Fall back to default cellsize.
+        (cell_width, cell_height) = feature_flags.get("cellsize_fallback", (10.0, 10.0))
         try:
             utm_zone_from_epsg(proj_epsg)
         except ValueError:
@@ -409,7 +409,7 @@ def _prepare_context(
     else:
         # Fall back to default cellsize.
         target_epsg = target_bbox.best_utm()
-        (cell_width, cell_height) = (10.0, 10.0)
+        (cell_width, cell_height) = feature_flags.get("cellsize_fallback", (10.0, 10.0))
 
     if load_params.target_resolution is not None:
         if load_params.target_resolution[0] != 0.0 and load_params.target_resolution[1] != 0.0:
