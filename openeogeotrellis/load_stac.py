@@ -383,6 +383,7 @@ def _prepare_context(
     requested_band_cell_sizes = [size for band_name, size in band_cell_size.items() if band_name in requested_band_names]
 
     cellsize_override = feature_flags.get("cellsize_override")
+    cellsize_default = feature_flags.get("cellsize_fallback", (10.0, 10.0))
     if cellsize_override:
         (cell_width, cell_height) = cellsize_override
         target_epsg = unique_epsgs.pop() if len(unique_epsgs) == 1 else target_bbox.best_utm()
@@ -393,8 +394,7 @@ def _prepare_context(
         cell_height = min(cell_heights)
     elif len(unique_epsgs) == 1:
         target_epsg = unique_epsgs.pop()
-        # Fall back to default cellsize.
-        (cell_width, cell_height) = feature_flags.get("cellsize_fallback", (10.0, 10.0))
+        (cell_width, cell_height) = cellsize_default
         try:
             utm_zone_from_epsg(proj_epsg)
         except ValueError:
@@ -407,9 +407,8 @@ def _prepare_context(
                 cell_height, f"EPSG:{proj_epsg}", loi=(target_bbox_center.x, target_bbox_center.y)
             )
     else:
-        # Fall back to default cellsize.
         target_epsg = target_bbox.best_utm()
-        (cell_width, cell_height) = feature_flags.get("cellsize_fallback", (10.0, 10.0))
+        (cell_width, cell_height) = cellsize_default
 
     if load_params.target_resolution is not None:
         if load_params.target_resolution[0] != 0.0 and load_params.target_resolution[1] != 0.0:
