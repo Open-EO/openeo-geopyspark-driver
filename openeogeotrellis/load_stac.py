@@ -206,7 +206,7 @@ def _prepare_context(
         #         "sunZenithAngles": "granule_metadata##1",
         #         ...
         granule_metadata_band_map = feature_flags.get("granule_metadata_band_map")
-
+        cellsize_override = feature_flags.get("cellsize_override")
         for itm, band_assets in item_collection.iter_items_with_band_assets():
 
             builder = (
@@ -303,7 +303,7 @@ def _prepare_context(
                 builder = builder.withRasterExtent(*(float(b) for b in proj_bbox))
 
             if proj_bbox and proj_shape:
-                cell_width, cell_height = _compute_cellsize(proj_bbox, proj_shape)
+                cell_width, cell_height = cellsize_override or _compute_cellsize(proj_bbox, proj_shape)
                 builder = builder.withResolution(cell_width)
 
             latlon_bbox = BoundingBox.from_wsen_tuple(itm.bbox, 4326) if itm.bbox else None
@@ -382,7 +382,6 @@ def _prepare_context(
     unique_epsgs = {epsg for epsgs in requested_band_epsgs for epsg in epsgs}
     requested_band_cell_sizes = [size for band_name, size in band_cell_size.items() if band_name in requested_band_names]
 
-    cellsize_override = feature_flags.get("cellsize_override")
     cellsize_default = feature_flags.get("cellsize_fallback", (10.0, 10.0))
     if cellsize_override:
         (cell_width, cell_height) = cellsize_override
