@@ -1304,7 +1304,7 @@ class TestSpatioTemporalExtent:
 )
 def test_spatiotemporal_extent_from_load_params(load_params, expected, time_machine):
     time_machine.move_to("2024-01-02T03:04:05Z")
-    extent = _spatiotemporal_extent_from_load_params(load_params)
+    extent = _spatiotemporal_extent_from_load_params(load_params.spatial_extent, load_params.temporal_extent)
     assert (extent.spatial_extent.as_bbox(), extent.temporal_extent.as_tuple()) == expected
 
 

@@ -277,11 +277,8 @@ def _extract_spatial_extent_from_constraint_load_stac(
     _log.debug(f"_extract_spatial_extent_from_constraint_load_stac {stac_url=} {extent_orig=}")
 
     spatiotemporal_extent = openeogeotrellis.load_stac._spatiotemporal_extent_from_load_params(
-        # TODO: eliminate this silly `LoadParameters` roundtrip and avoid duplication with _extract_load_parameters
-        LoadParameters(
-            spatial_extent=spatial_extent_from_pg,
-            temporal_extent=constraint.get("temporal_extent") or (None, None),
-        )
+        spatial_extent=spatial_extent_from_pg,
+        temporal_extent=constraint.get("temporal_extent") or (None, None),
     )
     item_collection, _, _, _ = openeogeotrellis.load_stac.construct_item_collection(
         url=stac_url,

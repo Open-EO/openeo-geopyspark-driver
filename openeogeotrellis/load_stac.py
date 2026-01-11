@@ -159,7 +159,10 @@ def _prepare_context(
         if from_date == until_date
         else until_date - dt.timedelta(milliseconds=1)
     )
-    spatiotemporal_extent = _spatiotemporal_extent_from_load_params(load_params)
+    spatiotemporal_extent = _spatiotemporal_extent_from_load_params(
+        spatial_extent=load_params.spatial_extent,
+        temporal_extent=load_params.temporal_extent
+    )
 
     try:
         item_collection, metadata, collection_band_names, netcdf_with_time_dimension = construct_item_collection(
@@ -890,9 +893,12 @@ class _SpatioTemporalExtent:
         )
 
 
-def _spatiotemporal_extent_from_load_params(load_params: LoadParameters) -> _SpatioTemporalExtent:
-    bbox = BoundingBox.from_dict_or_none(load_params.spatial_extent, default_crs="EPSG:4326")
-    (from_date, until_date) = (to_datetime_utc_unless_none(d) for d in load_params.temporal_extent)
+def _spatiotemporal_extent_from_load_params(
+    spatial_extent: Union[Dict, BoundingBox, None],
+    temporal_extent: Tuple[Optional[str], Optional[str]]
+) -> _SpatioTemporalExtent:
+    bbox = BoundingBox.from_dict_or_none(spatial_extent, default_crs="EPSG:4326")
+    (from_date, until_date) = (to_datetime_utc_unless_none(d) for d in temporal_extent)
     if until_date is None:
         to_date = None
     elif from_date == until_date:
