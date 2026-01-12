@@ -846,7 +846,7 @@ def test_spatial_cube_to_netcdf_sample_by_feature(tmp_path):
     assert asset1.get("proj:shape") == [13, 10]
     assert asset1.get("raster:bands") == [{
         'name': 'Flat:2',
-        'statistics': {'max': 2.0, 'mean': 2.0, 'min': 2.0, 'stddev': 0.0, 'valid_percent': 56.15384615384615}
+        'statistics': {'maximum': 2.0, 'mean': 2.0, 'minimum': 2.0, 'stddev': 0.0, 'valid_percent': 56.15384615384615}
     }]
 
 
