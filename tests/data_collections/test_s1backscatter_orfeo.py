@@ -5,22 +5,23 @@ import sys
 import textwrap
 import zipfile
 from pathlib import Path
-from typing import Tuple
-from unittest import mock
+from typing import Tuple, Dict
+from unittest import mock, skip
 
+import numpy as np
 import pytest
 import rasterio
 from numpy.testing import assert_allclose
-import numpy as np
+
 from openeo_driver.backend import LoadParameters
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.utils import EvalEnv
-
 from openeogeotrellis.collections.s1backscatter_orfeo import (
     S1BackscatterOrfeo,
     S1BackscatterOrfeoV2,
     _instant_ms_to_day,
 )
+from openeogeotrellis.layercatalog import GeoPySparkLayerCatalog
 
 
 @pytest.mark.parametrize(
@@ -512,3 +513,39 @@ class TestOrfeoPipeline:
                 log_prefix=f"{log_prefix}-{band}",
             )
             print(data)
+
+def spatial_extent_zeebrugge() -> Dict[str, float]:
+    return {"west": 3.1, "south": 51.27, "east": 3.3, "north": 51.37}
+
+@skip("requires mounting raster data.")
+def test_backscatter_load_collection_opensearch():
+    # Full workflow test starting at load_collection.
+    from openeogeotrellis.layercatalog import get_layer_catalog
+    catalog: GeoPySparkLayerCatalog = get_layer_catalog()
+    sar_backscatter: SarBackscatterArgs = SarBackscatterArgs(**{'coefficient': 'sigma0-ellipsoid'})
+
+    processing_level = {
+        "process_graph": {
+            "eq": {
+                "process_id": "eq",
+                "arguments": {"x": {"from_parameter": "value"}, "y": "LEVEL1"},
+                "result": True,
+            }
+        }
+    }
+
+    load_params = LoadParameters(
+        spatial_extent=spatial_extent_zeebrugge(),
+        temporal_extent=("2020-06-06T00:00:00", "2020-06-06T23:59:59"),
+        bands=["VH", "VV"],
+        properties={
+            "processingLevel": processing_level,
+            # "productType": "IW_GRDH_1S_B",
+            # "orbitDirection": "DESCENDING",
+        }
+    )
+    load_params.sar_backscatter = sar_backscatter
+    env = EvalEnv(
+        {"openeo_api_version": "1.0.0"}
+    )
+    catalog._load_collection_cached("SENTINEL1_GRD", load_params=load_params, env=env)
