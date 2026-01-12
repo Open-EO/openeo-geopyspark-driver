@@ -593,3 +593,24 @@ class TestEnrichment:
             "summaries": expected,
             "cube:dimensions": {"bands": {"type": "bands", "values": ["B02", "B03"]}},
         }
+
+    def test_from_stac_drop_top_level_bands(self, requests_mock):
+        stac_url = "http://stac.test/collection.json"
+        requests_mock.get(
+            stac_url,
+            json={
+                "id": "Test123",
+                "stac_version": "1.1.0",
+                "type": "Collection",
+                "bands": [{"name": "B02"}, {"name": "B03"}],
+                "summaries": {"bands": [{"name": "B02"}, {"name": "B03"}]},
+            },
+        )
+        enriched_metadata = _enrichment_metadata_from_stac(stac_url)
+        assert enriched_metadata == {
+            "id": "Test123",
+            "stac_version": "1.1.0",
+            "type": "Collection",
+            "summaries": {"bands": [{"name": "B02"}, {"name": "B03"}]},
+            "cube:dimensions": {"bands": {"type": "bands", "values": ["B02", "B03"]}},
+        }
