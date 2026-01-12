@@ -273,10 +273,12 @@ def _prepare_context(
                         band_epsgs.setdefault(asset_band_name, set()).add(proj_epsg)
 
                 pixel_value_offset = _get_pixel_value_offset(item=itm, asset=asset)
+
+                asset_href = get_best_url(asset)
                 logger.debug(
-                    f"FeatureBuilder.addlink {itm.id=} {asset_id=} {asset_band_names_from_metadata=} {asset_band_names=}"
+                    f"FeatureBuilder.addLink {itm.id=} {asset_id=} {asset_href=} {asset_band_names_from_metadata=} {asset_band_names=}"
                 )
-                builder = builder.addLink(get_best_url(asset), asset_id, pixel_value_offset, asset_band_names)
+                builder = builder.addLink(asset_href, asset_id, pixel_value_offset, asset_band_names)
 
             # Optionally include additional special assets
             for asset_id, asset in itm.assets.items():
@@ -294,7 +296,7 @@ def _prepare_context(
                     ]
                     if bands_to_add:
                         link_band_names = [granule_metadata_band_map[b] for b in bands_to_add]
-                        logger.debug(f"FeatureBuilder.addlink {itm.id=} {asset_id=} {link_band_names=}")
+                        logger.debug(f"FeatureBuilder.addLink {itm.id=} {asset_id=} {asset_href=} {link_band_names=}")
                         builder = builder.addLink(asset_href, asset_id, link_band_names)
                         collection_band_names.extend(bands_to_add)
 
