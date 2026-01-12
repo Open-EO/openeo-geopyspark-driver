@@ -325,6 +325,10 @@ class TestDownload:
                         "proj:epsg" : 4326,
                         "proj:bbox": dirty_equals.IsListOrTuple(length=4),
                         "proj:shape": dirty_equals.IsListOrTuple(length=2),
+                        "raster:bands": [
+                            dirty_equals.IsPartialDict(name="red"),
+                            dirty_equals.IsPartialDict(name="nir"),
+                        ],
                         "roles": ["data"],
                         "type": expected_type,
                     }
