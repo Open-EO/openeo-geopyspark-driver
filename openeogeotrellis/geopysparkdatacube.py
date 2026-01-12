@@ -1975,7 +1975,7 @@ class GeopysparkDataCube(DriverDataCube):
                         if "statistics" in band:
                             band["statistics"] = dict(band.get("statistics"))
                         bands.append(band)
-                    assets[asset_key]["bands"] = bands
+                    assets[asset_key]["raster:bands"] = bands
                     assets[asset_key]["proj:bbox"] = tuple(asset_metadata.get("proj:bbox"))
                     assets[asset_key]["proj:shape"] = tuple(asset_metadata.get("proj:shape"))
                     assets[asset_key]["proj:epsg"] = asset_metadata.get("proj:epsg")

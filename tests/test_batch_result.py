@@ -828,9 +828,9 @@ def test_spatial_cube_to_netcdf_sample_by_feature(tmp_path):
     assert asset0.get("proj:bbox") == [0.0, 0.0, 2.0, 2.0]
     assert asset0.get("proj:epsg") == 4326
     assert asset0.get("proj:shape") == [8,8]
-    assert asset0.get("bands") == [{
+    assert asset0.get("raster:bands") == [{
         'name': 'Flat:2',
-        'statistics': {'max': 2.0, 'mean': 2.0, 'min': 2.0, 'stddev': 0.0, 'valid_percent': 53.125}
+        'statistics': {'maximum': 2.0, 'mean': 2.0, 'minimum': 2.0, 'stddev': 0.0, 'valid_percent': 53.125}
     }]
 
     item1 = [item for item in items for asset in item["assets"].values() if asset["href"].endswith("/openEO_1.nc")][0]
@@ -844,7 +844,7 @@ def test_spatial_cube_to_netcdf_sample_by_feature(tmp_path):
     assert asset1.get("proj:bbox") == [0.5, -1.5, 3.00, 1.75]
     assert asset1.get("proj:epsg") == 4326
     assert asset1.get("proj:shape") == [13, 10]
-    assert asset1.get("bands") == [{
+    assert asset1.get("raster:bands") == [{
         'name': 'Flat:2',
         'statistics': {'max': 2.0, 'mean': 2.0, 'min': 2.0, 'stddev': 0.0, 'valid_percent': 56.15384615384615}
     }]
