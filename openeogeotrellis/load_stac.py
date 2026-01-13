@@ -1721,6 +1721,12 @@ class PropertyFilter:
         self._properties = properties
         self._env = env or EvalEnv()
 
+    def _iter_literal_matches(self) -> Iterator[Tuple[str, str, Any]]:
+        """Helper to produce tuples of property-name, operator and value"""
+        for property_name, pg in self._properties.items():
+            for operator, value in filter_properties.extract_literal_match(pg, env=self._env).items():
+                yield property_name, operator, value
+
     @staticmethod
     def _build_callable(operator: str, value: Any) -> Callable[[Any], bool]:
         if operator == "eq":
@@ -1741,9 +1747,8 @@ class PropertyFilter:
         that can be used to check if properties match the filter conditions.
         """
         conditions = [
-            (name, self._build_callable(operator, value))
-            for name, pg in self._properties.items()
-            for operator, value in filter_properties.extract_literal_match(pg, env=self._env).items()
+            (property_name, self._build_callable(operator, value))
+            for property_name, operator, value in self._iter_literal_matches()
         ]
 
         def match(properties: Dict[str, Any]) -> bool:
@@ -1782,57 +1787,52 @@ class PropertyFilter:
 
     def to_cql2_text(self) -> str:
         """Convert the property filter to a CQL2 text representation."""
-        literal_matches = {
-            property_name: filter_properties.extract_literal_match(condition, self._env)
-            for property_name, condition in self._properties.items()
-        }
-        cql2_text_formatter = get_jvm().org.openeo.geotrellissentinelhub.Cql2TextFormatter()
+        filters = []
+        for property_name, operator, value in self._iter_literal_matches():
+            operator = self._to_cql2_operator(operator)
+            # Bit of ad-hoc value encoding (note that we exploit the fact here
+            # that `repr` produces single quoted strings, as expected in CQL2 text format)
+            if isinstance(value, (list, set)):
+                value = repr(tuple(value))
+            else:
+                value = repr(value)
+            filters.append(f'"properties.{property_name}" {operator} {value}')
+        return " and ".join(filters)
 
-        return cql2_text_formatter.format(
-            # Cql2TextFormatter won't add necessary quotes so provide them up front
-            # TODO: are these quotes actually necessary?
-            {f'"properties.{name}"': criteria for name, criteria in literal_matches.items()}
-        )
-
-    def to_cql2_json(self) -> Union[Dict, None]:
-        literal_matches = {
-            property_name: filter_properties.extract_literal_match(condition, self._env)
-            for property_name, condition in self._properties.items()
-        }
-        if len(literal_matches) == 0:
-            return None
-
-        operator_mapping = {
+    def _to_cql2_operator(self, operator: str):
+        """Map operators produced by extract_literal_match to CQL2 operators."""
+        cql2_op = {
             "eq": "=",
             "neq": "<>",
             "lt": "<",
             "lte": "<=",
             "gt": ">",
             "gte": ">=",
+            # Note that the operators produced by `extract_literal_match`
+            # (the keys in this mapping) are currently somewhat arbitrairy:
+            # most correspond directly to openEO-processes naming,
+            # while openEO's `array_contains` is translated to `in` for some reason,
             "in": "in",
-        }
+            "array_contains": "in",  # Still cover for openEO-style naming here to be future-proof
+        }.get(operator)
+        if not cql2_op:
+            raise ValueError(f"Unsupported operator {operator}")
+        return cql2_op
 
-        def single_filter(property, operator, value) -> dict:
-            cql2_json_operator = operator_mapping.get(operator)
-
-            if cql2_json_operator is None:
-                raise ValueError(f"unsupported operator {operator}")
-
-            return {"op": cql2_json_operator, "args": [{"property": f"properties.{property}"}, value]}
-
+    def to_cql2_json(self) -> Union[dict, None]:
         filters = [
-            single_filter(property, operator, value)
-            for property, criteria in literal_matches.items()
-            for operator, value in criteria.items()
+            {
+                "op": self._to_cql2_operator(operator),
+                "args": [{"property": f"properties.{property_name}"}, value],
+            }
+            for property_name, operator, value in self._iter_literal_matches()
         ]
-
-        if len(filters) == 1:
+        if len(filters) == 0:
+            return None
+        elif len(filters) == 1:
             return filters[0]
-
-        return {
-            "op": "and",
-            "args": filters,
-        }
+        else:
+            return {"op": "and", "args": filters}
 
 
 class NoveltyTracker:

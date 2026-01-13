@@ -1540,11 +1540,17 @@ class TestPropertyFilter:
                 {"process_id": "gte", "arguments": {"x": 42, "y": {"from_parameter": "value"}}},
                 '"properties.foo" <= 42',
             ),
-            # TODO?
-            # (
-            #     {"process_id": "array_contains", "arguments": {"data": [42, 4242], "y": {"from_parameter": "value"}}},
-            #     "...",
-            # ),
+            (
+                {"process_id": "array_contains", "arguments": {"data": [42, 4242], "y": {"from_parameter": "value"}}},
+                '"properties.foo" in (42, 4242)',
+            ),
+            (
+                {
+                    "process_id": "array_contains",
+                    "arguments": {"data": ["blue", "green"], "y": {"from_parameter": "value"}},
+                },
+                "\"properties.foo\" in ('blue', 'green')",
+            ),
         ],
     )
     def test_to_cql2_text_operators(self, pg_node, expected):
@@ -1665,6 +1671,13 @@ class TestPropertyFilter:
             (
                 {"process_id": "array_contains", "arguments": {"data": [42, 4242], "y": {"from_parameter": "value"}}},
                 {"op": "in", "args": [{"property": "properties.foo"}, [42, 4242]]},
+            ),
+            (
+                {
+                    "process_id": "array_contains",
+                    "arguments": {"data": ["blue", "green"], "y": {"from_parameter": "value"}},
+                },
+                {"op": "in", "args": [{"property": "properties.foo"}, ["blue", "green"]]},
             ),
         ],
     )
