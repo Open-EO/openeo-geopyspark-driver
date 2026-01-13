@@ -289,7 +289,7 @@ def _prepare_context(
                     and asset_id == "granule_metadata"
                     and asset.title == "MTD_TL.xml"
                     and "metadata" in (asset.roles or [])
-                    and (asset_href := get_best_url(asset)).endswith("/MTD_TL.xml")
+                    and (asset_href := get_best_url(asset, with_vsis3=False)).endswith("/MTD_TL.xml")
                 ):
                     bands_to_add = [
                         b for b in granule_metadata_band_map.keys() if (not load_params.bands or b in load_params.bands)
@@ -1547,7 +1547,7 @@ def contains_netcdf_with_time_dimension(collection: pystac.Collection) -> bool:
     return False
 
 
-def get_best_url(asset: pystac.Asset):
+def get_best_url(asset: pystac.Asset, with_vsis3: bool = True) -> str:
     """
     Relevant doc: https://github.com/stac-extensions/alternate-assets
     """
@@ -1575,9 +1575,10 @@ def get_best_url(asset: pystac.Asset):
 
     href = asset.get_absolute_href() or asset.href
 
+    # TODO: this vsis3 upper-lower-case juggling should be moved to geotrellis extensions instead of this undocumented coupling (and hardcoded deployment details)
     return (
         href.replace("s3://eodata/", "/vsis3/EODATA/")
-        if os.environ.get("AWS_DIRECT") == "TRUE"
+        if (with_vsis3 and os.environ.get("AWS_DIRECT") == "TRUE")
         else href.replace("s3://eodata/", "/eodata/")
     )
 
