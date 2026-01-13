@@ -716,7 +716,13 @@ def construct_item_collection(
             )
 
             band_names = stac_metadata_parser.bands_from_stac_collection(collection=collection).band_names()
+
             property_filter = PropertyFilter(properties=property_filter_pg_map, env=env)
+            if property_filter_adaptations := feature_flags.get("property_filter_adaptations"):
+                logger.debug(f"AdaptingPropertyFilter with {property_filter_adaptations=}")
+                property_filter = AdaptingPropertyFilter(
+                    properties=property_filter_pg_map, env=env, adaptations=property_filter_adaptations
+                )
 
             item_collection = ItemCollection.from_stac_api(
                 collection=stac_object,
@@ -1833,6 +1839,85 @@ class PropertyFilter:
             return filters[0]
         else:
             return {"op": "and", "args": filters}
+
+
+class AdaptingPropertyFilter(PropertyFilter):
+    """
+    PropertyFilter subclass with extra mapping of (legacy) property names and values.
+
+    Mapping instructions are given as a dictionary, with (legacy) user-provided property names as key
+    (named "legacy_property" in exmples below), supporting the following transformations:
+
+    - drop filtering on a property (e.g. because legacy property is no longer available,
+      and filtering would cause nothing to match):
+
+           {"legacy_property": "drop"}
+
+    - rename legacy property to new property name:
+
+          {"legacy_property": {"rename" : "new_name"}}
+
+    - Rename property values:
+
+          {"legacy_property": {"value_mapping": {"old_value": "new_value"}}}
+
+      "value_mapping" here can be
+      - a dictionary for simple mapping (missing values are kept)
+      - (string) "add-MGRS-prefix": to add a "MGRS-" prefix to the legacy value.
+    """
+
+    def __init__(
+        self,
+        properties: PropertyFilterPGMap,
+        *,
+        env: Optional[EvalEnv] = None,
+        adaptations: Dict[str, Union[dict, str]],
+    ):
+        super().__init__(properties=properties, env=env)
+        self._adaptations = adaptations
+
+    def _iter_literal_matches(self) -> Iterator[Tuple[str, str, Any]]:
+        updates = []
+        for property_name, operator, value in super()._iter_literal_matches():
+            adaptation = self._adaptations.get(property_name, "preserve")
+            if adaptation == "preserve":
+                # Keep everyting as-is (default)
+                pass
+            elif adaptation == "drop":
+                updates.append(f"Drop {property_name!r}")
+                # Skip yield
+                continue
+            elif isinstance(adaptation, dict):
+                if rename := adaptation.get("rename"):
+                    updates.append(f"Rename {property_name!r} to {rename!r}")
+                    property_name = rename
+                if value_mapping := adaptation.get("value_mapping"):
+                    new_value = self._map_value(value_mapping=value_mapping, value=value)
+                    if new_value != value:
+                        updates.append(f"Map {property_name!r} value {value!r} to {new_value!r}")
+                        value = new_value
+            else:
+                raise ValueError(f"Invalid {adaptation=}")
+
+            yield property_name, operator, value
+        if updates:
+            # TODO: make this a (more descriptive) warning to push users to update their filters?
+            logger.info(f"AdaptingPropertyFilter: {updates=}")
+
+    def _map_value(self, value_mapping: Union[dict, str], value: Any) -> Any:
+        if isinstance(value_mapping, dict):
+            mapper = lambda v: value_mapping.get(v, v)
+        elif value_mapping == "add-MGRS-prefix":
+            # TODO: make this more generic with something like "add-prefix:<prefix>"?
+            mapper = lambda v: f"MGRS-{v}"
+        else:
+            raise ValueError(f"Invalid {value_mapping=}")
+
+        if isinstance(value, (list, tuple, set)):
+            new_value = type(value)(mapper(v) for v in value)
+        else:
+            new_value = mapper(value)
+        return new_value
 
 
 class NoveltyTracker:
