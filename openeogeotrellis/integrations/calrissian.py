@@ -511,6 +511,10 @@ class CalrissianJobLauncher:
             kubernetes.client.V1EnvVar(
                 name="RETRY_ATTEMPTS",  # Otherwise calrissian retry backoff till take 2400sec (40min)
                 value="3",
+            ),
+            kubernetes.client.V1EnvVar(
+                name="CALRISSIAN_STREAM_LOGS",  # Otherwise calrissian & logshipper streams logs
+                value="NO",
             )
         ]
         if env_vars:
