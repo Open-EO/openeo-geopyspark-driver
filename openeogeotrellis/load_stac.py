@@ -1070,7 +1070,7 @@ class ItemCollection:
                 use_filter_extension=use_filter_extension,
             )
             method = "POST" if isinstance(cql2_filter, dict) else "GET"
-            query_info += f" {use_filter_extension=} {cql2_filter=} {method=}"
+            query_info += f" {use_filter_extension=} {cql2_filter=}"
 
             bbox = spatiotemporal_extent.spatial_extent.as_bbox(crs="EPSG:4326")
             bbox = bbox.as_wsen_tuple() if bbox else None
@@ -1088,7 +1088,10 @@ class ItemCollection:
                 filter=cql2_filter,
                 fields=fields,
             )
-            query_info += f" {search_request.url=} {search_request.get_parameters()=}"
+            if search_request.method == "GET":
+                query_info += f" {search_request.method} {search_request.url_with_parameters()}"
+            else:
+                query_info += f" {search_request.method} {search_request.url} {search_request.get_parameters()=}"
             logger.info(f"ItemCollection.from_stac_api: STAC API request: {query_info}")
 
             # STAC API might not support Filter Extension so always use client-side filtering as well
@@ -1096,6 +1099,7 @@ class ItemCollection:
             #       see https://github.com/stac-api-extensions/filter
             property_matcher = property_filter.build_matcher()
             items = [item for item in search_request.items() if property_matcher(item.properties)]
+            logger.info(f"ItemCollection.from_stac_api: Collected {len(items)} items.")
         except Exception as e:
             raise LoadStacException(
                 url=original_url, info=f"failed to construct ItemCollection from STAC API. {query_info=} {e=}"
