@@ -32,7 +32,6 @@ export OPENEO_EJR_BACKEND_ID="mep-$deploy_env"
 
 /opt/venv/bin/python -m openeogeotrellis.job_tracker_v2 \
   --app-cluster yarn \
-  --zk-job-registry-root-path="$batch_jobs_zookeeper_root_path" \
   --keytab "$keytab" \
   --rotating-log logs/job_tracker_python_"$deploy_env".log \
   $run_id_arg
