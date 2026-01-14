@@ -716,7 +716,13 @@ def construct_item_collection(
             )
 
             band_names = stac_metadata_parser.bands_from_stac_collection(collection=collection).band_names()
+
             property_filter = PropertyFilter(properties=property_filter_pg_map, env=env)
+            if property_filter_adaptations := feature_flags.get("property_filter_adaptations"):
+                logger.debug(f"AdaptingPropertyFilter with {property_filter_adaptations=}")
+                property_filter = AdaptingPropertyFilter(
+                    properties=property_filter_pg_map, env=env, adaptations=property_filter_adaptations
+                )
 
             item_collection = ItemCollection.from_stac_api(
                 collection=stac_object,
@@ -1721,6 +1727,12 @@ class PropertyFilter:
         self._properties = properties
         self._env = env or EvalEnv()
 
+    def _iter_literal_matches(self) -> Iterator[Tuple[str, str, Any]]:
+        """Helper to produce tuples of property-name, operator and value"""
+        for property_name, pg in self._properties.items():
+            for operator, value in filter_properties.extract_literal_match(pg, env=self._env).items():
+                yield property_name, operator, value
+
     @staticmethod
     def _build_callable(operator: str, value: Any) -> Callable[[Any], bool]:
         if operator == "eq":
@@ -1741,9 +1753,8 @@ class PropertyFilter:
         that can be used to check if properties match the filter conditions.
         """
         conditions = [
-            (name, self._build_callable(operator, value))
-            for name, pg in self._properties.items()
-            for operator, value in filter_properties.extract_literal_match(pg, env=self._env).items()
+            (property_name, self._build_callable(operator, value))
+            for property_name, operator, value in self._iter_literal_matches()
         ]
 
         def match(properties: Dict[str, Any]) -> bool:
@@ -1782,57 +1793,131 @@ class PropertyFilter:
 
     def to_cql2_text(self) -> str:
         """Convert the property filter to a CQL2 text representation."""
-        literal_matches = {
-            property_name: filter_properties.extract_literal_match(condition, self._env)
-            for property_name, condition in self._properties.items()
-        }
-        cql2_text_formatter = get_jvm().org.openeo.geotrellissentinelhub.Cql2TextFormatter()
+        filters = []
+        for property_name, operator, value in self._iter_literal_matches():
+            operator = self._to_cql2_operator(operator)
+            # Bit of ad-hoc value encoding (note that we exploit the fact here
+            # that `repr` produces single quoted strings, as expected in CQL2 text format)
+            if isinstance(value, (list, set)):
+                value = repr(tuple(value))
+            else:
+                value = repr(value)
+            filters.append(f'"properties.{property_name}" {operator} {value}')
+        return " and ".join(filters)
 
-        return cql2_text_formatter.format(
-            # Cql2TextFormatter won't add necessary quotes so provide them up front
-            # TODO: are these quotes actually necessary?
-            {f'"properties.{name}"': criteria for name, criteria in literal_matches.items()}
-        )
-
-    def to_cql2_json(self) -> Union[Dict, None]:
-        literal_matches = {
-            property_name: filter_properties.extract_literal_match(condition, self._env)
-            for property_name, condition in self._properties.items()
-        }
-        if len(literal_matches) == 0:
-            return None
-
-        operator_mapping = {
+    def _to_cql2_operator(self, operator: str):
+        """Map operators produced by extract_literal_match to CQL2 operators."""
+        cql2_op = {
             "eq": "=",
             "neq": "<>",
             "lt": "<",
             "lte": "<=",
             "gt": ">",
             "gte": ">=",
+            # Note that the operators produced by `extract_literal_match`
+            # (the keys in this mapping) are currently somewhat arbitrairy:
+            # most correspond directly to openEO-processes naming,
+            # while openEO's `array_contains` is translated to `in` for some reason,
             "in": "in",
-        }
+            "array_contains": "in",  # Still cover for openEO-style naming here to be future-proof
+        }.get(operator)
+        if not cql2_op:
+            raise ValueError(f"Unsupported operator {operator}")
+        return cql2_op
 
-        def single_filter(property, operator, value) -> dict:
-            cql2_json_operator = operator_mapping.get(operator)
-
-            if cql2_json_operator is None:
-                raise ValueError(f"unsupported operator {operator}")
-
-            return {"op": cql2_json_operator, "args": [{"property": f"properties.{property}"}, value]}
-
+    def to_cql2_json(self) -> Union[dict, None]:
         filters = [
-            single_filter(property, operator, value)
-            for property, criteria in literal_matches.items()
-            for operator, value in criteria.items()
+            {
+                "op": self._to_cql2_operator(operator),
+                "args": [{"property": f"properties.{property_name}"}, value],
+            }
+            for property_name, operator, value in self._iter_literal_matches()
         ]
-
-        if len(filters) == 1:
+        if len(filters) == 0:
+            return None
+        elif len(filters) == 1:
             return filters[0]
+        else:
+            return {"op": "and", "args": filters}
 
-        return {
-            "op": "and",
-            "args": filters,
-        }
+
+class AdaptingPropertyFilter(PropertyFilter):
+    """
+    PropertyFilter subclass with extra mapping of (legacy) property names and values.
+
+    Mapping instructions are given as a dictionary, with (legacy) user-provided property names as key
+    (named "legacy_property" in exmples below), supporting the following transformations:
+
+    - drop filtering on a property (e.g. because legacy property is no longer available,
+      and filtering would cause nothing to match):
+
+           {"legacy_property": "drop"}
+
+    - rename legacy property to new property name:
+
+          {"legacy_property": {"rename" : "new_name"}}
+
+    - Rename property values:
+
+          {"legacy_property": {"value_mapping": {"old_value": "new_value"}}}
+
+      "value_mapping" here can be
+      - a dictionary for simple mapping (missing values are kept)
+      - (string) "add-MGRS-prefix": to add a "MGRS-" prefix to the legacy value.
+    """
+
+    def __init__(
+        self,
+        properties: PropertyFilterPGMap,
+        *,
+        env: Optional[EvalEnv] = None,
+        adaptations: Dict[str, Union[dict, str]],
+    ):
+        super().__init__(properties=properties, env=env)
+        self._adaptations = adaptations
+
+    def _iter_literal_matches(self) -> Iterator[Tuple[str, str, Any]]:
+        updates = []
+        for property_name, operator, value in super()._iter_literal_matches():
+            adaptation = self._adaptations.get(property_name, "preserve")
+            if adaptation == "preserve":
+                # Keep everyting as-is (default)
+                pass
+            elif adaptation == "drop":
+                updates.append(f"Drop {property_name!r}")
+                # Skip yield
+                continue
+            elif isinstance(adaptation, dict):
+                if rename := adaptation.get("rename"):
+                    updates.append(f"Rename {property_name!r} to {rename!r}")
+                    property_name = rename
+                if value_mapping := adaptation.get("value_mapping"):
+                    new_value = self._map_value(value_mapping=value_mapping, value=value)
+                    if new_value != value:
+                        updates.append(f"Map {property_name!r} value {value!r} to {new_value!r}")
+                        value = new_value
+            else:
+                raise ValueError(f"Invalid {adaptation=}")
+
+            yield property_name, operator, value
+        if updates:
+            # TODO: make this a (more descriptive) warning to push users to update their filters?
+            logger.info(f"AdaptingPropertyFilter: {updates=}")
+
+    def _map_value(self, value_mapping: Union[dict, str], value: Any) -> Any:
+        if isinstance(value_mapping, dict):
+            mapper = lambda v: value_mapping.get(v, v)
+        elif value_mapping == "add-MGRS-prefix":
+            # TODO: make this more generic with something like "add-prefix:<prefix>"?
+            mapper = lambda v: f"MGRS-{v}"
+        else:
+            raise ValueError(f"Invalid {value_mapping=}")
+
+        if isinstance(value, (list, tuple, set)):
+            new_value = type(value)(mapper(v) for v in value)
+        else:
+            new_value = mapper(value)
+        return new_value
 
 
 class NoveltyTracker:

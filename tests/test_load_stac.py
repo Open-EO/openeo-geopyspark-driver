@@ -1,3 +1,5 @@
+import logging
+
 import datetime
 from contextlib import nullcontext
 from typing import Iterator, List
@@ -39,6 +41,7 @@ from openeogeotrellis.load_stac import (
     extract_own_job_info,
     load_stac,
     _prepare_context,
+    AdaptingPropertyFilter,
 )
 from openeogeotrellis.testing import DummyStacApiServer, gps_config_overrides
 from openeogeotrellis.util.geometry import bbox_to_geojson
@@ -1540,11 +1543,17 @@ class TestPropertyFilter:
                 {"process_id": "gte", "arguments": {"x": 42, "y": {"from_parameter": "value"}}},
                 '"properties.foo" <= 42',
             ),
-            # TODO?
-            # (
-            #     {"process_id": "array_contains", "arguments": {"data": [42, 4242], "y": {"from_parameter": "value"}}},
-            #     "...",
-            # ),
+            (
+                {"process_id": "array_contains", "arguments": {"data": [42, 4242], "y": {"from_parameter": "value"}}},
+                '"properties.foo" in (42, 4242)',
+            ),
+            (
+                {
+                    "process_id": "array_contains",
+                    "arguments": {"data": ["blue", "green"], "y": {"from_parameter": "value"}},
+                },
+                "\"properties.foo\" in ('blue', 'green')",
+            ),
         ],
     )
     def test_to_cql2_text_operators(self, pg_node, expected):
@@ -1666,6 +1675,13 @@ class TestPropertyFilter:
                 {"process_id": "array_contains", "arguments": {"data": [42, 4242], "y": {"from_parameter": "value"}}},
                 {"op": "in", "args": [{"property": "properties.foo"}, [42, 4242]]},
             ),
+            (
+                {
+                    "process_id": "array_contains",
+                    "arguments": {"data": ["blue", "green"], "y": {"from_parameter": "value"}},
+                },
+                {"op": "in", "args": [{"property": "properties.foo"}, ["blue", "green"]]},
+            ),
         ],
     )
     def test_to_cql2_json_operators(self, pg_node, expected):
@@ -1743,6 +1759,191 @@ class TestPropertyFilter:
             )
             == expected
         )
+
+
+class TestAdaptingPropertyFilter:
+    @pytest.mark.parametrize(
+        ["adaptations", "expected_text", "expected_json"],
+        [
+            (
+                # Empty case (no adaptations)
+                {},
+                "\"properties.foo\" = 'FOO' and \"properties.bar\" = 'BAR'",
+                {
+                    "op": "and",
+                    "args": [
+                        {"op": "=", "args": [{"property": "properties.foo"}, "FOO"]},
+                        {"op": "=", "args": [{"property": "properties.bar"}, "BAR"]},
+                    ],
+                },
+            ),
+            (
+                # Drop "foo"
+                {"foo": "drop"},
+                "\"properties.bar\" = 'BAR'",
+                {"op": "=", "args": [{"property": "properties.bar"}, "BAR"]},
+            ),
+            (
+                # Rename "foo" to "fancyfoo"
+                {"foo": {"rename": "fancyfoo"}},
+                "\"properties.fancyfoo\" = 'FOO' and \"properties.bar\" = 'BAR'",
+                {
+                    "op": "and",
+                    "args": [
+                        {"op": "=", "args": [{"property": "properties.fancyfoo"}, "FOO"]},
+                        {"op": "=", "args": [{"property": "properties.bar"}, "BAR"]},
+                    ],
+                },
+            ),
+            (
+                # Map values
+                {
+                    "foo": {"value_mapping": {"SOMETHING": "else"}},
+                    "bar": {"value_mapping": {"BAR": "BARRRR"}},
+                },
+                "\"properties.foo\" = 'FOO' and \"properties.bar\" = 'BARRRR'",
+                {
+                    "op": "and",
+                    "args": [
+                        {"op": "=", "args": [{"property": "properties.foo"}, "FOO"]},
+                        {"op": "=", "args": [{"property": "properties.bar"}, "BARRRR"]},
+                    ],
+                },
+            ),
+            (
+                # add-MGRS-prefix
+                {"foo": {"value_mapping": "add-MGRS-prefix"}},
+                "\"properties.foo\" = 'MGRS-FOO' and \"properties.bar\" = 'BAR'",
+                {
+                    "op": "and",
+                    "args": [
+                        {"op": "=", "args": [{"property": "properties.foo"}, "MGRS-FOO"]},
+                        {"op": "=", "args": [{"property": "properties.bar"}, "BAR"]},
+                    ],
+                },
+            ),
+        ],
+    )
+    def test_overrides_to_cql2(self, adaptations, expected_text, expected_json):
+        user_specified_properties = {
+            "foo": {
+                "process_graph": {
+                    "eq1": {
+                        "process_id": "eq",
+                        "arguments": {"x": {"from_parameter": "value"}, "y": "FOO"},
+                        "result": True,
+                    }
+                }
+            },
+            "bar": {
+                "process_graph": {
+                    "eq1": {
+                        "process_id": "eq",
+                        "arguments": {"x": {"from_parameter": "value"}, "y": "BAR"},
+                        "result": True,
+                    }
+                }
+            },
+        }
+        property_filter = AdaptingPropertyFilter(user_specified_properties, adaptations=adaptations)
+        assert property_filter.to_cql2_text() == expected_text
+        assert property_filter.to_cql2_json() == expected_json
+
+    @pytest.mark.parametrize(
+        ["adaptations", "no_match", "match"],
+        [
+            (
+                {},
+                [{}, {"foo": "bar"}],
+                [{"foo": "FOO"}],
+            ),
+            (
+                {"foo": "drop"},
+                [],
+                [{}, {"anything": "goes"}],
+            ),
+            (
+                {"foo": {"rename": "hohoho", "value_mapping": {"FOO": "HAHAHA"}}},
+                [{}, {"fancyfoo": "FOO"}, {"foo": "FOO"}],
+                [{"hohoho": "HAHAHA"}],
+            ),
+            (
+                {"foo": {"rename": "mgrs-foo", "value_mapping": "add-MGRS-prefix"}},
+                [{}, {"foo": "FOO"}, {"mgrs-foo": "FOO"}],
+                [{"mgrs-foo": "MGRS-FOO"}],
+            ),
+        ],
+    )
+    def test_overrides_to_matcher(self, adaptations, no_match, match):
+        user_specified_properties = {
+            "foo": {
+                "process_graph": {
+                    "eq1": {
+                        "process_id": "eq",
+                        "arguments": {"x": {"from_parameter": "value"}, "y": "FOO"},
+                        "result": True,
+                    }
+                }
+            }
+        }
+        property_filter = AdaptingPropertyFilter(user_specified_properties, adaptations=adaptations)
+
+        matcher = property_filter.build_matcher()
+        assert [matcher(input) for input in no_match] == [False] * len(no_match)
+        assert [matcher(input) for input in match] == [True] * len(match)
+
+    def test_logging(self, caplog):
+        caplog.set_level(level=logging.INFO)
+        user_specified_properties = {
+            "foo": {
+                "process_graph": {
+                    "eq1": {
+                        "process_id": "eq",
+                        "arguments": {"x": {"from_parameter": "value"}, "y": "FOO"},
+                        "result": True,
+                    }
+                }
+            }
+        }
+        adaptations = {
+            "foo": {"rename": "mgrs-foo", "value_mapping": "add-MGRS-prefix"},
+        }
+        property_filter = AdaptingPropertyFilter(user_specified_properties, adaptations=adaptations)
+        property_filter.to_cql2_text()
+        assert caplog.messages == [
+            """AdaptingPropertyFilter: updates=["Rename 'foo' to 'mgrs-foo'", "Map 'mgrs-foo' value 'FOO' to 'MGRS-FOO'"]"""
+        ]
+
+    @pytest.mark.parametrize(
+        ["adaptations", "expected_text", "expected_json"],
+        [
+            (
+                {"foo": {"rename": "ffooo", "value_mapping": {"F22": "F2000"}}},
+                """"properties.ffooo" in ('F1', 'F2000', 'F333')""",
+                {"op": "in", "args": [{"property": "properties.ffooo"}, ["F1", "F2000", "F333"]]},
+            ),
+            (
+                {"foo": {"rename": "mgrs-foo", "value_mapping": "add-MGRS-prefix"}},
+                """"properties.mgrs-foo" in ('MGRS-F1', 'MGRS-F22', 'MGRS-F333')""",
+                {"op": "in", "args": [{"property": "properties.mgrs-foo"}, ["MGRS-F1", "MGRS-F22", "MGRS-F333"]]},
+            ),
+        ],
+    )
+    def test_contains(self, adaptations, expected_text, expected_json):
+        user_specified_properties = {
+            "foo": {
+                "process_graph": {
+                    "contains": {
+                        "process_id": "array_contains",
+                        "arguments": {"data": ["F1", "F22", "F333"], "value": {"from_parameter": "value"}},
+                        "result": True,
+                    }
+                }
+            }
+        }
+        property_filter = AdaptingPropertyFilter(user_specified_properties, adaptations=adaptations)
+        assert property_filter.to_cql2_text() == expected_text
+        assert property_filter.to_cql2_json() == expected_json
 
 
 class TestItemCollection:

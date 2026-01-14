@@ -19,6 +19,8 @@ without compromising stable operations.
 - "stac-version" job option is not considered experimental; a value of "1.1" also generates a `derived_from` document ([#1488](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1488))
 - `load_stac` based `load_collection`: support `granule_metadata` asset in SENTINEL2_L2A for azimuth/zenith angle bands (eu-cdse/openeo-cdse-infra#804)
 - `run_udf` now supports running CWL scripts. ([#1476](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1476))
+- new `property_filter_adaptations` feature flag (under `load_stac_feature_flags`) for `load_stac` powered collections to inject a property filtering adapter that translates legacy (e.g. OpenSearch) property filters to STAC property filters (eu-cdse/openeo-cdse-infra#803, eu-cdse/openeo-cdse-infra#804)
+
 
 ## 0.70.0
 
