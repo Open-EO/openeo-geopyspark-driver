@@ -21,7 +21,6 @@ from openeogeotrellis.collections.s1backscatter_orfeo import (
     S1BackscatterOrfeoV2,
     _instant_ms_to_day,
 )
-from openeogeotrellis.layercatalog import GeoPySparkLayerCatalog, get_layer_catalog
 
 
 @pytest.mark.parametrize(
@@ -518,6 +517,8 @@ class TestOrfeoPipeline:
 @skip("requires mounting raster data.")
 def test_backscatter_load_collection_opensearch():
     # Full workflow test starting at load_collection.
+    from openeogeotrellis.layercatalog import GeoPySparkLayerCatalog, get_layer_catalog
+
     catalog: GeoPySparkLayerCatalog = get_layer_catalog()
     sar_backscatter: SarBackscatterArgs = SarBackscatterArgs(**{'coefficient': 'sigma0-ellipsoid', })
     spatial_extent_zeebrugge = {"west": 3.1, "south": 51.27, "east": 3.3, "north": 51.37}
