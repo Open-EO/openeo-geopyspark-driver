@@ -179,6 +179,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         bands = load_params.bands
         if bands:
             band_indices = [metadata.get_band_index(b) for b in bands]
+            # Note: this `filter_bands` operation includes resolving band naming ("common_name" and aliases)
             metadata = metadata.filter_bands(bands)
             metadata = metadata.rename_labels(metadata.band_dimension.name, bands, metadata.band_names)
         else:
@@ -719,7 +720,9 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 env=env,
                 layer_properties=metadata.get("_vito", "properties", default={}),
                 batch_jobs=None,
-                override_band_names=metadata.band_names,
+                # Note: `metadata.band_names`: should be "normalized" band names at this point
+                #       (e.g. because of earlier metadata.filter_bands() with metadata containing band name aliases)
+                normalized_band_selection=metadata.band_names if metadata.has_band_dimension() else None,
                 feature_flags=layer_source_info.get("load_stac_feature_flags", {}),
             )
             pyramid = cube.pyramid.levels

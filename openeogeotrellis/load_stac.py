@@ -125,15 +125,20 @@ def _prepare_context(
     env: EvalEnv,
     layer_properties: Optional[PropertyFilterPGMap] = None,
     batch_jobs: Optional[openeo_driver.backend.BatchJobs] = None,
-    override_band_names: Optional[List[str]] = None,
+    normalized_band_selection: Optional[List[str]] = None,
     stac_io: Optional[pystac.stac_io.StacIO] = None,
     feature_flags: Optional[Dict[str, Any]] = None,
 ) -> _LoadStacContext:
     """
     Prepare all metadata and inputs needed to build/load a datacube from raster files.
+
+    :param normalized_band_selection: User specified band selection as list of normalized band names.
+        Intended for openEO `load_collection` use cases, where openEO collection metadata can contain
+        additional band name variants the user is also allowed to use,
+        like "eo:common_name" (from STAC EO extension) and "aliases" (non-standardized openeo-geopyspark-driver feature).
+        This `normalized_band_selection` should contain the standard band names after resolving aliases
+        or be empty (None or empty list) if no band filtering/selection is requested.
     """
-    if override_band_names is None:
-        override_band_names = []
 
     # Feature flags: merge global (e.g. from layer catalog info) and user-provided (higher precedence)
     feature_flags = {**(feature_flags or {}), **load_params.get("featureflags", {})}
@@ -163,6 +168,11 @@ def _prepare_context(
         spatial_extent=load_params.spatial_extent,
         temporal_extent=load_params.temporal_extent
     )
+
+    # Band selection: subset of bands to load from STAC assets.
+    # Prefer `normalized_band_selection` (if available) over raw `load_params.bands`
+    # as the former is result of resolving aliases/common_name to standard/expected band names.
+    band_selection: Union[List[str], None] = normalized_band_selection or load_params.bands
 
     try:
         item_collection, metadata, collection_band_names, netcdf_with_time_dimension = construct_item_collection(
@@ -238,19 +248,19 @@ def _prepare_context(
                     logger.debug(f"using `asset_id_to_bands_map`: mapping {asset_id} to {asset_band_names_from_metadata}")
                 logger.debug(f"from intersecting_items: {itm.id=} {asset_id=} {asset_band_names_from_metadata=}")
 
-                if not load_params.bands:
+                if not band_selection:
                     # No user-specified band filtering: follow band names from metadata (if possible)
                     asset_band_names = asset_band_names_from_metadata or [asset_id]
-                elif isinstance(load_params.bands, list) and asset_id in load_params.bands:
+                elif isinstance(band_selection, list) and asset_id in band_selection:
                     # User-specified asset_id as band name: use that directly
                     if asset_id not in collection_band_names:
                         logger.warning(f"Using asset key {asset_id!r} as band name.")
                     asset_band_names = [asset_id]
-                elif set(asset_band_names_from_metadata).intersection(load_params.bands or []):
+                elif set(asset_band_names_from_metadata).intersection(band_selection or []):
                     # User-specified bands match with band names in metadata
                     asset_band_names = asset_band_names_from_metadata
                 else:
-                    # No match with load_params.bands in some way -> skip this asset
+                    # No match with band_selection in some way -> skip this asset
                     continue
 
                 if band_names_tracker.already_seen(sorted(asset_band_names)):
@@ -292,7 +302,7 @@ def _prepare_context(
                     and (asset_href := get_best_url(asset, with_vsis3=False)).endswith("/MTD_TL.xml")
                 ):
                     bands_to_add = [
-                        b for b in granule_metadata_band_map.keys() if (not load_params.bands or b in load_params.bands)
+                        b for b in granule_metadata_band_map.keys() if (not band_selection or b in band_selection)
                     ]
                     if bands_to_add:
                         link_band_names = [granule_metadata_band_map[b] for b in bands_to_add]
@@ -369,17 +379,17 @@ def _prepare_context(
         allow_adding_dimension=True,
     )
     # Overwrite band_names because new bands could be detected in stac items:
-    metadata = metadata.with_new_band_names(override_band_names or collection_band_names)
+    metadata = metadata.with_new_band_names(band_selection or collection_band_names)
 
     if allow_empty_cubes and not metadata.band_names:
         # no knowledge of bands except for what the user requested
-        if load_params.bands:
-            metadata = metadata.with_new_band_names(load_params.bands)
+        if band_selection:
+            metadata = metadata.with_new_band_names(band_selection)
         else:
             raise ProcessParameterRequiredException(process="load_stac", parameter="bands")
 
-    if load_params.bands:
-        metadata = metadata.filter_bands(load_params.bands)
+    if band_selection:
+        metadata = metadata.filter_bands(band_selection)
 
     requested_band_names = metadata.band_names
 
@@ -620,17 +630,26 @@ def load_stac(
     env: EvalEnv,
     layer_properties: Optional[PropertyFilterPGMap] = None,
     batch_jobs: Optional[openeo_driver.backend.BatchJobs] = None,
-    override_band_names: Optional[List[str]] = None,
+    normalized_band_selection: Optional[List[str]] = None,
     stac_io: Optional[pystac.stac_io.StacIO] = None,
     feature_flags: Optional[Dict[str, Any]] = None,
 ) -> GeopysparkDataCube:
+    """
+
+    :param normalized_band_selection: User specified band selection as list of normalized band names.
+        Intended for openEO `load_collection` use cases, where openEO collection metadata can contain
+        additional band name variants the user is also allowed to use,
+        like "eo:common_name" (from STAC EO extension) and "aliases" (non-standardized openeo-geopyspark-driver feature).
+        This `normalized_band_selection` should contain the standard band names after resolving aliases
+        or be empty (None or empty list) if no band filtering/selection is requested.
+    """
     context = _prepare_context(
         url=url,
         load_params=load_params,
         env=env,
         layer_properties=layer_properties,
         batch_jobs=batch_jobs,
-        override_band_names=override_band_names,
+        normalized_band_selection=normalized_band_selection,
         stac_io=stac_io,
         feature_flags=feature_flags,
     )
