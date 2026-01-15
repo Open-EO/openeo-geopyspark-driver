@@ -129,7 +129,7 @@ class S1BackscatterOrfeo:
         "polarization": "sar:polarizations",
         "productType": "product:type",
         "processingLevel": "processing:level",
-        "orbitDirection": "sat:orbit_state",
+        "orbitDirection": "sat:orbit_state",  # TODO: Is there are a better related STAC property for this?
         "orbitNumber": "sat:absolute_orbit",
         "relativeOrbitNumber": "sat:relative_orbit",
         "timeliness": "product:timeliness_category",
@@ -283,6 +283,43 @@ class S1BackscatterOrfeo:
         pyrdd = pyrdd.map(json.loads)
         return pyrdd, layer_metadata_sc,json_rdd_partitioner._3()
 
+    @staticmethod
+    def _build_filter_properties(extra_properties: dict, use_stac_client: bool) -> Dict[str, any]:
+        """
+        Build filter properties from user-provided extra_properties.
+
+        For STAC client: normalizes legacy keys to STAC format, returns STAC-formatted properties.
+        For legacy client: keeps legacy format, returns opensearch-formatted properties.
+        """
+        if use_stac_client:
+            # STAC client allows both legacy and STAC property keys.
+            allowed_property_keys = set(S1BackscatterOrfeo._PROPERTY_KEYS_MAPPING.keys())
+            user_props = {k: v for k, v in extra_properties.items() if k in allowed_property_keys}
+            # Normalize legacy property keys to STAC format. So filter_properties are always in STAC format.
+            normalized_props = S1BackscatterOrfeo._normalize_filter_properties_to_stac(user_props) if user_props else {}
+            filter_properties: Dict[str, any] = {
+                "product:type": "IW_GRDH_1S_B",
+                "processing:level": "L1",
+            }
+            filter_properties.update(normalized_props)
+            if extra_properties.get("COG") == "FALSE":
+                filter_properties["product:type"] = "IW_GRDH_1S"
+        else:
+            # For legacy opensearch API, only allow legacy property keys.
+            allowed_property_keys = set(S1BackscatterOrfeo._LEGACY_TO_STAC_PROPERTY_KEYS.keys())
+            user_props = {k: v for k, v in extra_properties.items() if k in allowed_property_keys}
+            filter_properties: Dict[str, any] = {
+                "productType": "IW_GRDH_1S-COG",
+                "processingLevel": "LEVEL1",
+            }
+            if extra_properties.get("COG") == "FALSE":
+                filter_properties["productType"] = "IW_GRDH_1S"
+            filter_properties.update(user_props)
+            if "polarization" in extra_properties:
+                # British vs US English: Sentinelhub + STAC use US variant
+                filter_properties["polarisation"] = extra_properties["polarization"]
+        return filter_properties
+
     def _build_feature_rdd(
             self,
             collection_id, projected_polygons, from_date: str, to_date: str, extra_properties: dict,
@@ -290,35 +327,7 @@ class S1BackscatterOrfeo:
             spatial_extent=None, use_stac_client: bool = True
     ):
         """Build RDD of file metadata from Creodias catalog query."""
-        # Build filter properties.
-        filter_properties: Dict[str, str] = {}
-        if use_stac_client:
-            # STAC client allows both legacy and STAC property keys.
-            allowed_property_keys = set(self._PROPERTY_KEYS_MAPPING.keys())
-            user_props = {k: v for k, v in extra_properties.items() if k in allowed_property_keys}
-            # Normalize legacy property keys to STAC format. So filter_properties are always in STAC format.
-            normalized_props = self._normalize_filter_properties_to_stac(user_props) if user_props else {}
-            filter_properties = {
-                "product:type": "IW_GRDH_1S_B",
-                "processing:level": "L1",
-            }
-            filter_properties.update(normalized_props)
-            if "COG" in extra_properties and extra_properties["COG"] == "FALSE":
-                filter_properties["product:type"] = "IW_GRDH_1S"
-        else:
-            # For legacy opensearch API, only allow legacy property keys.
-            allowed_property_keys = set(self._LEGACY_TO_STAC_PROPERTY_KEYS.keys())
-            user_props = {k: v for k, v in extra_properties.items() if k in allowed_property_keys}
-            filter_properties: Dict[str, any] = {
-                "productType": "IW_GRDH_1S-COG",
-                "processingLevel": "LEVEL1",
-            }
-            if "COG" in extra_properties and extra_properties["COG"] == "FALSE":
-                filter_properties["productType"] = "IW_GRDH_1S"
-            filter_properties.update(user_props)
-            if "polarization" in extra_properties:
-                # British vs US English: Sentinelhub + STAC use US variant
-                filter_properties["polarisation"] = extra_properties["polarization"]
+        filter_properties = self._build_filter_properties(extra_properties, use_stac_client)
 
         # Build opensearch client based on selection
         if use_stac_client:
