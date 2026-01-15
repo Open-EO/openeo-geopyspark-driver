@@ -371,8 +371,7 @@ class GeopysparkDataCube(DriverDataCube):
         cube = self
         if type== "temporal":
             if cube.metadata.has_temporal_dimension():
-                #TODO change to error
-                _log.warning("Temporal dimension can only be added if temporal dimension does not exist")
+                raise ValueError("Temporal dimension can only be added if temporal dimension does not exist")
             else:
                 jvm = get_jvm()
                 label_as_zoneddatetime = jvm.java.time.ZonedDateTime.parse(label)
