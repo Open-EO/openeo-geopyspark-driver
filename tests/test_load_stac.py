@@ -127,7 +127,6 @@ def test_property_filter_from_parameter(requests_mock):
             env=env,
             layer_properties={},
             batch_jobs=None,
-            override_band_names=None,
         )
 
     assert search_mock.called
@@ -2625,9 +2624,10 @@ class TestPrepareContext:
         )
 
     @pytest.mark.parametrize(
-        ["user_requested_bands_names", "expected_links"],
+        ["load_params_bands", "normalized_band_selection", "expected_links"],
         [
             (
+                None,
                 None,
                 [
                     {"title": "B02_10m", "href": "https://stac.test/B02_10m.tif", "bandNames": ["B02"]},
@@ -2646,13 +2646,31 @@ class TestPrepareContext:
             ),
             (
                 ["B02"],
+                None,
                 [{"title": "B02_10m", "href": "https://stac.test/B02_10m.tif", "bandNames": ["B02"]}],
             ),
             (
                 ["B02_20m"],
+                None,
                 [{"title": "B02_20m", "href": "https://stac.test/B02_20m.tif", "bandNames": ["B02_20m"]}],
             ),
             (
+                ["B02", "sunAzimuthAngles", "viewZenithMean"],
+                None,
+                [
+                    {"title": "B02_10m", "href": "https://stac.test/B02_10m.tif", "bandNames": ["B02"]},
+                    {
+                        "title": "granule_metadata",
+                        "href": "https://stac.test/MTD_TL.xml",
+                        "bandNames": [
+                            "granule_metadata##0",
+                            "granule_metadata##3",
+                        ],
+                    },
+                ],
+            ),
+            (
+                ["B02", "SAA", "VZA"],
                 ["B02", "sunAzimuthAngles", "viewZenithMean"],
                 [
                     {"title": "B02_10m", "href": "https://stac.test/B02_10m.tif", "bandNames": ["B02"]},
@@ -2668,7 +2686,9 @@ class TestPrepareContext:
             ),
         ],
     )
-    def test_sentinel2_with_azimuth_and_zenith_bands(self, user_requested_bands_names, expected_links):
+    def test_sentinel2_with_azimuth_and_zenith_bands(
+        self, load_params_bands, normalized_band_selection, expected_links
+    ):
         dummy_server = DummyStacApiServer()
         collection_id = "s2-with-granule_metadata"
         self._define_collection_s2_with_granule_metadata(dummy_server, collection_id=collection_id)
@@ -2684,8 +2704,9 @@ class TestPrepareContext:
             context = _prepare_context(
                 url=f"{dummy_stac_api}/collections/{collection_id}",
                 load_params=LoadParameters(
-                    bands=user_requested_bands_names,
+                    bands=load_params_bands,
                 ),
+                normalized_band_selection=normalized_band_selection,
                 env=EvalEnv(),
                 feature_flags=layercatalog_feature_flags,
             )
