@@ -163,6 +163,13 @@ class S1BackscatterOrfeo:
                     else v
                 )
                 mapped[mapped_key] = mapped_value
+                # Emit deprecation warning for user-provided opensearch attributes that differ from STAC
+                if k != mapped_key:
+                    logger.warning(
+                        f"sar_backscatter: Deprecated property {k!r}={v!r} was automatically "
+                        f"converted to new STAC property {mapped_key!r}={mapped_value!r}. "
+                        f"Please update your process graph to use the new property and value in the future."
+                    )
             else:
                 logger.warning(f"sar_backscatter: No mapping for attribute key {k!r}")
         return mapped
@@ -277,12 +284,20 @@ class S1BackscatterOrfeo:
     ):
         """Build RDD of file metadata from Creodias catalog query."""
         # Build attribute values from extra properties
-        attributeValues: Dict[str, any] = {
-            "productType": "IW_GRDH_1S-COG",
-            "processingLevel": "LEVEL1",
-        }
-        if "COG" in extra_properties and extra_properties["COG"] == "FALSE":
-            attributeValues["productType"] = "IW_GRDH_1S"
+        if use_stac_client:
+            attributeValues: Dict[str, any] = {
+                "product:type": "IW_GRDH_1S_B",
+                "processing:level": "L1",
+            }
+            if "COG" in extra_properties and extra_properties["COG"] == "FALSE":
+                attributeValues["product:type"] = "IW_GRDH_1S"
+        else:
+            attributeValues: Dict[str, any] = {
+                "productType": "IW_GRDH_1S-COG",
+                "processingLevel": "LEVEL1",
+            }
+            if "COG" in extra_properties and extra_properties["COG"] == "FALSE":
+                attributeValues["productType"] = "IW_GRDH_1S"
 
         # Additional query values for orbit filtering
         attributeValues.update({
