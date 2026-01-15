@@ -36,10 +36,9 @@ from shapely.geometry import box
 from shapely.geometry.base import BaseGeometry
 
 from openeogeotrellis import sentinel_hub, datacube_parameters
-import openeogeotrellis.backend
 from openeogeotrellis._backend import post_dry_run
 from openeogeotrellis.catalogs.creo import CreoCatalogClient
-from openeogeotrellis.collections.s1backscatter_orfeo import get_implementation as get_s1_backscatter_orfeo
+import openeogeotrellis.collections.s1backscatter_orfeo
 from openeogeotrellis.collections.testing import load_test_collection
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
@@ -684,7 +683,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             #make a copy before modifying: it is used as a cache key
             sar_backscatter_arguments = deepcopy(sar_backscatter_arguments)
             sar_backscatter_arguments.options["resolution"] = (cell_width, cell_height)
-            s1_backscatter_orfeo = get_s1_backscatter_orfeo(
+            s1_backscatter_orfeo = openeogeotrellis.collections.s1backscatter_orfeo.get_implementation(
                 version=sar_backscatter_arguments.options.get("implementation_version", "2"),
                 jvm=jvm
             )
@@ -1573,6 +1572,9 @@ def _get_sar_backscatter_arguments(load_params: LoadParameters, env: EvalEnv) ->
             # TODO: is it possible to avoid hardcoding `GpsProcessing` here?
             #       Note that `env.get("backend_implementation").processing` is not available here anymore
             #       because of that WhiteListEvalEnv caching business.
+            #       Also note that this requires a local import to break an import cycle between
+            #       openeogeotrellis.backend and openeogeotrellis.layercatalog
+            import openeogeotrellis.backend
             processing = openeogeotrellis.backend.GpsProcessing()
             api_version = env.openeo_api_version()
             sar_backscatter_arguments = processing.get_default_sar_backscatter_arguments(api_version=api_version)
