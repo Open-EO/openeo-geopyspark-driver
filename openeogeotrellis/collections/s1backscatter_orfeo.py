@@ -123,25 +123,33 @@ class S1BackscatterOrfeo:
     _COPERNICUS_DEM_ROOT = "/eodata/auxdata/CopDEM_COG/copernicus-dem-30m/"
     _trackers = None
 
+    # Mapping from legacy opensearch property keys to STAC equivalents
+    _LEGACY_TO_STAC_PROPERTY_KEYS = {
+        "polarisation": "sar:polarizations",
+        "polarization": "sar:polarizations",
+        "productType": "product:type",
+        "processingLevel": "processing:level",
+        "orbitDirection": "sat:orbit_state",
+        "orbitNumber": "sat:absolute_orbit",
+        "relativeOrbitNumber": "sat:relative_orbit",
+        "timeliness": "product:timeliness_category",
+        "missionTakeId": "eopf:datatake_id",
+        "sat:orbit_state": "sat:orbit_state",
+    }
+    # Full mapping includes identity mappings for STAC keys (so users can pass either format)
+    _PROPERTY_KEYS_MAPPING = {
+        **_LEGACY_TO_STAC_PROPERTY_KEYS,
+        **{v: v for v in _LEGACY_TO_STAC_PROPERTY_KEYS.values()},
+    }
+
     def __init__(self, jvm: JVMView = None):
         self.jvm = jvm or get_jvm()
 
     @staticmethod
-    def _map_attributes_for_stac(attribute_values: Dict[str, any]) -> Dict[str, any]:
-        """Map opensearch attribute keys and values to STAC equivalents."""
-        attribute_keys_mapping = {
-            "polarisation": "sar:polarizations",
-            "polarization": "sar:polarizations",
-            "productType": "product:type",
-            "processingLevel": "processing:level",
-            "orbitDirection": "sat:orbit_state",
-            "orbitNumber": "sat:absolute_orbit",
-            "relativeOrbitNumber": "sat:relative_orbit",
-            "timeliness": "product:timeliness_category",
-            "missionTakeId": "eopf:datatake_id",
-            "sat:orbit_state": "sat:orbit_state",
-        }
-        attribute_values_mapping = {
+    def _normalize_filter_properties_to_stac(filter_properties: Dict[str, any]) -> Dict[str, any]:
+        """Map opensearch property keys and values to STAC equivalents."""
+        property_keys_mapping = S1BackscatterOrfeo._PROPERTY_KEYS_MAPPING
+        property_values_mapping = {
             "polarisation": lambda v: v.split("&"),  # VV&VH -> [VV,VH]
             "polarization": lambda v: v.split("&"),  # VV&VH -> [VV,VH]
             "productType": lambda v: v.replace("-COG", "_B"),  # IW_GRDH_1S-COG -> IW_GRDH_1S_B
@@ -154,16 +162,15 @@ class S1BackscatterOrfeo:
         }
 
         mapped = {}
-        for k, v in attribute_values.items():
-            if k in attribute_keys_mapping:
-                mapped_key = attribute_keys_mapping[k]
+        for k, v in filter_properties.items():
+            if k in property_keys_mapping:
+                mapped_key = property_keys_mapping[k]
                 mapped_value = (
-                    attribute_values_mapping[k](v)
-                    if k in attribute_values_mapping
+                    property_values_mapping[k](v)
+                    if k in property_values_mapping
                     else v
                 )
                 mapped[mapped_key] = mapped_value
-                # Emit deprecation warning for user-provided opensearch attributes that differ from STAC
                 if k != mapped_key:
                     logger.warning(
                         f"sar_backscatter: Deprecated property {k!r}={v!r} was automatically "
@@ -175,10 +182,10 @@ class S1BackscatterOrfeo:
         return mapped
 
     @staticmethod
-    def _map_attributes_to_property_filter(attribute_values: Dict[str, any]) -> PropertyFilterPGMap:
-        """Convert attribute values to openEO style process graph property filters."""
+    def _filter_properties_to_pg_map(filter_properties: Dict[str, any]) -> PropertyFilterPGMap:
+        """Convert filter properties to openEO style process graph property filters."""
         mapped = {}
-        for k, v in attribute_values.items():
+        for k, v in filter_properties.items():
             mapped[k] = {
                 "process_graph": {
                     "eq": {
@@ -192,7 +199,7 @@ class S1BackscatterOrfeo:
 
     def _build_stac_opensearch_client(
         self,
-        attribute_values: Dict[str, any],
+        filter_properties: Dict[str, any],
         spatial_extent: Union[Dict, BoundingBox, None],
         temporal_extent: Tuple[Optional[str], Optional[str]],
     ) -> JavaObject:
@@ -202,9 +209,8 @@ class S1BackscatterOrfeo:
 
         url = "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-1-grd"
 
-        # Map opensearch attributes to STAC properties
-        stac_attributes = self._map_attributes_for_stac(attribute_values)
-        property_filter_pg_map = self._map_attributes_to_property_filter(stac_attributes)
+        # filter_properties are assumed to be in STAC only format.
+        property_filter_pg_map = self._filter_properties_to_pg_map(filter_properties)
 
         # Build spatiotemporal extent
         spatiotemporal_extent = _spatiotemporal_extent_from_load_params(
@@ -235,6 +241,7 @@ class S1BackscatterOrfeo:
             builder = builder.withBBox(*map(float, latlon_bbox.as_wsen_tuple()))
 
             # Extract product ID from asset href
+            # This product_id will be used as the creo_path (.SAFE file) later.
             product_id = None
             for asset_id, asset in band_assets.items():
                 if asset_id == "vv" or asset_id == "vh":
@@ -283,38 +290,41 @@ class S1BackscatterOrfeo:
             spatial_extent=None, use_stac_client: bool = True
     ):
         """Build RDD of file metadata from Creodias catalog query."""
-        # Build attribute values from extra properties
+        # Build filter properties.
+        filter_properties: Dict[str, str] = {}
         if use_stac_client:
-            attributeValues: Dict[str, any] = {
+            # STAC client allows both legacy and STAC property keys.
+            allowed_property_keys = set(self._PROPERTY_KEYS_MAPPING.keys())
+            user_props = {k: v for k, v in extra_properties.items() if k in allowed_property_keys}
+            # Normalize legacy property keys to STAC format. So filter_properties are always in STAC format.
+            normalized_props = self._normalize_filter_properties_to_stac(user_props) if user_props else {}
+            filter_properties = {
                 "product:type": "IW_GRDH_1S_B",
                 "processing:level": "L1",
             }
+            filter_properties.update(normalized_props)
             if "COG" in extra_properties and extra_properties["COG"] == "FALSE":
-                attributeValues["product:type"] = "IW_GRDH_1S"
+                filter_properties["product:type"] = "IW_GRDH_1S"
         else:
-            attributeValues: Dict[str, any] = {
+            # For legacy opensearch API, only allow legacy property keys.
+            allowed_property_keys = set(self._LEGACY_TO_STAC_PROPERTY_KEYS.keys())
+            user_props = {k: v for k, v in extra_properties.items() if k in allowed_property_keys}
+            filter_properties: Dict[str, any] = {
                 "productType": "IW_GRDH_1S-COG",
                 "processingLevel": "LEVEL1",
             }
             if "COG" in extra_properties and extra_properties["COG"] == "FALSE":
-                attributeValues["productType"] = "IW_GRDH_1S"
-
-        # Additional query values for orbit filtering
-        attributeValues.update({
-            k: v for (k, v) in extra_properties.items() if k in [
-                "orbitDirection", "orbitNumber", "relativeOrbitNumber", "timeliness",
-                "polarisation", "missionTakeId", "sat:orbit_state"
-            ]
-        })
-        if "polarization" in extra_properties:
-            # British vs US English: Sentinelhub + STAC use US variant
-            attributeValues["polarisation"] = extra_properties["polarization"]
+                filter_properties["productType"] = "IW_GRDH_1S"
+            filter_properties.update(user_props)
+            if "polarization" in extra_properties:
+                # British vs US English: Sentinelhub + STAC use US variant
+                filter_properties["polarisation"] = extra_properties["polarization"]
 
         # Build opensearch client based on selection
         if use_stac_client:
             logger.info("Using STAC-based opensearch client (FixedFeaturesOpenSearchClient)")
             opensearch_client = self._build_stac_opensearch_client(
-                attribute_values=attributeValues,
+                filter_properties=filter_properties,
                 spatial_extent=spatial_extent,
                 temporal_extent=(from_date, to_date)
             )
@@ -323,8 +333,9 @@ class S1BackscatterOrfeo:
             opensearch_client = self._build_legacy_opensearch_client()
 
         # Create FileRDDFactory
+        # Note that for the STAC client, the filter_properties were already applied and are ignored here.
         file_rdd_factory = self.jvm.org.openeo.geotrellis.file.FileRDDFactory(
-            opensearch_client, collection_id, attributeValues, correlation_id,
+            opensearch_client, collection_id, filter_properties, correlation_id,
             self.jvm.geotrellis.raster.CellSize(resolution[0], resolution[1])
         )
 
