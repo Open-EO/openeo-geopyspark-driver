@@ -2760,6 +2760,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
     def _result_metadata_to_item_assets(self, results_metadata, job_id):
         job_dir = self.get_job_output_dir(job_id=job_id)
+        logger.info(f"item_assets has job_dir {job_dir}")
         for item in results_metadata["items"]:
             for asset_key, asset in item["assets"].items():
                 if not ConfigParams().use_object_storage:
