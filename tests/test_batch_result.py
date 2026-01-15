@@ -1752,7 +1752,6 @@ def test_export_workspace_merge_into_stac_api(
     stac_api_workspace = get_backend_config().workspaces[stac_api_workspace_id]
     assert isinstance(stac_api_workspace, StacApiWorkspace)
 
-    enable_merge = True
     collection_id = merge.name
 
     # the root Catalog
@@ -1830,7 +1829,6 @@ def test_export_workspace_merge_into_stac_api(
         "process_graph": process_graph,
         "job_options": {
             "stac-version": stac_version,
-            "export-workspace-enable-merge": enable_merge,
         },
     }
 
@@ -3529,9 +3527,7 @@ def test_export_workspace_derived_from(
     stac_api_workspace = get_backend_config().workspaces[stac_api_workspace_id]
     assert isinstance(stac_api_workspace, StacApiWorkspace)
 
-    enable_merge = True
-
-    merge = _random_merge(is_actual_collection_document=enable_merge)
+    merge = _random_merge(is_actual_collection_document=True)
     collection_id = merge.name
 
     process_graph = {
@@ -3696,7 +3692,6 @@ def test_export_workspace_derived_from(
     process = {
         "process_graph": process_graph,
         "job_options": {
-            "export-workspace-enable-merge": enable_merge,
             "stac-version": stac_version,
         }
     }

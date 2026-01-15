@@ -765,7 +765,7 @@ def _export_to_workspaces_item(
         final_export = i >= len(workspace_exports) - 1
         remove_original = remove_exported_assets and final_export
 
-        if enable_merge:
+        if enable_merge or (hasattr(workspace, "merges_by_default") and workspace.merges_by_default):
             imported_collection = workspace.merge(collection, target=Path(merge), remove_original=remove_original)
             assert isinstance(imported_collection, pystac.Collection)
 
@@ -866,7 +866,7 @@ def _export_to_workspaces(
         final_export = i >= len(workspace_exports) - 1
         remove_original = remove_exported_assets and final_export
 
-        if enable_merge:
+        if enable_merge or (hasattr(workspace, "merges_by_default") and workspace.merges_by_default):
             imported_collection = workspace.merge(collection, target=Path(merge), remove_original=remove_original)
             assert isinstance(imported_collection, pystac.Collection)
 
