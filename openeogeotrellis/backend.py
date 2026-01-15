@@ -2650,7 +2650,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
         if "items" in results_metadata:
             return BatchJobResultMetadata(
-                items={item["id"]: item for item in results_metadata["items"]},
+                items=self._result_metadata_to_item_assets(results_metadata, job_id),
                 assets=self._results_metadata_to_assets(results_metadata, job_id),
                 links=[],
                 providers=self._get_providers(job_id=job_id, user_id=user_id),
@@ -2757,6 +2757,14 @@ class GpsBatchJobs(backend.BatchJobs):
                 results_dict[title] = asset
 
         return results_dict
+
+    def _result_metadata_to_item_assets(self, results_metadata, job_id):
+        job_dir = self.get_job_output_dir(job_id=job_id)
+        for item in results_metadata["items"]:
+            for asset_key, asset in item["assets"].items():
+                asset["output_dir"] = str(job_dir)
+        return {item["id"]: item for item in results_metadata["items"]}
+
 
     def get_results_metadata_path(self, job_id: str) -> Path:
         return self.get_job_output_dir(job_id) / JOB_METADATA_FILENAME
