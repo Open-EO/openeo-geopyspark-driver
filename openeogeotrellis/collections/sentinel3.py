@@ -6,18 +6,20 @@ import sys
 from datetime import datetime
 from functools import partial
 from glob import glob
-from typing import Tuple
+from typing import Dict, Optional, Tuple, Union
 
 import geopyspark
 import numpy as np
 import pyspark
+import shapely.geometry
 import xarray as xr
-from openeo_driver.errors import InternalException
+from openeo_driver.errors import InternalException, OpenEOApiException
 from openeo_driver.util.geometry import BoundingBox
 from pyspark import SparkContext, find_spark_home
 from scipy.spatial import cKDTree  # used for tuning the griddata interpolation settings
 
 from openeogeotrellis.collections import convert_scala_metadata
+from openeogeotrellis.load_stac import PropertyFilterPGMap
 from openeogeotrellis.utils import ensure_executor_logging, get_jvm
 from openeogeotrellis.collections import binning
 
@@ -40,7 +42,129 @@ DEFAULT_FLAG_BITMASK = 0xff
 logger = logging.getLogger(__name__)
 
 
-def main(product_type, native_resolution, bbox, from_date, to_date, band_names):
+def _map_attributes_for_stac(attribute_values: Dict[str, any]) -> Dict[str, any]:
+    """Map opensearch attribute keys and values to STAC equivalents for Sentinel-3."""
+    attribute_keys_mapping = {
+        "productType": "product:type",
+    }
+    # No value transformations needed for Sentinel-3 currently
+    attribute_values_mapping = {
+        "productType": lambda v: v,
+    }
+
+    mapped = {}
+    for k, v in attribute_values.items():
+        if k in attribute_keys_mapping:
+            mapped_key = attribute_keys_mapping[k]
+            mapped_value = (
+                attribute_values_mapping[k](v)
+                if k in attribute_values_mapping
+                else v
+            )
+            mapped[mapped_key] = mapped_value
+        else:
+            logger.warning(f"sentinel3: No mapping for attribute key {k!r}")
+    return mapped
+
+
+def _map_attributes_to_property_filter(attribute_values: Dict[str, any]) -> PropertyFilterPGMap:
+    """Convert attribute values to openEO style process graph property filters."""
+    mapped = {}
+    for k, v in attribute_values.items():
+        mapped[k] = {
+            "process_graph": {
+                "eq": {
+                    "process_id": "eq",
+                    "arguments": {"x": {"from_parameter": "value"}, "y": v},
+                    "result": True,
+                }
+            }
+        }
+    return mapped
+
+
+def _get_stac_collection_url(product_type: str) -> str:
+    """Get STAC collection URL for the given Sentinel-3 product type."""
+    # For now, only SLSTR LST is supported
+    # TODO: Make sure that product_type is enough to idenitfy all collections
+    if product_type == SLSTR_PRODUCT_TYPE:
+        return "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-3-sl-2-lst-ntc"
+    else:
+        raise ValueError(f"STAC not yet supported for Sentinel-3 product type: {product_type}")
+
+
+def _build_stac_opensearch_client(
+    metadata_properties: Dict[str, any],
+    spatial_extent: Union[Dict, BoundingBox, None],
+    temporal_extent: Tuple[Optional[str], Optional[str]],
+    jvm,
+) -> any:
+    """Build a FixedFeaturesOpenSearchClient populated with features from STAC API."""
+    from openeogeotrellis.load_stac import _spatiotemporal_extent_from_load_params
+    from openeogeotrellis.load_stac import construct_item_collection
+
+    product_type = metadata_properties["productType"]
+    url = _get_stac_collection_url(product_type)
+
+    # Map opensearch attributes to STAC properties
+    stac_attributes = _map_attributes_for_stac(metadata_properties)
+    property_filter_pg_map = _map_attributes_to_property_filter(stac_attributes)
+
+    # Build spatiotemporal extent
+    spatiotemporal_extent = _spatiotemporal_extent_from_load_params(
+        spatial_extent=spatial_extent,
+        temporal_extent=temporal_extent
+    )
+
+    # Query STAC API
+    item_collection, metadata, collection_band_names, netcdf_with_time_dimension = construct_item_collection(
+        url=url,
+        spatiotemporal_extent=spatiotemporal_extent,
+        property_filter_pg_map=property_filter_pg_map,
+    )
+
+    # Build FixedFeaturesOpenSearchClient from STAC items
+    opensearch_client = jvm.org.openeo.geotrellis.file.FixedFeaturesOpenSearchClient()
+
+    for itm, band_assets in item_collection.iter_items_with_band_assets():
+        builder = (
+            jvm.org.openeo.opensearch.OpenSearchResponses.featureBuilder()
+            .withNominalDate(itm.properties.get("datetime") or itm.properties["start_datetime"])
+            .withGeometryFromWkt(str(shapely.geometry.shape(itm.geometry)))
+        )
+        if not itm.bbox:
+            raise OpenEOApiException(f"Item {itm.id} has no bbox")
+        latlon_bbox = BoundingBox.from_wsen_tuple(itm.bbox, 4326)
+        builder = builder.withBBox(*map(float, latlon_bbox.as_wsen_tuple()))
+
+        # Extract product ID from asset href
+        # Example: s3://eodata/Sentinel-3/SLSTR/SL_2_LST___/2026/01/10/S3B_SL_2_LST____20260110T142415_20260110T142715_20260111T184448_0179_115_238_5400_ESA_O_NT_004.SEN3/LST_in.nc
+        product_id = None
+        for asset_id, asset in band_assets.items():
+            href = asset.href
+            # Convert s3:// to path
+            href = href.replace("s3://", "/")
+            if ".SEN3" in href:
+                product_id = href.split(".SEN3")[0] + ".SEN3"
+                break
+
+        if product_id is None:
+            raise OpenEOApiException(f"No .SEN3 product path found in item {itm.id} assets")
+
+        builder = builder.withId(product_id)
+        opensearch_client.addFeature(builder.build())
+
+    return opensearch_client
+
+
+def _build_legacy_opensearch_client(jvm) -> any:
+    """Build the legacy OpenSearch client for Copernicus Dataspace."""
+    return jvm.org.openeo.opensearch.OpenSearchClient.apply(
+        "https://catalogue.dataspace.copernicus.eu/resto", False, "", [], "",
+    )
+
+
+def main(product_type, native_resolution, bbox, from_date, to_date, band_names, use_stac_client: bool = False):
     spark_python = os.path.join(find_spark_home._find_spark_home(), 'python')
     py4j = glob(os.path.join(spark_python, 'lib', 'py4j-*.zip'))[0]
     sys.path[:0] = [spark_python, py4j]
@@ -69,7 +193,8 @@ def main(product_type, native_resolution, bbox, from_date, to_date, band_names):
         feature_flags = {}
 
         layer = pyramid(metadata_properties, projected_polygons_native_crs, from_date, to_date, band_names,
-                        data_cube_parameters, native_cell_size, feature_flags, jvm)[0]
+                        data_cube_parameters, native_cell_size, feature_flags, jvm,
+                        spatial_extent=bbox, use_stac_client=use_stac_client)[0]
         layer_crs = layer.srdd.rdd().metadata().crs().epsgCode().get()
         layer.to_spatial_layer().save_stitched(f"/tmp/{product_type}_{from_date}_{to_date}.tif",
                                                crop_bounds=geopyspark.geotrellis.Extent(*bbox.reproject(layer_crs).as_wsen_tuple()))
@@ -87,7 +212,7 @@ def main(product_type, native_resolution, bbox, from_date, to_date, band_names):
 
 
 def pyramid(metadata_properties, projected_polygons_native_crs, from_date, to_date, band_names, data_cube_parameters,
-            native_cell_size, feature_flags, jvm):
+            native_cell_size, feature_flags, jvm, spatial_extent=None, use_stac_client: bool = False):
 
     reprojection_type = feature_flags.get(KEY_REPROJECTION_TYPE, DEFAULT_REPROJECTION_TYPE)
     binning_args = {
@@ -97,9 +222,18 @@ def pyramid(metadata_properties, projected_polygons_native_crs, from_date, to_da
     if KEY_FLAG_BITMASK in feature_flags:
         binning_args[KEY_FLAG_BITMASK] = feature_flags[KEY_FLAG_BITMASK]
 
-    opensearch_client = jvm.org.openeo.opensearch.OpenSearchClient.apply(
-        "https://catalogue.dataspace.copernicus.eu/resto", False, "", [], "",
-    )
+    # Build opensearch client based on selection
+    if use_stac_client:
+        logger.info("Using STAC-based opensearch client (FixedFeaturesOpenSearchClient)")
+        opensearch_client = _build_stac_opensearch_client(
+            metadata_properties=metadata_properties,
+            spatial_extent=spatial_extent,
+            temporal_extent=(from_date, to_date),
+            jvm=jvm
+        )
+    else:
+        logger.info("Using legacy opensearch client")
+        opensearch_client = _build_legacy_opensearch_client(jvm)
 
     collection_id = "Sentinel3"
     product_type = metadata_properties["productType"]
