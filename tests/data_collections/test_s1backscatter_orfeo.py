@@ -21,7 +21,7 @@ from openeogeotrellis.collections.s1backscatter_orfeo import (
     S1BackscatterOrfeoV2,
     _instant_ms_to_day,
 )
-from openeogeotrellis.layercatalog import GeoPySparkLayerCatalog
+from openeogeotrellis.layercatalog import GeoPySparkLayerCatalog, get_layer_catalog
 
 
 @pytest.mark.parametrize(
@@ -514,15 +514,13 @@ class TestOrfeoPipeline:
             )
             print(data)
 
-def spatial_extent_zeebrugge() -> Dict[str, float]:
-    return {"west": 3.1, "south": 51.27, "east": 3.3, "north": 51.37}
 
 @skip("requires mounting raster data.")
 def test_backscatter_load_collection_opensearch():
     # Full workflow test starting at load_collection.
-    from openeogeotrellis.layercatalog import get_layer_catalog
     catalog: GeoPySparkLayerCatalog = get_layer_catalog()
-    sar_backscatter: SarBackscatterArgs = SarBackscatterArgs(**{'coefficient': 'sigma0-ellipsoid'})
+    sar_backscatter: SarBackscatterArgs = SarBackscatterArgs(**{'coefficient': 'sigma0-ellipsoid', })
+    spatial_extent_zeebrugge = {"west": 3.1, "south": 51.27, "east": 3.3, "north": 51.37}
 
     processing_level = {
         "process_graph": {
@@ -535,7 +533,7 @@ def test_backscatter_load_collection_opensearch():
     }
 
     load_params = LoadParameters(
-        spatial_extent=spatial_extent_zeebrugge(),
+        spatial_extent=spatial_extent_zeebrugge,
         temporal_extent=("2020-06-06T00:00:00", "2020-06-06T23:59:59"),
         bands=["VH", "VV"],
         properties={
