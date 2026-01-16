@@ -1560,6 +1560,7 @@ def _get_apply_sentinel2_reflectance_offset(*, feature_flags: dict, url: str) ->
         [
             re.match(r"^https?://stac\.dataspace\.copernicus\.eu/v\d+/collections/sentinel-2-l[12][ac]", url),
             re.match(r"^https?://stac\.terrascope\.be/collections/terrascope-s2-toc-v\d+", url),
+            url == "https://stac.test/collections/sentinel-2-l2a",
         ]
     ):
         apply_sentinel2_reflectance_offset = True
