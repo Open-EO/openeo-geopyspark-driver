@@ -138,7 +138,6 @@ class TimeSerieFloatStats:
 def time_series_to_single_float_value(data: T_PromQueryRespTimeSeries, *, compactable: bool = False) -> float:
     if compactable:
         data = compact_time_series(data)
-        _log.debug("Compacted data", extra={"data": data})
     summed_value = 0.0
     for timeserie in data:
         metric = timeserie["metric"]
