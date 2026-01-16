@@ -142,6 +142,9 @@ class S1BackscatterOrfeo:
         **{v: v for v in _LEGACY_TO_STAC_PROPERTY_KEYS.values()},
     }
 
+    # Supported product types for sar_backscatter
+    _SUPPORTED_PRODUCT_TYPES = frozenset({"IW_GRDH_1S_B", "IW_GRDH_1S", "IW_GRDH_1S-COG"})
+
     def __init__(self, jvm: JVMView = None):
         self.jvm = jvm or get_jvm()
 
@@ -318,6 +321,14 @@ class S1BackscatterOrfeo:
             if "polarization" in extra_properties:
                 # British vs US English: Sentinelhub + STAC use US variant
                 filter_properties["polarisation"] = extra_properties["polarization"]
+
+        product_type: Optional[str] = filter_properties.get("product:type", filter_properties.get("productType"))
+        if product_type not in S1BackscatterOrfeo._SUPPORTED_PRODUCT_TYPES:
+            raise OpenEOApiException(
+                f"sar_backscatter: Unsupported product type {product_type!r}. "
+                f"Only the following values are supported: {sorted(S1BackscatterOrfeo._SUPPORTED_PRODUCT_TYPES)}."
+            )
+
         return filter_properties
 
     def _build_feature_rdd(

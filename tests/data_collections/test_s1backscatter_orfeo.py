@@ -15,6 +15,7 @@ from numpy.testing import assert_allclose
 
 from openeo_driver.backend import LoadParameters
 from openeo_driver.datastructs import SarBackscatterArgs
+from openeo_driver.errors import OpenEOApiException
 from openeo_driver.utils import EvalEnv
 from openeogeotrellis.collections.s1backscatter_orfeo import (
     S1BackscatterOrfeo,
@@ -132,6 +133,49 @@ class TestBuildFilterProperties:
         )
         # productType gets normalized to product:type and overrides the default
         assert result["product:type"] == "IW_GRDH_1S_B"
+
+    @pytest.mark.parametrize(
+        ["extra_properties", "use_stac_client"],
+        [
+            # Default STAC product type (IW_GRDH_1S_B) is valid
+            ({}, True),
+            # Default legacy product type (IW_GRDH_1S-COG) is valid
+            ({}, False),
+            # COG=FALSE sets IW_GRDH_1S which is valid
+            ({"COG": "FALSE"}, True),
+            ({"COG": "FALSE"}, False),
+        ],
+    )
+    def test_valid_product_types_accepted(self, extra_properties, use_stac_client):
+        """Valid product types should not raise an error."""
+        # Should not raise
+        result = S1BackscatterOrfeo._build_filter_properties(
+            extra_properties=extra_properties,
+            use_stac_client=use_stac_client
+        )
+        assert result is not None
+
+    @pytest.mark.parametrize(
+        ["extra_properties", "use_stac_client"],
+        [
+            # Invalid STAC product type
+            ({"product:type": "INVALID_PRODUCT"}, True),
+            # Invalid legacy product type (gets normalized for STAC client)
+            ({"productType": "INVALID_PRODUCT"}, False),
+            # Another invalid product type
+            ({"productType": "GRD"}, False),
+            ({"product:type": "SLC"}, True),
+        ],
+    )
+    def test_invalid_product_type_raises_error(self, extra_properties, use_stac_client):
+        """Invalid product types should raise OpenEOApiException."""
+        with pytest.raises(OpenEOApiException) as exc_info:
+            S1BackscatterOrfeo._build_filter_properties(
+                extra_properties=extra_properties,
+                use_stac_client=use_stac_client
+            )
+        assert "Unsupported product type" in str(exc_info.value)
+        assert "IW_GRDH_1S" in str(exc_info.value)  # Error message should list supported types
 
 
 @pytest.mark.parametrize(
