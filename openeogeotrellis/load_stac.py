@@ -145,7 +145,9 @@ def _prepare_context(
 
     logger.info(f"load_stac with {url=} {load_params=} {feature_flags=}")
 
+    # Collect some  feature flags
     allow_empty_cubes = feature_flags.get("allow_empty_cube", env.get(EVAL_ENV_KEY.ALLOW_EMPTY_CUBES, False))
+    apply_sentinel2_reflectance_offset = _get_apply_sentinel2_reflectance_offset(feature_flags=feature_flags, url=url)
 
     # Merge property filters from layer catalog and user-provided load_params (with precedence to load_params)
     property_filter_pg_map: PropertyFilterPGMap = {
@@ -283,7 +285,10 @@ def _prepare_context(
                         # TODO: risk on overwriting/conflict
                         band_epsgs.setdefault(asset_band_name, set()).add(proj_epsg)
 
-                pixel_value_offset = _get_pixel_value_offset(item=itm, asset=asset)
+                if apply_sentinel2_reflectance_offset and _is_sentinel2_reflectance_asset(asset=asset):
+                    pixel_value_offset = _get_pixel_value_offset(item=itm, asset=asset)
+                else:
+                    pixel_value_offset = 0
 
                 asset_href = get_best_url(asset)
                 logger.debug(
@@ -1539,6 +1544,37 @@ def _get_proj_metadata(
     metadata = _ProjectionMetadata.from_asset(asset, item=item)
     return metadata.epsg, metadata.bbox, metadata.shape
 
+
+def _get_apply_sentinel2_reflectance_offset(*, feature_flags: dict, url: str) -> bool:
+    """
+    Helper to determine the "apply_sentinel2_reflectance_offset" feature flag,
+    to enable a Sentinel2-specific pixel value offset correction
+    """
+    # TODO: possible to simplify this logic or fully eliminate the need for feature flag?
+    apply_sentinel2_reflectance_offset = False
+    if "apply_sentinel2_reflectance_offset" in feature_flags:
+        apply_sentinel2_reflectance_offset = feature_flags.get("apply_sentinel2_reflectance_offset", False)
+    # Guess from url
+    # TODO: possible to eliminate the need for this ad-hoc URL-based guessing?
+    elif any(
+        [
+            re.match(r"^https?://stac\.dataspace\.copernicus\.eu/v\d+/collections/sentinel-2-l[12][ac]", url),
+            re.match(r"^https?://stac\.terrascope\.be/collections/terrascope-s2-toc-v\d+", url),
+        ]
+    ):
+        apply_sentinel2_reflectance_offset = True
+        logger.warning(f"Inferred {apply_sentinel2_reflectance_offset=} from URL {url=}.")
+
+    return apply_sentinel2_reflectance_offset
+
+
+def _is_sentinel2_reflectance_asset(asset: pystac.Asset) -> bool:
+    """
+    Helper to determine if the given asset is a Sentinel-2 reflectance asset,
+    based on the presence of "eo:center_wavelength" band metadata.
+    """
+    bands = asset.extra_fields.get("bands") or asset.extra_fields.get("eo:bands")
+    return bool(bands and any("eo:center_wavelength" in band for band in bands))
 
 
 def _get_pixel_value_offset(*, item: pystac.Item, asset: pystac.Asset) -> float:

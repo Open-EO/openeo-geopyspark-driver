@@ -42,6 +42,8 @@ from openeogeotrellis.load_stac import (
     load_stac,
     _prepare_context,
     AdaptingPropertyFilter,
+    _get_apply_sentinel2_reflectance_offset,
+    _is_sentinel2_reflectance_asset,
 )
 from openeogeotrellis.testing import DummyStacApiServer, gps_config_overrides
 from openeogeotrellis.util.geometry import bbox_to_geojson
@@ -2718,3 +2720,92 @@ class TestPrepareContext:
                 "links": expected_links,
             }
         ]
+
+    @pytest.mark.parametrize(
+        ["feature_flags", "url", "expected"],
+        [
+            ({"apply_sentinel2_reflectance_offset": False}, "https://stac.test/foo", False),
+            ({"apply_sentinel2_reflectance_offset": True}, "https://stac.test/foo", True),
+            ({}, "https://stac.test/foo", False),
+            ({}, "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-2-l2a", True),
+            ({}, "https://stac.terrascope.be/collections/terrascope-s2-toc-v2", True),
+        ],
+    )
+    def test_get_apply_sentinel2_reflectance_offset(self, feature_flags, url, expected):
+        apply_sentinel2_reflectance_offset = _get_apply_sentinel2_reflectance_offset(
+            feature_flags=feature_flags, url=url
+        )
+        assert apply_sentinel2_reflectance_offset == expected
+
+    @pytest.mark.parametrize(
+        ["asset", "expected"],
+        [
+            (pystac.Asset(href="https://stac.test/B02.tiff"), False),
+            (
+                # Minimal match
+                pystac.Asset(
+                    href="https://stac.test/B02.tiff",
+                    extra_fields={"bands": [{"eo:center_wavelength": 0.475}]},
+                ),
+                True,
+            ),
+            (
+                # Based on B02 on CDSE https://stac.dataspace.copernicus.eu/v1/collections/sentinel-2-l2a
+                pystac.Asset.from_dict(
+                    {
+                        "href": "s3://test/Sentinel-2/2025/09/01/T31UES_20250901T105041_B02_20m.jp2",
+                        "bands": [
+                            {
+                                "name": "B02",
+                                "eo:center_wavelength": 0.493,
+                                "eo:full_width_half_max": 0.267,
+                                "eo:common_name": "blue",
+                            }
+                        ],
+                        "type": "image/jp2",
+                        "roles": ["data", "reflectance", "sampling:downsampled", "gsd:20m"],
+                        "raster:scale": 0.0001,
+                        "raster:offset": -0.1,
+                    }
+                ),
+                True,
+            ),
+            (
+                # Based on WVP on CDSE https://stac.dataspace.copernicus.eu/v1/collections/sentinel-2-l2a
+                pystac.Asset.from_dict(
+                    {
+                        "href": "s3://test/Sentinel-2/MSI/L2A/2025/09/01/T31UES_20250901T105041_WVP_10m.jp2",
+                        "roles": ["data", "gsd:10m"],
+                        "title": "Water vapour (WVP) - 10m",
+                        "raster:scale": 0.0001,
+                        "raster:offset": -0.1,
+                    }
+                ),
+                False,
+            ),
+            (
+                # Based on B02 on Terrascope https://stac.terrascope.be/collections/terrascope-s2-toc-v2
+                pystac.Asset.from_dict(
+                    {
+                        "href": "https://terrascope.test/dl/Sentinel2/TOC_V2/2025/09/01/S2C_20250901T105041_31UES_TOC-B02_10M_V210.tif",
+                        "type": "image/tiff; application=geotiff; profile=cloud-optimized",
+                        "title": "B02",
+                        "roles": ["data"],
+                        "raster:scale": 0.0001,
+                        "raster:offset": 0.0,
+                        "bands": [
+                            {
+                                "name": "B02",
+                                "eo:common_name": "blue",
+                                "eo:center_wavelength": 0.49,
+                                "eo:full_width_half_max": 0.098,
+                            }
+                        ],
+                    }
+                ),
+                True,
+            ),
+        ],
+    )
+    def test_is_sentinel2_reflectance_asset(self, asset, expected):
+        assert _is_sentinel2_reflectance_asset(asset) == expected
