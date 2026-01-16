@@ -5,7 +5,7 @@ import sys
 import textwrap
 import zipfile
 from pathlib import Path
-from typing import Tuple, Dict
+from typing import Tuple, Dict, Any
 from unittest import mock, skip
 
 import numpy as np
@@ -15,12 +15,167 @@ from numpy.testing import assert_allclose
 
 from openeo_driver.backend import LoadParameters
 from openeo_driver.datastructs import SarBackscatterArgs
+from openeo_driver.errors import OpenEOApiException
 from openeo_driver.utils import EvalEnv
 from openeogeotrellis.collections.s1backscatter_orfeo import (
     S1BackscatterOrfeo,
     S1BackscatterOrfeoV2,
     _instant_ms_to_day,
 )
+
+
+class TestBuildFilterProperties:
+    """Tests for S1BackscatterOrfeo._build_filter_properties"""
+
+    def test_stac_client_defaults(self):
+        """STAC client should return default STAC-formatted properties when no extra properties provided."""
+        result = S1BackscatterOrfeo._build_filter_properties(extra_properties={}, use_stac_client=True)
+        assert result == {
+            "product:type": "IW_GRDH_1S_B",
+            "processing:level": "L1",
+        }
+
+    def test_legacy_client_defaults(self):
+        """Legacy client should return default opensearch-formatted properties."""
+        result = S1BackscatterOrfeo._build_filter_properties(extra_properties={}, use_stac_client=False)
+        assert result == {
+            "productType": "IW_GRDH_1S-COG",
+            "processingLevel": "LEVEL1",
+        }
+
+    def test_stac_client_cog_false(self):
+        """STAC client should use non-COG product type when COG=FALSE."""
+        result = S1BackscatterOrfeo._build_filter_properties(extra_properties={"COG": "FALSE"}, use_stac_client=True)
+        assert result["product:type"] == "IW_GRDH_1S"
+
+    def test_legacy_client_cog_false(self):
+        """Legacy client should use non-COG product type when COG=FALSE."""
+        result = S1BackscatterOrfeo._build_filter_properties(extra_properties={"COG": "FALSE"}, use_stac_client=False)
+        assert result["productType"] == "IW_GRDH_1S"
+
+    def test_stac_client_legacy_property_normalized(self):
+        """STAC client should normalize legacy property keys to STAC format."""
+        result = S1BackscatterOrfeo._build_filter_properties(
+            extra_properties={"orbitDirection": "ASCENDING"},
+            use_stac_client=True
+        )
+        assert result["sat:orbit_state"] == "ascending"
+        assert "orbitDirection" not in result
+
+    def test_stac_client_stac_property_passthrough(self):
+        """STAC client should pass through already-STAC-formatted properties."""
+        result = S1BackscatterOrfeo._build_filter_properties(
+            extra_properties={"sat:orbit_state": "descending"},
+            use_stac_client=True
+        )
+        assert result["sat:orbit_state"] == "descending"
+
+    def test_stac_client_polarization_normalized(self):
+        """STAC client should normalize polarisation to sar:polarizations array."""
+        result = S1BackscatterOrfeo._build_filter_properties(
+            extra_properties={"polarisation": "VV&VH"},
+            use_stac_client=True
+        )
+        assert result["sar:polarizations"] == ["VV", "VH"]
+        result = S1BackscatterOrfeo._build_filter_properties(
+            extra_properties={"polarization": "DV"},
+            use_stac_client=True
+        )
+        assert result["sar:polarizations"] == ["DV"]
+
+    def test_legacy_client_legacy_properties(self):
+        """Legacy client should pass through legacy property keys."""
+        result = S1BackscatterOrfeo._build_filter_properties(
+            extra_properties={"orbitDirection": "DESCENDING", "relativeOrbitNumber": 37},
+            use_stac_client=False
+        )
+        assert result["orbitDirection"] == "DESCENDING"
+        assert result["relativeOrbitNumber"] == 37
+
+    def test_legacy_client_polarization_to_polarisation(self):
+        """Legacy client should map US 'polarization' to British 'polarisation'."""
+        result = S1BackscatterOrfeo._build_filter_properties(
+            extra_properties={"polarization": "VV"},
+            use_stac_client=False
+        )
+        assert result["polarisation"] == "VV"
+
+    def test_stac_client_ignores_unknown_properties(self):
+        """STAC client should ignore properties not in the mapping."""
+        result = S1BackscatterOrfeo._build_filter_properties(
+            extra_properties={"unknownProperty": "somevalue", "orbitDirection": "ASCENDING"},
+            use_stac_client=True
+        )
+        assert "unknownProperty" not in result
+        assert result["sat:orbit_state"] == "ascending"
+
+    def test_stac_client_orbit_state_and_direction(self):
+        """Providing two keys for orbit direction is ill-defined. Either one may be used."""
+        result = S1BackscatterOrfeo._build_filter_properties(
+            extra_properties={"sat:orbit_state": "DESCENDING", "orbitDirection": "ASCENDING"},
+            use_stac_client=False
+        )
+        assert result["sat:orbit_state"] in ["ASCENDING", "DESCENDING"]
+
+    def test_legacy_client_ignores_stac_properties(self):
+        """Legacy client should ignore STAC-formatted properties."""
+        result = S1BackscatterOrfeo._build_filter_properties(
+            extra_properties={"processing:level": "L1"},
+            use_stac_client=False
+        )
+        assert "processing:level" not in result
+
+    def test_stac_client_user_props_override_defaults(self):
+        """User-provided properties should override defaults."""
+        result = S1BackscatterOrfeo._build_filter_properties(
+            extra_properties={"productType": "IW_GRDH_1S-COG"},
+            use_stac_client=True
+        )
+        # productType gets normalized to product:type and overrides the default
+        assert result["product:type"] == "IW_GRDH_1S_B"
+
+    @pytest.mark.parametrize(
+        ["extra_properties", "use_stac_client"],
+        [
+            # Default STAC product type (IW_GRDH_1S_B) is valid
+            ({}, True),
+            # Default legacy product type (IW_GRDH_1S-COG) is valid
+            ({}, False),
+            # COG=FALSE sets IW_GRDH_1S which is valid
+            ({"COG": "FALSE"}, True),
+            ({"COG": "FALSE"}, False),
+        ],
+    )
+    def test_valid_product_types_accepted(self, extra_properties, use_stac_client):
+        """Valid product types should not raise an error."""
+        # Should not raise
+        result = S1BackscatterOrfeo._build_filter_properties(
+            extra_properties=extra_properties,
+            use_stac_client=use_stac_client
+        )
+        assert result is not None
+
+    @pytest.mark.parametrize(
+        ["extra_properties", "use_stac_client"],
+        [
+            # Invalid STAC product type
+            ({"product:type": "INVALID_PRODUCT"}, True),
+            # Invalid legacy product type (gets normalized for STAC client)
+            ({"productType": "INVALID_PRODUCT"}, False),
+            # Another invalid product type
+            ({"productType": "GRD"}, False),
+            ({"product:type": "SLC"}, True),
+        ],
+    )
+    def test_invalid_product_type_raises_error(self, extra_properties, use_stac_client):
+        """Invalid product types should raise OpenEOApiException."""
+        with pytest.raises(OpenEOApiException) as exc_info:
+            S1BackscatterOrfeo._build_filter_properties(
+                extra_properties=extra_properties,
+                use_stac_client=use_stac_client
+            )
+        assert "Unsupported product type" in str(exc_info.value)
+        assert "IW_GRDH_1S" in str(exc_info.value)  # Error message should list supported types
 
 
 @pytest.mark.parametrize(
@@ -523,24 +678,25 @@ def test_backscatter_load_collection_opensearch():
     sar_backscatter: SarBackscatterArgs = SarBackscatterArgs(**{'coefficient': 'sigma0-ellipsoid', })
     spatial_extent_zeebrugge = {"west": 3.1, "south": 51.27, "east": 3.3, "north": 51.37}
 
-    processing_level = {
-        "process_graph": {
-            "eq": {
-                "process_id": "eq",
-                "arguments": {"x": {"from_parameter": "value"}, "y": "LEVEL1"},
-                "result": True,
+    def to_pg(value: str) -> Dict[str, Any]:
+        return {
+            "process_graph": {
+                "eq": {
+                    "process_id": "eq",
+                    "arguments": {"x": {"from_parameter": "value"}, "y": value},
+                    "result": True
+                }
             }
         }
-    }
 
     load_params = LoadParameters(
         spatial_extent=spatial_extent_zeebrugge,
         temporal_extent=("2020-06-06T00:00:00", "2020-06-06T23:59:59"),
         bands=["VH", "VV"],
         properties={
-            "processingLevel": processing_level,
-            # "productType": "IW_GRDH_1S_B",
-            # "orbitDirection": "DESCENDING",
+            "polarization": to_pg("DV"),  # ["DV", "VV&VH"]
+            "productType": to_pg("IW_GRDH_1S-COG"),
+            "orbitDirection": to_pg("ASCENDING"),
         }
     )
     load_params.sar_backscatter = sar_backscatter

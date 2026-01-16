@@ -20,7 +20,8 @@ without compromising stable operations.
 - `load_stac` based `load_collection`: support `granule_metadata` asset in SENTINEL2_L2A for azimuth/zenith angle bands (eu-cdse/openeo-cdse-infra#804)
 - `run_udf` now supports running CWL scripts. ([#1476](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1476))
 - new `property_filter_adaptations` feature flag (under `load_stac_feature_flags`) for `load_stac` powered collections to inject a property filtering adapter that translates legacy (e.g. OpenSearch) property filters to STAC property filters (eu-cdse/openeo-cdse-infra#803, eu-cdse/openeo-cdse-infra#804)
-
+- Guard STAC metadata parsing against invalid "item_assets" usage ([Open-EO/openeo-python-client#853](https://github.com/Open-EO/openeo-python-client/issues/853))
+- load_collection through load_stac: support band name aliases/variants (eu-cdse/openeo-cdse-infra#803, eu-cdse/openeo-cdse-infra#804)
 
 ## 0.70.0
 
