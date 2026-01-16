@@ -1,8 +1,11 @@
-from pathlib import Path
 import unittest
+from pathlib import Path
+from unittest import skip
 
 import rasterio
-import numpy as np
+
+from openeo_driver.backend import LoadParameters
+from openeo_driver.utils import EvalEnv
 
 if __name__ == "__main__":
     import openeogeotrellis.deploy.local
@@ -270,6 +273,24 @@ def test_mask_before_binning(mock_read_band):
     binned_band = binned_data_vars[1]
     assert ((binned_band == value_to_keep) | np.isnan(binned_band)).all()
     assert np.count_nonzero(np.isfinite(binned_band)) > 0
+
+
+@skip("requires mounting raster data.")
+def test_slstr_load_collection_opensearch():
+    # Full workflow test starting at load_collection.
+    from openeogeotrellis.layercatalog import get_layer_catalog, GeoPySparkLayerCatalog
+
+    catalog: GeoPySparkLayerCatalog = get_layer_catalog()
+
+    load_params = LoadParameters(
+        spatial_extent={"west": 3.1, "south": 50.1, "east": 7.2, "north": 55.2},
+        temporal_extent=("2026-01-10T00:00:00", "2026-01-10T23:59:59"),
+        bands=["LST", "LST_uncertainty", "sunAzimuthAngles", "confidence_in", "exception", "viewAzimuthAngles", "viewZenithAngles"],
+    )
+    env = EvalEnv(
+        {"openeo_api_version": "1.0.0"}
+    )
+    catalog._load_collection_cached("SENTINEL3_SLSTR_L2_LST", load_params=load_params, env=env)
 
 
 if __name__ == "__main__":

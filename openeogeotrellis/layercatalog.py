@@ -718,6 +718,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                                         projected_polygons_native_crs, from_date, to_date,
                                         metadata.opensearch_link_titles, datacubeParams,
                                         native_cell_size, feature_flags, jvm,
+                                        spatial_extent=load_params.spatial_extent,
+                                        use_stac_client=layer_source_info.get("use_stac_client", False)
                                         )
         elif layer_source_type == "stac":
             cube = load_stac(
