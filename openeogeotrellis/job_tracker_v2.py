@@ -8,6 +8,7 @@ import argparse
 import collections
 import datetime as dt
 import logging
+import os
 from pathlib import Path
 from typing import Any, List, NamedTuple, Optional, Union
 
@@ -335,14 +336,31 @@ class K8sStatusGetter(JobMetadataGetterInterface):
     def _get_usage(self, application_id: str, start_time: Optional[dt.datetime], finish_time: Optional[dt.datetime],
                    job_id: str, user_id: str) -> _Usage:
         try:
+            cpu_seconds = self._prometheus_api.get_cpu_usage(application_id)
+
             if start_time is None or finish_time is None:
                 application_duration_s = None
                 byte_seconds = None
             else:
                 application_duration_s = (finish_time - start_time).total_seconds()
                 byte_seconds = self._prometheus_api.get_memory_usage(application_id, application_duration_s)
+                if os.environ.get("LOG_BILLABLE_METRICS", "FALSE").upper() != "FALSE":
+                    _log.debug(
+                        f"Retrieved usage stats for comparison",
+                        extra={
+                            "job_id": job_id,
+                            "user_id": user_id,
+                            "cpu_seconds": cpu_seconds,
+                            "byte_seconds": byte_seconds,
+                            "billable_requested_cpu_seconds": self._prometheus_api.get_billable_cpu_requested(
+                                job_id, start=start_time.timestamp(), end=finish_time.timestamp()
+                            ),
+                            "billable_requested_byte_seconds": self._prometheus_api.get_billable_memory_requested(
+                                job_id, start=start_time.timestamp(), end=finish_time.timestamp()
+                            ),
+                        },
+                    )
 
-            cpu_seconds = self._prometheus_api.get_cpu_usage(application_id)
             network_receive_bytes = self._prometheus_api.get_network_received_usage(application_id)
 
             max_executor_gigabyte = self._prometheus_api.get_max_executor_memory_usage(application_id)
