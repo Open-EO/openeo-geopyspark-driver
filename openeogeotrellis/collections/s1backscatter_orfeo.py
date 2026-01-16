@@ -306,7 +306,9 @@ class S1BackscatterOrfeo:
             }
             filter_properties.update(normalized_props)
             if extra_properties.get("COG") == "FALSE":
-                filter_properties["product:type"] = "IW_GRDH_1S"
+                non_cog_product_type = "IW_GRDH_1S"
+                logger.info(f"sar_backscatter: Adjusting product:type to {non_cog_product_type!r} based on COG=FALSE")
+                filter_properties["product:type"] = non_cog_product_type
         else:
             # For legacy opensearch API, only allow legacy property keys.
             allowed_property_keys = set(S1BackscatterOrfeo._LEGACY_TO_STAC_PROPERTY_KEYS.keys())
@@ -316,7 +318,9 @@ class S1BackscatterOrfeo:
                 "processingLevel": "LEVEL1",
             }
             if extra_properties.get("COG") == "FALSE":
-                filter_properties["productType"] = "IW_GRDH_1S"
+                non_cog_product_type = "IW_GRDH_1S"
+                logger.info(f"sar_backscatter: Adjusting product:type to {non_cog_product_type!r} based on COG=FALSE")
+                filter_properties["productType"] = non_cog_product_type
             filter_properties.update(user_props)
             if "polarization" in extra_properties:
                 # British vs US English: Sentinelhub + STAC use US variant
