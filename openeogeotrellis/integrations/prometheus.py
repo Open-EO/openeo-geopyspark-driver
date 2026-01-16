@@ -111,6 +111,29 @@ class TimeSerieFloatStats:
 
         return cls(start=start, end=end, min=min_val, max=max_val, weighted_sum=weighted_sum)
 
+    @property
+    def corrected_weighted_sum(self) -> Optional[float]:
+        """
+        A corrected_weighted_sum takes into account that due to metric scraping there is actual time that is not
+        accounted for. It is not really possible to do a correction that is accurate in all cases but one can correct
+        so that on average it would converge to what would have been exact. If the scrape time is `st` seconds then
+        on average `st/2` seconds of time is missed from the start and `st/2` is missed from past the end hence on
+        average `st` is missed.
+
+        The environment variable CORRECTION_SCRAPE_TIME_SECS can be set to the scrape time. If not defined than no
+        correction takes place.
+        """
+        scrape_time_seconds = float(os.environ.get("CORRECTION_SCRAPE_TIME_SECS", "0"))
+        if self.start is None:
+            return None
+        elif self.start == self.end:
+            # Single sample so no duration available
+            assert self.min == self.max
+            return self.min * scrape_time_seconds
+        else:
+            duration_seconds = self.end - self.start
+            return self.weighted_sum * ((duration_seconds + scrape_time_seconds) / duration_seconds)
+
 
 def time_series_to_single_float_value(data: T_PromQueryRespTimeSeries, *, compactable: bool = False) -> float:
     if compactable:
@@ -124,7 +147,7 @@ def time_series_to_single_float_value(data: T_PromQueryRespTimeSeries, *, compac
             f"Summed value for {metric.get('resource', 'unknown')}",
             extra={"pod": metric.get("pod", "unknown"), "unit": metric.get("unit", "unknown"), "stats": stats},
         )
-        summed_value += stats.weighted_sum
+        summed_value += stats.corrected_weighted_sum
     return summed_value
 
 
@@ -267,7 +290,7 @@ if __name__ == "__main__":
 
     application_id = 'job-90206ae556-df7ea45d'
     application_finish_time = "2023-06-22T11:30:46Z"
-    job_id = "j-2601161045254a24b34c1973109d0b4b"
+    job_id = "j-2601161045254a24b34c1973109d0b43"
     end = datetime.datetime.now().timestamp()
     start = end - (12 * 3600)
 

@@ -68,7 +68,8 @@ def test_compact_time_series_values(description, input_data, expected):
     assert calculated == expected, f"Failed compaction scenario {description}"
 
 
-def test_time_series_to_single_value():
+def test_time_series_to_single_value(monkeypatch):
+    monkeypatch.setenv("CORRECTION_SCRAPE_TIME_SECS", "0")
     prom_response = get_test_data("cwl_simple.json")
     # We expect the values of each time series to be integrated over the time bounds
     expected_value = 268435456 * 4 + 4294967296 * 4
