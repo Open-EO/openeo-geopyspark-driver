@@ -173,6 +173,7 @@ def _prepare_context(
     # Prefer `normalized_band_selection` (if available) over raw `load_params.bands`
     # as the former is result of resolving aliases/common_name to standard/expected band names.
     band_selection: Union[List[str], None] = normalized_band_selection or load_params.bands
+    logger.debug(f"{band_selection=} (from {normalized_band_selection=} and {load_params.bands=})")
 
     try:
         item_collection, metadata, collection_band_names, netcdf_with_time_dimension = construct_item_collection(

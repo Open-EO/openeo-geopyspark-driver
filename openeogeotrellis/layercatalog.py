@@ -180,10 +180,14 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         if bands:
             band_indices = [metadata.get_band_index(b) for b in bands]
             # Note: this `filter_bands` operation includes resolving band naming ("common_name" and aliases)
+            #       but the `metadata.rename_labels` operation changes it back to the originally requested band names.
             metadata = metadata.filter_bands(bands)
-            metadata = metadata.rename_labels(metadata.band_dimension.name, bands, metadata.band_names)
+            normalized_band_selection = metadata.band_names
+            metadata = metadata.rename_labels(metadata.band_dimension.name, target=bands, source=metadata.band_names)
         else:
             band_indices = None
+            normalized_band_selection = None
+
         logger.debug("band_indices: {b!r}".format(b=band_indices))
         # TODO: avoid this `still_needs_band_filter` ugliness.
         #       Also see https://github.com/Open-EO/openeo-geopyspark-driver/issues/29
@@ -720,9 +724,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 env=env,
                 layer_properties=metadata.get("_vito", "properties", default={}),
                 batch_jobs=None,
-                # Note: `metadata.band_names`: should be "normalized" band names at this point
-                #       (e.g. because of earlier metadata.filter_bands() with metadata containing band name aliases)
-                normalized_band_selection=metadata.band_names if metadata.has_band_dimension() else None,
+                normalized_band_selection=normalized_band_selection,
                 feature_flags=layer_source_info.get("load_stac_feature_flags", {}),
             )
             pyramid = cube.pyramid.levels
