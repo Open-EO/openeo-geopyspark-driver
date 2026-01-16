@@ -294,7 +294,7 @@ def _prepare_context(
                 logger.debug(
                     f"FeatureBuilder.addLink {itm.id=} {asset_id=} {asset_href=} {asset_band_names_from_metadata=} {asset_band_names=}"
                 )
-                builder = builder.addLink(asset_href, asset_id, pixel_value_offset, asset_band_names)
+                builder = builder.addLink(asset_href, asset_id, float(pixel_value_offset), asset_band_names)
 
             # Optionally include additional special assets
             for asset_id, asset in itm.assets.items():
