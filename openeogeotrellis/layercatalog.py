@@ -179,14 +179,16 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         bands = load_params.bands
         if bands:
             band_indices = [metadata.get_band_index(b) for b in bands]
-            # Note: this `filter_bands` operation includes resolving band naming ("common_name" and aliases)
-            #       but the `metadata.rename_labels` operation changes it back to the originally requested band names.
             metadata = metadata.filter_bands(bands)
+            # Note: the `metadata.filter_bands()` includes resolving band naming ("common_name" and aliases)
+            #       which we want to preserve in `normalized_band_selection`,
+            #       before `metadata.rename_labels()` changes it back to the originally requested band names.
             normalized_band_selection = metadata.band_names
             metadata = metadata.rename_labels(metadata.band_dimension.name, target=bands, source=metadata.band_names)
         else:
             band_indices = None
-            normalized_band_selection = None
+            # Use ordered bands selection from metadata
+            normalized_band_selection = metadata.band_names if metadata.has_band_dimension() else None
 
         logger.debug("band_indices: {b!r}".format(b=band_indices))
         # TODO: avoid this `still_needs_band_filter` ugliness.

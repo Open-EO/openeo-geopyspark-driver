@@ -637,12 +637,14 @@ def load_stac(
 ) -> GeopysparkDataCube:
     """
 
-    :param normalized_band_selection: User specified band selection as list of normalized band names.
-        Intended for openEO `load_collection` use cases, where openEO collection metadata can contain
-        additional band name variants the user is also allowed to use,
-        like "eo:common_name" (from STAC EO extension) and "aliases" (non-standardized openeo-geopyspark-driver feature).
-        This `normalized_band_selection` should contain the standard band names after resolving aliases
-        or be empty (None or empty list) if no band filtering/selection is requested.
+    :param normalized_band_selection: (Optional) list of normalized band names
+        of the bands selected by the user or, as fallback, defined in the openEO collection metadata.
+        Intended for openEO `load_collection` use cases, where:
+        - openEO collection metadata only exposes a subset of all bands in the STAC collection
+        - user is allowed to use band name aliases/variants defined in openEO collection metadata,
+          like "eo:common_name" (from STAC EO extension)
+          and "aliases" (non-standardized openeo-geopyspark-driver feature).
+          `normalized_band_selection` must contain the standard band names after resolving these aliases.
     """
     context = _prepare_context(
         url=url,
