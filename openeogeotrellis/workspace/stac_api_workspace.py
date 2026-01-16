@@ -67,6 +67,10 @@ class StacApiWorkspace(Workspace):
     ) -> str:
         raise NotImplementedError(f"export_workspace: import_file to {self.root_url} not implemented {common_path}")
 
+    @property
+    def merges_by_default(self) -> bool:
+        return True
+
     def merge(self, stac_resource: STACObject, target: PurePath, remove_original: bool = False) -> STACObject:
         self._assert_catalog_supports_necessary_api()
 
