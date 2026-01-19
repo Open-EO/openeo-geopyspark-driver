@@ -3,7 +3,7 @@ import pytest
 
 from openeogeotrellis.integrations.prometheus import (
     Prometheus,
-    compact_time_serie_values,
+    compact_single_time_series_values,
     sum_timeseries_weighted,
 )
 from pathlib import Path
@@ -64,7 +64,7 @@ compaction_testdata = [
 
 @pytest.mark.parametrize("description,input_data,expected", compaction_testdata)
 def test_compact_time_series_values(description, input_data, expected):
-    calculated = compact_time_serie_values(input_data)
+    calculated = compact_single_time_series_values(input_data)
     assert calculated == expected, f"Failed compaction scenario {description}"
 
 

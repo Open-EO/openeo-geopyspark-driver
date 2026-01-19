@@ -23,16 +23,16 @@ if TYPE_CHECKING:
     T_PromDatapoint = Tuple[T_PromTime, T_PromValue]
     T_PromDatapoints = List[T_PromDatapoint]
 
-    class T_PromQueryRespTimeSerie(TypedDict):
+    class T_PromQueryRespSingleTimeSeries(TypedDict):
         metric: Dict[str, str]
         values: T_PromDatapoints
 
-    T_PromQueryRespTimeSeries = List[T_PromQueryRespTimeSerie]
+    T_PromQueryRespTimeSeries = List[T_PromQueryRespSingleTimeSeries]
 
 _log = logging.getLogger(__name__)
 
 
-def compact_time_serie_values(values: T_PromDatapoints) -> T_PromDatapoints:
+def compact_single_time_series_values(values: T_PromDatapoints) -> T_PromDatapoints:
     """
     If a timeserie is tracking a value that does not change often then multiple samples can be compacted in one without
     losing real information.
@@ -62,12 +62,12 @@ def compact_time_series(prom_time_series: T_PromQueryRespTimeSeries) -> T_PromQu
     For a query response we generally have the same metric and so compaction should happen for each time serie.
     """
     for i in range(0, len(prom_time_series)):
-        prom_time_series[i]["values"] = compact_time_serie_values(prom_time_series[i]["values"])
+        prom_time_series[i]["values"] = compact_single_time_series_values(prom_time_series[i]["values"])
     return prom_time_series
 
 
 @dataclass(frozen=True)
-class TimeSerieFloatStats:
+class SingleTimeSeriesFloatStats:
     """
     Statistics for a timeseries of float|int values
     """
@@ -79,14 +79,14 @@ class TimeSerieFloatStats:
     weighted_sum: float
 
     @classmethod
-    def from_timeserie(cls, timeserie_values: T_PromDatapoints) -> Optional[TimeSerieFloatStats]:
+    def from_datapoints(cls, datapoints: T_PromDatapoints) -> Optional[SingleTimeSeriesFloatStats]:
         start: Optional[float] = None
         min_val: Optional[float] = None
         max_val: Optional[float] = None
         weighted_sum: Optional[float] = 0.0
         prev_point: Optional[T_PromDatapoint] = None
 
-        for point in timeserie_values:
+        for point in datapoints:
             if start is None:
                 start = point[0]
 
@@ -107,7 +107,7 @@ class TimeSerieFloatStats:
 
         if start is None:
             return None
-        end = timeserie_values[-1][0]
+        end = datapoints[-1][0]
 
         return cls(start=start, end=end, min=min_val, max=max_val, weighted_sum=weighted_sum)
 
@@ -141,7 +141,7 @@ def sum_timeseries_weighted(data: T_PromQueryRespTimeSeries, *, compactable: boo
     summed_value = 0.0
     for timeserie in data:
         metric = timeserie["metric"]
-        stats = TimeSerieFloatStats.from_timeserie(timeserie["values"])
+        stats = SingleTimeSeriesFloatStats.from_datapoints(timeserie["values"])
         _log.debug(
             f"Summed value for {metric.get('resource', 'unknown')}",
             extra={"pod": metric.get("pod", "unknown"), "unit": metric.get("unit", "unknown"), "stats": stats},
