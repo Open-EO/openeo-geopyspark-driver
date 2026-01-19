@@ -327,6 +327,9 @@ class CalrissianJobLauncher:
         correlation_id = get_job_id(default=None) or get_request_id(default=None)
         name_base = correlation_id[:20] if correlation_id else None
 
+        if env and smart_bool(env.get("sync_job", "false")):
+            raise RuntimeError("CWL can only be used for batch jobs.")
+
         config: CalrissianConfig = get_backend_config().calrissian_config
         if not config:
             raise ConfigException("No calrissian (sub)config.")
@@ -358,8 +361,6 @@ class CalrissianJobLauncher:
         if "OPENEO_USER_ID" in os.environ:
             env_vars["OPENEO_USER_ID"] = os.environ["OPENEO_USER_ID"]
 
-        if env and smart_bool(env.get("sync_job", "false")):
-            raise RuntimeError("CWL can only be used for batch jobs.")
 
         launch_config = CalrissianLaunchConfigBuilder(
             config=config,

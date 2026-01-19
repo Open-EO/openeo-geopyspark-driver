@@ -13,6 +13,7 @@ import moto
 import pytest
 import yaml
 
+from openeo_driver.utils import EvalEnv
 from openeogeotrellis.config.integrations.calrissian_config import (
     DEFAULT_CALRISSIAN_IMAGE,
     DEFAULT_CALRISSIAN_RUNNER_RESOURCE_REQUIREMENTS,
@@ -630,6 +631,12 @@ class TestCalrissianJobLauncher:
                     }
                 )
             ]
+
+    def test_no_sync(self):
+        env = EvalEnv({"sync_job": "true"})
+        # Sync jobs are disabled for CWL, as it has no credit tracking.
+        with pytest.raises(RuntimeError):
+            CalrissianJobLauncher.from_context(env)
 
 
 class TestCalrissianS3Result:
