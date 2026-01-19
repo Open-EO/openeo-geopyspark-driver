@@ -4,7 +4,7 @@ import pytest
 from openeogeotrellis.integrations.prometheus import (
     Prometheus,
     compact_time_serie_values,
-    time_series_to_single_float_value,
+    sum_timeseries_weighted,
 )
 from pathlib import Path
 
@@ -73,5 +73,5 @@ def test_time_series_to_single_value(monkeypatch):
     prom_response = get_test_data("cwl_simple.json")
     # We expect the values of each time series to be integrated over the time bounds
     expected_value = 268435456 * 4 + 4294967296 * 4
-    calculated_value = time_series_to_single_float_value(prom_response, compactable=True)
+    calculated_value = sum_timeseries_weighted(prom_response, compactable=True)
     assert calculated_value == expected_value

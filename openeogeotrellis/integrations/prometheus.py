@@ -135,7 +135,7 @@ class TimeSerieFloatStats:
             return self.weighted_sum * ((duration_seconds + scrape_time_seconds) / duration_seconds)
 
 
-def time_series_to_single_float_value(data: T_PromQueryRespTimeSeries, *, compactable: bool = False) -> float:
+def sum_timeseries_weighted(data: T_PromQueryRespTimeSeries, *, compactable: bool = False) -> float:
     if compactable:
         data = compact_time_series(data)
     summed_value = 0.0
@@ -146,7 +146,8 @@ def time_series_to_single_float_value(data: T_PromQueryRespTimeSeries, *, compac
             f"Summed value for {metric.get('resource', 'unknown')}",
             extra={"pod": metric.get("pod", "unknown"), "unit": metric.get("unit", "unknown"), "stats": stats},
         )
-        summed_value += stats.corrected_weighted_sum
+        if stats is not None:
+            summed_value += stats.corrected_weighted_sum
     return summed_value
 
 
@@ -236,10 +237,10 @@ class Prometheus:
         return self._query_for_float(query, at)
 
     def get_summed_float_values(
-        self, query: str, job_id: str, start: float, end: float, *, compactable: False
+        self, query: str, job_id: str, start: float, end: float, *, compactable: bool = False
     ) -> Optional[float]:
         with ExtraLoggingFilter.with_extra_logging(job_id=job_id):
-            return time_series_to_single_float_value(
+            return sum_timeseries_weighted(
                 self._query_for_range(
                     query=query,
                     start=start,
