@@ -4,6 +4,7 @@ import datetime
 import os
 from dataclasses import dataclass
 from typing import Optional, TYPE_CHECKING
+from openeo_driver.util.logging import ExtraLoggingFilter
 
 import logging
 import requests
@@ -87,23 +88,26 @@ class SingleTimeSeriesFloatStats:
         prev_point: Optional[T_PromDatapoint] = None
 
         for point in datapoints:
+            point_ts = point[0]
+            point_value = float(point[1])
+
             if start is None:
-                start = point[0]
+                start = point_ts
 
             if min_val is None:
-                min_val = point[1]
+                min_val = point_value
             else:
-                min_val = min(min_val, point[1])
+                min_val = min(min_val, point_value)
 
             if max_val is None:
-                max_val = point[1]
+                max_val = point_value
             else:
-                max_val = max(max_val, point[1])
+                max_val = max(max_val, point_value)
 
             if prev_point is not None:
-                weighted_sum += float(prev_point[1]) * (point[0] - prev_point[0])
+                weighted_sum += float(prev_point[1]) * (point_ts - prev_point[0])
 
-            prev_point = point
+            prev_point = tuple(point_ts, point_value)
 
         if start is None:
             return None
@@ -272,7 +276,6 @@ if __name__ == "__main__":
     from openeo_driver.util.logging import (
         setup_logging,
         get_logging_config,
-        ExtraLoggingFilter,
         LOG_HANDLER_STDOUT_JSON,
     )
 
