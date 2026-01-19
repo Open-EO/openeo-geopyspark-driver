@@ -19,7 +19,7 @@ from openeo_driver.ProcessGraphDeserializer import ENV_DRY_RUN_TRACER
 from openeo_driver.backend import ErrorSummary
 from openeo_driver.config import ConfigException
 from openeo_driver.dry_run import DryRunDataTracer
-from openeo_driver.utils import EvalEnv, generate_unique_id
+from openeo_driver.utils import EvalEnv, generate_unique_id, smart_bool
 
 from openeogeotrellis.config import get_backend_config, s3_config
 from openeogeotrellis.config.integrations.calrissian_config import (
@@ -357,6 +357,10 @@ class CalrissianJobLauncher:
 
         if "OPENEO_USER_ID" in os.environ:
             env_vars["OPENEO_USER_ID"] = os.environ["OPENEO_USER_ID"]
+
+        if smart_bool(env.get("sync_job", "false")):
+            raise RuntimeError("CWL can only be used for batch jobs.")
+
         launch_config = CalrissianLaunchConfigBuilder(
             config=config,
             correlation_id=correlation_id,
