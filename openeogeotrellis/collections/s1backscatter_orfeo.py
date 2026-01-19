@@ -135,6 +135,7 @@ class S1BackscatterOrfeo:
         "timeliness": "product:timeliness_category",
         "missionTakeId": "eopf:datatake_id",
         "sat:orbit_state": "sat:orbit_state",
+        "platform": "platform",
     }
     # Full mapping includes identity mappings for STAC keys (so users can pass either format)
     _PROPERTY_KEYS_MAPPING = {
@@ -161,6 +162,7 @@ class S1BackscatterOrfeo:
             "orbitNumber": lambda v: v,
             "relativeOrbitNumber": lambda v: v,
             "timeliness": lambda v: v,
+            "platform": lambda v: v,  # No mapping required as platform was not supported in legacy before.
             "sat:orbit_state": lambda v: v.lower(),  # DESCENDING -> descending
         }
 
