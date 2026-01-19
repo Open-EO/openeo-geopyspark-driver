@@ -23,6 +23,7 @@ without compromising stable operations.
 - Guard STAC metadata parsing against invalid "item_assets" usage ([Open-EO/openeo-python-client#853](https://github.com/Open-EO/openeo-python-client/issues/853))
 - load_collection through load_stac: support band name aliases/variants (eu-cdse/openeo-cdse-infra#803, eu-cdse/openeo-cdse-infra#804)
 - load_collection through load_stac: new `apply_sentinel2_reflectance_offset` feature flag (eu-cdse/openeo-cdse-infra#803, eu-cdse/openeo-cdse-infra#804)
+- `StacApiWorkspace`: do not require `export-workspace-enable-merge` ([#1030](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1030))
 
 
 ## 0.70.0
