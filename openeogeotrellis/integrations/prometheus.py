@@ -85,29 +85,29 @@ class SingleTimeSeriesFloatStats:
         min_val: Optional[float] = None
         max_val: Optional[float] = None
         weighted_sum: Optional[float] = 0.0
-        prev_point: Optional[T_PromDatapoint] = None
+        prev_typed_point: Optional[T_PromDatapoint] = None
 
         for point in datapoints:
             point_ts = point[0]
-            point_value = float(point[1])
+            point_float_value = float(point[1])
 
             if start is None:
                 start = point_ts
 
             if min_val is None:
-                min_val = point_value
+                min_val = point_float_value
             else:
-                min_val = min(min_val, point_value)
+                min_val = min(min_val, point_float_value)
 
             if max_val is None:
-                max_val = point_value
+                max_val = point_float_value
             else:
-                max_val = max(max_val, point_value)
+                max_val = max(max_val, point_float_value)
 
-            if prev_point is not None:
-                weighted_sum += float(prev_point[1]) * (point_ts - prev_point[0])
+            if prev_typed_point is not None:
+                weighted_sum += float(prev_typed_point[1]) * (point_ts - prev_typed_point[0])
 
-            prev_point = tuple(point_ts, point_value)
+            prev_typed_point = (point_ts, point_float_value)
 
         if start is None:
             return None
