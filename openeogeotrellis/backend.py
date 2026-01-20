@@ -2763,7 +2763,7 @@ class GpsBatchJobs(backend.BatchJobs):
         logger.info(f"item_assets has job_dir {job_dir}")
         for item in results_metadata["items"]:
             for asset_key, asset in item["assets"].items():
-                if not ConfigParams().use_object_storage:
+                if "output_dir" not in asset and not asset["href"].startswith("s3://"):
                     asset["output_dir"] = str(job_dir)
         return {item["id"]: item for item in results_metadata["items"]}
 
