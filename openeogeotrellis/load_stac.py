@@ -312,7 +312,9 @@ def _prepare_context(
                     ]
                     if bands_to_add:
                         link_band_names = [granule_metadata_band_map[b] for b in bands_to_add]
-                        logger.debug(f"FeatureBuilder.addLink {itm.id=} {asset_id=} {asset_href=} {link_band_names=}")
+                        logger.debug(
+                            f"FeatureBuilder.addLink {itm.id=} {asset_id=} {asset_href=} {link_band_names=} from {bands_to_add=}"
+                        )
                         builder = builder.addLink(asset_href, asset_id, link_band_names)
                         collection_band_names.extend(bands_to_add)
 
