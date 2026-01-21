@@ -327,9 +327,6 @@ class CalrissianJobLauncher:
         correlation_id = get_job_id(default=None) or get_request_id(default=None)
         name_base = correlation_id[:20] if correlation_id else None
 
-        if env and smart_bool(env.get("sync_job", "false")):
-            raise RuntimeError("CWL can only be used for batch jobs.")
-
         config: CalrissianConfig = get_backend_config().calrissian_config
         if not config:
             raise ConfigException("No calrissian (sub)config.")
@@ -763,9 +760,10 @@ def cwl_to_stac(
     cwl_arguments: Union[List[str], dict],
     env: EvalEnv,
     cwl_source: CwLSource,
-    stac_root: str = "collection.json",
     direct_s3_mode=False,
 ) -> str:
+    if env and smart_bool(env.get("sync_job", "false")):
+        raise RuntimeError("CWL can only be used for batch jobs.")
     dry_run_tracer: DryRunDataTracer = env.get(ENV_DRY_RUN_TRACER)
     if dry_run_tracer:
         # TODO: use something else than `dry_run_tracer.load_stac`
@@ -780,19 +778,13 @@ def cwl_to_stac(
     results = launcher.run_cwl_workflow(
         cwl_source=cwl_source,
         cwl_arguments=cwl_arguments,
-        output_paths=[stac_root],
     )
 
     # TODO: provide generic helper to log some info about the results
     for k, v in results.items():
         _log.info(f"result {k!r}: {v.generate_public_url()=} {v.generate_presigned_url()=}")
 
-    try:
-        stac_root_new = find_stac_root(set(results.keys()), stac_root)
-        if stac_root_new:
-            stac_root = stac_root_new
-    except Exception as e:
-        _log.warning(f"Error from find_stac_root {stac_root!r}: {e}")
+    stac_root = find_stac_root(set(results.keys()))
 
     if direct_s3_mode:
         collection_url = results[stac_root].s3_uri()

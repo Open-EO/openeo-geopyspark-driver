@@ -26,6 +26,7 @@ from openeogeotrellis.integrations.calrissian import (
     CwLSource,
     parse_cwl_outputs_listing,
     find_stac_root,
+    cwl_to_stac,
 )
 from openeogeotrellis.integrations.s3proxy.sts import STSCredentials
 from openeogeotrellis.testing import gps_config_overrides
@@ -636,7 +637,11 @@ class TestCalrissianJobLauncher:
         env = EvalEnv({"sync_job": "true"})
         # Sync jobs are disabled for CWL, as it has no credit tracking.
         with pytest.raises(RuntimeError):
-            CalrissianJobLauncher.from_context(env)
+            cwl_to_stac(
+                cwl_arguments=[],
+                env=env,
+                cwl_source=CwLSource.from_string("class: Dummy"),
+            )
 
 
 class TestCalrissianS3Result:
