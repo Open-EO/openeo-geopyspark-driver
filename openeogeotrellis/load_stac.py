@@ -393,18 +393,16 @@ def _prepare_context(
     logger.debug(
         f"{target_band_names=} from {load_params.bands=} and {normalized_band_selection=} and {collection_band_names=}"
     )
+    if not target_band_names:
+        raise OpenEOApiException(
+            status_code=400,
+            code="UndefinedBandSelection",
+            message="Unable to determine bands in load_stac. Consider specifying bands explicitly.",
+        )
     metadata = metadata.with_new_band_names(target_band_names)
 
-    if allow_empty_cubes and not metadata.band_names:
-        # no knowledge of bands except for what the user requested
-        if band_selection:
-            metadata = metadata.with_new_band_names(band_selection)
-        else:
-            raise ProcessParameterRequiredException(process="load_stac", parameter="bands")
-
-    if band_selection:
-        metadata = metadata.filter_bands(band_selection)
-
+    # TODO: calling this "requested" is misleading, as requested "bands" might be empty, while this variable is non-empty.
+    #       Just reuse "target_band_names" here directly?
     requested_band_names = metadata.band_names
 
     requested_band_epsgs = [epsgs for band_name, epsgs in band_epsgs.items() if band_name in requested_band_names]
