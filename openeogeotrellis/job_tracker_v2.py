@@ -532,7 +532,7 @@ class JobTracker:
             log.warning(
                 f"App not found: {job_id=} {application_id=}; "
                 f"this is not necessarily a problem (https://github.com/eu-cdse/openeo-cdse-infra/issues/147)",
-                exc_info=True,
+                exc_info=False,  # omit noisy stack trace for non-exceptional situation
             )
             # TODO: originally, we set the job status here to "error", but that is potentially
             #       destructive in distributed context with partial replication.
