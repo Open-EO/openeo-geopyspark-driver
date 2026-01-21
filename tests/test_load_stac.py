@@ -2626,7 +2626,7 @@ class TestPrepareContext:
         )
 
     @pytest.mark.parametrize(
-        ["load_params_bands", "normalized_band_selection", "expected_links"],
+        ["load_params_bands", "normalized_band_selection", "expected_links", "expected_metadata_band_names"],
         [
             (
                 None,
@@ -2645,16 +2645,19 @@ class TestPrepareContext:
                         ],
                     },
                 ],
+                ["B02", "B03", "sunAzimuthAngles", "sunZenithAngles", "viewAzimuthMean", "viewZenithMean"],
             ),
             (
                 ["B02"],
                 None,
                 [{"title": "B02_10m", "href": "https://stac.test/B02_10m.tif", "bandNames": ["B02"]}],
+                ["B02"],
             ),
             (
                 ["B02_20m"],
                 None,
                 [{"title": "B02_20m", "href": "https://stac.test/B02_20m.tif", "bandNames": ["B02_20m"]}],
+                ["B02_20m"],
             ),
             (
                 ["B02", "sunAzimuthAngles", "viewZenithMean"],
@@ -2670,6 +2673,7 @@ class TestPrepareContext:
                         ],
                     },
                 ],
+                ["B02", "sunAzimuthAngles", "viewZenithMean"],
             ),
             (
                 ["B02", "SAA", "VZA"],
@@ -2685,11 +2689,12 @@ class TestPrepareContext:
                         ],
                     },
                 ],
+                ["B02", "SAA", "VZA"],
             ),
         ],
     )
     def test_sentinel2_with_azimuth_and_zenith_bands(
-        self, load_params_bands, normalized_band_selection, expected_links
+        self, load_params_bands, normalized_band_selection, expected_links, expected_metadata_band_names
     ):
         dummy_server = DummyStacApiServer()
         collection_id = "s2-with-granule_metadata"
@@ -2720,6 +2725,8 @@ class TestPrepareContext:
                 "links": expected_links,
             }
         ]
+
+        assert context.metadata.band_names == expected_metadata_band_names
 
     @pytest.mark.parametrize(
         ["feature_flags", "url", "expected"],

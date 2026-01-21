@@ -132,12 +132,14 @@ def _prepare_context(
     """
     Prepare all metadata and inputs needed to build/load a datacube from raster files.
 
-    :param normalized_band_selection: User specified band selection as list of normalized band names.
-        Intended for openEO `load_collection` use cases, where openEO collection metadata can contain
-        additional band name variants the user is also allowed to use,
-        like "eo:common_name" (from STAC EO extension) and "aliases" (non-standardized openeo-geopyspark-driver feature).
-        This `normalized_band_selection` should contain the standard band names after resolving aliases
-        or be empty (None or empty list) if no band filtering/selection is requested.
+    :param normalized_band_selection: (Optional) list of normalized band names
+        of the bands selected by the user or, as fallback, defined in the openEO collection metadata.
+        Intended for openEO `load_collection` use cases, where:
+        - openEO collection metadata only exposes a subset of all bands in the STAC collection
+        - user is allowed to use band name aliases/variants defined in openEO collection metadata,
+          like "eo:common_name" (from STAC EO extension)
+          and "aliases" (non-standardized openeo-geopyspark-driver feature).
+          `normalized_band_selection` must contain the standard band names after resolving these aliases.
     """
 
     # Feature flags: merge global (e.g. from layer catalog info) and user-provided (higher precedence)
@@ -386,8 +388,12 @@ def _prepare_context(
         ),
         allow_adding_dimension=True,
     )
-    # Overwrite band_names because new bands could be detected in stac items:
-    metadata = metadata.with_new_band_names(band_selection or collection_band_names)
+
+    target_band_names: List[str] = load_params.bands or normalized_band_selection or collection_band_names
+    logger.debug(
+        f"{target_band_names=} from {load_params.bands=} and {normalized_band_selection=} and {collection_band_names=}"
+    )
+    metadata = metadata.with_new_band_names(target_band_names)
 
     if allow_empty_cubes and not metadata.band_names:
         # no knowledge of bands except for what the user requested
@@ -787,6 +793,8 @@ def construct_item_collection(
         item_collection = item_collection.deduplicated(deduplicator=ItemDeduplicator())
 
     # TODO: possible to embed band names in metadata directly?
+    #       And related: metadata/GeopysparkCubeMetadata as an API is too large and too loosely defined.
+    #       Reduce the surface area here to what is really necessary or expected in later processing steps.
     return item_collection, metadata, band_names, netcdf_with_time_dimension
 
 
