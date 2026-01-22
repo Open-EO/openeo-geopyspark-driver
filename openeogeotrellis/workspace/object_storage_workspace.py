@@ -84,7 +84,6 @@ class ObjectStorageWorkspace(Workspace):
         stac_resource = stac_resource.full_copy()
 
         # TODO: reduce code duplication with openeo_driver.workspace.DiskWorkspace
-        # TODO: relies on item ID == asset key == relative asset path; avoid?
         def href_layout_strategy() -> HrefLayoutStrategy:
             def collection_func(_: Collection, parent_dir: str, is_root: bool) -> str:
                 if not is_root:
@@ -94,17 +93,17 @@ class ObjectStorageWorkspace(Workspace):
 
             def item_func(item: Item, parent_dir: str) -> str:
                 unique_item_filename = item.id.replace("/", "_")
-                return f"{parent_dir}/{target.name}/{unique_item_filename}.json"
+                return f"{parent_dir}/{unique_item_filename}.json"
 
             return CustomLayoutStrategy(collection_func=collection_func, item_func=item_func)
 
-        def replace_asset_href(asset_key: str, asset: Asset, src_collection_path:Path) -> Asset:
+        def replace_asset_href(asset: Asset, src_collection_path: Path) -> Asset:
             if urlparse(asset.href).scheme not in ["", "file", "s3"]:  # TODO: convenient place; move elsewhere?
                 raise ValueError(asset.href)
 
             # TODO: crummy way to export assets after STAC Collection has been written to disk with new asset hrefs;
             #  it ends up in the asset metadata on disk
-            original_absolute_href = asset.get_absolute_href()
+            original_absolute_href = asset.href
             asset.extra_fields["_original_absolute_href"] = original_absolute_href
             if original_absolute_href.startswith("s3"):
                 asset.href = Path(original_absolute_href).name
@@ -122,23 +121,32 @@ class ObjectStorageWorkspace(Workspace):
             except botocore.exceptions.ClientError as e:
                 if e.response["Error"]["Code"] != "NoSuchKey":
                     raise
+
             relative_collection_path = Path(new_collection.self_href).parent
+
             if not existing_collection:
                 new_collection.normalize_hrefs(
                     root_href=f"s3://{self.bucket}/{target.parent}", strategy=href_layout_strategy()
                 )
-                new_collection = new_collection.map_assets(lambda k,v:replace_asset_href(k,v,relative_collection_path))
+                new_collection = new_collection.map_assets(
+                    lambda _, asset: replace_asset_href(asset, relative_collection_path)
+                )
                 new_collection.save(CatalogType.SELF_CONTAINED, stac_io=self._stac_io)
 
                 for new_item in new_collection.get_items():
-                    for asset in new_item.assets.values():
+                    for new_asset in new_item.assets.values():
                         workspace_uri = self._copy(
-                            asset.extra_fields["_original_absolute_href"], new_item.get_self_href(), remove_original, relative_collection_path
+                            new_asset.extra_fields["_original_absolute_href"],
+                            new_item.get_self_href(),
+                            remove_original,
+                            relative_collection_path,
                         )
-                        asset.extra_fields["alternate"] = {"s3": workspace_uri}
+                        new_asset.extra_fields["alternate"] = {"s3": workspace_uri}
             else:
                 merged_collection = _merge_collection_metadata(existing_collection, new_collection)
-                new_collection = new_collection.map_assets(lambda k,v:replace_asset_href(k,v,relative_collection_path))
+                new_collection = new_collection.map_assets(
+                    lambda _, asset: replace_asset_href(asset, relative_collection_path)
+                )
 
                 for new_item in new_collection.get_items():
                     new_item.clear_links()  # sever ties with previous collection
@@ -150,11 +158,14 @@ class ObjectStorageWorkspace(Workspace):
                 merged_collection.save(CatalogType.SELF_CONTAINED)
 
                 for new_item in new_collection.get_items():
-                    for asset in new_item.assets.values():
+                    for new_asset in new_item.assets.values():
                         workspace_uri = self._copy(
-                            asset.extra_fields["_original_absolute_href"], new_item.get_self_href(), remove_original, relative_collection_path
+                            new_asset.extra_fields["_original_absolute_href"],
+                            new_item.get_self_href(),
+                            remove_original,
+                            relative_collection_path,
                         )
-                        asset.extra_fields["alternate"] = {"s3": workspace_uri}
+                        new_asset.extra_fields["alternate"] = {"s3": workspace_uri}
 
             return new_collection
         else:
