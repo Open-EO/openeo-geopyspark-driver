@@ -109,7 +109,7 @@ setup(
         'kafka-python==1.4.6',
         'deprecated>=1.2.12',
         'elasticsearch==7.16.3',
-        "pystac>=1.8.4",
+        "pystac>=1.14.3",
         'pystac_client~=0.7.2',
         'boto3>=1.16.25,<2.0',
         "hvac>=1.0.2",
