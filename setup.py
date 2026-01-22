@@ -105,7 +105,7 @@ setup(
         'Bottleneck~=1.4.0; python_version>="3.9"',
         "python-json-logger~=2.0",  # Avoid breaking change in 3.1.0 https://github.com/nhairs/python-json-logger/issues/29
         'jep==4.1.1; python_version<"3.9"',
-        'jep_openeo_numpy==4.1.1; python_version>="3.9"',  # Required because Jep needs to compile against numpy 2.x
+        'jep_openeo_numpy==4.1.2; python_version>="3.9"',  # Required because Jep needs to compile against numpy 2.x
         'kafka-python==1.4.6',
         'deprecated>=1.2.12',
         'elasticsearch==7.16.3',
