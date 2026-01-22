@@ -631,7 +631,7 @@ class InMemoryJobRegistry(JobRegistryInterface):
 
         return job
 
-    def delete_job(self, job_id: str, *, user_id: Optional[str] = None) -> None:
+    def delete_job(self, job_id: str, *, user_id: Optional[str] = None, verify_deletion: bool = True) -> None:
         self.get_job(job_id=job_id, user_id=user_id)  # will raise on job not found
         del self.db[job_id]
 
@@ -902,12 +902,12 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
                 job_id=job_id, user_id=user_id, status=status, updated=updated, started=started, finished=finished
             )
 
-    def delete_job(self, job_id: str, *, user_id: Optional[str] = None) -> None:
+    def delete_job(self, job_id: str, *, user_id: Optional[str] = None, verify_deletion: bool = True) -> None:
         if self.zk_job_registry:
             assert user_id, "user_id is required in ZkJobRegistry"
             self.zk_job_registry.delete(job_id=job_id, user_id=user_id)
         if self.elastic_job_registry:
-            self.elastic_job_registry.delete_job(job_id=job_id, user_id=user_id)
+            self.elastic_job_registry.delete_job(job_id=job_id, user_id=user_id, verify_deletion=verify_deletion)
 
     def set_dependencies(
         self, job_id: str, *, user_id: Optional[str] = None, dependencies: List[Dict[str, str]]

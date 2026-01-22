@@ -66,6 +66,7 @@ setup(
             "scripts/async_task-entrypoint.sh",
             "scripts/async_task_log4j2.xml",
             "scripts/zookeeper_set.py",
+            "scripts/job_cleaner.py",
         ]),
     ],
     tests_require=tests_require,

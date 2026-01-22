@@ -2670,7 +2670,8 @@ class GpsBatchJobs(backend.BatchJobs):
     def delete_job(self, job_id: str, user_id: str):
         self._delete_job(job_id, user_id, propagate_errors=False)
 
-    def _delete_job(self, job_id: str, user_id: str, propagate_errors: bool):
+    def _delete_job(self, job_id: str, user_id: str, propagate_errors: bool, verify_deletion: bool = True):
+        # Cancel the job first if it is still running.
         try:
             self.cancel_job(job_id, user_id)
         except InternalException:  # job never started, not an error
@@ -2684,27 +2685,30 @@ class GpsBatchJobs(backend.BatchJobs):
                 logger.warning("Unable to kill corresponding Spark job for job {j}: {a!r}\n{o}".format(j=job_id, a=e.cmd,
                                                                                                        o=e.stdout),
                                exc_info=e, extra={'job_id': job_id})
+        self.cleanup_job_resources(job_id, user_id, propagate_errors)
 
-        job_dir = self.get_job_output_dir(job_id)
-
-        try:
-            shutil.rmtree(job_dir)
-        except FileNotFoundError:  # nothing to delete, not an error
-            pass
-        except Exception as e:
-            # always log because the exception doesn't show the job directory
-            logger.warning("Could not recursively delete {p}".format(p=job_dir), exc_info=e, extra={'job_id': job_id})
-            if propagate_errors:
-                raise
-
+        # Finally, delete from the job registry.
         with self._double_job_registry as registry:
-            job_info = registry.get_job(job_id=job_id, user_id=user_id)
-        dependency_sources = get_deletable_dependency_sources(job_info)
+            registry.delete_job(job_id=job_id, user_id=user_id, verify_deletion=verify_deletion)
 
-        if dependency_sources:
-            # Only for SentinelHub batch processes.
-            self.delete_batch_process_dependency_sources(job_id, dependency_sources, propagate_errors)
+        logger.info("Deleted job {u}/{j}".format(u=user_id, j=job_id), extra={'job_id': job_id})
 
+    def cleanup_job_resources(self, job_id: str, user_id: str, propagate_errors: bool = True, delete_dependency_sources: bool = True):
+        """
+        Delete all storage artifacts associated with a batch job.
+
+        This includes:
+        - The job output directory on disk
+        - Sentinel Hub batch process dependency sources (S3 and disk)
+        - S3 object storage (for Kubernetes deployments)
+        """
+        self.delete_job_output_dir(job_id, propagate_errors)
+
+        # Delete possible sentinelhub batch process dependency sources.
+        if delete_dependency_sources:
+            self.delete_batch_process_dependency_sources_for_job(job_id, user_id, propagate_errors)
+
+        # Delete from s3 object storage if applicable.
         config_params = ConfigParams()
         if config_params.is_kube_deploy:
             # Kubernetes batch jobs are stored using s3 object storage.
@@ -2714,10 +2718,34 @@ class GpsBatchJobs(backend.BatchJobs):
                 get_backend_config().s3_bucket_name, prefix
             )
 
-        with self._double_job_registry as registry:
-            registry.delete_job(job_id=job_id, user_id=user_id)
+    def delete_job_output_dir(self, job_id: str, propagate_errors: bool = True):
+        """Delete the output directory for a batch job."""
+        job_dir = self.get_job_output_dir(job_id)
 
-        logger.info("Deleted job {u}/{j}".format(u=user_id, j=job_id), extra={'job_id': job_id})
+        try:
+            shutil.rmtree(job_dir)
+            logger.info("Deleted job output directory {p}".format(p=job_dir), extra={'job_id': job_id})
+        except FileNotFoundError:
+            logger.info("Job output directory {p} does not exist, nothing to delete".format(p=job_dir),)
+            pass  # nothing to delete, not an error
+        except Exception as e:
+            # always log because the exception doesn't show the job directory
+            logger.warning("Could not recursively delete {p}".format(p=job_dir), exc_info=e, extra={'job_id': job_id})
+            if propagate_errors:
+                raise
+
+    def delete_batch_process_dependency_sources_for_job(
+        self, job_id: str, user_id: str, propagate_errors: bool = True
+    ):
+        """
+        Delete batch process dependency sources for a job, fetching the sources from the registry.
+        """
+        with self._double_job_registry as registry:
+            job_info = registry.get_job(job_id=job_id, user_id=user_id)
+        dependency_sources = get_deletable_dependency_sources(job_info)
+
+        if dependency_sources:
+            self.delete_batch_process_dependency_sources(job_id, dependency_sources, propagate_errors)
 
     @deprecated("call delete_batch_process_dependency_sources instead")
     def delete_batch_process_results(self, job_id: str, subfolders: List[str], propagate_errors: bool):
