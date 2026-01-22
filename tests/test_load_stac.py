@@ -1,13 +1,13 @@
-import re
-
-import logging
-
 import datetime
+import json
+import logging
+import re
 from contextlib import nullcontext
 from typing import Iterator, List, Tuple, Union
 from unittest import mock
 
 import dirty_equals
+import geopandas
 import openeo.metadata
 import pystac
 import pystac_client
@@ -16,6 +16,7 @@ import responses
 import shapely.geometry
 from openeo.testing.stac import StacDummyBuilder
 from openeo_driver.backend import BatchJobMetadata, BatchJobs, LoadParameters
+from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.errors import OpenEOApiException
 from openeo_driver.testing import approxify
 from openeo_driver.users import User
@@ -51,6 +52,7 @@ from openeogeotrellis.load_stac import (
     _ResolutionTracker,
     STAC_API_PER_PAGE_LIMIT_DEFAULT,
     STAC_API_RETRY_TOTAL,
+    _SpatialFilteringGeometries,
 )
 from openeogeotrellis.testing import DummyStacApiServer, gps_config_overrides
 from openeogeotrellis.util.geometry import bbox_to_geojson
@@ -1527,6 +1529,148 @@ class TestSpatialExtent:
         assert cache[extent4] == 3
         assert extent5 not in cache
 
+
+class TestSpatialFilteringGeometries:
+    def test_empty(self):
+        sfg = _SpatialFilteringGeometries(geometries=None)
+        assert sfg.is_empty() is True
+        assert sfg.get_simplified_geojson() is None
+
+    def test_simple_box_geoseries(self):
+        geometries = geopandas.GeoSeries([shapely.geometry.box(1, 2, 3, 4)])
+        sfg = _SpatialFilteringGeometries(geometries=geometries)
+        assert sfg.is_empty() is False
+        simplified = sfg.get_simplified_geojson()
+        simplified = json.loads(simplified)
+        assert simplified == {
+            "type": "Polygon",
+            "coordinates": [[[1, 2], [1, 4], [3, 4], [3, 2], [1, 2]]],
+        }
+
+    def test_simple_box_vector_cube(self):
+        gdf = geopandas.GeoDataFrame(geometry=[shapely.geometry.box(1, 2, 3, 4)])
+        geometries = DriverVectorCube(geometries=gdf)
+        sfg = _SpatialFilteringGeometries(geometries=geometries)
+        assert sfg.is_empty() is False
+        simplified = sfg.get_simplified_geojson()
+        simplified = json.loads(simplified)
+        assert simplified == {
+            "type": "Polygon",
+            "coordinates": [[[1, 2], [1, 4], [3, 4], [3, 2], [1, 2]]],
+        }
+
+    def test_simple_box_with_crs(self):
+        geometries = geopandas.GeoSeries(
+            [
+                shapely.geometry.box(506986, 5660950, 514003, 5672085),
+            ],
+            crs="EPSG:32631",
+        )
+        sfg = _SpatialFilteringGeometries(geometries=geometries)
+        assert sfg.is_empty() is False
+        simplified = sfg.get_simplified_geojson()
+        simplified = json.loads(simplified)
+        assert simplified == {
+            "type": "Polygon",
+            "coordinates": approxify(
+                [[[3.1, 51.1], [3.1, 51.2], [3.2, 51.2], [3.2, 51.1], [3.1, 51.1]]],
+                abs=0.001,
+            ),
+        }
+
+    def test_four_boxes_in_cross_arrangement(self):
+        """
+            ┌─┐
+        ┌─┐ └─┘ ┌─┐
+        └─┘ ┌─┐ └─┘
+            └─┘
+        """
+        geometries = geopandas.GeoSeries(
+            [
+                shapely.geometry.box(0, 1, 1, 2),
+                shapely.geometry.box(2, 0, 3, 1),
+                shapely.geometry.box(2, 2, 3, 3),
+                shapely.geometry.box(4, 1, 5, 2),
+            ]
+        )
+        sfg = _SpatialFilteringGeometries(geometries=geometries)
+        assert sfg.is_empty() is False
+        simplified = sfg.get_simplified_geojson()
+        simplified = json.loads(simplified)
+        # TODO: use Hausdorff distance instead of exact equality
+        assert simplified == {
+            "type": "Polygon",
+            "coordinates": [[[2, 0], [0, 1], [0, 2], [2, 3], [3, 3], [5, 2], [5, 1], [3, 0], [2, 0]]],
+        }
+
+    @pytest.mark.parametrize(
+        ["kwargs", "expected"],
+        [
+            (
+                dict(envelope_threshold=10, overall_hull_threshold=10),
+                """{
+                    "type": "Polygon",
+                    "coordinates": [[[3, 0], [0, 2], [0, 4], [3, 6], [5, 6], [8, 4], [8, 2], [5, 0], [3, 0]]]
+                }""",
+            ),
+            (
+                dict(envelope_threshold=100, overall_hull_threshold=100),
+                """{
+                    "type": "MultiPolygon",
+                    "coordinates": [
+                        [[[3, 1], [4, 2], [5, 1], [4, 0], [3, 1]]],
+                        [[[6, 3], [7, 4], [8, 3], [7, 2], [6, 3]]],
+                        [[[3, 5], [4, 6], [5, 5], [4, 4], [3, 5]]],
+                        [[[0, 3], [1, 4], [2, 3], [1, 2], [0, 3]]]
+                    ]
+                }""",
+            ),
+            (
+                dict(envelope_threshold=10, overall_hull_threshold=100),
+                """{
+                    "type": "MultiPolygon",
+                    "coordinates": [
+                        [[[3, 2], [5, 2], [5, 0], [3, 0], [3, 2]]],
+                        [[[6, 4], [8, 4], [8, 2], [6, 2], [6, 4]]],
+                        [[[3, 6], [5, 6], [5, 4], [3, 4], [3, 6]]],
+                        [[[0, 4], [2, 4], [2, 2], [0, 2], [0, 4]]]
+                    ]
+                }""",
+            ),
+            (
+                dict(envelope_threshold=100, overall_hull_threshold=10),
+                """{
+                    "type": "Polygon",
+                    "coordinates": [[[4, 0], [1, 2], [0, 3], [1, 4], [4, 6], [7, 4], [8, 3], [7, 2], [4, 0]]]
+                }""",
+            ),
+        ],
+    )
+    def test_get_simplified_geojson_diamonds(self, kwargs, expected):
+        """
+           ╱╲
+           ╲╱
+        ╱╲    ╱╲
+        ╲╱    ╲╱
+           ╱╲
+           ╲╱
+        """
+        geometries = geopandas.GeoSeries(
+            [
+                shapely.geometry.Polygon([(4, 0), (5, 1), (4, 2), (3, 1), (4, 0)]),
+                shapely.geometry.Polygon([(7, 2), (8, 3), (7, 4), (6, 3), (7, 2)]),
+                shapely.geometry.Polygon([(4, 4), (5, 5), (4, 6), (3, 5), (4, 4)]),
+                shapely.geometry.Polygon([(1, 2), (2, 3), (1, 4), (0, 3), (1, 2)]),
+            ]
+        )
+        sfg = _SpatialFilteringGeometries(geometries=geometries)
+        assert sfg.is_empty() is False
+        simplified = sfg.get_simplified_geojson(**kwargs)
+        simplified = json.loads(simplified)
+        if isinstance(expected, str):
+            expected = json.loads(expected)
+        # TODO: use Hausdorff distance instead of exact equality
+        assert simplified == expected
 
 class TestSpatioTemporalExtent:
     @pytest.mark.parametrize(
