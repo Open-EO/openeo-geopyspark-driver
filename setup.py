@@ -78,11 +78,11 @@ setup(
         'geopyspark_openeo==0.4.3.post1',
         # rasterio is an undeclared but required dependency for geopyspark
         # (see https://github.com/locationtech-labs/geopyspark/issues/683 https://github.com/locationtech-labs/geopyspark/pull/706)
-        'rasterio~=1.2.0; python_version<"3.9"',
+        'rasterio~=1.3.10; python_version<"3.9"',
         'rasterio~=1.3.10; python_version>="3.9"',
         'py4j',
         'numpy==1.22.4; python_version<"3.9"',
-        'numpy>=2.3.3; python_version>="3.9"',
+        'numpy>=2.3.3,<2.5; python_version>="3.9"',
         'pandas>=1.4.0,<2.0.0; python_version<"3.9"',
         'pandas; python_version>="3.9"',
         'pyproj==3.4.1',
@@ -105,7 +105,7 @@ setup(
         'Bottleneck~=1.4.0; python_version>="3.9"',
         "python-json-logger~=2.0",  # Avoid breaking change in 3.1.0 https://github.com/nhairs/python-json-logger/issues/29
         'jep==4.1.1; python_version<"3.9"',
-        'jep_openeo_numpy==4.1.1; python_version>="3.9"',  # Required because Jep needs to compile against numpy 2.x
+        'jep_openeo_numpy==4.1.2; python_version>="3.9"',  # Required because Jep needs to compile against numpy 2.x
         'kafka-python==1.4.6',
         'deprecated>=1.2.12',
         'elasticsearch==7.16.3',
