@@ -81,6 +81,10 @@ class ObjectStorageWorkspace(Workspace):
         return workspace_uri
 
     def merge(self, stac_resource: STACObject, target: PurePath, remove_original: bool = False) -> STACObject:
+        if not target.suffix:
+            # limitation of recent pystac
+            raise ValueError("merge argument requires a file extension")
+
         stac_resource = stac_resource.full_copy()
 
         # TODO: reduce code duplication with openeo_driver.workspace.DiskWorkspace
@@ -104,7 +108,7 @@ class ObjectStorageWorkspace(Workspace):
 
             # TODO: crummy way to export assets after STAC Collection has been written to disk with new asset hrefs;
             #  it ends up in the asset metadata on disk
-            original_absolute_href = asset.get_absolute_href()
+            original_absolute_href = asset.href
             asset.extra_fields["_original_absolute_href"] = original_absolute_href
             if original_absolute_href.startswith("s3"):
                 asset.href = Path(original_absolute_href).name
@@ -115,6 +119,7 @@ class ObjectStorageWorkspace(Workspace):
 
         if isinstance(stac_resource, Collection):
             new_collection = stac_resource
+            new_collection.make_all_asset_hrefs_absolute()
 
             existing_collection = None
             try:

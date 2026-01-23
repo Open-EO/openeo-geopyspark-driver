@@ -79,7 +79,7 @@ def test_import_object(tmp_path, mock_s3_client, mock_s3_bucket, remove_original
 @pytest.mark.parametrize("remove_original", [False, True])
 def test_merge_new(mock_s3_client, mock_s3_bucket, tmp_path, remove_original: bool):
     test_region = "eu-nl"
-    merge = PurePath("some") / "target" / "collection"
+    merge = PurePath("some") / "target" / "collection.json"
 
     source_directory = tmp_path / "src"
     source_directory.mkdir()
@@ -122,21 +122,21 @@ def test_merge_new(mock_s3_client, mock_s3_bucket, tmp_path, remove_original: bo
         "object_asset.tif": f"s3://{target_bucket}/{merge}/object_asset.tif",
     }
 
-    assert _workspace_keys(mock_s3_client, target_bucket, prefix="some/target/collection") == {
-        "some/target/collection",
-        "some/target/collection/disk_asset.tif.json",
-        "some/target/collection/disk_asset.tif",
-        "some/target/collection/object_asset.tif.json",
-        "some/target/collection/object_asset.tif",
+    assert _workspace_keys(mock_s3_client, target_bucket, prefix="some/target/collection.json") == {
+        "some/target/collection.json",
+        "some/target/collection.json/disk_asset.tif.json",
+        "some/target/collection.json/disk_asset.tif",
+        "some/target/collection.json/object_asset.tif.json",
+        "some/target/collection.json/object_asset.tif",
     }
 
-    disk_asset_object_metadata = mock_s3_bucket.Object(key="some/target/collection/disk_asset.tif").metadata
+    disk_asset_object_metadata = mock_s3_bucket.Object(key="some/target/collection.json/disk_asset.tif").metadata
     assert disk_asset_object_metadata["md5"] == "2132afe6fed0b020888c10872309a98e"
     assert int(disk_asset_object_metadata["mtime"]) == pytest.approx(
         disk_asset_mtime_ns, abs=1_000_000_000  # 1s leeway
     )
 
-    object_asset_object_metadata = mock_s3_bucket.Object(key="some/target/collection/object_asset.tif").metadata
+    object_asset_object_metadata = mock_s3_bucket.Object(key="some/target/collection.json/object_asset.tif").metadata
     assert object_asset_object_metadata["md5"] == "187812e0004062471a40ed0063f6f9d8"
     assert object_asset_object_metadata["mtime"] == "1756477240123456789"
 
@@ -166,7 +166,7 @@ def test_merge_new(mock_s3_client, mock_s3_bucket, tmp_path, remove_original: bo
 @pytest.mark.parametrize("remove_original", [False, True])
 def test_merge_into_existing(tmp_path, mock_s3_client, mock_s3_bucket, remove_original):
     test_region = "waw3-1"
-    merge = PurePath("some") / "target" / "collection"
+    merge = PurePath("some") / "target" / "collection.json"
 
     source_directory = tmp_path / "src"
     source_directory.mkdir()
@@ -219,12 +219,12 @@ def test_merge_into_existing(tmp_path, mock_s3_client, mock_s3_bucket, remove_or
         "object_asset.tif": f"s3://{target_bucket}/{merge}/object_asset.tif",
     }
 
-    assert _workspace_keys(mock_s3_client, target_bucket, prefix="some/target/collection") == {
-        "some/target/collection",
-        "some/target/collection/disk_asset.tif",
-        "some/target/collection/disk_asset.tif.json",
-        "some/target/collection/object_asset.tif",
-        "some/target/collection/object_asset.tif.json",
+    assert _workspace_keys(mock_s3_client, target_bucket, prefix="some/target/collection.json") == {
+        "some/target/collection.json",
+        "some/target/collection.json/disk_asset.tif",
+        "some/target/collection.json/disk_asset.tif.json",
+        "some/target/collection.json/object_asset.tif",
+        "some/target/collection.json/object_asset.tif.json",
     }
 
     assert disk_asset_path.exists() != remove_original
