@@ -4016,7 +4016,7 @@ class TestLoadStac:
             data=test_data.load_text(
                 test_data_dir / "item01.json",
                 preprocess={
-                    "asset01.nc": f"{test_data.get_path('binary/load_stac/spatial_netcdf/openEO_0.nc').absolute()}",
+                    "asset01.nc": f"file://{test_data.get_path('binary/load_stac/spatial_netcdf/openEO_0.nc').absolute()}",
                 },
             ),
         )
@@ -4025,7 +4025,7 @@ class TestLoadStac:
             data=test_data.load_text(
                 test_data_dir / "item02.json",
                 preprocess={
-                    "asset02.nc": f"{test_data.get_path('binary/load_stac/spatial_netcdf/openEO_1.nc').absolute()}",
+                    "asset02.nc": f"file://{test_data.get_path('binary/load_stac/spatial_netcdf/openEO_1.nc').absolute()}",
                 },
             ),
         )
@@ -4727,7 +4727,7 @@ class TestLoadStac:
         def item_json(path):
             text = get_test_data_file(path).read_text()
             path = get_test_data_file("stac/issue_copernicus_global_mosaics/B02_flat_color.tif")
-            text = re.sub(r'"href":\s*"s3:/(/eodata/[^"]*\.tif|jp2)"', f'"href": "{path}"', text)
+            text = re.sub(r'"href":\s*"s3:/(/eodata/[^"]*\.tif|jp2)"', f'"href": "file://{path}"', text)
             return text
 
         urllib_and_request_mock.get(
