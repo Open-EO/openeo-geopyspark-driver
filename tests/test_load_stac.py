@@ -2579,6 +2579,12 @@ class TestPrepareContext:
                 "spatial": {"bbox": [[3, 50, 5, 51]]},
                 "temporal": {"interval": [["2024-02-01", "2024-12-01"]]},
             },
+            summaries={
+                "bands": [
+                    {"name": "B02", "common_name": "blue"},
+                    {"name": "B03", "common_name": "green"},
+                ]
+            },
         )
         dummy_server.define_item(
             collection_id=collection_id,
@@ -2626,7 +2632,13 @@ class TestPrepareContext:
         )
 
     @pytest.mark.parametrize(
-        ["load_params_bands", "normalized_band_selection", "expected_links", "expected_metadata_band_names"],
+        [
+            "load_params_bands",
+            "normalized_band_selection",
+            "expected_links",
+            "expected_metadata_band_names",
+            "expected_link_titles",
+        ],
         [
             (
                 None,
@@ -2646,11 +2658,20 @@ class TestPrepareContext:
                     },
                 ],
                 ["B02", "B03", "sunAzimuthAngles", "sunZenithAngles", "viewAzimuthMean", "viewZenithMean"],
+                [
+                    "B02",
+                    "B03",
+                    "granule_metadata##0",
+                    "granule_metadata##1",
+                    "granule_metadata##2",
+                    "granule_metadata##3",
+                ],
             ),
             (
                 ["B02"],
                 None,
                 [{"title": "B02_10m", "href": "https://stac.test/B02_10m.tif", "bandNames": ["B02"]}],
+                ["B02"],
                 ["B02"],
             ),
             (
@@ -2658,6 +2679,7 @@ class TestPrepareContext:
                 None,
                 [{"title": "B02_20m", "href": "https://stac.test/B02_20m.tif", "bandNames": ["B02_20m"]}],
                 ["B02_20m"],
+                ["B02_20m"],
             ),
             (
                 ["B02", "sunAzimuthAngles", "viewZenithMean"],
@@ -2674,6 +2696,7 @@ class TestPrepareContext:
                     },
                 ],
                 ["B02", "sunAzimuthAngles", "viewZenithMean"],
+                ["B02", "granule_metadata##0", "granule_metadata##3"],
             ),
             (
                 ["B02", "SAA", "VZA"],
@@ -2690,11 +2713,17 @@ class TestPrepareContext:
                     },
                 ],
                 ["B02", "SAA", "VZA"],
+                ["B02", "granule_metadata##0", "granule_metadata##3"],
             ),
         ],
     )
-    def test_sentinel2_with_azimuth_and_zenith_bands(
-        self, load_params_bands, normalized_band_selection, expected_links, expected_metadata_band_names
+    def test_prepare_context_sentinel2_with_azimuth_and_zenith_bands(
+        self,
+        load_params_bands,
+        normalized_band_selection,
+        expected_links,
+        expected_metadata_band_names,
+        expected_link_titles,
     ):
         dummy_server = DummyStacApiServer()
         collection_id = "s2-with-granule_metadata"
@@ -2727,6 +2756,7 @@ class TestPrepareContext:
         ]
 
         assert context.metadata.band_names == expected_metadata_band_names
+        assert list(context.pyramid_factory.openSearchLinkTitles()) == expected_link_titles
 
     @pytest.mark.parametrize(
         ["feature_flags", "url", "expected"],

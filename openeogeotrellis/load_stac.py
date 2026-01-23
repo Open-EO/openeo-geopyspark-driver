@@ -179,8 +179,13 @@ def _prepare_context(
     band_selection: Union[List[str], None] = normalized_band_selection or load_params.bands
     logger.debug(f"{band_selection=} (from {normalized_band_selection=} and {load_params.bands=})")
 
+    collected_link_band_names = set()
+
     try:
-        item_collection, metadata, collection_band_names, netcdf_with_time_dimension = construct_item_collection(
+        # `available_band_names`: all bands that were detected in STAC metadata,
+        #       mainly to be used as fallback band listing when no user-specified band selection was made,
+        #       and bit of validation too where appropriate.
+        item_collection, metadata, available_band_names, netcdf_with_time_dimension = construct_item_collection(
             url=url,
             spatiotemporal_extent=spatiotemporal_extent,
             property_filter_pg_map=property_filter_pg_map,
@@ -198,6 +203,7 @@ def _prepare_context(
         jvm = get_jvm()
 
         opensearch_client = jvm.org.openeo.geotrellis.file.FixedFeaturesOpenSearchClient()
+        opensearch_link_titles_map = {}
 
         # TODO: code smell: (most of) these vars should not be initialized with None here
         # asset_band_names = the full list of band names contained by the asset
@@ -225,6 +231,7 @@ def _prepare_context(
         #         ...
         granule_metadata_band_map = feature_flags.get("granule_metadata_band_map")
         cellsize_override = feature_flags.get("cellsize_override")
+
         for itm, band_assets in item_collection.iter_items_with_band_assets():
 
             builder = (
@@ -258,8 +265,8 @@ def _prepare_context(
                     asset_band_names = asset_band_names_from_metadata or [asset_id]
                 elif isinstance(band_selection, list) and asset_id in band_selection:
                     # User-specified asset_id as band name: use that directly
-                    if asset_id not in collection_band_names:
-                        logger.warning(f"Using asset key {asset_id!r} as band name.")
+                    if asset_id not in available_band_names and asset_id not in collected_link_band_names:
+                        logger.warning(f"Using {asset_id=} as band name (while not in {available_band_names=}).")
                     asset_band_names = [asset_id]
                 elif set(asset_band_names_from_metadata).intersection(band_selection or []):
                     # User-specified bands match with band names in metadata
@@ -273,9 +280,6 @@ def _prepare_context(
                     continue
 
                 for asset_band_name in asset_band_names:
-                    if asset_band_name not in collection_band_names:
-                        collection_band_names.append(asset_band_name)
-
                     if proj_bbox and proj_shape:
                         asset_cell_size = _compute_cellsize(proj_bbox, proj_shape)
                         band_cell_width, band_cell_height = band_cell_size.get(asset_band_name, (float("inf"), float("inf")))
@@ -297,6 +301,7 @@ def _prepare_context(
                     f"FeatureBuilder.addLink {itm.id=} {asset_id=} {asset_href=} {asset_band_names_from_metadata=} {asset_band_names=}"
                 )
                 builder = builder.addLink(asset_href, asset_id, float(pixel_value_offset), asset_band_names)
+                collected_link_band_names.update(asset_band_names)
 
             # Optionally include additional special assets
             for asset_id, asset in itm.assets.items():
@@ -314,11 +319,15 @@ def _prepare_context(
                     ]
                     if bands_to_add:
                         link_band_names = [granule_metadata_band_map[b] for b in bands_to_add]
+                        opensearch_link_titles_map.update((b, granule_metadata_band_map[b]) for b in bands_to_add)
                         logger.debug(
                             f"FeatureBuilder.addLink {itm.id=} {asset_id=} {asset_href=} {link_band_names=} from {bands_to_add=}"
                         )
                         builder = builder.addLink(asset_href, asset_id, link_band_names)
-                        collection_band_names.extend(bands_to_add)
+                        # These special bands were probably not in standard band listing extracted from STAC metadata
+                        # so we add them here.
+                        # TODO: move this logic to the level of `construct_item_collection`/`StacMetadataParser` for better separation of concerns?
+                        available_band_names.extend(b for b in bands_to_add if b not in available_band_names)
 
             # TODO: the proj_* values are assigned in inner per-asset loop,
             #       so the values here are ill-defined (the values might even come from another item)
@@ -389,9 +398,18 @@ def _prepare_context(
         allow_adding_dimension=True,
     )
 
-    target_band_names: List[str] = load_params.bands or normalized_band_selection or collection_band_names
+    fallback_band_names: List[str] = available_band_names.copy()
+    if extra_fallback := sorted(b for b in collected_link_band_names if b not in available_band_names):
+        # TODO: possible to eliminate need for this?
+        logger.debug(f"Adding {extra_fallback=} to {available_band_names=}")
+        fallback_band_names = available_band_names + extra_fallback
+    # Source band names: normalized/standardized band names to be included in the cube,
+    #   with naming as defined in openEO collection metadata or extracted from STAC metadata
+    source_band_names: List[str] = normalized_band_selection or load_params.bands or fallback_band_names
+    # Target band names: possibly contains user-picked aliases, expected as band names in resulting cube
+    target_band_names: List[str] = load_params.bands or normalized_band_selection or fallback_band_names
     logger.debug(
-        f"{target_band_names=} from {load_params.bands=} and {normalized_band_selection=} and {collection_band_names=}"
+        f"{source_band_names=} {target_band_names=} from {load_params.bands=} {normalized_band_selection=} {fallback_band_names=}"
     )
     if not target_band_names:
         raise OpenEOApiException(
@@ -469,9 +487,8 @@ def _prepare_context(
                 )
         pyramid_factory = jvm.org.openeo.geotrellis.layers.NetCDFCollection
     else:
-        # TODO: support for other band to openSearchLinkTitles mapping too?
-        opensearch_link_titles_map = granule_metadata_band_map or {}
-        opensearch_link_titles = [opensearch_link_titles_map.get(b, b) for b in requested_band_names]
+        opensearch_link_titles = [opensearch_link_titles_map.get(b, b) for b in source_band_names]
+        logger.debug(f"{opensearch_link_titles=} (from {source_band_names=} and {opensearch_link_titles_map=})")
         max_soft_errors_ratio = env.get(EVAL_ENV_KEY.MAX_SOFT_ERRORS_RATIO, 0.0)
         pyramid_factory = jvm.org.openeo.geotrellis.file.PyramidFactory(
             opensearch_client,
