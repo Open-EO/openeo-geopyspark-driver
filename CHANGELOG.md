@@ -24,6 +24,7 @@ without compromising stable operations.
 - load_collection through load_stac: support band name aliases/variants (eu-cdse/openeo-cdse-infra#803, eu-cdse/openeo-cdse-infra#804)
 - load_collection through load_stac: new `apply_sentinel2_reflectance_offset` feature flag (eu-cdse/openeo-cdse-infra#803, eu-cdse/openeo-cdse-infra#804)
 - `StacApiWorkspace`: do not require `export-workspace-enable-merge` ([#1030](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1030))
+- Support latest `pystac` (currently 1.14.3) ([#1496](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1496))
 
 
 ## 0.70.0
