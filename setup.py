@@ -22,6 +22,7 @@ yarn_require = [
 
 tests_require = [
     'pytest',
+    'pytest-xdist',
     'pytest-timeout',
     'mock',
     'moto[s3]>=5.0.0',
