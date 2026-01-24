@@ -230,6 +230,11 @@ def _prepare_context(
         #         "sunZenithAngles": "granule_metadata##1",
         #         ...
         granule_metadata_band_map = feature_flags.get("granule_metadata_band_map")
+        if granule_metadata_band_map:
+            # Add "granule_metadata" based bands (as they were probably not generically declared in STAC metadata).
+            # TODO: possible to move this logic to the level of `construct_item_collection`/`StacMetadataParser`?
+            available_band_names.extend(b for b in granule_metadata_band_map.keys() if b not in available_band_names)
+
         cellsize_override = feature_flags.get("cellsize_override")
 
         for itm, band_assets in item_collection.iter_items_with_band_assets():
@@ -324,10 +329,6 @@ def _prepare_context(
                             f"FeatureBuilder.addLink {itm.id=} {asset_id=} {asset_href=} {link_band_names=} from {bands_to_add=}"
                         )
                         builder = builder.addLink(asset_href, asset_id, link_band_names)
-                        # These special bands were probably not in standard band listing extracted from STAC metadata
-                        # so we add them here.
-                        # TODO: move this logic to the level of `construct_item_collection`/`StacMetadataParser` for better separation of concerns?
-                        available_band_names.extend(b for b in bands_to_add if b not in available_band_names)
 
             # TODO: the proj_* values are assigned in inner per-asset loop,
             #       so the values here are ill-defined (the values might even come from another item)
