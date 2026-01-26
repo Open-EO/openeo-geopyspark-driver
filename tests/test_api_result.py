@@ -57,6 +57,7 @@ from pystac import (
     Extent,
     Item,
     SpatialExtent,
+    StacIO,
     TemporalExtent,
 )
 from shapely.geometry import GeometryCollection, Point, Polygon, box, mapping
@@ -65,6 +66,7 @@ from openeogeotrellis._version import __version__
 from openeogeotrellis.backend import JOB_METADATA_FILENAME
 from openeogeotrellis.config.config import EtlApiConfig
 from openeogeotrellis.integrations.gdal import read_gdal_info
+from openeogeotrellis.integrations.stac import ResilientStacIO
 from openeogeotrellis.job_registry import ZkJobRegistry
 from openeogeotrellis.testing import KazooClientMock, gps_config_overrides, random_name, rasterio_metadata_dump
 from openeogeotrellis.util.runtime import is_package_available
@@ -3605,32 +3607,43 @@ class TestLoadStac:
         """load_stac with a STAC item that lacks "properties"/"eo:bands" and therefore falls back to its
         collection's "summaries"/"eo:bands"
         """
-        item_url = f"https://stac.test/{Path(item_path).name}"
-        item_json = test_data.load_text(
-            item_path,
-            preprocess={
-                "asset01.tiff": f"file://{test_data.get_path('binary/load_stac/collection01/asset01.tif').absolute()}",
-                "asset02.tiff": f"file://{test_data.get_path('binary/load_stac/collection01/asset02.tif').absolute()}",
-            },
-        )
-        urllib_and_request_mock.get(item_url, data=item_json)
 
-        collection_url = f"https://stac.test/{Path(collection_path).name}"
-        urllib_and_request_mock.get(collection_url, data=test_data.load_text(collection_path))
+        # Newer pystac uses urllib3 instead of urllib (if available) by default; using ResilientStacIO instead restores
+        # mocking item and parent Collection URLs.
+        default_stac_io = StacIO.default()
 
-        process_graph = {
-            "loadstac1": {
-                "process_id": "load_stac",
-                "arguments": {"url": item_url},
-            },
-            "saveresult1": {
-                "process_id": "save_result",
-                "arguments": {"data": {"from_node": "loadstac1"}, "format": "NetCDF"},
-                "result": True,
-            },
-        }
+        try:
+            StacIO.set_default(ResilientStacIO)
 
-        res = api110.result(process_graph).assert_status_code(200)
+            item_url = f"https://stac.test/{Path(item_path).name}"
+            item_json = test_data.load_text(
+                item_path,
+                preprocess={
+                    "asset01.tiff": f"file://{test_data.get_path('binary/load_stac/collection01/asset01.tif').absolute()}",
+                    "asset02.tiff": f"file://{test_data.get_path('binary/load_stac/collection01/asset02.tif').absolute()}",
+                },
+            )
+            urllib_and_request_mock.get(item_url, data=item_json)
+
+            collection_url = f"https://stac.test/{Path(collection_path).name}"
+            urllib_and_request_mock.get(collection_url, data=test_data.load_text(collection_path))
+
+            process_graph = {
+                "loadstac1": {
+                    "process_id": "load_stac",
+                    "arguments": {"url": item_url},
+                },
+                "saveresult1": {
+                    "process_id": "save_result",
+                    "arguments": {"data": {"from_node": "loadstac1"}, "format": "NetCDF"},
+                    "result": True,
+                },
+            }
+
+            res = api110.result(process_graph).assert_status_code(200)
+        finally:
+            StacIO.set_default(lambda: default_stac_io)
+
         res_path = tmp_path / "res.nc"
         res_path.write_bytes(res.data)
         cube: xarray.DataArray = _load_cube_from_netcdf(res_path)
