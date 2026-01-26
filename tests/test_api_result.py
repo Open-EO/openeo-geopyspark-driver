@@ -3608,8 +3608,9 @@ class TestLoadStac:
         collection's "summaries"/"eo:bands"
         """
 
-        # Newer pystac uses urllib3 instead of urllib (if available) by default; using ResilientStacIO instead restores
-        # mocking item and parent Collection URLs.
+        # Newer DefaultStacIO (= what you get when you start from an item and fetch its parent Collection) uses urllib3
+        # instead of urllib (if available); using ResilientStacIO instead restores mocking item and parent Collection
+        # URLs in the absence of a proper urllib3 mocker (TODO).
         default_stac_io = StacIO.default()
 
         try:
