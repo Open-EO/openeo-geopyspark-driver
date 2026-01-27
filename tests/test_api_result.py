@@ -57,7 +57,6 @@ from pystac import (
     Extent,
     Item,
     SpatialExtent,
-    StacIO,
     TemporalExtent,
 )
 from shapely.geometry import GeometryCollection, Point, Polygon, box, mapping
@@ -66,9 +65,14 @@ from openeogeotrellis._version import __version__
 from openeogeotrellis.backend import JOB_METADATA_FILENAME
 from openeogeotrellis.config.config import EtlApiConfig
 from openeogeotrellis.integrations.gdal import read_gdal_info
-from openeogeotrellis.integrations.stac import ResilientStacIO
 from openeogeotrellis.job_registry import ZkJobRegistry
-from openeogeotrellis.testing import KazooClientMock, gps_config_overrides, random_name, rasterio_metadata_dump
+from openeogeotrellis.testing import (
+    KazooClientMock,
+    Urllib3PoolManagerMocker,
+    gps_config_overrides,
+    random_name,
+    rasterio_metadata_dump,
+)
 from openeogeotrellis.util.runtime import is_package_available
 from openeogeotrellis.utils import (
     drop_empty_from_aggregate_polygon_result,
@@ -3608,14 +3612,7 @@ class TestLoadStac:
         collection's "summaries"/"eo:bands"
         """
 
-        # Newer DefaultStacIO (= what you get when you start from an item and fetch its parent Collection) uses urllib3
-        # instead of urllib (if available); using ResilientStacIO instead restores mocking item and parent Collection
-        # URLs in the absence of a proper urllib3 mocker (TODO).
-        default_stac_io = StacIO.default()
-
-        try:
-            StacIO.set_default(ResilientStacIO)
-
+        with Urllib3PoolManagerMocker().patch() as pool_manager_mock:
             item_url = f"https://stac.test/{Path(item_path).name}"
             item_json = test_data.load_text(
                 item_path,
@@ -3625,9 +3622,12 @@ class TestLoadStac:
                 },
             )
             urllib_and_request_mock.get(item_url, data=item_json)
+            pool_manager_mock.get(item_url, data=item_json.encode())
 
             collection_url = f"https://stac.test/{Path(collection_path).name}"
-            urllib_and_request_mock.get(collection_url, data=test_data.load_text(collection_path))
+            collection_json = test_data.load_text(collection_path)
+            urllib_and_request_mock.get(collection_url, data=collection_json)
+            pool_manager_mock.get(collection_url, collection_json.encode())
 
             process_graph = {
                 "loadstac1": {
@@ -3642,8 +3642,6 @@ class TestLoadStac:
             }
 
             res = api110.result(process_graph).assert_status_code(200)
-        finally:
-            StacIO.set_default(lambda: default_stac_io)
 
         res_path = tmp_path / "res.nc"
         res_path.write_bytes(res.data)

@@ -5,6 +5,7 @@ import pystac_client
 import pystac_client.exceptions
 import pytest
 import requests
+import urllib3
 from kazoo.exceptions import BadVersionError, NoNodeError
 
 from openeogeotrellis.config import get_backend_config
@@ -12,6 +13,7 @@ from openeogeotrellis.testing import (
     DummyCubeBuilder,
     DummyStacApiServer,
     KazooClientMock,
+    Urllib3PoolManagerMocker,
     _ZNodeStat,
     gps_config_overrides,
 )
@@ -387,3 +389,12 @@ class TestDummyStacApiServer:
                 },
             }
         )
+
+
+def test_mock_urllib3_pool_manager():
+    with Urllib3PoolManagerMocker().patch() as mocker:
+        mocker.get("https://stac.test", data="hello")
+
+        http = urllib3.PoolManager()
+        with http.request("GET", "https://stac.test", preload_content=False) as response:
+            assert response.read() == "hello"

@@ -743,3 +743,39 @@ def rasterio_metadata_dump(source: Union[str, Path, bytes, ApiResponse]) -> dict
                 "bounds": ds.bounds,
                 "shape": ds.shape,
             }
+
+
+class Urllib3PoolManagerMocker:
+    def __init__(self):
+        self._responses = {}
+
+    class _Response:
+        def __init__(self, data: bytes):
+            self.data = data
+
+        def read(self) -> bytes:
+            return self.data
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            pass
+
+    def register(self, method: str, url: str, data: bytes):
+        self._responses[(method, url)] = self._Response(data)
+
+    def get(self, url: str, data):
+        self.register("GET", url, data)
+
+    def _return_registered_response(self, method: str, url: str, **kwargs) -> _Response:
+        response = self._responses.get((method, url))
+        if not response:
+            raise Exception(f"no response registered for {method} {url}")
+        return response
+
+    @contextlib.contextmanager
+    def patch(self):
+        with mock.patch("urllib3.PoolManager.request") as mock_request:
+            mock_request.side_effect = self._return_registered_response
+            yield self
