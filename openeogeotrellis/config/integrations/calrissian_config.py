@@ -26,6 +26,9 @@ DEFAULT_CALRISSIAN_BASE_ARGUMENTS = (
 )
 if smart_bool(os.environ.get("OPENEO_LOCAL_DEBUGGING", "false")):
     DEFAULT_CALRISSIAN_BASE_ARGUMENTS += ("--leave-container", "--leave-tmpdir")
+    # Avoid local error:
+    # "OSError: [Errno 18] Invalid cross-device link: '/calrissian/tmpout/xzo916uy' -> '/calrissian/output-data/r-2601261601194b68b7-cal-cwl-607800ce/xzo916uy'"
+    DEFAULT_SECURITY_CONTEXT["run_as_user"] = 0
 
 
 @attrs.frozen(kw_only=True)

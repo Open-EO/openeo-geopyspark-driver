@@ -47,7 +47,7 @@ config = GpsBackendConfig(
     calrissian_config=CalrissianConfig(
         namespace="calrissian-demo-project",
         input_staging_image="alpine:3.17.0",
-        calrissian_image="vito-docker.artifactory.vgt.vito.be/calrissian:0.18.1",
+        calrissian_image="vito-docker.artifactory.vgt.vito.be/calrissian:vito.35baac4e",
         s3_bucket="calrissian",
     ),
     enable_basic_auth=True,

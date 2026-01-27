@@ -763,7 +763,12 @@ def cwl_to_stac(
     direct_s3_mode=False,
 ) -> str:
     if env and smart_bool(env.get("sync_job", "false")):
-        raise RuntimeError("CWL can only be used for batch jobs.")
+        msg = "CWL can only be used for batch jobs."
+        if smart_bool(os.environ.get("OPENEO_LOCAL_DEBUGGING", "false")):
+            # Running local batch jobs for debugging is hard. So allow debugging with sync jobs.
+            _log.warning(msg)
+        else:
+            raise RuntimeError(msg)
     dry_run_tracer: DryRunDataTracer = env.get(ENV_DRY_RUN_TRACER)
     if dry_run_tracer:
         # TODO: use something else than `dry_run_tracer.load_stac`
