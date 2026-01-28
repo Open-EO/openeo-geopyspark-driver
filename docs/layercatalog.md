@@ -85,11 +85,16 @@ nested fields "_vito" > "data_source" in the collection object, e.g.:
         ...
 ```
 
-
-## Minimal STAC based example
+## STAC source type
 
 The easiest data source type is the "stac" type,
 which just requires a URL pointing to a STAC catalog or collection.
+Internally, a `load_collection` call of a collection of this type will roughly be dispatched
+to a `load_stac` with this URL.
+
+
+### Minimal STAC based example
+
 For example, using the [example_stac_catalog](https://raw.githubusercontent.com/Open-EO/openeo-geopyspark-driver/refs/heads/master/docker/local_batch_job/example_stac_catalog/collection.json)
 included in the `openeo-geopyspark-driver` repository:
 
@@ -136,6 +141,74 @@ included in the `openeo-geopyspark-driver` repository:
 ]
 ```
 
+
+### Additional configuration options for the "stac" data source type
+
+Additional configuration or feature flags to fine-tune the behavior of the "stac" data source type
+can be provided under the `load_stac_feature_flags` field:
+
+```json
+  {
+    "id": "SENTINEL2_L2A_STAC",
+    "_vito": {
+      "data_source": {
+        "type": "stac",
+        "url": "https://stac.example/sentinel-2-l2a",
+        "load_stac_feature_flags": {
+          ...
+```
+
+Some of the supported feature flags are:
+
+- `asset_id_to_bands_map`.
+    Discovering the band name from STAC assets is usually done
+    based on `bands` or `eo:bands` STAC metadata in the assets.
+    When this metadata is missing/incomplete,
+    the `asset_id_to_bands_map` config can provide a mapping from asset IDs
+    to a list of corresponding band names.
+    for example:
+
+    ```json
+      "load_stac_feature_flags": {
+        "asset_id_to_bands_map": {
+          "AOT_10m": ["AOT"],
+          "AOT_20m": ["AOT"],
+          "SCL_20m": ["SCL"],
+          "SCL_60m": ["SCL"]
+        }
+    ```
+- `granule_metadata_band_map`.
+    Sentinel2 collections can contain metadata about sun/view azimuth and zenith angles
+    in a "granule_metadata" XML metadata asset.
+    How to extract these angles can be configured through the `granule_metadata_band_map` config,
+    for example:
+
+    ```json
+      "load_stac_feature_flags": {
+        "granule_metadata_band_map": {
+          "sunAzimuthAngles": "granule_metadata##0",
+          "sunZenithAngles": "granule_metadata##1",
+          "viewAzimuthMean": "granule_metadata##2",
+          "viewZenithMean": "granule_metadata##3"
+        }
+    ```
+- `property_filter_adaptations`.
+    To support legacy property filtering
+    (originating from usage patterns when the collection was backed by another source type),
+    it is possible to define adaptations of property filters, to translate/drop legacy property filters
+    to filters that are compatible with the STAC source.
+    For example:
+
+    ```json
+      "load_stac_feature_flags": {
+        "property_filter_adaptations": {
+            "productType": "drop",
+            "tileId": {
+              "rename": "grid:code",
+              "value_mapping": "add-MGRS-prefix"
+            }
+          }
+    ```
 
 
 ## More advanced data source types
