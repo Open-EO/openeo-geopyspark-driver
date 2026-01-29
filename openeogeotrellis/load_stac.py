@@ -321,7 +321,7 @@ def _prepare_context(
                 ):
                     bands_to_add = (
                         granule_metadata_band_map.keys()
-                        if (not band_selection or any(b in band_selection for b in granule_metadata_band_map.keys()))
+                        if (not band_selection or set(band_selection).intersection(granule_metadata_band_map.keys()))
                         else []
                     )
                     if bands_to_add:
