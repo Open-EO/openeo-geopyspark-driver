@@ -319,9 +319,11 @@ def _prepare_context(
                     and "metadata" in (asset.roles or [])
                     and (asset_href := get_best_url(asset, with_vsis3=False)).endswith("/MTD_TL.xml")
                 ):
-                    bands_to_add = [
-                        b for b in granule_metadata_band_map.keys() if (not band_selection or b in band_selection)
-                    ]
+                    bands_to_add = (
+                        granule_metadata_band_map.keys()
+                        if (not band_selection or set(band_selection).intersection(granule_metadata_band_map.keys()))
+                        else []
+                    )
                     if bands_to_add:
                         link_band_names = [granule_metadata_band_map[b] for b in bands_to_add]
                         opensearch_link_titles_map.update((b, granule_metadata_band_map[b]) for b in bands_to_add)
