@@ -1175,7 +1175,7 @@ def start_main():
     try:
         with TimingLogger(f"Starting batch job {os.getpid()=}", logger=logger):
             main(sys.argv)
-    except Exception as e:
+    except BaseException as e:
         error_summary = GeoPySparkBackendImplementation.summarize_exception_static(e)
         logger.exception("OpenEO batch job failed: " + error_summary.summary)
         raise
