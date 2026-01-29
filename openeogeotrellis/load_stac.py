@@ -318,19 +318,15 @@ def _prepare_context(
                     and asset.title == "MTD_TL.xml"
                     and "metadata" in (asset.roles or [])
                     and (asset_href := get_best_url(asset, with_vsis3=False)).endswith("/MTD_TL.xml")
+                    and (not band_selection or set(band_selection).intersection(granule_metadata_band_map.keys()))
                 ):
-                    bands_to_add = (
-                        granule_metadata_band_map.keys()
-                        if (not band_selection or set(band_selection).intersection(granule_metadata_band_map.keys()))
-                        else []
+                    # TODO: avoid ad-hoc `sorted` and make sure granule_metadata_band_map has intrinsic/intended order from the start
+                    link_band_names = sorted(granule_metadata_band_map.values())
+                    opensearch_link_titles_map.update(granule_metadata_band_map)
+                    logger.debug(
+                        f"FeatureBuilder.addLink {itm.id=} {asset_id=} {asset_href=} {link_band_names=} from {granule_metadata_band_map=}"
                     )
-                    if bands_to_add:
-                        link_band_names = [granule_metadata_band_map[b] for b in bands_to_add]
-                        opensearch_link_titles_map.update((b, granule_metadata_band_map[b]) for b in bands_to_add)
-                        logger.debug(
-                            f"FeatureBuilder.addLink {itm.id=} {asset_id=} {asset_href=} {link_band_names=} from {bands_to_add=}"
-                        )
-                        builder = builder.addLink(asset_href, asset_id, link_band_names)
+                    builder = builder.addLink(asset_href, asset_id, link_band_names)
 
             # TODO: the proj_* values are assigned in inner per-asset loop,
             #       so the values here are ill-defined (the values might even come from another item)
