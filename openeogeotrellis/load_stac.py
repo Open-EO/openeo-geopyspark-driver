@@ -25,7 +25,7 @@ import pystac_client.stac_api_io
 import requests.adapters
 from geopyspark import LayerType, TiledRasterLayer
 from openeo.metadata import _StacMetadataParser
-from openeo.util import Rfc3339, dict_no_none
+from openeo.util import Rfc3339, dict_no_none, TimingLogger
 from openeo_driver import filter_properties
 from openeo_driver.backend import BatchJobMetadata, LoadParameters
 from openeo_driver.datacube import DriverVectorCube
@@ -185,16 +185,17 @@ def _prepare_context(
         # `available_band_names`: all bands that were detected in STAC metadata,
         #       mainly to be used as fallback band listing when no user-specified band selection was made,
         #       and bit of validation too where appropriate.
-        item_collection, metadata, available_band_names, netcdf_with_time_dimension = construct_item_collection(
-            url=url,
-            spatiotemporal_extent=spatiotemporal_extent,
-            property_filter_pg_map=property_filter_pg_map,
-            batch_jobs=batch_jobs,
-            env=env,
-            feature_flags=feature_flags,
-            stac_io=stac_io,
-            user=user,
-        )
+        with TimingLogger(title=f"construct_item_collection({url=})", logger=logger.info):
+            item_collection, metadata, available_band_names, netcdf_with_time_dimension = construct_item_collection(
+                url=url,
+                spatiotemporal_extent=spatiotemporal_extent,
+                property_filter_pg_map=property_filter_pg_map,
+                batch_jobs=batch_jobs,
+                env=env,
+                feature_flags=feature_flags,
+                stac_io=stac_io,
+                user=user,
+            )
 
         items_found = len(item_collection.items) > 0
         if not allow_empty_cubes and not items_found:
@@ -318,17 +319,15 @@ def _prepare_context(
                     and asset.title == "MTD_TL.xml"
                     and "metadata" in (asset.roles or [])
                     and (asset_href := get_best_url(asset, with_vsis3=False)).endswith("/MTD_TL.xml")
+                    and (not band_selection or set(band_selection).intersection(granule_metadata_band_map.keys()))
                 ):
-                    bands_to_add = [
-                        b for b in granule_metadata_band_map.keys() if (not band_selection or b in band_selection)
-                    ]
-                    if bands_to_add:
-                        link_band_names = [granule_metadata_band_map[b] for b in bands_to_add]
-                        opensearch_link_titles_map.update((b, granule_metadata_band_map[b]) for b in bands_to_add)
-                        logger.debug(
-                            f"FeatureBuilder.addLink {itm.id=} {asset_id=} {asset_href=} {link_band_names=} from {bands_to_add=}"
-                        )
-                        builder = builder.addLink(asset_href, asset_id, link_band_names)
+                    # TODO: avoid ad-hoc `sorted` and make sure granule_metadata_band_map has intrinsic/intended order from the start
+                    link_band_names = sorted(granule_metadata_band_map.values())
+                    opensearch_link_titles_map.update(granule_metadata_band_map)
+                    logger.debug(
+                        f"FeatureBuilder.addLink {itm.id=} {asset_id=} {asset_href=} {link_band_names=} from {granule_metadata_band_map=}"
+                    )
+                    builder = builder.addLink(asset_href, asset_id, link_band_names)
 
             # TODO: the proj_* values are assigned in inner per-asset loop,
             #       so the values here are ill-defined (the values might even come from another item)
@@ -775,15 +774,16 @@ def construct_item_collection(
                     properties=property_filter_pg_map, env=env, adaptations=property_filter_adaptations
                 )
 
-            item_collection = ItemCollection.from_stac_api(
-                collection=stac_object,
-                original_url=url,
-                property_filter=property_filter,
-                spatiotemporal_extent=spatiotemporal_extent,
-                use_filter_extension=feature_flags.get("use-filter-extension", True),
-                # TODO #1312 why skipping datetime filter especially for netcdf with time dimension?
-                skip_datetime_filter=netcdf_with_time_dimension,
-            )
+            with TimingLogger(title=f"ItemCollection.from_stac_api from {url=}", logger=logger.info):
+                item_collection = ItemCollection.from_stac_api(
+                    collection=stac_object,
+                    original_url=url,
+                    property_filter=property_filter,
+                    spatiotemporal_extent=spatiotemporal_extent,
+                    use_filter_extension=feature_flags.get("use-filter-extension", True),
+                    # TODO #1312 why skipping datetime filter especially for netcdf with time dimension?
+                    skip_datetime_filter=netcdf_with_time_dimension,
+                )
         else:
             assert isinstance(stac_object, pystac.Catalog)  # static Catalog + Collection
             catalog = stac_object

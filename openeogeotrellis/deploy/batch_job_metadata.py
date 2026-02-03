@@ -318,14 +318,19 @@ def convert_bbox_to_lat_long(bbox: List[int], bbox_crs: Optional[Union[str, int,
 
 
 def _convert_asset_outputs_to_s3_urls(job_metadata: dict) -> dict:
-    """Convert each asset's output_dir value to a URL on S3 in the metadata dictionary."""
+    """Convert each asset's href value to a URL on S3 in the metadata dictionary."""
 
     job_metadata = deepcopy(job_metadata)
 
-    out_assets = job_metadata.get("assets", {})
-    for asset in out_assets.values():
-        if "href" in asset and not str(asset["href"]).startswith("s3://"):
-            asset["href"] = to_s3_url(asset["href"])
+    def replace_hrefs(assets: dict):
+        for asset in assets.values():
+            if "href" in asset and not str(asset["href"]).startswith("s3://"):
+                asset["href"] = to_s3_url(asset["href"])
+
+    replace_hrefs(job_metadata.get("assets", {}))  # top-level
+
+    for item in job_metadata.get("items", []):  # those nested in items
+        replace_hrefs(item.get("assets", {}))
 
     return job_metadata
 

@@ -2691,6 +2691,8 @@ class TestPrepareContext:
                         "href": "https://stac.test/MTD_TL.xml",
                         "bandNames": [
                             "granule_metadata##0",
+                            "granule_metadata##1",
+                            "granule_metadata##2",
                             "granule_metadata##3",
                         ],
                     },
@@ -2708,6 +2710,8 @@ class TestPrepareContext:
                         "href": "https://stac.test/MTD_TL.xml",
                         "bandNames": [
                             "granule_metadata##0",
+                            "granule_metadata##1",
+                            "granule_metadata##2",
                             "granule_metadata##3",
                         ],
                     },

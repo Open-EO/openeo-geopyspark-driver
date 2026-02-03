@@ -1059,16 +1059,6 @@ def _enrichment_metadata_from_stac(stac_url: str, *, band_aliases: Optional[Dict
     resp.raise_for_status()
     metadata: dict = resp.json()
 
-    # Avoid blindly copying top-level "bands" property for now.
-    # Also see https://github.com/eu-cdse/openeo-cdse-infra/issues/893,
-    # https://github.com/Open-EO/openeo-vue-components/issues/115,
-    # https://github.com/radiantearth/stac-spec/issues/1346
-    # TODO better solution based on resolution of issues mentioned above.
-    #      Or address properly in enrichment refactor (#1175)
-    if "bands" in metadata:
-        logger.warning(f"Dropping top-level 'bands' from STAC metadata at {stac_url=}")
-        metadata.pop("bands", None)
-
     # Normalize band metadata a bit (as there are multiple ways to specify bands in STAC):
     bands_from_cube_dimensions = deep_get(metadata, "cube:dimensions", "bands", "values", default=None)
     if bands := deep_get(metadata, "summaries", "bands", default=None):
