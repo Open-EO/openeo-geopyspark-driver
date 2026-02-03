@@ -58,7 +58,7 @@ to define best practices for STAC metadata. OpenEO seeks to align with these eff
           extract band information as discussed above for individual items
           and merge the results
 - The STAC assets that will be considered for loading:
-    - have a supported `media_type`, including but not limited to:
+    - have a supported media type (field `type`), including but not limited to:
       `image/tiff`, `image/vnd.stac.geotiff`, `image/jp2`, `application/netcdf`, `application/x-netcdf`
     - list the bands they contain under properties `eo:bands` (`eo` extension style) or `bands` (STAC 1.1 style)
     - have at least one role out of "data", "data-mask", "snow-ice", "land-water", "water-mask"
