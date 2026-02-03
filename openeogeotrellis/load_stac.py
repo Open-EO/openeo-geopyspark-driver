@@ -1763,7 +1763,7 @@ def _await_stac_object(
     stac_io: Optional[pystac.stac_io.StacIO] = None,
 ) -> STACObject:
     if stac_io is None:
-        session = requests_with_retry(total=5, backoff_factor=0.1, status_forcelist={500, 502, 503, 504})
+        session = requests_with_retry(total=5, backoff_factor=0.1, status_forcelist={429, 500, 502, 503, 504})
         stac_io = ResilientStacIO(session)
 
     while True:
