@@ -9,6 +9,7 @@ import pystac.stac_io
 from pystac.stac_io import DefaultStacIO
 
 from openeo_driver.integrations.s3.client import S3ClientBuilder
+from openeo_driver.util.http import requests_with_retry
 
 
 class ResilientStacIO(DefaultStacIO):
@@ -21,7 +22,7 @@ class ResilientStacIO(DefaultStacIO):
         session: Optional[requests.Session] = None,
      ):
         super().__init__()
-        self._session = session or requests.Session()
+        self._session = session or requests_with_retry(backoff_factor=2)
 
     def read_text_from_href(self, href: str) -> str:
         """Reads file as a UTF-8 string, with retry and timeout support.
