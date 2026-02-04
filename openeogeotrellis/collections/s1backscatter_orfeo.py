@@ -144,7 +144,7 @@ class S1BackscatterOrfeo:
     }
 
     # Supported product types for sar_backscatter
-    _SUPPORTED_PRODUCT_TYPES = frozenset({"IW_GRDH_1S_B", "IW_GRDH_1S", "IW_GRDH_1S-COG"})
+    _SUPPORTED_PRODUCT_TYPES = frozenset({"IW_GRDH_1S_B", "IW_GRDH_1S", "IW_GRDH_1S_C", "IW_GRDH_1S-COG"})
 
     def __init__(self, jvm: JVMView = None):
         self.jvm = jvm or get_jvm()
@@ -191,15 +191,28 @@ class S1BackscatterOrfeo:
         """Convert filter properties to openEO style process graph property filters."""
         mapped = {}
         for k, v in filter_properties.items():
-            mapped[k] = {
-                "process_graph": {
-                    "eq": {
-                        "process_id": "eq",
-                        "arguments": {"x": {"from_parameter": "value"}, "y": v},
-                        "result": True,
+            # Use array_contains for array values (e.g., default product:type to match multiple variants)
+            # Use eq for scalar values (e.g., user-provided product:type)
+            if isinstance(v, list):
+                mapped[k] = {
+                    "process_graph": {
+                        "array_contains": {
+                            "process_id": "array_contains",
+                            "arguments": {"data": v, "value": {"from_parameter": "value"}},
+                            "result": True,
+                        }
                     }
                 }
-            }
+            else:
+                mapped[k] = {
+                    "process_graph": {
+                        "eq": {
+                            "process_id": "eq",
+                            "arguments": {"x": {"from_parameter": "value"}, "y": v},
+                            "result": True,
+                        }
+                    }
+                }
         return mapped
 
     def _build_stac_opensearch_client(
@@ -303,11 +316,13 @@ class S1BackscatterOrfeo:
             # Normalize legacy property keys to STAC format. So filter_properties are always in STAC format.
             normalized_props = S1BackscatterOrfeo._normalize_filter_properties_to_stac(user_props) if user_props else {}
             filter_properties: Dict[str, any] = {
-                "product:type": "IW_GRDH_1S_B",
+                # Use array to match IW_GRDH_1S (sentinel1-a), IW_GRDH_1S_B (sentinel1-b), IW_GRDH_1S_C (sentinel1-c)
+                "product:type": ["IW_GRDH_1S", "IW_GRDH_1S_B", "IW_GRDH_1S_C"],
                 "processing:level": "L1",
             }
             filter_properties.update(normalized_props)
             if extra_properties.get("COG") == "FALSE":
+                # For non-COG, use exact match for IW_GRDH_1S only
                 non_cog_product_type = "IW_GRDH_1S"
                 logger.info(f"sar_backscatter: Adjusting product:type to {non_cog_product_type!r} based on COG=FALSE")
                 filter_properties["product:type"] = non_cog_product_type
@@ -328,12 +343,15 @@ class S1BackscatterOrfeo:
                 # British vs US English: Sentinelhub + STAC use US variant
                 filter_properties["polarisation"] = extra_properties["polarization"]
 
-        product_type: Optional[str] = filter_properties.get("product:type", filter_properties.get("productType"))
-        if product_type not in S1BackscatterOrfeo._SUPPORTED_PRODUCT_TYPES:
-            raise OpenEOApiException(
-                f"sar_backscatter: Unsupported product type {product_type!r}. "
-                f"Only the following values are supported: {sorted(S1BackscatterOrfeo._SUPPORTED_PRODUCT_TYPES)}."
-            )
+        product_type = filter_properties.get("product:type", filter_properties.get("productType"))
+        # Validate product type(s) - handle both string and array values
+        product_types_to_check = product_type if isinstance(product_type, list) else [product_type] if product_type else []
+        for pt in product_types_to_check:
+            if pt not in S1BackscatterOrfeo._SUPPORTED_PRODUCT_TYPES:
+                raise OpenEOApiException(
+                    f"sar_backscatter: Unsupported product type {pt!r}. "
+                    f"Only the following values are supported: {sorted(S1BackscatterOrfeo._SUPPORTED_PRODUCT_TYPES)}."
+                )
 
         return filter_properties
 

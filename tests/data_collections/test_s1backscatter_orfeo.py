@@ -7,6 +7,7 @@ import zipfile
 from pathlib import Path
 from typing import Tuple, Dict, Any
 from unittest import mock, skip
+from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
@@ -31,7 +32,7 @@ class TestBuildFilterProperties:
         """STAC client should return default STAC-formatted properties when no extra properties provided."""
         result = S1BackscatterOrfeo._build_filter_properties(extra_properties={}, use_stac_client=True)
         assert result == {
-            "product:type": "IW_GRDH_1S_B",
+            "product:type": ["IW_GRDH_1S", "IW_GRDH_1S_B", "IW_GRDH_1S_C"],
             "processing:level": "L1",
         }
 
@@ -176,6 +177,200 @@ class TestBuildFilterProperties:
             )
         assert "Unsupported product type" in str(exc_info.value)
         assert "IW_GRDH_1S" in str(exc_info.value)  # Error message should list supported types
+
+
+class TestBuildStacOpenSearchClient:
+    """Tests for S1BackscatterOrfeo._build_stac_opensearch_client"""
+
+    @pytest.fixture
+    def mock_jvm(self):
+        """Mock JVM for building OpenSearchClient features."""
+        with mock.patch("openeogeotrellis.collections.s1backscatter_orfeo.get_jvm") as get_jvm_mock:
+            jvm_mock = mock.MagicMock()
+            get_jvm_mock.return_value = jvm_mock
+
+            # Mock FixedFeaturesOpenSearchClient
+            opensearch_client_mock = mock.MagicMock()
+            jvm_mock.org.openeo.geotrellis.file.FixedFeaturesOpenSearchClient.return_value = opensearch_client_mock
+
+            # Mock feature builder
+            feature_builder_mock = mock.MagicMock()
+            jvm_mock.org.openeo.opensearch.OpenSearchResponses.featureBuilder.return_value = feature_builder_mock
+            feature_builder_mock.withNominalDate.return_value = feature_builder_mock
+            feature_builder_mock.withGeometryFromWkt.return_value = feature_builder_mock
+            feature_builder_mock.withBBox.return_value = feature_builder_mock
+            feature_builder_mock.withId.return_value = feature_builder_mock
+
+            # Store the features added to the client
+            features = []
+
+            def add_feature(feature):
+                features.append(feature)
+
+            opensearch_client_mock.addFeature.side_effect = add_feature
+            opensearch_client_mock._test_features = features
+
+            yield jvm_mock, opensearch_client_mock, feature_builder_mock
+
+    @pytest.fixture
+    def mock_construct_item_collection(self):
+        """Mock construct_item_collection to return test STAC items."""
+        with mock.patch("openeogeotrellis.load_stac.construct_item_collection") as mock_construct:
+            yield mock_construct
+
+    def _create_mock_item(self, item_id: str, datetime: str, bbox: list, product_type: str, platform: str):
+        """Create a mock STAC item for testing."""
+        from openeo.testing.stac import StacDummyBuilder
+
+        item_data = StacDummyBuilder.item(
+            item_id=item_id,
+            datetime=datetime,
+            bbox=bbox,
+            geometry={
+                "type": "Polygon",
+                "coordinates": [[[bbox[0], bbox[1]], [bbox[2], bbox[1]], [bbox[2], bbox[3]], [bbox[0], bbox[3]], [bbox[0], bbox[1]]]]
+            },
+            properties={
+                "datetime": datetime,
+                "product:type": product_type,
+                "platform": platform,
+            },
+            assets={
+                "vv": {
+                    "href": f"s3://eodata/Sentinel-1/SAR/{product_type}/2020/06/06/{item_id}.SAFE/measurement/{item_id.lower()}-vv.tiff",
+                    "type": "image/tiff; application=geotiff; profile=cloud-optimized",
+                },
+                "vh": {
+                    "href": f"s3://eodata/Sentinel-1/SAR/{product_type}/2020/06/06/{item_id}.SAFE/measurement/{item_id.lower()}-vh.tiff",
+                    "type": "image/tiff; application=geotiff; profile=cloud-optimized",
+                },
+            }
+        )
+
+        import pystac
+        return pystac.Item.from_dict(item_data)
+
+    def _create_mock_item_collection(self, items: list):
+        """Create a mock ItemCollection."""
+        from openeogeotrellis.load_stac import ItemCollection
+
+        item_collection = mock.MagicMock(spec=ItemCollection)
+        item_collection.items = items
+
+        def iter_items_with_band_assets():
+            for item in items:
+                band_assets = {k: v for k, v in item.assets.items() if k in ["vv", "vh"]}
+                yield item, band_assets
+
+        item_collection.iter_items_with_band_assets = iter_items_with_band_assets
+        return item_collection
+
+    def test_builds_client_with_sentinel1a_product(self, mock_jvm, mock_construct_item_collection):
+        """Test that Sentinel-1A products (IW_GRDH_1S) are correctly added to the OpenSearch client."""
+        jvm_mock, opensearch_client_mock, feature_builder_mock = mock_jvm
+
+        # Create a Sentinel-1A item (product type IW_GRDH_1S)
+        item = self._create_mock_item(
+            item_id="S1A_IW_GRDH_1SDV_20200606T060615",
+            datetime="2020-06-06T06:06:15Z",
+            bbox=[3.0, 50.0, 4.0, 51.0],
+            product_type="IW_GRDH_1S",
+            platform="sentinel-1a"
+        )
+
+        item_collection = self._create_mock_item_collection([item])
+        mock_construct_item_collection.return_value = (item_collection, {}, [], False)
+
+        # Build the client
+        s1_backscatter = S1BackscatterOrfeo()
+        filter_properties = {"product:type": ["IW_GRDH_1S", "IW_GRDH_1S_B"]}
+        client = s1_backscatter._build_stac_opensearch_client(
+            filter_properties=filter_properties,
+            spatial_extent={"west": 3.0, "south": 50.0, "east": 4.0, "north": 51.0},
+            temporal_extent=("2020-06-01", "2020-06-30")
+        )
+
+        # Verify the client has the correct features
+        assert opensearch_client_mock.addFeature.call_count == 1
+
+        # Verify feature builder was called with correct parameters
+        feature_builder_mock.withNominalDate.assert_called_once_with("2020-06-06T06:06:15Z")
+        feature_builder_mock.withBBox.assert_called_once()
+        feature_builder_mock.withId.assert_called_once()
+
+        # Verify the product ID was extracted correctly
+        call_args = feature_builder_mock.withId.call_args[0]
+        assert call_args[0].endswith(".SAFE")
+        assert "S1A_IW_GRDH_1SDV_20200606T060615" in call_args[0]
+
+    def test_raises_error_when_no_vv_vh_asset(self, mock_jvm, mock_construct_item_collection):
+        """Test that an error is raised when STAC item has no vv or vh assets."""
+        jvm_mock, opensearch_client_mock, feature_builder_mock = mock_jvm
+
+        from openeo.testing.stac import StacDummyBuilder
+        import pystac
+
+        # Create item without vv/vh assets
+        bbox = [3.0, 50.0, 4.0, 51.0]
+        item_data = StacDummyBuilder.item(
+            item_id="test-item",
+            datetime="2020-06-06T06:06:15Z",
+            bbox=bbox,
+            geometry={
+                "type": "Polygon",
+                "coordinates": [[[bbox[0], bbox[1]], [bbox[2], bbox[1]], [bbox[2], bbox[3]], [bbox[0], bbox[3]], [bbox[0], bbox[1]]]]
+            },
+            assets={
+                "thumbnail": {"href": "https://example.com/thumb.png"}
+            }
+        )
+        item = pystac.Item.from_dict(item_data)
+
+        item_collection: MagicMock = self._create_mock_item_collection([item])
+        mock_construct_item_collection.return_value = (item_collection, {}, [], False)
+
+        # Should raise error
+        s1_backscatter = S1BackscatterOrfeo()
+        with pytest.raises(OpenEOApiException, match="No 'vv' or 'vh' asset found"):
+            s1_backscatter._build_stac_opensearch_client(
+                filter_properties={"product:type": ["IW_GRDH_1S", "IW_GRDH_1S_B"]},
+                spatial_extent={"west": 3.0, "south": 50.0, "east": 4.0, "north": 51.0},
+                temporal_extent=("2020-06-01", "2020-06-30")
+            )
+
+    def test_filter_properties_passed_to_construct_item_collection(self, mock_jvm, mock_construct_item_collection):
+        """Test that filter properties are correctly converted to property_filter_pg_map."""
+        jvm_mock, opensearch_client_mock, feature_builder_mock = mock_jvm
+
+        # Mock empty item collection
+        item_collection = self._create_mock_item_collection([])
+        mock_construct_item_collection.return_value = (item_collection, {}, [], False)
+
+        # Build the client
+        s1_backscatter = S1BackscatterOrfeo()
+        filter_properties = {
+            "product:type": ["IW_GRDH_1S", "IW_GRDH_1S_B"],
+            "sat:orbit_state": "descending"
+        }
+        client = s1_backscatter._build_stac_opensearch_client(
+            filter_properties=filter_properties,
+            spatial_extent={"west": 3.0, "south": 50.0, "east": 4.0, "north": 51.0},
+            temporal_extent=("2020-06-01", "2020-06-30")
+        )
+
+        # Verify construct_item_collection was called with property_filter_pg_map
+        assert mock_construct_item_collection.call_count == 1
+        call_kwargs = mock_construct_item_collection.call_args[1]
+        assert "property_filter_pg_map" in call_kwargs
+
+        property_filter_pg_map = call_kwargs["property_filter_pg_map"]
+        assert "product:type" in property_filter_pg_map
+        assert "sat:orbit_state" in property_filter_pg_map
+
+        # Verify array_contains is used for array-valued filter
+        assert property_filter_pg_map["product:type"]["process_graph"]["array_contains"]["process_id"] == "array_contains"
+        # Verify eq is used for scalar-valued filter
+        assert property_filter_pg_map["sat:orbit_state"]["process_graph"]["eq"]["process_id"] == "eq"
 
 
 @pytest.mark.parametrize(
@@ -667,40 +862,3 @@ class TestOrfeoPipeline:
                 log_prefix=f"{log_prefix}-{band}",
             )
             print(data)
-
-
-@skip("requires mounting raster data.")
-def test_backscatter_load_collection_opensearch():
-    # Full workflow test starting at load_collection.
-    from openeogeotrellis.layercatalog import GeoPySparkLayerCatalog, get_layer_catalog
-
-    catalog: GeoPySparkLayerCatalog = get_layer_catalog()
-    sar_backscatter: SarBackscatterArgs = SarBackscatterArgs(**{'coefficient': 'sigma0-ellipsoid', })
-    spatial_extent_zeebrugge = {"west": 3.1, "south": 51.27, "east": 3.3, "north": 51.37}
-
-    def to_pg(value: str) -> Dict[str, Any]:
-        return {
-            "process_graph": {
-                "eq": {
-                    "process_id": "eq",
-                    "arguments": {"x": {"from_parameter": "value"}, "y": value},
-                    "result": True
-                }
-            }
-        }
-
-    load_params = LoadParameters(
-        spatial_extent=spatial_extent_zeebrugge,
-        temporal_extent=("2020-06-06T00:00:00", "2020-06-06T23:59:59"),
-        bands=["VH", "VV"],
-        properties={
-            "polarization": to_pg("DV"),  # ["DV", "VV&VH"]
-            "productType": to_pg("IW_GRDH_1S-COG"),
-            "orbitDirection": to_pg("ASCENDING"),
-        }
-    )
-    load_params.sar_backscatter = sar_backscatter
-    env = EvalEnv(
-        {"openeo_api_version": "1.0.0"}
-    )
-    catalog._load_collection_cached("SENTINEL1_GRD", load_params=load_params, env=env)
