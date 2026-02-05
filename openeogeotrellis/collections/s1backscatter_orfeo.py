@@ -156,7 +156,7 @@ class S1BackscatterOrfeo:
         property_values_mapping = {
             "polarisation": lambda v: v.split("&"),  # VV&VH -> [VV,VH]
             "polarization": lambda v: v.split("&"),  # VV&VH -> [VV,VH]
-            "productType": lambda v: v.replace("-COG", "_B"),  # IW_GRDH_1S-COG -> IW_GRDH_1S_B
+            "productType": lambda v: v.replace("-COG", ""),  # IW_GRDH_1S-COG -> IW_GRDH_1S
             "processingLevel": lambda v: v.replace("LEVEL", "L"),  # LEVEL1 -> L1
             "orbitDirection": lambda v: v.lower(),  # DESCENDING -> descending
             "orbitNumber": lambda v: v,
@@ -326,11 +326,6 @@ class S1BackscatterOrfeo:
                 "processing:level": "L1",
             }
             filter_properties.update(normalized_props)
-            if extra_properties.get("COG") == "FALSE":
-                # For non-COG, use exact match for IW_GRDH_1S only
-                non_cog_product_type = "IW_GRDH_1S"
-                logger.info(f"sar_backscatter: Adjusting product:type to {non_cog_product_type!r} based on COG=FALSE")
-                filter_properties["product:type"] = non_cog_product_type
         else:
             # For legacy opensearch API, only allow legacy property keys.
             allowed_property_keys = set(S1BackscatterOrfeo._LEGACY_TO_STAC_PROPERTY_KEYS.keys())
