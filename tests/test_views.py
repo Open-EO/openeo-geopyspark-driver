@@ -2133,7 +2133,7 @@ class TestSentinelHubBatchJobs:
         zk_client,
         batch_job_output_root,
     ):
-        time_machine.move_to("2020-04-20T12:01:01Z")
+        time_machine.move_to("2020-04-20T12:01:01Z", tick=False)
 
         job_data = api.get_process_graph_dict(
             process_graph=self._build_process_graph(spatial_size=1)
@@ -2152,7 +2152,7 @@ class TestSentinelHubBatchJobs:
         assert res["status"] == "created"
 
         # Start job
-        time_machine.move_to("2020-04-20T12:02:02Z")
+        time_machine.move_to("2020-04-20T12:02:02Z", tick=False)
         with self._submit_batch_job_mock(
             api=api
         ) as submit_batch_job, self._mock_sentinelhub_batch_processing_service() as sh_batch_service, mock.patch(
