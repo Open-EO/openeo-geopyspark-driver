@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime
 import datetime as dt
 import functools
+import geopandas
 import logging
 import os
 import re
@@ -23,6 +24,7 @@ import pystac.utils
 import pystac_client
 import pystac_client.stac_api_io
 import requests.adapters
+import shapely
 from geopyspark import LayerType, TiledRasterLayer
 from openeo.metadata import _StacMetadataParser
 from openeo.util import Rfc3339, dict_no_none, TimingLogger
@@ -38,7 +40,7 @@ from openeo_driver.errors import (
 )
 from openeo_driver.jobregistry import PARTIAL_JOB_STATUS
 from openeo_driver.users import User
-from openeo_driver.util.geometry import BoundingBox, GeometryBufferer
+from openeo_driver.util.geometry import BoundingBox, GeometryBufferer, reproject_geometry
 from openeo_driver.util.http import requests_with_retry
 from openeo_driver.util.utm import utm_zone_from_epsg
 from openeo_driver.utils import EvalEnv
@@ -174,7 +176,8 @@ def _prepare_context(
     )
     spatiotemporal_extent = _spatiotemporal_extent_from_load_params(
         spatial_extent=load_params.spatial_extent,
-        temporal_extent=load_params.temporal_extent
+        temporal_extent=load_params.temporal_extent,
+        spatial_filtering_geometries=load_params.aggregate_spatial_geometries,
     )
 
     # Band selection: subset of bands to load from STAC assets.
@@ -919,17 +922,84 @@ class _SpatialExtent:
         return self._bbox_lonlat_shape.intersects(shapely.geometry.box(*bbox))
 
 
+class _SpatialFilteringGeometries:
+    """Like _SpatialExtent but geometry based (instead of bounding box based)"""
+
+    __slots__ = ("_geometries",)
+
+    def __init__(self, geometries: Union[geopandas.GeoSeries, DriverVectorCube, None]):
+        self._geometries: Union[geopandas.GeoSeries, None]
+        if isinstance(geometries, geopandas.GeoSeries):
+            self._geometries = geometries
+        elif isinstance(geometries, DriverVectorCube):
+            self._geometries = geometries.get_geometries()
+        elif geometries is None:
+            self._geometries = None
+        else:
+            self._geometries = None
+            logger.warning(f"Unsupported geometries for _SpatialFilteringGeometries: {type(geometries)=}")
+
+    def is_empty(self) -> bool:
+        return self._geometries is None
+
+    @staticmethod
+    def _vertex_count(geometries: Union[geopandas.GeoSeries, shapely.geometry.base.BaseGeometry]) -> int:
+        """
+        Count number of vertices in given geometries as measure of complexity.
+        Note that this is based on length of shapely coordinate array,
+        where, in case of polygons, the first vertex is duplicated as final one,
+        so the vertex count is off by one (e.g. a rectangle will give 5).
+        But that's fine here as that will correspond to the GeoJSON representation.
+        """
+        if isinstance(geometries, geopandas.GeoSeries):
+            return geometries.apply(lambda g: shapely.get_coordinates(g).shape[0]).sum()
+        elif isinstance(geometries, shapely.geometry.base.BaseGeometry):
+            return shapely.get_coordinates(geometries).shape[0]
+        else:
+            raise ValueError(geometries)
+
+    def get_simplified_geojson(
+        self, envelope_threshold: int = 10, overall_hull_threshold: int = 10
+    ) -> Union[str, None]:
+        """
+        Get a rough approximation of the geometries in GeoJSON (dict) representation
+        to be used as spatial filter (`intersects` parameter) in STAC API queries
+        """
+        if self._geometries is None:
+            return None
+        geometries = self._geometries
+        # Simplify each geometry to bounding box to reduce complexity
+        if self._vertex_count(geometries) > envelope_threshold:
+            geometries = geometries.envelope
+        # method "coverage": optimized for non-overlapping polygons
+        # and can be significantly faster than the unary union algorithm.
+        union = geometries.union_all(method="coverage")
+        if self._vertex_count(union) > overall_hull_threshold:
+            union = shapely.convex_hull(union)
+        # Reproject to lon/lat for GeoJSON compliance
+        if geometries.crs:
+            union = reproject_geometry(union, from_crs=geometries.crs, to_crs="epsg:4326")
+        return shapely.to_geojson(union)
+
+
 class _SpatioTemporalExtent:
+    """Container of spatio-temporal constraints for filtering STAC entities"""
     # TODO: move this to a more generic location for better reuse
+
+    __slots__ = ("_spatial_extent", "_temporal_extent", "_spatial_filtering_geometries")
+
     def __init__(
         self,
         *,
         bbox: Union[BoundingBox, None] = None,
         from_date: DateTimeLikeOrNone = None,
         to_date: DateTimeLikeOrNone = None,
+        spatial_filtering_geometries: Union[DriverVectorCube, None] = None,
     ):
         self._spatial_extent = _SpatialExtent(bbox=bbox)
         self._temporal_extent = _TemporalExtent(from_date=from_date, to_date=to_date)
+        # TODO: embed here in _SpatioTemporalExtent or keep separate?
+        self._spatial_filtering_geometries = _SpatialFilteringGeometries(geometries=spatial_filtering_geometries)
 
     @property
     def spatial_extent(self) -> _SpatialExtent:
@@ -938,6 +1008,10 @@ class _SpatioTemporalExtent:
     @property
     def temporal_extent(self) -> _TemporalExtent:
         return self._temporal_extent
+
+    @property
+    def spatial_filtering_geometries(self) -> _SpatialFilteringGeometries:
+        return self._spatial_filtering_geometries
 
     def item_intersects(self, item: pystac.Item) -> bool:
         return self._temporal_extent.intersects(
@@ -963,7 +1037,8 @@ class _SpatioTemporalExtent:
 
 def _spatiotemporal_extent_from_load_params(
     spatial_extent: Union[Dict, BoundingBox, None],
-    temporal_extent: Tuple[Optional[str], Optional[str]]
+    temporal_extent: Tuple[Optional[str], Optional[str]],
+    spatial_filtering_geometries: Union[DriverVectorCube, None] = None,
 ) -> _SpatioTemporalExtent:
     bbox = BoundingBox.from_dict_or_none(spatial_extent, default_crs="EPSG:4326")
     (from_date, until_date) = (to_datetime_utc_unless_none(d) for d in temporal_extent)
@@ -978,7 +1053,13 @@ def _spatiotemporal_extent_from_load_params(
     else:
         # Convert openEO temporal extent convention (end-exclusive) to internal(?) convention (end-inclusive)
         to_date = until_date - datetime.timedelta(milliseconds=1)
-    return _SpatioTemporalExtent(bbox=bbox, from_date=from_date, to_date=to_date)
+
+    return _SpatioTemporalExtent(
+        bbox=bbox,
+        from_date=from_date,
+        to_date=to_date,
+        spatial_filtering_geometries=spatial_filtering_geometries,
+    )
 
 
 def _get_item_temporal_extent(item: pystac.Item) -> Tuple[datetime.datetime, datetime.datetime]:
@@ -1139,8 +1220,16 @@ class ItemCollection:
             method = "POST" if isinstance(cql2_filter, dict) else "GET"
             query_info += f" {use_filter_extension=} {cql2_filter=}"
 
+            # Note that per STAC API spec, "Only one of either `intersects` or `bbox` may be specified"
             bbox = spatiotemporal_extent.spatial_extent.as_bbox(crs="EPSG:4326")
             bbox = bbox.as_wsen_tuple() if bbox else None
+            intersects_geometry = None
+            # TODO: possible/necesarry to detect if STAC API supports `intersects` based filtering?
+            if not spatiotemporal_extent.spatial_filtering_geometries.is_empty():
+                intersects_geometry = spatiotemporal_extent.spatial_filtering_geometries.get_simplified_geojson()
+                if intersects_geometry:
+                    bbox = None
+
             query_datetime = (
                 None
                 if spatiotemporal_extent.temporal_extent.is_unbounded() or skip_datetime_filter
@@ -1150,6 +1239,7 @@ class ItemCollection:
                 method=method,
                 collections=collection.id,
                 bbox=bbox,
+                intersects=intersects_geometry,
                 limit=20,
                 datetime=query_datetime,
                 filter=cql2_filter,
