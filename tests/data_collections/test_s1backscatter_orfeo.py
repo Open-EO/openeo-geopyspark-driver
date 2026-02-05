@@ -338,12 +338,28 @@ class TestBuildStacOpenSearchClient:
                 temporal_extent=("2020-06-01", "2020-06-30")
             )
 
-    def test_filter_properties_passed_to_construct_item_collection(self, mock_jvm, mock_construct_item_collection):
+    def test_filter_properties_passed_to_construct_item_collection(self, mock_construct_item_collection):
         """Test that filter properties are correctly converted to property_filter_pg_map."""
-        jvm_mock, opensearch_client_mock, feature_builder_mock = mock_jvm
+        from openeo.testing.stac import StacDummyBuilder
+        import pystac
 
+        # Create item without vv/vh assets
+        bbox = [3.0, 50.0, 4.0, 51.0]
         # Mock empty item collection
-        item_collection = self._create_mock_item_collection([])
+        item_data = StacDummyBuilder.item(
+            item_id="test-item",
+            datetime="2020-06-06T06:06:15Z",
+            bbox=bbox,
+            geometry={
+                "type": "Polygon",
+                "coordinates": [[[bbox[0], bbox[1]], [bbox[2], bbox[1]], [bbox[2], bbox[3]], [bbox[0], bbox[3]], [bbox[0], bbox[1]]]]
+            },
+            assets={
+                "vv": {"href": "https://example.com/vv.SAFE"}
+            }
+        )
+        item = pystac.Item.from_dict(item_data)
+        item_collection = self._create_mock_item_collection([item])
         mock_construct_item_collection.return_value = (item_collection, {}, [], False)
 
         # Build the client
