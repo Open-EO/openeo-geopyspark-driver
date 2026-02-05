@@ -13,9 +13,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Iterator, List, Optional, Set, Tuple, Union, Iterable, Sequence
 from urllib.parse import urlparse
 
-import geopyspark as gps
 import openeo_driver.backend
-import planetary_computer
 import pyproj
 import pystac
 import pystac.stac_io
@@ -23,7 +21,7 @@ import pystac.utils
 import pystac_client
 import pystac_client.stac_api_io
 import requests.adapters
-from geopyspark import LayerType, TiledRasterLayer
+from geopyspark import LayerType
 from openeo.metadata import _StacMetadataParser
 from openeo.util import Rfc3339, dict_no_none, TimingLogger
 from openeo_driver import filter_properties
@@ -33,7 +31,6 @@ from openeo_driver.errors import (
     JobNotFoundException,
     OpenEOApiException,
     ProcessParameterInvalidException,
-    ProcessParameterRequiredException,
     ProcessParameterUnsupportedException,
 )
 from openeo_driver.jobregistry import PARTIAL_JOB_STATUS
