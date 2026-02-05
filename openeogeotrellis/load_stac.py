@@ -1149,9 +1149,12 @@ class ItemCollection:
             )
             if search_request.method == "GET":
                 query_info += f" {search_request.method} {search_request.url_with_parameters()}"
+                logger.info(
+                    f"ItemCollection.from_stac_api: STAC API request URL: {search_request.url_with_parameters()}"
+                )
             else:
                 query_info += f" {search_request.method} {search_request.url} {search_request.get_parameters()=}"
-            logger.info(f"ItemCollection.from_stac_api: STAC API request: {query_info}")
+                logger.info(f"ItemCollection.from_stac_api: STAC API request: {query_info}")
 
             # STAC API might not support Filter Extension so always use client-side filtering as well
             # TODO: check "filter" conformance class for this instead of blindly trying to do double work
