@@ -1013,6 +1013,52 @@ class TestPostDryRun:
         extents = _extract_spatial_extent_from_constraint(source_constraint=source_constraint, catalog=dummy_catalog)
         assert extents == expected_extents
 
+    @pytest.mark.parametrize(
+        ["flavor", "expected"],
+        [
+            (None, BoundingBox(2, 49, 7, 52, crs="EPSG:4326")),
+            ("apple", BoundingBox(2, 49, 3, 50, crs="EPSG:4326")),
+            ("banana", BoundingBox(3, 50, 5, 51, crs="EPSG:4326")),
+        ],
+    )
+    def test_extract_spatial_extent_from_constraint_load_stac_with_property_filtering(
+        self, dummy_catalog, extract_source_constraints, dummy_stac_api_server, dummy_stac_api, flavor, expected
+    ):
+        if flavor:
+            property_filters = {
+                "flavor": {
+                    "process_graph": {
+                        "eq": {
+                            "process_id": "eq",
+                            "arguments": {"x": {"from_parameter": "value"}, "y": flavor},
+                            "result": True,
+                        }
+                    }
+                }
+            }
+        else:
+            property_filters = {}
+        pg = {
+            "load_stac": {
+                "process_id": "load_stac",
+                "arguments": {
+                    "url": f"{dummy_stac_api}/collections/collection-123",
+                    "properties": property_filters,
+                },
+                "result": True,
+            },
+        }
+        source_constraints = extract_source_constraints(pg)
+        [source_constraint] = source_constraints
+        extents = _extract_spatial_extent_from_constraint(source_constraint=source_constraint, catalog=dummy_catalog)
+        assert extents == AlignedExtentResult(
+            extent=expected,
+            variants={
+                "original": None,
+                "assets_full_bbox": expected,
+                "assets_covered_bbox": None,
+            },
+        )
 
 class TestDetermineBestGridFromProjMetadata:
     def test_empty(self):

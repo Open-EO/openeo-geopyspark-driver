@@ -757,12 +757,13 @@ def dummy_stac_api_server() -> DummyStacApiServer:
 @pytest.fixture
 def dummy_stac_api(dummy_stac_api_server) -> typing.Iterator[str]:
     """
-    Fixture for a basic dummy STAC API (running as ephemeral server in side-thread).
+    Fixture for the root URL of a basic dummy STAC API
+    (running as ephemeral server in side-thread).
 
     By default: provides a dummy collection "collection-123"
     with items "item-1", "item-2", "item-3".
 
-    To further customize: also fetch the `dummy_stac_api_server` fixture
+    To further customize: also request the `dummy_stac_api_server` fixture
     and define collections/items there.
 
     Yields the root URL of the dummy STAC API server.

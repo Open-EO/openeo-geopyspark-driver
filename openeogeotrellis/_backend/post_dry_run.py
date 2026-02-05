@@ -280,10 +280,12 @@ def _extract_spatial_extent_from_constraint_load_stac(
         spatial_extent=spatial_extent_from_pg,
         temporal_extent=constraint.get("temporal_extent") or (None, None),
     )
+    property_filter_pg_map = constraint.get("properties")
+
     item_collection, _, _, _ = openeogeotrellis.load_stac.construct_item_collection(
         url=stac_url,
         spatiotemporal_extent=spatiotemporal_extent,
-        property_filter_pg_map=None,  # TODO?
+        property_filter_pg_map=property_filter_pg_map,
         feature_flags=None,  # TODO?
         stac_io=None,  # TODO?
     )

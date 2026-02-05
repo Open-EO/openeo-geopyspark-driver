@@ -25,6 +25,7 @@ without compromising stable operations.
 - load_collection through load_stac: new `apply_sentinel2_reflectance_offset` feature flag (eu-cdse/openeo-cdse-infra#803, eu-cdse/openeo-cdse-infra#804)
 - `StacApiWorkspace`: do not require `export-workspace-enable-merge` ([#1030](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1030))
 - Support latest `pystac` (currently 1.14.3) ([#1496](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1496))
+- Support property filtering in `load_stac.construct_item_collection` in post-dry-run phase ([#1530](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1530))
 
 
 ## 0.70.0
