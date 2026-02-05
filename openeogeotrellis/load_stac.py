@@ -46,15 +46,18 @@ from pystac import STACObject
 import shapely.geometry
 from urllib3 import Retry
 
-from openeogeotrellis import datacube_parameters
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.constants import EVAL_ENV_KEY
 from openeogeotrellis.geopysparkcubemetadata import GeopysparkCubeMetadata
-from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
+from typing import TYPE_CHECKING
 from openeogeotrellis.integrations.stac import ResilientStacIO
 from openeogeotrellis.util.datetime import DateTimeLikeOrNone, to_datetime_utc_unless_none
 from openeogeotrellis.util.geometry import GridSnapper
 from openeogeotrellis.utils import get_jvm, map_optional, normalize_temporal_extent, to_projected_polygons, unzip
+
+if TYPE_CHECKING:
+    from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
+    from geopyspark import TiledRasterLayer
 
 logger = logging.getLogger(__name__)
 REQUESTS_TIMEOUT_SECONDS = 60
@@ -141,6 +144,7 @@ def _prepare_context(
           and "aliases" (non-standardized openeo-geopyspark-driver feature).
           `normalized_band_selection` must contain the standard band names after resolving these aliases.
     """
+    from openeogeotrellis import datacube_parameters
 
     # Feature flags: merge global (e.g. from layer catalog info) and user-provided (higher precedence)
     feature_flags = {**(feature_flags or {}), **load_params.get("featureflags", {})}
@@ -555,6 +559,9 @@ def _build_datacube(context: _LoadStacContext) -> GeopysparkDataCube:
     Build the raster pyramid using (heavy) raster loading operations.
     This function performs the actual calls to the PyramidFactory to load raster files.
     """
+    from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
+    from geopyspark import Pyramid
+
     # Unpack context
     pyramid_factory = context.pyramid_factory
     projected_polygons = context.projected_polygons
@@ -649,7 +656,7 @@ def _build_datacube(context: _LoadStacContext) -> GeopysparkDataCube:
         for index in range(0, pyramid.size())
     }
 
-    return GeopysparkDataCube(pyramid=gps.Pyramid(levels), metadata=metadata)
+    return GeopysparkDataCube(pyramid=Pyramid(levels), metadata=metadata)
 
 
 def load_stac(
@@ -1094,6 +1101,7 @@ class ItemCollection:
         # TODO: avoid hardcoded domain sniffing. Possible to discover capabilities in some way?
         # TODO: still necessary to handle `fields` here? It's apparently always the same.
         if root_catalog.get_self_href().startswith("https://planetarycomputer.microsoft.com/api/stac/v1"):
+            import planetary_computer
             modifier = planetary_computer.sign_inplace
             # by default, returns all properties and an invalid STAC Item if fields are specified
             fields = None
