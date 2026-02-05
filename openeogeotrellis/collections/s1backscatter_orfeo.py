@@ -242,6 +242,11 @@ class S1BackscatterOrfeo:
             spatiotemporal_extent=spatiotemporal_extent,
             property_filter_pg_map=property_filter_pg_map,
         )
+        if len(item_collection.items) == 0:
+            raise OpenEOApiException(
+                code="NoDataAvailable", status_code=400,
+                message=f"There is no data available for the given extents.",
+            )
 
         # Build FixedFeaturesOpenSearchClient from STAC items
         jvm = get_jvm()
