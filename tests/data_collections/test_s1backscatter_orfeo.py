@@ -45,9 +45,9 @@ class TestBuildFilterProperties:
         }
 
     def test_stac_client_cog_false(self):
-        """STAC client should use non-COG product type when COG=FALSE."""
+        """STAC client should not change product types when COG=FALSE."""
         result = S1BackscatterOrfeo._build_filter_properties(extra_properties={"COG": "FALSE"}, use_stac_client=True)
-        assert result["product:type"] == "IW_GRDH_1S"
+        assert result["product:type"] == ['IW_GRDH_1S', 'IW_GRDH_1S_B', 'IW_GRDH_1S_C']
 
     def test_legacy_client_cog_false(self):
         """Legacy client should use non-COG product type when COG=FALSE."""
@@ -133,7 +133,7 @@ class TestBuildFilterProperties:
             use_stac_client=True
         )
         # productType gets normalized to product:type and overrides the default
-        assert result["product:type"] == "IW_GRDH_1S_B"
+        assert result["product:type"] == "IW_GRDH_1S"
 
     @pytest.mark.parametrize(
         ["extra_properties", "use_stac_client"],
