@@ -217,6 +217,11 @@ def _get_stac_collection_urls(product_type: str) -> List[str]:
             "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-3-olci-2-wfr-nrt",
             "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-3-olci-2-wfr-ntc",
         ]
+    elif product_type == "SY_2_AOD___":
+        # Global Aerosol parameter over land and sea on super pixel.
+        return [
+            "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-3-syn-2-aod-ntc",
+        ]
     else:
         raise ValueError(f"STAC not yet supported for Sentinel-3 product type: {product_type}")
 
