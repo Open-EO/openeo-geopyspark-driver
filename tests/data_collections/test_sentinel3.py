@@ -17,7 +17,9 @@ if __name__ == "__main__":
     openeogeotrellis.deploy.local.setup_environment()
 
 from openeogeotrellis.collections.sentinel3 import *
+from openeogeotrellis.collections.sentinel3 import _get_acquisition_key
 from numpy.testing import assert_allclose
+from unittest.mock import Mock
 
 from tests.data import get_test_data_file
 
@@ -296,3 +298,154 @@ def test_slstr_load_collection_opensearch():
 if __name__ == "__main__":
     # Allow to run from commandline
     test_read_single()
+
+
+def test_get_acquisition_key():
+    """Test getting acquisition key from STAC item properties."""
+    # Create mock items with properties
+    nrt_item = Mock()
+    nrt_item.properties = {"platform": "sentinel-3a", "sat:absolute_orbit": 51421}
+    assert _get_acquisition_key(nrt_item) == ("sentinel-3a", 51421)
+
+    # NTC item from same acquisition should have same key
+    ntc_item = Mock()
+    ntc_item.properties = {"platform": "sentinel-3a", "sat:absolute_orbit": 51421}
+    assert _get_acquisition_key(ntc_item) == ("sentinel-3a", 51421)
+
+    # Different acquisition
+    other_item = Mock()
+    other_item.properties = {"platform": "sentinel-3b", "sat:absolute_orbit": 40027}
+    assert _get_acquisition_key(other_item) == ("sentinel-3b", 40027)
+
+    # Missing properties should return (None, None)
+    incomplete_item = Mock()
+    incomplete_item.properties = {}
+    assert _get_acquisition_key(incomplete_item) == (None, None)
+
+
+def test_deduplicate_items_prefer_ntc_no_overlap():
+    """Test deduplication when NRT and NTC have different acquisitions (no overlap)."""
+    # Create mock items with different orbits
+    nrt_item1 = Mock()
+    nrt_item1.id = "NRT_1"
+    nrt_item1.properties = {"platform": "sentinel-3a", "sat:absolute_orbit": 51421}
+
+    nrt_item2 = Mock()
+    nrt_item2.id = "NRT_2"
+    nrt_item2.properties = {"platform": "sentinel-3a", "sat:absolute_orbit": 51422}
+
+    ntc_item1 = Mock()
+    ntc_item1.id = "NTC_1"
+    ntc_item1.properties = {"platform": "sentinel-3a", "sat:absolute_orbit": 51420}
+
+    items_by_collection = {
+        "NRT": [(nrt_item1, {}), (nrt_item2, {})],
+        "NTC": [(ntc_item1, {})],
+    }
+
+    result = deduplicate_items_prefer_ntc(items_by_collection)
+
+    # Should have all items since there's no overlap
+    assert len(result) == 3
+    # NTC item should be included
+    assert any(item.id == ntc_item1.id for item, _ in result)
+    # Both NRT items should be included
+    assert any(item.id == nrt_item1.id for item, _ in result)
+    assert any(item.id == nrt_item2.id for item, _ in result)
+
+
+def test_deduplicate_items_prefer_ntc_with_overlap():
+    """Test deduplication when same acquisition exists in both NRT and NTC."""
+    # Create mock items with same orbit (overlap)
+    nrt_item = Mock()
+    nrt_item.id = "NRT_overlapping"
+    nrt_item.properties = {"platform": "sentinel-3a", "sat:absolute_orbit": 51421}
+
+    ntc_item = Mock()
+    ntc_item.id = "NTC_overlapping"
+    ntc_item.properties = {"platform": "sentinel-3a", "sat:absolute_orbit": 51421}
+
+    # Different acquisition in NRT
+    nrt_item_unique = Mock()
+    nrt_item_unique.id = "NRT_unique"
+    nrt_item_unique.properties = {"platform": "sentinel-3a", "sat:absolute_orbit": 51422}
+
+    items_by_collection = {
+        "NRT": [(nrt_item, {}), (nrt_item_unique, {})],
+        "NTC": [(ntc_item, {})],
+    }
+
+    result = deduplicate_items_prefer_ntc(items_by_collection)
+
+    # Should have 2 items: NTC version of overlapping + unique NRT
+    assert len(result) == 2
+
+    # NTC item should be included
+    assert any(item.id == ntc_item.id for item, _ in result)
+
+    # Unique NRT item should be included
+    assert any(item.id == nrt_item_unique.id for item, _ in result)
+
+    # NRT version of overlapping acquisition should NOT be included
+    assert not any(item.id == nrt_item.id for item, _ in result)
+
+
+def test_deduplicate_items_prefer_ntc_all_overlap():
+    """Test deduplication when all NRT items have NTC equivalents."""
+    # Create mock items - all have NTC equivalents
+    nrt_item1 = Mock()
+    nrt_item1.id = "NRT_1"
+    nrt_item1.properties = {"platform": "sentinel-3a", "sat:absolute_orbit": 51421}
+
+    nrt_item2 = Mock()
+    nrt_item2.id = "NRT_2"
+    nrt_item2.properties = {"platform": "sentinel-3a", "sat:absolute_orbit": 51422}
+
+    ntc_item1 = Mock()
+    ntc_item1.id = "NTC_1"
+    ntc_item1.properties = {"platform": "sentinel-3a", "sat:absolute_orbit": 51421}
+
+    ntc_item2 = Mock()
+    ntc_item2.id = "NTC_2"
+    ntc_item2.properties = {"platform": "sentinel-3a", "sat:absolute_orbit": 51422}
+
+    items_by_collection = {
+        "NRT": [(nrt_item1, {}), (nrt_item2, {})],
+        "NTC": [(ntc_item1, {}), (ntc_item2, {})],
+    }
+
+    result = deduplicate_items_prefer_ntc(items_by_collection)
+
+    # Should have only 2 items: both NTC versions
+    assert len(result) == 2
+
+    # Both NTC items should be included
+    assert any(item.id == ntc_item1.id for item, _ in result)
+    assert any(item.id == ntc_item2.id for item, _ in result)
+
+    # No NRT items should be included
+    assert not any(item.id == nrt_item1.id for item, _ in result)
+    assert not any(item.id == nrt_item2.id for item, _ in result)
+
+
+def test_deduplicate_items_prefer_ntc_empty_collections():
+    """Test deduplication with empty collections."""
+    # Empty both
+    result = deduplicate_items_prefer_ntc({"NRT": [], "NTC": []})
+    assert len(result) == 0
+
+    # Only NRT
+    nrt_item = Mock()
+    nrt_item.id = "NRT_only"
+    nrt_item.properties = {"platform": "sentinel-3a", "sat:absolute_orbit": 51421}
+    result = deduplicate_items_prefer_ntc({"NRT": [(nrt_item, {})], "NTC": []})
+    assert len(result) == 1
+    assert result[0][0].id == nrt_item.id
+
+    # Only NTC
+    ntc_item = Mock()
+    ntc_item.id = "NTC_only"
+    ntc_item.properties = {"platform": "sentinel-3a", "sat:absolute_orbit": 51421}
+    result = deduplicate_items_prefer_ntc({"NRT": [], "NTC": [(ntc_item, {})]})
+    assert len(result) == 1
+    assert result[0][0].id == ntc_item.id
