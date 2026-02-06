@@ -6,7 +6,7 @@ import sys
 from datetime import datetime
 from functools import partial
 from glob import glob
-from typing import Dict, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 import geopyspark
 import numpy as np
@@ -43,7 +43,12 @@ logger = logging.getLogger(__name__)
 
 
 def _map_attributes_for_stac(attribute_values: Dict[str, any]) -> Dict[str, any]:
-    """Map opensearch attribute keys and values to STAC equivalents for Sentinel-3."""
+    """
+    Map opensearch attribute keys and values to STAC equivalents for Sentinel-3.
+
+    :param attribute_values: Dictionary of opensearch attribute key-value pairs
+    :return: Dictionary with STAC-equivalent keys and values
+    """
     attribute_keys_mapping = {
         "productType": "product:type",
     }
@@ -71,6 +76,7 @@ def _map_attributes_to_property_filter(attribute_values: Dict[str, any]) -> Prop
     """Convert attribute values to openEO style process graph property filters."""
     mapped = {}
     for k, v in attribute_values.items():
+        # Note, only `eq` operator is supported.
         mapped[k] = {
             "process_graph": {
                 "eq": {
@@ -83,12 +89,86 @@ def _map_attributes_to_property_filter(attribute_values: Dict[str, any]) -> Prop
     return mapped
 
 
-def _get_stac_collection_url(product_type: str) -> str:
-    """Get STAC collection URL for the given Sentinel-3 product type."""
-    # For now, only SLSTR LST is supported
-    # TODO: Make sure that product_type is enough to idenitfy all collections
+def _get_acquisition_key(item) -> tuple:
+    """
+    Get unique acquisition key from STAC item for deduplication.
+
+    Uses platform and absolute orbit number, which uniquely identify a specific
+    satellite pass regardless of processing timeliness category (NRT/NTC).
+    This is more robust than parsing product IDs as it works regardless of
+    product ID format changes and is available for all Sentinel-3 products.
+
+    :param item: STAC item with properties
+    :return: Tuple of (platform, sat:absolute_orbit) that uniquely identifies the acquisition
+    """
+    return (
+        item.properties.get("platform"),
+        item.properties.get("sat:absolute_orbit")
+    )
+
+
+def deduplicate_items_prefer_ntc(items_by_collection: Dict[str, list]) -> list:
+    """
+    Deduplicate STAC items, preferring NTC (higher quality) over NRT.
+
+    When the same acquisition exists in both NRT and NTC collections,
+    only the NTC version is kept since it has better calibration and processing.
+
+    Example:
+        >>> items = deduplicate_items_prefer_ntc({
+        ...     "NTC": [ntc_item_tuple],
+        ...     "NRT": [nrt_item_tuple_1, nrt_item_tuple_2]
+        ... })
+
+    :param items_by_collection: Dictionary with keys "NRT" and "NTC",
+        values are lists of (item, band_assets) tuples
+    :return: List of deduplicated (item, band_assets) tuples
+    """
+    # Build lookup of NTC acquisitions
+    ntc_acquisition_keys = set()
+    for itm, _ in items_by_collection.get("NTC", []):
+        ntc_acquisition_keys.add(_get_acquisition_key(itm))
+
+    # Collect deduplicated items: all NTC items + NRT items not in NTC
+    deduplicated_items = []
+
+    # Add all NTC items (higher quality, takes precedence)
+    ntc_items = items_by_collection.get("NTC", [])
+    deduplicated_items.extend(ntc_items)
+
+    # Add NRT items only if not already in NTC
+    nrt_items = items_by_collection.get("NRT", [])
+    nrt_skipped = 0
+    for itm, band_assets in nrt_items:
+        acquisition_key = _get_acquisition_key(itm)
+        if acquisition_key in ntc_acquisition_keys:
+            nrt_skipped += 1
+            logger.debug(f"Skipping NRT item {itm.id} - NTC version exists")
+        else:
+            deduplicated_items.append((itm, band_assets))
+
+    if nrt_skipped > 0:
+        logger.info(f"Deduplicated: skipped {nrt_skipped} NRT items that exist as NTC (higher quality)")
+
+    logger.info(f"Total deduplicated items: {len(deduplicated_items)} (NTC: {len(ntc_items)}, NRT: {len(nrt_items) - nrt_skipped})")
+
+    return deduplicated_items
+
+
+def _get_stac_collection_urls(product_type: str) -> List[str]:
+    """Get STAC collection URLs for the given Sentinel-3 product type.
+
+    Returns a list of URLs because some products have multiple timeliness categories:
+    - NRT (Near Real Time): Available within ~3 hours, used for recent data
+    - NTC (Non Time Critical): Available after days/weeks, used for older archived data
+    """
     if product_type == SLSTR_PRODUCT_TYPE:
-        return "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-3-sl-2-lst-ntc"
+        # Return both NRT and NTC collections for SLSTR LST
+        # NRT has recent data, NTC has older archived data
+        return [
+            "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-3-sl-2-lst-nrt",
+            "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-3-sl-2-lst-ntc",
+        ]
     else:
         raise ValueError(f"STAC not yet supported for Sentinel-3 product type: {product_type}")
 
@@ -99,12 +179,15 @@ def _build_stac_opensearch_client(
     temporal_extent: Tuple[Optional[str], Optional[str]],
     jvm,
 ) -> any:
-    """Build a FixedFeaturesOpenSearchClient populated with features from STAC API."""
+    """Build a FixedFeaturesOpenSearchClient populated with features from STAC API.
+
+    Queries multiple STAC collections (e.g., NRT and NTC for SLSTR LST) and merges results.
+    """
     from openeogeotrellis.load_stac import _spatiotemporal_extent_from_load_params
     from openeogeotrellis.load_stac import construct_item_collection
 
     product_type = metadata_properties["productType"]
-    url = _get_stac_collection_url(product_type)
+    urls = _get_stac_collection_urls(product_type)
 
     # Map opensearch attributes to STAC properties
     stac_attributes = _map_attributes_for_stac(metadata_properties)
@@ -116,17 +199,33 @@ def _build_stac_opensearch_client(
         temporal_extent=temporal_extent
     )
 
-    # Query STAC API
-    item_collection, metadata, collection_band_names, netcdf_with_time_dimension = construct_item_collection(
-        url=url,
-        spatiotemporal_extent=spatiotemporal_extent,
-        property_filter_pg_map=property_filter_pg_map,
-    )
-
     # Build FixedFeaturesOpenSearchClient from STAC items
     opensearch_client = jvm.org.openeo.geotrellis.file.FixedFeaturesOpenSearchClient()
 
-    for itm, band_assets in item_collection.iter_items_with_band_assets():
+    # Query all STAC collections and collect items with their timeliness category
+    items_by_collection = {}  # collection_name -> list of (item, band_assets)
+    for url in urls:
+        collection_name = "NRT" if "nrt" in url.lower() else "NTC"
+        logger.info(f"Querying STAC collection {collection_name}: {url}")
+        try:
+            # Query STAC API
+            item_collection, metadata, collection_band_names, netcdf_with_time_dimension = construct_item_collection(
+                url=url,
+                spatiotemporal_extent=spatiotemporal_extent,
+                property_filter_pg_map=property_filter_pg_map,
+            )
+            logger.info(f"Found {len(item_collection.items)} items in {collection_name}")
+            items_by_collection[collection_name] = list(item_collection.iter_items_with_band_assets())
+        except Exception as e:
+            # Log but don't fail if one collection fails - the other might still have data
+            logger.warning(f"Failed to query STAC collection {collection_name}: {e}")
+            items_by_collection[collection_name] = []
+
+    # Deduplicate: NTC takes precedence over NRT
+    all_items = deduplicate_items_prefer_ntc(items_by_collection)
+
+    # Build features from all items
+    for itm, band_assets in all_items:
         builder = (
             jvm.org.openeo.opensearch.OpenSearchResponses.featureBuilder()
             .withNominalDate(itm.properties.get("datetime") or itm.properties["start_datetime"])
@@ -261,6 +360,9 @@ def pyramid(metadata_properties, projected_polygons_native_crs, from_date, to_da
     zoom = 0
     tile_size = data_cube_parameters.tileSize()
 
+    # loadSpatialFeatureJsonRDD returns the (id, bbox, nominalDate, links) for each feature,
+    # as well as the metadata (extent and crs_epsg) necessary to construct the layer metadata in Python.
+    # Note that the feature.id is assumed to be the creo_path to the product, which is used in the read_product function to read the data from disk.
     keyed_feature_rdd = file_rdd_factory.loadSpatialFeatureJsonRDD(
         projected_polygons_native_crs, from_date, to_date, zoom, tile_size, data_cube_parameters
     )
@@ -538,24 +640,18 @@ def create_s3_toa(product_type, creo_path, band_names, bbox_tile, digital_number
 
 
 def create_final_grid(final_bbox, resolution, rim_pixels=0 ):
-    """this function will create a grid for a given boundingbox and resolution, optionnally,
-    a number of pixels can be given to create an extra rim on each side of the boundingbox
+    """
+    Create a grid for a given bounding box and resolution.
 
-    Parameters
-    ----------
-    final_bbox : float
-        a list containing the following info [final_xmin, final_ymin, final_xmax, final_ymax]
-    resolution : float
-        the resolution of the grid
-    rim_pixels : int
-        the number of pixels to create an extra rim in each side of the array, default=0
+    Optionally, a number of pixels can be given to create an extra rim on each
+    side of the bounding box.
 
-    Returns
-    -------
-    target_coordinates: float
-        A 2D-array containing the final coordinates of pixel centers
-    target_shape : (int,int)
-        A tuple containing the number of rows/columns
+    :param final_bbox: List containing [final_xmin, final_ymin, final_xmax, final_ymax]
+    :param resolution: The resolution of the grid
+    :param rim_pixels: The number of pixels to create an extra rim in each side of the array, default=0
+    :return: Tuple of (target_coordinates, target_shape) where target_coordinates is a 2D-array
+        containing the final coordinates of pixel centers and target_shape is a tuple containing
+        the number of rows/columns
     """
 
     final_xmin, final_ymin, final_xmax, final_ymax = final_bbox
@@ -590,32 +686,37 @@ def do_binning(
         flag_bitmask: np.uint16=DEFAULT_FLAG_BITMASK,
     ):
     """
-    Assumes that we have a lat/lon grid
-    Does not support angles
+    Perform binning of Sentinel-3 data to a regular grid.
 
-    Parameters
-    ----------
-    super_sampling: int, default 1
-        Super sampling applied to the coordinate variables (linear super sampling) and band values (repeating).
-        When binning a values on a grid to finer or similarly scaled grid, not all output pixels may be assigned a value
-        if no super sampling is applied. This leads to missing values in the output. Super sampling interpolates the
-        input grid to fill these gaps. The larger the relative difference between pixel sizes, the higher the value
-        must be set to avoid missing values. Must be larger or equal to one.
-        (The default is 1, implying no super sampling)
+    Assumes that we have a lat/lon grid. Does not support angles.
 
-    flag_band: str, optional
-        If `flag_band` is a str, interpret this band as flags, to be compared with `flag_bitmask`.
+    :param product_type: Sentinel-3 product type
+    :param final_grid_resolution: Resolution of the target grid
+    :param creo_path: Path to the Sentinel-3 product
+    :param band_names: List of band names to process
+    :param source_coordinates: Source coordinate grid
+    :param target_coordinates: Target coordinate grid
+    :param data_mask: Mask for valid data
+    :param angle_source_coordinates: Source coordinates for angle bands (not supported)
+    :param target_coordinates_with_rim: Target coordinates including rim pixels
+    :param angle_data_mask: Mask for angle data
+    :param digital_numbers: If True, keep digital numbers; if False, apply scaling
+    :param super_sampling: Super sampling applied to the coordinate variables (linear super sampling)
+        and band values (repeating). When binning values on a grid to finer or similarly scaled grid,
+        not all output pixels may be assigned a value if no super sampling is applied. This leads to
+        missing values in the output. Super sampling interpolates the input grid to fill these gaps.
+        The larger the relative difference between pixel sizes, the higher the value must be set to
+        avoid missing values. Must be larger or equal to one (default is 1, implying no super sampling)
+    :param flag_band: If provided, interpret this band as flags to be compared with flag_bitmask.
         Pixels in all bands except flag_band will be set to their fill value (NaN by default) if
-        the corresponding `flag_band` pixel has any bit in common with `flag_bitmask`, i.e.
-         `pixel_value & flag_bitmask > 0`
-        The band specified as `flag_band` will not be included in the output.
-        (The default is None, no band will be used for masking).
-
-    flag_bitmask: np.uint16, default 0xff
-        Bitmask to identify invalid pixels in `flag_band`. Pixels are considered invalid, if their `flag_band` value
-        has any bits set that are also set in `flag_bitmask`.
-        This means that a flag value of zero cannot be masked with this mechanism.
-        Ignored, if `flag_bands` is not set.
+        the corresponding flag_band pixel has any bit in common with flag_bitmask, i.e.
+        pixel_value & flag_bitmask > 0. The band specified as flag_band will not be included
+        in the output (default is None, no band will be used for masking)
+    :param flag_bitmask: Bitmask to identify invalid pixels in flag_band. Pixels are considered invalid
+        if their flag_band value has any bits set that are also set in flag_bitmask. This means that
+        a flag value of zero cannot be masked with this mechanism. Ignored if flag_bands is not set
+        (default is 0xff)
+    :return: Array of binned band data
     """
     logger.info(f"Binning {product_type} with super sampling '{super_sampling}' flag band '{flag_band}' and flag bitmask '{flag_bitmask}'")
     if angle_source_coordinates is not None:
@@ -686,21 +787,22 @@ def do_reproject(product_type, final_grid_resolution, creo_path, band_names,
                  source_coordinates, target_coordinates, data_mask,
                  angle_source_coordinates, target_coordinates_with_rim, angle_data_mask,
                  digital_numbers=True):
-    """Create LUT for reprojecting, and reproject all possible(hard-coded) bands
+    """
+    Create LUT for reprojecting, and reproject all specified bands.
 
-    Parameters
-    ----------
-    out_file : str
-        the output file used for writing the data. The file should already exist and initialised correctly
-    target_coordinates : float
-        a 2D numpy array representing the complete grid for the tile.
-
-    Returns
-    -------
-    out_file: str
-        the name of the output file
-    is_empty: bool
-        True in case no valid data was found in the reprojected data. This test is based on layer Oa02_radiance
+    :param product_type: Sentinel-3 product type
+    :param final_grid_resolution: Resolution of the target grid
+    :param creo_path: Path to the Sentinel-3 product
+    :param band_names: List of band names to reproject
+    :param source_coordinates: Source coordinate grid
+    :param target_coordinates: 2D numpy array representing the complete grid for the tile
+    :param data_mask: Mask for valid data
+    :param angle_source_coordinates: Source coordinates for angle bands
+    :param target_coordinates_with_rim: Target coordinates including rim pixels
+    :param angle_data_mask: Mask for angle data
+    :param digital_numbers: If True, keep digital numbers; if False, apply scaling
+    :return: Tuple of (reprojected_data, is_empty) where reprojected_data is an array of
+        reprojected band data and is_empty is True if no valid data was found
     """
 
     is_empty = False
@@ -774,22 +876,15 @@ def do_reproject(product_type, final_grid_resolution, creo_path, band_names,
 
 
 def _linearNDinterpolate(in_array):
-    """Some low resolution bands only contain values in diagonal lines. They need to be interpolated to fill the
-    target grid completely. nan values will be interpolated
+    """
+    Interpolate low resolution bands to fill the target grid completely.
 
-    Parameters
-    ----------
-    in_array : float
-        the array containing nans that needs to be interpolated
+    Some low resolution bands only contain values in diagonal lines. They need to be
+    interpolated to fill the target grid completely. NaN values will be interpolated.
+    If nothing was interpolated, the in_array is returned.
 
-    Notes
-    -------
-    If nothing was interpolated, the in_array is returned
-
-    Returns
-    -------
-    out_array: float
-        a 2D numpy array containing interpolated data
+    :param in_array: The array containing NaNs that needs to be interpolated
+    :return: 2D numpy array containing interpolated data
     """
     from scipy.interpolate import LinearNDInterpolator
     logger.info("  Start interpolation...")
@@ -815,23 +910,19 @@ def _linearNDinterpolate(in_array):
 
 
 def _read_latlonfile(bbox, latlon_file, lat_band="latitude", lon_band="longitude", interpolation_margin=0, flatten=True):
-    """Read latlon data from this netcdf file
+    """
+    Read latitude/longitude data from a NetCDF file.
 
-    Parameters
-    ----------
-    latlon_file : str
-        the file containing the latitudes and longitudes
-    lat_band : str
-        the band containing the latitudes (default=latitude)
-    lon_band : str
-        the band containing the longitudes (default=longitude)
-
-    Returns
-    -------
-    bbox_original: [float, float, float, float]
-        the surrounding boundingbox of the lat/lon : x_min, y_min, x_max, y_max
-    source_coordinates: a list of coordinates
-        2D-numpy array [[lon, lat], ..., [lon, lat]]
+    :param bbox: Bounding box to filter data
+    :param latlon_file: The file containing the latitudes and longitudes
+    :param lat_band: The band containing the latitudes (default='latitude')
+    :param lon_band: The band containing the longitudes (default='longitude')
+    :param interpolation_margin: Margin to add around the bounding box (default=0)
+    :param flatten: If True, flatten coordinates; if False, keep 2D structure (default=True)
+    :return: Tuple of (bbox_original, source_coordinates, data_mask) where bbox_original is
+        the surrounding bounding box of the lat/lon [x_min, y_min, x_max, y_max],
+        source_coordinates is a 2D-numpy array [[lon, lat], ..., [lon, lat]],
+        and data_mask is the mask for valid data
     """
     # getting  geo information
     logger.debug("Reading lat/lon from file %s" % latlon_file)
@@ -892,24 +983,19 @@ def _read_latlonfile(bbox, latlon_file, lat_band="latitude", lon_band="longitude
     return bbox_original, source_coordinates, data_mask
 
 def create_index_LUT(coordinates, target_coordinates, max_distance):
-    """Create A LUT (lookup table) containing the reprojection indexes. Find ALL the indices of the nearest neighbors within the maximum distance.
+    """
+    Create a LUT (lookup table) containing the reprojection indexes.
 
-    Parameters
-    ----------
-    coordinates : float
-        2D-numpy array [[lon, lat], ..., [lon, lat]] from the source
-    target_coordinates : float
-        2D-numpy array [[lon, lat], ..., [lon, lat]] from the complete gridded target tile
-    max_distance : float
-        The maximum distance to reproject pixels
+    Find all the indices of the nearest neighbors within the maximum distance.
 
-    Returns
-    -------
-    distances: numpy array
-        2D-numpy array [[lon, lat], ..., [lon, lat]] containing the distance between source and target location
-    lut_indices: numpy arry
-        This numpy array contains the source index for each target location.
-        If the index is not available in the source array(value=len(source_array)), it means that no valid pixel was found=> nodata
+    :param coordinates: 2D-numpy array [[lon, lat], ..., [lon, lat]] from the source
+    :param target_coordinates: 2D-numpy array [[lon, lat], ..., [lon, lat]] from the
+        complete gridded target tile
+    :param max_distance: The maximum distance to reproject pixels
+    :return: Tuple of (distances, lut_indices) where distances is a 2D-numpy array containing
+        the distance between source and target location, and lut_indices is a numpy array
+        containing the source index for each target location. If the index is not available
+        in the source array (value=len(source_array)), it means that no valid pixel was found
     """
     logger.info("Creating LUT with shape " + str(target_coordinates.shape))
     # Create a KDTree from the input points
@@ -924,24 +1010,17 @@ def create_index_LUT(coordinates, target_coordinates, max_distance):
 
 
 def read_band(in_file, in_band, data_mask, get_data_array=True):
-    """get array and settings(metadata) out of the in_file
+    """
+    Get array and settings (metadata) from the input file.
 
-    Parameters
-    ----------
-    in_file : str
-        The input file that needs to be read
-    in_band : str
-        The band name of the netcdf that needs to be read
-    get_data_array : bool
-        True : return input_array and settings
-        False : return only the settings(metadata)
-
-    Returns
-    -------
-    data_array: numpy array
-        The array from the netcdf band
-    settings: dict
-        A dict containing the bands metadata (_FillValue, name, dtype, units,...)
+    :param in_file: The input file that needs to be read
+    :param in_band: The band name of the NetCDF that needs to be read
+    :param data_mask: Mask for valid data
+    :param get_data_array: If True, return input_array and settings;
+        if False, return only the settings (metadata)
+    :return: Tuple of (data_array, settings) where data_array is the numpy array from
+        the NetCDF band and settings is a dict containing the band's metadata
+        (_FillValue, name, dtype, units, etc.)
     """
     # can be used to get only the band settings or together with the data
     logger.debug(f"Reading {in_band} from file {in_file}")
@@ -994,21 +1073,17 @@ def read_band(in_file, in_band, data_mask, get_data_array=True):
 
 
 def apply_LUT_on_band(in_data, LUT, nodata=None):
-    """Apply reprojection LUT on an array. The LUT contains the index of the source array
+    """
+    Apply reprojection LUT on an array.
 
-    Parameters
-    ----------
-    in_data : numpy array
-        A 1D-numpy array containing all the source(frame) values
-    LUT : numpy array
-        A 2D-numpy array : LUT has the size of a tile, containing the index of the source data (the index in in_data)
-    nodata : float
-        The nodata value to use when a target coordinate has no corresponding input value.
+    The LUT contains the index of the source array.
 
-    Returns
-    -------
-    grid_values: numpy array
-        2D-numpy array with the size of a tile containing reprojected values
+    :param in_data: 1D-numpy array containing all the source (frame) values
+    :param LUT: 2D-numpy array with the size of a tile, containing the index of the
+        source data (the index in in_data)
+    :param nodata: The nodata value to use when a target coordinate has no corresponding
+        input value
+    :return: 2D-numpy array with the size of a tile containing reprojected values
     """
 
 
