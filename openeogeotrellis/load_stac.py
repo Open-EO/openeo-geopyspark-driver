@@ -1680,7 +1680,7 @@ def get_best_url(asset: pystac.Asset, with_vsis3: bool = True) -> str:
 
     # TODO: this vsis3 upper-lower-case juggling should be moved to geotrellis extensions instead of this undocumented coupling (and hardcoded deployment details)
     return (
-        href.replace("s3://eodata/", "/vsis3/EODATA/")
+        href.replace("s3://eodata/", "/vsis3/eodata/")
         if (with_vsis3 and os.environ.get("AWS_DIRECT") == "TRUE")
         else href.replace("s3://eodata/", "/eodata/")
     )
