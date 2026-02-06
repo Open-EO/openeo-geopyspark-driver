@@ -557,7 +557,7 @@ def _build_datacube(context: _LoadStacContext) -> GeopysparkDataCube:
     This function performs the actual calls to the PyramidFactory to load raster files.
     """
     from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
-    from geopyspark import Pyramid
+    from geopyspark import Pyramid, TiledRasterLayer
 
     # Unpack context
     pyramid_factory = context.pyramid_factory
