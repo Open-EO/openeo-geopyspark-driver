@@ -1024,6 +1024,9 @@ def _write_exported_stac_collection_from_item(
 
     def write_stac_item_file(item: dict) -> Path:
         assets = dict()
+        asset_datetimes = set()
+        asset_bboxes = set()
+        asset_geometries = set()
         for (asset_key,asset) in item.get("assets").items():
             asset_bands = None
             if "bands" in asset:
@@ -1037,17 +1040,18 @@ def _write_exported_stac_collection_from_item(
                         if raster_band["name"] == name:
                             asset_band.update(raster_band)
                     asset_bands.append(asset_band)
+            asset_datetimes.add(asset.get("datetime"))
+            asset_bboxes.add(asset.get("bbox"))
+            asset_geometries.add(json.dumps(asset.get("geometry")))
             assets[asset_key] = dict_no_none({
                 "href": f"{Path(urlparse(asset['href']).path).relative_to(job_dir)}",  # relative to top-level item file
                 "type": asset.get("type"),
                 "roles": asset.get("roles"),
                 "bands": asset_bands,
-                # "nodata": asset.get("nodata"),
-                "datetime": asset.get("datetime"),
-                "bbox": asset.get("bbox"),
-                "geometry": asset.get("geometry"),
             })
-
+        assert len(asset_datetimes) == 1, asset_datetimes
+        assert len(asset_bboxes) == 1, asset_bboxes
+        assert len(asset_geometries) == 1, asset_geometries
         stac_item = {
             "type": "Feature",
             "stac_version": "1.1.0",
