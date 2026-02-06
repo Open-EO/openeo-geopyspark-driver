@@ -57,6 +57,17 @@ _BACKEND_CONFIG_PATH = Path(__file__).parent / "backend_config.py"
 pytest_plugins = "pytester"
 
 
+NO_SKIP_OPTION: typing.Final[str] = "--no-skip"
+
+def pytest_addoption(parser):
+    parser.addoption(NO_SKIP_OPTION, action="store_true", default=False, help="also run skipped tests")
+
+def pytest_collection_modifyitems(config,
+                                  items: typing.List[typing.Any]):
+    if config.getoption(NO_SKIP_OPTION):
+        for test in items:
+            test.own_markers = [marker for marker in test.own_markers if marker.name not in ('skip', 'skipif')]
+
 @pytest.fixture(scope="session")
 def backend_config_path() -> Path:
     return _BACKEND_CONFIG_PATH

@@ -109,34 +109,53 @@ def _get_acquisition_key(item) -> tuple:
 
 def deduplicate_items_prefer_ntc(items_by_collection: Dict[str, list]) -> list:
     """
-    Deduplicate STAC items, preferring NTC (higher quality) over NRT.
+    Deduplicate STAC items with priority: NTC > STC > NRT.
 
-    When the same acquisition exists in both NRT and NTC collections,
-    only the NTC version is kept since it has better calibration and processing.
+    When the same acquisition exists in multiple collections (different timeliness),
+    only the highest priority version is kept:
+    - NTC (Non Time Critical): Highest quality, best calibration
+    - STC (Short Time Critical): Medium priority, rapid delivery
+    - NRT (Near Real Time): Lowest priority, fastest availability
 
     Example:
         >>> items = deduplicate_items_prefer_ntc({
         ...     "NTC": [ntc_item_tuple],
+        ...     "STC": [stc_item_tuple],
         ...     "NRT": [nrt_item_tuple_1, nrt_item_tuple_2]
         ... })
 
-    :param items_by_collection: Dictionary with keys "NRT" and "NTC",
+    :param items_by_collection: Dictionary with keys "NRT", "STC", and/or "NTC",
         values are lists of (item, band_assets) tuples
     :return: List of deduplicated (item, band_assets) tuples
     """
-    # Build lookup of NTC acquisitions
+    # Build lookup of higher priority acquisitions
     ntc_acquisition_keys = set()
     for itm, _ in items_by_collection.get("NTC", []):
         ntc_acquisition_keys.add(_get_acquisition_key(itm))
 
-    # Collect deduplicated items: all NTC items + NRT items not in NTC
+    stc_acquisition_keys = set()
+    for itm, _ in items_by_collection.get("STC", []):
+        stc_acquisition_keys.add(_get_acquisition_key(itm))
+
+    # Collect deduplicated items with priority order
     deduplicated_items = []
 
-    # Add all NTC items (higher quality, takes precedence)
+    # 1. Add all NTC items (highest priority)
     ntc_items = items_by_collection.get("NTC", [])
     deduplicated_items.extend(ntc_items)
 
-    # Add NRT items only if not already in NTC
+    # 2. Add STC items only if not already in NTC
+    stc_items = items_by_collection.get("STC", [])
+    stc_skipped = 0
+    for itm, band_assets in stc_items:
+        acquisition_key = _get_acquisition_key(itm)
+        if acquisition_key in ntc_acquisition_keys:
+            stc_skipped += 1
+            logger.debug(f"Skipping STC item {itm.id} - NTC version exists")
+        else:
+            deduplicated_items.append((itm, band_assets))
+
+    # 3. Add NRT items only if not already in NTC or STC
     nrt_items = items_by_collection.get("NRT", [])
     nrt_skipped = 0
     for itm, band_assets in nrt_items:
@@ -144,13 +163,21 @@ def deduplicate_items_prefer_ntc(items_by_collection: Dict[str, list]) -> list:
         if acquisition_key in ntc_acquisition_keys:
             nrt_skipped += 1
             logger.debug(f"Skipping NRT item {itm.id} - NTC version exists")
+        elif acquisition_key in stc_acquisition_keys:
+            nrt_skipped += 1
+            logger.debug(f"Skipping NRT item {itm.id} - STC version exists")
         else:
             deduplicated_items.append((itm, band_assets))
 
+    # Log deduplication summary
+    if stc_skipped > 0:
+        logger.info(f"Deduplicated: skipped {stc_skipped} STC items that exist as NTC (higher quality)")
     if nrt_skipped > 0:
-        logger.info(f"Deduplicated: skipped {nrt_skipped} NRT items that exist as NTC (higher quality)")
+        logger.info(f"Deduplicated: skipped {nrt_skipped} NRT items that exist as NTC/STC (higher quality)")
 
-    logger.info(f"Total deduplicated items: {len(deduplicated_items)} (NTC: {len(ntc_items)}, NRT: {len(nrt_items) - nrt_skipped})")
+    stc_kept = len(stc_items) - stc_skipped
+    nrt_kept = len(nrt_items) - nrt_skipped
+    logger.info(f"Total deduplicated items: {len(deduplicated_items)} (NTC: {len(ntc_items)}, STC: {stc_kept}, NRT: {nrt_kept})")
 
     return deduplicated_items
 
@@ -159,15 +186,24 @@ def _get_stac_collection_urls(product_type: str) -> List[str]:
     """Get STAC collection URLs for the given Sentinel-3 product type.
 
     Returns a list of URLs because some products have multiple timeliness categories:
-    - NRT (Near Real Time): Available within ~3 hours, used for recent data
-    - NTC (Non Time Critical): Available after days/weeks, used for older archived data
+    - NRT (Near Real Time): Available within ~3 hours, for recent data
+    - NTC (Non Time Critical): Available after days/weeks, consolidated/higher quality
+    - STC (Short Time Critical): Available within hours/days, rapid delivery
+
+    Different products use different timeliness combinations:
+    - SLSTR LST: NRT + NTC (no STC)
+    - SYNERGY SYN: NTC + STC (no NRT - synergy requires consolidated L1B inputs)
     """
+    # TODO: move this to layercatalog.json
     if product_type == SLSTR_PRODUCT_TYPE:
-        # Return both NRT and NTC collections for SLSTR LST
-        # NRT has recent data, NTC has older archived data
         return [
             "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-3-sl-2-lst-nrt",
             "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-3-sl-2-lst-ntc",
+        ]
+    elif product_type == SYNERGY_PRODUCT_TYPE:
+        return [
+            "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-3-syn-2-syn-stc",
+            "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-3-syn-2-syn-ntc",
         ]
     else:
         raise ValueError(f"STAC not yet supported for Sentinel-3 product type: {product_type}")
@@ -205,7 +241,14 @@ def _build_stac_opensearch_client(
     # Query all STAC collections and collect items with their timeliness category
     items_by_collection = {}  # collection_name -> list of (item, band_assets)
     for url in urls:
-        collection_name = "NRT" if "nrt" in url.lower() else "NTC"
+        # Detect collection type from URL
+        url_lower = url.lower()
+        if "nrt" in url_lower:
+            collection_name = "NRT"
+        elif "stc" in url_lower:
+            collection_name = "STC"
+        else:
+            collection_name = "NTC"
         logger.info(f"Querying STAC collection {collection_name}: {url}")
         try:
             # Query STAC API
