@@ -205,7 +205,7 @@ def _get_stac_collection_urls(product_type: str) -> List[str]:
             "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-3-syn-2-syn-stc",
             "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-3-syn-2-syn-ntc",
         ]
-    elif product_type in "OL_2_LFR___":
+    elif product_type == "OL_2_LFR___":
         # Full Resolution Land and atmosphere geophysical products.
         return [
             "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-3-olci-2-lfr-nrt",
