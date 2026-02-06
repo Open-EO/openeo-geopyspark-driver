@@ -14,6 +14,7 @@ Background:
 - Same acquisition can exist in both collections
 """
 
+import datetime
 import logging
 from unittest import skip
 import requests
@@ -71,7 +72,8 @@ def test_assumption_product_type_is_same():
     _log.info("Testing that product:type is the same in NRT and NTC...")
 
     bbox = (9.0, 45.0, 12.0, 47.0)
-    datetime_range = "2025-12-30T00:00:00Z/2025-12-31T23:59:59Z"
+    today = datetime.datetime.utcnow().date()
+    datetime_range = f"{today - datetime.timedelta(days=7)}T00:00:00Z/{today}T23:59:59Z"
 
     # Query NRT
     nrt_data = query_stac("sentinel-3-sl-2-lst-nrt", bbox, datetime_range, limit=3)
@@ -104,7 +106,8 @@ def test_assumption_acquisition_key_uniqueness():
     _log.info("Testing acquisition key uniqueness...")
 
     bbox = (9.0, 45.0, 12.0, 47.0)
-    datetime_range = "2025-12-30T00:00:00Z/2025-12-31T23:59:59Z"
+    today = datetime.datetime.utcnow().date()
+    datetime_range = f"{today - datetime.timedelta(days=7)}T00:00:00Z/{today}T23:59:59Z"
 
     # Query both collections
     nrt_data = query_stac("sentinel-3-sl-2-lst-nrt", bbox, datetime_range, limit=10)
@@ -154,7 +157,8 @@ def test_assumption_timeliness_category_distinguishes_nrt_ntc():
     _log.info("Testing timeliness category values...")
 
     bbox = (9.0, 45.0, 12.0, 47.0)
-    datetime_range = "2025-12-30T00:00:00Z/2025-12-31T23:59:59Z"
+    today = datetime.datetime.utcnow().date()
+    datetime_range = f"{today - datetime.timedelta(days=7)}T00:00:00Z/{today}T23:59:59Z"
 
     # Query NRT
     nrt_data = query_stac("sentinel-3-sl-2-lst-nrt", bbox, datetime_range, limit=5)
@@ -182,7 +186,8 @@ def test_assumption_datetimes_differ_slightly():
     _log.info("Testing datetime precision differences...")
 
     bbox = (9.0, 45.0, 12.0, 47.0)
-    datetime_range = "2025-12-30T00:00:00Z/2025-12-31T23:59:59Z"
+    today = datetime.datetime.utcnow().date()
+    datetime_range = f"{today - datetime.timedelta(days=7)}T00:00:00Z/{today}T23:59:59Z"
 
     # Query both collections
     nrt_data = query_stac("sentinel-3-sl-2-lst-nrt", bbox, datetime_range, limit=10)
@@ -232,7 +237,8 @@ def test_assumption_same_platform_values():
     _log.info("Testing platform values...")
 
     bbox = (9.0, 45.0, 12.0, 47.0)
-    datetime_range = "2025-12-01T00:00:00Z/2025-12-31T23:59:59Z"
+    today = datetime.datetime.utcnow().date()
+    datetime_range = f"{today - datetime.timedelta(days=30)}T00:00:00Z/{today}T23:59:59Z"
 
     # Query both collections for a month
     nrt_data = query_stac("sentinel-3-sl-2-lst-nrt", bbox, datetime_range, limit=20)
@@ -258,7 +264,8 @@ def test_assumption_orbit_numbers_are_integers():
     _log.info("Testing that sat:absolute_orbit is an integer...")
 
     bbox = (9.0, 45.0, 12.0, 47.0)
-    datetime_range = "2025-12-30T00:00:00Z/2025-12-31T23:59:59Z"
+    today = datetime.datetime.utcnow().date()
+    datetime_range = f"{today - datetime.timedelta(days=7)}T00:00:00Z/{today}T23:59:59Z"
 
     nrt_data = query_stac("sentinel-3-sl-2-lst-nrt", bbox, datetime_range, limit=5)
 
@@ -281,7 +288,8 @@ def test_assumption_overlaps_exist():
 
     bbox = (9.0, 45.0, 12.0, 47.0)
     # Use a date range where both NRT and NTC should have data
-    datetime_range = "2025-12-30T00:00:00Z/2025-12-31T23:59:59Z"
+    today = datetime.datetime.utcnow().date()
+    datetime_range = f"{today - datetime.timedelta(days=7)}T00:00:00Z/{today}T23:59:59Z"
 
     nrt_data = query_stac("sentinel-3-sl-2-lst-nrt", bbox, datetime_range, limit=20)
     ntc_data = query_stac("sentinel-3-sl-2-lst-ntc", bbox, datetime_range, limit=20)
@@ -315,7 +323,8 @@ def test_assumption_assets_have_hrefs():
     _log.info("Testing asset href assumptions...")
 
     bbox = (9.0, 45.0, 12.0, 47.0)
-    datetime_range = "2025-12-30T00:00:00Z/2025-12-31T23:59:59Z"
+    today = datetime.datetime.utcnow().date()
+    datetime_range = f"{today - datetime.timedelta(days=7)}T00:00:00Z/{today}T23:59:59Z"
 
     nrt_data = query_stac("sentinel-3-sl-2-lst-nrt", bbox, datetime_range, limit=2)
 
