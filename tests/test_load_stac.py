@@ -1,6 +1,8 @@
+import logging
+
 import datetime
 from contextlib import nullcontext
-from typing import Iterator
+from typing import Iterator, List
 from unittest import mock
 
 import dirty_equals
@@ -12,31 +14,39 @@ import responses
 from openeo.testing.stac import StacDummyBuilder
 from openeo_driver.backend import BatchJobMetadata, BatchJobs, LoadParameters
 from openeo_driver.errors import OpenEOApiException
-from openeo_driver.ProcessGraphDeserializer import DEFAULT_TEMPORAL_EXTENT
 from openeo_driver.users import User
 from openeo_driver.util.date_math import now_utc
 from openeo_driver.util.geometry import BoundingBox
 from openeo_driver.utils import EvalEnv
+from py4j.java_gateway import JavaObject
 
 from openeogeotrellis.backend import GpsBatchJobs
 from openeogeotrellis.job_registry import InMemoryJobRegistry
 from openeogeotrellis.load_stac import (
     ItemCollection,
+    ItemDeduplicator,
     PropertyFilter,
     _get_proj_metadata,
     _is_band_asset,
     _is_supported_raster_mime_type,
     _proj_code_to_epsg,
+    _ProjectionMetadata,
     _SpatialExtent,
+    _spatiotemporal_extent_from_load_params,
     _SpatioTemporalExtent,
     _StacMetadataParser,
     _supports_item_search,
     _TemporalExtent,
+    construct_item_collection,
     extract_own_job_info,
     load_stac,
-    ItemDeduplicator,
+    _prepare_context,
+    AdaptingPropertyFilter,
+    _get_apply_sentinel2_reflectance_offset,
+    _is_sentinel2_reflectance_asset,
 )
 from openeogeotrellis.testing import DummyStacApiServer, gps_config_overrides
+from openeogeotrellis.util.geometry import bbox_to_geojson
 
 
 @pytest.mark.parametrize(
@@ -119,7 +129,6 @@ def test_property_filter_from_parameter(requests_mock):
             env=env,
             layer_properties={},
             batch_jobs=None,
-            override_band_names=None,
         )
 
     assert search_mock.called
@@ -191,7 +200,7 @@ def jvm_mock():
         (
             ["AOT_10m"],
             10.0,
-            [(dirty_equals.IsStr(regex=".*_AOT_10m.jp2"), "AOT_10m", -1000.0, ["AOT_10m"])],
+            [(dirty_equals.IsStr(regex=".*_AOT_10m.jp2"), "AOT_10m", 0.0, ["AOT_10m"])],
         ),
         (
             ["B01_60m"],
@@ -214,19 +223,19 @@ def jvm_mock():
         (
             ["WVP_20m"],
             20.0,
-            [(dirty_equals.IsStr(regex=".*_WVP_20m.jp2"), "WVP_20m", -1000.0, ["WVP_20m"])],
+            [(dirty_equals.IsStr(regex=".*_WVP_20m.jp2"), "WVP_20m", 0.0, ["WVP_20m"])],
         ),
         (
             ["WVP_60m"],
             60.0,
-            [(dirty_equals.IsStr(regex=".*_WVP_60m.jp2"), "WVP_60m", -1000.0, ["WVP_60m"])],
+            [(dirty_equals.IsStr(regex=".*_WVP_60m.jp2"), "WVP_60m", 0.0, ["WVP_60m"])],
         ),
         (
             ["AOT_10m", "WVP_20m"],
             10.0,
             [
-                (dirty_equals.IsStr(regex=".*_AOT_10m.jp2"), "AOT_10m", -1000.0, ["AOT_10m"]),
-                (dirty_equals.IsStr(regex=".*_WVP_20m.jp2"), "WVP_20m", -1000.0, ["WVP_20m"]),
+                (dirty_equals.IsStr(regex=".*_AOT_10m.jp2"), "AOT_10m", 0.0, ["AOT_10m"]),
+                (dirty_equals.IsStr(regex=".*_WVP_20m.jp2"), "WVP_20m", 0.0, ["WVP_20m"]),
             ],
         ),
         (
@@ -258,7 +267,7 @@ def test_resolution_and_offset_handling(
     Originally referred to as "LCFM Improvements"
     """
     stac_api_root_url = "https://stac.test"
-    stac_collection_url = f"{stac_api_root_url}/collections/collection"
+    stac_collection_url = f"{stac_api_root_url}/collections/sentinel-2-l2a"
 
     features = test_data.load_json("stac/issue1043-api-proj-code/FeatureCollection.json")
 
@@ -379,7 +388,6 @@ def test_empty_cube_from_stac_api(requests_mock, featureflags, env, expectation)
             url=stac_collection_url,
             load_params=LoadParameters(
                 spatial_extent={"west": 0.0, "south": 50.0, "east": 1.0, "north": 51.0},
-                temporal_extent=DEFAULT_TEMPORAL_EXTENT,
                 bands=["B04", "B03", "B02"],  # required if empty cubes allowed
                 featureflags=featureflags,
             ),
@@ -423,7 +431,6 @@ def test_empty_cube_from_non_intersecting_item(requests_mock, test_data, feature
             url=stac_item_url,
             load_params=LoadParameters(
                 spatial_extent={"west": 0.0, "south": 50.0, "east": 1.0, "north": 51.0},
-                temporal_extent=DEFAULT_TEMPORAL_EXTENT,
                 featureflags=featureflags,
             ),
             env=env,
@@ -733,6 +740,211 @@ def test_proj_code_to_epsg():
     assert _proj_code_to_epsg(1234) is None
 
 
+class TestProjectionMetadata:
+    def test_code_from_epsg(self):
+        metadata = _ProjectionMetadata(epsg=32631)
+        assert metadata.code == "EPSG:32631"
+        assert metadata.epsg == 32631
+
+    def test_epsg_from_code(self):
+        metadata = _ProjectionMetadata(code="EPSG:32631")
+        assert metadata.code == "EPSG:32631"
+        assert metadata.epsg == 32631
+
+    def test_bbox_from_shape_and_transform(self):
+        # https://github.com/soxofaan/projection/blob/22ada42310b58c00d74f68250fd65c8ba6f178b3/examples/assets.json
+        metadata = _ProjectionMetadata(
+            code="EPSG:32659",
+            shape=[5558, 9559],
+            transform=[0.5, 0, 712710, 0, -0.5, 151406, 0, 0, 1],
+        )
+        assert metadata.bbox == (712710.0, 148627.0, 717489.5, 151406.0)
+
+    def test_resolution_empty(self):
+        pm = _ProjectionMetadata()
+
+        with pytest.raises(ValueError, match="Unable to calculate cell size"):
+            pm.resolution()
+
+        assert pm.resolution(fail_on_miss=False) is None
+
+    def test_resolution_from_bbox_and_shape(self):
+        assert _ProjectionMetadata(
+            bbox=(100, 200, 300, 500),
+            shape=(30, 50),
+        ).resolution() == (4, 10)
+
+        assert _ProjectionMetadata(
+            bbox=(1000, 2000, 5000, 8000),
+            shape=(100, 200),
+        ).resolution() == (20.0, 60.0)
+
+    def test_resolution_from_transform(self):
+        assert _ProjectionMetadata(
+            transform=[0.5, 0, 712710, 0, -0.5, 151406, 0, 0, 1],
+        ).resolution() == (0.5, 0.5)
+
+    def test_from_item_minimal(self):
+        item = pystac.Item.from_dict(StacDummyBuilder.item())
+        metadata = _ProjectionMetadata.from_item(item)
+        assert metadata.code is None
+        assert metadata.epsg is None
+        assert metadata.bbox is None
+        assert metadata.shape is None
+
+    def test_from_item_full(self):
+        item = pystac.Item.from_dict(
+            StacDummyBuilder.item(
+                properties={
+                    "proj:epsg": 32631,
+                    "proj:bbox": [1200, 3400, 5600, 7800],
+                    "proj:shape": [100, 200],
+                }
+            )
+        )
+        metadata = _ProjectionMetadata.from_item(item)
+        assert metadata.code == "EPSG:32631"
+        assert metadata.epsg == 32631
+        assert metadata.bbox == (1200, 3400, 5600, 7800)
+        assert metadata.shape == (100, 200)
+
+    def test_from_asset_basic(self):
+        asset = pystac.Asset(
+            href="https://stac.test/asset.tif",
+            extra_fields={
+                "proj:epsg": 32631,
+                "proj:bbox": [1200, 3400, 5600, 7800],
+                "proj:shape": [100, 200],
+            },
+        )
+        metadata = _ProjectionMetadata.from_asset(asset)
+        assert metadata.code == "EPSG:32631"
+        assert metadata.epsg == 32631
+        assert metadata.bbox == (1200, 3400, 5600, 7800)
+        assert metadata.shape == (100, 200)
+
+    def test_from_asset_with_item(self):
+        asset = pystac.Asset(
+            href="https://stac.test/asset.tif",
+            extra_fields={
+                "proj:bbox": [1111, 2222, 3333, 4444],
+                "proj:shape": [10, 20],
+            },
+        )
+        item = pystac.Item.from_dict(
+            StacDummyBuilder.item(
+                properties={
+                    "proj:epsg": 32631,
+                    "proj:shape": [100, 200],
+                }
+            )
+        )
+        metadata = _ProjectionMetadata.from_asset(asset, item=item)
+        assert metadata.code == "EPSG:32631"
+        assert metadata.epsg == 32631
+        assert metadata.bbox == (1111, 2222, 3333, 4444)
+        assert metadata.shape == (10, 20)
+
+    def test_from_asset_with_owner_item(self):
+        asset = pystac.Asset(
+            href="https://stac.test/asset.tif",
+            extra_fields={
+                "proj:bbox": [1111, 2222, 3333, 4444],
+                "proj:shape": [10, 20],
+            },
+        )
+        asset.set_owner(
+            pystac.Item.from_dict(
+                StacDummyBuilder.item(
+                    properties={
+                        "proj:epsg": 32631,
+                        "proj:shape": [100, 200],
+                    }
+                )
+            )
+        )
+        metadata = _ProjectionMetadata.from_asset(asset)
+        assert metadata.code == "EPSG:32631"
+        assert metadata.epsg == 32631
+        assert metadata.bbox == (1111, 2222, 3333, 4444)
+        assert metadata.shape == (10, 20)
+
+    @pytest.mark.parametrize(
+        ["extent", "shape", "expected"],
+        [
+            (
+                BoundingBox(12, 26, 37, 52, crs="EPSG:4326"),
+                [10, 10],
+                BoundingBox(12, 26, 30, 40, crs="EPSG:4326"),
+            ),
+            (
+                BoundingBox(12.345, 26.345, 27.345, 35.345, crs="EPSG:4326"),
+                [100, 100],
+                BoundingBox(12.2, 26.2, 27.4, 35.4, crs="EPSG:4326").approx(abs=1e-6),
+            ),
+            (
+                BoundingBox(12.3434, 26.3434, 27.3434, 35.3434, crs="EPSG:4326"),
+                [1000, 500],
+                BoundingBox(12.32, 26.34, 27.36, 35.36, crs="EPSG:4326"),
+            ),
+        ],
+    )
+    def test_coverage_for_simple(self, extent, shape, expected):
+        metadata = _ProjectionMetadata(epsg=4326, bbox=(10, 20, 30, 40), shape=shape)
+        coverage = metadata.coverage_for(extent)
+        assert coverage == expected
+
+    def test_coverage_for_snap_option(self):
+        metadata = _ProjectionMetadata(epsg=4326, bbox=(10, 20, 30, 40), shape=[100, 100])
+        extent = BoundingBox(12.345, 26.345, 27.345, 35.345, crs="EPSG:4326")
+
+        # Do snapping (default)
+        expected = BoundingBox(12.2, 26.2, 27.4, 35.4, crs="EPSG:4326").approx(abs=1e-6)
+        assert metadata.coverage_for(extent) == expected
+        assert metadata.coverage_for(extent, snap=True) == expected
+
+        # No snapping
+        expected = BoundingBox(12.345, 26.345, 27.345, 35.345, crs="EPSG:4326")
+        assert metadata.coverage_for(extent, snap=False) == expected
+
+    @pytest.mark.parametrize(
+        ["extent", "shape", "expected"],
+        [
+            (
+                # Fully inside UTM tile (10m resolution)
+                BoundingBox(5.1, 50.8, 5.2, 50.9, crs="EPSG:4326"),
+                [10980, 10980],
+                BoundingBox(647660, 5629680, 655030, 5641010, crs="EPSG:32631"),
+            ),
+            (
+                # At corer of UTM tile, partially outside (to be clipped in footprint)
+                BoundingBox(6.0, 51.4, 6.2, 51.6, crs="EPSG:4326"),
+                [10980, 10980],
+                BoundingBox(707760, 5698570, 709800, 5700000, crs="EPSG:32631"),
+            ),
+            (
+                # outside UTM tile
+                BoundingBox(20, 51, 20.1, 51.1, crs="EPSG:4326"),
+                [10980, 10980],
+                None,
+            ),
+            (
+                # Low res asset (200m) and clipping
+                BoundingBox(6.0, 51.4, 6.2, 51.6, crs="EPSG:4326"),
+                [549, 549],
+                BoundingBox(707600, 5698400, 709800, 5700000, crs="EPSG:32631"),
+            ),
+        ],
+    )
+    def test_coverage_for_lonlat_in_utm(self, extent, shape, expected):
+        # SENTINEL2_L2A-alike projection metadata
+        metadata = _ProjectionMetadata(epsg=32631, bbox=[600000, 5590200, 709800, 5700000], shape=shape)
+        coverage = metadata.coverage_for(extent)
+        assert coverage == expected
+
+
+
+
 def test_get_proj_metadata_minimal():
     asset = pystac.Asset(href="https://example.com/asset.tif")
     item = pystac.Item.from_dict(StacDummyBuilder.item())
@@ -794,6 +1006,26 @@ def test_get_proj_metadata_from_asset(item_properties, asset_extra_fields, expec
 
 
 class TestTemporalExtent:
+    def test_as_tuple_empty(self):
+        extent = _TemporalExtent(None, None)
+        assert extent.as_tuple() == (None, None)
+
+    def test_as_tuple(self):
+        extent = _TemporalExtent("2025-03-04T11:11:11", "2025-05-06T22:22:22")
+        assert extent.as_tuple() == (
+            datetime.datetime(2025, 3, 4, 11, 11, 11, tzinfo=datetime.timezone.utc),
+            datetime.datetime(2025, 5, 6, 22, 22, 22, tzinfo=datetime.timezone.utc),
+        )
+
+    def test_isoformat(self):
+        assert _TemporalExtent("2025-03-04T11:11:11", "2025-05-06T22:22:22").isoformat() == (
+            "2025-03-04T11:11:11+00:00",
+            "2025-05-06T22:22:22+00:00",
+        )
+        assert _TemporalExtent(None, "2025-05-06").isoformat() == (None, "2025-05-06T00:00:00+00:00")
+        assert _TemporalExtent("2025-05-06", None).isoformat() == ("2025-05-06T00:00:00+00:00", None)
+        assert _TemporalExtent(None, None).isoformat() == (None, None)
+
     def test_intersects_empty(self):
         extent = _TemporalExtent(None, None)
         assert extent.intersects("1789-07-14") == True
@@ -1020,6 +1252,64 @@ class TestSpatioTemporalExtent:
             ),
         )
         assert extent.collection_intersects(collection) == expected
+
+
+@pytest.mark.parametrize(
+    ["load_params", "expected"],
+    [
+        (
+            LoadParameters(),
+            (None, (None, None)),
+        ),
+        (
+            LoadParameters(
+                spatial_extent={"west": 10, "south": 20, "east": 30, "north": 40},
+                temporal_extent=("2025-09-01", "2025-10-11"),
+            ),
+            (
+                BoundingBox(west=10, south=20, east=30, north=40, crs=4326),
+                (
+                    datetime.datetime(2025, 9, 1, tzinfo=datetime.timezone.utc),
+                    datetime.datetime(2025, 10, 10, 23, 59, 59, microsecond=999000, tzinfo=datetime.timezone.utc),
+                ),
+            ),
+        ),
+        (
+            LoadParameters(temporal_extent=("2025-09-01", "2025-09-01")),
+            (
+                None,
+                (
+                    datetime.datetime(2025, 9, 1, tzinfo=datetime.timezone.utc),
+                    datetime.datetime(2025, 9, 1, 23, 59, 59, microsecond=999999, tzinfo=datetime.timezone.utc),
+                ),
+            ),
+        ),
+        (
+            LoadParameters(temporal_extent=(None, "2025-09-05")),
+            (
+                None,
+                (
+                    None,
+                    datetime.datetime(2025, 9, 4, 23, 59, 59, microsecond=999000, tzinfo=datetime.timezone.utc),
+                ),
+            ),
+        ),
+        (
+            LoadParameters(temporal_extent=("2025-09-01", None)),
+            (
+                None,
+                (
+                    datetime.datetime(2025, 9, 1, tzinfo=datetime.timezone.utc),
+                    None,
+                ),
+            ),
+        ),
+    ],
+)
+def test_spatiotemporal_extent_from_load_params(load_params, expected, time_machine):
+    time_machine.move_to("2024-01-02T03:04:05Z")
+    extent = _spatiotemporal_extent_from_load_params(load_params.spatial_extent, load_params.temporal_extent)
+    assert (extent.spatial_extent.as_bbox(), extent.temporal_extent.as_tuple()) == expected
 
 
 class TestPropertyFilter:
@@ -1254,11 +1544,17 @@ class TestPropertyFilter:
                 {"process_id": "gte", "arguments": {"x": 42, "y": {"from_parameter": "value"}}},
                 '"properties.foo" <= 42',
             ),
-            # TODO?
-            # (
-            #     {"process_id": "array_contains", "arguments": {"data": [42, 4242], "y": {"from_parameter": "value"}}},
-            #     "...",
-            # ),
+            (
+                {"process_id": "array_contains", "arguments": {"data": [42, 4242], "y": {"from_parameter": "value"}}},
+                '"properties.foo" in (42, 4242)',
+            ),
+            (
+                {
+                    "process_id": "array_contains",
+                    "arguments": {"data": ["blue", "green"], "y": {"from_parameter": "value"}},
+                },
+                "\"properties.foo\" in ('blue', 'green')",
+            ),
         ],
     )
     def test_to_cql2_text_operators(self, pg_node, expected):
@@ -1380,6 +1676,13 @@ class TestPropertyFilter:
                 {"process_id": "array_contains", "arguments": {"data": [42, 4242], "y": {"from_parameter": "value"}}},
                 {"op": "in", "args": [{"property": "properties.foo"}, [42, 4242]]},
             ),
+            (
+                {
+                    "process_id": "array_contains",
+                    "arguments": {"data": ["blue", "green"], "y": {"from_parameter": "value"}},
+                },
+                {"op": "in", "args": [{"property": "properties.foo"}, ["blue", "green"]]},
+            ),
         ],
     )
     def test_to_cql2_json_operators(self, pg_node, expected):
@@ -1459,6 +1762,191 @@ class TestPropertyFilter:
         )
 
 
+class TestAdaptingPropertyFilter:
+    @pytest.mark.parametrize(
+        ["adaptations", "expected_text", "expected_json"],
+        [
+            (
+                # Empty case (no adaptations)
+                {},
+                "\"properties.foo\" = 'FOO' and \"properties.bar\" = 'BAR'",
+                {
+                    "op": "and",
+                    "args": [
+                        {"op": "=", "args": [{"property": "properties.foo"}, "FOO"]},
+                        {"op": "=", "args": [{"property": "properties.bar"}, "BAR"]},
+                    ],
+                },
+            ),
+            (
+                # Drop "foo"
+                {"foo": "drop"},
+                "\"properties.bar\" = 'BAR'",
+                {"op": "=", "args": [{"property": "properties.bar"}, "BAR"]},
+            ),
+            (
+                # Rename "foo" to "fancyfoo"
+                {"foo": {"rename": "fancyfoo"}},
+                "\"properties.fancyfoo\" = 'FOO' and \"properties.bar\" = 'BAR'",
+                {
+                    "op": "and",
+                    "args": [
+                        {"op": "=", "args": [{"property": "properties.fancyfoo"}, "FOO"]},
+                        {"op": "=", "args": [{"property": "properties.bar"}, "BAR"]},
+                    ],
+                },
+            ),
+            (
+                # Map values
+                {
+                    "foo": {"value_mapping": {"SOMETHING": "else"}},
+                    "bar": {"value_mapping": {"BAR": "BARRRR"}},
+                },
+                "\"properties.foo\" = 'FOO' and \"properties.bar\" = 'BARRRR'",
+                {
+                    "op": "and",
+                    "args": [
+                        {"op": "=", "args": [{"property": "properties.foo"}, "FOO"]},
+                        {"op": "=", "args": [{"property": "properties.bar"}, "BARRRR"]},
+                    ],
+                },
+            ),
+            (
+                # add-MGRS-prefix
+                {"foo": {"value_mapping": "add-MGRS-prefix"}},
+                "\"properties.foo\" = 'MGRS-FOO' and \"properties.bar\" = 'BAR'",
+                {
+                    "op": "and",
+                    "args": [
+                        {"op": "=", "args": [{"property": "properties.foo"}, "MGRS-FOO"]},
+                        {"op": "=", "args": [{"property": "properties.bar"}, "BAR"]},
+                    ],
+                },
+            ),
+        ],
+    )
+    def test_overrides_to_cql2(self, adaptations, expected_text, expected_json):
+        user_specified_properties = {
+            "foo": {
+                "process_graph": {
+                    "eq1": {
+                        "process_id": "eq",
+                        "arguments": {"x": {"from_parameter": "value"}, "y": "FOO"},
+                        "result": True,
+                    }
+                }
+            },
+            "bar": {
+                "process_graph": {
+                    "eq1": {
+                        "process_id": "eq",
+                        "arguments": {"x": {"from_parameter": "value"}, "y": "BAR"},
+                        "result": True,
+                    }
+                }
+            },
+        }
+        property_filter = AdaptingPropertyFilter(user_specified_properties, adaptations=adaptations)
+        assert property_filter.to_cql2_text() == expected_text
+        assert property_filter.to_cql2_json() == expected_json
+
+    @pytest.mark.parametrize(
+        ["adaptations", "no_match", "match"],
+        [
+            (
+                {},
+                [{}, {"foo": "bar"}],
+                [{"foo": "FOO"}],
+            ),
+            (
+                {"foo": "drop"},
+                [],
+                [{}, {"anything": "goes"}],
+            ),
+            (
+                {"foo": {"rename": "hohoho", "value_mapping": {"FOO": "HAHAHA"}}},
+                [{}, {"fancyfoo": "FOO"}, {"foo": "FOO"}],
+                [{"hohoho": "HAHAHA"}],
+            ),
+            (
+                {"foo": {"rename": "mgrs-foo", "value_mapping": "add-MGRS-prefix"}},
+                [{}, {"foo": "FOO"}, {"mgrs-foo": "FOO"}],
+                [{"mgrs-foo": "MGRS-FOO"}],
+            ),
+        ],
+    )
+    def test_overrides_to_matcher(self, adaptations, no_match, match):
+        user_specified_properties = {
+            "foo": {
+                "process_graph": {
+                    "eq1": {
+                        "process_id": "eq",
+                        "arguments": {"x": {"from_parameter": "value"}, "y": "FOO"},
+                        "result": True,
+                    }
+                }
+            }
+        }
+        property_filter = AdaptingPropertyFilter(user_specified_properties, adaptations=adaptations)
+
+        matcher = property_filter.build_matcher()
+        assert [matcher(input) for input in no_match] == [False] * len(no_match)
+        assert [matcher(input) for input in match] == [True] * len(match)
+
+    def test_logging(self, caplog):
+        caplog.set_level(level=logging.INFO)
+        user_specified_properties = {
+            "foo": {
+                "process_graph": {
+                    "eq1": {
+                        "process_id": "eq",
+                        "arguments": {"x": {"from_parameter": "value"}, "y": "FOO"},
+                        "result": True,
+                    }
+                }
+            }
+        }
+        adaptations = {
+            "foo": {"rename": "mgrs-foo", "value_mapping": "add-MGRS-prefix"},
+        }
+        property_filter = AdaptingPropertyFilter(user_specified_properties, adaptations=adaptations)
+        property_filter.to_cql2_text()
+        assert caplog.messages == [
+            """AdaptingPropertyFilter: updates=["Rename 'foo' to 'mgrs-foo'", "Map 'mgrs-foo' value 'FOO' to 'MGRS-FOO'"]"""
+        ]
+
+    @pytest.mark.parametrize(
+        ["adaptations", "expected_text", "expected_json"],
+        [
+            (
+                {"foo": {"rename": "ffooo", "value_mapping": {"F22": "F2000"}}},
+                """"properties.ffooo" in ('F1', 'F2000', 'F333')""",
+                {"op": "in", "args": [{"property": "properties.ffooo"}, ["F1", "F2000", "F333"]]},
+            ),
+            (
+                {"foo": {"rename": "mgrs-foo", "value_mapping": "add-MGRS-prefix"}},
+                """"properties.mgrs-foo" in ('MGRS-F1', 'MGRS-F22', 'MGRS-F333')""",
+                {"op": "in", "args": [{"property": "properties.mgrs-foo"}, ["MGRS-F1", "MGRS-F22", "MGRS-F333"]]},
+            ),
+        ],
+    )
+    def test_contains(self, adaptations, expected_text, expected_json):
+        user_specified_properties = {
+            "foo": {
+                "process_graph": {
+                    "contains": {
+                        "process_id": "array_contains",
+                        "arguments": {"data": ["F1", "F22", "F333"], "value": {"from_parameter": "value"}},
+                        "result": True,
+                    }
+                }
+            }
+        }
+        property_filter = AdaptingPropertyFilter(user_specified_properties, adaptations=adaptations)
+        assert property_filter.to_cql2_text() == expected_text
+        assert property_filter.to_cql2_json() == expected_json
+
+
 class TestItemCollection:
     def test_from_stac_item_basic(self):
         item = pystac.Item.from_dict(StacDummyBuilder.item())
@@ -1524,6 +2012,7 @@ class TestItemCollection:
                 "assets": {
                     "asset1": {
                         "bbox": [20, 30, 25, 35],
+                        "geometry": bbox_to_geojson(20, 30, 25, 35),
                         "datetime": "2025-09-04T10:00:00Z",
                         "roles": ["data"],
                         "href": "https://data.test/asset1.tif",
@@ -1531,6 +2020,7 @@ class TestItemCollection:
                     },
                     "asset2": {
                         "bbox": [24, 34, 28, 38],
+                        "geometry": bbox_to_geojson(24, 34, 28, 38),
                         "datetime": "2025-09-08T10:00:00Z",
                         "roles": ["data"],
                         "href": "https://data.test/asset2.tif",
@@ -1548,7 +2038,7 @@ class TestItemCollection:
             1: dirty_equals.IsPartialDict(
                 {
                     "type": "Feature",
-                    "stac_version": "1.0.0",
+                    "stac_version": dirty_equals.IsOneOf("1.0.0", "1.1.0"),
                     "id": "asset1",
                     "assets": {"asset1": {"eo:bands": [{"name": "red"}], "href": "https://data.test/asset1.tif"}},
                     "bbox": [20, 30, 25, 35],
@@ -1558,7 +2048,7 @@ class TestItemCollection:
             2: dirty_equals.IsPartialDict(
                 {
                     "type": "Feature",
-                    "stac_version": "1.0.0",
+                    "stac_version": dirty_equals.IsOneOf("1.0.0", "1.1.0"),
                     "id": "asset2",
                     "assets": {"asset2": {"eo:bands": [{"name": "red"}], "href": "https://data.test/asset2.tif"}},
                     "bbox": [24, 34, 28, 38],
@@ -1898,6 +2388,14 @@ class TestItemCollection:
         }
 
 
+def test_construct_item_collection_minimal(dummy_stac_api):
+    url = f"{dummy_stac_api}/collections/collection-123"
+    item_collection, metadata, bands, netcdf_with_time_dimension = construct_item_collection(url=url)
+    assert set(item.id for item in item_collection.items) == {"item-1", "item-2", "item-3"}
+    assert bands == []
+    # TODO deeper tests that also involve various band metadata detection aspects
+
+
 class TestItemDeduplicator:
     def test_trivial(self):
         item = pystac.Item.from_dict(StacDummyBuilder.item())
@@ -2038,3 +2536,317 @@ class TestItemDeduplicator:
         depuplicator = ItemDeduplicator()
         result = depuplicator.deduplicate([item1, item2, item3])
         assert [r.id for r in result] == expected
+
+
+class _OpenSearchClientDumper:
+    """Helper to extract/dump OpenSearchClient contents for testing."""
+
+    # TODO: move this to more general utility module?
+
+    def scala_iterate(self, iterator):
+        while iterator.hasNext():
+            yield iterator.next()
+
+    def dump_link(self, link: JavaObject) -> dict:
+        """dump org.openeo.opensearch.OpenSearchResponses.Link"""
+        return {
+            # "toString": l.toString(),
+            "href": link.href().toString(),
+            "title": link.title().get(),
+            "bandNames": list(self.scala_iterate(link.bandNames().get().iterator())),
+        }
+
+    def dump_feature(self, feature: JavaObject) -> dict:
+        """dump org.openeo.opensearch.OpenSearchResponses.Feature"""
+        return {
+            "id": feature.id(),
+            "links": [self.dump_link(link) for link in feature.links()],
+        }
+
+    def dump_opensearch_client_features(self, opensearch_client: JavaObject) -> List[dict]:
+        """Dump all features from org.openeo.opensearch.OpenSearchClient"""
+        feature_iterator = opensearch_client.features().iterator()
+        return [self.dump_feature(feature) for feature in self.scala_iterate(feature_iterator)]
+
+
+class TestPrepareContext:
+    def _define_collection_s2_with_granule_metadata(
+        self, dummy_server: DummyStacApiServer, collection_id: str = "s2-with-granule_metadata"
+    ):
+        dummy_server.define_collection(
+            collection_id,
+            extent={
+                "spatial": {"bbox": [[3, 50, 5, 51]]},
+                "temporal": {"interval": [["2024-02-01", "2024-12-01"]]},
+            },
+            summaries={
+                "bands": [
+                    {"name": "B02", "common_name": "blue"},
+                    {"name": "B03", "common_name": "green"},
+                ]
+            },
+        )
+        dummy_server.define_item(
+            collection_id=collection_id,
+            item_id=f"item-123",
+            datetime=f"2024-10-20T12:00:00Z",
+            bbox=[3, 50, 5, 51],
+            assets={
+                "B02_10m": {
+                    "href": "https://stac.test/B02_10m.tif",
+                    "type": "image/tiff; application=geotiff",
+                    "roles": ["data"],
+                    "bands": [{"name": "B02"}],
+                    "gsd": 10,
+                    "proj:code": 4326,
+                    "proj:bbox": [5, 51, 6, 52],
+                    "proj:shape": [1000, 1000],
+                },
+                "B02_20m": {
+                    "href": "https://stac.test/B02_20m.tif",
+                    "type": "image/tiff; application=geotiff",
+                    "roles": ["data"],
+                    "bands": [{"name": "B02"}],
+                    "gsd": 20,
+                    "proj:code": 4326,
+                    "proj:bbox": [5, 51, 6, 52],
+                    "proj:shape": [500, 500],
+                },
+                "B03_10m": {
+                    "href": "https://stac.test/B03_10m.tif",
+                    "type": "image/tiff; application=geotiff",
+                    "roles": ["data"],
+                    "bands": [{"name": "B03"}],
+                    "gsd": 10,
+                    "proj:code": 4326,
+                    "proj:bbox": [5, 51, 6, 52],
+                    "proj:shape": [1000, 1000],
+                },
+                "granule_metadata": {
+                    "href": "https://stac.test/MTD_TL.xml",
+                    "type": "application/xml",
+                    "roles": ["metadata"],
+                    "title": "MTD_TL.xml",
+                },
+            },
+        )
+
+    @pytest.mark.parametrize(
+        [
+            "load_params_bands",
+            "normalized_band_selection",
+            "expected_links",
+            "expected_metadata_band_names",
+            "expected_link_titles",
+        ],
+        [
+            (
+                None,
+                None,
+                [
+                    {"title": "B02_10m", "href": "https://stac.test/B02_10m.tif", "bandNames": ["B02"]},
+                    {"title": "B03_10m", "href": "https://stac.test/B03_10m.tif", "bandNames": ["B03"]},
+                    {
+                        "title": "granule_metadata",
+                        "href": "https://stac.test/MTD_TL.xml",
+                        "bandNames": [
+                            "granule_metadata##0",
+                            "granule_metadata##1",
+                            "granule_metadata##2",
+                            "granule_metadata##3",
+                        ],
+                    },
+                ],
+                ["B02", "B03", "sunAzimuthAngles", "sunZenithAngles", "viewAzimuthMean", "viewZenithMean"],
+                [
+                    "B02",
+                    "B03",
+                    "granule_metadata##0",
+                    "granule_metadata##1",
+                    "granule_metadata##2",
+                    "granule_metadata##3",
+                ],
+            ),
+            (
+                ["B02"],
+                None,
+                [{"title": "B02_10m", "href": "https://stac.test/B02_10m.tif", "bandNames": ["B02"]}],
+                ["B02"],
+                ["B02"],
+            ),
+            (
+                ["B02_20m"],
+                None,
+                [{"title": "B02_20m", "href": "https://stac.test/B02_20m.tif", "bandNames": ["B02_20m"]}],
+                ["B02_20m"],
+                ["B02_20m"],
+            ),
+            (
+                ["B02", "sunAzimuthAngles", "viewZenithMean"],
+                None,
+                [
+                    {"title": "B02_10m", "href": "https://stac.test/B02_10m.tif", "bandNames": ["B02"]},
+                    {
+                        "title": "granule_metadata",
+                        "href": "https://stac.test/MTD_TL.xml",
+                        "bandNames": [
+                            "granule_metadata##0",
+                            "granule_metadata##1",
+                            "granule_metadata##2",
+                            "granule_metadata##3",
+                        ],
+                    },
+                ],
+                ["B02", "sunAzimuthAngles", "viewZenithMean"],
+                ["B02", "granule_metadata##0", "granule_metadata##3"],
+            ),
+            (
+                ["B02", "SAA", "VZA"],
+                ["B02", "sunAzimuthAngles", "viewZenithMean"],
+                [
+                    {"title": "B02_10m", "href": "https://stac.test/B02_10m.tif", "bandNames": ["B02"]},
+                    {
+                        "title": "granule_metadata",
+                        "href": "https://stac.test/MTD_TL.xml",
+                        "bandNames": [
+                            "granule_metadata##0",
+                            "granule_metadata##1",
+                            "granule_metadata##2",
+                            "granule_metadata##3",
+                        ],
+                    },
+                ],
+                ["B02", "SAA", "VZA"],
+                ["B02", "granule_metadata##0", "granule_metadata##3"],
+            ),
+        ],
+    )
+    def test_prepare_context_sentinel2_with_azimuth_and_zenith_bands(
+        self,
+        load_params_bands,
+        normalized_band_selection,
+        expected_links,
+        expected_metadata_band_names,
+        expected_link_titles,
+    ):
+        dummy_server = DummyStacApiServer()
+        collection_id = "s2-with-granule_metadata"
+        self._define_collection_s2_with_granule_metadata(dummy_server, collection_id=collection_id)
+        layercatalog_feature_flags = {
+            "granule_metadata_band_map": {
+                "sunAzimuthAngles": "granule_metadata##0",
+                "sunZenithAngles": "granule_metadata##1",
+                "viewAzimuthMean": "granule_metadata##2",
+                "viewZenithMean": "granule_metadata##3",
+            },
+        }
+        with dummy_server.serve() as dummy_stac_api:
+            context = _prepare_context(
+                url=f"{dummy_stac_api}/collections/{collection_id}",
+                load_params=LoadParameters(
+                    bands=load_params_bands,
+                ),
+                normalized_band_selection=normalized_band_selection,
+                env=EvalEnv(),
+                feature_flags=layercatalog_feature_flags,
+            )
+
+        dumper = _OpenSearchClientDumper()
+        assert dumper.dump_opensearch_client_features(context.opensearch_client) == [
+            {
+                "id": "item-123",
+                "links": expected_links,
+            }
+        ]
+
+        assert context.metadata.band_names == expected_metadata_band_names
+        assert list(context.pyramid_factory.openSearchLinkTitles()) == expected_link_titles
+
+    @pytest.mark.parametrize(
+        ["feature_flags", "url", "expected"],
+        [
+            ({"apply_sentinel2_reflectance_offset": False}, "https://stac.test/foo", False),
+            ({"apply_sentinel2_reflectance_offset": True}, "https://stac.test/foo", True),
+            ({}, "https://stac.test/foo", False),
+            ({}, "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-2-l2a", True),
+            ({}, "https://stac.terrascope.be/collections/terrascope-s2-toc-v2", True),
+        ],
+    )
+    def test_get_apply_sentinel2_reflectance_offset(self, feature_flags, url, expected):
+        apply_sentinel2_reflectance_offset = _get_apply_sentinel2_reflectance_offset(
+            feature_flags=feature_flags, url=url
+        )
+        assert apply_sentinel2_reflectance_offset == expected
+
+    @pytest.mark.parametrize(
+        ["asset", "expected"],
+        [
+            (pystac.Asset(href="https://stac.test/B02.tiff"), False),
+            (
+                # Minimal match
+                pystac.Asset(
+                    href="https://stac.test/B02.tiff",
+                    extra_fields={"bands": [{"eo:center_wavelength": 0.475}]},
+                ),
+                True,
+            ),
+            (
+                # Based on B02 on CDSE https://stac.dataspace.copernicus.eu/v1/collections/sentinel-2-l2a
+                pystac.Asset.from_dict(
+                    {
+                        "href": "s3://test/Sentinel-2/2025/09/01/T31UES_20250901T105041_B02_20m.jp2",
+                        "bands": [
+                            {
+                                "name": "B02",
+                                "eo:center_wavelength": 0.493,
+                                "eo:full_width_half_max": 0.267,
+                                "eo:common_name": "blue",
+                            }
+                        ],
+                        "type": "image/jp2",
+                        "roles": ["data", "reflectance", "sampling:downsampled", "gsd:20m"],
+                        "raster:scale": 0.0001,
+                        "raster:offset": -0.1,
+                    }
+                ),
+                True,
+            ),
+            (
+                # Based on WVP on CDSE https://stac.dataspace.copernicus.eu/v1/collections/sentinel-2-l2a
+                pystac.Asset.from_dict(
+                    {
+                        "href": "s3://test/Sentinel-2/MSI/L2A/2025/09/01/T31UES_20250901T105041_WVP_10m.jp2",
+                        "roles": ["data", "gsd:10m"],
+                        "title": "Water vapour (WVP) - 10m",
+                        "raster:scale": 0.0001,
+                        "raster:offset": -0.1,
+                    }
+                ),
+                False,
+            ),
+            (
+                # Based on B02 on Terrascope https://stac.terrascope.be/collections/terrascope-s2-toc-v2
+                pystac.Asset.from_dict(
+                    {
+                        "href": "https://terrascope.test/dl/Sentinel2/TOC_V2/2025/09/01/S2C_20250901T105041_31UES_TOC-B02_10M_V210.tif",
+                        "type": "image/tiff; application=geotiff; profile=cloud-optimized",
+                        "title": "B02",
+                        "roles": ["data"],
+                        "raster:scale": 0.0001,
+                        "raster:offset": 0.0,
+                        "bands": [
+                            {
+                                "name": "B02",
+                                "eo:common_name": "blue",
+                                "eo:center_wavelength": 0.49,
+                                "eo:full_width_half_max": 0.098,
+                            }
+                        ],
+                    }
+                ),
+                True,
+            ),
+        ],
+    )
+    def test_is_sentinel2_reflectance_asset(self, asset, expected):
+        assert _is_sentinel2_reflectance_asset(asset) == expected

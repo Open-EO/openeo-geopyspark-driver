@@ -19,7 +19,7 @@ from decimal import Decimal
 from functools import lru_cache, partial, reduce
 from pathlib import Path
 from subprocess import CalledProcessError
-from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union, Set
+from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union, Set, Any
 from urllib.parse import urlparse
 
 import flask
@@ -35,7 +35,7 @@ from geopyspark import LayerType, Pyramid, TiledRasterLayer
 
 import openeo_driver.util.changelog
 from openeo.internal.process_graph_visitor import ProcessGraphVisitor
-from openeo.metadata import Band, BandDimension, Dimension, SpatialDimension, TemporalDimension
+from openeo.metadata import BandDimension, Dimension, SpatialDimension, TemporalDimension
 from openeo.util import TimingLogger, deep_get, dict_no_none, repr_truncate, rfc3339, str_truncate, Rfc3339
 from openeo.utils.version import ComparableVersion
 from openeo_driver import backend
@@ -52,21 +52,21 @@ from openeo_driver.constants import DEFAULT_LOG_LEVEL_RETRIEVAL, DEFAULT_LOG_LEV
 from openeo_driver.datacube import DriverDataCube, DriverVectorCube
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.delayed_vector import DelayedVector
-from openeo_driver.dry_run import SourceConstraint
+from openeo_driver.dry_run import SourceConstraint, DryRunDataCube, DryRunDataTracer, DataSource
 from openeo_driver.errors import (InternalException, JobNotFinishedException, OpenEOApiException,
                                   ServiceUnsupportedException,
                                   ProcessParameterInvalidException, )
 from openeo_driver.jobregistry import (DEPENDENCY_STATUS, JOB_STATUS, ElasticJobRegistry, PARTIAL_JOB_STATUS,
                                        get_ejr_credentials_from_env)
 from openeo_driver.ProcessGraphDeserializer import ENV_FINAL_RESULT, ENV_SAVE_RESULT, ConcreteProcessing, \
-    _extract_load_parameters, ENV_MAX_BUFFER
+    _extract_load_parameters, ENV_MAX_BUFFER, ENV_DRY_RUN_TRACER
 from openeo_driver.save_result import ImageCollectionResult
 from openeo_driver.users import User
 from openeo_driver.util.date_math import now_utc
 from openeo_driver.util.geometry import BoundingBox
 from openeo_driver.util.http import requests_with_retry
 from openeo_driver.util.utm import area_in_square_meters
-from openeo_driver.utils import EvalEnv, generate_unique_id, to_hashable, WhiteListEvalEnv, get_package_versions
+from openeo_driver.utils import EvalEnv, generate_unique_id, to_hashable, WhiteListEvalEnv, smart_bool
 from pandas import Timedelta
 from py4j.java_gateway import JVMView
 from py4j.protocol import Py4JJavaError
@@ -78,12 +78,14 @@ from xarray import DataArray
 import numpy as np
 
 import openeogeotrellis
+import openeogeotrellis._backend.post_dry_run
 from openeo_driver.views import OPENEO_API_VERSION_DEFAULT
 from openeogeotrellis import sentinel_hub, load_stac, datacube_parameters
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.config.s3_config import S3Config
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.constants import JOB_OPTION_LOG_LEVEL
+from openeogeotrellis.geopysparkcubemetadata import Band
 from openeogeotrellis.geopysparkdatacube import GeopysparkCubeMetadata, GeopysparkDataCube
 from openeogeotrellis.integrations.etl_api import get_etl_api, ETL_ORGANIZATION_ID_JOB_OPTION
 from openeogeotrellis.integrations.identity import IDP_TOKEN_ISSUER
@@ -94,6 +96,7 @@ from openeogeotrellis.integrations.kubernetes import (
     k8s_render_manifest_template,
     k8s_get_batch_job_cfg_secret_name,
     truncate_user_id_k8s,
+    ensure_kubernetes_config,
 )
 from openeogeotrellis.integrations.s3proxy.asset_urls import PresignedS3AssetUrls
 from openeogeotrellis.integrations.stac import ResilientStacIO
@@ -116,6 +119,7 @@ from openeogeotrellis.ml.geopysparkmlmodel import GeopysparkMlModel
 from openeogeotrellis.ml.modelloader import ModelLoader
 from openeogeotrellis.processgraphvisiting import GeotrellisTileProcessGraphVisitor, SingleNodeUDFProcessGraphVisitor
 from openeogeotrellis.sentinel_hub.batchprocessing import SentinelHubBatchProcessing
+from openeogeotrellis.sentinel_hub.dependencies import SentinelHubDependencies
 from openeogeotrellis.service_registry import (
     AbstractServiceRegistry,
     InMemoryServiceRegistry,
@@ -123,6 +127,7 @@ from openeogeotrellis.service_registry import (
     ServiceEntity,
     ZooKeeperServiceRegistry,
 )
+from openeogeotrellis.stac.partialjobresults import PartialJobResults
 from openeogeotrellis.udf import (
     run_udf_code,
     UDF_PYTHON_DEPENDENCIES_FOLDER_NAME,
@@ -155,7 +160,6 @@ from openeogeotrellis.vault import Vault
 JOB_METADATA_FILENAME = "job_metadata.json"
 
 logger = logging.getLogger(__name__)
-
 
 class GpsSecondaryServices(backend.SecondaryServices):
     """Secondary Services implementation for GeoPySpark backend"""
@@ -663,82 +667,6 @@ Example usage:
             "create_synchronous_parameters": options,
         }
 
-    def load_disk_data(
-            self, format: str, glob_pattern: str, options: dict, load_params: LoadParameters, env: EvalEnv
-    ) -> GeopysparkDataCube:
-        logger.info("load_disk_data with format {f!r}, glob {g!r}, options {o!r} and load params {p!r}".format(
-            f=format, g=glob_pattern, o=options, p=load_params
-        ))
-        if format != 'GTiff':
-            raise NotImplementedError("The format is not supported by the backend: " + format)
-
-        date_regex = options['date_regex']
-
-        if glob_pattern.startswith("hdfs:") and get_backend_config().setup_kerberos_auth:
-            setup_kerberos_auth(self._principal, self._key_tab)
-
-        metadata = GeopysparkCubeMetadata(metadata={}, dimensions=[
-            # TODO: detect actual dimensions instead of this simple default?
-            SpatialDimension(name="x", extent=[]), SpatialDimension(name="y", extent=[]),
-            TemporalDimension(name='t', extent=[]), BandDimension(name="bands", bands=[Band("unknown")])
-        ])
-
-        # TODO: eliminate duplication with GeoPySparkLayerCatalog.load_collection
-        temporal_extent = load_params.temporal_extent
-        from_date, to_date = normalize_temporal_extent(temporal_extent)
-        metadata = metadata.filter_temporal(from_date, to_date)
-
-        spatial_extent = load_params.spatial_extent
-        if len(spatial_extent) == 0:
-            spatial_extent = load_params.global_extent
-
-        west = spatial_extent.get("west", None)
-        east = spatial_extent.get("east", None)
-        north = spatial_extent.get("north", None)
-        south = spatial_extent.get("south", None)
-        crs = spatial_extent.get("crs", None)
-        spatial_bounds_present = all(b is not None for b in [west, south, east, north])
-        if spatial_bounds_present:
-            metadata = metadata.filter_bbox(west=west, south=south, east=east, north=north, crs=crs)
-
-        bands = load_params.bands
-        if bands:
-            band_indices = [metadata.get_band_index(b) for b in bands]
-            metadata = metadata.filter_bands(bands)
-        else:
-            band_indices = None
-
-        jvm = get_jvm()
-
-        feature_flags = load_params.get("featureflags", {})
-        experimental = feature_flags.get("experimental", False)
-        datacubeParams, single_level = datacube_parameters.create(load_params, env, jvm)
-
-        extent = jvm.geotrellis.vector.Extent(float(west), float(south), float(east), float(north)) \
-            if spatial_bounds_present else None
-
-        factory = jvm.org.openeo.geotrellis.geotiff.PyramidFactory.from_disk(glob_pattern, date_regex)
-        if single_level:
-            if extent is None:
-                raise ValueError(f"Trying to load disk collection {glob_pattern} without extent.")
-            projected_polygons = jvm.org.openeo.geotrellis.ProjectedPolygons.fromExtent(extent, crs or "EPSG:4326")
-            pyramid = factory.datacube_seq(projected_polygons, from_date, to_date, {},"", datacubeParams)
-        else:
-            pyramid = (factory.pyramid_seq(extent, crs, from_date, to_date))
-
-        temporal_tiled_raster_layer = jvm.geopyspark.geotrellis.TemporalTiledRasterLayer
-        option = jvm.scala.Option
-        levels = {pyramid.apply(index)._1(): TiledRasterLayer(LayerType.SPACETIME, temporal_tiled_raster_layer(
-            option.apply(pyramid.apply(index)._1()), pyramid.apply(index)._2())) for index in
-                  range(0, pyramid.size())}
-
-        image_collection = GeopysparkDataCube(
-            pyramid=gps.Pyramid(levels),
-            metadata=metadata
-        )
-
-        return image_collection.filter_bands(band_indices) if band_indices else image_collection
-
     def load_result(self, job_id: str, user_id: Optional[str], load_params: LoadParameters,
                     env: EvalEnv) -> GeopysparkDataCube:
         logger.info("load_result from job ID {j!r} with load params {p!r}".format(j=job_id, p=load_params))
@@ -757,9 +685,7 @@ Example usage:
                     return True
 
                 requested_bbox_lonlat = requested_bbox.reproject("EPSG:4326")
-                return requested_bbox_lonlat.as_polygon().intersects(
-                    Polygon.from_bounds(*item.bbox)
-                )
+                return requested_bbox_lonlat.as_polygon().intersects(shapely.geometry.box(*item.bbox))
 
             uris_with_metadata = {asset.get_absolute_href(): (item.datetime.isoformat(),
                                                               asset.extra_fields.get("eo:bands", []))
@@ -828,8 +754,7 @@ Example usage:
             BandDimension(name="bands", bands=[Band(band_name) for band_name in band_names])
         ])
 
-        # TODO: eliminate duplication with load_disk_data
-        temporal_extent = load_params.temporal_extent
+        temporal_extent = load_params.temporal_extent or (None, None)
         from_date, to_date = normalize_temporal_extent(temporal_extent)
         metadata = metadata.filter_temporal(from_date, to_date)
 
@@ -1014,6 +939,51 @@ Example usage:
         )
         return GeopysparkDataCube(pyramid, metadata)
 
+    def run_cwl(
+        self,
+        *,
+        data,
+        env: EvalEnv,
+        cwl: str,
+        context: dict,
+    ) -> DriverDataCube:
+        # local import to avoid importing kubernetes on yarn backends
+        from openeogeotrellis.integrations.calrissian import CwLSource, cwl_to_stac
+        collection_url = cwl_to_stac(
+            context,
+            env,
+            CwLSource.from_any(cwl),
+        )
+
+        load_stac_dummy_url = "dummy"
+        dry_run_tracer: DryRunDataTracer = env.get(ENV_DRY_RUN_TRACER)
+        if dry_run_tracer:
+            # TODO: use something else than `dry_run_tracer.load_stac`
+            #       to avoid risk on conflict with "regular" load_stac code flows?
+            return dry_run_tracer.load_stac(url=load_stac_dummy_url, arguments={})
+
+        direct_s3_mode = False
+        if direct_s3_mode:
+            load_stac_kwargs = {"stac_io": openeogeotrellis.integrations.stac.S3StacIO()}
+        else:
+            load_stac_kwargs = {}
+
+        source_id = DataSource.load_stac(load_stac_dummy_url, properties={}, bands=[], env=env).get_source_id()
+        load_params = _extract_load_parameters(env, source_id=source_id)
+
+        env = env.push(
+            {
+                # TODO: this is apparently necessary to set explicitly, but shouldn't this be the default?
+                "pyramid_levels": "highest",
+            }
+        )
+        return openeogeotrellis.load_stac.load_stac(
+            url=collection_url,
+            load_params=load_params,
+            env=env,
+            **load_stac_kwargs,
+        )
+
     def visit_process_graph(self, process_graph: dict) -> ProcessGraphVisitor:
         return GeoPySparkBackendImplementation.accept_process_graph(process_graph)
 
@@ -1029,6 +999,10 @@ Example usage:
 
     @staticmethod
     def summarize_exception_static(error: Exception, width=2000) -> ErrorSummary:
+        # snippet to show the Python stack trace:
+        # tb_info = traceback.extract_tb(error.__traceback__)
+        # logger.warning("".join(traceback.format_list(tb_info)))
+
         if "Container killed on request. Exit code is 143" in str(error):
             is_client_error = False  # Give user the benefit of doubt.
             summary = "Your batch job failed because workers used too much memory. The same task was attempted multiple times. Consider increasing executor-memory, python-memory or executor-memoryOverhead or contact the developers to investigate."
@@ -1338,6 +1312,24 @@ Example usage:
             )
 
             return costs
+
+    def post_dry_run(
+        self,
+        *,
+        dry_run_result: Union[DryRunDataCube, Any],
+        dry_run_tracer: DryRunDataTracer,
+        source_constraints: List[SourceConstraint],
+    ) -> Union[None, dict]:
+        # TODO #1299/#1437 remove try-except when stable
+        try:
+            post_dry_run_data = openeogeotrellis._backend.post_dry_run.post_dry_run(
+                source_constraints=source_constraints,
+                catalog=self.catalog,
+            )
+            logger.info(f"post_dry_run: {post_dry_run_data=}")
+            return post_dry_run_data
+        except Exception as e:
+            logger.error(f"post_dry_run failed: {e}", exc_info=True)
 
 
 class GpsProcessing(ConcreteProcessing):
@@ -1841,7 +1833,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
         if "specification" in job_info:
             # This is old-style (ZK based) job info with "specification" being a JSON string.
-            # TODO #498 eliminate ZK code path, or at least encapsulate this logic better
+            # TODO #498 #1165 eliminate ZK code path, or at least encapsulate this logic better
             job_specification_json = job_info["specification"]
             job_process_graph, job_options = parse_zk_job_specification(job_info, default_job_options={})
         else:
@@ -2210,7 +2202,12 @@ class GpsBatchJobs(backend.BatchJobs):
                     user_id=user_id,
                     results_metadata_uri=f"file://{job_work_dir}/{JOB_METADATA_FILENAME}",
                 )
-                dbl_registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.QUEUED)
+                try:
+                    dbl_registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.QUEUED)
+                except Exception as e:
+                    log.info(
+                        f"Failed to set job status to QUEUED in the job registry. The job still started so we continue anyway. {e}"
+                    )
 
     def _determine_container_image_from_process_graph(
         self, process_graph: dict, *, api_version: str = OPENEO_API_VERSION_DEFAULT
@@ -2229,7 +2226,6 @@ class GpsBatchJobs(backend.BatchJobs):
             logger.warning(f"Failed to determine container image from process graph: {e}", exc_info=True)
             return None
 
-    # TODO: encapsulate this SHub stuff in a dedicated class?
     def _schedule_and_get_dependencies(  # some we schedule ourselves, some already exist
         self,
         supports_async_tasks: bool,
@@ -2242,10 +2238,10 @@ class GpsBatchJobs(backend.BatchJobs):
         get_vault_token: Callable[[str], str],
         logger_adapter: logging.LoggerAdapter,
     ) -> List[dict]:
-        # TODO: reduce code duplication between this and ProcessGraphDeserializer
         from openeo_driver.dry_run import DryRunDataTracer
         from openeo_driver.ProcessGraphDeserializer import ENV_DRY_RUN_TRACER, convert_node
 
+        # TODO: reduce code duplication between this and ProcessGraphDeserializer
         env = EvalEnv(
             {
                 "user": User(user_id),
@@ -2283,363 +2279,38 @@ class GpsBatchJobs(backend.BatchJobs):
         batch_request_cache = {}
 
         for (process, arguments), constraints in source_constraints:
+            dependency: Optional[dict] = None
             if process == 'load_collection':
                 collection_id = arguments[0]
                 properties_criteria = arguments[1]
 
-                band_names = constraints.get('bands')
-
-                metadata = GeopysparkCubeMetadata(self._catalog.get_collection_metadata(collection_id))
-                if band_names:
-                    metadata = metadata.filter_bands(band_names)
-
-                layer_source_info = metadata.get("_vito", "data_source")
-                sar_backscatter_compatible = layer_source_info.get("sar_backscatter_compatible", False)
-
-                if "sar_backscatter" in constraints and not sar_backscatter_compatible:
-                    raise OpenEOApiException(message=
-                                             """Process "sar_backscatter" is not applicable for collection {c}."""
-                                             .format(c=collection_id), status_code=400)
-
-                if layer_source_info['type'] == 'sentinel-hub':
-                    sar_backscatter_arguments: Optional[SarBackscatterArgs] = (
-                        constraints.get("sar_backscatter", SarBackscatterArgs()) if sar_backscatter_compatible
-                        else None
-                    )
-
-                    card4l = (sar_backscatter_arguments is not None
-                              and sar_backscatter_arguments.coefficient == "gamma0-terrain"
-                              and sar_backscatter_arguments.mask
-                              and sar_backscatter_arguments.local_incidence_angle)
-
-                    spatial_extent = constraints['spatial_extent']
-                    crs = spatial_extent['crs']
-
-                    def get_geometries():
-                        return (constraints.get("aggregate_spatial", {}).get("geometries") or
-                                constraints.get("filter_spatial", {}).get("geometries"))
-
-                    def area() -> float:
-                        def bbox_area() -> float:
-                            geom = Polygon.from_bounds(
-                                xmin=spatial_extent['west'],
-                                ymin=spatial_extent['south'],
-                                xmax=spatial_extent['east'],
-                                ymax=spatial_extent['north'])
-
-                            return area_in_square_meters(geom, crs)
-
-                        geometries = get_geometries()
-
-                        if not geometries:
-                            return bbox_area()
-                        elif isinstance(geometries, DelayedVector):
-                            # TODO: can this case and the next be replaced with a combination of to_projected_polygons
-                            #  and ProjectedPolygons#areaInSquareMeters?
-                            return (self._jvm
-                                    .org.openeo.geotrellis.ProjectedPolygons.fromVectorFile(geometries.path)
-                                    .areaInSquareMeters())
-                        elif isinstance(geometries, DriverVectorCube):
-                            return geometries.get_area()
-                        elif isinstance(geometries, shapely.geometry.base.BaseGeometry):
-                            return area_in_square_meters(geometries, crs)
-                        else:
-                            logger_adapter.error(f"GpsBatchJobs._scheduled_sentinelhub_batch_processes:area Unhandled geometry type {type(geometries)}")
-                            raise ValueError(geometries)
-
-                    actual_area = area()
-                    absolute_maximum_area = 1e+12  # 1 million km²
-
-                    if actual_area > absolute_maximum_area:
-                        raise OpenEOApiException(message=
-                                                 "Requested area {a} m² for collection {c} exceeds maximum of {m} m²."
-                                                 .format(a=actual_area, c=collection_id, m=absolute_maximum_area),
-                                                 status_code=400)
-
-                    def large_area() -> bool:
-                        batch_process_threshold_area = 50 * 1000 * 50 * 1000  # 50x50 km²
-                        large_enough = actual_area >= batch_process_threshold_area
-
-                        logger_adapter.info("deemed collection {c} AOI ({a} m²) {s} for batch processing (threshold {t} m²)"
-                                    .format(c=collection_id, a=actual_area,
-                                            s="large enough" if large_enough else "too small",
-                                            t=batch_process_threshold_area))
-
-                        return large_enough
-
-                    endpoint = layer_source_info['endpoint']
-                    supports_batch_processes = (endpoint.startswith("https://services.sentinel-hub.com") or
-                                                endpoint.startswith("https://services-uswest2.sentinel-hub.com"))
-
-                    shub_input_approach = deep_get(job_options, 'sentinel-hub', 'input', default=None)
-
-                    if not supports_batch_processes:  # always sync approach
-                        logger_adapter.info("endpoint {e} does not support batch processing".format(e=endpoint))
-                        continue
-                    elif not supports_async_tasks:  # always sync approach
-                        logger_adapter.info("this backend does not support polling for batch processes")
-                        continue
-                    elif card4l:  # always batch approach
-                        logger_adapter.info("deemed collection {c} request CARD4L compliant ({s})"
-                                            .format(c=collection_id, s=sar_backscatter_arguments))
-                    elif shub_input_approach == 'sync':
-                        logger_adapter.info("forcing sync input processing for collection {c}".format(c=collection_id))
-                        continue
-                    elif shub_input_approach == 'batch':
-                        logger_adapter.info("forcing batch input processing for collection {c}".format(c=collection_id))
-                    elif not large_area():  # 'auto'
-                        continue  # skip SHub batch process and use sync approach instead
-
-                    sample_type = self._jvm.org.openeo.geotrellissentinelhub.SampleType.withName(
-                        layer_source_info.get('sample_type', 'UINT16'))
-
-                    from_date, to_date = normalize_temporal_extent(constraints['temporal_extent'])
-
-                    west = spatial_extent['west']
-                    south = spatial_extent['south']
-                    east = spatial_extent['east']
-                    north = spatial_extent['north']
-                    bbox = self._jvm.geotrellis.vector.Extent(float(west), float(south), float(east), float(north))
-
-                    bucket_name = layer_source_info.get('bucket', sentinel_hub.OG_BATCH_RESULTS_BUCKET)
-
-                    logger_adapter.debug(f"Sentinel Hub client alias: {sentinel_hub_client_alias}")
-
-                    if sentinel_hub_client_alias == 'default':
-                        sentinel_hub_client_id = self._default_sentinel_hub_client_id
-                        sentinel_hub_client_secret = self._default_sentinel_hub_client_secret
-                    else:
-                        sentinel_hub_client_id, sentinel_hub_client_secret = (
-                            self._vault.get_sentinel_hub_credentials(sentinel_hub_client_alias,
-                                                                     get_vault_token(sentinel_hub_client_alias)))
-
-                    batch_processing_service = (
-                        SentinelHubBatchProcessing.get_batch_processing_service(
-                            endpoint=endpoint,
-                            bucket_name=bucket_name,
-                            sentinel_hub_client_id=sentinel_hub_client_id,
-                            sentinel_hub_client_secret=sentinel_hub_client_secret,
-                            sentinel_hub_client_alias=sentinel_hub_client_alias,
-                            jvm=self._jvm,
-                        )
-                    )
-
-                    shub_band_names = metadata.band_names
-
-                    if sar_backscatter_arguments and sar_backscatter_arguments.mask:
-                        shub_band_names.append('dataMask')
-
-                    if sar_backscatter_arguments and sar_backscatter_arguments.local_incidence_angle:
-                        shub_band_names.append('localIncidenceAngle')
-
-                    def metadata_properties_from_criteria() -> Dict[str, Dict[str, object]]:
-                        def as_dicts(criteria):
-                            return {criterion[0]: criterion[1] for criterion in criteria}  # (operator -> value)
-
-                        metadata_properties_return = {property_name: as_dicts(criteria) for property_name, criteria in properties_criteria}
-                        sentinel_hub.assure_polarization_from_sentinel_bands(metadata,
-                                                                             metadata_properties_return, job_id)
-                        return metadata_properties_return
-
-                    metadata_properties = metadata_properties_from_criteria()
-
-                    geometries = get_geometries()
-
-                    if not geometries:
-                        geometry = bbox
-                        # string crs is unchanged
-                    else:
-                        projected_polygons = to_projected_polygons(self._jvm, geometry=geometries, crs=crs, buffer_points=True)
-                        geometry = projected_polygons.polygons()
-                        crs = projected_polygons.crs()
-
-                    if not geometries:
-                        hashable_geometry = (bbox.xmin(), bbox.ymin(), bbox.xmax(), bbox.ymax())
-                    elif isinstance(geometries, DelayedVector):
-                        hashable_geometry = geometries.path
-                    else:
-                        hashable_geometry = BadlyHashable(geometries)
-
-                    collecting_folder: Optional[str] = None
-
-                    if card4l:
-                        # TODO: not obvious but this does the validation as well
-                        dem_instance = sentinel_hub.processing_options(collection_id, sar_backscatter_arguments)\
-                            .get('demInstance')
-
-                        # these correspond to the .start_card4l_batch_processes arguments
-                        batch_request_cache_key = (
-                            collection_id,  # for 'collection_id' and 'dataset_id'
-                            hashable_geometry,
-                            str(crs),
-                            from_date,
-                            to_date,
-                            to_hashable(shub_band_names),
-                            dem_instance,
-                            to_hashable(metadata_properties)
-                        )
-
-                        batch_request_ids, subfolder = batch_request_cache.get(batch_request_cache_key, (None, None))
-
-                        if batch_request_ids is None:
-                            # cannot be the batch job ID because results for multiple collections would end up in
-                            #  the same S3 dir
-                            request_group_uuid = str(uuid.uuid4())
-                            subfolder = request_group_uuid
-
-                            # return type py4j.java_collections.JavaList is not JSON serializable
-                            batch_request_ids = list(batch_processing_service.start_card4l_batch_processes(
-                                layer_source_info['collection_id'],
-                                layer_source_info['dataset_id'],
-                                geometry,
-                                crs,
-                                from_date,
-                                to_date,
-                                shub_band_names,
-                                dem_instance,
-                                metadata_properties,
-                                subfolder,
-                                request_group_uuid)
-                            )
-
-                            batch_request_cache[batch_request_cache_key] = (batch_request_ids, subfolder)
-
-                            logger_adapter.info("saved newly scheduled CARD4L batch processes {b} for near future use"
-                                        " (key {k!r})".format(b=batch_request_ids, k=batch_request_cache_key))
-                        else:
-                            logger_adapter.debug("recycling saved CARD4L batch processes {b} (key {k!r})".format(
-                                b=batch_request_ids, k=batch_request_cache_key))
-                    else:
-                        shub_caching_flag = deep_get(job_options, 'sentinel-hub', 'cache-results', default=None)
-                        try_cache = (ConfigParams().cache_shub_batch_results if shub_caching_flag is None  # auto
-                                     else shub_caching_flag)
-                        can_cache = layer_source_info.get('cacheable', False)
-                        cache = try_cache and can_cache
-
-                        processing_options = (sentinel_hub.processing_options(collection_id, sar_backscatter_arguments)
-                                              if sar_backscatter_arguments else {})
-
-                        # these correspond to the .start_batch_process/start_batch_process_cached arguments
-                        batch_request_cache_key = (
-                            collection_id,  # for 'collection_id', 'dataset_id' and sample_type
-                            hashable_geometry,
-                            str(crs),
-                            from_date,
-                            to_date,
-                            to_hashable(shub_band_names),
-                            to_hashable(metadata_properties),
-                            to_hashable(processing_options)
-                        )
-
-                        if cache:
-                            (batch_request_id, subfolder,
-                             collecting_folder) = batch_request_cache.get(batch_request_cache_key, (None, None, None))
-
-                            if collecting_folder is None:
-                                subfolder = generate_unique_id()  # batch process context JSON is written here as well
-
-                                # collecting_folder must be writable from driver (cached tiles) and async_task
-                                # handler (new tiles))
-                                collecting_folder = f"/tmp_epod/openeo_collecting/{subfolder}"
-                                os.mkdir(collecting_folder)
-                                os.chmod(collecting_folder, mode=0o770)  # umask prevents group write
-
-                                batch_request_id = batch_processing_service.start_batch_process_cached(
-                                    layer_source_info['collection_id'],
-                                    layer_source_info['dataset_id'],
-                                    geometry,
-                                    crs,
-                                    from_date,
-                                    to_date,
-                                    shub_band_names,
-                                    sample_type,
-                                    metadata_properties,
-                                    processing_options,
-                                    subfolder,
-                                    collecting_folder
-                                )
-
-                                batch_request_cache[batch_request_cache_key] = (batch_request_id, subfolder,
-                                                                                collecting_folder)
-
-                                logger_adapter.info("saved newly scheduled cached batch process {b} for near future use"
-                                            " (key {k!r})".format(b=batch_request_id, k=batch_request_cache_key))
-                            else:
-                                logger_adapter.debug("recycling saved cached batch process {b} (key {k!r})".format(
-                                    b=batch_request_id, k=batch_request_cache_key))
-
-                            batch_request_ids = [batch_request_id]
-                        else:
-                            try:
-                                batch_request_id = batch_request_cache.get(batch_request_cache_key)
-
-                                if batch_request_id is None:
-                                    batch_request_id = batch_processing_service.start_batch_process(
-                                        layer_source_info['collection_id'],
-                                        layer_source_info['dataset_id'],
-                                        geometry,
-                                        crs,
-                                        from_date,
-                                        to_date,
-                                        shub_band_names,
-                                        sample_type,
-                                        metadata_properties,
-                                        processing_options
-                                    )
-
-                                    batch_request_cache[batch_request_cache_key] = batch_request_id
-
-                                    logger_adapter.info("saved newly scheduled batch process {b} for near future use"
-                                                " (key {k!r})".format(b=batch_request_id, k=batch_request_cache_key))
-                                else:
-                                    logger_adapter.debug("recycling saved batch process {b} (key {k!r})".format(
-                                        b=batch_request_id, k=batch_request_cache_key))
-
-                                subfolder = batch_request_id
-                                batch_request_ids = [batch_request_id]
-                            except Py4JJavaError as e:
-                                java_exception = e.java_exception
-
-                                if (java_exception.getClass().getName() ==
-                                        'org.openeo.geotrellissentinelhub.BatchProcessingService$NoSuchFeaturesException'):
-                                    raise OpenEOApiException(
-                                        message=f"{java_exception.getClass().getName()}: {java_exception.getMessage()}",
-                                        status_code=400)
-                                else:
-                                    raise e
-
-                    job_dependencies.append(dict_no_none(
-                        collection_id=collection_id,
-                        batch_request_ids=batch_request_ids,  # to poll SHub
-                        collecting_folder=collecting_folder,  # temporary cached and new single band tiles, also a flag
-                        results_location=f"s3://{bucket_name}/{subfolder}",  # new multiband tiles
-                        card4l=card4l  # should the batch job expect CARD4L metadata?
-                    ))
+                dependency = SentinelHubDependencies.schedule_for_load_collection(
+                    supports_async_tasks=supports_async_tasks,
+                    collection_id=collection_id,
+                    properties_criteria=properties_criteria,
+                    constraints=constraints,
+                    job_id=job_id,
+                    job_options=job_options,
+                    sentinel_hub_client_alias=sentinel_hub_client_alias,
+                    logger_adapter=logger_adapter,
+                    jvm=self._jvm,
+                    vault=self._vault,
+                    default_sentinel_hub_client_id=self._default_sentinel_hub_client_id,
+                    default_sentinel_hub_client_secret=self._default_sentinel_hub_client_secret,
+                    get_vault_token=get_vault_token,
+                    catalog=self._catalog,
+                    batch_request_cache=batch_request_cache,
+                )
             elif process == 'load_stac':
-                url = arguments[0]  # properties will be taken care of @ process graph evaluation time
-
-                if url.startswith("http://") or url.startswith("https://"):
-                    dependency_job_info = load_stac.extract_own_job_info(url, user_id=user_id, batch_jobs=self)
-                    if dependency_job_info:
-                        partial_job_status = PARTIAL_JOB_STATUS.for_job_status(dependency_job_info.status)
-                    else:
-                        with TimingLogger(f'load_stac({url}): extract "openeo:status"', logger=logger_adapter.debug):
-                            with self._requests_session.get(url, timeout=20) as resp:
-                                resp.raise_for_status()
-                                stac_object = resp.json()
-                            partial_job_status = stac_object.get('openeo:status')
-                            logger_adapter.debug(f'load_stac({url}): "openeo:status" is "{partial_job_status}"')
-
-                    if supports_async_tasks and partial_job_status == PARTIAL_JOB_STATUS.RUNNING:
-                        job_dependencies.append({
-                            'partial_job_results_url': url,
-                        })
-                    else:  # just proceed
-                        # TODO: this design choice allows the user to load partial results (their responsibility);
-                        #  another option is to abort this job if status is "error" or "canceled".
-                        pass
-                else:  # assume it points to a file (convenience, non-public API)
-                    pass
+                dependency = PartialJobResults.get_partial_results_from_load_stac_arguments(
+                    arguments,
+                    extract_own_job_info=lambda url: load_stac.extract_own_job_info(url, user_id=user_id, batch_jobs=self),
+                    logger_adapter=logger_adapter,
+                    requests_session=self._requests_session,
+                    supports_async_tasks=supports_async_tasks,
+                )
+            if dependency:
+                job_dependencies.append(dependency)
 
         return job_dependencies
 
@@ -2655,7 +2326,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
         if "items" in results_metadata:
             return BatchJobResultMetadata(
-                items={item["id"]: item for item in results_metadata["items"]},
+                items=self._result_metadata_to_item_assets(results_metadata, job_id),
                 assets=self._results_metadata_to_assets(results_metadata, job_id),
                 links=[],
                 providers=self._get_providers(job_id=job_id, user_id=user_id),
@@ -2763,6 +2434,16 @@ class GpsBatchJobs(backend.BatchJobs):
 
         return results_dict
 
+    def _result_metadata_to_item_assets(self, results_metadata, job_id):
+        job_dir = self.get_job_output_dir(job_id=job_id)
+        logger.info(f"item_assets has job_dir {job_dir}")
+        for item in results_metadata["items"]:
+            for asset_key, asset in item["assets"].items():
+                if "output_dir" not in asset and not asset["href"].startswith("s3://"):
+                    asset["output_dir"] = str(job_dir)
+        return {item["id"]: item for item in results_metadata["items"]}
+
+
     def get_results_metadata_path(self, job_id: str) -> Path:
         return self.get_job_output_dir(job_id) / JOB_METADATA_FILENAME
 
@@ -2775,6 +2456,9 @@ class GpsBatchJobs(backend.BatchJobs):
 
         if "results_metadata_uri" in job_dict:
             results_metadata = self._load_results_metadata_from_file(job_id, job_dict["results_metadata_uri"])  # TODO: expose a getter?
+            if "results_metadata" in job_dict:
+                # Some fields in results_metadata_uri can be outdated. Update those directly from the job registry.
+                results_metadata["usage"] = job_dict["results_metadata"].get("usage", results_metadata.get("usage"))
 
         if not results_metadata and "results_metadata" in job_dict:
             logger.debug("Loading results metadata from job registry", extra={"job_id": job_id})
@@ -2986,7 +2670,8 @@ class GpsBatchJobs(backend.BatchJobs):
     def delete_job(self, job_id: str, user_id: str):
         self._delete_job(job_id, user_id, propagate_errors=False)
 
-    def _delete_job(self, job_id: str, user_id: str, propagate_errors: bool):
+    def _delete_job(self, job_id: str, user_id: str, propagate_errors: bool, verify_deletion: bool = True):
+        # Cancel the job first if it is still running.
         try:
             self.cancel_job(job_id, user_id)
         except InternalException:  # job never started, not an error
@@ -3000,27 +2685,30 @@ class GpsBatchJobs(backend.BatchJobs):
                 logger.warning("Unable to kill corresponding Spark job for job {j}: {a!r}\n{o}".format(j=job_id, a=e.cmd,
                                                                                                        o=e.stdout),
                                exc_info=e, extra={'job_id': job_id})
+        self.cleanup_job_resources(job_id, user_id, propagate_errors)
 
-        job_dir = self.get_job_output_dir(job_id)
-
-        try:
-            shutil.rmtree(job_dir)
-        except FileNotFoundError:  # nothing to delete, not an error
-            pass
-        except Exception as e:
-            # always log because the exception doesn't show the job directory
-            logger.warning("Could not recursively delete {p}".format(p=job_dir), exc_info=e, extra={'job_id': job_id})
-            if propagate_errors:
-                raise
-
+        # Finally, delete from the job registry.
         with self._double_job_registry as registry:
-            job_info = registry.get_job(job_id=job_id, user_id=user_id)
-        dependency_sources = get_deletable_dependency_sources(job_info)
+            registry.delete_job(job_id=job_id, user_id=user_id, verify_deletion=verify_deletion)
 
-        if dependency_sources:
-            # Only for SentinelHub batch processes.
-            self.delete_batch_process_dependency_sources(job_id, dependency_sources, propagate_errors)
+        logger.info("Deleted job {u}/{j}".format(u=user_id, j=job_id), extra={'job_id': job_id})
 
+    def cleanup_job_resources(self, job_id: str, user_id: str, propagate_errors: bool = True, delete_dependency_sources: bool = True):
+        """
+        Delete all storage artifacts associated with a batch job.
+
+        This includes:
+        - The job output directory on disk
+        - Sentinel Hub batch process dependency sources (S3 and disk)
+        - S3 object storage (for Kubernetes deployments)
+        """
+        self.delete_job_output_dir(job_id, propagate_errors)
+
+        # Delete possible sentinelhub batch process dependency sources.
+        if delete_dependency_sources:
+            self.delete_batch_process_dependency_sources_for_job(job_id, user_id, propagate_errors)
+
+        # Delete from s3 object storage if applicable.
         config_params = ConfigParams()
         if config_params.is_kube_deploy:
             # Kubernetes batch jobs are stored using s3 object storage.
@@ -3030,10 +2718,34 @@ class GpsBatchJobs(backend.BatchJobs):
                 get_backend_config().s3_bucket_name, prefix
             )
 
-        with self._double_job_registry as registry:
-            registry.delete_job(job_id=job_id, user_id=user_id)
+    def delete_job_output_dir(self, job_id: str, propagate_errors: bool = True):
+        """Delete the output directory for a batch job."""
+        job_dir = self.get_job_output_dir(job_id)
 
-        logger.info("Deleted job {u}/{j}".format(u=user_id, j=job_id), extra={'job_id': job_id})
+        try:
+            shutil.rmtree(job_dir)
+            logger.info("Deleted job output directory {p}".format(p=job_dir), extra={'job_id': job_id})
+        except FileNotFoundError:
+            logger.info("Job output directory {p} does not exist, nothing to delete".format(p=job_dir),)
+            pass  # nothing to delete, not an error
+        except Exception as e:
+            # always log because the exception doesn't show the job directory
+            logger.warning("Could not recursively delete {p}".format(p=job_dir), exc_info=e, extra={'job_id': job_id})
+            if propagate_errors:
+                raise
+
+    def delete_batch_process_dependency_sources_for_job(
+        self, job_id: str, user_id: str, propagate_errors: bool = True
+    ):
+        """
+        Delete batch process dependency sources for a job, fetching the sources from the registry.
+        """
+        with self._double_job_registry as registry:
+            job_info = registry.get_job(job_id=job_id, user_id=user_id)
+        dependency_sources = get_deletable_dependency_sources(job_info)
+
+        if dependency_sources:
+            self.delete_batch_process_dependency_sources(job_id, dependency_sources, propagate_errors)
 
     @deprecated("call delete_batch_process_dependency_sources instead")
     def delete_batch_process_results(self, job_id: str, subfolders: List[str], propagate_errors: bool):
@@ -3098,4 +2810,12 @@ class GpsUdfRuntimes(backend.UdfRuntimes):
         self.udf_runtime_image_repository = UdfRuntimeImageRepository.from_config()
 
     def get_udf_runtimes(self) -> dict:
-        return self.udf_runtime_image_repository.get_udf_runtimes_response()
+        runtimes = self.udf_runtime_image_repository.get_udf_runtimes_response()
+        if ConfigParams().is_kube_deploy or smart_bool(os.environ.get("OPENEO_LOCAL_DEBUGGING", "false")):
+            runtimes["EOAP-CWL"] = {
+                "default": "1",
+                "title": "EOAP-CWL",
+                "type": "language",
+                "versions": {"1": {"libraries": {}}},
+            }
+        return runtimes

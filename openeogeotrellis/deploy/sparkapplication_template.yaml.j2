@@ -228,7 +228,7 @@ spec:
       - name: GDAL_HTTP_MERGE_CONSECUTIVE_RANGES
         value: "YES"
       - name: PYTHONPATH
-        value: "$PYTHONPATH:/opt/openeo/lib/python3.8/site-packages/{% if udf_python_dependencies_folder_path %}:{{ udf_python_dependencies_folder_path }}{% endif %}"
+        value: "/opt/openeo/lib/python3.8/site-packages/"
       - name: UDF_PYTHON_DEPENDENCIES_FOLDER_PATH
         value: "{{ udf_python_dependencies_folder_path }}"
       - name: UDF_PYTHON_DEPENDENCIES_ARCHIVE_PATH
@@ -258,6 +258,7 @@ spec:
       name: {{ job_id_short }}-driver
       openeo-role: "batch-driver"
       job_id: {{ job_id_full }}
+      correlation_id: {{ job_id_full }}
       user_id: {{user_id}}
 {%- endblock %}
     volumeMounts:
@@ -376,7 +377,7 @@ spec:
       - name: GDAL_HTTP_RETRY_DELAY
         value: "10"
       - name: PYTHONPATH
-        value: "$PYTHONPATH:/opt/openeo/lib/python3.8/site-packages/{% if udf_python_dependencies_folder_path %}:{{ udf_python_dependencies_folder_path }}{% endif %}"
+        value: "/opt/openeo/lib/python3.8/site-packages/"
       - name: UDF_PYTHON_DEPENDENCIES_FOLDER_PATH
         value: "{{ udf_python_dependencies_folder_path }}"
       - name: UDF_PYTHON_DEPENDENCIES_ARCHIVE_PATH
@@ -399,6 +400,7 @@ spec:
       version: 3.2.0
       openeo-role: "executor"
       job_id: {{ job_id_full }}
+      correlation_id: {{ job_id_full }}
       user_id: {{user_id}}
 {%- endblock %}
     volumeMounts:

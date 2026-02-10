@@ -64,6 +64,7 @@ from openeogeotrellis.deploy.batch_job_metadata import (
 from openeogeotrellis.integrations.gdal import get_abs_path_of_asset
 from openeogeotrellis.integrations.hadoop import setup_kerberos_auth
 from openeogeotrellis.job_options import JobOptions
+from openeogeotrellis.stac_save_result import StacSaveResult, get_files_from_stac_catalog
 from openeogeotrellis.udf import (
     UdfDependencyHandlingFailure,
     build_python_udf_dependencies_archive,
@@ -292,9 +293,8 @@ def run_job(
     job_options = job_specification.get("job_options", {})
     parsed_job_options: JobOptions = JobOptions.from_dict(job_options)
 
-    attach_derived_from_document = job_options.get("derived-from-document-experimental", False)
-    omit_derived_from_links = parsed_job_options.omit_derived_from_links or attach_derived_from_document
-    is_stac11 = job_options.get("stac-version-experimental", "1.0") == "1.1" or attach_derived_from_document
+    is_stac11 = job_options.get("stac-version", job_options.get("stac-version-experimental", "1.0")) == "1.1"
+    omit_derived_from_links = parsed_job_options.omit_derived_from_links or is_stac11
 
     try:
         # We actually expect type Path, but in reality paths as strings tend to
@@ -390,7 +390,7 @@ def run_job(
         )
         # perform a first metadata write _before_ actually computing the result. This provides a bit more info, even if the job fails.
         tracker_metadata = _get_tracker_metadata("", omit_derived_from_links=omit_derived_from_links)
-        write_metadata({**result_metadata, **tracker_metadata}, metadata_file, is_stac11, attach_derived_from_document)
+        write_metadata({**result_metadata, **tracker_metadata}, metadata_file, is_stac11)
 
         for result in results:
             result.options["batch_mode"] = True
@@ -583,7 +583,7 @@ def run_job(
             if is_stac11
             else {**result_metadata, **tracker_metadata}
         )
-        write_metadata(meta, metadata_file, is_stac11, attach_derived_from_document)
+        write_metadata(meta, metadata_file, is_stac11)
         logger.debug("Starting GDAL-based retrieval of asset metadata")
 
         assets_for_result_metadata = {
@@ -619,7 +619,7 @@ def run_job(
                     remove_exported_assets=job_options.get("remove-exported-assets", False),
                     enable_merge=job_options.get("export-workspace-enable-merge", False),
                     omit_derived_from_links=omit_derived_from_links,
-                    attach_derived_from_document=attach_derived_from_document,
+                    attach_derived_from_document=is_stac11,
                 )
             else:
                 _export_to_workspaces(
@@ -639,10 +639,10 @@ def run_job(
             if is_stac11
             else {**result_metadata, **tracker_metadata}
         )
-        write_metadata(meta, metadata_file, is_stac11, attach_derived_from_document)
+        write_metadata(meta, metadata_file, is_stac11)
 
 
-def write_metadata(metadata: dict, metadata_file: Path, is_stac11: bool, attach_derived_from_document: bool):
+def write_metadata(metadata: dict, metadata_file: Path, is_stac11: bool):
     def log_asset_hrefs(context: str):
         if is_stac11:
             items = {item["id"]: item for item in metadata.get("items", [])}
@@ -658,7 +658,7 @@ def write_metadata(metadata: dict, metadata_file: Path, is_stac11: bool, attach_
         out_metadata = _convert_asset_outputs_to_s3_urls(metadata)
     log_asset_hrefs("output")
 
-    if attach_derived_from_document:
+    if is_stac11:
         out_metadata = deepcopy(out_metadata)  # avoid mutating an object that is going to be reused
 
         for auxiliary_link in _copy_auxiliary_links(
@@ -765,7 +765,7 @@ def _export_to_workspaces_item(
         final_export = i >= len(workspace_exports) - 1
         remove_original = remove_exported_assets and final_export
 
-        if enable_merge:
+        if enable_merge or workspace.merges_by_default:
             imported_collection = workspace.merge(collection, target=Path(merge), remove_original=remove_original)
             assert isinstance(imported_collection, pystac.Collection)
 
@@ -833,18 +833,23 @@ def _export_to_workspaces(
     if not workspace_exports:
         return
 
-    stac_hrefs = [
-        f"file:{path}"
-        for path in _write_exported_stac_collection(
-            job_dir,
-            result_metadata,
-            asset_keys=list(result_assets_metadata.keys()),
-            omit_derived_from_links=omit_derived_from_links,
-        )
-    ]
+    if isinstance(result, StacSaveResult):
+        stac_hrefs_raw = get_files_from_stac_catalog(result.stac_root_local)
+        stac_hrefs = [href for href in stac_hrefs_raw if href.endswith(".json")] + [result.stac_root_local]
+    else:
+        stac_hrefs = [
+            f"file:{path}"
+            for path in _write_exported_stac_collection(
+                job_dir,
+                result_metadata,
+                asset_keys=list(result_assets_metadata.keys()),
+                omit_derived_from_links=omit_derived_from_links,
+            )
+        ]
 
     # TODO: assemble pystac.STACObject and avoid file altogether?
     collection_href = [href for href in stac_hrefs if "collection.json" in href][0]
+    assert collection_href is not None
     collection = pystac.Collection.from_file(urlparse(collection_href).path)
 
     workspace_uris = {}
@@ -861,7 +866,7 @@ def _export_to_workspaces(
         final_export = i >= len(workspace_exports) - 1
         remove_original = remove_exported_assets and final_export
 
-        if enable_merge:
+        if enable_merge or workspace.merges_by_default:
             imported_collection = workspace.merge(collection, target=Path(merge), remove_original=remove_original)
             assert isinstance(imported_collection, pystac.Collection)
 
@@ -1174,7 +1179,7 @@ def start_main():
     try:
         with TimingLogger(f"Starting batch job {os.getpid()=}", logger=logger):
             main(sys.argv)
-    except Exception as e:
+    except BaseException as e:
         error_summary = GeoPySparkBackendImplementation.summarize_exception_static(e)
         logger.exception("OpenEO batch job failed: " + error_summary.summary)
         raise

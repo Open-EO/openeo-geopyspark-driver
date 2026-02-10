@@ -66,7 +66,13 @@ from openeogeotrellis.backend import JOB_METADATA_FILENAME
 from openeogeotrellis.config.config import EtlApiConfig
 from openeogeotrellis.integrations.gdal import read_gdal_info
 from openeogeotrellis.job_registry import ZkJobRegistry
-from openeogeotrellis.testing import KazooClientMock, gps_config_overrides, random_name
+from openeogeotrellis.testing import (
+    KazooClientMock,
+    Urllib3PoolManagerMocker,
+    gps_config_overrides,
+    random_name,
+    rasterio_metadata_dump,
+)
 from openeogeotrellis.util.runtime import is_package_available
 from openeogeotrellis.utils import (
     drop_empty_from_aggregate_polygon_result,
@@ -2984,7 +2990,7 @@ def _setup_metadata_request_mocking(
             # Change asset urls to local paths so the data can easily be read (without URL mocking in scala) by
             # org.openeo.geotrellis.geotiff.PyramidFactory.from_uris()
             for k in item_metadata["assets"]:
-                item_metadata["assets"][k]["href"] = str(results_dir / k)
+                item_metadata["assets"][k]["href"] = f"file://{results_dir / k!s}"
             requests_mock.get(link["href"], json=item_metadata)
 
 
@@ -3461,12 +3467,12 @@ class TestLoadStac:
 
         api110.result(process_graph).assert_status_code(200)
 
-    def test_stac_api_no_spatial_extent_specified(self, api110):
+    def test_stac_api_no_spatial_extent_specified(self, api110, dummy_stac_api_server, dummy_stac_api):
         process_graph = {
             "loadstac1": {
                 "process_id": "load_stac",
                 "arguments": {
-                    "url": "https://somestacapi/collections/BVL_v1",
+                    "url": f"{dummy_stac_api}/collections/collection-123",
                 }
             },
             "saveresult1": {
@@ -3476,13 +3482,13 @@ class TestLoadStac:
             }
         }
 
-        with mock.patch("pystac.read_file", return_value=self._mock_stac_api_collection()), mock.patch(
-                "pystac_client.Client.open") as mock_pystac_client_open:
-            api110.result(process_graph).assert_error(400, error_code="NoDataAvailable")
-
-        mock_stac_client = mock_pystac_client_open.return_value
-        mock_stac_client.search.assert_called_once()
-
+        res = api110.result(process_graph).assert_http_status_code(200)
+        assert rasterio_metadata_dump(res) == {
+            "epsg": 4326,
+            "bounds": (2.0, 49.0, 7.0, 52.0),
+            "shape": (3 * 32, 5 * 32),
+        }
+        assert dummy_stac_api_server.history_has(method="GET", path="/search")
 
     def test_stac_api_caching(self, imagecollection_with_two_bands_and_one_date, api110, tmp_path):
         with mock.patch("openeogeotrellis.load_stac.load_stac") as mock_load_stac:
@@ -3605,32 +3611,38 @@ class TestLoadStac:
         """load_stac with a STAC item that lacks "properties"/"eo:bands" and therefore falls back to its
         collection's "summaries"/"eo:bands"
         """
-        item_url = f"https://stac.test/{Path(item_path).name}"
-        item_json = test_data.load_text(
-            item_path,
-            preprocess={
-                "asset01.tiff": f"file://{test_data.get_path('binary/load_stac/collection01/asset01.tif').absolute()}",
-                "asset02.tiff": f"file://{test_data.get_path('binary/load_stac/collection01/asset02.tif').absolute()}",
-            },
-        )
-        urllib_and_request_mock.get(item_url, data=item_json)
 
-        collection_url = f"https://stac.test/{Path(collection_path).name}"
-        urllib_and_request_mock.get(collection_url, data=test_data.load_text(collection_path))
+        with Urllib3PoolManagerMocker().patch() as pool_manager_mock:
+            item_url = f"https://stac.test/{Path(item_path).name}"
+            item_json = test_data.load_text(
+                item_path,
+                preprocess={
+                    "asset01.tiff": f"file://{test_data.get_path('binary/load_stac/collection01/asset01.tif').absolute()}",
+                    "asset02.tiff": f"file://{test_data.get_path('binary/load_stac/collection01/asset02.tif').absolute()}",
+                },
+            )
+            urllib_and_request_mock.get(item_url, data=item_json)
+            pool_manager_mock.get(item_url, data=item_json.encode())
 
-        process_graph = {
-            "loadstac1": {
-                "process_id": "load_stac",
-                "arguments": {"url": item_url},
-            },
-            "saveresult1": {
-                "process_id": "save_result",
-                "arguments": {"data": {"from_node": "loadstac1"}, "format": "NetCDF"},
-                "result": True,
-            },
-        }
+            collection_url = f"https://stac.test/{Path(collection_path).name}"
+            collection_json = test_data.load_text(collection_path)
+            urllib_and_request_mock.get(collection_url, data=collection_json)
+            pool_manager_mock.get(collection_url, collection_json.encode())
 
-        res = api110.result(process_graph).assert_status_code(200)
+            process_graph = {
+                "loadstac1": {
+                    "process_id": "load_stac",
+                    "arguments": {"url": item_url},
+                },
+                "saveresult1": {
+                    "process_id": "save_result",
+                    "arguments": {"data": {"from_node": "loadstac1"}, "format": "NetCDF"},
+                    "result": True,
+                },
+            }
+
+            res = api110.result(process_graph).assert_status_code(200)
+
         res_path = tmp_path / "res.nc"
         res_path.write_bytes(res.data)
         cube: xarray.DataArray = _load_cube_from_netcdf(res_path)
@@ -4016,7 +4028,7 @@ class TestLoadStac:
             data=test_data.load_text(
                 test_data_dir / "item01.json",
                 preprocess={
-                    "asset01.nc": f"{test_data.get_path('binary/load_stac/spatial_netcdf/openEO_0.nc').absolute()}",
+                    "asset01.nc": f"file://{test_data.get_path('binary/load_stac/spatial_netcdf/openEO_0.nc').absolute()}",
                 },
             ),
         )
@@ -4025,7 +4037,7 @@ class TestLoadStac:
             data=test_data.load_text(
                 test_data_dir / "item02.json",
                 preprocess={
-                    "asset02.nc": f"{test_data.get_path('binary/load_stac/spatial_netcdf/openEO_1.nc').absolute()}",
+                    "asset02.nc": f"file://{test_data.get_path('binary/load_stac/spatial_netcdf/openEO_1.nc').absolute()}",
                 },
             ),
         )
@@ -4727,7 +4739,7 @@ class TestLoadStac:
         def item_json(path):
             text = get_test_data_file(path).read_text()
             path = get_test_data_file("stac/issue_copernicus_global_mosaics/B02_flat_color.tif")
-            text = re.sub(r'"href":\s*"s3:/(/eodata/[^"]*\.tif|jp2)"', f'"href": "{path}"', text)
+            text = re.sub(r'"href":\s*"s3:/(/eodata/[^"]*\.tif|jp2)"', f'"href": "file://{path}"', text)
             return text
 
         urllib_and_request_mock.get(

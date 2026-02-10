@@ -1,0 +1,48 @@
+[
+  {
+    "metric": {
+      "__name__": "cluster:namespace:pod_memory:billable:kube_pod_container_resource_requests",
+      "cluster_id": "c-123",
+      "container": "container1",
+      "endpoint": "http",
+      "job": "kube-state-metrics",
+      "label_correlation_id": "j-123",
+      "pod": "pod1",
+      "resource": "memory",
+      "unit": "byte"
+    },
+    "values": [
+      [
+        1768485185.542,
+        "268435456"
+      ],
+      [
+        1768485189.542,
+        "268435456"
+      ]
+    ]
+  },
+  {
+    "metric": {
+      "__name__": "cluster:namespace:pod_memory:billable:kube_pod_container_resource_requests",
+      "cluster_id": "c-123",
+      "container": "container2",
+      "endpoint": "http",
+      "job": "kube-state-metrics",
+      "label_correlation_id": "j-123",
+      "pod": "pod2",
+      "resource": "memory",
+      "unit": "byte"
+    },
+    "values": [
+      [
+        1768485185.542,
+        "4294967296"
+      ],
+      [
+        1768485189.542,
+        "4294967296"
+      ]
+    ]
+  }
+]

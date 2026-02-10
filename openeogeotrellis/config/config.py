@@ -118,7 +118,7 @@ class GpsBackendConfig(OpenEoBackendConfig):
         default="/openeo", validator=attrs.validators.matches_re("^/.+"), converter=lambda s: s.rstrip("/")
     )
 
-    # TODO #236/#498/#632 long term goal is to fully disable ZK job registry, but for now it's configurable.
+    # TODO #236/#498/#632/#1165 long term goal is to fully disable ZK job registry, but for now it's configurable.
     use_zk_job_registry: bool = False
     zk_job_registry_max_specification_size: Optional[int] = None
 

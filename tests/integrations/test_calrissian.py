@@ -1,7 +1,9 @@
 import datetime
+import json
 import re
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterator
+from typing import Dict, Iterator, Optional
 from unittest import mock
 
 import boto3
@@ -11,8 +13,10 @@ import moto
 import pytest
 import yaml
 
+from openeo_driver.utils import EvalEnv
 from openeogeotrellis.config.integrations.calrissian_config import (
     DEFAULT_CALRISSIAN_IMAGE,
+    DEFAULT_CALRISSIAN_RUNNER_RESOURCE_REQUIREMENTS,
     CalrissianConfig,
 )
 from openeogeotrellis.integrations.calrissian import (
@@ -20,10 +24,15 @@ from openeogeotrellis.integrations.calrissian import (
     CalrissianLaunchConfigBuilder,
     CalrissianS3Result,
     CwLSource,
+    parse_cwl_outputs_listing,
+    find_stac_root,
+    cwl_to_stac,
 )
 from openeogeotrellis.integrations.s3proxy.sts import STSCredentials
 from openeogeotrellis.testing import gps_config_overrides
 from openeogeotrellis.util.runtime import ENV_VAR_OPENEO_BATCH_JOB_ID
+from openeogeotrellis.utils import s3_client
+from tests.data import get_test_data_file
 
 
 @pytest.fixture
@@ -109,7 +118,7 @@ class TestCalrissianJobLauncher:
                         {
                             "name": "r-1234-cal-inp-01234567",
                             "image": "alpine:3",
-                            "image_pull_policy": "Always",
+                            "image_pull_policy": "IfNotPresent",
                             "command": ["/bin/sh"],
                             "args": [
                                 "-c",
@@ -124,6 +133,9 @@ class TestCalrissianJobLauncher:
                                     }
                                 ),
                             ],
+                            "resources": dirty_equals.IsPartialDict(
+                                CalrissianJobLauncher._HARD_CODED_STAGE_JOB_RESOURCES
+                            ),
                         }
                     )
                 ],
@@ -390,10 +402,15 @@ class TestCalrissianJobLauncher:
             s3_region="tatooine-east-1",
             s3_bucket=s3_calrissian_bucket,
         )
+        # mock calrissian output listing file in S3
+        s3_client().put_object(
+            Bucket=s3_calrissian_bucket,
+            Key="1234-abcd-5678-efgh/r-456-cal-cwl-01234567.cwl-outputs.json",
+            Body=get_test_data_file("parse_cwl_outputs_listing/cwl_outputs_listing_txt.json").open(mode="rb"),
+        )
         res = launcher.run_cwl_workflow(
             cwl_source=CwLSource.from_string("class: Dummy"),
             cwl_arguments=["--message", "Howdy Earth!"],
-            output_paths=["output.txt"],
         )
         assert res == {
             "output.txt": CalrissianS3Result(
@@ -526,6 +543,7 @@ class TestCalrissianJobLauncher:
         s3_calrissian_bucket,
         k8s_batch_api,
         k8s_secret_api_verify_mocked_sts,
+        k8s_pvc_api,
         calrissian_launch_config,
         job_context,
     ):
@@ -537,10 +555,92 @@ class TestCalrissianJobLauncher:
 
         with gps_config_overrides(calrissian_config=calrissian_config):
             launcher = CalrissianJobLauncher.from_context()
+
+            # Mock calrissian output listing file in S3.
+            s3_client().put_object(
+                Bucket=s3_calrissian_bucket,
+                Key="1234-abcd-5678-efgh/j-hello123-cal-cwl-01234567.cwl-outputs.json",
+                Body=get_test_data_file("parse_cwl_outputs_listing/cwl_outputs_listing_txt.json").open(mode="rb"),
+            )
+
             launcher.run_cwl_workflow(
                 cwl_source=CwLSource.from_string("class: Dummy"),
                 cwl_arguments=["--message", "Howdy Earth!"],
-                output_paths=["output.txt"],
+            )
+
+    def test_from_context_sets_container_resources(
+        self,
+        monkeypatch,
+        generate_unique_id_mock,
+        s3_calrissian_bucket,
+        k8s_core_v1_api,
+        calrissian_launch_config,
+        mock_sts,
+        job_context,
+    ):
+        @dataclass
+        class TestCase:
+            description: str
+            givenConfigRunnerRequirents: Optional[dict]
+            expectedResourcesDict: dict
+
+        testcases = [
+            TestCase(
+                description="ConfigOverrides should be set",
+                givenConfigRunnerRequirents=dict(limits={"memory": "10Mi"}, requests={"cpu": "1m", "memory": "10Mi"}),
+                expectedResourcesDict={"limits": {"memory": "10Mi"}, "requests": {"memory": "10Mi", "cpu": "1m"}},
+            ),
+            TestCase(
+                description="If no config overrides we expect the defaults to be set",
+                givenConfigRunnerRequirents=None,
+                expectedResourcesDict=DEFAULT_CALRISSIAN_RUNNER_RESOURCE_REQUIREMENTS,
+            ),
+        ]
+
+        for testcase in testcases:
+            calrissian_config = CalrissianConfig(
+                namespace="namezpace",
+                input_staging_image="albino:3.14",
+                s3_bucket=s3_calrissian_bucket,
+                runner_resource_requirements=testcase.givenConfigRunnerRequirents,
+            )
+
+            with gps_config_overrides(calrissian_config=calrissian_config):
+                launcher = CalrissianJobLauncher.from_context()
+                manifest, output_dir, cwl_outputs_listing = launcher.create_cwl_job_manifest(
+                    cwl_path="/calrissian/input-data/r-1234-cal-inp-01234567.cwl",
+                    cwl_arguments=["--message", "Howdy Earth!"],
+                )
+
+            assert isinstance(manifest, kubernetes.client.V1Job)
+            manifest_dict = manifest.to_dict()
+
+            pod_template_spec = manifest_dict["spec"]["template"]["spec"]
+
+            assert pod_template_spec["containers"] == [
+                dirty_equals.IsPartialDict(
+                    {
+                        "name": "j-hello123-cal-cwl-01234567",
+                        "command": ["calrissian"],
+                        "args": dirty_equals.Contains(
+                            "--pod-env-vars",
+                            "/calrissian/config/environment.yaml",
+                            "--message",
+                            "Howdy Earth!",
+                        ),
+                        "resources": dirty_equals.IsPartialDict(testcase.expectedResourcesDict),
+                    }
+                )
+            ]
+
+    def test_no_sync(self):
+        env = EvalEnv({"sync_job": "true"})
+        # Sync jobs are disabled for CWL, as it has no credit tracking.
+        with pytest.raises(RuntimeError):
+            cwl_to_stac(
+                cwl_arguments=[],
+                env=env,
+                cwl_source=CwLSource.from_string("class: Dummy"),
             )
 
 
@@ -633,3 +733,95 @@ class TestCwlSource:
     def test_from_resource(self):
         cwl = CwLSource.from_resource(anchor="openeogeotrellis.integrations", path="cwl/hello.cwl")
         assert "Hello World" in cwl.get_content()
+
+
+class TestCalrissianUtils:
+    def test_parse_cwl_outputs_listing_directory(self):
+        results = parse_cwl_outputs_listing(
+            json.load(get_test_data_file("parse_cwl_outputs_listing/cwl_outputs_listing_directory.json").open())
+        )
+        print(results)
+        assert len(results) == 7
+        assert results[0].startswith("r-")
+
+    def test_parse_cwl_outputs_listing_directory_force(self):
+        # JSON trimmed for brevity. Got json from cwltool without calrissian.
+        results = parse_cwl_outputs_listing(
+            json.load(get_test_data_file("parse_cwl_outputs_listing/cwl_outputs_listing_directory_force.json").open())
+        )
+        print(results)
+        assert len(results) == 5
+        assert results[0].startswith("/home/emile/openeo/apex-force-openeo/l2-ard")
+
+    def test_parse_cwl_outputs_listing_file_array(self):
+        results = parse_cwl_outputs_listing(
+            json.load(get_test_data_file("parse_cwl_outputs_listing/cwl_outputs_listing_file_array.json").open())
+        )
+        print(results)
+        assert len(results) == 7
+        assert results[0].startswith("r-")
+
+    def test_parse_cwl_outputs_listing_txt(self):
+        results = parse_cwl_outputs_listing(
+            json.load(get_test_data_file("parse_cwl_outputs_listing/cwl_outputs_listing_txt.json").open())
+        )
+        print(results)
+        assert len(results) == 1
+
+    def test_find_stac_root_dictionary(self):
+        listing_directory = [
+            "r-2512020921004d489e-cal-cwl-e706a8a7/o1kip6_h/collection.json",
+            "r-2512020921004d489e-cal-cwl-e706a8a7/o1kip6_h/openEO_2023-06-01Z.tif",
+            "r-2512020921004d489e-cal-cwl-e706a8a7/o1kip6_h/openEO_2023-06-01Z.tif.json",
+            "r-2512020921004d489e-cal-cwl-e706a8a7/o1kip6_h/openEO_2023-06-04Z.tif",
+            "r-2512020921004d489e-cal-cwl-e706a8a7/o1kip6_h/openEO_2023-06-04Z.tif.json",
+            "r-2512020921004d489e-cal-cwl-e706a8a7/o1kip6_h/openEO_2023-06-06Z.tif",
+            "r-2512020921004d489e-cal-cwl-e706a8a7/o1kip6_h/openEO_2023-06-06Z.tif.json",
+        ]
+        result = find_stac_root(listing_directory)
+        assert result
+        assert isinstance(result, str)
+        assert result == "r-2512020921004d489e-cal-cwl-e706a8a7/o1kip6_h/collection.json"
+
+    def test_find_stac_root_file_array_01(self):
+        listing_directory = [
+            "aaa/collection.json",
+            "bbb/collection-custom.json",
+        ]
+        result = find_stac_root(listing_directory, "collection-custom.json")
+        assert result
+        assert isinstance(result, str)
+        assert result == "bbb/collection-custom.json"
+
+    def test_find_stac_root_file_array_02(self):
+        listing_directory = [
+            "aaa/collection.json",
+            "bbb/collection-custom.json",
+        ]
+        result = find_stac_root(listing_directory)
+        assert result
+        assert isinstance(result, str)
+        assert result == "aaa/collection.json"
+
+    def test_find_stac_root_file_array_03(self):
+        listing_directory = [
+            "aaa/collection.json",
+            "bbb/collection-custom.json",
+            "ccc/catalog.json",
+            "ddd/catalogue.json",
+        ]
+        result = find_stac_root(listing_directory)
+        assert result
+        assert isinstance(result, str)
+        assert result == "ccc/catalog.json"
+
+    def test_find_stac_root_file_array_04(self):
+        listing_directory = [
+            "aaa/collection.json",
+            "bbb/collection-custom.json",
+            "ddd/catalogue.json",
+        ]
+        result = find_stac_root(listing_directory)
+        assert result
+        assert isinstance(result, str)
+        assert result == "ddd/catalogue.json"

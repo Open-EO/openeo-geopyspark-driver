@@ -142,11 +142,6 @@ class ZkJobRegistry:
     def set_dependency_usage(self, job_id: str, user_id: str, processing_units: Decimal):
         self.patch(job_id, user_id, dependency_usage=str(processing_units))
 
-    @staticmethod
-    def get_dependency_usage(job_info: dict) -> Optional[Decimal]:
-        usage = job_info.get('dependency_usage')
-        return Decimal(usage) if usage is not None else None
-
     def set_dependencies(self, job_id: str, user_id: str, dependencies: List[Dict[str, str]]):
         self.patch(job_id, user_id, dependencies=dependencies)
 
@@ -535,6 +530,7 @@ class ZkStrippedSpecification(Exception):
 
 def parse_zk_job_specification(job_info: dict, default_job_options=None) -> Tuple[dict, Union[dict, None]]:
     """Parse the JSON-encoded 'specification' field from ZK job info dict"""
+    # TODO #1165 eliminate this once unused
     specification_json = job_info["specification"]
     if specification_json.startswith(ZkStrippedSpecification.PAYLOAD_MARKER):
         raise ZkStrippedSpecification()
@@ -635,12 +631,14 @@ class InMemoryJobRegistry(JobRegistryInterface):
 
         return job
 
-    def delete_job(self, job_id: str, *, user_id: Optional[str] = None) -> None:
+    def delete_job(self, job_id: str, *, user_id: Optional[str] = None, verify_deletion: bool = True) -> None:
         self.get_job(job_id=job_id, user_id=user_id)  # will raise on job not found
         del self.db[job_id]
 
     def _update(self, job_id: str, **kwargs) -> JobDict:
         assert job_id in self.db
+        if "usage" in kwargs:
+            kwargs["input_pixel"] = kwargs["usage"].get("input_pixel", {}).get("value", 0.0)
         self.db[job_id].update(**kwargs)
         return self.db[job_id]
 
@@ -758,7 +756,8 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
 
     def __init__(
         self,
-        zk_job_registry_factory: Optional[Callable[[], ZkJobRegistry]] = ZkJobRegistry,
+        *,
+        zk_job_registry_factory: Optional[Callable[[], ZkJobRegistry]] = None,
         elastic_job_registry: Optional[JobRegistryInterface] = None,
     ):
         # Note: we use a factory here because current implementation (and test coverage) heavily depends on
@@ -817,7 +816,7 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
                 job_id=job_id,
                 user_id=user_id,
                 api_version=api_version,
-                specification=ZkJobRegistry.build_specification_dict(
+                specification=self.zk_job_registry.build_specification_dict(
                     process_graph=process["process_graph"],
                     job_options=job_options,
                 ),
@@ -903,12 +902,12 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
                 job_id=job_id, user_id=user_id, status=status, updated=updated, started=started, finished=finished
             )
 
-    def delete_job(self, job_id: str, *, user_id: Optional[str] = None) -> None:
+    def delete_job(self, job_id: str, *, user_id: Optional[str] = None, verify_deletion: bool = True) -> None:
         if self.zk_job_registry:
             assert user_id, "user_id is required in ZkJobRegistry"
             self.zk_job_registry.delete(job_id=job_id, user_id=user_id)
         if self.elastic_job_registry:
-            self.elastic_job_registry.delete_job(job_id=job_id, user_id=user_id)
+            self.elastic_job_registry.delete_job(job_id=job_id, user_id=user_id, verify_deletion=verify_deletion)
 
     def set_dependencies(
         self, job_id: str, *, user_id: Optional[str] = None, dependencies: List[Dict[str, str]]

@@ -97,7 +97,7 @@ def test_extract_result_metadata():
         "bbox": [4, 51, 5, 52],
         "geometry": {
             "type": "Polygon",
-            "coordinates": (((4.0, 51.0), (4.0, 52.0), (5.0, 52.0), (5.0, 51.0), (4.0, 51.0)),),
+            "coordinates": (((5.0, 51.0), (5.0, 52.0), (4.0, 52.0), (4.0, 51.0), (5.0, 51.0)),),
         },
         "area": {"value": approx(7725459381.443416, 0.01), "unit": "square meter"},
         "start_datetime": "2020-02-02T00:00:00Z",
@@ -155,7 +155,7 @@ def test_extract_result_metadata_aggregate_spatial_delayed_vector():
         "bbox": [5.0, 5.0, 45.0, 40.0],
         "geometry": {
             "type": "Polygon",
-            "coordinates": (((5.0, 5.0), (5.0, 40.0), (45.0, 40.0), (45.0, 5.0), (5.0, 5.0)),),
+            "coordinates": (((45.0, 5.0), (45.0, 40.0), (5.0, 40.0), (5.0, 5.0), (45.0, 5.0)),),
         },
         "area": {"value": approx(6763173869883.0, 1.0), "unit": "square meter"},
         "start_datetime": "2020-02-02T00:00:00Z",
@@ -1937,8 +1937,8 @@ def test_read_gdal_raster_metadata_from_multiband_tif_file():
 def get_job_metadata_without_s3(job_dir: Path) -> dict:
     """Helper function to create test data."""
 
-    return {
-        "assets": {
+    def assets():
+        return {
             "openEO_2017-11-21Z.tif": {
                 "output_dir": str(job_dir),
                 "bands": [{"common_name": None, "name": "ndvi", "wavelength_um": None}],
@@ -1950,12 +1950,21 @@ def get_job_metadata_without_s3(job_dir: Path) -> dict:
             "a-second-asset-file.tif": {
                 "output_dir": str(job_dir),
                 "bands": [{"common_name": None, "name": "ndvi", "wavelength_um": None}],
-                "href": f"{job_dir / 'openEO_2017-11-21Z.tif'}",
+                "href": f"{job_dir / 'a-second-asset-file.tif'}",
                 "nodata": 255,
                 "roles": ["data"],
                 "type": "image/tiff; application=geotiff",
             },
-        },
+        }
+
+    return {
+        "assets": assets(),
+        "items": [
+            {
+                "id": "ae67ecd9-4a9c-4662-8e6b-a7c8375ec6dc_2020-12-30T00:00:00Z",
+                "assets": assets(),
+            }
+        ],
         "bbox": [2, 51, 3, 52],
         "end_datetime": "2017-11-21T00:00:00Z",
         "epsg": 4326,
@@ -1974,11 +1983,26 @@ def get_job_metadata_without_s3(job_dir: Path) -> dict:
 def test_convert_asset_outputs_to_s3_urls():
     """Test that it converts a metadata dict, translating each output_dir to a URL with the s3:// scheme."""
 
-    metadata = get_job_metadata_without_s3(Path("/data/projects/OpenEO/6d11e901-bb5d-4589-b600-8dfb50524740/"))
+    metadata = get_job_metadata_without_s3(job_dir=Path("/batch_jobs/j-260129154402432e802f5309b026ece0"))
     metadata = _convert_asset_outputs_to_s3_urls(metadata)
 
-    assert metadata["assets"]["openEO_2017-11-21Z.tif"]["href"].startswith("s3://")
-    assert metadata["assets"]["a-second-asset-file.tif"]["href"].startswith("s3://")
+    assert (
+        metadata["assets"]["openEO_2017-11-21Z.tif"]["href"]
+        == "s3://OpenEO-data/batch_jobs/j-260129154402432e802f5309b026ece0/openEO_2017-11-21Z.tif"
+    )
+    assert (
+        metadata["assets"]["a-second-asset-file.tif"]["href"]
+        == "s3://OpenEO-data/batch_jobs/j-260129154402432e802f5309b026ece0/a-second-asset-file.tif"
+    )
+
+    assert (
+        metadata["items"][0]["assets"]["openEO_2017-11-21Z.tif"]["href"]
+        == "s3://OpenEO-data/batch_jobs/j-260129154402432e802f5309b026ece0/openEO_2017-11-21Z.tif"
+    )
+    assert (
+        metadata["items"][0]["assets"]["a-second-asset-file.tif"]["href"]
+        == "s3://OpenEO-data/batch_jobs/j-260129154402432e802f5309b026ece0/a-second-asset-file.tif"
+    )
 
 
 class TestUdfDependenciesHandling:

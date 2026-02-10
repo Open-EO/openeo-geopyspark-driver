@@ -20,6 +20,7 @@ from openeo_driver.save_result import (
 from openeo_driver.util.geometry import reproject_bounding_box, spatial_extent_union
 from openeo_driver.util.utm import area_in_square_meters
 from openeo_driver.utils import temporal_extent_union
+import shapely.geometry
 from shapely.geometry import Polygon, mapping
 from shapely.geometry.base import BaseGeometry
 
@@ -27,6 +28,7 @@ from openeogeotrellis._version import __version__
 from openeogeotrellis.backend import JOB_METADATA_FILENAME, GeoPySparkBackendImplementation
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.integrations.gdal import _extract_gdal_asset_raster_metadata
+from openeogeotrellis.util.geometry import bbox_to_geojson
 from openeogeotrellis.utils import _make_set_for_key, get_jvm, to_s3_url, map_optional
 
 logger = logging.getLogger(__name__)
@@ -141,8 +143,8 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
         temp_bbox = [spatial_extent[b] for b in ["west", "south", "east", "north"]]
         if all(b is not None for b in temp_bbox):
             bbox = temp_bbox  # Only set bbox once we are sure we have all the info
-            area = area_in_square_meters(Polygon.from_bounds(*bbox), bbox_crs)
-            lonlat_geometry = mapping(Polygon.from_bounds(*convert_bbox_to_lat_long(bbox, bbox_crs)))
+            area = area_in_square_meters(shapely.geometry.box(*bbox), bbox_crs)
+            lonlat_geometry = mapping(shapely.geometry.box(*convert_bbox_to_lat_long(bbox, bbox_crs)))
 
     start_date, end_date = [rfc3339.datetime(d) for d in temporal_extent]
 
@@ -165,7 +167,7 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
             bbox = agg_geometry.bounds
             bbox_crs = agg_geometry.crs
             # Intentionally don't return the complete vector file. https://github.com/Open-EO/openeo-api/issues/339
-            lonlat_geometry = mapping(Polygon.from_bounds(*convert_bbox_to_lat_long(bbox, bbox_crs)))
+            lonlat_geometry = bbox_to_geojson(convert_bbox_to_lat_long(bbox, bbox_crs))
             area = DriverVectorCube.from_fiona([agg_geometry.path]).get_area()
         elif isinstance(agg_geometry, DriverVectorCube):
             if agg_geometry.geometry_count() != 0:
@@ -316,14 +318,19 @@ def convert_bbox_to_lat_long(bbox: List[int], bbox_crs: Optional[Union[str, int,
 
 
 def _convert_asset_outputs_to_s3_urls(job_metadata: dict) -> dict:
-    """Convert each asset's output_dir value to a URL on S3 in the metadata dictionary."""
+    """Convert each asset's href value to a URL on S3 in the metadata dictionary."""
 
     job_metadata = deepcopy(job_metadata)
 
-    out_assets = job_metadata.get("assets", {})
-    for asset in out_assets.values():
-        if "href" in asset and not str(asset["href"]).startswith("s3://"):
-            asset["href"] = to_s3_url(asset["href"])
+    def replace_hrefs(assets: dict):
+        for asset in assets.values():
+            if "href" in asset and not str(asset["href"]).startswith("s3://"):
+                asset["href"] = to_s3_url(asset["href"])
+
+    replace_hrefs(job_metadata.get("assets", {}))  # top-level
+
+    for item in job_metadata.get("items", []):  # those nested in items
+        replace_hrefs(item.get("assets", {}))
 
     return job_metadata
 

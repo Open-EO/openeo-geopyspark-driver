@@ -22,6 +22,7 @@ yarn_require = [
 
 tests_require = [
     'pytest',
+    'pytest-xdist',
     'pytest-timeout',
     'mock',
     'moto[s3]>=5.0.0',
@@ -30,6 +31,7 @@ tests_require = [
     'openeo_udf>=1.0.0rc3',
     "time_machine>=2.8.0,<3.0.0",
     "kubernetes",
+    "google-auth<2.46.0; python_version<='3.8'",  # quick-fix for google-auth python 3.8 compatibility issue
     "re-assert",
     "dirty-equals>=0.6",
     "cryptography>=44.0.0",
@@ -65,23 +67,24 @@ setup(
             "scripts/async_task-entrypoint.sh",
             "scripts/async_task_log4j2.xml",
             "scripts/zookeeper_set.py",
+            "scripts/job_cleaner.py",
         ]),
     ],
     tests_require=tests_require,
     install_requires=[
         # TODO: avoid excessive `python_version` based version constraints. https://github.com/Open-EO/openeo-geopyspark-driver/issues/1395
-        "openeo>=0.43.0.dev",
-        "openeo_driver>=0.137.0a2.dev",
+        "openeo>=0.48.0.a2.dev",
+        "openeo_driver>=0.138.0a12.dev",
         'pyspark>=4.0.0; python_version>"3.8"',
         'pyspark>=3.5.0,<4.0.0; python_version<="3.8"',
         'geopyspark_openeo==0.4.3.post1',
         # rasterio is an undeclared but required dependency for geopyspark
         # (see https://github.com/locationtech-labs/geopyspark/issues/683 https://github.com/locationtech-labs/geopyspark/pull/706)
-        'rasterio~=1.2.0; python_version<"3.9"',
+        'rasterio~=1.3.10; python_version<"3.9"',
         'rasterio~=1.3.10; python_version>="3.9"',
         'py4j',
         'numpy==1.22.4; python_version<"3.9"',
-        'numpy>=2.3.3; python_version>="3.9"',
+        'numpy>=2.3.3,<2.5; python_version>="3.9"',
         'pandas>=1.4.0,<2.0.0; python_version<"3.9"',
         'pandas; python_version>="3.9"',
         'pyproj==3.4.1',
@@ -104,11 +107,11 @@ setup(
         'Bottleneck~=1.4.0; python_version>="3.9"',
         "python-json-logger~=2.0",  # Avoid breaking change in 3.1.0 https://github.com/nhairs/python-json-logger/issues/29
         'jep==4.1.1; python_version<"3.9"',
-        'jep_openeo==4.1.1; python_version>="3.9"',  # Required because Jep needs to compile against numpy 2.x
+        'jep_openeo_numpy==4.1.2; python_version>="3.9"',  # Required because Jep needs to compile against numpy 2.x
         'kafka-python==1.4.6',
         'deprecated>=1.2.12',
         'elasticsearch==7.16.3',
-        "pystac>=1.8.4",  # TODO #1060 bump to more recent version (1.8.4 is from Sep 2023) once we can leave Python 3.8 behind
+        "pystac>=1.8.4",
         'pystac_client~=0.7.2',
         'boto3>=1.16.25,<2.0',
         "hvac>=1.0.2",
@@ -120,7 +123,6 @@ setup(
         "PyJWT[crypto]>=2.9.0",  # For identity tokens
         "urllib3>=1.26.20",
         "importlib_resources; python_version<'3.9'",  # #1060 on python 3.8 we need importlib_resources backport
-        "cwltool",  # for validation. cwl running is done via calrissian
     ],
     extras_require={
         "dev": tests_require + typing_require,

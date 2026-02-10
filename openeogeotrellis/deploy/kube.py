@@ -16,7 +16,7 @@ from openeogeotrellis import deploy
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.deploy import get_socket
 from openeogeotrellis.integrations.kubernetes import kube_client
-from openeogeotrellis.job_registry import ZkJobRegistry, EagerlyK8sTrackingInMemoryJobRegistry
+from openeogeotrellis.job_registry import EagerlyK8sTrackingInMemoryJobRegistry
 
 log = logging.getLogger(__name__)
 
@@ -46,16 +46,9 @@ def main():
     log.info("starting spark context")
     SparkContext.getOrCreate()
 
-    def setup_batch_jobs():
-        if get_backend_config().use_zk_job_registry:
-            # TODO #236/#498/#632 Phase out ZkJobRegistry?
-            with ZkJobRegistry() as job_registry:
-                job_registry.ensure_paths()
-
     def on_started():
         app.logger.setLevel("DEBUG")
         deploy.load_custom_processes()
-        setup_batch_jobs()
 
     from openeogeotrellis.backend import GeoPySparkBackendImplementation
 

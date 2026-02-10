@@ -5,6 +5,7 @@ import pystac_client
 import pystac_client.exceptions
 import pytest
 import requests
+import urllib3
 from kazoo.exceptions import BadVersionError, NoNodeError
 
 from openeogeotrellis.config import get_backend_config
@@ -12,6 +13,7 @@ from openeogeotrellis.testing import (
     DummyCubeBuilder,
     DummyStacApiServer,
     KazooClientMock,
+    Urllib3PoolManagerMocker,
     _ZNodeStat,
     gps_config_overrides,
 )
@@ -355,3 +357,44 @@ class TestDummyStacApiServer:
             items = list(result.items())
 
         assert [item.id for item in items] == expected_items
+
+    def test_item_auto_geometry_from_bbox(self):
+        """
+        Since PyStac 1.11 (https://github.com/stac-utils/pystac/pull/1423),
+        an Item's bbox might be lost if there is no geometry as well,
+        following the STAC Item spec (https://github.com/radiantearth/stac-spec/blob/master/item-spec/item-spec.md#item-fields)
+
+        DummyStacApiServer.define_item() should automatically set the geometry from the bbox if unspecified as convenience.
+        """
+        server = DummyStacApiServer()
+        server.define_collection("auto-geometry")
+        server.define_item(
+            "auto-geometry",
+            "item-123",
+            bbox=[1, 2, 3, 4],
+        )
+
+        with server.serve() as root_url:
+            client = pystac_client.Client.open(root_url)
+            result = client.search(collections=["auto-geometry"])
+            [item123] = list(result.items())
+
+        assert item123.to_dict() == dirty_equals.IsPartialDict(
+            {
+                "id": "item-123",
+                "bbox": [1, 2, 3, 4],
+                "geometry": {
+                    "coordinates": [[[3, 2], [3, 4], [1, 4], [1, 2], [3, 2]]],
+                    "type": "Polygon",
+                },
+            }
+        )
+
+
+def test_mock_urllib3_pool_manager():
+    with Urllib3PoolManagerMocker().patch() as mocker:
+        mocker.get("https://stac.test", data="hello")
+
+        http = urllib3.PoolManager()
+        with http.request("GET", "https://stac.test", preload_content=False) as response:
+            assert response.read() == "hello"

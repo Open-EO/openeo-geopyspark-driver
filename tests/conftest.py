@@ -37,7 +37,7 @@ from openeo_driver.views import build_app
 from openeogeotrellis.integrations.s3proxy.sts import _STSClient
 from openeogeotrellis.config import get_backend_config, GpsBackendConfig
 from openeogeotrellis.job_registry import InMemoryJobRegistry
-from openeogeotrellis.testing import gps_config_overrides, YarnMocker
+from openeogeotrellis.testing import gps_config_overrides, YarnMocker, DummyStacApiServer
 from openeogeotrellis.vault import Vault
 
 from .data import TEST_DATA_ROOT, get_test_data_file
@@ -56,6 +56,17 @@ _BACKEND_CONFIG_PATH = Path(__file__).parent / "backend_config.py"
 
 pytest_plugins = "pytester"
 
+
+NO_SKIP_OPTION: typing.Final[str] = "--no-skip"
+
+def pytest_addoption(parser):
+    parser.addoption(NO_SKIP_OPTION, action="store_true", default=False, help="also run skipped tests")
+
+def pytest_collection_modifyitems(config,
+                                  items: typing.List[typing.Any]):
+    if config.getoption(NO_SKIP_OPTION):
+        for test in items:
+            test.own_markers = [marker for marker in test.own_markers if marker.name not in ('skip', 'skipif')]
 
 @pytest.fixture(scope="session")
 def backend_config_path() -> Path:
@@ -245,11 +256,7 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
         )
     )
 
-    try:
-        scala_version = context._jvm.scala.util.Properties.versionNumberString()
-    except Exception as e:
-        scala_version = str(e)
-    out.write_line("[conftest.py] Scala version: " + scala_version)
+    out.write_line("[conftest.py] Scala version: " + context._jvm.scala.util.Properties.versionNumberString())
 
     if OPENEO_LOCAL_DEBUGGING:
         # TODO: Activate default logging for this message
@@ -751,3 +758,32 @@ def metadata_tracker():
     tracker = _get_tracker()
     yield tracker
     tracker.setGlobalTracking(False)
+
+
+@pytest.fixture
+def dummy_stac_api_server() -> DummyStacApiServer:
+    return DummyStacApiServer()
+
+
+@pytest.fixture
+def dummy_stac_api(dummy_stac_api_server) -> typing.Iterator[str]:
+    """
+    Fixture for the root URL of a basic dummy STAC API
+    (running as ephemeral server in side-thread).
+
+    By default: provides a dummy collection "collection-123"
+    with items "item-1", "item-2", "item-3".
+
+    To further customize: also request the `dummy_stac_api_server` fixture
+    and define collections/items there.
+
+    Yields the root URL of the dummy STAC API server.
+
+    Usage example:
+
+        def test_something(dummy_stac_api):
+            url = f"{dummy_stac_api}/collections/collection-123"
+            # Get/query/walk these STAC API URLs
+    """
+    with dummy_stac_api_server.serve() as root_url:
+        yield root_url

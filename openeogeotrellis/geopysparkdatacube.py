@@ -34,7 +34,7 @@ from openeo.udf import UdfData
 from openeo.udf.xarraydatacube import XarrayDataCube, XarrayIO
 from openeo.util import dict_no_none, str_truncate
 from openeo_driver.datacube import DriverDataCube, DriverVectorCube
-from openeo_driver.datastructs import ResolutionMergeArgs
+from openeo_driver.datastructs import ResolutionMergeArgs, StacAsset
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.errors import FeatureUnsupportedException, OpenEOApiException, \
@@ -51,6 +51,7 @@ from openeogeotrellis.ml.geopysparkmlmodel import GeopysparkMlModel
 from openeogeotrellis.processgraphvisiting import GeotrellisTileProcessGraphVisitor, SingleNodeUDFProcessGraphVisitor
 from openeogeotrellis.ml.aggregatespatialvectorcube import AggregateSpatialVectorCube
 from openeogeotrellis.util.datetime import to_datetime_utc
+from openeogeotrellis.util.geometry import bbox_to_geojson
 from openeogeotrellis.utils import (
     to_projected_polygons,
     log_memory,
@@ -370,8 +371,7 @@ class GeopysparkDataCube(DriverDataCube):
         cube = self
         if type== "temporal":
             if cube.metadata.has_temporal_dimension():
-                #TODO change to error
-                _log.warning("Temporal dimension can only be added if temporal dimension does not exist")
+                raise ValueError("Temporal dimension can only be added if temporal dimension does not exist")
             else:
                 jvm = get_jvm()
                 label_as_zoneddatetime = jvm.java.time.ZonedDateTime.parse(label)
@@ -1906,7 +1906,7 @@ class GeopysparkDataCube(DriverDataCube):
         assets = [asset for item in result.values() for asset in item["assets"].values()]
         return assets[0]["href"]
 
-    def write_assets(self, filename: Union[str, pathlib.Path], format: str, format_options: dict = None) -> Dict:
+    def write_assets(self, filename: Union[str, pathlib.Path], format: str, format_options: dict = None) -> Dict[str, StacAsset]:
         """
         Save cube to disk, returns the resulting items, which can have multiple assets.
 
@@ -1956,7 +1956,7 @@ class GeopysparkDataCube(DriverDataCube):
                 assets = {}
                 extent = java_item.bbox()
                 bbox = to_latlng_bbox(extent) if extent else None
-                geometry = mapping(Polygon.from_bounds(*to_latlng_bbox(extent))) if extent else None
+                geometry = bbox_to_geojson(bbox) if bbox else None
 
                 for asset_key, asset in java_item.assets().items():
                     assets[asset_key] = {
@@ -1975,6 +1975,7 @@ class GeopysparkDataCube(DriverDataCube):
                             band["statistics"] = dict(band.get("statistics"))
                         bands.append(band)
                     assets[asset_key]["bands"] = bands
+                    assets[asset_key]["raster:bands"] = bands
                     assets[asset_key]["proj:bbox"] = tuple(asset_metadata.get("proj:bbox"))
                     assets[asset_key]["proj:shape"] = tuple(asset_metadata.get("proj:shape"))
                     assets[asset_key]["proj:epsg"] = asset_metadata.get("proj:epsg")
@@ -2119,7 +2120,7 @@ class GeopysparkDataCube(DriverDataCube):
                                 assets[asset_key] = {
                                     "href": asset.path(),
                                     "bbox": to_latlng_bbox(bbox),
-                                    "geometry": mapping(Polygon.from_bounds(*to_latlng_bbox(bbox))),
+                                    "geometry": bbox_to_geojson(to_latlng_bbox(bbox)),
                                     "type": "image/tiff; application=geotiff",
                                     "roles": ["data"],
                                 }
@@ -2129,7 +2130,7 @@ class GeopysparkDataCube(DriverDataCube):
                             item = {
                                 "id": java_item.id(),
                                 "properties": {"datetime": java_item.datetime()},
-                                "geometry": mapping(Polygon.from_bounds(*to_latlng_bbox(bbox))),
+                                "geometry": bbox_to_geojson(to_latlng_bbox(bbox)),
                                 "bbox": to_latlng_bbox(bbox),
                                 "assets": assets,
                             }
@@ -2148,7 +2149,7 @@ class GeopysparkDataCube(DriverDataCube):
                             assets[asset_key] = {
                                 "href": save_filename,
                                 "bbox": to_latlng_bbox(bbox),
-                                "geometry": mapping(Polygon.from_bounds(*to_latlng_bbox(bbox))),
+                                "geometry": bbox_to_geojson(to_latlng_bbox(bbox)),
                                 "type": "image/tiff; application=geotiff",
                                 "roles": ["data"],
                             }
@@ -2158,7 +2159,7 @@ class GeopysparkDataCube(DriverDataCube):
                         item = {
                             "id": java_item.id(),
                             "properties": {"datetime": java_item.datetime()},
-                            "geometry": mapping(Polygon.from_bounds(*to_latlng_bbox(bbox))),
+                            "geometry": bbox_to_geojson(to_latlng_bbox(bbox)),
                             "bbox": to_latlng_bbox(bbox),
                             "assets": assets,
                         }
@@ -2288,14 +2289,14 @@ class GeopysparkDataCube(DriverDataCube):
                                     "nodata": nodata,
                                     "datetime": stac_datetime,
                                     "bbox": to_latlng_bbox(bbox),
-                                    "geometry": mapping(Polygon.from_bounds(*to_latlng_bbox(bbox))),
+                                    "geometry": bbox_to_geojson(to_latlng_bbox(bbox)),
                                 }
                             assets = add_gdalinfo_objects(assets)
 
                             item = {
                                 "id": java_item.id(),
                                 "properties": {"datetime": stac_datetime},
-                                "geometry": mapping(Polygon.from_bounds(*to_latlng_bbox(bbox))),
+                                "geometry": bbox_to_geojson(to_latlng_bbox(bbox)),
                                 "bbox": to_latlng_bbox(bbox),
                                 "assets": assets,
                             }
@@ -2345,12 +2346,12 @@ class GeopysparkDataCube(DriverDataCube):
                                     ]
                                 if bbox:
                                     assets[asset_key]["bbox"] = to_latlng_bbox(bbox)
-                                    assets[asset_key]["geometry"] = mapping(Polygon.from_bounds(*to_latlng_bbox(bbox)))
+                                    assets[asset_key]["geometry"] = bbox_to_geojson(to_latlng_bbox(bbox))
 
                             assets = add_gdalinfo_objects(assets)
                             item = {
                                 "id": java_item.id(),
-                                "geometry": mapping(Polygon.from_bounds(*to_latlng_bbox(bbox))),
+                                "geometry": bbox_to_geojson(to_latlng_bbox(bbox)),
                                 "bbox": to_latlng_bbox(bbox),
                                 "assets": assets,
                             }
@@ -2533,7 +2534,7 @@ class GeopysparkDataCube(DriverDataCube):
         elif format == "DEBUG_GENERAL":
             # Write debug information to a json file without going through spark.
             debug_output = {"layer_metadata": {}, "cube_metadata": {}}
-            metadata_sc = max_level.layer_metadata
+            metadata_sc = max_level.srdd.rdd().metadata()
             layer_metadata_py: gps.Metadata = convert_scala_metadata(
                 metadata_sc, epoch_ms_to_datetime=_instant_ms_to_minute, logger=_log
             )
@@ -2993,6 +2994,27 @@ class GeopysparkDataCube(DriverDataCube):
         # Nothing to do: the actual SAR backscatter processing already happened in `load_collection`
         return self
 
+    def corsa_compress(self) -> "GeopysparkDataCube":
+        def compute_corsa_compress(rdd, level):
+            pr = gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses()
+            return pr.corsaCompress(rdd)
+
+        return self._apply_to_levels_geotrellis_rdd(
+            compute_corsa_compress, metadata=self.metadata.with_new_band_names(["level_0", "level_1"])
+        )
+
+    def corsa_decompress(self) -> "GeopysparkDataCube":
+        def compute_corsa_decompress(rdd, level):
+            pr = gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses()
+            return pr.corsaDecompress(rdd)
+
+        return self._apply_to_levels_geotrellis_rdd(
+            compute_corsa_decompress,
+            metadata=self.metadata.with_new_band_names(
+                ["B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A", "B11", "B12"]
+            ),
+        )
+
     @callsite
     def resolution_merge(self, args: ResolutionMergeArgs) -> 'GeopysparkDataCube':
         high_band_indices = [self.metadata.get_band_index(b) for b in args.high_resolution_bands]
@@ -3008,6 +3030,29 @@ class GeopysparkDataCube(DriverDataCube):
             )
         )
         return merged
+
+    @callsite
+    def convert_data_type(self, data_type: str) -> 'GeopysparkDataCube':
+        converted = self._apply_to_levels_geotrellis_rdd(
+            lambda rdd,
+                   level: gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses().convertDataType(
+                rdd,
+                data_type
+            )
+        )
+        return converted
+
+    @callsite
+    def predict_onnx(self, model: str) -> 'GeopysparkDataCube':
+        converted = self._apply_to_levels_geotrellis_rdd(
+            lambda rdd,
+                   level: gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses().predictONNX(
+                rdd,
+                model
+            )
+        )
+        return converted
+
 
     def __str__(self):
         super_str = super().__str__()

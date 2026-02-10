@@ -75,6 +75,7 @@ export SPARK_SUBMIT_OPTS="-Dlog4j2.configurationFile=file:${sparkSubmitLog4jConf
 export LD_LIBRARY_PATH="/opt/venv/lib64"
 
 if [ -n "$udf_python_dependencies_folder_path" ]; then
+  # TODO: avoid injecting possibly brittle UDF dep folder when not needed (eu-cdse/openeo-cdse-infra#842)
   export PYTHONPATH="$PYTHONPATH:$udf_python_dependencies_folder_path"
 fi
 

@@ -8,7 +8,7 @@ import argparse
 import collections
 import datetime as dt
 import logging
-from decimal import Decimal
+import os
 from pathlib import Path
 from typing import Any, List, NamedTuple, Optional, Union
 
@@ -311,7 +311,7 @@ class K8sStatusGetter(JobMetadataGetterInterface):
                         extra={"job_id": job_id, "user_id": user_id}
                     )
                 else:
-                    _log.warning(f"Final application error message: {msg}", extra={"job_id": job_id, "user_id": user_id})
+                    _log.error(f"Final application error message: {msg}", extra={"job_id": job_id, "user_id": user_id})
 
             datetime_formatter = Rfc3339(propagate_none=True)
             start_time = datetime_formatter.parse_datetime(metadata["status"]["lastSubmissionAttemptTime"])
@@ -336,14 +336,31 @@ class K8sStatusGetter(JobMetadataGetterInterface):
     def _get_usage(self, application_id: str, start_time: Optional[dt.datetime], finish_time: Optional[dt.datetime],
                    job_id: str, user_id: str) -> _Usage:
         try:
+            cpu_seconds = self._prometheus_api.get_cpu_usage(application_id)
+
             if start_time is None or finish_time is None:
                 application_duration_s = None
                 byte_seconds = None
             else:
                 application_duration_s = (finish_time - start_time).total_seconds()
                 byte_seconds = self._prometheus_api.get_memory_usage(application_id, application_duration_s)
+                if os.environ.get("LOG_BILLABLE_METRICS", "FALSE").upper() != "FALSE":
+                    _log.debug(
+                        f"Retrieved usage stats for comparison",
+                        extra={
+                            "job_id": job_id,
+                            "user_id": user_id,
+                            "cpu_seconds": cpu_seconds,
+                            "byte_seconds": byte_seconds,
+                            "billable_requested_cpu_seconds": self._prometheus_api.get_billable_cpu_requested(
+                                job_id, start=start_time.timestamp(), end=finish_time.timestamp()
+                            ),
+                            "billable_requested_byte_seconds": self._prometheus_api.get_billable_memory_requested(
+                                job_id, start=start_time.timestamp(), end=finish_time.timestamp()
+                            ),
+                        },
+                    )
 
-            cpu_seconds = self._prometheus_api.get_cpu_usage(application_id)
             network_receive_bytes = self._prometheus_api.get_network_received_usage(application_id)
 
             max_executor_gigabyte = self._prometheus_api.get_max_executor_memory_usage(application_id)
@@ -400,8 +417,9 @@ class K8sStatusGetter(JobMetadataGetterInterface):
 class JobTracker:
     def __init__(
         self,
+        *,
         app_state_getter: JobMetadataGetterInterface,
-        zk_job_registry: Optional[ZkJobRegistry],
+        zk_job_registry: Optional[ZkJobRegistry] = None,  # TODO #1165 remove ZkJobRegistry
         principal: str,
         keytab: str,
         job_costs_calculator: Optional[JobCostsCalculator] = None,
@@ -514,7 +532,7 @@ class JobTracker:
             log.warning(
                 f"App not found: {job_id=} {application_id=}; "
                 f"this is not necessarily a problem (https://github.com/eu-cdse/openeo-cdse-infra/issues/147)",
-                exc_info=True,
+                exc_info=False,  # omit noisy stack trace for non-exceptional situation
             )
             # TODO: originally, we set the job status here to "error", but that is potentially
             #       destructive in distributed context with partial replication.
@@ -560,8 +578,7 @@ class JobTracker:
                     .get("value", 0.0)
                 )
 
-                sentinelhub_batch_processing_units = float(ZkJobRegistry.get_dependency_usage(job_info)
-                                                           or Decimal("0.0"))
+                sentinelhub_batch_processing_units = float(job_info.get("dependency_usage") or 0.0)
 
                 sentinelhub_processing_units_to_report = (sentinelhub_processing_units +
                                                           sentinelhub_batch_processing_units) or None
@@ -671,14 +688,6 @@ class CliApp:
             try:
                 config = get_backend_config()
 
-                # ZooKeeper Job Registry
-                if config.use_zk_job_registry:
-                    zk_root_path = args.zk_job_registry_root_path
-                    _log.info(f"Using {zk_root_path=}")
-                    zk_job_registry = ZkJobRegistry(root_path=zk_root_path)
-                else:
-                    zk_job_registry = None
-
                 requests_session = requests_with_retry(total=3, backoff_factor=2)
 
                 # Elastic Job Registry (EJR)
@@ -709,7 +718,6 @@ class CliApp:
 
                 job_tracker = JobTracker(
                     app_state_getter=app_state_getter,
-                    zk_job_registry=zk_job_registry,
                     principal=args.principal,
                     keytab=args.keytab,
                     elastic_job_registry=elastic_job_registry,
@@ -764,11 +772,6 @@ class CliApp:
             default=None,
             dest="rotating_log",
             help="Rotating log file (path).",
-        )
-        parser.add_argument(
-            "--zk-job-registry-root-path",
-            default=ConfigParams().batch_jobs_zookeeper_root_path,
-            help="ZooKeeper root path for the job registry",
         )
         parser.add_argument(
             "--run-id",

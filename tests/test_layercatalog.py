@@ -277,38 +277,6 @@ def test_layer_catalog_step_resolution(vault):
     assert warnings == ""
 
 
-def test_get_layer_native_extent_specific(vault):
-    with gps_config_overrides(
-        layer_catalog_files=[
-            str(Path(__file__).parent / "layercatalog.json"),
-        ]
-    ):
-        catalog = get_layer_catalog(vault, opensearch_enrich=True)
-        metadata = GeopysparkCubeMetadata(catalog.get_collection_metadata(collection_id="SENTINEL1_CARD4L"))
-        assert metadata.get_layer_native_extent() == BoundingBox(
-            west=-26.15, south=-48, east=60.42, north=39, crs="EPSG:4326"
-        )
-
-
-def test_get_layer_native_extent_all(vault):
-    with gps_config_overrides(
-        layer_catalog_files=[
-            str(Path(__file__).parent / "layercatalog.json"),
-        ]
-    ):
-        catalog = get_layer_catalog(vault, opensearch_enrich=True)
-    all_metadata = catalog.get_all_metadata()
-    for layer in all_metadata:
-        print(layer["id"])
-        metadata = GeopysparkCubeMetadata(catalog.get_collection_metadata(collection_id=layer["id"]))
-        metadata.get_layer_native_extent()
-
-
-def test_get_layer_native_extent_empty(vault):
-    metadata = GeopysparkCubeMetadata({})
-    assert metadata.get_layer_native_extent() is None
-
-
 def test_merge_layers_with_common_name_nothing():
     metadata = {"FOO": {"id": "FOO"}, "BAR": {"id": "BAR"}}
     _merge_layers_with_common_name(metadata)

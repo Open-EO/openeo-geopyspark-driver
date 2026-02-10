@@ -4,6 +4,7 @@ from openeo_driver.backend import LoadParameters
 from openeo_driver.utils import EvalEnv
 from py4j.java_gateway import JVMView
 
+from openeogeotrellis._backend import post_dry_run
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.constants import EVAL_ENV_KEY
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
@@ -38,12 +39,14 @@ def create(load_params: LoadParameters, env: EvalEnv, jvm: JVMView):
         feature_flags.get("allow_empty_cube", env.get(EVAL_ENV_KEY.ALLOW_EMPTY_CUBES, False))
     )
 
-    globalbounds = feature_flags.get("global_bounds", True)
-    if globalbounds and load_params.global_extent is not None and len(load_params.global_extent) > 0:
-        ge = load_params.global_extent
-        datacubeParams.setGlobalExtent(
-            float(ge["west"]), float(ge["south"]), float(ge["east"]), float(ge["north"]), ge["crs"]
-        )
+    # TODO: undocumented feature flag "global_bounds"
+    if feature_flags.get("global_bounds", True):
+        if ge := post_dry_run.get_global_extent(load_params=load_params, env=env):
+            logger.debug(f"setGlobalExtent with {ge=}")
+            datacubeParams.setGlobalExtent(
+                float(ge.west), float(ge.south), float(ge.east), float(ge.north), str(ge.crs)
+            )
+
     single_level = env.get(EVAL_ENV_KEY.PYRAMID_LEVELS, "all") != "all"
     if single_level:
         getattr(datacubeParams, "layoutScheme_$eq")("FloatingLayoutScheme")
@@ -77,4 +80,18 @@ def create(load_params: LoadParameters, env: EvalEnv, jvm: JVMView):
         datacubeParams.setTimeDimensionFilter(labels_filter.builder)
 
     datacubeParams.setRetainNoDataTiles(feature_flags.get("retain_nodata_tiles", False))
+
+    use_raster_source_providers = feature_flags.get("use_raster_source_providers", False)
+    datacubeParams.setUseRasterSourceProviders(use_raster_source_providers)
+
+    synthetic_data_override_celltype = feature_flags.get("synthetic_data_override_celltype", None)
+    if synthetic_data_override_celltype:
+        synthetic_data_override_udf = feature_flags.get("synthetic_data_override_udf", None)
+        option = jvm.scala.Option
+        option_synthetic_udf = option.apply(synthetic_data_override_udf) if synthetic_data_override_udf else option.empty()
+        syntheticDataOverride =  jvm.org.openeo.geotrelliscommon.SyntheticDataOverride(
+            synthetic_data_override_celltype, option_synthetic_udf
+        )
+        datacubeParams.setSyntheticDataOverride(syntheticDataOverride)
+
     return datacubeParams, single_level

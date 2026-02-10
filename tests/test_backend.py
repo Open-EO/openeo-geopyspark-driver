@@ -25,6 +25,7 @@ from openeo_driver.utils import EvalEnv
 from openeogeotrellis.backend import GpsProcessing, GeoPySparkBackendImplementation, GpsUdfRuntimes, GpsBatchJobs
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.config.s3_config import S3Config
+from openeogeotrellis.geopysparkcubemetadata import Band
 from openeogeotrellis.integrations.kubernetes import k8s_render_manifest_template, K8S_SPARK_APP_STATE
 from openeogeotrellis.integrations.yarn_jobrunner import YARNBatchJobRunner
 from openeogeotrellis.job_registry import InMemoryJobRegistry
@@ -609,10 +610,6 @@ def test_k8s_sparkapplication_dict_udf_python_deps(backend_config_path):
             driver=dirty_equals.IsPartialDict(
                 env=dirty_equals.Contains(
                     {
-                        "name": "PYTHONPATH",
-                        "value": dirty_equals.IsStr(regex=r".+:/jobs/j123/udfdepz\.d(:|$)"),
-                    },
-                    {
                         "name": "UDF_PYTHON_DEPENDENCIES_FOLDER_PATH",
                         "value": "/jobs/j123/udfdepz.d",
                     },
@@ -625,10 +622,6 @@ def test_k8s_sparkapplication_dict_udf_python_deps(backend_config_path):
             ),
             executor=dirty_equals.IsPartialDict(
                 env=dirty_equals.Contains(
-                    {
-                        "name": "PYTHONPATH",
-                        "value": dirty_equals.IsStr(regex=r".+:/jobs/j123/udfdepz\.d(:|$)"),
-                    },
                     {
                         "name": "UDF_PYTHON_DEPENDENCIES_FOLDER_PATH",
                         "value": "/jobs/j123/udfdepz.d",
@@ -764,6 +757,7 @@ class TestGpsBatchJobs:
         bucket.create(CreateBucketConfiguration={"LocationConstraint": TEST_AWS_REGION_NAME})
         yield bucket
 
+    @mock.patch("kubernetes.config.load_kube_config", return_value=mock.MagicMock())
     @mock.patch("kubernetes.config.load_incluster_config", return_value=mock.MagicMock())
     @mock.patch("kubernetes.client.CoreV1Api.read_namespaced_pod", return_value=mock.MagicMock())
     @mock.patch("kubernetes.client.CustomObjectsApi.create_namespaced_custom_object", return_value=mock.MagicMock())
@@ -776,7 +770,8 @@ class TestGpsBatchJobs:
         mock_get_spark_pod_status,
         mock_create_spark_pod,
         mock_get_pod_image,
-        mock_k8s_config,
+        mock_k8s_config_incluster_config,
+        mock_k8s_config_load_kube_config,
         kube_no_zk,
         backend_implementation,
         job_registry,
@@ -859,7 +854,7 @@ class TestGpsBatchJobs:
 
         job_metadata_json_path = tmp_path / "job_metadata.json"
         with open(job_metadata_json_path, "w") as f:
-            f.write('{"assets": {"openEO": {"href": "file:///path/to/openEO.tif"}}}')
+            f.write('{"assets": {"openEO": {"href": "file:///path/to/openEO.tif", "bands": [{"name": "Flat:2" , "statistics": {"maximum": 2.0, "mean": 0.84375, "minimum": 0.0, "stddev": 0.98771753932994, "valid_percent": 100.0} } ]}}}')
         job["status"] = JOB_STATUS.FINISHED
         job["results_metadata_uri"] = f"{results_metadata_uri_prefix}{job_metadata_json_path}"
 
@@ -873,6 +868,7 @@ class TestGpsBatchJobs:
 
         assert asset_key == "openEO"
         assert asset["href"] == "file:///path/to/openEO.tif"
+        assert asset["bands"] == [Band(name="Flat:2",statistics={"maximum": 2.0, "mean": 0.84375, "minimum": 0.0, "stddev": 0.98771753932994, "valid_percent": 100.0})]
 
     def test_get_result_items(self, kube_no_zk, backend_implementation, job_registry, tmp_path):
         self._create_dummy_batch_job(backend_implementation, self._dummy_user)

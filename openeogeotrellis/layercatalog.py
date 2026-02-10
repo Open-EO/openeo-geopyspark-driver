@@ -36,9 +36,9 @@ from shapely.geometry import box
 from shapely.geometry.base import BaseGeometry
 
 from openeogeotrellis import sentinel_hub, datacube_parameters
-import openeogeotrellis.backend
+from openeogeotrellis._backend import post_dry_run
 from openeogeotrellis.catalogs.creo import CreoCatalogClient
-from openeogeotrellis.collections.s1backscatter_orfeo import get_implementation as get_s1_backscatter_orfeo
+import openeogeotrellis.collections.s1backscatter_orfeo
 from openeogeotrellis.collections.testing import load_test_collection
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
@@ -72,6 +72,7 @@ WHITELIST = [
     EVAL_ENV_KEY.DO_EXTENT_CHECK,
     EVAL_ENV_KEY.PARAMETERS,
     EVAL_ENV_KEY.OPENEO_API_VERSION,
+    EVAL_ENV_KEY.GLOBAL_EXTENT,
 ]
 LARGE_LAYER_THRESHOLD_IN_PIXELS = pow(10, 11)
 LARGE_LAYER_THRESHOLD_IN_PIXELS_SENTINELHUB = pow(10, 10)
@@ -179,9 +180,16 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         if bands:
             band_indices = [metadata.get_band_index(b) for b in bands]
             metadata = metadata.filter_bands(bands)
-            metadata = metadata.rename_labels(metadata.band_dimension.name, bands, metadata.band_names)
+            # Note: the `metadata.filter_bands()` includes resolving band naming ("common_name" and aliases)
+            #       which we want to preserve in `normalized_band_selection`,
+            #       before `metadata.rename_labels()` changes it back to the originally requested band names.
+            normalized_band_selection = metadata.band_names
+            metadata = metadata.rename_labels(metadata.band_dimension.name, target=bands, source=metadata.band_names)
         else:
             band_indices = None
+            # Use ordered bands selection from metadata
+            normalized_band_selection = metadata.band_names if metadata.has_band_dimension() else None
+
         logger.debug("band_indices: {b!r}".format(b=band_indices))
         # TODO: avoid this `still_needs_band_filter` ugliness.
         #       Also see https://github.com/Open-EO/openeo-geopyspark-driver/issues/29
@@ -682,7 +690,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             #make a copy before modifying: it is used as a cache key
             sar_backscatter_arguments = deepcopy(sar_backscatter_arguments)
             sar_backscatter_arguments.options["resolution"] = (cell_width, cell_height)
-            s1_backscatter_orfeo = get_s1_backscatter_orfeo(
+            s1_backscatter_orfeo = openeogeotrellis.collections.s1backscatter_orfeo.get_implementation(
                 version=sar_backscatter_arguments.options.get("implementation_version", "2"),
                 jvm=jvm
             )
@@ -694,7 +702,9 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 bands=bands,
                 extra_properties=metadata_properties(),
                 datacubeParams = datacubeParams,
-                max_soft_errors_ratio=max_soft_errors_ratio
+                max_soft_errors_ratio=max_soft_errors_ratio,
+                spatial_extent=load_params.spatial_extent,
+                use_stac_client=layer_source_info.get("use_stac_client", False)
             )
         elif layer_source_type == 'file-s3':
             native_cell_size = jvm.geotrellis.raster.CellSize(
@@ -708,21 +718,18 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                                         projected_polygons_native_crs, from_date, to_date,
                                         metadata.opensearch_link_titles, datacubeParams,
                                         native_cell_size, feature_flags, jvm,
+                                        spatial_extent=load_params.spatial_extent,
+                                        use_stac_client=layer_source_info.get("use_stac_client", False)
                                         )
         elif layer_source_type == "stac":
-            layer_source_info_feature_flags = layer_source_info.get("load_stac_feature_flags", {})
-            # We use the cell_size calculated from the layercatalog as a fallback if it can't be retrieved from the STAC metadata.
-            layer_source_info_feature_flags["cellsize"] = layer_source_info_feature_flags.get(
-                "cellsize", (cell_width, cell_height)
-            )
             cube = load_stac(
                 url=layer_source_info["url"],
                 load_params=load_params,
                 env=env,
                 layer_properties=metadata.get("_vito", "properties", default={}),
                 batch_jobs=None,
-                override_band_names=metadata.band_names,
-                feature_flags=layer_source_info_feature_flags,
+                normalized_band_selection=normalized_band_selection,
+                feature_flags=layer_source_info.get("load_stac_feature_flags", {}),
             )
             pyramid = cube.pyramid.levels
             metadata = cube.metadata
@@ -1351,7 +1358,7 @@ def extra_validation_load_collection(collection_id: str, load_params: LoadParame
 
     spatial_extent = load_params.spatial_extent
     if spatial_extent is None or len(spatial_extent) == 0:
-        spatial_extent = load_params.global_extent
+        spatial_extent = post_dry_run.get_global_extent(load_params=load_params, env=env)
     if spatial_extent is None or len(spatial_extent) == 0:
         spatial_extent = metadata.get_overall_spatial_extent()
     load_params.spatial_extent = spatial_extent
@@ -1564,6 +1571,9 @@ def _get_sar_backscatter_arguments(load_params: LoadParameters, env: EvalEnv) ->
             # TODO: is it possible to avoid hardcoding `GpsProcessing` here?
             #       Note that `env.get("backend_implementation").processing` is not available here anymore
             #       because of that WhiteListEvalEnv caching business.
+            #       Also note that this requires a local import to break an import cycle between
+            #       openeogeotrellis.backend and openeogeotrellis.layercatalog
+            import openeogeotrellis.backend
             processing = openeogeotrellis.backend.GpsProcessing()
             api_version = env.openeo_api_version()
             sar_backscatter_arguments = processing.get_default_sar_backscatter_arguments(api_version=api_version)

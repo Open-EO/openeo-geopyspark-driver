@@ -12,8 +12,23 @@ without compromising stable operations.
 
 <!-- start-of-changelog -->
 
+## In progress: 0.71.0
 
-## In progress: 0.70.0
+- `sar_backscatter`: avoid segmentation fault on Sentinel-1 products with missing parts ([#1479](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1479))
+- Ensure counter-clockwise bbox geometries in STAC metadata ([#1384](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1384))
+- "stac-version" job option is not considered experimental; a value of "1.1" also generates a `derived_from` document ([#1488](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1488))
+- `load_stac` based `load_collection`: support `granule_metadata` asset in SENTINEL2_L2A for azimuth/zenith angle bands (eu-cdse/openeo-cdse-infra#804)
+- `run_udf` now supports running CWL scripts. ([#1476](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1476))
+- new `property_filter_adaptations` feature flag (under `load_stac_feature_flags`) for `load_stac` powered collections to inject a property filtering adapter that translates legacy (e.g. OpenSearch) property filters to STAC property filters (eu-cdse/openeo-cdse-infra#803, eu-cdse/openeo-cdse-infra#804)
+- Guard STAC metadata parsing against invalid "item_assets" usage ([Open-EO/openeo-python-client#853](https://github.com/Open-EO/openeo-python-client/issues/853))
+- load_collection through load_stac: support band name aliases/variants (eu-cdse/openeo-cdse-infra#803, eu-cdse/openeo-cdse-infra#804)
+- load_collection through load_stac: new `apply_sentinel2_reflectance_offset` feature flag (eu-cdse/openeo-cdse-infra#803, eu-cdse/openeo-cdse-infra#804)
+- `StacApiWorkspace`: do not require `export-workspace-enable-merge` ([#1030](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1030))
+- Support latest `pystac` (currently 1.14.3) ([#1496](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1496))
+- Support property filtering in `load_stac.construct_item_collection` in post-dry-run phase ([#1530](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1530))
+
+
+## 0.70.0
 
 - `load_stac`: remove `load_stac_apply_lcfm_improvements` feature flag and make it the standard behavior ([#1306](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1306))
 - Experimental support for dropping `derived_from` links on the STAC Collection level in favor of a link, to a dedicated document with input features, on the item level ([#1278](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1278))
@@ -21,9 +36,17 @@ without compromising stable operations.
 - Improve vector cube support in `export_workspace` ([#1404](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1404))
 - `load_stac`: support detection of projection metadata from asset "bands" ([#1391](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1391))
 - `load_stac`: support item deduplication (for now with opt-in feature flag "deduplicate_items") ([#1361](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1361))
-- `load_collection`: the COPERNICUS_30 collection is now STAC based. Pixel sizes are no longer static and are now correctly derived from the source assets. In case of multiple assets it will take the minimum pixel size available. 
-- `load_stac`: added `cellsize` feature flag. It will be used as fallback when no pixel size can be derived from the source assets. 
+- `load_stac`: added `cellsize` feature flag. It will be used as fallback when no pixel size can be derived from the source assets.
 - `load_stac`: the `cellsize` feature flag is automatically taken from the layercatalog when available, if not set explicitly in the process graph.
+- Initial implementation of new "post-dry-run" hook to improve "global extent and alignment" computation for `load_collection` ([#1299](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1299))
+- Remove `udf_python_dependencies_folder_path` from `PYTHONPATH` in batch jobs (k8s context) (eu-cdse/openeo-cdse-infra#842)
+- Check UDF code for managed UDF dependencies before doing (possibly) more expensive IO/S3 operations (eu-cdse/openeo-cdse-infra#842)
+- post-dry-run: initial support for global extent alignment with `load_stac` ([#1299](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1299), [openeo-python-driver#406](https://github.com/Open-EO/openeo-python-driver/issues/406))
+- `load_stac`: added `asset_id_to_bands_map` feature flag in order to support collections that do not contain band name information (e.g. COPERNICUS_30 on CDSE).
+- Start using "global_extent" calculated from post-dry-run phase when possible ([#1299](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1299), [openeo-python-driver#406](https://github.com/Open-EO/openeo-python-driver/issues/406))
+- Handle "global_extent" calculation from STAC based `load_collection` through `load_stac` logic ([#1299](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1299), [openeo-python-driver#406](https://github.com/Open-EO/openeo-python-driver/issues/406))
+- Support experimental `corsa_compress` and `corsa_decompress` processes ([Open-EO/openeo-geotrellis-extensions#563](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/563), [Open-EO/openeo-geotrellis-extensions#577](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/577))
+
 
 ## 0.69.0
 

@@ -18,7 +18,8 @@ from openeogeotrellis.testing import gps_config_overrides
 def kubernetes_api():
     # TODO: avoid duplicate load_incluster_config mock (see below)?
     with mock.patch("kubernetes.config.load_incluster_config", return_value=mock.MagicMock()):
-        return kube_client("CustomObject")
+        with mock.patch("kubernetes.config.load_kube_config", return_value=mock.MagicMock()):
+            return kube_client("CustomObject")
 
 
 @pytest.fixture
@@ -41,6 +42,7 @@ def kube_no_zk(monkeypatch):
         yield
 
 
+@mock.patch("kubernetes.config.load_kube_config", return_value=mock.MagicMock())
 @mock.patch("kubernetes.config.load_incluster_config", return_value=mock.MagicMock())
 @mock.patch("kubernetes.client.CoreV1Api.read_namespaced_pod", return_value=mock.MagicMock())
 @mock.patch("kubernetes.client.CustomObjectsApi.create_namespaced_custom_object", return_value=mock.MagicMock())
@@ -57,7 +59,8 @@ def test_basic(
     mock_get_spark_pod_status,  # mock arguments in reverse order of patch decorators, as per the docs
     mock_create_spark_pod,
     mock_get_pod_image,
-    mock_k8s_config,
+    mock_k8s_config_load_incluster_config,
+    mock_k8s_config_load_kube_config,
     kube_no_zk,
     backend_implementation,
     tracking_job_registry,
@@ -100,7 +103,6 @@ def test_basic(
 
     # 2: start job
     backend_implementation.batch_jobs.start_job(job_id, user)
-    assert mock_k8s_config.called
     assert mock_create_spark_pod.called
     assert mock_get_spark_pod_status.called
 

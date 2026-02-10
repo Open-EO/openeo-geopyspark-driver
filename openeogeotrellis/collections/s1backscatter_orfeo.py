@@ -6,6 +6,7 @@ import multiprocessing
 import os
 import pathlib
 import re
+import shutil
 import signal
 import sys
 import tempfile
@@ -29,13 +30,14 @@ from pyspark import TaskContext
 from openeo.util import TimingLogger
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.errors import OpenEOApiException, FeatureUnsupportedException
+from openeo_driver.util.geometry import BoundingBox
 from openeo_driver.utils import smart_bool
-
 from openeogeotrellis.collections import convert_scala_metadata
 from openeogeotrellis.config import get_backend_config
+from openeogeotrellis.load_stac import PropertyFilterPGMap
 from openeogeotrellis.util.runtime import in_batch_job_context
 from openeogeotrellis.utils import lonlat_to_mercator_tile_indices, nullcontext, get_jvm, \
-    ensure_executor_logging
+    ensure_executor_logging, download_s3_directory
 
 logger = logging.getLogger(__name__)
 _SOFT_ERROR_TRACKER_ID = "orfeo_backscatter_soft_errors"
@@ -121,8 +123,171 @@ class S1BackscatterOrfeo:
     _COPERNICUS_DEM_ROOT = "/eodata/auxdata/CopDEM_COG/copernicus-dem-30m/"
     _trackers = None
 
+    # Mapping from legacy opensearch property keys to STAC equivalents
+    _LEGACY_TO_STAC_PROPERTY_KEYS = {
+        "polarisation": "sar:polarizations",
+        "polarization": "sar:polarizations",
+        "productType": "product:type",
+        "processingLevel": "processing:level",
+        "orbitDirection": "sat:orbit_state",  # TODO: Is there are a better related STAC property for this?
+        "orbitNumber": "sat:absolute_orbit",
+        "relativeOrbitNumber": "sat:relative_orbit",
+        "timeliness": "product:timeliness_category",
+        "missionTakeId": "eopf:datatake_id",
+        "sat:orbit_state": "sat:orbit_state",
+        "platform": "platform",
+    }
+    # Full mapping includes identity mappings for STAC keys (so users can pass either format)
+    _PROPERTY_KEYS_MAPPING = {
+        **_LEGACY_TO_STAC_PROPERTY_KEYS,
+        **{v: v for v in _LEGACY_TO_STAC_PROPERTY_KEYS.values()},
+    }
+
+    # Supported product types for sar_backscatter
+    _SUPPORTED_PRODUCT_TYPES = frozenset({"IW_GRDH_1S_B", "IW_GRDH_1S", "IW_GRDH_1S_C", "IW_GRDH_1S-COG"})
+
     def __init__(self, jvm: JVMView = None):
         self.jvm = jvm or get_jvm()
+
+    @staticmethod
+    def _normalize_filter_properties_to_stac(filter_properties: Dict[str, any]) -> Dict[str, any]:
+        """Map opensearch property keys and values to STAC equivalents."""
+        property_keys_mapping = S1BackscatterOrfeo._PROPERTY_KEYS_MAPPING
+        property_values_mapping = {
+            "polarisation": lambda v: v.split("&"),  # VV&VH -> [VV,VH]
+            "polarization": lambda v: v.split("&"),  # VV&VH -> [VV,VH]
+            "productType": lambda v: v.replace("-COG", ""),  # IW_GRDH_1S-COG -> IW_GRDH_1S
+            "processingLevel": lambda v: v.replace("LEVEL", "L"),  # LEVEL1 -> L1
+            "orbitDirection": lambda v: v.lower(),  # DESCENDING -> descending
+            "orbitNumber": lambda v: v,
+            "relativeOrbitNumber": lambda v: v,
+            "timeliness": lambda v: v,
+            "platform": lambda v: v,  # No mapping required as platform was not supported in legacy before.
+            "sat:orbit_state": lambda v: v.lower(),  # DESCENDING -> descending
+        }
+
+        mapped = {}
+        for k, v in filter_properties.items():
+            if k in property_keys_mapping:
+                mapped_key = property_keys_mapping[k]
+                mapped_value = (
+                    property_values_mapping[k](v)
+                    if k in property_values_mapping
+                    else v
+                )
+                mapped[mapped_key] = mapped_value
+                if k != mapped_key:
+                    logger.warning(
+                        f"sar_backscatter: Deprecated property {k!r}={v!r} was automatically "
+                        f"converted to new STAC property {mapped_key!r}={mapped_value!r}. "
+                        f"Please update your process graph to use the new property and value in the future."
+                    )
+            else:
+                logger.warning(f"sar_backscatter: No mapping for attribute key {k!r}")
+        return mapped
+
+    @staticmethod
+    def _filter_properties_to_pg_map(filter_properties: Dict[str, any]) -> PropertyFilterPGMap:
+        """Convert filter properties to openEO style process graph property filters."""
+        mapped = {}
+        for k, v in filter_properties.items():
+            # Use array_contains for array values (e.g., default product:type to match multiple variants)
+            # Use eq for scalar values (e.g., user-provided product:type)
+            if isinstance(v, list):
+                mapped[k] = {
+                    "process_graph": {
+                        "array_contains": {
+                            "process_id": "array_contains",
+                            "arguments": {"data": v, "value": {"from_parameter": "value"}},
+                            "result": True,
+                        }
+                    }
+                }
+            else:
+                mapped[k] = {
+                    "process_graph": {
+                        "eq": {
+                            "process_id": "eq",
+                            "arguments": {"x": {"from_parameter": "value"}, "y": v},
+                            "result": True,
+                        }
+                    }
+                }
+        return mapped
+
+    def _build_stac_opensearch_client(
+        self,
+        filter_properties: Dict[str, any],
+        spatial_extent: Union[Dict, BoundingBox, None],
+        temporal_extent: Tuple[Optional[str], Optional[str]],
+    ) -> JavaObject:
+        """Build a FixedFeaturesOpenSearchClient populated with features from STAC API."""
+        from openeogeotrellis.load_stac import _spatiotemporal_extent_from_load_params
+        from openeogeotrellis.load_stac import construct_item_collection
+
+        url = "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-1-grd"
+
+        # filter_properties are assumed to be in STAC only format.
+        property_filter_pg_map = self._filter_properties_to_pg_map(filter_properties)
+
+        # Build spatiotemporal extent
+        spatiotemporal_extent = _spatiotemporal_extent_from_load_params(
+            spatial_extent=spatial_extent,
+            temporal_extent=temporal_extent
+        )
+
+        # Query STAC API
+        item_collection, metadata, collection_band_names, netcdf_with_time_dimension = construct_item_collection(
+            url=url,
+            spatiotemporal_extent=spatiotemporal_extent,
+            property_filter_pg_map=property_filter_pg_map,
+        )
+        if len(item_collection.items) == 0:
+            raise OpenEOApiException(
+                code="NoDataAvailable", status_code=400,
+                message=f"There is no data available for the given extents.",
+            )
+
+        # Build FixedFeaturesOpenSearchClient from STAC items
+        jvm = get_jvm()
+        opensearch_client = jvm.org.openeo.geotrellis.file.FixedFeaturesOpenSearchClient()
+
+        for itm, band_assets in item_collection.iter_items_with_band_assets():
+            builder = (
+                jvm.org.openeo.opensearch.OpenSearchResponses.featureBuilder()
+                .withNominalDate(itm.properties.get("datetime") or itm.properties["start_datetime"])
+                .withGeometryFromWkt(str(shapely.geometry.shape(itm.geometry)))
+            )
+            if not itm.bbox:
+                raise OpenEOApiException(f"Item {itm.id} has no bbox")
+            latlon_bbox = BoundingBox.from_wsen_tuple(itm.bbox, 4326)
+            builder = builder.withBBox(*map(float, latlon_bbox.as_wsen_tuple()))
+
+            # Extract product ID from asset href
+            # This product_id will be used as the creo_path (.SAFE file) later.
+            product_id = None
+            for asset_id, asset in band_assets.items():
+                if asset_id == "vv" or asset_id == "vh":
+                    href = asset.href
+                    # s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2020/06/06/S1B_IW_GRDH_1SDV_20200606T060615_20200606T060640_021909_029944_094C_COG.SAFE/measurement/s1b-iw-grd-vh-20200606t060615-20200606t060640-021909-029944-002-cog.tiff
+                    href = href.replace("s3://", "/")
+                    if not ".SAFE" in href:
+                        raise OpenEOApiException(f"Expected .SAFE in Creodias href {href}")
+                    product_id = href.split(".SAFE")[0] + ".SAFE"
+                    break
+
+            if product_id is None:
+                raise OpenEOApiException(f"No 'vv' or 'vh' asset found in item {itm.id} with proper href for sar_backscatter")
+
+            builder = builder.withId(product_id)
+            opensearch_client.addFeature(builder.build())
+
+        return opensearch_client
+
+    def _build_legacy_opensearch_client(self) -> JavaObject:
+        return self.jvm.org.openeo.opensearch.OpenSearchClient.apply(
+            "https://catalogue.dataspace.copernicus.eu/resto", False, "", [], ""
+        )
 
     def _load_feature_rdd(
             self, file_rdd_factory: JavaObject, projected_polygons, from_date: str, to_date: str, zoom: int,
@@ -141,43 +306,93 @@ class S1BackscatterOrfeo:
         pyrdd = pyrdd.map(json.loads)
         return pyrdd, layer_metadata_sc,json_rdd_partitioner._3()
 
+    @staticmethod
+    def _build_filter_properties(extra_properties: dict, use_stac_client: bool) -> Dict[str, any]:
+        """
+        Build filter properties from user-provided extra_properties.
+
+        For STAC client: normalizes legacy keys to STAC format, returns STAC-formatted properties.
+        For legacy client: keeps legacy format, returns opensearch-formatted properties.
+        """
+        if use_stac_client:
+            # STAC client allows both legacy and STAC property keys.
+            allowed_property_keys = set(S1BackscatterOrfeo._PROPERTY_KEYS_MAPPING.keys())
+            user_props = {k: v for k, v in extra_properties.items() if k in allowed_property_keys}
+            # Normalize legacy property keys to STAC format. So filter_properties are always in STAC format.
+            normalized_props = S1BackscatterOrfeo._normalize_filter_properties_to_stac(user_props) if user_props else {}
+            filter_properties: Dict[str, any] = {
+                # Use array to match IW_GRDH_1S (sentinel1-a), IW_GRDH_1S_B (sentinel1-b), IW_GRDH_1S_C (sentinel1-c)
+                "product:type": ["IW_GRDH_1S", "IW_GRDH_1S_B", "IW_GRDH_1S_C"],
+                "processing:level": "L1",
+            }
+            filter_properties.update(normalized_props)
+        else:
+            # For legacy opensearch API, only allow legacy property keys.
+            allowed_property_keys = set(S1BackscatterOrfeo._LEGACY_TO_STAC_PROPERTY_KEYS.keys())
+            user_props = {k: v for k, v in extra_properties.items() if k in allowed_property_keys}
+            filter_properties: Dict[str, any] = {
+                "productType": "IW_GRDH_1S-COG",
+                "processingLevel": "LEVEL1",
+            }
+            if extra_properties.get("COG") == "FALSE":
+                non_cog_product_type = "IW_GRDH_1S"
+                logger.info(f"sar_backscatter: Adjusting product:type to {non_cog_product_type!r} based on COG=FALSE")
+                filter_properties["productType"] = non_cog_product_type
+            filter_properties.update(user_props)
+            if "polarization" in extra_properties:
+                # British vs US English: Sentinelhub + STAC use US variant
+                filter_properties["polarisation"] = extra_properties["polarization"]
+
+        product_type = filter_properties.get("product:type", filter_properties.get("productType"))
+        # Validate product type(s) - handle both string and array values
+        product_types_to_check = product_type if isinstance(product_type, list) else [product_type] if product_type else []
+        for pt in product_types_to_check:
+            if pt not in S1BackscatterOrfeo._SUPPORTED_PRODUCT_TYPES:
+                raise OpenEOApiException(
+                    f"sar_backscatter: Unsupported product type {pt!r}. "
+                    f"Only the following values are supported: {sorted(S1BackscatterOrfeo._SUPPORTED_PRODUCT_TYPES)}."
+                )
+
+        return filter_properties
+
     def _build_feature_rdd(
             self,
             collection_id, projected_polygons, from_date: str, to_date: str, extra_properties: dict,
-            tile_size: int, zoom: int, correlation_id: str, datacubeParams=None, resolution = (10.0,10.0)
+            tile_size: int, zoom: int, correlation_id: str, datacubeParams=None, resolution = (10.0,10.0),
+            spatial_extent=None, use_stac_client: bool = True
     ):
         """Build RDD of file metadata from Creodias catalog query."""
-        # TODO openSearchLinkTitles?
-        attributeValues = {
-            "productType": "IW_GRDH_1S-COG",
-            "processingLevel": "LEVEL1",
-        }
-        if "COG" in extra_properties and extra_properties["COG"] == "FALSE":
-            attributeValues["productType"] = "IW_GRDH_1S"
-        # Additional query values for orbit filtering
-        attributeValues.update({
-            k: v for (k, v) in extra_properties.items() if k in [
-                "orbitDirection", "orbitNumber", "relativeOrbitNumber", "timeliness",
-                "polarisation", "missionTakeId", "sat:orbit_state"
-            ]
-        })
-        if "polarization" in extra_properties:
-            #british vs US English Sentinelhub + STAC use US variant!!
-            attributeValues["polarisation"] = extra_properties["polarization"]
-        opensearch_client = self.jvm.org.openeo.opensearch.OpenSearchClient.apply(
-            "https://catalogue.dataspace.copernicus.eu/resto", False, "", [], ""
-        )
+        filter_properties = self._build_filter_properties(extra_properties, use_stac_client)
+
+        # Build opensearch client based on selection
+        if use_stac_client:
+            logger.info("Using STAC-based opensearch client (FixedFeaturesOpenSearchClient)")
+            opensearch_client = self._build_stac_opensearch_client(
+                filter_properties=filter_properties,
+                spatial_extent=spatial_extent,
+                temporal_extent=(from_date, to_date)
+            )
+        else:
+            logger.info("Using legacy opensearch client")
+            opensearch_client = self._build_legacy_opensearch_client()
+
+        # Create FileRDDFactory
+        # Note that for the STAC client, the filter_properties were already applied and are ignored here.
         file_rdd_factory = self.jvm.org.openeo.geotrellis.file.FileRDDFactory(
-            opensearch_client, collection_id, attributeValues, correlation_id,self.jvm.geotrellis.raster.CellSize(resolution[0], resolution[1])
+            opensearch_client, collection_id, filter_properties, correlation_id,
+            self.jvm.geotrellis.raster.CellSize(resolution[0], resolution[1])
         )
-        feature_pyrdd, layer_metadata_sc,partitioner = self._load_feature_rdd(
+
+        # Load feature RDD
+        feature_pyrdd, layer_metadata_sc, partitioner = self._load_feature_rdd(
             file_rdd_factory, projected_polygons=projected_polygons, from_date=from_date, to_date=to_date,
             zoom=zoom, tile_size=tile_size, datacubeParams=datacubeParams
         )
+
         layer_metadata_py = convert_scala_metadata(
             layer_metadata_sc, epoch_ms_to_datetime=_instant_ms_to_day, logger=logger
         )
-        return feature_pyrdd, layer_metadata_py,partitioner
+        return feature_pyrdd, layer_metadata_py, partitioner
 
     # Mapping of `sar_backscatter` coefficient value to `SARCalibration` Lookup table value
     _coefficient_mapping = {
@@ -378,11 +593,22 @@ class S1BackscatterOrfeo:
             else:
                 return out_path, 0
 
+    @staticmethod
+    def has_too_many_NoData(image, threshold: int, nodata: Union[float, int]) -> bool:
+        """
+        Analyses whether an image contains NO DATA.
 
+            :param image:     np.array image to analyse
+            :param threshold: number of NoData searched
+            :param nodata:    no data value
+            :return:          whether the number of no-data pixel > threshold
+        """
+        nbNoData = len(np.argwhere(image == nodata))
+        return nbNoData > threshold
 
     @staticmethod
     @functools.lru_cache(10,False)
-    def configure_pipeline(dem_dir, elev_default, elev_geoid, input_tiff, log_prefix, noise_removal, orfeo_memory,
+    def configure_pipeline(dem_dir, elev_default, elev_geoid, input_tiff: pathlib.Path, log_prefix, noise_removal, orfeo_memory,
                            sar_calibration_lut, epsg:int, target_resolution = (10.0,10.0)):
         otb = _import_orfeo_toolbox()
 
@@ -392,6 +618,28 @@ class S1BackscatterOrfeo:
                 for (p, v) in app.GetParameters().items()
             }
 
+        import rasterio
+        from rasterio.windows import Window
+        crop1 = False
+        crop2 = False
+
+        if input_tiff.exists():
+            with rasterio.open(input_tiff, driver="GTiff") as ds:
+
+                cut_overlap_range = 1000  # Number of columns to cut on the sides. Here 500pixels = 5km
+                cut_overlap_azimuth = 1600  # Number of lines to cut at the top or the bottom
+                thr_nan_for_cropping = cut_overlap_range * 2  # When testing we having cut the NaN yet on the border hence this threshold.
+
+                north = ds.read(1,window=Window(col_off=0,row_off=100,width=ds.width + 1,height=1))
+                south = ds.read(1,window=Window(col_off=0,row_off=ds.height-100,width=ds.width +1,height=1))
+                crop1 = S1BackscatterOrfeo.has_too_many_NoData(north, thr_nan_for_cropping, 0)
+                crop2 = S1BackscatterOrfeo.has_too_many_NoData(south, thr_nan_for_cropping, 0)
+                del south
+                del north
+
+        thr_y_s = cut_overlap_azimuth if crop1 else 0
+        thr_y_e = cut_overlap_azimuth if crop2 else 0
+
         # SARCalibration
         sar_calibration = otb.Registry.CreateApplication('SARCalibration')
         sar_calibration.SetParameterString("in", str(input_tiff))
@@ -400,9 +648,20 @@ class S1BackscatterOrfeo:
         sar_calibration.SetParameterInt('ram', orfeo_memory)
         logger.info(f"{log_prefix} SARCalibration params: {otb_param_dump(sar_calibration)}")
 
+        # Cut away corrupt data, to work around this issue: https://gitlab.orfeo-toolbox.org/orfeotoolbox/otb/-/issues/2509
+        # Approach and parameters inspired by S1-Tiling
+        reset_margin = sar_calibration
+        if crop1 or crop2:
+            reset_margin = otb.Registry.CreateApplication('ResetMargin')
+            reset_margin.ConnectImage("in", sar_calibration, "out")
+            reset_margin.SetParameterInt('threshold.y.start', thr_y_s)
+            reset_margin.SetParameterInt('threshold.y.end', thr_y_e)
+            reset_margin.SetParameterString('mode', 'threshold')
+
+
         # OrthoRectification
         ortho_rect = otb.Registry.CreateApplication('OrthoRectification')
-        ortho_rect.ConnectImage("io.in", sar_calibration, "out")
+        ortho_rect.ConnectImage("io.in", reset_margin, "out")
 
         if dem_dir:
             ortho_rect.SetParameterString("elev.dem", dem_dir)
@@ -545,7 +804,9 @@ class S1BackscatterOrfeo:
             result_dtype="float32",
             extra_properties={},
             datacubeParams=None,
-            max_soft_errors_ratio=0.0
+            max_soft_errors_ratio=0.0,
+            spatial_extent=None,
+            use_stac_client: bool = True
     ) -> Dict[int, geopyspark.TiledRasterLayer]:
         """
         Implementation of S1 backscatter calculation with Orfeo in Creodias environment
@@ -580,8 +841,9 @@ class S1BackscatterOrfeo:
         feature_pyrdd, layer_metadata_py,partitioner = self._build_feature_rdd(
             collection_id=collection_id, projected_polygons=projected_polygons,
             from_date=from_date, to_date=to_date, extra_properties=extra_properties,
-            tile_size=tile_size, zoom=zoom, correlation_id=
-            correlation_id,datacubeParams=datacubeParams
+            tile_size=tile_size, zoom=zoom, correlation_id=correlation_id,
+            datacubeParams=datacubeParams, spatial_extent=spatial_extent,
+            use_stac_client=use_stac_client
         )
         if debug_mode:
             self._debug_show_rdd_info(feature_pyrdd)
@@ -816,7 +1078,9 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
             result_dtype="float32",
             extra_properties={},
             datacubeParams=None,
-            max_soft_errors_ratio=0.0
+            max_soft_errors_ratio=0.0,
+            spatial_extent=None,
+            use_stac_client: bool = True
     ) -> Dict[int, geopyspark.TiledRasterLayer]:
         """
         Implementation of S1 backscatter calculation with Orfeo in Creodias environment
@@ -863,8 +1127,9 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
         feature_pyrdd, layer_metadata_py,partitioner = self._build_feature_rdd(
             collection_id=collection_id, projected_polygons=projected_polygons,
             from_date=from_date, to_date=to_date, extra_properties=extra_properties,
-            tile_size=tile_size, zoom=zoom, correlation_id=
-            correlation_id, datacubeParams=datacubeParams,resolution=target_resolution
+            tile_size=tile_size, zoom=zoom, correlation_id=correlation_id,
+            datacubeParams=datacubeParams, resolution=target_resolution,
+            spatial_extent=spatial_extent, use_stac_client=use_stac_client
         )
         if debug_mode:
             self._debug_show_rdd_info(feature_pyrdd)
@@ -906,6 +1171,15 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
             creo_path = pathlib.Path(creo_path)
             if not creo_path.exists():
                 raise OpenEOApiException(f"sar_backscatter: path {creo_path} does not exist on the cluster.")
+
+            full_product_download = smart_bool(sar_backscatter_arguments.options.get("local_copy", False))
+
+            if full_product_download:
+                logger.debug(f"{log_prefix} Download full product {creo_path} to local temp dir for processing")
+                tempdir = tempfile.mkdtemp()
+                download_s3_directory("s3:/" + str(creo_path).replace("/vsis3/", "/"), tempdir)
+                creo_path = pathlib.Path(tempdir).joinpath(*creo_path.parts[3:])
+
 
             # Get whole extent of tile layout
             col_min = min(f["key"]["col"] for f in features)
@@ -1049,6 +1323,8 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
                                         tile = geopyspark.Tile(tile, cell_type, no_data_value=nodata)
                                         tiles.append((key, tile))
 
+            if full_product_download:
+                shutil.rmtree(creo_path)
             logger.info(f"{log_prefix} Layout extent split in {len(tiles)} tiles")
             return tiles
 
@@ -1094,8 +1370,10 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
 def get_implementation(version: str = "1", jvm=None) -> S1BackscatterOrfeo:
     jvm = jvm or get_jvm()
     if version == "1":
+        logger.info("using S1BackscatterOrfeo")
         return S1BackscatterOrfeo(jvm=jvm)
     elif version == "2":
+        logger.info("using S1BackscatterOrfeoV2")
         return S1BackscatterOrfeoV2(jvm=jvm)
     else:
         raise ValueError(version)
