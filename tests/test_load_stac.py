@@ -44,6 +44,7 @@ from openeogeotrellis.load_stac import (
     AdaptingPropertyFilter,
     _get_apply_sentinel2_reflectance_offset,
     _is_sentinel2_reflectance_asset,
+    _ResolutionTracker,
 )
 from openeogeotrellis.testing import DummyStacApiServer, gps_config_overrides
 from openeogeotrellis.util.geometry import bbox_to_geojson
@@ -2850,3 +2851,106 @@ class TestPrepareContext:
     )
     def test_is_sentinel2_reflectance_asset(self, asset, expected):
         assert _is_sentinel2_reflectance_asset(asset) == expected
+
+    @pytest.mark.parametrize(
+        ["asset_id", "user_bands", "normalized_band_selection", "expected_metadata_bands", "expected_link_titles"],
+        [
+            ("asset-123", None, None, ["SO2CBR"], ["SO2CBR"]),
+            ("SO2CBR", ["SO2CBR"], None, ["SO2CBR"], ["SO2CBR"]),
+            ("SO2CBR", ["SO2CBR"], ["SO2CBR"], ["SO2CBR"], ["SO2CBR"]),
+            ("asset-123", ["SomeAlias"], ["SO2CBR"], ["SomeAlias"], ["SO2CBR"]),
+        ],
+    )
+    def test_prepare_context_so2cbr(
+        self, asset_id, user_bands, normalized_band_selection, expected_metadata_bands, expected_link_titles
+    ):
+        """
+        Problem uncovered from S5P SO2CBR use case:
+        low res assets + usage of band aliases
+        cell size detection should still work,
+        and not fallback to stupid 10m resolution assumption
+        """
+        dummy_server = DummyStacApiServer()
+        collection_id = "s5p_l3_so2cbr_ty"
+        dummy_server.define_collection(collection_id)
+        dummy_server.define_item(
+            collection_id=collection_id,
+            item_id=f"item-123",
+            datetime=f"2023-01-01T00:00:00Z",
+            bbox=[-180.0, -87.5, 180.0, 87.5],
+            assets={
+                asset_id: {
+                    "href": "https://stac.test/SO2CBR.tif",
+                    "type": "image/tiff; application=geotiff",
+                    "roles": ["data"],
+                    "bands": [{"name": "SO2CBR"}],
+                    "proj:code": "EPSG:4326",
+                    "proj:bbox": [-180.0, -87.5, 180.0, 87.5],
+                    "proj:shape": [1400, 2880],
+                },
+            },
+        )
+
+        with dummy_server.serve() as dummy_stac_api:
+            context = _prepare_context(
+                url=f"{dummy_stac_api}/collections/{collection_id}",
+                load_params=LoadParameters(bands=user_bands),
+                normalized_band_selection=normalized_band_selection,
+                env=EvalEnv(),
+            )
+
+        cell_size = context.pyramid_factory.maxSpatialResolution()
+        assert (cell_size.width(), cell_size.height()) == (0.125, 0.125)
+        assert context.metadata.band_names == expected_metadata_bands
+        assert list(context.pyramid_factory.openSearchLinkTitles()) == expected_link_titles
+
+
+class TestResolutionTracker:
+    def test_empty(self):
+        tracker = _ResolutionTracker()
+        assert tracker.finest_for() == (set(), None)
+
+    def test_no_keys(self):
+        tracker = _ResolutionTracker()
+        tracker.track(epsg=4326, res=(1, 2))
+        assert tracker.finest_for() == ({4326}, (1, 2))
+
+    def test_basic(self):
+        tracker = _ResolutionTracker()
+        tracker.track(key="B01", epsg=4326, res=(0.1, 0.1))
+        tracker.track(key="B01", epsg=4326, res=(0.2, 0.2))
+        tracker.track(key="B02", epsg=4326, res=(0.3, 0.3))
+
+        assert tracker.finest_for(["B01"]) == ({4326}, (0.1, 0.1))
+        assert tracker.finest_for(["B02"]) == ({4326}, (0.3, 0.3))
+        assert tracker.finest_for(["B01", "B02"]) == ({4326}, (0.1, 0.1))
+        assert tracker.finest_for(["B03"]) == (set(), None)
+        assert tracker.finest_for(["B01", "B03"]) == ({4326}, (0.1, 0.1))
+
+    def test_multi_epsg(self):
+        tracker = _ResolutionTracker()
+        tracker.track(key="B01", epsg=4326, res=(0.1, 0.1))
+        tracker.track(key="B01", epsg=32631, res=(10, 10))
+
+        assert tracker.finest_for(["B01"]) == ({4326, 32631}, None)
+
+    def test_multi_utm(self):
+        tracker = _ResolutionTracker()
+        tracker.track(key="B01", epsg=32629, res=(10, 10))
+        tracker.track(key="B01", epsg=32631, res=(10, 10))
+        tracker.track(key="B02", epsg=32631, res=(20, 20))
+
+        assert tracker.finest_for(["B01"]) == ({32629, 32631}, (10, 10))
+        assert tracker.finest_for(["B02"]) == (
+            {
+                32631,
+            },
+            (20, 20),
+        )
+        assert tracker.finest_for(["B01", "B02"]) == (
+            {
+                32629,
+                32631,
+            },
+            (10, 10),
+        )
