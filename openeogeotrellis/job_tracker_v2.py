@@ -344,7 +344,7 @@ class K8sStatusGetter(JobMetadataGetterInterface):
                 cpu_seconds_old = self._prometheus_api.get_cpu_usage(application_id)
 
             if start_time is None or finish_time is None:
-                # The job is probably still queued at this point
+                # The job is not finished this point
                 application_duration_s = None
                 byte_seconds = None
             else:
@@ -358,12 +358,10 @@ class K8sStatusGetter(JobMetadataGetterInterface):
                     byte_seconds_new = self._prometheus_api.get_billable_memory_requested(
                         job_id, start=start_time.timestamp(), end=finish_time.timestamp()
                     )
-                byte_seconds = byte_seconds_new if get_backend_config().use_new_billing_system else byte_seconds_old
-
-                if get_backend_config().use_new_billing_system or log_billable_metrics:
                     cpu_seconds_new = self._prometheus_api.get_billable_cpu_requested(
                         job_id, start=start_time.timestamp(), end=finish_time.timestamp()
                     )
+                byte_seconds = byte_seconds_new if get_backend_config().use_new_billing_system else byte_seconds_old
 
                 if log_billable_metrics:
                     _log.debug(
