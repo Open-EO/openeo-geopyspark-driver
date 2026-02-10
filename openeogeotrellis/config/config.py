@@ -149,7 +149,7 @@ class GpsBackendConfig(OpenEoBackendConfig):
     default_usage_byte_seconds: float = 3 * 1024 * 1024 * 1024 * 3600
     report_usage_sentinelhub_pus: bool = True
     batch_job_base_fee_credits: Optional[float] = None
-    use_new_billing_system: bool = True
+    use_new_billing_system: bool = False
 
     default_soft_errors: float = 0.1
 
