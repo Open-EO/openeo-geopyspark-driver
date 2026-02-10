@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import collections
 import datetime
 import datetime as dt
 import functools
@@ -50,6 +51,7 @@ from typing import TYPE_CHECKING
 from openeogeotrellis.integrations.stac import ResilientStacIO
 from openeogeotrellis.util.datetime import DateTimeLikeOrNone, to_datetime_utc_unless_none
 from openeogeotrellis.util.geometry import GridSnapper
+from openeogeotrellis.util.projection import is_utm_epsg_code
 from openeogeotrellis.utils import get_jvm, map_optional, normalize_temporal_extent, to_projected_polygons, unzip
 
 if TYPE_CHECKING:
@@ -219,11 +221,7 @@ def _prepare_context(
         proj_shape = None
 
         stac_metadata_parser = _StacMetadataParser(logger=logger)
-
-        # The minimum cell size per band name across all assets
-        band_cell_size: Dict[str, Tuple[float, float]] = {}
-        band_epsgs: Dict[str, Set[int]] = {}
-
+        resolution_tracker = _ResolutionTracker()
 
         # layercatalog feature flag to handle "granule_metadata" assets.
         # E.g. for azimuth/zenith "bands" in SENTINEL2_L2A:
@@ -270,14 +268,14 @@ def _prepare_context(
                 if not band_selection:
                     # No user-specified band filtering: follow band names from metadata (if possible)
                     asset_band_names = asset_band_names_from_metadata or [asset_id]
+                elif set(asset_band_names_from_metadata).intersection(band_selection or []):
+                    # User-specified bands match with band names in metadata
+                    asset_band_names = asset_band_names_from_metadata
                 elif isinstance(band_selection, list) and asset_id in band_selection:
                     # User-specified asset_id as band name: use that directly
                     if asset_id not in available_band_names and asset_id not in collected_link_band_names:
                         logger.warning(f"Using {asset_id=} as band name (while not in {available_band_names=}).")
                     asset_band_names = [asset_id]
-                elif set(asset_band_names_from_metadata).intersection(band_selection or []):
-                    # User-specified bands match with band names in metadata
-                    asset_band_names = asset_band_names_from_metadata
                 else:
                     # No match with band_selection in some way -> skip this asset
                     continue
@@ -286,17 +284,10 @@ def _prepare_context(
                     # We've already seen this set of bands (e.g. at finer GSD), so skip this asset.
                     continue
 
-                for asset_band_name in asset_band_names:
-                    if proj_bbox and proj_shape:
-                        asset_cell_size = _compute_cellsize(proj_bbox, proj_shape)
-                        band_cell_width, band_cell_height = band_cell_size.get(asset_band_name, (float("inf"), float("inf")))
-                        band_cell_size[asset_band_name] = (
-                            min(band_cell_width, asset_cell_size[0]),
-                            min(band_cell_height, asset_cell_size[1]),
-                        )
-                    if proj_epsg:
-                        # TODO: risk on overwriting/conflict
-                        band_epsgs.setdefault(asset_band_name, set()).add(proj_epsg)
+                if proj_epsg and proj_bbox and proj_shape:
+                    asset_cell_size = _compute_cellsize(proj_bbox, proj_shape)
+                    for asset_band_name in asset_band_names:
+                        resolution_tracker.track(key=asset_band_name, epsg=proj_epsg, res=asset_cell_size)
 
                 if apply_sentinel2_reflectance_offset and _is_sentinel2_reflectance_asset(asset=asset):
                     pixel_value_offset = _get_pixel_value_offset(item=itm, asset=asset)
@@ -424,19 +415,15 @@ def _prepare_context(
     #       Just reuse "target_band_names" here directly?
     requested_band_names = metadata.band_names
 
-    requested_band_epsgs = [epsgs for band_name, epsgs in band_epsgs.items() if band_name in requested_band_names]
-    unique_epsgs = {epsg for epsgs in requested_band_epsgs for epsg in epsgs}
-    requested_band_cell_sizes = [size for band_name, size in band_cell_size.items() if band_name in requested_band_names]
+    unique_epsgs, finest_cell_size = resolution_tracker.finest_for(keys=source_band_names)
 
     cellsize_default = feature_flags.get("cellsize_fallback", (10.0, 10.0))
     if cellsize_override:
         (cell_width, cell_height) = cellsize_override
         target_epsg = unique_epsgs.pop() if len(unique_epsgs) == 1 else target_bbox.best_utm()
-    elif len(unique_epsgs) == 1 and requested_band_cell_sizes:  # exact resolution
+    elif len(unique_epsgs) == 1 and finest_cell_size:  # exact resolution
         target_epsg = unique_epsgs.pop()
-        cell_widths, cell_heights = unzip(*requested_band_cell_sizes)
-        cell_width = min(cell_widths)
-        cell_height = min(cell_heights)
+        (cell_width, cell_height) = finest_cell_size
     elif len(unique_epsgs) == 1:
         target_epsg = unique_epsgs.pop()
         (cell_width, cell_height) = cellsize_default
@@ -496,7 +483,8 @@ def _prepare_context(
             url,  # openSearchCollectionId, not important
             opensearch_link_titles,  # openSearchLinkTitles
             None,  # rootPath, not important
-            jvm.geotrellis.raster.CellSize(float(cell_width), float(cell_height)),
+            # TODO how does this work? Specifying a cell size without any reference to the corresponding CRS?
+            jvm.geotrellis.raster.CellSize(float(cell_width), float(cell_height)),  # maxSpatialResolution
             False,  # experimental
             max_soft_errors_ratio,
         )
@@ -2037,3 +2025,35 @@ class NoveltyTracker:
     def already_seen(self, x) -> bool:
         """Check if the item was seen before."""
         return not self.is_new(x)
+
+
+class _ResolutionTracker:
+    """
+    Track resolution (cell size in a CRS), keyed on something (e.g. asset id, band, ...)
+    and allow to determine the finest one afterwards based on subselection
+    """
+
+    def __init__(self):
+        # Mapping of key -> set of (epsg_code, resolution) tuples (with resolution as (x_size, y_size) tuple)
+        self._resolutions: Dict[str, Set[Tuple[int, Tuple[float, float]]]] = collections.defaultdict(set)
+
+    def track(self, *, key: str = "_default", epsg: int, res: Tuple[float, float]):
+        self._resolutions[key].add((epsg, res))
+
+    def finest_for(self, keys: Iterable[str] = ("_default",)) -> Tuple[Set[int], Union[Tuple[float, float], None]]:
+        """
+        Determine finest resolution (smallest cell size) associated with the given keys,
+        but only if that makes sense: there is just a single EPSG code in play
+        or all are UTM zones.
+
+        return set of EPSG codes and finest resolution (if any)
+        """
+        selection = set(r for k in keys if k in self._resolutions for r in self._resolutions[k])
+
+        epsgs = set(epsg for (epsg, _) in selection)
+        if selection and (len(epsgs) == 1 or all(is_utm_epsg_code(e) for e in epsgs)):
+            finest_res = min(res for (_, res) in selection)
+        else:
+            finest_res = None
+
+        return epsgs, finest_res
