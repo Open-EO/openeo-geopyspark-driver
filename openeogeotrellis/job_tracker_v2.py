@@ -338,37 +338,32 @@ class K8sStatusGetter(JobMetadataGetterInterface):
                    job_id: str, user_id: str) -> _Usage:
         try:
             log_billable_metrics = smart_bool(os.environ.get("LOG_BILLABLE_METRICS", "FALSE"))
+            cpu_seconds_new = None
+            cpu_seconds_old = None
             if not get_backend_config().use_new_billing_system or log_billable_metrics:
                 cpu_seconds_old = self._prometheus_api.get_cpu_usage(application_id)
-            else:
-                cpu_seconds_old = None
 
             if start_time is None or finish_time is None:
                 # The job is probably still queued at this point
                 application_duration_s = None
                 byte_seconds = None
-                cpu_seconds_new = None
             else:
                 application_duration_s = (finish_time - start_time).total_seconds()
+                byte_seconds_old = None
                 if not get_backend_config().use_new_billing_system or log_billable_metrics:
                     byte_seconds_old = self._prometheus_api.get_memory_usage(application_id, application_duration_s)
-                else:
-                    byte_seconds_old = None
 
+                byte_seconds_new = None
                 if get_backend_config().use_new_billing_system or log_billable_metrics:
                     byte_seconds_new = self._prometheus_api.get_billable_memory_requested(
                         job_id, start=start_time.timestamp(), end=finish_time.timestamp()
                     )
-                else:
-                    byte_seconds_new = None
                 byte_seconds = byte_seconds_new if get_backend_config().use_new_billing_system else byte_seconds_old
 
                 if get_backend_config().use_new_billing_system or log_billable_metrics:
                     cpu_seconds_new = self._prometheus_api.get_billable_cpu_requested(
                         job_id, start=start_time.timestamp(), end=finish_time.timestamp()
                     )
-                else:
-                    cpu_seconds_new = None
 
                 if log_billable_metrics:
                     _log.debug(
