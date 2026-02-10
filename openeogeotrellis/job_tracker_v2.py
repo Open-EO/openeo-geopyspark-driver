@@ -14,6 +14,7 @@ from typing import Any, List, NamedTuple, Optional, Union
 
 import requests
 
+from openeo_driver.utils import smart_bool
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.integrations.prometheus import Prometheus
 
@@ -336,30 +337,47 @@ class K8sStatusGetter(JobMetadataGetterInterface):
     def _get_usage(self, application_id: str, start_time: Optional[dt.datetime], finish_time: Optional[dt.datetime],
                    job_id: str, user_id: str) -> _Usage:
         try:
-            cpu_seconds = self._prometheus_api.get_cpu_usage(application_id)
+            log_billable_metrics = smart_bool(os.environ.get("LOG_BILLABLE_METRICS", "FALSE"))
+            cpu_seconds_new = None
+            cpu_seconds_old = None
+            if not get_backend_config().use_new_billing_system or log_billable_metrics:
+                cpu_seconds_old = self._prometheus_api.get_cpu_usage(application_id)
 
             if start_time is None or finish_time is None:
+                # The job is probably still queued at this point
                 application_duration_s = None
                 byte_seconds = None
             else:
                 application_duration_s = (finish_time - start_time).total_seconds()
-                byte_seconds = self._prometheus_api.get_memory_usage(application_id, application_duration_s)
-                if os.environ.get("LOG_BILLABLE_METRICS", "FALSE").upper() != "FALSE":
+                byte_seconds_old = None
+                if not get_backend_config().use_new_billing_system or log_billable_metrics:
+                    byte_seconds_old = self._prometheus_api.get_memory_usage(application_id, application_duration_s)
+
+                byte_seconds_new = None
+                if get_backend_config().use_new_billing_system or log_billable_metrics:
+                    byte_seconds_new = self._prometheus_api.get_billable_memory_requested(
+                        job_id, start=start_time.timestamp(), end=finish_time.timestamp()
+                    )
+                byte_seconds = byte_seconds_new if get_backend_config().use_new_billing_system else byte_seconds_old
+
+                if get_backend_config().use_new_billing_system or log_billable_metrics:
+                    cpu_seconds_new = self._prometheus_api.get_billable_cpu_requested(
+                        job_id, start=start_time.timestamp(), end=finish_time.timestamp()
+                    )
+
+                if log_billable_metrics:
                     _log.debug(
                         f"Retrieved usage stats for comparison",
                         extra={
                             "job_id": job_id,
                             "user_id": user_id,
-                            "cpu_seconds": cpu_seconds,
-                            "byte_seconds": byte_seconds,
-                            "billable_requested_cpu_seconds": self._prometheus_api.get_billable_cpu_requested(
-                                job_id, start=start_time.timestamp(), end=finish_time.timestamp()
-                            ),
-                            "billable_requested_byte_seconds": self._prometheus_api.get_billable_memory_requested(
-                                job_id, start=start_time.timestamp(), end=finish_time.timestamp()
-                            ),
+                            "cpu_seconds_old": cpu_seconds_old,
+                            "byte_seconds_old": byte_seconds_old,
+                            "cpu_seconds_new": cpu_seconds_new,
+                            "byte_seconds_new": byte_seconds_new,
                         },
                     )
+            cpu_seconds = cpu_seconds_new if get_backend_config().use_new_billing_system else cpu_seconds_old
 
             network_receive_bytes = self._prometheus_api.get_network_received_usage(application_id)
 
