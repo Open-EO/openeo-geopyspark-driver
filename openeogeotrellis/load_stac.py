@@ -442,6 +442,10 @@ def _prepare_context(
         target_epsg = target_bbox.best_utm()
         (cell_width, cell_height) = cellsize_default
 
+    logger.info(
+        f"cellsize: {target_epsg=} {cell_width=} {cell_height=} from {unique_epsgs=} {cellsize_override=} {finest_cell_size=} {cellsize_default=}"
+    )
+
     if load_params.target_resolution is not None:
         if load_params.target_resolution[0] != 0.0 and load_params.target_resolution[1] != 0.0:
             cell_width = float(load_params.target_resolution[0])
