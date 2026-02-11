@@ -428,19 +428,23 @@ def _prepare_context(
         target_epsg = target_bbox.best_utm()
         logger.warning(f"{target_epsg=} from {unique_epsgs=}: legacy behavior, but possibly ill-defined")
 
-    cellsize_default = feature_flags.get("cellsize_fallback", (10.0, 10.0))
+    cellsize_fallback = feature_flags.get("cellsize_fallback", None)
     if cellsize_override:
         (cell_width, cell_height) = cellsize_override
     elif finest_cell_size:  # exact resolution
         (cell_width, cell_height) = finest_cell_size
+    elif cellsize_fallback:
+        (cell_width, cell_height) = cellsize_fallback
     elif len(unique_epsgs) == 1:
-        (cell_width, cell_height) = cellsize_default
-        # TODO: there assumption here that cellsize_fallback is given in meter, which is not true in general
+        logger.warning(f"cellsize: fallback on hardcoded 10m assumption")
+        (cell_width, cell_height) = (10.0, 10.0)
+        # TODO: there is assumption here that cellsize_fallback is given in meter, which is not true in general
         try:
             utm_zone_from_epsg(target_epsg)
         except ValueError:
             # Cannot convert EPSG to UTM zone. Use unit from CRS instead of meters.
             target_bbox_center = target_bbox.as_polygon().centroid
+            # TODO: GeometryBufferer.transform_meter_to_crs doesn't work properly in y-dimension
             cell_width = GeometryBufferer.transform_meter_to_crs(
                 cell_width, f"EPSG:{target_epsg}", loi=(target_bbox_center.x, target_bbox_center.y)
             )
@@ -448,10 +452,11 @@ def _prepare_context(
                 cell_height, f"EPSG:{target_epsg}", loi=(target_bbox_center.x, target_bbox_center.y)
             )
     else:
-        (cell_width, cell_height) = cellsize_default
+        logger.warning(f"cellsize: fallback on hardcoded 10m assumption")
+        (cell_width, cell_height) = (10.0, 10.0)
 
     logger.info(
-        f"cellsize: {cell_width=} {cell_height=} from {unique_epsgs=} {cellsize_override=} {finest_cell_size=} {cellsize_default=}"
+        f"cellsize: {cell_width=} {cell_height=} from {unique_epsgs=} {cellsize_override=} {finest_cell_size=} {cellsize_fallback=}"
     )
 
     if load_params.target_resolution is not None:
