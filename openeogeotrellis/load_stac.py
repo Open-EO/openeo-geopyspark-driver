@@ -435,16 +435,17 @@ def _prepare_context(
         (cell_width, cell_height) = finest_cell_size
     elif len(unique_epsgs) == 1:
         (cell_width, cell_height) = cellsize_default
+        # TODO: there assumption here that cellsize_fallback is given in meter, which is not true in general
         try:
-            utm_zone_from_epsg(proj_epsg)
+            utm_zone_from_epsg(target_epsg)
         except ValueError:
             # Cannot convert EPSG to UTM zone. Use unit from CRS instead of meters.
             target_bbox_center = target_bbox.as_polygon().centroid
             cell_width = GeometryBufferer.transform_meter_to_crs(
-                cell_width, f"EPSG:{proj_epsg}", loi=(target_bbox_center.x, target_bbox_center.y)
+                cell_width, f"EPSG:{target_epsg}", loi=(target_bbox_center.x, target_bbox_center.y)
             )
             cell_height = GeometryBufferer.transform_meter_to_crs(
-                cell_height, f"EPSG:{proj_epsg}", loi=(target_bbox_center.x, target_bbox_center.y)
+                cell_height, f"EPSG:{target_epsg}", loi=(target_bbox_center.x, target_bbox_center.y)
             )
     else:
         (cell_width, cell_height) = cellsize_default
