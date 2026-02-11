@@ -431,7 +431,7 @@ def _prepare_context(
     cellsize_default = feature_flags.get("cellsize_fallback", (10.0, 10.0))
     if cellsize_override:
         (cell_width, cell_height) = cellsize_override
-    elif len(unique_epsgs) == 1 and finest_cell_size:  # exact resolution
+    elif finest_cell_size:  # exact resolution
         (cell_width, cell_height) = finest_cell_size
     elif len(unique_epsgs) == 1:
         (cell_width, cell_height) = cellsize_default
