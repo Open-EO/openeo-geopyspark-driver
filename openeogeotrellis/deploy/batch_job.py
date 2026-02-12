@@ -415,8 +415,8 @@ def run_job(
 
         def result_write_assets(result_arg) -> (dict, dict):
             items = result_arg.write_assets(str(output_file))
+
             if items and "assets" not in next(iter(items.values())):  # no "assets" property so assets themselves
-                assets = items
                 logger.warning(f"save_result: got an 'assets' object instead of items for {result_arg}")
                 # TODO: this is here to avoid having to sync changes with openeo-python-driver
                 # it can and should be removed as soon as we have introduced returning items in all SaveResult subclasses
@@ -426,7 +426,7 @@ def run_job(
                 items = {
                     item_id: {
                         "id": item_id,
-                        "assets": assets,
+                        "assets": items,
                     }
                 }
 
@@ -657,6 +657,8 @@ def write_metadata(metadata: dict, metadata_file: Path, is_stac11: bool):
     if ConfigParams().is_kube_deploy:
         out_metadata = _convert_asset_outputs_to_s3_urls(metadata)
     log_asset_hrefs("output")
+
+    # TODO: limit/transform metadata to that expected by python-driver
 
     if is_stac11:
         out_metadata = deepcopy(out_metadata)  # avoid mutating an object that is going to be reused
