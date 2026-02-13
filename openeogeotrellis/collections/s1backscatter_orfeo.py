@@ -506,8 +506,7 @@ class S1BackscatterOrfeo:
             max_soft_errors_ratio = 0.0,
             target_resolution = (10.0,10.0)
     ):
-        logger.info(f"{log_prefix} Input tiff {input_tiff}")
-        logger.info(f"{log_prefix} extent {extent} EPSG {extent_epsg})")
+        logger.debug(f"{log_prefix} extent {extent} EPSG {extent_epsg})")
 
         if trackers is not None:
             trackers[0].add(1)
