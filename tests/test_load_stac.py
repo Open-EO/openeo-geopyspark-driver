@@ -2483,6 +2483,10 @@ class TestItemDeduplicator:
                 {"type": "Polygon", "coordinates": [[[4, 50], [5, 50], [5, 51], [4, 51], [4, 50]]]},
                 ["item1", "item3"],
             ),
+            (
+                {"type": "Polygon", "coordinates": [[[4, 50], [5, 50], [5, 51], [4, 51], [4, 50.0001]]]},
+                ["item1", "item3"],
+            ),
             (None, ["item1", "item2", "item3"]),
             (
                 {"type": "Polygon", "coordinates": [[[8, 40], [9, 40], [9, 41], [8, 41], [8, 40]]]},
