@@ -18,7 +18,12 @@ datacube = connection.datacube_from_process(
 )
 ```
 
-## Calrissian
+## Context
+
+[CWL (Common Workflow Language)](https://www.commonwl.org) is an open standard
+for describing how to run (command line) tools and connect them to create workflows.
+While CWL and openEO are a bit competing due to this conceptual overlap,
+there is demand to run existing or new CWL workflows as part of a larger openEO processing chain.
 
 The CWL is executed using [Calrissian](https://duke-gcb.github.io/calrissian/).
 > Calrissian is a CWL implementation designed to run inside a Kubernetes cluster.
@@ -27,6 +32,12 @@ The CWL is executed using [Calrissian](https://duke-gcb.github.io/calrissian/).
 
 > Calrissian leverages [cwltool](https://github.com/common-workflow-language/cwltool) heavily and most conformance tests
 > for CWL v1.0.
+
+## Output
+
+The CWL workflow should output a STAC catalogue, with the root being `catalog.json`, `catalogue.json` or
+`collection.json`. The stac will then be read by openEO with an internal call to `load_stac` and the output of the
+`run_udf` process will be a datacube.
 
 ## S3 access
 
@@ -51,16 +62,16 @@ You might need to provide your own S3 credentials. You can request them
 here: https://documentation.dataspace.copernicus.eu/APIs/S3.html
 
 ```bash
-cwltool
-  --tmpdir-prefix=$HOME/tmp/
-  --force-docker-pull
-  --leave-container
-  --leave-tmpdir
-  --no-read-only
-  --parallel
-  --preserve-environment=AWS_ENDPOINT_URL_S3
-  --preserve-environment=AWS_ACCESS_KEY_ID
-  --preserve-environment=AWS_SECRET_ACCESS_KEY
+cwltool \
+  --tmpdir-prefix=$HOME/tmp/ \
+  --force-docker-pull \
+  --leave-container \
+  --leave-tmpdir \
+  --no-read-only \
+  --parallel \
+  --preserve-environment=AWS_ENDPOINT_URL_S3 \
+  --preserve-environment=AWS_ACCESS_KEY_ID \
+  --preserve-environment=AWS_SECRET_ACCESS_KEY \
   example_workflow.cwl example_parameters.json
 ```
 
