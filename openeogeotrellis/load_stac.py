@@ -332,6 +332,18 @@ def _prepare_context(
                     )
                     opensearch_stats["builder.addLink"] += 1
                     builder = builder.addLink(asset_href, asset_id, link_band_names)
+                # ProbaV Geometry asset
+                elif (
+                    granule_metadata_band_map
+                    and asset_id == "GEOMETRY"
+                ):
+                    asset_href = get_best_url(asset, with_vsis3=False)
+                    link_band_names = sorted(granule_metadata_band_map.values())
+                    opensearch_link_titles_map.update(granule_metadata_band_map)
+                    logger.debug(
+                        f"FeatureBuilder.addLink {itm.id=} {asset_id=} {asset_href=} {link_band_names=} from {granule_metadata_band_map=}"
+                    )
+                    builder = builder.addLink(asset_href, asset_id, link_band_names)
 
             # TODO: the proj_* values are assigned in inner per-asset loop,
             #       so the values here are ill-defined (the values might even come from another item)
