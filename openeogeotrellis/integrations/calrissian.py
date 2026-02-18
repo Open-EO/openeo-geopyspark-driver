@@ -601,7 +601,7 @@ class CalrissianJobLauncher:
         try:
             with ContextTimer() as timer:
                 while timer.elapsed() < timeout:
-                    job: kubernetes.client.V1Job = k8s_batch.read_namespaced_job(name=job_name, namespace=self._namespace)
+                    job = k8s_batch.read_namespaced_job(name=job_name, namespace=self._namespace)
                     _log.info(f"CWL job poll loop: {job_name=} {timer.elapsed()=:.2f} {job.status.to_dict()=}")
                     if job.status.failed == 1:
                         final_status = "failed"
@@ -615,12 +615,12 @@ class CalrissianJobLauncher:
                             break
                     time.sleep(sleep)
         except KeyboardInterrupt:
-            _log.info(f"KeyboardInterrupt received, stopping CWL job: {job_name=} {timer.elapsed()=:.2f}")
+            _log.info(f"KeyboardInterrupt received, stopping CWL job: {job_name=}")
             k8s_batch.delete_namespaced_job(
                 name=job_name,
                 namespace=self._namespace,
                 propagation_policy="Foreground",  # Make sure the pods in this job get deleted too.
-                async_req=True,  # Some forum posts state that deletion with Foreground might hang.
+                async_req=True,  # Prefer to fail deleting compared to waiting in a terminating state.
             )
             raise
 
