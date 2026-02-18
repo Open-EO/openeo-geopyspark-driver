@@ -525,7 +525,7 @@ class CalrissianJobLauncher:
         container = kubernetes.client.V1Container(
             name=name,
             image=self._calrissian_image,
-            image_pull_policy="Always",
+            image_pull_policy="IfNotPresent",  # Avoid 'Always' as artifactory might be down.
             security_context=self._security_context,
             command=["calrissian"],
             args=calrissian_arguments,
