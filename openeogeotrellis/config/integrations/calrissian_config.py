@@ -16,7 +16,7 @@ DEFAULT_CALRISSIAN_RUNNER_RESOURCE_REQUIREMENTS = dict(
 DEFAULT_SECURITY_CONTEXT = dict(run_as_user=1000, fs_group=0, run_as_group=0)
 DEFAULT_CALRISSIAN_S3_REGION = None
 DEFAULT_CALRISSIAN_S3_BUCKET = "calrissian"
-DEFAULT_CALRISSIAN_BASE_ARGUMENTS = (
+DEFAULT_CALRISSIAN_BASE_ARGUMENTS: tuple = (
     "--debug",
     "--max-ram",
     "15G",  # TODO: Use max_executor_or_driver_memory ?
