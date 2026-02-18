@@ -208,6 +208,7 @@ def _prepare_context(
 
         opensearch_client = jvm.org.openeo.geotrellis.file.FixedFeaturesOpenSearchClient()
         opensearch_link_titles_map = {}
+        opensearch_stats = collections.defaultdict(int)
 
         # TODO: code smell: (most of) these vars should not be initialized with None here
         # asset_band_names = the full list of band names contained by the asset
@@ -238,6 +239,8 @@ def _prepare_context(
         cellsize_override = feature_flags.get("cellsize_override")
 
         for itm, band_assets in item_collection.iter_items_with_band_assets():
+            opensearch_stats["items"] += 1
+            opensearch_stats[f"items with {len(band_assets)=}"] += 1
 
             builder = (
                 jvm.org.openeo.opensearch.OpenSearchResponses.featureBuilder()
@@ -257,9 +260,14 @@ def _prepare_context(
                     kv[0],
                 ),
             ):
+                opensearch_stats["assets"] += 1
+
                 proj_epsg, proj_bbox, proj_shape = _get_proj_metadata(asset=asset, item=itm)
+                opensearch_stats[f"assets with {proj_epsg=}"] += 1
 
                 asset_band_names_from_metadata: List[str] = stac_metadata_parser.bands_from_stac_asset(asset=asset).band_names()
+                opensearch_stats[f"assets with {len(asset_band_names_from_metadata)=}"] += 1
+
                 if not asset_band_names_from_metadata:
                     asset_band_names_from_metadata = feature_flags.get("asset_id_to_bands_map", {}).get(asset_id, [])
                     logger.debug(f"using `asset_id_to_bands_map`: mapping {asset_id} to {asset_band_names_from_metadata}")
@@ -280,6 +288,8 @@ def _prepare_context(
                     # No match with band_selection in some way -> skip this asset
                     continue
 
+                opensearch_stats[f"assets with {len(asset_band_names)=}"] += 1
+
                 if band_names_tracker.already_seen(sorted(asset_band_names)):
                     # We've already seen this set of bands (e.g. at finer GSD), so skip this asset.
                     continue
@@ -298,6 +308,7 @@ def _prepare_context(
                 logger.debug(
                     f"FeatureBuilder.addLink {itm.id=} {asset_id=} {asset_href=} {asset_band_names_from_metadata=} {asset_band_names=}"
                 )
+                opensearch_stats["builder.addLink"] += 1
                 builder = builder.addLink(asset_href, asset_id, float(pixel_value_offset), asset_band_names)
                 collected_link_band_names.update(asset_band_names)
 
@@ -319,6 +330,7 @@ def _prepare_context(
                     logger.debug(
                         f"FeatureBuilder.addLink {itm.id=} {asset_id=} {asset_href=} {link_band_names=} from {granule_metadata_band_map=}"
                     )
+                    opensearch_stats["builder.addLink"] += 1
                     builder = builder.addLink(asset_href, asset_id, link_band_names)
 
             # TODO: the proj_* values are assigned in inner per-asset loop,
@@ -349,8 +361,10 @@ def _prepare_context(
 
             if self_url:
                 builder = builder.withSelfUrl(self_url)
+                opensearch_stats["builder.withSelfUrl"] += 1
 
             opensearch_client.addFeature(builder.build())
+            opensearch_stats["opensearch.addFeature"] += 1
 
             stac_bbox = (
                 item_bbox
@@ -360,6 +374,7 @@ def _prepare_context(
                 )
             )
 
+        logger.info(f"{opensearch_stats=}")
     except OpenEOApiException:
         raise
     except Exception as e:
