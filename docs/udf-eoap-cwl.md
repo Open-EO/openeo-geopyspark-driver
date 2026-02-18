@@ -1,6 +1,6 @@
 # UDF using CWL
 
-User Defined Process using Common Workflow Language.
+User-Defined Functions using Common Workflow Language.
 
 It is now possible to run CWL workflows inside the `run_udf` process.
 For the UDF parameter, you can use a CWL workflow definition as a string, or use an URL that points to a CWL workflow
@@ -9,6 +9,20 @@ definition.
 Here is an example how to use this in Python:
 
 ```python
+cwl = """
+cwlVersion: v1.0
+class: CommandLineTool
+requirements:
+  - class: DockerRequirement
+    dockerPull: vito-docker.artifactory.vgt.vito.be/openeo-geopyspark-driver-example-stac-catalog:1.8
+baseCommand: ["sh", "-c", "cp /data/* ."]
+inputs: []
+outputs:
+  output:
+    type: Directory
+    outputBinding:
+      glob: .
+"""
 datacube = connection.datacube_from_process(
     "run_udf",
     data=None,
@@ -35,9 +49,8 @@ The CWL is executed using [Calrissian](https://duke-gcb.github.io/calrissian/).
 
 ## Output
 
-The CWL workflow should output a STAC catalogue, with the root being `catalog.json`, `catalogue.json` or
-`collection.json`. The stac will then be read by openEO with an internal call to `load_stac` and the output of the
-`run_udf` process will be a datacube.
+The CWL workflow should output a STAC collection, with the root being `collection.json`. The stac will then be read by
+openEO with an internal call to `load_stac` and the output of the `run_udf` process will be a datacube.
 
 ## S3 access
 
