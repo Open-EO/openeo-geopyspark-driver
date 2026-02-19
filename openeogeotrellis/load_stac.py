@@ -223,6 +223,7 @@ def _prepare_context(
 
         stac_metadata_parser = _StacMetadataParser(logger=logger)
         resolution_tracker = _ResolutionTracker()
+        observed_epsgs: Set[int] = set()
 
         # layercatalog feature flag to handle "granule_metadata" assets.
         # E.g. for azimuth/zenith "bands" in SENTINEL2_L2A:
@@ -267,6 +268,8 @@ def _prepare_context(
                     asset=asset, item=itm, fix_proj_transform=fix_proj_transform
                 )
                 opensearch_stats[f"assets with {proj_epsg=}"] += 1
+                if proj_epsg:
+                    observed_epsgs.add(proj_epsg)
 
                 asset_band_names_from_metadata: List[str] = stac_metadata_parser.bands_from_stac_asset(asset=asset).band_names()
                 opensearch_stats[f"assets with {len(asset_band_names_from_metadata)=}"] += 1
@@ -450,13 +453,20 @@ def _prepare_context(
     if len(unique_epsgs) == 1:
         [target_epsg] = unique_epsgs
         logger.info(f"{target_epsg=} from {unique_epsgs=}")
-    elif all(is_utm_epsg_code(e) for e in unique_epsgs):
+    elif unique_epsgs and all(is_utm_epsg_code(e) for e in unique_epsgs):
         target_epsg = target_bbox.best_utm()
         logger.info(f"{target_epsg=} from {unique_epsgs=}")
+    elif not unique_epsgs and len(observed_epsgs) == 1:
+        # No resolution info available, but all assets agree on a single EPSG (e.g. from item-level proj:code)
+        [target_epsg] = observed_epsgs
+        logger.info(f"{target_epsg=} from {observed_epsgs=} (no resolution info available)")
+    elif not unique_epsgs and observed_epsgs and all(is_utm_epsg_code(e) for e in observed_epsgs):
+        target_epsg = target_bbox.best_utm()
+        logger.info(f"{target_epsg=} from {observed_epsgs=} (no resolution info available)")
     else:
         # TODO: picking UTM as target, while the source CRMs are not is probably not ideal.
         target_epsg = target_bbox.best_utm()
-        logger.warning(f"{target_epsg=} from {unique_epsgs=}: legacy behavior, but possibly ill-defined")
+        logger.warning(f"{target_epsg=} from {unique_epsgs=} {observed_epsgs=}: legacy behavior, but possibly ill-defined")
 
     cellsize_fallback = feature_flags.get("cellsize_fallback", None)
     if cellsize_override:
@@ -465,7 +475,7 @@ def _prepare_context(
         (cell_width, cell_height) = finest_cell_size
     elif cellsize_fallback:
         (cell_width, cell_height) = cellsize_fallback
-    elif len(unique_epsgs) == 1:
+    elif len(unique_epsgs) == 1 or (not unique_epsgs and len(observed_epsgs) == 1):
         logger.warning(f"cellsize: fallback on hardcoded 10m assumption")
         (cell_width, cell_height) = (10.0, 10.0)
         # TODO: there is assumption here that cellsize_fallback is given in meter, which is not true in general
