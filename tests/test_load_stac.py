@@ -2619,6 +2619,58 @@ class TestItemDeduplicator:
         result = depuplicator.deduplicate([item1, item2, item3])
         assert [r.id for r in result] == expected
 
+    def test_s1_sigma0_version_dedup(self):
+        """Sentinel-1 SIGMA0 items with different processing versions (V110 vs V120) should be deduplicated,
+        keeping the higher version."""
+        common_properties = {
+            "datetime": "2020-03-25T17:24:42Z",
+            "platform": "sentinel-1a",
+            "constellation": "sentinel-1",
+            "sar:frequency_band": "C",
+            "sar:instrument_mode": "IW",
+            "sar:observation_direction": "right",
+            "sar:polarizations": ["VV", "VH"],
+            "sat:absolute_orbit": 31835,
+            "sat:orbit_state": "ascending",
+        }
+        common_bbox = [2.0, 50.0, 4.0, 52.0]
+        common_geometry = {
+            "type": "Polygon",
+            "coordinates": [[[2.0, 50.0], [4.0, 50.0], [4.0, 52.0], [2.0, 52.0], [2.0, 50.0]]],
+        }
+        common_datetime = "2020-03-25T17:24:42Z"
+
+        item_v110 = pystac.Item.from_dict(
+            StacDummyBuilder.item(
+                id="S1A_IW_GRDH_SIGMA0_DV_20200325T172442_ASCENDING_88_5C3F_V110",
+                datetime=common_datetime,
+                bbox=common_bbox,
+                geometry=common_geometry,
+                properties={**common_properties, "updated": "2025-07-06T06:06:09.620403Z"},
+            )
+        )
+        item_v120 = pystac.Item.from_dict(
+            StacDummyBuilder.item(
+                id="S1A_IW_GRDH_SIGMA0_DV_20200325T172442_ASCENDING_88_5C3F_V120",
+                datetime=common_datetime,
+                bbox=common_bbox,
+                geometry=common_geometry,
+                properties={**common_properties, "updated": "2025-07-06T06:06:09.708329Z"},
+            )
+        )
+
+        deduplicator = ItemDeduplicator()
+        result = deduplicator.deduplicate([item_v110, item_v120])
+        assert [r.id for r in result] == [
+            "S1A_IW_GRDH_SIGMA0_DV_20200325T172442_ASCENDING_88_5C3F_V120"
+        ]
+
+        # Order of input should not matter
+        result = deduplicator.deduplicate([item_v120, item_v110])
+        assert [r.id for r in result] == [
+            "S1A_IW_GRDH_SIGMA0_DV_20200325T172442_ASCENDING_88_5C3F_V120"
+        ]
+
 
 class _OpenSearchClientDumper:
     """Helper to extract/dump OpenSearchClient contents for testing."""
