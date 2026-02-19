@@ -614,8 +614,8 @@ class CalrissianJobLauncher:
                             final_status = "complete"
                             break
                     time.sleep(sleep)
-        except KeyboardInterrupt:
-            _log.info(f"KeyboardInterrupt received, stopping CWL job: {job_name=}")
+        except (SystemExit, KeyboardInterrupt):
+            _log.info(f"Stopping CWL job: {job_name=}")
             k8s_batch.delete_namespaced_job(
                 name=job_name,
                 namespace=self._namespace,
