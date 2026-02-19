@@ -237,6 +237,7 @@ def _prepare_context(
             available_band_names.extend(b for b in granule_metadata_band_map.keys() if b not in available_band_names)
 
         cellsize_override = feature_flags.get("cellsize_override")
+        fix_proj_transform = feature_flags.get("fix_proj_transform", False)
 
         for itm, band_assets in item_collection.iter_items_with_band_assets():
             opensearch_stats["items"] += 1
@@ -262,7 +263,9 @@ def _prepare_context(
             ):
                 opensearch_stats["assets"] += 1
 
-                proj_epsg, proj_bbox, proj_shape = _get_proj_metadata(asset=asset, item=itm)
+                proj_epsg, proj_bbox, proj_shape = _get_proj_metadata(
+                    asset=asset, item=itm, fix_proj_transform=fix_proj_transform
+                )
                 opensearch_stats[f"assets with {proj_epsg=}"] += 1
 
                 asset_band_names_from_metadata: List[str] = stac_metadata_parser.bands_from_stac_asset(asset=asset).band_names()
@@ -1538,7 +1541,13 @@ class _ProjectionMetadata:
         )
 
     @classmethod
-    def from_asset(cls, asset: pystac.Asset, *, item: Optional[pystac.Item] = None) -> "_ProjectionMetadata":
+    def from_asset(
+        cls,
+        asset: pystac.Asset,
+        *,
+        item: Optional[pystac.Item] = None,
+        fix_proj_transform: bool = False,
+    ) -> "_ProjectionMetadata":
         """
         Extract projection metadata from asset, with fallback to asset bands or (owning) item.
         """
@@ -1548,13 +1557,49 @@ class _ProjectionMetadata:
         def get(field):
             return _get_asset_property(asset, field=field) or (item and item.properties.get(field))
 
+        transform = get("proj:transform")
+        if fix_proj_transform and transform:
+            transform = cls._fix_gdal_ordered_transform(transform)
+
         return cls(
             code=get("proj:code"),
             epsg=get("proj:epsg"),
             bbox=get("proj:bbox"),
             shape=get("proj:shape"),
-            transform=get("proj:transform"),
+            transform=transform,
         )
+
+    @staticmethod
+    def _fix_gdal_ordered_transform(transform: Sequence[float]) -> Sequence[float]:
+        """
+        Detect and fix a proj:transform that is in GDAL GetGeoTransform order
+        instead of the expected rasterio/affine order.
+
+        GDAL GetGeoTransform:  [xOrigin, xPixelSize, xSkew, yOrigin, ySkew, yPixelSize]
+        Rasterio/affine order: [xPixelSize, xSkew, xOrigin, ySkew, yPixelSize, yOrigin]
+
+        Detection heuristic (for the common no-rotation case):
+        - In GDAL order: positions 2,4 are zero (skew) and positions 1,5 are non-zero (pixel sizes)
+        - In rasterio order: positions 1,3 are zero (skew) and positions 0,4 are non-zero (pixel sizes)
+        Additionally, origin values (large) should be larger than pixel sizes (small).
+        """
+        if len(transform) < 6:
+            return transform
+        t0, t1, t2, t3, t4, t5 = transform[:6]
+        if (
+            t2 == 0.0
+            and t4 == 0.0
+            and t1 != 0.0
+            and t5 != 0.0
+            and abs(t0) > abs(t1)
+            and abs(t3) > abs(t5)
+        ):
+            fixed = [t1, t2, t0, t4, t5, t3] + list(transform[6:])
+            logger.warning(
+                f"Detected GDAL-ordered proj:transform {list(transform)}, reshuffled to {fixed}"
+            )
+            return fixed
+        return transform
 
     @functools.lru_cache
     def _snappers(self) -> Tuple[GridSnapper, GridSnapper]:
@@ -1597,14 +1642,17 @@ class _ProjectionMetadata:
 
 
 def _get_proj_metadata(
-    asset: pystac.Asset, *, item: pystac.Item
+    asset: pystac.Asset,
+    *,
+    item: pystac.Item,
+    fix_proj_transform: bool = False,
 ) -> Tuple[Optional[int], Optional[Tuple[float, float, float, float]], Optional[Tuple[int, int]]]:
     """
     Get projection metadata from asset:
     EPSG code (int), bbox (in that EPSG) and number of pixels (rows, cols), if available.
     """
     # TODO: phase out usage and switch to using _ProjectionMetadata directly?
-    metadata = _ProjectionMetadata.from_asset(asset, item=item)
+    metadata = _ProjectionMetadata.from_asset(asset, item=item, fix_proj_transform=fix_proj_transform)
     return metadata.epsg, metadata.bbox, metadata.shape
 
 

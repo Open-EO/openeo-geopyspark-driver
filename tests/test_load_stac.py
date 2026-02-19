@@ -1006,6 +1006,83 @@ def test_get_proj_metadata_from_asset(item_properties, asset_extra_fields, expec
     assert _get_proj_metadata(asset, item=item) == expected
 
 
+class TestFixGdalOrderedTransform:
+    """Tests for _ProjectionMetadata._fix_gdal_ordered_transform"""
+
+    def test_already_valid_rasterio_order(self):
+        """Valid rasterio/affine order should not be changed."""
+        transform = [0.00025, 0.0, 3.0, 0.0, -0.00025, 51.0]
+        assert _ProjectionMetadata._fix_gdal_ordered_transform(transform) == transform
+
+    def test_fix_gdal_order(self):
+        """GDAL GetGeoTransform order should be reshuffled to rasterio/affine order."""
+        gdal_order = [3.0, 0.00025, 0.0, 51.0, 0.0, -0.00025]
+        expected = [0.00025, 0.0, 3.0, 0.0, -0.00025, 51.0]
+        assert _ProjectionMetadata._fix_gdal_ordered_transform(gdal_order) == expected
+
+    def test_fix_gdal_order_9_elements(self):
+        """GDAL order with 9 elements (full 3x3 matrix) should preserve trailing elements."""
+        gdal_order = [3.0, 0.00025, 0.0, 51.0, 0.0, -0.00025, 0.0, 0.0, 1.0]
+        expected = [0.00025, 0.0, 3.0, 0.0, -0.00025, 51.0, 0.0, 0.0, 1.0]
+        assert _ProjectionMetadata._fix_gdal_ordered_transform(gdal_order) == expected
+
+    def test_short_transform_unchanged(self):
+        """Transform with fewer than 6 elements should not be changed."""
+        transform = [1.0, 2.0]
+        assert _ProjectionMetadata._fix_gdal_ordered_transform(transform) == transform
+
+    def test_from_asset_with_fix_flag(self):
+        """from_asset with fix_proj_transform=True should fix GDAL-ordered transforms."""
+        asset = pystac.Asset(
+            href="https://stac.test/asset.tif",
+            extra_fields={
+                "proj:epsg": 4326,
+                "proj:shape": [4000, 4000],
+                "proj:transform": [3.0, 0.00025, 0.0, 51.0, 0.0, -0.00025],
+            },
+        )
+        metadata = _ProjectionMetadata.from_asset(asset, fix_proj_transform=True)
+        assert metadata.bbox == pytest.approx((3.0, 50.0, 4.0, 51.0))
+
+    def test_from_asset_without_fix_flag(self):
+        """from_asset without fix_proj_transform should not fix GDAL-ordered transforms."""
+        asset = pystac.Asset(
+            href="https://stac.test/asset.tif",
+            extra_fields={
+                "proj:epsg": 4326,
+                "proj:shape": [4000, 4000],
+                "proj:transform": [3.0, 0.00025, 0.0, 51.0, 0.0, -0.00025],
+            },
+        )
+        metadata = _ProjectionMetadata.from_asset(asset, fix_proj_transform=False)
+        # Without fix, bbox will be computed from the wrong transform
+        assert metadata.bbox != pytest.approx((3.0, 50.0, 4.0, 51.0))
+
+    @pytest.mark.parametrize(
+        ["gdal_transform", "expected_rasterio"],
+        [
+            (
+                # sentinel-1-global-mosaics
+                [600000, 20, 0, 5700000, 0, -20],
+                [20, 0, 600000, 0, -20, 5700000],
+            ),
+            (
+                # dem30
+                [4.999791666666667, 0.0004166666666667, 0, 52.00013888888889, 0, -0.0002777777777778],
+                [0.0004166666666667, 0, 4.999791666666667, 0, -0.0002777777777778, 52.00013888888889],
+            ),
+            (
+                # dem90
+                [4.999375, 0.00125, 0, 52.000416666666666, 0, -0.0008333333333333],
+                [0.00125, 0, 4.999375, 0, -0.0008333333333333, 52.000416666666666],
+            ),
+        ],
+    )
+    def test_fix_real_world_gdal_transforms(self, gdal_transform, expected_rasterio):
+        """Real-world GDAL-ordered transforms should be correctly converted to rasterio/affine order."""
+        assert _ProjectionMetadata._fix_gdal_ordered_transform(gdal_transform) == expected_rasterio
+
+
 class TestTemporalExtent:
     def test_as_tuple_empty(self):
         extent = _TemporalExtent(None, None)
