@@ -57,11 +57,14 @@ openEO with an internal call to `load_stac` and the output of the `run_udf` proc
 Your CWL code will receive temporary S3 credentials to access the `eodata` bucket.
 Those credentials can be accessed through the following environment variables:
 
-- `AWS_ENDPOINT_URL_S3`
-- `AWS_ACCESS_KEY_ID`
-- `AWS_SECRET_ACCESS_KEY`
+## Logging
 
-They won't work outside the cluster, and are only temporary valid.
+OpenEO tries to capture the logs of the CWL workflow and make them available in the openEO logs.
+To help this, it is best to avoid capturing stdout/stderr. More details
+here: https://eoap.github.io/logging-and-redirection/
+Also logging as JSON with a timestamp would allow the editor to show the logs in the correct order. An example on how to
+do this in Python is shown
+here: [s1-workflows](https://github.com/cloudinsar/s1-workflows/blob/312ef82fe5ac929dece30950abdbc618025d6c9a/sar/utils/workflow_utils.py#L29-L47)
 
 ## Docker images
 
