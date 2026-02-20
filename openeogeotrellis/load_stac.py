@@ -1256,7 +1256,7 @@ class ItemDeduplicator:
         "processing:level",
         "product:timeliness",
         "product:type",
-        "proj:code",
+        # "proj:code", TODO: Sometimes UTM zone can differ.
         "sar:frequency_band",
         "sar:instrument_mode",
         "sar:observation_direction",
