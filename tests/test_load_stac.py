@@ -2671,6 +2671,35 @@ class TestItemDeduplicator:
             "S1A_IW_GRDH_SIGMA0_DV_20200325T172442_ASCENDING_88_5C3F_V120"
         ]
 
+    def test_score_property_preference(self):
+        """score_property_preference prefers items by property value order, falling back to updated+id."""
+        common_props = {"datetime": "2025-11-10T00:00:00Z"}
+        item_v110 = pystac.Item.from_dict(
+            StacDummyBuilder.item(id="item-v110", properties={**common_props, "processing:version": 110})
+        )
+        item_v100 = pystac.Item.from_dict(
+            StacDummyBuilder.item(id="item-v100", properties={**common_props, "processing:version": 100})
+        )
+        item_unknown = pystac.Item.from_dict(
+            StacDummyBuilder.item(id="item-unknown", properties={**common_props, "processing:version": 999, "updated": "2099-01-01T00:00:00Z"})
+        )
+        item_no_version = pystac.Item.from_dict(
+            StacDummyBuilder.item(id="item-no-version", properties={**common_props, "updated": "2099-01-01T00:00:00Z"})
+        )
+
+        deduplicator = ItemDeduplicator(score_property_preference={"processing:version": [110, 100]})
+
+        # v110 is preferred over v100 regardless of input order
+        assert [r.id for r in deduplicator.deduplicate([item_v100, item_v110])] == ["item-v110"]
+        assert [r.id for r in deduplicator.deduplicate([item_v110, item_v100])] == ["item-v110"]
+
+        # v100 is preferred over an unknown version (not in preference list),
+        # even if the unknown version has a later "updated" timestamp
+        assert [r.id for r in deduplicator.deduplicate([item_unknown, item_v100])] == ["item-v100"]
+
+        # Property absent → same fallback as unknown value: uses updated+id
+        assert [r.id for r in deduplicator.deduplicate([item_no_version, item_v100])] == ["item-v100"]
+
 
 class _OpenSearchClientDumper:
     """Helper to extract/dump OpenSearchClient contents for testing."""
