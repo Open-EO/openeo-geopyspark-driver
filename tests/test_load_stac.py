@@ -2492,13 +2492,13 @@ class TestItemDeduplicator:
 
     def test_property_based(self):
         item600 = pystac.Item.from_dict(
-            StacDummyBuilder.item(id="item1", properties={"proj:code": "EPSG:32600", "flavor": "apple"})
+            StacDummyBuilder.item(id="item1", properties={"product:type": "a", "flavor": "apple"})
         )
         item600b = pystac.Item.from_dict(
-            StacDummyBuilder.item(id="item2", properties={"proj:code": "EPSG:32600", "flavor": "banana"})
+            StacDummyBuilder.item(id="item2", properties={"product:type": "a", "flavor": "banana"})
         )
         item601 = pystac.Item.from_dict(
-            StacDummyBuilder.item(id="item3", properties={"proj:code": "EPSG:32601", "flavor": "apple"})
+            StacDummyBuilder.item(id="item3", properties={"product:type": "b", "flavor": "apple"})
         )
 
         depuplicator = ItemDeduplicator()
