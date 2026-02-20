@@ -1309,7 +1309,7 @@ class ItemDeduplicator:
                     < self._time_shift_max
                 )
             is_same_properties = all(item1.properties.get(p) == item2.properties.get(p) for p in self._duplication_properties)
-            is_same_bbox = self._is_same_bbox(item1.bbox, item2.bbox)
+            is_same_bbox = self._is_same_bbox(item1.bbox, item2.bbox, epsilon=1e-3)  # 1e-3 degrees ≈ 111 meters
             is_same_geometry = self._is_same_geometry(item1.geometry, item2.geometry)
             return is_same_date and is_same_properties and is_same_bbox and is_same_geometry
         except Exception as e:
@@ -1324,10 +1324,31 @@ class ItemDeduplicator:
         else:
             return False
 
-    def _is_same_geometry(self, geom1: Optional[Dict], geom2: Optional[Dict]) -> bool:
+    def _is_same_geometry(self, geom1: Optional[Dict], geom2: Optional[Dict], epsilon=3e-4, dice_threshold=0.99) -> bool:
+        """Check if two GeoJSON geometries are approximately equal.
+
+        First tries shapely.equals_exact (cheap coordinate-wise comparison with tolerance).
+        If that fails (e.g. different vertex counts), falls back to the Sorensen-Dice
+        coefficient on area overlap, same approach as isDuplicate in OpenSearchResponses.scala.
+
+        STAC item geometries are always in WGS 84 (EPSG:4326),
+        so the epsilon is in degrees (3e-4 degrees ≈ 33 meters at the equator).
+        """
         if isinstance(geom1, dict) and isinstance(geom2, dict):
-            # TODO: need for smarter geometry comparison (e.g. within some epsilon)?
-            return shapely.equals(shapely.geometry.shape(geom1), shapely.geometry.shape(geom2))
+            shape1 = shapely.geometry.shape(geom1)
+            shape2 = shapely.geometry.shape(geom2)
+            if shapely.equals_exact(shape1, shape2, tolerance=epsilon, normalize=True):
+                return True
+            # Fallback: Dice coefficient on area overlap
+            try:
+                area_sum = shape1.area + shape2.area
+                if area_sum == 0:
+                    return False
+                dice_score = 2 * shape1.intersection(shape2).area / area_sum
+                return dice_score >= dice_threshold
+            except Exception as e:
+                logger.warning(f"Failed geometry Dice score comparison: {e}", exc_info=True)
+                return False
         elif geom1 is None and geom2 is None:
             return True
         else:
