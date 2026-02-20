@@ -855,7 +855,10 @@ def construct_item_collection(
     #       - enable by default or only do it on STAC API usage?
     #       - allow custom deduplicators (e.g. based on layer catalog info about openeo collections)
     if feature_flags.get("deduplicate_items", get_backend_config().load_stac_deduplicate_items_default):
-        item_collection = item_collection.deduplicated(deduplicator=ItemDeduplicator())
+        duplication_properties = feature_flags.get("duplication_properties")
+        item_collection = item_collection.deduplicated(
+            deduplicator=ItemDeduplicator(duplication_properties=duplication_properties)
+        )
 
     # TODO: possible to embed band names in metadata directly?
     #       And related: metadata/GeopysparkCubeMetadata as an API is too large and too loosely defined.
@@ -1286,15 +1289,14 @@ class ItemDeduplicator:
 
     def _is_duplicate_item(self, item1: pystac.Item, item2: pystac.Item) -> bool:
         try:
-            return (
-                (
+            is_same_date = (
                     abs((self._item_nominal_date(item1) - self._item_nominal_date(item2)).total_seconds())
                     < self._time_shift_max
                 )
-                and all(item1.properties.get(p) == item2.properties.get(p) for p in self._duplication_properties)
-                and self._is_same_bbox(item1.bbox, item2.bbox)
-                and self._is_same_geometry(item1.geometry, item2.geometry)
-            )
+            is_same_properties = all(item1.properties.get(p) == item2.properties.get(p) for p in self._duplication_properties)
+            is_same_bbox = self._is_same_bbox(item1.bbox, item2.bbox)
+            is_same_geometry = self._is_same_geometry(item1.geometry, item2.geometry)
+            return is_same_date and is_same_properties and is_same_bbox and is_same_geometry
         except Exception as e:
             logger.warning(f"Failed to compare {item1.id=} and {item2.id=} for duplication: {e=}", exc_info=True)
             return False
