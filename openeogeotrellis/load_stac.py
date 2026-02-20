@@ -1337,7 +1337,7 @@ class ItemDeduplicator:
         if isinstance(geom1, dict) and isinstance(geom2, dict):
             shape1 = shapely.geometry.shape(geom1)
             shape2 = shapely.geometry.shape(geom2)
-            if shapely.equals_exact(shape1, shape2, tolerance=epsilon, normalize=True):
+            if shapely.equals_exact(shapely.normalize(shape1), shapely.normalize(shape2), tolerance=epsilon):
                 return True
             # Fallback: Dice coefficient on area overlap
             try:
