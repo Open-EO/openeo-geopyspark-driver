@@ -856,8 +856,12 @@ def construct_item_collection(
     #       - allow custom deduplicators (e.g. based on layer catalog info about openeo collections)
     if feature_flags.get("deduplicate_items", get_backend_config().load_stac_deduplicate_items_default):
         duplication_properties = feature_flags.get("duplication_properties")
+        score_property_preference = feature_flags.get("score_property_preference")
         item_collection = item_collection.deduplicated(
-            deduplicator=ItemDeduplicator(duplication_properties=duplication_properties)
+            deduplicator=ItemDeduplicator(
+                duplication_properties=duplication_properties,
+                score_property_preference=score_property_preference,
+            )
         )
 
     # TODO: possible to embed band names in metadata directly?
@@ -1268,7 +1272,13 @@ class ItemDeduplicator:
         "sat:orbit_state",
     ]
 
-    def __init__(self, *, time_shift_max: float = 30, duplication_properties: Optional[List[str]] = None):
+    def __init__(
+        self,
+        *,
+        time_shift_max: float = 30,
+        duplication_properties: Optional[List[str]] = None,
+        score_property_preference: Optional[Dict[str, List]] = None,
+    ):
         self._time_shift_max = time_shift_max
 
         # Duplication properties: properties that will be compared
@@ -1277,6 +1287,11 @@ class ItemDeduplicator:
             self._duplication_properties = self.DEFAULT_DUPLICATION_PROPERTIES
         else:
             self._duplication_properties = duplication_properties
+
+        # score_property_preference: dict mapping property name to ordered list of preferred values.
+        # e.g. {"processing:version": [110, 100]} means: prefer items where processing:version==110
+        # over those with 100; values not in the list (or property absent) fall back to default scoring.
+        self._score_property_preference: Dict[str, List] = score_property_preference or {}
 
     @staticmethod
     def _item_nominal_date(item: pystac.Item) -> datetime.datetime:
@@ -1320,9 +1335,17 @@ class ItemDeduplicator:
 
     def _score(self, item: pystac.Item) -> tuple:
         """Score an item for deduplication preference (higher is better)."""
-        # Prefer more recently updated items
-        # use item id as tie breaker
-        return (item.properties.get("updated", ""), item.id)
+        # Primary: score by property preference (if configured)
+        preference_scores = []
+        for prop, preferred_values in self._score_property_preference.items():
+            value = item.properties.get(prop)
+            if value is not None and value in preferred_values:
+                # Earlier position in preference list → higher score
+                preference_scores.append(len(preferred_values) - preferred_values.index(value))
+            else:
+                preference_scores.append(0)
+        # Fallback: prefer more recently updated items, then use item id as tie breaker
+        return (*preference_scores, item.properties.get("updated", ""), item.id)
 
     def _group_duplicates(self, items: Iterable[pystac.Item]) -> Iterator[List[pystac.Item]]:
         """Produce groups of duplicate items."""
