@@ -145,6 +145,9 @@ def _prepare_context(
     """
     from openeogeotrellis import datacube_parameters
 
+    # TODO: Currently disabled https://github.com/eu-cdse/openeo-cdse-infra/issues/956
+    load_params.resolve_tile_overlap = False
+
     # Feature flags: merge global (e.g. from layer catalog info) and user-provided (higher precedence)
     feature_flags = {**(feature_flags or {}), **load_params.get("featureflags", {})}
 
