@@ -54,6 +54,8 @@ def create(load_params: LoadParameters, env: EvalEnv, jvm: JVMView):
     if load_params.pixel_buffer is not None:
         datacubeParams.setPixelBuffer(load_params.pixel_buffer[0], load_params.pixel_buffer[1])
 
+    datacubeParams.setResolveTileOverlap(load_params.resolve_tile_overlap)
+
     load_per_product = feature_flags.get("load_per_product", None)
     if load_per_product is not None:
         datacubeParams.setLoadPerProduct(load_per_product)
