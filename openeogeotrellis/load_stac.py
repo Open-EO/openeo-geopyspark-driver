@@ -1307,14 +1307,22 @@ class ItemDeduplicator:
 
     def _is_duplicate_item(self, item1: pystac.Item, item2: pystac.Item) -> bool:
         try:
-            is_same_date = (
+            # Note this large `and` chain to leverage short-circuiting so that
+            # the more expensive checks (e.g. geometry) are only done
+            # when cheaper checks (e.g. date and properties) pass.
+            return (
+                # Same date
+                (
                     abs((self._item_nominal_date(item1) - self._item_nominal_date(item2)).total_seconds())
                     < self._time_shift_max
                 )
-            is_same_properties = all(item1.properties.get(p) == item2.properties.get(p) for p in self._duplication_properties)
-            is_same_bbox = self._is_same_bbox(item1.bbox, item2.bbox, epsilon=1e-3)  # 1e-3 degrees ≈ 111 meters
-            is_same_geometry = self._is_same_geometry(item1.geometry, item2.geometry)
-            return is_same_date and is_same_properties and is_same_bbox and is_same_geometry
+                # Same properties
+                and all(item1.properties.get(p) == item2.properties.get(p) for p in self._duplication_properties)
+                # Comparable bbox
+                and self._is_same_bbox(item1.bbox, item2.bbox, epsilon=1e-3)  # 1e-3 degrees ≈ 111 meters
+                # Same geometry
+                and self._is_same_geometry(item1.geometry, item2.geometry)
+            )
         except Exception as e:
             logger.warning(f"Failed to compare {item1.id=} and {item2.id=} for duplication: {e=}", exc_info=True)
             return False
