@@ -21,7 +21,7 @@ DEFAULT_CALRISSIAN_BASE_ARGUMENTS: tuple = (
     "--max-ram",
     "128G",  # Seems to be a limit for pods combined across nodes. Testing with higher threshold. # TODO: Use max_executor_or_driver_memory ?
     "--max-cores",
-    "4",
+    "1000",
     "--force-docker-pull",
 )
 if smart_bool(os.environ.get("OPENEO_LOCAL_DEBUGGING", "false")):
