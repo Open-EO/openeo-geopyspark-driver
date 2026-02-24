@@ -222,6 +222,11 @@ def _get_stac_collection_urls(product_type: str) -> List[str]:
         return [
             "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-3-syn-2-aod-ntc",
         ]
+    elif product_type == "OL_1_EFR___":
+        return [
+            "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-3-olci-1-efr-nrt",
+            "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-3-olci-1-efr-ntc",
+        ]
     else:
         raise ValueError(f"STAC not yet supported for Sentinel-3 product type: {product_type}")
 
@@ -560,7 +565,7 @@ def read_product(product, product_type, band_names, tile_size, resolution, repro
             )
 
 
-            digital_numbers = product_type == OLCI_PRODUCT_TYPE
+            digital_numbers = False
 
             try:
                 orfeo_bands = create_s3_toa(
