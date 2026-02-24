@@ -193,7 +193,8 @@ class S1BackscatterOrfeo:
         for k, v in filter_properties.items():
             # Use array_contains for array values (e.g., default product:type to match multiple variants)
             # Use eq for scalar values (e.g., user-provided product:type)
-            if isinstance(v, list):
+            # Exception: sar:polarizations is itself an array property, so use eq to match the exact array.
+            if isinstance(v, list) and k != "sar:polarizations":
                 mapped[k] = {
                     "process_graph": {
                         "array_contains": {
