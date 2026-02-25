@@ -52,6 +52,13 @@ class CustomStacIO(DefaultStacIO):
         if parsed.scheme == "s3":
             bucket = parsed.netloc
             key = parsed.path[1:]
-            self._s3.put_object(Bucket=bucket, Key=key, Body=txt.encode("utf-8"), ContentEncoding="utf-8")
+
+            try:
+                self._s3.put_object(Bucket=bucket, Key=key, Body=txt.encode("utf-8"), ContentEncoding="utf-8")
+            except botocore.exceptions.ClientError as e:
+                _log.warning(
+                    f"could not put object at key {key}: [{e.response['Error']['Code']}] {e.response['Error']['Message']}"
+                )
+                raise
         else:
             super().write_text(dest, txt, *args, **kwargs)

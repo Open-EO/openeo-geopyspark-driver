@@ -254,7 +254,13 @@ def test_custom_stac_io_logs_client_error_context(mock_s3_bucket, caplog):
     with pytest.raises(botocore.exceptions.ClientError):
         custom_stac_io.read_text(f"s3://{mock_s3_bucket.name}/some/object")
 
+    with pytest.raises(botocore.exceptions.ClientError):
+        custom_stac_io.write_text(f"s3://unknown_bucket/some/object", txt='{"stac_version": "1.1.0"}')
+
     assert "could not get object at key some/object: [NoSuchKey] The specified key does not exist." in caplog.messages
+    assert (
+        "could not put object at key some/object: [NoSuchBucket] The specified bucket does not exist" in caplog.messages
+    )
 
 
 def _collection(
