@@ -2,6 +2,7 @@ import logging
 from typing import Union, Any, Optional
 from urllib.parse import urlparse
 
+import botocore.exceptions
 from pystac import Link
 from pystac.stac_io import DefaultStacIO
 
@@ -35,8 +36,14 @@ class CustomStacIO(DefaultStacIO):
             bucket = parsed.netloc
             key = parsed.path[1:]
 
-            obj = self._s3.get_object(Bucket=bucket, Key=key)
-            return obj["Body"].read().decode("utf-8")
+            try:
+                obj = self._s3.get_object(Bucket=bucket, Key=key)
+                return obj["Body"].read().decode("utf-8")
+            except botocore.exceptions.ClientError as e:
+                _log.warning(
+                    f"could not get object at key {key}: [{e.response['Error']['Code']}] {e.response['Error']['Message']}"
+                )
+                raise
         else:
             return super().read_text(source, *args, **kwargs)
 

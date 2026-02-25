@@ -3,6 +3,7 @@ from pathlib import PurePath, Path
 from typing import Set, List
 from urllib.parse import urlparse
 
+import botocore.exceptions
 from pystac import Collection, Extent, SpatialExtent, TemporalExtent, Item, CatalogType, Asset
 import pytest
 
@@ -245,6 +246,15 @@ def test_merge_into_existing(tmp_path, mock_s3_client, mock_s3_bucket, remove_or
     assert all(item.collection_id == exported_collection.id for item in items)
 
     assert _downloadable_assets(exported_collection, mock_s3_client) == 2
+
+
+def test_custom_stac_io_logs_client_error_context(mock_s3_bucket, caplog):
+    custom_stac_io = CustomStacIO()
+
+    with pytest.raises(botocore.exceptions.ClientError):
+        custom_stac_io.read_text(f"s3://{mock_s3_bucket.name}/some/object")
+
+    assert "could not get object at key some/object: [NoSuchKey] The specified key does not exist." in caplog.messages
 
 
 def _collection(
