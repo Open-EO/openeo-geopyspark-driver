@@ -14,7 +14,7 @@ from typing import Dict, List, Optional, Sequence, Tuple, Union
 import kubernetes.client
 import requests
 import yaml
-from openeo.util import ContextTimer
+from openeo.util import ContextTimer, deep_get
 from openeo_driver.ProcessGraphDeserializer import ENV_DRY_RUN_TRACER
 from openeo_driver.backend import ErrorSummary
 from openeo_driver.config import ConfigException
@@ -184,6 +184,36 @@ class CwLSource:
 
     def get_content(self) -> str:
         return self._cwl
+
+    def estimate_max_memory_usage(self):
+        yaml_parsed = list(yaml.safe_load_all(self._cwl))[0]
+        max_memory = -1
+
+        def estimate_max_memory_usage_step(step):
+            nonlocal max_memory
+            if not isinstance(step, dict):
+                return
+            requirements = step.get("requirements", {})
+            ram_max = -1
+            # https://www.commonwl.org/v1.0/CommandLineTool.html#ResourceRequirement
+            # ramMax: "Maximum reserved RAM in mebibytes (2**20)"
+            if isinstance(requirements, dict):
+                ram_max = float(deep_get(requirements, "ResourceRequirement", "ramMax", default="-1"))
+            elif isinstance(requirements, list):
+                for req in requirements:
+                    if not isinstance(req, dict):
+                        continue
+                    if req.get("class") == "ResourceRequirement":
+                        ram_max = float(deep_get(req, "ramMax", default="-1"))
+            if max_memory is None or ram_max > max_memory:
+                max_memory = ram_max
+
+        if "$graph" in yaml_parsed:
+            for s in yaml_parsed["$graph"]:
+                estimate_max_memory_usage_step(s)
+        else:
+            estimate_max_memory_usage_step(yaml_parsed)
+        return max_memory
 
     @classmethod
     def from_any(cls, content: str) -> CwLSource:
