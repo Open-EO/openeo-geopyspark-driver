@@ -162,10 +162,13 @@ def test_stac_api_dimensions(requests_mock, test_data, item_path):
             "features": [stac_item],
         },
     )
+    load_params = LoadParameters()
+    # See: https://github.com/Open-EO/openeo-geopyspark-driver/issues/1556
+    load_params.set_bands_by_link_title = False
 
     data_cube = load_stac(
         url=stac_collection_url,
-        load_params=LoadParameters(),
+        load_params=load_params,
         env=EvalEnv({"pyramid_levels": "highest"}),
         layer_properties={},
         batch_jobs=None,
@@ -347,9 +350,12 @@ def _mock_stac_api(requests_mock, stac_api_root_url, stac_collection_url, featur
 def test_world_oom(requests_mock, test_data):
     stac_item_url = "https://oeo.test/b4fb00aee0a308"
     requests_mock.get(stac_item_url, json=test_data.load_json("stac/issue1055-world-oom/result_item.json"))
+    load_params = LoadParameters()
+    # See: https://github.com/Open-EO/openeo-geopyspark-driver/issues/1556
+    load_params.set_bands_by_link_title = False
     load_stac(
         url=stac_item_url,
-        load_params=LoadParameters(),
+        load_params=load_params,
         env=EvalEnv({"pyramid_levels": "highest"}),
         layer_properties={},
         batch_jobs=None,
