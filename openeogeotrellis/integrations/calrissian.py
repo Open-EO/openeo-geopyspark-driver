@@ -34,6 +34,7 @@ from openeogeotrellis.config.integrations.calrissian_config import (
 )
 from openeogeotrellis.integrations.kubernetes import ensure_kubernetes_config
 from openeogeotrellis.integrations.s3proxy import sts
+from openeogeotrellis.util.byteunit import byte_string_as
 from openeogeotrellis.util.runtime import get_job_id, get_request_id, ENV_VAR_OPENEO_BATCH_JOB_ID
 from openeogeotrellis.utils import s3_client
 
@@ -416,11 +417,18 @@ class CalrissianJobLauncher:
         """
         Create a k8s manifest for a Calrissian input staging job.
 
-        :param cwl_source: CWL source to dump to CWL file in the input volume.
+        :param cwl_source: CWL source to be validated and copied to the input volume.
         :return: Tuple of
             - k8s job manifest
             - path to the CWL file in the input volume.
         """
+        max_memory = f"{int(cwl_source.estimate_max_memory_usage())}m"  # mebibytes (m)
+        max_executor_or_driver_memory = get_backend_config().max_executor_or_driver_memory
+        assert byte_string_as(max_memory) <= byte_string_as(max_executor_or_driver_memory), (
+            f"Estimated max memory usage of CWL workflow is {max_memory}, which exceeds the configured "
+            f"max_executor_or_driver_memory of {max_executor_or_driver_memory}. This might lead to OOM errors. "
+        )
+
         cwl_content = cwl_source.get_content()
 
         name = self._build_unique_name(infix="cal-inp")
