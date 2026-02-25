@@ -397,7 +397,13 @@ def determine_global_extent(
         if aligned_extent_result:
             aligned_merger.add(aligned_extent_result.extent)
             for name, ext in aligned_extent_result.variants.items():
-                variant_mergers[name].add(ext)
+                if ext:
+                    variant_mergers[name].add(ext)
+                else:
+                    # TODO: logging this for now. Need for deeper investigation?
+                    _log.info(
+                        f"determine_global_extent: skipping {name=} from {source_id=} with {aligned_extent_result.variants=}"
+                    )
 
     global_extent: BoundingBox = aligned_merger.get()
     global_extent_variants: Dict[str, BoundingBox] = {name: merger.get() for name, merger in variant_mergers.items()}
