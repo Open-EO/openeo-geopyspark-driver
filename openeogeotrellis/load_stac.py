@@ -242,6 +242,7 @@ def _prepare_context(
 
         cellsize_override = feature_flags.get("cellsize_override")
         fix_proj_transform = feature_flags.get("fix_proj_transform", False)
+        skipped_assets = feature_flags.get("skipped_assets", [])
 
         for itm, band_assets in item_collection.iter_items_with_band_assets():
             opensearch_stats["items"] += 1
@@ -265,6 +266,8 @@ def _prepare_context(
                     kv[0],
                 ),
             ):
+                if asset_id in skipped_assets:
+                    continue
                 opensearch_stats["assets"] += 1
 
                 proj_epsg, proj_bbox, proj_shape = _get_proj_metadata(
