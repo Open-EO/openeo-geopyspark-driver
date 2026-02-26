@@ -19,7 +19,7 @@ DEFAULT_CALRISSIAN_S3_BUCKET = "calrissian"
 DEFAULT_CALRISSIAN_BASE_ARGUMENTS: tuple = (
     "--debug",
     "--max-ram",
-    "128G",  # Seems to be a limit for pods combined across nodes. Testing with higher threshold. # TODO: Use max_executor_or_driver_memory ?
+    "128G",  # Seems to be a limit for pods combined across nodes. Testing with higher threshold.
     "--max-cores",
     "1000",
     "--force-docker-pull",
