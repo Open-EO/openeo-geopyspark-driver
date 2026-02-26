@@ -425,7 +425,7 @@ class CalrissianJobLauncher:
         max_memory = cwl_source.estimate_max_memory_usage()
         max_executor_or_driver_memory = get_backend_config().max_executor_or_driver_memory
         if max_memory > 0:
-            max_memory = f"{int()}m"  # mebibytes (m)
+            max_memory = f"{int(max_memory)}m"  # mebibytes (m)
             assert byte_string_as(max_memory) <= byte_string_as(max_executor_or_driver_memory), (
                 f"Estimated max memory usage of CWL workflow is {max_memory}, which exceeds the configured "
                 f"max_executor_or_driver_memory of {max_executor_or_driver_memory}. This might lead to OOM errors. "
