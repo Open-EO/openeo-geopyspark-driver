@@ -753,6 +753,7 @@ class TestCwlSource:
         [
             ("cwl/request_too_much_1.cwl", 999000),
             ("cwl/request_too_much_2.cwl", 999000),
+            ("cwl/request_too_much_3.cwl", 999000),
             ("cwl/hello.cwl", -1),
             ("cwl/multistep.cwl", 7000),
         ],

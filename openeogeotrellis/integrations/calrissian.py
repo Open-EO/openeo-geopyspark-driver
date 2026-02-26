@@ -199,16 +199,21 @@ class CwLSource:
             # https://www.commonwl.org/v1.0/CommandLineTool.html#ResourceRequirement
             # ramMax: "Maximum reserved RAM in mebibytes (2**20)"
             if isinstance(requirements, dict):
+                rr = deep_get(requirements, "ResourceRequirement", default={})
                 ram_max = max(
-                    float(deep_get(requirements, "ResourceRequirement", "ramMin", default="-1")),
-                    float(deep_get(requirements, "ResourceRequirement", "ramMax", default="-1")),
+                    float(deep_get(rr, "ramMin", default="-1")),
+                    float(deep_get(rr, "ramMax", default="-1")),
                 )
             elif isinstance(requirements, list):
                 for req in requirements:
                     if not isinstance(req, dict):
                         continue
                     if req.get("class") == "ResourceRequirement":
-                        ram_max = float(deep_get(req, "ramMax", default="-1"))
+                        rr = req
+                        ram_max = max(
+                            float(deep_get(rr, "ramMin", default="-1")),
+                            float(deep_get(rr, "ramMax", default="-1")),
+                        )
             if max_memory is None or ram_max > max_memory:
                 max_memory = ram_max
 
