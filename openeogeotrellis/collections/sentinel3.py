@@ -866,7 +866,7 @@ def do_reproject(product_type, final_grid_resolution, creo_path, band_names,
     """
 
     is_empty = False
-    logger.info(f"Reprojecting {product_type}")
+    logger.info(f"load_collection: Reprojecting {product_type}, with path: {creo_path}, resolution {final_grid_resolution}, and bands {band_names}")
     ### create LUT for radiances
     _, LUT = create_index_LUT(source_coordinates,
                                      target_coordinates,
