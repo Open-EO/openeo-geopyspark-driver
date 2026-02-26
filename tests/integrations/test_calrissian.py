@@ -428,7 +428,7 @@ class TestCalrissianJobLauncher:
             s3_region="tatooine-east-1",
         )
         cwl = CwLSource.from_resource(anchor="openeogeotrellis.integrations", path="cwl/request_too_much_1.cwl")
-        with pytest.raises(AssertionError):
+        with pytest.raises(ValueError):
             launcher.run_cwl_workflow(
                 cwl_source=cwl,
                 cwl_arguments=[],

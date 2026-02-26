@@ -199,7 +199,10 @@ class CwLSource:
             # https://www.commonwl.org/v1.0/CommandLineTool.html#ResourceRequirement
             # ramMax: "Maximum reserved RAM in mebibytes (2**20)"
             if isinstance(requirements, dict):
-                ram_max = float(deep_get(requirements, "ResourceRequirement", "ramMax", default="-1"))
+                ram_max = max(
+                    float(deep_get(requirements, "ResourceRequirement", "minMax", default="-1")),
+                    float(deep_get(requirements, "ResourceRequirement", "ramMax", default="-1")),
+                )
             elif isinstance(requirements, list):
                 for req in requirements:
                     if not isinstance(req, dict):
@@ -426,10 +429,11 @@ class CalrissianJobLauncher:
         max_executor_or_driver_memory = get_backend_config().max_executor_or_driver_memory
         if max_memory > 0:
             max_memory = f"{int(max_memory)}m"  # mebibytes (m)
-            assert byte_string_as(max_memory) <= byte_string_as(max_executor_or_driver_memory), (
-                f"Estimated max memory usage of CWL workflow is {max_memory}, which exceeds the configured "
-                f"max_executor_or_driver_memory of {max_executor_or_driver_memory}. This might lead to OOM errors. "
-            )
+            if byte_string_as(max_memory) <= byte_string_as(max_executor_or_driver_memory):
+                raise ValueError(
+                    f"Estimated max memory usage of CWL workflow is {max_memory}, which exceeds the configured "
+                    f"max_executor_or_driver_memory of {max_executor_or_driver_memory}. This might lead to OOM errors. "
+                )
 
         cwl_content = cwl_source.get_content()
 
