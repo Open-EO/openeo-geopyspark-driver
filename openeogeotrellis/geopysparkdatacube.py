@@ -568,8 +568,15 @@ class GeopysparkDataCube(DriverDataCube):
             # Sort by instant
             tile_list.sort(key=lambda tup: tup[0].instant)
             dates = map(lambda t: t[0].instant, tile_list)
-            arrays = map(lambda t: t[1].cells, tile_list)
-            multidim_array = np.array(list(arrays))
+            arrays = list(map(lambda t: t[1].cells, tile_list))
+
+            #check if all elements in arrays have the same shape, if not, log a warning and create a new list retaining only elements with most common shape
+            shapes = [a.shape for a in arrays]
+            most_common_shape = max(set(shapes), key=shapes.count)
+            if len(set(shapes)) > 1:
+                _log.warning(f"run_udf: Not all tiles have the same shape. Shapes found: {set(shapes)}. Only using tiles with shape {most_common_shape} for further processing.")
+                arrays = [a for a in arrays if a.shape == most_common_shape]
+            multidim_array = np.array(arrays)
 
             extent = GeopysparkDataCube._mapTransform(metadata.layout_definition, tile_list[0][0])
 
