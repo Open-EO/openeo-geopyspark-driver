@@ -27,6 +27,7 @@ without compromising stable operations.
 - Support latest `pystac` (currently 1.14.3) ([#1496](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1496))
 - Support property filtering in `load_stac.construct_item_collection` in post-dry-run phase ([#1530](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1530))
 - `load_collection` through `load_stac`: fix resolution selection for low-res/non-UTM cases with aliases ([#1539](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1539))
+- `load_stac` harden STAC "band" metadata parsing when "name" field is missing ([Open-EO/openeo-python-client#860](https://github.com/Open-EO/openeo-python-client/issues/860))
 
 
 ## 0.70.0

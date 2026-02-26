@@ -3,17 +3,7 @@
 This document describes how CWL based processing is implemented
 in the openEO GeoPySpark driver when running on a Kubernetes cluster.
 
-## Background and terminology
-
-[CWL (Common Workflow Language)](https://www.commonwl.org) is an open standard
-for describing how to run (command line) tools and connect them to create workflows.
-While CWL and openEO are a bit competing due to this conceptual overlap,
-there is demand to run existing or new CWL workflows as part of a larger openEO processing chain.
-This is comparable to UDFs which allow to run (Python) scripts as part of an openEO workflow.
-
-[Calrissian](https://duke-gcb.github.io/calrissian/) is a CWL implementation
-designed to run inside a Kubernetes cluster.
-
+Read also the user facing documentation: [udf-eoap-cwl.md](./udf-eoap-cwl.md)
 
 ## Kubernetes minikube setup
 

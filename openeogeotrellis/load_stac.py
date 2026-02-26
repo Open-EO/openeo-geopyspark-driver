@@ -145,6 +145,9 @@ def _prepare_context(
     """
     from openeogeotrellis import datacube_parameters
 
+    # TODO: Currently disabled https://github.com/eu-cdse/openeo-cdse-infra/issues/956
+    load_params.resolve_tile_overlap = False
+
     # Feature flags: merge global (e.g. from layer catalog info) and user-provided (higher precedence)
     feature_flags = {**(feature_flags or {}), **load_params.get("featureflags", {})}
 
@@ -208,6 +211,7 @@ def _prepare_context(
 
         opensearch_client = jvm.org.openeo.geotrellis.file.FixedFeaturesOpenSearchClient()
         opensearch_link_titles_map = {}
+        opensearch_stats = collections.defaultdict(int)
 
         # TODO: code smell: (most of) these vars should not be initialized with None here
         # asset_band_names = the full list of band names contained by the asset
@@ -222,6 +226,7 @@ def _prepare_context(
 
         stac_metadata_parser = _StacMetadataParser(logger=logger)
         resolution_tracker = _ResolutionTracker()
+        observed_epsgs: Set[int] = set()
 
         # layercatalog feature flag to handle "granule_metadata" assets.
         # E.g. for azimuth/zenith "bands" in SENTINEL2_L2A:
@@ -236,8 +241,12 @@ def _prepare_context(
             available_band_names.extend(b for b in granule_metadata_band_map.keys() if b not in available_band_names)
 
         cellsize_override = feature_flags.get("cellsize_override")
+        fix_proj_transform = feature_flags.get("fix_proj_transform", False)
+        skipped_assets = feature_flags.get("skipped_assets", [])
 
         for itm, band_assets in item_collection.iter_items_with_band_assets():
+            opensearch_stats["items"] += 1
+            opensearch_stats[f"items with {len(band_assets)=}"] += 1
 
             builder = (
                 jvm.org.openeo.opensearch.OpenSearchResponses.featureBuilder()
@@ -257,9 +266,20 @@ def _prepare_context(
                     kv[0],
                 ),
             ):
-                proj_epsg, proj_bbox, proj_shape = _get_proj_metadata(asset=asset, item=itm)
+                if asset_id in skipped_assets:
+                    continue
+                opensearch_stats["assets"] += 1
+
+                proj_epsg, proj_bbox, proj_shape = _get_proj_metadata(
+                    asset=asset, item=itm, fix_proj_transform=fix_proj_transform
+                )
+                opensearch_stats[f"assets with {proj_epsg=}"] += 1
+                if proj_epsg:
+                    observed_epsgs.add(proj_epsg)
 
                 asset_band_names_from_metadata: List[str] = stac_metadata_parser.bands_from_stac_asset(asset=asset).band_names()
+                opensearch_stats[f"assets with {len(asset_band_names_from_metadata)=}"] += 1
+
                 if not asset_band_names_from_metadata:
                     asset_band_names_from_metadata = feature_flags.get("asset_id_to_bands_map", {}).get(asset_id, [])
                     logger.debug(f"using `asset_id_to_bands_map`: mapping {asset_id} to {asset_band_names_from_metadata}")
@@ -280,6 +300,8 @@ def _prepare_context(
                     # No match with band_selection in some way -> skip this asset
                     continue
 
+                opensearch_stats[f"assets with {len(asset_band_names)=}"] += 1
+
                 if band_names_tracker.already_seen(sorted(asset_band_names)):
                     # We've already seen this set of bands (e.g. at finer GSD), so skip this asset.
                     continue
@@ -298,6 +320,7 @@ def _prepare_context(
                 logger.debug(
                     f"FeatureBuilder.addLink {itm.id=} {asset_id=} {asset_href=} {asset_band_names_from_metadata=} {asset_band_names=}"
                 )
+                opensearch_stats["builder.addLink"] += 1
                 builder = builder.addLink(asset_href, asset_id, float(pixel_value_offset), asset_band_names)
                 collected_link_band_names.update(asset_band_names)
 
@@ -314,6 +337,19 @@ def _prepare_context(
                     and (not band_selection or set(band_selection).intersection(granule_metadata_band_map.keys()))
                 ):
                     # TODO: avoid ad-hoc `sorted` and make sure granule_metadata_band_map has intrinsic/intended order from the start
+                    link_band_names = sorted(granule_metadata_band_map.values())
+                    opensearch_link_titles_map.update(granule_metadata_band_map)
+                    logger.debug(
+                        f"FeatureBuilder.addLink {itm.id=} {asset_id=} {asset_href=} {link_band_names=} from {granule_metadata_band_map=}"
+                    )
+                    opensearch_stats["builder.addLink"] += 1
+                    builder = builder.addLink(asset_href, asset_id, link_band_names)
+                # ProbaV Geometry asset
+                elif (
+                    granule_metadata_band_map
+                    and asset_id == "GEOMETRY"
+                ):
+                    asset_href = get_best_url(asset, with_vsis3=False)
                     link_band_names = sorted(granule_metadata_band_map.values())
                     opensearch_link_titles_map.update(granule_metadata_band_map)
                     logger.debug(
@@ -349,8 +385,10 @@ def _prepare_context(
 
             if self_url:
                 builder = builder.withSelfUrl(self_url)
+                opensearch_stats["builder.withSelfUrl"] += 1
 
             opensearch_client.addFeature(builder.build())
+            opensearch_stats["opensearch.addFeature"] += 1
 
             stac_bbox = (
                 item_bbox
@@ -360,6 +398,7 @@ def _prepare_context(
                 )
             )
 
+        logger.info(f"{opensearch_stats=}")
     except OpenEOApiException:
         raise
     except Exception as e:
@@ -420,13 +459,20 @@ def _prepare_context(
     if len(unique_epsgs) == 1:
         [target_epsg] = unique_epsgs
         logger.info(f"{target_epsg=} from {unique_epsgs=}")
-    elif all(is_utm_epsg_code(e) for e in unique_epsgs):
+    elif unique_epsgs and all(is_utm_epsg_code(e) for e in unique_epsgs):
         target_epsg = target_bbox.best_utm()
         logger.info(f"{target_epsg=} from {unique_epsgs=}")
+    elif not unique_epsgs and len(observed_epsgs) == 1:
+        # No resolution info available, but all assets agree on a single EPSG (e.g. from item-level proj:code)
+        [target_epsg] = observed_epsgs
+        logger.info(f"{target_epsg=} from {observed_epsgs=} (no resolution info available)")
+    elif not unique_epsgs and observed_epsgs and all(is_utm_epsg_code(e) for e in observed_epsgs):
+        target_epsg = target_bbox.best_utm()
+        logger.info(f"{target_epsg=} from {observed_epsgs=} (no resolution info available)")
     else:
         # TODO: picking UTM as target, while the source CRMs are not is probably not ideal.
         target_epsg = target_bbox.best_utm()
-        logger.warning(f"{target_epsg=} from {unique_epsgs=}: legacy behavior, but possibly ill-defined")
+        logger.warning(f"{target_epsg=} from {unique_epsgs=} {observed_epsgs=}: legacy behavior, but possibly ill-defined")
 
     cellsize_fallback = feature_flags.get("cellsize_fallback", None)
     if cellsize_override:
@@ -435,7 +481,7 @@ def _prepare_context(
         (cell_width, cell_height) = finest_cell_size
     elif cellsize_fallback:
         (cell_width, cell_height) = cellsize_fallback
-    elif len(unique_epsgs) == 1:
+    elif len(unique_epsgs) == 1 or (not unique_epsgs and len(observed_epsgs) == 1):
         logger.warning(f"cellsize: fallback on hardcoded 10m assumption")
         (cell_width, cell_height) = (10.0, 10.0)
         # TODO: there is assumption here that cellsize_fallback is given in meter, which is not true in general
@@ -815,7 +861,14 @@ def construct_item_collection(
     #       - enable by default or only do it on STAC API usage?
     #       - allow custom deduplicators (e.g. based on layer catalog info about openeo collections)
     if feature_flags.get("deduplicate_items", get_backend_config().load_stac_deduplicate_items_default):
-        item_collection = item_collection.deduplicated(deduplicator=ItemDeduplicator())
+        duplication_properties = feature_flags.get("duplication_properties")
+        score_property_preference = feature_flags.get("score_property_preference")
+        item_collection = item_collection.deduplicated(
+            deduplicator=ItemDeduplicator(
+                duplication_properties=duplication_properties,
+                score_property_preference=score_property_preference,
+            )
+        )
 
     # TODO: possible to embed band names in metadata directly?
     #       And related: metadata/GeopysparkCubeMetadata as an API is too large and too loosely defined.
@@ -1159,12 +1212,9 @@ class ItemCollection:
             )
             if search_request.method == "GET":
                 query_info += f" {search_request.method} {search_request.url_with_parameters()}"
-                logger.info(
-                    f"ItemCollection.from_stac_api: STAC API request URL: {search_request.url_with_parameters()}"
-                )
             else:
                 query_info += f" {search_request.method} {search_request.url} {search_request.get_parameters()=}"
-                logger.info(f"ItemCollection.from_stac_api: STAC API request: {query_info}")
+            logger.info(f"ItemCollection.from_stac_api: STAC API request: {query_info}")
 
             # STAC API might not support Filter Extension so always use client-side filtering as well
             # TODO: check "filter" conformance class for this instead of blindly trying to do double work
@@ -1219,7 +1269,7 @@ class ItemDeduplicator:
         "processing:level",
         "product:timeliness",
         "product:type",
-        "proj:code",
+        # "proj:code", TODO: Sometimes UTM zone can differ.
         "sar:frequency_band",
         "sar:instrument_mode",
         "sar:observation_direction",
@@ -1228,7 +1278,13 @@ class ItemDeduplicator:
         "sat:orbit_state",
     ]
 
-    def __init__(self, *, time_shift_max: float = 30, duplication_properties: Optional[List[str]] = None):
+    def __init__(
+        self,
+        *,
+        time_shift_max: float = 30,
+        duplication_properties: Optional[List[str]] = None,
+        score_property_preference: Optional[Dict[str, List]] = None,
+    ):
         self._time_shift_max = time_shift_max
 
         # Duplication properties: properties that will be compared
@@ -1237,6 +1293,11 @@ class ItemDeduplicator:
             self._duplication_properties = self.DEFAULT_DUPLICATION_PROPERTIES
         else:
             self._duplication_properties = duplication_properties
+
+        # score_property_preference: dict mapping property name to ordered list of preferred values.
+        # e.g. {"processing:version": [110, 100]} means: prefer items where processing:version==110
+        # over those with 100; values not in the list (or property absent) fall back to default scoring.
+        self._score_property_preference: Dict[str, List] = score_property_preference or {}
 
     @staticmethod
     def _item_nominal_date(item: pystac.Item) -> datetime.datetime:
@@ -1249,13 +1310,20 @@ class ItemDeduplicator:
 
     def _is_duplicate_item(self, item1: pystac.Item, item2: pystac.Item) -> bool:
         try:
+            # Note this large `and` chain to leverage short-circuiting so that
+            # the more expensive checks (e.g. geometry) are only done
+            # when cheaper checks (e.g. date and properties) pass.
             return (
+                # Same date
                 (
                     abs((self._item_nominal_date(item1) - self._item_nominal_date(item2)).total_seconds())
                     < self._time_shift_max
                 )
+                # Same properties
                 and all(item1.properties.get(p) == item2.properties.get(p) for p in self._duplication_properties)
-                and self._is_same_bbox(item1.bbox, item2.bbox)
+                # Comparable bbox
+                and self._is_same_bbox(item1.bbox, item2.bbox, epsilon=1e-3)  # 1e-3 degrees ≈ 111 meters
+                # Same geometry
                 and self._is_same_geometry(item1.geometry, item2.geometry)
             )
         except Exception as e:
@@ -1270,10 +1338,31 @@ class ItemDeduplicator:
         else:
             return False
 
-    def _is_same_geometry(self, geom1: Optional[Dict], geom2: Optional[Dict]) -> bool:
+    def _is_same_geometry(self, geom1: Optional[Dict], geom2: Optional[Dict], epsilon=3e-4, dice_threshold=0.99) -> bool:
+        """Check if two GeoJSON geometries are approximately equal.
+
+        First tries shapely.equals_exact (cheap coordinate-wise comparison with tolerance).
+        If that fails (e.g. different vertex counts), falls back to the Sorensen-Dice
+        coefficient on area overlap, same approach as isDuplicate in OpenSearchResponses.scala.
+
+        STAC item geometries are always in WGS 84 (EPSG:4326),
+        so the epsilon is in degrees (3e-4 degrees ≈ 33 meters at the equator).
+        """
         if isinstance(geom1, dict) and isinstance(geom2, dict):
-            # TODO: need for smarter geometry comparison (e.g. within some epsilon)?
-            return shapely.equals(shapely.geometry.shape(geom1), shapely.geometry.shape(geom2))
+            shape1 = shapely.geometry.shape(geom1)
+            shape2 = shapely.geometry.shape(geom2)
+            if shapely.equals_exact(shapely.normalize(shape1), shapely.normalize(shape2), tolerance=epsilon):
+                return True
+            # Fallback: Dice coefficient on area overlap
+            try:
+                area_sum = shape1.area + shape2.area
+                if area_sum == 0:
+                    return False
+                dice_score = 2 * shape1.intersection(shape2).area / area_sum
+                return dice_score >= dice_threshold
+            except Exception as e:
+                logger.warning(f"Failed geometry Dice score comparison: {e}", exc_info=True)
+                return False
         elif geom1 is None and geom2 is None:
             return True
         else:
@@ -1281,9 +1370,17 @@ class ItemDeduplicator:
 
     def _score(self, item: pystac.Item) -> tuple:
         """Score an item for deduplication preference (higher is better)."""
-        # Prefer more recently updated items
-        # use item id as tie breaker
-        return (item.properties.get("updated", ""), item.id)
+        # Primary: score by property preference (if configured)
+        preference_scores = []
+        for prop, preferred_values in self._score_property_preference.items():
+            value = item.properties.get(prop)
+            if value is not None and value in preferred_values:
+                # Earlier position in preference list → higher score
+                preference_scores.append(len(preferred_values) - preferred_values.index(value))
+            else:
+                preference_scores.append(0)
+        # Fallback: prefer more recently updated items, then use item id as tie breaker
+        return (*preference_scores, item.properties.get("updated", ""), item.id)
 
     def _group_duplicates(self, items: Iterable[pystac.Item]) -> Iterator[List[pystac.Item]]:
         """Produce groups of duplicate items."""
@@ -1514,7 +1611,13 @@ class _ProjectionMetadata:
         )
 
     @classmethod
-    def from_asset(cls, asset: pystac.Asset, *, item: Optional[pystac.Item] = None) -> "_ProjectionMetadata":
+    def from_asset(
+        cls,
+        asset: pystac.Asset,
+        *,
+        item: Optional[pystac.Item] = None,
+        fix_proj_transform: bool = False,
+    ) -> "_ProjectionMetadata":
         """
         Extract projection metadata from asset, with fallback to asset bands or (owning) item.
         """
@@ -1524,13 +1627,49 @@ class _ProjectionMetadata:
         def get(field):
             return _get_asset_property(asset, field=field) or (item and item.properties.get(field))
 
+        transform = get("proj:transform")
+        if fix_proj_transform and transform:
+            transform = cls._fix_gdal_ordered_transform(transform)
+
         return cls(
             code=get("proj:code"),
             epsg=get("proj:epsg"),
             bbox=get("proj:bbox"),
             shape=get("proj:shape"),
-            transform=get("proj:transform"),
+            transform=transform,
         )
+
+    @staticmethod
+    def _fix_gdal_ordered_transform(transform: Sequence[float]) -> Sequence[float]:
+        """
+        Detect and fix a proj:transform that is in GDAL GetGeoTransform order
+        instead of the expected rasterio/affine order.
+
+        GDAL GetGeoTransform:  [xOrigin, xPixelSize, xSkew, yOrigin, ySkew, yPixelSize]
+        Rasterio/affine order: [xPixelSize, xSkew, xOrigin, ySkew, yPixelSize, yOrigin]
+
+        Detection heuristic (for the common no-rotation case):
+        - In GDAL order: positions 2,4 are zero (skew) and positions 1,5 are non-zero (pixel sizes)
+        - In rasterio order: positions 1,3 are zero (skew) and positions 0,4 are non-zero (pixel sizes)
+        Additionally, origin values (large) should be larger than pixel sizes (small).
+        """
+        if len(transform) < 6:
+            return transform
+        t0, t1, t2, t3, t4, t5 = transform[:6]
+        if (
+            t2 == 0.0
+            and t4 == 0.0
+            and t1 != 0.0
+            and t5 != 0.0
+            and abs(t0) > abs(t1)
+            and abs(t3) > abs(t5)
+        ):
+            fixed = [t1, t2, t0, t4, t5, t3] + list(transform[6:])
+            logger.warning(
+                f"Detected GDAL-ordered proj:transform {list(transform)}, reshuffled to {fixed}"
+            )
+            return fixed
+        return transform
 
     @functools.lru_cache
     def _snappers(self) -> Tuple[GridSnapper, GridSnapper]:
@@ -1573,14 +1712,17 @@ class _ProjectionMetadata:
 
 
 def _get_proj_metadata(
-    asset: pystac.Asset, *, item: pystac.Item
+    asset: pystac.Asset,
+    *,
+    item: pystac.Item,
+    fix_proj_transform: bool = False,
 ) -> Tuple[Optional[int], Optional[Tuple[float, float, float, float]], Optional[Tuple[int, int]]]:
     """
     Get projection metadata from asset:
     EPSG code (int), bbox (in that EPSG) and number of pixels (rows, cols), if available.
     """
     # TODO: phase out usage and switch to using _ProjectionMetadata directly?
-    metadata = _ProjectionMetadata.from_asset(asset, item=item)
+    metadata = _ProjectionMetadata.from_asset(asset, item=item, fix_proj_transform=fix_proj_transform)
     return metadata.epsg, metadata.bbox, metadata.shape
 
 

@@ -525,7 +525,7 @@ class CalrissianJobLauncher:
         container = kubernetes.client.V1Container(
             name=name,
             image=self._calrissian_image,
-            image_pull_policy="Always",
+            image_pull_policy="IfNotPresent",  # Avoid 'Always' as artifactory might be down.
             security_context=self._security_context,
             command=["calrissian"],
             args=calrissian_arguments,
@@ -598,21 +598,31 @@ class CalrissianJobLauncher:
 
         # Track job status (active polling).
         final_status = None
-        with ContextTimer() as timer:
-            while timer.elapsed() < timeout:
-                job: kubernetes.client.V1Job = k8s_batch.read_namespaced_job(name=job_name, namespace=self._namespace)
-                _log.info(f"CWL job poll loop: {job_name=} {timer.elapsed()=:.2f} {job.status.to_dict()=}")
-                if job.status.failed == 1:
-                    final_status = "failed"
-                    break
-                if job.status.conditions:
-                    if any(c.type == "Failed" and c.status == "True" for c in job.status.conditions):
+        try:
+            with ContextTimer() as timer:
+                while timer.elapsed() < timeout:
+                    job = k8s_batch.read_namespaced_job(name=job_name, namespace=self._namespace)
+                    _log.info(f"CWL job poll loop: {job_name=} {timer.elapsed()=:.2f} {job.status.to_dict()=}")
+                    if job.status.failed == 1:
                         final_status = "failed"
                         break
-                    elif any(c.type == "Complete" and c.status == "True" for c in job.status.conditions):
-                        final_status = "complete"
-                        break
-                time.sleep(sleep)
+                    if job.status.conditions:
+                        if any(c.type == "Failed" and c.status == "True" for c in job.status.conditions):
+                            final_status = "failed"
+                            break
+                        elif any(c.type == "Complete" and c.status == "True" for c in job.status.conditions):
+                            final_status = "complete"
+                            break
+                    time.sleep(sleep)
+        except (SystemExit, KeyboardInterrupt):
+            _log.info(f"Stopping CWL job: {job_name=}")
+            k8s_batch.delete_namespaced_job(
+                name=job_name,
+                namespace=self._namespace,
+                propagation_policy="Foreground",  # Make sure the pods in this job get deleted too.
+                async_req=True,  # Prefer to fail deleting compared to waiting in a terminating state.
+            )
+            raise
 
         _log.info(f"CWL job poll loop done: {job_name=} {timer.elapsed()=:.2f} {final_status=}")
         if final_status == "complete":
