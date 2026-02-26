@@ -370,6 +370,10 @@ def _determine_best_grid_from_proj_metadata(
     return grid
 
 
+class SpatialExtentExtractionError(Exception):
+    pass
+
+
 def determine_global_extent(
     *,
     source_constraints: List[SourceConstraint],
@@ -384,11 +388,22 @@ def determine_global_extent(
     aligned_merger = BoundingBoxMerger()
     variant_mergers: Dict[str, BoundingBoxMerger] = collections.defaultdict(BoundingBoxMerger)
     for source_id, constraint in source_constraints:
-        aligned_extent_result = _extract_spatial_extent_from_constraint((source_id, constraint), catalog=catalog)
+        try:
+            aligned_extent_result = _extract_spatial_extent_from_constraint((source_id, constraint), catalog=catalog)
+        except Exception as e:
+            raise SpatialExtentExtractionError(
+                f"Failed to extract spatial extent from {source_id=} with {constraint=}"
+            ) from e
         if aligned_extent_result:
             aligned_merger.add(aligned_extent_result.extent)
             for name, ext in aligned_extent_result.variants.items():
-                variant_mergers[name].add(ext)
+                if ext:
+                    variant_mergers[name].add(ext)
+                else:
+                    # TODO: logging this for now. Need for deeper investigation?
+                    _log.info(
+                        f"determine_global_extent: skipping {name=} from {source_id=} with {aligned_extent_result.variants=}"
+                    )
 
     global_extent: BoundingBox = aligned_merger.get()
     global_extent_variants: Dict[str, BoundingBox] = {name: merger.get() for name, merger in variant_mergers.items()}

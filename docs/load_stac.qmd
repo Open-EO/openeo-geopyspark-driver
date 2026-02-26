@@ -41,9 +41,30 @@ to define best practices for STAC metadata. OpenEO seeks to align with these eff
 ### Minimal STAC requirement summary
 
 - Use STAC version 1.1 or higher
-- The collection metadata has to list the available 'bands'. If bands are not available, openEO will try using asset keys.
-- Assets have to list the bands they contain, or only contain a single band that corresponds to the asset key.
-- Items have to include `proj:code`, `proj:bbox` and `proj:shape` properties from the projection extension.
+- The STAC resource passed to `load_stac` must allow discovery of available band names:
+    - for an individual STAC item, the following places are consulted and first match is used:
+        - using item property `eo:bands` (`eo` extension style) or `bands` (STAC 1.1 style)
+        - bands discovered from visiting the linked parent collection (if available)
+        - bands discovered from iterating over the assets included in the STAC item
+          and merge the band info under their properties `eo:bands` (`eo` extension style) or `bands` (STAC 1.1 style)
+    - for STAC collections, the following places are consulted and first match is used:
+        - under the collection `summaries`,
+          at field `eo:bands` (`eo` extension style) or `bands` (STAC 1.1 style)
+        - under `item_assets`:
+          iterate over the listed assets
+          and combining the band info under their properties `eo:bands` (`eo` extension style) or `bands` (STAC 1.1 style)
+        - (worst case):
+          visiting the linked STAC items,
+          extract band information as discussed above for individual items
+          and merge the results
+- The STAC assets that will be considered for loading:
+    - have a supported media type (field `type`), including but not limited to:
+      `image/tiff`, `image/vnd.stac.geotiff`, `image/jp2`, `application/netcdf`, `application/x-netcdf`
+    - list the bands they contain under properties `eo:bands` (`eo` extension style) or `bands` (STAC 1.1 style)
+    - have at least one role out of "data", "data-mask", "snow-ice", "land-water", "water-mask"
+- Items have to include projection metadata (following the [STAC projection extension](https://github.com/stac-extensions/projection)):
+    - `proj:code`
+    - at least two out of `proj:bbox`, `proj:shape`, and `proj:transform` (make sure to double check the item order of `proj:transform` array)
 
 On top of these minimal requirements, we recommend:
 
@@ -63,10 +84,10 @@ Currently, there is no officially supported tool that generates high quality STA
 There are however a few open source options that can provide inspiration, or that you can use at your own
 risk:
 
-- [stactools-packages](https://stactools-packages.github.io/) provides collection building scripts for various datasets. 
+- [stactools-packages](https://stactools-packages.github.io/) provides collection building scripts for various datasets.
    Not all off them are openEO compatible.
 - [STAC catalog builder](https://github.com/VitoTAP/stac-catalog-builder) takes an automated approach at building a collection
-  based on minimal configuration. 
+  based on minimal configuration.
 
 
 
@@ -84,7 +105,7 @@ If a STAC collection does not list bands, or does not allow mapping bands to ass
 this simply does not work.
 
 Bands also provide critical information to the user on the data they are working with.
-For instance, for physical quantities, bands can specify the unit of measurement. 
+For instance, for physical quantities, bands can specify the unit of measurement.
 
 While this information is sometimes also encoded in the format itself, for instance
 in the case of netCDF, it is much easier for the user if this crucial information is readily
@@ -92,7 +113,7 @@ available in a format that can be published online.
 
 #### Performance
 
-Most file formats are self-describing to a certain degree, allowing metadata to be 
+Most file formats are self-describing to a certain degree, allowing metadata to be
 retrieved from the format. So why should STAC repeat this metadata?
 
 The main reason is performance. When a collection contains for instance 1000 assets,
@@ -105,13 +126,7 @@ to touch any of the actual data files. Additionally, it can accurately filter ou
 
 #### Accuracy
 
-Most openEO users have pretty strict demands on how raw pixels are loaded into a data cube. This is not trivial when only 
+Most openEO users have pretty strict demands on how raw pixels are loaded into a data cube. This is not trivial when only
 a vague description of the data to be loaded is available. With complete and accurate metdata, an openEO backend can construct
 virtual pixel grids for the input data, and then correctly combine them. With incomplete metadata, the backend is forced
 to make assumptions, which can lead to inaccurate results.
-
-
-
-
-
-

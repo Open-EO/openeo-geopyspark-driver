@@ -31,7 +31,7 @@ import shapely
 import werkzeug.exceptions
 
 from openeo.testing.stac import StacDummyBuilder
-from openeo_driver.testing import ephemeral_flask_server, ApiResponse
+from openeo_driver.testing import ephemeral_flask_server, ApiResponse, load_json
 from openeo_driver.util.geometry import BoundingBox
 from openeo_driver.util.utm import is_utm_crs
 
@@ -452,6 +452,10 @@ class DummyStacApiServer:
             # Automatically set geometry from bbox if not provided
             kwargs["geometry"] = bbox_to_geojson(bbox)
         item = StacDummyBuilder.item(id=item_id, **kwargs)
+        self._collections[collection_id].items.append(item)
+
+    def define_item_from_file(self, collection_id: str, source: Union[str, Path]):
+        item = load_json(source)
         self._collections[collection_id].items.append(item)
 
     def _build_flask_app(self) -> flask.Flask:

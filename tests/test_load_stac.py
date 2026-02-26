@@ -44,6 +44,7 @@ from openeogeotrellis.load_stac import (
     AdaptingPropertyFilter,
     _get_apply_sentinel2_reflectance_offset,
     _is_sentinel2_reflectance_asset,
+    _ResolutionTracker,
 )
 from openeogeotrellis.testing import DummyStacApiServer, gps_config_overrides
 from openeogeotrellis.util.geometry import bbox_to_geojson
@@ -161,10 +162,13 @@ def test_stac_api_dimensions(requests_mock, test_data, item_path):
             "features": [stac_item],
         },
     )
+    load_params = LoadParameters()
+    # See: https://github.com/Open-EO/openeo-geopyspark-driver/issues/1556
+    load_params.set_bands_by_link_title = False
 
     data_cube = load_stac(
         url=stac_collection_url,
-        load_params=LoadParameters(),
+        load_params=load_params,
         env=EvalEnv({"pyramid_levels": "highest"}),
         layer_properties={},
         batch_jobs=None,
@@ -346,9 +350,12 @@ def _mock_stac_api(requests_mock, stac_api_root_url, stac_collection_url, featur
 def test_world_oom(requests_mock, test_data):
     stac_item_url = "https://oeo.test/b4fb00aee0a308"
     requests_mock.get(stac_item_url, json=test_data.load_json("stac/issue1055-world-oom/result_item.json"))
+    load_params = LoadParameters()
+    # See: https://github.com/Open-EO/openeo-geopyspark-driver/issues/1556
+    load_params.set_bands_by_link_title = False
     load_stac(
         url=stac_item_url,
-        load_params=LoadParameters(),
+        load_params=load_params,
         env=EvalEnv({"pyramid_levels": "highest"}),
         layer_properties={},
         batch_jobs=None,
@@ -1003,6 +1010,83 @@ def test_get_proj_metadata_from_asset(item_properties, asset_extra_fields, expec
     asset = pystac.Asset(href="https://example.com/asset.tif", extra_fields=asset_extra_fields)
     item = pystac.Item.from_dict(StacDummyBuilder.item(properties=item_properties))
     assert _get_proj_metadata(asset, item=item) == expected
+
+
+class TestFixGdalOrderedTransform:
+    """Tests for _ProjectionMetadata._fix_gdal_ordered_transform"""
+
+    def test_already_valid_rasterio_order(self):
+        """Valid rasterio/affine order should not be changed."""
+        transform = [0.00025, 0.0, 3.0, 0.0, -0.00025, 51.0]
+        assert _ProjectionMetadata._fix_gdal_ordered_transform(transform) == transform
+
+    def test_fix_gdal_order(self):
+        """GDAL GetGeoTransform order should be reshuffled to rasterio/affine order."""
+        gdal_order = [3.0, 0.00025, 0.0, 51.0, 0.0, -0.00025]
+        expected = [0.00025, 0.0, 3.0, 0.0, -0.00025, 51.0]
+        assert _ProjectionMetadata._fix_gdal_ordered_transform(gdal_order) == expected
+
+    def test_fix_gdal_order_9_elements(self):
+        """GDAL order with 9 elements (full 3x3 matrix) should preserve trailing elements."""
+        gdal_order = [3.0, 0.00025, 0.0, 51.0, 0.0, -0.00025, 0.0, 0.0, 1.0]
+        expected = [0.00025, 0.0, 3.0, 0.0, -0.00025, 51.0, 0.0, 0.0, 1.0]
+        assert _ProjectionMetadata._fix_gdal_ordered_transform(gdal_order) == expected
+
+    def test_short_transform_unchanged(self):
+        """Transform with fewer than 6 elements should not be changed."""
+        transform = [1.0, 2.0]
+        assert _ProjectionMetadata._fix_gdal_ordered_transform(transform) == transform
+
+    def test_from_asset_with_fix_flag(self):
+        """from_asset with fix_proj_transform=True should fix GDAL-ordered transforms."""
+        asset = pystac.Asset(
+            href="https://stac.test/asset.tif",
+            extra_fields={
+                "proj:epsg": 4326,
+                "proj:shape": [4000, 4000],
+                "proj:transform": [3.0, 0.00025, 0.0, 51.0, 0.0, -0.00025],
+            },
+        )
+        metadata = _ProjectionMetadata.from_asset(asset, fix_proj_transform=True)
+        assert metadata.bbox == pytest.approx((3.0, 50.0, 4.0, 51.0))
+
+    def test_from_asset_without_fix_flag(self):
+        """from_asset without fix_proj_transform should not fix GDAL-ordered transforms."""
+        asset = pystac.Asset(
+            href="https://stac.test/asset.tif",
+            extra_fields={
+                "proj:epsg": 4326,
+                "proj:shape": [4000, 4000],
+                "proj:transform": [3.0, 0.00025, 0.0, 51.0, 0.0, -0.00025],
+            },
+        )
+        metadata = _ProjectionMetadata.from_asset(asset, fix_proj_transform=False)
+        # Without fix, bbox will be computed from the wrong transform
+        assert metadata.bbox != pytest.approx((3.0, 50.0, 4.0, 51.0))
+
+    @pytest.mark.parametrize(
+        ["gdal_transform", "expected_rasterio"],
+        [
+            (
+                # sentinel-1-global-mosaics
+                [600000, 20, 0, 5700000, 0, -20],
+                [20, 0, 600000, 0, -20, 5700000],
+            ),
+            (
+                # dem30
+                [4.999791666666667, 0.0004166666666667, 0, 52.00013888888889, 0, -0.0002777777777778],
+                [0.0004166666666667, 0, 4.999791666666667, 0, -0.0002777777777778, 52.00013888888889],
+            ),
+            (
+                # dem90
+                [4.999375, 0.00125, 0, 52.000416666666666, 0, -0.0008333333333333],
+                [0.00125, 0, 4.999375, 0, -0.0008333333333333, 52.000416666666666],
+            ),
+        ],
+    )
+    def test_fix_real_world_gdal_transforms(self, gdal_transform, expected_rasterio):
+        """Real-world GDAL-ordered transforms should be correctly converted to rasterio/affine order."""
+        assert _ProjectionMetadata._fix_gdal_ordered_transform(gdal_transform) == expected_rasterio
 
 
 class TestTemporalExtent:
@@ -2414,13 +2498,13 @@ class TestItemDeduplicator:
 
     def test_property_based(self):
         item600 = pystac.Item.from_dict(
-            StacDummyBuilder.item(id="item1", properties={"proj:code": "EPSG:32600", "flavor": "apple"})
+            StacDummyBuilder.item(id="item1", properties={"product:type": "a", "flavor": "apple"})
         )
         item600b = pystac.Item.from_dict(
-            StacDummyBuilder.item(id="item2", properties={"proj:code": "EPSG:32600", "flavor": "banana"})
+            StacDummyBuilder.item(id="item2", properties={"product:type": "a", "flavor": "banana"})
         )
         item601 = pystac.Item.from_dict(
-            StacDummyBuilder.item(id="item3", properties={"proj:code": "EPSG:32601", "flavor": "apple"})
+            StacDummyBuilder.item(id="item3", properties={"product:type": "b", "flavor": "apple"})
         )
 
         depuplicator = ItemDeduplicator()
@@ -2482,6 +2566,10 @@ class TestItemDeduplicator:
                 {"type": "Polygon", "coordinates": [[[4, 50], [5, 50], [5, 51], [4, 51], [4, 50]]]},
                 ["item1", "item3"],
             ),
+            (
+                {"type": "Polygon", "coordinates": [[[4, 50], [5, 50], [5, 51], [4, 51], [4, 50.0001]]]},
+                ["item1", "item3"],
+            ),
             (None, ["item1", "item2", "item3"]),
             (
                 {"type": "Polygon", "coordinates": [[[8, 40], [9, 40], [9, 41], [8, 41], [8, 40]]]},
@@ -2536,6 +2624,87 @@ class TestItemDeduplicator:
         depuplicator = ItemDeduplicator()
         result = depuplicator.deduplicate([item1, item2, item3])
         assert [r.id for r in result] == expected
+
+    def test_s1_sigma0_version_dedup(self):
+        """Sentinel-1 SIGMA0 items with different processing versions (V110 vs V120) should be deduplicated,
+        keeping the higher version."""
+        common_properties = {
+            "datetime": "2020-03-25T17:24:42Z",
+            "platform": "sentinel-1a",
+            "constellation": "sentinel-1",
+            "sar:frequency_band": "C",
+            "sar:instrument_mode": "IW",
+            "sar:observation_direction": "right",
+            "sar:polarizations": ["VV", "VH"],
+            "sat:absolute_orbit": 31835,
+            "sat:orbit_state": "ascending",
+        }
+        common_bbox = [2.0, 50.0, 4.0, 52.0]
+        common_geometry = {
+            "type": "Polygon",
+            "coordinates": [[[2.0, 50.0], [4.0, 50.0], [4.0, 52.0], [2.0, 52.0], [2.0, 50.0]]],
+        }
+        common_datetime = "2020-03-25T17:24:42Z"
+
+        item_v110 = pystac.Item.from_dict(
+            StacDummyBuilder.item(
+                id="S1A_IW_GRDH_SIGMA0_DV_20200325T172442_ASCENDING_88_5C3F_V110",
+                datetime=common_datetime,
+                bbox=common_bbox,
+                geometry=common_geometry,
+                properties={**common_properties, "updated": "2025-07-06T06:06:09.620403Z"},
+            )
+        )
+        item_v120 = pystac.Item.from_dict(
+            StacDummyBuilder.item(
+                id="S1A_IW_GRDH_SIGMA0_DV_20200325T172442_ASCENDING_88_5C3F_V120",
+                datetime=common_datetime,
+                bbox=common_bbox,
+                geometry=common_geometry,
+                properties={**common_properties, "updated": "2025-07-06T06:06:09.708329Z"},
+            )
+        )
+
+        deduplicator = ItemDeduplicator()
+        result = deduplicator.deduplicate([item_v110, item_v120])
+        assert [r.id for r in result] == [
+            "S1A_IW_GRDH_SIGMA0_DV_20200325T172442_ASCENDING_88_5C3F_V120"
+        ]
+
+        # Order of input should not matter
+        result = deduplicator.deduplicate([item_v120, item_v110])
+        assert [r.id for r in result] == [
+            "S1A_IW_GRDH_SIGMA0_DV_20200325T172442_ASCENDING_88_5C3F_V120"
+        ]
+
+    def test_score_property_preference(self):
+        """score_property_preference prefers items by property value order, falling back to updated+id."""
+        common_props = {"datetime": "2025-11-10T00:00:00Z"}
+        item_v110 = pystac.Item.from_dict(
+            StacDummyBuilder.item(id="item-v110", properties={**common_props, "processing:version": 110})
+        )
+        item_v100 = pystac.Item.from_dict(
+            StacDummyBuilder.item(id="item-v100", properties={**common_props, "processing:version": 100})
+        )
+        item_unknown = pystac.Item.from_dict(
+            StacDummyBuilder.item(id="item-unknown", properties={**common_props, "processing:version": 999, "updated": "2099-01-01T00:00:00Z"})
+        )
+        item_no_version = pystac.Item.from_dict(
+            StacDummyBuilder.item(id="item-no-version", properties={**common_props, "updated": "2099-01-01T00:00:00Z"})
+        )
+
+        deduplicator = ItemDeduplicator(score_property_preference={"processing:version": [110, 100]})
+
+        # v110 is preferred over v100 regardless of input order
+        assert [r.id for r in deduplicator.deduplicate([item_v100, item_v110])] == ["item-v110"]
+        assert [r.id for r in deduplicator.deduplicate([item_v110, item_v100])] == ["item-v110"]
+
+        # v100 is preferred over an unknown version (not in preference list),
+        # even if the unknown version has a later "updated" timestamp
+        assert [r.id for r in deduplicator.deduplicate([item_unknown, item_v100])] == ["item-v100"]
+
+        # Property absent → same fallback as unknown value: uses updated+id
+        assert [r.id for r in deduplicator.deduplicate([item_no_version, item_v100])] == ["item-v100"]
 
 
 class _OpenSearchClientDumper:
@@ -2850,3 +3019,106 @@ class TestPrepareContext:
     )
     def test_is_sentinel2_reflectance_asset(self, asset, expected):
         assert _is_sentinel2_reflectance_asset(asset) == expected
+
+    @pytest.mark.parametrize(
+        ["asset_id", "user_bands", "normalized_band_selection", "expected_metadata_bands", "expected_link_titles"],
+        [
+            ("asset-123", None, None, ["SO2CBR"], ["SO2CBR"]),
+            ("SO2CBR", ["SO2CBR"], None, ["SO2CBR"], ["SO2CBR"]),
+            ("SO2CBR", ["SO2CBR"], ["SO2CBR"], ["SO2CBR"], ["SO2CBR"]),
+            ("asset-123", ["SomeAlias"], ["SO2CBR"], ["SomeAlias"], ["SO2CBR"]),
+        ],
+    )
+    def test_prepare_context_so2cbr(
+        self, asset_id, user_bands, normalized_band_selection, expected_metadata_bands, expected_link_titles
+    ):
+        """
+        Problem uncovered from S5P SO2CBR use case:
+        low res assets + usage of band aliases
+        cell size detection should still work,
+        and not fallback to stupid 10m resolution assumption
+        """
+        dummy_server = DummyStacApiServer()
+        collection_id = "s5p_l3_so2cbr_ty"
+        dummy_server.define_collection(collection_id)
+        dummy_server.define_item(
+            collection_id=collection_id,
+            item_id=f"item-123",
+            datetime=f"2023-01-01T00:00:00Z",
+            bbox=[-180.0, -87.5, 180.0, 87.5],
+            assets={
+                asset_id: {
+                    "href": "https://stac.test/SO2CBR.tif",
+                    "type": "image/tiff; application=geotiff",
+                    "roles": ["data"],
+                    "bands": [{"name": "SO2CBR"}],
+                    "proj:code": "EPSG:4326",
+                    "proj:bbox": [-180.0, -87.5, 180.0, 87.5],
+                    "proj:shape": [1400, 2880],
+                },
+            },
+        )
+
+        with dummy_server.serve() as dummy_stac_api:
+            context = _prepare_context(
+                url=f"{dummy_stac_api}/collections/{collection_id}",
+                load_params=LoadParameters(bands=user_bands),
+                normalized_band_selection=normalized_band_selection,
+                env=EvalEnv(),
+            )
+
+        cell_size = context.pyramid_factory.maxSpatialResolution()
+        assert (cell_size.width(), cell_size.height()) == (0.125, 0.125)
+        assert context.metadata.band_names == expected_metadata_bands
+        assert list(context.pyramid_factory.openSearchLinkTitles()) == expected_link_titles
+
+
+class TestResolutionTracker:
+    def test_empty(self):
+        tracker = _ResolutionTracker()
+        assert tracker.finest_for() == (set(), None)
+
+    def test_no_keys(self):
+        tracker = _ResolutionTracker()
+        tracker.track(epsg=4326, res=(1, 2))
+        assert tracker.finest_for() == ({4326}, (1, 2))
+
+    def test_basic(self):
+        tracker = _ResolutionTracker()
+        tracker.track(key="B01", epsg=4326, res=(0.1, 0.1))
+        tracker.track(key="B01", epsg=4326, res=(0.2, 0.2))
+        tracker.track(key="B02", epsg=4326, res=(0.3, 0.3))
+
+        assert tracker.finest_for(["B01"]) == ({4326}, (0.1, 0.1))
+        assert tracker.finest_for(["B02"]) == ({4326}, (0.3, 0.3))
+        assert tracker.finest_for(["B01", "B02"]) == ({4326}, (0.1, 0.1))
+        assert tracker.finest_for(["B03"]) == (set(), None)
+        assert tracker.finest_for(["B01", "B03"]) == ({4326}, (0.1, 0.1))
+
+    def test_multi_epsg(self):
+        tracker = _ResolutionTracker()
+        tracker.track(key="B01", epsg=4326, res=(0.1, 0.1))
+        tracker.track(key="B01", epsg=32631, res=(10, 10))
+
+        assert tracker.finest_for(["B01"]) == ({4326, 32631}, None)
+
+    def test_multi_utm(self):
+        tracker = _ResolutionTracker()
+        tracker.track(key="B01", epsg=32629, res=(10, 10))
+        tracker.track(key="B01", epsg=32631, res=(10, 10))
+        tracker.track(key="B02", epsg=32631, res=(20, 20))
+
+        assert tracker.finest_for(["B01"]) == ({32629, 32631}, (10, 10))
+        assert tracker.finest_for(["B02"]) == (
+            {
+                32631,
+            },
+            (20, 20),
+        )
+        assert tracker.finest_for(["B01", "B02"]) == (
+            {
+                32629,
+                32631,
+            },
+            (10, 10),
+        )

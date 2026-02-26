@@ -193,7 +193,8 @@ class S1BackscatterOrfeo:
         for k, v in filter_properties.items():
             # Use array_contains for array values (e.g., default product:type to match multiple variants)
             # Use eq for scalar values (e.g., user-provided product:type)
-            if isinstance(v, list):
+            # Exception: sar:polarizations is itself an array property, so use eq to match the exact array.
+            if isinstance(v, list) and k != "sar:polarizations":
                 mapped[k] = {
                     "process_graph": {
                         "array_contains": {
@@ -242,12 +243,6 @@ class S1BackscatterOrfeo:
             spatiotemporal_extent=spatiotemporal_extent,
             property_filter_pg_map=property_filter_pg_map,
         )
-        if len(item_collection.items) == 0:
-            raise OpenEOApiException(
-                code="NoDataAvailable", status_code=400,
-                message=f"There is no data available for the given extents.",
-            )
-
         # Build FixedFeaturesOpenSearchClient from STAC items
         jvm = get_jvm()
         opensearch_client = jvm.org.openeo.geotrellis.file.FixedFeaturesOpenSearchClient()
@@ -506,8 +501,7 @@ class S1BackscatterOrfeo:
             max_soft_errors_ratio = 0.0,
             target_resolution = (10.0,10.0)
     ):
-        logger.info(f"{log_prefix} Input tiff {input_tiff}")
-        logger.info(f"{log_prefix} extent {extent} EPSG {extent_epsg})")
+        logger.debug(f"{log_prefix} extent {extent} EPSG {extent_epsg})")
 
         if trackers is not None:
             trackers[0].add(1)

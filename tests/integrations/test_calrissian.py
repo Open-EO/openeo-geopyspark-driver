@@ -184,7 +184,7 @@ class TestCalrissianJobLauncher:
                         {
                             "name": "r-123-cal-cwl-01234567",
                             "image": DEFAULT_CALRISSIAN_IMAGE,
-                            "image_pull_policy": "Always",
+                            "image_pull_policy": "IfNotPresent",
                             "command": ["calrissian"],
                             "args": dirty_equals.Contains(
                                 "--tmp-outdir-prefix",
