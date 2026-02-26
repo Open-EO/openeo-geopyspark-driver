@@ -425,13 +425,13 @@ class CalrissianJobLauncher:
             - k8s job manifest
             - path to the CWL file in the input volume.
         """
-        max_memory = cwl_source.estimate_max_memory_usage()
+        max_memory_estimate = cwl_source.estimate_max_memory_usage()
         max_executor_or_driver_memory = get_backend_config().max_executor_or_driver_memory
-        if max_memory > 0:
-            max_memory = f"{int(max_memory)}m"  # mebibytes (m)
-            if byte_string_as(max_memory) <= byte_string_as(max_executor_or_driver_memory):
+        if max_memory_estimate > 0:
+            max_memory_estimate = f"{int(max_memory_estimate)}m"  # mebibytes (m)
+            if byte_string_as(max_memory_estimate) > byte_string_as(max_executor_or_driver_memory):
                 raise ValueError(
-                    f"Estimated max memory usage of CWL workflow is {max_memory}, which exceeds the configured "
+                    f"Estimated max memory usage of CWL workflow is {max_memory_estimate}, which exceeds the configured "
                     f"max_executor_or_driver_memory of {max_executor_or_driver_memory}. This might lead to OOM errors. "
                 )
 
