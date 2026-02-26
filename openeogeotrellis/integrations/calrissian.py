@@ -211,6 +211,7 @@ class CwLSource:
                     if req.get("class") == "ResourceRequirement":
                         rr = req
                         ram_max = max(
+                            ram_max,
                             float(deep_get(rr, "ramMin", default="-1")),
                             float(deep_get(rr, "ramMax", default="-1")),
                         )
