@@ -7,7 +7,6 @@ requirements:
     dockerPull: vito-docker.artifactory.vgt.vito.be/openeo-geopyspark-driver-example-stac-catalog:1.8
   ResourceRequirement:
     ramMin: 999000 # 999Gb
-    ramMax: 999000 # 999Gb
 
 baseCommand: [ "sh", "-c", "cp /data/* ." ]
 inputs: [ ]

@@ -200,7 +200,7 @@ class CwLSource:
             # ramMax: "Maximum reserved RAM in mebibytes (2**20)"
             if isinstance(requirements, dict):
                 ram_max = max(
-                    float(deep_get(requirements, "ResourceRequirement", "minMax", default="-1")),
+                    float(deep_get(requirements, "ResourceRequirement", "ramMin", default="-1")),
                     float(deep_get(requirements, "ResourceRequirement", "ramMax", default="-1")),
                 )
             elif isinstance(requirements, list):
