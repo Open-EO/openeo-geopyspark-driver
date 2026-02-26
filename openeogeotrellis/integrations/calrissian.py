@@ -198,23 +198,28 @@ class CwLSource:
             ram_max = -1
             # https://www.commonwl.org/v1.0/CommandLineTool.html#ResourceRequirement
             # ramMax: "Maximum reserved RAM in mebibytes (2**20)"
-            if isinstance(requirements, dict):
-                rr = deep_get(requirements, "ResourceRequirement", default={})
-                ram_max = max(
-                    float(deep_get(rr, "ramMin", default="-1")),
-                    float(deep_get(rr, "ramMax", default="-1")),
-                )
-            elif isinstance(requirements, list):
-                for req in requirements:
-                    if not isinstance(req, dict):
-                        continue
-                    if req.get("class") == "ResourceRequirement":
-                        rr = req
-                        ram_max = max(
-                            ram_max,
-                            float(deep_get(rr, "ramMin", default="-1")),
-                            float(deep_get(rr, "ramMax", default="-1")),
-                        )
+            try:
+                if isinstance(requirements, dict):
+                    rr = deep_get(requirements, "ResourceRequirement", default={})
+                    ram_max = max(
+                        float(deep_get(rr, "ramMin", default="-1")),
+                        float(deep_get(rr, "ramMax", default="-1")),
+                    )
+                elif isinstance(requirements, list):
+                    for req in requirements:
+                        if not isinstance(req, dict):
+                            continue
+                        if req.get("class") == "ResourceRequirement":
+                            rr = req
+                            ram_max = max(
+                                ram_max,
+                                float(deep_get(rr, "ramMin", default="-1")),
+                                float(deep_get(rr, "ramMax", default="-1")),
+                            )
+            except Exception as e:
+                # CWL is a complex language, and some things might not work
+                # TODO: Find a way to implement this limit in a more formal way.
+                _log.warning(f"Failed to parse RAM requirements for step: {e}")
             if max_memory is None or ram_max > max_memory:
                 max_memory = ram_max
 
