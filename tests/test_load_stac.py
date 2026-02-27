@@ -2297,7 +2297,7 @@ class TestItemCollection:
                     "json": {
                         "collections": ["custom-s2"],
                         "datetime": "2024-01-01T00:00:00Z/2025-01-01T00:00:00Z",
-                        "limit": 20,
+                        "limit": 100,
                         "filter-lang": "cql2-json",
                         "filter": {"op": "=", "args": [{"property": "properties.flavor"}, "banana"]},
                     },
@@ -2311,7 +2311,7 @@ class TestItemCollection:
                     "url_params": {
                         "collections": "custom-s2",
                         "datetime": "2024-01-01T00:00:00Z/2025-01-01T00:00:00Z",
-                        "limit": "20",
+                        "limit": "100",
                         "filter-lang": "cql2-text",
                         "filter": "\"properties.flavor\" = 'banana'",
                     },
@@ -2328,7 +2328,7 @@ class TestItemCollection:
                     "json": {
                         "collections": ["custom-s2"],
                         "datetime": "2024-01-01T00:00:00Z/2025-01-01T00:00:00Z",
-                        "limit": 20,
+                        "limit": 100,
                         "filter-lang": "cql2-json",
                         "filter": {"op": "=", "args": [{"property": "properties.flavor"}, "banana"]},
                     },
@@ -2343,7 +2343,7 @@ class TestItemCollection:
                     "url_params": {
                         "collections": "custom-s2",
                         "datetime": "2024-01-01T00:00:00Z/2025-01-01T00:00:00Z",
-                        "limit": "20",
+                        "limit": "100",
                     },
                     "json": None,
                 },
