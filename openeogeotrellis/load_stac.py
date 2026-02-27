@@ -2151,6 +2151,10 @@ class AdaptingPropertyFilter(PropertyFilter):
         elif value_mapping == "add-MGRS-prefix":
             # TODO: make this more generic with something like "add-prefix:<prefix>"?
             mapper = lambda v: f"MGRS-{v}"
+        elif value_mapping == "make_lower_case":
+            mapper = lambda v: v.lower() if isinstance(v, str) else v
+        elif value_mapping == "make_upper_case":
+            mapper = lambda v: v.upper() if isinstance(v, str) else v
         else:
             raise ValueError(f"Invalid {value_mapping=}")
 
