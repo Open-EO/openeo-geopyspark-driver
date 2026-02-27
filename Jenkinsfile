@@ -35,5 +35,4 @@ pythonPipeline {
   ]
   enable_caching = true
   enable_uv = true
-  run_tests = false
 }
