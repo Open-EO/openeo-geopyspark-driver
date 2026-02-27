@@ -274,7 +274,7 @@ def _extract_spatial_extent_from_constraint_load_stac(
     extent_orig: Union[BoundingBox, None] = BoundingBox.from_dict_or_none(spatial_extent_from_pg, default_crs=4326)
     extent_variants = {"original": extent_orig}
     # TODO: improve logging: e.g. automatically include stac URL and what context we are in
-    _log.debug(f"_extract_spatial_extent_from_constraint_load_stac {stac_url=} {extent_orig=}")
+    _log.info(f"_extract_spatial_extent_from_constraint_load_stac {stac_url=} {extent_orig=}")
 
     spatiotemporal_extent = openeogeotrellis.load_stac._spatiotemporal_extent_from_load_params(
         spatial_extent=spatial_extent_from_pg,
@@ -282,6 +282,7 @@ def _extract_spatial_extent_from_constraint_load_stac(
     )
     property_filter_pg_map = constraint.get("properties")
 
+    _log.info(f"Calling construct_item_collection for {stac_url=}")
     item_collection, _, _, _ = openeogeotrellis.load_stac.construct_item_collection(
         url=stac_url,
         spatiotemporal_extent=spatiotemporal_extent,
@@ -291,16 +292,18 @@ def _extract_spatial_extent_from_constraint_load_stac(
     )
 
     # Collect asset projection metadata
+    _log.info(f"Collecting projection metadata from {len(item_collection.items)} items")
     projection_metadatas: List[openeogeotrellis.load_stac._ProjectionMetadata] = [
         openeogeotrellis.load_stac._ProjectionMetadata.from_asset(asset=asset, item=item)
         for item, band_assets in item_collection.iter_items_with_band_assets()
         for asset in band_assets.values()
     ]
-    _log.debug(f"Collected {len(item_collection.items)=} {len(projection_metadatas)=}")
+    _log.info(f"Collected {len(item_collection.items)} items, {len(projection_metadatas)} projection metadata entries")
 
     # Determine most common grid (CRS and resolution) among assets
     target_grid = _determine_best_grid_from_proj_metadata(projection_metadatas)
     target_crs = target_grid.crs_raw if target_grid else None
+    _log.info(f"Determined {target_grid=}")
 
     # Merge asset bounding boxes (full native extent, and "aligned" part of covered extent)
     assets_full_bbox_merger = BoundingBoxMerger(crs=target_crs)
@@ -312,7 +315,7 @@ def _extract_spatial_extent_from_constraint_load_stac(
                 aligned_extent_coverage_merger.add(extent_coverage)
     assets_full_bbox = assets_full_bbox_merger.get()
     assets_covered_bbox = aligned_extent_coverage_merger.get()
-    _log.debug(f"Merged bounding boxes: {assets_full_bbox=} {assets_covered_bbox=}")
+    _log.info(f"Merged bounding boxes: {assets_full_bbox=} {assets_covered_bbox=}")
     extent_variants["assets_full_bbox"] = assets_full_bbox
     extent_variants["assets_covered_bbox"] = assets_covered_bbox
     extent_aligned = assets_covered_bbox or assets_full_bbox
@@ -341,6 +344,7 @@ def _extract_spatial_extent_from_constraint_load_stac(
         )
         extent_aligned = extent_orig
 
+    _log.info(f"_extract_spatial_extent_from_constraint_load_stac result: {extent_aligned=} for {stac_url=}")
     return AlignedExtentResult(extent=extent_aligned, variants=extent_variants)
 
 

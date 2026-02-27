@@ -246,6 +246,7 @@ def _prepare_context(
         fix_proj_transform = feature_flags.get("fix_proj_transform", False)
         skipped_assets = feature_flags.get("skipped_assets", [])
 
+        logger.info(f"Building OpenSearch features for {len(item_collection.items)} items (band_selection={band_selection})")
         for itm, band_assets in item_collection.iter_items_with_band_assets():
             opensearch_stats["items"] += 1
             opensearch_stats[f"items with {len(band_assets)=}"] += 1
@@ -538,9 +539,11 @@ def _prepare_context(
                     f"load_stac: Band order should be alphabetical for NetCDF STAC-catalog with a time dimension. "
                     f"Was {requested_band_names}, but should be {sorted_bands_from_catalog} instead.",
                 )
+        logger.info("Creating NetCDFCollection pyramid factory")
         pyramid_factory = jvm.org.openeo.geotrellis.layers.NetCDFCollection
     else:
         opensearch_link_titles = [opensearch_link_titles_map.get(b, b) for b in source_band_names]
+        logger.info(f"Creating PyramidFactory for {len(opensearch_link_titles)} band(s): {opensearch_link_titles}")
         logger.debug(f"{opensearch_link_titles=} (from {source_band_names=} and {opensearch_link_titles_map=})")
         max_soft_errors_ratio = env.get(EVAL_ENV_KEY.MAX_SOFT_ERRORS_RATIO, 0.0)
         pyramid_factory = jvm.org.openeo.geotrellis.file.PyramidFactory(
@@ -635,6 +638,7 @@ def _build_datacube(context: _LoadStacContext) -> GeopysparkDataCube:
 
     try:
         if netcdf_with_time_dimension:
+            logger.info("_build_datacube: calling NetCDFCollection.datacube_seq")
             pyramid = pyramid_factory.datacube_seq(
                 projected_polygons,
                 from_date.isoformat(),
@@ -646,6 +650,7 @@ def _build_datacube(context: _LoadStacContext) -> GeopysparkDataCube:
             )
         elif single_level:
             if not items_found and allow_empty_cubes:
+                logger.info("_build_datacube: calling PyramidFactory.empty_datacube_seq")
                 pyramid = pyramid_factory.empty_datacube_seq(
                     projected_polygons,
                     from_date.isoformat(),
@@ -653,6 +658,7 @@ def _build_datacube(context: _LoadStacContext) -> GeopysparkDataCube:
                     data_cube_parameters,
                 )
             else:
+                logger.info("_build_datacube: calling PyramidFactory.datacube_seq")
                 pyramid = pyramid_factory.datacube_seq(
                     projected_polygons,
                     from_date.isoformat(),
@@ -670,13 +676,16 @@ def _build_datacube(context: _LoadStacContext) -> GeopysparkDataCube:
                 extent_crs = "EPSG:4326"
 
             if not items_found and allow_empty_cubes:
+                logger.info("_build_datacube: calling PyramidFactory.empty_pyramid_seq")
                 pyramid = pyramid_factory.empty_pyramid_seq(
                     extent, extent_crs, from_date.isoformat(), to_date.isoformat()
                 )
             else:
+                logger.info("_build_datacube: calling PyramidFactory.pyramid_seq")
                 pyramid = pyramid_factory.pyramid_seq(
                     extent, extent_crs, from_date.isoformat(), to_date.isoformat(), metadata_properties, correlation_id
                 )
+        logger.info(f"_build_datacube: done building pyramid")
     except Exception as e:
         raise OpenEOApiException(
             message=f"load_stac: Error when constructing datacube from {url}: {e}",
@@ -786,6 +795,7 @@ def construct_item_collection(
     stac_metadata_parser = _StacMetadataParser(logger=logger)
 
     if dependency_job_info and batch_jobs:
+        logger.info(f"construct_item_collection: loading from dependency job {dependency_job_info.id!r}")
         # TODO: improve metadata for this case
         metadata = GeopysparkCubeMetadata(metadata={})
         item_collection = ItemCollection.from_own_job(
@@ -794,7 +804,7 @@ def construct_item_collection(
         # TODO: improve band name detection for this case
         band_names = []
     else:
-        logger.info(f"load_stac of arbitrary URL {url}")
+        logger.info(f"construct_item_collection: fetching STAC object from {url=} {spatiotemporal_extent=}")
 
         stac_object = _await_stac_object(
             url=url,
@@ -803,6 +813,7 @@ def construct_item_collection(
             max_poll_time=max_poll_time,
             stac_io=stac_io,
         )
+        logger.info(f"construct_item_collection: got {type(stac_object).__name__} {stac_object.id!r}")
 
         if isinstance(stac_object, pystac.Item):
             if property_filter_pg_map:
@@ -815,6 +826,7 @@ def construct_item_collection(
             metadata = GeopysparkCubeMetadata(metadata={})
             band_names = stac_metadata_parser.bands_from_stac_item(item=item).band_names()
             item_collection = ItemCollection.from_stac_item(item=item, spatiotemporal_extent=spatiotemporal_extent)
+            logger.info(f"construct_item_collection: single Item, {band_names=}, collected {len(item_collection.items)} item(s)")
         elif isinstance(stac_object, pystac.Collection) and _supports_item_search(stac_object):
             collection = stac_object
             netcdf_with_time_dimension = contains_netcdf_with_time_dimension(collection)
@@ -823,6 +835,7 @@ def construct_item_collection(
             )
 
             band_names = stac_metadata_parser.bands_from_stac_collection(collection=collection).band_names()
+            logger.info(f"construct_item_collection: STAC API Collection {collection.id!r}, {band_names=}, {netcdf_with_time_dimension=}")
 
             property_filter = PropertyFilter(properties=property_filter_pg_map, env=env)
             if property_filter_adaptations := feature_flags.get("property_filter_adaptations"):
@@ -856,8 +869,12 @@ def construct_item_collection(
                 netcdf_with_time_dimension = contains_netcdf_with_time_dimension(collection=catalog)
 
             band_names = stac_metadata_parser.bands_from_stac_object(obj=stac_object).band_names()
+            logger.info(f"construct_item_collection: static Catalog {catalog.id!r}, {band_names=}, {netcdf_with_time_dimension=}")
 
-            item_collection = ItemCollection.from_stac_catalog(catalog, spatiotemporal_extent=spatiotemporal_extent)
+            with TimingLogger(title=f"ItemCollection.from_stac_catalog from {url=}", logger=logger.info):
+                item_collection = ItemCollection.from_stac_catalog(catalog, spatiotemporal_extent=spatiotemporal_extent)
+
+    logger.info(f"construct_item_collection: collected {len(item_collection.items)} items")
 
     # Deduplicate items
     # TODO: smarter and more fine-grained deduplication behavior?
@@ -1248,8 +1265,9 @@ class ItemCollection:
     def deduplicated(self, deduplicator: "ItemDeduplicator") -> ItemCollection:
         """Create new ItemCollection by deduplicating items using the given deduplicator."""
         orig_count = len(self.items)
+        logger.info(f"ItemCollection.deduplicated: deduplicating {orig_count} items using {deduplicator=}")
         items = deduplicator.deduplicate(items=self.items)
-        logger.debug(f"ItemCollection.deduplicated: from {orig_count} to {len(items)}")
+        logger.info(f"ItemCollection.deduplicated: from {orig_count} to {len(items)} items")
         return ItemCollection(items=items)
 
 
