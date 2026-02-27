@@ -838,6 +838,7 @@ def construct_item_collection(
                     use_filter_extension=feature_flags.get("use-filter-extension", True),
                     # TODO #1312 why skipping datetime filter especially for netcdf with time dimension?
                     skip_datetime_filter=netcdf_with_time_dimension,
+                    per_page_limit=feature_flags.get("stac_api_per_page_limit", 100),
                 )
         else:
             assert isinstance(stac_object, pystac.Catalog)  # static Catalog + Collection
@@ -1150,6 +1151,7 @@ class ItemCollection:
         # TODO: is it possible to eliminate the need for this parameter?
         skip_datetime_filter: bool = False,
         original_url: str = "n/a",
+        per_page_limit: int = 100,
     ) -> ItemCollection:
         root_catalog = collection.get_root()
 
@@ -1205,7 +1207,7 @@ class ItemCollection:
                 method=method,
                 collections=collection.id,
                 bbox=bbox,
-                limit=20,
+                limit=per_page_limit,
                 datetime=query_datetime,
                 filter=cql2_filter,
                 fields=fields,
