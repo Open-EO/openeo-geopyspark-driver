@@ -329,10 +329,17 @@ def _extract_spatial_extent_from_constraint_load_stac(
         extent_variants["resampled"] = extent_resampled
         extent_aligned = extent_resampled
 
-    if pixel_buffer_size := deep_get(constraint, "pixel_buffer", "buffer_size", default=None):
+    if target_grid and (pixel_buffer_size := deep_get(constraint, "pixel_buffer", "buffer_size", default=None)):
         extent_pixel_buffered = _buffer_extent(extent_aligned, buffer=pixel_buffer_size, sampling=target_grid)
         extent_variants["pixel_buffered"] = extent_pixel_buffered
         extent_aligned = extent_pixel_buffered
+
+    if not extent_aligned:
+        # TODO: better way to handle this?
+        _log.warning(
+            f"No aligned extent could be determined for {stac_url=} with {constraint=} ({len(item_collection.items)=} {len(projection_metadatas)=}). Falling back on (non-aligned) {extent_orig=}."
+        )
+        extent_aligned = extent_orig
 
     return AlignedExtentResult(extent=extent_aligned, variants=extent_variants)
 
@@ -392,7 +399,7 @@ def determine_global_extent(
             aligned_extent_result = _extract_spatial_extent_from_constraint((source_id, constraint), catalog=catalog)
         except Exception as e:
             raise SpatialExtentExtractionError(
-                f"Failed to extract spatial extent from {source_id=} with {constraint=}"
+                f"Failed to extract spatial extent from {source_id=} with {constraint=}: {e=}"
             ) from e
         if aligned_extent_result:
             aligned_merger.add(aligned_extent_result.extent)

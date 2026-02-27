@@ -869,6 +869,47 @@ class TestPostDryRun:
             },
         )
 
+    def test_extract_spatial_extent_from_constraint_load_stac_no_data(
+        self,
+        dummy_catalog,
+        extract_source_constraints,
+        dummy_stac_api_server,
+        dummy_stac_api,
+    ):
+        """
+        pixel_buffer usage (e.g. apply_kernel), but no data discover projection data from
+        https://github.com/Open-EO/openeo-geopyspark-driver/issues/1563
+        """
+        dummy_stac_api_server.define_collection("collection-1234")
+        pg = {
+            "load_stac": {
+                "process_id": "load_stac",
+                "arguments": {
+                    "url": f"{dummy_stac_api}/collections/collection-1234",
+                    "spatial_extent": {"west": 1, "south": 2, "east": 3, "north": 4},
+                },
+            },
+            "apply_kernel": {
+                "process_id": "apply_kernel",
+                "arguments": {
+                    "data": {"from_node": "load_stac"},
+                    "kernel": [[1] * 3] * 3,
+                },
+                "result": True,
+            },
+        }
+        source_constraints = extract_source_constraints(pg)
+        [source_constraint] = source_constraints
+        extents = _extract_spatial_extent_from_constraint(source_constraint=source_constraint, catalog=dummy_catalog)
+        assert extents == AlignedExtentResult(
+            extent=BoundingBox(west=1, south=2, east=3, north=4, crs="EPSG:4326"),
+            variants={
+                "original": BoundingBox(west=1, south=2, east=3, north=4, crs="EPSG:4326"),
+                "assets_full_bbox": None,
+                "assets_covered_bbox": None,
+            },
+        )
+
     def test_determine_global_extent_load_stac_minimal(
         self,
         dummy_catalog,
