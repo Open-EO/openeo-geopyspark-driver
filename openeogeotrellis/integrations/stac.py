@@ -1,5 +1,6 @@
 import functools
 import abc
+import logging
 from typing import Optional, Union, List, Tuple
 from urllib.parse import urlparse
 
@@ -7,8 +8,20 @@ import requests
 import pystac
 import pystac.stac_io
 from pystac.stac_io import DefaultStacIO
+from pystac_client.stac_api_io import StacApiIO
 
 from openeo_driver.integrations.s3.client import S3ClientBuilder
+
+logger = logging.getLogger(__name__)
+
+
+def _log_stac_response(response: requests.Response, *args, **kwargs) -> None:
+    """requests response hook that logs every STAC HTTP request at DEBUG level."""
+    elapsed = response.elapsed.total_seconds() if response.elapsed is not None else float("nan")
+    logger.debug(
+        f"STAC request: {response.request.method} {response.request.url}"
+        f" -> {response.status_code} in {elapsed:.3f}s"
+    )
 
 
 class ResilientStacIO(DefaultStacIO):
@@ -22,6 +35,7 @@ class ResilientStacIO(DefaultStacIO):
      ):
         super().__init__()
         self._session = session or requests.Session()
+        self._session.hooks["response"].append(_log_stac_response)
 
     def read_text_from_href(self, href: str) -> str:
         """Reads file as a UTF-8 string, with retry and timeout support.
@@ -39,6 +53,21 @@ class ResilientStacIO(DefaultStacIO):
                 raise Exception(f"Could not read uri {href}") from e
         else:
             return super().read_text_from_href(href)
+
+
+class LoggingStacApiIO(StacApiIO):
+    """
+    StacApiIO subclass that logs every HTTP request at INFO level,
+    including the method, URL, response status code, and elapsed time.
+
+    Uses a requests response hook so every request made through the session
+    is captured automatically — including the initial catalog fetch by
+    Client.open() and each paginated search request.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.session.hooks["response"].append(_log_stac_response)
 
 
 def ref_as_str(ref: Union[pystac.stac_io.HREF, pystac.Link]) -> str:

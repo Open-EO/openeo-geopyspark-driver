@@ -48,7 +48,7 @@ from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.constants import EVAL_ENV_KEY
 from openeogeotrellis.geopysparkcubemetadata import GeopysparkCubeMetadata
 from typing import TYPE_CHECKING
-from openeogeotrellis.integrations.stac import ResilientStacIO
+from openeogeotrellis.integrations.stac import LoggingStacApiIO, ResilientStacIO
 from openeogeotrellis.util.datetime import DateTimeLikeOrNone, to_datetime_utc_unless_none
 from openeogeotrellis.util.geometry import GridSnapper
 from openeogeotrellis.util.projection import is_utm_epsg_code
@@ -1188,7 +1188,7 @@ class ItemCollection:
         )
         query_info = ""
         try:
-            stac_io = pystac_client.stac_api_io.StacApiIO(timeout=REQUESTS_TIMEOUT_SECONDS, max_retries=retry)
+            stac_io = LoggingStacApiIO(timeout=REQUESTS_TIMEOUT_SECONDS, max_retries=retry)
             client = pystac_client.Client.open(root_catalog.get_self_href(), modifier=modifier, stac_io=stac_io)
 
             cql2_filter = property_filter.to_cql2_filter(
