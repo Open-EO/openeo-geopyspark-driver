@@ -501,7 +501,7 @@ def test_stac_api_POST_item_search_resilience():
     )
 
     search_transient_error_resps = [
-        responses.post(stac_search_url, status=500, body="some transient error") for _ in range(4)  # does 4 attempts
+        responses.post(stac_search_url, status=500, body="some transient error"),
     ]
 
     # pass a property filter to do a POST item search like the API advertises above
@@ -527,8 +527,7 @@ def test_stac_api_POST_item_search_resilience():
             env=EvalEnv({"pyramid_levels": "highest"}),
         )
 
-    for resp in search_transient_error_resps:
-        assert resp.call_count == 1
+    assert [resp.call_count for resp in search_transient_error_resps] == [5]
 
 
 class TestStacMetadataParser:
