@@ -61,6 +61,8 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 REQUESTS_TIMEOUT_SECONDS = 60
 
+STAC_API_PER_PAGE_LIMIT_DEFAULT = 100
+
 
 class NoDataAvailableException(OpenEOApiException):
     status_code = 400
@@ -838,7 +840,7 @@ def construct_item_collection(
                     use_filter_extension=feature_flags.get("use-filter-extension", True),
                     # TODO #1312 why skipping datetime filter especially for netcdf with time dimension?
                     skip_datetime_filter=netcdf_with_time_dimension,
-                    per_page_limit=feature_flags.get("stac_api_per_page_limit", 100),
+                    per_page_limit=feature_flags.get("stac_api_per_page_limit", STAC_API_PER_PAGE_LIMIT_DEFAULT),
                 )
         else:
             assert isinstance(stac_object, pystac.Catalog)  # static Catalog + Collection
@@ -1151,7 +1153,7 @@ class ItemCollection:
         # TODO: is it possible to eliminate the need for this parameter?
         skip_datetime_filter: bool = False,
         original_url: str = "n/a",
-        per_page_limit: int = 100,
+        per_page_limit: int = STAC_API_PER_PAGE_LIMIT_DEFAULT,
     ) -> ItemCollection:
         root_catalog = collection.get_root()
 

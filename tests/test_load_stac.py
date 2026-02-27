@@ -45,6 +45,7 @@ from openeogeotrellis.load_stac import (
     _get_apply_sentinel2_reflectance_offset,
     _is_sentinel2_reflectance_asset,
     _ResolutionTracker,
+    STAC_API_PER_PAGE_LIMIT_DEFAULT,
 )
 from openeogeotrellis.testing import DummyStacApiServer, gps_config_overrides
 from openeogeotrellis.util.geometry import bbox_to_geojson
@@ -2297,7 +2298,7 @@ class TestItemCollection:
                     "json": {
                         "collections": ["custom-s2"],
                         "datetime": "2024-01-01T00:00:00Z/2025-01-01T00:00:00Z",
-                        "limit": 100,
+                        "limit": STAC_API_PER_PAGE_LIMIT_DEFAULT,
                         "filter-lang": "cql2-json",
                         "filter": {"op": "=", "args": [{"property": "properties.flavor"}, "banana"]},
                     },
@@ -2311,7 +2312,7 @@ class TestItemCollection:
                     "url_params": {
                         "collections": "custom-s2",
                         "datetime": "2024-01-01T00:00:00Z/2025-01-01T00:00:00Z",
-                        "limit": "100",
+                        "limit": str(STAC_API_PER_PAGE_LIMIT_DEFAULT),
                         "filter-lang": "cql2-text",
                         "filter": "\"properties.flavor\" = 'banana'",
                     },
@@ -2328,7 +2329,7 @@ class TestItemCollection:
                     "json": {
                         "collections": ["custom-s2"],
                         "datetime": "2024-01-01T00:00:00Z/2025-01-01T00:00:00Z",
-                        "limit": 100,
+                        "limit": STAC_API_PER_PAGE_LIMIT_DEFAULT,
                         "filter-lang": "cql2-json",
                         "filter": {"op": "=", "args": [{"property": "properties.flavor"}, "banana"]},
                     },
@@ -2343,7 +2344,7 @@ class TestItemCollection:
                     "url_params": {
                         "collections": "custom-s2",
                         "datetime": "2024-01-01T00:00:00Z/2025-01-01T00:00:00Z",
-                        "limit": "100",
+                        "limit": str(STAC_API_PER_PAGE_LIMIT_DEFAULT),
                     },
                     "json": None,
                 },
