@@ -1669,9 +1669,6 @@ class _ProjectionMetadata:
             and abs(t3) > abs(t5)
         ):
             fixed = [t1, t2, t0, t4, t5, t3] + list(transform[6:])
-            logger.warning(
-                f"Detected GDAL-ordered proj:transform {list(transform)}, reshuffled to {fixed}"
-            )
             return fixed
         return transform
 
