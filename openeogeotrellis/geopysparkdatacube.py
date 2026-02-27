@@ -576,6 +576,7 @@ class GeopysparkDataCube(DriverDataCube):
             if len(set(shapes)) > 1:
                 _log.warning(f"run_udf: Not all tiles have the same shape. Shapes found: {set(shapes)}. Only using tiles with shape {most_common_shape} for further processing.")
                 arrays = [a for a in arrays if a.shape == most_common_shape]
+                dates = [date for i, date in enumerate(dates) if shapes[i] == most_common_shape]
             multidim_array = np.array(arrays)
 
             extent = GeopysparkDataCube._mapTransform(metadata.layout_definition, tile_list[0][0])
