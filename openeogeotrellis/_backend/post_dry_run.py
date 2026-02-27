@@ -4,7 +4,7 @@ import dataclasses
 import collections
 import logging
 import math
-from typing import Callable, List, Tuple, Union, Dict
+from typing import Callable, List, Tuple, Union, Dict, Optional
 
 from openeo.util import deep_get
 from openeo_driver.backend import AbstractCollectionCatalog, LoadParameters
@@ -270,19 +270,46 @@ def _extract_spatial_extent_from_constraint_load_stac(
     stac_url: str, *, constraint: dict
 ) -> Union[None, AlignedExtentResult]:
     spatial_extent_from_pg = constraint.get("spatial_extent") or constraint.get("weak_spatial_extent")
-
-    extent_orig: Union[BoundingBox, None] = BoundingBox.from_dict_or_none(spatial_extent_from_pg, default_crs=4326)
-    extent_variants = {"original": extent_orig}
-    # TODO: improve logging: e.g. automatically include stac URL and what context we are in
-    _log.info(f"_extract_spatial_extent_from_constraint_load_stac {stac_url=} {extent_orig=}")
-
     spatiotemporal_extent = openeogeotrellis.load_stac._spatiotemporal_extent_from_load_params(
         spatial_extent=spatial_extent_from_pg,
         temporal_extent=constraint.get("temporal_extent") or (None, None),
     )
+
     property_filter_pg_map = constraint.get("properties")
 
-    _log.info(f"Calling construct_item_collection for {stac_url=}")
+    if (
+        "resample" in constraint
+        and (resample_crs := constraint["resample"].get("target_crs"))
+        and (resample_resolution := constraint["resample"].get("resolution"))
+    ):
+        resample_grid = _GridInfo(crs=resample_crs, resolution=resample_resolution)
+    else:
+        resample_grid = None
+
+    pixel_buffer_size = deep_get(constraint, "pixel_buffer", "buffer_size", default=None)
+
+    return _extract_spatial_extent_from_load_stac_item_collection(
+        stac_url=stac_url,
+        spatiotemporal_extent=spatiotemporal_extent,
+        property_filter_pg_map=property_filter_pg_map,
+        resample_grid=resample_grid,
+        pixel_buffer_size=pixel_buffer_size,
+    )
+
+
+def _extract_spatial_extent_from_load_stac_item_collection(
+    *,
+    stac_url: str,
+    spatiotemporal_extent: Optional[openeogeotrellis.load_stac._SpatioTemporalExtent] = None,
+    property_filter_pg_map: Optional[openeogeotrellis.load_stac.PropertyFilterPGMap] = None,
+    resample_grid: Optional[_GridInfo] = None,
+    pixel_buffer_size: Union[Tuple[float, float], int, float, None] = None,
+) -> Union[None, AlignedExtentResult]:
+    extent_orig: Union[BoundingBox, None] = spatiotemporal_extent.spatial_extent.as_bbox()
+    extent_variants = {"original": extent_orig}
+    # TODO: improve logging: e.g. automatically include stac URL and what context we are in
+    _log.info(f"_extract_spatial_extent_from_constraint_load_stac {stac_url=} {extent_orig=}")
+
     item_collection, _, _, _ = openeogeotrellis.load_stac.construct_item_collection(
         url=stac_url,
         spatiotemporal_extent=spatiotemporal_extent,
@@ -320,19 +347,15 @@ def _extract_spatial_extent_from_constraint_load_stac(
     extent_variants["assets_covered_bbox"] = assets_covered_bbox
     extent_aligned = assets_covered_bbox or assets_full_bbox
 
-    if (
-        "resample" in constraint
-        and (resample_crs := constraint["resample"].get("target_crs"))
-        and (resample_resolution := constraint["resample"].get("resolution"))
-    ):
+    if resample_grid:
         to_resample = extent_orig or extent_aligned
-        target_grid = _GridInfo(crs=resample_crs, resolution=resample_resolution)
+        target_grid = resample_grid
         extent_resampled = to_resample.reproject(target_grid.crs_epsg).round_to_resolution(*target_grid.resolution)
         _log.debug(f"Resampled extent {to_resample=} into {extent_resampled=}")
         extent_variants["resampled"] = extent_resampled
         extent_aligned = extent_resampled
 
-    if target_grid and (pixel_buffer_size := deep_get(constraint, "pixel_buffer", "buffer_size", default=None)):
+    if target_grid and pixel_buffer_size:
         extent_pixel_buffered = _buffer_extent(extent_aligned, buffer=pixel_buffer_size, sampling=target_grid)
         extent_variants["pixel_buffered"] = extent_pixel_buffered
         extent_aligned = extent_pixel_buffered
@@ -340,7 +363,7 @@ def _extract_spatial_extent_from_constraint_load_stac(
     if not extent_aligned:
         # TODO: better way to handle this?
         _log.warning(
-            f"No aligned extent could be determined for {stac_url=} with {constraint=} ({len(item_collection.items)=} {len(projection_metadatas)=}). Falling back on (non-aligned) {extent_orig=}."
+            f"No aligned extent could be determined for {stac_url=} ({len(item_collection.items)=} {len(projection_metadatas)=}). Falling back on (non-aligned) {extent_orig=}."
         )
         extent_aligned = extent_orig
 
