@@ -35,4 +35,5 @@ pythonPipeline {
   ]
   enable_caching = true
   enable_uv = true
+  test_coverage = false
 }
