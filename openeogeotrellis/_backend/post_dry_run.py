@@ -4,7 +4,7 @@ import dataclasses
 import collections
 import logging
 import math
-from typing import Callable, List, Tuple, Union, Dict
+from typing import Callable, List, Tuple, Union, Dict, Optional
 
 from openeo.util import deep_get
 from openeo_driver.backend import AbstractCollectionCatalog, LoadParameters
@@ -16,6 +16,7 @@ from openeo_driver.utils import EvalEnv
 from openeogeotrellis.constants import EVAL_ENV_KEY
 
 import openeogeotrellis.load_stac
+from openeogeotrellis.util.caching import GetOrCallCache, GetOrCallCacheInterface, AlwaysCallWithoutCache
 from openeogeotrellis.util.geometry import BoundingBoxMerger
 from openeogeotrellis.util.math import logarithmic_round
 
@@ -56,14 +57,15 @@ class _GridInfo:
     def __repr__(self) -> str:
         return f"_GridInfo(crs={self.crs_raw!r}, resolution={self.resolution!r}, extent_x={self.extent_x!r}, extent_y={self.extent_y!r})"
 
+    def _key(self) -> tuple:
+        return (self.crs_raw, self.resolution, self.extent_x, self.extent_y)
+
+    def __hash__(self):
+        return hash(self._key())
     def __eq__(self, other) -> bool:
-        return (
-            isinstance(other, _GridInfo)
-            and self.crs_raw == other.crs_raw
-            and self.resolution == other.resolution
-            and self.extent_x == other.extent_x
-            and self.extent_y == other.extent_y
-        )
+        if isinstance(other, _GridInfo):
+            return self._key() == other._key()
+        return NotImplemented
 
     @classmethod
     def from_datacube_metadata(cls, metadata: dict) -> _GridInfo:
@@ -196,7 +198,10 @@ class AlignedExtentResult:
 
 
 def _extract_spatial_extent_from_constraint(
-    source_constraint: SourceConstraint, *, catalog: AbstractCollectionCatalog
+    source_constraint: SourceConstraint,
+    *,
+    catalog: AbstractCollectionCatalog,
+    cache: Optional[GetOrCallCacheInterface] = None,
 ) -> Union[None, AlignedExtentResult]:
     """
     Extract spatial extent from given source constraint (if any), and align it to target grid.
@@ -209,18 +214,22 @@ def _extract_spatial_extent_from_constraint(
     if source_process == "load_collection":
         collection_id = source_id[1][0]
         return _extract_spatial_extent_from_constraint_load_collection(
-            collection_id=collection_id, constraint=constraint, catalog=catalog
+            collection_id=collection_id, constraint=constraint, catalog=catalog, cache=cache
         )
     elif source_process == "load_stac":
         url = source_id[1][0]
-        return _extract_spatial_extent_from_constraint_load_stac(stac_url=url, constraint=constraint)
+        return _extract_spatial_extent_from_constraint_load_stac(stac_url=url, constraint=constraint, cache=cache)
     else:
         # TODO?
         return None
 
 
 def _extract_spatial_extent_from_constraint_load_collection(
-    collection_id: str, *, constraint: dict, catalog: AbstractCollectionCatalog
+    collection_id: str,
+    *,
+    constraint: dict,
+    catalog: AbstractCollectionCatalog,
+    cache: Optional[GetOrCallCacheInterface] = None,
 ) -> Union[None, AlignedExtentResult]:
     try:
         metadata = catalog.get_collection_metadata(collection_id)
@@ -229,7 +238,7 @@ def _extract_spatial_extent_from_constraint_load_collection(
 
     if deep_get(metadata, "_vito", "data_source", "type", default=None) == "stac":
         stac_url = deep_get(metadata, "_vito", "data_source", "url")
-        return _extract_spatial_extent_from_constraint_load_stac(stac_url=stac_url, constraint=constraint)
+        return _extract_spatial_extent_from_constraint_load_stac(stac_url=stac_url, constraint=constraint, cache=cache)
 
     # TODO Extracting pixel grid info from collection metadata might might be unreliable
     #       and should be replaced by more precise item-level metadata where possible.
@@ -267,22 +276,61 @@ def _extract_spatial_extent_from_constraint_load_collection(
 
 
 def _extract_spatial_extent_from_constraint_load_stac(
-    stac_url: str, *, constraint: dict
+    stac_url: str,
+    *,
+    constraint: dict,
+    cache: Optional[GetOrCallCacheInterface] = None,
 ) -> Union[None, AlignedExtentResult]:
     spatial_extent_from_pg = constraint.get("spatial_extent") or constraint.get("weak_spatial_extent")
-
-    extent_orig: Union[BoundingBox, None] = BoundingBox.from_dict_or_none(spatial_extent_from_pg, default_crs=4326)
-    extent_variants = {"original": extent_orig}
-    # TODO: improve logging: e.g. automatically include stac URL and what context we are in
-    _log.info(f"_extract_spatial_extent_from_constraint_load_stac {stac_url=} {extent_orig=}")
-
     spatiotemporal_extent = openeogeotrellis.load_stac._spatiotemporal_extent_from_load_params(
         spatial_extent=spatial_extent_from_pg,
         temporal_extent=constraint.get("temporal_extent") or (None, None),
     )
+
     property_filter_pg_map = constraint.get("properties")
 
-    _log.info(f"Calling construct_item_collection for {stac_url=}")
+    if (
+        "resample" in constraint
+        and (resample_crs := constraint["resample"].get("target_crs"))
+        and (resample_resolution := constraint["resample"].get("resolution"))
+    ):
+        resample_grid = _GridInfo(crs=resample_crs, resolution=resample_resolution)
+    else:
+        resample_grid = None
+
+    pixel_buffer_size = deep_get(constraint, "pixel_buffer", "buffer_size", default=None)
+
+    return (cache or AlwaysCallWithoutCache()).get_or_call(
+        key=(
+            stac_url,
+            spatiotemporal_extent,
+            str(property_filter_pg_map),
+            resample_grid,
+            pixel_buffer_size,
+        ),
+        callback=lambda: _extract_spatial_extent_from_load_stac_item_collection(
+            stac_url=stac_url,
+            spatiotemporal_extent=spatiotemporal_extent,
+            property_filter_pg_map=property_filter_pg_map,
+            resample_grid=resample_grid,
+            pixel_buffer_size=pixel_buffer_size,
+        ),
+    )
+
+
+def _extract_spatial_extent_from_load_stac_item_collection(
+    *,
+    stac_url: str,
+    spatiotemporal_extent: Optional[openeogeotrellis.load_stac._SpatioTemporalExtent] = None,
+    property_filter_pg_map: Optional[openeogeotrellis.load_stac.PropertyFilterPGMap] = None,
+    resample_grid: Optional[_GridInfo] = None,
+    pixel_buffer_size: Union[Tuple[float, float], int, float, None] = None,
+) -> Union[None, AlignedExtentResult]:
+    extent_orig: Union[BoundingBox, None] = spatiotemporal_extent.spatial_extent.as_bbox()
+    extent_variants = {"original": extent_orig}
+    # TODO: improve logging: e.g. automatically include stac URL and what context we are in
+    _log.info(f"_extract_spatial_extent_from_constraint_load_stac {stac_url=} {extent_orig=}")
+
     item_collection, _, _, _ = openeogeotrellis.load_stac.construct_item_collection(
         url=stac_url,
         spatiotemporal_extent=spatiotemporal_extent,
@@ -320,19 +368,15 @@ def _extract_spatial_extent_from_constraint_load_stac(
     extent_variants["assets_covered_bbox"] = assets_covered_bbox
     extent_aligned = assets_covered_bbox or assets_full_bbox
 
-    if (
-        "resample" in constraint
-        and (resample_crs := constraint["resample"].get("target_crs"))
-        and (resample_resolution := constraint["resample"].get("resolution"))
-    ):
+    if resample_grid:
         to_resample = extent_orig or extent_aligned
-        target_grid = _GridInfo(crs=resample_crs, resolution=resample_resolution)
+        target_grid = resample_grid
         extent_resampled = to_resample.reproject(target_grid.crs_epsg).round_to_resolution(*target_grid.resolution)
         _log.debug(f"Resampled extent {to_resample=} into {extent_resampled=}")
         extent_variants["resampled"] = extent_resampled
         extent_aligned = extent_resampled
 
-    if target_grid and (pixel_buffer_size := deep_get(constraint, "pixel_buffer", "buffer_size", default=None)):
+    if target_grid and pixel_buffer_size:
         extent_pixel_buffered = _buffer_extent(extent_aligned, buffer=pixel_buffer_size, sampling=target_grid)
         extent_variants["pixel_buffered"] = extent_pixel_buffered
         extent_aligned = extent_pixel_buffered
@@ -340,7 +384,7 @@ def _extract_spatial_extent_from_constraint_load_stac(
     if not extent_aligned:
         # TODO: better way to handle this?
         _log.warning(
-            f"No aligned extent could be determined for {stac_url=} with {constraint=} ({len(item_collection.items)=} {len(projection_metadatas)=}). Falling back on (non-aligned) {extent_orig=}."
+            f"No aligned extent could be determined for {stac_url=} ({len(item_collection.items)=} {len(projection_metadatas)=}). Falling back on (non-aligned) {extent_orig=}."
         )
         extent_aligned = extent_orig
 
@@ -389,6 +433,7 @@ def determine_global_extent(
     *,
     source_constraints: List[SourceConstraint],
     catalog: AbstractCollectionCatalog,
+    cache: Optional[GetOrCallCacheInterface] = None,
 ) -> dict:
     """
     Go through all source constraints, extract the aligned extent from each (possibly with variations)
@@ -398,9 +443,16 @@ def determine_global_extent(
     #       e.g. add stats to AlignedExtentResult for better informed decision?
     aligned_merger = BoundingBoxMerger()
     variant_mergers: Dict[str, BoundingBoxMerger] = collections.defaultdict(BoundingBoxMerger)
+    # Enable the implementation to use caching
+    # when going through all these source constraints
+    # as there might be duplication that's hidden
+    # by differences from non-relevant details
+    cache = cache or GetOrCallCache(max_size=100)
     for source_id, constraint in source_constraints:
         try:
-            aligned_extent_result = _extract_spatial_extent_from_constraint((source_id, constraint), catalog=catalog)
+            aligned_extent_result = _extract_spatial_extent_from_constraint(
+                (source_id, constraint), catalog=catalog, cache=cache
+            )
         except Exception as e:
             raise SpatialExtentExtractionError(
                 f"Failed to extract spatial extent from {source_id=} with {constraint=}: {e=}"
@@ -415,6 +467,7 @@ def determine_global_extent(
                     _log.info(
                         f"determine_global_extent: skipping {name=} from {source_id=} with {aligned_extent_result.variants=}"
                     )
+    _log.info(f"_extract_spatial_extent_from_constraint cache stats: {cache!s}")
 
     global_extent: BoundingBox = aligned_merger.get()
     global_extent_variants: Dict[str, BoundingBox] = {name: merger.get() for name, merger in variant_mergers.items()}
