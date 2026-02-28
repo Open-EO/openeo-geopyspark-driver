@@ -1,3 +1,6 @@
+import collections
+import dirty_equals
+
 from typing import Callable, List, Optional
 
 import openeo_driver.ProcessGraphDeserializer
@@ -19,7 +22,7 @@ from openeogeotrellis._backend.post_dry_run import (
     AlignedExtentResult,
 )
 from openeogeotrellis.load_stac import _ProjectionMetadata
-
+from openeogeotrellis.util.caching import AlwaysCallWithoutCache
 
 
 class TestGridInfo:
@@ -113,6 +116,18 @@ class TestGridInfo:
             extent_x=[10, 30],
             extent_y=[20, 40],
         )
+
+    def test_as_cache_key(self):
+        grid1 = _GridInfo(crs="EPSG:4326")
+        grid2 = _GridInfo(crs="EPSG:4326")
+        grid3 = _GridInfo(crs="EPSG:32631", resolution=(10, 20))
+        grid4 = _GridInfo(crs="EPSG:32631", resolution=(10, 20))
+        grid5 = _GridInfo(crs="EPSG:32631", resolution=(20, 10))
+
+        cache = {grid1: 1, grid3: 3}
+        assert cache[grid2] == 1
+        assert cache[grid4] == 3
+        assert grid5 not in cache
 
 
 def test_snap_bbox():
@@ -966,6 +981,53 @@ class TestPostDryRun:
                 "assets_covered_bbox": expected,
             },
         }
+
+    @pytest.mark.parametrize(
+        ["cache", "expected_searches"],
+        [
+            (None, 1),  # cache=None: use default caching
+            (AlwaysCallWithoutCache(), 3),
+        ],
+    )
+    def test_determine_global_extent_load_stac_caching(
+        self,
+        dummy_catalog,
+        extract_source_constraints,
+        dummy_stac_api_server,
+        dummy_stac_api,
+        cache,
+        expected_searches,
+    ):
+        # Multiple source constraints with same essentials,
+        # and some differences in non-essential details
+        source_constraints = [
+            (
+                ("load_stac", (f"{dummy_stac_api}/collections/collection-123", (), ("B02",))),
+                {"bands": ["B02"], "breakfast": "cereal"},
+            ),
+            (
+                ("load_stac", (f"{dummy_stac_api}/collections/collection-123", (), ("B02",))),
+                {"bands": ["B02"], "shoe:size": 42},
+            ),
+            (
+                ("load_stac", (f"{dummy_stac_api}/collections/collection-123", (), ("B02",))),
+                {"bands": ["B02"], "pets": ["dog"]},
+            ),
+        ]
+        global_extent = determine_global_extent(
+            source_constraints=source_constraints, catalog=dummy_catalog, cache=cache
+        )
+        expected = BoundingBox(west=2, south=49, east=7, north=52, crs="EPSG:4326").approx(abs=1e-6)
+        assert global_extent == {
+            "global_extent": expected,
+            "global_extent_variants": {
+                "assets_full_bbox": expected,
+            },
+        }
+        # Check request history histogram by path for search requests
+        assert collections.Counter(
+            (r["method"], r["path"]) for r in dummy_stac_api_server.request_history
+        ) == dirty_equals.IsPartialDict({("GET", "/search"): expected_searches})
 
     def test_extract_spatial_extent_from_constraint_load_collection_type_stac_minimal(
         self, dummy_catalog, extract_source_constraints, dummy_stac_api

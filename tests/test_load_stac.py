@@ -1230,6 +1230,17 @@ class TestTemporalExtent:
         assert extent.intersects_interval([None, "2025-01-01"]) == False
         assert extent.intersects_interval([None, "2025-04-04"]) == True
 
+    def test_as_cache_key(self):
+        extent1 = _TemporalExtent("2024-02-01", "2024-02-10")
+        extent2 = _TemporalExtent("2024-02-01", "2024-02-10")
+        extent3 = _TemporalExtent(None, "2024-02-10")
+        extent4 = _TemporalExtent(None, "2024-02-10")
+        extent5 = _TemporalExtent("2024-02-10", None)
+
+        cache = {extent1: 1, extent3: 3}
+        assert cache[extent2] == 1
+        assert cache[extent4] == 3
+        assert extent5 not in cache
 
 class TestSpatialExtent:
     def test_empty(self):
@@ -1244,6 +1255,18 @@ class TestSpatialExtent:
         assert extent.intersects((3.3, 51.1, 3.5, 51.5)) == True
         assert extent.intersects((3.9, 51.9, 4.4, 52.2)) == True
         assert extent.intersects((5, 51.1, 6, 52.2)) == False
+
+    def test_as_cache_key(self):
+        extent1 = _SpatialExtent(bbox=None)
+        extent2 = _SpatialExtent(bbox=None)
+        extent3 = _SpatialExtent(bbox=BoundingBox(west=1, south=2, east=3, north=4, crs=4326))
+        extent4 = _SpatialExtent(bbox=BoundingBox(west=1, south=2, east=3, north=4, crs=4326))
+        extent5 = _SpatialExtent(bbox=BoundingBox(west=10, south=20, east=30, north=40, crs=4326))
+
+        cache = {extent1: 1, extent3: 3}
+        assert cache[extent2] == 1
+        assert cache[extent4] == 3
+        assert extent5 not in cache
 
 
 class TestSpatioTemporalExtent:
@@ -1329,6 +1352,19 @@ class TestSpatioTemporalExtent:
             ),
         )
         assert extent.collection_intersects(collection) == expected
+
+    def test_as_cache_key(self):
+        bbox1 = BoundingBox(west=1, south=2, east=3, north=4, crs=4326)
+        extent1 = _SpatioTemporalExtent(bbox=bbox1, from_date="2024-02-01")
+        extent2 = _SpatioTemporalExtent(bbox=bbox1, from_date="2024-02-01")
+        extent3 = _SpatioTemporalExtent(bbox=None, from_date="2024-02-01", to_date="2024-02-10")
+        extent4 = _SpatioTemporalExtent(bbox=None, from_date="2024-02-01", to_date="2024-02-10")
+        extent5 = _SpatioTemporalExtent(bbox=bbox1, from_date="2024-02-01", to_date="2024-02-10")
+
+        cache = {extent1: 1, extent3: 3}
+        assert cache[extent2] == 1
+        assert cache[extent4] == 3
+        assert extent5 not in cache
 
 
 @pytest.mark.parametrize(
