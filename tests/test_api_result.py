@@ -3748,22 +3748,30 @@ class TestLoadStac:
             "https://stac.test/collections/sentinel-2-l2a",
             data=get_test_data_file("stac/issue830_alternate_url/collections_sentinel-2-l2a.json").read_text(),
         )
-        urllib_and_request_mock.get(
-            "https://stac.test/search", data=item_json("stac/issue830_alternate_url/search.json")
+        # Use get_flexible for search URLs to avoid coupling to the page limit default
+        urllib_and_request_mock.get_flexible(
+            "https://stac.test/search", data=item_json("stac/issue830_alternate_url/search.json"),
+            ignore_params=("limit",),
         )
-        urllib_and_request_mock.get(
-            "https://stac.test/search?limit=20&bbox=5.07%2C51.215%2C5.08%2C51.22&datetime=2024-06-23T00%3A00%3A00Z%2F2024-06-23T23%3A59%3A59.999000Z&collections=sentinel-2-l2a&fields=%2Bproperties.proj%3Abbox%2C%2Bproperties.proj%3Aepsg%2C%2Bproperties.proj%3Ashape",
-            data=item_json("stac/issue830_alternate_url/search_queried.json"))
-        urllib_and_request_mock.get(
-            "https://stac.test/search?limit=20&bbox=5.07%2C51.215%2C5.08%2C51.22&datetime=2024-06-16T00%3A00%3A00Z%2F2024-06-23T23%3A59%3A59.999000Z&collections=sentinel-2-l2a&fields=%2Bproperties.proj%3Abbox%2C%2Bproperties.proj%3Ashape%2C%2Bproperties.proj%3Aepsg&token=MTcxOTEzOTU3OTAyNCxTMkJfTVNJTDJBXzIwMjQwNjIzVDEwNDYxOV9OMDUxMF9SMDUxX1QzMVVGU18yMDI0MDYyM1QxMjIxNTYsc2VudGluZWwtMi1sMmE%3D",
-            data=item_json("stac/issue830_alternate_url/search_queried_page2.json"))
-        urllib_and_request_mock.get(
-            "https://stac.test/search?limit=20&bbox=5.07%2C51.215%2C5.08%2C51.22&datetime=2024-06-23T00%3A00%3A00Z%2F2024-06-23T23%3A59%3A59.999000Z&collections=sentinel-2-l2a&fields=%2Btype%2C%2Bgeometry%2C%2Bproperties%2C%2Bid%2C%2Bbbox%2C%2Bstac_version%2C%2Bassets%2C%2Blinks%2C%2Bcollection",
+        urllib_and_request_mock.get_flexible(
+            "https://stac.test/search?limit=100&bbox=5.07%2C51.215%2C5.08%2C51.22&datetime=2024-06-23T00%3A00%3A00Z%2F2024-06-23T23%3A59%3A59.999000Z&collections=sentinel-2-l2a&fields=%2Bproperties.proj%3Abbox%2C%2Bproperties.proj%3Aepsg%2C%2Bproperties.proj%3Ashape",
             data=item_json("stac/issue830_alternate_url/search_queried.json"),
+            ignore_params=("limit",),
         )
-        urllib_and_request_mock.get(
-            "https://stac.test/search?limit=20&bbox=5.07%2C51.215%2C5.08%2C51.22&datetime=2024-06-23T00%3A00%3A00Z%2F2024-06-23T23%3A59%3A59.999000Z&collections=sentinel-2-l2a",
+        urllib_and_request_mock.get_flexible(
+            "https://stac.test/search?limit=100&bbox=5.07%2C51.215%2C5.08%2C51.22&datetime=2024-06-16T00%3A00%3A00Z%2F2024-06-23T23%3A59%3A59.999000Z&collections=sentinel-2-l2a&fields=%2Bproperties.proj%3Abbox%2C%2Bproperties.proj%3Ashape%2C%2Bproperties.proj%3Aepsg&token=MTcxOTEzOTU3OTAyNCxTMkJfTVNJTDJBXzIwMjQwNjIzVDEwNDYxOV9OMDUxMF9SMDUxX1QzMVVGU18yMDI0MDYyM1QxMjIxNTYsc2VudGluZWwtMi1sMmE%3D",
+            data=item_json("stac/issue830_alternate_url/search_queried_page2.json"),
+            ignore_params=("limit",),
+        )
+        urllib_and_request_mock.get_flexible(
+            "https://stac.test/search?limit=100&bbox=5.07%2C51.215%2C5.08%2C51.22&datetime=2024-06-23T00%3A00%3A00Z%2F2024-06-23T23%3A59%3A59.999000Z&collections=sentinel-2-l2a&fields=%2Btype%2C%2Bgeometry%2C%2Bproperties%2C%2Bid%2C%2Bbbox%2C%2Bstac_version%2C%2Bassets%2C%2Blinks%2C%2Bcollection",
             data=item_json("stac/issue830_alternate_url/search_queried.json"),
+            ignore_params=("limit",),
+        )
+        urllib_and_request_mock.get_flexible(
+            "https://stac.test/search?limit=100&bbox=5.07%2C51.215%2C5.08%2C51.22&datetime=2024-06-23T00%3A00%3A00Z%2F2024-06-23T23%3A59%3A59.999000Z&collections=sentinel-2-l2a",
+            data=item_json("stac/issue830_alternate_url/search_queried.json"),
+            ignore_params=("limit",),
         )
 
         process_graph = {
@@ -3842,9 +3850,10 @@ class TestLoadStac:
                 "stac/issue830_alternate_url_s3/catalogue.dataspace.copernicus.eu/stac/index.json"
             ).read_text(),
         )
-        urllib_and_request_mock.get(
+        urllib_and_request_mock.get_flexible(
             "https://catalogue.dataspace.copernicus.eu/stac/search?limit=20&bbox=5.07%2C51.215%2C5.08%2C51.22&datetime=2023-06-01T00%3A00%3A00Z%2F2023-06-30T23%3A59%3A59.999000Z&collections=GLOBAL-MOSAICS",
             data=item_json("stac/issue830_alternate_url_s3/catalogue.dataspace.copernicus.eu/stac/search_queried.json"),
+            ignore_params=("limit",),
         )
 
         process_graph = {
@@ -4748,9 +4757,10 @@ class TestLoadStac:
                 "stac/issue_copernicus_global_mosaics/stac.dataspace.copernicus.eu/v1/collections/sentinel-2-global-mosaics.json"
             ),
         )
-        urllib_and_request_mock.get(
+        urllib_and_request_mock.get_flexible(
             "https://stac.dataspace.copernicus.eu/v1/search?limit=20&bbox=2.1%2C35.31%2C2.2%2C35.32&datetime=2023-01-01T00%3A00%3A00Z%2F2023-01-01T23%3A59%3A59.999000Z&collections=sentinel-2-global-mosaics",
             data=item_json("stac/issue_copernicus_global_mosaics/stac.dataspace.copernicus.eu/v1/search_queried.json"),
+            ignore_params=("limit",),
         )
         urllib_and_request_mock.get(
             "https://stac.dataspace.copernicus.eu/v1/",

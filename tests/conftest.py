@@ -5,6 +5,7 @@ import os
 import shutil
 import sys
 import typing
+import urllib.parse
 from datetime import datetime
 from glob import glob
 from pathlib import Path
@@ -452,6 +453,8 @@ class UrllibAndRequestMocker:
     def __init__(self, urllib_mock, requests_mock):
         self.urllib_mock = urllib_mock
         self.requests_mock = requests_mock
+        self._flexible_responses: dict[str, dict[tuple, bytes]] = {}
+        self._flexible_ignore: dict[str, frozenset] = {}
 
     def get(self, href, data):
         code = 200
@@ -459,6 +462,71 @@ class UrllibAndRequestMocker:
         if isinstance(data, str):
             data = data.encode("utf-8")
         self.requests_mock.get(href, content=data)
+
+    @staticmethod
+    def _normalize_params(url: str, ignore_params: frozenset) -> tuple:
+        """Parse URL query string, remove ignored params, return hashable normalized form."""
+        parsed = urllib.parse.urlparse(url)
+        params = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
+        for p in ignore_params:
+            params.pop(p, None)
+        return tuple(sorted((k, tuple(sorted(vs))) for k, vs in params.items()))
+
+    def get_flexible(self, href: str, data, ignore_params=()):
+        """Register a GET mock that matches URLs ignoring specified query parameters.
+        Example usage:
+            mock.get_flexible(
+                "https://stac.test/search?limit=100&bbox=1,2,3,4&collections=foo",
+                data=my_response,
+                ignore_params=("limit",),
+            )
+
+        All registrations for the same base URL path share a single dispatcher
+        callback, so call get_flexible() for **all** URLs under a given path
+        (don't mix with get() for the same base path).
+        """
+        ignore = frozenset(ignore_params)
+        parsed = urllib.parse.urlparse(href)
+        base_url = urllib.parse.urlunparse((parsed.scheme, parsed.netloc, parsed.path, "", "", ""))
+        norm_key = self._normalize_params(href, ignore)
+
+        if isinstance(data, str):
+            data_bytes = data.encode("utf-8")
+        else:
+            data_bytes = data
+
+        if base_url not in self._flexible_responses:
+            self._flexible_responses[base_url] = {}
+            self._flexible_ignore[base_url] = ignore
+
+        self._flexible_responses[base_url][norm_key] = data_bytes
+        self._install_flexible_handler(base_url)
+
+    def _install_flexible_handler(self, base_url: str):
+        responses = self._flexible_responses[base_url]
+        ignore = self._flexible_ignore[base_url]
+        normalize = self._normalize_params
+
+        def lookup(url: str) -> typing.Optional[bytes]:
+            key = normalize(url, ignore)
+            return responses.get(key)
+
+        def urllib_handler(req):
+            data = lookup(req.full_url)
+            if data is not None:
+                return UrllibMocker.Response(data=data)
+            return UrllibMocker.Response(code=404, msg=f"No flexible match for {req.full_url}")
+
+        self.urllib_mock.register(method="GET", url=base_url, response=urllib_handler)
+
+        def requests_handler(request, context):
+            data = lookup(request.url)
+            if data is not None:
+                return data
+            context.status_code = 404
+            return b"Not Found"
+
+        self.requests_mock.get(base_url, content=requests_handler)
 
 
 @pytest.fixture
