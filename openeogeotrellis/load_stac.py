@@ -1218,7 +1218,7 @@ class ItemCollection:
             fields = None
 
         retry = _JitteredRetry(
-            total=4,
+            total=7,
             backoff_factor=2,
             status_forcelist=frozenset([429, 500, 502, 503, 504]),
             allowed_methods=Retry.DEFAULT_ALLOWED_METHODS.union({"POST"}),
