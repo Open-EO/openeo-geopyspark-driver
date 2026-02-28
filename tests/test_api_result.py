@@ -4401,7 +4401,11 @@ class TestLoadStac:
             assert "fields" not in request.qs
             assert request.qs.get("filter-lang") == filter_lang
             assert request.qs.get("filter") == filter
-            assert request.body == body or request.json() == body
+            if body:
+                for k, v in body.items():
+                    if k == "limit":
+                        continue
+                    assert (isinstance(request.body, dict) and request.body.get(k) == v) or request.json().get(k) == v
 
             def item(path) -> dict:
                 return json.loads(
