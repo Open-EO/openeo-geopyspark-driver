@@ -6,6 +6,7 @@ import datetime as dt
 import functools
 import logging
 import os
+import random
 import re
 import time
 from dataclasses import dataclass
@@ -62,6 +63,26 @@ logger = logging.getLogger(__name__)
 REQUESTS_TIMEOUT_SECONDS = 60
 
 STAC_API_PER_PAGE_LIMIT_DEFAULT = 100
+
+
+class _JitteredRetry(Retry):
+    """Retry with jitter to avoid thundering herd on 429 responses.
+
+    - No Retry-After header: full jitter (random in [0, base_backoff])
+    - Retry-After header present: respects it as a minimum with full jitter
+    """
+
+    def get_backoff_time(self) -> float:
+        base = super().get_backoff_time()
+        return random.uniform(0, base)
+
+    def sleep_for_retry(self, response=None) -> bool:
+        retry_after = self.get_retry_after(response)
+        if retry_after is not None:
+            jitter = random.uniform(0, super().get_backoff_time())
+            time.sleep(retry_after + jitter)
+            return True
+        return False
 
 
 class NoDataAvailableException(OpenEOApiException):
@@ -1196,7 +1217,7 @@ class ItemCollection:
             # https://stac.openeo.vito.be/ and https://stac.terrascope.be
             fields = None
 
-        retry = requests.adapters.Retry(
+        retry = _JitteredRetry(
             total=4,
             backoff_factor=2,
             status_forcelist=frozenset([429, 500, 502, 503, 504]),
