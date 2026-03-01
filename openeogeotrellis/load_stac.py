@@ -1555,6 +1555,7 @@ class _ProjectionMetadata:
     - "proj:transform"
     """
 
+    # TODO: enforce immutability better (e.g. by implementing through dataclasses/attrs)?
     # TODO: move to more generic geometry/projection utility module for better reuse and cleaner separation?
     # TODO: any added value to leverage projection extension support from pystac in some way?
 
@@ -1577,6 +1578,19 @@ class _ProjectionMetadata:
 
     def __repr__(self) -> str:
         return f"_ProjectionMetadata(code={self._code!r}, bbox={self._bbox!r}, shape={self._shape!r})"
+
+    def _key(self) -> tuple:
+        # TODO: use normalized `self.bbox` instead of `self._bbox` + `self._transform`
+        #       to also cover equivalence of these two?
+        return (self._code, self._shape, self._bbox, self._transform)
+
+    def __hash__(self):
+        return hash(self._key())
+
+    def __eq__(self, other):
+        if isinstance(other, _ProjectionMetadata):
+            return self._key() == other._key()
+        return NotImplemented
 
     @property
     def code(self) -> Union[str, None]:
