@@ -942,6 +942,24 @@ class TestProjectionMetadata:
         coverage = metadata.coverage_for(extent)
         assert coverage == expected
 
+    def test_hashing_for_set(self):
+        metadatas = {
+            _ProjectionMetadata(epsg=4326, shape=[10, 20], bbox=[1, 2, 3, 4]),
+            _ProjectionMetadata(code="EPSG:4326", shape=(10, 20), bbox=(1, 2, 3, 4)),
+        }
+        assert metadatas == {
+            _ProjectionMetadata(code="EPSG:4326", shape=(10, 20), bbox=(1, 2, 3, 4)),
+        }
+
+    def test_hashing_for_dict(self):
+        data = {}
+        data[_ProjectionMetadata(epsg=4326, shape=[10, 20], bbox=[1, 2, 3, 4])] = "red"
+        data[_ProjectionMetadata(code="EPSG:4326", shape=(10, 20), bbox=(1, 2, 3, 4))] = "green"
+        data[_ProjectionMetadata(epsg=4326, shape=[100, 100], bbox=[1, 2, 3, 4])] = "blue"
+        assert data == {
+            _ProjectionMetadata(code="EPSG:4326", shape=(10, 20), bbox=(1, 2, 3, 4)): "green",
+            _ProjectionMetadata(code="EPSG:4326", shape=(100, 100), bbox=(1, 2, 3, 4)): "blue",
+        }
 
 
 
