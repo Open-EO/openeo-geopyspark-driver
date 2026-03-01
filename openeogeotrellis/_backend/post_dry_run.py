@@ -4,7 +4,8 @@ import dataclasses
 import collections
 import logging
 import math
-from typing import Callable, List, Tuple, Union, Dict
+import typing
+from typing import Callable, List, Tuple, Union, Dict, Set
 
 from openeo.util import deep_get
 from openeo_driver.backend import AbstractCollectionCatalog, LoadParameters
@@ -291,32 +292,20 @@ def _extract_spatial_extent_from_constraint_load_stac(
         stac_io=None,  # TODO?
     )
 
-    # Collect asset projection metadata
+    # Collect set of (uqique) asset projection metadata items
     _log.info(f"Collecting projection metadata from {len(item_collection.items)} items")
-    projection_metadatas: List[openeogeotrellis.load_stac._ProjectionMetadata] = [
+    projection_metadatas: Set[openeogeotrellis.load_stac._ProjectionMetadata] = {
         openeogeotrellis.load_stac._ProjectionMetadata.from_asset(asset=asset, item=item)
         for item, band_assets in item_collection.iter_items_with_band_assets()
         for asset in band_assets.values()
-    ]
+    }
 
-    # Deduplicate: assets with identical projection properties produce identical
-    # bbox/coverage/resolution results. E.g. Sentinel-2 items have ~43 assets per item
-    # that often share the same proj:bbox.
-    seen_keys = set()
-    unique_projection_metadatas = []
-    for p in projection_metadatas:
-        key = (p._code, p._bbox, p._shape, p._transform)
-        if key not in seen_keys:
-            seen_keys.add(key)
-            unique_projection_metadatas.append(p)
     _log.info(
-        f"Collected {len(projection_metadatas)} projection metadata entries"
-        f" from {len(item_collection.items)} items,"
-        f" deduplicated to {len(unique_projection_metadatas)} unique entries"
+        f"Collected {len(projection_metadatas)} projection metadata entries" f" from {len(item_collection.items)} items"
     )
 
     # Determine most common grid (CRS and resolution) among assets
-    target_grid = _determine_best_grid_from_proj_metadata(unique_projection_metadatas)
+    target_grid = _determine_best_grid_from_proj_metadata(projection_metadatas)
     target_crs = target_grid.crs_raw if target_grid else None
     _log.info(f"Determined {target_grid=}")
 
@@ -325,7 +314,7 @@ def _extract_spatial_extent_from_constraint_load_stac(
     # per-element reprojection overhead in the merger.
     assets_full_bbox_merger = BoundingBoxMerger(crs=target_crs)
     crs_bbox_groups: Dict[Union[str, None], List[BoundingBox]] = collections.defaultdict(list)
-    for proj_metadata in unique_projection_metadatas:
+    for proj_metadata in projection_metadatas:
         if asset_bbox := proj_metadata.to_bounding_box():
             crs_bbox_groups[asset_bbox.crs].append(asset_bbox)
     for crs, bboxes in crs_bbox_groups.items():
@@ -340,7 +329,7 @@ def _extract_spatial_extent_from_constraint_load_stac(
 
     aligned_extent_coverage_merger = BoundingBoxMerger(crs=target_crs)
     if extent_orig:
-        for proj_metadata in unique_projection_metadatas:
+        for proj_metadata in projection_metadatas:
             if extent_coverage := proj_metadata.coverage_for(extent_orig):
                 aligned_extent_coverage_merger.add(extent_coverage)
     assets_full_bbox = assets_full_bbox_merger.get()
@@ -379,7 +368,8 @@ def _extract_spatial_extent_from_constraint_load_stac(
 
 
 def _determine_best_grid_from_proj_metadata(
-    projection_metadatas: list[openeogeotrellis.load_stac._ProjectionMetadata],
+    # TODO: type annotation `collections.abc.Collection` would be more future proof, but we're still stuck at python 3.8 compability #1060
+    projection_metadatas: typing.Collection[openeogeotrellis.load_stac._ProjectionMetadata],
 ) -> Union[_GridInfo, None]:
     """
     Determine best CRS+resolution (e.g. most common)
