@@ -2311,6 +2311,59 @@ class GeopysparkDataCube(DriverDataCube):
 
                             items[java_item.id()] = item
 
+                        return items
+                    elif batch_mode and max_level.layer_type == gps.LayerType.SPATIAL and sample_by_feature:
+                        if separate_asset_per_band:
+                            raise OpenEOApiException(
+                                message="separate_asset_per_band is not supported with sample_by_feature"
+                            )
+                        # EP-3874 user requests to output data by polygon
+                        _log.info("Output one tiff file per feature.")
+                        geometries = format_options['geometries']
+                        if isinstance(geometries, MultiPolygon):
+                            geometries = GeometryCollection(geometries.geoms)
+                        projected_polygons = to_projected_polygons(get_jvm(), geometries)
+                        labels = self.get_labels(geometries,feature_id_property)
+                        java_items = get_jvm().org.openeo.geotrellis.geotiff.package.saveSamplesSpatial(
+                            max_level_rdd, save_directory, projected_polygons, labels, compression,
+                            gtiff_options)
+                        items = {}
+
+                        for java_item in java_items:
+                            assets = {}
+
+                            stac_datetime = java_item.datetime()
+                            bbox = java_item.bbox()
+
+                            for asset_key, asset in java_item.assets().items():
+                                path = asset.path()
+                                band_indices = asset.bandIndices()
+                                assets[asset_key] = {
+                                    "href": str(path),
+                                    "type": "image/tiff; application=geotiff",
+                                    "roles": ["data"],
+                                    "bands": (
+                                        [band for i, band in enumerate(bands) if i in band_indices]
+                                        if band_indices
+                                        else bands
+                                    ),
+                                    "nodata": nodata,
+                                    "datetime": stac_datetime,
+                                    "bbox": to_latlng_bbox(bbox),
+                                    "geometry": bbox_to_geojson(to_latlng_bbox(bbox)),
+                                }
+                            assets = add_gdalinfo_objects(assets)
+
+                            item = {
+                                "id": java_item.id(),
+                                "properties": {"datetime": stac_datetime},
+                                "geometry": bbox_to_geojson(to_latlng_bbox(bbox)),
+                                "bbox": to_latlng_bbox(bbox),
+                                "assets": assets,
+                            }
+
+                            items[java_item.id()] = item
+
                         return items  # TODO: retain backwards compatibility
                     else:
                         if tile_grid:
