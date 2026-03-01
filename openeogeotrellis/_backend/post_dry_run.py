@@ -298,20 +298,50 @@ def _extract_spatial_extent_from_constraint_load_stac(
         for item, band_assets in item_collection.iter_items_with_band_assets()
         for asset in band_assets.values()
     ]
-    _log.info(f"Collected {len(item_collection.items)} items, {len(projection_metadatas)} projection metadata entries")
+
+    # Deduplicate: assets with identical projection properties produce identical
+    # bbox/coverage/resolution results. E.g. Sentinel-2 items have ~43 assets per item
+    # that often share the same proj:bbox.
+    seen_keys = set()
+    unique_projection_metadatas = []
+    for p in projection_metadatas:
+        key = (p._code, p._bbox, p._shape, p._transform)
+        if key not in seen_keys:
+            seen_keys.add(key)
+            unique_projection_metadatas.append(p)
+    _log.info(
+        f"Collected {len(projection_metadatas)} projection metadata entries"
+        f" from {len(item_collection.items)} items,"
+        f" deduplicated to {len(unique_projection_metadatas)} unique entries"
+    )
 
     # Determine most common grid (CRS and resolution) among assets
-    target_grid = _determine_best_grid_from_proj_metadata(projection_metadatas)
+    target_grid = _determine_best_grid_from_proj_metadata(unique_projection_metadatas)
     target_crs = target_grid.crs_raw if target_grid else None
     _log.info(f"Determined {target_grid=}")
 
-    # Merge asset bounding boxes (full native extent, and "aligned" part of covered extent)
+    # Merge asset bounding boxes (full native extent, and "aligned" part of covered extent).
+    # Batch by CRS: compute min/max within each CRS group to avoid
+    # per-element reprojection overhead in the merger.
     assets_full_bbox_merger = BoundingBoxMerger(crs=target_crs)
-    aligned_extent_coverage_merger = BoundingBoxMerger(crs=target_crs)
-    for proj_metadata in projection_metadatas:
+    crs_bbox_groups: Dict[Union[str, None], List[BoundingBox]] = collections.defaultdict(list)
+    for proj_metadata in unique_projection_metadatas:
         if asset_bbox := proj_metadata.to_bounding_box():
-            assets_full_bbox_merger.add(asset_bbox)
-            if extent_orig and (extent_coverage := proj_metadata.coverage_for(extent_orig)):
+            crs_bbox_groups[asset_bbox.crs].append(asset_bbox)
+    for crs, bboxes in crs_bbox_groups.items():
+        merged_group = BoundingBox(
+            west=min(b.west for b in bboxes),
+            south=min(b.south for b in bboxes),
+            east=max(b.east for b in bboxes),
+            north=max(b.north for b in bboxes),
+            crs=crs,
+        )
+        assets_full_bbox_merger.add(merged_group)
+
+    aligned_extent_coverage_merger = BoundingBoxMerger(crs=target_crs)
+    if extent_orig:
+        for proj_metadata in unique_projection_metadatas:
+            if extent_coverage := proj_metadata.coverage_for(extent_orig):
                 aligned_extent_coverage_merger.add(extent_coverage)
     assets_full_bbox = assets_full_bbox_merger.get()
     assets_covered_bbox = aligned_extent_coverage_merger.get()
