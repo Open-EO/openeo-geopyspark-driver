@@ -46,6 +46,7 @@ from openeogeotrellis.load_stac import (
     _is_sentinel2_reflectance_asset,
     _ResolutionTracker,
     STAC_API_PER_PAGE_LIMIT_DEFAULT,
+    STAC_API_RETRY_TOTAL,
 )
 from openeogeotrellis.testing import DummyStacApiServer, gps_config_overrides
 from openeogeotrellis.util.geometry import bbox_to_geojson
@@ -521,7 +522,7 @@ def test_stac_api_POST_item_search_resilience():
             env=EvalEnv({"pyramid_levels": "highest"}),
         )
 
-    assert [resp.call_count for resp in search_transient_error_resps] == [5]
+    assert [resp.call_count for resp in search_transient_error_resps] == [STAC_API_RETRY_TOTAL + 1]
 
 
 class TestStacMetadataParser:

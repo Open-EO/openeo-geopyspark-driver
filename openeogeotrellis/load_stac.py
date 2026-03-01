@@ -72,6 +72,8 @@ class _JitteredRetry(Retry):
     - Retry-After header present: respects it as a minimum with full jitter
     """
 
+    # TODO: just use standard `backoff_jitter` feature from `Retry`?
+
     def get_backoff_time(self) -> float:
         base = super().get_backoff_time()
         return random.uniform(0, base)
@@ -1089,6 +1091,9 @@ def _get_item_temporal_extent(item: pystac.Item) -> Tuple[datetime.datetime, dat
     return start, end
 
 
+STAC_API_RETRY_TOTAL = 7
+
+
 class ItemCollection:
     """
     Collection of STAC Items.
@@ -1218,7 +1223,7 @@ class ItemCollection:
             fields = None
 
         retry = _JitteredRetry(
-            total=7,
+            total=STAC_API_RETRY_TOTAL,
             backoff_factor=2,
             status_forcelist=frozenset([429, 500, 502, 503, 504]),
             allowed_methods=Retry.DEFAULT_ALLOWED_METHODS.union({"POST"}),
