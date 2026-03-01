@@ -38,7 +38,6 @@ from openeo_driver.errors import (
 from openeo_driver.jobregistry import PARTIAL_JOB_STATUS
 from openeo_driver.users import User
 from openeo_driver.util.geometry import BoundingBox, GeometryBufferer
-from openeo_driver.util.http import requests_with_retry
 from openeo_driver.util.utm import utm_zone_from_epsg
 from openeo_driver.utils import EvalEnv
 from pystac import STACObject
@@ -1977,7 +1976,11 @@ def _await_stac_object(
     stac_io: Optional[pystac.stac_io.StacIO] = None,
 ) -> STACObject:
     if stac_io is None:
-        session = requests_with_retry(total=5, backoff_factor=1, status_forcelist={429, 500, 502, 503, 504})
+        retry = _JitteredRetry(total=STAC_API_RETRY_TOTAL, backoff_factor=1, status_forcelist={429, 500, 502, 503, 504})
+        adapter = requests.adapters.HTTPAdapter(max_retries=retry)
+        session = requests.Session()
+        session.mount("http://", adapter)
+        session.mount("https://", adapter)
         stac_io = ResilientStacIO(session)
 
     while True:
