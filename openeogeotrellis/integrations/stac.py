@@ -57,7 +57,7 @@ class ResilientStacIO(DefaultStacIO):
 
 class LoggingStacApiIO(StacApiIO):
     """
-    StacApiIO subclass that logs every HTTP request at INFO level,
+    StacApiIO subclass that logs every HTTP request,
     including the method, URL, response status code, and elapsed time.
 
     Uses a requests response hook so every request made through the session
