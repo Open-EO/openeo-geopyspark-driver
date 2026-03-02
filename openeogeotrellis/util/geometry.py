@@ -30,13 +30,22 @@ class BoundingBoxMerger:
 
     def get(self) -> Union[None, BoundingBox]:
         """Get the merged bounding box (or None if no boxes were added)."""
-        if self._bboxes_per_crs:
+        if not self._bboxes_per_crs:
+            return None
+        elif self._crs:
             return functools.reduce(
                 lambda b1, b2: b1.union(b2),
                 (b.align_to(self._crs) for b in self._bboxes_per_crs.values()),
             )
+        elif len(self._bboxes_per_crs) == 1:
+            # Special case: no explicit target CRS:
+            # only works if all input bboxes used same CRS,
+            # so we can return their union as is.
+            return self._bboxes_per_crs.popitem()[1]
         else:
-            return None
+            raise ValueError(
+                f"Undefined bounding box merging: no target CRS specified, but multiple CRSes across input: {sorted(self._bboxes_per_crs.keys())}."
+            )
 
 
 class GridSnapper:

@@ -1,5 +1,7 @@
 import itertools
 import mock
+import pytest
+
 from openeo_driver.util.geometry import BoundingBox
 
 from openeogeotrellis.util.geometry import BoundingBoxMerger, GridSnapper, bbox_to_geojson
@@ -26,6 +28,19 @@ class TestBoundingBoxMerger:
         merger = BoundingBoxMerger(crs="EPSG:32631")
         merger.add(BoundingBox(3.1, 51.1, 3.2, 51.2, crs="EPSG:4326"))
         assert merger.get() == BoundingBox(506986, 5660950, 514003, 5672085, crs="EPSG:32631").approx(abs=1)
+
+    @pytest.mark.parametrize("input_crs", ["EPSG:4326", None])
+    def test_no_target_crs_but_input_with_single_crs(self, input_crs):
+        merger = BoundingBoxMerger()
+        merger.add(BoundingBox(3.1, 51.1, 3.2, 51.2, crs=input_crs))
+        assert merger.get() == BoundingBox(3.1, 51.1, 3.2, 51.2, crs=input_crs)
+
+    def test_no_target_crs_multiple_input_crses(self):
+        merger = BoundingBoxMerger()
+        merger.add(BoundingBox(3.1, 51.1, 3.2, 51.2, crs="EPSG:4326"))
+        merger.add(BoundingBox(506980, 5660950, 514000, 5672080, crs="EPSG:32631"))
+        with pytest.raises(ValueError, match="Undefined.*merging.*no target.*multiple CRSes.*EPSG:32631.*EPSG:4326"):
+            _ = merger.get()
 
     def test_crs_grouped_reprojections(self):
         with mock.patch.object(
