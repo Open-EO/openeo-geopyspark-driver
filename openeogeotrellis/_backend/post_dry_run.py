@@ -313,21 +313,12 @@ def _extract_spatial_extent_from_constraint_load_stac(
     # Batch by CRS: compute min/max within each CRS group to avoid
     # per-element reprojection overhead in the merger.
     assets_full_bbox_merger = BoundingBoxMerger(crs=target_crs)
-    crs_bbox_groups: Dict[Union[str, None], List[BoundingBox]] = collections.defaultdict(list)
+    aligned_extent_coverage_merger = BoundingBoxMerger(crs=target_crs)
     for proj_metadata in projection_metadatas:
         if asset_bbox := proj_metadata.to_bounding_box():
-            crs_bbox_groups[asset_bbox.crs].append(asset_bbox)
-    for crs, bboxes in crs_bbox_groups.items():
-        merged_group = BoundingBox(
-            west=min(b.west for b in bboxes),
-            south=min(b.south for b in bboxes),
-            east=max(b.east for b in bboxes),
-            north=max(b.north for b in bboxes),
-            crs=crs,
-        )
-        assets_full_bbox_merger.add(merged_group)
-
-    aligned_extent_coverage_merger = BoundingBoxMerger(crs=target_crs)
+            assets_full_bbox_merger.add(asset_bbox)
+            if extent_orig and (extent_coverage := proj_metadata.coverage_for(extent_orig)):
+                aligned_extent_coverage_merger.add(extent_coverage)
     if extent_orig:
         for proj_metadata in projection_metadatas:
             if extent_coverage := proj_metadata.coverage_for(extent_orig):

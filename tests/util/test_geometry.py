@@ -1,3 +1,5 @@
+import itertools
+import mock
 from openeo_driver.util.geometry import BoundingBox
 
 from openeogeotrellis.util.geometry import BoundingBoxMerger, GridSnapper, bbox_to_geojson
@@ -24,6 +26,20 @@ class TestBoundingBoxMerger:
         merger = BoundingBoxMerger(crs="EPSG:32631")
         merger.add(BoundingBox(3.1, 51.1, 3.2, 51.2, crs="EPSG:4326"))
         assert merger.get() == BoundingBox(506986, 5660950, 514003, 5672085, crs="EPSG:32631").approx(abs=1)
+
+    def test_crs_grouped_reprojections(self):
+        with mock.patch.object(
+            BoundingBox, "reproject", wraps=BoundingBox.reproject, autospec=True
+        ) as wrapped_reproject:
+            merger = BoundingBoxMerger(crs="EPSG:32631")
+            for i, j in itertools.product(range(10), range(10)):
+                west = 3 + 0.1 * i
+                south = 51 + 0.1 * j
+                merger.add(BoundingBox(west=west, south=south, east=west + 0.1, north=south + 0.1, crs="EPSG:4326"))
+            merged = merger.get()
+
+        assert merged == BoundingBox(3, 51, 4, 52, crs="EPSG:4326").reproject("EPSG:32631").approx(abs=1)
+        assert wrapped_reproject.call_count == 1
 
 
 class TestGridSnapper:
