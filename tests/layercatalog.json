@@ -449,13 +449,6 @@
         "type": "file-s2",
         "opensearch_collection_id": "urn:eop:VITO:TERRASCOPE_S2_TOC_V2",
         "root_path": "/data/MTDA/TERRASCOPE_Sentinel2/TOC_V2",
-        "check_missing_products": {
-          "method": "terrascope",
-          "creo_catalog": {
-            "mission": "Sentinel2",
-            "level": "LEVEL1C"
-          }
-        },
         "provider:backend": "terrascope"
       }
     }
