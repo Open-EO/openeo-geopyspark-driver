@@ -5,7 +5,7 @@ import collections
 import logging
 import math
 import typing
-from typing import Callable, List, Tuple, Union, Dict, Set
+from typing import Callable, List, Tuple, Union, Dict, Set, Optional
 
 from openeo.util import deep_get
 from openeo_driver.backend import AbstractCollectionCatalog, LoadParameters
@@ -230,7 +230,10 @@ def _extract_spatial_extent_from_constraint_load_collection(
 
     if deep_get(metadata, "_vito", "data_source", "type", default=None) == "stac":
         stac_url = deep_get(metadata, "_vito", "data_source", "url")
-        return _extract_spatial_extent_from_constraint_load_stac(stac_url=stac_url, constraint=constraint)
+        load_stac_feature_flags = deep_get(metadata, "_vito", "data_source", "load_stac_feature_flags", default={})
+        return _extract_spatial_extent_from_constraint_load_stac(
+            stac_url=stac_url, constraint=constraint, feature_flags=load_stac_feature_flags
+        )
 
     # TODO Extracting pixel grid info from collection metadata might might be unreliable
     #       and should be replaced by more precise item-level metadata where possible.
@@ -268,7 +271,7 @@ def _extract_spatial_extent_from_constraint_load_collection(
 
 
 def _extract_spatial_extent_from_constraint_load_stac(
-    stac_url: str, *, constraint: dict
+    stac_url: str, *, constraint: dict, feature_flags: Optional[dict] = None
 ) -> Union[None, AlignedExtentResult]:
     spatial_extent_from_pg = constraint.get("spatial_extent") or constraint.get("weak_spatial_extent")
 
@@ -294,8 +297,11 @@ def _extract_spatial_extent_from_constraint_load_stac(
 
     # Collect set of (uqique) asset projection metadata items
     _log.info(f"Collecting projection metadata from {len(item_collection.items)} items")
+    fix_proj_transform = feature_flags and feature_flags.get("fix_proj_transform", False)
     projection_metadatas: Set[openeogeotrellis.load_stac._ProjectionMetadata] = {
-        openeogeotrellis.load_stac._ProjectionMetadata.from_asset(asset=asset, item=item)
+        openeogeotrellis.load_stac._ProjectionMetadata.from_asset(
+            asset=asset, item=item, fix_proj_transform=fix_proj_transform
+        )
         for item, band_assets in item_collection.iter_items_with_band_assets()
         for asset in band_assets.values()
     }
