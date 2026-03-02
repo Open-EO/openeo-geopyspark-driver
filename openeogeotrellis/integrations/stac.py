@@ -101,12 +101,16 @@ class _StacResponseCache:
 
 
 class _TieredStacResponseCache:
-    """Two-tier STAC response cache that isolates basic catalog/collection
-    requests from search and item requests.
+    """Two-tier STAC response cache with an explicit allowlist of cacheable URL types.
 
-    "Basic" requests (API root and ``/collections/<id>``) are stored in a
-    dedicated cache so that high-volume search or item requests cannot evict
-    them.
+    Only three categories of URLs are cached:
+    - API root and single-collection URLs (``/collections/<id>``) go into the
+      ``_basic`` cache, isolated so that high-volume search traffic cannot
+      evict them.
+    - STAC search endpoint URLs (``/search``) go into the ``_search`` cache,
+      keyed on the full URL including query parameters.
+
+    All other URLs (items, job results, polling endpoints, …) are not cached.
     """
 
     # Matches paths like /collections/some-id (with optional trailing slash),
@@ -114,35 +118,43 @@ class _TieredStacResponseCache:
     _COLLECTION_RE = re.compile(r"/collections/[^/]+/?$")
     # Matches a single path segment that looks like a version prefix, e.g. /v1 or /v2.
     _VERSION_ROOT_RE = re.compile(r"^/v\d+/?$")
+    # Matches a path ending in /search (with optional trailing slash).
+    _SEARCH_RE = re.compile(r"/search/?$")
 
     def __init__(self, maxsize: int = 100, max_bytes: int = 30 * 1024 * 1024):
         self._basic = _StacResponseCache(maxsize=maxsize, max_bytes=max_bytes)
-        self._other = _StacResponseCache(maxsize=maxsize, max_bytes=max_bytes)
+        self._search = _StacResponseCache(maxsize=maxsize, max_bytes=max_bytes)
 
-    def _is_basic(self, url: str) -> bool:
-        """Return True for API-root and single-collection URLs."""
+    def _select(self, url: str) -> Optional[_StacResponseCache]:
+        """Return the appropriate cache tier, or ``None`` if the URL should not be cached."""
         parsed = urlparse(url)
         path = parsed.path.rstrip("/")
         # API root: path is empty or a version prefix like /v1
         if not path or self._VERSION_ROOT_RE.match(path):
-            return True
+            return self._basic
         # Single collection: /…/collections/<id>
         if self._COLLECTION_RE.search(path):
-            return True
-        return False
-
-    def _select(self, url: str) -> _StacResponseCache:
-        return self._basic if self._is_basic(url) else self._other
+            return self._basic
+        # Search endpoint: /…/search — keyed on full URL including query params
+        if self._SEARCH_RE.search(path):
+            return self._search
+        return None
 
     def get(self, url: str) -> Optional[str]:
-        return self._select(url).get(url)
+        cache = self._select(url)
+        if cache is None:
+            return None
+        return cache.get(url)
 
     def put(self, url: str, content: str) -> None:
-        self._select(url).put(url, content)
+        cache = self._select(url)
+        if cache is None:
+            return
+        cache.put(url, content)
 
     def clear(self) -> None:
         self._basic.clear()
-        self._other.clear()
+        self._search.clear()
 
 
 _stac_response_cache = _TieredStacResponseCache(maxsize=100, max_bytes=30 * 1024 * 1024)
