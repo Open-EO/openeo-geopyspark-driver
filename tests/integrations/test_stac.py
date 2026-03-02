@@ -154,7 +154,7 @@ class TestTieredStacResponseCache:
     )
     def test_is_basic_true(self, url):
         cache = _TieredStacResponseCache()
-        assert cache._is_basic(url) is True
+        assert cache._select(url) is cache._basic
 
     @pytest.mark.parametrize(
         "url",
@@ -171,7 +171,7 @@ class TestTieredStacResponseCache:
     )
     def test_is_basic_false(self, url):
         cache = _TieredStacResponseCache()
-        assert cache._is_basic(url) is False
+        assert cache._select(url) is not cache._basic
 
     def test_get_put_basic(self):
         cache = _TieredStacResponseCache()
