@@ -12,6 +12,7 @@ from openeogeotrellis.integrations.stac import (
     S3StacIO,
     CompositeStacIO,
     ComposableStacIO,
+    _TieredStacResponseCache,
     ref_as_str,
 )
 
@@ -133,3 +134,76 @@ class TestS3StacIO:
         response = s3.get_object(Bucket="thebucket", Key="path/to/item.json")
         body = response["Body"].read().decode("utf-8")
         assert body == '{"type": "Feature", "id": "item123"}'
+
+
+class TestTieredStacResponseCache:
+    @pytest.mark.parametrize(
+        "url",
+        [
+            # API root (no path)
+            "https://stac.test",
+            "https://stac.test/",
+            # API root with single version segment
+            "https://stac.test/v1",
+            "https://stac.test/v1/",
+            # Single collection
+            "https://stac.test/collections/sentinel-2-l2a",
+            "https://stac.test/collections/sentinel-2-l2a/",
+            "https://stac.test/v1/collections/my-collection",
+        ],
+    )
+    def test_is_basic_true(self, url):
+        cache = _TieredStacResponseCache()
+        assert cache._is_basic(url) is True
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            # Search endpoint
+            "https://stac.test/search",
+            "https://stac.test/v1/search",
+            # Items sub-resource
+            "https://stac.test/collections/sentinel-2-l2a/items",
+            "https://stac.test/collections/sentinel-2-l2a/items/item-123",
+            # Specific item
+            "https://stac.test/v1/collections/my-collection/items/my-item",
+        ],
+    )
+    def test_is_basic_false(self, url):
+        cache = _TieredStacResponseCache()
+        assert cache._is_basic(url) is False
+
+    def test_get_put_basic(self):
+        cache = _TieredStacResponseCache()
+        assert cache.get("https://stac.test/collections/s2") is None
+        cache.put("https://stac.test/collections/s2", "content-a")
+        assert cache.get("https://stac.test/collections/s2") == "content-a"
+
+    def test_get_put_other(self):
+        cache = _TieredStacResponseCache()
+        assert cache.get("https://stac.test/search") is None
+        cache.put("https://stac.test/search", "content-b")
+        assert cache.get("https://stac.test/search") == "content-b"
+
+    def test_basic_and_other_are_isolated(self):
+        """Entries in the 'other' tier must not evict entries from the 'basic' tier."""
+        cache = _TieredStacResponseCache(maxsize=2, max_bytes=10 * 1024 * 1024)
+
+        cache.put("https://stac.test/collections/s2", "basic-content")
+
+        # Fill the 'other' tier beyond its maxsize to trigger eviction there.
+        for i in range(5):
+            cache.put(f"https://stac.test/search?page={i}", f"search-result-{i}")
+
+        # The basic entry must still be present.
+        assert cache.get("https://stac.test/collections/s2") == "basic-content"
+
+    def test_clear(self):
+        cache = _TieredStacResponseCache()
+        cache.put("https://stac.test/collections/s2", "basic-content")
+        cache.put("https://stac.test/search", "search-content")
+
+        cache.clear()
+
+        assert cache.get("https://stac.test/collections/s2") is None
+        assert cache.get("https://stac.test/search") is None

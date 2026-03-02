@@ -22,6 +22,7 @@ import openeo_driver
 from openeo_driver.config import OpenEoBackendConfig
 from openeo.testing.io import TestDataLoader
 from openeogeotrellis.integrations.identity import IDPTokenIssuer
+from openeogeotrellis.integrations.stac import _stac_response_cache
 
 from openeogeotrellis.config.s3_config import AWSConfig
 from openeo_driver.integrations.s3.client import S3ClientBuilder
@@ -68,6 +69,14 @@ def pytest_collection_modifyitems(config,
     if config.getoption(NO_SKIP_OPTION):
         for test in items:
             test.own_markers = [marker for marker in test.own_markers if marker.name not in ('skip', 'skipif')]
+
+@pytest.fixture(autouse=True)
+def clear_stac_cache():
+    """Clear the module-level STAC response cache between tests."""
+    _stac_response_cache.clear()
+    yield
+    _stac_response_cache.clear()
+
 
 @pytest.fixture(scope="session")
 def backend_config_path() -> Path:
