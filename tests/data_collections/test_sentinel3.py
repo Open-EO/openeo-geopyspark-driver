@@ -176,7 +176,7 @@ def test_read_single_edge_with_some_data():
                 "instant":1717326516089,
             },
             "key_extent":{
-                "xmin":13.857467,"xmax":18.10,"ymin":47.096,"ymax":47.597925
+                "xmin":13.857467,"xmax":18.09853842858,"ymin":47.096,"ymax":47.596
             },
             "key_epsg":4326
         }

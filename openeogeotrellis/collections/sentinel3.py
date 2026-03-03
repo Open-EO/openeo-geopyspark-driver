@@ -1,5 +1,6 @@
 import json
 import logging
+import math
 import os
 import pathlib
 import sys
@@ -715,14 +716,20 @@ def create_final_grid(final_bbox, resolution, rim_pixels=0 ):
     """
 
     final_xmin, final_ymin, final_xmax, final_ymax = final_bbox
-    #the boundingbox of the tile seems to missing the last pixels, that is why we add 1 resolution to the second argument
+    # the boundingbox of the tile seems to missing the last pixels, that is why we add 1 resolution to the second argument
     # target coordinates have to be computed as pixel centers
+    ref_xmin = final_xmin + 0.5 * resolution - (rim_pixels * resolution)
+    ref_ymin = final_ymin + 0.5 * resolution - resolution - (rim_pixels * resolution)
+    ref_xmax = final_xmax - 0.5 * resolution + resolution + (rim_pixels * resolution)
+    ref_ymax = final_ymax - 0.5 * resolution + (rim_pixels * resolution)
+    steps_x = (ref_xmax - ref_xmin)/resolution
+    steps_y = (ref_ymax - ref_ymin) / resolution
+    steps_x = steps_x.__floor__() if math.isclose(steps_x,steps_x.__floor__(),rel_tol=1e-10) else steps_x.__ceil__()
+    steps_y = steps_y.__floor__() if math.isclose(steps_y,steps_y.__floor__(),rel_tol=1e-10) else steps_y.__ceil__()
+
     grid_x, grid_y = np.meshgrid(
-        np.arange(final_xmin + 0.5 * resolution - (rim_pixels * resolution),
-                  final_xmax - 0.5 * resolution + resolution + (rim_pixels * resolution), resolution),
-        np.arange(final_ymax - 0.5 * resolution + (rim_pixels * resolution),
-                  final_ymin + 0.5 * resolution - resolution - (rim_pixels * resolution),
-                  -resolution)  # without lat mirrored
+        np.linspace(ref_xmin,ref_xmax, steps_x, endpoint=False),
+        np.linspace(ref_ymax,ref_ymin, steps_y, endpoint=False)  # without lat mirrored
         # np.arange(ref_ymin, ref_ymax, self.final_grid_resolution)   #with lat mirrored
     )
     target_shape = grid_x.shape
