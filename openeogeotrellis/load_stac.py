@@ -62,6 +62,7 @@ logger = logging.getLogger(__name__)
 REQUESTS_TIMEOUT_SECONDS = 60
 
 STAC_API_PER_PAGE_LIMIT_DEFAULT = 100
+MINIMUM_RETRY_AFTER_JITTER_SECONDS = 1
 
 
 class _JitteredRetry(Retry):
@@ -70,7 +71,6 @@ class _JitteredRetry(Retry):
     - No Retry-After header: full jitter (random in [0, base_backoff])
     - Retry-After header present: respects it as a minimum with full jitter
     """
-
     # TODO: just use standard `backoff_jitter` feature from `Retry`?
 
     def get_backoff_time(self) -> float:
@@ -80,7 +80,8 @@ class _JitteredRetry(Retry):
     def sleep_for_retry(self, response=None) -> bool:
         retry_after = self.get_retry_after(response)
         if retry_after is not None:
-            jitter = random.uniform(0, super().get_backoff_time())
+            backoff_time = max(super().get_backoff_time(), MINIMUM_RETRY_AFTER_JITTER_SECONDS)
+            jitter = random.uniform(0, backoff_time)
             time.sleep(retry_after + jitter)
             return True
         return False
