@@ -51,10 +51,12 @@ def _map_attributes_for_stac(attribute_values: Dict[str, any]) -> Dict[str, any]
     """
     attribute_keys_mapping = {
         "productType": "product:type",
+        "orbitDirection": "sat:orbit_state",
+        "timeliness": "product:timeliness_category",
     }
     # No value transformations needed for Sentinel-3 currently
     attribute_values_mapping = {
-        "productType": lambda v: v,
+        "orbitDirection": lambda val: val.lower(),
     }
 
     mapped = {}
