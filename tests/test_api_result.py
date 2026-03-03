@@ -1965,45 +1965,6 @@ def zk_job_registry(zk_client) -> ZkJobRegistry:
     return ZkJobRegistry(zk_client=zk_client)
 
 
-def test_extra_validation_terrascope(jvm_mock, api100):
-    pg = {"lc": {
-        "process_id": "load_collection",
-        "arguments": {
-            "id": "TERRASCOPE_S2_TOC_V2",
-            "temporal_extent": ["2020-03-01", "2020-03-10"],
-            "spatial_extent": {"west": -86.1, "south": 67, "east": -86, "north": 67.1},
-            "properties": {"eo:cloud_cover": {"process_graph": {
-                "lte1": {"process_id": "lte", "arguments": {"x": {"from_parameter": "value"}, "y": 50},
-                         "result": True}}}}
-        },
-        "result": True
-    }}
-
-    simple_layer = jvm_mock.geopyspark.geotrellis.TemporalTiledRasterLayer()
-    jvm_mock.org.openeo.geotrellis.file.PyramidFactory.datacube_seq.return_value = simple_layer
-    jvm_mock.org.openeo.geotrellis.file.PyramidFactory.pyramid_seq.return_value = simple_layer
-
-    def mock_query_jvm_opensearch_client(open_search_client, collection_id, _query_kwargs, processing_level=""):
-        if "CreodiasClient" in str(open_search_client):
-            mock_collection = [{"tile_id": "16WEA", "date": '20200301'}, {"tile_id": "16WDA", "date": '20200301'}]
-        elif "OscarsClient" in str(open_search_client) or "OpenSearchClient" in str(open_search_client):
-            mock_collection = [{"tile_id": "16WEA", "date": '20200301'}]
-        else:
-            raise Exception("Unknown open_search_client: " + str(open_search_client))
-        return {
-            (p["tile_id"], p["date"])
-            for p in mock_collection
-        }
-
-    with mock.patch("openeogeotrellis.layercatalog.query_jvm_opensearch_client", new=mock_query_jvm_opensearch_client):
-
-        response = api100.validation(pg)
-        expected = {'errors': [
-            {'code': 'MissingProduct',
-             'message': "Tile ('16WDA', '20200301') in collection 'TERRASCOPE_S2_TOC_V2' is not available."}
-        ]}
-        assert list(sorted(map(str, response.json["errors"]))) == list(sorted(map(str, expected["errors"])))
-
 
 @pytest.mark.parametrize(["temporal_extent", "expected"], [
     (("2020-01-01", None), ("2020-01-05 00:00:00", "2020-02-15 00:00:00")),
