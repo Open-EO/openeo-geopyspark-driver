@@ -15,7 +15,7 @@ import requests.adapters
 from requests import JSONDecodeError
 from urllib3 import Retry
 
-from openeogeotrellis.integrations.stac import ResilientStacIO
+from openeogeotrellis.integrations.stac import ResilientStacIO, LoggingStacApiIO
 
 _log = logging.getLogger(__name__)
 
@@ -252,7 +252,7 @@ class StacApiWorkspace(Workspace):
             status_forcelist=frozenset([429, 500, 502, 503, 504]),
         )
 
-        stac_io = pystac_client.stac_api_io.StacApiIO(timeout=self.REQUESTS_TIMEOUT_SECONDS, max_retries=retry)
+        stac_io = LoggingStacApiIO(timeout=self.REQUESTS_TIMEOUT_SECONDS, max_retries=retry)
         root_catalog_client = pystac_client.Client.open(self.root_url, stac_io=stac_io)
 
         if not root_catalog_client.conforms_to(ConformanceClasses.COLLECTIONS):

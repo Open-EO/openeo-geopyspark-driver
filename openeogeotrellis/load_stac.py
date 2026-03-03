@@ -38,7 +38,6 @@ from openeo_driver.errors import (
 from openeo_driver.jobregistry import PARTIAL_JOB_STATUS
 from openeo_driver.users import User
 from openeo_driver.util.geometry import BoundingBox, GeometryBufferer
-from openeo_driver.util.http import requests_with_retry
 from openeo_driver.util.utm import utm_zone_from_epsg
 from openeo_driver.utils import EvalEnv
 from pystac import STACObject
@@ -932,12 +931,25 @@ class _TemporalExtent:
     """
 
     # TODO: move this to a more generic location for better reuse
+    # TODO: enforce/ensure immutability
+    # TODO: re-implement in dataclasses/attrs to better enforce immutability and simplify equality/hash implementation
 
     __slots__ = ("from_date", "to_date")
 
     def __init__(self, from_date: DateTimeLikeOrNone, to_date: DateTimeLikeOrNone):
         self.from_date: Union[datetime.datetime, None] = to_datetime_utc_unless_none(from_date)
         self.to_date: Union[datetime.datetime, None] = to_datetime_utc_unless_none(to_date)
+
+    def _key(self) -> tuple:
+        return (self.from_date, self.to_date)
+
+    def __hash__(self):
+        return hash(self._key())
+
+    def __eq__(self, other):
+        if isinstance(other, _TemporalExtent):
+            return self._key() == other._key()
+        return NotImplemented
 
     def as_tuple(self) -> Tuple[Union[datetime.datetime, None], Union[datetime.datetime, None]]:
         return self.from_date, self.to_date
@@ -995,6 +1007,8 @@ class _SpatialExtent:
     """
 
     # TODO: move this to a more generic location for better reuse
+    # TODO: enforce/ensure immutability
+    # TODO: re-implement in dataclasses/attrs to better enforce immutability and simplify equality/hash implementation
 
     __slots__ = ("_bbox", "_bbox_lonlat_shape")
 
@@ -1003,6 +1017,17 @@ class _SpatialExtent:
         self._bbox = bbox
         # cache for shapely polygon in lon/lat
         self._bbox_lonlat_shape = self._bbox.reproject("EPSG:4326").as_polygon() if self._bbox else None
+
+    def _key(self) -> tuple:
+        return (self._bbox,)
+
+    def __hash__(self):
+        return hash(self._key())
+
+    def __eq__(self, other):
+        if isinstance(other, _SpatialExtent):
+            return self._key() == other._key()
+        return NotImplemented
 
     def as_bbox(self, crs: Optional[str] = None) -> Union[BoundingBox, None]:
         bbox = self._bbox
@@ -1019,6 +1044,9 @@ class _SpatialExtent:
 
 class _SpatioTemporalExtent:
     # TODO: move this to a more generic location for better reuse
+    # TODO: enforce/ensure immutability
+    # TODO: re-implement in dataclasses/attrs to better enforce immutability and simplify equality/hash implementation
+
     def __init__(
         self,
         *,
@@ -1028,6 +1056,17 @@ class _SpatioTemporalExtent:
     ):
         self._spatial_extent = _SpatialExtent(bbox=bbox)
         self._temporal_extent = _TemporalExtent(from_date=from_date, to_date=to_date)
+
+    def _key(self) -> tuple:
+        return (self._spatial_extent, self._temporal_extent)
+
+    def __hash__(self):
+        return hash(self._key())
+
+    def __eq__(self, other):
+        if isinstance(other, _SpatioTemporalExtent):
+            return self._key() == other._key()
+        return NotImplemented
 
     @property
     def spatial_extent(self) -> _SpatialExtent:
@@ -1977,7 +2016,11 @@ def _await_stac_object(
     stac_io: Optional[pystac.stac_io.StacIO] = None,
 ) -> STACObject:
     if stac_io is None:
-        session = requests_with_retry(total=5, backoff_factor=1, status_forcelist={429, 500, 502, 503, 504})
+        retry = _JitteredRetry(total=STAC_API_RETRY_TOTAL, backoff_factor=1, status_forcelist={429, 500, 502, 503, 504})
+        adapter = requests.adapters.HTTPAdapter(max_retries=retry)
+        session = requests.Session()
+        session.mount("http://", adapter)
+        session.mount("https://", adapter)
         stac_io = ResilientStacIO(session)
 
     while True:
