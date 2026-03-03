@@ -279,11 +279,6 @@ class S1BackscatterOrfeo:
 
         return opensearch_client
 
-    def _build_legacy_opensearch_client(self) -> JavaObject:
-        return self.jvm.org.openeo.opensearch.OpenSearchClient.apply(
-            "https://catalogue.dataspace.copernicus.eu/resto", False, "", [], ""
-        )
-
     def _load_feature_rdd(
             self, file_rdd_factory: JavaObject, projected_polygons, from_date: str, to_date: str, zoom: int,
             tile_size: int, datacubeParams=None
@@ -302,43 +297,25 @@ class S1BackscatterOrfeo:
         return pyrdd, layer_metadata_sc,json_rdd_partitioner._3()
 
     @staticmethod
-    def _build_filter_properties(extra_properties: dict, use_stac_client: bool) -> Dict[str, any]:
+    def _build_filter_properties(extra_properties: dict) -> Dict[str, any]:
         """
         Build filter properties from user-provided extra_properties.
 
-        For STAC client: normalizes legacy keys to STAC format, returns STAC-formatted properties.
-        For legacy client: keeps legacy format, returns opensearch-formatted properties.
+        Normalizes legacy keys to STAC format, returns STAC-formatted properties.
         """
-        if use_stac_client:
-            # STAC client allows both legacy and STAC property keys.
-            allowed_property_keys = set(S1BackscatterOrfeo._PROPERTY_KEYS_MAPPING.keys())
-            user_props = {k: v for k, v in extra_properties.items() if k in allowed_property_keys}
-            # Normalize legacy property keys to STAC format. So filter_properties are always in STAC format.
-            normalized_props = S1BackscatterOrfeo._normalize_filter_properties_to_stac(user_props) if user_props else {}
-            filter_properties: Dict[str, any] = {
-                # Use array to match IW_GRDH_1S (sentinel1-a), IW_GRDH_1S_B (sentinel1-b), IW_GRDH_1S_C (sentinel1-c)
-                "product:type": ["IW_GRDH_1S", "IW_GRDH_1S_B", "IW_GRDH_1S_C"],
-                "processing:level": "L1",
-            }
-            filter_properties.update(normalized_props)
-        else:
-            # For legacy opensearch API, only allow legacy property keys.
-            allowed_property_keys = set(S1BackscatterOrfeo._LEGACY_TO_STAC_PROPERTY_KEYS.keys())
-            user_props = {k: v for k, v in extra_properties.items() if k in allowed_property_keys}
-            filter_properties: Dict[str, any] = {
-                "productType": "IW_GRDH_1S-COG",
-                "processingLevel": "LEVEL1",
-            }
-            if extra_properties.get("COG") == "FALSE":
-                non_cog_product_type = "IW_GRDH_1S"
-                logger.info(f"sar_backscatter: Adjusting product:type to {non_cog_product_type!r} based on COG=FALSE")
-                filter_properties["productType"] = non_cog_product_type
-            filter_properties.update(user_props)
-            if "polarization" in extra_properties:
-                # British vs US English: Sentinelhub + STAC use US variant
-                filter_properties["polarisation"] = extra_properties["polarization"]
+        # STAC client allows both legacy and STAC property keys.
+        allowed_property_keys = set(S1BackscatterOrfeo._PROPERTY_KEYS_MAPPING.keys())
+        user_props = {k: v for k, v in extra_properties.items() if k in allowed_property_keys}
+        # Normalize legacy property keys to STAC format. So filter_properties are always in STAC format.
+        normalized_props = S1BackscatterOrfeo._normalize_filter_properties_to_stac(user_props) if user_props else {}
+        filter_properties: Dict[str, any] = {
+            # Use array to match IW_GRDH_1S (sentinel1-a), IW_GRDH_1S_B (sentinel1-b), IW_GRDH_1S_C (sentinel1-c)
+            "product:type": ["IW_GRDH_1S", "IW_GRDH_1S_B", "IW_GRDH_1S_C"],
+            "processing:level": "L1",
+        }
+        filter_properties.update(normalized_props)
 
-        product_type = filter_properties.get("product:type", filter_properties.get("productType"))
+        product_type = filter_properties.get("product:type")
         # Validate product type(s) - handle both string and array values
         product_types_to_check = product_type if isinstance(product_type, list) else [product_type] if product_type else []
         for pt in product_types_to_check:
@@ -354,25 +331,20 @@ class S1BackscatterOrfeo:
             self,
             collection_id, projected_polygons, from_date: str, to_date: str, extra_properties: dict,
             tile_size: int, zoom: int, correlation_id: str, datacubeParams=None, resolution = (10.0,10.0),
-            spatial_extent=None, use_stac_client: bool = True
+            spatial_extent=None,
     ):
-        """Build RDD of file metadata from Creodias catalog query."""
-        filter_properties = self._build_filter_properties(extra_properties, use_stac_client)
+        """Build RDD of file metadata from STAC catalog query."""
+        filter_properties = self._build_filter_properties(extra_properties)
 
-        # Build opensearch client based on selection
-        if use_stac_client:
-            logger.info("Using STAC-based opensearch client (FixedFeaturesOpenSearchClient)")
-            opensearch_client = self._build_stac_opensearch_client(
-                filter_properties=filter_properties,
-                spatial_extent=spatial_extent,
-                temporal_extent=(from_date, to_date)
-            )
-        else:
-            logger.info("Using legacy opensearch client")
-            opensearch_client = self._build_legacy_opensearch_client()
+        logger.info("Using STAC-based opensearch client (FixedFeaturesOpenSearchClient)")
+        opensearch_client = self._build_stac_opensearch_client(
+            filter_properties=filter_properties,
+            spatial_extent=spatial_extent,
+            temporal_extent=(from_date, to_date)
+        )
 
         # Create FileRDDFactory
-        # Note that for the STAC client, the filter_properties were already applied and are ignored here.
+        # Note that the filter_properties were already applied by the STAC client and are ignored here.
         file_rdd_factory = self.jvm.org.openeo.geotrellis.file.FileRDDFactory(
             opensearch_client, collection_id, filter_properties, correlation_id,
             self.jvm.geotrellis.raster.CellSize(resolution[0], resolution[1])
@@ -800,7 +772,6 @@ class S1BackscatterOrfeo:
             datacubeParams=None,
             max_soft_errors_ratio=0.0,
             spatial_extent=None,
-            use_stac_client: bool = True
     ) -> Dict[int, geopyspark.TiledRasterLayer]:
         """
         Implementation of S1 backscatter calculation with Orfeo in Creodias environment
@@ -837,7 +808,6 @@ class S1BackscatterOrfeo:
             from_date=from_date, to_date=to_date, extra_properties=extra_properties,
             tile_size=tile_size, zoom=zoom, correlation_id=correlation_id,
             datacubeParams=datacubeParams, spatial_extent=spatial_extent,
-            use_stac_client=use_stac_client
         )
         if debug_mode:
             self._debug_show_rdd_info(feature_pyrdd)
@@ -1074,7 +1044,6 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
             datacubeParams=None,
             max_soft_errors_ratio=0.0,
             spatial_extent=None,
-            use_stac_client: bool = True
     ) -> Dict[int, geopyspark.TiledRasterLayer]:
         """
         Implementation of S1 backscatter calculation with Orfeo in Creodias environment
@@ -1123,7 +1092,7 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
             from_date=from_date, to_date=to_date, extra_properties=extra_properties,
             tile_size=tile_size, zoom=zoom, correlation_id=correlation_id,
             datacubeParams=datacubeParams, resolution=target_resolution,
-            spatial_extent=spatial_extent, use_stac_client=use_stac_client
+            spatial_extent=spatial_extent,
         )
         if debug_mode:
             self._debug_show_rdd_info(feature_pyrdd)
