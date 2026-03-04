@@ -1301,6 +1301,23 @@ class TestTemporalExtent:
         extent = _TemporalExtent.from_load_param_extent(given)
         assert extent.as_tuple() == expected
 
+    @pytest.mark.parametrize(
+        ["extent", "fallback", "expected"],
+        [
+            (("2021-02-03", "2021-12-13"), ("2019-09-19", "2022-02-02"), ("2021-02-03", "2021-12-13")),
+            (("2021-02-03", None), ("2019-09-19", "2022-02-02"), ("2021-02-03", "2022-02-02")),
+            ((None, "2021-12-13"), ("2019-09-19", "2022-02-02"), ("2019-09-19", "2021-12-13")),
+            ((None, None), ("2019-09-19", "2022-02-02"), ("2019-09-19", "2022-02-02")),
+            ((None, None), (None, "2022-02-02"), (None, "2022-02-02")),
+            (("2021-02-03", None), ("2019-09-19", None), ("2021-02-03", None)),
+        ],
+    )
+    def test_with_fallback(self, extent, fallback, expected):
+        extent = _TemporalExtent(*extent)
+        assert extent.with_fallback(from_date=fallback[0], to_date=fallback[1]) == _TemporalExtent(*expected)
+        assert extent.with_fallback(extent=fallback) == _TemporalExtent(*expected)
+        assert extent.with_fallback(extent=_TemporalExtent(*fallback)) == _TemporalExtent(*expected)
+
 
 class TestSpatialExtent:
     def test_empty(self):

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import collections
 import datetime
-import datetime as dt
 import functools
 import logging
 import os
@@ -25,7 +24,7 @@ import pystac_client.stac_api_io
 import requests.adapters
 from geopyspark import LayerType
 from openeo.metadata import _StacMetadataParser
-from openeo.util import Rfc3339, dict_no_none, TimingLogger
+from openeo.util import Rfc3339, dict_no_none, TimingLogger, rfc3339
 from openeo_driver import filter_properties
 from openeo_driver.backend import BatchJobMetadata, LoadParameters
 from openeo_driver.datacube import DriverVectorCube
@@ -52,7 +51,7 @@ from openeogeotrellis.integrations.stac import LoggingStacApiIO, ResilientStacIO
 from openeogeotrellis.util.datetime import DateTimeLikeOrNone, to_datetime_utc_unless_none
 from openeogeotrellis.util.geometry import GridSnapper
 from openeogeotrellis.util.projection import is_utm_epsg_code
-from openeogeotrellis.utils import get_jvm, map_optional, normalize_temporal_extent, to_projected_polygons, unzip
+from openeogeotrellis.utils import get_jvm, to_projected_polygons
 
 if TYPE_CHECKING:
     from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
@@ -128,8 +127,6 @@ class _LoadStacContext:
     """Context object containing all inputs needed to build a datacube."""
     pyramid_factory: Any
     projected_polygons: Any
-    from_date: dt.datetime
-    to_date: dt.datetime
     metadata_properties: Dict[str, Any]
     correlation_id: str
     data_cube_parameters: Any
@@ -137,12 +134,12 @@ class _LoadStacContext:
     single_level: bool
     items_found: bool
     allow_empty_cubes: bool
+    # TODO: poorly named `extent` and `extent_crs`
     extent: Any
     extent_crs: Any
     netcdf_with_time_dimension: bool
-    requested_bbox: Optional[BoundingBox]
     metadata: GeopysparkCubeMetadata
-    spatiotemporal_extent: _SpatioTemporalExtent
+    requested_spatiotemporal_extent: _SpatioTemporalExtent
     cellsize: Tuple[float, float]
     url: str
     jvm: Any
@@ -179,7 +176,7 @@ def _prepare_context(
     # Feature flags: merge global (e.g. from layer catalog info) and user-provided (higher precedence)
     feature_flags = {**(feature_flags or {}), **load_params.get("featureflags", {})}
 
-    logger.info(f"load_stac with {url=} {load_params=} {feature_flags=}")
+    logger.info(f"load_stac _prepare_context with {url=} {load_params=} {feature_flags=}")
 
     # Collect some  feature flags
     allow_empty_cubes = feature_flags.get("allow_empty_cube", env.get(EVAL_ENV_KEY.ALLOW_EMPTY_CUBES, False))
@@ -193,17 +190,7 @@ def _prepare_context(
 
     user: Optional[User] = env.get("user")
 
-    requested_bbox = BoundingBox.from_dict_or_none(load_params.spatial_extent, default_crs="EPSG:4326")
-    requested_temporal_extent = _TemporalExtent.from_load_param_extent(load_params.temporal_extent)
-
-    # TODO normalize_temporal_extent replaces 'None' with "2000-01-01", which is not a good fallback date.
-    from_date, until_date = map(dt.datetime.fromisoformat, normalize_temporal_extent(load_params.temporal_extent))
-    to_date = (
-        dt.datetime.combine(until_date, dt.time.max, until_date.tzinfo)
-        if from_date == until_date
-        else until_date - dt.timedelta(milliseconds=1)
-    )
-    spatiotemporal_extent = _spatiotemporal_extent_from_load_params(
+    requested_spatiotemporal_extent: _SpatioTemporalExtent = _spatiotemporal_extent_from_load_params(
         spatial_extent=load_params.spatial_extent,
         temporal_extent=load_params.temporal_extent
     )
@@ -223,7 +210,7 @@ def _prepare_context(
         with TimingLogger(title=f"construct_item_collection({url=})", logger=logger.info):
             item_collection, metadata, available_band_names, netcdf_with_time_dimension = construct_item_collection(
                 url=url,
-                spatiotemporal_extent=spatiotemporal_extent,
+                spatiotemporal_extent=requested_spatiotemporal_extent,
                 property_filter_pg_map=property_filter_pg_map,
                 batch_jobs=batch_jobs,
                 env=env,
@@ -435,8 +422,8 @@ def _prepare_context(
         raise LoadStacException(url=url, info=repr(e)) from e
 
 
-    target_bbox = requested_bbox or stac_bbox
-
+    target_bbox = requested_spatiotemporal_extent.spatial_extent.as_bbox() or stac_bbox
+    logger.info("_prepare_context {target_bbox=}")
     if not target_bbox:
         raise ProcessParameterInvalidException(
             process="load_stac",
@@ -450,16 +437,12 @@ def _prepare_context(
     if "y" not in metadata.dimension_names():
         metadata = metadata.add_spatial_dimension(name="y", extent=[])
 
-    item_collection_temporal_extent = item_collection.get_temporal_extent()
+    metadata_temporal_extent = requested_spatiotemporal_extent.temporal_extent.with_fallback(
+        extent=item_collection.get_temporal_extent()
+    ).isoformat()
+    logger.info(f"_prepare_context {url=} {metadata_temporal_extent=}")
     metadata = metadata.with_temporal_extent(
-        temporal_extent=(
-            map_optional(
-                dt.datetime.isoformat, requested_temporal_extent.from_date or item_collection_temporal_extent[0]
-            ),
-            map_optional(
-                dt.datetime.isoformat, requested_temporal_extent.to_date or item_collection_temporal_extent[1]
-            ),
-        ),
+        temporal_extent=metadata_temporal_extent,
         allow_adding_dimension=True,
     )
 
@@ -617,8 +600,6 @@ def _prepare_context(
     return _LoadStacContext(
         pyramid_factory=pyramid_factory,
         projected_polygons=projected_polygons,
-        from_date=from_date,
-        to_date=to_date,
         metadata_properties=metadata_properties,
         correlation_id=correlation_id,
         data_cube_parameters=data_cube_parameters,
@@ -629,9 +610,8 @@ def _prepare_context(
         extent=extent,
         extent_crs=extent_crs,
         netcdf_with_time_dimension=netcdf_with_time_dimension,
-        requested_bbox=requested_bbox,
         metadata=metadata,
-        spatiotemporal_extent=spatiotemporal_extent,
+        requested_spatiotemporal_extent=requested_spatiotemporal_extent,
         cellsize=(float(cell_width), float(cell_height)),
         url=url,
         jvm=jvm,
@@ -649,8 +629,6 @@ def _build_datacube(context: _LoadStacContext) -> GeopysparkDataCube:
     # Unpack context
     pyramid_factory = context.pyramid_factory
     projected_polygons = context.projected_polygons
-    from_date = context.from_date
-    to_date = context.to_date
     metadata_properties = context.metadata_properties
     correlation_id = context.correlation_id
     data_cube_parameters = context.data_cube_parameters
@@ -661,19 +639,24 @@ def _build_datacube(context: _LoadStacContext) -> GeopysparkDataCube:
     extent = context.extent
     extent_crs = context.extent_crs
     netcdf_with_time_dimension = context.netcdf_with_time_dimension
-    requested_bbox = context.requested_bbox
     metadata = context.metadata
-    spatiotemporal_extent = context.spatiotemporal_extent
+    requested_spatiotemporal_extent = context.requested_spatiotemporal_extent
     url = context.url
     jvm = context.jvm
+
+    # Because the pyramid factory API always expects valid ISO formatted dates for from_date and to_date, even if extent is unbounded.
+    # TODO: it would be cleaner if we can keep things explicitly unbounded, instead of using arbitrary fallback dates.
+    from_date_iso_str, to_date_iso_str = requested_spatiotemporal_extent.temporal_extent.with_fallback(
+        from_date="2000-01-01", to_date=rfc3339.now_utc()
+    ).isoformat()
 
     try:
         if netcdf_with_time_dimension:
             logger.info("_build_datacube: calling NetCDFCollection.datacube_seq")
             pyramid = pyramid_factory.datacube_seq(
                 projected_polygons,
-                from_date.isoformat(),
-                to_date.isoformat(),
+                from_date_iso_str,
+                to_date_iso_str,
                 metadata_properties,
                 correlation_id,
                 data_cube_parameters,
@@ -684,22 +667,22 @@ def _build_datacube(context: _LoadStacContext) -> GeopysparkDataCube:
                 logger.info("_build_datacube: calling PyramidFactory.empty_datacube_seq")
                 pyramid = pyramid_factory.empty_datacube_seq(
                     projected_polygons,
-                    from_date.isoformat(),
-                    to_date.isoformat(),
+                    from_date_iso_str,
+                    to_date_iso_str,
                     data_cube_parameters,
                 )
             else:
                 logger.info("_build_datacube: calling PyramidFactory.datacube_seq")
                 pyramid = pyramid_factory.datacube_seq(
                     projected_polygons,
-                    from_date.isoformat(),
-                    to_date.isoformat(),
+                    from_date_iso_str,
+                    to_date_iso_str,
                     metadata_properties,
                     correlation_id,
                     data_cube_parameters,
                 )
         else:
-            if requested_bbox:
+            if requested_bbox := requested_spatiotemporal_extent.spatial_extent.as_bbox():
                 extent = jvm.geotrellis.vector.Extent(*map(float, requested_bbox.as_wsen_tuple()))
                 extent_crs = requested_bbox.crs
             else:
@@ -708,13 +691,11 @@ def _build_datacube(context: _LoadStacContext) -> GeopysparkDataCube:
 
             if not items_found and allow_empty_cubes:
                 logger.info("_build_datacube: calling PyramidFactory.empty_pyramid_seq")
-                pyramid = pyramid_factory.empty_pyramid_seq(
-                    extent, extent_crs, from_date.isoformat(), to_date.isoformat()
-                )
+                pyramid = pyramid_factory.empty_pyramid_seq(extent, extent_crs, from_date_iso_str, to_date_iso_str)
             else:
                 logger.info("_build_datacube: calling PyramidFactory.pyramid_seq")
                 pyramid = pyramid_factory.pyramid_seq(
-                    extent, extent_crs, from_date.isoformat(), to_date.isoformat(), metadata_properties, correlation_id
+                    extent, extent_crs, from_date_iso_str, to_date_iso_str, metadata_properties, correlation_id
                 )
         logger.info(f"_build_datacube: done building pyramid")
     except Exception as e:
@@ -723,8 +704,9 @@ def _build_datacube(context: _LoadStacContext) -> GeopysparkDataCube:
             status_code=500,
         ) from e
 
-    if not spatiotemporal_extent.temporal_extent.is_unbounded():
-        metadata = metadata.filter_temporal(*spatiotemporal_extent.temporal_extent.isoformat())
+    if not requested_spatiotemporal_extent.temporal_extent.is_unbounded():
+        # TODO: is this filter_temporal necessary? extent was already been set properly earlier
+        metadata = metadata.filter_temporal(*requested_spatiotemporal_extent.temporal_extent.isoformat())
 
     metadata = metadata.filter_bbox(
         west=extent.xmin(),
@@ -1037,6 +1019,24 @@ class _TemporalExtent:
     ) -> bool:
         start, end = interval
         return self.intersects(start_datetime=start, end_datetime=end)
+
+    def with_fallback(
+        self,
+        *,
+        extent: Union[_TemporalExtent, Tuple[DateTimeLikeOrNone, DateTimeLikeOrNone], None] = None,
+        from_date: DateTimeLikeOrNone = None,
+        to_date: DateTimeLikeOrNone = None,
+    ) -> _TemporalExtent:
+        """Fill in missing from_date or to_date with given fallback values"""
+        if isinstance(extent, _TemporalExtent):
+            extent = extent.as_tuple()
+        if extent:
+            from_date = extent[0] or from_date
+            to_date = extent[1] or to_date
+        return _TemporalExtent(
+            from_date=self.from_date or from_date,
+            to_date=self.to_date or to_date,
+        )
 
 
 class _SpatialExtent:
