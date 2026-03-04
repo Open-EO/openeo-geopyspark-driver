@@ -49,28 +49,30 @@ def _map_attributes_for_stac(attribute_values: Dict[str, any]) -> Dict[str, any]
     :param attribute_values: Dictionary of opensearch attribute key-value pairs
     :return: Dictionary with STAC-equivalent keys and values
     """
+    # Based on _LEGACY_TO_STAC_PROPERTY_KEYS
     attribute_keys_mapping = {
         "productType": "product:type",
-        "orbitDirection": "sat:orbit_state",
+        "processingLevel": "processing:level",
+        "orbitDirection": "sat:orbit_state",  # TODO: Is there are a better related STAC property for this?
+        "orbitNumber": "sat:absolute_orbit",
+        "relativeOrbitNumber": "sat:relative_orbit",
         "timeliness": "product:timeliness_category",
+        "missionTakeId": "eopf:datatake_id",
     }
-    # No value transformations needed for Sentinel-3 currently
     attribute_values_mapping = {
-        "orbitDirection": lambda val: val.lower(),
+        "orbitDirection": lambda v: v.lower(),  # DESCENDING -> descending
+        "sat:orbit_state": lambda v: v.lower(),  # DESCENDING -> descending
     }
+    attribute_keys_stac_values = set(attribute_keys_mapping.values())
 
     mapped = {}
-    for k, v in attribute_values.items():
+    for k, val in attribute_values.items():
         if k in attribute_keys_mapping:
             mapped_key = attribute_keys_mapping[k]
-            mapped_value = (
-                attribute_values_mapping[k](v)
-                if k in attribute_values_mapping
-                else v
-            )
+            mapped_value = attribute_values_mapping[k](val) if k in attribute_values_mapping else val
             mapped[mapped_key] = mapped_value
-        else:
-            logger.warning(f"sentinel3: No mapping for attribute key {k!r}")
+        elif not k in attribute_keys_stac_values:
+            logger.warning(f"sentinel3: No mapping for attribute key {k!r}. value {v!r}")
     return mapped
 
 
