@@ -138,72 +138,138 @@ class TestS3StacIO:
 
 class TestTieredStacResponseCache:
     @pytest.mark.parametrize(
-        "url",
+        ["url", "expected_tier"],
         [
-            # API root (no path)
-            "https://stac.test",
-            "https://stac.test/",
-            # API root with single version segment
-            "https://stac.test/v1",
-            "https://stac.test/v1/",
-            # Single collection
-            "https://stac.test/collections/sentinel-2-l2a",
-            "https://stac.test/collections/sentinel-2-l2a/",
-            "https://stac.test/v1/collections/my-collection",
+            # Basic tier: API root (no path)
+            ("https://stac.test", "basic"),
+            ("https://stac.test/", "basic"),
+            ("https://stac.test/v1", "basic"),
+            ("https://stac.test/v1/", "basic"),
+            ("https://stac.test/?token=abc", "basic"),
+            # Basic tier: single collection (various ID formats)
+            ("https://stac.test/collections/sentinel-2-l2a", "basic"),
+            ("https://stac.test/collections/sentinel-2-l2a/", "basic"),
+            ("https://stac.test/v1/collections/my-collection", "basic"),
+            ("https://stac.test/collections/cop.dem.glo30", "basic"),
+            ("https://stac.test/collections/my_collection", "basic"),
+            ("https://stac.test/collections/sentinel_2_l2a", "basic"),
+            ("https://stac.test/v2/collections/my-collection", "basic"),
+            ("https://stac.test/v10/collections/my-collection", "basic"),
+            # Search tier
+            ("https://stac.test/search", "search"),
+            ("https://stac.test/v1/search", "search"),
+            ("https://stac.test/v1/search?query=abc", "search"),
+            ("https://stac.test/search?collections=sentinel-1-grd", "search"),
+            (
+                "https://stac.test/v1/search?collections=s2&bbox=1,2,3,4"
+                "&datetime=2021-01-01T00:00:00Z/2021-02-01T00:00:00Z",
+                "search",
+            ),
+            (
+                "https://stac.dataspace.copernicus.eu/v1/search"
+                "?limit=100&bbox=16.0%2C48.0%2C17.0%2C49.0"
+                "&datetime=2021-01-01T00%3A00%3A00Z%2F2021-02-28T23%3A59%3A59.999000Z"
+                "&collections=sentinel-2-l2a",
+                "search",
+            ),
+            # Not cached (None): conformance, collections listing, items, queryables, etc.
+            ("https://stac.test/conformance", None),
+            ("https://stac.test/v1/conformance", None),
+            ("https://stac.test/collections", None),
+            ("https://stac.test/v1/collections", None),
+            ("https://stac.test/collections/sentinel-2-l2a/items", None),
+            ("https://stac.test/v1/collections/my-collection/items", None),
+            ("https://stac.test/collections/sentinel-2-l2a/items/item-123", None),
+            ("https://stac.test/v1/collections/my-collection/items/my-item", None),
+            ("https://stac.test/queryables", None),
+            ("https://stac.test/collections/sentinel-2-l2a/queryables", None),
+            ("https://stac.test/jobs/job-123/results", None),
+            ("https://stac.test/any/deep/path", None),
+            ("https://stac.test/any", None),
+            ("https://stac.test/api", None),
+            ("https://stac.test/v1/api", None),
         ],
     )
-    def test_is_basic_true(self, url):
+    def test_select_routing(self, url, expected_tier):
         cache = _TieredStacResponseCache()
-        assert cache._select(url) is cache._basic
+        tier = cache._select(url)
+        if expected_tier == "basic":
+            assert tier is cache._basic
+        elif expected_tier == "search":
+            assert tier is cache._search
+        else:
+            assert tier is None
 
     @pytest.mark.parametrize(
-        "url",
+        ["url", "content"],
         [
-            # Search endpoint
-            "https://stac.test/search",
-            "https://stac.test/v1/search",
-            # Items sub-resource
-            "https://stac.test/collections/sentinel-2-l2a/items",
-            "https://stac.test/collections/sentinel-2-l2a/items/item-123",
-            # Specific item
-            "https://stac.test/v1/collections/my-collection/items/my-item",
+            ("https://stac.test/collections/s2", "collection-content"),
+            ("https://stac.test/search", "search-content"),
         ],
     )
-    def test_is_basic_false(self, url):
+    def test_get_put(self, url, content):
         cache = _TieredStacResponseCache()
-        assert cache._select(url) is not cache._basic
+        assert cache.get(url) is None
+        cache.put(url, content)
+        assert cache.get(url) == content
 
-    def test_get_put_basic(self):
-        cache = _TieredStacResponseCache()
-        assert cache.get("https://stac.test/collections/s2") is None
-        cache.put("https://stac.test/collections/s2", "content-a")
-        assert cache.get("https://stac.test/collections/s2") == "content-a"
-
-    def test_get_put_other(self):
-        cache = _TieredStacResponseCache()
-        assert cache.get("https://stac.test/search") is None
-        cache.put("https://stac.test/search", "content-b")
-        assert cache.get("https://stac.test/search") == "content-b"
-
-    def test_basic_and_other_are_isolated(self):
-        """Entries in the 'other' tier must not evict entries from the 'basic' tier."""
+    def test_search_overflow_does_not_evict_basic(self):
+        """Evictions in the search tier must not affect the basic tier."""
         cache = _TieredStacResponseCache(maxsize=2, max_bytes=10 * 1024 * 1024)
-
         cache.put("https://stac.test/collections/s2", "basic-content")
-
-        # Fill the 'other' tier beyond its maxsize to trigger eviction there.
         for i in range(5):
             cache.put(f"https://stac.test/search?page={i}", f"search-result-{i}")
-
-        # The basic entry must still be present.
         assert cache.get("https://stac.test/collections/s2") == "basic-content"
+
+    def test_basic_overflow_does_not_evict_search(self):
+        """Evictions in the basic tier must not affect the search tier."""
+        cache = _TieredStacResponseCache(maxsize=2, max_bytes=10 * 1024 * 1024)
+        cache.put("https://stac.test/search?q=initial", "initial-search")
+        for i in range(5):
+            cache.put(f"https://stac.test/collections/collection-{i}", f"collection-{i}")
+        assert cache.get("https://stac.test/search?q=initial") == "initial-search"
 
     def test_clear(self):
         cache = _TieredStacResponseCache()
         cache.put("https://stac.test/collections/s2", "basic-content")
         cache.put("https://stac.test/search", "search-content")
-
         cache.clear()
-
         assert cache.get("https://stac.test/collections/s2") is None
         assert cache.get("https://stac.test/search") is None
+
+    def test_search_query_params_are_part_of_cache_key(self):
+        """Different query parameters must produce independent cache entries."""
+        cache = _TieredStacResponseCache()
+        cache.put("https://stac.test/search?collections=sentinel-2-l2a", "result-s2")
+        assert cache.get("https://stac.test/search?collections=sentinel-2-l2a") == "result-s2"
+        assert cache.get("https://stac.test/search?collections=sentinel-1-grd") is None
+
+    def test_uncached_url_put_is_noop(self):
+        """Putting a non-cacheable URL must be silently ignored."""
+        cache = _TieredStacResponseCache()
+        cache.put("https://stac.test/collections/s2/items", "items-content")
+        assert cache.get("https://stac.test/collections/s2/items") is None
+
+    # --- Oversized-entry protection ---------------------------------------------
+
+    def test_oversized_entry_not_stored_and_preserves_existing(self):
+        """An entry larger than max_bytes must be silently dropped without evicting existing entries."""
+        cache = _TieredStacResponseCache(maxsize=100, max_bytes=100)
+        oversized = "x" * 101
+
+        # Pre-populate both tiers
+        cache.put("https://stac.test/search?q=a", "small-a")
+        cache.put("https://stac.test/search?q=b", "small-b")
+        cache.put("https://stac.test/collections/s2", "collection-s2")
+
+        # Attempt oversized puts in both tiers
+        cache.put("https://stac.test/search?q=big", oversized)
+        cache.put("https://stac.test/collections/large", oversized)
+
+        # Oversized entries must not be stored
+        assert cache.get("https://stac.test/search?q=big") is None
+        assert cache.get("https://stac.test/collections/large") is None
+        # Existing entries in both tiers must survive
+        assert cache.get("https://stac.test/search?q=a") == "small-a"
+        assert cache.get("https://stac.test/search?q=b") == "small-b"
+        assert cache.get("https://stac.test/collections/s2") == "collection-s2"
