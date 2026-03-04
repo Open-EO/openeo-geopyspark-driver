@@ -1329,7 +1329,7 @@ Example usage:
             logger.info(f"post_dry_run: {post_dry_run_data=}")
             return post_dry_run_data
         except Exception as e:
-            logger.error(f"post_dry_run failed: {e}", exc_info=True)
+            logger.warning(f"post_dry_run failed: {e}", exc_info=True)
 
 
 class GpsProcessing(ConcreteProcessing):
