@@ -724,8 +724,8 @@ def create_final_grid(final_bbox, resolution, rim_pixels=0 ):
     ref_ymax = final_ymax - 0.5 * resolution + (rim_pixels * resolution)
     steps_x = (ref_xmax - ref_xmin)/resolution
     steps_y = (ref_ymax - ref_ymin) / resolution
-    steps_x = steps_x.__floor__() if math.isclose(steps_x,steps_x.__floor__(),rel_tol=1e-10) else steps_x.__ceil__()
-    steps_y = steps_y.__floor__() if math.isclose(steps_y,steps_y.__floor__(),rel_tol=1e-10) else steps_y.__ceil__()
+    steps_x = math.floor(steps_x) if math.isclose(steps_x,math.floor(steps_x),rel_tol=1e-10) else math.ceil(steps_x)
+    steps_y = math.floor(steps_y) if math.isclose(steps_y,math.floor(steps_y),rel_tol=1e-10) else math.ceil(steps_y)
 
     grid_x, grid_y = np.meshgrid(
         np.linspace(ref_xmin,ref_xmax, steps_x, endpoint=False),
