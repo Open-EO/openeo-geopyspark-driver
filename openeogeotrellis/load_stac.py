@@ -194,9 +194,9 @@ def _prepare_context(
     user: Optional[User] = env.get("user")
 
     requested_bbox = BoundingBox.from_dict_or_none(load_params.spatial_extent, default_crs="EPSG:4326")
-    temporal_extent = load_params.temporal_extent
-    #TODO normalize_temporal_extent replaces 'None' with "2000-01-01", which is not a good fallback date.
-    from_date, until_date = map(dt.datetime.fromisoformat, normalize_temporal_extent(temporal_extent))
+    requested_temporal_extent = load_params.temporal_extent
+    # TODO normalize_temporal_extent replaces 'None' with "2000-01-01", which is not a good fallback date.
+    from_date, until_date = map(dt.datetime.fromisoformat, normalize_temporal_extent(requested_temporal_extent))
     to_date = (
         dt.datetime.combine(until_date, dt.time.max, until_date.tzinfo)
         if from_date == until_date
@@ -452,8 +452,8 @@ def _prepare_context(
     item_collection_temporal_extent = item_collection.get_temporal_extent()
     metadata = metadata.with_temporal_extent(
         temporal_extent=(
-            map_optional(dt.datetime.isoformat, item_collection_temporal_extent[0]) or temporal_extent[0],
-            map_optional(dt.datetime.isoformat, item_collection_temporal_extent[1]) or temporal_extent[1],
+            requested_temporal_extent[0] or map_optional(dt.datetime.isoformat, item_collection_temporal_extent[0]),
+            requested_temporal_extent[1] or map_optional(dt.datetime.isoformat, item_collection_temporal_extent[1]),
         ),
         allow_adding_dimension=True,
     )
@@ -1317,7 +1317,7 @@ class ItemCollection:
         return ItemCollection(items)
 
     def get_temporal_extent(self) -> Tuple[Union[datetime.datetime, None], Union[datetime.datetime, None]]:
-        """Get overall tempoarl extent of all items in the collection."""
+        """Get overall temporal extent of all items in the collection."""
         start = None
         end = None
         for item in self.items:

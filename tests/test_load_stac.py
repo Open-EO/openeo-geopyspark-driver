@@ -2848,6 +2848,40 @@ class TestPrepareContext:
             },
         )
 
+    def test_prepare_context_basic(self, dummy_stac_api_server):
+        with dummy_stac_api_server.serve() as dummy_stac_api:
+            context = _prepare_context(
+                url=f"{dummy_stac_api}/collections/collection-123",
+                load_params=LoadParameters(),
+                env=EvalEnv(),
+            )
+
+        dumper = _OpenSearchClientDumper()
+        assert dumper.dump_opensearch_client_features(context.opensearch_client) == [
+            {
+                "id": "item-1",
+                "links": [
+                    {"title": "asset-1", "href": dirty_equals.IsStr(regex=".*/asset-1.tiff"), "bandNames": ["asset-1"]}
+                ],
+            },
+            {
+                "id": "item-2",
+                "links": [
+                    {"title": "asset-2", "href": dirty_equals.IsStr(regex=".*/asset-2.tiff"), "bandNames": ["asset-2"]}
+                ],
+            },
+            {
+                "id": "item-3",
+                "links": [
+                    {"title": "asset-2", "href": dirty_equals.IsStr(regex=".*/asset-3.tiff"), "bandNames": ["asset-2"]}
+                ],
+            },
+        ]
+        assert list(context.pyramid_factory.openSearchLinkTitles()) == ["asset-1", "asset-2"]
+        assert context.metadata.band_names == ["asset-1", "asset-2"]
+        assert context.metadata.temporal_extent == ("2024-05-01T00:00:00+00:00", "2024-07-03T00:00:00+00:00")
+        assert context.metadata.spatial_extent is None
+
     @pytest.mark.parametrize(
         [
             "load_params_bands",
@@ -3119,6 +3153,45 @@ class TestPrepareContext:
         assert (cell_size.width(), cell_size.height()) == (0.125, 0.125)
         assert context.metadata.band_names == expected_metadata_bands
         assert list(context.pyramid_factory.openSearchLinkTitles()) == expected_link_titles
+
+    @pytest.mark.parametrize(
+        ["requested_temporal_extent", "expected_items", "expected_temporal_extent"],
+        [
+            (
+                (None, None),
+                ["item-1", "item-2", "item-3"],
+                ("2024-05-01T00:00:00+00:00", "2024-07-03T00:00:00+00:00"),
+            ),
+            (
+                ("2024-03-27", "2024-06-06"),
+                ["item-1", "item-2"],
+                ("2024-03-27", "2024-06-06"),
+            ),
+            (
+                (None, "2024-06-06"),
+                ["item-1", "item-2"],
+                ("2024-05-01T00:00:00+00:00", "2024-06-06"),
+            ),
+            (
+                ("2024-05-20", None),
+                ["item-2", "item-3"],
+                ("2024-05-20", "2024-07-03T00:00:00+00:00"),
+            ),
+        ],
+    )
+    def test_prepare_context_requested_temporal_extent(
+        self, dummy_stac_api_server, requested_temporal_extent, expected_items, expected_temporal_extent
+    ):
+        with dummy_stac_api_server.serve() as dummy_stac_api:
+            context = _prepare_context(
+                url=f"{dummy_stac_api}/collections/collection-123",
+                load_params=LoadParameters(temporal_extent=requested_temporal_extent),
+                env=EvalEnv(),
+            )
+
+        dumper = _OpenSearchClientDumper()
+        assert [i["id"] for i in dumper.dump_opensearch_client_features(context.opensearch_client)] == expected_items
+        assert context.metadata.temporal_extent == expected_temporal_extent
 
 
 class TestResolutionTracker:
