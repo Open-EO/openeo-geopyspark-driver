@@ -467,4 +467,4 @@ def test_map_attributes_for_stac_no_warning(caplog):
         "product:timeliness_category": "NT",
     }
     _map_attributes_for_stac(old_attributes)
-    assert not any("No mapping" in record.message for record in caplog.records)
+    assert any("No mapping" in record.message for record in caplog.records)

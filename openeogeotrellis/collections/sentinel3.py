@@ -72,6 +72,10 @@ def _map_attributes_for_stac(attribute_values: Dict[str, any]) -> Dict[str, any]
             mapped_value = attribute_values_mapping[k](val) if k in attribute_values_mapping else val
             mapped[mapped_key] = mapped_value
         elif not k in attribute_keys_stac_values:
+            logger.warning(
+                f"sentinel3: No mapping for attribute key {k!r}. value {val!r}. This was already a typical STAC attribute key."
+            )
+        else:
             logger.warning(f"sentinel3: No mapping for attribute key {k!r}. value {val!r}")
     return mapped
 
