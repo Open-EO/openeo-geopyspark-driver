@@ -1261,6 +1261,47 @@ class TestTemporalExtent:
         assert cache[extent4] == 3
         assert extent5 not in cache
 
+    @pytest.mark.parametrize(
+        ["given", "expected"],
+        [
+            (
+                # Legacy (invalid) usage pattern with same day
+                ("2026-03-04", "2026-03-04"),
+                (
+                    datetime.datetime(2026, 3, 4, tzinfo=datetime.timezone.utc),
+                    datetime.datetime(2026, 3, 4, 23, 59, 59, 999999, tzinfo=datetime.timezone.utc),
+                ),
+            ),
+            (
+                ("2026-03-04", "2026-03-07"),
+                (
+                    datetime.datetime(2026, 3, 4, tzinfo=datetime.timezone.utc),
+                    datetime.datetime(2026, 3, 6, 23, 59, 59, 999000, tzinfo=datetime.timezone.utc),
+                ),
+            ),
+            (
+                (None, "2026-03-07"),
+                (None, datetime.datetime(2026, 3, 6, 23, 59, 59, 999000, tzinfo=datetime.timezone.utc)),
+            ),
+            (
+                ("2026-03-04", None),
+                (datetime.datetime(2026, 3, 4, tzinfo=datetime.timezone.utc), None),
+            ),
+            (
+                # Given to second precision (and timezone)
+                ("2026-03-04T12:34:56+00:00", "2026-03-07T11:22:33Z"),
+                (
+                    datetime.datetime(2026, 3, 4, 12, 34, 56, tzinfo=datetime.timezone.utc),
+                    datetime.datetime(2026, 3, 7, 11, 22, 32, 999000, tzinfo=datetime.timezone.utc),
+                ),
+            ),
+        ],
+    )
+    def test_from_load_param_extent(self, given, expected):
+        extent = _TemporalExtent.from_load_param_extent(given)
+        assert extent.as_tuple() == expected
+
+
 class TestSpatialExtent:
     def test_empty(self):
         extent = _SpatialExtent(bbox=None)
