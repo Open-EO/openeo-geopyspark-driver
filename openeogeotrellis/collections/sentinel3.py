@@ -69,7 +69,11 @@ def _map_attributes_for_stac(attribute_values: Dict[str, any]) -> Dict[str, any]
     for k, val in attribute_values.items():
         if k in attribute_keys_mapping:
             mapped_key = attribute_keys_mapping[k]
-            mapped_value = attribute_values_mapping[k](val) if k in attribute_values_mapping else val
+            mapped_value = (
+                attribute_values_mapping[k](val)
+                if k in attribute_values_mapping
+                else val
+            )
             mapped[mapped_key] = mapped_value
         elif not k in attribute_keys_stac_values:
             logger.warning(
