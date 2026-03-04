@@ -3436,7 +3436,7 @@ class TestLoadStac:
         }
         assert dummy_stac_api_server.history_has(method="GET", path="/search")
 
-    def test_stac_api_caching(self, imagecollection_with_two_bands_and_one_date, api110, tmp_path):
+    def test_stac_api_caching(self, imagecollection_with_two_bands_and_one_date, api110, tmp_path, fast_sleep):
         with mock.patch("openeogeotrellis.load_stac.load_stac") as mock_load_stac:
             mock_load_stac.return_value = imagecollection_with_two_bands_and_one_date
 
@@ -4428,7 +4428,7 @@ class TestLoadStac:
             assert tuple(ds.bounds) == (5.0, 50.0, 6.0, 51.0)
 
     def test_load_stac_from_unsigned_job_results_respects_proj_metadata(self, api110, tmp_path,
-                                                                        batch_job_output_root, zk_job_registry):
+                                                                        batch_job_output_root, zk_job_registry, fast_sleep):
         # get results from own batch job rather than crawl signed STAC URLs
         results_dir = _setup_existing_job(
             job_id="j-2405078f40904a0b85cf8dc5dd55b07e",
@@ -4471,7 +4471,7 @@ class TestLoadStac:
             assert tuple(ds.bounds) == tuple(map(pytest.approx, expected_bbox))
 
     @gps_config_overrides(job_dependencies_poll_interval_seconds=0, job_dependencies_max_poll_delay_seconds=60)
-    def test_load_stac_from_partial_job_results_basic(self, api110, requests_mock, tmp_path, caplog):
+    def test_load_stac_from_partial_job_results_basic(self, api110, requests_mock, tmp_path, caplog, fast_sleep):
         """load_stac from partial job results Collection (signed case)"""
 
         caplog.set_level("DEBUG")
