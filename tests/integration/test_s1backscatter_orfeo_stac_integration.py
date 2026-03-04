@@ -49,7 +49,6 @@ def test_s1backscatter_stac_api_queries_multiple_product_types():
     s1_backscatter = S1BackscatterOrfeo()
     filter_properties = s1_backscatter._build_filter_properties(
         extra_properties={},
-        use_stac_client=True
     )
 
     _log.info("Default filter properties:")
