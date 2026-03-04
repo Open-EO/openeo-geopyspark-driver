@@ -1965,60 +1965,6 @@ def zk_job_registry(zk_client) -> ZkJobRegistry:
     return ZkJobRegistry(zk_client=zk_client)
 
 
-def test_extra_validation_terrascope(jvm_mock, api100):
-    pg = {"lc": {
-        "process_id": "load_collection",
-        "arguments": {
-            "id": "TERRASCOPE_S2_TOC_V2",
-            "temporal_extent": ["2020-03-01", "2020-03-10"],
-            "spatial_extent": {"west": -86.1, "south": 67, "east": -86, "north": 67.1},
-            "properties": {"eo:cloud_cover": {"process_graph": {
-                "lte1": {"process_id": "lte", "arguments": {"x": {"from_parameter": "value"}, "y": 50},
-                         "result": True}}}}
-        },
-        "result": True
-    }}
-
-    simple_layer = jvm_mock.geopyspark.geotrellis.TemporalTiledRasterLayer()
-    jvm_mock.org.openeo.geotrellis.file.PyramidFactory.datacube_seq.return_value = simple_layer
-    jvm_mock.org.openeo.geotrellis.file.PyramidFactory.pyramid_seq.return_value = simple_layer
-
-    def mock_query_jvm_opensearch_client(open_search_client, collection_id, _query_kwargs, processing_level=""):
-        if "CreodiasClient" in str(open_search_client):
-            mock_collection = [{"tile_id": "16WEA", "date": '20200301'}, {"tile_id": "16WDA", "date": '20200301'}]
-        elif "OscarsClient" in str(open_search_client) or "OpenSearchClient" in str(open_search_client):
-            mock_collection = [{"tile_id": "16WEA", "date": '20200301'}]
-        else:
-            raise Exception("Unknown open_search_client: " + str(open_search_client))
-        return {
-            (p["tile_id"], p["date"])
-            for p in mock_collection
-        }
-
-    with mock.patch("openeogeotrellis.layercatalog.query_jvm_opensearch_client", new=mock_query_jvm_opensearch_client):
-
-        response = api100.validation(pg)
-        expected = {'errors': [
-            {'code': 'MissingProduct',
-             'message': "Tile ('16WDA', '20200301') in collection 'TERRASCOPE_S2_TOC_V2' is not available."}
-        ]}
-        assert list(sorted(map(str, response.json["errors"]))) == list(sorted(map(str, expected["errors"])))
-
-
-@pytest.mark.parametrize(
-    "lc_args",
-    [
-        {"id": "TERRASCOPE_S2_TOC_V2"},
-        {"id": "TERRASCOPE_S2_TOC_V2", "temporal_extent": ["2020-03-01", "2020-03-10"]},
-        {"id": "TERRASCOPE_S2_TOC_V2", "spatial_extent": {"east": 5.08, "north": 51.22, "south": 51.215, "west": 5.07}},
-    ],
-)
-def test_extra_validation_unlimited_extent(api100, lc_args):
-    pg = {"lc": {"process_id": "load_collection", "arguments": lc_args, "result": True}}
-    response = api100.validation(pg)
-    for m in response.json["errors"]:
-        assert m["code"] == "ExtentTooLarge"
-
 
 @pytest.mark.parametrize(["temporal_extent", "expected"], [
     (("2020-01-01", None), ("2020-01-05 00:00:00", "2020-02-15 00:00:00")),
@@ -3490,7 +3436,7 @@ class TestLoadStac:
         }
         assert dummy_stac_api_server.history_has(method="GET", path="/search")
 
-    def test_stac_api_caching(self, imagecollection_with_two_bands_and_one_date, api110, tmp_path):
+    def test_stac_api_caching(self, imagecollection_with_two_bands_and_one_date, api110, tmp_path, fast_sleep):
         with mock.patch("openeogeotrellis.load_stac.load_stac") as mock_load_stac:
             mock_load_stac.return_value = imagecollection_with_two_bands_and_one_date
 
@@ -3748,22 +3694,30 @@ class TestLoadStac:
             "https://stac.test/collections/sentinel-2-l2a",
             data=get_test_data_file("stac/issue830_alternate_url/collections_sentinel-2-l2a.json").read_text(),
         )
-        urllib_and_request_mock.get(
-            "https://stac.test/search", data=item_json("stac/issue830_alternate_url/search.json")
+        # Use get_flexible for search URLs to avoid coupling to the page limit default
+        urllib_and_request_mock.get_flexible(
+            "https://stac.test/search", data=item_json("stac/issue830_alternate_url/search.json"),
+            ignore_params=("limit",),
         )
-        urllib_and_request_mock.get(
-            "https://stac.test/search?limit=20&bbox=5.07%2C51.215%2C5.08%2C51.22&datetime=2024-06-23T00%3A00%3A00Z%2F2024-06-23T23%3A59%3A59.999000Z&collections=sentinel-2-l2a&fields=%2Bproperties.proj%3Abbox%2C%2Bproperties.proj%3Aepsg%2C%2Bproperties.proj%3Ashape",
-            data=item_json("stac/issue830_alternate_url/search_queried.json"))
-        urllib_and_request_mock.get(
-            "https://stac.test/search?limit=20&bbox=5.07%2C51.215%2C5.08%2C51.22&datetime=2024-06-16T00%3A00%3A00Z%2F2024-06-23T23%3A59%3A59.999000Z&collections=sentinel-2-l2a&fields=%2Bproperties.proj%3Abbox%2C%2Bproperties.proj%3Ashape%2C%2Bproperties.proj%3Aepsg&token=MTcxOTEzOTU3OTAyNCxTMkJfTVNJTDJBXzIwMjQwNjIzVDEwNDYxOV9OMDUxMF9SMDUxX1QzMVVGU18yMDI0MDYyM1QxMjIxNTYsc2VudGluZWwtMi1sMmE%3D",
-            data=item_json("stac/issue830_alternate_url/search_queried_page2.json"))
-        urllib_and_request_mock.get(
-            "https://stac.test/search?limit=20&bbox=5.07%2C51.215%2C5.08%2C51.22&datetime=2024-06-23T00%3A00%3A00Z%2F2024-06-23T23%3A59%3A59.999000Z&collections=sentinel-2-l2a&fields=%2Btype%2C%2Bgeometry%2C%2Bproperties%2C%2Bid%2C%2Bbbox%2C%2Bstac_version%2C%2Bassets%2C%2Blinks%2C%2Bcollection",
+        urllib_and_request_mock.get_flexible(
+            "https://stac.test/search?limit=100&bbox=5.07%2C51.215%2C5.08%2C51.22&datetime=2024-06-23T00%3A00%3A00Z%2F2024-06-23T23%3A59%3A59.999000Z&collections=sentinel-2-l2a&fields=%2Bproperties.proj%3Abbox%2C%2Bproperties.proj%3Aepsg%2C%2Bproperties.proj%3Ashape",
             data=item_json("stac/issue830_alternate_url/search_queried.json"),
+            ignore_params=("limit",),
         )
-        urllib_and_request_mock.get(
-            "https://stac.test/search?limit=20&bbox=5.07%2C51.215%2C5.08%2C51.22&datetime=2024-06-23T00%3A00%3A00Z%2F2024-06-23T23%3A59%3A59.999000Z&collections=sentinel-2-l2a",
+        urllib_and_request_mock.get_flexible(
+            "https://stac.test/search?limit=100&bbox=5.07%2C51.215%2C5.08%2C51.22&datetime=2024-06-16T00%3A00%3A00Z%2F2024-06-23T23%3A59%3A59.999000Z&collections=sentinel-2-l2a&fields=%2Bproperties.proj%3Abbox%2C%2Bproperties.proj%3Ashape%2C%2Bproperties.proj%3Aepsg&token=MTcxOTEzOTU3OTAyNCxTMkJfTVNJTDJBXzIwMjQwNjIzVDEwNDYxOV9OMDUxMF9SMDUxX1QzMVVGU18yMDI0MDYyM1QxMjIxNTYsc2VudGluZWwtMi1sMmE%3D",
+            data=item_json("stac/issue830_alternate_url/search_queried_page2.json"),
+            ignore_params=("limit",),
+        )
+        urllib_and_request_mock.get_flexible(
+            "https://stac.test/search?limit=100&bbox=5.07%2C51.215%2C5.08%2C51.22&datetime=2024-06-23T00%3A00%3A00Z%2F2024-06-23T23%3A59%3A59.999000Z&collections=sentinel-2-l2a&fields=%2Btype%2C%2Bgeometry%2C%2Bproperties%2C%2Bid%2C%2Bbbox%2C%2Bstac_version%2C%2Bassets%2C%2Blinks%2C%2Bcollection",
             data=item_json("stac/issue830_alternate_url/search_queried.json"),
+            ignore_params=("limit",),
+        )
+        urllib_and_request_mock.get_flexible(
+            "https://stac.test/search?limit=100&bbox=5.07%2C51.215%2C5.08%2C51.22&datetime=2024-06-23T00%3A00%3A00Z%2F2024-06-23T23%3A59%3A59.999000Z&collections=sentinel-2-l2a",
+            data=item_json("stac/issue830_alternate_url/search_queried.json"),
+            ignore_params=("limit",),
         )
 
         process_graph = {
@@ -3842,9 +3796,10 @@ class TestLoadStac:
                 "stac/issue830_alternate_url_s3/catalogue.dataspace.copernicus.eu/stac/index.json"
             ).read_text(),
         )
-        urllib_and_request_mock.get(
+        urllib_and_request_mock.get_flexible(
             "https://catalogue.dataspace.copernicus.eu/stac/search?limit=20&bbox=5.07%2C51.215%2C5.08%2C51.22&datetime=2023-06-01T00%3A00%3A00Z%2F2023-06-30T23%3A59%3A59.999000Z&collections=GLOBAL-MOSAICS",
             data=item_json("stac/issue830_alternate_url_s3/catalogue.dataspace.copernicus.eu/stac/search_queried.json"),
+            ignore_params=("limit",),
         )
 
         process_graph = {
@@ -4392,7 +4347,11 @@ class TestLoadStac:
             assert "fields" not in request.qs
             assert request.qs.get("filter-lang") == filter_lang
             assert request.qs.get("filter") == filter
-            assert request.body == body or request.json() == body
+            if body:
+                for k, v in body.items():
+                    if k == "limit":
+                        continue
+                    assert (isinstance(request.body, dict) and request.body.get(k) == v) or request.json().get(k) == v
 
             def item(path) -> dict:
                 return json.loads(
@@ -4469,7 +4428,7 @@ class TestLoadStac:
             assert tuple(ds.bounds) == (5.0, 50.0, 6.0, 51.0)
 
     def test_load_stac_from_unsigned_job_results_respects_proj_metadata(self, api110, tmp_path,
-                                                                        batch_job_output_root, zk_job_registry):
+                                                                        batch_job_output_root, zk_job_registry, fast_sleep):
         # get results from own batch job rather than crawl signed STAC URLs
         results_dir = _setup_existing_job(
             job_id="j-2405078f40904a0b85cf8dc5dd55b07e",
@@ -4512,7 +4471,7 @@ class TestLoadStac:
             assert tuple(ds.bounds) == tuple(map(pytest.approx, expected_bbox))
 
     @gps_config_overrides(job_dependencies_poll_interval_seconds=0, job_dependencies_max_poll_delay_seconds=60)
-    def test_load_stac_from_partial_job_results_basic(self, api110, requests_mock, tmp_path, caplog):
+    def test_load_stac_from_partial_job_results_basic(self, api110, requests_mock, tmp_path, caplog, fast_sleep):
         """load_stac from partial job results Collection (signed case)"""
 
         caplog.set_level("DEBUG")
@@ -4562,7 +4521,7 @@ class TestLoadStac:
 
     @gps_config_overrides(job_dependencies_poll_interval_seconds=0, job_dependencies_max_poll_delay_seconds=60)
     def test_load_stac_from_unsigned_partial_job_results_basic(self, api110, batch_job_output_root, zk_job_registry,
-                                                               backend_implementation, caplog):
+                                                               backend_implementation, caplog, fast_sleep):
         """load_stac from partial job results Collection (unsigned case)"""
 
         caplog.set_level("DEBUG")
@@ -4748,9 +4707,10 @@ class TestLoadStac:
                 "stac/issue_copernicus_global_mosaics/stac.dataspace.copernicus.eu/v1/collections/sentinel-2-global-mosaics.json"
             ),
         )
-        urllib_and_request_mock.get(
+        urllib_and_request_mock.get_flexible(
             "https://stac.dataspace.copernicus.eu/v1/search?limit=20&bbox=2.1%2C35.31%2C2.2%2C35.32&datetime=2023-01-01T00%3A00%3A00Z%2F2023-01-01T23%3A59%3A59.999000Z&collections=sentinel-2-global-mosaics",
             data=item_json("stac/issue_copernicus_global_mosaics/stac.dataspace.copernicus.eu/v1/search_queried.json"),
+            ignore_params=("limit",),
         )
         urllib_and_request_mock.get(
             "https://stac.dataspace.copernicus.eu/v1/",

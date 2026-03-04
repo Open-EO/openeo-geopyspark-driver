@@ -6,6 +6,7 @@ import datetime as dt
 import functools
 import logging
 import os
+import random
 import re
 import time
 from dataclasses import dataclass
@@ -37,7 +38,6 @@ from openeo_driver.errors import (
 from openeo_driver.jobregistry import PARTIAL_JOB_STATUS
 from openeo_driver.users import User
 from openeo_driver.util.geometry import BoundingBox, GeometryBufferer
-from openeo_driver.util.http import requests_with_retry
 from openeo_driver.util.utm import utm_zone_from_epsg
 from openeo_driver.utils import EvalEnv
 from pystac import STACObject
@@ -48,7 +48,7 @@ from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.constants import EVAL_ENV_KEY
 from openeogeotrellis.geopysparkcubemetadata import GeopysparkCubeMetadata
 from typing import TYPE_CHECKING
-from openeogeotrellis.integrations.stac import ResilientStacIO
+from openeogeotrellis.integrations.stac import LoggingStacApiIO, ResilientStacIO
 from openeogeotrellis.util.datetime import DateTimeLikeOrNone, to_datetime_utc_unless_none
 from openeogeotrellis.util.geometry import GridSnapper
 from openeogeotrellis.util.projection import is_utm_epsg_code
@@ -60,6 +60,34 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 REQUESTS_TIMEOUT_SECONDS = 60
+
+STAC_API_PER_PAGE_LIMIT_DEFAULT = 100
+STAC_API_BACKOFF_FACTOR = 2
+STAC_API_RETRY_TOTAL = 25
+STAC_API_MINIMUM_BACKOFF_SECONDS = 1
+STAC_API_MAXIMUM_BACKOFF_SECONDS = 240
+
+
+class _JitteredRetry(Retry):
+    """Retry with jitter to avoid thundering herd on 429 responses.
+
+    - No Retry-After header: full jitter (random in [0, base_backoff])
+    - Retry-After header present: respects it as a minimum with full jitter
+    """
+
+    def get_backoff_time(self) -> float:
+        base = min(super().get_backoff_time(), STAC_API_MAXIMUM_BACKOFF_SECONDS)
+        return random.uniform(0, base)
+
+    def sleep_for_retry(self, response=None) -> bool:
+        retry_after = self.get_retry_after(response)
+        if retry_after is not None:
+            backoff_time = max(super().get_backoff_time(), STAC_API_MINIMUM_BACKOFF_SECONDS)
+            backoff_time = min(backoff_time, STAC_API_MAXIMUM_BACKOFF_SECONDS)
+            jitter = random.uniform(0, backoff_time)
+            time.sleep(retry_after + jitter)
+            return True
+        return False
 
 
 class NoDataAvailableException(OpenEOApiException):
@@ -244,6 +272,7 @@ def _prepare_context(
         fix_proj_transform = feature_flags.get("fix_proj_transform", False)
         skipped_assets = feature_flags.get("skipped_assets", [])
 
+        logger.info(f"Building OpenSearch features for {len(item_collection.items)} items (band_selection={band_selection})")
         for itm, band_assets in item_collection.iter_items_with_band_assets():
             opensearch_stats["items"] += 1
             opensearch_stats[f"items with {len(band_assets)=}"] += 1
@@ -536,9 +565,11 @@ def _prepare_context(
                     f"load_stac: Band order should be alphabetical for NetCDF STAC-catalog with a time dimension. "
                     f"Was {requested_band_names}, but should be {sorted_bands_from_catalog} instead.",
                 )
+        logger.info("Creating NetCDFCollection pyramid factory")
         pyramid_factory = jvm.org.openeo.geotrellis.layers.NetCDFCollection
     else:
         opensearch_link_titles = [opensearch_link_titles_map.get(b, b) for b in source_band_names]
+        logger.info(f"Creating PyramidFactory for {len(opensearch_link_titles)} band(s): {opensearch_link_titles}")
         logger.debug(f"{opensearch_link_titles=} (from {source_band_names=} and {opensearch_link_titles_map=})")
         max_soft_errors_ratio = env.get(EVAL_ENV_KEY.MAX_SOFT_ERRORS_RATIO, 0.0)
         pyramid_factory = jvm.org.openeo.geotrellis.file.PyramidFactory(
@@ -633,6 +664,7 @@ def _build_datacube(context: _LoadStacContext) -> GeopysparkDataCube:
 
     try:
         if netcdf_with_time_dimension:
+            logger.info("_build_datacube: calling NetCDFCollection.datacube_seq")
             pyramid = pyramid_factory.datacube_seq(
                 projected_polygons,
                 from_date.isoformat(),
@@ -644,6 +676,7 @@ def _build_datacube(context: _LoadStacContext) -> GeopysparkDataCube:
             )
         elif single_level:
             if not items_found and allow_empty_cubes:
+                logger.info("_build_datacube: calling PyramidFactory.empty_datacube_seq")
                 pyramid = pyramid_factory.empty_datacube_seq(
                     projected_polygons,
                     from_date.isoformat(),
@@ -651,6 +684,7 @@ def _build_datacube(context: _LoadStacContext) -> GeopysparkDataCube:
                     data_cube_parameters,
                 )
             else:
+                logger.info("_build_datacube: calling PyramidFactory.datacube_seq")
                 pyramid = pyramid_factory.datacube_seq(
                     projected_polygons,
                     from_date.isoformat(),
@@ -668,13 +702,16 @@ def _build_datacube(context: _LoadStacContext) -> GeopysparkDataCube:
                 extent_crs = "EPSG:4326"
 
             if not items_found and allow_empty_cubes:
+                logger.info("_build_datacube: calling PyramidFactory.empty_pyramid_seq")
                 pyramid = pyramid_factory.empty_pyramid_seq(
                     extent, extent_crs, from_date.isoformat(), to_date.isoformat()
                 )
             else:
+                logger.info("_build_datacube: calling PyramidFactory.pyramid_seq")
                 pyramid = pyramid_factory.pyramid_seq(
                     extent, extent_crs, from_date.isoformat(), to_date.isoformat(), metadata_properties, correlation_id
                 )
+        logger.info(f"_build_datacube: done building pyramid")
     except Exception as e:
         raise OpenEOApiException(
             message=f"load_stac: Error when constructing datacube from {url}: {e}",
@@ -784,6 +821,7 @@ def construct_item_collection(
     stac_metadata_parser = _StacMetadataParser(logger=logger)
 
     if dependency_job_info and batch_jobs:
+        logger.info(f"construct_item_collection: loading from dependency job {dependency_job_info.id!r}")
         # TODO: improve metadata for this case
         metadata = GeopysparkCubeMetadata(metadata={})
         item_collection = ItemCollection.from_own_job(
@@ -792,7 +830,7 @@ def construct_item_collection(
         # TODO: improve band name detection for this case
         band_names = []
     else:
-        logger.info(f"load_stac of arbitrary URL {url}")
+        logger.info(f"construct_item_collection: fetching STAC object from {url=} {spatiotemporal_extent=}")
 
         stac_object = _await_stac_object(
             url=url,
@@ -801,6 +839,7 @@ def construct_item_collection(
             max_poll_time=max_poll_time,
             stac_io=stac_io,
         )
+        logger.info(f"construct_item_collection: got {type(stac_object).__name__} {stac_object.id!r}")
 
         if isinstance(stac_object, pystac.Item):
             if property_filter_pg_map:
@@ -813,6 +852,7 @@ def construct_item_collection(
             metadata = GeopysparkCubeMetadata(metadata={})
             band_names = stac_metadata_parser.bands_from_stac_item(item=item).band_names()
             item_collection = ItemCollection.from_stac_item(item=item, spatiotemporal_extent=spatiotemporal_extent)
+            logger.info(f"construct_item_collection: single Item, {band_names=}, collected {len(item_collection.items)} item(s)")
         elif isinstance(stac_object, pystac.Collection) and _supports_item_search(stac_object):
             collection = stac_object
             netcdf_with_time_dimension = contains_netcdf_with_time_dimension(collection)
@@ -821,6 +861,7 @@ def construct_item_collection(
             )
 
             band_names = stac_metadata_parser.bands_from_stac_collection(collection=collection).band_names()
+            logger.info(f"construct_item_collection: STAC API Collection {collection.id!r}, {band_names=}, {netcdf_with_time_dimension=}")
 
             property_filter = PropertyFilter(properties=property_filter_pg_map, env=env)
             if property_filter_adaptations := feature_flags.get("property_filter_adaptations"):
@@ -838,6 +879,7 @@ def construct_item_collection(
                     use_filter_extension=feature_flags.get("use-filter-extension", True),
                     # TODO #1312 why skipping datetime filter especially for netcdf with time dimension?
                     skip_datetime_filter=netcdf_with_time_dimension,
+                    per_page_limit=feature_flags.get("stac_api_per_page_limit", STAC_API_PER_PAGE_LIMIT_DEFAULT),
                 )
         else:
             assert isinstance(stac_object, pystac.Catalog)  # static Catalog + Collection
@@ -853,8 +895,12 @@ def construct_item_collection(
                 netcdf_with_time_dimension = contains_netcdf_with_time_dimension(collection=catalog)
 
             band_names = stac_metadata_parser.bands_from_stac_object(obj=stac_object).band_names()
+            logger.info(f"construct_item_collection: static Catalog {catalog.id!r}, {band_names=}, {netcdf_with_time_dimension=}")
 
-            item_collection = ItemCollection.from_stac_catalog(catalog, spatiotemporal_extent=spatiotemporal_extent)
+            with TimingLogger(title=f"ItemCollection.from_stac_catalog from {url=}", logger=logger.info):
+                item_collection = ItemCollection.from_stac_catalog(catalog, spatiotemporal_extent=spatiotemporal_extent)
+
+    logger.info(f"construct_item_collection: collected {len(item_collection.items)} items")
 
     # Deduplicate items
     # TODO: smarter and more fine-grained deduplication behavior?
@@ -889,12 +935,25 @@ class _TemporalExtent:
     """
 
     # TODO: move this to a more generic location for better reuse
+    # TODO: enforce/ensure immutability
+    # TODO: re-implement in dataclasses/attrs to better enforce immutability and simplify equality/hash implementation
 
     __slots__ = ("from_date", "to_date")
 
     def __init__(self, from_date: DateTimeLikeOrNone, to_date: DateTimeLikeOrNone):
         self.from_date: Union[datetime.datetime, None] = to_datetime_utc_unless_none(from_date)
         self.to_date: Union[datetime.datetime, None] = to_datetime_utc_unless_none(to_date)
+
+    def _key(self) -> tuple:
+        return (self.from_date, self.to_date)
+
+    def __hash__(self):
+        return hash(self._key())
+
+    def __eq__(self, other):
+        if isinstance(other, _TemporalExtent):
+            return self._key() == other._key()
+        return NotImplemented
 
     def as_tuple(self) -> Tuple[Union[datetime.datetime, None], Union[datetime.datetime, None]]:
         return self.from_date, self.to_date
@@ -952,6 +1011,8 @@ class _SpatialExtent:
     """
 
     # TODO: move this to a more generic location for better reuse
+    # TODO: enforce/ensure immutability
+    # TODO: re-implement in dataclasses/attrs to better enforce immutability and simplify equality/hash implementation
 
     __slots__ = ("_bbox", "_bbox_lonlat_shape")
 
@@ -960,6 +1021,17 @@ class _SpatialExtent:
         self._bbox = bbox
         # cache for shapely polygon in lon/lat
         self._bbox_lonlat_shape = self._bbox.reproject("EPSG:4326").as_polygon() if self._bbox else None
+
+    def _key(self) -> tuple:
+        return (self._bbox,)
+
+    def __hash__(self):
+        return hash(self._key())
+
+    def __eq__(self, other):
+        if isinstance(other, _SpatialExtent):
+            return self._key() == other._key()
+        return NotImplemented
 
     def as_bbox(self, crs: Optional[str] = None) -> Union[BoundingBox, None]:
         bbox = self._bbox
@@ -976,6 +1048,9 @@ class _SpatialExtent:
 
 class _SpatioTemporalExtent:
     # TODO: move this to a more generic location for better reuse
+    # TODO: enforce/ensure immutability
+    # TODO: re-implement in dataclasses/attrs to better enforce immutability and simplify equality/hash implementation
+
     def __init__(
         self,
         *,
@@ -985,6 +1060,17 @@ class _SpatioTemporalExtent:
     ):
         self._spatial_extent = _SpatialExtent(bbox=bbox)
         self._temporal_extent = _TemporalExtent(from_date=from_date, to_date=to_date)
+
+    def _key(self) -> tuple:
+        return (self._spatial_extent, self._temporal_extent)
+
+    def __hash__(self):
+        return hash(self._key())
+
+    def __eq__(self, other):
+        if isinstance(other, _SpatioTemporalExtent):
+            return self._key() == other._key()
+        return NotImplemented
 
     @property
     def spatial_extent(self) -> _SpatialExtent:
@@ -1150,6 +1236,7 @@ class ItemCollection:
         # TODO: is it possible to eliminate the need for this parameter?
         skip_datetime_filter: bool = False,
         original_url: str = "n/a",
+        per_page_limit: int = STAC_API_PER_PAGE_LIMIT_DEFAULT,
     ) -> ItemCollection:
         root_catalog = collection.get_root()
 
@@ -1175,16 +1262,16 @@ class ItemCollection:
             # https://stac.openeo.vito.be/ and https://stac.terrascope.be
             fields = None
 
-        retry = requests.adapters.Retry(
-            total=3,
-            backoff_factor=2,
+        retry = _JitteredRetry(
+            total=STAC_API_RETRY_TOTAL,
+            backoff_factor=STAC_API_BACKOFF_FACTOR,
             status_forcelist=frozenset([429, 500, 502, 503, 504]),
             allowed_methods=Retry.DEFAULT_ALLOWED_METHODS.union({"POST"}),
             raise_on_status=False,  # otherwise StacApiIO will catch this and lose the response body
         )
         query_info = ""
         try:
-            stac_io = pystac_client.stac_api_io.StacApiIO(timeout=REQUESTS_TIMEOUT_SECONDS, max_retries=retry)
+            stac_io = LoggingStacApiIO(timeout=REQUESTS_TIMEOUT_SECONDS, max_retries=retry)
             client = pystac_client.Client.open(root_catalog.get_self_href(), modifier=modifier, stac_io=stac_io)
 
             cql2_filter = property_filter.to_cql2_filter(
@@ -1205,7 +1292,7 @@ class ItemCollection:
                 method=method,
                 collections=collection.id,
                 bbox=bbox,
-                limit=20,
+                limit=per_page_limit,
                 datetime=query_datetime,
                 filter=cql2_filter,
                 fields=fields,
@@ -1244,8 +1331,9 @@ class ItemCollection:
     def deduplicated(self, deduplicator: "ItemDeduplicator") -> ItemCollection:
         """Create new ItemCollection by deduplicating items using the given deduplicator."""
         orig_count = len(self.items)
+        logger.info(f"ItemCollection.deduplicated: deduplicating {orig_count} items using {deduplicator=}")
         items = deduplicator.deduplicate(items=self.items)
-        logger.debug(f"ItemCollection.deduplicated: from {orig_count} to {len(items)}")
+        logger.info(f"ItemCollection.deduplicated: from {orig_count} to {len(items)} items")
         return ItemCollection(items=items)
 
 
@@ -1512,6 +1600,7 @@ class _ProjectionMetadata:
     - "proj:transform"
     """
 
+    # TODO: enforce immutability better (e.g. by implementing through dataclasses/attrs)?
     # TODO: move to more generic geometry/projection utility module for better reuse and cleaner separation?
     # TODO: any added value to leverage projection extension support from pystac in some way?
 
@@ -1534,6 +1623,19 @@ class _ProjectionMetadata:
 
     def __repr__(self) -> str:
         return f"_ProjectionMetadata(code={self._code!r}, bbox={self._bbox!r}, shape={self._shape!r})"
+
+    def _key(self) -> tuple:
+        # TODO: use normalized `self.bbox` instead of `self._bbox` + `self._transform`
+        #       to also cover equivalence of these two?
+        return (self._code, self._shape, self._bbox, self._transform)
+
+    def __hash__(self):
+        return hash(self._key())
+
+    def __eq__(self, other):
+        if isinstance(other, _ProjectionMetadata):
+            return self._key() == other._key()
+        return NotImplemented
 
     @property
     def code(self) -> Union[str, None]:
@@ -1665,9 +1767,6 @@ class _ProjectionMetadata:
             and abs(t3) > abs(t5)
         ):
             fixed = [t1, t2, t0, t4, t5, t3] + list(transform[6:])
-            logger.warning(
-                f"Detected GDAL-ordered proj:transform {list(transform)}, reshuffled to {fixed}"
-            )
             return fixed
         return transform
 
@@ -1918,7 +2017,11 @@ def _await_stac_object(
     stac_io: Optional[pystac.stac_io.StacIO] = None,
 ) -> STACObject:
     if stac_io is None:
-        session = requests_with_retry(total=5, backoff_factor=0.1, status_forcelist={429, 500, 502, 503, 504})
+        retry = _JitteredRetry(total=STAC_API_RETRY_TOTAL, backoff_factor=STAC_API_BACKOFF_FACTOR, status_forcelist={429, 500, 502, 503, 504})
+        adapter = requests.adapters.HTTPAdapter(max_retries=retry)
+        session = requests.Session()
+        session.mount("http://", adapter)
+        session.mount("https://", adapter)
         stac_io = ResilientStacIO(session)
 
     while True:
@@ -2150,6 +2253,10 @@ class AdaptingPropertyFilter(PropertyFilter):
         elif value_mapping == "add-MGRS-prefix":
             # TODO: make this more generic with something like "add-prefix:<prefix>"?
             mapper = lambda v: f"MGRS-{v}"
+        elif value_mapping == "make_lower_case":
+            mapper = lambda v: v.lower() if isinstance(v, str) else v
+        elif value_mapping == "make_upper_case":
+            mapper = lambda v: v.upper() if isinstance(v, str) else v
         else:
             raise ValueError(f"Invalid {value_mapping=}")
 

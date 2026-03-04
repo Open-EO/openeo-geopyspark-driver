@@ -568,8 +568,16 @@ class GeopysparkDataCube(DriverDataCube):
             # Sort by instant
             tile_list.sort(key=lambda tup: tup[0].instant)
             dates = map(lambda t: t[0].instant, tile_list)
-            arrays = map(lambda t: t[1].cells, tile_list)
-            multidim_array = np.array(list(arrays))
+            arrays = list(map(lambda t: t[1].cells, tile_list))
+
+            #check if all elements in arrays have the same shape, if not, log a warning and create a new list retaining only elements with most common shape
+            shapes = [a.shape for a in arrays]
+            most_common_shape = max(set(shapes), key=shapes.count)
+            if len(set(shapes)) > 1:
+                _log.warning(f"run_udf: Not all tiles have the same shape. Shapes found: {set(shapes)}. Only using tiles with shape {most_common_shape} for further processing.")
+                arrays = [a for a in arrays if a.shape == most_common_shape]
+                dates = [date for i, date in enumerate(dates) if shapes[i] == most_common_shape]
+            multidim_array = np.array(arrays)
 
             extent = GeopysparkDataCube._mapTransform(metadata.layout_definition, tile_list[0][0])
 
@@ -2266,6 +2274,61 @@ class GeopysparkDataCube(DriverDataCube):
                             )
 
                         # TODO: introduce feature flag
+                        items = {}
+
+                        for java_item in java_items:
+                            assets = {}
+
+                            stac_datetime = java_item.datetime()
+                            bbox = java_item.bbox()
+
+                            for asset_key, asset in java_item.assets().items():
+                                path = asset.path()
+                                band_indices = asset.bandIndices()
+                                assets[asset_key] = {
+                                    "href": str(path),
+                                    "type": "image/tiff; application=geotiff",
+                                    "roles": ["data"],
+                                    "bands": (
+                                        [band for i, band in enumerate(bands) if i in band_indices]
+                                        if band_indices
+                                        else bands
+                                    ),
+                                    "nodata": nodata,
+                                    "datetime": stac_datetime,
+                                    "bbox": to_latlng_bbox(bbox),
+                                    "geometry": bbox_to_geojson(to_latlng_bbox(bbox)),
+                                }
+                            assets = add_gdalinfo_objects(assets)
+
+                            item = {
+                                "id": java_item.id(),
+                                "properties": {"datetime": stac_datetime},
+                                "geometry": bbox_to_geojson(to_latlng_bbox(bbox)),
+                                "bbox": to_latlng_bbox(bbox),
+                                "assets": assets,
+                            }
+
+                            items[java_item.id()] = item
+
+                        return items
+                    elif batch_mode and max_level.layer_type == gps.LayerType.SPATIAL and sample_by_feature:
+                        if separate_asset_per_band:
+                            raise OpenEOApiException(
+                                message="separate_asset_per_band is not supported with sample_by_feature"
+                            )
+                        # EP-3874 user requests to output data by polygon
+                        _log.info("Output one tiff file per feature.")
+                        geometries = format_options['geometries']
+                        if isinstance(geometries, MultiPolygon):
+                            geometries = GeometryCollection(geometries.geoms)
+                        projected_polygons = to_projected_polygons(get_jvm(), geometries)
+                        labels = self.get_labels(geometries,feature_id_property)
+                        compression = get_jvm().geotrellis.raster.io.geotiff.compression.DeflateCompression(
+                            zlevel)
+                        java_items = get_jvm().org.openeo.geotrellis.geotiff.package.saveSamplesSpatial(
+                            max_level_rdd, save_directory, projected_polygons, labels, compression,
+                            gtiff_options)
                         items = {}
 
                         for java_item in java_items:

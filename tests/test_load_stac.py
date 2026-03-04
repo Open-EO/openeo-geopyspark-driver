@@ -45,6 +45,8 @@ from openeogeotrellis.load_stac import (
     _get_apply_sentinel2_reflectance_offset,
     _is_sentinel2_reflectance_asset,
     _ResolutionTracker,
+    STAC_API_PER_PAGE_LIMIT_DEFAULT,
+    STAC_API_RETRY_TOTAL,
 )
 from openeogeotrellis.testing import DummyStacApiServer, gps_config_overrides
 from openeogeotrellis.util.geometry import bbox_to_geojson
@@ -162,13 +164,9 @@ def test_stac_api_dimensions(requests_mock, test_data, item_path):
             "features": [stac_item],
         },
     )
-    load_params = LoadParameters()
-    # See: https://github.com/Open-EO/openeo-geopyspark-driver/issues/1556
-    load_params.set_bands_by_link_title = False
-
     data_cube = load_stac(
         url=stac_collection_url,
-        load_params=load_params,
+        load_params=LoadParameters(),
         env=EvalEnv({"pyramid_levels": "highest"}),
         layer_properties={},
         batch_jobs=None,
@@ -350,12 +348,9 @@ def _mock_stac_api(requests_mock, stac_api_root_url, stac_collection_url, featur
 def test_world_oom(requests_mock, test_data):
     stac_item_url = "https://oeo.test/b4fb00aee0a308"
     requests_mock.get(stac_item_url, json=test_data.load_json("stac/issue1055-world-oom/result_item.json"))
-    load_params = LoadParameters()
-    # See: https://github.com/Open-EO/openeo-geopyspark-driver/issues/1556
-    load_params.set_bands_by_link_title = False
     load_stac(
         url=stac_item_url,
-        load_params=load_params,
+        load_params=LoadParameters(),
         env=EvalEnv({"pyramid_levels": "highest"}),
         layer_properties={},
         batch_jobs=None,
@@ -501,7 +496,7 @@ def test_stac_api_POST_item_search_resilience():
     )
 
     search_transient_error_resps = [
-        responses.post(stac_search_url, status=500, body="some transient error") for _ in range(4)  # does 4 attempts
+        responses.post(stac_search_url, status=500, body="some transient error"),
     ]
 
     # pass a property filter to do a POST item search like the API advertises above
@@ -527,8 +522,7 @@ def test_stac_api_POST_item_search_resilience():
             env=EvalEnv({"pyramid_levels": "highest"}),
         )
 
-    for resp in search_transient_error_resps:
-        assert resp.call_count == 1
+    assert [resp.call_count for resp in search_transient_error_resps] == [STAC_API_RETRY_TOTAL + 1]
 
 
 class TestStacMetadataParser:
@@ -949,6 +943,24 @@ class TestProjectionMetadata:
         coverage = metadata.coverage_for(extent)
         assert coverage == expected
 
+    def test_hashing_for_set(self):
+        metadatas = {
+            _ProjectionMetadata(epsg=4326, shape=[10, 20], bbox=[1, 2, 3, 4]),
+            _ProjectionMetadata(code="EPSG:4326", shape=(10, 20), bbox=(1, 2, 3, 4)),
+        }
+        assert metadatas == {
+            _ProjectionMetadata(code="EPSG:4326", shape=(10, 20), bbox=(1, 2, 3, 4)),
+        }
+
+    def test_hashing_for_dict(self):
+        data = {}
+        data[_ProjectionMetadata(epsg=4326, shape=[10, 20], bbox=[1, 2, 3, 4])] = "red"
+        data[_ProjectionMetadata(code="EPSG:4326", shape=(10, 20), bbox=(1, 2, 3, 4))] = "green"
+        data[_ProjectionMetadata(epsg=4326, shape=[100, 100], bbox=[1, 2, 3, 4])] = "blue"
+        assert data == {
+            _ProjectionMetadata(code="EPSG:4326", shape=(10, 20), bbox=(1, 2, 3, 4)): "green",
+            _ProjectionMetadata(code="EPSG:4326", shape=(100, 100), bbox=(1, 2, 3, 4)): "blue",
+        }
 
 
 
@@ -1237,6 +1249,17 @@ class TestTemporalExtent:
         assert extent.intersects_interval([None, "2025-01-01"]) == False
         assert extent.intersects_interval([None, "2025-04-04"]) == True
 
+    def test_as_cache_key(self):
+        extent1 = _TemporalExtent("2024-02-01", "2024-02-10")
+        extent2 = _TemporalExtent("2024-02-01", "2024-02-10")
+        extent3 = _TemporalExtent(None, "2024-02-10")
+        extent4 = _TemporalExtent(None, "2024-02-10")
+        extent5 = _TemporalExtent("2024-02-10", None)
+
+        cache = {extent1: 1, extent3: 3}
+        assert cache[extent2] == 1
+        assert cache[extent4] == 3
+        assert extent5 not in cache
 
 class TestSpatialExtent:
     def test_empty(self):
@@ -1251,6 +1274,18 @@ class TestSpatialExtent:
         assert extent.intersects((3.3, 51.1, 3.5, 51.5)) == True
         assert extent.intersects((3.9, 51.9, 4.4, 52.2)) == True
         assert extent.intersects((5, 51.1, 6, 52.2)) == False
+
+    def test_as_cache_key(self):
+        extent1 = _SpatialExtent(bbox=None)
+        extent2 = _SpatialExtent(bbox=None)
+        extent3 = _SpatialExtent(bbox=BoundingBox(west=1, south=2, east=3, north=4, crs=4326))
+        extent4 = _SpatialExtent(bbox=BoundingBox(west=1, south=2, east=3, north=4, crs=4326))
+        extent5 = _SpatialExtent(bbox=BoundingBox(west=10, south=20, east=30, north=40, crs=4326))
+
+        cache = {extent1: 1, extent3: 3}
+        assert cache[extent2] == 1
+        assert cache[extent4] == 3
+        assert extent5 not in cache
 
 
 class TestSpatioTemporalExtent:
@@ -1336,6 +1371,19 @@ class TestSpatioTemporalExtent:
             ),
         )
         assert extent.collection_intersects(collection) == expected
+
+    def test_as_cache_key(self):
+        bbox1 = BoundingBox(west=1, south=2, east=3, north=4, crs=4326)
+        extent1 = _SpatioTemporalExtent(bbox=bbox1, from_date="2024-02-01")
+        extent2 = _SpatioTemporalExtent(bbox=bbox1, from_date="2024-02-01")
+        extent3 = _SpatioTemporalExtent(bbox=None, from_date="2024-02-01", to_date="2024-02-10")
+        extent4 = _SpatioTemporalExtent(bbox=None, from_date="2024-02-01", to_date="2024-02-10")
+        extent5 = _SpatioTemporalExtent(bbox=bbox1, from_date="2024-02-01", to_date="2024-02-10")
+
+        cache = {extent1: 1, extent3: 3}
+        assert cache[extent2] == 1
+        assert cache[extent4] == 3
+        assert extent5 not in cache
 
 
 @pytest.mark.parametrize(
@@ -2298,7 +2346,7 @@ class TestItemCollection:
                     "json": {
                         "collections": ["custom-s2"],
                         "datetime": "2024-01-01T00:00:00Z/2025-01-01T00:00:00Z",
-                        "limit": 20,
+                        "limit": STAC_API_PER_PAGE_LIMIT_DEFAULT,
                         "filter-lang": "cql2-json",
                         "filter": {"op": "=", "args": [{"property": "properties.flavor"}, "banana"]},
                     },
@@ -2312,7 +2360,7 @@ class TestItemCollection:
                     "url_params": {
                         "collections": "custom-s2",
                         "datetime": "2024-01-01T00:00:00Z/2025-01-01T00:00:00Z",
-                        "limit": "20",
+                        "limit": str(STAC_API_PER_PAGE_LIMIT_DEFAULT),
                         "filter-lang": "cql2-text",
                         "filter": "\"properties.flavor\" = 'banana'",
                     },
@@ -2329,7 +2377,7 @@ class TestItemCollection:
                     "json": {
                         "collections": ["custom-s2"],
                         "datetime": "2024-01-01T00:00:00Z/2025-01-01T00:00:00Z",
-                        "limit": 20,
+                        "limit": STAC_API_PER_PAGE_LIMIT_DEFAULT,
                         "filter-lang": "cql2-json",
                         "filter": {"op": "=", "args": [{"property": "properties.flavor"}, "banana"]},
                     },
@@ -2344,7 +2392,7 @@ class TestItemCollection:
                     "url_params": {
                         "collections": "custom-s2",
                         "datetime": "2024-01-01T00:00:00Z/2025-01-01T00:00:00Z",
-                        "limit": "20",
+                        "limit": str(STAC_API_PER_PAGE_LIMIT_DEFAULT),
                     },
                     "json": None,
                 },

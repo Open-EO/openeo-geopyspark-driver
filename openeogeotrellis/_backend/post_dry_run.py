@@ -4,7 +4,8 @@ import dataclasses
 import collections
 import logging
 import math
-from typing import Callable, List, Tuple, Union, Dict
+import typing
+from typing import Callable, List, Tuple, Union, Dict, Set, Optional
 
 from openeo.util import deep_get
 from openeo_driver.backend import AbstractCollectionCatalog, LoadParameters
@@ -56,14 +57,15 @@ class _GridInfo:
     def __repr__(self) -> str:
         return f"_GridInfo(crs={self.crs_raw!r}, resolution={self.resolution!r}, extent_x={self.extent_x!r}, extent_y={self.extent_y!r})"
 
+    def _key(self) -> tuple:
+        return (self.crs_raw, self.resolution, self.extent_x, self.extent_y)
+
+    def __hash__(self):
+        return hash(self._key())
     def __eq__(self, other) -> bool:
-        return (
-            isinstance(other, _GridInfo)
-            and self.crs_raw == other.crs_raw
-            and self.resolution == other.resolution
-            and self.extent_x == other.extent_x
-            and self.extent_y == other.extent_y
-        )
+        if isinstance(other, _GridInfo):
+            return self._key() == other._key()
+        return NotImplemented
 
     @classmethod
     def from_datacube_metadata(cls, metadata: dict) -> _GridInfo:
@@ -229,7 +231,10 @@ def _extract_spatial_extent_from_constraint_load_collection(
 
     if deep_get(metadata, "_vito", "data_source", "type", default=None) == "stac":
         stac_url = deep_get(metadata, "_vito", "data_source", "url")
-        return _extract_spatial_extent_from_constraint_load_stac(stac_url=stac_url, constraint=constraint)
+        load_stac_feature_flags = deep_get(metadata, "_vito", "data_source", "load_stac_feature_flags", default={})
+        return _extract_spatial_extent_from_constraint_load_stac(
+            stac_url=stac_url, constraint=constraint, feature_flags=load_stac_feature_flags
+        )
 
     # TODO Extracting pixel grid info from collection metadata might might be unreliable
     #       and should be replaced by more precise item-level metadata where possible.
@@ -267,14 +272,14 @@ def _extract_spatial_extent_from_constraint_load_collection(
 
 
 def _extract_spatial_extent_from_constraint_load_stac(
-    stac_url: str, *, constraint: dict
+    stac_url: str, *, constraint: dict, feature_flags: Optional[dict] = None
 ) -> Union[None, AlignedExtentResult]:
     spatial_extent_from_pg = constraint.get("spatial_extent") or constraint.get("weak_spatial_extent")
 
     extent_orig: Union[BoundingBox, None] = BoundingBox.from_dict_or_none(spatial_extent_from_pg, default_crs=4326)
     extent_variants = {"original": extent_orig}
     # TODO: improve logging: e.g. automatically include stac URL and what context we are in
-    _log.debug(f"_extract_spatial_extent_from_constraint_load_stac {stac_url=} {extent_orig=}")
+    _log.info(f"_extract_spatial_extent_from_constraint_load_stac {stac_url=} {extent_orig=}")
 
     spatiotemporal_extent = openeogeotrellis.load_stac._spatiotemporal_extent_from_load_params(
         spatial_extent=spatial_extent_from_pg,
@@ -282,6 +287,7 @@ def _extract_spatial_extent_from_constraint_load_stac(
     )
     property_filter_pg_map = constraint.get("properties")
 
+    _log.info(f"Calling construct_item_collection for {stac_url=}")
     item_collection, _, _, _ = openeogeotrellis.load_stac.construct_item_collection(
         url=stac_url,
         spatiotemporal_extent=spatiotemporal_extent,
@@ -290,19 +296,29 @@ def _extract_spatial_extent_from_constraint_load_stac(
         stac_io=None,  # TODO?
     )
 
-    # Collect asset projection metadata
-    projection_metadatas: List[openeogeotrellis.load_stac._ProjectionMetadata] = [
-        openeogeotrellis.load_stac._ProjectionMetadata.from_asset(asset=asset, item=item)
+    # Collect set of (uqique) asset projection metadata items
+    _log.info(f"Collecting projection metadata from {len(item_collection.items)} items")
+    fix_proj_transform = feature_flags and feature_flags.get("fix_proj_transform", False)
+    projection_metadatas: Set[openeogeotrellis.load_stac._ProjectionMetadata] = {
+        openeogeotrellis.load_stac._ProjectionMetadata.from_asset(
+            asset=asset, item=item, fix_proj_transform=fix_proj_transform
+        )
         for item, band_assets in item_collection.iter_items_with_band_assets()
         for asset in band_assets.values()
-    ]
-    _log.debug(f"Collected {len(item_collection.items)=} {len(projection_metadatas)=}")
+    }
+
+    _log.info(
+        f"Collected {len(projection_metadatas)} projection metadata entries" f" from {len(item_collection.items)} items"
+    )
 
     # Determine most common grid (CRS and resolution) among assets
     target_grid = _determine_best_grid_from_proj_metadata(projection_metadatas)
     target_crs = target_grid.crs_raw if target_grid else None
+    _log.info(f"Determined {target_grid=}")
 
-    # Merge asset bounding boxes (full native extent, and "aligned" part of covered extent)
+    # Merge asset bounding boxes (full native extent, and "aligned" part of covered extent).
+    # Batch by CRS: compute min/max within each CRS group to avoid
+    # per-element reprojection overhead in the merger.
     assets_full_bbox_merger = BoundingBoxMerger(crs=target_crs)
     aligned_extent_coverage_merger = BoundingBoxMerger(crs=target_crs)
     for proj_metadata in projection_metadatas:
@@ -310,9 +326,13 @@ def _extract_spatial_extent_from_constraint_load_stac(
             assets_full_bbox_merger.add(asset_bbox)
             if extent_orig and (extent_coverage := proj_metadata.coverage_for(extent_orig)):
                 aligned_extent_coverage_merger.add(extent_coverage)
+    if extent_orig:
+        for proj_metadata in projection_metadatas:
+            if extent_coverage := proj_metadata.coverage_for(extent_orig):
+                aligned_extent_coverage_merger.add(extent_coverage)
     assets_full_bbox = assets_full_bbox_merger.get()
     assets_covered_bbox = aligned_extent_coverage_merger.get()
-    _log.debug(f"Merged bounding boxes: {assets_full_bbox=} {assets_covered_bbox=}")
+    _log.info(f"Merged bounding boxes: {assets_full_bbox=} {assets_covered_bbox=}")
     extent_variants["assets_full_bbox"] = assets_full_bbox
     extent_variants["assets_covered_bbox"] = assets_covered_bbox
     extent_aligned = assets_covered_bbox or assets_full_bbox
@@ -329,16 +349,25 @@ def _extract_spatial_extent_from_constraint_load_stac(
         extent_variants["resampled"] = extent_resampled
         extent_aligned = extent_resampled
 
-    if pixel_buffer_size := deep_get(constraint, "pixel_buffer", "buffer_size", default=None):
+    if target_grid and (pixel_buffer_size := deep_get(constraint, "pixel_buffer", "buffer_size", default=None)):
         extent_pixel_buffered = _buffer_extent(extent_aligned, buffer=pixel_buffer_size, sampling=target_grid)
         extent_variants["pixel_buffered"] = extent_pixel_buffered
         extent_aligned = extent_pixel_buffered
 
+    if not extent_aligned:
+        # TODO: better way to handle this?
+        _log.warning(
+            f"No aligned extent could be determined for {stac_url=} with {constraint=} ({len(item_collection.items)=} {len(projection_metadatas)=}). Falling back on (non-aligned) {extent_orig=}."
+        )
+        extent_aligned = extent_orig
+
+    _log.info(f"_extract_spatial_extent_from_constraint_load_stac result: {extent_aligned=} for {stac_url=}")
     return AlignedExtentResult(extent=extent_aligned, variants=extent_variants)
 
 
 def _determine_best_grid_from_proj_metadata(
-    projection_metadatas: list[openeogeotrellis.load_stac._ProjectionMetadata],
+    # TODO: type annotation `collections.abc.Collection` would be more future proof, but we're still stuck at python 3.8 compability #1060
+    projection_metadatas: typing.Collection[openeogeotrellis.load_stac._ProjectionMetadata],
 ) -> Union[_GridInfo, None]:
     """
     Determine best CRS+resolution (e.g. most common)
@@ -392,7 +421,7 @@ def determine_global_extent(
             aligned_extent_result = _extract_spatial_extent_from_constraint((source_id, constraint), catalog=catalog)
         except Exception as e:
             raise SpatialExtentExtractionError(
-                f"Failed to extract spatial extent from {source_id=} with {constraint=}"
+                f"Failed to extract spatial extent from {source_id=} with {constraint=}: {e=}"
             ) from e
         if aligned_extent_result:
             aligned_merger.add(aligned_extent_result.extent)
