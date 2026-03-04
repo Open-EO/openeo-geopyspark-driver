@@ -197,7 +197,7 @@ def _prepare_context(
     requested_temporal_extent = _TemporalExtent.from_load_param_extent(load_params.temporal_extent)
 
     # TODO normalize_temporal_extent replaces 'None' with "2000-01-01", which is not a good fallback date.
-    from_date, until_date = map(dt.datetime.fromisoformat, normalize_temporal_extent(requested_temporal_extent))
+    from_date, until_date = map(dt.datetime.fromisoformat, normalize_temporal_extent(load_params.temporal_extent))
     to_date = (
         dt.datetime.combine(until_date, dt.time.max, until_date.tzinfo)
         if from_date == until_date
