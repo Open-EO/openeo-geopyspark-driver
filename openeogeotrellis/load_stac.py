@@ -62,7 +62,10 @@ logger = logging.getLogger(__name__)
 REQUESTS_TIMEOUT_SECONDS = 60
 
 STAC_API_PER_PAGE_LIMIT_DEFAULT = 100
-MINIMUM_RETRY_AFTER_JITTER_SECONDS = 1
+STAC_API_BACKOFF_FACTOR = 2
+STAC_API_RETRY_TOTAL = 25
+STAC_API_MINIMUM_BACKOFF_SECONDS = 1
+STAC_API_MAXIMUM_BACKOFF_SECONDS = 240
 
 
 class _JitteredRetry(Retry):
@@ -71,16 +74,18 @@ class _JitteredRetry(Retry):
     - No Retry-After header: full jitter (random in [0, base_backoff])
     - Retry-After header present: respects it as a minimum with full jitter
     """
-    # TODO: just use standard `backoff_jitter` feature from `Retry`?
 
     def get_backoff_time(self) -> float:
-        base = super().get_backoff_time()
+        # super().get_backoff_time() is zero on first retry, so we bound it.
+        base = max(super().get_backoff_time(), STAC_API_MINIMUM_BACKOFF_SECONDS)
+        base = min(base, STAC_API_MAXIMUM_BACKOFF_SECONDS)
         return random.uniform(0, base)
 
     def sleep_for_retry(self, response=None) -> bool:
         retry_after = self.get_retry_after(response)
         if retry_after is not None:
-            backoff_time = max(super().get_backoff_time(), MINIMUM_RETRY_AFTER_JITTER_SECONDS)
+            backoff_time = max(super().get_backoff_time(), STAC_API_MINIMUM_BACKOFF_SECONDS)
+            backoff_time = min(backoff_time, STAC_API_MAXIMUM_BACKOFF_SECONDS)
             jitter = random.uniform(0, backoff_time)
             time.sleep(retry_after + jitter)
             return True
@@ -1131,9 +1136,6 @@ def _get_item_temporal_extent(item: pystac.Item) -> Tuple[datetime.datetime, dat
     return start, end
 
 
-STAC_API_RETRY_TOTAL = 7
-
-
 class ItemCollection:
     """
     Collection of STAC Items.
@@ -1264,7 +1266,7 @@ class ItemCollection:
 
         retry = _JitteredRetry(
             total=STAC_API_RETRY_TOTAL,
-            backoff_factor=2,
+            backoff_factor=STAC_API_BACKOFF_FACTOR,
             status_forcelist=frozenset([429, 500, 502, 503, 504]),
             allowed_methods=Retry.DEFAULT_ALLOWED_METHODS.union({"POST"}),
             raise_on_status=False,  # otherwise StacApiIO will catch this and lose the response body
@@ -2017,7 +2019,7 @@ def _await_stac_object(
     stac_io: Optional[pystac.stac_io.StacIO] = None,
 ) -> STACObject:
     if stac_io is None:
-        retry = _JitteredRetry(total=STAC_API_RETRY_TOTAL, backoff_factor=1, status_forcelist={429, 500, 502, 503, 504})
+        retry = _JitteredRetry(total=STAC_API_RETRY_TOTAL, backoff_factor=STAC_API_BACKOFF_FACTOR, status_forcelist={429, 500, 502, 503, 504})
         adapter = requests.adapters.HTTPAdapter(max_retries=retry)
         session = requests.Session()
         session.mount("http://", adapter)
