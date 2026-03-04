@@ -76,9 +76,7 @@ class _JitteredRetry(Retry):
     """
 
     def get_backoff_time(self) -> float:
-        # super().get_backoff_time() is zero on first retry, so we bound it.
-        base = max(super().get_backoff_time(), STAC_API_MINIMUM_BACKOFF_SECONDS)
-        base = min(base, STAC_API_MAXIMUM_BACKOFF_SECONDS)
+        base = min(super().get_backoff_time(), STAC_API_MAXIMUM_BACKOFF_SECONDS)
         return random.uniform(0, base)
 
     def sleep_for_retry(self, response=None) -> bool:
