@@ -255,6 +255,7 @@ class S1BackscatterOrfeo:
             url=url,
             spatiotemporal_extent=spatiotemporal_extent,
             property_filter_pg_map=property_filter_pg_map,
+            feature_flags=feature_flags,
         )
         # Build FixedFeaturesOpenSearchClient from STAC items
         jvm = get_jvm()
