@@ -2202,7 +2202,7 @@ class PropertyFilter:
         filters = [
             {
                 "op": self._to_cql2_operator(operator),
-                "args": [{"property": f"properties.{property_name}"}, value],
+                "args": [{"property": f"{property_name}"}, value],
             }
             for property_name, operator, value in self._iter_literal_matches()
             if operator != "like"
