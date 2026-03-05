@@ -253,7 +253,12 @@ def _build_stac_opensearch_client(
     from openeogeotrellis.load_stac import construct_item_collection
 
     product_type = metadata_properties["productType"]
-    urls = _get_stac_collection_urls(product_type)
+    feature_flags = feature_flags or {}
+    load_stac_feature_flags = feature_flags.get("load_stac_feature_flags", {})
+    if "urls" in load_stac_feature_flags:
+        urls = load_stac_feature_flags["urls"]
+    else:
+        urls = _get_stac_collection_urls(product_type)
 
     # Map opensearch attributes to STAC properties
     stac_attributes = _map_attributes_for_stac(metadata_properties)
@@ -286,7 +291,7 @@ def _build_stac_opensearch_client(
                 url=url,
                 spatiotemporal_extent=spatiotemporal_extent,
                 property_filter_pg_map=property_filter_pg_map,
-                feature_flags=feature_flags,
+                feature_flags=load_stac_feature_flags,
             )
             logger.info(f"Found {len(item_collection.items)} items in {collection_name}")
             items_by_collection[collection_name] = list(item_collection.iter_items_with_band_assets())

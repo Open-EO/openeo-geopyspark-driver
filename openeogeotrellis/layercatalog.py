@@ -716,7 +716,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                                         projected_polygons_native_crs, from_date, to_date,
                                         metadata.opensearch_link_titles, datacubeParams,
                                         native_cell_size,
-                                        {**feature_flags, **layer_source_info.get("load_stac_feature_flags", {})},
+                                        {**feature_flags, "load_stac_feature_flags": layer_source_info.get("load_stac_feature_flags", {})},
                                         jvm,
                                         spatial_extent=load_params.spatial_extent,
                                         use_stac_client=layer_source_info.get("use_stac_client", False)
