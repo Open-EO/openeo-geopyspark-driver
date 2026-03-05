@@ -1597,6 +1597,21 @@ class TestPropertyFilter:
                 [42, 4242],
                 [0, 41, None, -101],
             ),
+            (
+                {"process_id": "eq", "arguments": {"x": {"from_parameter": "value"}, "y": "32U*B"}},
+                ["32UXXB", "32UB"],
+                ["32UXXC", "33UXXB", None],
+            ),
+            (
+                {"process_id": "eq", "arguments": {"x": {"from_parameter": "value"}, "y": "31*"}},
+                ["31UFS", "31ABC"],
+                ["32UFS", None],
+            ),
+            (
+                {"process_id": "eq", "arguments": {"x": {"from_parameter": "value"}, "y": "31U?S"}},
+                ["31UFS", "31UXS"],
+                ["31UFFS", "31UF", None],
+            ),
         ],
     )
     def test_build_matcher_operators(self, pg_node, matching, non_matching):
@@ -1728,6 +1743,14 @@ class TestPropertyFilter:
                 },
                 "\"properties.foo\" in ('blue', 'green')",
             ),
+            (
+                {"process_id": "eq", "arguments": {"x": {"from_parameter": "value"}, "y": "32U*B"}},
+                "",
+            ),
+            (
+                {"process_id": "eq", "arguments": {"x": {"from_parameter": "value"}, "y": "31?FS"}},
+                "",
+            ),
         ],
     )
     def test_to_cql2_text_operators(self, pg_node, expected):
@@ -1855,6 +1878,14 @@ class TestPropertyFilter:
                     "arguments": {"data": ["blue", "green"], "y": {"from_parameter": "value"}},
                 },
                 {"op": "in", "args": [{"property": "properties.foo"}, ["blue", "green"]]},
+            ),
+            (
+                {"process_id": "eq", "arguments": {"x": {"from_parameter": "value"}, "y": "32U*B"}},
+                None,
+            ),
+            (
+                {"process_id": "eq", "arguments": {"x": {"from_parameter": "value"}, "y": "31?FS"}},
+                None,
             ),
         ],
     )
@@ -2065,6 +2096,32 @@ class TestAdaptingPropertyFilter:
         matcher = property_filter.build_matcher()
         assert [matcher(input) for input in no_match] == [False] * len(no_match)
         assert [matcher(input) for input in match] == [True] * len(match)
+
+    def test_wildcard_with_mgrs_prefix(self):
+        """Wildcard tileId with MGRS prefix adaptation: not sent to STAC API, only filtered locally."""
+        user_specified_properties = {
+            "tileId": {
+                "process_graph": {
+                    "eq1": {
+                        "process_id": "eq",
+                        "arguments": {"x": {"from_parameter": "value"}, "y": "32U*B"},
+                        "result": True,
+                    }
+                }
+            }
+        }
+        adaptations = {"tileId": {"rename": "grid:code", "value_mapping": "add-MGRS-prefix"}}
+        pf = AdaptingPropertyFilter(user_specified_properties, adaptations=adaptations)
+
+        # CQL2: wildcard filters should be excluded (not supported by STAC API)
+        assert pf.to_cql2_text() == ""
+        assert pf.to_cql2_json() is None
+        # Client-side matcher: uses fnmatch with shell wildcards
+        matcher = pf.build_matcher()
+        assert matcher({"grid:code": "MGRS-32UXXB"}) == True
+        assert matcher({"grid:code": "MGRS-32UB"}) == True
+        assert matcher({"grid:code": "MGRS-32UXXC"}) == False
+        assert matcher({"grid:code": "MGRS-33UXXB"}) == False
 
     def test_logging(self, caplog):
         caplog.set_level(level=logging.INFO)

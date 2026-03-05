@@ -3,6 +3,7 @@ from __future__ import annotations
 import collections
 import datetime
 import datetime as dt
+import fnmatch
 import functools
 import logging
 import os
@@ -2097,12 +2098,16 @@ class PropertyFilter:
         """Helper to produce tuples of property-name, operator and value"""
         for property_name, pg in self._properties.items():
             for operator, value in filter_properties.extract_literal_match(pg, env=self._env).items():
+                if operator == "eq" and isinstance(value, str) and ("*" in value or "?" in value):
+                    operator = "like"
                 yield property_name, operator, value
 
     @staticmethod
     def _build_callable(operator: str, value: Any) -> Callable[[Any], bool]:
         if operator == "eq":
             return lambda actual: actual == value
+        elif operator == "like":
+            return lambda actual, p=value: actual is not None and fnmatch.fnmatch(str(actual), p)
         elif operator == "lte":
             return lambda actual: actual is not None and actual <= value
         elif operator == "gte":
@@ -2161,6 +2166,8 @@ class PropertyFilter:
         """Convert the property filter to a CQL2 text representation."""
         filters = []
         for property_name, operator, value in self._iter_literal_matches():
+            if operator == "like":
+                continue
             operator = self._to_cql2_operator(operator)
             # Bit of ad-hoc value encoding (note that we exploit the fact here
             # that `repr` produces single quoted strings, as expected in CQL2 text format)
@@ -2198,6 +2205,7 @@ class PropertyFilter:
                 "args": [{"property": f"properties.{property_name}"}, value],
             }
             for property_name, operator, value in self._iter_literal_matches()
+            if operator != "like"
         ]
         if len(filters) == 0:
             return None
