@@ -243,6 +243,7 @@ def _build_stac_opensearch_client(
     spatial_extent: Union[Dict, BoundingBox, None],
     temporal_extent: Tuple[Optional[str], Optional[str]],
     jvm,
+    feature_flags: Optional[Dict] = None,
 ) -> any:
     """Build a FixedFeaturesOpenSearchClient populated with features from STAC API.
 
@@ -285,6 +286,7 @@ def _build_stac_opensearch_client(
                 url=url,
                 spatiotemporal_extent=spatiotemporal_extent,
                 property_filter_pg_map=property_filter_pg_map,
+                feature_flags=feature_flags,
             )
             logger.info(f"Found {len(item_collection.items)} items in {collection_name}")
             items_by_collection[collection_name] = list(item_collection.iter_items_with_band_assets())
@@ -400,7 +402,8 @@ def pyramid(metadata_properties, projected_polygons_native_crs, from_date, to_da
             metadata_properties=metadata_properties,
             spatial_extent=spatial_extent,
             temporal_extent=(from_date, to_date),
-            jvm=jvm
+            jvm=jvm,
+            feature_flags=feature_flags,
         )
     else:
         logger.info("Using legacy opensearch client")
