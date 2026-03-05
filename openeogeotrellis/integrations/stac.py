@@ -233,6 +233,28 @@ class LoggingStacApiIO(StacApiIO):
         _stac_response_cache.put(href, content)
         return content
 
+    def request(self, href, method=None, headers=None, parameters=None):
+        # Only cache GET requests. POST requests (e.g. STAC search with a JSON
+        # body) are not cached: building a reliable cache key from the request
+        # body is non-trivial.
+        is_get = method is None or method == "GET"
+        cache_key = None
+        if is_get:
+            if parameters:
+                prepped = self.session.prepare_request(
+                    requests.Request("GET", href, params=parameters)
+                )
+                cache_key = prepped.url
+            else:
+                cache_key = href
+            cached = _stac_response_cache.get(cache_key)
+            if cached is not None:
+                return cached
+        content = super().request(href, method=method, headers=headers, parameters=parameters)
+        if cache_key is not None:
+            _stac_response_cache.put(cache_key, content)
+        return content
+
 
 def ref_as_str(ref: Union[pystac.stac_io.HREF, pystac.Link]) -> str:
     """Helper to get the string representation of a STAC reference."""
