@@ -3,6 +3,7 @@ from __future__ import annotations
 import collections
 import datetime
 import datetime as dt
+import fnmatch
 import functools
 import logging
 import os
@@ -194,9 +195,10 @@ def _prepare_context(
     user: Optional[User] = env.get("user")
 
     requested_bbox = BoundingBox.from_dict_or_none(load_params.spatial_extent, default_crs="EPSG:4326")
-    temporal_extent = load_params.temporal_extent
-    #TODO normalize_temporal_extent replaces 'None' with "2000-01-01", which is not a good fallback date.
-    from_date, until_date = map(dt.datetime.fromisoformat, normalize_temporal_extent(temporal_extent))
+    requested_temporal_extent = _TemporalExtent.from_load_param_extent(load_params.temporal_extent)
+
+    # TODO normalize_temporal_extent replaces 'None' with "2000-01-01", which is not a good fallback date.
+    from_date, until_date = map(dt.datetime.fromisoformat, normalize_temporal_extent(load_params.temporal_extent))
     to_date = (
         dt.datetime.combine(until_date, dt.time.max, until_date.tzinfo)
         if from_date == until_date
@@ -450,11 +452,13 @@ def _prepare_context(
         metadata = metadata.add_spatial_dimension(name="y", extent=[])
 
     item_collection_temporal_extent = item_collection.get_temporal_extent()
+    metadata_temporal_extent = (
+        map_optional(dt.datetime.isoformat, requested_temporal_extent.from_date or item_collection_temporal_extent[0]),
+        map_optional(dt.datetime.isoformat, requested_temporal_extent.to_date or item_collection_temporal_extent[1]),
+    )
+    logger.info(f"_prepare_context {url=} {metadata_temporal_extent=}")
     metadata = metadata.with_temporal_extent(
-        temporal_extent=(
-            map_optional(dt.datetime.isoformat, item_collection_temporal_extent[0]) or temporal_extent[0],
-            map_optional(dt.datetime.isoformat, item_collection_temporal_extent[1]) or temporal_extent[1],
-        ),
+        temporal_extent=metadata_temporal_extent,
         allow_adding_dimension=True,
     )
 
@@ -935,14 +939,21 @@ class _TemporalExtent:
     """
 
     # TODO: move this to a more generic location for better reuse
-    # TODO: enforce/ensure immutability
     # TODO: re-implement in dataclasses/attrs to better enforce immutability and simplify equality/hash implementation
 
-    __slots__ = ("from_date", "to_date")
+    __slots__ = ("_from_date", "_to_date")
 
     def __init__(self, from_date: DateTimeLikeOrNone, to_date: DateTimeLikeOrNone):
-        self.from_date: Union[datetime.datetime, None] = to_datetime_utc_unless_none(from_date)
-        self.to_date: Union[datetime.datetime, None] = to_datetime_utc_unless_none(to_date)
+        self._from_date: Union[datetime.datetime, None] = to_datetime_utc_unless_none(from_date)
+        self._to_date: Union[datetime.datetime, None] = to_datetime_utc_unless_none(to_date)
+
+    @property
+    def from_date(self) -> Union[datetime.datetime, None]:
+        return self._from_date
+
+    @property
+    def to_date(self) -> Union[datetime.datetime, None]:
+        return self._to_date
 
     def _key(self) -> tuple:
         return (self.from_date, self.to_date)
@@ -954,6 +965,29 @@ class _TemporalExtent:
         if isinstance(other, _TemporalExtent):
             return self._key() == other._key()
         return NotImplemented
+
+    @classmethod
+    def from_load_param_extent(cls, extent: Tuple[DateTimeLikeOrNone, DateTimeLikeOrNone]) -> _TemporalExtent:
+        """
+        Create from openEO load_collection/load_stac-style temporal extent, considering:
+        - given as end-exclusive, per openEO convention
+        - possibly given in legacy (but invalid) way, where from and end date/day are identical,
+          which should be interpreted as a single-day extent
+        """
+        (from_date, until_date) = (to_datetime_utc_unless_none(d) for d in extent)
+        if until_date is None:
+            to_date = None
+        elif from_date == until_date:
+            # Fallback mechanism for legacy usage patterns
+            to_date = datetime.datetime.combine(until_date, datetime.time.max, until_date.tzinfo)
+            logger.warning(
+                f"Invalid temporal extent (identical start and end: {from_date!r}). Normalized end to {to_date!r}."
+            )
+        else:
+            # Convert openEO temporal extent convention (end-exclusive) to internal(?) convention (end-inclusive)
+            # TODO: isn't it just more transparant/consistent to keep working with end-exclusive definition instead of subtracting 1 millisecond here?
+            to_date = until_date - datetime.timedelta(milliseconds=1)
+        return cls(from_date=from_date, to_date=to_date)
 
     def as_tuple(self) -> Tuple[Union[datetime.datetime, None], Union[datetime.datetime, None]]:
         return self.from_date, self.to_date
@@ -1055,11 +1089,12 @@ class _SpatioTemporalExtent:
         self,
         *,
         bbox: Union[BoundingBox, None] = None,
+        temporal_extent: Optional[_TemporalExtent] = None,
         from_date: DateTimeLikeOrNone = None,
         to_date: DateTimeLikeOrNone = None,
     ):
         self._spatial_extent = _SpatialExtent(bbox=bbox)
-        self._temporal_extent = _TemporalExtent(from_date=from_date, to_date=to_date)
+        self._temporal_extent = temporal_extent or _TemporalExtent(from_date=from_date, to_date=to_date)
 
     def _key(self) -> tuple:
         return (self._spatial_extent, self._temporal_extent)
@@ -1107,19 +1142,8 @@ def _spatiotemporal_extent_from_load_params(
     temporal_extent: Tuple[Optional[str], Optional[str]]
 ) -> _SpatioTemporalExtent:
     bbox = BoundingBox.from_dict_or_none(spatial_extent, default_crs="EPSG:4326")
-    (from_date, until_date) = (to_datetime_utc_unless_none(d) for d in temporal_extent)
-    if until_date is None:
-        to_date = None
-    elif from_date == until_date:
-        # Fallback mechanism for legacy usage patterns
-        to_date = datetime.datetime.combine(until_date, datetime.time.max, until_date.tzinfo)
-        logger.warning(
-            f"Invalid temporal extent (identical start and end: {from_date!r}). Normalized end to {to_date!r}."
-        )
-    else:
-        # Convert openEO temporal extent convention (end-exclusive) to internal(?) convention (end-inclusive)
-        to_date = until_date - datetime.timedelta(milliseconds=1)
-    return _SpatioTemporalExtent(bbox=bbox, from_date=from_date, to_date=to_date)
+    temporal_extent = _TemporalExtent.from_load_param_extent(temporal_extent)
+    return _SpatioTemporalExtent(bbox=bbox, temporal_extent=temporal_extent)
 
 
 def _get_item_temporal_extent(item: pystac.Item) -> Tuple[datetime.datetime, datetime.datetime]:
@@ -1317,7 +1341,7 @@ class ItemCollection:
         return ItemCollection(items)
 
     def get_temporal_extent(self) -> Tuple[Union[datetime.datetime, None], Union[datetime.datetime, None]]:
-        """Get overall tempoarl extent of all items in the collection."""
+        """Get overall temporal extent of all items in the collection."""
         start = None
         end = None
         for item in self.items:
@@ -2074,12 +2098,16 @@ class PropertyFilter:
         """Helper to produce tuples of property-name, operator and value"""
         for property_name, pg in self._properties.items():
             for operator, value in filter_properties.extract_literal_match(pg, env=self._env).items():
+                if operator == "eq" and isinstance(value, str) and ("*" in value or "?" in value):
+                    operator = "like"
                 yield property_name, operator, value
 
     @staticmethod
     def _build_callable(operator: str, value: Any) -> Callable[[Any], bool]:
         if operator == "eq":
             return lambda actual: actual == value
+        elif operator == "like":
+            return lambda actual, p=value: actual is not None and fnmatch.fnmatch(str(actual), p)
         elif operator == "lte":
             return lambda actual: actual is not None and actual <= value
         elif operator == "gte":
@@ -2138,6 +2166,8 @@ class PropertyFilter:
         """Convert the property filter to a CQL2 text representation."""
         filters = []
         for property_name, operator, value in self._iter_literal_matches():
+            if operator == "like":
+                continue
             operator = self._to_cql2_operator(operator)
             # Bit of ad-hoc value encoding (note that we exploit the fact here
             # that `repr` produces single quoted strings, as expected in CQL2 text format)
@@ -2175,6 +2205,7 @@ class PropertyFilter:
                 "args": [{"property": f"properties.{property_name}"}, value],
             }
             for property_name, operator, value in self._iter_literal_matches()
+            if operator != "like"
         ]
         if len(filters) == 0:
             return None

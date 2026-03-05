@@ -1261,6 +1261,47 @@ class TestTemporalExtent:
         assert cache[extent4] == 3
         assert extent5 not in cache
 
+    @pytest.mark.parametrize(
+        ["given", "expected"],
+        [
+            (
+                # Legacy (invalid) usage pattern with same day
+                ("2026-03-04", "2026-03-04"),
+                (
+                    datetime.datetime(2026, 3, 4, tzinfo=datetime.timezone.utc),
+                    datetime.datetime(2026, 3, 4, 23, 59, 59, 999999, tzinfo=datetime.timezone.utc),
+                ),
+            ),
+            (
+                ("2026-03-04", "2026-03-07"),
+                (
+                    datetime.datetime(2026, 3, 4, tzinfo=datetime.timezone.utc),
+                    datetime.datetime(2026, 3, 6, 23, 59, 59, 999000, tzinfo=datetime.timezone.utc),
+                ),
+            ),
+            (
+                (None, "2026-03-07"),
+                (None, datetime.datetime(2026, 3, 6, 23, 59, 59, 999000, tzinfo=datetime.timezone.utc)),
+            ),
+            (
+                ("2026-03-04", None),
+                (datetime.datetime(2026, 3, 4, tzinfo=datetime.timezone.utc), None),
+            ),
+            (
+                # Given to second precision (and timezone)
+                ("2026-03-04T12:34:56+00:00", "2026-03-07T11:22:33Z"),
+                (
+                    datetime.datetime(2026, 3, 4, 12, 34, 56, tzinfo=datetime.timezone.utc),
+                    datetime.datetime(2026, 3, 7, 11, 22, 32, 999000, tzinfo=datetime.timezone.utc),
+                ),
+            ),
+        ],
+    )
+    def test_from_load_param_extent(self, given, expected):
+        extent = _TemporalExtent.from_load_param_extent(given)
+        assert extent.as_tuple() == expected
+
+
 class TestSpatialExtent:
     def test_empty(self):
         extent = _SpatialExtent(bbox=None)
@@ -1556,6 +1597,21 @@ class TestPropertyFilter:
                 [42, 4242],
                 [0, 41, None, -101],
             ),
+            (
+                {"process_id": "eq", "arguments": {"x": {"from_parameter": "value"}, "y": "32U*B"}},
+                ["32UXXB", "32UB"],
+                ["32UXXC", "33UXXB", None],
+            ),
+            (
+                {"process_id": "eq", "arguments": {"x": {"from_parameter": "value"}, "y": "31*"}},
+                ["31UFS", "31ABC"],
+                ["32UFS", None],
+            ),
+            (
+                {"process_id": "eq", "arguments": {"x": {"from_parameter": "value"}, "y": "31U?S"}},
+                ["31UFS", "31UXS"],
+                ["31UFFS", "31UF", None],
+            ),
         ],
     )
     def test_build_matcher_operators(self, pg_node, matching, non_matching):
@@ -1687,6 +1743,14 @@ class TestPropertyFilter:
                 },
                 "\"properties.foo\" in ('blue', 'green')",
             ),
+            (
+                {"process_id": "eq", "arguments": {"x": {"from_parameter": "value"}, "y": "32U*B"}},
+                "",
+            ),
+            (
+                {"process_id": "eq", "arguments": {"x": {"from_parameter": "value"}, "y": "31?FS"}},
+                "",
+            ),
         ],
     )
     def test_to_cql2_text_operators(self, pg_node, expected):
@@ -1814,6 +1878,14 @@ class TestPropertyFilter:
                     "arguments": {"data": ["blue", "green"], "y": {"from_parameter": "value"}},
                 },
                 {"op": "in", "args": [{"property": "properties.foo"}, ["blue", "green"]]},
+            ),
+            (
+                {"process_id": "eq", "arguments": {"x": {"from_parameter": "value"}, "y": "32U*B"}},
+                None,
+            ),
+            (
+                {"process_id": "eq", "arguments": {"x": {"from_parameter": "value"}, "y": "31?FS"}},
+                None,
             ),
         ],
     )
@@ -2024,6 +2096,32 @@ class TestAdaptingPropertyFilter:
         matcher = property_filter.build_matcher()
         assert [matcher(input) for input in no_match] == [False] * len(no_match)
         assert [matcher(input) for input in match] == [True] * len(match)
+
+    def test_wildcard_with_mgrs_prefix(self):
+        """Wildcard tileId with MGRS prefix adaptation: not sent to STAC API, only filtered locally."""
+        user_specified_properties = {
+            "tileId": {
+                "process_graph": {
+                    "eq1": {
+                        "process_id": "eq",
+                        "arguments": {"x": {"from_parameter": "value"}, "y": "32U*B"},
+                        "result": True,
+                    }
+                }
+            }
+        }
+        adaptations = {"tileId": {"rename": "grid:code", "value_mapping": "add-MGRS-prefix"}}
+        pf = AdaptingPropertyFilter(user_specified_properties, adaptations=adaptations)
+
+        # CQL2: wildcard filters should be excluded (not supported by STAC API)
+        assert pf.to_cql2_text() == ""
+        assert pf.to_cql2_json() is None
+        # Client-side matcher: uses fnmatch with shell wildcards
+        matcher = pf.build_matcher()
+        assert matcher({"grid:code": "MGRS-32UXXB"}) == True
+        assert matcher({"grid:code": "MGRS-32UB"}) == True
+        assert matcher({"grid:code": "MGRS-32UXXC"}) == False
+        assert matcher({"grid:code": "MGRS-33UXXB"}) == False
 
     def test_logging(self, caplog):
         caplog.set_level(level=logging.INFO)
@@ -2848,6 +2946,40 @@ class TestPrepareContext:
             },
         )
 
+    def test_prepare_context_basic(self, dummy_stac_api_server):
+        with dummy_stac_api_server.serve() as dummy_stac_api:
+            context = _prepare_context(
+                url=f"{dummy_stac_api}/collections/collection-123",
+                load_params=LoadParameters(),
+                env=EvalEnv(),
+            )
+
+        dumper = _OpenSearchClientDumper()
+        assert dumper.dump_opensearch_client_features(context.opensearch_client) == [
+            {
+                "id": "item-1",
+                "links": [
+                    {"title": "asset-1", "href": dirty_equals.IsStr(regex=".*/asset-1.tiff"), "bandNames": ["asset-1"]}
+                ],
+            },
+            {
+                "id": "item-2",
+                "links": [
+                    {"title": "asset-2", "href": dirty_equals.IsStr(regex=".*/asset-2.tiff"), "bandNames": ["asset-2"]}
+                ],
+            },
+            {
+                "id": "item-3",
+                "links": [
+                    {"title": "asset-2", "href": dirty_equals.IsStr(regex=".*/asset-3.tiff"), "bandNames": ["asset-2"]}
+                ],
+            },
+        ]
+        assert list(context.pyramid_factory.openSearchLinkTitles()) == ["asset-1", "asset-2"]
+        assert context.metadata.band_names == ["asset-1", "asset-2"]
+        assert context.metadata.temporal_extent == ("2024-05-01T00:00:00+00:00", "2024-07-03T00:00:00+00:00")
+        assert context.metadata.spatial_extent is None
+
     @pytest.mark.parametrize(
         [
             "load_params_bands",
@@ -3119,6 +3251,45 @@ class TestPrepareContext:
         assert (cell_size.width(), cell_size.height()) == (0.125, 0.125)
         assert context.metadata.band_names == expected_metadata_bands
         assert list(context.pyramid_factory.openSearchLinkTitles()) == expected_link_titles
+
+    @pytest.mark.parametrize(
+        ["requested_temporal_extent", "expected_items", "expected_temporal_extent"],
+        [
+            (
+                (None, None),
+                ["item-1", "item-2", "item-3"],
+                ("2024-05-01T00:00:00+00:00", "2024-07-03T00:00:00+00:00"),
+            ),
+            (
+                ("2024-03-27", "2024-06-06"),
+                ["item-1", "item-2"],
+                ("2024-03-27T00:00:00+00:00", "2024-06-05T23:59:59.999000+00:00"),
+            ),
+            (
+                (None, "2024-06-06"),
+                ["item-1", "item-2"],
+                ("2024-05-01T00:00:00+00:00", "2024-06-05T23:59:59.999000+00:00"),
+            ),
+            (
+                ("2024-05-20", None),
+                ["item-2", "item-3"],
+                ("2024-05-20T00:00:00+00:00", "2024-07-03T00:00:00+00:00"),
+            ),
+        ],
+    )
+    def test_prepare_context_requested_temporal_extent(
+        self, dummy_stac_api_server, requested_temporal_extent, expected_items, expected_temporal_extent
+    ):
+        with dummy_stac_api_server.serve() as dummy_stac_api:
+            context = _prepare_context(
+                url=f"{dummy_stac_api}/collections/collection-123",
+                load_params=LoadParameters(temporal_extent=requested_temporal_extent),
+                env=EvalEnv(),
+            )
+
+        dumper = _OpenSearchClientDumper()
+        assert [i["id"] for i in dumper.dump_opensearch_client_features(context.opensearch_client)] == expected_items
+        assert context.metadata.temporal_extent == expected_temporal_extent
 
 
 class TestResolutionTracker:

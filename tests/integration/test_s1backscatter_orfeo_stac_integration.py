@@ -10,6 +10,8 @@ and may be slow. It can be skipped with: pytest -m "not integration"
 """
 
 import logging
+from unittest import skip
+
 import pytest
 from openeogeotrellis.collections.s1backscatter_orfeo import S1BackscatterOrfeo
 from openeogeotrellis.load_stac import construct_item_collection, _spatiotemporal_extent_from_load_params
@@ -18,6 +20,7 @@ _log = logging.getLogger(__name__)
 
 
 @pytest.mark.integration
+@skip("API is currently unstable.")
 def test_s1backscatter_stac_api_queries_multiple_product_types():
     """
     Integration test: Verify that S1BackscatterOrfeo queries the live STAC API correctly

@@ -292,7 +292,7 @@ def _extract_spatial_extent_from_constraint_load_stac(
         url=stac_url,
         spatiotemporal_extent=spatiotemporal_extent,
         property_filter_pg_map=property_filter_pg_map,
-        feature_flags=None,  # TODO?
+        feature_flags=feature_flags,
         stac_io=None,  # TODO?
     )
 

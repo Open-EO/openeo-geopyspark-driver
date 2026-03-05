@@ -49,26 +49,38 @@ def _map_attributes_for_stac(attribute_values: Dict[str, any]) -> Dict[str, any]
     :param attribute_values: Dictionary of opensearch attribute key-value pairs
     :return: Dictionary with STAC-equivalent keys and values
     """
+    # Based on _LEGACY_TO_STAC_PROPERTY_KEYS
     attribute_keys_mapping = {
         "productType": "product:type",
+        "processingLevel": "processing:level",
+        "orbitDirection": "sat:orbit_state",  # TODO: Is there are a better related STAC property for this?
+        "orbitNumber": "sat:absolute_orbit",
+        "relativeOrbitNumber": "sat:relative_orbit",
+        "timeliness": "product:timeliness_category",
+        "missionTakeId": "eopf:datatake_id",
     }
-    # No value transformations needed for Sentinel-3 currently
     attribute_values_mapping = {
-        "productType": lambda v: v,
+        "orbitDirection": lambda v: v.lower(),  # DESCENDING -> descending
+        "sat:orbit_state": lambda v: v.lower(),  # DESCENDING -> descending
     }
+    attribute_keys_stac_values = set(attribute_keys_mapping.values())
 
     mapped = {}
-    for k, v in attribute_values.items():
+    for k, val in attribute_values.items():
         if k in attribute_keys_mapping:
             mapped_key = attribute_keys_mapping[k]
             mapped_value = (
-                attribute_values_mapping[k](v)
+                attribute_values_mapping[k](val)
                 if k in attribute_values_mapping
-                else v
+                else val
             )
             mapped[mapped_key] = mapped_value
+        elif not k in attribute_keys_stac_values:
+            logger.warning(
+                f"sentinel3: No mapping for attribute key {k!r}. value {val!r}. This was already a typical STAC attribute key."
+            )
         else:
-            logger.warning(f"sentinel3: No mapping for attribute key {k!r}")
+            logger.warning(f"sentinel3: No mapping for attribute key {k!r}. value {val!r}")
     return mapped
 
 
@@ -197,30 +209,30 @@ def _get_stac_collection_urls(product_type: str) -> List[str]:
     # TODO: move this to layercatalog.json
     if product_type == SLSTR_PRODUCT_TYPE:
         return [
-            "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-3-sl-2-lst-nrt",
-            "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-3-sl-2-lst-ntc",
+            "https://stac.opensearch.dataspace.copernicus.eu/v1/collections/sentinel-3-sl-2-lst-nrt",
+            "https://stac.opensearch.dataspace.copernicus.eu/v1/collections/sentinel-3-sl-2-lst-ntc",
         ]
     elif product_type == SYNERGY_PRODUCT_TYPE:
         return [
-            "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-3-syn-2-syn-stc",
-            "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-3-syn-2-syn-ntc",
+            "https://stac.opensearch.dataspace.copernicus.eu/v1/collections/sentinel-3-syn-2-syn-stc",
+            "https://stac.opensearch.dataspace.copernicus.eu/v1/collections/sentinel-3-syn-2-syn-ntc",
         ]
     elif product_type == "OL_2_LFR___":
         # Full Resolution Land and atmosphere geophysical products.
         return [
-            "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-3-olci-2-lfr-nrt",
-            "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-3-olci-2-lfr-ntc",
+            "https://stac.opensearch.dataspace.copernicus.eu/v1/collections/sentinel-3-olci-2-lfr-nrt",
+            "https://stac.opensearch.dataspace.copernicus.eu/v1/collections/sentinel-3-olci-2-lfr-ntc",
         ]
     elif product_type == "OL_2_WFR___":
         # Full Resolution Water and Atmosphere geophysical products.
         return [
-            "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-3-olci-2-wfr-nrt",
-            "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-3-olci-2-wfr-ntc",
+            "https://stac.opensearch.dataspace.copernicus.eu/v1/collections/sentinel-3-olci-2-wfr-nrt",
+            "https://stac.opensearch.dataspace.copernicus.eu/v1/collections/sentinel-3-olci-2-wfr-ntc",
         ]
     elif product_type == "SY_2_AOD___":
         # Global Aerosol parameter over land and sea on super pixel.
         return [
-            "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-3-syn-2-aod-ntc",
+            "https://stac.opensearch.dataspace.copernicus.eu/v1/collections/sentinel-3-syn-2-aod-ntc",
         ]
     else:
         raise ValueError(f"STAC not yet supported for Sentinel-3 product type: {product_type}")
@@ -231,6 +243,7 @@ def _build_stac_opensearch_client(
     spatial_extent: Union[Dict, BoundingBox, None],
     temporal_extent: Tuple[Optional[str], Optional[str]],
     jvm,
+    feature_flags: Optional[Dict] = None,
 ) -> any:
     """Build a FixedFeaturesOpenSearchClient populated with features from STAC API.
 
@@ -240,7 +253,12 @@ def _build_stac_opensearch_client(
     from openeogeotrellis.load_stac import construct_item_collection
 
     product_type = metadata_properties["productType"]
-    urls = _get_stac_collection_urls(product_type)
+    feature_flags = feature_flags or {}
+    load_stac_feature_flags = feature_flags.get("load_stac_feature_flags", {})
+    if "urls" in load_stac_feature_flags:
+        urls = load_stac_feature_flags["urls"]
+    else:
+        urls = _get_stac_collection_urls(product_type)
 
     # Map opensearch attributes to STAC properties
     stac_attributes = _map_attributes_for_stac(metadata_properties)
@@ -273,6 +291,7 @@ def _build_stac_opensearch_client(
                 url=url,
                 spatiotemporal_extent=spatiotemporal_extent,
                 property_filter_pg_map=property_filter_pg_map,
+                feature_flags=load_stac_feature_flags,
             )
             logger.info(f"Found {len(item_collection.items)} items in {collection_name}")
             items_by_collection[collection_name] = list(item_collection.iter_items_with_band_assets())
@@ -388,7 +407,8 @@ def pyramid(metadata_properties, projected_polygons_native_crs, from_date, to_da
             metadata_properties=metadata_properties,
             spatial_extent=spatial_extent,
             temporal_extent=(from_date, to_date),
-            jvm=jvm
+            jvm=jvm,
+            feature_flags=feature_flags,
         )
     else:
         logger.info("Using legacy opensearch client")
