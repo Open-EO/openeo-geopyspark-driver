@@ -2429,7 +2429,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     asset["output_dir"] = str(job_dir)
 
                 if "bands" in asset:
-                    asset["bands"] = [Band(**b) for b in asset["bands"]]
+                    asset["bands"] = [Band.from_dict(b) for b in asset["bands"]]
                 results_dict[title] = asset
 
         return results_dict
