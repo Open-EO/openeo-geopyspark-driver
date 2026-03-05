@@ -216,17 +216,20 @@ class S1BackscatterOrfeo:
                 }
         return mapped
 
+    _DEFAULT_STAC_URL = "https://stac.opensearch.dataspace.copernicus.eu/v1/collections/sentinel-1-grd"
+
     def _build_stac_opensearch_client(
         self,
         filter_properties: Dict[str, any],
         spatial_extent: Union[Dict, BoundingBox, None],
         temporal_extent: Tuple[Optional[str], Optional[str]],
+        stac_url: Optional[str] = None,
     ) -> JavaObject:
         """Build a FixedFeaturesOpenSearchClient populated with features from STAC API."""
         from openeogeotrellis.load_stac import _spatiotemporal_extent_from_load_params
         from openeogeotrellis.load_stac import construct_item_collection
 
-        url = "https://stac.opensearch.dataspace.copernicus.eu/v1/collections/sentinel-1-grd"
+        url = stac_url or self._DEFAULT_STAC_URL
 
         # filter_properties are assumed to be in STAC only format.
         property_filter_pg_map = self._filter_properties_to_pg_map(filter_properties)
@@ -331,7 +334,7 @@ class S1BackscatterOrfeo:
             self,
             collection_id, projected_polygons, from_date: str, to_date: str, extra_properties: dict,
             tile_size: int, zoom: int, correlation_id: str, datacubeParams=None, resolution = (10.0,10.0),
-            spatial_extent=None,
+            spatial_extent=None, stac_url: Optional[str] = None,
     ):
         """Build RDD of file metadata from STAC catalog query."""
         filter_properties = self._build_filter_properties(extra_properties)
@@ -340,7 +343,8 @@ class S1BackscatterOrfeo:
         opensearch_client = self._build_stac_opensearch_client(
             filter_properties=filter_properties,
             spatial_extent=spatial_extent,
-            temporal_extent=(from_date, to_date)
+            temporal_extent=(from_date, to_date),
+            stac_url=stac_url,
         )
 
         # Create FileRDDFactory
@@ -772,6 +776,7 @@ class S1BackscatterOrfeo:
             datacubeParams=None,
             max_soft_errors_ratio=0.0,
             spatial_extent=None,
+            stac_url: Optional[str] = None,
     ) -> Dict[int, geopyspark.TiledRasterLayer]:
         """
         Implementation of S1 backscatter calculation with Orfeo in Creodias environment
@@ -807,7 +812,7 @@ class S1BackscatterOrfeo:
             collection_id=collection_id, projected_polygons=projected_polygons,
             from_date=from_date, to_date=to_date, extra_properties=extra_properties,
             tile_size=tile_size, zoom=zoom, correlation_id=correlation_id,
-            datacubeParams=datacubeParams, spatial_extent=spatial_extent,
+            datacubeParams=datacubeParams, spatial_extent=spatial_extent, stac_url=stac_url,
         )
         if debug_mode:
             self._debug_show_rdd_info(feature_pyrdd)
@@ -1044,6 +1049,7 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
             datacubeParams=None,
             max_soft_errors_ratio=0.0,
             spatial_extent=None,
+            stac_url: Optional[str] = None,
     ) -> Dict[int, geopyspark.TiledRasterLayer]:
         """
         Implementation of S1 backscatter calculation with Orfeo in Creodias environment
@@ -1092,7 +1098,7 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
             from_date=from_date, to_date=to_date, extra_properties=extra_properties,
             tile_size=tile_size, zoom=zoom, correlation_id=correlation_id,
             datacubeParams=datacubeParams, resolution=target_resolution,
-            spatial_extent=spatial_extent,
+            spatial_extent=spatial_extent, stac_url=stac_url,
         )
         if debug_mode:
             self._debug_show_rdd_info(feature_pyrdd)

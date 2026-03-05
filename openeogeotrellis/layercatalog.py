@@ -701,6 +701,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 datacubeParams = datacubeParams,
                 max_soft_errors_ratio=max_soft_errors_ratio,
                 spatial_extent=load_params.spatial_extent,
+                stac_url=layer_source_info.get("url"),
             )
         elif layer_source_type == 'file-s3':
             native_cell_size = jvm.geotrellis.raster.CellSize(
