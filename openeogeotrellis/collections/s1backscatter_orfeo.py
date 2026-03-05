@@ -332,7 +332,6 @@ class S1BackscatterOrfeo:
             filter_properties: Dict[str, any] = {
                 # Use array to match IW_GRDH_1S (sentinel1-a), IW_GRDH_1S_B (sentinel1-b), IW_GRDH_1S_C (sentinel1-c)
                 "product:type": ["IW_GRDH_1S", "IW_GRDH_1S_B", "IW_GRDH_1S_C"],
-                "processing:level": "L1",
             }
             filter_properties.update(normalized_props)
         else:
