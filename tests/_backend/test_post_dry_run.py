@@ -113,6 +113,18 @@ class TestGridInfo:
             extent_y=[20, 40],
         )
 
+    def test_as_cache_key(self):
+        grid1 = _GridInfo(crs="EPSG:4326")
+        grid2 = _GridInfo(crs="EPSG:4326")
+        grid3 = _GridInfo(crs="EPSG:32631", resolution=(10, 20))
+        grid4 = _GridInfo(crs="EPSG:32631", resolution=(10, 20))
+        grid5 = _GridInfo(crs="EPSG:32631", resolution=(20, 10))
+
+        cache = {grid1: 1, grid3: 3}
+        assert cache[grid2] == 1
+        assert cache[grid4] == 3
+        assert grid5 not in cache
+
 
 def test_snap_bbox():
     bbox = BoundingBox(1.222, 3.444, 5.666, 7.888)

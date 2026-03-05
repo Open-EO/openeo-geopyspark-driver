@@ -57,14 +57,15 @@ class _GridInfo:
     def __repr__(self) -> str:
         return f"_GridInfo(crs={self.crs_raw!r}, resolution={self.resolution!r}, extent_x={self.extent_x!r}, extent_y={self.extent_y!r})"
 
+    def _key(self) -> tuple:
+        return (self.crs_raw, self.resolution, self.extent_x, self.extent_y)
+
+    def __hash__(self):
+        return hash(self._key())
     def __eq__(self, other) -> bool:
-        return (
-            isinstance(other, _GridInfo)
-            and self.crs_raw == other.crs_raw
-            and self.resolution == other.resolution
-            and self.extent_x == other.extent_x
-            and self.extent_y == other.extent_y
-        )
+        if isinstance(other, _GridInfo):
+            return self._key() == other._key()
+        return NotImplemented
 
     @classmethod
     def from_datacube_metadata(cls, metadata: dict) -> _GridInfo:

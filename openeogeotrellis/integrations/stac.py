@@ -70,6 +70,12 @@ class _StacResponseCache:
     def put(self, url: str, content: str) -> None:
         key = self._normalize_url(url)
         content_bytes = self._byte_size(content)
+        if content_bytes > self._max_bytes:
+            logger.debug(
+                f"STAC cache: skipping oversized entry {key}"
+                f" ({content_bytes} bytes > {self._max_bytes} bytes limit)"
+            )
+            return
         with self._lock:
             if key in self._cache:
                 old = self._cache[key]

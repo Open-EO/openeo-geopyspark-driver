@@ -1249,6 +1249,58 @@ class TestTemporalExtent:
         assert extent.intersects_interval([None, "2025-01-01"]) == False
         assert extent.intersects_interval([None, "2025-04-04"]) == True
 
+    def test_as_cache_key(self):
+        extent1 = _TemporalExtent("2024-02-01", "2024-02-10")
+        extent2 = _TemporalExtent("2024-02-01", "2024-02-10")
+        extent3 = _TemporalExtent(None, "2024-02-10")
+        extent4 = _TemporalExtent(None, "2024-02-10")
+        extent5 = _TemporalExtent("2024-02-10", None)
+
+        cache = {extent1: 1, extent3: 3}
+        assert cache[extent2] == 1
+        assert cache[extent4] == 3
+        assert extent5 not in cache
+
+    @pytest.mark.parametrize(
+        ["given", "expected"],
+        [
+            (
+                # Legacy (invalid) usage pattern with same day
+                ("2026-03-04", "2026-03-04"),
+                (
+                    datetime.datetime(2026, 3, 4, tzinfo=datetime.timezone.utc),
+                    datetime.datetime(2026, 3, 4, 23, 59, 59, 999999, tzinfo=datetime.timezone.utc),
+                ),
+            ),
+            (
+                ("2026-03-04", "2026-03-07"),
+                (
+                    datetime.datetime(2026, 3, 4, tzinfo=datetime.timezone.utc),
+                    datetime.datetime(2026, 3, 6, 23, 59, 59, 999000, tzinfo=datetime.timezone.utc),
+                ),
+            ),
+            (
+                (None, "2026-03-07"),
+                (None, datetime.datetime(2026, 3, 6, 23, 59, 59, 999000, tzinfo=datetime.timezone.utc)),
+            ),
+            (
+                ("2026-03-04", None),
+                (datetime.datetime(2026, 3, 4, tzinfo=datetime.timezone.utc), None),
+            ),
+            (
+                # Given to second precision (and timezone)
+                ("2026-03-04T12:34:56+00:00", "2026-03-07T11:22:33Z"),
+                (
+                    datetime.datetime(2026, 3, 4, 12, 34, 56, tzinfo=datetime.timezone.utc),
+                    datetime.datetime(2026, 3, 7, 11, 22, 32, 999000, tzinfo=datetime.timezone.utc),
+                ),
+            ),
+        ],
+    )
+    def test_from_load_param_extent(self, given, expected):
+        extent = _TemporalExtent.from_load_param_extent(given)
+        assert extent.as_tuple() == expected
+
 
 class TestSpatialExtent:
     def test_empty(self):
@@ -1263,6 +1315,18 @@ class TestSpatialExtent:
         assert extent.intersects((3.3, 51.1, 3.5, 51.5)) == True
         assert extent.intersects((3.9, 51.9, 4.4, 52.2)) == True
         assert extent.intersects((5, 51.1, 6, 52.2)) == False
+
+    def test_as_cache_key(self):
+        extent1 = _SpatialExtent(bbox=None)
+        extent2 = _SpatialExtent(bbox=None)
+        extent3 = _SpatialExtent(bbox=BoundingBox(west=1, south=2, east=3, north=4, crs=4326))
+        extent4 = _SpatialExtent(bbox=BoundingBox(west=1, south=2, east=3, north=4, crs=4326))
+        extent5 = _SpatialExtent(bbox=BoundingBox(west=10, south=20, east=30, north=40, crs=4326))
+
+        cache = {extent1: 1, extent3: 3}
+        assert cache[extent2] == 1
+        assert cache[extent4] == 3
+        assert extent5 not in cache
 
 
 class TestSpatioTemporalExtent:
@@ -1348,6 +1412,19 @@ class TestSpatioTemporalExtent:
             ),
         )
         assert extent.collection_intersects(collection) == expected
+
+    def test_as_cache_key(self):
+        bbox1 = BoundingBox(west=1, south=2, east=3, north=4, crs=4326)
+        extent1 = _SpatioTemporalExtent(bbox=bbox1, from_date="2024-02-01")
+        extent2 = _SpatioTemporalExtent(bbox=bbox1, from_date="2024-02-01")
+        extent3 = _SpatioTemporalExtent(bbox=None, from_date="2024-02-01", to_date="2024-02-10")
+        extent4 = _SpatioTemporalExtent(bbox=None, from_date="2024-02-01", to_date="2024-02-10")
+        extent5 = _SpatioTemporalExtent(bbox=bbox1, from_date="2024-02-01", to_date="2024-02-10")
+
+        cache = {extent1: 1, extent3: 3}
+        assert cache[extent2] == 1
+        assert cache[extent4] == 3
+        assert extent5 not in cache
 
 
 @pytest.mark.parametrize(
@@ -2812,6 +2889,40 @@ class TestPrepareContext:
             },
         )
 
+    def test_prepare_context_basic(self, dummy_stac_api_server):
+        with dummy_stac_api_server.serve() as dummy_stac_api:
+            context = _prepare_context(
+                url=f"{dummy_stac_api}/collections/collection-123",
+                load_params=LoadParameters(),
+                env=EvalEnv(),
+            )
+
+        dumper = _OpenSearchClientDumper()
+        assert dumper.dump_opensearch_client_features(context.opensearch_client) == [
+            {
+                "id": "item-1",
+                "links": [
+                    {"title": "asset-1", "href": dirty_equals.IsStr(regex=".*/asset-1.tiff"), "bandNames": ["asset-1"]}
+                ],
+            },
+            {
+                "id": "item-2",
+                "links": [
+                    {"title": "asset-2", "href": dirty_equals.IsStr(regex=".*/asset-2.tiff"), "bandNames": ["asset-2"]}
+                ],
+            },
+            {
+                "id": "item-3",
+                "links": [
+                    {"title": "asset-2", "href": dirty_equals.IsStr(regex=".*/asset-3.tiff"), "bandNames": ["asset-2"]}
+                ],
+            },
+        ]
+        assert list(context.pyramid_factory.openSearchLinkTitles()) == ["asset-1", "asset-2"]
+        assert context.metadata.band_names == ["asset-1", "asset-2"]
+        assert context.metadata.temporal_extent == ("2024-05-01T00:00:00+00:00", "2024-07-03T00:00:00+00:00")
+        assert context.metadata.spatial_extent is None
+
     @pytest.mark.parametrize(
         [
             "load_params_bands",
@@ -3083,6 +3194,45 @@ class TestPrepareContext:
         assert (cell_size.width(), cell_size.height()) == (0.125, 0.125)
         assert context.metadata.band_names == expected_metadata_bands
         assert list(context.pyramid_factory.openSearchLinkTitles()) == expected_link_titles
+
+    @pytest.mark.parametrize(
+        ["requested_temporal_extent", "expected_items", "expected_temporal_extent"],
+        [
+            (
+                (None, None),
+                ["item-1", "item-2", "item-3"],
+                ("2024-05-01T00:00:00+00:00", "2024-07-03T00:00:00+00:00"),
+            ),
+            (
+                ("2024-03-27", "2024-06-06"),
+                ["item-1", "item-2"],
+                ("2024-03-27T00:00:00+00:00", "2024-06-05T23:59:59.999000+00:00"),
+            ),
+            (
+                (None, "2024-06-06"),
+                ["item-1", "item-2"],
+                ("2024-05-01T00:00:00+00:00", "2024-06-05T23:59:59.999000+00:00"),
+            ),
+            (
+                ("2024-05-20", None),
+                ["item-2", "item-3"],
+                ("2024-05-20T00:00:00+00:00", "2024-07-03T00:00:00+00:00"),
+            ),
+        ],
+    )
+    def test_prepare_context_requested_temporal_extent(
+        self, dummy_stac_api_server, requested_temporal_extent, expected_items, expected_temporal_extent
+    ):
+        with dummy_stac_api_server.serve() as dummy_stac_api:
+            context = _prepare_context(
+                url=f"{dummy_stac_api}/collections/collection-123",
+                load_params=LoadParameters(temporal_extent=requested_temporal_extent),
+                env=EvalEnv(),
+            )
+
+        dumper = _OpenSearchClientDumper()
+        assert [i["id"] for i in dumper.dump_opensearch_client_features(context.opensearch_client)] == expected_items
+        assert context.metadata.temporal_extent == expected_temporal_extent
 
 
 class TestResolutionTracker:

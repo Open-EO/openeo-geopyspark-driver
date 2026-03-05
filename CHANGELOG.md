@@ -31,6 +31,7 @@ without compromising stable operations.
 - `load_stac`: increase default STAC API per page limit to 100 ([#1150](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1150))
 - Remove now defunct "CreoCatalogClient" and supporting helpers ([#1571](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1571))
 - Fix ZeroDivisionError from dry-run determine_global_extent caused by invalid `proj:transform` metadata ([#1557](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1557))
+- Align `load_stac` cube's temporal extent better with `load_collection` behavior ([#1578](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1578))
 
 
 ## 0.70.0
