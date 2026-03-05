@@ -1597,6 +1597,21 @@ class TestPropertyFilter:
                 [42, 4242],
                 [0, 41, None, -101],
             ),
+            (
+                {"process_id": "eq", "arguments": {"x": {"from_parameter": "value"}, "y": "32U*B"}},
+                ["32UXXB", "32UB"],
+                ["32UXXC", "33UXXB", None],
+            ),
+            (
+                {"process_id": "eq", "arguments": {"x": {"from_parameter": "value"}, "y": "31*"}},
+                ["31UFS", "31ABC"],
+                ["32UFS", None],
+            ),
+            (
+                {"process_id": "eq", "arguments": {"x": {"from_parameter": "value"}, "y": "31U?S"}},
+                ["31UFS", "31UXS"],
+                ["31UFFS", "31UF", None],
+            ),
         ],
     )
     def test_build_matcher_operators(self, pg_node, matching, non_matching):
@@ -1728,6 +1743,14 @@ class TestPropertyFilter:
                 },
                 "\"properties.foo\" in ('blue', 'green')",
             ),
+            (
+                {"process_id": "eq", "arguments": {"x": {"from_parameter": "value"}, "y": "32U*B"}},
+                "\"properties.foo\" like '32U%B'",
+            ),
+            (
+                {"process_id": "eq", "arguments": {"x": {"from_parameter": "value"}, "y": "31?FS"}},
+                "\"properties.foo\" like '31_FS'",
+            ),
         ],
     )
     def test_to_cql2_text_operators(self, pg_node, expected):
@@ -1855,6 +1878,14 @@ class TestPropertyFilter:
                     "arguments": {"data": ["blue", "green"], "y": {"from_parameter": "value"}},
                 },
                 {"op": "in", "args": [{"property": "properties.foo"}, ["blue", "green"]]},
+            ),
+            (
+                {"process_id": "eq", "arguments": {"x": {"from_parameter": "value"}, "y": "32U*B"}},
+                {"op": "like", "args": [{"property": "properties.foo"}, "32U%B"]},
+            ),
+            (
+                {"process_id": "eq", "arguments": {"x": {"from_parameter": "value"}, "y": "31?FS"}},
+                {"op": "like", "args": [{"property": "properties.foo"}, "31_FS"]},
             ),
         ],
     )
@@ -2022,6 +2053,33 @@ class TestAdaptingPropertyFilter:
         property_filter = AdaptingPropertyFilter(user_specified_properties, adaptations=adaptations)
         assert property_filter.to_cql2_text() == expected_text
         assert property_filter.to_cql2_json() == expected_json
+
+    def test_wildcard_with_mgrs_prefix(self):
+        """Wildcard tileId with MGRS prefix adaptation (e.g. CDSE STAC)."""
+        user_specified_properties = {
+            "tileId": {
+                "process_graph": {
+                    "eq1": {
+                        "process_id": "eq",
+                        "arguments": {"x": {"from_parameter": "value"}, "y": "32U*B"},
+                        "result": True,
+                    }
+                }
+            }
+        }
+        adaptations = {"tileId": {"rename": "grid:code", "value_mapping": "add-MGRS-prefix"}}
+        pf = AdaptingPropertyFilter(user_specified_properties, adaptations=adaptations)
+
+        # CQL2 text: shell wildcards converted to SQL wildcards
+        assert pf.to_cql2_text() == "\"properties.grid:code\" like 'MGRS-32U%B'"
+        # CQL2 JSON
+        assert pf.to_cql2_json() == {"op": "like", "args": [{"property": "properties.grid:code"}, "MGRS-32U%B"]}
+        # Client-side matcher: uses fnmatch with shell wildcards
+        matcher = pf.build_matcher()
+        assert matcher({"grid:code": "MGRS-32UXXB"}) == True
+        assert matcher({"grid:code": "MGRS-32UB"}) == True
+        assert matcher({"grid:code": "MGRS-32UXXC"}) == False
+        assert matcher({"grid:code": "MGRS-33UXXB"}) == False
 
     @pytest.mark.parametrize(
         ["adaptations", "no_match", "match"],

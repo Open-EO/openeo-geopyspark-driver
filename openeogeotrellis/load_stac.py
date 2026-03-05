@@ -3,6 +3,7 @@ from __future__ import annotations
 import collections
 import datetime
 import datetime as dt
+import fnmatch
 import functools
 import logging
 import os
@@ -2097,12 +2098,16 @@ class PropertyFilter:
         """Helper to produce tuples of property-name, operator and value"""
         for property_name, pg in self._properties.items():
             for operator, value in filter_properties.extract_literal_match(pg, env=self._env).items():
+                if operator == "eq" and isinstance(value, str) and ("*" in value or "?" in value):
+                    operator = "like"
                 yield property_name, operator, value
 
     @staticmethod
     def _build_callable(operator: str, value: Any) -> Callable[[Any], bool]:
         if operator == "eq":
             return lambda actual: actual == value
+        elif operator == "like":
+            return lambda actual, p=value: actual is not None and fnmatch.fnmatch(str(actual), p)
         elif operator == "lte":
             return lambda actual: actual is not None and actual <= value
         elif operator == "gte":
@@ -2161,15 +2166,22 @@ class PropertyFilter:
         """Convert the property filter to a CQL2 text representation."""
         filters = []
         for property_name, operator, value in self._iter_literal_matches():
-            operator = self._to_cql2_operator(operator)
+            cql2_op = self._to_cql2_operator(operator)
+            if operator == "like":
+                value = self._to_sql_wildcard(value)
             # Bit of ad-hoc value encoding (note that we exploit the fact here
             # that `repr` produces single quoted strings, as expected in CQL2 text format)
             if isinstance(value, (list, set)):
                 value = repr(tuple(value))
             else:
                 value = repr(value)
-            filters.append(f'"properties.{property_name}" {operator} {value}')
+            filters.append(f'"properties.{property_name}" {cql2_op} {value}')
         return " and ".join(filters)
+
+    @staticmethod
+    def _to_sql_wildcard(pattern: str) -> str:
+        """Convert shell-style wildcards (* and ?) to SQL-style (% and _)."""
+        return pattern.replace("*", "%").replace("?", "_")
 
     def _to_cql2_operator(self, operator: str):
         """Map operators produced by extract_literal_match to CQL2 operators."""
@@ -2180,6 +2192,7 @@ class PropertyFilter:
             "lte": "<=",
             "gt": ">",
             "gte": ">=",
+            "like": "like",
             # Note that the operators produced by `extract_literal_match`
             # (the keys in this mapping) are currently somewhat arbitrairy:
             # most correspond directly to openEO-processes naming,
@@ -2195,7 +2208,10 @@ class PropertyFilter:
         filters = [
             {
                 "op": self._to_cql2_operator(operator),
-                "args": [{"property": f"properties.{property_name}"}, value],
+                "args": [
+                    {"property": f"properties.{property_name}"},
+                    self._to_sql_wildcard(value) if operator == "like" else value,
+                ],
             }
             for property_name, operator, value in self._iter_literal_matches()
         ]
