@@ -2175,7 +2175,7 @@ class PropertyFilter:
                 value = repr(tuple(value))
             else:
                 value = repr(value)
-            filters.append(f'"properties.{property_name}" {operator} {value}')
+            filters.append(f'"{property_name}" {operator} {value}')
         return " and ".join(filters)
 
     def _to_cql2_operator(self, operator: str):
