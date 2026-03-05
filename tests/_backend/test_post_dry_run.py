@@ -9,6 +9,7 @@ from openeo_driver.util.geometry import BoundingBox
 from openeo_driver.utils import EvalEnv
 
 from openeogeotrellis._backend.post_dry_run import (
+    AlignedExtentResult,
     _align_extent,
     _buffer_extent,
     _determine_best_grid_from_proj_metadata,
@@ -16,10 +17,8 @@ from openeogeotrellis._backend.post_dry_run import (
     _GridInfo,
     _snap_bbox,
     determine_global_extent,
-    AlignedExtentResult,
 )
 from openeogeotrellis.load_stac import _ProjectionMetadata
-
 
 
 class TestGridInfo:
@@ -113,6 +112,18 @@ class TestGridInfo:
             extent_x=[10, 30],
             extent_y=[20, 40],
         )
+
+    def test_as_cache_key(self):
+        grid1 = _GridInfo(crs="EPSG:4326")
+        grid2 = _GridInfo(crs="EPSG:4326")
+        grid3 = _GridInfo(crs="EPSG:32631", resolution=(10, 20))
+        grid4 = _GridInfo(crs="EPSG:32631", resolution=(10, 20))
+        grid5 = _GridInfo(crs="EPSG:32631", resolution=(20, 10))
+
+        cache = {grid1: 1, grid3: 3}
+        assert cache[grid2] == 1
+        assert cache[grid4] == 3
+        assert grid5 not in cache
 
 
 def test_snap_bbox():
@@ -471,6 +482,7 @@ class TestPostDryRun:
                 "target_aligned": expected,
             },
         )
+
     def test_determine_global_extent_load_collection_minimal(self, dummy_catalog, extract_source_constraints):
         # Process graph with two load_collection sources with spatial extents
         pg = {
@@ -1100,6 +1112,77 @@ class TestPostDryRun:
                 "assets_covered_bbox": None,
             },
         )
+
+    def test_extract_spatial_extent_from_constraint_load_collection_type_stac_invalid_proj_transform(
+        self, dummy_catalog, extract_source_constraints, dummy_stac_api, dummy_stac_api_server
+    ):
+        """
+        Auto-correction of invalid GDAL-style proj:transform metadata,
+        when fix_proj_transform feature flag is set in openEO collection config
+        https://github.com/Open-EO/openeo-geopyspark-driver/issues/1557
+        """
+        stac_collection_id = "collection-gdal-style-proj-transform"
+        openeo_collection_id = "STAC_GDAL_STYLE_PROJ_TRANSFORM"
+        dummy_stac_api_server.define_collection(stac_collection_id)
+        dummy_stac_api_server.define_item(
+            collection_id=stac_collection_id,
+            item_id="item-1",
+            bbox=[3, 51, 4, 52],
+            properties={
+                "datetime": "2024-06-02T06:48:16Z",
+                "proj:code": "EPSG:4326",
+                "proj:shape": [100, 100],
+                # No proj:bbox, but bad GDAL-style proj:transform
+                # we should still extract a cell size of (0.01, 0.01)
+                # instead of something like (3.0, 0.0)
+                "proj:transform": [3, 0.01, 0, 51, 0, 0.01],
+            },
+            assets={
+                "CH4": {
+                    "href": "https://stac.test/data/asset-1.tif",
+                    "type": "image/tiff; application=geotiff",
+                    "roles": ["data"],
+                    "bands": [{"name": "CH4"}],
+                }
+            },
+        )
+        stac_url = f"{dummy_stac_api}/collections/{stac_collection_id}"
+        dummy_catalog.define_collection_metadata(
+            collection_id=openeo_collection_id,
+            metadata={
+                "_vito": {
+                    "data_source": {
+                        "type": "stac",
+                        "url": stac_url,
+                        "load_stac_feature_flags": {"fix_proj_transform": True},
+                    }
+                }
+            },
+        )
+
+        pg = {
+            "load_collection": {
+                "process_id": "load_collection",
+                "arguments": {
+                    "id": "STAC_GDAL_STYLE_PROJ_TRANSFORM",
+                    "spatial_extent": {"west": 3.1234, "south": 51.1234, "east": 3.6789, "north": 51.6789},
+                },
+                "result": True,
+            },
+        }
+        source_constraints = extract_source_constraints(pg)
+        [source_constraint] = source_constraints
+        # The following used to trigger `ZeroDivisionError: float division by zero` https://github.com/Open-EO/openeo-geopyspark-driver/issues/1557
+        extents = _extract_spatial_extent_from_constraint(source_constraint=source_constraint, catalog=dummy_catalog)
+        assert extents == AlignedExtentResult(
+            extent=BoundingBox(west=3.12, south=51.12, east=3.68, north=51.68, crs="EPSG:4326"),
+            variants={
+                "original": BoundingBox(west=3.1234, south=51.1234, east=3.6789, north=51.6789, crs="EPSG:4326"),
+                "assets_full_bbox": BoundingBox(west=3, south=51, east=4, north=52, crs="EPSG:4326"),
+                "assets_covered_bbox": BoundingBox(west=3.12, south=51.12, east=3.68, north=51.68, crs="EPSG:4326"),
+            },
+        )
+
 
 class TestDetermineBestGridFromProjMetadata:
     def test_empty(self):

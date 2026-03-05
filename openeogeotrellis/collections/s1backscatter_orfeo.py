@@ -226,7 +226,7 @@ class S1BackscatterOrfeo:
         from openeogeotrellis.load_stac import _spatiotemporal_extent_from_load_params
         from openeogeotrellis.load_stac import construct_item_collection
 
-        url = "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-1-grd"
+        url = "https://stac.opensearch.dataspace.copernicus.eu/v1/collections/sentinel-1-grd"
 
         # filter_properties are assumed to be in STAC only format.
         property_filter_pg_map = self._filter_properties_to_pg_map(filter_properties)

@@ -2324,6 +2324,8 @@ class GeopysparkDataCube(DriverDataCube):
                             geometries = GeometryCollection(geometries.geoms)
                         projected_polygons = to_projected_polygons(get_jvm(), geometries)
                         labels = self.get_labels(geometries,feature_id_property)
+                        compression = get_jvm().geotrellis.raster.io.geotiff.compression.DeflateCompression(
+                            zlevel)
                         java_items = get_jvm().org.openeo.geotrellis.geotiff.package.saveSamplesSpatial(
                             max_level_rdd, save_directory, projected_polygons, labels, compression,
                             gtiff_options)

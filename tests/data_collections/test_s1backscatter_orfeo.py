@@ -663,6 +663,10 @@ class TestOrfeoPipeline:
             ),
         ],
     )
+    @pytest.mark.skip(
+        reason="Failing because STAC returns a different product compared to OpenSearch. "
+        "See https://github.com/Open-EO/openeo-geopyspark-driver/issues/1579"
+    )
     def test_creodias_s1_backscatter(
         self,
         tmp_path,

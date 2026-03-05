@@ -70,6 +70,12 @@ class _StacResponseCache:
     def put(self, url: str, content: str) -> None:
         key = self._normalize_url(url)
         content_bytes = self._byte_size(content)
+        if content_bytes > self._max_bytes:
+            logger.debug(
+                f"STAC cache: skipping oversized entry {key}"
+                f" ({content_bytes} bytes > {self._max_bytes} bytes limit)"
+            )
+            return
         with self._lock:
             if key in self._cache:
                 old = self._cache[key]
@@ -225,6 +231,28 @@ class LoggingStacApiIO(StacApiIO):
             return cached
         content = super().read_text_from_href(href)
         _stac_response_cache.put(href, content)
+        return content
+
+    def request(self, href, method=None, headers=None, parameters=None):
+        # Only cache GET requests. POST requests (e.g. STAC search with a JSON
+        # body) are not cached: building a reliable cache key from the request
+        # body is non-trivial.
+        is_get = method is None or method == "GET"
+        cache_key = None
+        if is_get:
+            if parameters:
+                prepped = self.session.prepare_request(
+                    requests.Request("GET", href, params=parameters)
+                )
+                cache_key = prepped.url
+            else:
+                cache_key = href
+            cached = _stac_response_cache.get(cache_key)
+            if cached is not None:
+                return cached
+        content = super().request(href, method=method, headers=headers, parameters=parameters)
+        if cache_key is not None:
+            _stac_response_cache.put(cache_key, content)
         return content
 
 

@@ -34,6 +34,7 @@ from shapely.geometry.base import BaseGeometry
 
 from openeogeotrellis import sentinel_hub, datacube_parameters
 from openeogeotrellis._backend import post_dry_run
+from openeogeotrellis.catalogs.creo import CreoCatalogClient
 import openeogeotrellis.collections.s1backscatter_orfeo
 from openeogeotrellis.collections.testing import load_test_collection
 from openeogeotrellis.config import get_backend_config
@@ -585,6 +586,19 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                     else pyramid_factory.pyramid_seq(extent, srs, from_date, to_date, shub_band_names,
                                                      unflattened_metadata_properties, correlation_id))
 
+        def creo_pyramid():
+            mission = layer_source_info['mission']
+            level = layer_source_info['level']
+            catalog = CreoCatalogClient(mission=mission, level=level)
+            product_paths = catalog.query_product_paths(datetime.strptime(from_date[:10], "%Y-%m-%d"),
+                                                        datetime.strptime(to_date[:10], "%Y-%m-%d"),
+                                                        ulx=west, uly=north,
+                                                        brx=east, bry=south)
+            # TODO: geotrelliss3.CreoPyramidFactory no longer exists.
+            return jvm.org.openeo.geotrelliss3.CreoPyramidFactory(product_paths, metadata.band_names) \
+                .datacube_seq(projected_polygons_native_crs, from_date, to_date,{},collection_id)
+
+
         def globspatialonly_pyramid():
             if len(metadata.band_names) != 1:
                 raise ValueError("expected a single band name for collection {cid}, got {bs} instead".format(
@@ -659,7 +673,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         elif layer_source_type == 'sentinel-hub':
             pyramid = sentinel_hub_pyramid()
         elif layer_source_type == 'creo':
-            raise OpenEOApiException(message=f"{layer_source_type=} is not supported anymore", status_code=404)
+            pyramid = creo_pyramid()
         elif layer_source_type == "file-cgls2":
             pyramid = file_cgls_pyramid()
         elif layer_source_type == 'file-agera5' or layer_source_type == 'file-glob':
