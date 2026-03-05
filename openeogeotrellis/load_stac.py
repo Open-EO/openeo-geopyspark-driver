@@ -451,15 +451,13 @@ def _prepare_context(
         metadata = metadata.add_spatial_dimension(name="y", extent=[])
 
     item_collection_temporal_extent = item_collection.get_temporal_extent()
+    metadata_temporal_extent = (
+        map_optional(dt.datetime.isoformat, requested_temporal_extent.from_date or item_collection_temporal_extent[0]),
+        map_optional(dt.datetime.isoformat, requested_temporal_extent.to_date or item_collection_temporal_extent[1]),
+    )
+    logger.info(f"_prepare_context {url=} {metadata_temporal_extent=}")
     metadata = metadata.with_temporal_extent(
-        temporal_extent=(
-            map_optional(
-                dt.datetime.isoformat, requested_temporal_extent.from_date or item_collection_temporal_extent[0]
-            ),
-            map_optional(
-                dt.datetime.isoformat, requested_temporal_extent.to_date or item_collection_temporal_extent[1]
-            ),
-        ),
+        temporal_extent=metadata_temporal_extent,
         allow_adding_dimension=True,
     )
 

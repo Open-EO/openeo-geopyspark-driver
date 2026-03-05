@@ -198,30 +198,30 @@ def _get_stac_collection_urls(product_type: str) -> List[str]:
     # TODO: move this to layercatalog.json
     if product_type == SLSTR_PRODUCT_TYPE:
         return [
-            "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-3-sl-2-lst-nrt",
-            "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-3-sl-2-lst-ntc",
+            "https://stac.opensearch.dataspace.copernicus.eu/v1/collections/sentinel-3-sl-2-lst-nrt",
+            "https://stac.opensearch.dataspace.copernicus.eu/v1/collections/sentinel-3-sl-2-lst-ntc",
         ]
     elif product_type == SYNERGY_PRODUCT_TYPE:
         return [
-            "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-3-syn-2-syn-stc",
-            "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-3-syn-2-syn-ntc",
+            "https://stac.opensearch.dataspace.copernicus.eu/v1/collections/sentinel-3-syn-2-syn-stc",
+            "https://stac.opensearch.dataspace.copernicus.eu/v1/collections/sentinel-3-syn-2-syn-ntc",
         ]
     elif product_type == "OL_2_LFR___":
         # Full Resolution Land and atmosphere geophysical products.
         return [
-            "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-3-olci-2-lfr-nrt",
-            "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-3-olci-2-lfr-ntc",
+            "https://stac.opensearch.dataspace.copernicus.eu/v1/collections/sentinel-3-olci-2-lfr-nrt",
+            "https://stac.opensearch.dataspace.copernicus.eu/v1/collections/sentinel-3-olci-2-lfr-ntc",
         ]
     elif product_type == "OL_2_WFR___":
         # Full Resolution Water and Atmosphere geophysical products.
         return [
-            "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-3-olci-2-wfr-nrt",
-            "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-3-olci-2-wfr-ntc",
+            "https://stac.opensearch.dataspace.copernicus.eu/v1/collections/sentinel-3-olci-2-wfr-nrt",
+            "https://stac.opensearch.dataspace.copernicus.eu/v1/collections/sentinel-3-olci-2-wfr-ntc",
         ]
     elif product_type == "SY_2_AOD___":
         # Global Aerosol parameter over land and sea on super pixel.
         return [
-            "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-3-syn-2-aod-ntc",
+            "https://stac.opensearch.dataspace.copernicus.eu/v1/collections/sentinel-3-syn-2-aod-ntc",
         ]
     else:
         raise ValueError(f"STAC not yet supported for Sentinel-3 product type: {product_type}")
