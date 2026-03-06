@@ -50,8 +50,9 @@ def _map_attributes_for_stac(attribute_values: Dict[str, any]) -> Dict[str, any]
     :return: Dictionary with STAC-equivalent keys and values
     """
     # Based on _LEGACY_TO_STAC_PROPERTY_KEYS
+    # Keys that are intentionally not sent as STAC filters (unsupported by the API)
+    ignored_keys = {"productType", "product:type"}
     attribute_keys_mapping = {
-        "productType": "product:type",
         "processingLevel": "processing:level",
         "orbitDirection": "sat:orbit_state",  # TODO: Is there are a better related STAC property for this?
         "orbitNumber": "sat:absolute_orbit",
@@ -67,6 +68,8 @@ def _map_attributes_for_stac(attribute_values: Dict[str, any]) -> Dict[str, any]
 
     mapped = {}
     for k, val in attribute_values.items():
+        if k in ignored_keys:
+            continue
         if k in attribute_keys_mapping:
             mapped_key = attribute_keys_mapping[k]
             mapped_value = (
