@@ -701,7 +701,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 datacubeParams = datacubeParams,
                 max_soft_errors_ratio=max_soft_errors_ratio,
                 spatial_extent=load_params.spatial_extent,
-                use_stac_client=layer_source_info.get("use_stac_client", False)
+                use_stac_client=layer_source_info.get("use_stac_client", False),
+                feature_flags=layer_source_info.get("load_stac_feature_flags", {}),
             )
         elif layer_source_type == 'file-s3':
             native_cell_size = jvm.geotrellis.raster.CellSize(
@@ -714,7 +715,9 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             pyramid = sentinel3.pyramid(metadata_properties(),
                                         projected_polygons_native_crs, from_date, to_date,
                                         metadata.opensearch_link_titles, datacubeParams,
-                                        native_cell_size, feature_flags, jvm,
+                                        native_cell_size,
+                                        {**feature_flags, "load_stac_feature_flags": layer_source_info.get("load_stac_feature_flags", {})},
+                                        jvm,
                                         spatial_extent=load_params.spatial_extent,
                                         use_stac_client=layer_source_info.get("use_stac_client", False)
                                         )

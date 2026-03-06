@@ -454,10 +454,10 @@ def test_deduplicate_items_prefer_ntc_empty_collections():
 def test_map_attributes_for_stac():
     old_attributes = {"orbitDirection": "DESCENDING", "productType": "SL_2_LST___", "timeliness": "NT"}
     converted_attributes = _map_attributes_for_stac(old_attributes)
-    print(converted_attributes)
-    assert converted_attributes["sat:orbit_state"] == "descending"
-    assert converted_attributes["product:timeliness_category"] == "NT"
-    assert converted_attributes["product:type"] == "SL_2_LST___"
+    assert converted_attributes == {
+        "sat:orbit_state": "descending",
+        "product:timeliness_category": "NT",
+    }
 
 
 def test_map_attributes_for_stac_no_warning(caplog):
