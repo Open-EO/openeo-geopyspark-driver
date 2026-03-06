@@ -78,7 +78,13 @@ def test_import_object(tmp_path, mock_s3_client, mock_s3_bucket, remove_original
 
 
 @pytest.mark.parametrize("remove_original", [False, True])
-@pytest.mark.parametrize("merge", [PurePath("some/target/collection.json")])
+@pytest.mark.parametrize(
+    "merge",
+    [
+        PurePath("some/target/collection.json"),
+        PurePath("collection.json"),
+    ],
+)
 def test_merge_new(mock_s3_client, mock_s3_bucket, tmp_path, merge: PurePath, remove_original: bool):
     test_region = "eu-nl"
 
