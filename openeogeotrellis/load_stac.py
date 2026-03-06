@@ -3,6 +3,7 @@ from __future__ import annotations
 import collections
 import datetime
 import datetime as dt
+import fnmatch
 import functools
 import logging
 import os
@@ -866,11 +867,18 @@ def construct_item_collection(
             band_names = stac_metadata_parser.bands_from_stac_collection(collection=collection).band_names()
             logger.info(f"construct_item_collection: STAC API Collection {collection.id!r}, {band_names=}, {netcdf_with_time_dimension=}")
 
-            property_filter = PropertyFilter(properties=property_filter_pg_map, env=env)
+            # TODO: this prefix mode heuristic need massive improvement, but it's just a quickfix for now
+            properties_prefix = "" if "dataspace.copernicus.eu" in url else "properties."
+            property_filter = PropertyFilter(
+                properties=property_filter_pg_map, env=env, properties_prefix=properties_prefix
+            )
             if property_filter_adaptations := feature_flags.get("property_filter_adaptations"):
                 logger.debug(f"AdaptingPropertyFilter with {property_filter_adaptations=}")
                 property_filter = AdaptingPropertyFilter(
-                    properties=property_filter_pg_map, env=env, adaptations=property_filter_adaptations
+                    properties=property_filter_pg_map,
+                    env=env,
+                    adaptations=property_filter_adaptations,
+                    properties_prefix=properties_prefix,
                 )
 
             with TimingLogger(title=f"ItemCollection.from_stac_api from {url=}", logger=logger.info):
@@ -2089,20 +2097,31 @@ class PropertyFilter:
 
     # TODO: move this utility to a more generic location for better reuse
 
-    def __init__(self, properties: PropertyFilterPGMap, *, env: Optional[EvalEnv] = None):
+    def __init__(
+        self,
+        properties: PropertyFilterPGMap,
+        *,
+        env: Optional[EvalEnv] = None,
+        properties_prefix: str = "properties.",
+    ):
         self._properties = properties
         self._env = env or EvalEnv()
+        self._properties_prefix = properties_prefix
 
     def _iter_literal_matches(self) -> Iterator[Tuple[str, str, Any]]:
         """Helper to produce tuples of property-name, operator and value"""
         for property_name, pg in self._properties.items():
             for operator, value in filter_properties.extract_literal_match(pg, env=self._env).items():
+                if operator == "eq" and isinstance(value, str) and ("*" in value or "?" in value):
+                    operator = "like"
                 yield property_name, operator, value
 
     @staticmethod
     def _build_callable(operator: str, value: Any) -> Callable[[Any], bool]:
         if operator == "eq":
             return lambda actual: actual == value
+        elif operator == "like":
+            return lambda actual, p=value: actual is not None and fnmatch.fnmatch(str(actual), p)
         elif operator == "lte":
             return lambda actual: actual is not None and actual <= value
         elif operator == "gte":
@@ -2161,6 +2180,8 @@ class PropertyFilter:
         """Convert the property filter to a CQL2 text representation."""
         filters = []
         for property_name, operator, value in self._iter_literal_matches():
+            if operator == "like":
+                continue
             operator = self._to_cql2_operator(operator)
             # Bit of ad-hoc value encoding (note that we exploit the fact here
             # that `repr` produces single quoted strings, as expected in CQL2 text format)
@@ -2168,7 +2189,7 @@ class PropertyFilter:
                 value = repr(tuple(value))
             else:
                 value = repr(value)
-            filters.append(f'"properties.{property_name}" {operator} {value}')
+            filters.append(f'"{self._properties_prefix}{property_name}" {operator} {value}')
         return " and ".join(filters)
 
     def _to_cql2_operator(self, operator: str):
@@ -2195,9 +2216,10 @@ class PropertyFilter:
         filters = [
             {
                 "op": self._to_cql2_operator(operator),
-                "args": [{"property": f"properties.{property_name}"}, value],
+                "args": [{"property": f"{self._properties_prefix}{property_name}"}, value],
             }
             for property_name, operator, value in self._iter_literal_matches()
+            if operator != "like"
         ]
         if len(filters) == 0:
             return None
@@ -2238,8 +2260,9 @@ class AdaptingPropertyFilter(PropertyFilter):
         *,
         env: Optional[EvalEnv] = None,
         adaptations: Dict[str, Union[dict, str]],
+        properties_prefix: str = "properties.",
     ):
-        super().__init__(properties=properties, env=env)
+        super().__init__(properties=properties, env=env, properties_prefix=properties_prefix)
         self._adaptations = adaptations
 
     def _iter_literal_matches(self) -> Iterator[Tuple[str, str, Any]]:

@@ -28,6 +28,7 @@ import pyspark
 import pystac
 import pytest
 import shapely
+import shapely.affinity
 import werkzeug.exceptions
 
 from openeo.testing.stac import StacDummyBuilder
@@ -617,10 +618,13 @@ class DummyStacApiServer:
                     items = [item for item in items if item.datetime == target_dt]
 
             if bbox:
-                assert len(bbox) == 4
-                bbox = shapely.box(*bbox)
-                # TODO: also support item geometry fields (not just bbox)
-                items = [item for item in items if item.bbox and bbox.intersects(shapely.box(*item.bbox))]
+                bbox_polygon = BoundingBox(*bbox, crs="EPSG:4326").as_polygon()
+                # Replicate bbox with offsets to easily handle anti-meridian crossing cases
+                bbox_geometries = shapely.union_all(
+                    [shapely.affinity.translate(bbox_polygon, xoff=x) for x in [-360, 0, 360]]
+                )
+                items = [item for item in items if item.bbox and bbox_geometries.intersects(shapely.box(*item.bbox))]
+            # TODO: also support item geometry fields (not just bbox)
 
             if filter:
                 filter = self._build_property_filter(filter=filter, filter_language=filter_language)

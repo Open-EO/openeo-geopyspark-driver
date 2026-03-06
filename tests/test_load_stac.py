@@ -1597,6 +1597,21 @@ class TestPropertyFilter:
                 [42, 4242],
                 [0, 41, None, -101],
             ),
+            (
+                {"process_id": "eq", "arguments": {"x": {"from_parameter": "value"}, "y": "32U*B"}},
+                ["32UXXB", "32UB"],
+                ["32UXXC", "33UXXB", None],
+            ),
+            (
+                {"process_id": "eq", "arguments": {"x": {"from_parameter": "value"}, "y": "31*"}},
+                ["31UFS", "31ABC"],
+                ["32UFS", None],
+            ),
+            (
+                {"process_id": "eq", "arguments": {"x": {"from_parameter": "value"}, "y": "31U?S"}},
+                ["31UFS", "31UXS"],
+                ["31UFFS", "31UF", None],
+            ),
         ],
     )
     def test_build_matcher_operators(self, pg_node, matching, non_matching):
@@ -1728,6 +1743,14 @@ class TestPropertyFilter:
                 },
                 "\"properties.foo\" in ('blue', 'green')",
             ),
+            (
+                {"process_id": "eq", "arguments": {"x": {"from_parameter": "value"}, "y": "32U*B"}},
+                "",
+            ),
+            (
+                {"process_id": "eq", "arguments": {"x": {"from_parameter": "value"}, "y": "31?FS"}},
+                "",
+            ),
         ],
     )
     def test_to_cql2_text_operators(self, pg_node, expected):
@@ -1855,6 +1878,14 @@ class TestPropertyFilter:
                     "arguments": {"data": ["blue", "green"], "y": {"from_parameter": "value"}},
                 },
                 {"op": "in", "args": [{"property": "properties.foo"}, ["blue", "green"]]},
+            ),
+            (
+                {"process_id": "eq", "arguments": {"x": {"from_parameter": "value"}, "y": "32U*B"}},
+                None,
+            ),
+            (
+                {"process_id": "eq", "arguments": {"x": {"from_parameter": "value"}, "y": "31?FS"}},
+                None,
             ),
         ],
     )
@@ -2065,6 +2096,32 @@ class TestAdaptingPropertyFilter:
         matcher = property_filter.build_matcher()
         assert [matcher(input) for input in no_match] == [False] * len(no_match)
         assert [matcher(input) for input in match] == [True] * len(match)
+
+    def test_wildcard_with_mgrs_prefix(self):
+        """Wildcard tileId with MGRS prefix adaptation: not sent to STAC API, only filtered locally."""
+        user_specified_properties = {
+            "tileId": {
+                "process_graph": {
+                    "eq1": {
+                        "process_id": "eq",
+                        "arguments": {"x": {"from_parameter": "value"}, "y": "32U*B"},
+                        "result": True,
+                    }
+                }
+            }
+        }
+        adaptations = {"tileId": {"rename": "grid:code", "value_mapping": "add-MGRS-prefix"}}
+        pf = AdaptingPropertyFilter(user_specified_properties, adaptations=adaptations)
+
+        # CQL2: wildcard filters should be excluded (not supported by STAC API)
+        assert pf.to_cql2_text() == ""
+        assert pf.to_cql2_json() is None
+        # Client-side matcher: uses fnmatch with shell wildcards
+        matcher = pf.build_matcher()
+        assert matcher({"grid:code": "MGRS-32UXXB"}) == True
+        assert matcher({"grid:code": "MGRS-32UB"}) == True
+        assert matcher({"grid:code": "MGRS-32UXXC"}) == False
+        assert matcher({"grid:code": "MGRS-33UXXB"}) == False
 
     def test_logging(self, caplog):
         caplog.set_level(level=logging.INFO)
@@ -2478,6 +2535,48 @@ class TestItemCollection:
         # Check search requests made to the STAC API server
         search_requests = [r for r in dummy_stac_api_server.request_history if r["path"] == "/search"]
         assert search_requests == [expected_search]
+
+    def test_from_stac_api_anti_meridian_handling(self, dummy_stac_api, dummy_stac_api_server):
+        """Based on https://github.com/Open-EO/openeo-geopyspark-driver/issues/1568"""
+        collection_id = "anita-meridith"
+        dummy_stac_api_server.define_collection(collection_id)
+        for x in [175, 176, 177, 178, 179, -180, -179, -178]:
+            for y in [68, 69, 70, 71]:
+                dummy_stac_api_server.define_item(
+                    collection_id=collection_id,
+                    item_id=f"item-{x}-{y}",
+                    datetime=f"2025-09-01",
+                    bbox=[x, y, x + 1, y + 1],
+                )
+
+        given_url = f"{dummy_stac_api}/collections/{collection_id}"
+        collection: pystac.Collection = pystac.read_file(given_url)
+        property_filter = PropertyFilter(properties={})
+        bbox = BoundingBox(
+            # Corresponds roughly in lon-lat to BoundingBox(west=177.9, south=69.2, east=-179.4, north=70.3)
+            west=300000,
+            south=7690200,
+            east=409800,
+            north=7800000,
+            crs="EPSG:32601",
+        )
+        spatiotemporal_extent = _SpatioTemporalExtent(bbox=bbox)
+        item_collection = ItemCollection.from_stac_api(
+            collection,
+            original_url=given_url,
+            property_filter=property_filter,
+            spatiotemporal_extent=spatiotemporal_extent,
+        )
+        assert sorted(item.id for item in item_collection.items) == [
+            "item--180-69",
+            "item--180-70",
+            "item-177-69",
+            "item-177-70",
+            "item-178-69",
+            "item-178-70",
+            "item-179-69",
+            "item-179-70",
+        ]
 
     def test_get_temporal_extent_empty(self):
         item_collection = ItemCollection(items=[])

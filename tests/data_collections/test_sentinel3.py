@@ -17,7 +17,7 @@ if __name__ == "__main__":
     openeogeotrellis.deploy.local.setup_environment()
 
 from openeogeotrellis.collections.sentinel3 import *
-from openeogeotrellis.collections.sentinel3 import _get_acquisition_key
+from openeogeotrellis.collections.sentinel3 import _get_acquisition_key, _map_attributes_for_stac
 from numpy.testing import assert_allclose
 from unittest.mock import Mock
 
@@ -449,3 +449,22 @@ def test_deduplicate_items_prefer_ntc_empty_collections():
     result = deduplicate_items_prefer_ntc({"NRT": [], "NTC": [(ntc_item, {})]})
     assert len(result) == 1
     assert result[0][0].id == ntc_item.id
+
+
+def test_map_attributes_for_stac():
+    old_attributes = {"orbitDirection": "DESCENDING", "productType": "SL_2_LST___", "timeliness": "NT"}
+    converted_attributes = _map_attributes_for_stac(old_attributes)
+    assert converted_attributes == {
+        "sat:orbit_state": "descending",
+        "product:timeliness_category": "NT",
+    }
+
+
+def test_map_attributes_for_stac_no_warning(caplog):
+    old_attributes = {
+        "sat:orbit_state": "DESCENDING",
+        "product:type": "SL_2_LST___",
+        "product:timeliness_category": "NT",
+    }
+    _map_attributes_for_stac(old_attributes)
+    assert any("No mapping" in record.message for record in caplog.records)

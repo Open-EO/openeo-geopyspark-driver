@@ -33,7 +33,6 @@ class TestBuildFilterProperties:
         result = S1BackscatterOrfeo._build_filter_properties(extra_properties={}, use_stac_client=True)
         assert result == {
             "product:type": ["IW_GRDH_1S", "IW_GRDH_1S_B", "IW_GRDH_1S_C"],
-            "processing:level": "L1",
         }
 
     def test_legacy_client_defaults(self):
