@@ -1773,32 +1773,45 @@ class _ProjectionMetadata:
         )
 
     @staticmethod
-    def _fix_gdal_ordered_transform(transform: Sequence[float]) -> Sequence[float]:
+    def _fix_gdal_ordered_transform(
+        transform: Sequence[float], also_check_yx_transposed: bool = False
+    ) -> Sequence[float]:
         """
-        Detect and fix a proj:transform that is in GDAL GetGeoTransform order
-        instead of the expected rasterio/affine order.
+        Detect and fix a proj:transform that is wrongly in GDAL GetGeoTransform order
 
-        GDAL GetGeoTransform:  [xOrigin, xPixelSize, xSkew, yOrigin, ySkew, yPixelSize]
-        Rasterio/affine order: [xPixelSize, xSkew, xOrigin, ySkew, yPixelSize, yOrigin]
+            [xOrigin, xPixelSize, xSkew, yOrigin, ySkew, yPixelSize]
 
-        Detection heuristic (for the common no-rotation case):
-        - In GDAL order: positions 2,4 are zero (skew) and positions 1,5 are non-zero (pixel sizes)
-        - In rasterio order: positions 1,3 are zero (skew) and positions 0,4 are non-zero (pixel sizes)
-        Additionally, origin values (large) should be larger than pixel sizes (small).
+        instead of the expected order (rasterio/affine style):
+
+            [xPixelSize, xSkew, xOrigin, ySkew, yPixelSize, yOrigin]
+
+        Detection heuristic (for the common XY oriented case):
+        - In rasterio order: (non-zero) pixel sizes are at positions 0 and 4,
+          skew values at positions 1 and 3 are small/zero
+        - In GDAL order: (non-zero) pixel sizes are at positions 1 and 5,
+          skew values at positions 2 and 4 are small/zero
+
+        :param also_check_yx_transposed: whether to also consider the possibility of YX oriented data
         """
         if len(transform) < 6:
             return transform
         t0, t1, t2, t3, t4, t5 = transform[:6]
-        if (
-            t2 == 0.0
-            and t4 == 0.0
-            and t1 != 0.0
-            and t5 != 0.0
-            and abs(t0) > abs(t1)
-            and abs(t3) > abs(t5)
-        ):
-            fixed = [t1, t2, t0, t4, t5, t3] + list(transform[6:])
-            return fixed
+
+        # Data consistent with rasterio order?
+        rasterio_xy_consistent = (abs(t0) > abs(t1)) and (abs(t3) < abs(t4))
+        rasterio_yx_consistent = also_check_yx_transposed and (abs(t0) < abs(t1)) and (abs(t3) > abs(t4))
+
+        # Data consistent with GDAL order?
+        gdal_xy_consistent = (abs(t1) > abs(t2)) and (abs(t4) < abs(t5))
+        gdal_yx_consistent = also_check_yx_transposed and (abs(t1) < abs(t2)) and (abs(t4) > abs(t5))
+
+        if rasterio_xy_consistent or rasterio_yx_consistent:
+            pass
+        elif gdal_xy_consistent or gdal_yx_consistent:
+            transform = [t1, t2, t0, t4, t5, t3] + list(transform[6:])
+        else:
+            logger.debug(f"Failed to detect proj:transform order from {transform=}, leaving as-is.")
+
         return transform
 
     @functools.lru_cache
