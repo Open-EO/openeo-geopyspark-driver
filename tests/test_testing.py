@@ -337,13 +337,13 @@ class TestDummyStacApiServer:
         ["method", "filter", "expected_items"],
         [
             # GET with CQL2-text
-            ("GET", "\"properties.flavor\" = 'banana'", ["item-2"]),
-            ("GET", "\"properties.flavor\" = 'coconut'", ["item-3"]),
-            ("GET", "\"properties.topping\" = 'chocolate'", []),
+            ("GET", "\"flavor\" = 'banana'", ["item-2"]),
+            ("GET", "\"flavor\" = 'coconut'", ["item-3"]),
+            ("GET", "\"topping\" = 'chocolate'", []),
             # POST with CQL2-JSON
-            ("POST", {"op": "=", "args": [{"property": "properties.flavor"}, "apple"]}, ["item-1"]),
-            ("POST", {"op": "=", "args": [{"property": "properties.flavor"}, "banana"]}, ["item-2"]),
-            ("POST", {"op": "=", "args": [{"property": "properties.topping"}, "chocolate"]}, []),
+            ("POST", {"op": "=", "args": [{"property": "flavor"}, "apple"]}, ["item-1"]),
+            ("POST", {"op": "=", "args": [{"property": "flavor"}, "banana"]}, ["item-2"]),
+            ("POST", {"op": "=", "args": [{"property": "topping"}, "chocolate"]}, []),
         ],
     )
     def test_item_search_filter_get_cql2_text(self, method, filter, expected_items):

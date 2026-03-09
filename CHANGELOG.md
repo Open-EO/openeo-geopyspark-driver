@@ -33,6 +33,7 @@ without compromising stable operations.
 - Align `load_stac` cube's temporal extent better with `load_collection` behavior ([#1578](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1578))
 - Improve `load_stac` bbox filtering across anti-meridian ([#1568](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1568))
 - `load_stac`: avoid handling irrelevant items (with corrupt `bbox`) returned by CDSE STAC API ([#1592](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1592))
+- `load_stac`: do property filtering in STAC API queries without `properties.` prefix by default now ([#1584](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1584), [stac-api-extensions/filter#31](https://github.com/stac-api-extensions/filter/pull/31))
 
 
 ## 0.70.0

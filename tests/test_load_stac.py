@@ -99,7 +99,7 @@ def test_property_filter_from_parameter(requests_mock):
     def feature_collection(request, _) -> dict:
         assert request.qs["filter-lang"] == ["cql2-text"]
         assert request.qs["filter"] == [
-            """"properties.product_tile" = '31UFS'""".lower()  # https://github.com/jamielennox/requests-mock/issues/264
+            """"product_tile" = '31UFS'""".lower()  # https://github.com/jamielennox/requests-mock/issues/264
         ]
 
         return {
@@ -1663,7 +1663,7 @@ class TestPropertyFilter:
                         }
                     }
                 },
-                "\"properties.foo\" = 'bar'",
+                "\"foo\" = 'bar'",
             ),
             (
                 {
@@ -1693,8 +1693,8 @@ class TestPropertyFilter:
                     },
                 },
                 dirty_equals.IsOneOf(
-                    '"properties.color" = \'red\' and "properties.size" <= 42',
-                    '"properties.size" <= 42 and "properties.color" = \'red\'',
+                    '"color" = \'red\' and "size" <= 42',
+                    '"size" <= 42 and "color" = \'red\'',
                 ),
             ),
         ],
@@ -1708,42 +1708,42 @@ class TestPropertyFilter:
         [
             (
                 {"process_id": "eq", "arguments": {"x": {"from_parameter": "value"}, "y": "y-bar"}},
-                "\"properties.foo\" = 'y-bar'",
+                "\"foo\" = 'y-bar'",
             ),
             (
                 {"process_id": "eq", "arguments": {"x": "x-bar", "y": {"from_parameter": "value"}}},
-                "\"properties.foo\" = 'x-bar'",
+                "\"foo\" = 'x-bar'",
             ),
             (
                 {"process_id": "eq", "arguments": {"x": {"from_parameter": "value"}, "y": 42}},
-                '"properties.foo" = 42',
+                '"foo" = 42',
             ),
             (
                 {"process_id": "lte", "arguments": {"x": {"from_parameter": "value"}, "y": 42}},
-                '"properties.foo" <= 42',
+                '"foo" <= 42',
             ),
             (
                 {"process_id": "lte", "arguments": {"x": 42, "y": {"from_parameter": "value"}}},
-                '"properties.foo" >= 42',
+                '"foo" >= 42',
             ),
             (
                 {"process_id": "gte", "arguments": {"x": {"from_parameter": "value"}, "y": 42}},
-                '"properties.foo" >= 42',
+                '"foo" >= 42',
             ),
             (
                 {"process_id": "gte", "arguments": {"x": 42, "y": {"from_parameter": "value"}}},
-                '"properties.foo" <= 42',
+                '"foo" <= 42',
             ),
             (
                 {"process_id": "array_contains", "arguments": {"data": [42, 4242], "y": {"from_parameter": "value"}}},
-                '"properties.foo" in (42, 4242)',
+                '"foo" in (42, 4242)',
             ),
             (
                 {
                     "process_id": "array_contains",
                     "arguments": {"data": ["blue", "green"], "y": {"from_parameter": "value"}},
                 },
-                "\"properties.foo\" in ('blue', 'green')",
+                "\"foo\" in ('blue', 'green')",
             ),
             (
                 {"process_id": "eq", "arguments": {"x": {"from_parameter": "value"}, "y": "32U*B"}},
@@ -1777,7 +1777,7 @@ class TestPropertyFilter:
         }
         env = EvalEnv().push_parameters({"name": "alice"})
         property_filter = PropertyFilter(properties=properties, env=env)
-        expected = "\"properties.foo\" = 'alice'"
+        expected = "\"foo\" = 'alice'"
         assert property_filter.to_cql2_text() == expected
 
     @pytest.mark.parametrize(
@@ -1796,7 +1796,7 @@ class TestPropertyFilter:
                         }
                     }
                 },
-                {"op": "=", "args": [{"property": "properties.foo"}, "bar"]},
+                {"op": "=", "args": [{"property": "foo"}, "bar"]},
             ),
             (
                 {
@@ -1828,8 +1828,8 @@ class TestPropertyFilter:
                 {
                     "op": "and",
                     "args": [
-                        {"op": "=", "args": [{"property": "properties.color"}, "red"]},
-                        {"op": "<=", "args": [{"property": "properties.size"}, 42]},
+                        {"op": "=", "args": [{"property": "color"}, "red"]},
+                        {"op": "<=", "args": [{"property": "size"}, 42]},
                     ],
                 },
             ),
@@ -1844,42 +1844,42 @@ class TestPropertyFilter:
         [
             (
                 {"process_id": "eq", "arguments": {"x": {"from_parameter": "value"}, "y": "y-bar"}},
-                {"op": "=", "args": [{"property": "properties.foo"}, "y-bar"]},
+                {"op": "=", "args": [{"property": "foo"}, "y-bar"]},
             ),
             (
                 {"process_id": "eq", "arguments": {"x": "x-bar", "y": {"from_parameter": "value"}}},
-                {"op": "=", "args": [{"property": "properties.foo"}, "x-bar"]},
+                {"op": "=", "args": [{"property": "foo"}, "x-bar"]},
             ),
             (
                 {"process_id": "eq", "arguments": {"x": {"from_parameter": "value"}, "y": 42}},
-                {"op": "=", "args": [{"property": "properties.foo"}, 42]},
+                {"op": "=", "args": [{"property": "foo"}, 42]},
             ),
             (
                 {"process_id": "lte", "arguments": {"x": {"from_parameter": "value"}, "y": 42}},
-                {"op": "<=", "args": [{"property": "properties.foo"}, 42]},
+                {"op": "<=", "args": [{"property": "foo"}, 42]},
             ),
             (
                 {"process_id": "lte", "arguments": {"x": 42, "y": {"from_parameter": "value"}}},
-                {"op": ">=", "args": [{"property": "properties.foo"}, 42]},
+                {"op": ">=", "args": [{"property": "foo"}, 42]},
             ),
             (
                 {"process_id": "gte", "arguments": {"x": {"from_parameter": "value"}, "y": 42}},
-                {"op": ">=", "args": [{"property": "properties.foo"}, 42]},
+                {"op": ">=", "args": [{"property": "foo"}, 42]},
             ),
             (
                 {"process_id": "gte", "arguments": {"x": 42, "y": {"from_parameter": "value"}}},
-                {"op": "<=", "args": [{"property": "properties.foo"}, 42]},
+                {"op": "<=", "args": [{"property": "foo"}, 42]},
             ),
             (
                 {"process_id": "array_contains", "arguments": {"data": [42, 4242], "y": {"from_parameter": "value"}}},
-                {"op": "in", "args": [{"property": "properties.foo"}, [42, 4242]]},
+                {"op": "in", "args": [{"property": "foo"}, [42, 4242]]},
             ),
             (
                 {
                     "process_id": "array_contains",
                     "arguments": {"data": ["blue", "green"], "y": {"from_parameter": "value"}},
                 },
-                {"op": "in", "args": [{"property": "properties.foo"}, ["blue", "green"]]},
+                {"op": "in", "args": [{"property": "foo"}, ["blue", "green"]]},
             ),
             (
                 {"process_id": "eq", "arguments": {"x": {"from_parameter": "value"}, "y": "32U*B"}},
@@ -1913,16 +1913,16 @@ class TestPropertyFilter:
         }
         env = EvalEnv().push_parameters({"name": "alice"})
         property_filter = PropertyFilter(properties=properties, env=env)
-        expected = {"op": "=", "args": [{"property": "properties.foo"}, "alice"]}
+        expected = {"op": "=", "args": [{"property": "foo"}, "alice"]}
         assert property_filter.to_cql2_json() == expected
 
     @pytest.mark.parametrize(
         ["use_filter_extension", "search_method", "expected"],
         [
-            ("cql2-text", None, "\"properties.foo\" = 'bar'"),
-            ("cql2-json", None, {"op": "=", "args": [{"property": "properties.foo"}, "bar"]}),
-            (True, "POST", {"op": "=", "args": [{"property": "properties.foo"}, "bar"]}),
-            (True, "GET", "\"properties.foo\" = 'bar'"),
+            ("cql2-text", None, "\"foo\" = 'bar'"),
+            ("cql2-json", None, {"op": "=", "args": [{"property": "foo"}, "bar"]}),
+            (True, "POST", {"op": "=", "args": [{"property": "foo"}, "bar"]}),
+            (True, "GET", "\"foo\" = 'bar'"),
         ],
     )
     def test_to_cql2_filter(self, use_filter_extension, search_method, expected, requests_mock):
@@ -1975,30 +1975,30 @@ class TestAdaptingPropertyFilter:
             (
                 # Empty case (no adaptations)
                 {},
-                "\"properties.foo\" = 'FOO' and \"properties.bar\" = 'BAR'",
+                "\"foo\" = 'FOO' and \"bar\" = 'BAR'",
                 {
                     "op": "and",
                     "args": [
-                        {"op": "=", "args": [{"property": "properties.foo"}, "FOO"]},
-                        {"op": "=", "args": [{"property": "properties.bar"}, "BAR"]},
+                        {"op": "=", "args": [{"property": "foo"}, "FOO"]},
+                        {"op": "=", "args": [{"property": "bar"}, "BAR"]},
                     ],
                 },
             ),
             (
                 # Drop "foo"
                 {"foo": "drop"},
-                "\"properties.bar\" = 'BAR'",
-                {"op": "=", "args": [{"property": "properties.bar"}, "BAR"]},
+                "\"bar\" = 'BAR'",
+                {"op": "=", "args": [{"property": "bar"}, "BAR"]},
             ),
             (
                 # Rename "foo" to "fancyfoo"
                 {"foo": {"rename": "fancyfoo"}},
-                "\"properties.fancyfoo\" = 'FOO' and \"properties.bar\" = 'BAR'",
+                "\"fancyfoo\" = 'FOO' and \"bar\" = 'BAR'",
                 {
                     "op": "and",
                     "args": [
-                        {"op": "=", "args": [{"property": "properties.fancyfoo"}, "FOO"]},
-                        {"op": "=", "args": [{"property": "properties.bar"}, "BAR"]},
+                        {"op": "=", "args": [{"property": "fancyfoo"}, "FOO"]},
+                        {"op": "=", "args": [{"property": "bar"}, "BAR"]},
                     ],
                 },
             ),
@@ -2008,24 +2008,24 @@ class TestAdaptingPropertyFilter:
                     "foo": {"value_mapping": {"SOMETHING": "else"}},
                     "bar": {"value_mapping": {"BAR": "BARRRR"}},
                 },
-                "\"properties.foo\" = 'FOO' and \"properties.bar\" = 'BARRRR'",
+                "\"foo\" = 'FOO' and \"bar\" = 'BARRRR'",
                 {
                     "op": "and",
                     "args": [
-                        {"op": "=", "args": [{"property": "properties.foo"}, "FOO"]},
-                        {"op": "=", "args": [{"property": "properties.bar"}, "BARRRR"]},
+                        {"op": "=", "args": [{"property": "foo"}, "FOO"]},
+                        {"op": "=", "args": [{"property": "bar"}, "BARRRR"]},
                     ],
                 },
             ),
             (
                 # add-MGRS-prefix
                 {"foo": {"value_mapping": "add-MGRS-prefix"}},
-                "\"properties.foo\" = 'MGRS-FOO' and \"properties.bar\" = 'BAR'",
+                "\"foo\" = 'MGRS-FOO' and \"bar\" = 'BAR'",
                 {
                     "op": "and",
                     "args": [
-                        {"op": "=", "args": [{"property": "properties.foo"}, "MGRS-FOO"]},
-                        {"op": "=", "args": [{"property": "properties.bar"}, "BAR"]},
+                        {"op": "=", "args": [{"property": "foo"}, "MGRS-FOO"]},
+                        {"op": "=", "args": [{"property": "bar"}, "BAR"]},
                     ],
                 },
             ),
@@ -2152,13 +2152,13 @@ class TestAdaptingPropertyFilter:
         [
             (
                 {"foo": {"rename": "ffooo", "value_mapping": {"F22": "F2000"}}},
-                """"properties.ffooo" in ('F1', 'F2000', 'F333')""",
-                {"op": "in", "args": [{"property": "properties.ffooo"}, ["F1", "F2000", "F333"]]},
+                """"ffooo" in ('F1', 'F2000', 'F333')""",
+                {"op": "in", "args": [{"property": "ffooo"}, ["F1", "F2000", "F333"]]},
             ),
             (
                 {"foo": {"rename": "mgrs-foo", "value_mapping": "add-MGRS-prefix"}},
-                """"properties.mgrs-foo" in ('MGRS-F1', 'MGRS-F22', 'MGRS-F333')""",
-                {"op": "in", "args": [{"property": "properties.mgrs-foo"}, ["MGRS-F1", "MGRS-F22", "MGRS-F333"]]},
+                """"mgrs-foo" in ('MGRS-F1', 'MGRS-F22', 'MGRS-F333')""",
+                {"op": "in", "args": [{"property": "mgrs-foo"}, ["MGRS-F1", "MGRS-F22", "MGRS-F333"]]},
             ),
         ],
     )
@@ -2448,7 +2448,7 @@ class TestItemCollection:
                         "datetime": "2024-01-01T00:00:00Z/2025-01-01T00:00:00Z",
                         "limit": STAC_API_PER_PAGE_LIMIT_DEFAULT,
                         "filter-lang": "cql2-json",
-                        "filter": {"op": "=", "args": [{"property": "properties.flavor"}, "banana"]},
+                        "filter": {"op": "=", "args": [{"property": "flavor"}, "banana"]},
                     },
                 },
             ),
@@ -2462,7 +2462,7 @@ class TestItemCollection:
                         "datetime": "2024-01-01T00:00:00Z/2025-01-01T00:00:00Z",
                         "limit": str(STAC_API_PER_PAGE_LIMIT_DEFAULT),
                         "filter-lang": "cql2-text",
-                        "filter": "\"properties.flavor\" = 'banana'",
+                        "filter": "\"flavor\" = 'banana'",
                     },
                     "json": None,
                 },
@@ -2479,7 +2479,7 @@ class TestItemCollection:
                         "datetime": "2024-01-01T00:00:00Z/2025-01-01T00:00:00Z",
                         "limit": STAC_API_PER_PAGE_LIMIT_DEFAULT,
                         "filter-lang": "cql2-json",
-                        "filter": {"op": "=", "args": [{"property": "properties.flavor"}, "banana"]},
+                        "filter": {"op": "=", "args": [{"property": "flavor"}, "banana"]},
                     },
                 },
             ),

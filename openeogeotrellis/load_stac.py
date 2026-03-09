@@ -873,8 +873,9 @@ def construct_item_collection(
             band_names = stac_metadata_parser.bands_from_stac_collection(collection=collection).band_names()
             logger.info(f"construct_item_collection: STAC API Collection {collection.id!r}, {band_names=}, {netcdf_with_time_dimension=}")
 
-            # TODO: this prefix mode heuristic need massive improvement, but it's just a quickfix for now
-            properties_prefix = "" if "dataspace.copernicus.eu" in url else "properties."
+            # TODO: _experimental_properties_prefix is just a temporary feature flag to allow easy fall back to old behavior.
+            #       Ideally however, this prefix stuff should just be dropped #1584
+            properties_prefix = feature_flags.get("_experimental_properties_prefix", "")
             property_filter = PropertyFilter(
                 properties=property_filter_pg_map, env=env, properties_prefix=properties_prefix
             )
@@ -2108,10 +2109,13 @@ class PropertyFilter:
         properties: PropertyFilterPGMap,
         *,
         env: Optional[EvalEnv] = None,
-        properties_prefix: str = "properties.",
+        # TODO: remove this prefix option again, as the consensus seems that prefix should not be used. #1584
+        properties_prefix: str = "",
     ):
         self._properties = properties
         self._env = env or EvalEnv()
+        if properties_prefix:
+            logger.warning(f"PropertyFilter with non-empty {properties_prefix=} which is deprecated")
         self._properties_prefix = properties_prefix
 
     def _iter_literal_matches(self) -> Iterator[Tuple[str, str, Any]]:
@@ -2266,7 +2270,7 @@ class AdaptingPropertyFilter(PropertyFilter):
         *,
         env: Optional[EvalEnv] = None,
         adaptations: Dict[str, Union[dict, str]],
-        properties_prefix: str = "properties.",
+        properties_prefix: str = "",
     ):
         super().__init__(properties=properties, env=env, properties_prefix=properties_prefix)
         self._adaptations = adaptations
