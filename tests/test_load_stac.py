@@ -1,3 +1,5 @@
+import re
+
 import logging
 
 import datetime
@@ -3332,6 +3334,68 @@ class TestPrepareContext:
         dumper = _OpenSearchClientDumper()
         assert [i["id"] for i in dumper.dump_opensearch_client_features(context.opensearch_client)] == expected_items
         assert context.metadata.temporal_extent == expected_temporal_extent
+
+    def test_prepare_context_skip_corrupt_items_antimeridian(self, dummy_stac_api_server, caplog):
+        collection_id = "S1592"
+        dummy_stac_api_server.define_collection(collection_id)
+        dummy_stac_api_server.define_item(
+            collection_id=collection_id,
+            item_id="item-1",
+            datetime="2024-05-01T00:00:00Z",
+            bbox=[3, 50, 4, 51],
+            properties={
+                "proj:code": "EPSG:32631",
+                "proj:shape": [100, 100],
+                "proj:bbox": [500_000, 5_538_000, 572_000, 5_650_000],
+            },
+            assets={
+                "asset-1": {
+                    "href": "https://stac.test/asset-1.tiff",
+                    "type": "image/tiff",
+                    "roles": ["data"],
+                    "bands": [{"name": "asset-1"}],
+                }
+            },
+        )
+        dummy_stac_api_server.define_item(
+            collection_id=collection_id,
+            item_id="item-2",
+            datetime="2024-05-02T00:00:00Z",
+            bbox=[-179, 50, 179, 51],
+            properties={
+                "proj:code": "EPSG:32601",
+                "proj:shape": [100, 100],
+                "proj:bbox": [500_000, 5_538_000, 572_000, 5_650_000],
+            },
+            assets={
+                "asset-2": {
+                    "href": "https://stac.test/asset-2.tiff",
+                    "type": "image/tiff",
+                    "roles": ["data"],
+                    "bands": [{"name": "asset-2"}],
+                }
+            },
+        )
+
+        with dummy_stac_api_server.serve() as dummy_stac_api:
+            context = _prepare_context(
+                url=f"{dummy_stac_api}/collections/{collection_id}",
+                load_params=LoadParameters(
+                    spatial_extent={"west": 2, "south": 50.0, "east": 5, "north": 55.0},
+                ),
+                env=EvalEnv(),
+            )
+
+        dumper = _OpenSearchClientDumper()
+        assert dumper.dump_opensearch_client_features(context.opensearch_client) == [
+            {
+                "id": "item-1",
+                "links": [{"title": "asset-1", "href": "https://stac.test/asset-1.tiff", "bandNames": ["asset-1"]}],
+            },
+        ]
+        assert caplog.text == dirty_equals.IsStr(
+            regex=r".*Skipping.*item-2.*epsg.*32601.*unplausible.*bbox.*", regex_flags=re.DOTALL
+        )
 
 
 class TestResolutionTracker:
