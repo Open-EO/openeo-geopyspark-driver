@@ -400,11 +400,11 @@ def _prepare_context(
                 builder = builder.withResolution(cell_width)
 
             latlon_bbox = BoundingBox.from_wsen_tuple(itm.bbox, 4326) if itm.bbox else None
-            if latlon_bbox and proj_epsg and is_utm_epsg_code(proj_epsg) and latlon_bbox[2] - latlon_bbox[0] > 180:
+            if latlon_bbox and proj_epsg and is_utm_epsg_code(proj_epsg) and latlon_bbox.east - latlon_bbox.west > 180:
                 # Quickfix for CDSE STAC API returning completely unrelated items because of corrupt bbox metadata
                 # https://github.com/Open-EO/openeo-geopyspark-driver/issues/1592
                 # TODO: can we clean up this quickfix at some point?
-                logger.warning(f"Skipping item {itm.id} with {proj_epsg=} and unplausible {latlon_bbox=}")
+                logger.warning(f"Skipping item {itm.id!r} with {proj_epsg=} and unplausible {latlon_bbox=}")
                 continue
             item_bbox = latlon_bbox
             if proj_bbox is not None and proj_epsg is not None:
