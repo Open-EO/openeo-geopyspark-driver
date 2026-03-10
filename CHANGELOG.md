@@ -32,6 +32,7 @@ without compromising stable operations.
 - Fix ZeroDivisionError from dry-run determine_global_extent caused by invalid `proj:transform` metadata ([#1557](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1557))
 - Align `load_stac` cube's temporal extent better with `load_collection` behavior ([#1578](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1578))
 - Improve `load_stac` bbox filtering across anti-meridian ([#1568](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1568))
+- `load_stac`: avoid handling irrelevant items (with corrupt `bbox`) returned by CDSE STAC API ([#1592](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1592))
 
 
 ## 0.70.0
