@@ -74,7 +74,7 @@ def get_assets_from_stac_catalog(catalog_path: Union[str, Path]) -> Dict[str, St
     return all_assets
 
 
-def get_items_from_stac_catalog(catalog_path: Union[str, Path]) -> dict:
+def get_items_from_stac_catalog(catalog_path: Union[str, Path], make_hrefs_absolute=False) -> dict:
     if isinstance(catalog_path, str) and catalog_path.startswith("http"):
         response = requests.get(catalog_path)
         response.raise_for_status()
@@ -91,6 +91,12 @@ def get_items_from_stac_catalog(catalog_path: Union[str, Path]) -> dict:
     if "assets" in catalog_json:
         links.extend(list(catalog_json["assets"].values()))
         all_items.update({catalog_json["id"]: catalog_json})
+    if make_hrefs_absolute:
+        for item in all_items.values():
+            if "assets" in item:
+                for asset in item["assets"].values():
+                    if "href" in asset:
+                        asset["href"] = urljoin(catalog_path, asset["href"])
     for link in links:
         if "href" in link:
             href = link["href"]
@@ -99,7 +105,7 @@ def get_items_from_stac_catalog(catalog_path: Union[str, Path]) -> dict:
             href = urljoin(catalog_path, href)
 
             if "rel" in link and (link["rel"] == "child" or link["rel"] == "item"):
-                all_items.update(get_items_from_stac_catalog(href))
+                all_items.update(get_items_from_stac_catalog(href, make_hrefs_absolute))
     return all_items
 
 
@@ -156,7 +162,7 @@ class StacSaveResult(SaveResult):
         for asset in stac_assets:
             copy_asset(asset)
 
-        return get_items_from_stac_catalog(self.stac_root_local)
+        return get_items_from_stac_catalog(self.stac_root_local, make_hrefs_absolute=True)
 
     def create_flask_response(self) -> Response:
         return self.flask_response_from_write_assets()
