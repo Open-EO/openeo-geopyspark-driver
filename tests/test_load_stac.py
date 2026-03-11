@@ -3364,7 +3364,7 @@ class TestPrepareContext:
         assert [i["id"] for i in dumper.dump_opensearch_client_features(context.opensearch_client)] == expected_items
         assert context.metadata.temporal_extent == expected_temporal_extent
 
-    def test_prepare_context_skip_corrupt_items_antimeridian(self, dummy_stac_api_server, caplog):
+    def test_prepare_context_ignore_corrupt_item_bbox_antimeridian(self, dummy_stac_api_server, caplog):
         collection_id = "S1592"
         dummy_stac_api_server.define_collection(collection_id)
         dummy_stac_api_server.define_item(
@@ -3394,7 +3394,7 @@ class TestPrepareContext:
             properties={
                 "proj:code": "EPSG:32601",
                 "proj:shape": [100, 100],
-                "proj:bbox": [500_000, 5_538_000, 572_000, 5_650_000],
+                "proj:bbox": [213_000, 5_540_000, 359_000, 5_657_000],
             },
             assets={
                 "asset-2": {
@@ -3416,14 +3416,12 @@ class TestPrepareContext:
             )
 
         dumper = _OpenSearchClientDumper()
-        assert dumper.dump_opensearch_client_features(context.opensearch_client) == [
-            {
-                "id": "item-1",
-                "links": [{"title": "asset-1", "href": "https://stac.test/asset-1.tiff", "bandNames": ["asset-1"]}],
-            },
+        assert dumper.dump_opensearch_client_features(context.opensearch_client, add_links=False, add_bbox=True) == [
+            {"id": "item-1", "bbox": approxify((3.00, 49.99, 4.03, 51.00), abs=0.01)},
+            {"id": "item-2", "bbox": approxify((179.00, 49.94, 180.99, 51.05), abs=0.01)},
         ]
         assert caplog.text == dirty_equals.IsStr(
-            regex=r".*Skipping.*item-2.*epsg.*32601.*unplausible.*bbox.*", regex_flags=re.DOTALL
+            regex=r".*Ignoring implausible.*bbox.*item-2.*epsg.*32601.*", regex_flags=re.DOTALL
         )
 
     @pytest.mark.parametrize(
