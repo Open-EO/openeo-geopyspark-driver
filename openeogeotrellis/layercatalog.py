@@ -93,11 +93,10 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
     def load_collection(self, collection_id: str, load_params: LoadParameters, env: EvalEnv) -> GeopysparkDataCube:
 
         if smart_bool(env.get(EVAL_ENV_KEY.DO_EXTENT_CHECK, True)):
-            env_validate = env.push({
-                "allow_check_missing_products": False,
-            })
             try:
-                issues = extra_validation_load_collection(collection_id, load_params, env_validate)
+                issues = extra_validation_load_collection(
+                    collection_id, load_params=load_params, env=env, allow_check_missing_products=False
+                )
             except Exception as e:
                 issues = [{"code": "Internal", "message": str(e)}]
                 logger.warning(f"Error during extra_validation_load_collection: {e!r}")
@@ -1271,7 +1270,13 @@ def potential_sentinelhub(catalog, collection_id) -> bool:
     return False
 
 
-def extra_validation_load_collection(collection_id: str, load_params: LoadParameters, env: EvalEnv) -> Iterable[dict]:
+def extra_validation_load_collection(
+    collection_id: str,
+    *,
+    load_params: LoadParameters,
+    env: EvalEnv,
+    allow_check_missing_products: bool = True,
+) -> Iterable[dict]:
     if collection_id == "TestCollection-LonLat4x4":
         # No need to check on artificial debug layer
         return
@@ -1279,7 +1284,6 @@ def extra_validation_load_collection(collection_id: str, load_params: LoadParame
         yield {"code": "NoBackendImplementation", "message": "It seems like you are running in a test environment"}
         return
     catalog: GeoPySparkLayerCatalog = env.backend_implementation.catalog
-    allow_check_missing_products = smart_bool(env.get("allow_check_missing_products", True))
     sync_job = smart_bool(env.get("sync_job", False))
     metadata_json = catalog.get_collection_metadata(collection_id=collection_id)
     metadata = GeopysparkCubeMetadata(metadata_json)

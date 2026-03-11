@@ -1346,7 +1346,9 @@ class GpsProcessing(ConcreteProcessing):
                 collection_id = source_id_args[0]
                 if source_id_proc == "load_collection":
                     load_params = _extract_load_parameters(env, source_id=source_id)
-                    yield from extra_validation_load_collection(collection_id, load_params, env)
+                    yield from extra_validation_load_collection(
+                        collection_id, load_params=load_params, env=env, allow_check_missing_products=True
+                    )
         except Exception as e:
             logger.error("extra validation failed", exc_info=True)
             yield {"code": "Internal", "message": str(e)}  # TODO: just propagate errors not related to validation?
