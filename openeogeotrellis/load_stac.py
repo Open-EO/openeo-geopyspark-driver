@@ -387,6 +387,24 @@ def _prepare_context(
 
             # TODO: the proj_* values are assigned in inner per-asset loop,
             #       so the values here are ill-defined (the values might even come from another item)
+            if itm.bbox and proj_epsg and is_utm_epsg_code(proj_epsg) and itm.bbox[2] - itm.bbox[0] > 180:
+                # Implausible bounding box: far too wide longitude span for UTM item/assets,
+                # likely due poor antimeridian handling.
+                # We still keep the item if its proj:bbox matches the requested spatial extent,
+                # but skip it otherwise.
+                # TODO: hopefully this special handling can be eliminated once STAC API implemntations mature.
+                if proj_bbox and spatiotemporal_extent.spatial_extent.intersects(
+                    BoundingBox.from_wsen_tuple(proj_bbox, crs=proj_epsg).reproject(4326).as_wsen_tuple()
+                ):
+                    logger.warning(
+                        f"Detected implausible bbox {itm.bbox!r} in item {itm.id!r} ({proj_epsg=} {proj_bbox=})"
+                    )
+                else:
+                    logger.warning(
+                        f"Skipping item {itm.id!r} with implausible bbox {itm.bbox!r} ({proj_epsg=} {proj_bbox=})"
+                    )
+                    continue
+
             if proj_epsg:
                 builder = builder.withCRS(f"EPSG:{proj_epsg}")
             if proj_bbox:
@@ -396,17 +414,14 @@ def _prepare_context(
                 cell_width, cell_height = cellsize_override or _compute_cellsize(proj_bbox, proj_shape)
                 builder = builder.withResolution(cell_width)
 
-            latlon_bbox = BoundingBox.from_wsen_tuple(itm.bbox, 4326) if itm.bbox else None
-            if latlon_bbox and proj_epsg and is_utm_epsg_code(proj_epsg) and latlon_bbox.east - latlon_bbox.west > 180:
-                # Quickfix for CDSE STAC API returning completely unrelated items because of corrupt bbox metadata
-                # https://github.com/Open-EO/openeo-geopyspark-driver/issues/1592
-                # TODO: can we clean up this quickfix at some point?
-                logger.warning(f"Ignoring implausible {latlon_bbox=} from item {itm.id!r} with {proj_epsg=}")
-                latlon_bbox = None
-            item_bbox = latlon_bbox
-            if proj_bbox is not None and proj_epsg is not None:
+
+            if proj_bbox and proj_epsg:
                 item_bbox = BoundingBox.from_wsen_tuple(proj_bbox, crs=proj_epsg)
                 latlon_bbox = item_bbox.reproject(4326)
+            elif itm.bbox:
+                item_bbox = latlon_bbox = BoundingBox.from_wsen_tuple(itm.bbox, 4326)
+            else:
+                latlon_bbox = item_bbox = None
 
             if latlon_bbox is not None:
                 w, s, e, n = latlon_bbox.as_wsen_tuple()

@@ -3403,7 +3403,27 @@ class TestPrepareContext:
         assert [i["id"] for i in dumper.dump_opensearch_client_features(context.opensearch_client)] == expected_items
         assert context.metadata.temporal_extent == expected_temporal_extent
 
-    def test_prepare_context_ignore_corrupt_item_bbox_antimeridian(self, dummy_stac_api_server, caplog):
+    @pytest.mark.parametrize(
+        ["spatial_extent", "expected_items", "expected_logging"],
+        [
+            (
+                # Far far away from antimeridian: skip corrupt item.
+                {"west": 2, "south": 50.0, "east": 5, "north": 55.0},
+                ["item-1"],
+                dirty_equals.IsStr(regex=r".*Skipping.*item-2.*implausible bbox.*epsg.*32601.*", regex_flags=re.DOTALL),
+            ),
+            (
+                # Include antimeridian region: include item with corrupt item.bbox.
+                {"west": -179.9, "south": 50.0, "east": 5, "north": 55.0},
+                ["item-1", "item-2"],
+                dirty_equals.IsStr(regex=r".*Detected implausible bbox.*item-2.*epsg.*32601.*", regex_flags=re.DOTALL),
+            ),
+        ],
+    )
+    def test_prepare_context_handle_corrupt_item_bbox_antimeridian(
+        self, dummy_stac_api_server, spatial_extent, expected_items, expected_logging, caplog
+    ):
+        """https://github.com/Open-EO/openeo-geopyspark-driver/issues/1592"""
         collection_id = "S1592"
         dummy_stac_api_server.define_collection(collection_id)
         dummy_stac_api_server.define_item(
@@ -3429,6 +3449,7 @@ class TestPrepareContext:
             collection_id=collection_id,
             item_id="item-2",
             datetime="2024-05-02T00:00:00Z",
+            # Invalid item bbox: crosses antimeridian and should be
             bbox=[-179, 50, 179, 51],
             properties={
                 "proj:code": "EPSG:32601",
@@ -3448,20 +3469,22 @@ class TestPrepareContext:
         with dummy_stac_api_server.serve() as dummy_stac_api:
             context = _prepare_context(
                 url=f"{dummy_stac_api}/collections/{collection_id}",
-                load_params=LoadParameters(
-                    spatial_extent={"west": 2, "south": 50.0, "east": 5, "north": 55.0},
-                ),
+                load_params=LoadParameters(spatial_extent=spatial_extent),
                 env=EvalEnv(),
             )
 
         dumper = _OpenSearchClientDumper()
-        assert dumper.dump_opensearch_client_features(context.opensearch_client, add_links=False, add_bbox=True) == [
-            {"id": "item-1", "bbox": approxify((3.00, 49.99, 4.03, 51.00), abs=0.01)},
-            {"id": "item-2", "bbox": approxify((179.00, 49.94, 180.99, 51.05), abs=0.01)},
-        ]
-        assert caplog.text == dirty_equals.IsStr(
-            regex=r".*Ignoring implausible.*bbox.*item-2.*epsg.*32601.*", regex_flags=re.DOTALL
+        expected_bboxes = {
+            # reprojection of proj:bboxes
+            "item-1": approxify((3.00, 49.99, 4.03, 51.00), abs=0.01),
+            "item-2": approxify((179.00, 49.94, 180.99, 51.05), abs=0.01),
+        }
+        expected_features = [{"id": item, "bbox": expected_bboxes[item]} for item in expected_items]
+        assert (
+            dumper.dump_opensearch_client_features(context.opensearch_client, add_links=False, add_bbox=True)
+            == expected_features
         )
+        assert caplog.text == expected_logging
 
     @pytest.mark.parametrize(
         ["proj_bbox", "expected"],
