@@ -4,7 +4,7 @@ import logging
 
 import datetime
 from contextlib import nullcontext
-from typing import Iterator, List
+from typing import Iterator, List, Tuple
 from unittest import mock
 
 import dirty_equals
@@ -16,6 +16,7 @@ import responses
 from openeo.testing.stac import StacDummyBuilder
 from openeo_driver.backend import BatchJobMetadata, BatchJobs, LoadParameters
 from openeo_driver.errors import OpenEOApiException
+from openeo_driver.testing import approxify
 from openeo_driver.users import User
 from openeo_driver.util.date_math import now_utc
 from openeo_driver.util.geometry import BoundingBox
@@ -2915,17 +2916,27 @@ class _OpenSearchClientDumper:
             "bandNames": list(self.scala_iterate(link.bandNames().get().iterator())),
         }
 
-    def dump_feature(self, feature: JavaObject) -> dict:
-        """dump org.openeo.opensearch.OpenSearchResponses.Feature"""
-        return {
-            "id": feature.id(),
-            "links": [self.dump_link(link) for link in feature.links()],
-        }
+    def dump_extent(self, extent: JavaObject) -> Tuple[float, float, float, float]:
+        return extent.xmin(), extent.ymin(), extent.xmax(), extent.ymax()
 
-    def dump_opensearch_client_features(self, opensearch_client: JavaObject) -> List[dict]:
+    def dump_feature(self, feature: JavaObject, *, add_links: bool = True, add_bbox: bool = False) -> dict:
+        """dump org.openeo.opensearch.OpenSearchResponses.Feature"""
+        dump = {"id": feature.id()}
+        if add_links:
+            dump["links"] = [self.dump_link(link) for link in feature.links()]
+        if add_bbox:
+            dump["bbox"] = self.dump_extent(feature.bbox())
+        return dump
+
+    def dump_opensearch_client_features(
+        self, opensearch_client: JavaObject, *, add_links: bool = True, add_bbox: bool = False
+    ) -> List[dict]:
         """Dump all features from org.openeo.opensearch.OpenSearchClient"""
         feature_iterator = opensearch_client.features().iterator()
-        return [self.dump_feature(feature) for feature in self.scala_iterate(feature_iterator)]
+        return [
+            self.dump_feature(feature=feature, add_links=add_links, add_bbox=add_bbox)
+            for feature in self.scala_iterate(feature_iterator)
+        ]
 
 
 class TestPrepareContext:
@@ -3396,6 +3407,61 @@ class TestPrepareContext:
         assert caplog.text == dirty_equals.IsStr(
             regex=r".*Skipping.*item-2.*epsg.*32601.*unplausible.*bbox.*", regex_flags=re.DOTALL
         )
+
+    @pytest.mark.parametrize(
+        ["proj_bbox", "expected"],
+        [
+            (
+                # Crossing the antimeridian: east bound gets an additional +360 offset
+                # to avoid confusion from west > east
+                [300_000, 7_590_240, 409_800, 7_700_040],
+                approxify((178.137, 68.354, 180.703, 69.394), abs=0.01),
+            ),
+            (
+                # Not crossing the antimeridian
+                [500_000, 7_590_240, 609_800, 7_700_040],
+                approxify((-177.000, 68.403, -174.205, 69.410), abs=0.01),
+            ),
+        ],
+    )
+    def test_prepare_context_anitmeridian_bbox(self, dummy_stac_api_server, proj_bbox, expected):
+        """https://github.com/Open-EO/openeo-geopyspark-driver/issues/1594"""
+        collection_id = "S1594"
+        dummy_stac_api_server.define_collection(collection_id)
+        dummy_stac_api_server.define_item(
+            collection_id=collection_id,
+            item_id="item-1",
+            datetime="2026-03-09T23:56:09.024000Z",
+            bbox=[177.1, 67.2, -178.3, 69.4],
+            properties={
+                "proj:code": "EPSG:32601",
+                "proj:shape": [10980, 10980],
+                "proj:bbox": proj_bbox,
+            },
+            assets={
+                "B02_10m": {
+                    "href": "https://stac.test/B02_10m.tiff",
+                    "type": "image/tiff",
+                    "roles": ["data"],
+                    "bands": [{"name": "B02"}],
+                }
+            },
+        )
+
+        with dummy_stac_api_server.serve() as dummy_stac_api:
+            context = _prepare_context(
+                url=f"{dummy_stac_api}/collections/{collection_id}",
+                load_params=LoadParameters(),
+                env=EvalEnv(),
+            )
+
+        dumper = _OpenSearchClientDumper()
+        assert dumper.dump_opensearch_client_features(context.opensearch_client, add_links=False, add_bbox=True) == [
+            {
+                "id": "item-1",
+                "bbox": expected,
+            }
+        ]
 
 
 class TestResolutionTracker:

@@ -412,7 +412,11 @@ def _prepare_context(
                 latlon_bbox = item_bbox.reproject(4326)
 
             if latlon_bbox is not None:
-                builder = builder.withBBox(*map(float, latlon_bbox.as_wsen_tuple()))
+                w, s, e, n = latlon_bbox.as_wsen_tuple()
+                if e < w:
+                    # Workaround for `withBBox` not properly supporting bounding boxes across antimeridian
+                    e += 360
+                builder = builder.withBBox(float(w), float(s), float(e), float(n))
 
             if itm.geometry is not None:
                 builder = builder.withGeometryFromWkt(str(shapely.geometry.shape(itm.geometry)))
