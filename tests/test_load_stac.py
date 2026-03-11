@@ -2539,9 +2539,9 @@ class TestItemCollection:
         search_requests = [r for r in dummy_stac_api_server.request_history if r["path"] == "/search"]
         assert search_requests == [expected_search]
 
-    def test_from_stac_api_anti_meridian_handling(self, dummy_stac_api, dummy_stac_api_server):
+    def test_from_stac_api_antimeridian_handling(self, dummy_stac_api, dummy_stac_api_server):
         """Based on https://github.com/Open-EO/openeo-geopyspark-driver/issues/1568"""
-        collection_id = "anita-meridith"
+        collection_id = "ogd-1568"
         dummy_stac_api_server.define_collection(collection_id)
         for x in [175, 176, 177, 178, 179, -180, -179, -178]:
             for y in [68, 69, 70, 71]:
@@ -2579,6 +2579,24 @@ class TestItemCollection:
             "item-178-70",
             "item-179-69",
             "item-179-70",
+        ]
+
+        search_requests = [r for r in dummy_stac_api_server.request_history if r["path"] == "/search"]
+        assert search_requests == [
+            dirty_equals.IsPartialDict(
+                url_params={
+                    "collections": collection_id,
+                    "bbox": dirty_equals.IsStr(regex=r"177\.\d*,69\.\d*,180\.0,70\.\d+"),
+                    "limit": "100",
+                }
+            ),
+            dirty_equals.IsPartialDict(
+                url_params={
+                    "collections": collection_id,
+                    "bbox": dirty_equals.IsStr(regex=r"-180\.0,69\.\d+,-179\.\d+,70\.\d+"),
+                    "limit": "100",
+                }
+            ),
         ]
 
     def test_get_temporal_extent_empty(self):

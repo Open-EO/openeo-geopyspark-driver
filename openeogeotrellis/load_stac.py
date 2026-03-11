@@ -1324,33 +1324,61 @@ class ItemCollection:
             query_info += f" {use_filter_extension=} {cql2_filter=}"
 
             bbox = spatiotemporal_extent.spatial_extent.as_bbox(crs="EPSG:4326")
-            bbox = bbox.as_wsen_tuple() if bbox else None
+            if bbox is None:
+                query_bboxes = [None]
+            elif bbox.cyclic_antimeridian_crossing():
+                # TODO: proper antimeridian handling should be supported directly by a STAC API
+                #       (https://github.com/radiantearth/stac-api-spec/issues/473)
+                #       but unfortunately that isn't the case in the CDSE pgSTAC deployment (CDSE-2834) and maybe others.
+                #       Can we at some point eliminate this hack to split the query bounding box
+                #       and all the additional housekeeping overhead that comes with it?
+                query_bboxes = [b.as_wsen_tuple() for b in bbox.cyclic_antimeridian_split()]
+                logger.warning(
+                    f"Query across the antimeridian, which should be supported transparently by a STAC API, but some implementations don't, so we split up the query for now: {query_bboxes=}"
+                )
+            else:
+                query_bboxes = [bbox.as_wsen_tuple()]
             query_datetime = (
                 None
                 if spatiotemporal_extent.temporal_extent.is_unbounded() or skip_datetime_filter
                 else spatiotemporal_extent.temporal_extent.as_tuple()
             )
-            search_request = client.search(
-                method=method,
-                collections=collection.id,
-                bbox=bbox,
-                limit=per_page_limit,
-                datetime=query_datetime,
-                filter=cql2_filter,
-                fields=fields,
-            )
-            if search_request.method == "GET":
-                query_info += f" {search_request.method} {search_request.url_with_parameters()}"
-            else:
-                query_info += f" {search_request.method} {search_request.url} {search_request.get_parameters()=}"
-            logger.info(f"ItemCollection.from_stac_api: STAC API request: {query_info}")
 
-            # STAC API might not support Filter Extension so always use client-side filtering as well
+            # STAC API might not support Filter Extension so always do post-process filtering as well
             # TODO: check "filter" conformance class for this instead of blindly trying to do double work
             #       see https://github.com/stac-api-extensions/filter
             property_matcher = property_filter.build_matcher()
-            items = [item for item in search_request.items() if property_matcher(item.properties)]
-            logger.info(f"ItemCollection.from_stac_api: Collected {len(items)} items.")
+
+            # Set of item ids for on the fly deduplication (when we have to do two queries around the antimeridian)
+            seen_item_ids = set()
+
+            items = []
+            for query_bbox in query_bboxes:
+                search_request = client.search(
+                    method=method,
+                    collections=collection.id,
+                    bbox=query_bbox,
+                    limit=per_page_limit,
+                    datetime=query_datetime,
+                    filter=cql2_filter,
+                    fields=fields,
+                )
+                if search_request.method == "GET":
+                    query_info += f" {search_request.method} {search_request.url_with_parameters()}"
+                else:
+                    query_info += f" {search_request.method} {search_request.url} {search_request.get_parameters()=}"
+                logger.info(f"ItemCollection.from_stac_api: STAC API request: {query_info}")
+
+                items.extend(
+                    item
+                    for item in search_request.items()
+                    if property_matcher(item.properties) and item.id not in seen_item_ids
+                )
+                if len(query_bboxes) > 1:
+                    # Only track seen items when we're going to check for duplicates (multiple query bboxes)
+                    seen_item_ids.update(item.id for item in items)
+
+            logger.info(f"ItemCollection.from_stac_api: Collected {len(items)} items (from {query_bboxes=})")
         except Exception as e:
             raise LoadStacException(
                 url=original_url, info=f"failed to construct ItemCollection from STAC API. {query_info=} {e=}"
