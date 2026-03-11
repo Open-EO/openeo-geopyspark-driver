@@ -2141,5 +2141,14 @@
         }
       ]
     }
+  },
+  {
+    "id": "STAC_123",
+    "_vito": {
+      "data_source": {
+        "type": "stac",
+        "url": "https://stac.test/collections/stac-123"
+      }
+    }
   }
 ]

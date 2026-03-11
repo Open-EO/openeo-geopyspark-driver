@@ -15,11 +15,12 @@ import py4j.protocol
 import pyproj
 import pytz
 import requests
+import flask
 
 from openeo.metadata import Band
 from openeo.util import TimingLogger, deep_get, str_truncate
 from openeo_driver import filter_properties
-from openeo_driver.backend import CollectionCatalog, LoadParameters
+from openeo_driver.backend import CollectionCatalog, LoadParameters, QueryablesListing
 from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.datastructs import SarBackscatterArgs
@@ -923,6 +924,17 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         number_of_temporal_observations = (to_date_parsed - from_date_parsed).total_seconds() / temporal_step
         number_of_temporal_observations = max(math.floor(number_of_temporal_observations), 1)
         return number_of_temporal_observations
+
+    def get_collection_queryables(self, collection_id: Union[str, None]) -> Union[QueryablesListing, flask.Response]:
+        metadata = self.get_collection_metadata(collection_id)
+        data_source = deep_get(metadata, "_vito", "data_source", default={})
+        if data_source.get("type") == "stac" and (url := data_source.get("url")):
+            # TODO: for now (experimental phase), we just do naive redirect here.
+            #       Instead: proxy+cache this document.
+            #       Or include it in (precompiled) layercatalog (#1175)?
+            return flask.redirect(location=f"{url}/queryables")
+
+        return super().get_collection_queryables(collection_id=collection_id)
 
 
 # Type annotation aliases to make things more self-documenting
