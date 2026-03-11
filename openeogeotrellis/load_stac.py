@@ -1069,7 +1069,7 @@ class _SpatialExtent:
         # TODO: support more bbox representations as input
         self._bbox = bbox
         # cache for shapely polygon in lon/lat
-        self._bbox_lonlat_shape = self._bbox.reproject("EPSG:4326").as_polygon() if self._bbox else None
+        self._bbox_lonlat_shape = self._bbox.reproject("EPSG:4326").as_geometry() if self._bbox else None
 
     def _key(self) -> tuple:
         return (self._bbox,)
@@ -1089,10 +1089,17 @@ class _SpatialExtent:
         return bbox
 
     def intersects(self, bbox: Union[List[float], Tuple[float, float, float, float], None]):
+        """
+        Check if given bbox is within the spatial extent.
+        Assumes the bbox follows GeoJSON conventions:
+        - lon-lat (EPSG:4326) coordinates
+        - antimeridian crossing is represented by `west` > `east`
+        """
         # TODO: this assumes bbox is in lon/lat coordinates, also support other CRSes?
         if not self._bbox or bbox is None:
             return True
-        return self._bbox_lonlat_shape.intersects(shapely.geometry.box(*bbox))
+        shape = BoundingBox(*bbox, crs=4326).as_geometry()
+        return self._bbox_lonlat_shape.intersects(shape)
 
 
 class _SpatioTemporalExtent:

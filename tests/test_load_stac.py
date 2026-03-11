@@ -1306,18 +1306,57 @@ class TestTemporalExtent:
 
 
 class TestSpatialExtent:
-    def test_empty(self):
+    def test_as_bbox_empty(self):
+        extent = _SpatialExtent(bbox=None)
+        assert extent.as_bbox() is None
+        assert extent.as_bbox(crs="EPSG:32631") is None
+
+    def test_as_bbox(self):
+        extent = _SpatialExtent(bbox=BoundingBox(west=3, south=51, east=4, north=52, crs=4326))
+        assert extent.as_bbox() == BoundingBox(west=3, south=51, east=4, north=52, crs=4326)
+        assert extent.as_bbox(crs="EPSG:32631") == BoundingBox(
+            west=500000, south=5649824, east=570168, north=5761510, crs="EPSG:32631"
+        ).approx(abs=1)
+
+    def test_intersects_empty(self):
         extent = _SpatialExtent(bbox=None)
         assert extent.intersects(None) is True
         assert extent.intersects((1, 2, 3, 4)) == True
 
-    def test_basic(self):
+    def test_intersects_basic(self):
         extent = _SpatialExtent(bbox=BoundingBox(west=3, south=51, east=4, north=52, crs=4326))
         assert extent.intersects((1, 2, 3, 4)) == False
         assert extent.intersects((2, 50, 3.1, 51.1)) == True
         assert extent.intersects((3.3, 51.1, 3.5, 51.5)) == True
         assert extent.intersects((3.9, 51.9, 4.4, 52.2)) == True
         assert extent.intersects((5, 51.1, 6, 52.2)) == False
+
+    def test_intersects_antimeridian(self):
+        # Extent across antimeridian:
+        extent = _SpatialExtent(bbox=BoundingBox(west=179, south=51, east=-179, north=52, crs=4326))
+
+        assert extent.intersects((1, 50, 3, 52)) == False
+        assert extent.intersects((1, 51.1, 3, 51.5)) == False
+
+        # Non-crossing bboxes west from antimeridian
+        assert extent.intersects((178, 51.1, 178.9, 51.5)) == False
+        assert extent.intersects((179.1, 51.1, 179.5, 51.5)) == True
+        assert extent.intersects((178, 50, 179.5, 51.5)) == True
+        assert extent.intersects((178, 51.5, 179.5, 53)) == True
+
+        # Non-crossing bboxes east from antimeridian
+        assert extent.intersects((-178.9, 51.1, -178, 51.5)) == False
+        assert extent.intersects((-179.5, 51.1, -179.1, 51.5)) == True
+        assert extent.intersects((-179.5, 50, 178, 51.5)) == True
+        assert extent.intersects((-179.5, 51.5, 178, 53)) == True
+
+        # Bboxes crossing the antimeridian
+        assert extent.intersects((178, 50, -178, 50.5)) == False
+        assert extent.intersects((179.5, 50, -179.5, 50.5)) == False
+        assert extent.intersects((178, 50, -178, 51.5)) == True
+        assert extent.intersects((179.1, 50, -179.1, 51.5)) == True
+        assert extent.intersects((178, 51.1, -178, 51.5)) == True
+        assert extent.intersects((179.1, 51.1, -179.1, 51.5)) == True
 
     def test_as_cache_key(self):
         extent1 = _SpatialExtent(bbox=None)
