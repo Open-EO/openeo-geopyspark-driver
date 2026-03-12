@@ -397,6 +397,7 @@ def _prepare_context(
                 and itm.bbox[2] - itm.bbox[0] > 180
             )
             if item_bbox_is_implausible:
+                opensearch_stats["implausible bbox"] += 1
                 # Check other metadata for match with spatial extent to decide to keep or skip item.
                 # TODO: hopefully this special handling can be eliminated once STAC API implementations mature.
                 try:
@@ -415,10 +416,12 @@ def _prepare_context(
                     fallback_geometry = None
 
                 if fallback_geometry and spatiotemporal_extent.spatial_extent.intersects(fallback_geometry):
+                    opensearch_stats["implausible bbox: keep"] += 1
                     logger.warning(
                         f"Detected implausible bbox {itm.bbox!r} in item {itm.id!r} ({proj_epsg=} {proj_bbox=} {fallback_geometry=})"
                     )
                 else:
+                    opensearch_stats["implausible bbox: skip"] += 1
                     logger.warning(
                         f"Skipping item {itm.id!r} with implausible bbox {itm.bbox!r} ({proj_epsg=} {proj_bbox=} {fallback_geometry=})"
                     )
@@ -447,9 +450,11 @@ def _prepare_context(
                 if e < w:
                     # Workaround for `withBBox` not properly supporting bounding boxes across antimeridian
                     e += 360
+                opensearch_stats["builder.withBBox"] += 1
                 builder = builder.withBBox(float(w), float(s), float(e), float(n))
 
             if itm.geometry is not None:
+                opensearch_stats["builder.withGeometryFromWkt"] += 1
                 builder = builder.withGeometryFromWkt(str(shapely.geometry.shape(itm.geometry)))
 
             self_links = itm.get_links(rel="self")
