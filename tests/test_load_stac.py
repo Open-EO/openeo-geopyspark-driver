@@ -3501,21 +3501,13 @@ class TestPrepareContext:
         assert context.metadata.temporal_extent == expected_temporal_extent
 
     @pytest.mark.parametrize(
-        ["spatial_extent", "item2_fields", "expected_features", "expected_logging"],
+        ["spatial_extent", "item2_overrides", "expected_features", "expected_logging"],
         [
             (
                 # Requested spatial extent is far far away from antimeridian: skip corrupt item.
-                # Item-2: invalid bbox, no geometry, but valid proj:bbox
+                # Item-2: invalid bbox, but valid geometry and proj:bbox
                 {"west": 2, "south": 50.0, "east": 5, "north": 55.0},
-                {
-                    "bbox": [-179, 50, 179, 51],
-                    "geometry": None,
-                    "properties": {
-                        "proj:code": "EPSG:32601",
-                        "proj:shape": [100, 100],
-                        "proj:bbox": [213_000, 5_540_000, 359_000, 5_657_000],
-                    },
-                },
+                {"bbox": [-179, 50, 179, 51]},
                 [
                     {"id": "item-1", "bbox": approxify((3.00, 49.99, 4.03, 51.00), abs=0.01)},
                 ],
@@ -3523,17 +3515,10 @@ class TestPrepareContext:
             ),
             (
                 # Requested spatial extent is far far away from antimeridian: skip corrupt item.
-                # Item-2: invalid bbox, no proj:bbox, but valid (multi-polygon) geometry
+                # Item-2: invalid bbox, no proj:bbox, but valid geometry
                 {"west": 2, "south": 50.0, "east": 5, "north": 55.0},
                 {
                     "bbox": [-179, 50, 179, 51],
-                    "geometry": {
-                        "type": "MultiPolygon",
-                        "coordinates": [
-                            (((-180.0, 49.97), (-178.96, 49.99), (-179.01, 51.04), (-180.0, 51.02), (-180.0, 49.97)),),
-                            (((180.0, 51.02), (178.90, 50.99), (178.99, 49.94), (180.0, 49.97), (180.0, 51.025)),),
-                        ],
-                    },
                     "properties": {"proj:code": "EPSG:32601"},
                 },
                 [
@@ -3543,17 +3528,9 @@ class TestPrepareContext:
             ),
             (
                 # Requested spatial extent includes antimeridian region: include item with corrupt item.bbox.
-                # Item-2: invalid bbox, no geometry, but valid proj:bbox
+                # Item-2: invalid bbox, but valid geometry and proj:bbox
                 {"west": -179.9, "south": 50.0, "east": 5, "north": 55.0},
-                {
-                    "bbox": [-179, 50, 179, 51],
-                    "geometry": None,
-                    "properties": {
-                        "proj:code": "EPSG:32601",
-                        "proj:shape": [100, 100],
-                        "proj:bbox": [213_000, 5_540_000, 359_000, 5_657_000],
-                    },
-                },
+                {"bbox": [-179, 50, 179, 51]},
                 [
                     {"id": "item-1", "bbox": approxify((3.00, 49.99, 4.03, 51.00), abs=0.01)},
                     {"id": "item-2", "bbox": approxify((179.00, 49.94, 180.99, 51.05), abs=0.01)},
@@ -3562,17 +3539,10 @@ class TestPrepareContext:
             ),
             (
                 # Requested spatial extent includes antimeridian region: include item with corrupt item.bbox.
-                # Item-2: invalid bbox, no proj:bbox, but valid (multi-polygon) geometry
+                # Item-2: invalid bbox, no proj:bbox, but valid geometry
                 {"west": -179.9, "south": 50.0, "east": 5, "north": 55.0},
                 {
                     "bbox": [-179, 50, 179, 51],
-                    "geometry": {
-                        "type": "MultiPolygon",
-                        "coordinates": [
-                            (((-180.0, 49.97), (-178.96, 49.99), (-179.01, 51.04), (-180.0, 51.02), (-180.0, 49.97)),),
-                            (((180.0, 51.02), (178.90, 50.99), (178.99, 49.94), (180.0, 49.97), (180.0, 51.025)),),
-                        ],
-                    },
                     "properties": {"proj:code": "EPSG:32601"},
                 },
                 [
@@ -3600,15 +3570,7 @@ class TestPrepareContext:
                 # Happy case: no corruption (valid bbox, valid proj:bbox)
                 # Requested spatial extent is far far away from antimeridian: only item-1 should be included
                 {"west": 2, "south": 50.0, "east": 5, "north": 55.0},
-                {
-                    "bbox": [179, 50, -179, 51],
-                    "geometry": None,
-                    "properties": {
-                        "proj:code": "EPSG:32601",
-                        "proj:shape": [100, 100],
-                        "proj:bbox": [213_000, 5_540_000, 359_000, 5_657_000],
-                    },
-                },
+                {"bbox": [179, 50, -179, 51]},
                 [
                     {"id": "item-1", "bbox": approxify((3.00, 49.99, 4.03, 51.00), abs=0.01)},
                 ],
@@ -3619,15 +3581,7 @@ class TestPrepareContext:
                 # Happy case: no corruption (valid bbox, valid proj:bbox)
                 # Requested spatial extent includes antimeridian region: item-2 should be included too
                 {"west": -179.9, "south": 50.0, "east": 5, "north": 55.0},
-                {
-                    "bbox": [179, 50, -179, 51],
-                    "geometry": None,
-                    "properties": {
-                        "proj:code": "EPSG:32601",
-                        "proj:shape": [100, 100],
-                        "proj:bbox": [213_000, 5_540_000, 359_000, 5_657_000],
-                    },
-                },
+                {"bbox": [179, 50, -179, 51]},
                 [
                     {"id": "item-1", "bbox": approxify((3.00, 49.99, 4.03, 51.00), abs=0.01)},
                     {"id": "item-2", "bbox": approxify((179.00, 49.94, 180.99, 51.05), abs=0.01)},
@@ -3638,7 +3592,7 @@ class TestPrepareContext:
         ],
     )
     def test_prepare_context_handle_corrupt_item_bbox_antimeridian(
-        self, dummy_stac_api_server, item2_fields, spatial_extent, expected_features, expected_logging, caplog
+        self, dummy_stac_api_server, item2_overrides, spatial_extent, expected_features, expected_logging, caplog
     ):
         """https://github.com/Open-EO/openeo-geopyspark-driver/issues/1592"""
         collection_id = "S1592"
@@ -3662,6 +3616,23 @@ class TestPrepareContext:
                 }
             },
         )
+        assert "bbox" in item2_overrides, "Always specify bbox for clarity of test intent"
+        item2_fields = {
+            "bbox": [179, 50, -179, 51],
+            "properties": {
+                "proj:code": "EPSG:32601",
+                "proj:shape": [100, 100],
+                "proj:bbox": [213_000, 5_540_000, 359_000, 5_657_000],
+            },
+            "geometry": {
+                "type": "MultiPolygon",
+                "coordinates": [
+                    (((-180.0, 49.97), (-178.96, 49.99), (-179.01, 51.04), (-180.0, 51.02), (-180.0, 49.97)),),
+                    (((180.0, 51.02), (178.90, 50.99), (178.99, 49.94), (180.0, 49.97), (180.0, 51.025)),),
+                ],
+            },
+            **item2_overrides,
+        }
         dummy_stac_api_server.define_item(
             collection_id=collection_id,
             item_id="item-2",
