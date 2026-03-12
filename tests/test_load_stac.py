@@ -4,7 +4,7 @@ import logging
 
 import datetime
 from contextlib import nullcontext
-from typing import Iterator, List, Tuple
+from typing import Iterator, List, Tuple, Union
 from unittest import mock
 
 import dirty_equals
@@ -13,6 +13,7 @@ import pystac
 import pystac_client
 import pytest
 import responses
+import shapely.geometry
 from openeo.testing.stac import StacDummyBuilder
 from openeo_driver.backend import BatchJobMetadata, BatchJobs, LoadParameters
 from openeo_driver.errors import OpenEOApiException
@@ -1357,6 +1358,99 @@ class TestSpatialExtent:
         assert extent.intersects((179.1, 50, -179.1, 51.5)) == True
         assert extent.intersects((178, 51.1, -178, 51.5)) == True
         assert extent.intersects((179.1, 51.1, -179.1, 51.5)) == True
+
+    def test_intersects_bounding_box(self):
+        extent = _SpatialExtent(bbox=BoundingBox(west=3, south=51, east=4, north=52, crs=4326))
+        assert extent.intersects(BoundingBox(1, 2, 3, 4, crs=4326)) == False
+        assert extent.intersects(BoundingBox(2, 50, 3.1, 51.1, crs=4326)) == True
+        assert extent.intersects(BoundingBox(3.3, 51.1, 3.5, 51.5, crs=4326)) == True
+        assert extent.intersects(BoundingBox(3.9, 51.9, 4.4, 52.2, crs=4326)) == True
+        assert extent.intersects(BoundingBox(5, 51.1, 6, 52.2, crs=4326)) == False
+
+        # Test with different CRS (should be reprojected internally)
+        assert extent.intersects(BoundingBox(429_000, 5_537_000, 507_000, 5_660_000, crs=32631)) == True
+        assert extent.intersects(BoundingBox(429_000, 5_537_000, 507_000, 5_660_000, crs=32627)) == False
+
+    def test_intersects_bounding_box_antimeridian(self):
+        # Extent across antimeridian:
+        extent = _SpatialExtent(bbox=BoundingBox(west=179, south=51, east=-179, north=52, crs=4326))
+
+        assert extent.intersects(BoundingBox(1, 50, 3, 52, crs=4326)) == False
+        assert extent.intersects(BoundingBox(1, 51.1, 3, 51.5, crs=4326)) == False
+
+        # Non-crossing bboxes west from antimeridian
+        assert extent.intersects(BoundingBox(178, 51.1, 178.9, 51.5, crs=4326)) == False
+        assert extent.intersects(BoundingBox(179.1, 51.1, 179.5, 51.5, crs=4326)) == True
+        assert extent.intersects(BoundingBox(178, 50, 179.5, 51.5, crs=4326)) == True
+        assert extent.intersects(BoundingBox(178, 51.5, 179.5, 53, crs=4326)) == True
+
+        # Non-crossing bboxes east from antimeridian
+        assert extent.intersects(BoundingBox(-178.9, 51.1, -178, 51.5, crs=4326)) == False
+        assert extent.intersects(BoundingBox(-179.5, 51.1, -179.1, 51.5, crs=4326)) == True
+        assert extent.intersects(BoundingBox(-179.5, 50, 178, 51.5, crs=4326)) == True
+        assert extent.intersects(BoundingBox(-179.5, 51.5, 178, 53, crs=4326)) == True
+
+        # Bboxes crossing the antimeridian
+        assert extent.intersects(BoundingBox(178, 50, -178, 50.5, crs=4326)) == False
+        assert extent.intersects(BoundingBox(179.5, 50, -179.5, 50.5, crs=4326)) == False
+        assert extent.intersects(BoundingBox(178, 50, -178, 51.5, crs=4326)) == True
+        assert extent.intersects(BoundingBox(179.1, 50, -179.1, 51.5, crs=4326)) == True
+        assert extent.intersects(BoundingBox(178, 51.1, -178, 51.5, crs=4326)) == True
+        assert extent.intersects(BoundingBox(179.1, 51.1, -179.1, 51.5, crs=4326)) == True
+
+        # Different CRS
+        assert extent.intersects(BoundingBox(250_000, 5_655_000, 350_000, 5_765_000, crs=32601)) == True
+        assert extent.intersects(BoundingBox(250_000, 5_655_000, 350_000, 5_765_000, crs=32602)) == False
+        assert extent.intersects(BoundingBox(650_000, 5_655_000, 750_000, 5_765_000, crs=32631)) == False
+        assert extent.intersects(BoundingBox(650_000, 5_655_000, 750_000, 5_765_000, crs=32659)) == False
+        assert extent.intersects(BoundingBox(650_000, 5_655_000, 750_000, 5_765_000, crs=32660)) == True
+
+    def _diamond(self, x: float, y: float, r: float) -> shapely.geometry.Polygon:
+        """Diamond shape around (x, y) with radius r"""
+        return shapely.geometry.Polygon([(x, y - r), (x + r, y), (x, y + r), (x - r, y), (x, y - r)])
+
+    def _diamonds(self, xyr: List[Tuple[float, float, float]]) -> shapely.geometry.MultiPolygon:
+        """Multiple diamonds"""
+        return shapely.geometry.MultiPolygon([self._diamond(x=x, y=y, r=r) for (x, y, r) in xyr])
+
+    def test_intersect_shapely(self):
+        extent = _SpatialExtent(bbox=BoundingBox(west=3, south=51, east=4, north=52, crs=4326))
+
+        # Basic polygon handling
+        assert extent.intersects(self._diamond(3.5, 51.5, r=0.4)) == True
+        assert extent.intersects(self._diamond(2.5, 51.5, r=0.4)) == False
+        assert extent.intersects(self._diamond(2.5, 51.5, r=0.6)) == True
+        assert extent.intersects(self._diamond(0, 50, r=1)) == False
+        assert extent.intersects(self._diamond(0, 50, r=4)) == True
+
+        # Basic Multipolygon handling
+        assert extent.intersects(self._diamonds([(2.5, 51.5, 0.4), (3.5, 50.5, 0.4)])) == False
+        assert extent.intersects(self._diamonds([(2.5, 51.5, 0.6), (3.5, 50.5, 0.6)])) == True
+
+    def test_intersects_shapely_antimeridian(self):
+        # Extent across antimeridian:
+        extent = _SpatialExtent(bbox=BoundingBox(west=179, south=51, east=-179, north=52, crs=4326))
+
+        assert extent.intersects(self._diamond(2, 50, r=1)) == False
+
+        # Non-crossing shapes west from antimeridian
+        assert extent.intersects(self._diamond(178.5, 51.1, r=0.4)) == False
+        assert extent.intersects(self._diamond(178.5, 51.1, r=0.6)) == True
+        assert extent.intersects(self._diamond(179.5, 51.1, r=0.2)) == True
+        assert extent.intersects(self._diamond(179.5, 50.1, r=0.2)) == False
+
+        # Non-crossing bboxes east from antimeridian
+        assert extent.intersects(self._diamond(-178.5, 51.1, r=0.4)) == False
+        assert extent.intersects(self._diamond(-178.5, 51.1, r=0.6)) == True
+        assert extent.intersects(self._diamond(-179.5, 51.1, r=0.2)) == True
+        assert extent.intersects(self._diamond(-179.5, 50.1, r=0.2)) == False
+
+        # Antimeridian-split multipolygons
+        assert extent.intersects(self._diamonds([(178.5, 51.1, 0.4), (-178.5, 51.1, 0.4)])) == False
+        assert extent.intersects(self._diamonds([(178.5, 51.1, 0.6), (-178.5, 51.1, 0.2)])) == True
+        assert extent.intersects(self._diamonds([(178.5, 51.1, 0.2), (-178.5, 51.1, 0.6)])) == True
+        assert extent.intersects(self._diamonds([(179.5, 51.1, 0.2), (-179.5, 51.1, 0.2)])) == True
+        assert extent.intersects(self._diamonds([(179.5, 50.1, 0.2), (-179.5, 50.1, 0.2)])) == False
 
     def test_as_cache_key(self):
         extent1 = _SpatialExtent(bbox=None)
@@ -2973,8 +3067,11 @@ class _OpenSearchClientDumper:
             "bandNames": list(self.scala_iterate(link.bandNames().get().iterator())),
         }
 
-    def dump_extent(self, extent: JavaObject) -> Tuple[float, float, float, float]:
-        return extent.xmin(), extent.ymin(), extent.xmax(), extent.ymax()
+    def dump_extent(self, extent: JavaObject) -> Union[Tuple[float, float, float, float], None]:
+        if extent:
+            return extent.xmin(), extent.ymin(), extent.xmax(), extent.ymax()
+        else:
+            return None
 
     def dump_feature(self, feature: JavaObject, *, add_links: bool = True, add_bbox: bool = False) -> dict:
         """dump org.openeo.opensearch.OpenSearchResponses.Feature"""
@@ -3404,24 +3501,144 @@ class TestPrepareContext:
         assert context.metadata.temporal_extent == expected_temporal_extent
 
     @pytest.mark.parametrize(
-        ["spatial_extent", "expected_items", "expected_logging"],
+        ["spatial_extent", "item2_fields", "expected_features", "expected_logging"],
         [
             (
-                # Far far away from antimeridian: skip corrupt item.
+                # Requested spatial extent is far far away from antimeridian: skip corrupt item.
+                # Item-2: invalid bbox, no geometry, but valid proj:bbox
                 {"west": 2, "south": 50.0, "east": 5, "north": 55.0},
-                ["item-1"],
+                {
+                    "bbox": [-179, 50, 179, 51],
+                    "geometry": None,
+                    "properties": {
+                        "proj:code": "EPSG:32601",
+                        "proj:shape": [100, 100],
+                        "proj:bbox": [213_000, 5_540_000, 359_000, 5_657_000],
+                    },
+                },
+                [
+                    {"id": "item-1", "bbox": approxify((3.00, 49.99, 4.03, 51.00), abs=0.01)},
+                ],
                 dirty_equals.IsStr(regex=r".*Skipping.*item-2.*implausible bbox.*epsg.*32601.*", regex_flags=re.DOTALL),
             ),
             (
-                # Include antimeridian region: include item with corrupt item.bbox.
+                # Requested spatial extent is far far away from antimeridian: skip corrupt item.
+                # Item-2: invalid bbox, no proj:bbox, but valid (multi-polygon) geometry
+                {"west": 2, "south": 50.0, "east": 5, "north": 55.0},
+                {
+                    "bbox": [-179, 50, 179, 51],
+                    "geometry": {
+                        "type": "MultiPolygon",
+                        "coordinates": [
+                            (((-180.0, 49.97), (-178.96, 49.99), (-179.01, 51.04), (-180.0, 51.02), (-180.0, 49.97)),),
+                            (((180.0, 51.02), (178.90, 50.99), (178.99, 49.94), (180.0, 49.97), (180.0, 51.025)),),
+                        ],
+                    },
+                    "properties": {"proj:code": "EPSG:32601"},
+                },
+                [
+                    {"id": "item-1", "bbox": approxify((3.00, 49.99, 4.03, 51.00), abs=0.01)},
+                ],
+                dirty_equals.IsStr(regex=r".*Skipping.*item-2.*implausible bbox.*epsg.*32601.*", regex_flags=re.DOTALL),
+            ),
+            (
+                # Requested spatial extent includes antimeridian region: include item with corrupt item.bbox.
+                # Item-2: invalid bbox, no geometry, but valid proj:bbox
                 {"west": -179.9, "south": 50.0, "east": 5, "north": 55.0},
-                ["item-1", "item-2"],
+                {
+                    "bbox": [-179, 50, 179, 51],
+                    "geometry": None,
+                    "properties": {
+                        "proj:code": "EPSG:32601",
+                        "proj:shape": [100, 100],
+                        "proj:bbox": [213_000, 5_540_000, 359_000, 5_657_000],
+                    },
+                },
+                [
+                    {"id": "item-1", "bbox": approxify((3.00, 49.99, 4.03, 51.00), abs=0.01)},
+                    {"id": "item-2", "bbox": approxify((179.00, 49.94, 180.99, 51.05), abs=0.01)},
+                ],
                 dirty_equals.IsStr(regex=r".*Detected implausible bbox.*item-2.*epsg.*32601.*", regex_flags=re.DOTALL),
+            ),
+            (
+                # Requested spatial extent includes antimeridian region: include item with corrupt item.bbox.
+                # Item-2: invalid bbox, no proj:bbox, but valid (multi-polygon) geometry
+                {"west": -179.9, "south": 50.0, "east": 5, "north": 55.0},
+                {
+                    "bbox": [-179, 50, 179, 51],
+                    "geometry": {
+                        "type": "MultiPolygon",
+                        "coordinates": [
+                            (((-180.0, 49.97), (-178.96, 49.99), (-179.01, 51.04), (-180.0, 51.02), (-180.0, 49.97)),),
+                            (((180.0, 51.02), (178.90, 50.99), (178.99, 49.94), (180.0, 49.97), (180.0, 51.025)),),
+                        ],
+                    },
+                    "properties": {"proj:code": "EPSG:32601"},
+                },
+                [
+                    {"id": "item-1", "bbox": approxify((3.00, 49.99, 4.03, 51.00), abs=0.01)},
+                    {"id": "item-2", "bbox": None},
+                ],
+                dirty_equals.IsStr(regex=r".*Detected implausible bbox.*item-2.*epsg.*32601.*", regex_flags=re.DOTALL),
+            ),
+            (
+                # Requested spatial extent includes antimeridian region
+                # Item-2: invalid bbox, no proj:bbox, invalid geometry
+                # Skip item, but don't break whole flow
+                {"west": -179.9, "south": 50.0, "east": 5, "north": 55.0},
+                {
+                    "bbox": [-179, 50, 179, 51],
+                    "geometry": {"type": "garbage"},
+                    "properties": {"proj:code": "EPSG:32601"},
+                },
+                [
+                    {"id": "item-1", "bbox": approxify((3.00, 49.99, 4.03, 51.00), abs=0.01)},
+                ],
+                dirty_equals.IsStr(regex=r".*Skipping.*item-2.*implausible bbox.*epsg.*32601.*", regex_flags=re.DOTALL),
+            ),
+            (
+                # Happy case: no corruption (valid bbox, valid proj:bbox)
+                # Requested spatial extent is far far away from antimeridian: only item-1 should be included
+                {"west": 2, "south": 50.0, "east": 5, "north": 55.0},
+                {
+                    "bbox": [179, 50, -179, 51],
+                    "geometry": None,
+                    "properties": {
+                        "proj:code": "EPSG:32601",
+                        "proj:shape": [100, 100],
+                        "proj:bbox": [213_000, 5_540_000, 359_000, 5_657_000],
+                    },
+                },
+                [
+                    {"id": "item-1", "bbox": approxify((3.00, 49.99, 4.03, 51.00), abs=0.01)},
+                ],
+                # Regex with negative look-ahead here: logs should NOT contain "implausible"
+                dirty_equals.IsStr(regex=r"^(?!.*implausible).*", regex_flags=re.DOTALL),
+            ),
+            (
+                # Happy case: no corruption (valid bbox, valid proj:bbox)
+                # Requested spatial extent includes antimeridian region: item-2 should be included too
+                {"west": -179.9, "south": 50.0, "east": 5, "north": 55.0},
+                {
+                    "bbox": [179, 50, -179, 51],
+                    "geometry": None,
+                    "properties": {
+                        "proj:code": "EPSG:32601",
+                        "proj:shape": [100, 100],
+                        "proj:bbox": [213_000, 5_540_000, 359_000, 5_657_000],
+                    },
+                },
+                [
+                    {"id": "item-1", "bbox": approxify((3.00, 49.99, 4.03, 51.00), abs=0.01)},
+                    {"id": "item-2", "bbox": approxify((179.00, 49.94, 180.99, 51.05), abs=0.01)},
+                ],
+                # Regex with negative look-ahead here: logs should NOT contain "implausible"
+                dirty_equals.IsStr(regex=r"^(?!.*implausible).*", regex_flags=re.DOTALL),
             ),
         ],
     )
     def test_prepare_context_handle_corrupt_item_bbox_antimeridian(
-        self, dummy_stac_api_server, spatial_extent, expected_items, expected_logging, caplog
+        self, dummy_stac_api_server, item2_fields, spatial_extent, expected_features, expected_logging, caplog
     ):
         """https://github.com/Open-EO/openeo-geopyspark-driver/issues/1592"""
         collection_id = "S1592"
@@ -3449,13 +3666,7 @@ class TestPrepareContext:
             collection_id=collection_id,
             item_id="item-2",
             datetime="2024-05-02T00:00:00Z",
-            # Invalid item bbox: crosses antimeridian and should be
-            bbox=[-179, 50, 179, 51],
-            properties={
-                "proj:code": "EPSG:32601",
-                "proj:shape": [100, 100],
-                "proj:bbox": [213_000, 5_540_000, 359_000, 5_657_000],
-            },
+            **item2_fields,
             assets={
                 "asset-2": {
                     "href": "https://stac.test/asset-2.tiff",
@@ -3474,12 +3685,6 @@ class TestPrepareContext:
             )
 
         dumper = _OpenSearchClientDumper()
-        expected_bboxes = {
-            # reprojection of proj:bboxes
-            "item-1": approxify((3.00, 49.99, 4.03, 51.00), abs=0.01),
-            "item-2": approxify((179.00, 49.94, 180.99, 51.05), abs=0.01),
-        }
-        expected_features = [{"id": item, "bbox": expected_bboxes[item]} for item in expected_items]
         assert (
             dumper.dump_opensearch_client_features(context.opensearch_client, add_links=False, add_bbox=True)
             == expected_features
