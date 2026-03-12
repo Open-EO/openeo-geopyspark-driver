@@ -91,3 +91,15 @@ def test_bbox_to_geojson():
     }
     assert bbox_to_geojson(1, 2, 3, 4) == expected
     assert bbox_to_geojson((1, 2, 3, 4)) == expected
+
+
+def test_bbox_to_geojson_antimeridian():
+    expected = {
+        "type": "MultiPolygon",
+        "coordinates": [
+            (((180, 2), (180, 4), (179, 4), (179, 2), (180, 2)),),
+            (((-178, 2), (-178, 4), (-180, 4), (-180, 2), (-178, 2)),),
+        ],
+    }
+    assert bbox_to_geojson(179, 2, -178, 4) == expected
+    assert bbox_to_geojson((179, 2, -178, 4)) == expected
