@@ -27,6 +27,7 @@ from openeogeotrellis.layercatalog import (
 )
 from openeogeotrellis.testing import gps_config_overrides
 from openeogeotrellis.vault import Vault
+from tests.data import get_test_data_file
 
 
 def _get_layers() -> List[Tuple[str, dict]]:
@@ -80,8 +81,8 @@ def test_layer_metadata(id, layer):
 def test_get_layer_catalog_with_updates(vault):
     with gps_config_overrides(
         layer_catalog_files=[
-            "tests/data/layercatalog01.json",
-            "tests/data/layercatalog02.json",
+            get_test_data_file("layercatalog01.json"),
+            get_test_data_file("layercatalog02.json"),
         ]
     ):
         catalog = get_layer_catalog(vault)
@@ -214,8 +215,8 @@ def test_get_layer_catalog_opensearch_enrich_oscars(requests_mock, vault):
 def test_get_layer_catalog_opensearch_enrich_creodias(requests_mock, vault):
     with gps_config_overrides(
         layer_catalog_files=[
-            "tests/data/layercatalog01.json",
-            "tests/data/layercatalog04_creodias.json",
+            get_test_data_file("layercatalog01.json"),
+            get_test_data_file("layercatalog04_creodias.json"),
         ]
     ):
         collections_response = read_json("tests/data/collections_creodias01.json")
