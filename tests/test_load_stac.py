@@ -1031,16 +1031,67 @@ def test_get_proj_metadata_from_asset(item_properties, asset_extra_fields, expec
 class TestFixGdalOrderedTransform:
     """Tests for _ProjectionMetadata._fix_gdal_ordered_transform"""
 
-    def test_already_valid_rasterio_order(self):
+    @pytest.mark.parametrize(
+        "transform",
+        [
+            [0.001, 0.0, 3.0, 0.0, -0.001, 51.0],
+            [0.001, 0.0, 0.0, 0.0, -0.001, 51.0],
+            [0.001, 0.0, 0.0, 0.0, -0.001, 0.0],
+            [0.001, 0.0, 3.0, 0.0, -0.001, 0.0],
+        ],
+    )
+    def test_already_valid_rasterio_order(self, transform):
         """Valid rasterio/affine order should not be changed."""
-        transform = [0.00025, 0.0, 3.0, 0.0, -0.00025, 51.0]
         assert _ProjectionMetadata._fix_gdal_ordered_transform(transform) == transform
 
-    def test_fix_gdal_order(self):
+    @pytest.mark.parametrize(
+        "transform",
+        [
+            [0.001, 0.0, 3.0, 0.0, -0.001, 51.0],
+            [0.001, 0.0, 0.0, 0.0, -0.001, 51.0],
+            [0.001, 0.0, 0.0, 0.0, -0.001, 0.0],
+            [0.001, 0.0, 3.0, 0.0, -0.001, 0.0],
+            [0.0, 0.001, 3.0, -0.001, 0.0, 51.0],
+            [0.0, 0.001, 0.0, -0.001, 0.0, 51.0],
+            [0.0, 0.001, 0.0, -0.001, 0.0, 0.0],
+            [0.0, 0.001, 3.0, -0.001, 0.0, 0.0],
+        ],
+    )
+    def test_valid_rasterio_order_including_yx_transpose(self, transform):
+        """Valid rasterio/affine order should not be changed."""
+        assert _ProjectionMetadata._fix_gdal_ordered_transform(transform, also_check_yx_transposed=True) == transform
+
+    @pytest.mark.parametrize(
+        ["given", "expected"],
+        [
+            ([3, 0.001, 0.0, 51, 0.0, -0.001], [0.001, 0.0, 3, 0.0, -0.001, 51]),
+            ([0, 0.001, 0.0, 51, 0.0, -0.001], [0.001, 0.0, 0, 0.0, -0.001, 51]),
+            ([0, 0.001, 0.0, 0, 0.0, -0.001], [0.001, 0.0, 0, 0.0, -0.001, 0]),
+            ([3, 0.001, 0.0, 0, 0.0, -0.001], [0.001, 0.0, 3, 0.0, -0.001, 0]),
+        ],
+    )
+    def test_fix_gdal_order(self, given, expected):
         """GDAL GetGeoTransform order should be reshuffled to rasterio/affine order."""
-        gdal_order = [3.0, 0.00025, 0.0, 51.0, 0.0, -0.00025]
-        expected = [0.00025, 0.0, 3.0, 0.0, -0.00025, 51.0]
-        assert _ProjectionMetadata._fix_gdal_ordered_transform(gdal_order) == expected
+        assert _ProjectionMetadata._fix_gdal_ordered_transform(given) == expected
+
+    @pytest.mark.parametrize(
+        ["given", "expected"],
+        [
+            ([3, 0.001, 0.0, 51, 0.0, -0.001], [0.001, 0.0, 3, 0.0, -0.001, 51]),
+            # TODO Possible to detect for this case as well? Is consistent with rasterio order
+            # ([0, 0.001, 0.0, 51, 0.0, -0.001], [0.001, 0.0, 0, 0.0, -0.001, 51]),
+            ([0, 0.001, 0.0, 0, 0.0, -0.001], [0.001, 0.0, 0, 0.0, -0.001, 0]),
+            ([3, 0.001, 0.0, 0, 0.0, -0.001], [0.001, 0.0, 3, 0.0, -0.001, 0]),
+            ([3, 0.0, 0.001, 51, -0.001, 0.0], [0.0, 0.001, 3, -0.001, 0.0, 51]),
+            ([0, 0.0, 0.001, 51, -0.001, 0.0], [0.0, 0.001, 0, -0.001, 0.0, 51]),
+            ([0, 0.0, 0.001, 0, -0.001, 0.0], [0.0, 0.001, 0, -0.001, 0.0, 0]),
+            # TODO Possible to detect for this case as well? Is consistent with rasterio order
+            # ([3, 0.0, 0.001, 0, -0.001, 0.0], [0.0, 0.001, 3, -0.001, 0.0, 0]),
+        ],
+    )
+    def test_fix_gdal_order_including_yx_transpose(self, given, expected):
+        """GDAL GetGeoTransform order should be reshuffled to rasterio/affine order."""
+        assert _ProjectionMetadata._fix_gdal_ordered_transform(given, also_check_yx_transposed=True) == expected
 
     def test_fix_gdal_order_9_elements(self):
         """GDAL order with 9 elements (full 3x3 matrix) should preserve trailing elements."""
