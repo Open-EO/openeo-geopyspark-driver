@@ -623,7 +623,13 @@ class DummyStacApiServer:
                 bbox_geometries = shapely.union_all(
                     [shapely.affinity.translate(bbox_polygon, xoff=x) for x in [-360, 0, 360]]
                 )
-                items = [item for item in items if item.bbox and bbox_geometries.intersects(shapely.box(*item.bbox))]
+
+                items = [
+                    item
+                    for item in items
+                    if item.bbox
+                    and bbox_geometries.intersects(BoundingBox.from_wsen_tuple(item.bbox, crs=4326).as_geometry())
+                ]
             # TODO: also support item geometry fields (not just bbox)
 
             if filter:

@@ -387,21 +387,43 @@ def _prepare_context(
 
             # TODO: the proj_* values are assigned in inner per-asset loop,
             #       so the values here are ill-defined (the values might even come from another item)
-            if itm.bbox and proj_epsg and is_utm_epsg_code(proj_epsg) and itm.bbox[2] - itm.bbox[0] > 180:
+
+            item_bbox_is_implausible = (
                 # Implausible bounding box: far too wide longitude span for UTM item/assets,
                 # likely due poor antimeridian handling.
-                # We still keep the item if its proj:bbox matches the requested spatial extent,
-                # but skip it otherwise.
-                # TODO: hopefully this special handling can be eliminated once STAC API implemntations mature.
-                if proj_bbox and spatiotemporal_extent.spatial_extent.intersects(
-                    BoundingBox.from_wsen_tuple(proj_bbox, crs=proj_epsg).reproject(4326).as_wsen_tuple()
-                ):
+                itm.bbox
+                and proj_epsg
+                and is_utm_epsg_code(proj_epsg)
+                and itm.bbox[2] - itm.bbox[0] > 180
+            )
+            if item_bbox_is_implausible:
+                opensearch_stats["implausible bbox"] += 1
+                # Check other metadata for match with spatial extent to decide to keep or skip item.
+                # TODO: hopefully this special handling can be eliminated once STAC API implementations mature.
+                try:
+                    if proj_bbox:
+                        fallback_geometry = BoundingBox.from_wsen_tuple(proj_bbox, crs=proj_epsg)
+                    elif itm.geometry:
+                        # TODO: check if geometry is valid wrt antimeridian handling?
+                        fallback_geometry = shapely.geometry.shape(itm.geometry)
+                    else:
+                        fallback_geometry = None
+                except Exception as e:
+                    logger.error(
+                        f"Failed to obtain fallback geometry for {itm.id!r} with implausible bbox {itm.bbox!r}",
+                        exc_info=True,
+                    )
+                    fallback_geometry = None
+
+                if fallback_geometry and spatiotemporal_extent.spatial_extent.intersects(fallback_geometry):
+                    opensearch_stats["implausible bbox: keep"] += 1
                     logger.warning(
-                        f"Detected implausible bbox {itm.bbox!r} in item {itm.id!r} ({proj_epsg=} {proj_bbox=})"
+                        f"Detected implausible bbox {itm.bbox!r} in item {itm.id!r} ({proj_epsg=} {proj_bbox=} {fallback_geometry=})"
                     )
                 else:
+                    opensearch_stats["implausible bbox: skip"] += 1
                     logger.warning(
-                        f"Skipping item {itm.id!r} with implausible bbox {itm.bbox!r} ({proj_epsg=} {proj_bbox=})"
+                        f"Skipping item {itm.id!r} with implausible bbox {itm.bbox!r} ({proj_epsg=} {proj_bbox=} {fallback_geometry=})"
                     )
                     continue
 
@@ -418,7 +440,7 @@ def _prepare_context(
             if proj_bbox and proj_epsg:
                 item_bbox = BoundingBox.from_wsen_tuple(proj_bbox, crs=proj_epsg)
                 latlon_bbox = item_bbox.reproject(4326)
-            elif itm.bbox:
+            elif itm.bbox and not item_bbox_is_implausible:
                 item_bbox = latlon_bbox = BoundingBox.from_wsen_tuple(itm.bbox, 4326)
             else:
                 latlon_bbox = item_bbox = None
@@ -428,9 +450,11 @@ def _prepare_context(
                 if e < w:
                     # Workaround for `withBBox` not properly supporting bounding boxes across antimeridian
                     e += 360
+                opensearch_stats["builder.withBBox"] += 1
                 builder = builder.withBBox(float(w), float(s), float(e), float(n))
 
             if itm.geometry is not None:
+                opensearch_stats["builder.withGeometryFromWkt"] += 1
                 builder = builder.withGeometryFromWkt(str(shapely.geometry.shape(itm.geometry)))
 
             self_links = itm.get_links(rel="self")
@@ -443,13 +467,14 @@ def _prepare_context(
             opensearch_client.addFeature(builder.build())
             opensearch_stats["opensearch.addFeature"] += 1
 
-            stac_bbox = (
-                item_bbox
-                if stac_bbox is None
-                else BoundingBox.from_wsen_tuple(
-                    item_bbox.as_polygon().union(stac_bbox.as_polygon()).bounds, stac_bbox.crs
+            if item_bbox:
+                stac_bbox = (
+                    item_bbox
+                    if stac_bbox is None
+                    else BoundingBox.from_wsen_tuple(
+                        item_bbox.as_polygon().union(stac_bbox.as_polygon()).bounds, stac_bbox.crs
+                    )
                 )
-            )
 
         logger.info(f"{opensearch_stats=}")
     except OpenEOApiException:
@@ -1083,7 +1108,8 @@ class _SpatialExtent:
     def __init__(self, *, bbox: Union[BoundingBox, None]):
         # TODO: support more bbox representations as input
         self._bbox = bbox
-        # cache for shapely polygon in lon/lat
+        # Cache for shapely polygon in lon/lat
+        # Note that for cross-antimeridian cases this will be a multipolygon (two polygons on either side of the antimeridian)
         self._bbox_lonlat_shape = self._bbox.reproject("EPSG:4326").as_geometry() if self._bbox else None
 
     def _key(self) -> tuple:
@@ -1103,17 +1129,41 @@ class _SpatialExtent:
             bbox = bbox.reproject(crs)
         return bbox
 
-    def intersects(self, bbox: Union[List[float], Tuple[float, float, float, float], None]):
+    def intersects(
+        self,
+        geometry: Union[
+            List[float],
+            Tuple[float, float, float, float],
+            BoundingBox,
+            shapely.geometry.base.BaseGeometry,
+            None,
+        ],
+    ):
         """
-        Check if given bbox is within the spatial extent.
-        Assumes the bbox follows GeoJSON conventions:
-        - lon-lat (EPSG:4326) coordinates
-        - antimeridian crossing is represented by `west` > `east`
+        Check if given bbox/geometry is within the spatial extent.
+
+        :param geometry: One of:
+
+            - list/tuple of floats: assumed to be bounding box following GeoJSON conventions:
+                - lon-lat (EPSG:4326) coordinates
+                - antimeridian crossing is represented by `west` > `east`
+            - BoundingBox object with valid CRS
+            - shapely geometry (assumed to be in EPSG:4326, with proper antimeridian split if crossing)
         """
         # TODO: this assumes bbox is in lon/lat coordinates, also support other CRSes?
-        if not self._bbox or bbox is None:
+        if not self._bbox or geometry is None:
             return True
-        shape = BoundingBox(*bbox, crs=4326).as_geometry()
+        if isinstance(geometry, (list, tuple)):
+            shape = BoundingBox(*geometry, crs=4326).as_geometry()
+        elif isinstance(geometry, BoundingBox):
+            # TODO: this is technically not correct
+            #       (better is first to convert to geometry and reproject that)
+            #       but this is good enough for most intents and purposes
+            shape = geometry.reproject("EPSG:4326").as_geometry()
+        elif isinstance(geometry, shapely.geometry.base.BaseGeometry):
+            shape = geometry
+        else:
+            raise ValueError(geometry)
         return self._bbox_lonlat_shape.intersects(shape)
 
 
