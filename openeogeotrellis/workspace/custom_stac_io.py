@@ -41,7 +41,8 @@ class CustomStacIO(DefaultStacIO):
                 return obj["Body"].read().decode("utf-8")
             except botocore.exceptions.ClientError as e:
                 _log.warning(
-                    f"could not get object at key {key}: [{e.response['Error']['Code']}] {e.response['Error']['Message']}"
+                    f"could not get object at key {key}: [{e.response['Error']['Code']}] {e.response['Error']['Message']}",
+                    exc_info=True,
                 )
                 raise
         else:
@@ -57,7 +58,8 @@ class CustomStacIO(DefaultStacIO):
                 self._s3.put_object(Bucket=bucket, Key=key, Body=txt.encode("utf-8"), ContentEncoding="utf-8")
             except botocore.exceptions.ClientError as e:
                 _log.warning(
-                    f"could not put object at key {key}: [{e.response['Error']['Code']}] {e.response['Error']['Message']}"
+                    f"could not put object at key {key}: [{e.response['Error']['Code']}] {e.response['Error']['Message']}",
+                    exc_info=True,
                 )
                 raise
         else:
