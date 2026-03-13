@@ -27,7 +27,7 @@ def test_import_file(tmp_path, mock_s3_client, mock_s3_bucket, remove_original, 
         source_file = source_file_absolute
     merge = "some/target"
 
-    workspace = ObjectStorageWorkspace(bucket="openeo-fake-bucketname", region="waw3-1")
+    workspace = ObjectStorageWorkspace(bucket=mock_s3_bucket.name, region="waw3-1")
     workspace_uri = workspace.import_file(
         common_path=source_directory, file=source_file, merge=merge, remove_original=remove_original
     )
@@ -46,7 +46,7 @@ def test_import_file(tmp_path, mock_s3_client, mock_s3_bucket, remove_original, 
 
 @pytest.mark.parametrize("remove_original", [False, True])
 def test_import_object(tmp_path, mock_s3_client, mock_s3_bucket, remove_original):
-    source_bucket = target_bucket = "openeo-fake-bucketname"
+    source_bucket = target_bucket = mock_s3_bucket.name
     source_key = "some/source/object"
     merge = "some/target"
     assert source_key != merge
@@ -91,7 +91,7 @@ def test_merge_new(mock_s3_client, mock_s3_bucket, tmp_path, remove_original: bo
         f.write("disk_asset.tif\n")
     disk_asset_mtime_ns = disk_asset_path.stat().st_mtime_ns
 
-    source_bucket = target_bucket = "openeo-fake-bucketname"
+    source_bucket = target_bucket = mock_s3_bucket.name
     source_key = "src/object_asset.tif"
 
     mock_s3_client.put_object(
@@ -177,7 +177,7 @@ def test_merge_into_existing(tmp_path, mock_s3_client, mock_s3_bucket, remove_or
     with open(disk_asset_path, "w") as f:
         f.write("disk_asset.tif\n")
 
-    source_bucket = target_bucket = "openeo-fake-bucketname"
+    source_bucket = target_bucket = mock_s3_bucket.name
     source_key = "src/object_asset.tif"
 
     mock_s3_client.put_object(Bucket=source_bucket, Key=source_key, Body="object_asset.tif\n")
@@ -264,7 +264,7 @@ def test_custom_stac_io_logs_client_error_context(mock_s3_bucket, caplog):
     )
 
 
-def test_merge_new_AccessDenied(mock_s3_client, mock_s3_bucket):
+def test_merge_new_AccessDenied(mock_s3_client, mock_s3_bucket, tmp_path):
     """Treat AccessDenied and KeyNotFound in the same way: the Collection document does not exist yet."""
 
     from botocore.client import BaseClient
@@ -275,13 +275,18 @@ def test_merge_new_AccessDenied(mock_s3_client, mock_s3_bucket):
     def raise_access_denied(self, operation_name, api_params):
         if operation_name == "GetObject":
             # TODO: is there an easier way to instantiate this exception?
-            raise ClientError({"Error": {"Code": "AccessDenied"}}, "get_object")
+            raise ClientError({"Error": {"Code": "AccessDenied", "Message": None}}, "get_object")
 
         return of(self, operation_name, api_params)
 
     with mock.patch("botocore.client.BaseClient._make_api_call", new=raise_access_denied):
+        new_collection = _collection(root_path=tmp_path, collection_id="new_collection")
+        workspace = ObjectStorageWorkspace(mock_s3_bucket.name, region="waw3-1")
+
         with pytest.raises(botocore.exceptions.ClientError, match="AccessDenied"):
-            mock_s3_client.get_object(Bucket=mock_s3_bucket.name, Key="some/unknown/key")  # sanity check
+            workspace.merge(new_collection, target=PurePath("some/target/collection.json"))
+
+        # TODO: fix code and check if object some/target/collection.json indeed exists
 
 
 def _collection(
