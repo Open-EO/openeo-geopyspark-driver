@@ -4,6 +4,7 @@ from typing import Set, List
 from urllib.parse import urlparse
 
 import botocore.exceptions
+import mock
 from pystac import Collection, Extent, SpatialExtent, TemporalExtent, Item, CatalogType, Asset
 import pytest
 
@@ -261,6 +262,26 @@ def test_custom_stac_io_logs_client_error_context(mock_s3_bucket, caplog):
     assert (
         "could not put object at key some/object: [NoSuchBucket] The specified bucket does not exist" in caplog.messages
     )
+
+
+def test_merge_new_AccessDenied(mock_s3_client, mock_s3_bucket):
+    """Treat AccessDenied and KeyNotFound in the same way: the Collection document does not exist yet."""
+
+    from botocore.client import BaseClient
+    from botocore.exceptions import ClientError
+
+    of = BaseClient._make_api_call
+
+    def raise_access_denied(self, operation_name, api_params):
+        if operation_name == "GetObject":
+            # TODO: is there an easier way to instantiate this exception?
+            raise ClientError({"Error": {"Code": "AccessDenied"}}, "get_object")
+
+        return of(self, operation_name, api_params)
+
+    with mock.patch("botocore.client.BaseClient._make_api_call", new=raise_access_denied):
+        with pytest.raises(botocore.exceptions.ClientError, match="AccessDenied"):
+            mock_s3_client.get_object(Bucket=mock_s3_bucket.name, Key="some/unknown/key")  # sanity check
 
 
 def _collection(
