@@ -179,83 +179,105 @@ def test_stac_api_dimensions(requests_mock, test_data, item_path):
     assert {"x", "y", "t", "bands"} <= set(data_cube.metadata.dimension_names())
 
 
-@pytest.fixture
-def jvm_mock():
-    with mock.patch("openeogeotrellis.load_stac.get_jvm") as get_jvm:
-        jvm_mock = get_jvm.return_value
-
-        raster_layer = mock.MagicMock()
-        jvm_mock.geopyspark.geotrellis.TemporalTiledRasterLayer.return_value = raster_layer
-        raster_layer.layerMetadata.return_value = """{
-            "crs": "EPSG:4326",
-            "cellType": "uint8",
-            "bounds": {"minKey": {"col":0, "row":0}, "maxKey": {"col": 1, "row": 1}},
-            "extent": {"xmin": 0,"ymin": 0, "xmax": 1,"ymax": 1},
-            "layoutDefinition": {
-                "extent": {"xmin": 0, "ymin": 0,"xmax": 1,"ymax": 1},
-                "tileLayout": {"layoutCols": 1, "layoutRows": 1, "tileCols": 256, "tileRows": 256}
-            }
-        }"""
-
-        yield jvm_mock
-
-
 @pytest.mark.parametrize(
-    ["band_names", "resolution", "expected_add_links"],
+    ["band_names", "resolution", "expected_links"],
     [
         (
             ["AOT_10m"],
             10.0,
-            [(dirty_equals.IsStr(regex=".*_AOT_10m.jp2"), "AOT_10m", 0.0, ["AOT_10m"])],
+            [
+                {
+                    "href": dirty_equals.IsStr(regex=".*_AOT_10m.jp2"),
+                    "title": "AOT_10m",
+                    "pixelValueOffset": 0.0,
+                    "bandNames": ["AOT_10m"],
+                }
+            ],
         ),
         (
             ["B01_60m"],
             60.0,
             [
-                (
-                    dirty_equals.IsStr(regex=".*_B01_60m.jp2"),
-                    "B01_60m",
+                {
+                    "href": dirty_equals.IsStr(regex=".*_B01_60m.jp2"),
+                    "title": "B01_60m",
                     # has "raster:scale": 0.0001 and "raster:offset": -0.1
-                    -1000.0,
-                    ["B01_60m"],
-                )
+                    "pixelValueOffset": -1000.0,
+                    "bandNames": ["B01_60m"],
+                }
             ],
         ),
         (
             ["B01"],
             20.0,
-            [(dirty_equals.IsStr(regex=".*_B01_20m.jp2"), "B01_20m", -1000.0, ["B01"])],
+            [
+                {
+                    "href": dirty_equals.IsStr(regex=".*_B01_20m.jp2"),
+                    "title": "B01_20m",
+                    "pixelValueOffset": -1000.0,
+                    "bandNames": ["B01"],
+                }
+            ],
         ),
         (
             ["WVP_20m"],
             20.0,
-            [(dirty_equals.IsStr(regex=".*_WVP_20m.jp2"), "WVP_20m", 0.0, ["WVP_20m"])],
+            [
+                {
+                    "href": dirty_equals.IsStr(regex=".*_WVP_20m.jp2"),
+                    "title": "WVP_20m",
+                    "pixelValueOffset": 0.0,
+                    "bandNames": ["WVP_20m"],
+                }
+            ],
         ),
         (
             ["WVP_60m"],
             60.0,
-            [(dirty_equals.IsStr(regex=".*_WVP_60m.jp2"), "WVP_60m", 0.0, ["WVP_60m"])],
+            [
+                {
+                    "href": dirty_equals.IsStr(regex=".*_WVP_60m.jp2"),
+                    "title": "WVP_60m",
+                    "pixelValueOffset": 0.0,
+                    "bandNames": ["WVP_60m"],
+                }
+            ],
         ),
         (
             ["AOT_10m", "WVP_20m"],
             10.0,
             [
-                (dirty_equals.IsStr(regex=".*_AOT_10m.jp2"), "AOT_10m", 0.0, ["AOT_10m"]),
-                (dirty_equals.IsStr(regex=".*_WVP_20m.jp2"), "WVP_20m", 0.0, ["WVP_20m"]),
+                {
+                    "href": dirty_equals.IsStr(regex=".*_AOT_10m.jp2"),
+                    "title": "AOT_10m",
+                    "pixelValueOffset": 0.0,
+                    "bandNames": ["AOT_10m"],
+                },
+                {
+                    "href": dirty_equals.IsStr(regex=".*_WVP_20m.jp2"),
+                    "title": "WVP_20m",
+                    "pixelValueOffset": 0.0,
+                    "bandNames": ["WVP_20m"],
+                },
             ],
         ),
         (
             ["B01_20m", "SCL_20m"],
             20.0,
             [
-                (dirty_equals.IsStr(regex=".*_B01_20m.jp2"), "B01_20m", -1000.0, ["B01_20m"]),
-                (
-                    dirty_equals.IsStr(regex=".*_SCL_20m.jp2"),
-                    "SCL_20m",
+                {
+                    "href": dirty_equals.IsStr(regex=".*_B01_20m.jp2"),
+                    "title": "B01_20m",
+                    "pixelValueOffset": -1000.0,
+                    "bandNames": ["B01_20m"],
+                },
+                {
+                    "href": dirty_equals.IsStr(regex=".*_SCL_20m.jp2"),
+                    "title": "SCL_20m",
                     # has neither "raster:scale" nor "raster:offset"
-                    0.0,
-                    ["SCL_20m"],
-                ),
+                    "pixelValueOffset": 0.0,
+                    "bandNames": ["SCL_20m"],
+                },
             ],
         ),
     ],
@@ -263,10 +285,9 @@ def jvm_mock():
 def test_resolution_and_offset_handling(
     requests_mock,
     test_data,
-    jvm_mock,
     band_names,
     resolution,
-    expected_add_links,
+    expected_links,
 ):
     """
     resolution and offset behind a feature flag; alphabetical head tags are tested elsewhere
@@ -284,29 +305,20 @@ def test_resolution_and_offset_handling(
         feature_collection=features,
     )
 
-    factory_mock = jvm_mock.org.openeo.geotrellis.file.PyramidFactory
-    cellsize_mock = jvm_mock.geotrellis.raster.CellSize
-
-    feature_builder = mock.MagicMock()
-    jvm_mock.org.openeo.opensearch.OpenSearchResponses.featureBuilder.return_value = feature_builder
-    feature_builder.withId.return_value = feature_builder
-    feature_builder.withNominalDate.return_value = feature_builder
-    feature_builder.addLink.return_value = feature_builder
-
-    data_cube = load_stac(
+    context = _prepare_context(
         url=stac_collection_url,
         load_params=LoadParameters(bands=band_names),
-        env=EvalEnv(dict(pyramid_levels="highest")),
-        layer_properties={},
-        batch_jobs=None,
+        env=EvalEnv(),
     )
 
-    # TODO: how to check the actual argument to PyramidFactory()?
-    factory_mock.assert_called_once()
-    cellsize_mock.assert_called_once_with(resolution, resolution)
-    assert data_cube.metadata.spatial_extent["crs"] == "EPSG:32636"
+    assert context.cellsize == (resolution, resolution)
+    assert context.extent_crs == "EPSG:32636"
 
-    assert [c.args for c in feature_builder.addLink.call_args_list] == expected_add_links
+    dumper = _OpenSearchClientDumper()
+    assert [
+        f["links"]
+        for f in dumper.dump_opensearch_client_features(context.opensearch_client, add_pixel_value_scaling=True)
+    ] == [expected_links]
 
 
 def _mock_stac_api(requests_mock, stac_api_root_url, stac_collection_url, feature_collection):
@@ -3058,14 +3070,17 @@ class _OpenSearchClientDumper:
         while iterator.hasNext():
             yield iterator.next()
 
-    def dump_link(self, link: JavaObject) -> dict:
+    def dump_link(self, link: JavaObject, add_pixel_value_scaling: bool = False) -> dict:
         """dump org.openeo.opensearch.OpenSearchResponses.Link"""
-        return {
+        dump = {
             # "toString": l.toString(),
             "href": link.href().toString(),
             "title": link.title().get(),
             "bandNames": list(self.scala_iterate(link.bandNames().get().iterator())),
         }
+        if add_pixel_value_scaling:
+            dump["pixelValueOffset"] = link.pixelValueOffset().get()
+        return dump
 
     def dump_extent(self, extent: JavaObject) -> Union[Tuple[float, float, float, float], None]:
         if extent:
@@ -3073,22 +3088,38 @@ class _OpenSearchClientDumper:
         else:
             return None
 
-    def dump_feature(self, feature: JavaObject, *, add_links: bool = True, add_bbox: bool = False) -> dict:
+    def dump_feature(
+        self,
+        feature: JavaObject,
+        *,
+        add_links: bool = True,
+        add_bbox: bool = False,
+        add_pixel_value_scaling: bool = False,
+    ) -> dict:
         """dump org.openeo.opensearch.OpenSearchResponses.Feature"""
         dump = {"id": feature.id()}
         if add_links:
-            dump["links"] = [self.dump_link(link) for link in feature.links()]
+            dump["links"] = [
+                self.dump_link(link, add_pixel_value_scaling=add_pixel_value_scaling) for link in feature.links()
+            ]
         if add_bbox:
             dump["bbox"] = self.dump_extent(feature.bbox())
         return dump
 
     def dump_opensearch_client_features(
-        self, opensearch_client: JavaObject, *, add_links: bool = True, add_bbox: bool = False
+        self,
+        opensearch_client: JavaObject,
+        *,
+        add_links: bool = True,
+        add_bbox: bool = False,
+        add_pixel_value_scaling: bool = False,
     ) -> List[dict]:
         """Dump all features from org.openeo.opensearch.OpenSearchClient"""
         feature_iterator = opensearch_client.features().iterator()
         return [
-            self.dump_feature(feature=feature, add_links=add_links, add_bbox=add_bbox)
+            self.dump_feature(
+                feature=feature, add_links=add_links, add_bbox=add_bbox, add_pixel_value_scaling=add_pixel_value_scaling
+            )
             for feature in self.scala_iterate(feature_iterator)
         ]
 

@@ -383,7 +383,15 @@ def _prepare_context(
                     logger.debug(
                         f"FeatureBuilder.addLink {itm.id=} {asset_id=} {asset_href=} {link_band_names=} from {granule_metadata_band_map=}"
                     )
+                    opensearch_stats["builder.addLink"] += 1
                     builder = builder.addLink(asset_href, asset_id, link_band_names)
+
+            # Skip item if no assets/links were collected
+            link_count = len(builder.links())
+            opensearch_stats[f"item with {link_count=}"] += 1
+            if link_count == 0:
+                opensearch_stats["item skip: no links"] += 1
+                continue
 
             # TODO: the proj_* values are assigned in inner per-asset loop,
             #       so the values here are ill-defined (the values might even come from another item)
@@ -464,6 +472,7 @@ def _prepare_context(
                 builder = builder.withSelfUrl(self_url)
                 opensearch_stats["builder.withSelfUrl"] += 1
 
+            logger.debug(f"opensearch.addFeature {itm.id=}")
             opensearch_client.addFeature(builder.build())
             opensearch_stats["opensearch.addFeature"] += 1
 
@@ -476,6 +485,7 @@ def _prepare_context(
                     )
                 )
 
+        opensearch_stats = dict(sorted(opensearch_stats.items()))
         logger.info(f"{opensearch_stats=}")
     except OpenEOApiException:
         raise
