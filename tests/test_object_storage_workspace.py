@@ -268,16 +268,14 @@ def test_merge_new_AccessDenied(mock_s3_client, mock_s3_bucket, tmp_path, caplog
     """Treat AccessDenied and KeyNotFound in the same way: the Collection document does not exist yet."""
 
     from botocore.client import BaseClient
-    from botocore.exceptions import ClientError
 
-    of = BaseClient._make_api_call
+    og_make_api_call = BaseClient._make_api_call
 
     def raise_access_denied(self, operation_name, api_params):
         if operation_name == "GetObject":
-            # TODO: is there an easier way to instantiate this exception?
-            raise ClientError({"Error": {"Code": "AccessDenied", "Message": None}}, "get_object")
+            raise botocore.exceptions.ClientError({"Error": {"Code": "AccessDenied", "Message": None}}, operation_name)
 
-        return of(self, operation_name, api_params)
+        return og_make_api_call(self, operation_name, api_params)
 
     with mock.patch("botocore.client.BaseClient._make_api_call", new=raise_access_denied):
         new_collection = _collection(root_path=tmp_path, collection_id="new_collection")
@@ -286,19 +284,17 @@ def test_merge_new_AccessDenied(mock_s3_client, mock_s3_bucket, tmp_path, caplog
         target = PurePath("some/target/collection.json")
         workspace.merge(new_collection, target)
 
-        # TODO: fix code and check if object some/target/collection.json indeed exists
-        assert _workspace_keys(mock_s3_client, workspace.bucket) == {str(target)}
+    assert _workspace_keys(mock_s3_client, workspace.bucket) == {str(target)}
 
-        AccessDenied_log = [
-            log for log in caplog.records if log.name == "openeogeotrellis.workspace.object_storage_workspace"
-        ][0]
+    AccessDenied_log = [
+        log for log in caplog.records if log.name == "openeogeotrellis.workspace.object_storage_workspace"
+    ][0]
 
-        assert AccessDenied_log.levelname == "INFO"
-        assert (
-            AccessDenied_log.message
-            == "got AccessDenied for key some/target/collection.json; assuming it does not exist"
-        )
-        assert AccessDenied_log.exc_info
+    assert AccessDenied_log.levelname == "INFO"
+    assert (
+        AccessDenied_log.message == "got AccessDenied for key some/target/collection.json; assuming it does not exist"
+    )
+    assert AccessDenied_log.exc_info
 
 
 def _collection(
