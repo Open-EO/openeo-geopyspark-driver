@@ -2141,5 +2141,56 @@
         }
       ]
     }
+  },
+  {
+    "id": "STAC_123",
+    "_vito": {
+      "data_source": {
+        "type": "stac",
+        "url": "https://stac.test/collections/stac-123"
+      }
+    },
+    "extent": {
+      "spatial": {
+        "bbox": [
+          [
+            -180,
+            -90,
+            180,
+            90
+          ]
+        ]
+      },
+      "temporal": {
+        "interval": [
+          [
+            "2021-02-03T04:05:05.522470Z",
+            null
+          ]
+        ]
+      }
+    },
+    "cube:dimensions": {
+      "x": {
+        "type": "spatial",
+        "axis": "x",
+        "reference_system": 4326
+      },
+      "y": {
+        "type": "spatial",
+        "axis": "y",
+        "reference_system": 4326
+      },
+      "t": {
+        "type": "temporal"
+      },
+      "bands": {
+        "type": "bands",
+        "values": [
+          "B01",
+          "B02"
+        ]
+      }
+    }
   }
 ]

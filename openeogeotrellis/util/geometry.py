@@ -134,7 +134,7 @@ def bbox_to_geojson(*args) -> dict:
     else:
         raise ValueError(args)
 
-    polygon = shapely.geometry.box(xmin, ymin, xmax, ymax, ccw=True)
+    geometry = BoundingBox(xmin, ymin, xmax, ymax, crs=4326).as_geometry()
     # TODO #1161 use `orient_polygons` to be sure, once we require Shapely>=2.1.0
-    # polygon = shapely.orient_polygons(polygon)
-    return shapely.geometry.mapping(polygon)
+    # polygon = shapely.orient_polygons(geometry)
+    return shapely.geometry.mapping(geometry)

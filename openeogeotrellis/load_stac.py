@@ -174,9 +174,6 @@ def _prepare_context(
     """
     from openeogeotrellis import datacube_parameters
 
-    # TODO: Currently disabled https://github.com/eu-cdse/openeo-cdse-infra/issues/956
-    load_params.resolve_tile_overlap = False
-
     # Feature flags: merge global (e.g. from layer catalog info) and user-provided (higher precedence)
     feature_flags = {**(feature_flags or {}), **load_params.get("featureflags", {})}
 
@@ -386,10 +383,58 @@ def _prepare_context(
                     logger.debug(
                         f"FeatureBuilder.addLink {itm.id=} {asset_id=} {asset_href=} {link_band_names=} from {granule_metadata_band_map=}"
                     )
+                    opensearch_stats["builder.addLink"] += 1
                     builder = builder.addLink(asset_href, asset_id, link_band_names)
+
+            # Skip item if no assets/links were collected
+            link_count = len(builder.links())
+            opensearch_stats[f"item with {link_count=}"] += 1
+            if link_count == 0:
+                opensearch_stats["item skip: no links"] += 1
+                continue
 
             # TODO: the proj_* values are assigned in inner per-asset loop,
             #       so the values here are ill-defined (the values might even come from another item)
+
+            item_bbox_is_implausible = (
+                # Implausible bounding box: far too wide longitude span for UTM item/assets,
+                # likely due poor antimeridian handling.
+                itm.bbox
+                and proj_epsg
+                and is_utm_epsg_code(proj_epsg)
+                and itm.bbox[2] - itm.bbox[0] > 180
+            )
+            if item_bbox_is_implausible:
+                opensearch_stats["implausible bbox"] += 1
+                # Check other metadata for match with spatial extent to decide to keep or skip item.
+                # TODO: hopefully this special handling can be eliminated once STAC API implementations mature.
+                try:
+                    if proj_bbox:
+                        fallback_geometry = BoundingBox.from_wsen_tuple(proj_bbox, crs=proj_epsg)
+                    elif itm.geometry:
+                        # TODO: check if geometry is valid wrt antimeridian handling?
+                        fallback_geometry = shapely.geometry.shape(itm.geometry)
+                    else:
+                        fallback_geometry = None
+                except Exception as e:
+                    logger.error(
+                        f"Failed to obtain fallback geometry for {itm.id!r} with implausible bbox {itm.bbox!r}",
+                        exc_info=True,
+                    )
+                    fallback_geometry = None
+
+                if fallback_geometry and spatiotemporal_extent.spatial_extent.intersects(fallback_geometry):
+                    opensearch_stats["implausible bbox: keep"] += 1
+                    logger.warning(
+                        f"Detected implausible bbox {itm.bbox!r} in item {itm.id!r} ({proj_epsg=} {proj_bbox=} {fallback_geometry=})"
+                    )
+                else:
+                    opensearch_stats["implausible bbox: skip"] += 1
+                    logger.warning(
+                        f"Skipping item {itm.id!r} with implausible bbox {itm.bbox!r} ({proj_epsg=} {proj_bbox=} {fallback_geometry=})"
+                    )
+                    continue
+
             if proj_epsg:
                 builder = builder.withCRS(f"EPSG:{proj_epsg}")
             if proj_bbox:
@@ -399,16 +444,25 @@ def _prepare_context(
                 cell_width, cell_height = cellsize_override or _compute_cellsize(proj_bbox, proj_shape)
                 builder = builder.withResolution(cell_width)
 
-            latlon_bbox = BoundingBox.from_wsen_tuple(itm.bbox, 4326) if itm.bbox else None
-            item_bbox = latlon_bbox
-            if proj_bbox is not None and proj_epsg is not None:
+
+            if proj_bbox and proj_epsg:
                 item_bbox = BoundingBox.from_wsen_tuple(proj_bbox, crs=proj_epsg)
                 latlon_bbox = item_bbox.reproject(4326)
+            elif itm.bbox and not item_bbox_is_implausible:
+                item_bbox = latlon_bbox = BoundingBox.from_wsen_tuple(itm.bbox, 4326)
+            else:
+                latlon_bbox = item_bbox = None
 
             if latlon_bbox is not None:
-                builder = builder.withBBox(*map(float, latlon_bbox.as_wsen_tuple()))
+                w, s, e, n = latlon_bbox.as_wsen_tuple()
+                if e < w:
+                    # Workaround for `withBBox` not properly supporting bounding boxes across antimeridian
+                    e += 360
+                opensearch_stats["builder.withBBox"] += 1
+                builder = builder.withBBox(float(w), float(s), float(e), float(n))
 
             if itm.geometry is not None:
+                opensearch_stats["builder.withGeometryFromWkt"] += 1
                 builder = builder.withGeometryFromWkt(str(shapely.geometry.shape(itm.geometry)))
 
             self_links = itm.get_links(rel="self")
@@ -418,17 +472,20 @@ def _prepare_context(
                 builder = builder.withSelfUrl(self_url)
                 opensearch_stats["builder.withSelfUrl"] += 1
 
+            logger.debug(f"opensearch.addFeature {itm.id=}")
             opensearch_client.addFeature(builder.build())
             opensearch_stats["opensearch.addFeature"] += 1
 
-            stac_bbox = (
-                item_bbox
-                if stac_bbox is None
-                else BoundingBox.from_wsen_tuple(
-                    item_bbox.as_polygon().union(stac_bbox.as_polygon()).bounds, stac_bbox.crs
+            if item_bbox:
+                stac_bbox = (
+                    item_bbox
+                    if stac_bbox is None
+                    else BoundingBox.from_wsen_tuple(
+                        item_bbox.as_polygon().union(stac_bbox.as_polygon()).bounds, stac_bbox.crs
+                    )
                 )
-            )
 
+        opensearch_stats = dict(sorted(opensearch_stats.items()))
         logger.info(f"{opensearch_stats=}")
     except OpenEOApiException:
         raise
@@ -867,8 +924,9 @@ def construct_item_collection(
             band_names = stac_metadata_parser.bands_from_stac_collection(collection=collection).band_names()
             logger.info(f"construct_item_collection: STAC API Collection {collection.id!r}, {band_names=}, {netcdf_with_time_dimension=}")
 
-            # TODO: this prefix mode heuristic need massive improvement, but it's just a quickfix for now
-            properties_prefix = "" if "dataspace.copernicus.eu" in url else "properties."
+            # TODO: _experimental_properties_prefix is just a temporary feature flag to allow easy fall back to old behavior.
+            #       Ideally however, this prefix stuff should just be dropped #1584
+            properties_prefix = feature_flags.get("_experimental_properties_prefix", "")
             property_filter = PropertyFilter(
                 properties=property_filter_pg_map, env=env, properties_prefix=properties_prefix
             )
@@ -1060,8 +1118,9 @@ class _SpatialExtent:
     def __init__(self, *, bbox: Union[BoundingBox, None]):
         # TODO: support more bbox representations as input
         self._bbox = bbox
-        # cache for shapely polygon in lon/lat
-        self._bbox_lonlat_shape = self._bbox.reproject("EPSG:4326").as_polygon() if self._bbox else None
+        # Cache for shapely polygon in lon/lat
+        # Note that for cross-antimeridian cases this will be a multipolygon (two polygons on either side of the antimeridian)
+        self._bbox_lonlat_shape = self._bbox.reproject("EPSG:4326").as_geometry() if self._bbox else None
 
     def _key(self) -> tuple:
         return (self._bbox,)
@@ -1080,11 +1139,42 @@ class _SpatialExtent:
             bbox = bbox.reproject(crs)
         return bbox
 
-    def intersects(self, bbox: Union[List[float], Tuple[float, float, float, float], None]):
+    def intersects(
+        self,
+        geometry: Union[
+            List[float],
+            Tuple[float, float, float, float],
+            BoundingBox,
+            shapely.geometry.base.BaseGeometry,
+            None,
+        ],
+    ):
+        """
+        Check if given bbox/geometry is within the spatial extent.
+
+        :param geometry: One of:
+
+            - list/tuple of floats: assumed to be bounding box following GeoJSON conventions:
+                - lon-lat (EPSG:4326) coordinates
+                - antimeridian crossing is represented by `west` > `east`
+            - BoundingBox object with valid CRS
+            - shapely geometry (assumed to be in EPSG:4326, with proper antimeridian split if crossing)
+        """
         # TODO: this assumes bbox is in lon/lat coordinates, also support other CRSes?
-        if not self._bbox or bbox is None:
+        if not self._bbox or geometry is None:
             return True
-        return self._bbox_lonlat_shape.intersects(shapely.geometry.box(*bbox))
+        if isinstance(geometry, (list, tuple)):
+            shape = BoundingBox(*geometry, crs=4326).as_geometry()
+        elif isinstance(geometry, BoundingBox):
+            # TODO: this is technically not correct
+            #       (better is first to convert to geometry and reproject that)
+            #       but this is good enough for most intents and purposes
+            shape = geometry.reproject("EPSG:4326").as_geometry()
+        elif isinstance(geometry, shapely.geometry.base.BaseGeometry):
+            shape = geometry
+        else:
+            raise ValueError(geometry)
+        return self._bbox_lonlat_shape.intersects(shape)
 
 
 class _SpatioTemporalExtent:
@@ -1313,33 +1403,61 @@ class ItemCollection:
             query_info += f" {use_filter_extension=} {cql2_filter=}"
 
             bbox = spatiotemporal_extent.spatial_extent.as_bbox(crs="EPSG:4326")
-            bbox = bbox.as_wsen_tuple() if bbox else None
+            if bbox is None:
+                query_bboxes = [None]
+            elif bbox.cyclic_antimeridian_crossing():
+                # TODO: proper antimeridian handling should be supported directly by a STAC API
+                #       (https://github.com/radiantearth/stac-api-spec/issues/473)
+                #       but unfortunately that isn't the case in the CDSE pgSTAC deployment (CDSE-2834) and maybe others.
+                #       Can we at some point eliminate this hack to split the query bounding box
+                #       and all the additional housekeeping overhead that comes with it?
+                query_bboxes = [b.as_wsen_tuple() for b in bbox.cyclic_antimeridian_split()]
+                logger.warning(
+                    f"Query across the antimeridian, which should be supported transparently by a STAC API, but some implementations don't, so we split up the query for now: {query_bboxes=}"
+                )
+            else:
+                query_bboxes = [bbox.as_wsen_tuple()]
             query_datetime = (
                 None
                 if spatiotemporal_extent.temporal_extent.is_unbounded() or skip_datetime_filter
                 else spatiotemporal_extent.temporal_extent.as_tuple()
             )
-            search_request = client.search(
-                method=method,
-                collections=collection.id,
-                bbox=bbox,
-                limit=per_page_limit,
-                datetime=query_datetime,
-                filter=cql2_filter,
-                fields=fields,
-            )
-            if search_request.method == "GET":
-                query_info += f" {search_request.method} {search_request.url_with_parameters()}"
-            else:
-                query_info += f" {search_request.method} {search_request.url} {search_request.get_parameters()=}"
-            logger.info(f"ItemCollection.from_stac_api: STAC API request: {query_info}")
 
-            # STAC API might not support Filter Extension so always use client-side filtering as well
+            # STAC API might not support Filter Extension so always do post-process filtering as well
             # TODO: check "filter" conformance class for this instead of blindly trying to do double work
             #       see https://github.com/stac-api-extensions/filter
             property_matcher = property_filter.build_matcher()
-            items = [item for item in search_request.items() if property_matcher(item.properties)]
-            logger.info(f"ItemCollection.from_stac_api: Collected {len(items)} items.")
+
+            # Set of item ids for on the fly deduplication (when we have to do two queries around the antimeridian)
+            seen_item_ids = set()
+
+            items = []
+            for query_bbox in query_bboxes:
+                search_request = client.search(
+                    method=method,
+                    collections=collection.id,
+                    bbox=query_bbox,
+                    limit=per_page_limit,
+                    datetime=query_datetime,
+                    filter=cql2_filter,
+                    fields=fields,
+                )
+                if search_request.method == "GET":
+                    query_info += f" {search_request.method} {search_request.url_with_parameters()}"
+                else:
+                    query_info += f" {search_request.method} {search_request.url} {search_request.get_parameters()=}"
+                logger.info(f"ItemCollection.from_stac_api: STAC API request: {query_info}")
+
+                items.extend(
+                    item
+                    for item in search_request.items()
+                    if property_matcher(item.properties) and item.id not in seen_item_ids
+                )
+                if len(query_bboxes) > 1:
+                    # Only track seen items when we're going to check for duplicates (multiple query bboxes)
+                    seen_item_ids.update(item.id for item in items)
+
+            logger.info(f"ItemCollection.from_stac_api: Collected {len(items)} items (from {query_bboxes=})")
         except Exception as e:
             raise LoadStacException(
                 url=original_url, info=f"failed to construct ItemCollection from STAC API. {query_info=} {e=}"
@@ -2102,10 +2220,13 @@ class PropertyFilter:
         properties: PropertyFilterPGMap,
         *,
         env: Optional[EvalEnv] = None,
-        properties_prefix: str = "properties.",
+        # TODO: remove this prefix option again, as the consensus seems that prefix should not be used. #1584
+        properties_prefix: str = "",
     ):
         self._properties = properties
         self._env = env or EvalEnv()
+        if properties_prefix:
+            logger.warning(f"PropertyFilter with non-empty {properties_prefix=} which is deprecated")
         self._properties_prefix = properties_prefix
 
     def _iter_literal_matches(self) -> Iterator[Tuple[str, str, Any]]:
@@ -2260,7 +2381,7 @@ class AdaptingPropertyFilter(PropertyFilter):
         *,
         env: Optional[EvalEnv] = None,
         adaptations: Dict[str, Union[dict, str]],
-        properties_prefix: str = "properties.",
+        properties_prefix: str = "",
     ):
         super().__init__(properties=properties, env=env, properties_prefix=properties_prefix)
         self._adaptations = adaptations

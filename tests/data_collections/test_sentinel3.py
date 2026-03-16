@@ -465,6 +465,12 @@ def test_map_attributes_for_stac_no_warning(caplog):
         "sat:orbit_state": "DESCENDING",
         "product:type": "SL_2_LST___",
         "product:timeliness_category": "NT",
+        "NON_EXISTING_PROPERTY": "some_value",
     }
-    _map_attributes_for_stac(old_attributes)
+    converted_attributes = _map_attributes_for_stac(old_attributes)
+    assert converted_attributes == {
+        "sat:orbit_state": "descending",
+        "product:timeliness_category": "NT",
+        "NON_EXISTING_PROPERTY": "some_value",
+    }
     assert any("No mapping" in record.message for record in caplog.records)

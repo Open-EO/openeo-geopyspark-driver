@@ -43,6 +43,13 @@ def test_get_items_from_stac_catalog():
     assert len(ret) == 3
 
 
+def test_get_items_from_stac_catalog_recursive():
+    stac_root = str(repository_root / "tests/data/stac/recursive-stac-example/collection.json")
+    ret = get_items_from_stac_catalog(stac_root, make_hrefs_absolute=True)
+    print(ret)
+    assert len(ret) == 3
+
+
 def test_stac_save_result():
     tmp_dir = Path("tmp_stac_save_result").absolute()
     if tmp_dir.exists():
@@ -69,5 +76,11 @@ def test_stac_save_result_recursive():
     sr = StacSaveResult(stac_root)
     ret = sr.write_assets(tmp_dir)
     Collection.from_file(sr.stac_root_local).validate_all()
+
+    for key, item in ret.items():
+        for asset in item["assets"].values():
+            assert Path(asset["href"]).is_absolute()
+            assert Path(asset["href"]).exists()
+
     print(ret)
     assert len(ret) == 3

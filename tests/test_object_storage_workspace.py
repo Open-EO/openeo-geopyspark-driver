@@ -4,6 +4,7 @@ from typing import Set, List
 from urllib.parse import urlparse
 
 import botocore.exceptions
+import mock
 from pystac import Collection, Extent, SpatialExtent, TemporalExtent, Item, CatalogType, Asset
 import pytest
 
@@ -26,7 +27,7 @@ def test_import_file(tmp_path, mock_s3_client, mock_s3_bucket, remove_original, 
         source_file = source_file_absolute
     merge = "some/target"
 
-    workspace = ObjectStorageWorkspace(bucket="openeo-fake-bucketname", region="waw3-1")
+    workspace = ObjectStorageWorkspace(bucket=mock_s3_bucket.name, region="waw3-1")
     workspace_uri = workspace.import_file(
         common_path=source_directory, file=source_file, merge=merge, remove_original=remove_original
     )
@@ -45,7 +46,7 @@ def test_import_file(tmp_path, mock_s3_client, mock_s3_bucket, remove_original, 
 
 @pytest.mark.parametrize("remove_original", [False, True])
 def test_import_object(tmp_path, mock_s3_client, mock_s3_bucket, remove_original):
-    source_bucket = target_bucket = "openeo-fake-bucketname"
+    source_bucket = target_bucket = mock_s3_bucket.name
     source_key = "some/source/object"
     merge = "some/target"
     assert source_key != merge
@@ -96,7 +97,7 @@ def test_merge_new(mock_s3_client, mock_s3_bucket, tmp_path, merge: PurePath, re
         f.write("disk_asset.tif\n")
     disk_asset_mtime_ns = disk_asset_path.stat().st_mtime_ns
 
-    source_bucket = target_bucket = "openeo-fake-bucketname"
+    source_bucket = target_bucket = mock_s3_bucket.name
     source_key = "src/object_asset.tif"
 
     mock_s3_client.put_object(
@@ -188,7 +189,7 @@ def test_merge_into_existing(tmp_path, mock_s3_client, mock_s3_bucket, merge, re
     with open(disk_asset_path, "w") as f:
         f.write("disk_asset.tif\n")
 
-    source_bucket = target_bucket = "openeo-fake-bucketname"
+    source_bucket = target_bucket = mock_s3_bucket.name
     source_key = "src/object_asset.tif"
 
     mock_s3_client.put_object(Bucket=source_bucket, Key=source_key, Body="object_asset.tif\n")
@@ -273,6 +274,39 @@ def test_custom_stac_io_logs_client_error_context(mock_s3_bucket, caplog):
     assert (
         "could not put object at key some/object: [NoSuchBucket] The specified bucket does not exist" in caplog.messages
     )
+
+
+def test_merge_new_AccessDenied(mock_s3_client, mock_s3_bucket, tmp_path, caplog):
+    """Treat AccessDenied and KeyNotFound in the same way: the Collection document does not exist yet."""
+
+    from botocore.client import BaseClient
+
+    og_make_api_call = BaseClient._make_api_call
+
+    def raise_access_denied(self, operation_name, api_params):
+        if operation_name == "GetObject":
+            raise botocore.exceptions.ClientError({"Error": {"Code": "AccessDenied", "Message": None}}, operation_name)
+
+        return og_make_api_call(self, operation_name, api_params)
+
+    with mock.patch("botocore.client.BaseClient._make_api_call", new=raise_access_denied):
+        new_collection = _collection(root_path=tmp_path, collection_id="new_collection")
+
+        workspace = ObjectStorageWorkspace(mock_s3_bucket.name, region="waw3-1")
+        target = PurePath("some/target/collection.json")
+        workspace.merge(new_collection, target)
+
+    assert _workspace_keys(mock_s3_client, workspace.bucket) == {str(target)}
+
+    AccessDenied_log = [
+        log for log in caplog.records if log.name == "openeogeotrellis.workspace.object_storage_workspace"
+    ][0]
+
+    assert AccessDenied_log.levelname == "INFO"
+    assert (
+        AccessDenied_log.message == "got AccessDenied for key some/target/collection.json; assuming it does not exist"
+    )
+    assert AccessDenied_log.exc_info
 
 
 def _collection(
