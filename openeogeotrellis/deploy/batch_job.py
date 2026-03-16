@@ -1058,19 +1058,11 @@ def _write_exported_stac_collection_from_item(
                 "type": asset.get("type"),
                 "roles": asset.get("roles"),
                 "bands": asset_bands,
-                # "nodata": asset.get("nodata"),
-                "datetime": asset.get("datetime"),
-                "bbox": asset.get("bbox"),
-                "geometry": asset.get("geometry"),
             })
             item_asset = dict_no_none({
                     "type": asset.get("type"),
                     "roles": asset.get("roles"),
                     "bands": asset_bands,
-                    # "nodata": asset.get("nodata"),
-                    "datetime": asset.get("datetime"),
-                    "bbox": asset.get("bbox"),
-                    "geometry": asset.get("geometry"),
                 })
             if asset_key not in item_assets:
                 item_assets[asset_key] = item_asset

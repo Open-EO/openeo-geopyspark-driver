@@ -17,7 +17,7 @@ if __name__ == "__main__":
     openeogeotrellis.deploy.local.setup_environment()
 
 from openeogeotrellis.collections.sentinel3 import *
-from openeogeotrellis.collections.sentinel3 import _get_acquisition_key, _map_attributes_for_stac
+from openeogeotrellis.collections.sentinel3 import _get_acquisition_key, _map_attributes_for_stac, _filter_urls_by_timeliness
 from numpy.testing import assert_allclose
 from unittest.mock import Mock
 
@@ -474,3 +474,41 @@ def test_map_attributes_for_stac_no_warning(caplog):
         "NON_EXISTING_PROPERTY": "some_value",
     }
     assert any("No mapping" in record.message for record in caplog.records)
+
+
+class TestFilterUrlsByTimeliness:
+    SYNERGY_URLS = [
+        "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-3-syn-2-syn-stc",
+        "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-3-syn-2-syn-ntc",
+    ]
+    SLSTR_URLS = [
+        "https://stac.opensearch.dataspace.copernicus.eu/v1/collections/sentinel-3-sl-2-lst-nrt",
+        "https://stac.opensearch.dataspace.copernicus.eu/v1/collections/sentinel-3-sl-2-lst-ntc",
+    ]
+
+    def test_filter_ntc(self):
+        result = _filter_urls_by_timeliness(self.SYNERGY_URLS, "NT")
+        assert result == [
+            "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-3-syn-2-syn-ntc",
+        ]
+
+    def test_filter_stc(self):
+        result = _filter_urls_by_timeliness(self.SYNERGY_URLS, "ST")
+        assert result == [
+            "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-3-syn-2-syn-stc",
+        ]
+
+    def test_filter_nrt(self):
+        result = _filter_urls_by_timeliness(self.SLSTR_URLS, "NR")
+        assert result == [
+            "https://stac.opensearch.dataspace.copernicus.eu/v1/collections/sentinel-3-sl-2-lst-nrt",
+        ]
+
+    def test_unknown_timeliness_returns_all(self):
+        result = _filter_urls_by_timeliness(self.SYNERGY_URLS, "UNKNOWN")
+        assert result == self.SYNERGY_URLS
+
+    def test_no_matching_url_returns_all(self):
+        """If timeliness is valid but no URL matches (e.g., NRT not available for SYNERGY), return all."""
+        result = _filter_urls_by_timeliness(self.SYNERGY_URLS, "NR")
+        assert result == self.SYNERGY_URLS
