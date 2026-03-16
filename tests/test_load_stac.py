@@ -51,6 +51,7 @@ from openeogeotrellis.load_stac import (
     _ResolutionTracker,
     STAC_API_PER_PAGE_LIMIT_DEFAULT,
     STAC_API_RETRY_TOTAL,
+    _StacRasterCubeSizeEstimator,
 )
 from openeogeotrellis.testing import DummyStacApiServer, gps_config_overrides
 from openeogeotrellis.util.geometry import bbox_to_geojson
@@ -1367,6 +1368,35 @@ class TestTemporalExtent:
     def test_from_load_param_extent(self, given, expected):
         extent = _TemporalExtent.from_load_param_extent(given)
         assert extent.as_tuple() == expected
+
+    @pytest.mark.parametrize(
+        ["first", "second", "expected"],
+        [
+            # All unbounded
+            ((None, None), (None, None), (None, None)),
+            # (partially) bounded x unbounded
+            (("2026-01-02", "2026-02-03"), (None, None), ("2026-01-02", "2026-02-03")),
+            ((None, "2026-02-03"), (None, None), (None, "2026-02-03")),
+            (("2026-01-02", None), (None, None), ("2026-01-02", None)),
+            # partially bounded x partially bounded
+            ((None, "2026-02-03"), (None, "2026-01-01"), (None, "2026-01-01")),
+            (("2026-02-03", None), ("2026-01-01", None), ("2026-02-03", None)),
+            ((None, "2026-02-03"), ("2026-01-01", None), ("2026-01-01", "2026-02-03")),
+            (("2026-02-03", None), (None, "2026-01-01"), None),
+            # bounded x bounded
+            (("2026-02-01", "2026-02-20"), ("2026-01-01", "2026-01-10"), None),
+            (("2026-02-01", "2026-02-20"), ("2026-01-01", "2026-02-10"), ("2026-02-01", "2026-02-10")),
+            (("2026-02-01", "2026-02-20"), ("2026-02-08", "2026-02-16"), ("2026-02-08", "2026-02-16")),
+            (("2026-02-01", "2026-02-20"), ("2026-02-10", "2026-03-01"), ("2026-02-10", "2026-02-20")),
+            (("2026-02-01", "2026-02-20"), ("2026-03-01", "2026-03-30"), None),
+        ],
+    )
+    def test_intersection(self, first, second, expected):
+        first = _TemporalExtent(*first)
+        second = _TemporalExtent(*second)
+        expected = _TemporalExtent(*expected) if expected else expected
+        assert first.intersection(second) == expected
+        assert second.intersection(first) == expected
 
 
 class TestSpatialExtent:
@@ -3868,4 +3898,83 @@ class TestResolutionTracker:
                 32631,
             },
             (10, 10),
+        )
+
+
+class TestStacRasterCubeSizeEstimator:
+    def test_estimate_temporal_dimension_size_item(self):
+        item = pystac.Item.from_dict(StacDummyBuilder.item())
+        assert _StacRasterCubeSizeEstimator().estimate_temporal_dimension_size(item) == 1
+
+    @pytest.mark.parametrize(
+        ["collection_temporal_extent", "cube_dimensions_t", "user_temporal_extent", "expected"],
+        [
+            (
+                # Only temporal extent in collection, no user-defined one
+                ["2026-01-01", "2026-01-31"],
+                {},
+                None,
+                30,
+            ),
+            (
+                # User-defined temporal extent
+                ["2020-01-01", None],
+                {},
+                ["2026-02-02", "2026-02-10"],
+                8,
+            ),
+            (
+                # Step defined in cube:dimensions
+                ["2020-01-01", None],
+                {"type": "temporal", "extent": ["2026-01-01", None], "step": "P10D"},
+                ["2026-01-01", "2026-02-20"],
+                5,
+            ),
+            (
+                # Intersection between collection and user-defined extent
+                ["2026-01-01", None],
+                {"type": "temporal", "extent": ["2026-01-01", None]},
+                ["2025-12-15", "2026-01-15"],
+                14,
+            ),
+        ],
+    )
+    def test_estimate_temporal_dimension_size_collection(
+        self, collection_temporal_extent, cube_dimensions_t, user_temporal_extent, expected
+    ):
+        extent = {
+            "spatial": {"bbox": [[3, 4, 5, 6]]},
+            "temporal": {"interval": [collection_temporal_extent]},
+        }
+        if cube_dimensions_t:
+            cube_dimensions = {"t": cube_dimensions_t}
+        else:
+            cube_dimensions = None
+        collection = pystac.Collection.from_dict(
+            StacDummyBuilder.collection(extent=extent, cube_dimensions=cube_dimensions)
+        )
+
+        actual = _StacRasterCubeSizeEstimator().estimate_temporal_dimension_size(
+            collection,
+            temporal_extent=_TemporalExtent(*user_temporal_extent) if user_temporal_extent else None,
+        )
+        assert actual == expected
+
+    def test_estimate_spatial_dimension_size_item_no_bbox(self):
+        item = pystac.Item.from_dict(StacDummyBuilder.item())
+        assert _StacRasterCubeSizeEstimator().estimate_spatial_dimension_size(item) == (
+            # Whole world at 10m assumption: 40 Mm x 20 Mm -> 4M x 2M pixels
+            pytest.approx(4e6, abs=1e3),
+            pytest.approx(2e6, abs=1e3),
+        )
+
+    def test_estimate_spatial_dimension_size_item_with_bbox(self):
+        bbox = BoundingBox(3, 51, 4, 52, crs=4326)
+        gsd = 60
+        item = pystac.Item.from_dict(
+            StacDummyBuilder.item(bbox=bbox.as_wsen_tuple(), geometry=bbox.as_geometry(), properties={"gsd": gsd})
+        )
+        assert _StacRasterCubeSizeEstimator().estimate_spatial_dimension_size(item) == (
+            pytest.approx(7000, rel=0.1),
+            pytest.approx(11, abs=0.1e6),
         )
