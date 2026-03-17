@@ -1546,7 +1546,7 @@ def test_export_workspace_merge_into_existing(tmp_path, mock_s3_bucket, stac_ver
         asset_name = "openEO" if stac_version == "1.1" else expected_asset_filename
         (asset_alternate,) = item["assets"][asset_name]["alternate"].values()
         # noinspection PyUnresolvedReferences
-        assert asset_alternate["href"] == f"s3://{object_workspace.bucket}/{merge}/{expected_asset_filename}"
+        assert asset_alternate["href"] == f"s3://{object_workspace.bucket}/{merge}_items/{expected_asset_filename}"
 
     run_merge_job(
         job_dir=tmp_path / "first",
@@ -1560,13 +1560,13 @@ def test_export_workspace_merge_into_existing(tmp_path, mock_s3_bucket, stac_ver
         expected_asset_filename="openEO_2021-01-15Z.tif",
     )
 
-    object_workspace_keys = [PurePath(obj.key) for obj in mock_s3_bucket.objects.all()]
+    object_workspace_keys = [obj.key for obj in mock_s3_bucket.objects.all()]
     assert len(object_workspace_keys) == 5, "STAC item document(s) not found"
 
     assert object_workspace_keys == ListSubSet([
-        merge,  # the Collection itself
-        merge / "openEO_2021-01-05Z.tif",
-        merge / "openEO_2021-01-15Z.tif",
+        f"{merge}",  # the Collection itself
+        f"{merge}_items/openEO_2021-01-05Z.tif",
+        f"{merge}_items/openEO_2021-01-15Z.tif",
     ])
 
 @pytest.mark.parametrize("stac_version", ["1.0", "1.1"])
@@ -1676,12 +1676,12 @@ def test_export_workspace_merge_filepath_per_band(tmp_path, mock_s3_bucket, stac
         assert isinstance(object_workspace, ObjectStorageWorkspace)
         assert object_workspace.bucket == get_backend_config().s3_bucket_name
 
-        object_workspace_keys = {PurePath(obj.key) for obj in mock_s3_bucket.objects.all()}
+        object_workspace_keys = {obj.key for obj in mock_s3_bucket.objects.all()}
 
         assert {
-            merge,  # the Collection itself
-            merge / "some/deeply/nested/folder/lon.tif",
-            merge / "lat.tif",
+            f"{merge}",  # the Collection itself
+            f"{merge}_items/some/deeply/nested/folder/lon.tif",
+            f"{merge}_items/lat.tif",
         } <= object_workspace_keys
 
         assert len(object_workspace_keys) == 4 if stac_version == "1.1" else len(object_workspace_keys) == 5,  "STAC item document(s) not found"
