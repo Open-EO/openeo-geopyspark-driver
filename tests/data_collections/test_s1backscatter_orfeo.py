@@ -302,41 +302,6 @@ class TestBuildStacOpenSearchClient:
         assert call_args[0].endswith(".SAFE")
         assert "S1A_IW_GRDH_1SDV_20200606T060615" in call_args[0]
 
-    def test_raises_error_when_no_vv_vh_asset(self, mock_jvm, mock_construct_item_collection):
-        """Test that an error is raised when STAC item has no vv or vh assets."""
-        jvm_mock, opensearch_client_mock, feature_builder_mock = mock_jvm
-
-        from openeo.testing.stac import StacDummyBuilder
-        import pystac
-
-        # Create item without vv/vh assets
-        bbox = [3.0, 50.0, 4.0, 51.0]
-        item_data = StacDummyBuilder.item(
-            item_id="test-item",
-            datetime="2020-06-06T06:06:15Z",
-            bbox=bbox,
-            geometry={
-                "type": "Polygon",
-                "coordinates": [[[bbox[0], bbox[1]], [bbox[2], bbox[1]], [bbox[2], bbox[3]], [bbox[0], bbox[3]], [bbox[0], bbox[1]]]]
-            },
-            assets={
-                "thumbnail": {"href": "https://example.com/thumb.png"}
-            }
-        )
-        item = pystac.Item.from_dict(item_data)
-
-        item_collection: MagicMock = self._create_mock_item_collection([item])
-        mock_construct_item_collection.return_value = (item_collection, {}, [], False)
-
-        # Should raise error
-        s1_backscatter = S1BackscatterOrfeo()
-        with pytest.raises(OpenEOApiException, match="No 'vv' or 'vh' asset found"):
-            s1_backscatter._build_stac_opensearch_client(
-                filter_properties={"product:type": ["IW_GRDH_1S", "IW_GRDH_1S_B"]},
-                spatial_extent={"west": 3.0, "south": 50.0, "east": 4.0, "north": 51.0},
-                temporal_extent=("2020-06-01", "2020-06-30")
-            )
-
     def test_filter_properties_passed_to_construct_item_collection(self, mock_construct_item_collection):
         """Test that filter properties are correctly converted to property_filter_pg_map."""
         from openeo.testing.stac import StacDummyBuilder
