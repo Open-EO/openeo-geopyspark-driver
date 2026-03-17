@@ -713,8 +713,8 @@ def test_spatial_geoparquet(tmp_path):
         'geometry': [Point(4.834132470464912, 51.14651864980539), Point(4.826795583109673, 51.154775560357045)],
         'feature_index': [0, 1],
         'name': ['maize', 'maize'],
-        'Flat_1': [1.0, 1.0],
-        'Flat_2': [2.0, 2.0],
+        'Flat:1': [1.0, 1.0],
+        'Flat:2': [2.0, 2.0],
     }
 
 
@@ -1107,9 +1107,7 @@ def test_export_workspace(tmp_path, remove_original, attach_gdalinfo_assets, sta
             assert "statistics" in bands[0]
             assert len(bands[0]["statistics"]) == 5
             if stac_version== "1.1":
-                assert "bbox" in asset_fields
-                assert asset_fields["bbox"] == [0.0, 0.0, 1.0, 2.0]
-                assert "geometry" in asset_fields
+                assert asset_fields.get("bands") == [{'name': 'Flat:2', 'statistics': {'maximum': 2.0, 'mean': 2.0, 'minimum': 2.0, 'stddev': 0.0, 'valid_percent': 100.0}}]
 
         item = [item for item in items if "2021-01-05" in item.id ][0]
         assert item.bbox == [0.0, 0.0, 1.0, 2.0]
@@ -1170,7 +1168,7 @@ def test_export_workspace(tmp_path, remove_original, attach_gdalinfo_assets, sta
 
 @pytest.mark.parametrize(["stac_version","asset_name","bands_name"], [
     ("1.0",["openEO_2021-01-05Z_Latitude.tif","openEO_2021-01-05Z_Longitude.tif"],"raster:bands"),
-    ("1.1",["openEO_Latitude","openEO_Longitude"],"bands"),
+    ("1.1",["Latitude","Longitude"],"bands"),
 ])
 def test_export_workspace_with_asset_per_band(tmp_path, stac_version, asset_name, bands_name):
     workspace_id = "tmp"
@@ -1846,7 +1844,7 @@ def test_export_workspace_merge_into_stac_api(
         assert create_item.call_count == 1
 
         assert create_item.request_history[0].json()["assets"] == {
-            "openEO_Latitude": DictSubSet(
+            "Latitude": DictSubSet(
                 {
                     "href": f"s3://openeo-fake-bucketname/{merge}/lat.tif",
                     "bands": [
@@ -1858,7 +1856,7 @@ def test_export_workspace_merge_into_stac_api(
                     ],
                 }
             ),
-            "openEO_Longitude": DictSubSet(
+            "Longitude": DictSubSet(
                 {
                     "href": f"s3://openeo-fake-bucketname/{merge}/some/deeply/nested/folder/lon.tif",
                     "bands": [
@@ -2868,7 +2866,7 @@ def test_geotiff_tile_size(tmp_path, window_size, default_tile_size, requested_t
                 "openEO_2025-04-15Z_Flat:1.tif",
                 "openEO_2025-04-15Z_Flat:2.tif",
             },
-            {"openEO_Flat:0", "openEO_Flat:1", "openEO_Flat:2"},
+            {"Flat:0", "Flat:1", "Flat:2"},
         ),
     ],
 )
@@ -3197,7 +3195,7 @@ def test_unified_asset_keys_sample_by_feature(tmp_path):
                 "openEO_Flat:1.tif",
                 "openEO_Flat:2.tif",
             },
-            {"openEO_Flat:0", "openEO_Flat:1", "openEO_Flat:2"},
+            {"Flat:0", "Flat:1", "Flat:2"},
         ),
     ],
 )

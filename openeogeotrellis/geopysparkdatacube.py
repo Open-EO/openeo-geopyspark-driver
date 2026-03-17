@@ -1386,7 +1386,7 @@ class GeopysparkDataCube(DriverDataCube):
         else:
             layout = target_max_level.srdd.rdd().metadata().layout()
             crs = target_max_level.srdd.rdd().metadata().crs()
-            level_rdd_tuple = get_jvm().org.openeo.geotrellis.OpenEOProcesses().resampleCubeSpatial_spatial(
+            level_rdd_tuple = get_jvm().org.openeo.geotrellis.OpenEOProcesses().resampleCubeSpatial_spacetime(
                 max_level.srdd.rdd(), crs, layout, resample_method, None)
 
         layer = self._create_tilelayer(level_rdd_tuple._2(),max_level.layer_type,target.pyramid.max_zoom)

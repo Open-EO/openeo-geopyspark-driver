@@ -623,7 +623,13 @@ class DummyStacApiServer:
                 bbox_geometries = shapely.union_all(
                     [shapely.affinity.translate(bbox_polygon, xoff=x) for x in [-360, 0, 360]]
                 )
-                items = [item for item in items if item.bbox and bbox_geometries.intersects(shapely.box(*item.bbox))]
+
+                items = [
+                    item
+                    for item in items
+                    if item.bbox
+                    and bbox_geometries.intersects(BoundingBox.from_wsen_tuple(item.bbox, crs=4326).as_geometry())
+                ]
             # TODO: also support item geometry fields (not just bbox)
 
             if filter:
@@ -640,14 +646,14 @@ class DummyStacApiServer:
     def _build_property_filter(self, filter: Union[str, dict], filter_language: str) -> Callable[[pystac.Item], bool]:
         if filter_language == "cql2-text":
             # Just very basic filter support here: single property equality check, e.g.:
-            #     "properties.flavor" = 'banana'
-            if m := re.fullmatch(r"['\"]properties.(?P<property>\w+)['\"]\s*=\s*'(?P<value>[^']+)'", filter):
+            #     "flavor" = 'banana'
+            if m := re.fullmatch(r"['\"](?P<property>\w+)['\"]\s*=\s*'(?P<value>[^']+)'", filter):
                 prop = m.group("property")
                 value = m.group("value")
                 return lambda item: item.properties.get(prop) == value
         elif filter_language == "cql2-json":
             # Just very basic filter support here: single property equality check, e.g.:
-            #     {"op": "=", "args": [{"property": "properties.flavor"}, "banana"]}
+            #     {"op": "=", "args": [{"property": "flavor"}, "banana"]}
             if (
                 isinstance(filter, dict)
                 and filter.get("op") == "="
@@ -657,8 +663,8 @@ class DummyStacApiServer:
                 arg1, arg2 = filter["args"]
                 if not isinstance(arg1, dict):
                     arg1, arg2 = arg2, arg1
-                if isinstance(arg1, dict) and isinstance(arg2, str) and arg1.get("property").startswith("properties."):
-                    prop = arg1["property"].split(".", 1)[-1]
+                if isinstance(arg1, dict) and isinstance(arg2, str) and "property" in arg1:
+                    prop = arg1["property"]
                     value = arg2
                     return lambda item: item.properties.get(prop) == value
         raise ValueError(f"Unsupported CQL filter: {filter_language=} {filter=}")

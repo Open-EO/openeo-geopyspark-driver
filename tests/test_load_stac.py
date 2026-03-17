@@ -1,8 +1,10 @@
+import re
+
 import logging
 
 import datetime
 from contextlib import nullcontext
-from typing import Iterator, List
+from typing import Iterator, List, Tuple, Union
 from unittest import mock
 
 import dirty_equals
@@ -11,9 +13,11 @@ import pystac
 import pystac_client
 import pytest
 import responses
+import shapely.geometry
 from openeo.testing.stac import StacDummyBuilder
 from openeo_driver.backend import BatchJobMetadata, BatchJobs, LoadParameters
 from openeo_driver.errors import OpenEOApiException
+from openeo_driver.testing import approxify
 from openeo_driver.users import User
 from openeo_driver.util.date_math import now_utc
 from openeo_driver.util.geometry import BoundingBox
@@ -97,7 +101,7 @@ def test_property_filter_from_parameter(requests_mock):
     def feature_collection(request, _) -> dict:
         assert request.qs["filter-lang"] == ["cql2-text"]
         assert request.qs["filter"] == [
-            """"properties.product_tile" = '31UFS'""".lower()  # https://github.com/jamielennox/requests-mock/issues/264
+            """"product_tile" = '31UFS'""".lower()  # https://github.com/jamielennox/requests-mock/issues/264
         ]
 
         return {
@@ -175,83 +179,105 @@ def test_stac_api_dimensions(requests_mock, test_data, item_path):
     assert {"x", "y", "t", "bands"} <= set(data_cube.metadata.dimension_names())
 
 
-@pytest.fixture
-def jvm_mock():
-    with mock.patch("openeogeotrellis.load_stac.get_jvm") as get_jvm:
-        jvm_mock = get_jvm.return_value
-
-        raster_layer = mock.MagicMock()
-        jvm_mock.geopyspark.geotrellis.TemporalTiledRasterLayer.return_value = raster_layer
-        raster_layer.layerMetadata.return_value = """{
-            "crs": "EPSG:4326",
-            "cellType": "uint8",
-            "bounds": {"minKey": {"col":0, "row":0}, "maxKey": {"col": 1, "row": 1}},
-            "extent": {"xmin": 0,"ymin": 0, "xmax": 1,"ymax": 1},
-            "layoutDefinition": {
-                "extent": {"xmin": 0, "ymin": 0,"xmax": 1,"ymax": 1},
-                "tileLayout": {"layoutCols": 1, "layoutRows": 1, "tileCols": 256, "tileRows": 256}
-            }
-        }"""
-
-        yield jvm_mock
-
-
 @pytest.mark.parametrize(
-    ["band_names", "resolution", "expected_add_links"],
+    ["band_names", "resolution", "expected_links"],
     [
         (
             ["AOT_10m"],
             10.0,
-            [(dirty_equals.IsStr(regex=".*_AOT_10m.jp2"), "AOT_10m", 0.0, ["AOT_10m"])],
+            [
+                {
+                    "href": dirty_equals.IsStr(regex=".*_AOT_10m.jp2"),
+                    "title": "AOT_10m",
+                    "pixelValueOffset": 0.0,
+                    "bandNames": ["AOT_10m"],
+                }
+            ],
         ),
         (
             ["B01_60m"],
             60.0,
             [
-                (
-                    dirty_equals.IsStr(regex=".*_B01_60m.jp2"),
-                    "B01_60m",
+                {
+                    "href": dirty_equals.IsStr(regex=".*_B01_60m.jp2"),
+                    "title": "B01_60m",
                     # has "raster:scale": 0.0001 and "raster:offset": -0.1
-                    -1000.0,
-                    ["B01_60m"],
-                )
+                    "pixelValueOffset": -1000.0,
+                    "bandNames": ["B01_60m"],
+                }
             ],
         ),
         (
             ["B01"],
             20.0,
-            [(dirty_equals.IsStr(regex=".*_B01_20m.jp2"), "B01_20m", -1000.0, ["B01"])],
+            [
+                {
+                    "href": dirty_equals.IsStr(regex=".*_B01_20m.jp2"),
+                    "title": "B01_20m",
+                    "pixelValueOffset": -1000.0,
+                    "bandNames": ["B01"],
+                }
+            ],
         ),
         (
             ["WVP_20m"],
             20.0,
-            [(dirty_equals.IsStr(regex=".*_WVP_20m.jp2"), "WVP_20m", 0.0, ["WVP_20m"])],
+            [
+                {
+                    "href": dirty_equals.IsStr(regex=".*_WVP_20m.jp2"),
+                    "title": "WVP_20m",
+                    "pixelValueOffset": 0.0,
+                    "bandNames": ["WVP_20m"],
+                }
+            ],
         ),
         (
             ["WVP_60m"],
             60.0,
-            [(dirty_equals.IsStr(regex=".*_WVP_60m.jp2"), "WVP_60m", 0.0, ["WVP_60m"])],
+            [
+                {
+                    "href": dirty_equals.IsStr(regex=".*_WVP_60m.jp2"),
+                    "title": "WVP_60m",
+                    "pixelValueOffset": 0.0,
+                    "bandNames": ["WVP_60m"],
+                }
+            ],
         ),
         (
             ["AOT_10m", "WVP_20m"],
             10.0,
             [
-                (dirty_equals.IsStr(regex=".*_AOT_10m.jp2"), "AOT_10m", 0.0, ["AOT_10m"]),
-                (dirty_equals.IsStr(regex=".*_WVP_20m.jp2"), "WVP_20m", 0.0, ["WVP_20m"]),
+                {
+                    "href": dirty_equals.IsStr(regex=".*_AOT_10m.jp2"),
+                    "title": "AOT_10m",
+                    "pixelValueOffset": 0.0,
+                    "bandNames": ["AOT_10m"],
+                },
+                {
+                    "href": dirty_equals.IsStr(regex=".*_WVP_20m.jp2"),
+                    "title": "WVP_20m",
+                    "pixelValueOffset": 0.0,
+                    "bandNames": ["WVP_20m"],
+                },
             ],
         ),
         (
             ["B01_20m", "SCL_20m"],
             20.0,
             [
-                (dirty_equals.IsStr(regex=".*_B01_20m.jp2"), "B01_20m", -1000.0, ["B01_20m"]),
-                (
-                    dirty_equals.IsStr(regex=".*_SCL_20m.jp2"),
-                    "SCL_20m",
+                {
+                    "href": dirty_equals.IsStr(regex=".*_B01_20m.jp2"),
+                    "title": "B01_20m",
+                    "pixelValueOffset": -1000.0,
+                    "bandNames": ["B01_20m"],
+                },
+                {
+                    "href": dirty_equals.IsStr(regex=".*_SCL_20m.jp2"),
+                    "title": "SCL_20m",
                     # has neither "raster:scale" nor "raster:offset"
-                    0.0,
-                    ["SCL_20m"],
-                ),
+                    "pixelValueOffset": 0.0,
+                    "bandNames": ["SCL_20m"],
+                },
             ],
         ),
     ],
@@ -259,10 +285,9 @@ def jvm_mock():
 def test_resolution_and_offset_handling(
     requests_mock,
     test_data,
-    jvm_mock,
     band_names,
     resolution,
-    expected_add_links,
+    expected_links,
 ):
     """
     resolution and offset behind a feature flag; alphabetical head tags are tested elsewhere
@@ -280,29 +305,20 @@ def test_resolution_and_offset_handling(
         feature_collection=features,
     )
 
-    factory_mock = jvm_mock.org.openeo.geotrellis.file.PyramidFactory
-    cellsize_mock = jvm_mock.geotrellis.raster.CellSize
-
-    feature_builder = mock.MagicMock()
-    jvm_mock.org.openeo.opensearch.OpenSearchResponses.featureBuilder.return_value = feature_builder
-    feature_builder.withId.return_value = feature_builder
-    feature_builder.withNominalDate.return_value = feature_builder
-    feature_builder.addLink.return_value = feature_builder
-
-    data_cube = load_stac(
+    context = _prepare_context(
         url=stac_collection_url,
         load_params=LoadParameters(bands=band_names),
-        env=EvalEnv(dict(pyramid_levels="highest")),
-        layer_properties={},
-        batch_jobs=None,
+        env=EvalEnv(),
     )
 
-    # TODO: how to check the actual argument to PyramidFactory()?
-    factory_mock.assert_called_once()
-    cellsize_mock.assert_called_once_with(resolution, resolution)
-    assert data_cube.metadata.spatial_extent["crs"] == "EPSG:32636"
+    assert context.cellsize == (resolution, resolution)
+    assert context.extent_crs == "EPSG:32636"
 
-    assert [c.args for c in feature_builder.addLink.call_args_list] == expected_add_links
+    dumper = _OpenSearchClientDumper()
+    assert [
+        f["links"]
+        for f in dumper.dump_opensearch_client_features(context.opensearch_client, add_pixel_value_scaling=True)
+    ] == [expected_links]
 
 
 def _mock_stac_api(requests_mock, stac_api_root_url, stac_collection_url, feature_collection):
@@ -1303,18 +1319,150 @@ class TestTemporalExtent:
 
 
 class TestSpatialExtent:
-    def test_empty(self):
+    def test_as_bbox_empty(self):
+        extent = _SpatialExtent(bbox=None)
+        assert extent.as_bbox() is None
+        assert extent.as_bbox(crs="EPSG:32631") is None
+
+    def test_as_bbox(self):
+        extent = _SpatialExtent(bbox=BoundingBox(west=3, south=51, east=4, north=52, crs=4326))
+        assert extent.as_bbox() == BoundingBox(west=3, south=51, east=4, north=52, crs=4326)
+        assert extent.as_bbox(crs="EPSG:32631") == BoundingBox(
+            west=500000, south=5649824, east=570168, north=5761510, crs="EPSG:32631"
+        ).approx(abs=1)
+
+    def test_intersects_empty(self):
         extent = _SpatialExtent(bbox=None)
         assert extent.intersects(None) is True
         assert extent.intersects((1, 2, 3, 4)) == True
 
-    def test_basic(self):
+    def test_intersects_basic(self):
         extent = _SpatialExtent(bbox=BoundingBox(west=3, south=51, east=4, north=52, crs=4326))
         assert extent.intersects((1, 2, 3, 4)) == False
         assert extent.intersects((2, 50, 3.1, 51.1)) == True
         assert extent.intersects((3.3, 51.1, 3.5, 51.5)) == True
         assert extent.intersects((3.9, 51.9, 4.4, 52.2)) == True
         assert extent.intersects((5, 51.1, 6, 52.2)) == False
+
+    def test_intersects_antimeridian(self):
+        # Extent across antimeridian:
+        extent = _SpatialExtent(bbox=BoundingBox(west=179, south=51, east=-179, north=52, crs=4326))
+
+        assert extent.intersects((1, 50, 3, 52)) == False
+        assert extent.intersects((1, 51.1, 3, 51.5)) == False
+
+        # Non-crossing bboxes west from antimeridian
+        assert extent.intersects((178, 51.1, 178.9, 51.5)) == False
+        assert extent.intersects((179.1, 51.1, 179.5, 51.5)) == True
+        assert extent.intersects((178, 50, 179.5, 51.5)) == True
+        assert extent.intersects((178, 51.5, 179.5, 53)) == True
+
+        # Non-crossing bboxes east from antimeridian
+        assert extent.intersects((-178.9, 51.1, -178, 51.5)) == False
+        assert extent.intersects((-179.5, 51.1, -179.1, 51.5)) == True
+        assert extent.intersects((-179.5, 50, 178, 51.5)) == True
+        assert extent.intersects((-179.5, 51.5, 178, 53)) == True
+
+        # Bboxes crossing the antimeridian
+        assert extent.intersects((178, 50, -178, 50.5)) == False
+        assert extent.intersects((179.5, 50, -179.5, 50.5)) == False
+        assert extent.intersects((178, 50, -178, 51.5)) == True
+        assert extent.intersects((179.1, 50, -179.1, 51.5)) == True
+        assert extent.intersects((178, 51.1, -178, 51.5)) == True
+        assert extent.intersects((179.1, 51.1, -179.1, 51.5)) == True
+
+    def test_intersects_bounding_box(self):
+        extent = _SpatialExtent(bbox=BoundingBox(west=3, south=51, east=4, north=52, crs=4326))
+        assert extent.intersects(BoundingBox(1, 2, 3, 4, crs=4326)) == False
+        assert extent.intersects(BoundingBox(2, 50, 3.1, 51.1, crs=4326)) == True
+        assert extent.intersects(BoundingBox(3.3, 51.1, 3.5, 51.5, crs=4326)) == True
+        assert extent.intersects(BoundingBox(3.9, 51.9, 4.4, 52.2, crs=4326)) == True
+        assert extent.intersects(BoundingBox(5, 51.1, 6, 52.2, crs=4326)) == False
+
+        # Test with different CRS (should be reprojected internally)
+        assert extent.intersects(BoundingBox(429_000, 5_537_000, 507_000, 5_660_000, crs=32631)) == True
+        assert extent.intersects(BoundingBox(429_000, 5_537_000, 507_000, 5_660_000, crs=32627)) == False
+
+    def test_intersects_bounding_box_antimeridian(self):
+        # Extent across antimeridian:
+        extent = _SpatialExtent(bbox=BoundingBox(west=179, south=51, east=-179, north=52, crs=4326))
+
+        assert extent.intersects(BoundingBox(1, 50, 3, 52, crs=4326)) == False
+        assert extent.intersects(BoundingBox(1, 51.1, 3, 51.5, crs=4326)) == False
+
+        # Non-crossing bboxes west from antimeridian
+        assert extent.intersects(BoundingBox(178, 51.1, 178.9, 51.5, crs=4326)) == False
+        assert extent.intersects(BoundingBox(179.1, 51.1, 179.5, 51.5, crs=4326)) == True
+        assert extent.intersects(BoundingBox(178, 50, 179.5, 51.5, crs=4326)) == True
+        assert extent.intersects(BoundingBox(178, 51.5, 179.5, 53, crs=4326)) == True
+
+        # Non-crossing bboxes east from antimeridian
+        assert extent.intersects(BoundingBox(-178.9, 51.1, -178, 51.5, crs=4326)) == False
+        assert extent.intersects(BoundingBox(-179.5, 51.1, -179.1, 51.5, crs=4326)) == True
+        assert extent.intersects(BoundingBox(-179.5, 50, 178, 51.5, crs=4326)) == True
+        assert extent.intersects(BoundingBox(-179.5, 51.5, 178, 53, crs=4326)) == True
+
+        # Bboxes crossing the antimeridian
+        assert extent.intersects(BoundingBox(178, 50, -178, 50.5, crs=4326)) == False
+        assert extent.intersects(BoundingBox(179.5, 50, -179.5, 50.5, crs=4326)) == False
+        assert extent.intersects(BoundingBox(178, 50, -178, 51.5, crs=4326)) == True
+        assert extent.intersects(BoundingBox(179.1, 50, -179.1, 51.5, crs=4326)) == True
+        assert extent.intersects(BoundingBox(178, 51.1, -178, 51.5, crs=4326)) == True
+        assert extent.intersects(BoundingBox(179.1, 51.1, -179.1, 51.5, crs=4326)) == True
+
+        # Different CRS
+        assert extent.intersects(BoundingBox(250_000, 5_655_000, 350_000, 5_765_000, crs=32601)) == True
+        assert extent.intersects(BoundingBox(250_000, 5_655_000, 350_000, 5_765_000, crs=32602)) == False
+        assert extent.intersects(BoundingBox(650_000, 5_655_000, 750_000, 5_765_000, crs=32631)) == False
+        assert extent.intersects(BoundingBox(650_000, 5_655_000, 750_000, 5_765_000, crs=32659)) == False
+        assert extent.intersects(BoundingBox(650_000, 5_655_000, 750_000, 5_765_000, crs=32660)) == True
+
+    def _diamond(self, x: float, y: float, r: float) -> shapely.geometry.Polygon:
+        """Diamond shape around (x, y) with radius r"""
+        return shapely.geometry.Polygon([(x, y - r), (x + r, y), (x, y + r), (x - r, y), (x, y - r)])
+
+    def _diamonds(self, xyr: List[Tuple[float, float, float]]) -> shapely.geometry.MultiPolygon:
+        """Multiple diamonds"""
+        return shapely.geometry.MultiPolygon([self._diamond(x=x, y=y, r=r) for (x, y, r) in xyr])
+
+    def test_intersect_shapely(self):
+        extent = _SpatialExtent(bbox=BoundingBox(west=3, south=51, east=4, north=52, crs=4326))
+
+        # Basic polygon handling
+        assert extent.intersects(self._diamond(3.5, 51.5, r=0.4)) == True
+        assert extent.intersects(self._diamond(2.5, 51.5, r=0.4)) == False
+        assert extent.intersects(self._diamond(2.5, 51.5, r=0.6)) == True
+        assert extent.intersects(self._diamond(0, 50, r=1)) == False
+        assert extent.intersects(self._diamond(0, 50, r=4)) == True
+
+        # Basic Multipolygon handling
+        assert extent.intersects(self._diamonds([(2.5, 51.5, 0.4), (3.5, 50.5, 0.4)])) == False
+        assert extent.intersects(self._diamonds([(2.5, 51.5, 0.6), (3.5, 50.5, 0.6)])) == True
+
+    def test_intersects_shapely_antimeridian(self):
+        # Extent across antimeridian:
+        extent = _SpatialExtent(bbox=BoundingBox(west=179, south=51, east=-179, north=52, crs=4326))
+
+        assert extent.intersects(self._diamond(2, 50, r=1)) == False
+
+        # Non-crossing shapes west from antimeridian
+        assert extent.intersects(self._diamond(178.5, 51.1, r=0.4)) == False
+        assert extent.intersects(self._diamond(178.5, 51.1, r=0.6)) == True
+        assert extent.intersects(self._diamond(179.5, 51.1, r=0.2)) == True
+        assert extent.intersects(self._diamond(179.5, 50.1, r=0.2)) == False
+
+        # Non-crossing bboxes east from antimeridian
+        assert extent.intersects(self._diamond(-178.5, 51.1, r=0.4)) == False
+        assert extent.intersects(self._diamond(-178.5, 51.1, r=0.6)) == True
+        assert extent.intersects(self._diamond(-179.5, 51.1, r=0.2)) == True
+        assert extent.intersects(self._diamond(-179.5, 50.1, r=0.2)) == False
+
+        # Antimeridian-split multipolygons
+        assert extent.intersects(self._diamonds([(178.5, 51.1, 0.4), (-178.5, 51.1, 0.4)])) == False
+        assert extent.intersects(self._diamonds([(178.5, 51.1, 0.6), (-178.5, 51.1, 0.2)])) == True
+        assert extent.intersects(self._diamonds([(178.5, 51.1, 0.2), (-178.5, 51.1, 0.6)])) == True
+        assert extent.intersects(self._diamonds([(179.5, 51.1, 0.2), (-179.5, 51.1, 0.2)])) == True
+        assert extent.intersects(self._diamonds([(179.5, 50.1, 0.2), (-179.5, 50.1, 0.2)])) == False
 
     def test_as_cache_key(self):
         extent1 = _SpatialExtent(bbox=None)
@@ -1661,7 +1809,7 @@ class TestPropertyFilter:
                         }
                     }
                 },
-                "\"properties.foo\" = 'bar'",
+                "\"foo\" = 'bar'",
             ),
             (
                 {
@@ -1691,8 +1839,8 @@ class TestPropertyFilter:
                     },
                 },
                 dirty_equals.IsOneOf(
-                    '"properties.color" = \'red\' and "properties.size" <= 42',
-                    '"properties.size" <= 42 and "properties.color" = \'red\'',
+                    '"color" = \'red\' and "size" <= 42',
+                    '"size" <= 42 and "color" = \'red\'',
                 ),
             ),
         ],
@@ -1706,42 +1854,42 @@ class TestPropertyFilter:
         [
             (
                 {"process_id": "eq", "arguments": {"x": {"from_parameter": "value"}, "y": "y-bar"}},
-                "\"properties.foo\" = 'y-bar'",
+                "\"foo\" = 'y-bar'",
             ),
             (
                 {"process_id": "eq", "arguments": {"x": "x-bar", "y": {"from_parameter": "value"}}},
-                "\"properties.foo\" = 'x-bar'",
+                "\"foo\" = 'x-bar'",
             ),
             (
                 {"process_id": "eq", "arguments": {"x": {"from_parameter": "value"}, "y": 42}},
-                '"properties.foo" = 42',
+                '"foo" = 42',
             ),
             (
                 {"process_id": "lte", "arguments": {"x": {"from_parameter": "value"}, "y": 42}},
-                '"properties.foo" <= 42',
+                '"foo" <= 42',
             ),
             (
                 {"process_id": "lte", "arguments": {"x": 42, "y": {"from_parameter": "value"}}},
-                '"properties.foo" >= 42',
+                '"foo" >= 42',
             ),
             (
                 {"process_id": "gte", "arguments": {"x": {"from_parameter": "value"}, "y": 42}},
-                '"properties.foo" >= 42',
+                '"foo" >= 42',
             ),
             (
                 {"process_id": "gte", "arguments": {"x": 42, "y": {"from_parameter": "value"}}},
-                '"properties.foo" <= 42',
+                '"foo" <= 42',
             ),
             (
                 {"process_id": "array_contains", "arguments": {"data": [42, 4242], "y": {"from_parameter": "value"}}},
-                '"properties.foo" in (42, 4242)',
+                '"foo" in (42, 4242)',
             ),
             (
                 {
                     "process_id": "array_contains",
                     "arguments": {"data": ["blue", "green"], "y": {"from_parameter": "value"}},
                 },
-                "\"properties.foo\" in ('blue', 'green')",
+                "\"foo\" in ('blue', 'green')",
             ),
             (
                 {"process_id": "eq", "arguments": {"x": {"from_parameter": "value"}, "y": "32U*B"}},
@@ -1775,7 +1923,7 @@ class TestPropertyFilter:
         }
         env = EvalEnv().push_parameters({"name": "alice"})
         property_filter = PropertyFilter(properties=properties, env=env)
-        expected = "\"properties.foo\" = 'alice'"
+        expected = "\"foo\" = 'alice'"
         assert property_filter.to_cql2_text() == expected
 
     @pytest.mark.parametrize(
@@ -1794,7 +1942,7 @@ class TestPropertyFilter:
                         }
                     }
                 },
-                {"op": "=", "args": [{"property": "properties.foo"}, "bar"]},
+                {"op": "=", "args": [{"property": "foo"}, "bar"]},
             ),
             (
                 {
@@ -1826,8 +1974,8 @@ class TestPropertyFilter:
                 {
                     "op": "and",
                     "args": [
-                        {"op": "=", "args": [{"property": "properties.color"}, "red"]},
-                        {"op": "<=", "args": [{"property": "properties.size"}, 42]},
+                        {"op": "=", "args": [{"property": "color"}, "red"]},
+                        {"op": "<=", "args": [{"property": "size"}, 42]},
                     ],
                 },
             ),
@@ -1842,42 +1990,42 @@ class TestPropertyFilter:
         [
             (
                 {"process_id": "eq", "arguments": {"x": {"from_parameter": "value"}, "y": "y-bar"}},
-                {"op": "=", "args": [{"property": "properties.foo"}, "y-bar"]},
+                {"op": "=", "args": [{"property": "foo"}, "y-bar"]},
             ),
             (
                 {"process_id": "eq", "arguments": {"x": "x-bar", "y": {"from_parameter": "value"}}},
-                {"op": "=", "args": [{"property": "properties.foo"}, "x-bar"]},
+                {"op": "=", "args": [{"property": "foo"}, "x-bar"]},
             ),
             (
                 {"process_id": "eq", "arguments": {"x": {"from_parameter": "value"}, "y": 42}},
-                {"op": "=", "args": [{"property": "properties.foo"}, 42]},
+                {"op": "=", "args": [{"property": "foo"}, 42]},
             ),
             (
                 {"process_id": "lte", "arguments": {"x": {"from_parameter": "value"}, "y": 42}},
-                {"op": "<=", "args": [{"property": "properties.foo"}, 42]},
+                {"op": "<=", "args": [{"property": "foo"}, 42]},
             ),
             (
                 {"process_id": "lte", "arguments": {"x": 42, "y": {"from_parameter": "value"}}},
-                {"op": ">=", "args": [{"property": "properties.foo"}, 42]},
+                {"op": ">=", "args": [{"property": "foo"}, 42]},
             ),
             (
                 {"process_id": "gte", "arguments": {"x": {"from_parameter": "value"}, "y": 42}},
-                {"op": ">=", "args": [{"property": "properties.foo"}, 42]},
+                {"op": ">=", "args": [{"property": "foo"}, 42]},
             ),
             (
                 {"process_id": "gte", "arguments": {"x": 42, "y": {"from_parameter": "value"}}},
-                {"op": "<=", "args": [{"property": "properties.foo"}, 42]},
+                {"op": "<=", "args": [{"property": "foo"}, 42]},
             ),
             (
                 {"process_id": "array_contains", "arguments": {"data": [42, 4242], "y": {"from_parameter": "value"}}},
-                {"op": "in", "args": [{"property": "properties.foo"}, [42, 4242]]},
+                {"op": "in", "args": [{"property": "foo"}, [42, 4242]]},
             ),
             (
                 {
                     "process_id": "array_contains",
                     "arguments": {"data": ["blue", "green"], "y": {"from_parameter": "value"}},
                 },
-                {"op": "in", "args": [{"property": "properties.foo"}, ["blue", "green"]]},
+                {"op": "in", "args": [{"property": "foo"}, ["blue", "green"]]},
             ),
             (
                 {"process_id": "eq", "arguments": {"x": {"from_parameter": "value"}, "y": "32U*B"}},
@@ -1911,16 +2059,16 @@ class TestPropertyFilter:
         }
         env = EvalEnv().push_parameters({"name": "alice"})
         property_filter = PropertyFilter(properties=properties, env=env)
-        expected = {"op": "=", "args": [{"property": "properties.foo"}, "alice"]}
+        expected = {"op": "=", "args": [{"property": "foo"}, "alice"]}
         assert property_filter.to_cql2_json() == expected
 
     @pytest.mark.parametrize(
         ["use_filter_extension", "search_method", "expected"],
         [
-            ("cql2-text", None, "\"properties.foo\" = 'bar'"),
-            ("cql2-json", None, {"op": "=", "args": [{"property": "properties.foo"}, "bar"]}),
-            (True, "POST", {"op": "=", "args": [{"property": "properties.foo"}, "bar"]}),
-            (True, "GET", "\"properties.foo\" = 'bar'"),
+            ("cql2-text", None, "\"foo\" = 'bar'"),
+            ("cql2-json", None, {"op": "=", "args": [{"property": "foo"}, "bar"]}),
+            (True, "POST", {"op": "=", "args": [{"property": "foo"}, "bar"]}),
+            (True, "GET", "\"foo\" = 'bar'"),
         ],
     )
     def test_to_cql2_filter(self, use_filter_extension, search_method, expected, requests_mock):
@@ -1973,30 +2121,30 @@ class TestAdaptingPropertyFilter:
             (
                 # Empty case (no adaptations)
                 {},
-                "\"properties.foo\" = 'FOO' and \"properties.bar\" = 'BAR'",
+                "\"foo\" = 'FOO' and \"bar\" = 'BAR'",
                 {
                     "op": "and",
                     "args": [
-                        {"op": "=", "args": [{"property": "properties.foo"}, "FOO"]},
-                        {"op": "=", "args": [{"property": "properties.bar"}, "BAR"]},
+                        {"op": "=", "args": [{"property": "foo"}, "FOO"]},
+                        {"op": "=", "args": [{"property": "bar"}, "BAR"]},
                     ],
                 },
             ),
             (
                 # Drop "foo"
                 {"foo": "drop"},
-                "\"properties.bar\" = 'BAR'",
-                {"op": "=", "args": [{"property": "properties.bar"}, "BAR"]},
+                "\"bar\" = 'BAR'",
+                {"op": "=", "args": [{"property": "bar"}, "BAR"]},
             ),
             (
                 # Rename "foo" to "fancyfoo"
                 {"foo": {"rename": "fancyfoo"}},
-                "\"properties.fancyfoo\" = 'FOO' and \"properties.bar\" = 'BAR'",
+                "\"fancyfoo\" = 'FOO' and \"bar\" = 'BAR'",
                 {
                     "op": "and",
                     "args": [
-                        {"op": "=", "args": [{"property": "properties.fancyfoo"}, "FOO"]},
-                        {"op": "=", "args": [{"property": "properties.bar"}, "BAR"]},
+                        {"op": "=", "args": [{"property": "fancyfoo"}, "FOO"]},
+                        {"op": "=", "args": [{"property": "bar"}, "BAR"]},
                     ],
                 },
             ),
@@ -2006,24 +2154,24 @@ class TestAdaptingPropertyFilter:
                     "foo": {"value_mapping": {"SOMETHING": "else"}},
                     "bar": {"value_mapping": {"BAR": "BARRRR"}},
                 },
-                "\"properties.foo\" = 'FOO' and \"properties.bar\" = 'BARRRR'",
+                "\"foo\" = 'FOO' and \"bar\" = 'BARRRR'",
                 {
                     "op": "and",
                     "args": [
-                        {"op": "=", "args": [{"property": "properties.foo"}, "FOO"]},
-                        {"op": "=", "args": [{"property": "properties.bar"}, "BARRRR"]},
+                        {"op": "=", "args": [{"property": "foo"}, "FOO"]},
+                        {"op": "=", "args": [{"property": "bar"}, "BARRRR"]},
                     ],
                 },
             ),
             (
                 # add-MGRS-prefix
                 {"foo": {"value_mapping": "add-MGRS-prefix"}},
-                "\"properties.foo\" = 'MGRS-FOO' and \"properties.bar\" = 'BAR'",
+                "\"foo\" = 'MGRS-FOO' and \"bar\" = 'BAR'",
                 {
                     "op": "and",
                     "args": [
-                        {"op": "=", "args": [{"property": "properties.foo"}, "MGRS-FOO"]},
-                        {"op": "=", "args": [{"property": "properties.bar"}, "BAR"]},
+                        {"op": "=", "args": [{"property": "foo"}, "MGRS-FOO"]},
+                        {"op": "=", "args": [{"property": "bar"}, "BAR"]},
                     ],
                 },
             ),
@@ -2150,13 +2298,13 @@ class TestAdaptingPropertyFilter:
         [
             (
                 {"foo": {"rename": "ffooo", "value_mapping": {"F22": "F2000"}}},
-                """"properties.ffooo" in ('F1', 'F2000', 'F333')""",
-                {"op": "in", "args": [{"property": "properties.ffooo"}, ["F1", "F2000", "F333"]]},
+                """"ffooo" in ('F1', 'F2000', 'F333')""",
+                {"op": "in", "args": [{"property": "ffooo"}, ["F1", "F2000", "F333"]]},
             ),
             (
                 {"foo": {"rename": "mgrs-foo", "value_mapping": "add-MGRS-prefix"}},
-                """"properties.mgrs-foo" in ('MGRS-F1', 'MGRS-F22', 'MGRS-F333')""",
-                {"op": "in", "args": [{"property": "properties.mgrs-foo"}, ["MGRS-F1", "MGRS-F22", "MGRS-F333"]]},
+                """"mgrs-foo" in ('MGRS-F1', 'MGRS-F22', 'MGRS-F333')""",
+                {"op": "in", "args": [{"property": "mgrs-foo"}, ["MGRS-F1", "MGRS-F22", "MGRS-F333"]]},
             ),
         ],
     )
@@ -2446,7 +2594,7 @@ class TestItemCollection:
                         "datetime": "2024-01-01T00:00:00Z/2025-01-01T00:00:00Z",
                         "limit": STAC_API_PER_PAGE_LIMIT_DEFAULT,
                         "filter-lang": "cql2-json",
-                        "filter": {"op": "=", "args": [{"property": "properties.flavor"}, "banana"]},
+                        "filter": {"op": "=", "args": [{"property": "flavor"}, "banana"]},
                     },
                 },
             ),
@@ -2460,7 +2608,7 @@ class TestItemCollection:
                         "datetime": "2024-01-01T00:00:00Z/2025-01-01T00:00:00Z",
                         "limit": str(STAC_API_PER_PAGE_LIMIT_DEFAULT),
                         "filter-lang": "cql2-text",
-                        "filter": "\"properties.flavor\" = 'banana'",
+                        "filter": "\"flavor\" = 'banana'",
                     },
                     "json": None,
                 },
@@ -2477,7 +2625,7 @@ class TestItemCollection:
                         "datetime": "2024-01-01T00:00:00Z/2025-01-01T00:00:00Z",
                         "limit": STAC_API_PER_PAGE_LIMIT_DEFAULT,
                         "filter-lang": "cql2-json",
-                        "filter": {"op": "=", "args": [{"property": "properties.flavor"}, "banana"]},
+                        "filter": {"op": "=", "args": [{"property": "flavor"}, "banana"]},
                     },
                 },
             ),
@@ -2536,9 +2684,9 @@ class TestItemCollection:
         search_requests = [r for r in dummy_stac_api_server.request_history if r["path"] == "/search"]
         assert search_requests == [expected_search]
 
-    def test_from_stac_api_anti_meridian_handling(self, dummy_stac_api, dummy_stac_api_server):
+    def test_from_stac_api_antimeridian_handling(self, dummy_stac_api, dummy_stac_api_server):
         """Based on https://github.com/Open-EO/openeo-geopyspark-driver/issues/1568"""
-        collection_id = "anita-meridith"
+        collection_id = "ogd-1568"
         dummy_stac_api_server.define_collection(collection_id)
         for x in [175, 176, 177, 178, 179, -180, -179, -178]:
             for y in [68, 69, 70, 71]:
@@ -2576,6 +2724,24 @@ class TestItemCollection:
             "item-178-70",
             "item-179-69",
             "item-179-70",
+        ]
+
+        search_requests = [r for r in dummy_stac_api_server.request_history if r["path"] == "/search"]
+        assert search_requests == [
+            dirty_equals.IsPartialDict(
+                url_params={
+                    "collections": collection_id,
+                    "bbox": dirty_equals.IsStr(regex=r"177\.\d*,69\.\d*,180\.0,70\.\d+"),
+                    "limit": "100",
+                }
+            ),
+            dirty_equals.IsPartialDict(
+                url_params={
+                    "collections": collection_id,
+                    "bbox": dirty_equals.IsStr(regex=r"-180\.0,69\.\d+,-179\.\d+,70\.\d+"),
+                    "limit": "100",
+                }
+            ),
         ]
 
     def test_get_temporal_extent_empty(self):
@@ -2904,26 +3070,58 @@ class _OpenSearchClientDumper:
         while iterator.hasNext():
             yield iterator.next()
 
-    def dump_link(self, link: JavaObject) -> dict:
+    def dump_link(self, link: JavaObject, add_pixel_value_scaling: bool = False) -> dict:
         """dump org.openeo.opensearch.OpenSearchResponses.Link"""
-        return {
+        dump = {
             # "toString": l.toString(),
             "href": link.href().toString(),
             "title": link.title().get(),
             "bandNames": list(self.scala_iterate(link.bandNames().get().iterator())),
         }
+        if add_pixel_value_scaling:
+            dump["pixelValueOffset"] = link.pixelValueOffset().get()
+        return dump
 
-    def dump_feature(self, feature: JavaObject) -> dict:
+    def dump_extent(self, extent: JavaObject) -> Union[Tuple[float, float, float, float], None]:
+        if extent:
+            return extent.xmin(), extent.ymin(), extent.xmax(), extent.ymax()
+        else:
+            return None
+
+    def dump_feature(
+        self,
+        feature: JavaObject,
+        *,
+        add_links: bool = True,
+        add_bbox: bool = False,
+        add_pixel_value_scaling: bool = False,
+    ) -> dict:
         """dump org.openeo.opensearch.OpenSearchResponses.Feature"""
-        return {
-            "id": feature.id(),
-            "links": [self.dump_link(link) for link in feature.links()],
-        }
+        dump = {"id": feature.id()}
+        if add_links:
+            dump["links"] = [
+                self.dump_link(link, add_pixel_value_scaling=add_pixel_value_scaling) for link in feature.links()
+            ]
+        if add_bbox:
+            dump["bbox"] = self.dump_extent(feature.bbox())
+        return dump
 
-    def dump_opensearch_client_features(self, opensearch_client: JavaObject) -> List[dict]:
+    def dump_opensearch_client_features(
+        self,
+        opensearch_client: JavaObject,
+        *,
+        add_links: bool = True,
+        add_bbox: bool = False,
+        add_pixel_value_scaling: bool = False,
+    ) -> List[dict]:
         """Dump all features from org.openeo.opensearch.OpenSearchClient"""
         feature_iterator = opensearch_client.features().iterator()
-        return [self.dump_feature(feature) for feature in self.scala_iterate(feature_iterator)]
+        return [
+            self.dump_feature(
+                feature=feature, add_links=add_links, add_bbox=add_bbox, add_pixel_value_scaling=add_pixel_value_scaling
+            )
+            for feature in self.scala_iterate(feature_iterator)
+        ]
 
 
 class TestPrepareContext:
@@ -3332,6 +3530,223 @@ class TestPrepareContext:
         dumper = _OpenSearchClientDumper()
         assert [i["id"] for i in dumper.dump_opensearch_client_features(context.opensearch_client)] == expected_items
         assert context.metadata.temporal_extent == expected_temporal_extent
+
+    @pytest.mark.parametrize(
+        ["spatial_extent", "item2_overrides", "expected_features", "expected_logging"],
+        [
+            (
+                # Requested spatial extent is far far away from antimeridian: skip corrupt item.
+                # Item-2: invalid bbox, but valid geometry and proj:bbox
+                {"west": 2, "south": 50.0, "east": 5, "north": 55.0},
+                {"bbox": [-179, 50, 179, 51]},
+                [
+                    {"id": "item-1", "bbox": approxify((3.00, 49.99, 4.03, 51.00), abs=0.01)},
+                ],
+                dirty_equals.IsStr(regex=r".*Skipping.*item-2.*implausible bbox.*epsg.*32601.*", regex_flags=re.DOTALL),
+            ),
+            (
+                # Requested spatial extent is far far away from antimeridian: skip corrupt item.
+                # Item-2: invalid bbox, no proj:bbox, but valid geometry
+                {"west": 2, "south": 50.0, "east": 5, "north": 55.0},
+                {
+                    "bbox": [-179, 50, 179, 51],
+                    "properties": {"proj:code": "EPSG:32601"},
+                },
+                [
+                    {"id": "item-1", "bbox": approxify((3.00, 49.99, 4.03, 51.00), abs=0.01)},
+                ],
+                dirty_equals.IsStr(regex=r".*Skipping.*item-2.*implausible bbox.*epsg.*32601.*", regex_flags=re.DOTALL),
+            ),
+            (
+                # Requested spatial extent includes antimeridian region: include item with corrupt item.bbox.
+                # Item-2: invalid bbox, but valid geometry and proj:bbox
+                {"west": -179.9, "south": 50.0, "east": 5, "north": 55.0},
+                {"bbox": [-179, 50, 179, 51]},
+                [
+                    {"id": "item-1", "bbox": approxify((3.00, 49.99, 4.03, 51.00), abs=0.01)},
+                    {"id": "item-2", "bbox": approxify((179.00, 49.94, 180.99, 51.05), abs=0.01)},
+                ],
+                dirty_equals.IsStr(regex=r".*Detected implausible bbox.*item-2.*epsg.*32601.*", regex_flags=re.DOTALL),
+            ),
+            (
+                # Requested spatial extent includes antimeridian region: include item with corrupt item.bbox.
+                # Item-2: invalid bbox, no proj:bbox, but valid geometry
+                {"west": -179.9, "south": 50.0, "east": 5, "north": 55.0},
+                {
+                    "bbox": [-179, 50, 179, 51],
+                    "properties": {"proj:code": "EPSG:32601"},
+                },
+                [
+                    {"id": "item-1", "bbox": approxify((3.00, 49.99, 4.03, 51.00), abs=0.01)},
+                    {"id": "item-2", "bbox": None},
+                ],
+                dirty_equals.IsStr(regex=r".*Detected implausible bbox.*item-2.*epsg.*32601.*", regex_flags=re.DOTALL),
+            ),
+            (
+                # Requested spatial extent includes antimeridian region
+                # Item-2: invalid bbox, no proj:bbox, invalid geometry
+                # Skip item, but don't break whole flow
+                {"west": -179.9, "south": 50.0, "east": 5, "north": 55.0},
+                {
+                    "bbox": [-179, 50, 179, 51],
+                    "geometry": {"type": "garbage"},
+                    "properties": {"proj:code": "EPSG:32601"},
+                },
+                [
+                    {"id": "item-1", "bbox": approxify((3.00, 49.99, 4.03, 51.00), abs=0.01)},
+                ],
+                dirty_equals.IsStr(regex=r".*Skipping.*item-2.*implausible bbox.*epsg.*32601.*", regex_flags=re.DOTALL),
+            ),
+            (
+                # Happy case: no corruption (valid bbox, valid proj:bbox)
+                # Requested spatial extent is far far away from antimeridian: only item-1 should be included
+                {"west": 2, "south": 50.0, "east": 5, "north": 55.0},
+                {"bbox": [179, 50, -179, 51]},
+                [
+                    {"id": "item-1", "bbox": approxify((3.00, 49.99, 4.03, 51.00), abs=0.01)},
+                ],
+                # Regex with negative look-ahead here: logs should NOT contain "implausible"
+                dirty_equals.IsStr(regex=r"^(?!.*implausible).*", regex_flags=re.DOTALL),
+            ),
+            (
+                # Happy case: no corruption (valid bbox, valid proj:bbox)
+                # Requested spatial extent includes antimeridian region: item-2 should be included too
+                {"west": -179.9, "south": 50.0, "east": 5, "north": 55.0},
+                {"bbox": [179, 50, -179, 51]},
+                [
+                    {"id": "item-1", "bbox": approxify((3.00, 49.99, 4.03, 51.00), abs=0.01)},
+                    {"id": "item-2", "bbox": approxify((179.00, 49.94, 180.99, 51.05), abs=0.01)},
+                ],
+                # Regex with negative look-ahead here: logs should NOT contain "implausible"
+                dirty_equals.IsStr(regex=r"^(?!.*implausible).*", regex_flags=re.DOTALL),
+            ),
+        ],
+    )
+    def test_prepare_context_handle_corrupt_item_bbox_antimeridian(
+        self, dummy_stac_api_server, item2_overrides, spatial_extent, expected_features, expected_logging, caplog
+    ):
+        """https://github.com/Open-EO/openeo-geopyspark-driver/issues/1592"""
+        collection_id = "S1592"
+        dummy_stac_api_server.define_collection(collection_id)
+        dummy_stac_api_server.define_item(
+            collection_id=collection_id,
+            item_id="item-1",
+            datetime="2024-05-01T00:00:00Z",
+            bbox=[3, 50, 4, 51],
+            properties={
+                "proj:code": "EPSG:32631",
+                "proj:shape": [100, 100],
+                "proj:bbox": [500_000, 5_538_000, 572_000, 5_650_000],
+            },
+            assets={
+                "asset-1": {
+                    "href": "https://stac.test/asset-1.tiff",
+                    "type": "image/tiff",
+                    "roles": ["data"],
+                    "bands": [{"name": "asset-1"}],
+                }
+            },
+        )
+        assert "bbox" in item2_overrides, "Always specify bbox for clarity of test intent"
+        item2_fields = {
+            "bbox": [179, 50, -179, 51],
+            "properties": {
+                "proj:code": "EPSG:32601",
+                "proj:shape": [100, 100],
+                "proj:bbox": [213_000, 5_540_000, 359_000, 5_657_000],
+            },
+            "geometry": {
+                "type": "MultiPolygon",
+                "coordinates": [
+                    (((-180.0, 49.97), (-178.96, 49.99), (-179.01, 51.04), (-180.0, 51.02), (-180.0, 49.97)),),
+                    (((180.0, 51.02), (178.90, 50.99), (178.99, 49.94), (180.0, 49.97), (180.0, 51.025)),),
+                ],
+            },
+            **item2_overrides,
+        }
+        dummy_stac_api_server.define_item(
+            collection_id=collection_id,
+            item_id="item-2",
+            datetime="2024-05-02T00:00:00Z",
+            **item2_fields,
+            assets={
+                "asset-2": {
+                    "href": "https://stac.test/asset-2.tiff",
+                    "type": "image/tiff",
+                    "roles": ["data"],
+                    "bands": [{"name": "asset-2"}],
+                }
+            },
+        )
+
+        with dummy_stac_api_server.serve() as dummy_stac_api:
+            context = _prepare_context(
+                url=f"{dummy_stac_api}/collections/{collection_id}",
+                load_params=LoadParameters(spatial_extent=spatial_extent),
+                env=EvalEnv(),
+            )
+
+        dumper = _OpenSearchClientDumper()
+        assert (
+            dumper.dump_opensearch_client_features(context.opensearch_client, add_links=False, add_bbox=True)
+            == expected_features
+        )
+        assert caplog.text == expected_logging
+
+    @pytest.mark.parametrize(
+        ["proj_bbox", "expected"],
+        [
+            (
+                # Crossing the antimeridian: east bound gets an additional +360 offset
+                # to avoid confusion from west > east
+                [300_000, 7_590_240, 409_800, 7_700_040],
+                approxify((178.137, 68.354, 180.703, 69.394), abs=0.01),
+            ),
+            (
+                # Not crossing the antimeridian
+                [500_000, 7_590_240, 609_800, 7_700_040],
+                approxify((-177.000, 68.403, -174.205, 69.410), abs=0.01),
+            ),
+        ],
+    )
+    def test_prepare_context_anitmeridian_bbox(self, dummy_stac_api_server, proj_bbox, expected):
+        """https://github.com/Open-EO/openeo-geopyspark-driver/issues/1594"""
+        collection_id = "S1594"
+        dummy_stac_api_server.define_collection(collection_id)
+        dummy_stac_api_server.define_item(
+            collection_id=collection_id,
+            item_id="item-1",
+            datetime="2026-03-09T23:56:09.024000Z",
+            bbox=[177.1, 67.2, -178.3, 69.4],
+            properties={
+                "proj:code": "EPSG:32601",
+                "proj:shape": [10980, 10980],
+                "proj:bbox": proj_bbox,
+            },
+            assets={
+                "B02_10m": {
+                    "href": "https://stac.test/B02_10m.tiff",
+                    "type": "image/tiff",
+                    "roles": ["data"],
+                    "bands": [{"name": "B02"}],
+                }
+            },
+        )
+
+        with dummy_stac_api_server.serve() as dummy_stac_api:
+            context = _prepare_context(
+                url=f"{dummy_stac_api}/collections/{collection_id}",
+                load_params=LoadParameters(),
+                env=EvalEnv(),
+            )
+
+        dumper = _OpenSearchClientDumper()
+        assert dumper.dump_opensearch_client_features(context.opensearch_client, add_links=False, add_bbox=True) == [
+            {
+                "id": "item-1",
+                "bbox": expected,
+            }
+        ]
 
 
 class TestResolutionTracker:

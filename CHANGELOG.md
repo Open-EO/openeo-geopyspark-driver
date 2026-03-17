@@ -32,6 +32,11 @@ without compromising stable operations.
 - Fix ZeroDivisionError from dry-run determine_global_extent caused by invalid `proj:transform` metadata ([#1557](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1557))
 - Align `load_stac` cube's temporal extent better with `load_collection` behavior ([#1578](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1578))
 - Improve `load_stac` bbox filtering across anti-meridian ([#1568](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1568))
+- `load_stac`: avoid handling irrelevant items (with corrupt `bbox`) returned by CDSE STAC API ([#1592](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1592))
+- `load_stac`: do property filtering in STAC API queries without `properties.` prefix by default now ([#1584](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1584), [stac-api-extensions/filter#31](https://github.com/stac-api-extensions/filter/pull/31))
+- STAC API usage (from `load_stac` or STAC powered `load_collection`) with bounding box across the antimeridian: split and merge query for each side to workaround broken antimeridian handling of some STAC API implementations ([#1568](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1568))
+- Added initial support for `/collections/{collectionId}/queryables` for STAC based collections ([#536](https://github.com/Open-EO/openeo-geopyspark-driver/issues/536))
+- `ObjectStorageWorkspace`: treat `AccessDenied` error as new Collection ([Open-EO/openeo-geotrellis-extensions#590](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/590))
 
 
 ## 0.70.0

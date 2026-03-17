@@ -124,7 +124,11 @@ class ObjectStorageWorkspace(Workspace):
             try:
                 existing_collection = Collection.from_file(f"s3://{self.bucket}/{target}", stac_io=self._stac_io)
             except botocore.exceptions.ClientError as e:
-                if e.response["Error"]["Code"] != "NoSuchKey":
+                error_code = e.response["Error"]["Code"]
+                if error_code == "AccessDenied":
+                    # lack of a ListBucket permission returns AccessDenied instead of NotFound for unknown keys
+                    _log.info(f"got {error_code} for key {target}; assuming it does not exist", exc_info=True)
+                elif error_code != "NoSuchKey":
                     raise
 
             assert new_collection.self_href.startswith("/"), f"expected path on disk but got {new_collection.self_href}"

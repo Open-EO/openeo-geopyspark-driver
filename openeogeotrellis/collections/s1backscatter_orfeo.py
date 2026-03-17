@@ -276,7 +276,7 @@ class S1BackscatterOrfeo:
             # This product_id will be used as the creo_path (.SAFE file) later.
             product_id = None
             for asset_id, asset in band_assets.items():
-                if asset_id == "vv" or asset_id == "vh":
+                if asset_id in ("vv", "vh", "hh", "hv"):
                     href = asset.href
                     # s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2020/06/06/S1B_IW_GRDH_1SDV_20200606T060615_20200606T060640_021909_029944_094C_COG.SAFE/measurement/s1b-iw-grd-vh-20200606t060615-20200606t060640-021909-029944-002-cog.tiff
                     href = href.replace("s3://", "/")
@@ -286,7 +286,7 @@ class S1BackscatterOrfeo:
                     break
 
             if product_id is None:
-                raise OpenEOApiException(f"No 'vv' or 'vh' asset found in item {itm.id} with proper href for sar_backscatter")
+                raise OpenEOApiException(f"No 'vv', 'vh', 'hh', or 'hv' asset found in item {itm.id} with proper href for sar_backscatter")
 
             builder = builder.withId(product_id)
             opensearch_client.addFeature(builder.build())

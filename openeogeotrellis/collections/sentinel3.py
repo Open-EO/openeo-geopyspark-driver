@@ -28,6 +28,13 @@ OLCI_PRODUCT_TYPE = "OL_1_EFR___"
 SYNERGY_PRODUCT_TYPE = "SY_2_SYN___"
 SLSTR_PRODUCT_TYPE = "SL_2_LST___"
 
+# Mapping from product:timeliness_category values to URL suffixes
+_TIMELINESS_TO_URL_SUFFIX = {
+    "NR": "nrt",
+    "ST": "stc",
+    "NT": "ntc",
+}
+
 REPROJECTION_TYPE_BINNING = "binning"
 KEY_REPROJECTION_TYPE = "reprojection_type"
 KEY_SUPER_SAMPLING = "super_sampling"
@@ -79,12 +86,14 @@ def _map_attributes_for_stac(attribute_values: Dict[str, any]) -> Dict[str, any]
                 else val
             )
             mapped[mapped_key] = mapped_value
-        elif not k in attribute_keys_stac_values:
-            logger.warning(
-                f"sentinel3: No mapping for attribute key {k!r}. value {val!r}. This was already a typical STAC attribute key."
-            )
+        elif k in attribute_values_mapping:
+            mapped[k] = attribute_values_mapping[k](val)
+        elif k in attribute_keys_stac_values:
+            mapped[k] = val
         else:
-            logger.warning(f"sentinel3: No mapping for attribute key {k!r}. value {val!r}")
+            logger.warning(f"sentinel3: No mapping for attribute key {k!r}, but passing anyway: {k} with value {val}")
+            mapped[k] = val
+
     return mapped
 
 
@@ -242,6 +251,33 @@ def _get_stac_collection_urls(product_type: str) -> List[str]:
         raise ValueError(f"STAC not yet supported for Sentinel-3 product type: {product_type}")
 
 
+def _filter_urls_by_timeliness(urls: List[str], timeliness_category: str) -> List[str]:
+    """Filter STAC collection URLs based on the requested timeliness category.
+
+    :param urls: List of STAC collection URLs
+    :param timeliness_category: Timeliness category value (e.g., "NR", "ST", "NT")
+    :return: Filtered list of URLs matching the timeliness category
+    """
+    suffix = _TIMELINESS_TO_URL_SUFFIX.get(timeliness_category)
+    if suffix is None:
+        logger.warning(
+            f"Unknown timeliness category {timeliness_category!r}, "
+            f"expected one of {list(_TIMELINESS_TO_URL_SUFFIX.keys())}. Querying all URLs."
+        )
+        return urls
+
+    filtered = [url for url in urls if url.rstrip("/").endswith(f"-{suffix}")]
+    if not filtered:
+        logger.warning(
+            f"No URLs match timeliness category {timeliness_category!r} (suffix '-{suffix}'). "
+            f"Querying all URLs: {urls}"
+        )
+        return urls
+
+    logger.info(f"Filtered URLs by timeliness category {timeliness_category!r}: {filtered}")
+    return filtered
+
+
 def _build_stac_opensearch_client(
     metadata_properties: Dict[str, any],
     spatial_extent: Union[Dict, BoundingBox, None],
@@ -266,6 +302,14 @@ def _build_stac_opensearch_client(
 
     # Map opensearch attributes to STAC properties
     stac_attributes = _map_attributes_for_stac(metadata_properties)
+
+    # Extract timeliness category to filter URLs before querying.
+    # product:timeliness_category is not a queryable in the STAC API,
+    # but each collection URL corresponds to a specific timeliness category.
+    timeliness_category = stac_attributes.pop("product:timeliness_category", None)
+    if timeliness_category:
+        urls = _filter_urls_by_timeliness(urls, timeliness_category)
+
     property_filter_pg_map = _map_attributes_to_property_filter(stac_attributes)
 
     # Build spatiotemporal extent
