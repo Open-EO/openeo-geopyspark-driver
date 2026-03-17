@@ -37,6 +37,7 @@ without compromising stable operations.
 - STAC API usage (from `load_stac` or STAC powered `load_collection`) with bounding box across the antimeridian: split and merge query for each side to workaround broken antimeridian handling of some STAC API implementations ([#1568](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1568))
 - Added initial support for `/collections/{collectionId}/queryables` for STAC based collections ([#536](https://github.com/Open-EO/openeo-geopyspark-driver/issues/536))
 - `ObjectStorageWorkspace`: treat `AccessDenied` error as new Collection ([Open-EO/openeo-geotrellis-extensions#590](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/590))
+- `ObjectStorageWorkspace`: `merge` argument can be a plain (not nested) file ([#1257](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1257))
 
 
 ## 0.70.0
