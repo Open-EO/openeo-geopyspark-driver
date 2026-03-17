@@ -1070,12 +1070,12 @@ def _write_exported_stac_collection_from_item(
                 item_assets[asset_key] = intersect_dicts(item_assets[asset_key],item_asset)
 
         properties = item.get("properties", {"datetime": result_metadata.get("start_datetime")})
-        properties["proj:bbox"] = item.get("bbox",result_metadata.get("bbox"))
-        properties["proj:geometry"] = item.get("geometry", result_metadata.get("geometry"))
+        properties["proj:bbox"] = result_metadata.get("bbox",item.get("bbox"))
+        properties["proj:geometry"] = result_metadata.get("geometry",item.get("geometry"))
         result_item = result_metadata.get("items").get(item_key)
         if result_item:
             properties["proj:shape"] = result_item.get("proj:shape")
-        epsg_code = item.get("epsg",result_metadata.get("epsg"))
+        epsg_code = result_metadata.get("epsg",item.get("epsg"))
         if epsg_code:
             properties["proj:code"] = "EPSG:"+str(epsg_code)
         stac_item = {
