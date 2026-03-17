@@ -1569,6 +1569,20 @@ def test_export_workspace_merge_into_existing(tmp_path, mock_s3_bucket, stac_ver
         f"{merge}_items/openEO_2021-01-15Z.tif",
     ])
 
+    stac_collection = pystac.Collection.from_file(
+        f"s3://{mock_s3_bucket.name}/{merge}", stac_io=CustomStacIO(object_workspace.region)
+    )
+
+    assert stac_collection.validate_all() == 2
+
+    for item in stac_collection.get_items():
+        for asset in item.get_assets().values():
+            object_key = _object_key(asset.get_absolute_href())
+
+            with tempfile.NamedTemporaryFile() as f:
+                mock_s3_bucket.download_file(object_key, f.name)
+
+
 @pytest.mark.parametrize("stac_version", ["1.0", "1.1"])
 def test_export_workspace_merge_filepath_per_band(tmp_path, mock_s3_bucket, stac_version):
     job_dir = tmp_path
