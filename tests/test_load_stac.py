@@ -2795,6 +2795,26 @@ class TestItemCollection:
             ),
         ]
 
+    @pytest.mark.parametrize(
+        ["max_items", "expected_items"],
+        [
+            (1, ["item-1"]),
+            (2, ["item-1", "item-2"]),
+            (10, ["item-1", "item-2", "item-3"]),
+        ],
+    )
+    def test_from_stac_api_bounded_iteration(self, dummy_stac_api, max_items, expected_items):
+        given_url = f"{dummy_stac_api}/collections/collection-123"
+        collection: pystac.Collection = pystac.read_file(given_url)
+        item_collection = ItemCollection.from_stac_api(
+            collection,
+            original_url=given_url,
+            property_filter=PropertyFilter(properties={}),
+            spatiotemporal_extent=_SpatioTemporalExtent(),
+            max_items=max_items,
+        )
+        assert [item.id for item in item_collection.items] == expected_items
+
     def test_get_temporal_extent_empty(self):
         item_collection = ItemCollection(items=[])
         assert item_collection.get_temporal_extent() == (None, None)

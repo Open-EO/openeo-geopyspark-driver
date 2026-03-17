@@ -39,6 +39,7 @@ without compromising stable operations.
 - `ObjectStorageWorkspace`: treat `AccessDenied` error as new Collection ([Open-EO/openeo-geotrellis-extensions#590](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/590))
 - `ObjectStorageWorkspace`: `merge` argument can be a plain (not nested) file ([#1257](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1257))
 - Further improve detection of wrong `proj:transform` metadata ([#1570](https://github.com/Open-EO/openeo-geopyspark-driver/pull/1570))
+- `load_stac`: avoid unbounded iteration through STAC API response pages ([#1591](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1591))
 
 
 ## 0.70.0

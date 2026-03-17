@@ -50,6 +50,7 @@ from openeogeotrellis.constants import EVAL_ENV_KEY
 from openeogeotrellis.geopysparkcubemetadata import GeopysparkCubeMetadata
 from typing import TYPE_CHECKING
 from openeogeotrellis.integrations.stac import LoggingStacApiIO, ResilientStacIO
+from openeogeotrellis.util.logging import TrackingIter
 from openeogeotrellis.util.datetime import DateTimeLikeOrNone, to_datetime_utc_unless_none
 from openeogeotrellis.util.geometry import GridSnapper
 from openeogeotrellis.util.projection import is_utm_epsg_code
@@ -63,6 +64,7 @@ logger = logging.getLogger(__name__)
 REQUESTS_TIMEOUT_SECONDS = 60
 
 STAC_API_PER_PAGE_LIMIT_DEFAULT = 100
+STAC_API_MAX_ITEMS_DEFAULT = 5000
 STAC_API_BACKOFF_FACTOR = 2
 STAC_API_RETRY_TOTAL = 25
 STAC_API_MINIMUM_BACKOFF_SECONDS = 1
@@ -949,6 +951,7 @@ def construct_item_collection(
                     # TODO #1312 why skipping datetime filter especially for netcdf with time dimension?
                     skip_datetime_filter=netcdf_with_time_dimension,
                     per_page_limit=feature_flags.get("stac_api_per_page_limit", STAC_API_PER_PAGE_LIMIT_DEFAULT),
+                    max_items=feature_flags.get("stac_api_max_items", STAC_API_MAX_ITEMS_DEFAULT),
                 )
         else:
             assert isinstance(stac_object, pystac.Catalog)  # static Catalog + Collection
@@ -1358,6 +1361,7 @@ class ItemCollection:
         skip_datetime_filter: bool = False,
         original_url: str = "n/a",
         per_page_limit: int = STAC_API_PER_PAGE_LIMIT_DEFAULT,
+        max_items: Union[int, None] = STAC_API_MAX_ITEMS_DEFAULT,
     ) -> ItemCollection:
         root_catalog = collection.get_root()
 
@@ -1437,6 +1441,7 @@ class ItemCollection:
                     method=method,
                     collections=collection.id,
                     bbox=query_bbox,
+                    max_items=max_items,
                     limit=per_page_limit,
                     datetime=query_datetime,
                     filter=cql2_filter,
@@ -1448,11 +1453,21 @@ class ItemCollection:
                     query_info += f" {search_request.method} {search_request.url} {search_request.get_parameters()=}"
                 logger.info(f"ItemCollection.from_stac_api: STAC API request: {query_info}")
 
+                tracking_iter_raw = TrackingIter()
+                tracking_iter_filtered = TrackingIter()
                 items.extend(
-                    item
-                    for item in search_request.items()
-                    if property_matcher(item.properties) and item.id not in seen_item_ids
+                    tracking_iter_filtered(
+                        item
+                        for item in tracking_iter_raw(search_request.items())
+                        if property_matcher(item.properties) and item.id not in seen_item_ids
+                    )
                 )
+                logger.info(f"ItemCollection.from_stac_api: {tracking_iter_raw=!s} {tracking_iter_filtered=!s}")
+                if max_items and tracking_iter_raw.count >= max_items:
+                    logger.warning(
+                        f"ItemCollection.from_stac_api: reached {max_items=}: {tracking_iter_raw!s}, item collection is probably incomplete"
+                    )
+
                 if len(query_bboxes) > 1:
                     # Only track seen items when we're going to check for duplicates (multiple query bboxes)
                     seen_item_ids.update(item.id for item in items)

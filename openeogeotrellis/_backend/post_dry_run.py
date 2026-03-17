@@ -294,6 +294,7 @@ def _extract_spatial_extent_from_constraint_load_stac(
         property_filter_pg_map=property_filter_pg_map,
         feature_flags=feature_flags,
         stac_io=None,  # TODO?
+        # TODO: custom (lower) max_items as we do not necessarily need all items to determine spatial extent?
     )
 
     # Collect set of (uqique) asset projection metadata items
