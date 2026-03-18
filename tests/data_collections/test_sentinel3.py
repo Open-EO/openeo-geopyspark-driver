@@ -17,7 +17,7 @@ if __name__ == "__main__":
     openeogeotrellis.deploy.local.setup_environment()
 
 from openeogeotrellis.collections.sentinel3 import *
-from openeogeotrellis.collections.sentinel3 import _get_acquisition_key
+from openeogeotrellis.collections.sentinel3 import _get_acquisition_key, _map_attributes_for_stac, _filter_urls_by_timeliness
 from numpy.testing import assert_allclose
 from unittest.mock import Mock
 
@@ -449,3 +449,66 @@ def test_deduplicate_items_prefer_ntc_empty_collections():
     result = deduplicate_items_prefer_ntc({"NRT": [], "NTC": [(ntc_item, {})]})
     assert len(result) == 1
     assert result[0][0].id == ntc_item.id
+
+
+def test_map_attributes_for_stac():
+    old_attributes = {"orbitDirection": "DESCENDING", "productType": "SL_2_LST___", "timeliness": "NT"}
+    converted_attributes = _map_attributes_for_stac(old_attributes)
+    assert converted_attributes == {
+        "sat:orbit_state": "descending",
+        "product:timeliness_category": "NT",
+    }
+
+
+def test_map_attributes_for_stac_no_warning(caplog):
+    old_attributes = {
+        "sat:orbit_state": "DESCENDING",
+        "product:type": "SL_2_LST___",
+        "product:timeliness_category": "NT",
+        "NON_EXISTING_PROPERTY": "some_value",
+    }
+    converted_attributes = _map_attributes_for_stac(old_attributes)
+    assert converted_attributes == {
+        "sat:orbit_state": "descending",
+        "product:timeliness_category": "NT",
+        "NON_EXISTING_PROPERTY": "some_value",
+    }
+    assert any("No mapping" in record.message for record in caplog.records)
+
+
+class TestFilterUrlsByTimeliness:
+    SYNERGY_URLS = [
+        "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-3-syn-2-syn-stc",
+        "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-3-syn-2-syn-ntc",
+    ]
+    SLSTR_URLS = [
+        "https://stac.opensearch.dataspace.copernicus.eu/v1/collections/sentinel-3-sl-2-lst-nrt",
+        "https://stac.opensearch.dataspace.copernicus.eu/v1/collections/sentinel-3-sl-2-lst-ntc",
+    ]
+
+    def test_filter_ntc(self):
+        result = _filter_urls_by_timeliness(self.SYNERGY_URLS, "NT")
+        assert result == [
+            "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-3-syn-2-syn-ntc",
+        ]
+
+    def test_filter_stc(self):
+        result = _filter_urls_by_timeliness(self.SYNERGY_URLS, "ST")
+        assert result == [
+            "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-3-syn-2-syn-stc",
+        ]
+
+    def test_filter_nrt(self):
+        result = _filter_urls_by_timeliness(self.SLSTR_URLS, "NR")
+        assert result == [
+            "https://stac.opensearch.dataspace.copernicus.eu/v1/collections/sentinel-3-sl-2-lst-nrt",
+        ]
+
+    def test_unknown_timeliness_returns_all(self):
+        result = _filter_urls_by_timeliness(self.SYNERGY_URLS, "UNKNOWN")
+        assert result == self.SYNERGY_URLS
+
+    def test_no_matching_url_returns_all(self):
+        """If timeliness is valid but no URL matches (e.g., NRT not available for SYNERGY), return all."""
+        result = _filter_urls_by_timeliness(self.SYNERGY_URLS, "NR")
+        assert result == self.SYNERGY_URLS

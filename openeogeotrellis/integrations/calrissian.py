@@ -14,7 +14,7 @@ from typing import Dict, List, Optional, Sequence, Tuple, Union
 import kubernetes.client
 import requests
 import yaml
-from openeo.util import ContextTimer
+from openeo.util import ContextTimer, deep_get
 from openeo_driver.ProcessGraphDeserializer import ENV_DRY_RUN_TRACER
 from openeo_driver.backend import ErrorSummary
 from openeo_driver.config import ConfigException
@@ -34,6 +34,7 @@ from openeogeotrellis.config.integrations.calrissian_config import (
 )
 from openeogeotrellis.integrations.kubernetes import ensure_kubernetes_config
 from openeogeotrellis.integrations.s3proxy import sts
+from openeogeotrellis.util.byteunit import byte_string_as
 from openeogeotrellis.util.runtime import get_job_id, get_request_id, ENV_VAR_OPENEO_BATCH_JOB_ID
 from openeogeotrellis.utils import s3_client
 
@@ -184,6 +185,50 @@ class CwLSource:
 
     def get_content(self) -> str:
         return self._cwl
+
+    def estimate_max_memory_usage(self):
+        yaml_parsed = list(yaml.safe_load_all(self._cwl))[0]
+        max_memory = -1
+
+        def estimate_max_memory_usage_step(step):
+            nonlocal max_memory
+            if not isinstance(step, dict):
+                return
+            requirements = step.get("requirements", {})
+            ram_max = -1
+            # https://www.commonwl.org/v1.0/CommandLineTool.html#ResourceRequirement
+            # ramMax: "Maximum reserved RAM in mebibytes (2**20)"
+            try:
+                if isinstance(requirements, dict):
+                    rr = deep_get(requirements, "ResourceRequirement", default={})
+                    ram_max = max(
+                        float(deep_get(rr, "ramMin", default="-1")),
+                        float(deep_get(rr, "ramMax", default="-1")),
+                    )
+                elif isinstance(requirements, list):
+                    for req in requirements:
+                        if not isinstance(req, dict):
+                            continue
+                        if req.get("class") == "ResourceRequirement":
+                            rr = req
+                            ram_max = max(
+                                ram_max,
+                                float(deep_get(rr, "ramMin", default="-1")),
+                                float(deep_get(rr, "ramMax", default="-1")),
+                            )
+            except Exception as e:
+                # CWL is a complex language, and some things might not work
+                # TODO: Find a way to implement this limit in a more formal way.
+                _log.warning(f"Failed to parse RAM requirements for step: {e}")
+            if max_memory is None or ram_max > max_memory:
+                max_memory = ram_max
+
+        if "$graph" in yaml_parsed:
+            for s in yaml_parsed["$graph"]:
+                estimate_max_memory_usage_step(s)
+        else:
+            estimate_max_memory_usage_step(yaml_parsed)
+        return max_memory
 
     @classmethod
     def from_any(cls, content: str) -> CwLSource:
@@ -386,11 +431,21 @@ class CalrissianJobLauncher:
         """
         Create a k8s manifest for a Calrissian input staging job.
 
-        :param cwl_source: CWL source to dump to CWL file in the input volume.
+        :param cwl_source: CWL source to be validated and copied to the input volume.
         :return: Tuple of
             - k8s job manifest
             - path to the CWL file in the input volume.
         """
+        max_memory_estimate = cwl_source.estimate_max_memory_usage()
+        max_executor_or_driver_memory = get_backend_config().max_executor_or_driver_memory
+        if max_memory_estimate > 0:
+            max_memory_estimate = f"{int(max_memory_estimate)}m"  # mebibytes (m)
+            if byte_string_as(max_memory_estimate) > byte_string_as(max_executor_or_driver_memory):
+                raise ValueError(
+                    f"Estimated max memory usage of CWL workflow is {max_memory_estimate}, which exceeds the configured "
+                    f"max_executor_or_driver_memory of {max_executor_or_driver_memory}. This might lead to OOM errors. "
+                )
+
         cwl_content = cwl_source.get_content()
 
         name = self._build_unique_name(infix="cal-inp")

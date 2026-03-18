@@ -1022,7 +1022,23 @@ def _write_exported_stac_collection_from_item(
 ) -> List[Path]:  # TODO: change to Set?
     job_id = get_job_id(default="unknown-job")
 
-    def write_stac_item_file(item: dict) -> Path:
+    item_assets = dict()
+
+    def intersect_dicts(dict1, dict2):
+        result = {}
+        for key in dict1:
+            if key in dict2:
+                if isinstance(dict1[key], dict) and isinstance(dict2[key], dict):
+                    # Recursively intersect nested dictionaries
+                    nested_result = intersect_dicts(dict1[key], dict2[key])
+                    if nested_result:  # Only add if the nested result is not empty
+                        result[key] = nested_result
+                elif dict1[key] == dict2[key]:
+                    # Retain the key-value pair if values are equal
+                    result[key] = dict1[key]
+        return result
+
+    def write_stac_item_file(item_key:str, item: dict) -> Path:
         assets = dict()
         for (asset_key,asset) in item.get("assets").items():
             asset_bands = None
@@ -1042,19 +1058,33 @@ def _write_exported_stac_collection_from_item(
                 "type": asset.get("type"),
                 "roles": asset.get("roles"),
                 "bands": asset_bands,
-                # "nodata": asset.get("nodata"),
-                "datetime": asset.get("datetime"),
-                "bbox": asset.get("bbox"),
-                "geometry": asset.get("geometry"),
             })
+            item_asset = dict_no_none({
+                    "type": asset.get("type"),
+                    "roles": asset.get("roles"),
+                    "bands": asset_bands,
+                })
+            if asset_key not in item_assets:
+                item_assets[asset_key] = item_asset
+            else:
+                item_assets[asset_key] = intersect_dicts(item_assets[asset_key],item_asset)
 
+        properties = item.get("properties", {"datetime": result_metadata.get("start_datetime")})
+        properties["proj:bbox"] = result_metadata.get("bbox",item.get("bbox"))
+        properties["proj:geometry"] = result_metadata.get("geometry",item.get("geometry"))
+        result_item = result_metadata.get("items").get(item_key)
+        if result_item:
+            properties["proj:shape"] = result_item.get("proj:shape")
+        epsg_code = result_metadata.get("epsg",item.get("epsg"))
+        if epsg_code:
+            properties["proj:code"] = "EPSG:"+str(epsg_code)
         stac_item = {
             "type": "Feature",
             "stac_version": "1.1.0",
             "id": item["id"],
             "geometry": item.get("geometry"),
             "bbox": item.get("bbox"),
-            "properties": item.get("properties", {"datetime": result_metadata.get("start_datetime")}),
+            "properties": dict_no_none(properties),
             "links": (
                 _copy_auxiliary_links(
                     auxiliary_links=BadlyHashable(_get_tracker_metadata("").get("auxiliary_links", [])),
@@ -1073,7 +1103,7 @@ def _write_exported_stac_collection_from_item(
 
         return item_file
 
-    item_files = [write_stac_item_file(item) for item in item_metadata.values()]
+    item_files = [write_stac_item_file(item_key, item) for item_key, item in item_metadata.items()]
 
     derived_from_links = [
         link
@@ -1102,6 +1132,7 @@ def _write_exported_stac_collection_from_item(
             "temporal": {"interval": [[result_metadata.get("start_datetime"), result_metadata.get("end_datetime")]]},
         },
         "links": [item_link(item_file) for item_file in item_files] + derived_from_links,
+        "item_assets": item_assets,
     }
 
     collection_file = job_dir / "collection.json"  # TODO: file is reused for each result

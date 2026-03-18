@@ -27,6 +27,7 @@ from openeogeotrellis.layercatalog import (
 )
 from openeogeotrellis.testing import gps_config_overrides
 from openeogeotrellis.vault import Vault
+from tests.data import get_test_data_file
 
 
 def _get_layers() -> List[Tuple[str, dict]]:
@@ -80,8 +81,8 @@ def test_layer_metadata(id, layer):
 def test_get_layer_catalog_with_updates(vault):
     with gps_config_overrides(
         layer_catalog_files=[
-            "tests/data/layercatalog01.json",
-            "tests/data/layercatalog02.json",
+            get_test_data_file("layercatalog01.json"),
+            get_test_data_file("layercatalog02.json"),
         ]
     ):
         catalog = get_layer_catalog(vault)
@@ -110,15 +111,14 @@ def skip_sentinelhub_layer(vault):
 
 
 def test_get_layer_catalog_opensearch_enrich_oscars(requests_mock, vault):
-    test_root = Path(__file__).parent / "data"
     with gps_config_overrides(
         layer_catalog_files=[
-            test_root / "layercatalog01.json",
-            test_root / "layercatalog02.json",
-            test_root / "layercatalog03_oscars.json",
+            get_test_data_file("layercatalog01.json"),
+            get_test_data_file("layercatalog02.json"),
+            get_test_data_file("layercatalog03_oscars.json"),
         ]
     ):
-        collections_response = read_json(test_root / "collections_oscars01.json")
+        collections_response = read_json(get_test_data_file("collections_oscars01.json"))
         requests_mock.get("https://services.terrascope.test/catalogue/collections", json=collections_response)
 
         all_metadata = get_layer_catalog(vault, opensearch_enrich=True).get_all_metadata()
@@ -214,11 +214,11 @@ def test_get_layer_catalog_opensearch_enrich_oscars(requests_mock, vault):
 def test_get_layer_catalog_opensearch_enrich_creodias(requests_mock, vault):
     with gps_config_overrides(
         layer_catalog_files=[
-            "tests/data/layercatalog01.json",
-            "tests/data/layercatalog04_creodias.json",
+            get_test_data_file("layercatalog01.json"),
+            get_test_data_file("layercatalog04_creodias.json"),
         ]
     ):
-        collections_response = read_json("tests/data/collections_creodias01.json")
+        collections_response = read_json(get_test_data_file("collections_creodias01.json"))
         requests_mock.get("https://finder.creodias.test/resto/collections.json", json=collections_response)
 
         all_metadata = get_layer_catalog(vault, opensearch_enrich=True).get_all_metadata()
@@ -248,13 +248,8 @@ def test_get_layer_catalog_opensearch_enrich_creodias(requests_mock, vault):
 
 
 def test_layer_catalog_step_resolution(vault):
-    with gps_config_overrides(
-        layer_catalog_files=[
-            str(Path(__file__).parent / "layercatalog.json"),
-        ]
-    ):
-        catalog = get_layer_catalog(vault, opensearch_enrich=True)
-        all_metadata = catalog.get_all_metadata()
+    catalog = get_layer_catalog(vault, opensearch_enrich=True)
+    all_metadata = catalog.get_all_metadata()
 
     warnings = ""
     for layer in all_metadata:

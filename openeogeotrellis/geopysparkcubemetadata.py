@@ -287,3 +287,14 @@ class Band(NamedTuple):
     # "openeo:gsd" field (https://github.com/Open-EO/openeo-stac-extensions#GSD-Object)
     gsd: Optional[dict] = None
     statistics:Optional[dict] = None
+
+    @classmethod
+    def from_dict(cls, data:dict):
+        return cls(
+            name=data.get("name"),
+            common_name=data.get("common_name"),
+            wavelength_um=data.get("wavelength_um"),
+            aliases=data.get("aliases"),
+            gsd=data.get("gsd"),
+            statistics=data.get("statistics")
+        )

@@ -1329,7 +1329,7 @@ Example usage:
             logger.info(f"post_dry_run: {post_dry_run_data=}")
             return post_dry_run_data
         except Exception as e:
-            logger.error(f"post_dry_run failed: {e}", exc_info=True)
+            logger.warning(f"post_dry_run failed: {e}", exc_info=True)
 
 
 class GpsProcessing(ConcreteProcessing):
@@ -2429,7 +2429,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     asset["output_dir"] = str(job_dir)
 
                 if "bands" in asset:
-                    asset["bands"] = [Band(**b) for b in asset["bands"]]
+                    asset["bands"] = [Band.from_dict(b) for b in asset["bands"]]
                 results_dict[title] = asset
 
         return results_dict

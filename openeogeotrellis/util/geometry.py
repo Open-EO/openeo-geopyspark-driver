@@ -1,8 +1,8 @@
+import functools
 import json
 import urllib.parse
-
 import math
-from typing import Union
+from typing import Union, Dict
 
 import shapely.geometry
 from openeo_driver.util.geometry import BoundingBox
@@ -16,22 +16,36 @@ class BoundingBoxMerger:
         :param crs: (optional) desired target CRS for the merged bounding box
         """
         self._crs = crs
-        self._bbox: Union[None, BoundingBox] = None
+        # Collect the bounding boxes per crs
+        # so that `add`-time union does not involce reprojection.
+        # Only do reprojection (if any) when the final merged bbox is requested.
+        self._bboxes_per_crs: Dict[str, BoundingBox] = {}
 
     def add(self, bbox: BoundingBox):
         """Add a bounding box to merge."""
-        if self._bbox is None:
-            if self._crs:
-                # Just ensure first bbox is in desired CRS (if any)
-                # (subsequent unions will follow automatically)
-                bbox = bbox.align_to(target=self._crs)
-            self._bbox = bbox
+        if bbox.crs not in self._bboxes_per_crs:
+            self._bboxes_per_crs[bbox.crs] = bbox
         else:
-            self._bbox = self._bbox.union(bbox)
+            self._bboxes_per_crs[bbox.crs] = self._bboxes_per_crs[bbox.crs].union(bbox)
 
     def get(self) -> Union[None, BoundingBox]:
         """Get the merged bounding box (or None if no boxes were added)."""
-        return self._bbox
+        if not self._bboxes_per_crs:
+            return None
+        elif self._crs:
+            return functools.reduce(
+                lambda b1, b2: b1.union(b2),
+                (b.align_to(self._crs) for b in self._bboxes_per_crs.values()),
+            )
+        elif len(self._bboxes_per_crs) == 1:
+            # Special case: no explicit target CRS:
+            # only works if all input bboxes used same CRS,
+            # so we can return their union as is.
+            return self._bboxes_per_crs.popitem()[1]
+        else:
+            raise ValueError(
+                f"Undefined bounding box merging: no target CRS specified, but multiple CRSes across input: {sorted(self._bboxes_per_crs.keys())}."
+            )
 
 
 class GridSnapper:
@@ -120,7 +134,7 @@ def bbox_to_geojson(*args) -> dict:
     else:
         raise ValueError(args)
 
-    polygon = shapely.geometry.box(xmin, ymin, xmax, ymax, ccw=True)
+    geometry = BoundingBox(xmin, ymin, xmax, ymax, crs=4326).as_geometry()
     # TODO #1161 use `orient_polygons` to be sure, once we require Shapely>=2.1.0
-    # polygon = shapely.orient_polygons(polygon)
-    return shapely.geometry.mapping(polygon)
+    # polygon = shapely.orient_polygons(geometry)
+    return shapely.geometry.mapping(geometry)

@@ -93,11 +93,11 @@ class ObjectStorageWorkspace(Workspace):
                 if not is_root:
                     raise NotImplementedError("nested collections")
                 # make the collection file end up at $target, not at $target/collection.json
-                return f"{parent_dir}/{target.name}"
+                return f"{parent_dir.rstrip('/')}/{target.name}"
 
             def item_func(item: Item, parent_dir: str) -> str:
                 unique_item_filename = item.id.replace("/", "_")
-                return f"{parent_dir}/{target.name}/{unique_item_filename}.json"
+                return f"{parent_dir.rstrip('/')}/{target.name}_items/{unique_item_filename}.json"
 
             return CustomLayoutStrategy(collection_func=collection_func, item_func=item_func)
 
@@ -124,7 +124,11 @@ class ObjectStorageWorkspace(Workspace):
             try:
                 existing_collection = Collection.from_file(f"s3://{self.bucket}/{target}", stac_io=self._stac_io)
             except botocore.exceptions.ClientError as e:
-                if e.response["Error"]["Code"] != "NoSuchKey":
+                error_code = e.response["Error"]["Code"]
+                if error_code == "AccessDenied":
+                    # lack of a ListBucket permission returns AccessDenied instead of NotFound for unknown keys
+                    _log.info(f"got {error_code} for key {target}; assuming it does not exist", exc_info=True)
+                elif error_code != "NoSuchKey":
                     raise
 
             assert new_collection.self_href.startswith("/"), f"expected path on disk but got {new_collection.self_href}"
@@ -132,7 +136,7 @@ class ObjectStorageWorkspace(Workspace):
 
             if not existing_collection:
                 new_collection.normalize_hrefs(
-                    root_href=f"s3://{self.bucket}/{target.parent}", strategy=href_layout_strategy()
+                    root_href=f"s3://{self.bucket}/{self._parent_prefix(target)}", strategy=href_layout_strategy()
                 )
                 new_collection = new_collection.map_assets(lambda _, asset: replace_asset_href(asset))
                 new_collection.save(CatalogType.SELF_CONTAINED, stac_io=self._stac_io)
@@ -155,7 +159,7 @@ class ObjectStorageWorkspace(Workspace):
                     merged_collection.add_item(new_item, strategy=href_layout_strategy())
 
                 merged_collection.normalize_hrefs(
-                    root_href=f"s3://{self.bucket}/{target.parent}", strategy=href_layout_strategy()
+                    root_href=f"s3://{self.bucket}/{self._parent_prefix(target)}", strategy=href_layout_strategy()
                 )
                 merged_collection.save(CatalogType.SELF_CONTAINED)
 
@@ -221,3 +225,7 @@ class ObjectStorageWorkspace(Workspace):
             "md5": md5_checksum(source_file),
             "mtime": str(source_file.stat().st_mtime_ns),
         }
+
+    @staticmethod
+    def _parent_prefix(target: PurePath) -> str:
+        return "" if len(target.parts) == 1 else str(target.parent)

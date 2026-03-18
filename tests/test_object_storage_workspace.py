@@ -3,6 +3,8 @@ from pathlib import PurePath, Path
 from typing import Set, List
 from urllib.parse import urlparse
 
+import botocore.exceptions
+import mock
 from pystac import Collection, Extent, SpatialExtent, TemporalExtent, Item, CatalogType, Asset
 import pytest
 
@@ -25,7 +27,7 @@ def test_import_file(tmp_path, mock_s3_client, mock_s3_bucket, remove_original, 
         source_file = source_file_absolute
     merge = "some/target"
 
-    workspace = ObjectStorageWorkspace(bucket="openeo-fake-bucketname", region="waw3-1")
+    workspace = ObjectStorageWorkspace(bucket=mock_s3_bucket.name, region="waw3-1")
     workspace_uri = workspace.import_file(
         common_path=source_directory, file=source_file, merge=merge, remove_original=remove_original
     )
@@ -44,7 +46,7 @@ def test_import_file(tmp_path, mock_s3_client, mock_s3_bucket, remove_original, 
 
 @pytest.mark.parametrize("remove_original", [False, True])
 def test_import_object(tmp_path, mock_s3_client, mock_s3_bucket, remove_original):
-    source_bucket = target_bucket = "openeo-fake-bucketname"
+    source_bucket = target_bucket = mock_s3_bucket.name
     source_key = "some/source/object"
     merge = "some/target"
     assert source_key != merge
@@ -77,9 +79,15 @@ def test_import_object(tmp_path, mock_s3_client, mock_s3_bucket, remove_original
 
 
 @pytest.mark.parametrize("remove_original", [False, True])
-def test_merge_new(mock_s3_client, mock_s3_bucket, tmp_path, remove_original: bool):
+@pytest.mark.parametrize(
+    "merge",
+    [
+        PurePath("some/target/collection.json"),
+        PurePath("collection.json"),
+    ],
+)
+def test_merge_new(mock_s3_client, mock_s3_bucket, tmp_path, merge: PurePath, remove_original: bool):
     test_region = "eu-nl"
-    merge = PurePath("some") / "target" / "collection.json"
 
     source_directory = tmp_path / "src"
     source_directory.mkdir()
@@ -89,7 +97,7 @@ def test_merge_new(mock_s3_client, mock_s3_bucket, tmp_path, remove_original: bo
         f.write("disk_asset.tif\n")
     disk_asset_mtime_ns = disk_asset_path.stat().st_mtime_ns
 
-    source_bucket = target_bucket = "openeo-fake-bucketname"
+    source_bucket = target_bucket = mock_s3_bucket.name
     source_key = "src/object_asset.tif"
 
     mock_s3_client.put_object(
@@ -118,25 +126,25 @@ def test_merge_new(mock_s3_client, mock_s3_bucket, tmp_path, remove_original: bo
     }
 
     assert asset_workspace_uris == {
-        "disk_asset.tif": f"s3://{target_bucket}/{merge}/disk_asset.tif",
-        "object_asset.tif": f"s3://{target_bucket}/{merge}/object_asset.tif",
+        "disk_asset.tif": f"s3://{target_bucket}/{merge}_items/disk_asset.tif",
+        "object_asset.tif": f"s3://{target_bucket}/{merge}_items/object_asset.tif",
     }
 
-    assert _workspace_keys(mock_s3_client, target_bucket, prefix="some/target/collection.json") == {
-        "some/target/collection.json",
-        "some/target/collection.json/disk_asset.tif.json",
-        "some/target/collection.json/disk_asset.tif",
-        "some/target/collection.json/object_asset.tif.json",
-        "some/target/collection.json/object_asset.tif",
+    assert _workspace_keys(mock_s3_client, target_bucket, prefix=f"{merge}") == {
+        f"{merge}",
+        f"{merge}_items/disk_asset.tif.json",
+        f"{merge}_items/disk_asset.tif",
+        f"{merge}_items/object_asset.tif.json",
+        f"{merge}_items/object_asset.tif",
     }
 
-    disk_asset_object_metadata = mock_s3_bucket.Object(key="some/target/collection.json/disk_asset.tif").metadata
+    disk_asset_object_metadata = mock_s3_bucket.Object(key=f"{merge}_items/disk_asset.tif").metadata
     assert disk_asset_object_metadata["md5"] == "2132afe6fed0b020888c10872309a98e"
     assert int(disk_asset_object_metadata["mtime"]) == pytest.approx(
         disk_asset_mtime_ns, abs=1_000_000_000  # 1s leeway
     )
 
-    object_asset_object_metadata = mock_s3_bucket.Object(key="some/target/collection.json/object_asset.tif").metadata
+    object_asset_object_metadata = mock_s3_bucket.Object(key=f"{merge}_items/object_asset.tif").metadata
     assert object_asset_object_metadata["md5"] == "187812e0004062471a40ed0063f6f9d8"
     assert object_asset_object_metadata["mtime"] == "1756477240123456789"
 
@@ -150,23 +158,29 @@ def test_merge_new(mock_s3_client, mock_s3_bucket, tmp_path, remove_original: bo
 
     assert disk_item.id == "disk_asset.tif"
     assert disk_item.collection_id == exported_collection.id
-    assert disk_item.get_self_href() == f"s3://{workspace.bucket}/{merge}/{disk_item.id}.json"
+    assert disk_item.get_self_href() == f"s3://{workspace.bucket}/{merge}_items/{disk_item.id}.json"
     exported_disk_asset = disk_item.get_assets().pop("disk_asset.tif")
-    assert exported_disk_asset.get_absolute_href() == f"s3://{workspace.bucket}/{merge}/{disk_item.id}"
+    assert exported_disk_asset.get_absolute_href() == f"s3://{workspace.bucket}/{merge}_items/{disk_item.id}"
 
     assert object_item.id == "object_asset.tif"
     assert object_item.collection_id == exported_collection.id
-    assert object_item.get_self_href() == f"s3://{workspace.bucket}/{merge}/{object_item.id}.json"
+    assert object_item.get_self_href() == f"s3://{workspace.bucket}/{merge}_items/{object_item.id}.json"
     exported_object_asset = object_item.get_assets().pop("object_asset.tif")
-    assert exported_object_asset.get_absolute_href() == f"s3://{workspace.bucket}/{merge}/{object_item.id}"
+    assert exported_object_asset.get_absolute_href() == f"s3://{workspace.bucket}/{merge}_items/{object_item.id}"
 
     assert _downloadable_assets(exported_collection, mock_s3_client) == 2
 
 
 @pytest.mark.parametrize("remove_original", [False, True])
-def test_merge_into_existing(tmp_path, mock_s3_client, mock_s3_bucket, remove_original):
+@pytest.mark.parametrize(
+    "merge",
+    [
+        PurePath("some/target/collection.json"),
+        PurePath("collection.json"),
+    ],
+)
+def test_merge_into_existing(tmp_path, mock_s3_client, mock_s3_bucket, merge, remove_original):
     test_region = "waw3-1"
-    merge = PurePath("some") / "target" / "collection.json"
 
     source_directory = tmp_path / "src"
     source_directory.mkdir()
@@ -175,7 +189,7 @@ def test_merge_into_existing(tmp_path, mock_s3_client, mock_s3_bucket, remove_or
     with open(disk_asset_path, "w") as f:
         f.write("disk_asset.tif\n")
 
-    source_bucket = target_bucket = "openeo-fake-bucketname"
+    source_bucket = target_bucket = mock_s3_bucket.name
     source_key = "src/object_asset.tif"
 
     mock_s3_client.put_object(Bucket=source_bucket, Key=source_key, Body="object_asset.tif\n")
@@ -216,15 +230,15 @@ def test_merge_into_existing(tmp_path, mock_s3_client, mock_s3_bucket, remove_or
     }
 
     assert asset_workspace_uris == {
-        "object_asset.tif": f"s3://{target_bucket}/{merge}/object_asset.tif",
+        "object_asset.tif": f"s3://{target_bucket}/{merge}_items/object_asset.tif",
     }
 
-    assert _workspace_keys(mock_s3_client, target_bucket, prefix="some/target/collection.json") == {
-        "some/target/collection.json",
-        "some/target/collection.json/disk_asset.tif",
-        "some/target/collection.json/disk_asset.tif.json",
-        "some/target/collection.json/object_asset.tif",
-        "some/target/collection.json/object_asset.tif.json",
+    assert _workspace_keys(mock_s3_client, target_bucket, prefix=f"{merge}") == {
+        f"{merge}",
+        f"{merge}_items/disk_asset.tif",
+        f"{merge}_items/disk_asset.tif.json",
+        f"{merge}_items/object_asset.tif",
+        f"{merge}_items/object_asset.tif.json",
     }
 
     assert disk_asset_path.exists() != remove_original
@@ -245,6 +259,54 @@ def test_merge_into_existing(tmp_path, mock_s3_client, mock_s3_bucket, remove_or
     assert all(item.collection_id == exported_collection.id for item in items)
 
     assert _downloadable_assets(exported_collection, mock_s3_client) == 2
+
+
+def test_custom_stac_io_logs_client_error_context(mock_s3_bucket, caplog):
+    custom_stac_io = CustomStacIO()
+
+    with pytest.raises(botocore.exceptions.ClientError):
+        custom_stac_io.read_text(f"s3://{mock_s3_bucket.name}/some/object")
+
+    with pytest.raises(botocore.exceptions.ClientError):
+        custom_stac_io.write_text(f"s3://unknown_bucket/some/object", txt='{"stac_version": "1.1.0"}')
+
+    assert "could not get object at key some/object: [NoSuchKey] The specified key does not exist." in caplog.messages
+    assert (
+        "could not put object at key some/object: [NoSuchBucket] The specified bucket does not exist" in caplog.messages
+    )
+
+
+def test_merge_new_AccessDenied(mock_s3_client, mock_s3_bucket, tmp_path, caplog):
+    """Treat AccessDenied and KeyNotFound in the same way: the Collection document does not exist yet."""
+
+    from botocore.client import BaseClient
+
+    og_make_api_call = BaseClient._make_api_call
+
+    def raise_access_denied(self, operation_name, api_params):
+        if operation_name == "GetObject":
+            raise botocore.exceptions.ClientError({"Error": {"Code": "AccessDenied", "Message": None}}, operation_name)
+
+        return og_make_api_call(self, operation_name, api_params)
+
+    with mock.patch("botocore.client.BaseClient._make_api_call", new=raise_access_denied):
+        new_collection = _collection(root_path=tmp_path, collection_id="new_collection")
+
+        workspace = ObjectStorageWorkspace(mock_s3_bucket.name, region="waw3-1")
+        target = PurePath("some/target/collection.json")
+        workspace.merge(new_collection, target)
+
+    assert _workspace_keys(mock_s3_client, workspace.bucket) == {str(target)}
+
+    AccessDenied_log = [
+        log for log in caplog.records if log.name == "openeogeotrellis.workspace.object_storage_workspace"
+    ][0]
+
+    assert AccessDenied_log.levelname == "INFO"
+    assert (
+        AccessDenied_log.message == "got AccessDenied for key some/target/collection.json; assuming it does not exist"
+    )
+    assert AccessDenied_log.exc_info
 
 
 def _collection(

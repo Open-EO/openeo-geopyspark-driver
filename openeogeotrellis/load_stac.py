@@ -3,9 +3,11 @@ from __future__ import annotations
 import collections
 import datetime
 import datetime as dt
+import fnmatch
 import functools
 import logging
 import os
+import random
 import re
 import time
 from dataclasses import dataclass
@@ -37,7 +39,6 @@ from openeo_driver.errors import (
 from openeo_driver.jobregistry import PARTIAL_JOB_STATUS
 from openeo_driver.users import User
 from openeo_driver.util.geometry import BoundingBox, GeometryBufferer
-from openeo_driver.util.http import requests_with_retry
 from openeo_driver.util.utm import utm_zone_from_epsg
 from openeo_driver.utils import EvalEnv
 from pystac import STACObject
@@ -48,7 +49,7 @@ from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.constants import EVAL_ENV_KEY
 from openeogeotrellis.geopysparkcubemetadata import GeopysparkCubeMetadata
 from typing import TYPE_CHECKING
-from openeogeotrellis.integrations.stac import ResilientStacIO
+from openeogeotrellis.integrations.stac import LoggingStacApiIO, ResilientStacIO
 from openeogeotrellis.util.datetime import DateTimeLikeOrNone, to_datetime_utc_unless_none
 from openeogeotrellis.util.geometry import GridSnapper
 from openeogeotrellis.util.projection import is_utm_epsg_code
@@ -60,6 +61,34 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 REQUESTS_TIMEOUT_SECONDS = 60
+
+STAC_API_PER_PAGE_LIMIT_DEFAULT = 100
+STAC_API_BACKOFF_FACTOR = 2
+STAC_API_RETRY_TOTAL = 25
+STAC_API_MINIMUM_BACKOFF_SECONDS = 1
+STAC_API_MAXIMUM_BACKOFF_SECONDS = 240
+
+
+class _JitteredRetry(Retry):
+    """Retry with jitter to avoid thundering herd on 429 responses.
+
+    - No Retry-After header: full jitter (random in [0, base_backoff])
+    - Retry-After header present: respects it as a minimum with full jitter
+    """
+
+    def get_backoff_time(self) -> float:
+        base = min(super().get_backoff_time(), STAC_API_MAXIMUM_BACKOFF_SECONDS)
+        return random.uniform(0, base)
+
+    def sleep_for_retry(self, response=None) -> bool:
+        retry_after = self.get_retry_after(response)
+        if retry_after is not None:
+            backoff_time = max(super().get_backoff_time(), STAC_API_MINIMUM_BACKOFF_SECONDS)
+            backoff_time = min(backoff_time, STAC_API_MAXIMUM_BACKOFF_SECONDS)
+            jitter = random.uniform(0, backoff_time)
+            time.sleep(retry_after + jitter)
+            return True
+        return False
 
 
 class NoDataAvailableException(OpenEOApiException):
@@ -145,9 +174,6 @@ def _prepare_context(
     """
     from openeogeotrellis import datacube_parameters
 
-    # TODO: Currently disabled https://github.com/eu-cdse/openeo-cdse-infra/issues/956
-    load_params.resolve_tile_overlap = False
-
     # Feature flags: merge global (e.g. from layer catalog info) and user-provided (higher precedence)
     feature_flags = {**(feature_flags or {}), **load_params.get("featureflags", {})}
 
@@ -166,9 +192,10 @@ def _prepare_context(
     user: Optional[User] = env.get("user")
 
     requested_bbox = BoundingBox.from_dict_or_none(load_params.spatial_extent, default_crs="EPSG:4326")
-    temporal_extent = load_params.temporal_extent
-    #TODO normalize_temporal_extent replaces 'None' with "2000-01-01", which is not a good fallback date.
-    from_date, until_date = map(dt.datetime.fromisoformat, normalize_temporal_extent(temporal_extent))
+    requested_temporal_extent = _TemporalExtent.from_load_param_extent(load_params.temporal_extent)
+
+    # TODO normalize_temporal_extent replaces 'None' with "2000-01-01", which is not a good fallback date.
+    from_date, until_date = map(dt.datetime.fromisoformat, normalize_temporal_extent(load_params.temporal_extent))
     to_date = (
         dt.datetime.combine(until_date, dt.time.max, until_date.tzinfo)
         if from_date == until_date
@@ -242,7 +269,9 @@ def _prepare_context(
 
         cellsize_override = feature_flags.get("cellsize_override")
         fix_proj_transform = feature_flags.get("fix_proj_transform", False)
+        skipped_assets = feature_flags.get("skipped_assets", [])
 
+        logger.info(f"Building OpenSearch features for {len(item_collection.items)} items (band_selection={band_selection})")
         for itm, band_assets in item_collection.iter_items_with_band_assets():
             opensearch_stats["items"] += 1
             opensearch_stats[f"items with {len(band_assets)=}"] += 1
@@ -265,6 +294,8 @@ def _prepare_context(
                     kv[0],
                 ),
             ):
+                if asset_id in skipped_assets:
+                    continue
                 opensearch_stats["assets"] += 1
 
                 proj_epsg, proj_bbox, proj_shape = _get_proj_metadata(
@@ -352,10 +383,58 @@ def _prepare_context(
                     logger.debug(
                         f"FeatureBuilder.addLink {itm.id=} {asset_id=} {asset_href=} {link_band_names=} from {granule_metadata_band_map=}"
                     )
+                    opensearch_stats["builder.addLink"] += 1
                     builder = builder.addLink(asset_href, asset_id, link_band_names)
+
+            # Skip item if no assets/links were collected
+            link_count = len(builder.links())
+            opensearch_stats[f"item with {link_count=}"] += 1
+            if link_count == 0:
+                opensearch_stats["item skip: no links"] += 1
+                continue
 
             # TODO: the proj_* values are assigned in inner per-asset loop,
             #       so the values here are ill-defined (the values might even come from another item)
+
+            item_bbox_is_implausible = (
+                # Implausible bounding box: far too wide longitude span for UTM item/assets,
+                # likely due poor antimeridian handling.
+                itm.bbox
+                and proj_epsg
+                and is_utm_epsg_code(proj_epsg)
+                and itm.bbox[2] - itm.bbox[0] > 180
+            )
+            if item_bbox_is_implausible:
+                opensearch_stats["implausible bbox"] += 1
+                # Check other metadata for match with spatial extent to decide to keep or skip item.
+                # TODO: hopefully this special handling can be eliminated once STAC API implementations mature.
+                try:
+                    if proj_bbox:
+                        fallback_geometry = BoundingBox.from_wsen_tuple(proj_bbox, crs=proj_epsg)
+                    elif itm.geometry:
+                        # TODO: check if geometry is valid wrt antimeridian handling?
+                        fallback_geometry = shapely.geometry.shape(itm.geometry)
+                    else:
+                        fallback_geometry = None
+                except Exception as e:
+                    logger.error(
+                        f"Failed to obtain fallback geometry for {itm.id!r} with implausible bbox {itm.bbox!r}",
+                        exc_info=True,
+                    )
+                    fallback_geometry = None
+
+                if fallback_geometry and spatiotemporal_extent.spatial_extent.intersects(fallback_geometry):
+                    opensearch_stats["implausible bbox: keep"] += 1
+                    logger.warning(
+                        f"Detected implausible bbox {itm.bbox!r} in item {itm.id!r} ({proj_epsg=} {proj_bbox=} {fallback_geometry=})"
+                    )
+                else:
+                    opensearch_stats["implausible bbox: skip"] += 1
+                    logger.warning(
+                        f"Skipping item {itm.id!r} with implausible bbox {itm.bbox!r} ({proj_epsg=} {proj_bbox=} {fallback_geometry=})"
+                    )
+                    continue
+
             if proj_epsg:
                 builder = builder.withCRS(f"EPSG:{proj_epsg}")
             if proj_bbox:
@@ -365,16 +444,25 @@ def _prepare_context(
                 cell_width, cell_height = cellsize_override or _compute_cellsize(proj_bbox, proj_shape)
                 builder = builder.withResolution(cell_width)
 
-            latlon_bbox = BoundingBox.from_wsen_tuple(itm.bbox, 4326) if itm.bbox else None
-            item_bbox = latlon_bbox
-            if proj_bbox is not None and proj_epsg is not None:
+
+            if proj_bbox and proj_epsg:
                 item_bbox = BoundingBox.from_wsen_tuple(proj_bbox, crs=proj_epsg)
                 latlon_bbox = item_bbox.reproject(4326)
+            elif itm.bbox and not item_bbox_is_implausible:
+                item_bbox = latlon_bbox = BoundingBox.from_wsen_tuple(itm.bbox, 4326)
+            else:
+                latlon_bbox = item_bbox = None
 
             if latlon_bbox is not None:
-                builder = builder.withBBox(*map(float, latlon_bbox.as_wsen_tuple()))
+                w, s, e, n = latlon_bbox.as_wsen_tuple()
+                if e < w:
+                    # Workaround for `withBBox` not properly supporting bounding boxes across antimeridian
+                    e += 360
+                opensearch_stats["builder.withBBox"] += 1
+                builder = builder.withBBox(float(w), float(s), float(e), float(n))
 
             if itm.geometry is not None:
+                opensearch_stats["builder.withGeometryFromWkt"] += 1
                 builder = builder.withGeometryFromWkt(str(shapely.geometry.shape(itm.geometry)))
 
             self_links = itm.get_links(rel="self")
@@ -384,17 +472,20 @@ def _prepare_context(
                 builder = builder.withSelfUrl(self_url)
                 opensearch_stats["builder.withSelfUrl"] += 1
 
+            logger.debug(f"opensearch.addFeature {itm.id=}")
             opensearch_client.addFeature(builder.build())
             opensearch_stats["opensearch.addFeature"] += 1
 
-            stac_bbox = (
-                item_bbox
-                if stac_bbox is None
-                else BoundingBox.from_wsen_tuple(
-                    item_bbox.as_polygon().union(stac_bbox.as_polygon()).bounds, stac_bbox.crs
+            if item_bbox:
+                stac_bbox = (
+                    item_bbox
+                    if stac_bbox is None
+                    else BoundingBox.from_wsen_tuple(
+                        item_bbox.as_polygon().union(stac_bbox.as_polygon()).bounds, stac_bbox.crs
+                    )
                 )
-            )
 
+        opensearch_stats = dict(sorted(opensearch_stats.items()))
         logger.info(f"{opensearch_stats=}")
     except OpenEOApiException:
         raise
@@ -418,11 +509,13 @@ def _prepare_context(
         metadata = metadata.add_spatial_dimension(name="y", extent=[])
 
     item_collection_temporal_extent = item_collection.get_temporal_extent()
+    metadata_temporal_extent = (
+        map_optional(dt.datetime.isoformat, requested_temporal_extent.from_date or item_collection_temporal_extent[0]),
+        map_optional(dt.datetime.isoformat, requested_temporal_extent.to_date or item_collection_temporal_extent[1]),
+    )
+    logger.info(f"_prepare_context {url=} {metadata_temporal_extent=}")
     metadata = metadata.with_temporal_extent(
-        temporal_extent=(
-            map_optional(dt.datetime.isoformat, item_collection_temporal_extent[0]) or temporal_extent[0],
-            map_optional(dt.datetime.isoformat, item_collection_temporal_extent[1]) or temporal_extent[1],
-        ),
+        temporal_extent=metadata_temporal_extent,
         allow_adding_dimension=True,
     )
 
@@ -533,9 +626,11 @@ def _prepare_context(
                     f"load_stac: Band order should be alphabetical for NetCDF STAC-catalog with a time dimension. "
                     f"Was {requested_band_names}, but should be {sorted_bands_from_catalog} instead.",
                 )
+        logger.info("Creating NetCDFCollection pyramid factory")
         pyramid_factory = jvm.org.openeo.geotrellis.layers.NetCDFCollection
     else:
         opensearch_link_titles = [opensearch_link_titles_map.get(b, b) for b in source_band_names]
+        logger.info(f"Creating PyramidFactory for {len(opensearch_link_titles)} band(s): {opensearch_link_titles}")
         logger.debug(f"{opensearch_link_titles=} (from {source_band_names=} and {opensearch_link_titles_map=})")
         max_soft_errors_ratio = env.get(EVAL_ENV_KEY.MAX_SOFT_ERRORS_RATIO, 0.0)
         pyramid_factory = jvm.org.openeo.geotrellis.file.PyramidFactory(
@@ -630,6 +725,7 @@ def _build_datacube(context: _LoadStacContext) -> GeopysparkDataCube:
 
     try:
         if netcdf_with_time_dimension:
+            logger.info("_build_datacube: calling NetCDFCollection.datacube_seq")
             pyramid = pyramid_factory.datacube_seq(
                 projected_polygons,
                 from_date.isoformat(),
@@ -641,6 +737,7 @@ def _build_datacube(context: _LoadStacContext) -> GeopysparkDataCube:
             )
         elif single_level:
             if not items_found and allow_empty_cubes:
+                logger.info("_build_datacube: calling PyramidFactory.empty_datacube_seq")
                 pyramid = pyramid_factory.empty_datacube_seq(
                     projected_polygons,
                     from_date.isoformat(),
@@ -648,6 +745,7 @@ def _build_datacube(context: _LoadStacContext) -> GeopysparkDataCube:
                     data_cube_parameters,
                 )
             else:
+                logger.info("_build_datacube: calling PyramidFactory.datacube_seq")
                 pyramid = pyramid_factory.datacube_seq(
                     projected_polygons,
                     from_date.isoformat(),
@@ -665,13 +763,16 @@ def _build_datacube(context: _LoadStacContext) -> GeopysparkDataCube:
                 extent_crs = "EPSG:4326"
 
             if not items_found and allow_empty_cubes:
+                logger.info("_build_datacube: calling PyramidFactory.empty_pyramid_seq")
                 pyramid = pyramid_factory.empty_pyramid_seq(
                     extent, extent_crs, from_date.isoformat(), to_date.isoformat()
                 )
             else:
+                logger.info("_build_datacube: calling PyramidFactory.pyramid_seq")
                 pyramid = pyramid_factory.pyramid_seq(
                     extent, extent_crs, from_date.isoformat(), to_date.isoformat(), metadata_properties, correlation_id
                 )
+        logger.info(f"_build_datacube: done building pyramid")
     except Exception as e:
         raise OpenEOApiException(
             message=f"load_stac: Error when constructing datacube from {url}: {e}",
@@ -781,6 +882,7 @@ def construct_item_collection(
     stac_metadata_parser = _StacMetadataParser(logger=logger)
 
     if dependency_job_info and batch_jobs:
+        logger.info(f"construct_item_collection: loading from dependency job {dependency_job_info.id!r}")
         # TODO: improve metadata for this case
         metadata = GeopysparkCubeMetadata(metadata={})
         item_collection = ItemCollection.from_own_job(
@@ -789,7 +891,7 @@ def construct_item_collection(
         # TODO: improve band name detection for this case
         band_names = []
     else:
-        logger.info(f"load_stac of arbitrary URL {url}")
+        logger.info(f"construct_item_collection: fetching STAC object from {url=} {spatiotemporal_extent=}")
 
         stac_object = _await_stac_object(
             url=url,
@@ -798,6 +900,7 @@ def construct_item_collection(
             max_poll_time=max_poll_time,
             stac_io=stac_io,
         )
+        logger.info(f"construct_item_collection: got {type(stac_object).__name__} {stac_object.id!r}")
 
         if isinstance(stac_object, pystac.Item):
             if property_filter_pg_map:
@@ -810,6 +913,7 @@ def construct_item_collection(
             metadata = GeopysparkCubeMetadata(metadata={})
             band_names = stac_metadata_parser.bands_from_stac_item(item=item).band_names()
             item_collection = ItemCollection.from_stac_item(item=item, spatiotemporal_extent=spatiotemporal_extent)
+            logger.info(f"construct_item_collection: single Item, {band_names=}, collected {len(item_collection.items)} item(s)")
         elif isinstance(stac_object, pystac.Collection) and _supports_item_search(stac_object):
             collection = stac_object
             netcdf_with_time_dimension = contains_netcdf_with_time_dimension(collection)
@@ -818,12 +922,21 @@ def construct_item_collection(
             )
 
             band_names = stac_metadata_parser.bands_from_stac_collection(collection=collection).band_names()
+            logger.info(f"construct_item_collection: STAC API Collection {collection.id!r}, {band_names=}, {netcdf_with_time_dimension=}")
 
-            property_filter = PropertyFilter(properties=property_filter_pg_map, env=env)
+            # TODO: _experimental_properties_prefix is just a temporary feature flag to allow easy fall back to old behavior.
+            #       Ideally however, this prefix stuff should just be dropped #1584
+            properties_prefix = feature_flags.get("_experimental_properties_prefix", "")
+            property_filter = PropertyFilter(
+                properties=property_filter_pg_map, env=env, properties_prefix=properties_prefix
+            )
             if property_filter_adaptations := feature_flags.get("property_filter_adaptations"):
                 logger.debug(f"AdaptingPropertyFilter with {property_filter_adaptations=}")
                 property_filter = AdaptingPropertyFilter(
-                    properties=property_filter_pg_map, env=env, adaptations=property_filter_adaptations
+                    properties=property_filter_pg_map,
+                    env=env,
+                    adaptations=property_filter_adaptations,
+                    properties_prefix=properties_prefix,
                 )
 
             with TimingLogger(title=f"ItemCollection.from_stac_api from {url=}", logger=logger.info):
@@ -835,6 +948,7 @@ def construct_item_collection(
                     use_filter_extension=feature_flags.get("use-filter-extension", True),
                     # TODO #1312 why skipping datetime filter especially for netcdf with time dimension?
                     skip_datetime_filter=netcdf_with_time_dimension,
+                    per_page_limit=feature_flags.get("stac_api_per_page_limit", STAC_API_PER_PAGE_LIMIT_DEFAULT),
                 )
         else:
             assert isinstance(stac_object, pystac.Catalog)  # static Catalog + Collection
@@ -850,8 +964,12 @@ def construct_item_collection(
                 netcdf_with_time_dimension = contains_netcdf_with_time_dimension(collection=catalog)
 
             band_names = stac_metadata_parser.bands_from_stac_object(obj=stac_object).band_names()
+            logger.info(f"construct_item_collection: static Catalog {catalog.id!r}, {band_names=}, {netcdf_with_time_dimension=}")
 
-            item_collection = ItemCollection.from_stac_catalog(catalog, spatiotemporal_extent=spatiotemporal_extent)
+            with TimingLogger(title=f"ItemCollection.from_stac_catalog from {url=}", logger=logger.info):
+                item_collection = ItemCollection.from_stac_catalog(catalog, spatiotemporal_extent=spatiotemporal_extent)
+
+    logger.info(f"construct_item_collection: collected {len(item_collection.items)} items")
 
     # Deduplicate items
     # TODO: smarter and more fine-grained deduplication behavior?
@@ -886,12 +1004,55 @@ class _TemporalExtent:
     """
 
     # TODO: move this to a more generic location for better reuse
+    # TODO: re-implement in dataclasses/attrs to better enforce immutability and simplify equality/hash implementation
 
-    __slots__ = ("from_date", "to_date")
+    __slots__ = ("_from_date", "_to_date")
 
     def __init__(self, from_date: DateTimeLikeOrNone, to_date: DateTimeLikeOrNone):
-        self.from_date: Union[datetime.datetime, None] = to_datetime_utc_unless_none(from_date)
-        self.to_date: Union[datetime.datetime, None] = to_datetime_utc_unless_none(to_date)
+        self._from_date: Union[datetime.datetime, None] = to_datetime_utc_unless_none(from_date)
+        self._to_date: Union[datetime.datetime, None] = to_datetime_utc_unless_none(to_date)
+
+    @property
+    def from_date(self) -> Union[datetime.datetime, None]:
+        return self._from_date
+
+    @property
+    def to_date(self) -> Union[datetime.datetime, None]:
+        return self._to_date
+
+    def _key(self) -> tuple:
+        return (self.from_date, self.to_date)
+
+    def __hash__(self):
+        return hash(self._key())
+
+    def __eq__(self, other):
+        if isinstance(other, _TemporalExtent):
+            return self._key() == other._key()
+        return NotImplemented
+
+    @classmethod
+    def from_load_param_extent(cls, extent: Tuple[DateTimeLikeOrNone, DateTimeLikeOrNone]) -> _TemporalExtent:
+        """
+        Create from openEO load_collection/load_stac-style temporal extent, considering:
+        - given as end-exclusive, per openEO convention
+        - possibly given in legacy (but invalid) way, where from and end date/day are identical,
+          which should be interpreted as a single-day extent
+        """
+        (from_date, until_date) = (to_datetime_utc_unless_none(d) for d in extent)
+        if until_date is None:
+            to_date = None
+        elif from_date == until_date:
+            # Fallback mechanism for legacy usage patterns
+            to_date = datetime.datetime.combine(until_date, datetime.time.max, until_date.tzinfo)
+            logger.warning(
+                f"Invalid temporal extent (identical start and end: {from_date!r}). Normalized end to {to_date!r}."
+            )
+        else:
+            # Convert openEO temporal extent convention (end-exclusive) to internal(?) convention (end-inclusive)
+            # TODO: isn't it just more transparant/consistent to keep working with end-exclusive definition instead of subtracting 1 millisecond here?
+            to_date = until_date - datetime.timedelta(milliseconds=1)
+        return cls(from_date=from_date, to_date=to_date)
 
     def as_tuple(self) -> Tuple[Union[datetime.datetime, None], Union[datetime.datetime, None]]:
         return self.from_date, self.to_date
@@ -949,14 +1110,28 @@ class _SpatialExtent:
     """
 
     # TODO: move this to a more generic location for better reuse
+    # TODO: enforce/ensure immutability
+    # TODO: re-implement in dataclasses/attrs to better enforce immutability and simplify equality/hash implementation
 
     __slots__ = ("_bbox", "_bbox_lonlat_shape")
 
     def __init__(self, *, bbox: Union[BoundingBox, None]):
         # TODO: support more bbox representations as input
         self._bbox = bbox
-        # cache for shapely polygon in lon/lat
-        self._bbox_lonlat_shape = self._bbox.reproject("EPSG:4326").as_polygon() if self._bbox else None
+        # Cache for shapely polygon in lon/lat
+        # Note that for cross-antimeridian cases this will be a multipolygon (two polygons on either side of the antimeridian)
+        self._bbox_lonlat_shape = self._bbox.reproject("EPSG:4326").as_geometry() if self._bbox else None
+
+    def _key(self) -> tuple:
+        return (self._bbox,)
+
+    def __hash__(self):
+        return hash(self._key())
+
+    def __eq__(self, other):
+        if isinstance(other, _SpatialExtent):
+            return self._key() == other._key()
+        return NotImplemented
 
     def as_bbox(self, crs: Optional[str] = None) -> Union[BoundingBox, None]:
         bbox = self._bbox
@@ -964,24 +1139,70 @@ class _SpatialExtent:
             bbox = bbox.reproject(crs)
         return bbox
 
-    def intersects(self, bbox: Union[List[float], Tuple[float, float, float, float], None]):
+    def intersects(
+        self,
+        geometry: Union[
+            List[float],
+            Tuple[float, float, float, float],
+            BoundingBox,
+            shapely.geometry.base.BaseGeometry,
+            None,
+        ],
+    ):
+        """
+        Check if given bbox/geometry is within the spatial extent.
+
+        :param geometry: One of:
+
+            - list/tuple of floats: assumed to be bounding box following GeoJSON conventions:
+                - lon-lat (EPSG:4326) coordinates
+                - antimeridian crossing is represented by `west` > `east`
+            - BoundingBox object with valid CRS
+            - shapely geometry (assumed to be in EPSG:4326, with proper antimeridian split if crossing)
+        """
         # TODO: this assumes bbox is in lon/lat coordinates, also support other CRSes?
-        if not self._bbox or bbox is None:
+        if not self._bbox or geometry is None:
             return True
-        return self._bbox_lonlat_shape.intersects(shapely.geometry.box(*bbox))
+        if isinstance(geometry, (list, tuple)):
+            shape = BoundingBox(*geometry, crs=4326).as_geometry()
+        elif isinstance(geometry, BoundingBox):
+            # TODO: this is technically not correct
+            #       (better is first to convert to geometry and reproject that)
+            #       but this is good enough for most intents and purposes
+            shape = geometry.reproject("EPSG:4326").as_geometry()
+        elif isinstance(geometry, shapely.geometry.base.BaseGeometry):
+            shape = geometry
+        else:
+            raise ValueError(geometry)
+        return self._bbox_lonlat_shape.intersects(shape)
 
 
 class _SpatioTemporalExtent:
     # TODO: move this to a more generic location for better reuse
+    # TODO: enforce/ensure immutability
+    # TODO: re-implement in dataclasses/attrs to better enforce immutability and simplify equality/hash implementation
+
     def __init__(
         self,
         *,
         bbox: Union[BoundingBox, None] = None,
+        temporal_extent: Optional[_TemporalExtent] = None,
         from_date: DateTimeLikeOrNone = None,
         to_date: DateTimeLikeOrNone = None,
     ):
         self._spatial_extent = _SpatialExtent(bbox=bbox)
-        self._temporal_extent = _TemporalExtent(from_date=from_date, to_date=to_date)
+        self._temporal_extent = temporal_extent or _TemporalExtent(from_date=from_date, to_date=to_date)
+
+    def _key(self) -> tuple:
+        return (self._spatial_extent, self._temporal_extent)
+
+    def __hash__(self):
+        return hash(self._key())
+
+    def __eq__(self, other):
+        if isinstance(other, _SpatioTemporalExtent):
+            return self._key() == other._key()
+        return NotImplemented
 
     @property
     def spatial_extent(self) -> _SpatialExtent:
@@ -1018,19 +1239,8 @@ def _spatiotemporal_extent_from_load_params(
     temporal_extent: Tuple[Optional[str], Optional[str]]
 ) -> _SpatioTemporalExtent:
     bbox = BoundingBox.from_dict_or_none(spatial_extent, default_crs="EPSG:4326")
-    (from_date, until_date) = (to_datetime_utc_unless_none(d) for d in temporal_extent)
-    if until_date is None:
-        to_date = None
-    elif from_date == until_date:
-        # Fallback mechanism for legacy usage patterns
-        to_date = datetime.datetime.combine(until_date, datetime.time.max, until_date.tzinfo)
-        logger.warning(
-            f"Invalid temporal extent (identical start and end: {from_date!r}). Normalized end to {to_date!r}."
-        )
-    else:
-        # Convert openEO temporal extent convention (end-exclusive) to internal(?) convention (end-inclusive)
-        to_date = until_date - datetime.timedelta(milliseconds=1)
-    return _SpatioTemporalExtent(bbox=bbox, from_date=from_date, to_date=to_date)
+    temporal_extent = _TemporalExtent.from_load_param_extent(temporal_extent)
+    return _SpatioTemporalExtent(bbox=bbox, temporal_extent=temporal_extent)
 
 
 def _get_item_temporal_extent(item: pystac.Item) -> Tuple[datetime.datetime, datetime.datetime]:
@@ -1147,6 +1357,7 @@ class ItemCollection:
         # TODO: is it possible to eliminate the need for this parameter?
         skip_datetime_filter: bool = False,
         original_url: str = "n/a",
+        per_page_limit: int = STAC_API_PER_PAGE_LIMIT_DEFAULT,
     ) -> ItemCollection:
         root_catalog = collection.get_root()
 
@@ -1172,16 +1383,16 @@ class ItemCollection:
             # https://stac.openeo.vito.be/ and https://stac.terrascope.be
             fields = None
 
-        retry = requests.adapters.Retry(
-            total=3,
-            backoff_factor=2,
+        retry = _JitteredRetry(
+            total=STAC_API_RETRY_TOTAL,
+            backoff_factor=STAC_API_BACKOFF_FACTOR,
             status_forcelist=frozenset([429, 500, 502, 503, 504]),
             allowed_methods=Retry.DEFAULT_ALLOWED_METHODS.union({"POST"}),
             raise_on_status=False,  # otherwise StacApiIO will catch this and lose the response body
         )
         query_info = ""
         try:
-            stac_io = pystac_client.stac_api_io.StacApiIO(timeout=REQUESTS_TIMEOUT_SECONDS, max_retries=retry)
+            stac_io = LoggingStacApiIO(timeout=REQUESTS_TIMEOUT_SECONDS, max_retries=retry)
             client = pystac_client.Client.open(root_catalog.get_self_href(), modifier=modifier, stac_io=stac_io)
 
             cql2_filter = property_filter.to_cql2_filter(
@@ -1192,33 +1403,61 @@ class ItemCollection:
             query_info += f" {use_filter_extension=} {cql2_filter=}"
 
             bbox = spatiotemporal_extent.spatial_extent.as_bbox(crs="EPSG:4326")
-            bbox = bbox.as_wsen_tuple() if bbox else None
+            if bbox is None:
+                query_bboxes = [None]
+            elif bbox.cyclic_antimeridian_crossing():
+                # TODO: proper antimeridian handling should be supported directly by a STAC API
+                #       (https://github.com/radiantearth/stac-api-spec/issues/473)
+                #       but unfortunately that isn't the case in the CDSE pgSTAC deployment (CDSE-2834) and maybe others.
+                #       Can we at some point eliminate this hack to split the query bounding box
+                #       and all the additional housekeeping overhead that comes with it?
+                query_bboxes = [b.as_wsen_tuple() for b in bbox.cyclic_antimeridian_split()]
+                logger.warning(
+                    f"Query across the antimeridian, which should be supported transparently by a STAC API, but some implementations don't, so we split up the query for now: {query_bboxes=}"
+                )
+            else:
+                query_bboxes = [bbox.as_wsen_tuple()]
             query_datetime = (
                 None
                 if spatiotemporal_extent.temporal_extent.is_unbounded() or skip_datetime_filter
                 else spatiotemporal_extent.temporal_extent.as_tuple()
             )
-            search_request = client.search(
-                method=method,
-                collections=collection.id,
-                bbox=bbox,
-                limit=20,
-                datetime=query_datetime,
-                filter=cql2_filter,
-                fields=fields,
-            )
-            if search_request.method == "GET":
-                query_info += f" {search_request.method} {search_request.url_with_parameters()}"
-            else:
-                query_info += f" {search_request.method} {search_request.url} {search_request.get_parameters()=}"
-            logger.info(f"ItemCollection.from_stac_api: STAC API request: {query_info}")
 
-            # STAC API might not support Filter Extension so always use client-side filtering as well
+            # STAC API might not support Filter Extension so always do post-process filtering as well
             # TODO: check "filter" conformance class for this instead of blindly trying to do double work
             #       see https://github.com/stac-api-extensions/filter
             property_matcher = property_filter.build_matcher()
-            items = [item for item in search_request.items() if property_matcher(item.properties)]
-            logger.info(f"ItemCollection.from_stac_api: Collected {len(items)} items.")
+
+            # Set of item ids for on the fly deduplication (when we have to do two queries around the antimeridian)
+            seen_item_ids = set()
+
+            items = []
+            for query_bbox in query_bboxes:
+                search_request = client.search(
+                    method=method,
+                    collections=collection.id,
+                    bbox=query_bbox,
+                    limit=per_page_limit,
+                    datetime=query_datetime,
+                    filter=cql2_filter,
+                    fields=fields,
+                )
+                if search_request.method == "GET":
+                    query_info += f" {search_request.method} {search_request.url_with_parameters()}"
+                else:
+                    query_info += f" {search_request.method} {search_request.url} {search_request.get_parameters()=}"
+                logger.info(f"ItemCollection.from_stac_api: STAC API request: {query_info}")
+
+                items.extend(
+                    item
+                    for item in search_request.items()
+                    if property_matcher(item.properties) and item.id not in seen_item_ids
+                )
+                if len(query_bboxes) > 1:
+                    # Only track seen items when we're going to check for duplicates (multiple query bboxes)
+                    seen_item_ids.update(item.id for item in items)
+
+            logger.info(f"ItemCollection.from_stac_api: Collected {len(items)} items (from {query_bboxes=})")
         except Exception as e:
             raise LoadStacException(
                 url=original_url, info=f"failed to construct ItemCollection from STAC API. {query_info=} {e=}"
@@ -1227,7 +1466,7 @@ class ItemCollection:
         return ItemCollection(items)
 
     def get_temporal_extent(self) -> Tuple[Union[datetime.datetime, None], Union[datetime.datetime, None]]:
-        """Get overall tempoarl extent of all items in the collection."""
+        """Get overall temporal extent of all items in the collection."""
         start = None
         end = None
         for item in self.items:
@@ -1241,8 +1480,9 @@ class ItemCollection:
     def deduplicated(self, deduplicator: "ItemDeduplicator") -> ItemCollection:
         """Create new ItemCollection by deduplicating items using the given deduplicator."""
         orig_count = len(self.items)
+        logger.info(f"ItemCollection.deduplicated: deduplicating {orig_count} items using {deduplicator=}")
         items = deduplicator.deduplicate(items=self.items)
-        logger.debug(f"ItemCollection.deduplicated: from {orig_count} to {len(items)}")
+        logger.info(f"ItemCollection.deduplicated: from {orig_count} to {len(items)} items")
         return ItemCollection(items=items)
 
 
@@ -1509,6 +1749,7 @@ class _ProjectionMetadata:
     - "proj:transform"
     """
 
+    # TODO: enforce immutability better (e.g. by implementing through dataclasses/attrs)?
     # TODO: move to more generic geometry/projection utility module for better reuse and cleaner separation?
     # TODO: any added value to leverage projection extension support from pystac in some way?
 
@@ -1531,6 +1772,19 @@ class _ProjectionMetadata:
 
     def __repr__(self) -> str:
         return f"_ProjectionMetadata(code={self._code!r}, bbox={self._bbox!r}, shape={self._shape!r})"
+
+    def _key(self) -> tuple:
+        # TODO: use normalized `self.bbox` instead of `self._bbox` + `self._transform`
+        #       to also cover equivalence of these two?
+        return (self._code, self._shape, self._bbox, self._transform)
+
+    def __hash__(self):
+        return hash(self._key())
+
+    def __eq__(self, other):
+        if isinstance(other, _ProjectionMetadata):
+            return self._key() == other._key()
+        return NotImplemented
 
     @property
     def code(self) -> Union[str, None]:
@@ -1662,9 +1916,6 @@ class _ProjectionMetadata:
             and abs(t3) > abs(t5)
         ):
             fixed = [t1, t2, t0, t4, t5, t3] + list(transform[6:])
-            logger.warning(
-                f"Detected GDAL-ordered proj:transform {list(transform)}, reshuffled to {fixed}"
-            )
             return fixed
         return transform
 
@@ -1915,7 +2166,11 @@ def _await_stac_object(
     stac_io: Optional[pystac.stac_io.StacIO] = None,
 ) -> STACObject:
     if stac_io is None:
-        session = requests_with_retry(total=5, backoff_factor=0.1, status_forcelist={429, 500, 502, 503, 504})
+        retry = _JitteredRetry(total=STAC_API_RETRY_TOTAL, backoff_factor=STAC_API_BACKOFF_FACTOR, status_forcelist={429, 500, 502, 503, 504})
+        adapter = requests.adapters.HTTPAdapter(max_retries=retry)
+        session = requests.Session()
+        session.mount("http://", adapter)
+        session.mount("https://", adapter)
         stac_io = ResilientStacIO(session)
 
     while True:
@@ -1960,20 +2215,34 @@ class PropertyFilter:
 
     # TODO: move this utility to a more generic location for better reuse
 
-    def __init__(self, properties: PropertyFilterPGMap, *, env: Optional[EvalEnv] = None):
+    def __init__(
+        self,
+        properties: PropertyFilterPGMap,
+        *,
+        env: Optional[EvalEnv] = None,
+        # TODO: remove this prefix option again, as the consensus seems that prefix should not be used. #1584
+        properties_prefix: str = "",
+    ):
         self._properties = properties
         self._env = env or EvalEnv()
+        if properties_prefix:
+            logger.warning(f"PropertyFilter with non-empty {properties_prefix=} which is deprecated")
+        self._properties_prefix = properties_prefix
 
     def _iter_literal_matches(self) -> Iterator[Tuple[str, str, Any]]:
         """Helper to produce tuples of property-name, operator and value"""
         for property_name, pg in self._properties.items():
             for operator, value in filter_properties.extract_literal_match(pg, env=self._env).items():
+                if operator == "eq" and isinstance(value, str) and ("*" in value or "?" in value):
+                    operator = "like"
                 yield property_name, operator, value
 
     @staticmethod
     def _build_callable(operator: str, value: Any) -> Callable[[Any], bool]:
         if operator == "eq":
             return lambda actual: actual == value
+        elif operator == "like":
+            return lambda actual, p=value: actual is not None and fnmatch.fnmatch(str(actual), p)
         elif operator == "lte":
             return lambda actual: actual is not None and actual <= value
         elif operator == "gte":
@@ -2032,6 +2301,8 @@ class PropertyFilter:
         """Convert the property filter to a CQL2 text representation."""
         filters = []
         for property_name, operator, value in self._iter_literal_matches():
+            if operator == "like":
+                continue
             operator = self._to_cql2_operator(operator)
             # Bit of ad-hoc value encoding (note that we exploit the fact here
             # that `repr` produces single quoted strings, as expected in CQL2 text format)
@@ -2039,7 +2310,7 @@ class PropertyFilter:
                 value = repr(tuple(value))
             else:
                 value = repr(value)
-            filters.append(f'"properties.{property_name}" {operator} {value}')
+            filters.append(f'"{self._properties_prefix}{property_name}" {operator} {value}')
         return " and ".join(filters)
 
     def _to_cql2_operator(self, operator: str):
@@ -2066,9 +2337,10 @@ class PropertyFilter:
         filters = [
             {
                 "op": self._to_cql2_operator(operator),
-                "args": [{"property": f"properties.{property_name}"}, value],
+                "args": [{"property": f"{self._properties_prefix}{property_name}"}, value],
             }
             for property_name, operator, value in self._iter_literal_matches()
+            if operator != "like"
         ]
         if len(filters) == 0:
             return None
@@ -2109,8 +2381,9 @@ class AdaptingPropertyFilter(PropertyFilter):
         *,
         env: Optional[EvalEnv] = None,
         adaptations: Dict[str, Union[dict, str]],
+        properties_prefix: str = "",
     ):
-        super().__init__(properties=properties, env=env)
+        super().__init__(properties=properties, env=env, properties_prefix=properties_prefix)
         self._adaptations = adaptations
 
     def _iter_literal_matches(self) -> Iterator[Tuple[str, str, Any]]:
@@ -2147,6 +2420,10 @@ class AdaptingPropertyFilter(PropertyFilter):
         elif value_mapping == "add-MGRS-prefix":
             # TODO: make this more generic with something like "add-prefix:<prefix>"?
             mapper = lambda v: f"MGRS-{v}"
+        elif value_mapping == "make_lower_case":
+            mapper = lambda v: v.lower() if isinstance(v, str) else v
+        elif value_mapping == "make_upper_case":
+            mapper = lambda v: v.upper() if isinstance(v, str) else v
         else:
             raise ValueError(f"Invalid {value_mapping=}")
 

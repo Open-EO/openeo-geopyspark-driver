@@ -420,6 +420,20 @@ class TestCalrissianJobLauncher:
             ),
         }
 
+    def test_run_cwl_workflow_request_too_much(self, calrissian_launch_config):
+        launcher = CalrissianJobLauncher(
+            launch_config=calrissian_launch_config,
+            namespace=self.NAMESPACE,
+            name_base="r-456",
+            s3_region="tatooine-east-1",
+        )
+        cwl = CwLSource.from_resource(anchor="openeogeotrellis.integrations", path="cwl/request_too_much_1.cwl")
+        with pytest.raises(ValueError):
+            launcher.run_cwl_workflow(
+                cwl_source=cwl,
+                cwl_arguments=[],
+            )
+
     @pytest.fixture()
     def job_context(self, monkeypatch, tmp_path):
         monkeypatch.setenv(ENV_VAR_OPENEO_BATCH_JOB_ID, self.JOB_NAME)
@@ -733,6 +747,23 @@ class TestCwlSource:
     def test_from_resource(self):
         cwl = CwLSource.from_resource(anchor="openeogeotrellis.integrations", path="cwl/hello.cwl")
         assert "Hello World" in cwl.get_content()
+
+    @pytest.mark.parametrize(
+        ["cwl_path", "expected_memory"],
+        [
+            ("cwl/request_too_much_1.cwl", 999000),
+            ("cwl/request_too_much_2.cwl", 999000),
+            ("cwl/request_too_much_3.cwl", 999000),
+            ("cwl/hello.cwl", -1),
+            ("cwl/multistep.cwl", 7000),
+        ],
+    )
+    def test_request_too_much(self, cwl_path, expected_memory):
+        cwl = CwLSource.from_resource(anchor="openeogeotrellis.integrations", path=cwl_path)
+        max_memory = cwl.estimate_max_memory_usage()
+        print(f"{max_memory=}")
+        print(f"{expected_memory=}")
+        assert max_memory == expected_memory
 
 
 class TestCalrissianUtils:

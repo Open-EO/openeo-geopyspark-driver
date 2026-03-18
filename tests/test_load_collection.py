@@ -348,64 +348,6 @@ def test_load_collection_data_cube_params(jvm_mock, catalog):
     )
 
 
-@pytest.mark.parametrize(["missing_products", "expected_source"], [
-    (False, "TERRASCOPE_S2_TOC_V2"),
-    (True, "SENTINEL2_L2A_SENTINELHUB"),
-])
-@pytest.mark.parametrize("creo_features", [
-    # Different tile_ids, same date
-    [{"tile_id": "16WEA"}, {"tile_id": "16WDA"}],
-    # Same tile_id, different dates
-    [{"tile_id": "16WEA", "date": "20200302"}, {"tile_id": "16WEA", "date": "20200307"}],
-])
-def test_load_collection_common_name_by_missing_products(
-        jvm_mock, missing_products, expected_source, creo_features, catalog
-):
-    load_params = LoadParameters(
-        temporal_extent=('2020-03-01', '2020-03-03'),
-        spatial_extent={'west': 4, 'east': 4.001, 'north': 52, 'south': 51.9999, 'crs': 4326},
-        bands=['B03'],
-    )
-
-    simple_layer = jvm_mock.geopyspark.geotrellis.TemporalTiledRasterLayer()
-    jvm_mock.org.openeo.geotrellis.file.PyramidFactory.datacube_seq.return_value = simple_layer
-    jvm_mock.org.openeo.geotrellis.file.PyramidFactory.pyramid_seq.return_value = simple_layer
-
-    if missing_products:
-        tfs = creo_features[1::2]
-    else:
-        tfs = creo_features
-
-    def mock_query_jvm_opensearch_client(open_search_client, collection_id, _query_kwargs, processing_level=""):
-        if "CreodiasClient" in str(open_search_client):
-            mock_collection = creo_features
-        elif "OscarsClient" in str(open_search_client) or "OpenSearchClient" in str(open_search_client):
-            mock_collection = tfs
-        else:
-            raise Exception("Unknown open_search_client: " + str(open_search_client))
-        if len(mock_collection) == 0:
-            return {}
-        elif "date" in mock_collection[0]:
-            return {
-                (p["tile_id"], p["date"])
-                for p in mock_collection
-            }
-        else:
-            return {
-                (p["tile_id"])
-                for p in mock_collection
-            }
-
-    with mock.patch("openeogeotrellis.layercatalog.query_jvm_opensearch_client", new=mock_query_jvm_opensearch_client):
-
-        collection = catalog.load_collection('SENTINEL2_L2A', load_params=load_params, env=EvalEnv())
-        assert collection.metadata.get('id') == expected_source
-
-
-
-
-
-
 def test_driver_vector_cube_supports_load_collection_caching(jvm_mock, catalog):
     def load_params1():
         gdf = gpd.read_file(str(get_test_data_file("geometries/FeatureCollection.geojson")))

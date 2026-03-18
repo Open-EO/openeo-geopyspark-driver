@@ -187,13 +187,22 @@ class S1BackscatterOrfeo:
         return mapped
 
     @staticmethod
-    def _filter_properties_to_pg_map(filter_properties: Dict[str, any]) -> PropertyFilterPGMap:
+    def _filter_properties_to_pg_map(
+        filter_properties: Dict[str, any],
+        *,
+        polarization_filter_use_in_operator: bool = False,
+    ) -> PropertyFilterPGMap:
         """Convert filter properties to openEO style process graph property filters."""
         mapped = {}
         for k, v in filter_properties.items():
             # Use array_contains for array values (e.g., default product:type to match multiple variants)
             # Use eq for scalar values (e.g., user-provided product:type)
-            if isinstance(v, list):
+            # For sar:polarizations (itself an array property): by default use eq to match the exact array,
+            # but some STAC APIs require the CQL2 `in` operator instead (use polarization_filter_use_in_operator).
+            use_array_contains = isinstance(v, list) and (
+                k != "sar:polarizations" or polarization_filter_use_in_operator
+            )
+            if use_array_contains:
                 mapped[k] = {
                     "process_graph": {
                         "array_contains": {
@@ -220,15 +229,20 @@ class S1BackscatterOrfeo:
         filter_properties: Dict[str, any],
         spatial_extent: Union[Dict, BoundingBox, None],
         temporal_extent: Tuple[Optional[str], Optional[str]],
+        feature_flags: Optional[Dict] = None,
     ) -> JavaObject:
         """Build a FixedFeaturesOpenSearchClient populated with features from STAC API."""
         from openeogeotrellis.load_stac import _spatiotemporal_extent_from_load_params
         from openeogeotrellis.load_stac import construct_item_collection
 
-        url = "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-1-grd"
-
+        _default_url = "https://stac.opensearch.dataspace.copernicus.eu/v1/collections/sentinel-1-grd"
+        feature_flags = feature_flags or {}
+        url = feature_flags.get("url", _default_url)
         # filter_properties are assumed to be in STAC only format.
-        property_filter_pg_map = self._filter_properties_to_pg_map(filter_properties)
+        property_filter_pg_map = self._filter_properties_to_pg_map(
+            filter_properties,
+            polarization_filter_use_in_operator=feature_flags.get("polarization_filter_use_in_operator", False),
+        )
 
         # Build spatiotemporal extent
         spatiotemporal_extent = _spatiotemporal_extent_from_load_params(
@@ -241,13 +255,8 @@ class S1BackscatterOrfeo:
             url=url,
             spatiotemporal_extent=spatiotemporal_extent,
             property_filter_pg_map=property_filter_pg_map,
+            feature_flags=feature_flags,
         )
-        if len(item_collection.items) == 0:
-            raise OpenEOApiException(
-                code="NoDataAvailable", status_code=400,
-                message=f"There is no data available for the given extents.",
-            )
-
         # Build FixedFeaturesOpenSearchClient from STAC items
         jvm = get_jvm()
         opensearch_client = jvm.org.openeo.geotrellis.file.FixedFeaturesOpenSearchClient()
@@ -267,7 +276,7 @@ class S1BackscatterOrfeo:
             # This product_id will be used as the creo_path (.SAFE file) later.
             product_id = None
             for asset_id, asset in band_assets.items():
-                if asset_id == "vv" or asset_id == "vh":
+                if asset_id in ("vv", "vh", "hh", "hv"):
                     href = asset.href
                     # s3://eodata/Sentinel-1/SAR/IW_GRDH_1S-COG/2020/06/06/S1B_IW_GRDH_1SDV_20200606T060615_20200606T060640_021909_029944_094C_COG.SAFE/measurement/s1b-iw-grd-vh-20200606t060615-20200606t060640-021909-029944-002-cog.tiff
                     href = href.replace("s3://", "/")
@@ -277,7 +286,7 @@ class S1BackscatterOrfeo:
                     break
 
             if product_id is None:
-                raise OpenEOApiException(f"No 'vv' or 'vh' asset found in item {itm.id} with proper href for sar_backscatter")
+                raise OpenEOApiException(f"No 'vv', 'vh', 'hh', or 'hv' asset found in item {itm.id} with proper href for sar_backscatter")
 
             builder = builder.withId(product_id)
             opensearch_client.addFeature(builder.build())
@@ -323,7 +332,6 @@ class S1BackscatterOrfeo:
             filter_properties: Dict[str, any] = {
                 # Use array to match IW_GRDH_1S (sentinel1-a), IW_GRDH_1S_B (sentinel1-b), IW_GRDH_1S_C (sentinel1-c)
                 "product:type": ["IW_GRDH_1S", "IW_GRDH_1S_B", "IW_GRDH_1S_C"],
-                "processing:level": "L1",
             }
             filter_properties.update(normalized_props)
         else:
@@ -359,7 +367,7 @@ class S1BackscatterOrfeo:
             self,
             collection_id, projected_polygons, from_date: str, to_date: str, extra_properties: dict,
             tile_size: int, zoom: int, correlation_id: str, datacubeParams=None, resolution = (10.0,10.0),
-            spatial_extent=None, use_stac_client: bool = True
+            spatial_extent=None, use_stac_client: bool = True, feature_flags: Optional[Dict] = None
     ):
         """Build RDD of file metadata from Creodias catalog query."""
         filter_properties = self._build_filter_properties(extra_properties, use_stac_client)
@@ -370,7 +378,8 @@ class S1BackscatterOrfeo:
             opensearch_client = self._build_stac_opensearch_client(
                 filter_properties=filter_properties,
                 spatial_extent=spatial_extent,
-                temporal_extent=(from_date, to_date)
+                temporal_extent=(from_date, to_date),
+                feature_flags=feature_flags,
             )
         else:
             logger.info("Using legacy opensearch client")
@@ -805,7 +814,8 @@ class S1BackscatterOrfeo:
             datacubeParams=None,
             max_soft_errors_ratio=0.0,
             spatial_extent=None,
-            use_stac_client: bool = True
+            use_stac_client: bool = True,
+            feature_flags: Optional[Dict] = None,
     ) -> Dict[int, geopyspark.TiledRasterLayer]:
         """
         Implementation of S1 backscatter calculation with Orfeo in Creodias environment
@@ -842,7 +852,7 @@ class S1BackscatterOrfeo:
             from_date=from_date, to_date=to_date, extra_properties=extra_properties,
             tile_size=tile_size, zoom=zoom, correlation_id=correlation_id,
             datacubeParams=datacubeParams, spatial_extent=spatial_extent,
-            use_stac_client=use_stac_client
+            use_stac_client=use_stac_client, feature_flags=feature_flags,
         )
         if debug_mode:
             self._debug_show_rdd_info(feature_pyrdd)
@@ -1079,7 +1089,8 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
             datacubeParams=None,
             max_soft_errors_ratio=0.0,
             spatial_extent=None,
-            use_stac_client: bool = True
+            use_stac_client: bool = True,
+            feature_flags: Optional[Dict] = None,
     ) -> Dict[int, geopyspark.TiledRasterLayer]:
         """
         Implementation of S1 backscatter calculation with Orfeo in Creodias environment
@@ -1128,7 +1139,7 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
             from_date=from_date, to_date=to_date, extra_properties=extra_properties,
             tile_size=tile_size, zoom=zoom, correlation_id=correlation_id,
             datacubeParams=datacubeParams, resolution=target_resolution,
-            spatial_extent=spatial_extent, use_stac_client=use_stac_client
+            spatial_extent=spatial_extent, use_stac_client=use_stac_client, feature_flags=feature_flags,
         )
         if debug_mode:
             self._debug_show_rdd_info(feature_pyrdd)

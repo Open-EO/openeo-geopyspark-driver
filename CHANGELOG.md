@@ -28,6 +28,16 @@ without compromising stable operations.
 - Support property filtering in `load_stac.construct_item_collection` in post-dry-run phase ([#1530](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1530))
 - `load_collection` through `load_stac`: fix resolution selection for low-res/non-UTM cases with aliases ([#1539](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1539))
 - `load_stac` harden STAC "band" metadata parsing when "name" field is missing ([Open-EO/openeo-python-client#860](https://github.com/Open-EO/openeo-python-client/issues/860))
+- `load_stac`: increase default STAC API per page limit to 100 ([#1150](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1150))
+- Fix ZeroDivisionError from dry-run determine_global_extent caused by invalid `proj:transform` metadata ([#1557](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1557))
+- Align `load_stac` cube's temporal extent better with `load_collection` behavior ([#1578](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1578))
+- Improve `load_stac` bbox filtering across anti-meridian ([#1568](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1568))
+- `load_stac`: avoid handling irrelevant items (with corrupt `bbox`) returned by CDSE STAC API ([#1592](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1592))
+- `load_stac`: do property filtering in STAC API queries without `properties.` prefix by default now ([#1584](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1584), [stac-api-extensions/filter#31](https://github.com/stac-api-extensions/filter/pull/31))
+- STAC API usage (from `load_stac` or STAC powered `load_collection`) with bounding box across the antimeridian: split and merge query for each side to workaround broken antimeridian handling of some STAC API implementations ([#1568](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1568))
+- Added initial support for `/collections/{collectionId}/queryables` for STAC based collections ([#536](https://github.com/Open-EO/openeo-geopyspark-driver/issues/536))
+- `ObjectStorageWorkspace`: treat `AccessDenied` error as new Collection ([Open-EO/openeo-geotrellis-extensions#590](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/590))
+- `ObjectStorageWorkspace`: `merge` argument can be a plain (not nested) file ([#1257](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1257))
 
 
 ## 0.70.0

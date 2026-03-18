@@ -27,6 +27,13 @@ OLCI_PRODUCT_TYPE = "OL_1_EFR___"
 SYNERGY_PRODUCT_TYPE = "SY_2_SYN___"
 SLSTR_PRODUCT_TYPE = "SL_2_LST___"
 
+# Mapping from product:timeliness_category values to URL suffixes
+_TIMELINESS_TO_URL_SUFFIX = {
+    "NR": "nrt",
+    "ST": "stc",
+    "NT": "ntc",
+}
+
 REPROJECTION_TYPE_BINNING = "binning"
 KEY_REPROJECTION_TYPE = "reprojection_type"
 KEY_SUPER_SAMPLING = "super_sampling"
@@ -49,26 +56,43 @@ def _map_attributes_for_stac(attribute_values: Dict[str, any]) -> Dict[str, any]
     :param attribute_values: Dictionary of opensearch attribute key-value pairs
     :return: Dictionary with STAC-equivalent keys and values
     """
+    # Based on _LEGACY_TO_STAC_PROPERTY_KEYS
+    # Keys that are intentionally not sent as STAC filters (unsupported by the API)
+    ignored_keys = {"productType", "product:type"}
     attribute_keys_mapping = {
-        "productType": "product:type",
+        "processingLevel": "processing:level",
+        "orbitDirection": "sat:orbit_state",  # TODO: Is there are a better related STAC property for this?
+        "orbitNumber": "sat:absolute_orbit",
+        "relativeOrbitNumber": "sat:relative_orbit",
+        "timeliness": "product:timeliness_category",
+        "missionTakeId": "eopf:datatake_id",
     }
-    # No value transformations needed for Sentinel-3 currently
     attribute_values_mapping = {
-        "productType": lambda v: v,
+        "orbitDirection": lambda v: v.lower(),  # DESCENDING -> descending
+        "sat:orbit_state": lambda v: v.lower(),  # DESCENDING -> descending
     }
+    attribute_keys_stac_values = set(attribute_keys_mapping.values())
 
     mapped = {}
-    for k, v in attribute_values.items():
+    for k, val in attribute_values.items():
+        if k in ignored_keys:
+            continue
         if k in attribute_keys_mapping:
             mapped_key = attribute_keys_mapping[k]
             mapped_value = (
-                attribute_values_mapping[k](v)
+                attribute_values_mapping[k](val)
                 if k in attribute_values_mapping
-                else v
+                else val
             )
             mapped[mapped_key] = mapped_value
+        elif k in attribute_values_mapping:
+            mapped[k] = attribute_values_mapping[k](val)
+        elif k in attribute_keys_stac_values:
+            mapped[k] = val
         else:
-            logger.warning(f"sentinel3: No mapping for attribute key {k!r}")
+            logger.warning(f"sentinel3: No mapping for attribute key {k!r}, but passing anyway: {k} with value {val}")
+            mapped[k] = val
+
     return mapped
 
 
@@ -197,30 +221,30 @@ def _get_stac_collection_urls(product_type: str) -> List[str]:
     # TODO: move this to layercatalog.json
     if product_type == SLSTR_PRODUCT_TYPE:
         return [
-            "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-3-sl-2-lst-nrt",
-            "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-3-sl-2-lst-ntc",
+            "https://stac.opensearch.dataspace.copernicus.eu/v1/collections/sentinel-3-sl-2-lst-nrt",
+            "https://stac.opensearch.dataspace.copernicus.eu/v1/collections/sentinel-3-sl-2-lst-ntc",
         ]
     elif product_type == SYNERGY_PRODUCT_TYPE:
         return [
-            "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-3-syn-2-syn-stc",
-            "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-3-syn-2-syn-ntc",
+            "https://stac.opensearch.dataspace.copernicus.eu/v1/collections/sentinel-3-syn-2-syn-stc",
+            "https://stac.opensearch.dataspace.copernicus.eu/v1/collections/sentinel-3-syn-2-syn-ntc",
         ]
     elif product_type == "OL_2_LFR___":
         # Full Resolution Land and atmosphere geophysical products.
         return [
-            "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-3-olci-2-lfr-nrt",
-            "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-3-olci-2-lfr-ntc",
+            "https://stac.opensearch.dataspace.copernicus.eu/v1/collections/sentinel-3-olci-2-lfr-nrt",
+            "https://stac.opensearch.dataspace.copernicus.eu/v1/collections/sentinel-3-olci-2-lfr-ntc",
         ]
     elif product_type == "OL_2_WFR___":
         # Full Resolution Water and Atmosphere geophysical products.
         return [
-            "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-3-olci-2-wfr-nrt",
-            "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-3-olci-2-wfr-ntc",
+            "https://stac.opensearch.dataspace.copernicus.eu/v1/collections/sentinel-3-olci-2-wfr-nrt",
+            "https://stac.opensearch.dataspace.copernicus.eu/v1/collections/sentinel-3-olci-2-wfr-ntc",
         ]
     elif product_type == "SY_2_AOD___":
         # Global Aerosol parameter over land and sea on super pixel.
         return [
-            "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-3-syn-2-aod-ntc",
+            "https://stac.opensearch.dataspace.copernicus.eu/v1/collections/sentinel-3-syn-2-aod-ntc",
         ]
     elif product_type == "OL_1_EFR___":
         return [
@@ -231,11 +255,39 @@ def _get_stac_collection_urls(product_type: str) -> List[str]:
         raise ValueError(f"STAC not yet supported for Sentinel-3 product type: {product_type}")
 
 
+def _filter_urls_by_timeliness(urls: List[str], timeliness_category: str) -> List[str]:
+    """Filter STAC collection URLs based on the requested timeliness category.
+
+    :param urls: List of STAC collection URLs
+    :param timeliness_category: Timeliness category value (e.g., "NR", "ST", "NT")
+    :return: Filtered list of URLs matching the timeliness category
+    """
+    suffix = _TIMELINESS_TO_URL_SUFFIX.get(timeliness_category)
+    if suffix is None:
+        logger.warning(
+            f"Unknown timeliness category {timeliness_category!r}, "
+            f"expected one of {list(_TIMELINESS_TO_URL_SUFFIX.keys())}. Querying all URLs."
+        )
+        return urls
+
+    filtered = [url for url in urls if url.rstrip("/").endswith(f"-{suffix}")]
+    if not filtered:
+        logger.warning(
+            f"No URLs match timeliness category {timeliness_category!r} (suffix '-{suffix}'). "
+            f"Querying all URLs: {urls}"
+        )
+        return urls
+
+    logger.info(f"Filtered URLs by timeliness category {timeliness_category!r}: {filtered}")
+    return filtered
+
+
 def _build_stac_opensearch_client(
     metadata_properties: Dict[str, any],
     spatial_extent: Union[Dict, BoundingBox, None],
     temporal_extent: Tuple[Optional[str], Optional[str]],
     jvm,
+    feature_flags: Optional[Dict] = None,
 ) -> any:
     """Build a FixedFeaturesOpenSearchClient populated with features from STAC API.
 
@@ -245,10 +297,23 @@ def _build_stac_opensearch_client(
     from openeogeotrellis.load_stac import construct_item_collection
 
     product_type = metadata_properties["productType"]
-    urls = _get_stac_collection_urls(product_type)
+    feature_flags = feature_flags or {}
+    load_stac_feature_flags = feature_flags.get("load_stac_feature_flags", {})
+    if "urls" in load_stac_feature_flags:
+        urls = load_stac_feature_flags["urls"]
+    else:
+        urls = _get_stac_collection_urls(product_type)
 
     # Map opensearch attributes to STAC properties
     stac_attributes = _map_attributes_for_stac(metadata_properties)
+
+    # Extract timeliness category to filter URLs before querying.
+    # product:timeliness_category is not a queryable in the STAC API,
+    # but each collection URL corresponds to a specific timeliness category.
+    timeliness_category = stac_attributes.pop("product:timeliness_category", None)
+    if timeliness_category:
+        urls = _filter_urls_by_timeliness(urls, timeliness_category)
+
     property_filter_pg_map = _map_attributes_to_property_filter(stac_attributes)
 
     # Build spatiotemporal extent
@@ -278,6 +343,7 @@ def _build_stac_opensearch_client(
                 url=url,
                 spatiotemporal_extent=spatiotemporal_extent,
                 property_filter_pg_map=property_filter_pg_map,
+                feature_flags=load_stac_feature_flags,
             )
             logger.info(f"Found {len(item_collection.items)} items in {collection_name}")
             items_by_collection[collection_name] = list(item_collection.iter_items_with_band_assets())
@@ -393,7 +459,8 @@ def pyramid(metadata_properties, projected_polygons_native_crs, from_date, to_da
             metadata_properties=metadata_properties,
             spatial_extent=spatial_extent,
             temporal_extent=(from_date, to_date),
-            jvm=jvm
+            jvm=jvm,
+            feature_flags=feature_flags,
         )
     else:
         logger.info("Using legacy opensearch client")
@@ -871,7 +938,7 @@ def do_reproject(product_type, final_grid_resolution, creo_path, band_names,
     """
 
     is_empty = False
-    logger.info(f"Reprojecting {product_type}")
+    logger.info(f"load_collection: Reprojecting {product_type}, with path: {creo_path}, resolution {final_grid_resolution}, and bands {band_names}")
     ### create LUT for radiances
     _, LUT = create_index_LUT(source_coordinates,
                                      target_coordinates,

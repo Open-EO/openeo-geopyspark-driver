@@ -6,7 +6,6 @@ import logging
 import math
 import sys
 from copy import deepcopy, copy
-from datetime import datetime
 from functools import lru_cache
 from typing import List, Dict, Iterable, Optional, Tuple, Union
 
@@ -14,15 +13,14 @@ import dateutil.parser
 import geopyspark
 import py4j.protocol
 import pyproj
-import pyspark.sql.utils
 import pytz
-from py4j.protocol import Py4JJavaError
 import requests
+import flask
 
 from openeo.metadata import Band
 from openeo.util import TimingLogger, deep_get, str_truncate
 from openeo_driver import filter_properties
-from openeo_driver.backend import CollectionCatalog, LoadParameters
+from openeo_driver.backend import CollectionCatalog, LoadParameters, QueryablesListing
 from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.datastructs import SarBackscatterArgs
@@ -704,7 +702,8 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 datacubeParams = datacubeParams,
                 max_soft_errors_ratio=max_soft_errors_ratio,
                 spatial_extent=load_params.spatial_extent,
-                use_stac_client=layer_source_info.get("use_stac_client", False)
+                use_stac_client=layer_source_info.get("use_stac_client", False),
+                feature_flags=layer_source_info.get("load_stac_feature_flags", {}),
             )
         elif layer_source_type == 'file-s3':
             native_cell_size = jvm.geotrellis.raster.CellSize(
@@ -717,7 +716,9 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             pyramid = sentinel3.pyramid(metadata_properties(),
                                         projected_polygons_native_crs, from_date, to_date,
                                         metadata.opensearch_link_titles, datacubeParams,
-                                        native_cell_size, feature_flags, jvm,
+                                        native_cell_size,
+                                        {**feature_flags, "load_stac_feature_flags": layer_source_info.get("load_stac_feature_flags", {})},
+                                        jvm,
                                         spatial_extent=load_params.spatial_extent,
                                         use_stac_client=layer_source_info.get("use_stac_client", False)
                                         )
@@ -923,6 +924,17 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         number_of_temporal_observations = (to_date_parsed - from_date_parsed).total_seconds() / temporal_step
         number_of_temporal_observations = max(math.floor(number_of_temporal_observations), 1)
         return number_of_temporal_observations
+
+    def get_collection_queryables(self, collection_id: Union[str, None]) -> Union[QueryablesListing, flask.Response]:
+        metadata = self.get_collection_metadata(collection_id)
+        data_source = deep_get(metadata, "_vito", "data_source", default={})
+        if data_source.get("type") == "stac" and (url := data_source.get("url")):
+            # TODO: for now (experimental phase), we just do naive redirect here.
+            #       Instead: proxy+cache this document.
+            #       Or include it in (precompiled) layercatalog (#1175)?
+            return flask.redirect(location=f"{url}/queryables")
+
+        return super().get_collection_queryables(collection_id=collection_id)
 
 
 # Type annotation aliases to make things more self-documenting
@@ -1203,32 +1215,6 @@ def _merge_layers_with_common_name(metadata: CatalogDict):
     return metadata
 
 
-def query_jvm_opensearch_client(open_search_client, collection_id, _query_kwargs, processing_level=""):
-    jvm = get_jvm()
-    fromDate = jvm.java.time.ZonedDateTime.parse(str(_query_kwargs["start_date"]).replace(" ", "T") + "Z")
-    toDate = jvm.java.time.ZonedDateTime.parse(str(_query_kwargs["end_date"]).replace(" ", "T") + "Z")
-    dateRange = jvm.scala.Some(jvm.scala.Tuple2(fromDate, toDate))
-    extent = jvm.geotrellis.vector.Extent(float(_query_kwargs["ulx"]), float(_query_kwargs["bry"]),
-                                          float(_query_kwargs["brx"]), float(_query_kwargs["uly"]))
-    crs = jvm.geotrellis.proj4.CRS.fromEpsgCode(4326)
-    bbox = jvm.geotrellis.vector.ProjectedExtent(extent, crs)
-    attribute_values_dict = {}
-    if "cldPrcnt" in _query_kwargs:
-        attribute_values_dict["eo:cloud_cover"] = _query_kwargs["cldPrcnt"]
-    attributeV_values = jvm.PythonUtils.toScalaMap(attribute_values_dict)
-    products = open_search_client.getProducts(
-        collection_id, dateRange,
-        bbox, attributeV_values, "", processing_level
-    )
-    return {
-        (
-            products.apply(i).tileID().getOrElse(None),
-            products.apply(i).nominalDate().toLocalDate().toString().replace("-", "")
-        )
-        for i in range(products.length())
-    }
-
-
 def check_missing_products(
         collection_metadata: Union[GeopysparkCubeMetadata, dict],
         temporal_extent: Tuple[str, str], spatial_extent: dict,
@@ -1271,40 +1257,11 @@ def check_missing_products(
                 raise InternalException("Failed to handle cloud cover condition")
 
         method = check_data.get("method")
-        if method == "creo":
-            logger.warning("At the moment it is not supported to check missing products on creo.")
-            # We could query with status="all" and see if some offline products survive the deduplication and log those.
+        if method in {"creo", "terrascope"}:
+            logger.warning(
+                f"check_missing_products with {method=} is now unsupported. https://github.com/Open-EO/openeo-geopyspark-driver/issues/1572"
+            )
             missing = []
-        elif method == "terrascope":
-            jvm = get_jvm()
-
-            try:
-                expected_tiles = query_jvm_opensearch_client(
-                    open_search_client=jvm.org.openeo.opensearch.backends.CreodiasClient.apply(),
-                    collection_id=check_data["creo_catalog"]["mission"],
-                    _query_kwargs=query_kwargs,
-                    processing_level=check_data["creo_catalog"]["level"],
-                )
-                logger.debug(f"Expected tiles ({len(expected_tiles)}): {str_truncate(repr(expected_tiles), 200)}")
-                opensearch_collection_id = collection_metadata.get("_vito", "data_source", "opensearch_collection_id")
-
-                url = jvm.java.net.URL("https://services.terrascope.be/catalogue")
-                # Terrascope has a different calculation for cloudCover
-                query_kwargs_no_cldPrcnt = query_kwargs.copy()
-                if "cldPrcnt" in query_kwargs_no_cldPrcnt:
-                    del query_kwargs_no_cldPrcnt["cldPrcnt"]
-                terrascope_tiles = query_jvm_opensearch_client(
-                    open_search_client=jvm.org.openeo.opensearch.OpenSearchClient.apply(url, False, ""),
-                    collection_id=opensearch_collection_id,
-                    _query_kwargs=query_kwargs_no_cldPrcnt,
-                )
-
-                logger.debug(f"Oscar tiles ({len(terrascope_tiles)}): {str_truncate(repr(terrascope_tiles), 200)}")
-                missing = list(expected_tiles.difference(terrascope_tiles))
-            except Py4JJavaError as e:
-                logger.error(f"load_collection: Failed to retrieve list of expected products from CDSE. {e}")
-                missing = [f"unknown - CDSE query failed with {e}"]
-
         else:
             logger.error(f"Invalid check_missing_products data {check_data}")
             raise InternalException("Invalid check_missing_products data")
