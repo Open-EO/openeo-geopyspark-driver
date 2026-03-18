@@ -1074,6 +1074,7 @@ def _write_exported_stac_collection_from_item(
         properties["proj:geometry"] = result_metadata.get("geometry",item.get("geometry"))
         result_item = result_metadata.get("items").get(item_key)
         if result_item:
+            properties["proj:bbox"] = result_item.get("proj:bbox")
             properties["proj:shape"] = result_item.get("proj:shape")
         epsg_code = result_metadata.get("epsg",item.get("epsg"))
         if epsg_code:
