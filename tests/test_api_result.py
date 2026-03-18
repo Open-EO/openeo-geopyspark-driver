@@ -4562,10 +4562,14 @@ class TestLoadStac:
                         side_effect=[ongoing_job_info, finished_job_info]):
             api110.result(process_graph).assert_status_code(200)
 
-        assert ("OpenEO batch job results status of own job j-2405078f40904a0b85cf8dc5dd55b07e: running"
-                in caplog.messages)
-        assert ("OpenEO batch job results status of own job j-2405078f40904a0b85cf8dc5dd55b07e: finished"
-                in caplog.messages)
+        assert (
+            "OpenEO batch job results status of own job j-2405078f40904a0b85cf8dc5dd55b07e: partial_job_status='running'"
+            in caplog.messages
+        )
+        assert (
+            "OpenEO batch job results status of own job j-2405078f40904a0b85cf8dc5dd55b07e: partial_job_status='finished'"
+            in caplog.messages
+        )
 
     def test_load_stac_loads_assets_without_eo_bands(self, api110, urllib_and_request_mock, requests_mock, tmp_path):
         """load_stac from a STAC API with one item and two assets, one of which does not carry eo:bands"""
