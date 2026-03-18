@@ -2133,7 +2133,7 @@ def _await_dependency_job(
     while True:
         partial_job_status = PARTIAL_JOB_STATUS.for_job_status(dependency_job_info.status)
 
-        logger.debug(f"OpenEO batch job results status of own job {dependency_job_info.id}: {partial_job_status}")
+        logger.debug(f"OpenEO batch job results status of own job {dependency_job_info.id=}: {partial_job_status=}")
 
         if partial_job_status in [PARTIAL_JOB_STATUS.ERROR, PARTIAL_JOB_STATUS.CANCELED]:
             logger.error(f"Failing because own OpenEO batch job {dependency_job_info.id} failed")
@@ -2144,10 +2144,9 @@ def _await_dependency_job(
         if time.time() >= max_poll_time:
             max_poll_delay_reached_error = (
                 f"OpenEO batch job results dependency of"
-                f"own job {dependency_job_info.id} was not satisfied after"
-                f" {max_poll_delay_seconds} s, aborting"
+                f" own job {dependency_job_info.id} was not satisfied after"
+                f" {max_poll_delay_seconds}s, aborting"
             )
-
             raise Exception(max_poll_delay_reached_error)
 
         time.sleep(poll_interval_seconds)
