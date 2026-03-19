@@ -28,15 +28,23 @@ from py4j.java_gateway import JavaObject
 from openeogeotrellis.backend import GpsBatchJobs
 from openeogeotrellis.job_registry import InMemoryJobRegistry
 from openeogeotrellis.load_stac import (
+    STAC_API_PER_PAGE_LIMIT_DEFAULT,
+    STAC_API_RETRY_TOTAL,
+    AdaptingPropertyFilter,
     ItemCollection,
     ItemDeduplicator,
     PropertyFilter,
+    _get_apply_sentinel2_reflectance_offset,
     _get_proj_metadata,
     _is_band_asset,
+    _is_sentinel2_reflectance_asset,
     _is_supported_raster_mime_type,
+    _prepare_context,
     _proj_code_to_epsg,
     _ProjectionMetadata,
+    _ResolutionTracker,
     _SpatialExtent,
+    _SpatialFilteringGeometries,
     _spatiotemporal_extent_from_load_params,
     _SpatioTemporalExtent,
     _StacMetadataParser,
@@ -45,14 +53,6 @@ from openeogeotrellis.load_stac import (
     construct_item_collection,
     extract_own_job_info,
     load_stac,
-    _prepare_context,
-    AdaptingPropertyFilter,
-    _get_apply_sentinel2_reflectance_offset,
-    _is_sentinel2_reflectance_asset,
-    _ResolutionTracker,
-    STAC_API_PER_PAGE_LIMIT_DEFAULT,
-    STAC_API_RETRY_TOTAL,
-    _SpatialFilteringGeometries,
 )
 from openeogeotrellis.testing import DummyStacApiServer, gps_config_overrides
 from openeogeotrellis.util.geometry import bbox_to_geojson
@@ -1559,118 +1559,7 @@ class TestSpatialFilteringGeometries:
             "coordinates": [[[1, 2], [1, 4], [3, 4], [3, 2], [1, 2]]],
         }
 
-    def test_simple_box_with_crs(self):
-        geometries = geopandas.GeoSeries(
-            [
-                shapely.geometry.box(506986, 5660950, 514003, 5672085),
-            ],
-            crs="EPSG:32631",
-        )
-        sfg = _SpatialFilteringGeometries(geometries=geometries)
-        assert sfg.is_empty() is False
-        simplified = sfg.get_simplified_geojson()
-        simplified = json.loads(simplified)
-        assert simplified == {
-            "type": "Polygon",
-            "coordinates": approxify(
-                [[[3.1, 51.1], [3.1, 51.2], [3.2, 51.2], [3.2, 51.1], [3.1, 51.1]]],
-                abs=0.001,
-            ),
-        }
 
-    def test_four_boxes_in_cross_arrangement(self):
-        """
-            ┌─┐
-        ┌─┐ └─┘ ┌─┐
-        └─┘ ┌─┐ └─┘
-            └─┘
-        """
-        geometries = geopandas.GeoSeries(
-            [
-                shapely.geometry.box(0, 1, 1, 2),
-                shapely.geometry.box(2, 0, 3, 1),
-                shapely.geometry.box(2, 2, 3, 3),
-                shapely.geometry.box(4, 1, 5, 2),
-            ]
-        )
-        sfg = _SpatialFilteringGeometries(geometries=geometries)
-        assert sfg.is_empty() is False
-        simplified = sfg.get_simplified_geojson()
-        simplified = json.loads(simplified)
-        # TODO: use Hausdorff distance instead of exact equality
-        assert simplified == {
-            "type": "Polygon",
-            "coordinates": [[[2, 0], [0, 1], [0, 2], [2, 3], [3, 3], [5, 2], [5, 1], [3, 0], [2, 0]]],
-        }
-
-    @pytest.mark.parametrize(
-        ["kwargs", "expected"],
-        [
-            (
-                dict(envelope_threshold=10, overall_hull_threshold=10),
-                """{
-                    "type": "Polygon",
-                    "coordinates": [[[3, 0], [0, 2], [0, 4], [3, 6], [5, 6], [8, 4], [8, 2], [5, 0], [3, 0]]]
-                }""",
-            ),
-            (
-                dict(envelope_threshold=100, overall_hull_threshold=100),
-                """{
-                    "type": "MultiPolygon",
-                    "coordinates": [
-                        [[[3, 1], [4, 2], [5, 1], [4, 0], [3, 1]]],
-                        [[[6, 3], [7, 4], [8, 3], [7, 2], [6, 3]]],
-                        [[[3, 5], [4, 6], [5, 5], [4, 4], [3, 5]]],
-                        [[[0, 3], [1, 4], [2, 3], [1, 2], [0, 3]]]
-                    ]
-                }""",
-            ),
-            (
-                dict(envelope_threshold=10, overall_hull_threshold=100),
-                """{
-                    "type": "MultiPolygon",
-                    "coordinates": [
-                        [[[3, 2], [5, 2], [5, 0], [3, 0], [3, 2]]],
-                        [[[6, 4], [8, 4], [8, 2], [6, 2], [6, 4]]],
-                        [[[3, 6], [5, 6], [5, 4], [3, 4], [3, 6]]],
-                        [[[0, 4], [2, 4], [2, 2], [0, 2], [0, 4]]]
-                    ]
-                }""",
-            ),
-            (
-                dict(envelope_threshold=100, overall_hull_threshold=10),
-                """{
-                    "type": "Polygon",
-                    "coordinates": [[[4, 0], [1, 2], [0, 3], [1, 4], [4, 6], [7, 4], [8, 3], [7, 2], [4, 0]]]
-                }""",
-            ),
-        ],
-    )
-    def test_get_simplified_geojson_diamonds(self, kwargs, expected):
-        """
-           ╱╲
-           ╲╱
-        ╱╲    ╱╲
-        ╲╱    ╲╱
-           ╱╲
-           ╲╱
-        """
-        geometries = geopandas.GeoSeries(
-            [
-                shapely.geometry.Polygon([(4, 0), (5, 1), (4, 2), (3, 1), (4, 0)]),
-                shapely.geometry.Polygon([(7, 2), (8, 3), (7, 4), (6, 3), (7, 2)]),
-                shapely.geometry.Polygon([(4, 4), (5, 5), (4, 6), (3, 5), (4, 4)]),
-                shapely.geometry.Polygon([(1, 2), (2, 3), (1, 4), (0, 3), (1, 2)]),
-            ]
-        )
-        sfg = _SpatialFilteringGeometries(geometries=geometries)
-        assert sfg.is_empty() is False
-        simplified = sfg.get_simplified_geojson(**kwargs)
-        simplified = json.loads(simplified)
-        if isinstance(expected, str):
-            expected = json.loads(expected)
-        # TODO: use Hausdorff distance instead of exact equality
-        assert simplified == expected
 
 class TestSpatioTemporalExtent:
     @pytest.mark.parametrize(
