@@ -427,10 +427,16 @@ class GeopysparkDataCube(DriverDataCube):
 
             :return: An GeopysparkDataCube instance
         """
-        return GeopysparkDataCube(
-            pyramid=self.pyramid,
-            metadata=self.metadata.rename_labels(dimension,target,source)
-        )
+        if dimension == 't':
+            pysc = gps.get_spark_context()
+            return self._apply_to_levels_geotrellis_rdd(
+                lambda rdd, level: pysc._jvm.org.openeo.geotrellis.OpenEOProcesses().relabel_temporal(rdd, source, target)
+            )
+        else:
+            return GeopysparkDataCube(
+                pyramid=self.pyramid,
+                metadata=self.metadata.rename_labels(dimension,target,source)
+            )
 
     @classmethod
     def _mapTransform(cls, layoutDefinition, spatialKey) -> SpatialExtent:
