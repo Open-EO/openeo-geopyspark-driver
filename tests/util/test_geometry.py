@@ -1,3 +1,4 @@
+import math
 import itertools
 import logging
 
@@ -5,9 +6,11 @@ import geopandas
 import mock
 import pytest
 import shapely.geometry
+
 from openeo_driver.util.geometry import BoundingBox
 
 from openeogeotrellis.util.geometry import BoundingBoxMerger, GeometrySimplifier, GridSnapper, bbox_to_geojson
+from ..data import get_test_data_file
 
 logger = logging.getLogger(__name__)
 
@@ -218,3 +221,45 @@ class TestGeometrySimplifier:
         logger.info(f"{simplified=} {expected=}")
         assert isinstance(simplified, type(expected))
         assert shapely.hausdorff_distance(simplified, expected) == 0
+
+    def test_to_simplified_geojson_decimal_places(self):
+        box = shapely.geometry.box(1.23456789, math.e, math.pi, 4)
+        geojson = GeometrySimplifier().to_simplified_geojson(geometry=box)
+        assert (
+            geojson
+            == '{"type":"Polygon","coordinates":[[[3.1416,2.7183],[3.1416,4.0],[1.2346,4.0],[1.2346,2.7183],[3.1416,2.7183]]]}'
+        )
+
+        geojson = GeometrySimplifier().to_simplified_geojson(geometry=box, round_decimals=2)
+        assert (
+            geojson == '{"type":"Polygon","coordinates":[[[3.14,2.72],[3.14,4.0],[1.23,4.0],[1.23,2.72],[3.14,2.72]]]}'
+        )
+
+    def test_to_simplified_geojson_wc_34TFM_100patches(self):
+        """
+        More complex, real world use case
+        with 100 patches distributed in an S2 tile
+        """
+        path = get_test_data_file("geometries/wc-34TFM-100patches.geoparquet")
+        geometry = geopandas.read_parquet(path).geometry
+        geometry_4326 = geometry.to_crs("EPSG:4326")
+
+        # GeoJSON representation
+        orig_geojson = shapely.to_geojson(geometry_4326.union_all(method="coverage"))
+        logger.info(f"{len(orig_geojson)=} {orig_geojson=}")
+        simplified_geojson = GeometrySimplifier().to_simplified_geojson(geometry, round_decimals=3)
+        logger.info(f"{len(simplified_geojson)=} {simplified_geojson=}")
+        assert len(orig_geojson) > 15000 and len(simplified_geojson) < 300
+
+        # Check coverage from sampling original geometry
+        simplified = shapely.from_geojson(simplified_geojson)
+        inside_samples = list(geometry_4326.centroid.iloc[::10])
+        logger.info(f"{len(inside_samples)=} {inside_samples=}")
+        assert all([simplified.contains(s) for s in inside_samples])
+
+        # Corners of overall bounds should be outside
+        outside_samples = [
+            shapely.Point(x, y) for (x, y) in shapely.geometry.box(*geometry_4326.total_bounds).exterior.coords[:-1]
+        ]
+        logger.info(f"{len(outside_samples)=} {outside_samples=}")
+        assert all([not simplified.contains(s) for s in outside_samples])
