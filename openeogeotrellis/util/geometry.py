@@ -154,9 +154,9 @@ class GeometrySimplifier:
         the GeoJSON representation.
         """
         if isinstance(geometries, geopandas.GeoSeries):
-            return geometries.apply(lambda g: shapely.get_coordinates(g).shape[0]).sum()
+            return geometries.apply(lambda g: shapely.count_coordinates(g)).sum()
         elif isinstance(geometries, shapely.geometry.base.BaseGeometry):
-            return shapely.get_coordinates(geometries).shape[0]
+            return shapely.count_coordinates(geometries)
         else:
             raise ValueError(geometries)
 
@@ -174,11 +174,11 @@ class GeometrySimplifier:
         Simplify given geometry (Shapely shape or GeoPandas series)
         to a (Multi)Polygon
         :param geometry:
-        :param vertex_threshold:
+        :param vertex_threshold: limit for number of vertices to in simplified geometry
         :return:
         """
         if isinstance(geometry, geopandas.GeoSeries):
-            # Simplify each geometry to bounding box to reduce complexity
+            # Simplify each geometry of the series to its bounding box to reduce complexity
             if (
                 # Quick lower bound estimation (assuming polygons are at least triangles)
                 geometry.shape[0] * 4 > vertex_threshold
@@ -210,11 +210,16 @@ class GeometrySimplifier:
         ],
         *,
         vertex_threshold: int = 100,
+        round_decimals: Union[int, None] = 4,
     ) -> str:
         simplified_geometry = self.simplify(geometry=geometry, vertex_threshold=vertex_threshold)
+
         # Reproject to lon/lat for GeoJSON compliance
         if isinstance(geometry, geopandas.GeoSeries) and geometry.crs:
             simplified_geometry = reproject_geometry(simplified_geometry, from_crs=geometry.crs, to_crs="epsg:4326")
 
-        # TODO: possible to limit number of digits or precision?
+        if round_decimals is not None:
+            # 4 decimal places (default) is enough in lon-lat degrees for meter-level precision
+            simplified_geometry = shapely.transform(simplified_geometry, lambda x: x.round(round_decimals))
+
         return shapely.to_geojson(simplified_geometry)
