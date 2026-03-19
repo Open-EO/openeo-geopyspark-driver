@@ -196,13 +196,14 @@ class GeopysparkCubeMetadata(CollectionMetadata):
     def get_layer_crs(self) -> str:
         # TODO: improve naming: in openEO there are "collections", "bands" and "cubes",
         #       it's unclear what "layer" means here: it seems to refer to the source "collection",
-        #       while were here in the context of "cube" metadata
+        #       while we're here in the context of "cube" metadata
         #       (which already might have a different CRS than the source collection)
         crs = self.get("cube:dimensions", "x", "reference_system", default="EPSG:4326")
         if isinstance(crs, int):
             crs = "EPSG:%s" % str(crs)
         elif isinstance(crs, dict):
             if crs.get("name") == "AUTO 42001 (Universal Transverse Mercator)":
+                # TODO: this is an ad-hoc, non-standard CRS code. Isn't this going to cause trouble elsewhere?
                 crs = "Auto42001"
         return crs
 
@@ -232,6 +233,7 @@ class GeopysparkCubeMetadata(CollectionMetadata):
         band_to_gsd = {}
         for band_metadata in bands_metadata:
             band_name = band_metadata.get("name")
+            # TODO: "resolution" is not an official STAC property, where does this come from?
             band_gsd = band_metadata.get("gsd") or band_metadata.get("resolution")
             if not band_gsd and "openeo:gsd" in band_metadata:
                 unit = band_metadata["openeo:gsd"]["unit"]
@@ -246,6 +248,7 @@ class GeopysparkCubeMetadata(CollectionMetadata):
         if len(band_to_gsd) > 0:
             return band_to_gsd
 
+        # TODO: "item_assets" > "classification" looks overly use-case specific. What is this about?
         gsd_layer_wide = clean_number_pair(self.get("item_assets", "classification", "gsd", default=None))
         if gsd_layer_wide:
             return gsd_layer_wide
@@ -255,6 +258,7 @@ class GeopysparkCubeMetadata(CollectionMetadata):
             # step could be expressed in LatLon or layer native crs.
             # Only when the layer native CRS is LatLon, we can trust it
             # https://github.com/stac-extensions/datacube#dimension-object
+            # TODO: revisit these assumptions: step is per definition in crs specified under "reference_system"
 
             bboxes = self.get("extent", "spatial", "bbox")
             if bboxes and len(bboxes) > 0:
