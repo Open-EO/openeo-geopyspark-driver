@@ -1,5 +1,6 @@
 import json
 import logging
+import math
 import os
 import pathlib
 import sys
@@ -782,16 +783,26 @@ def create_final_grid(final_bbox, resolution, rim_pixels=0 ):
     """
 
     final_xmin, final_ymin, final_xmax, final_ymax = final_bbox
-    #the boundingbox of the tile seems to missing the last pixels, that is why we add 1 resolution to the second argument
+    # the boundingbox of the tile seems to missing the last pixels, that is why we add 1 resolution to the second argument
     # target coordinates have to be computed as pixel centers
-    grid_x, grid_y = np.meshgrid(
-        np.arange(final_xmin + 0.5 * resolution - (rim_pixels * resolution),
-                  final_xmax - 0.5 * resolution + resolution + (rim_pixels * resolution), resolution),
-        np.arange(final_ymax - 0.5 * resolution + (rim_pixels * resolution),
-                  final_ymin + 0.5 * resolution - resolution - (rim_pixels * resolution),
-                  -resolution)  # without lat mirrored
-        # np.arange(ref_ymin, ref_ymax, self.final_grid_resolution)   #with lat mirrored
-    )
+    ref_xmin = final_xmin + 0.5 * resolution - (rim_pixels * resolution)
+    ref_ymin = final_ymin + 0.5 * resolution - resolution - (rim_pixels * resolution)
+    ref_xmax = final_xmax - 0.5 * resolution + resolution + (rim_pixels * resolution)
+    ref_ymax = final_ymax - 0.5 * resolution + (rim_pixels * resolution)
+    steps_x = (ref_xmax - ref_xmin)/resolution
+    steps_y = (ref_ymax - ref_ymin) / resolution
+    if math.isclose(steps_x, math.floor(steps_x), rel_tol=1e-10) and math.isclose(steps_y,math.floor(steps_y),rel_tol=1e-10):
+        grid_x, grid_y = np.meshgrid(
+            np.linspace(ref_xmin, ref_xmax, math.floor(steps_x), endpoint=False),
+            np.linspace(ref_ymax, ref_ymin, math.floor(steps_y), endpoint=False)
+        )
+    else:
+        logger.info(f"load_collection: unexpected number of steps, #steps x: {steps_x}, #steps y: {steps_y} ")
+        grid_x, grid_y = np.meshgrid(
+            np.arange(ref_xmin, ref_xmax, resolution),
+            np.arange(ref_ymax,ref_ymin,-resolution) # without lat mirrored
+            # np.arange(ref_ymin, ref_ymax, self.final_grid_resolution)   #with lat mirrored
+        )
     target_shape = grid_x.shape
     target_coordinates = np.column_stack((grid_x.ravel(), grid_y.ravel()))
     return target_coordinates, target_shape
