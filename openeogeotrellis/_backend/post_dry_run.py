@@ -463,10 +463,10 @@ def get_global_extent(*, load_params: LoadParameters, env: EvalEnv) -> Union[Bou
     # TODO this is a short-term adapter to migrate from load_params to env approach,
     #      so ideally this can be removed once migration is completed
     if global_extent := env.get(EVAL_ENV_KEY.GLOBAL_EXTENT):
-        _log.debug(f"get_global_extent from env: {global_extent=}")
+        _log.info(f"get_global_extent from env: {global_extent=}")
         return global_extent
     elif load_params.global_extent:
-        _log.debug(f"get_global_extent from load_params: {load_params.global_extent=}")
+        _log.info(f"get_global_extent from load_params: {load_params.global_extent=}")
         return BoundingBox.from_dict(load_params.global_extent)
     else:
         return None
