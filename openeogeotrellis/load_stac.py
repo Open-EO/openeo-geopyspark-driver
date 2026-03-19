@@ -961,6 +961,7 @@ def construct_item_collection(
                     skip_datetime_filter=netcdf_with_time_dimension,
                     per_page_limit=feature_flags.get("stac_api_per_page_limit", STAC_API_PER_PAGE_LIMIT_DEFAULT),
                     max_items=feature_flags.get("stac_api_max_items", STAC_API_MAX_ITEMS_DEFAULT),
+                    filter_by_geometry=feature_flags.get("stac_api_filter_by_geometry", False),
                 )
         else:
             assert isinstance(stac_object, pystac.Catalog)  # static Catalog + Collection
@@ -1417,6 +1418,7 @@ class ItemCollection:
         original_url: str = "n/a",
         per_page_limit: int = STAC_API_PER_PAGE_LIMIT_DEFAULT,
         max_items: Union[int, None] = STAC_API_MAX_ITEMS_DEFAULT,
+        filter_by_geometry: bool = False,
     ) -> ItemCollection:
         root_catalog = collection.get_root()
 
@@ -1477,8 +1479,11 @@ class ItemCollection:
             else:
                 query_bboxes = [bbox.as_wsen_tuple()]
 
-            # TODO: possible/necessary to detect if STAC API supports `intersects` based filtering?
-            intersects_geometry = spatiotemporal_extent.spatial_filtering_geometries.get_simplified_geojson()
+            intersects_geometry = None
+            if filter_by_geometry:
+                # Include geometry filtering already in STAC API query
+                intersects_geometry = spatiotemporal_extent.spatial_filtering_geometries.get_simplified_geojson()
+
             # Note that per STAC API spec, "Only one of either `intersects` or `bbox` may be specified"
             if intersects_geometry:
                 query_bboxes = [None]
@@ -1523,6 +1528,7 @@ class ItemCollection:
                         item
                         for item in tracking_iter_raw(search_request.items())
                         if property_matcher(item.properties) and item.id not in seen_item_ids
+                        # TODO also do filtering with spatiotemporal_extent.spatial_filtering_geometries here
                     )
                 )
                 logger.info(f"ItemCollection.from_stac_api: {tracking_iter_raw=!s} {tracking_iter_filtered=!s}")
