@@ -161,6 +161,7 @@ def _prepare_context(
     normalized_band_selection: Optional[List[str]] = None,
     stac_io: Optional[pystac.stac_io.StacIO] = None,
     feature_flags: Optional[Dict[str, Any]] = None,
+    data_cube_parameters: Optional[Any] = None,
 ) -> _LoadStacContext:
     """
     Prepare all metadata and inputs needed to build/load a datacube from raster files.
@@ -665,7 +666,10 @@ def _prepare_context(
     metadata_properties = {}
     correlation_id = env.get(EVAL_ENV_KEY.CORRELATION_ID, "")
 
-    data_cube_parameters, single_level = datacube_parameters.create(load_params=load_params, env=env, jvm=jvm)
+    if data_cube_parameters is not None:
+        single_level = env.get(EVAL_ENV_KEY.PYRAMID_LEVELS, "all") != "all"
+    else:
+        data_cube_parameters, single_level = datacube_parameters.create(load_params=load_params, env=env, jvm=jvm)
     getattr(data_cube_parameters, "layoutScheme_$eq")("FloatingLayoutScheme")
 
     tilesize = feature_flags.get("tilesize", None)
@@ -817,6 +821,7 @@ def load_stac(
     normalized_band_selection: Optional[List[str]] = None,
     stac_io: Optional[pystac.stac_io.StacIO] = None,
     feature_flags: Optional[Dict[str, Any]] = None,
+    data_cube_parameters: Optional[Any] = None,
 ) -> GeopysparkDataCube:
     """
 
@@ -838,6 +843,7 @@ def load_stac(
         normalized_band_selection=normalized_band_selection,
         stac_io=stac_io,
         feature_flags=feature_flags,
+        data_cube_parameters=data_cube_parameters,
     )
     return _build_datacube(context)
 

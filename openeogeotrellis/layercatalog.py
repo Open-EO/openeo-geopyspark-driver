@@ -731,6 +731,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 batch_jobs=None,
                 normalized_band_selection=normalized_band_selection,
                 feature_flags=layer_source_info.get("load_stac_feature_flags", {}),
+                data_cube_parameters=datacubeParams,
             )
             pyramid = cube.pyramid.levels
             metadata = cube.metadata
