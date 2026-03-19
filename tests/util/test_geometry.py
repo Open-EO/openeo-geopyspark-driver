@@ -1,10 +1,15 @@
 import itertools
+import logging
+
+import geopandas
 import mock
 import pytest
-
+import shapely.geometry
 from openeo_driver.util.geometry import BoundingBox
 
-from openeogeotrellis.util.geometry import BoundingBoxMerger, GridSnapper, bbox_to_geojson
+from openeogeotrellis.util.geometry import BoundingBoxMerger, GeometrySimplifier, GridSnapper, bbox_to_geojson
+
+logger = logging.getLogger(__name__)
 
 
 class TestBoundingBoxMerger:
@@ -103,3 +108,113 @@ def test_bbox_to_geojson_antimeridian():
     }
     assert bbox_to_geojson(179, 2, -178, 4) == expected
     assert bbox_to_geojson((179, 2, -178, 4)) == expected
+
+
+class TestGeometrySimplifier:
+    def test_simplify_box_shape(self):
+        box = shapely.geometry.box(1, 2, 3, 4)
+        simplified = GeometrySimplifier().simplify(geometry=box)
+        logger.info(f"{simplified=}")
+        assert isinstance(simplified, shapely.geometry.Polygon)
+        assert shapely.hausdorff_distance(simplified, box) == 0
+
+    def test_simplify_box_df(self):
+        box = shapely.geometry.box(1, 2, 3, 4)
+        gdf = geopandas.GeoSeries([box])
+        simplified = GeometrySimplifier().simplify(geometry=gdf)
+        logger.info(f"{simplified=}")
+        assert isinstance(simplified, shapely.geometry.Polygon)
+        assert shapely.hausdorff_distance(simplified, box) == 0
+
+    def test_box_to_simplified_geojson(self):
+        box = shapely.geometry.box(1, 2, 3, 4)
+        geojson = GeometrySimplifier().to_simplified_geojson(geometry=box)
+        assert geojson == '{"type":"Polygon","coordinates":[[[3.0,2.0],[3.0,4.0],[1.0,4.0],[1.0,2.0],[3.0,2.0]]]}'
+
+    def test_simplify_box_with_crs(self):
+        box32631 = shapely.geometry.box(506986, 5660950, 514003, 5672085)
+        gdf = geopandas.GeoSeries([box32631], crs="EPSG:32631")
+
+        simplified = GeometrySimplifier().simplify(geometry=gdf)
+        logger.info(f"{simplified=}")
+        assert isinstance(simplified, shapely.geometry.Polygon)
+        assert shapely.hausdorff_distance(simplified, box32631) == 0
+
+        geojson = GeometrySimplifier().to_simplified_geojson(geometry=gdf)
+        assert geojson.startswith('{"type":"Polygon","coordinates":[[[3.')
+        expected = shapely.from_geojson(
+            '{"type": "Polygon", "coordinates": [[[3.1, 51.1], [3.1, 51.2], [3.2, 51.2], [3.2, 51.1], [3.1, 51.1]]]}'
+        )
+        assert shapely.hausdorff_distance(shapely.from_geojson(geojson), expected) == pytest.approx(0, abs=0.001)
+
+    @pytest.mark.parametrize(
+        ["vertex_threshold", "expected"],
+        [
+            (
+                # Threshold 32: plenty of room to preserve geometry
+                32,
+                "MULTIPOLYGON (((4 1, 4 2, 5 2, 5 1, 4 1)), ((2 0, 2 1, 3 1, 3 0, 2 0)), ((0 1, 0 2, 1 2, 1 1, 0 1)), ((2 2, 2 3, 3 3, 3 2, 2 2)))",
+            ),
+            (
+                # Threshold 12: trigger simplification to hull
+                12,
+                "POLYGON ((2 0, 0 1, 0 2, 2 3, 3 3, 5 2, 5 1, 3 0, 2 0))",
+            ),
+            (
+                # Threshold 6: trigger envelop (bounding box)
+                6,
+                "POLYGON ((0 0, 5 0, 5 3, 0 3, 0 0))",
+            ),
+        ],
+    )
+    def test_simplify_four_boxes_in_cross_arragement(self, vertex_threshold, expected):
+        """
+             ┌─┐12
+        ┌─┐9 └─┘  ┌─┐3
+        └─┘  ┌─┐6 └─┘
+             └─┘
+        """
+        box3 = shapely.geometry.box(4, 1, 5, 2)
+        box6 = shapely.geometry.box(2, 0, 3, 1)
+        box9 = shapely.geometry.box(0, 1, 1, 2)
+        box12 = shapely.geometry.box(2, 2, 3, 3)
+        geometry = geopandas.GeoSeries([box3, box6, box9, box12])
+
+        simplified = GeometrySimplifier().simplify(geometry=geometry, vertex_threshold=vertex_threshold)
+        expected = shapely.from_wkt(expected)
+        logger.info(f"{simplified=} {expected=}")
+        assert isinstance(simplified, type(expected))
+        assert shapely.hausdorff_distance(simplified, expected) == 0
+
+    @pytest.mark.parametrize(
+        ["vertex_threshold", "expected"],
+        [
+            (
+                # Threshold 12: trigger union of envelopes
+                12,
+                "MULTIPOLYGON (((-1 4, 3 4, 3 0, -1 0, -1 4)), ((4 5, 8 5, 8 1, 4 1, 4 5)))",
+            ),
+            (
+                # Threshold 8: trigger simplification to hull of envelopes
+                8,
+                "POLYGON ((-1 0, -1 4, 4 5, 8 5, 8 1, 3 0, -1 0))",
+            ),
+            (
+                # Threshold 6: trigger overall envelop (bounding box)
+                6,
+                "POLYGON ((-1 0, 8 0, 8 5, -1 5, -1 0))",
+            ),
+        ],
+    )
+    def test_two_stars(self, vertex_threshold, expected):
+        base_star = [(1, 0), (2, 1), (1, 1), (0, 2), (-1, 1), (-2, 1)]
+        base_star = base_star + [(-x, -y) for (x, y) in base_star]
+        star12 = shapely.geometry.Polygon((1 + x, 2 + y) for (x, y) in base_star)
+        star63 = shapely.geometry.Polygon((6 + x, 3 + y) for (x, y) in base_star)
+        geometry = geopandas.GeoSeries([star12, star63])
+
+        simplified = GeometrySimplifier().simplify(geometry=geometry, vertex_threshold=vertex_threshold)
+        expected = shapely.from_wkt(expected)
+        logger.info(f"{simplified=} {expected=}")
+        assert isinstance(simplified, type(expected))
+        assert shapely.hausdorff_distance(simplified, expected) == 0

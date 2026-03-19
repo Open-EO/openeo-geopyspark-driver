@@ -41,7 +41,7 @@ from openeo_driver.errors import (
 )
 from openeo_driver.jobregistry import PARTIAL_JOB_STATUS
 from openeo_driver.users import User
-from openeo_driver.util.geometry import BoundingBox, GeometryBufferer, reproject_geometry
+from openeo_driver.util.geometry import BoundingBox, GeometryBufferer
 from openeo_driver.util.utm import utm_zone_from_epsg
 from openeo_driver.utils import EvalEnv
 from pystac import STACObject
@@ -52,9 +52,9 @@ from openeogeotrellis.constants import EVAL_ENV_KEY
 from openeogeotrellis.geopysparkcubemetadata import GeopysparkCubeMetadata
 from typing import TYPE_CHECKING
 from openeogeotrellis.integrations.stac import LoggingStacApiIO, ResilientStacIO
-from openeogeotrellis.util.logging import TrackingIter
 from openeogeotrellis.util.datetime import DateTimeLikeOrNone, to_datetime_utc_unless_none
-from openeogeotrellis.util.geometry import GridSnapper
+from openeogeotrellis.util.geometry import GeometrySimplifier, GridSnapper
+from openeogeotrellis.util.logging import TrackingIter
 from openeogeotrellis.util.projection import is_utm_epsg_code
 from openeogeotrellis.utils import get_jvm, map_optional, normalize_temporal_extent, to_projected_polygons, unzip
 
@@ -1206,47 +1206,14 @@ class _SpatialFilteringGeometries:
             self._geometries = None
             logger.warning(f"Unsupported geometries for _SpatialFilteringGeometries: {type(geometries)=}")
 
-    def is_empty(self) -> bool:
-        return self._geometries is None
-
-    @staticmethod
-    def _vertex_count(geometries: Union[geopandas.GeoSeries, shapely.geometry.base.BaseGeometry]) -> int:
+    def get_simplified_geojson(self, *, vertex_threshold: int = 100) -> Union[str, None]:
         """
-        Count number of vertices in given geometries as measure of complexity.
-        Note that this is based on length of shapely coordinate array,
-        where, in case of polygons, the first vertex is duplicated as final one,
-        so the vertex count is off by one (e.g. a rectangle will give 5).
-        But that's fine here as that will correspond to the GeoJSON representation.
-        """
-        if isinstance(geometries, geopandas.GeoSeries):
-            return geometries.apply(lambda g: shapely.get_coordinates(g).shape[0]).sum()
-        elif isinstance(geometries, shapely.geometry.base.BaseGeometry):
-            return shapely.get_coordinates(geometries).shape[0]
-        else:
-            raise ValueError(geometries)
-
-    def get_simplified_geojson(
-        self, envelope_threshold: int = 10, overall_hull_threshold: int = 10
-    ) -> Union[str, None]:
-        """
-        Get a rough approximation of the geometries as GeoJSON string
+        Get simplification (if necessary) of the geometries as GeoJSON string
         to be used as spatial filter (`intersects` parameter) in STAC API queries
         """
         if self._geometries is None:
             return None
-        geometries = self._geometries
-        # Simplify each geometry to bounding box to reduce complexity
-        if self._vertex_count(geometries) > envelope_threshold:
-            geometries = geometries.envelope
-        # method "coverage": optimized for non-overlapping polygons
-        # and can be significantly faster than the unary union algorithm.
-        union = geometries.union_all(method="coverage")
-        if self._vertex_count(union) > overall_hull_threshold:
-            union = shapely.convex_hull(union)
-        # Reproject to lon/lat for GeoJSON compliance
-        if geometries.crs:
-            union = reproject_geometry(union, from_crs=geometries.crs, to_crs="epsg:4326")
-        return shapely.to_geojson(union)
+        return GeometrySimplifier().to_simplified_geojson(geometry=self._geometries, vertex_threshold=vertex_threshold)
 
 
 class _SpatioTemporalExtent:
