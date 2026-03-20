@@ -1,13 +1,13 @@
-import re
-
-import logging
-
 import datetime
+import json
+import logging
+import re
 from contextlib import nullcontext
 from typing import Iterator, List, Tuple, Union
 from unittest import mock
 
 import dirty_equals
+import geopandas
 import openeo.metadata
 import pystac
 import pystac_client
@@ -16,6 +16,7 @@ import responses
 import shapely.geometry
 from openeo.testing.stac import StacDummyBuilder
 from openeo_driver.backend import BatchJobMetadata, BatchJobs, LoadParameters
+from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.errors import OpenEOApiException
 from openeo_driver.testing import approxify
 from openeo_driver.users import User
@@ -27,15 +28,23 @@ from py4j.java_gateway import JavaObject
 from openeogeotrellis.backend import GpsBatchJobs
 from openeogeotrellis.job_registry import InMemoryJobRegistry
 from openeogeotrellis.load_stac import (
+    STAC_API_PER_PAGE_LIMIT_DEFAULT,
+    STAC_API_RETRY_TOTAL,
+    AdaptingPropertyFilter,
     ItemCollection,
     ItemDeduplicator,
     PropertyFilter,
+    _get_apply_sentinel2_reflectance_offset,
     _get_proj_metadata,
     _is_band_asset,
+    _is_sentinel2_reflectance_asset,
     _is_supported_raster_mime_type,
+    _prepare_context,
     _proj_code_to_epsg,
     _ProjectionMetadata,
+    _ResolutionTracker,
     _SpatialExtent,
+    _SpatialFilteringGeometries,
     _spatiotemporal_extent_from_load_params,
     _SpatioTemporalExtent,
     _StacMetadataParser,
@@ -44,13 +53,6 @@ from openeogeotrellis.load_stac import (
     construct_item_collection,
     extract_own_job_info,
     load_stac,
-    _prepare_context,
-    AdaptingPropertyFilter,
-    _get_apply_sentinel2_reflectance_offset,
-    _is_sentinel2_reflectance_asset,
-    _ResolutionTracker,
-    STAC_API_PER_PAGE_LIMIT_DEFAULT,
-    STAC_API_RETRY_TOTAL,
 )
 from openeogeotrellis.testing import DummyStacApiServer, gps_config_overrides
 from openeogeotrellis.util.geometry import bbox_to_geojson
@@ -1526,6 +1528,37 @@ class TestSpatialExtent:
         assert cache[extent2] == 1
         assert cache[extent4] == 3
         assert extent5 not in cache
+
+
+class TestSpatialFilteringGeometries:
+    def test_empty(self):
+        sfg = _SpatialFilteringGeometries(geometries=None)
+        assert sfg.is_empty() is True
+        assert sfg.get_simplified_geojson() is None
+
+    def test_simple_box_geoseries(self):
+        geometries = geopandas.GeoSeries([shapely.geometry.box(1, 2, 3, 4)])
+        sfg = _SpatialFilteringGeometries(geometries=geometries)
+        assert sfg.is_empty() is False
+        simplified = sfg.get_simplified_geojson()
+        simplified = json.loads(simplified)
+        assert simplified == {
+            "type": "Polygon",
+            "coordinates": [[[1, 2], [1, 4], [3, 4], [3, 2], [1, 2]]],
+        }
+
+    def test_simple_box_vector_cube(self):
+        gdf = geopandas.GeoDataFrame(geometry=[shapely.geometry.box(1, 2, 3, 4)])
+        geometries = DriverVectorCube(geometries=gdf)
+        sfg = _SpatialFilteringGeometries(geometries=geometries)
+        assert sfg.is_empty() is False
+        simplified = sfg.get_simplified_geojson()
+        simplified = json.loads(simplified)
+        assert simplified == {
+            "type": "Polygon",
+            "coordinates": [[[1, 2], [1, 4], [3, 4], [3, 2], [1, 2]]],
+        }
+
 
 
 class TestSpatioTemporalExtent:
