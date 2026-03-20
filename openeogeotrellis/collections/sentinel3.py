@@ -246,6 +246,16 @@ def _get_stac_collection_urls(product_type: str) -> List[str]:
         return [
             "https://stac.opensearch.dataspace.copernicus.eu/v1/collections/sentinel-3-syn-2-aod-ntc",
         ]
+    elif product_type == "OL_1_EFR___":
+        return [
+            "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-3-olci-1-efr-nrt",
+            "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-3-olci-1-efr-ntc",
+        ]
+    elif product_type == "SL_1_RBT___":
+        return [
+            "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-3-sl-1-rbt-nrt",
+            "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-3-sl-1-rbt-ntc",
+        ]
     else:
         raise ValueError(f"STAC not yet supported for Sentinel-3 product type: {product_type}")
 
@@ -344,7 +354,7 @@ def _build_stac_opensearch_client(
             items_by_collection[collection_name] = list(item_collection.iter_items_with_band_assets())
         except Exception as e:
             # Log but don't fail if one collection fails - the other might still have data
-            logger.warning(f"Failed to query STAC collection {collection_name}: {e}")
+            logger.warning(f"Failed to query STAC collection {collection_name}", exc_info=True)
             items_by_collection[collection_name] = []
 
     # Deduplicate: NTC takes precedence over NRT
@@ -627,7 +637,7 @@ def read_product(product, product_type, band_names, tile_size, resolution, repro
             )
 
 
-            digital_numbers = product_type == OLCI_PRODUCT_TYPE
+            digital_numbers = False
 
             try:
                 orfeo_bands = create_s3_toa(
@@ -686,7 +696,7 @@ def read_product(product, product_type, band_names, tile_size, resolution, repro
 
 
 def create_s3_toa(product_type, creo_path, band_names, bbox_tile, digital_numbers: bool, final_grid_resolution: float, reprojection_type=DEFAULT_REPROJECTION_TYPE, binning_args=None):
-    if product_type == OLCI_PRODUCT_TYPE:
+    if product_type in [OLCI_PRODUCT_TYPE, "OL_2_LFR___", "OL_2_WFR___"]:
         geofile = 'geo_coordinates.nc'
         lat_band = 'latitude'
         lon_band = 'longitude'
@@ -694,14 +704,10 @@ def create_s3_toa(product_type, creo_path, band_names, bbox_tile, digital_number
         geofile = 'geolocation.nc'
         lat_band = 'lat'
         lon_band = 'lon'
-    elif product_type == SLSTR_PRODUCT_TYPE:
+    elif product_type in [SLSTR_PRODUCT_TYPE, "SL_1_RBT___"]:
         geofile = 'geodetic_in.nc'
         lat_band = 'latitude_in'
         lon_band = 'longitude_in'
-    elif product_type in ["OL_2_LFR___", "OL_2_WFR___"]:
-        geofile = 'geo_coordinates.nc'
-        lat_band = 'latitude'
-        lon_band = 'longitude'
     elif product_type == "SY_2_AOD___":
         geofile = 'NTC_AOD.nc'
         lat_band = 'latitude'
@@ -970,6 +976,8 @@ def do_reproject(product_type, final_grid_resolution, creo_path, band_names,
             if product_type == SLSTR_PRODUCT_TYPE:
                 return band_name
             if product_type in ["OL_2_LFR___", "OL_2_WFR___", "SY_2_AOD___"]:
+                return band_name
+            if product_type in ["SL_1_RBT___"]:
                 return band_name
             raise ValueError(band_name)
 
