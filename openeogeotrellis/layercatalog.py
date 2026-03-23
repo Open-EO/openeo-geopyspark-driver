@@ -1421,7 +1421,7 @@ def is_layer_too_large(
         native_crs: str,
         threshold_pixels: int = LARGE_LAYER_THRESHOLD_IN_PIXELS,
         sync_job: bool = False,
-):
+) -> Union[str, None]:
     """
     Estimates the number of pixels that will be required to load this layer
     and returns True if it exceeds the threshold.
@@ -1438,6 +1438,9 @@ def is_layer_too_large(
     :return: A message if the layer exceeds the threshold in pixels. None otherwise.
              Also returns the estimated number of pixels and the threshold.
     """
+    # TODO: this function needs unit tests
+    # TODO: confusing separation between extra_validation_load_collection and is_layer_too_large:
+    #       former handles band and temporal dimension, while latter handles spatial dimension. Why?
     geometries = load_params.aggregate_spatial_geometries
     spatial_extent = load_params.spatial_extent
     srs = spatial_extent.get("crs", 'EPSG:4326')
@@ -1447,6 +1450,7 @@ def is_layer_too_large(
         if srs["name"] == 'AUTO 42001 (Universal Transverse Mercator)':
             srs = 'Auto42001'
 
+    # TODO: avoid in-place modification of load_params.spatial_extent
     spatial_extent["crs"] = srs
     if not health_check_extent(spatial_extent):
         return f"Unsupported spatial extent: {spatial_extent}"
@@ -1476,11 +1480,13 @@ def is_layer_too_large(
     if srs != target_crs:
         spatial_extent = reproject_bounding_box(spatial_extent, from_crs=srs, to_crs=target_crs)
 
+    # TODO: this does not work properly accross antimeridian
     bbox_width = abs(spatial_extent["east"] - spatial_extent["west"])
     bbox_height = abs(spatial_extent["north"] - spatial_extent["south"])
 
     pixels_width = bbox_width / cell_width
     pixels_height = bbox_height / cell_height
+    # TODO: avoid hardcoding 20000 threshold here
     if sync_job and (pixels_width > 20000 or pixels_height > 20000) and not geometries:
         return f"Requested spatial extent is too large for a sync job {pixels_width:.0f}x{pixels_height:.0f} pixels. Max size: (20000x20000)."
 

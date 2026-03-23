@@ -614,6 +614,7 @@ def calculate_rough_area(geoms: Iterable[BaseGeometry]):
         if hasattr(geom, "geoms"):
             total_area += calculate_rough_area(geom.geoms)
         else:
+            # TODO: this will go wrong around the antimeridian
             total_area += (geom.bounds[2] - geom.bounds[0]) * (geom.bounds[3] - geom.bounds[1])
     return total_area
 
@@ -698,9 +699,11 @@ def reproject_cellsize(
 
 
 def health_check_extent(extent):
+    # TODO: needs unit tests
     crs = extent.get("crs", "EPSG:4326")
     is_utm = crs == "Auto42001" or crs.startswith("EPSG:326")
 
+    # TODO: this logic is wrong: bounding boxes in EPSG:4326 across antimeridian will have west > east
     if extent["west"] > extent["east"] or extent["south"] > extent["north"]:
         logger.warning(f"health_check_extent extent with surface<0: {extent}")
         return False
@@ -739,7 +742,7 @@ def health_check_extent(extent):
     return True
 
 
-def parse_approximate_isoduration(s):
+def parse_approximate_isoduration(s) -> datetime.timedelta:
     """
     Parse the ISO8601 duration as years,months,weeks,days, hours,minutes,seconds.
     Approximate, because it does not care about leap years, months with different number of days, etc.

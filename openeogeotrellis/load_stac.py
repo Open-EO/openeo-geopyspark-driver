@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 import collections
 import datetime
 import datetime as dt
@@ -54,7 +56,14 @@ from openeogeotrellis.util.logging import TrackingIter
 from openeogeotrellis.util.datetime import DateTimeLikeOrNone, to_datetime_utc_unless_none
 from openeogeotrellis.util.geometry import GridSnapper
 from openeogeotrellis.util.projection import is_utm_epsg_code
-from openeogeotrellis.utils import get_jvm, map_optional, normalize_temporal_extent, to_projected_polygons, unzip
+from openeogeotrellis.utils import (
+    get_jvm,
+    map_optional,
+    normalize_temporal_extent,
+    to_projected_polygons,
+    unzip,
+    parse_approximate_isoduration,
+)
 
 if TYPE_CHECKING:
     from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
@@ -929,6 +938,9 @@ def construct_item_collection(
                 metadata=collection.to_dict(include_self_link=False, transform_hrefs=False)
             )
 
+            # TODO: estimate number of pixels
+            _StacRasterCubeSizeEstimator().estimate_cube_size(collection, spatiotemporal_extent=spatiotemporal_extent)
+
             band_names = stac_metadata_parser.bands_from_stac_collection(collection=collection).band_names()
             logger.info(f"construct_item_collection: STAC API Collection {collection.id!r}, {band_names=}, {netcdf_with_time_dimension=}")
 
@@ -1111,6 +1123,25 @@ class _TemporalExtent:
         start, end = interval
         return self.intersects(start_datetime=start, end_datetime=end)
 
+    def intersection(self, other: _TemporalExtent) -> Union[_TemporalExtent, None]:
+        """
+        Intersection of this extent with another
+        (or None when intersection is empty)
+        """
+        from_date = (
+            max(self.from_date, other.from_date)
+            if self.from_date and other.from_date
+            else self.from_date or other.from_date
+        )
+        to_date = min(self.to_date, other.to_date) if self.to_date and other.to_date else self.to_date or other.to_date
+
+        if from_date and to_date and from_date > to_date:
+            # No intersection, return sentinel for empty extent
+            # TODO: dedicated sentinel value (with some methods) for empty extent?
+            return None
+
+        return _TemporalExtent(from_date=from_date, to_date=to_date)
+
 
 class _SpatialExtent:
     """
@@ -1142,7 +1173,7 @@ class _SpatialExtent:
             return self._key() == other._key()
         return NotImplemented
 
-    def as_bbox(self, crs: Optional[str] = None) -> Union[BoundingBox, None]:
+    def as_bbox(self, crs: Union[str, int, None] = None) -> Union[BoundingBox, None]:
         bbox = self._bbox
         if bbox and crs:
             bbox = bbox.reproject(crs)
@@ -2523,3 +2554,138 @@ class _ResolutionTracker:
             finest_res = None
 
         return epsgs, finest_res
+
+
+class _StacRasterCubeSizeEstimator:
+    """
+    Utility to estimate the size of a raster data cube based on STAC collection metadata.
+    """
+
+    # TODO: move this to more general utilty module
+
+    def estimate_cube_size(
+        self,
+        collection: pystac.Collection,
+        *,
+        spatiotemporal_extent: _SpatioTemporalExtent,
+        # TODO: arg for band set or at least band count?
+    ) -> int:
+        # TODO: move to integrations.stac or another utility?
+        ...
+        # TODO: estimate band count
+        # TODO: estimate spatial pixel count (from bbox and resolution info)
+
+        temporal_size = self.estimate_temporal_dimension_size(
+            stac_obj=collection, temporal_extent=spatiotemporal_extent.temporal_extent
+        )
+        spatial_size = self.estimate_spatial_dimension_size(
+            stac_obj=collection, spatial_extent=spatiotemporal_extent.spatial_extent
+        )
+        band_size = 1  # TODO
+
+        return temporal_size * spatial_size[0] * spatial_size[1] * band_size
+
+    def estimate_temporal_dimension_size(
+        self, stac_obj: pystac.STACObject, *, temporal_extent: Optional[_TemporalExtent] = None
+    ) -> int:
+        """
+        Estimate the size of the temporal dimension (number of temporal labels or observations),
+        based on available metadata
+
+        :param temporal_extent: user requested temporal extent
+        """
+        if not temporal_extent:
+            temporal_extent = _TemporalExtent(None, None)
+        if isinstance(stac_obj, pystac.Item):
+            # TODO: this might be too simple
+            return 1
+        elif isinstance(stac_obj, pystac.Collection):
+            estimated_extent = _TemporalExtent(*stac_obj.extent.temporal.intervals[0])
+            if temporal_extent:
+                estimated_extent = estimated_extent.intersection(temporal_extent)
+            if not estimated_extent:
+                # Empty temporal extent would be size 0, but use 1 to be a bit more conservative
+                return 1
+
+            from_date = estimated_extent.from_date or datetime.datetime(2000, 1, 1)
+            to_date = estimated_extent.to_date or datetime.datetime.now(tz=datetime.timezone.utc)
+            temporal_dim = self._get_temporal_dimension(stac_obj) or {}
+            temporal_step = parse_approximate_isoduration(temporal_dim.get("step", "P1D"))
+            count = max(1, int((to_date - from_date).total_seconds() / temporal_step.total_seconds()))
+            return count
+        else:
+            raise ValueError(stac_obj)
+
+    def _get_temporal_dimension(self, stac_obj: pystac.STACObject) -> Union[dict, None]:
+        # TODO: instead of DIY parsing: leverage pystac built-in cube extension support once we can drop python3.8
+        if isinstance(stac_obj, pystac.Collection):
+            cube_dimensions = stac_obj.extra_fields.get("cube:dimensions", {})
+            temporal_dims = [d for d in cube_dimensions.values() if d.get("type") == "temporal"]
+            if temporal_dims:
+                return temporal_dims[0]
+        else:
+            # TODO
+            raise ValueError(stac_obj)
+
+    def estimate_spatial_dimension_size(
+        self, stac_obj: pystac.STACObject, *, spatial_extent: Optional[_SpatialExtent] = None
+    ) -> Tuple[int, int]:
+        if isinstance(stac_obj, pystac.Collection):
+            stac_extent = BoundingBox.from_wsen_tuple(stac_obj.extent.spatial.bboxes[0], crs=4326)
+        elif isinstance(stac_obj, pystac.Item) and stac_obj.bbox:
+            stac_extent = BoundingBox.from_wsen_tuple(stac_obj.bbox, crs=4326)
+        else:
+            # assume "whole world" as fallback
+            stac_extent = BoundingBox(west=-180, south=-90, east=180, north=90, crs=4326)
+
+        estimated_extent: BoundingBox = stac_extent
+        if spatial_extent:
+            estimated_extent = estimated_extent.intersection(spatial_extent.as_bbox(crs=4326))
+
+        # Determine estimated pixel size (aka cell size) from GSD metadata
+        # TODO: working with LonLat and GSD in meter is quite rough.
+        #       Is there collection-level metadata (without need to traverse items), that allows more precise calculation?
+        gsd_in_meter = self._get_spatial_gsd(stac_obj)
+
+        # TODO: fix antimeridian handling
+        width_lon = estimated_extent.east - estimated_extent.west
+        heigh_lat = estimated_extent.north - estimated_extent.south
+        # Back of envelope conversion from degrees to meter
+        if estimated_extent.south <= 0 < estimated_extent.north:
+            cos_lat = 1
+        else:
+            cos_lat = max(
+                math.cos(math.radians(estimated_extent.south)),
+                math.cos(math.radians(estimated_extent.north)),
+            )
+        width_meter = 40e6 * cos_lat * width_lon / 360.0
+        height_meter = 40e6 * heigh_lat / 360.0
+
+        size_x = int(max(1, width_meter / gsd_in_meter))
+        size_y = int(max(1, height_meter / gsd_in_meter))
+
+        return size_x, size_y
+
+    def _get_spatial_gsd(self, stac_obj: pystac.STACObject, fallback: float = 10) -> float:
+        """Estimate (finest) GSD (in meters) from metadata"""
+
+        def get_gsds_from_assets(assets: dict) -> Iterator[float]:
+            yield from (a["gsd"] for a in assets.values() if "gsd" in a)
+
+        def get_gsds_from_bands(bands: List[dict]) -> Iterator[float]:
+            yield from (b["gsd"] for b in bands if "gsd" in b)
+
+        def get_gsds(obj) -> Iterator[float]:
+            if isinstance(obj, pystac.Collection):
+                yield from obj.summaries.get_list("gsd") or []
+                if bands := obj.extra_fields.get("bands"):
+                    yield from get_gsds_from_bands(bands)
+                if assets := obj.extra_fields.get("item_assets"):
+                    yield from get_gsds_from_assets(assets)
+            elif isinstance(obj, pystac.Item):
+                if "gsd" in obj.properties:
+                    yield obj.properties["gsd"]
+                yield from get_gsds_from_assets(obj.assets)
+
+        gsds = set(get_gsds(stac_obj)) or {fallback}
+        return min(gsds)
