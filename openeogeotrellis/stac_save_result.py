@@ -12,7 +12,7 @@ from openeo_driver.datastructs import StacAsset
 from openeo_driver.save_result import SaveResult
 
 
-def get_files_from_stac_catalog(catalog_path: Union[str, Path]) -> list:
+def get_files_from_stac_catalog(catalog_path: Union[str, Path], include_metadata=False) -> list:
     """
     Goes through the stac catalog recursively to find all files.
     """
@@ -27,6 +27,8 @@ def get_files_from_stac_catalog(catalog_path: Union[str, Path]) -> list:
 
     all_files = []
     links = []
+    if include_metadata:
+        all_files.append(catalog_path)
     if "links" in catalog_json:
         links.extend(catalog_json["links"])
     if "assets" in catalog_json:
@@ -37,10 +39,11 @@ def get_files_from_stac_catalog(catalog_path: Union[str, Path]) -> list:
             if href.startswith("file://"):
                 href = href[7:]
             href = urljoin(catalog_path, href)
-            all_files.append(href)
 
             if "rel" in link and (link["rel"] == "child" or link["rel"] == "item"):
-                all_files.extend(get_files_from_stac_catalog(href))
+                all_files.extend(get_files_from_stac_catalog(href, include_metadata))
+            else:
+                all_files.append(href)
     return all_files
 
 
@@ -128,7 +131,7 @@ class StacSaveResult(SaveResult):
         Copy over the stac catalog to the expected directory
         :return: STAC assets dictionary: https://github.com/radiantearth/stac-spec/blob/master/item-spec/item-spec.md#assets
         """
-        stac_assets = get_files_from_stac_catalog(self.stac_root)
+        stac_assets = get_files_from_stac_catalog(self.stac_root, include_metadata=True)
         if str(directory).endswith("out"):
             directory = str(directory)[:-4]
 

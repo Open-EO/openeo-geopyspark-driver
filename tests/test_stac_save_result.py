@@ -18,7 +18,14 @@ def test_get_files_from_stac_catalog_path():
     stac_root = repository_root / "docker/local_batch_job/example_stac_catalog/collection.json"
     ret = get_files_from_stac_catalog(stac_root)
     print(ret)
-    assert len(ret) == 6
+    assert len(ret) == 3
+
+
+def test_get_files_from_stac_catalog_path_include_metadata():
+    stac_root = repository_root / "docker/local_batch_job/example_stac_catalog/collection.json"
+    ret = get_files_from_stac_catalog(stac_root, include_metadata=True)
+    print(ret)
+    assert len(ret) == 7
 
 
 def test_get_files_from_stac_catalog_url():
@@ -26,7 +33,15 @@ def test_get_files_from_stac_catalog_url():
     ret = get_files_from_stac_catalog(stac_root)
 
     print(ret)
-    assert len(ret) == 6
+    assert len(ret) == 3
+
+
+def test_get_files_from_stac_catalog_url_include_metadata():
+    stac_root = "https://raw.githubusercontent.com/Open-EO/openeo-geopyspark-driver/refs/heads/master/docker/local_batch_job/example_stac_catalog/collection.json"
+    ret = get_files_from_stac_catalog(stac_root, include_metadata=True)
+
+    print(ret)
+    assert len(ret) == 7
 
 
 def test_get_assets_from_stac_catalog():
@@ -61,7 +76,12 @@ def test_stac_save_result():
     sr = StacSaveResult(stac_root)
     ret = sr.write_assets(tmp_dir)
     Collection.from_file(sr.stac_root_local).validate_all()
+
     print(ret)
+    for key, item in ret.items():
+        for asset in item["assets"].values():
+            assert Path(asset["href"]).exists()
+
     assert len(ret) == 3
 
 

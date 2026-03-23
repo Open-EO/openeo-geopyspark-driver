@@ -834,7 +834,7 @@ def _export_to_workspaces(
         return
 
     if isinstance(result, StacSaveResult):
-        stac_hrefs_raw = get_files_from_stac_catalog(result.stac_root_local)
+        stac_hrefs_raw = get_files_from_stac_catalog(result.stac_root_local, include_metadata=True)
         stac_hrefs = [href for href in stac_hrefs_raw if href.endswith(".json")] + [result.stac_root_local]
     else:
         stac_hrefs = [
