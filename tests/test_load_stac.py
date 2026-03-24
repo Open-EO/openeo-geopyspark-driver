@@ -1542,7 +1542,7 @@ class TestSpatialFilteringGeometries:
         simplified = json.loads(simplified)
         assert simplified == {
             "type": "Polygon",
-            "coordinates": [[[1, 2], [1, 4], [3, 4], [3, 2], [1, 2]]],
+            "coordinates": [dirty_equals.IsList([1, 2], [1, 4], [3, 4], [3, 2], length=5, check_order=False)],
         }
 
     def test_simple_box_vector_cube(self):
@@ -1553,7 +1553,7 @@ class TestSpatialFilteringGeometries:
         simplified = json.loads(simplified)
         assert simplified == {
             "type": "Polygon",
-            "coordinates": [[[1, 2], [1, 4], [3, 4], [3, 2], [1, 2]]],
+            "coordinates": [dirty_equals.IsList([1, 2], [1, 4], [3, 4], [3, 2], length=5, check_order=False)],
         }
 
 

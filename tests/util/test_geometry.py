@@ -245,7 +245,12 @@ class TestGeometrySimplifier:
         geometry_4326 = geometry.to_crs("EPSG:4326")
 
         # GeoJSON representation
-        orig_geojson = shapely.to_geojson(geometry_4326.union_all(method="coverage"))
+        orig_geojson = shapely.to_geojson(
+            geometry_4326.union_all(method="coverage")
+            if hasattr(geometry_4326, "union_all")
+            # TODO: remove this fallback for geopandas<1.0.0 once Python 3.8 support is dropped
+            else geometry_4326.unary_union
+        )
         logger.info(f"{len(orig_geojson)=} {orig_geojson=}")
         simplified_geojson = GeometrySimplifier().to_simplified_geojson(geometry, round_decimals=3)
         logger.info(f"{len(simplified_geojson)=} {simplified_geojson=}")
