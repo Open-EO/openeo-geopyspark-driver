@@ -284,14 +284,20 @@ def _extract_spatial_extent_from_constraint_load_stac(
     spatiotemporal_extent = openeogeotrellis.load_stac._spatiotemporal_extent_from_load_params(
         spatial_extent=spatial_extent_from_pg,
         temporal_extent=constraint.get("temporal_extent") or (None, None),
-        spatial_filtering_geometries=constraint.get("TODO"),
     )
+    spatial_filtering_geometries = openeogeotrellis.load_stac._SpatialFilteringGeometries(
+        # TODO: avoid duplication with "aggregate_spatial_geometries" from _extract_load_parameters
+        geometries=constraint.get("aggregate_spatial", {}).get("geometries")
+        or constraint.get("filter_spatial", {}).get("geometries")
+    )
+
     property_filter_pg_map = constraint.get("properties")
 
     _log.info(f"Calling construct_item_collection for {stac_url=}")
     item_collection, _, _, _ = openeogeotrellis.load_stac.construct_item_collection(
         url=stac_url,
         spatiotemporal_extent=spatiotemporal_extent,
+        spatial_filtering_geometries=spatial_filtering_geometries,
         property_filter_pg_map=property_filter_pg_map,
         feature_flags=feature_flags,
         stac_io=None,  # TODO?

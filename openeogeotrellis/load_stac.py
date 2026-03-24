@@ -209,8 +209,8 @@ def _prepare_context(
     spatiotemporal_extent = _spatiotemporal_extent_from_load_params(
         spatial_extent=load_params.spatial_extent,
         temporal_extent=load_params.temporal_extent,
-        spatial_filtering_geometries=load_params.aggregate_spatial_geometries,
     )
+    spatial_filtering_geometries = _SpatialFilteringGeometries(geometries=load_params.aggregate_spatial_geometries)
 
     # Band selection: subset of bands to load from STAC assets.
     # Prefer `normalized_band_selection` (if available) over raw `load_params.bands`
@@ -234,6 +234,7 @@ def _prepare_context(
                 feature_flags=feature_flags,
                 stac_io=stac_io,
                 user=user,
+                spatial_filtering_geometries=spatial_filtering_geometries,
             )
 
         items_found = len(item_collection.items) > 0
@@ -861,6 +862,7 @@ def construct_item_collection(
     feature_flags: Optional[Dict[str, Any]] = None,
     stac_io: Optional[pystac.stac_io.StacIO] = None,
     user: Optional[User] = None,
+    spatial_filtering_geometries: Union[_SpatialFilteringGeometries, None] = None,
 ) -> Tuple[ItemCollection, GeopysparkCubeMetadata, List[str], bool]:
     """
     Construct Stac ItemCollection from given load_stac URL
@@ -962,6 +964,7 @@ def construct_item_collection(
                     per_page_limit=feature_flags.get("stac_api_per_page_limit", STAC_API_PER_PAGE_LIMIT_DEFAULT),
                     max_items=feature_flags.get("stac_api_max_items", STAC_API_MAX_ITEMS_DEFAULT),
                     filter_by_geometry=feature_flags.get("stac_api_filter_by_geometry", False),
+                    spatial_filtering_geometries=spatial_filtering_geometries,
                 )
         else:
             assert isinstance(stac_object, pystac.Catalog)  # static Catalog + Collection
@@ -1196,6 +1199,7 @@ class _SpatialFilteringGeometries:
     __slots__ = ("_geometries",)
 
     def __init__(self, geometries: Union[geopandas.GeoSeries, DriverVectorCube, None]):
+        # TODO: do this geometry normalization lazily and only when it will be used
         self._geometries: Union[geopandas.GeoSeries, None]
         if isinstance(geometries, geopandas.GeoSeries):
             self._geometries = geometries
@@ -1223,7 +1227,7 @@ class _SpatioTemporalExtent:
     # TODO: enforce/ensure immutability
     # TODO: re-implement in dataclasses/attrs to better enforce immutability and simplify equality/hash implementation
 
-    __slots__ = ("_spatial_extent", "_temporal_extent", "_spatial_filtering_geometries")
+    __slots__ = ("_spatial_extent", "_temporal_extent")
 
     def __init__(
         self,
@@ -1232,12 +1236,9 @@ class _SpatioTemporalExtent:
         temporal_extent: Optional[_TemporalExtent] = None,
         from_date: DateTimeLikeOrNone = None,
         to_date: DateTimeLikeOrNone = None,
-        spatial_filtering_geometries: Union[DriverVectorCube, None] = None,
     ):
         self._spatial_extent = _SpatialExtent(bbox=bbox)
         self._temporal_extent = temporal_extent or _TemporalExtent(from_date=from_date, to_date=to_date)
-        # TODO: embed here in _SpatioTemporalExtent or keep separate?
-        self._spatial_filtering_geometries = _SpatialFilteringGeometries(geometries=spatial_filtering_geometries)
 
     def _key(self) -> tuple:
         return (self._spatial_extent, self._temporal_extent)
@@ -1257,10 +1258,6 @@ class _SpatioTemporalExtent:
     @property
     def temporal_extent(self) -> _TemporalExtent:
         return self._temporal_extent
-
-    @property
-    def spatial_filtering_geometries(self) -> _SpatialFilteringGeometries:
-        return self._spatial_filtering_geometries
 
     def item_intersects(self, item: pystac.Item) -> bool:
         return self._temporal_extent.intersects(
@@ -1287,16 +1284,10 @@ class _SpatioTemporalExtent:
 def _spatiotemporal_extent_from_load_params(
     spatial_extent: Union[Dict, BoundingBox, None],
     temporal_extent: Tuple[Optional[str], Optional[str]],
-    spatial_filtering_geometries: Union[DriverVectorCube, None] = None,
 ) -> _SpatioTemporalExtent:
     bbox = BoundingBox.from_dict_or_none(spatial_extent, default_crs="EPSG:4326")
     temporal_extent = _TemporalExtent.from_load_param_extent(temporal_extent)
-
-    return _SpatioTemporalExtent(
-        bbox=bbox,
-        temporal_extent=temporal_extent,
-        spatial_filtering_geometries=spatial_filtering_geometries,
-    )
+    return _SpatioTemporalExtent(bbox=bbox, temporal_extent=temporal_extent)
 
 
 def _get_item_temporal_extent(item: pystac.Item) -> Tuple[datetime.datetime, datetime.datetime]:
@@ -1416,6 +1407,7 @@ class ItemCollection:
         per_page_limit: int = STAC_API_PER_PAGE_LIMIT_DEFAULT,
         max_items: Union[int, None] = STAC_API_MAX_ITEMS_DEFAULT,
         filter_by_geometry: bool = False,
+        spatial_filtering_geometries: Union[_SpatialFilteringGeometries, None] = None,
     ) -> ItemCollection:
         root_catalog = collection.get_root()
 
@@ -1477,9 +1469,9 @@ class ItemCollection:
                 query_bboxes = [bbox.as_wsen_tuple()]
 
             intersects_geometry = None
-            if filter_by_geometry:
+            if filter_by_geometry and spatial_filtering_geometries:
                 # Include geometry filtering already in STAC API query
-                intersects_geometry = spatiotemporal_extent.spatial_filtering_geometries.get_simplified_geojson()
+                intersects_geometry = spatial_filtering_geometries.get_simplified_geojson()
 
             # Note that per STAC API spec, "Only one of either `intersects` or `bbox` may be specified"
             if intersects_geometry:
@@ -1525,7 +1517,7 @@ class ItemCollection:
                         item
                         for item in tracking_iter_raw(search_request.items())
                         if property_matcher(item.properties) and item.id not in seen_item_ids
-                        # TODO also do filtering with spatiotemporal_extent.spatial_filtering_geometries here
+                        # TODO also do filtering with spatial_filtering_geometries here?
                     )
                 )
                 logger.info(f"ItemCollection.from_stac_api: {tracking_iter_raw=!s} {tracking_iter_filtered=!s}")
