@@ -1198,13 +1198,17 @@ class _SpatialFilteringGeometries:
 
     __slots__ = ("_geometries",)
 
-    def __init__(self, geometries: Union[geopandas.GeoSeries, DriverVectorCube, None]):
+    def __init__(
+        self, geometries: Union[geopandas.GeoSeries, DriverVectorCube, shapely.geometry.base.BaseGeometry, None]
+    ):
         # TODO: do this geometry normalization lazily and only when it will be used
         self._geometries: Union[geopandas.GeoSeries, None]
         if isinstance(geometries, geopandas.GeoSeries):
             self._geometries = geometries
         elif isinstance(geometries, DriverVectorCube):
             self._geometries = geometries.get_geometries()
+        elif isinstance(geometries, shapely.geometry.base.BaseGeometry):
+            self._geometries = geopandas.GeoSeries([geometries])
         elif geometries is None:
             self._geometries = None
         else:

@@ -5,6 +5,7 @@ import pystac_client
 import pystac_client.exceptions
 import pytest
 import requests
+import shapely
 import urllib3
 from kazoo.exceptions import BadVersionError, NoNodeError
 
@@ -329,6 +330,29 @@ class TestDummyStacApiServer:
         with DummyStacApiServer().serve() as root_url:
             client = pystac_client.Client.open(root_url)
             result = client.search(method=method, collections=["collection-123"], bbox=bbox)
+            items = list(result.items())
+
+        assert [item.id for item in items] == expected_items
+
+    @pytest.mark.parametrize("method", ["GET", "POST"])
+    @pytest.mark.parametrize(
+        ["intersects", "expected_items"],
+        [
+            (
+                shapely.geometry.box(2.5, 49.5, 3.5, 51.5),
+                ["item-1", "item-2"],
+            ),
+            (
+                # Well-chosen L-shape that only overlaps item-1 and item-3
+                shapely.geometry.Polygon([(6.2, 49.8), (6.5, 51.5), (7, 49), (2.5, 49.5), (6.2, 49.8)]),
+                ["item-1", "item-3"],
+            ),
+        ],
+    )
+    def test_item_search_intersects(self, method, intersects, expected_items):
+        with DummyStacApiServer().serve() as root_url:
+            client = pystac_client.Client.open(root_url)
+            result = client.search(method=method, collections=["collection-123"], intersects=intersects)
             items = list(result.items())
 
         assert [item.id for item in items] == expected_items

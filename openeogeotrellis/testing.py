@@ -28,6 +28,8 @@ import pyspark
 import pystac
 import pytest
 import shapely
+import shapely.geometry
+import shapely.geometry.base
 import shapely.affinity
 import werkzeug.exceptions
 
@@ -380,8 +382,16 @@ class DummyStacApiServer:
         """Predefine a default collection with items"""
         # TODO: use real HTTP for asset hrefs intead of local file paths
 
-        # Set up collection-123:
-        # see coverage at https://geojson.io/#data=data:application/json,%7B%22type%22%3A%20%22FeatureCollection%22%2C%20%22features%22%3A%20%5B%7B%22type%22%3A%20%22Feature%22%2C%20%22properties%22%3A%20%7B%7D%2C%20%22geometry%22%3A%20%7B%22type%22%3A%20%22Polygon%22%2C%20%22coordinates%22%3A%20%5B%5B%5B3.0%2C%2049.0%5D%2C%20%5B3.0%2C%2050.0%5D%2C%20%5B2.0%2C%2050.0%5D%2C%20%5B2.0%2C%2049.0%5D%2C%20%5B3.0%2C%2049.0%5D%5D%5D%7D%7D%2C%20%7B%22type%22%3A%20%22Feature%22%2C%20%22properties%22%3A%20%7B%7D%2C%20%22geometry%22%3A%20%7B%22type%22%3A%20%22Polygon%22%2C%20%22coordinates%22%3A%20%5B%5B%5B5.0%2C%2050.0%5D%2C%20%5B5.0%2C%2051.0%5D%2C%20%5B3.0%2C%2051.0%5D%2C%20%5B3.0%2C%2050.0%5D%2C%20%5B5.0%2C%2050.0%5D%5D%5D%7D%7D%2C%20%7B%22type%22%3A%20%22Feature%22%2C%20%22properties%22%3A%20%7B%7D%2C%20%22geometry%22%3A%20%7B%22type%22%3A%20%22Polygon%22%2C%20%22coordinates%22%3A%20%5B%5B%5B7.0%2C%2051.0%5D%2C%20%5B7.0%2C%2052.0%5D%2C%20%5B4.0%2C%2052.0%5D%2C%20%5B4.0%2C%2051.0%5D%2C%20%5B7.0%2C%2051.0%5D%5D%5D%7D%7D%5D%7D
+        # Set up collection-123, with this item layout:
+        #  52          ┌───────────┐
+        #              │  item-3   │
+        #  51      ┌───└───────────┘
+        #          │ item-2│
+        #  50  ┌───└───────┘
+        #      │ item-1
+        #  49  └───┘
+        #      2   3   4   5   6   7   8
+        # Also see https://geojson.io/#data=data:application/json,%7B%22type%22%3A%20%22FeatureCollection%22%2C%20%22features%22%3A%20%5B%7B%22type%22%3A%20%22Feature%22%2C%20%22properties%22%3A%20%7B%7D%2C%20%22geometry%22%3A%20%7B%22type%22%3A%20%22Polygon%22%2C%20%22coordinates%22%3A%20%5B%5B%5B3.0%2C%2049.0%5D%2C%20%5B3.0%2C%2050.0%5D%2C%20%5B2.0%2C%2050.0%5D%2C%20%5B2.0%2C%2049.0%5D%2C%20%5B3.0%2C%2049.0%5D%5D%5D%7D%7D%2C%20%7B%22type%22%3A%20%22Feature%22%2C%20%22properties%22%3A%20%7B%7D%2C%20%22geometry%22%3A%20%7B%22type%22%3A%20%22Polygon%22%2C%20%22coordinates%22%3A%20%5B%5B%5B5.0%2C%2050.0%5D%2C%20%5B5.0%2C%2051.0%5D%2C%20%5B3.0%2C%2051.0%5D%2C%20%5B3.0%2C%2050.0%5D%2C%20%5B5.0%2C%2050.0%5D%5D%5D%7D%7D%2C%20%7B%22type%22%3A%20%22Feature%22%2C%20%22properties%22%3A%20%7B%7D%2C%20%22geometry%22%3A%20%7B%22type%22%3A%20%22Polygon%22%2C%20%22coordinates%22%3A%20%5B%5B%5B7.0%2C%2051.0%5D%2C%20%5B7.0%2C%2052.0%5D%2C%20%5B4.0%2C%2052.0%5D%2C%20%5B4.0%2C%2051.0%5D%2C%20%5B7.0%2C%2051.0%5D%5D%5D%7D%7D%5D%7D
         # (generated with `openeogeotrellis.testing.DummyStacApiServer().collection_as_geojson_io_url("collection-123")`)
         asset_root = Path(openeogeotrellis.__file__).parent.parent / "tests" / "data" / "dummy-stac" / "collection-123"
         self.define_collection(id="collection-123")
@@ -569,10 +579,13 @@ class DummyStacApiServer:
             collections = collections.split(",") if collections else []
             bbox = flask.request.args.get("bbox")
             bbox = [float(x) for x in bbox.split(",")] if bbox else None
+            intersects = flask.request.args.get("intersects")
+            intersects = json.loads(intersects) if intersects else None
             item_collection = _search(
                 collections=collections,
                 date_range=flask.request.args.get("datetime"),
                 bbox=bbox,
+                intersects=intersects,
                 filter=flask.request.args.get("filter"),
                 filter_language=flask.request.args.get("filter-lang"),
                 limit=flask.request.args.get("limit", type=int),
@@ -586,6 +599,7 @@ class DummyStacApiServer:
                 collections=body.get("collections", []),
                 date_range=body.get("datetime"),
                 bbox=body.get("bbox"),
+                intersects=body.get("intersects"),
                 filter=body.get("filter"),
                 filter_language=body.get("filter-lang"),
                 limit=body.get("limit"),
@@ -596,6 +610,7 @@ class DummyStacApiServer:
             collections: List[str],
             date_range: Optional[str] = None,
             bbox: Optional[List[float]] = None,
+            intersects: Optional[dict] = None,
             filter: Optional[Union[str, dict]] = None,
             filter_language: Optional[str] = None,
             limit: Optional[int] = None,
@@ -617,20 +632,30 @@ class DummyStacApiServer:
                     target_dt = to_datetime_utc(date_range)
                     items = [item for item in items if item.datetime == target_dt]
 
-            if bbox:
-                bbox_polygon = BoundingBox(*bbox, crs="EPSG:4326").as_polygon()
-                # Replicate bbox with offsets to easily handle anti-meridian crossing cases
-                bbox_geometries = shapely.union_all(
-                    [shapely.affinity.translate(bbox_polygon, xoff=x) for x in [-360, 0, 360]]
-                )
+            def duplicate360(shape: shapely.geometry.base.BaseGeometry) -> shapely.geometry.base.BaseGeometry:
+                """
+                Helper to duplicate a geometry with 360 offsets
+                to easily handle geometry matching in anti-meridian and other wrap-around cases.
+                """
+                return shapely.union_all([shapely.affinity.translate(shape, xoff=x) for x in [-360, 0, 360]])
 
+            if bbox and intersects:
+                flask.abort(code=404, description="Only one of either intersects or bbox may be specified")
+            elif bbox:
+                bbox360 = duplicate360(BoundingBox(*bbox, crs="EPSG:4326").as_polygon())
+                items = [
+                    item
+                    for item in items
+                    if item.bbox and bbox360.intersects(BoundingBox.from_wsen_tuple(item.bbox, crs=4326).as_geometry())
+                ]
+            elif intersects:
+                intersects360 = duplicate360(shapely.geometry.shape(intersects))
                 items = [
                     item
                     for item in items
                     if item.bbox
-                    and bbox_geometries.intersects(BoundingBox.from_wsen_tuple(item.bbox, crs=4326).as_geometry())
+                    and intersects360.intersects(BoundingBox.from_wsen_tuple(item.bbox, crs=4326).as_geometry())
                 ]
-            # TODO: also support item geometry fields (not just bbox)
 
             if filter:
                 filter = self._build_property_filter(filter=filter, filter_language=filter_language)

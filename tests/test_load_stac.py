@@ -3849,6 +3849,50 @@ class TestPrepareContext:
             }
         ]
 
+    @pytest.mark.parametrize(
+        ["aggregate_spatial_geometries", "expected_items"],
+        [
+            (
+                shapely.geometry.box(2.5, 49.5, 3.5, 51.5),
+                ["item-1", "item-2"],
+            ),
+            (
+                shapely.geometry.Polygon([(6.2, 49.8), (6.5, 51.5), (7, 49), (2.5, 49.5), (6.2, 49.8)]),
+                ["item-1", "item-3"],
+            ),
+            (
+                DriverVectorCube(
+                    geometries=geopandas.GeoDataFrame(
+                        geometry=[
+                            shapely.geometry.box(1.5, 48.5, 2.5, 49.5),
+                            shapely.geometry.box(6, 50, 7, 52),
+                        ]
+                    )
+                ),
+                ["item-1", "item-3"],
+            ),
+        ],
+    )
+    def test_prepare_context_spatial_filtering_geometries(
+        self, dummy_stac_api_server, aggregate_spatial_geometries, expected_items
+    ):
+        with dummy_stac_api_server.serve() as dummy_stac_api:
+            context = _prepare_context(
+                url=f"{dummy_stac_api}/collections/collection-123",
+                load_params=LoadParameters(
+                    aggregate_spatial_geometries=aggregate_spatial_geometries,
+                ),
+                feature_flags={
+                    "stac_api_filter_by_geometry": True,
+                },
+                env=EvalEnv(),
+            )
+
+        dumper = _OpenSearchClientDumper()
+        assert dumper.dump_opensearch_client_features(context.opensearch_client, add_links=False) == [
+            {"id": item_id} for item_id in expected_items
+        ]
+
 
 class TestResolutionTracker:
     def test_empty(self):
