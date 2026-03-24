@@ -963,7 +963,7 @@ def construct_item_collection(
                     skip_datetime_filter=netcdf_with_time_dimension,
                     per_page_limit=feature_flags.get("stac_api_per_page_limit", STAC_API_PER_PAGE_LIMIT_DEFAULT),
                     max_items=feature_flags.get("stac_api_max_items", STAC_API_MAX_ITEMS_DEFAULT),
-                    filter_by_geometry=feature_flags.get("stac_api_filter_by_geometry", False),
+                    filter_by_geometry=feature_flags.get("stac_api_filter_by_geometry", True),
                     spatial_filtering_geometries=spatial_filtering_geometries,
                 )
         else:
