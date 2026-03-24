@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import shutil
 from pathlib import Path
@@ -150,6 +151,7 @@ class StacSaveResult(SaveResult):
             dest_path = urljoin(str(directory) + "/", relative_path)
             Path(dest_path).parent.mkdir(parents=True, exist_ok=True)
             if asset_path_parsed.scheme in ("http", "https"):
+                logging.warning("TODO: What about remote URLs? This clause is probably not needed")
                 response = requests.get(asset_path)
                 response.raise_for_status()
                 with open(dest_path, "wb") as f:
