@@ -413,8 +413,21 @@ def run_job(
                 ml_model_metadata = result.get_model_metadata(str(output_file))
                 logger.info("Extracted ml model metadata from %s" % output_file)
 
-        def result_write_assets(result_arg) -> (dict, dict):
+        extra_links = []
+
+        def result_write_assets(result_arg: SaveResult) -> Tuple[dict, dict]:
             items = result_arg.write_assets(str(output_file))
+            if isinstance(result_arg, StacSaveResult):
+                extra_links.append(
+                    {
+                        "href": result_arg.stac_root_local,
+                        # https://github.com/radiantearth/stac-spec/blob/master/commons/links.md#relation-types
+                        "rel": "child",
+                        "title": f"Link to original STAC catalog.",
+                        "type": "application/json",
+                    }
+                )
+
             if items and "assets" not in next(iter(items.values())):  # no "assets" property so assets themselves
                 assets = items
                 logger.warning(f"save_result: got an 'assets' object instead of items for {result_arg}")
@@ -573,6 +586,7 @@ def run_job(
         )
 
         tracker_metadata = _get_tracker_metadata("", omit_derived_from_links=omit_derived_from_links)
+        tracker_metadata["links"].extend(extra_links)
         if "sar_backscatter_soft_errors" in tracker_metadata.get("usage", {}):
             soft_errors = tracker_metadata["usage"]["sar_backscatter_soft_errors"]["value"]
             if soft_errors > max_soft_errors_ratio:

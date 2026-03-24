@@ -151,7 +151,7 @@ class StacSaveResult(SaveResult):
             dest_path = urljoin(str(directory) + "/", relative_path)
             Path(dest_path).parent.mkdir(parents=True, exist_ok=True)
             if asset_path_parsed.scheme in ("http", "https"):
-                logging.warning("TODO: What about remote URLs? This clause is probably not needed")
+                logging.info(f"URL: copy_asset({asset_path})")
                 response = requests.get(asset_path)
                 response.raise_for_status()
                 with open(dest_path, "wb") as f:
