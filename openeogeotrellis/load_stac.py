@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Iterator, List, Optional, Set, Tuple, Union, Iterable, Sequence
 from urllib.parse import urlparse
 
+import geopandas
 import openeo_driver.backend
 import pyproj
 import pystac
@@ -24,6 +25,8 @@ import pystac.utils
 import pystac_client
 import pystac_client.stac_api_io
 import requests.adapters
+import shapely
+import shapely.geometry
 from geopyspark import LayerType
 from openeo.metadata import _StacMetadataParser
 from openeo.util import Rfc3339, dict_no_none, TimingLogger
@@ -42,7 +45,6 @@ from openeo_driver.util.geometry import BoundingBox, GeometryBufferer
 from openeo_driver.util.utm import utm_zone_from_epsg
 from openeo_driver.utils import EvalEnv
 from pystac import STACObject
-import shapely.geometry
 from urllib3 import Retry
 
 from openeogeotrellis.config import get_backend_config
@@ -50,9 +52,9 @@ from openeogeotrellis.constants import EVAL_ENV_KEY
 from openeogeotrellis.geopysparkcubemetadata import GeopysparkCubeMetadata
 from typing import TYPE_CHECKING
 from openeogeotrellis.integrations.stac import LoggingStacApiIO, ResilientStacIO
-from openeogeotrellis.util.logging import TrackingIter
 from openeogeotrellis.util.datetime import DateTimeLikeOrNone, to_datetime_utc_unless_none
-from openeogeotrellis.util.geometry import GridSnapper
+from openeogeotrellis.util.geometry import GeometrySimplifier, GridSnapper
+from openeogeotrellis.util.logging import TrackingIter
 from openeogeotrellis.util.projection import is_utm_epsg_code
 from openeogeotrellis.utils import get_jvm, map_optional, normalize_temporal_extent, to_projected_polygons, unzip
 
@@ -206,8 +208,9 @@ def _prepare_context(
     )
     spatiotemporal_extent = _spatiotemporal_extent_from_load_params(
         spatial_extent=load_params.spatial_extent,
-        temporal_extent=load_params.temporal_extent
+        temporal_extent=load_params.temporal_extent,
     )
+    spatial_filtering_geometries = _SpatialFilteringGeometries(geometries=load_params.aggregate_spatial_geometries)
 
     # Band selection: subset of bands to load from STAC assets.
     # Prefer `normalized_band_selection` (if available) over raw `load_params.bands`
@@ -231,6 +234,7 @@ def _prepare_context(
                 feature_flags=feature_flags,
                 stac_io=stac_io,
                 user=user,
+                spatial_filtering_geometries=spatial_filtering_geometries,
             )
 
         items_found = len(item_collection.items) > 0
@@ -858,6 +862,7 @@ def construct_item_collection(
     feature_flags: Optional[Dict[str, Any]] = None,
     stac_io: Optional[pystac.stac_io.StacIO] = None,
     user: Optional[User] = None,
+    spatial_filtering_geometries: Union[_SpatialFilteringGeometries, None] = None,
 ) -> Tuple[ItemCollection, GeopysparkCubeMetadata, List[str], bool]:
     """
     Construct Stac ItemCollection from given load_stac URL
@@ -958,6 +963,8 @@ def construct_item_collection(
                     skip_datetime_filter=netcdf_with_time_dimension,
                     per_page_limit=feature_flags.get("stac_api_per_page_limit", STAC_API_PER_PAGE_LIMIT_DEFAULT),
                     max_items=feature_flags.get("stac_api_max_items", STAC_API_MAX_ITEMS_DEFAULT),
+                    filter_by_geometry=feature_flags.get("stac_api_filter_by_geometry", True),
+                    spatial_filtering_geometries=spatial_filtering_geometries,
                 )
         else:
             assert isinstance(stac_object, pystac.Catalog)  # static Catalog + Collection
@@ -1186,10 +1193,45 @@ class _SpatialExtent:
         return self._bbox_lonlat_shape.intersects(shape)
 
 
+class _SpatialFilteringGeometries:
+    """Like _SpatialExtent but geometry based (instead of bounding box based)"""
+
+    __slots__ = ("_geometries",)
+
+    def __init__(
+        self, geometries: Union[geopandas.GeoSeries, DriverVectorCube, shapely.geometry.base.BaseGeometry, None]
+    ):
+        # TODO: do this geometry normalization lazily and only when it will be used
+        self._geometries: Union[geopandas.GeoSeries, None]
+        if isinstance(geometries, geopandas.GeoSeries):
+            self._geometries = geometries
+        elif isinstance(geometries, DriverVectorCube):
+            self._geometries = geometries.get_geometries()
+        elif isinstance(geometries, shapely.geometry.base.BaseGeometry):
+            self._geometries = geopandas.GeoSeries([geometries])
+        elif geometries is None:
+            self._geometries = None
+        else:
+            self._geometries = None
+            logger.warning(f"Unsupported geometries for _SpatialFilteringGeometries: {type(geometries)=}")
+
+    def get_simplified_geojson(self, *, vertex_threshold: int = 100) -> Union[str, None]:
+        """
+        Get simplification (if necessary) of the geometries as GeoJSON string
+        to be used as spatial filter (`intersects` parameter) in STAC API queries
+        """
+        if self._geometries is None:
+            return None
+        return GeometrySimplifier().to_simplified_geojson(geometry=self._geometries, vertex_threshold=vertex_threshold)
+
+
 class _SpatioTemporalExtent:
+    """Container of spatio-temporal constraints for filtering STAC entities"""
     # TODO: move this to a more generic location for better reuse
     # TODO: enforce/ensure immutability
     # TODO: re-implement in dataclasses/attrs to better enforce immutability and simplify equality/hash implementation
+
+    __slots__ = ("_spatial_extent", "_temporal_extent")
 
     def __init__(
         self,
@@ -1245,7 +1287,7 @@ class _SpatioTemporalExtent:
 
 def _spatiotemporal_extent_from_load_params(
     spatial_extent: Union[Dict, BoundingBox, None],
-    temporal_extent: Tuple[Optional[str], Optional[str]]
+    temporal_extent: Tuple[Optional[str], Optional[str]],
 ) -> _SpatioTemporalExtent:
     bbox = BoundingBox.from_dict_or_none(spatial_extent, default_crs="EPSG:4326")
     temporal_extent = _TemporalExtent.from_load_param_extent(temporal_extent)
@@ -1368,6 +1410,8 @@ class ItemCollection:
         original_url: str = "n/a",
         per_page_limit: int = STAC_API_PER_PAGE_LIMIT_DEFAULT,
         max_items: Union[int, None] = STAC_API_MAX_ITEMS_DEFAULT,
+        filter_by_geometry: bool = False,
+        spatial_filtering_geometries: Union[_SpatialFilteringGeometries, None] = None,
     ) -> ItemCollection:
         root_catalog = collection.get_root()
 
@@ -1427,6 +1471,16 @@ class ItemCollection:
                 )
             else:
                 query_bboxes = [bbox.as_wsen_tuple()]
+
+            intersects_geometry = None
+            if filter_by_geometry and spatial_filtering_geometries:
+                # Include geometry filtering already in STAC API query
+                intersects_geometry = spatial_filtering_geometries.get_simplified_geojson()
+
+            # Note that per STAC API spec, "Only one of either `intersects` or `bbox` may be specified"
+            if intersects_geometry:
+                query_bboxes = [None]
+
             query_datetime = (
                 None
                 if spatiotemporal_extent.temporal_extent.is_unbounded() or skip_datetime_filter
@@ -1447,6 +1501,7 @@ class ItemCollection:
                     method=method,
                     collections=collection.id,
                     bbox=query_bbox,
+                    intersects=intersects_geometry,
                     max_items=max_items,
                     limit=per_page_limit,
                     datetime=query_datetime,
@@ -1466,6 +1521,7 @@ class ItemCollection:
                         item
                         for item in tracking_iter_raw(search_request.items())
                         if property_matcher(item.properties) and item.id not in seen_item_ids
+                        # TODO also do filtering with spatial_filtering_geometries here?
                     )
                 )
                 logger.info(f"ItemCollection.from_stac_api: {tracking_iter_raw=!s} {tracking_iter_filtered=!s}")

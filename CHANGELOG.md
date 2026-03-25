@@ -40,6 +40,7 @@ without compromising stable operations.
 - `ObjectStorageWorkspace`: `merge` argument can be a plain (not nested) file ([#1257](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1257))
 - Further improve detection of wrong `proj:transform` metadata ([#1570](https://github.com/Open-EO/openeo-geopyspark-driver/pull/1570))
 - `load_stac`: avoid unbounded iteration through STAC API response pages ([#1591](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1591))
+- `load_stac`: support sparse spatial filtering (from `aggregate_spatial` or `filter_spatial` geometries) ([#1225](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1225))
 
 
 ## 0.70.0

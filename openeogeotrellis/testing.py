@@ -28,8 +28,11 @@ import pyspark
 import pystac
 import pytest
 import shapely
+import shapely.geometry
+import shapely.geometry.base
 import shapely.affinity
 import werkzeug.exceptions
+import py4j.java_gateway
 
 from openeo.testing.stac import StacDummyBuilder
 from openeo_driver.testing import ephemeral_flask_server, ApiResponse, load_json
@@ -380,8 +383,16 @@ class DummyStacApiServer:
         """Predefine a default collection with items"""
         # TODO: use real HTTP for asset hrefs intead of local file paths
 
-        # Set up collection-123:
-        # see coverage at https://geojson.io/#data=data:application/json,%7B%22type%22%3A%20%22FeatureCollection%22%2C%20%22features%22%3A%20%5B%7B%22type%22%3A%20%22Feature%22%2C%20%22properties%22%3A%20%7B%7D%2C%20%22geometry%22%3A%20%7B%22type%22%3A%20%22Polygon%22%2C%20%22coordinates%22%3A%20%5B%5B%5B3.0%2C%2049.0%5D%2C%20%5B3.0%2C%2050.0%5D%2C%20%5B2.0%2C%2050.0%5D%2C%20%5B2.0%2C%2049.0%5D%2C%20%5B3.0%2C%2049.0%5D%5D%5D%7D%7D%2C%20%7B%22type%22%3A%20%22Feature%22%2C%20%22properties%22%3A%20%7B%7D%2C%20%22geometry%22%3A%20%7B%22type%22%3A%20%22Polygon%22%2C%20%22coordinates%22%3A%20%5B%5B%5B5.0%2C%2050.0%5D%2C%20%5B5.0%2C%2051.0%5D%2C%20%5B3.0%2C%2051.0%5D%2C%20%5B3.0%2C%2050.0%5D%2C%20%5B5.0%2C%2050.0%5D%5D%5D%7D%7D%2C%20%7B%22type%22%3A%20%22Feature%22%2C%20%22properties%22%3A%20%7B%7D%2C%20%22geometry%22%3A%20%7B%22type%22%3A%20%22Polygon%22%2C%20%22coordinates%22%3A%20%5B%5B%5B7.0%2C%2051.0%5D%2C%20%5B7.0%2C%2052.0%5D%2C%20%5B4.0%2C%2052.0%5D%2C%20%5B4.0%2C%2051.0%5D%2C%20%5B7.0%2C%2051.0%5D%5D%5D%7D%7D%5D%7D
+        # Set up collection-123, with this item layout:
+        #  52          ┌───────────┐
+        #              │  item-3   │
+        #  51      ┌───└───────────┘
+        #          │ item-2│
+        #  50  ┌───└───────┘
+        #      │ item-1
+        #  49  └───┘
+        #      2   3   4   5   6   7   8
+        # Also see https://geojson.io/#data=data:application/json,%7B%22type%22%3A%20%22FeatureCollection%22%2C%20%22features%22%3A%20%5B%7B%22type%22%3A%20%22Feature%22%2C%20%22properties%22%3A%20%7B%7D%2C%20%22geometry%22%3A%20%7B%22type%22%3A%20%22Polygon%22%2C%20%22coordinates%22%3A%20%5B%5B%5B3.0%2C%2049.0%5D%2C%20%5B3.0%2C%2050.0%5D%2C%20%5B2.0%2C%2050.0%5D%2C%20%5B2.0%2C%2049.0%5D%2C%20%5B3.0%2C%2049.0%5D%5D%5D%7D%7D%2C%20%7B%22type%22%3A%20%22Feature%22%2C%20%22properties%22%3A%20%7B%7D%2C%20%22geometry%22%3A%20%7B%22type%22%3A%20%22Polygon%22%2C%20%22coordinates%22%3A%20%5B%5B%5B5.0%2C%2050.0%5D%2C%20%5B5.0%2C%2051.0%5D%2C%20%5B3.0%2C%2051.0%5D%2C%20%5B3.0%2C%2050.0%5D%2C%20%5B5.0%2C%2050.0%5D%5D%5D%7D%7D%2C%20%7B%22type%22%3A%20%22Feature%22%2C%20%22properties%22%3A%20%7B%7D%2C%20%22geometry%22%3A%20%7B%22type%22%3A%20%22Polygon%22%2C%20%22coordinates%22%3A%20%5B%5B%5B7.0%2C%2051.0%5D%2C%20%5B7.0%2C%2052.0%5D%2C%20%5B4.0%2C%2052.0%5D%2C%20%5B4.0%2C%2051.0%5D%2C%20%5B7.0%2C%2051.0%5D%5D%5D%7D%7D%5D%7D
         # (generated with `openeogeotrellis.testing.DummyStacApiServer().collection_as_geojson_io_url("collection-123")`)
         asset_root = Path(openeogeotrellis.__file__).parent.parent / "tests" / "data" / "dummy-stac" / "collection-123"
         self.define_collection(id="collection-123")
@@ -569,10 +580,13 @@ class DummyStacApiServer:
             collections = collections.split(",") if collections else []
             bbox = flask.request.args.get("bbox")
             bbox = [float(x) for x in bbox.split(",")] if bbox else None
+            intersects = flask.request.args.get("intersects")
+            intersects = json.loads(intersects) if intersects else None
             item_collection = _search(
                 collections=collections,
                 date_range=flask.request.args.get("datetime"),
                 bbox=bbox,
+                intersects=intersects,
                 filter=flask.request.args.get("filter"),
                 filter_language=flask.request.args.get("filter-lang"),
                 limit=flask.request.args.get("limit", type=int),
@@ -586,6 +600,7 @@ class DummyStacApiServer:
                 collections=body.get("collections", []),
                 date_range=body.get("datetime"),
                 bbox=body.get("bbox"),
+                intersects=body.get("intersects"),
                 filter=body.get("filter"),
                 filter_language=body.get("filter-lang"),
                 limit=body.get("limit"),
@@ -596,6 +611,7 @@ class DummyStacApiServer:
             collections: List[str],
             date_range: Optional[str] = None,
             bbox: Optional[List[float]] = None,
+            intersects: Optional[dict] = None,
             filter: Optional[Union[str, dict]] = None,
             filter_language: Optional[str] = None,
             limit: Optional[int] = None,
@@ -617,20 +633,30 @@ class DummyStacApiServer:
                     target_dt = to_datetime_utc(date_range)
                     items = [item for item in items if item.datetime == target_dt]
 
-            if bbox:
-                bbox_polygon = BoundingBox(*bbox, crs="EPSG:4326").as_polygon()
-                # Replicate bbox with offsets to easily handle anti-meridian crossing cases
-                bbox_geometries = shapely.union_all(
-                    [shapely.affinity.translate(bbox_polygon, xoff=x) for x in [-360, 0, 360]]
-                )
+            def duplicate360(shape: shapely.geometry.base.BaseGeometry) -> shapely.geometry.base.BaseGeometry:
+                """
+                Helper to duplicate a geometry with 360 offsets
+                to easily handle geometry matching in anti-meridian and other wrap-around cases.
+                """
+                return shapely.union_all([shapely.affinity.translate(shape, xoff=x) for x in [-360, 0, 360]])
 
+            if bbox and intersects:
+                flask.abort(code=404, description="Only one of either intersects or bbox may be specified")
+            elif bbox:
+                bbox360 = duplicate360(BoundingBox(*bbox, crs="EPSG:4326").as_polygon())
+                items = [
+                    item
+                    for item in items
+                    if item.bbox and bbox360.intersects(BoundingBox.from_wsen_tuple(item.bbox, crs=4326).as_geometry())
+                ]
+            elif intersects:
+                intersects360 = duplicate360(shapely.geometry.shape(intersects))
                 items = [
                     item
                     for item in items
                     if item.bbox
-                    and bbox_geometries.intersects(BoundingBox.from_wsen_tuple(item.bbox, crs=4326).as_geometry())
+                    and intersects360.intersects(BoundingBox.from_wsen_tuple(item.bbox, crs=4326).as_geometry())
                 ]
-            # TODO: also support item geometry fields (not just bbox)
 
             if filter:
                 filter = self._build_property_filter(filter=filter, filter_language=filter_language)
@@ -793,3 +819,81 @@ class Urllib3PoolManagerMocker:
         with mock.patch("urllib3.PoolManager.request") as mock_request:
             mock_request.side_effect = self._return_registered_response
             yield self
+
+
+class OpenSearchClientDumper:
+    """Helper to extract/dump OpenSearchClient contents for testing."""
+
+    def scala_iterate(self, iterator):
+        while iterator.hasNext():
+            yield iterator.next()
+
+    def dump_link(self, link: py4j.java_gateway.JavaObject, add_pixel_value_scaling: bool = False) -> dict:
+        """dump org.openeo.opensearch.OpenSearchResponses.Link"""
+        dump = {
+            # "toString": l.toString(),
+            "href": link.href().toString(),
+            "title": link.title().get(),
+            "bandNames": list(self.scala_iterate(link.bandNames().get().iterator())),
+        }
+        if add_pixel_value_scaling:
+            dump["pixelValueOffset"] = link.pixelValueOffset().get()
+        return dump
+
+    def dump_extent(self, extent: py4j.java_gateway.JavaObject) -> Union[Tuple[float, float, float, float], None]:
+        if extent:
+            return extent.xmin(), extent.ymin(), extent.xmax(), extent.ymax()
+        else:
+            return None
+
+    def dump_feature(
+        self,
+        feature: py4j.java_gateway.JavaObject,
+        *,
+        add_links: bool = True,
+        add_bbox: bool = False,
+        add_pixel_value_scaling: bool = False,
+    ) -> dict:
+        """dump org.openeo.opensearch.OpenSearchResponses.Feature"""
+        dump = {"id": feature.id()}
+        if add_links:
+            dump["links"] = [
+                self.dump_link(link, add_pixel_value_scaling=add_pixel_value_scaling) for link in feature.links()
+            ]
+        if add_bbox:
+            dump["bbox"] = self.dump_extent(feature.bbox())
+        return dump
+
+    def dump_opensearch_client_features(
+        self,
+        opensearch_client: py4j.java_gateway.JavaObject,
+        *,
+        add_links: bool = True,
+        add_bbox: bool = False,
+        add_pixel_value_scaling: bool = False,
+    ) -> List[dict]:
+        """Dump all features from org.openeo.opensearch.OpenSearchClient"""
+        feature_iterator = opensearch_client.features().iterator()
+        return [
+            self.dump_feature(
+                feature=feature, add_links=add_links, add_bbox=add_bbox, add_pixel_value_scaling=add_pixel_value_scaling
+            )
+            for feature in self.scala_iterate(feature_iterator)
+        ]
+
+
+@contextlib.contextmanager
+def spy_on_calls(target: "Callable"):
+    """
+    Context manager to spy on results produced by calls to a target function or class.
+    """
+    results = []
+
+    def wrapped(*args, **kwargs):
+        res = target(*args, **kwargs)
+        results.append(res)
+        return res
+
+    target_name = f"{target.__module__}.{target.__qualname__}"
+    with mock.patch(target_name, side_effect=wrapped):
+        yield results

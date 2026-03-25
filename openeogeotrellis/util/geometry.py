@@ -1,11 +1,13 @@
 import functools
 import json
-import urllib.parse
 import math
-from typing import Union, Dict
+import urllib.parse
+from typing import Dict, Union
 
+import geopandas
 import shapely.geometry
-from openeo_driver.util.geometry import BoundingBox
+import shapely.geometry.base
+from openeo_driver.util.geometry import BoundingBox, reproject_geometry
 
 
 class BoundingBoxMerger:
@@ -138,3 +140,90 @@ def bbox_to_geojson(*args) -> dict:
     # TODO #1161 use `orient_polygons` to be sure, once we require Shapely>=2.1.0
     # polygon = shapely.orient_polygons(geometry)
     return shapely.geometry.mapping(geometry)
+
+
+class GeometrySimplifier:
+    @staticmethod
+    def _vertex_count(geometries: Union[geopandas.GeoSeries, shapely.geometry.base.BaseGeometry]) -> int:
+        """
+        Count number of vertices in given geometries as measure of complexity.
+        Note that this is based on length of shapely coordinate array,
+        where the first vertex of a polygon is duplicated as the final one,
+        so the vertex count is off by one (e.g. a rectangle will give 5).
+        But that's generally fine here because that is also the case in
+        the GeoJSON representation.
+        """
+        if isinstance(geometries, geopandas.GeoSeries):
+            return geometries.apply(lambda g: shapely.count_coordinates(g)).sum()
+        elif isinstance(geometries, shapely.geometry.base.BaseGeometry):
+            return shapely.count_coordinates(geometries)
+        else:
+            raise ValueError(geometries)
+
+    def simplify(
+        self,
+        geometry: Union[
+            geopandas.GeoSeries,
+            shapely.geometry.Polygon,
+            shapely.geometry.MultiPolygon,
+        ],
+        *,
+        vertex_threshold: int = 32,
+    ) -> shapely.geometry.base.BaseGeometry:
+        """
+        Simplify given geometry (Shapely shape or GeoPandas series)
+        to a (Multi)Polygon
+        :param geometry:
+        :param vertex_threshold: limit for number of vertices to in simplified geometry
+        :return:
+        """
+        if isinstance(geometry, geopandas.GeoSeries):
+            # Simplify each geometry of the series to its bounding box to reduce complexity
+            if (
+                # Quick lower bound estimation (assuming polygons are at least triangles)
+                geometry.shape[0] * 4 > vertex_threshold
+                or self._vertex_count(geometry) > vertex_threshold
+            ):
+                geometry = geometry.envelope
+            # Flatten to single (multi)polygon
+            # method "coverage": optimized for non-overlapping polygons
+            # and can be significantly faster than the unary union algorithm.
+            if hasattr(geopandas.GeoSeries, "union_all"):
+                simplified: shapely.geometry.base.BaseGeometry = geometry.union_all(method="coverage")
+            else:
+                # TODO: remove this fallback for geopandas<1.0.0 once Python 3.8 support is dropped
+                simplified: shapely.geometry.base.BaseGeometry = geometry.unary_union
+        elif isinstance(geometry, (shapely.geometry.Polygon, shapely.geometry.MultiPolygon)):
+            simplified = geometry
+        else:
+            # TODO: more geometry types/containers to support?
+            raise ValueError(geometry)
+
+        if self._vertex_count(simplified) > vertex_threshold:
+            simplified = shapely.convex_hull(simplified)
+            if self._vertex_count(simplified) > vertex_threshold:
+                simplified = simplified.envelope
+        return simplified
+
+    def to_simplified_geojson(
+        self,
+        geometry: Union[
+            geopandas.GeoSeries,
+            shapely.geometry.Polygon,
+            shapely.geometry.MultiPolygon,
+        ],
+        *,
+        vertex_threshold: int = 100,
+        round_decimals: Union[int, None] = 4,
+    ) -> str:
+        simplified_geometry = self.simplify(geometry=geometry, vertex_threshold=vertex_threshold)
+
+        # Reproject to lon/lat for GeoJSON compliance
+        if isinstance(geometry, geopandas.GeoSeries) and geometry.crs:
+            simplified_geometry = reproject_geometry(simplified_geometry, from_crs=geometry.crs, to_crs="epsg:4326")
+
+        if round_decimals is not None:
+            # 4 decimal places (default) is enough in lon-lat degrees for meter-level precision
+            simplified_geometry = shapely.transform(simplified_geometry, lambda x: x.round(round_decimals))
+
+        return shapely.to_geojson(simplified_geometry)

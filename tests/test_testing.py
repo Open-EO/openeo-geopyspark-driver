@@ -5,8 +5,10 @@ import pystac_client
 import pystac_client.exceptions
 import pytest
 import requests
+import shapely
 import urllib3
 from kazoo.exceptions import BadVersionError, NoNodeError
+from openeo_driver.util.geometry import BoundingBox
 
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.testing import (
@@ -16,7 +18,9 @@ from openeogeotrellis.testing import (
     Urllib3PoolManagerMocker,
     _ZNodeStat,
     gps_config_overrides,
+    spy_on_calls,
 )
+from openeogeotrellis.util.datetime import to_datetime_utc
 
 
 def test_kazoo_mock_basic():
@@ -333,6 +337,29 @@ class TestDummyStacApiServer:
 
         assert [item.id for item in items] == expected_items
 
+    @pytest.mark.parametrize("method", ["GET", "POST"])
+    @pytest.mark.parametrize(
+        ["intersects", "expected_items"],
+        [
+            (
+                shapely.geometry.box(2.5, 49.5, 3.5, 51.5),
+                ["item-1", "item-2"],
+            ),
+            (
+                # Well-chosen L-shape that only overlaps item-1 and item-3
+                shapely.geometry.Polygon([(6.2, 49.8), (6.5, 51.5), (7, 49), (2.5, 49.5), (6.2, 49.8)]),
+                ["item-1", "item-3"],
+            ),
+        ],
+    )
+    def test_item_search_intersects(self, method, intersects, expected_items):
+        with DummyStacApiServer().serve() as root_url:
+            client = pystac_client.Client.open(root_url)
+            result = client.search(method=method, collections=["collection-123"], intersects=intersects)
+            items = list(result.items())
+
+        assert [item.id for item in items] == expected_items
+
     @pytest.mark.parametrize(
         ["method", "filter", "expected_items"],
         [
@@ -398,3 +425,44 @@ def test_mock_urllib3_pool_manager():
         http = urllib3.PoolManager()
         with http.request("GET", "https://stac.test", preload_content=False) as response:
             assert response.read() == "hello"
+
+
+def test_spy_on_calls_class():
+    def implementation_detail(x: int) -> float:
+        # Note: this local import is intentional to simulate
+        # some implementation detail in a separate module with its own imports.
+        from openeo_driver.util.geometry import BoundingBox
+
+        bbox = BoundingBox(x, x, 2 * x, 3 * x)
+        return bbox.north
+
+    implementation_detail(1)
+    with spy_on_calls(BoundingBox) as spy:
+        implementation_detail(2)
+        implementation_detail(3)
+    implementation_detail(4)
+
+    assert spy == [
+        BoundingBox(2, 2, 4, 6),
+        BoundingBox(3, 3, 6, 9),
+    ]
+
+
+def test_spy_on_calls_function():
+    def implementation_detail(x: int):
+        # Note: this local import is intentional to simulate
+        # some implementation detail in a separate module with its own imports.
+        from openeogeotrellis.util.datetime import to_datetime_utc
+
+        return to_datetime_utc(f"2026-03-{x:02d}").year
+
+    implementation_detail(1)
+    with spy_on_calls(to_datetime_utc) as spy:
+        implementation_detail(2)
+        implementation_detail(3)
+    implementation_detail(4)
+
+    assert spy == [
+        datetime.datetime(2026, 3, 2, tzinfo=datetime.timezone.utc),
+        datetime.datetime(2026, 3, 3, tzinfo=datetime.timezone.utc),
+    ]
