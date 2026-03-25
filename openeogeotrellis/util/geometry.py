@@ -178,6 +178,10 @@ class GeometrySimplifier:
         :return:
         """
         if isinstance(geometry, geopandas.GeoSeries):
+            geometry_types = set(geometry.geometry.geom_type.unique())
+            if not geometry_types.issubset({"Polygon", "MultiPolygon"}):
+                raise ValueError(f"Simplification only supported for (Multi)Polygons, but got {geometry_types=}")
+
             # Simplify each geometry of the series to its bounding box to reduce complexity
             if (
                 # Quick lower bound estimation (assuming polygons are at least triangles)
