@@ -1222,7 +1222,14 @@ class _SpatialFilteringGeometries:
         """
         if self._geometries is None:
             return None
-        return GeometrySimplifier().to_simplified_geojson(geometry=self._geometries, vertex_threshold=vertex_threshold)
+        try:
+            simplified = GeometrySimplifier().to_simplified_geojson(
+                geometry=self._geometries, vertex_threshold=vertex_threshold
+            )
+            return simplified
+        except Exception as e:
+            logger.warning(f"Failed to simplify spatial filtering geometries: {e}")
+        return None
 
 
 class _SpatioTemporalExtent:

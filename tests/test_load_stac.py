@@ -1556,6 +1556,21 @@ class TestSpatialFilteringGeometries:
             "coordinates": [dirty_equals.IsList([1, 2], [1, 4], [3, 4], [3, 2], length=5, check_order=False)],
         }
 
+    @pytest.mark.parametrize(
+        "gdf",
+        [
+            geopandas.GeoDataFrame(geometry=[shapely.geometry.Point(3.333333, 50.505050)]),
+            geopandas.GeoDataFrame(
+                geometry=[
+                    shapely.geometry.box(1, 2, 3, 4),
+                    shapely.geometry.Point(3.333333, 50.505050),
+                ]
+            ),
+        ],
+    )
+    def test_unsupported_geometry_types(self, gdf):
+        sfg = _SpatialFilteringGeometries(geometries=gdf)
+        assert sfg.get_simplified_geojson() is None
 
 
 class TestSpatioTemporalExtent:
