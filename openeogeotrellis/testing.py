@@ -32,6 +32,7 @@ import shapely.geometry
 import shapely.geometry.base
 import shapely.affinity
 import werkzeug.exceptions
+import py4j.java_gateway
 
 from openeo.testing.stac import StacDummyBuilder
 from openeo_driver.testing import ephemeral_flask_server, ApiResponse, load_json
@@ -818,3 +819,81 @@ class Urllib3PoolManagerMocker:
         with mock.patch("urllib3.PoolManager.request") as mock_request:
             mock_request.side_effect = self._return_registered_response
             yield self
+
+
+class OpenSearchClientDumper:
+    """Helper to extract/dump OpenSearchClient contents for testing."""
+
+    def scala_iterate(self, iterator):
+        while iterator.hasNext():
+            yield iterator.next()
+
+    def dump_link(self, link: py4j.java_gateway.JavaObject, add_pixel_value_scaling: bool = False) -> dict:
+        """dump org.openeo.opensearch.OpenSearchResponses.Link"""
+        dump = {
+            # "toString": l.toString(),
+            "href": link.href().toString(),
+            "title": link.title().get(),
+            "bandNames": list(self.scala_iterate(link.bandNames().get().iterator())),
+        }
+        if add_pixel_value_scaling:
+            dump["pixelValueOffset"] = link.pixelValueOffset().get()
+        return dump
+
+    def dump_extent(self, extent: py4j.java_gateway.JavaObject) -> Union[Tuple[float, float, float, float], None]:
+        if extent:
+            return extent.xmin(), extent.ymin(), extent.xmax(), extent.ymax()
+        else:
+            return None
+
+    def dump_feature(
+        self,
+        feature: py4j.java_gateway.JavaObject,
+        *,
+        add_links: bool = True,
+        add_bbox: bool = False,
+        add_pixel_value_scaling: bool = False,
+    ) -> dict:
+        """dump org.openeo.opensearch.OpenSearchResponses.Feature"""
+        dump = {"id": feature.id()}
+        if add_links:
+            dump["links"] = [
+                self.dump_link(link, add_pixel_value_scaling=add_pixel_value_scaling) for link in feature.links()
+            ]
+        if add_bbox:
+            dump["bbox"] = self.dump_extent(feature.bbox())
+        return dump
+
+    def dump_opensearch_client_features(
+        self,
+        opensearch_client: py4j.java_gateway.JavaObject,
+        *,
+        add_links: bool = True,
+        add_bbox: bool = False,
+        add_pixel_value_scaling: bool = False,
+    ) -> List[dict]:
+        """Dump all features from org.openeo.opensearch.OpenSearchClient"""
+        feature_iterator = opensearch_client.features().iterator()
+        return [
+            self.dump_feature(
+                feature=feature, add_links=add_links, add_bbox=add_bbox, add_pixel_value_scaling=add_pixel_value_scaling
+            )
+            for feature in self.scala_iterate(feature_iterator)
+        ]
+
+
+@contextlib.contextmanager
+def spy_on_calls(target: "Callable"):
+    """
+    Context manager to spy on results produced by calls to a target function or class.
+    """
+    results = []
+
+    def wrapped(*args, **kwargs):
+        res = target(*args, **kwargs)
+        results.append(res)
+        return res
+
+    target_name = f"{target.__module__}.{target.__qualname__}"
+    with mock.patch(target_name, side_effect=wrapped):
+        yield results

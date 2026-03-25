@@ -54,7 +54,7 @@ from openeogeotrellis.load_stac import (
     extract_own_job_info,
     load_stac,
 )
-from openeogeotrellis.testing import DummyStacApiServer, gps_config_overrides
+from openeogeotrellis.testing import DummyStacApiServer, gps_config_overrides, OpenSearchClientDumper
 from openeogeotrellis.util.geometry import bbox_to_geojson
 
 
@@ -316,7 +316,7 @@ def test_resolution_and_offset_handling(
     assert context.cellsize == (resolution, resolution)
     assert context.extent_crs == "EPSG:32636"
 
-    dumper = _OpenSearchClientDumper()
+    dumper = OpenSearchClientDumper()
     assert [
         f["links"]
         for f in dumper.dump_opensearch_client_features(context.opensearch_client, add_pixel_value_scaling=True)
@@ -3162,69 +3162,6 @@ class TestItemDeduplicator:
         assert [r.id for r in deduplicator.deduplicate([item_no_version, item_v100])] == ["item-v100"]
 
 
-class _OpenSearchClientDumper:
-    """Helper to extract/dump OpenSearchClient contents for testing."""
-
-    # TODO: move this to more general utility module?
-
-    def scala_iterate(self, iterator):
-        while iterator.hasNext():
-            yield iterator.next()
-
-    def dump_link(self, link: JavaObject, add_pixel_value_scaling: bool = False) -> dict:
-        """dump org.openeo.opensearch.OpenSearchResponses.Link"""
-        dump = {
-            # "toString": l.toString(),
-            "href": link.href().toString(),
-            "title": link.title().get(),
-            "bandNames": list(self.scala_iterate(link.bandNames().get().iterator())),
-        }
-        if add_pixel_value_scaling:
-            dump["pixelValueOffset"] = link.pixelValueOffset().get()
-        return dump
-
-    def dump_extent(self, extent: JavaObject) -> Union[Tuple[float, float, float, float], None]:
-        if extent:
-            return extent.xmin(), extent.ymin(), extent.xmax(), extent.ymax()
-        else:
-            return None
-
-    def dump_feature(
-        self,
-        feature: JavaObject,
-        *,
-        add_links: bool = True,
-        add_bbox: bool = False,
-        add_pixel_value_scaling: bool = False,
-    ) -> dict:
-        """dump org.openeo.opensearch.OpenSearchResponses.Feature"""
-        dump = {"id": feature.id()}
-        if add_links:
-            dump["links"] = [
-                self.dump_link(link, add_pixel_value_scaling=add_pixel_value_scaling) for link in feature.links()
-            ]
-        if add_bbox:
-            dump["bbox"] = self.dump_extent(feature.bbox())
-        return dump
-
-    def dump_opensearch_client_features(
-        self,
-        opensearch_client: JavaObject,
-        *,
-        add_links: bool = True,
-        add_bbox: bool = False,
-        add_pixel_value_scaling: bool = False,
-    ) -> List[dict]:
-        """Dump all features from org.openeo.opensearch.OpenSearchClient"""
-        feature_iterator = opensearch_client.features().iterator()
-        return [
-            self.dump_feature(
-                feature=feature, add_links=add_links, add_bbox=add_bbox, add_pixel_value_scaling=add_pixel_value_scaling
-            )
-            for feature in self.scala_iterate(feature_iterator)
-        ]
-
-
 class TestPrepareContext:
     def _define_collection_s2_with_granule_metadata(
         self, dummy_server: DummyStacApiServer, collection_id: str = "s2-with-granule_metadata"
@@ -3295,7 +3232,7 @@ class TestPrepareContext:
                 env=EvalEnv(),
             )
 
-        dumper = _OpenSearchClientDumper()
+        dumper = OpenSearchClientDumper()
         assert dumper.dump_opensearch_client_features(context.opensearch_client) == [
             {
                 "id": "item-1",
@@ -3441,7 +3378,7 @@ class TestPrepareContext:
                 feature_flags=layercatalog_feature_flags,
             )
 
-        dumper = _OpenSearchClientDumper()
+        dumper = OpenSearchClientDumper()
         assert dumper.dump_opensearch_client_features(context.opensearch_client) == [
             {
                 "id": "item-123",
@@ -3628,7 +3565,7 @@ class TestPrepareContext:
                 env=EvalEnv(),
             )
 
-        dumper = _OpenSearchClientDumper()
+        dumper = OpenSearchClientDumper()
         assert [i["id"] for i in dumper.dump_opensearch_client_features(context.opensearch_client)] == expected_items
         assert context.metadata.temporal_extent == expected_temporal_extent
 
@@ -3787,7 +3724,7 @@ class TestPrepareContext:
                 env=EvalEnv(),
             )
 
-        dumper = _OpenSearchClientDumper()
+        dumper = OpenSearchClientDumper()
         assert (
             dumper.dump_opensearch_client_features(context.opensearch_client, add_links=False, add_bbox=True)
             == expected_features
@@ -3841,7 +3778,7 @@ class TestPrepareContext:
                 env=EvalEnv(),
             )
 
-        dumper = _OpenSearchClientDumper()
+        dumper = OpenSearchClientDumper()
         assert dumper.dump_opensearch_client_features(context.opensearch_client, add_links=False, add_bbox=True) == [
             {
                 "id": "item-1",
@@ -3888,7 +3825,7 @@ class TestPrepareContext:
                 env=EvalEnv(),
             )
 
-        dumper = _OpenSearchClientDumper()
+        dumper = OpenSearchClientDumper()
         assert dumper.dump_opensearch_client_features(context.opensearch_client, add_links=False) == [
             {"id": item_id} for item_id in expected_items
         ]
