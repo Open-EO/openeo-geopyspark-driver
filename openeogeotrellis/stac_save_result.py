@@ -11,6 +11,7 @@ import requests
 from flask import Response
 from openeo_driver.datastructs import StacAsset
 from openeo_driver.save_result import SaveResult
+from openeo_driver.util.stac_utils import get_files_from_stac_catalog, get_items_from_stac_catalog
 
 
 class StacSaveResult(SaveResult):

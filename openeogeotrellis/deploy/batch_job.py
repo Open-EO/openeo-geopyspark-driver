@@ -35,6 +35,7 @@ from openeo_driver.util.logging import (
     get_logging_config,
     setup_logging,
 )
+from openeo_driver.util.stac_utils import get_files_from_stac_catalog
 from openeo_driver.utils import EvalEnv
 from openeo_driver.views import OPENEO_API_VERSION_DEFAULT
 from openeo_driver.workspacerepository import Workspace, WorkspaceRepository, backend_config_workspace_repository
@@ -64,7 +65,7 @@ from openeogeotrellis.deploy.batch_job_metadata import (
 from openeogeotrellis.integrations.gdal import get_abs_path_of_asset
 from openeogeotrellis.integrations.hadoop import setup_kerberos_auth
 from openeogeotrellis.job_options import JobOptions
-from openeogeotrellis.stac_save_result import StacSaveResult, get_files_from_stac_catalog
+from openeogeotrellis.stac_save_result import StacSaveResult
 from openeogeotrellis.udf import (
     UdfDependencyHandlingFailure,
     build_python_udf_dependencies_archive,
