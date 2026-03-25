@@ -1070,6 +1070,17 @@ def test_export_workspace(tmp_path, remove_original, attach_gdalinfo_assets, sta
         assert stac_collection.extent.temporal.intervals == [
             [dt.datetime(2021, 1, 5, tzinfo=dt.timezone.utc), dt.datetime(2021, 1, 16, tzinfo=dt.timezone.utc)]
         ]
+        if stac_version == "1.1":
+            item_assets = stac_collection.extra_fields.get("item_assets")
+            assert len(item_assets) == 3 if attach_gdalinfo_assets else len(item_assets) == 1
+            assert item_assets.get("openEO") == {
+                'bands': [{
+                    'name': 'Flat:2',
+                    'statistics': {'maximum': 2.0, 'mean': 2.0, 'minimum': 2.0, 'stddev': 0.0, 'valid_percent': 100.0}
+                }],
+                'roles': ['data'],
+                'type': 'image/tiff; application=geotiff'
+            }
 
         item_links = [item_link for item_link in stac_collection.links if item_link.rel == "item"]
         assert len(item_links) == 4 if (attach_gdalinfo_assets & (stac_version == "1.0")) else len(item_links) == 2
@@ -1143,9 +1154,9 @@ def test_export_workspace(tmp_path, remove_original, attach_gdalinfo_assets, sta
         with open(metadata_file) as f:
             job_metadata = json.load(f)
         if stac_version== "1.1":
-            item_assets  = job_metadata["items"]
-            assert len(item_assets) ==  2
-            assets = [item["assets"] for item in item_assets]
+            item_with_assets  = job_metadata["items"]
+            assert len(item_with_assets) ==  2
+            assets = [item["assets"] for item in item_with_assets]
         else:
             assets = [{asset_key:asset} for asset_key,asset in job_metadata["assets"].items() if "gdalinfo" not in asset_key]
         item_assets0 =assets[0]
@@ -1546,7 +1557,7 @@ def test_export_workspace_merge_into_existing(tmp_path, mock_s3_bucket, stac_ver
         asset_name = "openEO" if stac_version == "1.1" else expected_asset_filename
         (asset_alternate,) = item["assets"][asset_name]["alternate"].values()
         # noinspection PyUnresolvedReferences
-        assert asset_alternate["href"] == f"s3://{object_workspace.bucket}/{merge}/{expected_asset_filename}"
+        assert asset_alternate["href"] == f"s3://{object_workspace.bucket}/{merge}_items/{expected_asset_filename}"
 
     run_merge_job(
         job_dir=tmp_path / "first",
@@ -1560,14 +1571,28 @@ def test_export_workspace_merge_into_existing(tmp_path, mock_s3_bucket, stac_ver
         expected_asset_filename="openEO_2021-01-15Z.tif",
     )
 
-    object_workspace_keys = [PurePath(obj.key) for obj in mock_s3_bucket.objects.all()]
+    object_workspace_keys = [obj.key for obj in mock_s3_bucket.objects.all()]
     assert len(object_workspace_keys) == 5, "STAC item document(s) not found"
 
     assert object_workspace_keys == ListSubSet([
-        merge,  # the Collection itself
-        merge / "openEO_2021-01-05Z.tif",
-        merge / "openEO_2021-01-15Z.tif",
+        f"{merge}",  # the Collection itself
+        f"{merge}_items/openEO_2021-01-05Z.tif",
+        f"{merge}_items/openEO_2021-01-15Z.tif",
     ])
+
+    stac_collection = pystac.Collection.from_file(
+        f"s3://{mock_s3_bucket.name}/{merge}", stac_io=CustomStacIO(object_workspace.region)
+    )
+
+    assert stac_collection.validate_all() == 2
+
+    for item in stac_collection.get_items():
+        for asset in item.get_assets().values():
+            object_key = _object_key(asset.get_absolute_href())
+
+            with tempfile.NamedTemporaryFile() as f:
+                mock_s3_bucket.download_file(object_key, f.name)
+
 
 @pytest.mark.parametrize("stac_version", ["1.0", "1.1"])
 def test_export_workspace_merge_filepath_per_band(tmp_path, mock_s3_bucket, stac_version):
@@ -1676,12 +1701,12 @@ def test_export_workspace_merge_filepath_per_band(tmp_path, mock_s3_bucket, stac
         assert isinstance(object_workspace, ObjectStorageWorkspace)
         assert object_workspace.bucket == get_backend_config().s3_bucket_name
 
-        object_workspace_keys = {PurePath(obj.key) for obj in mock_s3_bucket.objects.all()}
+        object_workspace_keys = {obj.key for obj in mock_s3_bucket.objects.all()}
 
         assert {
-            merge,  # the Collection itself
-            merge / "some/deeply/nested/folder/lon.tif",
-            merge / "lat.tif",
+            f"{merge}",  # the Collection itself
+            f"{merge}_items/some/deeply/nested/folder/lon.tif",
+            f"{merge}_items/lat.tif",
         } <= object_workspace_keys
 
         assert len(object_workspace_keys) == 4 if stac_version == "1.1" else len(object_workspace_keys) == 5,  "STAC item document(s) not found"

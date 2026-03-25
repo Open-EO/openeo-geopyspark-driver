@@ -1024,6 +1024,15 @@ def _write_exported_stac_collection_from_item(
 
     item_assets = dict()
 
+    def intersect_band_array(list1,list2):
+        band_result = []
+        for item1 in list1:
+            if isinstance(item1, dict) and "name" in item1:
+                for item2 in list2:
+                    if isinstance(item1, dict) and "name" in item1 and item1["name"] == item2["name"]:
+                        band_result.append(intersect_dicts(item1, item2))
+        return band_result
+
     def intersect_dicts(dict1, dict2):
         result = {}
         for key in dict1:
@@ -1033,6 +1042,8 @@ def _write_exported_stac_collection_from_item(
                     nested_result = intersect_dicts(dict1[key], dict2[key])
                     if nested_result:  # Only add if the nested result is not empty
                         result[key] = nested_result
+                elif isinstance(dict1[key],list) and isinstance(dict2[key],list) and key == "bands":
+                    result[key] = intersect_band_array(dict1[key],dict2[key])
                 elif dict1[key] == dict2[key]:
                     # Retain the key-value pair if values are equal
                     result[key] = dict1[key]
@@ -1070,12 +1081,13 @@ def _write_exported_stac_collection_from_item(
                 item_assets[asset_key] = intersect_dicts(item_assets[asset_key],item_asset)
 
         properties = item.get("properties", {"datetime": result_metadata.get("start_datetime")})
-        properties["proj:bbox"] = item.get("bbox",result_metadata.get("bbox"))
-        properties["proj:geometry"] = item.get("geometry", result_metadata.get("geometry"))
+        properties["proj:bbox"] = result_metadata.get("bbox",item.get("bbox"))
+        properties["proj:geometry"] = result_metadata.get("geometry",item.get("geometry"))
         result_item = result_metadata.get("items").get(item_key)
         if result_item:
+            properties["proj:bbox"] = result_item.get("proj:bbox")
             properties["proj:shape"] = result_item.get("proj:shape")
-        epsg_code = item.get("epsg",result_metadata.get("epsg"))
+        epsg_code = result_metadata.get("epsg",item.get("epsg"))
         if epsg_code:
             properties["proj:code"] = "EPSG:"+str(epsg_code)
         stac_item = {

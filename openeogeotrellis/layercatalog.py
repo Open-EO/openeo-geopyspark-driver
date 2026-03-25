@@ -731,6 +731,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 batch_jobs=None,
                 normalized_band_selection=normalized_band_selection,
                 feature_flags=layer_source_info.get("load_stac_feature_flags", {}),
+                data_cube_parameters=datacubeParams,
             )
             pyramid = cube.pyramid.levels
             metadata = cube.metadata
@@ -1316,6 +1317,8 @@ def extra_validation_load_collection(collection_id: str, load_params: LoadParame
     spatial_extent = load_params.spatial_extent
     if spatial_extent is None or len(spatial_extent) == 0:
         spatial_extent = post_dry_run.get_global_extent(load_params=load_params, env=env)
+        if spatial_extent:
+            spatial_extent = spatial_extent.as_dict()
     if spatial_extent is None or len(spatial_extent) == 0:
         spatial_extent = metadata.get_overall_spatial_extent()
     load_params.spatial_extent = spatial_extent

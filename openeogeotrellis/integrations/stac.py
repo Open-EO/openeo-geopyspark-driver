@@ -221,6 +221,9 @@ class LoggingStacApiIO(StacApiIO):
     Client.open() and each paginated search request.
     """
 
+    # TODO: this class is called "Logging..." but is mostly about caching
+    # TODO: both ResilientStacIO and LoggingStacApiIO do logging and caching now. Is that functional duplication (still) necessary?
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.session.hooks["response"].append(_log_stac_response)

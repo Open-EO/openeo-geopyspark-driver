@@ -4,6 +4,7 @@ import json
 import os
 import shutil
 import sys
+import time
 import typing
 import urllib.parse
 from datetime import datetime
@@ -285,18 +286,23 @@ def api_version(request):
     return request.param
 
 
-# TODO: Deduplicate code with openeo-python-client
 class _Sleeper:
+    # TODO: Deduplicate with openeo-python-client v0.49.0 (openeo.testing.util.Sleeper)
+
     def __init__(self):
         self.history = []
 
     @contextlib.contextmanager
     def patch(self, time_machine: time_machine.TimeMachineFixture) -> typing.Iterator["_Sleeper"]:
+        orig_sleep = time.sleep
+
         def sleep(seconds):
             # Note: this requires that `time_machine.move_to()` has been called before
             # also see https://github.com/adamchainz/time-machine/issues/247
             time_machine.coordinates.shift(seconds)
             self.history.append(seconds)
+            # Do some minimal sleeping to avoid messing up Python internals that depend on actual sleeping
+            orig_sleep(min(seconds, 0.1))
 
         with mock.patch("time.sleep", new=sleep):
             yield self

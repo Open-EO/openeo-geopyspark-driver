@@ -2855,7 +2855,7 @@ class TestSentinelHubBatchJobs:
                 "status": "queued",
                 "application_id": None,
                 "created": "2020-04-20T12:01:01Z",
-                "updated": "2020-04-20T12:02:02Z",
+                "updated": dirty_equals.IsStr(regex="2020-04-20T12:02:0.Z"),
                 "dependency_status": "awaiting",
                 "dependencies": [
                     {

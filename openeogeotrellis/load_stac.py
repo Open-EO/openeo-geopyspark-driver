@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Iterator, List, Optional, Set, Tuple, Union, Iterable, Sequence
 from urllib.parse import urlparse
 
+import geopandas
 import openeo_driver.backend
 import pyproj
 import pystac
@@ -24,6 +25,8 @@ import pystac.utils
 import pystac_client
 import pystac_client.stac_api_io
 import requests.adapters
+import shapely
+import shapely.geometry
 from geopyspark import LayerType
 from openeo.metadata import _StacMetadataParser
 from openeo.util import Rfc3339, dict_no_none, TimingLogger
@@ -42,7 +45,6 @@ from openeo_driver.util.geometry import BoundingBox, GeometryBufferer
 from openeo_driver.util.utm import utm_zone_from_epsg
 from openeo_driver.utils import EvalEnv
 from pystac import STACObject
-import shapely.geometry
 from urllib3 import Retry
 
 from openeogeotrellis.config import get_backend_config
@@ -51,7 +53,8 @@ from openeogeotrellis.geopysparkcubemetadata import GeopysparkCubeMetadata
 from typing import TYPE_CHECKING
 from openeogeotrellis.integrations.stac import LoggingStacApiIO, ResilientStacIO
 from openeogeotrellis.util.datetime import DateTimeLikeOrNone, to_datetime_utc_unless_none
-from openeogeotrellis.util.geometry import GridSnapper
+from openeogeotrellis.util.geometry import GeometrySimplifier, GridSnapper
+from openeogeotrellis.util.logging import TrackingIter
 from openeogeotrellis.util.projection import is_utm_epsg_code
 from openeogeotrellis.utils import get_jvm, map_optional, normalize_temporal_extent, to_projected_polygons, unzip
 
@@ -63,6 +66,7 @@ logger = logging.getLogger(__name__)
 REQUESTS_TIMEOUT_SECONDS = 60
 
 STAC_API_PER_PAGE_LIMIT_DEFAULT = 100
+STAC_API_MAX_ITEMS_DEFAULT = 5000
 STAC_API_BACKOFF_FACTOR = 2
 STAC_API_RETRY_TOTAL = 25
 STAC_API_MINIMUM_BACKOFF_SECONDS = 1
@@ -159,6 +163,7 @@ def _prepare_context(
     normalized_band_selection: Optional[List[str]] = None,
     stac_io: Optional[pystac.stac_io.StacIO] = None,
     feature_flags: Optional[Dict[str, Any]] = None,
+    data_cube_parameters: Optional[Any] = None,
 ) -> _LoadStacContext:
     """
     Prepare all metadata and inputs needed to build/load a datacube from raster files.
@@ -203,8 +208,9 @@ def _prepare_context(
     )
     spatiotemporal_extent = _spatiotemporal_extent_from_load_params(
         spatial_extent=load_params.spatial_extent,
-        temporal_extent=load_params.temporal_extent
+        temporal_extent=load_params.temporal_extent,
     )
+    spatial_filtering_geometries = _SpatialFilteringGeometries(geometries=load_params.aggregate_spatial_geometries)
 
     # Band selection: subset of bands to load from STAC assets.
     # Prefer `normalized_band_selection` (if available) over raw `load_params.bands`
@@ -228,6 +234,7 @@ def _prepare_context(
                 feature_flags=feature_flags,
                 stac_io=stac_io,
                 user=user,
+                spatial_filtering_geometries=spatial_filtering_geometries,
             )
 
         items_found = len(item_collection.items) > 0
@@ -663,7 +670,10 @@ def _prepare_context(
     metadata_properties = {}
     correlation_id = env.get(EVAL_ENV_KEY.CORRELATION_ID, "")
 
-    data_cube_parameters, single_level = datacube_parameters.create(load_params=load_params, env=env, jvm=jvm)
+    if data_cube_parameters is not None:
+        single_level = env.get(EVAL_ENV_KEY.PYRAMID_LEVELS, "all") != "all"
+    else:
+        data_cube_parameters, single_level = datacube_parameters.create(load_params=load_params, env=env, jvm=jvm)
     getattr(data_cube_parameters, "layoutScheme_$eq")("FloatingLayoutScheme")
 
     tilesize = feature_flags.get("tilesize", None)
@@ -815,6 +825,7 @@ def load_stac(
     normalized_band_selection: Optional[List[str]] = None,
     stac_io: Optional[pystac.stac_io.StacIO] = None,
     feature_flags: Optional[Dict[str, Any]] = None,
+    data_cube_parameters: Optional[Any] = None,
 ) -> GeopysparkDataCube:
     """
 
@@ -836,6 +847,7 @@ def load_stac(
         normalized_band_selection=normalized_band_selection,
         stac_io=stac_io,
         feature_flags=feature_flags,
+        data_cube_parameters=data_cube_parameters,
     )
     return _build_datacube(context)
 
@@ -850,6 +862,7 @@ def construct_item_collection(
     feature_flags: Optional[Dict[str, Any]] = None,
     stac_io: Optional[pystac.stac_io.StacIO] = None,
     user: Optional[User] = None,
+    spatial_filtering_geometries: Union[_SpatialFilteringGeometries, None] = None,
 ) -> Tuple[ItemCollection, GeopysparkCubeMetadata, List[str], bool]:
     """
     Construct Stac ItemCollection from given load_stac URL
@@ -949,6 +962,9 @@ def construct_item_collection(
                     # TODO #1312 why skipping datetime filter especially for netcdf with time dimension?
                     skip_datetime_filter=netcdf_with_time_dimension,
                     per_page_limit=feature_flags.get("stac_api_per_page_limit", STAC_API_PER_PAGE_LIMIT_DEFAULT),
+                    max_items=feature_flags.get("stac_api_max_items", STAC_API_MAX_ITEMS_DEFAULT),
+                    filter_by_geometry=feature_flags.get("stac_api_filter_by_geometry", True),
+                    spatial_filtering_geometries=spatial_filtering_geometries,
                 )
         else:
             assert isinstance(stac_object, pystac.Catalog)  # static Catalog + Collection
@@ -1177,10 +1193,52 @@ class _SpatialExtent:
         return self._bbox_lonlat_shape.intersects(shape)
 
 
+class _SpatialFilteringGeometries:
+    """Like _SpatialExtent but geometry based (instead of bounding box based)"""
+
+    __slots__ = ("_geometries",)
+
+    def __init__(
+        self, geometries: Union[geopandas.GeoSeries, DriverVectorCube, shapely.geometry.base.BaseGeometry, None]
+    ):
+        # TODO: do this geometry normalization lazily and only when it will be used
+        self._geometries: Union[geopandas.GeoSeries, None]
+        if isinstance(geometries, geopandas.GeoSeries):
+            self._geometries = geometries
+        elif isinstance(geometries, DriverVectorCube):
+            self._geometries = geometries.get_geometries()
+        elif isinstance(geometries, shapely.geometry.base.BaseGeometry):
+            self._geometries = geopandas.GeoSeries([geometries])
+        elif geometries is None:
+            self._geometries = None
+        else:
+            self._geometries = None
+            logger.warning(f"Unsupported geometries for _SpatialFilteringGeometries: {type(geometries)=}")
+
+    def get_simplified_geojson(self, *, vertex_threshold: int = 100) -> Union[str, None]:
+        """
+        Get simplification (if necessary) of the geometries as GeoJSON string
+        to be used as spatial filter (`intersects` parameter) in STAC API queries
+        """
+        if self._geometries is None:
+            return None
+        try:
+            simplified = GeometrySimplifier().to_simplified_geojson(
+                geometry=self._geometries, vertex_threshold=vertex_threshold
+            )
+            return simplified
+        except Exception as e:
+            logger.warning(f"Failed to simplify spatial filtering geometries: {e}")
+        return None
+
+
 class _SpatioTemporalExtent:
+    """Container of spatio-temporal constraints for filtering STAC entities"""
     # TODO: move this to a more generic location for better reuse
     # TODO: enforce/ensure immutability
     # TODO: re-implement in dataclasses/attrs to better enforce immutability and simplify equality/hash implementation
+
+    __slots__ = ("_spatial_extent", "_temporal_extent")
 
     def __init__(
         self,
@@ -1236,7 +1294,7 @@ class _SpatioTemporalExtent:
 
 def _spatiotemporal_extent_from_load_params(
     spatial_extent: Union[Dict, BoundingBox, None],
-    temporal_extent: Tuple[Optional[str], Optional[str]]
+    temporal_extent: Tuple[Optional[str], Optional[str]],
 ) -> _SpatioTemporalExtent:
     bbox = BoundingBox.from_dict_or_none(spatial_extent, default_crs="EPSG:4326")
     temporal_extent = _TemporalExtent.from_load_param_extent(temporal_extent)
@@ -1358,6 +1416,9 @@ class ItemCollection:
         skip_datetime_filter: bool = False,
         original_url: str = "n/a",
         per_page_limit: int = STAC_API_PER_PAGE_LIMIT_DEFAULT,
+        max_items: Union[int, None] = STAC_API_MAX_ITEMS_DEFAULT,
+        filter_by_geometry: bool = False,
+        spatial_filtering_geometries: Union[_SpatialFilteringGeometries, None] = None,
     ) -> ItemCollection:
         root_catalog = collection.get_root()
 
@@ -1417,6 +1478,16 @@ class ItemCollection:
                 )
             else:
                 query_bboxes = [bbox.as_wsen_tuple()]
+
+            intersects_geometry = None
+            if filter_by_geometry and spatial_filtering_geometries:
+                # Include geometry filtering already in STAC API query
+                intersects_geometry = spatial_filtering_geometries.get_simplified_geojson()
+
+            # Note that per STAC API spec, "Only one of either `intersects` or `bbox` may be specified"
+            if intersects_geometry:
+                query_bboxes = [None]
+
             query_datetime = (
                 None
                 if spatiotemporal_extent.temporal_extent.is_unbounded() or skip_datetime_filter
@@ -1437,6 +1508,8 @@ class ItemCollection:
                     method=method,
                     collections=collection.id,
                     bbox=query_bbox,
+                    intersects=intersects_geometry,
+                    max_items=max_items,
                     limit=per_page_limit,
                     datetime=query_datetime,
                     filter=cql2_filter,
@@ -1448,11 +1521,22 @@ class ItemCollection:
                     query_info += f" {search_request.method} {search_request.url} {search_request.get_parameters()=}"
                 logger.info(f"ItemCollection.from_stac_api: STAC API request: {query_info}")
 
+                tracking_iter_raw = TrackingIter()
+                tracking_iter_filtered = TrackingIter()
                 items.extend(
-                    item
-                    for item in search_request.items()
-                    if property_matcher(item.properties) and item.id not in seen_item_ids
+                    tracking_iter_filtered(
+                        item
+                        for item in tracking_iter_raw(search_request.items())
+                        if property_matcher(item.properties) and item.id not in seen_item_ids
+                        # TODO also do filtering with spatial_filtering_geometries here?
+                    )
                 )
+                logger.info(f"ItemCollection.from_stac_api: {tracking_iter_raw=!s} {tracking_iter_filtered=!s}")
+                if max_items and tracking_iter_raw.count >= max_items:
+                    logger.warning(
+                        f"ItemCollection.from_stac_api: reached {max_items=}: {tracking_iter_raw!s}, item collection is probably incomplete"
+                    )
+
                 if len(query_bboxes) > 1:
                     # Only track seen items when we're going to check for duplicates (multiple query bboxes)
                     seen_item_ids.update(item.id for item in items)
@@ -1891,32 +1975,45 @@ class _ProjectionMetadata:
         )
 
     @staticmethod
-    def _fix_gdal_ordered_transform(transform: Sequence[float]) -> Sequence[float]:
+    def _fix_gdal_ordered_transform(
+        transform: Sequence[float], also_check_yx_transposed: bool = False
+    ) -> Sequence[float]:
         """
-        Detect and fix a proj:transform that is in GDAL GetGeoTransform order
-        instead of the expected rasterio/affine order.
+        Detect and fix a proj:transform that is wrongly in GDAL GetGeoTransform order
 
-        GDAL GetGeoTransform:  [xOrigin, xPixelSize, xSkew, yOrigin, ySkew, yPixelSize]
-        Rasterio/affine order: [xPixelSize, xSkew, xOrigin, ySkew, yPixelSize, yOrigin]
+            [xOrigin, xPixelSize, xSkew, yOrigin, ySkew, yPixelSize]
 
-        Detection heuristic (for the common no-rotation case):
-        - In GDAL order: positions 2,4 are zero (skew) and positions 1,5 are non-zero (pixel sizes)
-        - In rasterio order: positions 1,3 are zero (skew) and positions 0,4 are non-zero (pixel sizes)
-        Additionally, origin values (large) should be larger than pixel sizes (small).
+        instead of the expected order (rasterio/affine style):
+
+            [xPixelSize, xSkew, xOrigin, ySkew, yPixelSize, yOrigin]
+
+        Detection heuristic (for the common XY oriented case):
+        - In rasterio order: (non-zero) pixel sizes are at positions 0 and 4,
+          skew values at positions 1 and 3 are small/zero
+        - In GDAL order: (non-zero) pixel sizes are at positions 1 and 5,
+          skew values at positions 2 and 4 are small/zero
+
+        :param also_check_yx_transposed: whether to also consider the possibility of YX oriented data
         """
         if len(transform) < 6:
             return transform
         t0, t1, t2, t3, t4, t5 = transform[:6]
-        if (
-            t2 == 0.0
-            and t4 == 0.0
-            and t1 != 0.0
-            and t5 != 0.0
-            and abs(t0) > abs(t1)
-            and abs(t3) > abs(t5)
-        ):
-            fixed = [t1, t2, t0, t4, t5, t3] + list(transform[6:])
-            return fixed
+
+        # Data consistent with rasterio order?
+        rasterio_xy_consistent = (abs(t0) > abs(t1)) and (abs(t3) < abs(t4))
+        rasterio_yx_consistent = also_check_yx_transposed and (abs(t0) < abs(t1)) and (abs(t3) > abs(t4))
+
+        # Data consistent with GDAL order?
+        gdal_xy_consistent = (abs(t1) > abs(t2)) and (abs(t4) < abs(t5))
+        gdal_yx_consistent = also_check_yx_transposed and (abs(t1) < abs(t2)) and (abs(t4) > abs(t5))
+
+        if rasterio_xy_consistent or rasterio_yx_consistent:
+            pass
+        elif gdal_xy_consistent or gdal_yx_consistent:
+            transform = [t1, t2, t0, t4, t5, t3] + list(transform[6:])
+        else:
+            logger.debug(f"Failed to detect proj:transform order from {transform=}, leaving as-is.")
+
         return transform
 
     @functools.lru_cache
@@ -2133,7 +2230,7 @@ def _await_dependency_job(
     while True:
         partial_job_status = PARTIAL_JOB_STATUS.for_job_status(dependency_job_info.status)
 
-        logger.debug(f"OpenEO batch job results status of own job {dependency_job_info.id}: {partial_job_status}")
+        logger.debug(f"OpenEO batch job results status of own job {dependency_job_info.id}: {partial_job_status=}")
 
         if partial_job_status in [PARTIAL_JOB_STATUS.ERROR, PARTIAL_JOB_STATUS.CANCELED]:
             logger.error(f"Failing because own OpenEO batch job {dependency_job_info.id} failed")
@@ -2144,10 +2241,9 @@ def _await_dependency_job(
         if time.time() >= max_poll_time:
             max_poll_delay_reached_error = (
                 f"OpenEO batch job results dependency of"
-                f"own job {dependency_job_info.id} was not satisfied after"
-                f" {max_poll_delay_seconds} s, aborting"
+                f" own job {dependency_job_info.id} was not satisfied after"
+                f" {max_poll_delay_seconds}s, aborting"
             )
-
             raise Exception(max_poll_delay_reached_error)
 
         time.sleep(poll_interval_seconds)
