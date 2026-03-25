@@ -791,10 +791,10 @@ def create_final_grid(final_bbox, resolution, rim_pixels=0 ):
     ref_ymax = final_ymax - 0.5 * resolution + (rim_pixels * resolution)
     steps_x = (ref_xmax - ref_xmin)/resolution
     steps_y = (ref_ymax - ref_ymin) / resolution
-    if math.isclose(steps_x, math.floor(steps_x), rel_tol=1e-10) and math.isclose(steps_y,math.floor(steps_y),rel_tol=1e-10):
+    if math.isclose(steps_x, round(steps_x), rel_tol=1e-10) and math.isclose(steps_y,round(steps_y),rel_tol=1e-10):
         grid_x, grid_y = np.meshgrid(
-            np.linspace(ref_xmin, ref_xmax, math.floor(steps_x), endpoint=False),
-            np.linspace(ref_ymax, ref_ymin, math.floor(steps_y), endpoint=False)
+            np.linspace(ref_xmin, ref_xmax, round(steps_x), endpoint=False),
+            np.linspace(ref_ymax, ref_ymin, round(steps_y), endpoint=False)
         )
     else:
         logger.info(f"load_collection: unexpected number of steps, #steps x: {steps_x}, #steps y: {steps_y} ")
