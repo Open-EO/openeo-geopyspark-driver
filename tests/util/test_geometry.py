@@ -224,7 +224,7 @@ class TestGeometrySimplifier:
 
     def test_to_simplified_geojson_decimal_places(self):
         box = shapely.geometry.box(1.23456789, math.e, math.pi, 4)
-        geojson = GeometrySimplifier().to_simplified_geojson(geometry=box)
+        geojson = GeometrySimplifier().to_simplified_geojson(geometry=box, round_decimals=4)
         assert (
             geojson
             == '{"type":"Polygon","coordinates":[[[3.1416,2.7183],[3.1416,4.0],[1.2346,4.0],[1.2346,2.7183],[3.1416,2.7183]]]}'

@@ -218,7 +218,7 @@ class GeometrySimplifier:
         ],
         *,
         vertex_threshold: int = 100,
-        round_decimals: Union[int, None] = 4,
+        round_decimals: Union[int, None] = 5,
     ) -> str:
         simplified_geometry = self.simplify(geometry=geometry, vertex_threshold=vertex_threshold)
 
@@ -227,7 +227,7 @@ class GeometrySimplifier:
             simplified_geometry = reproject_geometry(simplified_geometry, from_crs=geometry.crs, to_crs="epsg:4326")
 
         if round_decimals is not None:
-            # 4 decimal places (default) is enough in lon-lat degrees for meter-level precision
+            # Note: 5 decimal places is enough in lon-lat degrees for meter-level precision
             simplified_geometry = shapely.transform(simplified_geometry, lambda x: x.round(round_decimals))
 
         return shapely.to_geojson(simplified_geometry)
