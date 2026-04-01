@@ -739,8 +739,7 @@ def create_s3_toa(product_type, creo_path, band_names, bbox_tile, digital_number
         _, angle_source_coordinates, angle_data_mask = _read_latlonfile(
             bbox_tile, os.path.join(creo_path, "geodetic_an.nc"), lat_band='latitude_an', lon_band='longitude_an')
 
-        tile_coordinates_with_rim, tile_shape_with_rim = create_final_grid(bbox_tile, resolution=final_grid_resolution,
-                                                                           rim_pixels=RIM_PIXELS)
+        tile_coordinates_with_rim, tile_shape_with_rim = create_final_grid(bbox_tile, resolution=final_grid_resolution)
         tile_coordinates_with_rim.shape = tile_shape_with_rim + (2,)
     else:
         angle_source_coordinates = None
