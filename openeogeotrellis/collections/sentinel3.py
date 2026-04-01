@@ -705,9 +705,9 @@ def create_s3_toa(product_type, creo_path, band_names, bbox_tile, digital_number
         lat_band = 'lat'
         lon_band = 'lon'
     elif product_type in [SLSTR_PRODUCT_TYPE, "SL_1_RBT___"]:
-        geofile = "geodetic_an.nc"
-        lat_band = "latitude_an"
-        lon_band = "longitude_an"
+        geofile = "geodetic_in.nc"
+        lat_band = "latitude_in"
+        lon_band = "longitude_in"
     elif product_type == "SY_2_AOD___":
         geofile = 'NTC_AOD.nc'
         lat_band = 'latitude'
@@ -731,6 +731,13 @@ def create_s3_toa(product_type, creo_path, band_names, bbox_tile, digital_number
         _, angle_source_coordinates, angle_data_mask = _read_latlonfile(
             bbox_tile, angle_geofile, lat_band='latitude_tx', lon_band='longitude_tx',
             interpolation_margin=final_grid_resolution * RIM_PIXELS)
+
+        tile_coordinates_with_rim, tile_shape_with_rim = create_final_grid(bbox_tile, resolution=final_grid_resolution,
+                                                                           rim_pixels=RIM_PIXELS)
+        tile_coordinates_with_rim.shape = tile_shape_with_rim + (2,)
+    elif product_type == "SL_1_RBT___" and any(band_name in band_names for band_name in ["S1_radiance_an", "S2_radiance_an", "S3_radiance_an", "S4_radiance_an", "S5_radiance_an", "S6_radiance_an"]):
+        _, angle_source_coordinates, angle_data_mask = _read_latlonfile(
+            bbox_tile, os.path.join(creo_path, "geodetic_an.nc"), lat_band='latitude_an', lon_band='longitude_an')
 
         tile_coordinates_with_rim, tile_shape_with_rim = create_final_grid(bbox_tile, resolution=final_grid_resolution,
                                                                            rim_pixels=RIM_PIXELS)
@@ -959,7 +966,7 @@ def do_reproject(product_type, final_grid_resolution, creo_path, band_names,
         logger.info(" Reprojecting %s" % band_name)
 
         if ":" in band_name:
-            base_name, band_name = band_name.split(":")
+            base_name, band_name = band_name.split(":")  # TODO: avoid mutating band_name
         else:
             base_name = band_name
 
@@ -995,6 +1002,8 @@ def do_reproject(product_type, final_grid_resolution, creo_path, band_names,
             band_settings, reprojected_data = readAndReproject(angle_data_mask,LUT_angles)
             interpolated = _linearNDinterpolate(reprojected_data)
             reprojected_data = interpolated[RIM_PIXELS:-RIM_PIXELS, RIM_PIXELS:-RIM_PIXELS]
+        elif product_type == "SL_1_RBT___" and band_name in ["S1_radiance_an", "S2_radiance_an", "S3_radiance_an", "S4_radiance_an", "S5_radiance_an", "S6_radiance_an"]:
+            band_settings, reprojected_data = readAndReproject(angle_data_mask, LUT_angles)
         else:
             band_settings, reprojected_data = readAndReproject(data_mask, LUT)
 
