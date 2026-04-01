@@ -705,9 +705,9 @@ def create_s3_toa(product_type, creo_path, band_names, bbox_tile, digital_number
         lat_band = 'lat'
         lon_band = 'lon'
     elif product_type in [SLSTR_PRODUCT_TYPE, "SL_1_RBT___"]:
-        geofile = 'geodetic_in.nc'
-        lat_band = 'latitude_in'
-        lon_band = 'longitude_in'
+        geofile = "geodetic_an.nc"
+        lat_band = "latitude_an"
+        lon_band = "longitude_an"
     elif product_type == "SY_2_AOD___":
         geofile = 'NTC_AOD.nc'
         lat_band = 'latitude'
