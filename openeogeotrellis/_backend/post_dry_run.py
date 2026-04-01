@@ -285,15 +285,23 @@ def _extract_spatial_extent_from_constraint_load_stac(
         spatial_extent=spatial_extent_from_pg,
         temporal_extent=constraint.get("temporal_extent") or (None, None),
     )
+    spatial_filtering_geometries = openeogeotrellis.load_stac._SpatialFilteringGeometries(
+        # TODO: avoid duplication with "aggregate_spatial_geometries" from _extract_load_parameters
+        geometries=constraint.get("aggregate_spatial", {}).get("geometries")
+        or constraint.get("filter_spatial", {}).get("geometries")
+    )
+
     property_filter_pg_map = constraint.get("properties")
 
     _log.info(f"Calling construct_item_collection for {stac_url=}")
     item_collection, _, _, _ = openeogeotrellis.load_stac.construct_item_collection(
         url=stac_url,
         spatiotemporal_extent=spatiotemporal_extent,
+        spatial_filtering_geometries=spatial_filtering_geometries,
         property_filter_pg_map=property_filter_pg_map,
         feature_flags=feature_flags,
         stac_io=None,  # TODO?
+        # TODO: custom (lower) max_items as we do not necessarily need all items to determine spatial extent?
     )
 
     # Collect set of (uqique) asset projection metadata items
@@ -462,10 +470,10 @@ def get_global_extent(*, load_params: LoadParameters, env: EvalEnv) -> Union[Bou
     # TODO this is a short-term adapter to migrate from load_params to env approach,
     #      so ideally this can be removed once migration is completed
     if global_extent := env.get(EVAL_ENV_KEY.GLOBAL_EXTENT):
-        _log.debug(f"get_global_extent from env: {global_extent=}")
+        _log.info(f"get_global_extent from env: {global_extent=}")
         return global_extent
     elif load_params.global_extent:
-        _log.debug(f"get_global_extent from load_params: {load_params.global_extent=}")
+        _log.info(f"get_global_extent from load_params: {load_params.global_extent=}")
         return BoundingBox.from_dict(load_params.global_extent)
     else:
         return None

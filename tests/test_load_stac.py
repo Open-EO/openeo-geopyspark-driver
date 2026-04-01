@@ -1,13 +1,13 @@
-import re
-
-import logging
-
 import datetime
+import json
+import logging
+import re
 from contextlib import nullcontext
 from typing import Iterator, List, Tuple, Union
 from unittest import mock
 
 import dirty_equals
+import geopandas
 import openeo.metadata
 import pystac
 import pystac_client
@@ -16,6 +16,7 @@ import responses
 import shapely.geometry
 from openeo.testing.stac import StacDummyBuilder
 from openeo_driver.backend import BatchJobMetadata, BatchJobs, LoadParameters
+from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.errors import OpenEOApiException
 from openeo_driver.testing import approxify
 from openeo_driver.users import User
@@ -27,15 +28,23 @@ from py4j.java_gateway import JavaObject
 from openeogeotrellis.backend import GpsBatchJobs
 from openeogeotrellis.job_registry import InMemoryJobRegistry
 from openeogeotrellis.load_stac import (
+    STAC_API_PER_PAGE_LIMIT_DEFAULT,
+    STAC_API_RETRY_TOTAL,
+    AdaptingPropertyFilter,
     ItemCollection,
     ItemDeduplicator,
     PropertyFilter,
+    _get_apply_sentinel2_reflectance_offset,
     _get_proj_metadata,
     _is_band_asset,
+    _is_sentinel2_reflectance_asset,
     _is_supported_raster_mime_type,
+    _prepare_context,
     _proj_code_to_epsg,
     _ProjectionMetadata,
+    _ResolutionTracker,
     _SpatialExtent,
+    _SpatialFilteringGeometries,
     _spatiotemporal_extent_from_load_params,
     _SpatioTemporalExtent,
     _StacMetadataParser,
@@ -44,15 +53,8 @@ from openeogeotrellis.load_stac import (
     construct_item_collection,
     extract_own_job_info,
     load_stac,
-    _prepare_context,
-    AdaptingPropertyFilter,
-    _get_apply_sentinel2_reflectance_offset,
-    _is_sentinel2_reflectance_asset,
-    _ResolutionTracker,
-    STAC_API_PER_PAGE_LIMIT_DEFAULT,
-    STAC_API_RETRY_TOTAL,
 )
-from openeogeotrellis.testing import DummyStacApiServer, gps_config_overrides
+from openeogeotrellis.testing import DummyStacApiServer, gps_config_overrides, OpenSearchClientDumper
 from openeogeotrellis.util.geometry import bbox_to_geojson
 
 
@@ -314,7 +316,7 @@ def test_resolution_and_offset_handling(
     assert context.cellsize == (resolution, resolution)
     assert context.extent_crs == "EPSG:32636"
 
-    dumper = _OpenSearchClientDumper()
+    dumper = OpenSearchClientDumper()
     assert [
         f["links"]
         for f in dumper.dump_opensearch_client_features(context.opensearch_client, add_pixel_value_scaling=True)
@@ -1043,16 +1045,67 @@ def test_get_proj_metadata_from_asset(item_properties, asset_extra_fields, expec
 class TestFixGdalOrderedTransform:
     """Tests for _ProjectionMetadata._fix_gdal_ordered_transform"""
 
-    def test_already_valid_rasterio_order(self):
+    @pytest.mark.parametrize(
+        "transform",
+        [
+            [0.001, 0.0, 3.0, 0.0, -0.001, 51.0],
+            [0.001, 0.0, 0.0, 0.0, -0.001, 51.0],
+            [0.001, 0.0, 0.0, 0.0, -0.001, 0.0],
+            [0.001, 0.0, 3.0, 0.0, -0.001, 0.0],
+        ],
+    )
+    def test_already_valid_rasterio_order(self, transform):
         """Valid rasterio/affine order should not be changed."""
-        transform = [0.00025, 0.0, 3.0, 0.0, -0.00025, 51.0]
         assert _ProjectionMetadata._fix_gdal_ordered_transform(transform) == transform
 
-    def test_fix_gdal_order(self):
+    @pytest.mark.parametrize(
+        "transform",
+        [
+            [0.001, 0.0, 3.0, 0.0, -0.001, 51.0],
+            [0.001, 0.0, 0.0, 0.0, -0.001, 51.0],
+            [0.001, 0.0, 0.0, 0.0, -0.001, 0.0],
+            [0.001, 0.0, 3.0, 0.0, -0.001, 0.0],
+            [0.0, 0.001, 3.0, -0.001, 0.0, 51.0],
+            [0.0, 0.001, 0.0, -0.001, 0.0, 51.0],
+            [0.0, 0.001, 0.0, -0.001, 0.0, 0.0],
+            [0.0, 0.001, 3.0, -0.001, 0.0, 0.0],
+        ],
+    )
+    def test_valid_rasterio_order_including_yx_transpose(self, transform):
+        """Valid rasterio/affine order should not be changed."""
+        assert _ProjectionMetadata._fix_gdal_ordered_transform(transform, also_check_yx_transposed=True) == transform
+
+    @pytest.mark.parametrize(
+        ["given", "expected"],
+        [
+            ([3, 0.001, 0.0, 51, 0.0, -0.001], [0.001, 0.0, 3, 0.0, -0.001, 51]),
+            ([0, 0.001, 0.0, 51, 0.0, -0.001], [0.001, 0.0, 0, 0.0, -0.001, 51]),
+            ([0, 0.001, 0.0, 0, 0.0, -0.001], [0.001, 0.0, 0, 0.0, -0.001, 0]),
+            ([3, 0.001, 0.0, 0, 0.0, -0.001], [0.001, 0.0, 3, 0.0, -0.001, 0]),
+        ],
+    )
+    def test_fix_gdal_order(self, given, expected):
         """GDAL GetGeoTransform order should be reshuffled to rasterio/affine order."""
-        gdal_order = [3.0, 0.00025, 0.0, 51.0, 0.0, -0.00025]
-        expected = [0.00025, 0.0, 3.0, 0.0, -0.00025, 51.0]
-        assert _ProjectionMetadata._fix_gdal_ordered_transform(gdal_order) == expected
+        assert _ProjectionMetadata._fix_gdal_ordered_transform(given) == expected
+
+    @pytest.mark.parametrize(
+        ["given", "expected"],
+        [
+            ([3, 0.001, 0.0, 51, 0.0, -0.001], [0.001, 0.0, 3, 0.0, -0.001, 51]),
+            # TODO Possible to detect for this case as well? Is consistent with rasterio order
+            # ([0, 0.001, 0.0, 51, 0.0, -0.001], [0.001, 0.0, 0, 0.0, -0.001, 51]),
+            ([0, 0.001, 0.0, 0, 0.0, -0.001], [0.001, 0.0, 0, 0.0, -0.001, 0]),
+            ([3, 0.001, 0.0, 0, 0.0, -0.001], [0.001, 0.0, 3, 0.0, -0.001, 0]),
+            ([3, 0.0, 0.001, 51, -0.001, 0.0], [0.0, 0.001, 3, -0.001, 0.0, 51]),
+            ([0, 0.0, 0.001, 51, -0.001, 0.0], [0.0, 0.001, 0, -0.001, 0.0, 51]),
+            ([0, 0.0, 0.001, 0, -0.001, 0.0], [0.0, 0.001, 0, -0.001, 0.0, 0]),
+            # TODO Possible to detect for this case as well? Is consistent with rasterio order
+            # ([3, 0.0, 0.001, 0, -0.001, 0.0], [0.0, 0.001, 3, -0.001, 0.0, 0]),
+        ],
+    )
+    def test_fix_gdal_order_including_yx_transpose(self, given, expected):
+        """GDAL GetGeoTransform order should be reshuffled to rasterio/affine order."""
+        assert _ProjectionMetadata._fix_gdal_ordered_transform(given, also_check_yx_transposed=True) == expected
 
     def test_fix_gdal_order_9_elements(self):
         """GDAL order with 9 elements (full 3x3 matrix) should preserve trailing elements."""
@@ -1475,6 +1528,49 @@ class TestSpatialExtent:
         assert cache[extent2] == 1
         assert cache[extent4] == 3
         assert extent5 not in cache
+
+
+class TestSpatialFilteringGeometries:
+    def test_empty(self):
+        sfg = _SpatialFilteringGeometries(geometries=None)
+        assert sfg.get_simplified_geojson() is None
+
+    def test_simple_box_geoseries(self):
+        geometries = geopandas.GeoSeries([shapely.geometry.box(1, 2, 3, 4)])
+        sfg = _SpatialFilteringGeometries(geometries=geometries)
+        simplified = sfg.get_simplified_geojson()
+        simplified = json.loads(simplified)
+        assert simplified == {
+            "type": "Polygon",
+            "coordinates": [dirty_equals.IsList([1, 2], [1, 4], [3, 4], [3, 2], length=5, check_order=False)],
+        }
+
+    def test_simple_box_vector_cube(self):
+        gdf = geopandas.GeoDataFrame(geometry=[shapely.geometry.box(1, 2, 3, 4)])
+        geometries = DriverVectorCube(geometries=gdf)
+        sfg = _SpatialFilteringGeometries(geometries=geometries)
+        simplified = sfg.get_simplified_geojson()
+        simplified = json.loads(simplified)
+        assert simplified == {
+            "type": "Polygon",
+            "coordinates": [dirty_equals.IsList([1, 2], [1, 4], [3, 4], [3, 2], length=5, check_order=False)],
+        }
+
+    @pytest.mark.parametrize(
+        "gdf",
+        [
+            geopandas.GeoDataFrame(geometry=[shapely.geometry.Point(3.333333, 50.505050)]),
+            geopandas.GeoDataFrame(
+                geometry=[
+                    shapely.geometry.box(1, 2, 3, 4),
+                    shapely.geometry.Point(3.333333, 50.505050),
+                ]
+            ),
+        ],
+    )
+    def test_unsupported_geometry_types(self, gdf):
+        sfg = _SpatialFilteringGeometries(geometries=gdf)
+        assert sfg.get_simplified_geojson() is None
 
 
 class TestSpatioTemporalExtent:
@@ -2744,6 +2840,26 @@ class TestItemCollection:
             ),
         ]
 
+    @pytest.mark.parametrize(
+        ["max_items", "expected_items"],
+        [
+            (1, ["item-1"]),
+            (2, ["item-1", "item-2"]),
+            (10, ["item-1", "item-2", "item-3"]),
+        ],
+    )
+    def test_from_stac_api_bounded_iteration(self, dummy_stac_api, max_items, expected_items):
+        given_url = f"{dummy_stac_api}/collections/collection-123"
+        collection: pystac.Collection = pystac.read_file(given_url)
+        item_collection = ItemCollection.from_stac_api(
+            collection,
+            original_url=given_url,
+            property_filter=PropertyFilter(properties={}),
+            spatiotemporal_extent=_SpatioTemporalExtent(),
+            max_items=max_items,
+        )
+        assert [item.id for item in item_collection.items] == expected_items
+
     def test_get_temporal_extent_empty(self):
         item_collection = ItemCollection(items=[])
         assert item_collection.get_temporal_extent() == (None, None)
@@ -3061,69 +3177,6 @@ class TestItemDeduplicator:
         assert [r.id for r in deduplicator.deduplicate([item_no_version, item_v100])] == ["item-v100"]
 
 
-class _OpenSearchClientDumper:
-    """Helper to extract/dump OpenSearchClient contents for testing."""
-
-    # TODO: move this to more general utility module?
-
-    def scala_iterate(self, iterator):
-        while iterator.hasNext():
-            yield iterator.next()
-
-    def dump_link(self, link: JavaObject, add_pixel_value_scaling: bool = False) -> dict:
-        """dump org.openeo.opensearch.OpenSearchResponses.Link"""
-        dump = {
-            # "toString": l.toString(),
-            "href": link.href().toString(),
-            "title": link.title().get(),
-            "bandNames": list(self.scala_iterate(link.bandNames().get().iterator())),
-        }
-        if add_pixel_value_scaling:
-            dump["pixelValueOffset"] = link.pixelValueOffset().get()
-        return dump
-
-    def dump_extent(self, extent: JavaObject) -> Union[Tuple[float, float, float, float], None]:
-        if extent:
-            return extent.xmin(), extent.ymin(), extent.xmax(), extent.ymax()
-        else:
-            return None
-
-    def dump_feature(
-        self,
-        feature: JavaObject,
-        *,
-        add_links: bool = True,
-        add_bbox: bool = False,
-        add_pixel_value_scaling: bool = False,
-    ) -> dict:
-        """dump org.openeo.opensearch.OpenSearchResponses.Feature"""
-        dump = {"id": feature.id()}
-        if add_links:
-            dump["links"] = [
-                self.dump_link(link, add_pixel_value_scaling=add_pixel_value_scaling) for link in feature.links()
-            ]
-        if add_bbox:
-            dump["bbox"] = self.dump_extent(feature.bbox())
-        return dump
-
-    def dump_opensearch_client_features(
-        self,
-        opensearch_client: JavaObject,
-        *,
-        add_links: bool = True,
-        add_bbox: bool = False,
-        add_pixel_value_scaling: bool = False,
-    ) -> List[dict]:
-        """Dump all features from org.openeo.opensearch.OpenSearchClient"""
-        feature_iterator = opensearch_client.features().iterator()
-        return [
-            self.dump_feature(
-                feature=feature, add_links=add_links, add_bbox=add_bbox, add_pixel_value_scaling=add_pixel_value_scaling
-            )
-            for feature in self.scala_iterate(feature_iterator)
-        ]
-
-
 class TestPrepareContext:
     def _define_collection_s2_with_granule_metadata(
         self, dummy_server: DummyStacApiServer, collection_id: str = "s2-with-granule_metadata"
@@ -3194,7 +3247,7 @@ class TestPrepareContext:
                 env=EvalEnv(),
             )
 
-        dumper = _OpenSearchClientDumper()
+        dumper = OpenSearchClientDumper()
         assert dumper.dump_opensearch_client_features(context.opensearch_client) == [
             {
                 "id": "item-1",
@@ -3340,7 +3393,7 @@ class TestPrepareContext:
                 feature_flags=layercatalog_feature_flags,
             )
 
-        dumper = _OpenSearchClientDumper()
+        dumper = OpenSearchClientDumper()
         assert dumper.dump_opensearch_client_features(context.opensearch_client) == [
             {
                 "id": "item-123",
@@ -3527,7 +3580,7 @@ class TestPrepareContext:
                 env=EvalEnv(),
             )
 
-        dumper = _OpenSearchClientDumper()
+        dumper = OpenSearchClientDumper()
         assert [i["id"] for i in dumper.dump_opensearch_client_features(context.opensearch_client)] == expected_items
         assert context.metadata.temporal_extent == expected_temporal_extent
 
@@ -3686,7 +3739,7 @@ class TestPrepareContext:
                 env=EvalEnv(),
             )
 
-        dumper = _OpenSearchClientDumper()
+        dumper = OpenSearchClientDumper()
         assert (
             dumper.dump_opensearch_client_features(context.opensearch_client, add_links=False, add_bbox=True)
             == expected_features
@@ -3740,12 +3793,56 @@ class TestPrepareContext:
                 env=EvalEnv(),
             )
 
-        dumper = _OpenSearchClientDumper()
+        dumper = OpenSearchClientDumper()
         assert dumper.dump_opensearch_client_features(context.opensearch_client, add_links=False, add_bbox=True) == [
             {
                 "id": "item-1",
                 "bbox": expected,
             }
+        ]
+
+    @pytest.mark.parametrize(
+        ["aggregate_spatial_geometries", "expected_items"],
+        [
+            (
+                shapely.geometry.box(2.5, 49.5, 3.5, 51.5),
+                ["item-1", "item-2"],
+            ),
+            (
+                shapely.geometry.Polygon([(6.2, 49.8), (6.5, 51.5), (7, 49), (2.5, 49.5), (6.2, 49.8)]),
+                ["item-1", "item-3"],
+            ),
+            (
+                DriverVectorCube(
+                    geometries=geopandas.GeoDataFrame(
+                        geometry=[
+                            shapely.geometry.box(1.5, 48.5, 2.5, 49.5),
+                            shapely.geometry.box(6, 50, 7, 52),
+                        ]
+                    )
+                ),
+                ["item-1", "item-3"],
+            ),
+        ],
+    )
+    def test_prepare_context_spatial_filtering_geometries(
+        self, dummy_stac_api_server, aggregate_spatial_geometries, expected_items
+    ):
+        with dummy_stac_api_server.serve() as dummy_stac_api:
+            context = _prepare_context(
+                url=f"{dummy_stac_api}/collections/collection-123",
+                load_params=LoadParameters(
+                    aggregate_spatial_geometries=aggregate_spatial_geometries,
+                ),
+                feature_flags={
+                    "stac_api_filter_by_geometry": True,
+                },
+                env=EvalEnv(),
+            )
+
+        dumper = OpenSearchClientDumper()
+        assert dumper.dump_opensearch_client_features(context.opensearch_client, add_links=False) == [
+            {"id": item_id} for item_id in expected_items
         ]
 
 

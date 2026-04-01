@@ -66,12 +66,15 @@ from openeogeotrellis.backend import JOB_METADATA_FILENAME
 from openeogeotrellis.config.config import EtlApiConfig
 from openeogeotrellis.integrations.gdal import read_gdal_info
 from openeogeotrellis.job_registry import ZkJobRegistry
+from openeogeotrellis.load_stac import _LoadStacContext
 from openeogeotrellis.testing import (
     KazooClientMock,
     Urllib3PoolManagerMocker,
     gps_config_overrides,
     random_name,
     rasterio_metadata_dump,
+    spy_on_calls,
+    OpenSearchClientDumper,
 )
 from openeogeotrellis.util.runtime import is_package_available
 from openeogeotrellis.utils import (
@@ -4562,10 +4565,14 @@ class TestLoadStac:
                         side_effect=[ongoing_job_info, finished_job_info]):
             api110.result(process_graph).assert_status_code(200)
 
-        assert ("OpenEO batch job results status of own job j-2405078f40904a0b85cf8dc5dd55b07e: running"
-                in caplog.messages)
-        assert ("OpenEO batch job results status of own job j-2405078f40904a0b85cf8dc5dd55b07e: finished"
-                in caplog.messages)
+        assert (
+            "OpenEO batch job results status of own job j-2405078f40904a0b85cf8dc5dd55b07e: partial_job_status='running'"
+            in caplog.messages
+        )
+        assert (
+            "OpenEO batch job results status of own job j-2405078f40904a0b85cf8dc5dd55b07e: partial_job_status='finished'"
+            in caplog.messages
+        )
 
     def test_load_stac_loads_assets_without_eo_bands(self, api110, urllib_and_request_mock, requests_mock, tmp_path):
         """load_stac from a STAC API with one item and two assets, one of which does not carry eo:bands"""
@@ -4770,6 +4777,59 @@ class TestLoadStac:
             assert flat_2 == 2
             assert b02_10m is None
             assert b03_10m is None
+
+    @pytest.mark.parametrize(
+        ["operation", "geometry", "expected_items"],
+        [
+            (
+                None,
+                None,
+                ["item-1", "item-2", "item-3"],
+            ),
+            (
+                "filter_spatial",
+                {"type": "Polygon", "coordinates": [[[2, 49], [3.5, 49], [3.5, 51.5], [2, 51.5], [2, 49]]]},
+                ["item-1", "item-2"],
+            ),
+            (
+                "filter_spatial",
+                {"type": "Polygon", "coordinates": [[[6.2, 49.8], [6.5, 51.5], [7, 49], [2.5, 49.5], [6.2, 49.8]]]},
+                ["item-1", "item-3"],
+            ),
+            (
+                "aggregate_spatial",
+                {"type": "Polygon", "coordinates": [[[2, 49], [3.5, 49], [3.5, 51.5], [2, 51.5], [2, 49]]]},
+                ["item-1", "item-2"],
+            ),
+            (
+                "aggregate_spatial",
+                {"type": "Polygon", "coordinates": [[[6.2, 49.8], [6.5, 51.5], [7, 49], [2.5, 49.5], [6.2, 49.8]]]},
+                ["item-1", "item-3"],
+            ),
+        ],
+    )
+    def test_sparse_spatial_filtering(self, api110, dummy_stac_api_server, operation, geometry, expected_items):
+        """https://github.com/Open-EO/openeo-geopyspark-driver/issues/1225"""
+        with dummy_stac_api_server.serve() as root_url:
+            cube = openeo.processes.load_stac(url=f"{root_url}/collections/collection-123")
+            if operation == "filter_spatial":
+                cube = cube.filter_spatial(geometries=geometry)
+                cube = cube.save_result(format="GTiff")
+            elif operation == "aggregate_spatial":
+                cube = cube.aggregate_spatial(geometries=geometry, reducer="mean")
+
+            process_graph = cube.flat_graph()
+            _log.info(f"{process_graph=}")
+
+            with spy_on_calls(_LoadStacContext) as spy:
+                _ = api110.result(process_graph).assert_status_code(200)
+
+            assert len(spy) == 1
+            context: _LoadStacContext = spy[0]
+            dumper = OpenSearchClientDumper()
+            assert dumper.dump_opensearch_client_features(context.opensearch_client, add_links=False) == [
+                {"id": item} for item in expected_items
+            ]
 
 
 class TestEtlApiReporting:
