@@ -334,10 +334,6 @@ def _extract_spatial_extent_from_constraint_load_stac(
             assets_full_bbox_merger.add(asset_bbox)
             if extent_orig and (extent_coverage := proj_metadata.coverage_for(extent_orig)):
                 aligned_extent_coverage_merger.add(extent_coverage)
-    if extent_orig:
-        for proj_metadata in projection_metadatas:
-            if extent_coverage := proj_metadata.coverage_for(extent_orig):
-                aligned_extent_coverage_merger.add(extent_coverage)
     assets_full_bbox = assets_full_bbox_merger.get()
     assets_covered_bbox = aligned_extent_coverage_merger.get()
     _log.info(f"Merged bounding boxes: {assets_full_bbox=} {assets_covered_bbox=}")
