@@ -558,17 +558,6 @@ def pyramid(metadata_properties, projected_polygons_native_crs, from_date, to_da
     return {zoom: merged_tile_layer}
 
 
-def _instant_ms_to_hour(instant: int) -> datetime:
-    """
-    Convert Geotrellis SpaceTimeKey instant (Scala Long, millisecond resolution) to Python datetime object,
-    rounded down to hour resolution, a convention used in other places
-    of our openEO backend implementation and necessary to follow, for example
-    to ensure that timeseries related data joins work properly.
-
-    Sentinel-3 can have many observations per day, warranting the choice of hourly rather than daily aggregation
-    """
-    return datetime(*(datetime.utcfromtimestamp(instant // 1000).timetuple()[:4]))
-
 def _instant_ms_to_minute(instant: int) -> datetime:
     """
     Convert Geotrellis SpaceTimeKey instant (Scala Long, millisecond resolution) to Python datetime object,
