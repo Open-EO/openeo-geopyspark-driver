@@ -803,6 +803,30 @@ class TestProjectionMetadata:
             transform=[0.5, 0, 712710, 0, -0.5, 151406, 0, 0, 1],
         ).resolution() == (0.5, 0.5)
 
+    def test_resolution_fail_from_item(self):
+        item = pystac.Item.from_dict(StacDummyBuilder.item(id="item-no-proj-metadata"))
+        metadata = _ProjectionMetadata.from_item(item)
+        with pytest.raises(ValueError, match="Unable to calculate cell size.*item 'item-no-proj-metadata'"):
+            _ = metadata.resolution(fail_on_miss=True)
+
+    def test_resolution_fail_from_asset(self):
+        asset = pystac.Asset(href="https://stac.test/asset.tif")
+        metadata = _ProjectionMetadata.from_asset(asset)
+        with pytest.raises(
+            ValueError, match="Unable to calculate cell size.*asset with href='https://stac.test/asset.tif'"
+        ):
+            _ = metadata.resolution(fail_on_miss=True)
+
+        # add item link
+        item = pystac.Item.from_dict(StacDummyBuilder.item(id="item-no-proj-metadata"))
+        asset.set_owner(item)
+        metadata = _ProjectionMetadata.from_asset(asset)
+        with pytest.raises(
+            ValueError,
+            match="Unable to calculate cell size.*asset with href='https://stac.test/asset.tif'.*item 'item-no-proj-metadata'",
+        ):
+            _ = metadata.resolution(fail_on_miss=True)
+
     def test_from_item_minimal(self):
         item = pystac.Item.from_dict(StacDummyBuilder.item())
         metadata = _ProjectionMetadata.from_item(item)
