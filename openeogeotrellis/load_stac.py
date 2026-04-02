@@ -930,9 +930,15 @@ def construct_item_collection(
         elif isinstance(stac_object, pystac.Collection) and _supports_item_search(stac_object):
             collection = stac_object
             netcdf_with_time_dimension = contains_netcdf_with_time_dimension(collection)
-            metadata = GeopysparkCubeMetadata(
-                metadata=collection.to_dict(include_self_link=False, transform_hrefs=False)
-            )
+
+            # TODO: remove workaround for "alternate:name": "S3" in band summary
+            #  (https://github.com/eu-cdse/openeo-cdse-infra/issues/644)
+            collection_dict = collection.to_dict(include_self_link=False, transform_hrefs=False)
+            for band in collection_dict.get("summaries", {}).get("bands", []):
+                if not "name" in band and "alternate:name" in band:
+                    band["name"] = band["alternate:name"]
+
+            metadata = GeopysparkCubeMetadata(metadata=collection_dict)
 
             band_names = stac_metadata_parser.bands_from_stac_collection(collection=collection).band_names()
             logger.info(f"construct_item_collection: STAC API Collection {collection.id!r}, {band_names=}, {netcdf_with_time_dimension=}")
