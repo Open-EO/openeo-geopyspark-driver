@@ -1155,8 +1155,16 @@ def read_band(in_file, in_band, data_mask, get_data_array=True):
         (_FillValue, name, dtype, units, etc.)
     """
     # can be used to get only the band settings or together with the data
-    logger.debug(f"Reading {in_band} from file {in_file}")
-    dataset = xr.open_dataset(in_file, mask_and_scale=False, cache=False)  # disable autoconvert digital values
+    try:
+        logger.debug(f"Reading {in_band} from file {in_file}")
+        dataset = xr.open_dataset(in_file, mask_and_scale=False, cache=False)  # disable autoconvert digital values
+    except FileNotFoundError:
+        if not in_file.endswith("/F1_BT_fn.nc"):
+            raise
+        in_band = "F1_BT_in"
+        logger.debug(f"Reading {in_band} from file {in_file}")
+        dataset = xr.open_dataset(in_file.replace("/F1_BT_fn.nc", "/F1_BT_in.nc"), mask_and_scale=False, cache=False)
+
     settings = dataset[in_band].attrs
     settings['dtype'] = dataset[in_band].dtype.name
     settings['name'] = in_band
