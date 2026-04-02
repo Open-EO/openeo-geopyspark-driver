@@ -724,7 +724,14 @@ def create_s3_toa(product_type, creo_path, band_names, bbox_tile, digital_number
         tile_coordinates_with_rim, tile_shape_with_rim = create_final_grid(bbox_tile, resolution=final_grid_resolution,
                                                                            rim_pixels=RIM_PIXELS)
         tile_coordinates_with_rim.shape = tile_shape_with_rim + (2,)
-    elif product_type == "SL_1_RBT___" and any(band_name in band_names for band_name in ["S1_radiance_an", "S2_radiance_an", "S3_radiance_an", "S4_radiance_an", "S5_radiance_an", "S6_radiance_an"]):
+    elif product_type == "SL_1_RBT___" and {
+        "S1_radiance_an",
+        "S2_radiance_an",
+        "S3_radiance_an",
+        "S4_radiance_an",
+        "S5_radiance_an",
+        "S6_radiance_an",
+    }.intersection(band_names):
         _, angle_source_coordinates, angle_data_mask = _read_latlonfile(
             bbox_tile, os.path.join(creo_path, "geodetic_an.nc"), lat_band='latitude_an', lon_band='longitude_an')
 
