@@ -4886,7 +4886,7 @@ class TestEtlApiReporting:
                 "grant_type": ["client_credentials"],
                 "scope": ["openid"],
             }
-            return {"access_token": self._ETL_API_ACCESS_TOKEN}
+            return {"access_token": self._ETL_API_ACCESS_TOKEN, "token_type": "Bearer"}
 
         requests_mock.post("https://oidc.test/token", json=post_token)
 

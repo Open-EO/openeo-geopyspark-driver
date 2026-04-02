@@ -1837,7 +1837,7 @@ class _ProjectionMetadata:
     # TODO: move to more generic geometry/projection utility module for better reuse and cleaner separation?
     # TODO: any added value to leverage projection extension support from pystac in some way?
 
-    __slots__ = ("_code", "_bbox", "_shape", "_transform")
+    __slots__ = ("_code", "_bbox", "_shape", "_transform", "_ref")
 
     def __init__(
         self,
@@ -1847,20 +1847,25 @@ class _ProjectionMetadata:
         bbox: Optional[Sequence[float]] = None,
         shape: Optional[Sequence[int]] = None,
         transform: Optional[Sequence[float]] = None,
+        # Reference describing where the metadata came from (STAC item, asset, ...)
+        ref: Optional[str] = None,
     ):
         # TODO: support wkt2 and projjson as well in some way?
         self._code = code or (f"EPSG:{epsg}" if epsg is not None else None)
         self._bbox = tuple(bbox) if bbox else None
         self._shape = tuple(shape) if shape else None
         self._transform = tuple(transform) if transform else None
+        self._ref = ref
 
     def __repr__(self) -> str:
-        return f"_ProjectionMetadata(code={self._code!r}, bbox={self._bbox!r}, shape={self._shape!r})"
+        return (
+            f"_ProjectionMetadata(code={self._code!r}, bbox={self._bbox!r}, shape={self._shape!r}, ref={self._ref!r})"
+        )
 
     def _key(self) -> tuple:
         # TODO: use normalized `self.bbox` instead of `self._bbox` + `self._transform`
         #       to also cover equivalence of these two?
-        return (self._code, self._shape, self._bbox, self._transform)
+        return (self._code, self._shape, self._bbox, self._transform, self._ref)
 
     def __hash__(self):
         return hash(self._key())
@@ -1931,7 +1936,9 @@ class _ProjectionMetadata:
             return abs(a0), abs(a4)
 
         if fail_on_miss:
-            raise ValueError(f"Unable to calculate cell size with {self._shape=}, {self._bbox}, {self._transform}")
+            raise ValueError(
+                f"Unable to calculate cell size with {self._shape=}, {self._bbox=}, {self._transform=} ({self._ref})"
+            )
         else:
             return None
 
@@ -1943,6 +1950,7 @@ class _ProjectionMetadata:
             bbox=item.properties.get("proj:bbox"),
             shape=item.properties.get("proj:shape"),
             transform=item.properties.get("proj:transform"),
+            ref=f"item {item.id!r}",
         )
 
     @classmethod
@@ -1966,12 +1974,17 @@ class _ProjectionMetadata:
         if fix_proj_transform and transform:
             transform = cls._fix_gdal_ordered_transform(transform)
 
+        ref = f"asset with href={asset.href!r}"
+        if item:
+            ref += f" from item {item.id!r}"
+
         return cls(
             code=get("proj:code"),
             epsg=get("proj:epsg"),
             bbox=get("proj:bbox"),
             shape=get("proj:shape"),
             transform=transform,
+            ref=ref,
         )
 
     @staticmethod

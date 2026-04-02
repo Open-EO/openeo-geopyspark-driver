@@ -339,7 +339,7 @@ def test_vito_stac_api_workspace_helper(tmp_path, requests_mock, mock_s3_bucket,
     )
     get_access_token_mock = requests_mock.post(
         f"{oidc_issuer}/protocol/openid-connect/token",
-        json={"access_token": "4cc3ss_t0k3n"},
+        json={"access_token": "4cc3ss_t0k3n", "token_type": "Bearer"},
     )
 
     # mock STAC API
