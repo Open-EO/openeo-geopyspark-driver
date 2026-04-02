@@ -2132,6 +2132,11 @@ class GeopysparkDataCube(DriverDataCube):
                                     "type": "image/tiff; application=geotiff",
                                     "roles": ["data"],
                                 }
+                                asset_metadata = asset.metadata()
+                                assets[asset_key]["proj:bbox"] = tuple(asset_metadata.get("proj:bbox"))
+                                assets[asset_key]["proj:shape"] = tuple(asset_metadata.get("proj:shape"))
+                                assets[asset_key]["proj:epsg"] = asset_metadata.get("proj:epsg")
+                                assets[asset_key] = dict_no_none(assets[asset_key])
 
                             assets = add_gdalinfo_objects(assets)
 
@@ -2161,6 +2166,11 @@ class GeopysparkDataCube(DriverDataCube):
                                 "type": "image/tiff; application=geotiff",
                                 "roles": ["data"],
                             }
+                            asset_metadata = asset.metadata()
+                            assets[asset_key]["proj:bbox"] = tuple(asset_metadata.get("proj:bbox"))
+                            assets[asset_key]["proj:shape"] = tuple(asset_metadata.get("proj:shape"))
+                            assets[asset_key]["proj:epsg"] = asset_metadata.get("proj:epsg")
+                            assets[asset_key] = dict_no_none(assets[asset_key])
 
                         assets = add_gdalinfo_objects(assets)
 
@@ -2299,6 +2309,12 @@ class GeopysparkDataCube(DriverDataCube):
                                     "bbox": to_latlng_bbox(bbox),
                                     "geometry": bbox_to_geojson(to_latlng_bbox(bbox)),
                                 }
+                                asset_metadata = asset.metadata()
+                                assets[asset_key]["proj:bbox"] = tuple(asset_metadata.get("proj:bbox"))
+                                assets[asset_key]["proj:shape"] = tuple(asset_metadata.get("proj:shape"))
+                                assets[asset_key]["proj:epsg"] = asset_metadata.get("proj:epsg")
+                                assets[asset_key] = dict_no_none(assets[asset_key])
+
                             assets = add_gdalinfo_objects(assets)
 
                             item = {
@@ -2354,6 +2370,12 @@ class GeopysparkDataCube(DriverDataCube):
                                     "bbox": to_latlng_bbox(bbox),
                                     "geometry": bbox_to_geojson(to_latlng_bbox(bbox)),
                                 }
+                                asset_metadata = asset.metadata()
+                                assets[asset_key]["proj:bbox"] = tuple(asset_metadata.get("proj:bbox"))
+                                assets[asset_key]["proj:shape"] = tuple(asset_metadata.get("proj:shape"))
+                                assets[asset_key]["proj:epsg"] = asset_metadata.get("proj:epsg")
+                                assets[asset_key] = dict_no_none(assets[asset_key])
+
                             assets = add_gdalinfo_objects(assets)
 
                             item = {
@@ -2403,6 +2425,11 @@ class GeopysparkDataCube(DriverDataCube):
                                     "roles": ["data"],
                                     "nodata": nodata,
                                 }
+                                asset_metadata = asset.metadata()
+                                assets[asset_key]["proj:bbox"] = tuple(asset_metadata.get("proj:bbox"))
+                                assets[asset_key]["proj:shape"] = tuple(asset_metadata.get("proj:shape"))
+                                assets[asset_key]["proj:epsg"] = asset_metadata.get("proj:epsg")
+                                assets[asset_key] = dict_no_none(assets[asset_key])
                                 if band_indices is not None:
                                     assets[asset_key]["bands"] = [
                                         band for i, band in enumerate(bands) if i in band_indices
