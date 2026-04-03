@@ -41,6 +41,8 @@ without compromising stable operations.
 - Further improve detection of wrong `proj:transform` metadata ([#1570](https://github.com/Open-EO/openeo-geopyspark-driver/pull/1570))
 - `load_stac`: avoid unbounded iteration through STAC API response pages ([#1591](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1591))
 - `load_stac`: support sparse spatial filtering (from `aggregate_spatial` or `filter_spatial` geometries) ([#1225](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1225))
+- Support loading Sentinel-3 OLCI L1B from file ([eu-cdse/openeo-cdse-infra#644](https://github.com/eu-cdse/openeo-cdse-infra/issues/644))
+- Support loading Sentinel-3 SLSTR L1B from file ([eu-cdse/openeo-cdse-infra#644](https://github.com/eu-cdse/openeo-cdse-infra/issues/644))
 
 
 ## 0.70.0

@@ -247,6 +247,16 @@ def _get_stac_collection_urls(product_type: str) -> List[str]:
         return [
             "https://stac.opensearch.dataspace.copernicus.eu/v1/collections/sentinel-3-syn-2-aod-ntc",
         ]
+    elif product_type == "OL_1_EFR___":
+        return [
+            "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-3-olci-1-efr-nrt",
+            "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-3-olci-1-efr-ntc",
+        ]
+    elif product_type == "SL_1_RBT___":
+        return [
+            "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-3-sl-1-rbt-nrt",
+            "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-3-sl-1-rbt-ntc",
+        ]
     else:
         raise ValueError(f"STAC not yet supported for Sentinel-3 product type: {product_type}")
 
@@ -345,7 +355,7 @@ def _build_stac_opensearch_client(
             items_by_collection[collection_name] = list(item_collection.iter_items_with_band_assets())
         except Exception as e:
             # Log but don't fail if one collection fails - the other might still have data
-            logger.warning(f"Failed to query STAC collection {collection_name}: {e}")
+            logger.warning(f"Failed to query STAC collection {collection_name}", exc_info=True)
             items_by_collection[collection_name] = []
 
     # Deduplicate: NTC takes precedence over NRT
@@ -549,17 +559,6 @@ def pyramid(metadata_properties, projected_polygons_native_crs, from_date, to_da
     return {zoom: merged_tile_layer}
 
 
-def _instant_ms_to_hour(instant: int) -> datetime:
-    """
-    Convert Geotrellis SpaceTimeKey instant (Scala Long, millisecond resolution) to Python datetime object,
-    rounded down to hour resolution, a convention used in other places
-    of our openEO backend implementation and necessary to follow, for example
-    to ensure that timeseries related data joins work properly.
-
-    Sentinel-3 can have many observations per day, warranting the choice of hourly rather than daily aggregation
-    """
-    return datetime(*(datetime.utcfromtimestamp(instant // 1000).timetuple()[:4]))
-
 def _instant_ms_to_minute(instant: int) -> datetime:
     """
     Convert Geotrellis SpaceTimeKey instant (Scala Long, millisecond resolution) to Python datetime object,
@@ -628,7 +627,7 @@ def read_product(product, product_type, band_names, tile_size, resolution, repro
             )
 
 
-            digital_numbers = product_type == OLCI_PRODUCT_TYPE
+            digital_numbers = False
 
             try:
                 orfeo_bands = create_s3_toa(
@@ -687,7 +686,7 @@ def read_product(product, product_type, band_names, tile_size, resolution, repro
 
 
 def create_s3_toa(product_type, creo_path, band_names, bbox_tile, digital_numbers: bool, final_grid_resolution: float, reprojection_type=DEFAULT_REPROJECTION_TYPE, binning_args=None):
-    if product_type == OLCI_PRODUCT_TYPE:
+    if product_type in [OLCI_PRODUCT_TYPE, "OL_2_LFR___", "OL_2_WFR___"]:
         geofile = 'geo_coordinates.nc'
         lat_band = 'latitude'
         lon_band = 'longitude'
@@ -695,14 +694,10 @@ def create_s3_toa(product_type, creo_path, band_names, bbox_tile, digital_number
         geofile = 'geolocation.nc'
         lat_band = 'lat'
         lon_band = 'lon'
-    elif product_type == SLSTR_PRODUCT_TYPE:
-        geofile = 'geodetic_in.nc'
-        lat_band = 'latitude_in'
-        lon_band = 'longitude_in'
-    elif product_type in ["OL_2_LFR___", "OL_2_WFR___"]:
-        geofile = 'geo_coordinates.nc'
-        lat_band = 'latitude'
-        lon_band = 'longitude'
+    elif product_type in [SLSTR_PRODUCT_TYPE, "SL_1_RBT___"]:
+        geofile = "geodetic_in.nc"
+        lat_band = "latitude_in"
+        lon_band = "longitude_in"
     elif product_type == "SY_2_AOD___":
         geofile = 'NTC_AOD.nc'
         lat_band = 'latitude'
@@ -729,6 +724,19 @@ def create_s3_toa(product_type, creo_path, band_names, bbox_tile, digital_number
 
         tile_coordinates_with_rim, tile_shape_with_rim = create_final_grid(bbox_tile, resolution=final_grid_resolution,
                                                                            rim_pixels=RIM_PIXELS)
+        tile_coordinates_with_rim.shape = tile_shape_with_rim + (2,)
+    elif product_type == "SL_1_RBT___" and {
+        "S1_radiance_an",
+        "S2_radiance_an",
+        "S3_radiance_an",
+        "S4_radiance_an",
+        "S5_radiance_an",
+        "S6_radiance_an",
+    }.intersection(band_names):
+        _, angle_source_coordinates, angle_data_mask = _read_latlonfile(
+            bbox_tile, os.path.join(creo_path, "geodetic_an.nc"), lat_band='latitude_an', lon_band='longitude_an')
+
+        tile_coordinates_with_rim, tile_shape_with_rim = create_final_grid(bbox_tile, resolution=final_grid_resolution)
         tile_coordinates_with_rim.shape = tile_shape_with_rim + (2,)
     else:
         angle_source_coordinates = None
@@ -964,7 +972,7 @@ def do_reproject(product_type, final_grid_resolution, creo_path, band_names,
         logger.info(" Reprojecting %s" % band_name)
 
         if ":" in band_name:
-            base_name, band_name = band_name.split(":")
+            base_name, band_name = band_name.split(":")  # TODO: avoid mutating band_name
         else:
             base_name = band_name
 
@@ -982,6 +990,8 @@ def do_reproject(product_type, final_grid_resolution, creo_path, band_names,
                 return band_name
             if product_type in ["OL_2_LFR___", "OL_2_WFR___", "SY_2_AOD___"]:
                 return band_name
+            if product_type in ["SL_1_RBT___"]:
+                return band_name
             raise ValueError(band_name)
 
         def readAndReproject(data_mask_,LUT):
@@ -998,6 +1008,8 @@ def do_reproject(product_type, final_grid_resolution, creo_path, band_names,
             band_settings, reprojected_data = readAndReproject(angle_data_mask,LUT_angles)
             interpolated = _linearNDinterpolate(reprojected_data)
             reprojected_data = interpolated[RIM_PIXELS:-RIM_PIXELS, RIM_PIXELS:-RIM_PIXELS]
+        elif product_type == "SL_1_RBT___" and band_name in ["S1_radiance_an", "S2_radiance_an", "S3_radiance_an", "S4_radiance_an", "S5_radiance_an", "S6_radiance_an"]:
+            band_settings, reprojected_data = readAndReproject(angle_data_mask, LUT_angles)
         else:
             band_settings, reprojected_data = readAndReproject(data_mask, LUT)
 
@@ -1161,8 +1173,16 @@ def read_band(in_file, in_band, data_mask, get_data_array=True):
         (_FillValue, name, dtype, units, etc.)
     """
     # can be used to get only the band settings or together with the data
-    logger.debug(f"Reading {in_band} from file {in_file}")
-    dataset = xr.open_dataset(in_file, mask_and_scale=False, cache=False)  # disable autoconvert digital values
+    try:
+        logger.debug(f"Reading {in_band} from file {in_file}")
+        dataset = xr.open_dataset(in_file, mask_and_scale=False, cache=False)  # disable autoconvert digital values
+    except FileNotFoundError:
+        if not in_file.endswith("/F1_BT_fn.nc"):
+            raise
+        in_band = "F1_BT_in"
+        logger.debug(f"Reading {in_band} from file {in_file}")
+        dataset = xr.open_dataset(in_file.replace("/F1_BT_fn.nc", "/F1_BT_in.nc"), mask_and_scale=False, cache=False)
+
     settings = dataset[in_band].attrs
     settings['dtype'] = dataset[in_band].dtype.name
     settings['name'] = in_band
