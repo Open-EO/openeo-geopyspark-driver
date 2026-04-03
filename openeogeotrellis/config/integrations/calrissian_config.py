@@ -17,7 +17,6 @@ DEFAULT_SECURITY_CONTEXT = dict(run_as_user=1000, fs_group=0, run_as_group=0)
 DEFAULT_CALRISSIAN_S3_REGION = None
 DEFAULT_CALRISSIAN_S3_BUCKET = "calrissian"
 DEFAULT_CALRISSIAN_BASE_ARGUMENTS: tuple = (
-    "--debug",
     "--max-ram",
     "128G",  # Seems to be a limit for pods combined across nodes. Testing with higher threshold.
     "--max-cores",
@@ -25,7 +24,7 @@ DEFAULT_CALRISSIAN_BASE_ARGUMENTS: tuple = (
     "--force-docker-pull",
 )
 if smart_bool(os.environ.get("OPENEO_LOCAL_DEBUGGING", "false")):
-    DEFAULT_CALRISSIAN_BASE_ARGUMENTS += ("--leave-container", "--leave-tmpdir")
+    DEFAULT_CALRISSIAN_BASE_ARGUMENTS += ("--leave-container", "--leave-tmpdir", "--debug")
     # Avoid local error:
     # "OSError: [Errno 18] Invalid cross-device link: '/calrissian/tmpout/xzo916uy' -> '/calrissian/output-data/r-2601261601194b68b7-cal-cwl-607800ce/xzo916uy'"
     DEFAULT_SECURITY_CONTEXT["run_as_user"] = 0
