@@ -124,6 +124,11 @@ class JobOptions:
         metadata={"name":"log_level","description": "log level, can be 'debug', 'info', 'warning' or 'error'", "public":True},
     )
 
+    stac_version : str = field(
+        default="1.0",
+        metadata={"description": "The STAC version to use for the metadata of outputs.", "public": False,  "enum": ["1.0", "1.1"]},
+    )
+
     omit_derived_from_links: bool = field(
         default=False,
         metadata={
@@ -150,6 +155,13 @@ class JobOptions:
 
     def validate(self):
 
+        allowed_stac_versions = {"1.0", "1.1"}
+        if self.stac_version not in allowed_stac_versions:
+            raise OpenEOApiException(
+                code="InvalidStacVersion",
+                status_code=400,
+                message=f"Invalid stac-version in batch job options {self.stac_version!r}. Should be one of {sorted(allowed_stac_versions)}.",
+            )
 
         if self.log_level.upper() not in ["DEBUG", "INFO", "WARN", "ERROR"]:
             raise OpenEOApiException(
@@ -286,12 +298,16 @@ class JobOptions:
             if public_only and field.metadata.get("public", False):
                 continue
             default = get_default(field)
+            schema = cls.python_type_to_json_schema(field.type)
+            if "enum" in field.metadata:
+                schema["enum"] = field.metadata["enum"]
+
             options.append({
                 "name": field.metadata.get("name", field.name.replace("_","-")),
                 "description": field.metadata.get("description", ""),
                 "optional": True,
                 "default": default,
-                "schema": cls.python_type_to_json_schema(field.type)
+                "schema": schema
             })
         return options
 
