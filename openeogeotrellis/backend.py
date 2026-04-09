@@ -829,15 +829,17 @@ Example usage:
         temporal_extent: Tuple[Optional[str], Optional[str]],
         _env: EvalEnv
     ) -> Dict:
-        return self._query_stac_cached(url=url, spatial_extent=spatial_extent, temporal_extent=temporal_extent)
+        return self._query_stac_cached(url=url, spatial_extent=BadlyHashable(spatial_extent), temporal_extent=temporal_extent)
 
     @lru_cache(maxsize=20)
     def _query_stac_cached(
         self,
         url: str,
-        spatial_extent: Union[Dict, BoundingBox, None],
+        spatial_extent: Union[BadlyHashable, BoundingBox, None],
         temporal_extent: Tuple[Optional[str], Optional[str]],
     ) -> Dict:
+        if isinstance(spatial_extent, BadlyHashable):
+            spatial_extent = spatial_extent.target
         item_collection = query_stac.item_collection_from_stac_query(
             url=url,
             spatial_extent=spatial_extent,
