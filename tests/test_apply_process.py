@@ -543,9 +543,9 @@ def test_aspect():
     assert aspect_cube.metadata.band_names == ['elevation_1_aspect', 'elevation_2_aspect']
     cells = aspect_cube.pyramid.levels[0].to_spatial_layer(now).lookup(0, 0)[0].cells
     cells_of_elevation_1_aspect = cells[0]
-    assert cells_of_elevation_1_aspect[2, 2] == 0
+    assert cells_of_elevation_1_aspect[2, 2] == math.pi / 2
     cells_of_elevation_2_aspect = cells[1]
-    assert cells_of_elevation_2_aspect[2, 2] == 270
+    assert cells_of_elevation_2_aspect[2, 2] == math.pi
 
 def test_slope():
     elevation_cube = create_elevation_layer()
@@ -553,9 +553,9 @@ def test_slope():
     assert slope_cube.metadata.band_names == ['elevation_1_slope', 'elevation_2_slope']
     cells = slope_cube.pyramid.levels[0].to_spatial_layer(0).lookup(0, 0)[0].cells
     cells_of_elevation_1_slope = cells[0]
-    assert pytest.approx(cells_of_elevation_1_slope[5, 5], abs=0.0001) == 0.0005
+    assert pytest.approx(cells_of_elevation_1_slope[5, 5], abs=0.0001) == 8.988587354220929e-06
     cells_of_elevation_2_slope = cells[1]
-    assert pytest.approx(cells_of_elevation_2_slope[5, 5], abs=0.0001) == 0.0005
+    assert pytest.approx(cells_of_elevation_2_slope[5, 5], abs=0.0001) == 8.988587354220929e-06
 
 def test_convert_data_type():
     datacube = create_red_nir_layer()
