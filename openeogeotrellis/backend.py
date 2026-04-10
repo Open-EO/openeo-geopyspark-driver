@@ -2077,6 +2077,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 executor_memory=options.executor_memory,
                 executor_memory_overhead=options.executor_memory_overhead,
                 executor_threads_jvm=str(options.executor_threads_jvm),
+                executor_stack_size=get_backend_config().default_executor_stack_size,
                 python_max_memory = byte_string_as(options.python_memory or "0b") if options.python_memory != JOB_OPTION_DISABLE else JOB_OPTION_DISABLE,
                 max_executors=options.max_executors,
                 api_version=api_version,
