@@ -64,6 +64,7 @@ spark_history_fs_logdirectory=${39}
 spark_yarn_historyserver_address=${40}
 yarn_container_runtime_docker_client_config=${41}
 max_result_size=${42-"5g"}
+executor_stack_size=${43-"4m"}
 
 
 pysparkPython="/opt/venv/bin/python"
@@ -116,7 +117,7 @@ fi
 JEP_DIR="/opt/venv/lib64/python${FORMATTED_PYTHON_VERSION}/site-packages/jep"
 
 
-sparkExecutorJavaOptions="-Dlog4j2.configurationFile=file:/opt/venv/openeo-geopyspark-driver/batch_job_log4j2.xml\
+sparkExecutorJavaOptions="-Xss${executor_stack_size} -Dlog4j2.configurationFile=file:/opt/venv/openeo-geopyspark-driver/batch_job_log4j2.xml\
  -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService\
  -Dscala.concurrent.context.numThreads=8 -Djava.library.path=${JEP_DIR}\
  -Dopeneo.logging.threshold=$logging_threshold"
