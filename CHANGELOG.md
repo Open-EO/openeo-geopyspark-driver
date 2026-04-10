@@ -11,8 +11,11 @@ If needed, feature flags are used to allow testing unstable features in developm
 without compromising stable operations.
 
 <!-- start-of-changelog -->
+## 0.72.0 
+- aspect and slope processes now return radians instead of degrees
 
-## In progress: 0.71.0
+  
+## 0.71.0
 
 - `sar_backscatter`: avoid segmentation fault on Sentinel-1 products with missing parts ([#1479](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1479))
 - Ensure counter-clockwise bbox geometries in STAC metadata ([#1384](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1384))
@@ -43,7 +46,7 @@ without compromising stable operations.
 - `load_stac`: support sparse spatial filtering (from `aggregate_spatial` or `filter_spatial` geometries) ([#1225](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1225))
 - Support loading Sentinel-3 OLCI L1B from file ([eu-cdse/openeo-cdse-infra#644](https://github.com/eu-cdse/openeo-cdse-infra/issues/644))
 - Support loading Sentinel-3 SLSTR L1B from file ([eu-cdse/openeo-cdse-infra#644](https://github.com/eu-cdse/openeo-cdse-infra/issues/644))
-- aspect and slope processes now return radians instead of degrees
+
 
 ## 0.70.0
 
