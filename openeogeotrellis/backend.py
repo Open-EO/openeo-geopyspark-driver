@@ -80,7 +80,7 @@ import numpy as np
 import openeogeotrellis
 import openeogeotrellis._backend.post_dry_run
 from openeo_driver.views import OPENEO_API_VERSION_DEFAULT
-from openeogeotrellis import sentinel_hub, load_stac, datacube_parameters
+from openeogeotrellis import sentinel_hub, load_stac, datacube_parameters, query_stac
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.config.s3_config import S3Config
 from openeogeotrellis.configparams import ConfigParams
@@ -821,6 +821,31 @@ Example usage:
 
     def load_stac(self, url: str, load_params: LoadParameters, env: EvalEnv) -> GeopysparkDataCube:
         return self._load_stac_cached(url=url, load_params=load_params, env=WhiteListEvalEnv(env, WHITELIST))
+
+    def query_stac(
+        self,
+        url: str,
+        spatial_extent: Union[Dict, BoundingBox, None],
+        temporal_extent: Tuple[Optional[str], Optional[str]],
+        _env: EvalEnv
+    ) -> Dict:
+        return self._query_stac_cached(url=url, spatial_extent=BadlyHashable(spatial_extent), temporal_extent=temporal_extent)
+
+    @lru_cache(maxsize=20)
+    def _query_stac_cached(
+        self,
+        url: str,
+        spatial_extent: Union[BadlyHashable, BoundingBox, None],
+        temporal_extent: Tuple[Optional[str], Optional[str]],
+    ) -> Dict:
+        if isinstance(spatial_extent, BadlyHashable):
+            spatial_extent = spatial_extent.target
+        item_collection = query_stac.item_collection_from_stac_query(
+            url=url,
+            spatial_extent=spatial_extent,
+            temporal_extent=temporal_extent,
+        )
+        return item_collection.to_dict()
 
     @lru_cache(maxsize=20)
     def _load_stac_cached(self, url: str, *, load_params: LoadParameters, env: EvalEnv) -> GeopysparkDataCube:
