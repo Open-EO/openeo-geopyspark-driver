@@ -827,7 +827,7 @@ Example usage:
         url: str,
         spatial_extent: Union[Dict, BoundingBox, None],
         temporal_extent: Tuple[Optional[str], Optional[str]],
-        _env: EvalEnv
+        env: EvalEnv
     ) -> Dict:
         return self._query_stac_cached(url=url, spatial_extent=BadlyHashable(spatial_extent), temporal_extent=temporal_extent)
 
