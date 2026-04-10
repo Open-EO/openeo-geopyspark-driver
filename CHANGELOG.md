@@ -44,6 +44,7 @@ without compromising stable operations.
 - Support loading Sentinel-3 OLCI L1B from file ([eu-cdse/openeo-cdse-infra#644](https://github.com/eu-cdse/openeo-cdse-infra/issues/644))
 - Support loading Sentinel-3 SLSTR L1B from file ([eu-cdse/openeo-cdse-infra#644](https://github.com/eu-cdse/openeo-cdse-infra/issues/644))
 - aspect and slope processes now return radians instead of degrees
+- YARN batch jobs: configure `spark.driver.maxResultSize` dynamically based on driver memory (max of 5g and driver memory) instead of hardcoded 5g
 
 ## 0.70.0
 
