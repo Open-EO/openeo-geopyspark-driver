@@ -1,7 +1,7 @@
 
 import pytest
 
-from openeogeotrellis.integrations.yarn_jobrunner import YARNBatchJobRunner
+from openeogeotrellis.integrations.yarn_jobrunner import YARNBatchJobRunner, _DEFAULT_MAX_RESULT_SIZE
 
 
 @pytest.mark.usefixtures("mock_yarn_backend_config")
@@ -45,3 +45,29 @@ class TestYARNBatchJobRunner:
             runner.run_job(job_info=job_info, job_id="j-123", job_work_dir=tmp_path, user_id="alice")
 
         assert yarn_submit_call.env["YARN_CONTAINER_RUNTIME_DOCKER_IMAGE"] == expected
+
+    @pytest.mark.parametrize(
+        ["driver_memory", "expected_max_result_size"],
+        [
+            # driver_memory > 5g: max_result_size should be set to driver_memory
+            ("8G", "8G"),
+            ("10G", "10G"),
+            # driver_memory <= 5g: max_result_size should stay at the default 5g
+            ("3G", _DEFAULT_MAX_RESULT_SIZE),
+            ("5G", _DEFAULT_MAX_RESULT_SIZE),
+        ],
+    )
+    def test_run_job_max_result_size_based_on_driver_memory(
+        self, tmp_path, yarn_mocker, driver_memory, expected_max_result_size
+    ):
+        runner = YARNBatchJobRunner()
+        job_info = {
+            **self.JOB_INFO_MINIMAL,
+            "job_options": {"driver-memory": driver_memory},
+        }
+        with yarn_mocker.mock_yarn_submit_job() as yarn_submit_call:
+            runner.run_job(job_info=job_info, job_id="j-123", job_work_dir=tmp_path, user_id="alice")
+
+        # max_result_size is the last argument in the args list
+        max_result_size_arg = yarn_submit_call.command[-1]
+        assert max_result_size_arg == expected_max_result_size

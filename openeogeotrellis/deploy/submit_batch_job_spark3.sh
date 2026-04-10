@@ -63,6 +63,7 @@ spark_eventlog_dir=${38}
 spark_history_fs_logdirectory=${39}
 spark_yarn_historyserver_address=${40}
 yarn_container_runtime_docker_client_config=${41}
+max_result_size=${42-"5g"}
 
 
 pysparkPython="/opt/venv/bin/python"
@@ -182,7 +183,7 @@ spark-submit \
  --conf spark.driver.cores=${drivercores} \
  --conf spark.executor.cores=${executorcores} \
  --conf spark.task.cpus=${taskCpus} \
- --conf spark.driver.maxResultSize=5g \
+ --conf spark.driver.maxResultSize=${max_result_size} \
  --conf spark.driver.memoryOverhead=${drivermemoryoverhead} \
  --conf spark.executor.memoryOverhead=${executormemoryoverhead} \
  ${python_max_conf} \

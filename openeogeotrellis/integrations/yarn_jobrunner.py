@@ -16,6 +16,7 @@ import pkg_resources
 from openeo.util import deep_get, ensure_dir
 from openeo_driver.config.load import ConfigGetter
 from openeo_driver.errors import InternalException, OpenEOApiException
+from pyspark.util import _parse_memory
 
 import openeogeotrellis.integrations.freeipa
 from openeo_driver.views import OPENEO_API_VERSION_DEFAULT
@@ -30,6 +31,9 @@ from openeogeotrellis.utils import add_permissions
 _log = logging.getLogger(__name__)
 
 JOB_METADATA_FILENAME = "job_metadata.json"
+
+_DEFAULT_MAX_RESULT_SIZE = "5g"
+_DEFAULT_MAX_RESULT_SIZE_MIB = _parse_memory(_DEFAULT_MAX_RESULT_SIZE)
 
 
 @dataclass
@@ -222,6 +226,9 @@ class BatchJobSubmitArgs:
     yarn_container_runtime_docker_client_config: str
     """Path to Docker client configuration for YARN containers (optional)"""
 
+    max_result_size: str
+    """Maximum result size for the Spark driver (e.g., '5g'). Passed to `--conf spark.driver.maxResultSize`."""
+
     def to_args_list(self) -> List[str]:
         """Convert the dataclass to a list of string arguments for subprocess."""
         return [
@@ -267,6 +274,7 @@ class BatchJobSubmitArgs:
             self.spark_history_fs_logdirectory,
             self.spark_yarn_historyserver_address,
             self.yarn_container_runtime_docker_client_config,
+            self.max_result_size,
         ]
 
 
@@ -474,6 +482,10 @@ class YARNBatchJobRunner:
                 raise InternalException("batch_spark_yarn_historyserver_address must be configured in backend config")
 
             # Create structured arguments using dataclass
+            max_result_size = _DEFAULT_MAX_RESULT_SIZE
+            if _DEFAULT_MAX_RESULT_SIZE_MIB < _parse_memory(options.driver_memory):
+                max_result_size = options.driver_memory
+
             submit_args = BatchJobSubmitArgs(
                 script_location=script_location,
                 job_name=job_name,
@@ -517,6 +529,7 @@ class YARNBatchJobRunner:
                 spark_history_fs_logdirectory=backend_config.batch_spark_history_fs_logdirectory,
                 spark_yarn_historyserver_address=backend_config.batch_spark_yarn_historyserver_address,
                 yarn_container_runtime_docker_client_config=backend_config.batch_yarn_container_runtime_docker_client_config,
+                max_result_size=max_result_size,
             )
             args = submit_args.to_args_list()
 
