@@ -69,5 +69,5 @@ class TestYARNBatchJobRunner:
             runner.run_job(job_info=job_info, job_id="j-123", job_work_dir=tmp_path, user_id="alice")
 
         # max_result_size is the second-to-last argument in the args list (executor_stack_size is last)
-        max_result_size_arg = yarn_submit_call.command[-2]
+        max_result_size_arg = yarn_submit_call.command[42]
         assert max_result_size_arg == expected_max_result_size
