@@ -229,6 +229,9 @@ class BatchJobSubmitArgs:
     max_result_size: str
     """Maximum result size for the Spark driver (e.g., '5g'). Passed to `--conf spark.driver.maxResultSize`."""
 
+    executor_stack_size: str
+    """JVM thread stack size for executors (e.g., '4m'). Passed as `-Xss` to `spark.executor.extraJavaOptions`."""
+
     def to_args_list(self) -> List[str]:
         """Convert the dataclass to a list of string arguments for subprocess."""
         return [
@@ -275,6 +278,7 @@ class BatchJobSubmitArgs:
             self.spark_yarn_historyserver_address,
             self.yarn_container_runtime_docker_client_config,
             self.max_result_size,
+            self.executor_stack_size,
         ]
 
 
@@ -530,6 +534,7 @@ class YARNBatchJobRunner:
                 spark_yarn_historyserver_address=backend_config.batch_spark_yarn_historyserver_address,
                 yarn_container_runtime_docker_client_config=backend_config.batch_yarn_container_runtime_docker_client_config,
                 max_result_size=max_result_size,
+                executor_stack_size=backend_config.default_executor_stack_size,
             )
             args = submit_args.to_args_list()
 

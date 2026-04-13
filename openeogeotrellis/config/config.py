@@ -218,6 +218,12 @@ class GpsBackendConfig(OpenEoBackendConfig):
     default_executor_cores: int = 2
 
     """
+    The default JVM thread stack size for batch job executors. The default JVM stack size (512KB) may be insufficient
+    for deeply recursive call stacks (e.g. during object deserialization), leading to StackOverflowErrors.
+    """
+    default_executor_stack_size: str = "4m"
+
+    """
     The default tile size to use for processing. By default, it is not set and the backend tries to determine a value.
     To minimize memory use, a small default size like 128 can be set. For cases with more memory per cpu, larger sizes are relevant.
     """
