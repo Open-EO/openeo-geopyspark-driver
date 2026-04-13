@@ -7,6 +7,7 @@ metadata:
   namespace: {{ job_namespace }}
   labels:
     user: {{ user_id }}
+    correlation_id: {{ job_id_full }}
 {%- endblock %}
 spec:
 {%- block spec_options %}
