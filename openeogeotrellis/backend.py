@@ -972,6 +972,8 @@ Example usage:
         cwl: str,
         context: dict,
     ) -> DriverDataCube:
+        if data:
+            logger.warning("The data parameter is set, but unused when running a CWL.")
         # local import to avoid importing kubernetes on yarn backends
         from openeogeotrellis.integrations.calrissian import CwLSource, cwl_to_stac
         collection_url = cwl_to_stac(
