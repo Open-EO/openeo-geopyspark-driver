@@ -463,19 +463,7 @@ class S1BackscatterOrfeo:
         if elevation_model:
             elevation_model = elevation_model.lower()
 
-        if elevation_model in [None, "srtmgl1"]:
-            dem_dir_context = S1BackscatterOrfeo._creodias_dem_subset_srtm_hgt_unzip(
-                bbox=(extent["xmin"], extent["ymin"], extent["xmax"], extent["ymax"]), bbox_epsg=epsg,
-                srtm_root="/eodata/auxdata/SRTMGL1/dem",
-            )
-        elif elevation_model in ["geotiff", "mapzen"]:
-            dem_dir_context = S1BackscatterOrfeo._creodias_dem_subset_geotiff(
-                bbox=(extent["xmin"], extent["ymin"], extent["xmax"], extent["ymax"]), bbox_epsg=epsg,
-                zoom=sar_backscatter_arguments.options.get("dem_zoom_level", 10),
-                dem_tile_size=512,
-                dem_path_tpl="/eodata/auxdata/Elevation-Tiles/geotiff/{z}/{x}/{y}.tif"
-            )
-        elif elevation_model in ["copernicus_30"]:
+        if elevation_model in [None, "copernicus_30"]:
             dem_dir_context = (
                 S1BackscatterOrfeo._creodias_dem_subset_copernicus30_geotiff(
                     bbox=(
@@ -487,6 +475,18 @@ class S1BackscatterOrfeo:
                     bbox_epsg=epsg,
                     copernicus_root=S1BackscatterOrfeo._COPERNICUS_DEM_ROOT,
                 )
+            )
+        elif elevation_model in ["srtmgl1"]:
+            dem_dir_context = S1BackscatterOrfeo._creodias_dem_subset_srtm_hgt_unzip(
+                bbox=(extent["xmin"], extent["ymin"], extent["xmax"], extent["ymax"]), bbox_epsg=epsg,
+                srtm_root="/eodata/auxdata/SRTMGL1/dem",
+            )
+        elif elevation_model in ["geotiff", "mapzen"]:
+            dem_dir_context = S1BackscatterOrfeo._creodias_dem_subset_geotiff(
+                bbox=(extent["xmin"], extent["ymin"], extent["xmax"], extent["ymax"]), bbox_epsg=epsg,
+                zoom=sar_backscatter_arguments.options.get("dem_zoom_level", 10),
+                dem_tile_size=512,
+                dem_path_tpl="/eodata/auxdata/Elevation-Tiles/geotiff/{z}/{x}/{y}.tif"
             )
         elif elevation_model in ["off"]:
             # Context that returns None when entering
