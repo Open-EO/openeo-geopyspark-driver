@@ -17,5 +17,6 @@ def test_data_cube_params():
     env = EvalEnv({EVAL_ENV_KEY.REQUIRE_BOUNDS: True})
 
     cube_params, level = datacube_parameters.create(load_params, env, get_jvm())
-    assert str(cube_params) == "DataCubeParameters(128, {}, ZoomedLayoutScheme, ByDay, None, None, Average, 0.0, 0.0)"
+    assert str(cube_params) == ("DataCubeParameters(128, {}, ZoomedLayoutScheme, ByDay, None, None, "
+                                "Average, 0.0, 0.0, false, true, true)")
     assert "Average" == str(cube_params.resampleMethod())
