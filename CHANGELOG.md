@@ -11,10 +11,14 @@ If needed, feature flags are used to allow testing unstable features in developm
 without compromising stable operations.
 
 <!-- start-of-changelog -->
-## 0.72.0 
+
+## 0.72.0
+
 - aspect and slope processes now return radians instead of degrees
 - YARN batch jobs: configure `spark.driver.maxResultSize` dynamically based on driver memory (max of 5g and driver memory) instead of hardcoded 5g ([#631](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1631))
-  
+- Better support for spatial filtering with geometries that have internal overlap ([#1645](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1645))
+
+
 ## 0.71.0
 
 - `sar_backscatter`: avoid segmentation fault on Sentinel-1 products with missing parts ([#1479](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1479))

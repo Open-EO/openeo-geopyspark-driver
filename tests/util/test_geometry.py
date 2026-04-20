@@ -268,3 +268,15 @@ class TestGeometrySimplifier:
         ]
         logger.info(f"{len(outside_samples)=} {outside_samples=}")
         assert all([not simplified.contains(s) for s in outside_samples])
+
+    def test_simplify_boxes_with_overlap(self):
+        box1 = shapely.geometry.box(1, 1, 3, 3)
+        box2 = shapely.geometry.box(2, 2, 4, 4)
+        gdf = geopandas.GeoSeries([box1, box2])
+        simplified = GeometrySimplifier().simplify(geometry=gdf)
+        logger.info(f"{simplified=}")
+        assert isinstance(simplified, shapely.geometry.Polygon)
+        expected_polygon = shapely.geometry.Polygon(
+            [(1, 1), (3, 1), (3, 2), (4, 2), (4, 4), (2, 4), (2, 3), (1, 3), (1, 1)]
+        )
+        assert shapely.hausdorff_distance(simplified, expected_polygon) == 0
