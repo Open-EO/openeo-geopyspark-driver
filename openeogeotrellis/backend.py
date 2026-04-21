@@ -468,6 +468,12 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                     "gis_data_types": ["vector"],
                     "parameters": {},
                 },
+                "FlatGeobuf": {
+                    "title": "FlatGeobuf",
+                    "description": "Cloud-native binary vector format with optional spatial index. Supports S3 access via /vsis3/.",
+                    "gis_data_types": ["vector"],
+                    "parameters": {},
+                },
                 "GPKG": {
                     "title": "GeoPackage",
                     "description": "GeoPackage is an open, standards-based, platform-independent, portable, self-describing, compact format for transferring geospatial information.",
