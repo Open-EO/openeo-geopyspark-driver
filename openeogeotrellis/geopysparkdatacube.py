@@ -1349,25 +1349,8 @@ class GeopysparkDataCube(DriverDataCube):
         """
         resample_method = ResampleMethod(self._get_resample_method(method))
 
-        max_level:TiledRasterLayer = self.get_max_level()
-        target_max_level:TiledRasterLayer = target.pyramid.levels[target.pyramid.max_zoom]
-
-        target_resolution = target.get_cellsize()
-        target_crs = target.metadata.get_layer_crs()
-
-        proposed_partition_count = self._compute_proposed_partition_count(target_crs, target_resolution)
-        if (  # Only repartition when there would be significantly more
-                max_level.getNumPartitions() * 2 <= proposed_partition_count
-                and max_level.layer_type == gps.LayerType.SPACETIME):
-            if proposed_partition_count < 100000:
-                _log.info(
-                    f"Repartitioning datacube with {max_level.getNumPartitions()} partitions to {proposed_partition_count} before resample_cube_spatial."
-                )
-                max_level = max_level.repartition(int(proposed_partition_count))
-            else:
-                _log.warning(
-                    f"resample_spatial proposed new partition count {proposed_partition_count} is too high, not repartitioning."
-                )
+        max_level: TiledRasterLayer = self.get_max_level()
+        target_max_level: TiledRasterLayer = target.pyramid.levels[target.pyramid.max_zoom]
 
         if self.pyramid.layer_type == gps.LayerType.SPACETIME and target.pyramid.layer_type == gps.LayerType.SPACETIME:
             level_rdd_tuple = get_jvm().org.openeo.geotrellis.OpenEOProcesses().resampleCubeSpatial(max_level.srdd.rdd(),target_max_level.srdd.rdd(),resample_method)
