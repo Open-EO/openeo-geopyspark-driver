@@ -1181,7 +1181,7 @@ def read_band(in_file, in_band, data_mask, get_data_array=True):
             in_band = "F1_BT_in"
             logger.debug(f"Reading {in_band} from file {in_file}")
             dataset = xr.open_dataset(in_file.replace("/F1_BT_fn.nc", "/F1_BT_in.nc"), mask_and_scale=False, cache=False)
-        elif in_file.endwith("/rc_gifapar.nc"):
+        elif in_file.endswith("/rc_gifapar.nc"):
             logger.debug(f"Reading {in_band} from file {in_file}")
             dataset = xr.open_dataset(in_file.replace("/rc_gifapar.nc", "/rc_ogvi.nc"), mask_and_scale=False, cache=False)
         else:
