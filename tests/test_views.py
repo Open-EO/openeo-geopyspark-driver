@@ -531,6 +531,19 @@ class TestBatchJobs:
             })
         assert res == expected
 
+    def test_create_and_get_includes_job_options(self, api, time_machine):
+        """Job options submitted on POST /jobs should be returned in GET /jobs/{job_id} response."""
+        time_machine.move_to("2020-04-20T16:04:03Z")
+        job_options = {"driver-memory": "4g", "executor-memory": "3g"}
+        with self._mock_kazoo_client() as zk:
+            data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH, title="Dummy")
+            data["job_options"] = job_options
+            res = api.post('/jobs', json=data, headers=TEST_USER_AUTH_HEADER).assert_status_code(201)
+            job_id = res.headers['OpenEO-Identifier']
+            res = api.get('/jobs/{j}'.format(j=job_id), headers=TEST_USER_AUTH_HEADER).assert_status_code(200).json
+
+        assert res.get("job_options") == job_options
+
     def test_create_and_get_user_jobs(self, api, time_machine):
         time_machine.move_to("2020-04-20T16:04:03Z")
         with self._mock_kazoo_client() as zk:

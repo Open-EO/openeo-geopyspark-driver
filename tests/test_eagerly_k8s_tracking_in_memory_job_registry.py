@@ -114,6 +114,7 @@ def test_basic(
     job_metadata = backend_implementation.batch_jobs.get_job_info(job_id, user.user_id)
     assert job_metadata.id == job_id
     assert job_metadata.status == JOB_STATUS.RUNNING
+    assert job_metadata.job_options == {"log_level": "debug"}
 
     # 4: get job results (unfinished)
     with pytest.raises(JobNotFinishedException):
