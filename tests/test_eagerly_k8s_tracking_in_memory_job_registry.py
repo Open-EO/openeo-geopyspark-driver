@@ -37,7 +37,7 @@ def backend_implementation(tracking_job_registry) -> GeoPySparkBackendImplementa
 
 @pytest.fixture
 def kube_no_zk(monkeypatch):
-    with gps_config_overrides(setup_kerberos_auth=False, use_zk_job_registry=False, yunikorn_user_specific_queues=True):
+    with gps_config_overrides(setup_kerberos_auth=False, yunikorn_user_specific_queues=True):
         monkeypatch.setenv("KUBE", "TRUE")
         yield
 

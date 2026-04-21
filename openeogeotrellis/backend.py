@@ -105,9 +105,7 @@ from openeogeotrellis.integrations.yarn_jobrunner import YARNBatchJobRunner
 from openeogeotrellis.job_options import JobOptions, K8SOptions, JOB_OPTION_DISABLE
 from openeogeotrellis.job_registry import (
     DoubleJobRegistry,
-    ZkJobRegistry,
     get_deletable_dependency_sources,
-    parse_zk_job_specification,
 )
 from openeogeotrellis.layercatalog import (
     GeoPySparkLayerCatalog,
@@ -1460,7 +1458,6 @@ class GpsBatchJobs(backend.BatchJobs):
         )
 
         self._double_job_registry = DoubleJobRegistry(
-            zk_job_registry_factory=ZkJobRegistry if get_backend_config().use_zk_job_registry else None,
             elastic_job_registry=elastic_job_registry,
         )
 
@@ -1853,23 +1850,13 @@ class GpsBatchJobs(backend.BatchJobs):
                     logger.warning(
                         f"GpsBatchJobs._start_job: ill-defined job status transition from {current_status!r} to {JOB_STATUS.CREATED!r}"
                     )
-                    dbl_registry.mark_ongoing(job_id, user_id)
                     # TODO: do we really want to reset the application id?
                     dbl_registry.set_application_id(job_id=job_id, user_id=user_id, application_id=None)
                     dbl_registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.CREATED)
 
-        if "specification" in job_info:
-            # This is old-style (ZK based) job info with "specification" being a JSON string.
-            # TODO #498 #1165 eliminate ZK code path, or at least encapsulate this logic better
-            job_specification_json = job_info["specification"]
-            job_process_graph, job_options = parse_zk_job_specification(job_info, default_job_options={})
-        else:
-            # New style job info (EJR based)
-            job_process_graph = job_info["process"]["process_graph"]
-            job_options = job_info.get("job_options") or {}  # can be None
-            job_specification_json = json.dumps({"process_graph": job_process_graph, "job_options": job_options})
-
-
+        job_process_graph = job_info["process"]["process_graph"]
+        job_options = job_info.get("job_options") or {}  # can be None
+        job_specification_json = json.dumps({"process_graph": job_process_graph, "job_options": job_options})
 
         sentinel_hub_client_alias = deep_get(job_options, 'sentinel-hub', 'client-alias', default="default")
 
