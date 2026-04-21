@@ -1978,6 +1978,10 @@ class GpsBatchJobs(backend.BatchJobs):
             if executor_corerequest == "NONE":
                 executor_corerequest = str(int(options.executor_cores) / 2 * 1000) + "m"
 
+            driver_corerequest = options.driver_corerequest
+            if driver_corerequest == "NONE":
+                driver_corerequest = str(int(options.driver_cores) / 2 * 1000) + "m"
+
             gdal_cachemax = str(job_options.get("gdal-cachemax", get_backend_config().default_gdal_cachemax))
 
 
@@ -2071,6 +2075,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 job_id_short=truncate_job_id_k8s(job_id),
                 job_id_full=job_id,
                 driver_cores=str(options.driver_cores),
+                driver_corerequest=driver_corerequest,
                 driver_memory=options.driver_memory,
                 max_result_size=max_result_size,
                 driver_memory_overhead=options.driver_memory_overhead,
