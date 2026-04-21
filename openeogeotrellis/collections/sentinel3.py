@@ -1177,11 +1177,15 @@ def read_band(in_file, in_band, data_mask, get_data_array=True):
         logger.debug(f"Reading {in_band} from file {in_file}")
         dataset = xr.open_dataset(in_file, mask_and_scale=False, cache=False)  # disable autoconvert digital values
     except FileNotFoundError:
-        if not in_file.endswith("/F1_BT_fn.nc"):
+        if in_file.endswith("/F1_BT_fn.nc"):
+            in_band = "F1_BT_in"
+            logger.debug(f"Reading {in_band} from file {in_file}")
+            dataset = xr.open_dataset(in_file.replace("/F1_BT_fn.nc", "/F1_BT_in.nc"), mask_and_scale=False, cache=False)
+        elif in_file.endwith("/rc_gifapar.nc"):
+            logger.debug(f"Reading {in_band} from file {in_file}")
+            dataset = xr.open_dataset(in_file.replace("/rc_gifapar.nc", "/rc_ogvi.nc"), mask_and_scale=False, cache=False)
+        else:
             raise
-        in_band = "F1_BT_in"
-        logger.debug(f"Reading {in_band} from file {in_file}")
-        dataset = xr.open_dataset(in_file.replace("/F1_BT_fn.nc", "/F1_BT_in.nc"), mask_and_scale=False, cache=False)
 
     settings = dataset[in_band].attrs
     settings['dtype'] = dataset[in_band].dtype.name
