@@ -123,10 +123,6 @@ class GpsBackendConfig(OpenEoBackendConfig):
     zookeeper_auth_username: Optional[str] = attrs.Factory(lambda: os.environ.get("ZOOKEEPER_USERNAME"))
     zookeeper_auth_password: Optional[str] = attrs.Factory(lambda: os.environ.get("ZOOKEEPER_PASSWORD"))
 
-    # TODO #236/#498/#632/#1165 long term goal is to fully disable ZK job registry, but for now it's configurable.
-    use_zk_job_registry: bool = False
-    zk_job_registry_max_specification_size: Optional[int] = None
-
     udp_registry_zookeeper_client_reuse: bool = False
 
     ejr_api: Optional[str] = os.environ.get("OPENEO_EJR_API")

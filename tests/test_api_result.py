@@ -65,10 +65,9 @@ from openeogeotrellis._version import __version__
 from openeogeotrellis.backend import JOB_METADATA_FILENAME
 from openeogeotrellis.config.config import EtlApiConfig
 from openeogeotrellis.integrations.gdal import read_gdal_info
-from openeogeotrellis.job_registry import ZkJobRegistry
+from openeogeotrellis.job_registry import InMemoryJobRegistry
 from openeogeotrellis.load_stac import _LoadStacContext
 from openeogeotrellis.testing import (
-    KazooClientMock,
     Urllib3PoolManagerMocker,
     gps_config_overrides,
     random_name,
@@ -1954,19 +1953,6 @@ def jvm_mock():
         yield jvm_mock
 
 
-@pytest.fixture
-def zk_client() -> KazooClientMock:
-    zk_client = KazooClientMock()
-    with mock.patch(
-        "openeogeotrellis.job_registry.KazooClient", return_value=zk_client
-    ):
-        yield zk_client
-
-
-@pytest.fixture
-def zk_job_registry(zk_client) -> ZkJobRegistry:
-    return ZkJobRegistry(zk_client=zk_client)
-
 
 
 @pytest.mark.parametrize(["temporal_extent", "expected"], [
@@ -2879,7 +2865,7 @@ def _setup_existing_job(
     job_id: str,
     api: ApiTester,
     batch_job_output_root: Path,
-    zk_job_registry: ZkJobRegistry,
+    job_registry: InMemoryJobRegistry,
     user_id=TEST_USER,
 ) -> Path:
     """
@@ -2902,17 +2888,15 @@ def _setup_existing_job(
     )
 
     # Register metadata in job registry too
-    zk_job_registry.register(
+    job_registry.create_job(
         job_id=job_id,
         user_id=user_id,
+        process={"process_graph": load_json(result_dir / "process_graph.json")["process_graph"]},
         api_version="1.1.0",
-        specification=ZkJobRegistry.build_specification_dict(
-            process_graph=load_json(result_dir / "process_graph.json")["process_graph"],
-        ),
     )
-    zk_job_registry.set_results_metadata_uri(job_id, user_id, results_metadata_uri=f"file://{job_metadata_file}")
-    zk_job_registry.set_status(
-        job_id=job_id, user_id=user_id, status=JOB_STATUS.FINISHED
+    job_registry.set_results_metadata_uri(job_id, results_metadata_uri=f"file://{job_metadata_file}")
+    job_registry.set_status(
+        job_id=job_id, status=JOB_STATUS.FINISHED
     )
 
     return result_dir
@@ -2945,7 +2929,7 @@ def _setup_metadata_request_mocking(
 
 class TestLoadResult:
     def test_load_result_job_id_basic(
-        self, api110, zk_client, zk_job_registry, batch_job_output_root
+        self, api110, job_registry, batch_job_output_root
     ):
         job_id = "j-ec5d3e778ba5423d8d88a50b08cb9f63"
 
@@ -2953,7 +2937,7 @@ class TestLoadResult:
             job_id=job_id,
             api=api110,
             batch_job_output_root=batch_job_output_root,
-            zk_job_registry=zk_job_registry,
+            job_registry=job_registry,
         )
 
         process_graph = {
@@ -3083,8 +3067,7 @@ class TestLoadResult:
     def test_load_result_job_id_filtering(
         self,
         api110,
-        zk_client,
-        zk_job_registry,
+        job_registry,
         batch_job_output_root,
         load_result_kwargs,
         expected,
@@ -3095,7 +3078,7 @@ class TestLoadResult:
             job_id=job_id,
             api=api110,
             batch_job_output_root=batch_job_output_root,
-            zk_job_registry=zk_job_registry,
+            job_registry=job_registry,
         )
 
         process_graph = {
@@ -3124,8 +3107,7 @@ class TestLoadResult:
     def test_load_result_url_basic(
         self,
         api110,
-        zk_client,
-        zk_job_registry,
+        job_registry,
         batch_job_output_root,
         requests_mock,
     ):
@@ -3136,7 +3118,7 @@ class TestLoadResult:
             job_id=job_id,
             api=api110,
             batch_job_output_root=batch_job_output_root,
-            zk_job_registry=zk_job_registry,
+            job_registry=job_registry,
         )
         _setup_metadata_request_mocking(
             job_id=job_id,
@@ -3273,8 +3255,7 @@ class TestLoadResult:
     def test_load_result_url_filtering(
         self,
         api110,
-        zk_client,
-        zk_job_registry,
+        job_registry,
         batch_job_output_root,
         requests_mock,
         load_result_kwargs,
@@ -3287,7 +3268,7 @@ class TestLoadResult:
             job_id=job_id,
             api=api110,
             batch_job_output_root=batch_job_output_root,
-            zk_job_registry=zk_job_registry,
+            job_registry=job_registry,
         )
         _setup_metadata_request_mocking(
             job_id=job_id,
@@ -3376,7 +3357,7 @@ class TestLoadStac:
                                                 9.844419570631366, 50.246156678379016))
 
     def test_stac_collection_multiple_items_no_spatial_extent_specified(
-        self, api110, zk_job_registry, batch_job_output_root, requests_mock
+        self, api110, job_registry, batch_job_output_root, requests_mock
     ):
         job_id = "j-ec5d3e778ba5423d8d88a50b08cb9f63"
         results_url = f"https://foobar.test/job/{job_id}/results"
@@ -3385,7 +3366,7 @@ class TestLoadStac:
             job_id=job_id,
             api=api110,
             batch_job_output_root=batch_job_output_root,
-            zk_job_registry=zk_job_registry,
+            job_registry=job_registry,
         )
         _setup_metadata_request_mocking(
             job_id=job_id,
@@ -4431,13 +4412,13 @@ class TestLoadStac:
             assert tuple(ds.bounds) == (5.0, 50.0, 6.0, 51.0)
 
     def test_load_stac_from_unsigned_job_results_respects_proj_metadata(self, api110, tmp_path,
-                                                                        batch_job_output_root, zk_job_registry, fast_sleep):
+                                                                        batch_job_output_root, job_registry, fast_sleep):
         # get results from own batch job rather than crawl signed STAC URLs
         results_dir = _setup_existing_job(
             job_id="j-2405078f40904a0b85cf8dc5dd55b07e",
             api=api110,
             batch_job_output_root=batch_job_output_root,
-            zk_job_registry=zk_job_registry
+            job_registry=job_registry
         )
 
         process_graph = {
@@ -4523,7 +4504,7 @@ class TestLoadStac:
         assert ("OpenEO batch job results status of " + results_url + ": finished" in caplog.messages)
 
     @gps_config_overrides(job_dependencies_poll_interval_seconds=0, job_dependencies_max_poll_delay_seconds=60)
-    def test_load_stac_from_unsigned_partial_job_results_basic(self, api110, batch_job_output_root, zk_job_registry,
+    def test_load_stac_from_unsigned_partial_job_results_basic(self, api110, batch_job_output_root, job_registry,
                                                                backend_implementation, caplog, fast_sleep):
         """load_stac from partial job results Collection (unsigned case)"""
 
@@ -4534,7 +4515,7 @@ class TestLoadStac:
             job_id="j-2405078f40904a0b85cf8dc5dd55b07e",
             api=api110,
             batch_job_output_root=batch_job_output_root,
-            zk_job_registry=zk_job_registry
+            job_registry=job_registry
         )
 
         process_graph = {

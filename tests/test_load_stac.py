@@ -2489,7 +2489,7 @@ class TestItemCollection:
             ((70, 70, 80, 80), ["2025-09-01", "2025-10-01"], []),
         ],
     )
-    @gps_config_overrides(use_zk_job_registry=False)
+    @gps_config_overrides()
     def test_from_own_job(self, bbox, interval, expected):
         from_date, to_date = interval
         spatiotemporal_extent = _SpatioTemporalExtent(

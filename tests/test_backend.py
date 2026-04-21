@@ -744,7 +744,6 @@ class TestGpsBatchJobs:
     def kube_no_zk(self, monkeypatch):
         with gps_config_overrides(
             setup_kerberos_auth=False,
-            use_zk_job_registry=False,
             yunikorn_user_specific_queues=True,  # avoid another call to ZK
         ):
             monkeypatch.setenv("KUBE", "TRUE")

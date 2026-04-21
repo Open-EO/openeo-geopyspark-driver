@@ -52,7 +52,7 @@ from openeogeotrellis.job_costs_calculator import (
     DynamicEtlApiJobCostCalculator,
     NoJobCostsCalculator,
 )
-from openeogeotrellis.job_registry import DoubleJobRegistry, ZkJobRegistry, get_deletable_dependency_sources
+from openeogeotrellis.job_registry import DoubleJobRegistry, get_deletable_dependency_sources
 from openeogeotrellis.utils import StatsReporter, dict_merge_recursive, to_jsonable
 
 # Note: hardcoded logger name as this script is executed directly which kills the usefulness of `__name__`.
@@ -435,7 +435,6 @@ class JobTracker:
         self,
         *,
         app_state_getter: JobMetadataGetterInterface,
-        zk_job_registry: Optional[ZkJobRegistry] = None,  # TODO #1165 remove ZkJobRegistry
         principal: str,
         keytab: str,
         job_costs_calculator: Optional[JobCostsCalculator] = None,
@@ -456,7 +455,6 @@ class JobTracker:
             elastic_job_registry=elastic_job_registry,
         )
         self._double_job_registry = DoubleJobRegistry(
-            zk_job_registry_factory=(lambda: zk_job_registry) if zk_job_registry else None,
             elastic_job_registry=elastic_job_registry,
         )
 

@@ -42,7 +42,6 @@ config = GpsBackendConfig(
     capabilities_description="Local GeoPySpark openEO Backend",
     oidc_providers=oidc_providers,
     opensearch_enrich=False,
-    use_zk_job_registry=False,
     workspaces=workspaces,
     calrissian_config=CalrissianConfig(
         namespace="calrissian-demo-project",
