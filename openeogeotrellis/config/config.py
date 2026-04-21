@@ -117,6 +117,11 @@ class GpsBackendConfig(OpenEoBackendConfig):
     zookeeper_root_path: str = attrs.field(
         default="/openeo", validator=attrs.validators.matches_re("^/.+"), converter=lambda s: s.rstrip("/")
     )
+    # SASL options for ZK connection auth (GSSAPI/Kerberos on rscluster)
+    zookeeper_sasl_options: Optional[dict] = None
+    # Digest ACL credentials for ZK znode-level auth.
+    zookeeper_auth_username: Optional[str] = attrs.Factory(lambda: os.environ.get("ZOOKEEPER_USERNAME"))
+    zookeeper_auth_password: Optional[str] = attrs.Factory(lambda: os.environ.get("ZOOKEEPER_PASSWORD"))
 
     # TODO #236/#498/#632/#1165 long term goal is to fully disable ZK job registry, but for now it's configurable.
     use_zk_job_registry: bool = False
@@ -340,3 +345,10 @@ class GpsBackendConfig(OpenEoBackendConfig):
     read_results_metadata_file_retry_settings: dict = attrs.Factory(lambda: dict(tries=1))  # fail immediately
 
     load_stac_deduplicate_items_default: bool = False
+
+
+def get_zookeeper_auth_data(config: GpsBackendConfig) -> list:
+    """Return Kazoo auth_data list for ZK digest ACL, or empty list if not configured."""
+    if config.zookeeper_auth_username and config.zookeeper_auth_password:
+        return [("digest", f"{config.zookeeper_auth_username}:{config.zookeeper_auth_password}")]
+    return []

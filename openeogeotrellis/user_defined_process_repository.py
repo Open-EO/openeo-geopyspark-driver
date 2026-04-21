@@ -84,6 +84,10 @@ class ZooKeeperUserDefinedProcessRepository(UserDefinedProcesses):
     def _zk_client(self):
         create_new_client = (not self._zk_client_reuse) or (self._zk_client_cache is None)
         if create_new_client:
+            from openeogeotrellis.config import get_backend_config
+            from openeogeotrellis.config.config import get_zookeeper_auth_data
+            config = get_backend_config()
+            auth_data = get_zookeeper_auth_data(config) or None
             kz_retry = KazooRetry(max_tries=10, delay=0.5, backoff=2)
             self._log.info(f"ZooKeeperUserDefinedProcessRepository: creating KazooClient ({self._zk_client_reuse=})")
             zk = KazooClient(
@@ -91,6 +95,8 @@ class ZooKeeperUserDefinedProcessRepository(UserDefinedProcesses):
                 connection_retry=kz_retry,
                 command_retry=kz_retry,
                 timeout=3.0,
+                sasl_options=config.zookeeper_sasl_options,
+                auth_data=auth_data,
             )
             zk.start(timeout=15.0)
             if self._zk_client_reuse:

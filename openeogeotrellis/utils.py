@@ -241,7 +241,10 @@ def to_projected_polygons(
 @contextlib.contextmanager
 def zk_client(hosts: str = ",".join(ConfigParams().zookeepernodes), *, timeout=10.0):
     # TODO: move this to a more generic zookeeper module, e.g. `openeogeotrellis.integrations.zookeeper`?
-    zk = KazooClient(hosts, timeout=timeout)
+    from openeogeotrellis.config.config import get_zookeeper_auth_data
+    config = get_backend_config()
+    auth_data = get_zookeeper_auth_data(config) or None
+    zk = KazooClient(hosts, timeout=timeout, sasl_options=config.zookeeper_sasl_options, auth_data=auth_data)
     zk.start()
 
     try:
