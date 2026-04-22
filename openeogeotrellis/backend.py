@@ -348,12 +348,6 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         elastic_job_registry: Optional[ElasticJobRegistry] = None,
         do_ejr_health_check: bool = True,
     ):
-        self._service_registry = (
-            # TODO #283 #285: eliminate is_ci_context, use some kind of config structure
-            InMemoryServiceRegistry() if not use_zookeeper or ConfigParams().is_ci_context
-            else ZooKeeperServiceRegistry()
-        )
-
         # TODO #283 #285: eliminate is_ci_context, use some kind of config structure
         if not use_zookeeper or ConfigParams().is_ci_context:
             user_defined_processes = InMemoryUserDefinedProcessRepository()
@@ -399,7 +393,6 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             user_defined_processes=user_defined_processes,
             processing=GpsProcessing(),
             udf_runtimes=udf_runtimes,
-            # secondary_services=GpsSecondaryServices(service_registry=self._service_registry),
         )
 
         self._principal = principal
