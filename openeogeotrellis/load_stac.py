@@ -51,7 +51,7 @@ from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.constants import EVAL_ENV_KEY
 from openeogeotrellis.geopysparkcubemetadata import GeopysparkCubeMetadata
 from typing import TYPE_CHECKING
-from openeogeotrellis.integrations.stac import LoggingStacApiIO, ResilientStacIO
+from openeogeotrellis.integrations.stac import LoggingStacApiIO, ResilientStacIO, CompactJsonStacIO
 from openeogeotrellis.util.datetime import DateTimeLikeOrNone, to_datetime_utc_unless_none
 from openeogeotrellis.util.geometry import GeometrySimplifier, GridSnapper
 from openeogeotrellis.util.logging import TrackingIter
@@ -1582,6 +1582,19 @@ class ItemCollection:
             band_assets = {asset_id: asset for asset_id, asset in sorted(item.assets.items()) if _is_band_asset(asset)}
             if band_assets:
                 yield item, band_assets
+
+    def to_file(self, path: Union[str, Path], stac_io: Optional[pystac.StacIO] = None) -> None:
+        """Serialize item collection to a JSON file."""
+        pystac_item_collection = pystac.item_collection.ItemCollection(items=self.items)
+        # TODO: performance aspects and file size of JSON serialization of large item collections?
+        # Use compact JSON by default
+        pystac_item_collection.save_object(dest_href=str(path), stac_io=stac_io or CompactJsonStacIO())
+
+    @classmethod
+    def from_file(cls, path: Union[str, Path], stac_io: Optional[pystac.StacIO] = None) -> ItemCollection:
+        """Deserialize an item collection from a JSON file."""
+        pystac_item_collection = pystac.item_collection.ItemCollection.from_file(href=str(path), stac_io=stac_io)
+        return cls(items=pystac_item_collection.items)
 
 
 class ItemDeduplicator:

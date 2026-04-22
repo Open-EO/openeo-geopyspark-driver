@@ -1,7 +1,6 @@
 from pathlib import Path
-
+import datetime
 import boto3
-import moto
 import pystac
 import pytest
 import responses
@@ -14,6 +13,7 @@ from openeogeotrellis.integrations.stac import (
     ComposableStacIO,
     _TieredStacResponseCache,
     ref_as_str,
+    CompactJsonStacIO,
 )
 
 
@@ -273,3 +273,17 @@ class TestTieredStacResponseCache:
         assert cache.get("https://stac.test/search?q=a") == "small-a"
         assert cache.get("https://stac.test/search?q=b") == "small-b"
         assert cache.get("https://stac.test/collections/s2") == "collection-s2"
+
+
+class TestCompactJsonStacIO:
+    def test_basic(self, tmp_path):
+        item = pystac.Item(
+            id="item-123", geometry=None, bbox=None, datetime=datetime.datetime(2026, 5, 6), properties={}
+        )
+        path = tmp_path / "item.json"
+        item.save_object(dest_href=str(path), stac_io=CompactJsonStacIO())
+        serialized = path.read_text(encoding="utf-8")
+        # No (unnecessary) whitespace
+        assert len(serialized.split()) == 1
+        # But still loadable
+        _ = pystac.Item.from_file(path)

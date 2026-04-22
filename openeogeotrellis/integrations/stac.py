@@ -1,10 +1,11 @@
+import json
 import functools
 import abc
 import logging
 import re
 import threading
 from collections import OrderedDict
-from typing import Optional, Union, List, Tuple
+from typing import Optional, Union, List, Tuple, Any, Dict
 from urllib.parse import urlparse
 
 import requests
@@ -341,3 +342,12 @@ class S3StacIO(ComposableStacIO):
             Body=txt.encode("utf-8"),
             ContentEncoding="utf-8",
         )
+
+
+class CompactJsonStacIO(pystac.stac_io.DefaultStacIO):
+    """StacIO implementation that produces compact JSON output without unnecessary whitespace."""
+
+    def json_dumps(self, json_dict: dict, *args, **kwargs) -> str:
+        kwargs.setdefault("indent", None)
+        kwargs.setdefault("separators", (",", ":"))
+        return json.dumps(json_dict, *args, **kwargs)

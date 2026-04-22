@@ -2966,6 +2966,37 @@ class TestItemCollection:
             "item-5",
         }
 
+    def test_serialization_basic(self, tmp_path):
+        item = pystac.Item.from_dict(StacDummyBuilder.item())
+        spatiotemporal_extent = _SpatioTemporalExtent()
+        orig = ItemCollection.from_stac_item(item, spatiotemporal_extent=spatiotemporal_extent)
+
+        # Serialize to file
+        dump_path = tmp_path / "item_collection.json"
+        orig.to_file(dump_path)
+
+        # Deserialize again
+        loaded = ItemCollection.from_file(dump_path)
+        assert [i.to_dict() for i in loaded.items] == [item.to_dict()]
+
+    def test_serialization_with_stac_api(self, dummy_stac_api, tmp_path):
+        given_url = f"{dummy_stac_api}/collections/collection-123"
+        collection: pystac.Collection = pystac.read_file(given_url)
+        orig = ItemCollection.from_stac_api(
+            collection,
+            original_url=given_url,
+            property_filter=PropertyFilter(properties={}),
+            spatiotemporal_extent=_SpatioTemporalExtent(),
+        )
+
+        # Serialize to file
+        dump_path = tmp_path / "item_collection.json"
+        orig.to_file(dump_path)
+
+        # Deserialize again
+        loaded = ItemCollection.from_file(dump_path)
+        assert [i.to_dict() for i in loaded.items] == [i.to_dict() for i in orig.items]
+
 
 def test_construct_item_collection_minimal(dummy_stac_api):
     url = f"{dummy_stac_api}/collections/collection-123"

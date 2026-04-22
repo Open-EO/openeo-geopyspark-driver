@@ -495,15 +495,14 @@ class DummyStacApiServer:
                 body["description"] = e.description
             return flask.jsonify(body), http_code
 
-        def link(rel: str, endpoint: str, *, method: Optional[str] = None, **kwargs) -> dict:
+        def link(
+            rel: str, endpoint: str, *, method: Optional[str] = None, mimetype: str = "application/json", **kwargs
+        ) -> dict:
             """Helper to build a link dict"""
             link = {
                 "rel": rel,
-                "href": flask.url_for(
-                    endpoint,
-                    **kwargs,
-                    _external=True,
-                ),
+                "href": flask.url_for(endpoint, **kwargs, _external=True),
+                "type": mimetype,
             }
             if method:
                 link["method"] = method
@@ -618,7 +617,21 @@ class DummyStacApiServer:
         ) -> pystac.ItemCollection:
             collection_ids = [cid for cid in collections if cid in self._collections]
 
-            items = [pystac.Item.from_dict(item) for cid in collection_ids for item in self._collections[cid].items]
+            def add_links(item: pystac.Item, cid: str) -> pystac.Item:
+                links = [
+                    pystac.Link.from_dict(link(rel="root", endpoint="get_index")),
+                    pystac.Link.from_dict(link(rel="collection", endpoint="get_collection", collection_id=cid)),
+                    pystac.Link.from_dict(link(rel="parent", endpoint="get_collection", collection_id=cid)),
+                    # TODO: add self link too?
+                ]
+                item.add_links(links)
+                return item
+
+            items = [
+                add_links(pystac.Item.from_dict(item), cid=cid)
+                for cid in collection_ids
+                for item in self._collections[cid].items
+            ]
 
             if date_range:
                 if "/" in date_range:
