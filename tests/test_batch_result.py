@@ -1,4 +1,5 @@
 import datetime as dt
+import dirty_equals
 import json
 import os
 import shutil
@@ -22,7 +23,7 @@ from openeo_driver.errors import OpenEOApiException
 from openeo_driver.ProcessGraphDeserializer import ENV_DRY_RUN_TRACER, evaluate
 from openeo_driver.testing import DictSubSet, ephemeral_fileserver, ListSubSet
 from openeo_driver.util.geometry import validate_geojson_coordinates
-from openeo_driver.utils import EvalEnv
+from openeo_driver.utils import EvalEnv, read_json
 from openeo_driver.workspace import DiskWorkspace
 import osgeo.gdal
 from shapely.geometry import Point, Polygon, shape
@@ -42,6 +43,13 @@ from . import assert_cog
 from .conftest import force_stop_spark_context, _setup_local_spark, TEST_AWS_REGION_NAME
 
 from .data import TEST_DATA_ROOT, get_test_data_file
+
+
+@pytest.fixture
+def job_dir(tmp_path) -> Path:
+    job_dir = tmp_path / "job-123"
+    job_dir.mkdir(parents=True, exist_ok=True)
+    return job_dir
 
 
 def test_png_export(tmp_path):
@@ -4068,3 +4076,56 @@ def test_predict_onnx_reduce_sum(tmp_path):
     assert len(bands) == 1
     assert bands[0]["statistics"]["minimum"] == 15
     assert bands[0]["statistics"]["maximum"] == 15
+
+
+@pytest.mark.parametrize(
+    ["stac_version"],
+    [
+        (None,),
+        ("1.1",),
+    ],
+)
+def test_load_stac_serialize_item_collection(tmp_path, job_dir, dummy_stac_api, metadata_tracker, stac_version):
+    process_graph = {
+        "loadstac1": {
+            "process_id": "load_stac",
+            "arguments": {"url": f"{dummy_stac_api}/collections/collection-123"},
+        },
+        "saveresult1": {
+            "process_id": "save_result",
+            "arguments": {
+                "data": {"from_node": "loadstac1"},
+                "format": "GTiff",
+            },
+            "result": True,
+        },
+    }
+    job_specification = {
+        "process_graph": process_graph,
+        "job_options": {"stac-version": stac_version},
+    }
+    metadata_path = job_dir / JOB_METADATA_FILENAME
+    run_job(
+        job_specification=job_specification,
+        output_file=job_dir / "out",
+        metadata_file=metadata_path,
+        job_dir=job_dir,
+    )
+    metadata = read_json(metadata_path)
+    assert {
+        "rel": "experimental-derived-from-stac-item-collection",
+        "href": "stac-item-collection-loadstac1.json",
+        "type": "application/json",
+    } in metadata["links"]
+
+    item_collection_data = read_json(job_dir / "stac-item-collection-loadstac1.json")
+    assert item_collection_data == dirty_equals.IsPartialDict(
+        {
+            "type": "FeatureCollection",
+            "features": [
+                dirty_equals.IsPartialDict(id="item-1"),
+                dirty_equals.IsPartialDict(id="item-2"),
+                dirty_equals.IsPartialDict(id="item-3"),
+            ],
+        }
+    )

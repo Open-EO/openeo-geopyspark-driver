@@ -71,6 +71,7 @@ WHITELIST = [
     EVAL_ENV_KEY.PARAMETERS,
     EVAL_ENV_KEY.OPENEO_API_VERSION,
     EVAL_ENV_KEY.GLOBAL_EXTENT,
+    EVAL_ENV_KEY.JOB_DIR,
 ]
 LARGE_LAYER_THRESHOLD_IN_PIXELS = pow(10, 11)
 LARGE_LAYER_THRESHOLD_IN_PIXELS_SENTINELHUB = pow(10, 10)
@@ -91,7 +92,9 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         self._default_sentinel_hub_client_secret = client_secret
 
     @TimingLogger(title="load_collection", logger=logger)
-    def load_collection(self, collection_id: str, load_params: LoadParameters, env: EvalEnv) -> GeopysparkDataCube:
+    def load_collection(
+        self, collection_id: str, load_params: LoadParameters, env: EvalEnv, pg_node_id: Optional[str] = None
+    ) -> GeopysparkDataCube:
 
         if smart_bool(env.get(EVAL_ENV_KEY.DO_EXTENT_CHECK, True)):
             env_validate = env.push({
@@ -115,11 +118,17 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                         + " ".join(issues)
                     )
 
-        return self._load_collection_cached(collection_id, load_params, WhiteListEvalEnv(env, WHITELIST))
+        return self._load_collection_cached(
+            collection_id, load_params, WhiteListEvalEnv(env, WHITELIST), pg_node_id=pg_node_id
+        )
 
     @lru_cache(maxsize=40)
-    def _load_collection_cached(self, collection_id: str, load_params: LoadParameters, env: EvalEnv) -> GeopysparkDataCube:
-        logger.info(f"load_collection: Creating raster datacube for {collection_id} with arguments {load_params}, environment: {env}")
+    def _load_collection_cached(
+        self, collection_id: str, load_params: LoadParameters, env: EvalEnv, pg_node_id: Optional[str] = None
+    ) -> GeopysparkDataCube:
+        logger.info(
+            f"load_collection: Creating raster datacube for {collection_id=} ({pg_node_id=}) with {load_params=}, {env=}"
+        )
 
         from_date, to_date = temporal_extent = normalize_temporal_extent(load_params.temporal_extent)
         spatial_extent = load_params.spatial_extent
@@ -732,6 +741,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 normalized_band_selection=normalized_band_selection,
                 feature_flags=layer_source_info.get("load_stac_feature_flags", {}),
                 data_cube_parameters=datacubeParams,
+                pg_node_id=pg_node_id,
             )
             pyramid = cube.pyramid.levels
             metadata = cube.metadata

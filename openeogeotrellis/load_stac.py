@@ -164,6 +164,8 @@ def _prepare_context(
     stac_io: Optional[pystac.stac_io.StacIO] = None,
     feature_flags: Optional[Dict[str, Any]] = None,
     data_cube_parameters: Optional[Any] = None,
+    serialize_item_collection: bool = True,
+    pg_node_id: Optional[str] = None,
 ) -> _LoadStacContext:
     """
     Prepare all metadata and inputs needed to build/load a datacube from raster files.
@@ -239,7 +241,11 @@ def _prepare_context(
 
         items_found = len(item_collection.items) > 0
         if not allow_empty_cubes and not items_found:
-            raise NoDataAvailableException(message=f"No data available with load_stac of {url=}")
+            raise NoDataAvailableException(message=f"No data available with load_stac of {url=} ({pg_node_id})")
+
+        if serialize_item_collection and pg_node_id and (job_dir := env.get(EVAL_ENV_KEY.JOB_DIR)):
+            item_collection_path = Path(job_dir) / get_stac_item_collection_filename(pg_node_id=pg_node_id)
+            item_collection.to_file(path=item_collection_path)
 
         jvm = get_jvm()
 
@@ -826,6 +832,7 @@ def load_stac(
     stac_io: Optional[pystac.stac_io.StacIO] = None,
     feature_flags: Optional[Dict[str, Any]] = None,
     data_cube_parameters: Optional[Any] = None,
+    pg_node_id: Optional[str] = None,
 ) -> GeopysparkDataCube:
     """
 
@@ -848,6 +855,7 @@ def load_stac(
         stac_io=stac_io,
         feature_flags=feature_flags,
         data_cube_parameters=data_cube_parameters,
+        pg_node_id=pg_node_id,
     )
     return _build_datacube(context)
 
@@ -2618,3 +2626,7 @@ class _ResolutionTracker:
             finest_res = None
 
         return epsgs, finest_res
+
+
+def get_stac_item_collection_filename(*, pg_node_id: str) -> str:
+    return f"stac-item-collection-{pg_node_id}.json"
