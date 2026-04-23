@@ -14,7 +14,7 @@ from openeo_driver.util.logging import (
 from openeo_driver.views import build_app
 from openeogeotrellis import deploy
 from openeogeotrellis.config import get_backend_config
-from openeogeotrellis.deploy import get_socket
+from openeogeotrellis.deploy import get_socket, patch_sar_backscatter_spec
 from openeogeotrellis.integrations.kubernetes import kube_client
 from openeogeotrellis.job_registry import EagerlyK8sTrackingInMemoryJobRegistry
 
@@ -60,34 +60,7 @@ def main():
         ),
     )
     app = build_app(backend_implementation=backend_implementation)
-
-    # https://github.com/Open-EO/openeo-python-driver/issues/242
-    # A more generic deployment specific override system does not yet exist, so do it here.
-    processes = backend_implementation.processing.get_process_registry("1.2.0")
-    backscatter_spec = processes.get_spec("sar_backscatter")
-    backscatter_spec["experimental"] = False
-    backscatter_spec["description"] = (
-        backscatter_spec["description"]
-        + """
-    \n\n ## Backend notes \n\n The implementation in this backend is based on Orfeo Toolbox.
-    """
-    )
-    parameters = {p["name"]: p for p in backscatter_spec["parameters"]}
-    parameters["coefficient"]["default"] = "sigma0-ellipsoid"
-    parameters["coefficient"][
-        "description"
-    ] = "Select the radiometric correction coefficient. The following options are available:\n\n* `sigma0-ellipsoid`: ground area computed with ellipsoid earth model\n"
-    parameters["coefficient"]["schema"] = [
-        {"type": "string", "enum": ["sigma0-ellipsoid"]},
-        {"title": "Non-normalized backscatter", "type": "null"},
-    ]
-    backscatter_spec["links"].append(
-        {
-            "rel": "about",
-            "href": "https://www.orfeo-toolbox.org/CookBook/Applications/app_SARCalibration.html",
-            "title": "Orfeo toolbox backscatter processor.",
-        }
-    )
+    patch_sar_backscatter_spec(backend_implementation)
 
     host = os.environ.get('SPARK_LOCAL_IP', None)
     if host is None:
