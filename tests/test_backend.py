@@ -16,6 +16,7 @@ from openeo_driver.constants import JOB_STATUS
 from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.delayed_vector import DelayedVector
+from openeo_driver.dry_run import SourceId
 from openeo_driver.processes import ProcessRegistry
 from openeo_driver.ProcessGraphDeserializer import ENV_SOURCE_CONSTRAINTS
 from openeo_driver.specs import read_spec
@@ -156,8 +157,8 @@ def test_get_submit_py_files_empty(tmp_path):
 
 def test_extra_validation_layer_too_large_drivervectorcube(backend_implementation):
     processing = GpsProcessing()
-    source_id1 = "load_collection", ("SENTINEL1_GRD", None)
-    source_id2 = "load_collection", ("COPERNICUS_30", None)
+    source_id1 = SourceId("load_collection", arguments=("SENTINEL1_GRD", None), pg_node_id="lc1")
+    source_id2 = SourceId("load_collection", arguments=("COPERNICUS_30", None), pg_node_id="lc2")
     polygon = {"type": "Polygon", "coordinates": [[(0, 0), (180, 0), (0, 90), (180, 90)]]}
     env_source_constraints = [
         (source_id1, {
@@ -183,7 +184,7 @@ def test_extra_validation_layer_too_large_drivervectorcube(backend_implementatio
 
 def test_extra_validation_layer_too_large_open_time_interval(backend_implementation):
     processing = GpsProcessing()
-    source_id1 = "load_collection", ("SENTINEL1_GRD", None)
+    source_id1 = SourceId("load_collection", arguments=("SENTINEL1_GRD", None), pg_node_id="lc1")
     env_source_constraints = [
         (source_id1, {
             "temporal_extent": [None, None],  # Will go from 2014 till current time
@@ -199,9 +200,10 @@ def test_extra_validation_layer_too_large_open_time_interval(backend_implementat
     assert len(errors) == 1
     assert errors[0]['code'] == "ExtentTooLarge"
 
+
 def test_extra_validation_layer_too_large_copernicus_30(backend_implementation):
     processing = GpsProcessing()
-    source_id1 = "load_collection", ("COPERNICUS_30", None)
+    source_id1 = SourceId("load_collection", arguments=("COPERNICUS_30", None), pg_node_id="lc1")
     env_source_constraints = [
         (source_id1, {
             # taken from user example in 'process_graph_list_mep.jsonl'
@@ -221,7 +223,7 @@ def test_extra_validation_layer_too_large_copernicus_30(backend_implementation):
 
 def test_extra_validation_layer_fail(backend_implementation):
     processing = GpsProcessing()
-    source_id1 = "load_collection", ("!!BOGUS_LAYER!!", None)
+    source_id1 = SourceId("load_collection", arguments=("!!BOGUS_LAYER!!", None), pg_node_id="lc1")
     env_source_constraints = [
         (source_id1, {
             "temporal_extent": None,
@@ -238,7 +240,7 @@ def test_extra_validation_layer_fail(backend_implementation):
 
 def test_extra_validation_without_extent(backend_implementation):
     processing = GpsProcessing()
-    source_id1 = "load_collection", ("ESA_WORLDCOVER_10M_2021_V2", None)
+    source_id1 = SourceId("load_collection", arguments=("ESA_WORLDCOVER_10M_2021_V2", None), pg_node_id="lc1")
     env_source_constraints = [
         (source_id1, {
             "temporal_extent": None,
@@ -256,7 +258,7 @@ def test_extra_validation_without_extent(backend_implementation):
 
 def test_extra_validation_layer_too_large_area(backend_implementation):
     processing = GpsProcessing()
-    source_id1 = "load_collection", ("SENTINEL1_GRD", None)
+    source_id1 = SourceId("load_collection", arguments=("SENTINEL1_GRD", None), pg_node_id="lc1")
     env_source_constraints = [
         (source_id1, {
             "temporal_extent": ["2022-01-01", "2022-01-01"],
@@ -277,7 +279,7 @@ def test_extra_validation_layer_too_large_area(backend_implementation):
 
 def test_extra_validation_layer_timezone(backend_implementation):
     processing = GpsProcessing()
-    source_id1 = "load_collection", ("SENTINEL1_GRD", None)
+    source_id1 = SourceId("load_collection", arguments=("SENTINEL1_GRD", None), pg_node_id="lc1")
     env_source_constraints = [
         (source_id1, {
             "temporal_extent": ["2022-01-01T00:00:00Z", "2022-01-09"],
@@ -298,8 +300,8 @@ def test_extra_validation_layer_timezone(backend_implementation):
 
 def test_extra_validation_layer_too_large_delayedvector(backend_implementation):
     processing = GpsProcessing()
-    source_id1 = "load_collection", ("SENTINEL1_GRD", None)
-    source_id2 = "load_collection", ("COPERNICUS_30", None)
+    source_id1 = SourceId("load_collection", arguments=("SENTINEL1_GRD", None), pg_node_id="lc1")
+    source_id2 = SourceId("load_collection", arguments=("COPERNICUS_30", None), pg_node_id="lc2")
     polygon1 = {"type": "Polygon", "coordinates": [[(0.0, 0.0), (0.05, 0.0), (0.0, 0.05), (0.05, 0.05)]]}
     polygon2 = {"type": "Polygon", "coordinates": [[(0.0, 0.0), (90.0, 0.0), (0.0, 180.0), (90.0, 180.0)]]}
     geom_coll = {"type": "GeometryCollection", "geometries": [polygon1, polygon2]}
@@ -331,8 +333,8 @@ def test_extra_validation_layer_too_large_delayedvector(backend_implementation):
 
 def test_extra_validation_layer_too_large_geometrycollection(backend_implementation):
     processing = GpsProcessing()
-    source_id1 = "load_collection", ("SENTINEL1_GRD", None)
-    source_id2 = "load_collection", ("COPERNICUS_30", None)
+    source_id1 = SourceId("load_collection", arguments=("SENTINEL1_GRD", None), pg_node_id="lc1")
+    source_id2 = SourceId("load_collection", arguments=("COPERNICUS_30", None), pg_node_id="lc2")
     polygon1 = shapely.geometry.Polygon([(0, 0), (0.2, 0), (0, 0.2), (0.2, 0.2)])
     polygon2 = shapely.geometry.Polygon([(0, 0), (90, 0), (0, 180), (90, 180)])
     env_source_constraints = [
@@ -365,7 +367,7 @@ def test_extra_validation_layer_too_large_custom_crs(backend_implementation):
     # The user can specify their own CRS in load_collection.
     # Here: The native crs of AGERA5 is LatLon but the user specifies a spatial_extent in EPSG:3035.
     processing = GpsProcessing()
-    source_id1 = "load_collection", ("AGERA5", None)
+    source_id1 = SourceId("load_collection", arguments=("AGERA5", None), pg_node_id="lc1")
     env_source_constraints = [
         (source_id1, {
             "temporal_extent": ["2019-01-01", "2019-01-02"],
@@ -380,7 +382,7 @@ def test_extra_validation_layer_too_large_custom_crs(backend_implementation):
 
 def test_extra_validation_layer_too_large_custom_crs_hourly(backend_implementation):
     processing = GpsProcessing()
-    source_id1 = "load_collection", ("AGERA5_HOURLY", None)
+    source_id1 = SourceId("load_collection", arguments=("AGERA5_HOURLY", None), pg_node_id="lc1")
     env_source_constraints = [
         (source_id1, {
             "temporal_extent": ["2019-01-01", "2019-01-02"],
@@ -399,7 +401,7 @@ def test_extra_validation_layer_too_large_custom_crs_hourly(backend_implementati
 def test_extra_validation_missing_gsd(backend_implementation):
     # Layers with missing GSD should not crash
     processing = GpsProcessing()
-    source_id1 = "load_collection", ("TERRASCOPE_S1_SLC_COHERENCE_V1", None)
+    source_id1 = SourceId("load_collection", arguments=("TERRASCOPE_S1_SLC_COHERENCE_V1", None), pg_node_id="lc1")
     polygon = {"type": "Polygon", "coordinates": [[(0, 0), (180.0, 0), (0, 90.0), (180.0, 90.0)]]}
     env_source_constraints = [
         (source_id1, {
@@ -419,8 +421,8 @@ def test_extra_validation_layer_too_large_resample_spatial(backend_implementatio
     # When resample_spatial or resample_cube_spatial is used, the resolution and crs of the layer is changed.
     # So that needs to be taken into account when estimating the number of pixels.
     processing = GpsProcessing()
-    source_id1 = "load_collection", ("SENTINEL1_GAMMA0_SENTINELHUB", None)
-    source_id2 = "load_collection", ("COPERNICUS_30", None)
+    source_id1 = SourceId("load_collection", arguments=("SENTINEL1_GAMMA0_SENTINELHUB", None), pg_node_id="lc1")
+    source_id2 = SourceId("load_collection", arguments=("COPERNICUS_30", None), pg_node_id="lc2")
     polygon = {"type": "Polygon", "coordinates": [[(0, 0), (180.0, 0), (0, 90.0), (180.0, 90.0)]]}
     env_source_constraints = [
         (source_id1, {
@@ -455,7 +457,7 @@ def test_extra_validation_layer_too_large_resample_spatial(backend_implementatio
 def test_extra_validation_layer_too_large_resample_spatial_auto42001(backend_implementation):
     # Resample spatial with Auto42001 as target projection.
     processing = GpsProcessing()
-    source_id1 = "load_collection", ("COPERNICUS_30", None)
+    source_id1 = SourceId("load_collection", arguments=("COPERNICUS_30", None), pg_node_id="lc1")
     env_source_constraints = [
         (source_id1, {
             "temporal_extent": ["2019-01-01", "2019-01-02"],
@@ -476,10 +478,11 @@ def test_extra_validation_layer_too_large_resample_spatial_auto42001(backend_imp
     errors = list(processing.extra_validation({}, env, None, env_source_constraints))
     assert len(errors) == 0
 
+
 def test_extra_validation_layer_too_large_resample_spatial_zero(backend_implementation):
     # Resample with different CRS, but resolution 0 should be ok.
     processing = GpsProcessing()
-    source_id1 = "load_collection", ("COPERNICUS_30", None)
+    source_id1 = SourceId("load_collection", arguments=("COPERNICUS_30", None), pg_node_id="lc1")
     env_source_constraints = [
         (
             source_id1,
