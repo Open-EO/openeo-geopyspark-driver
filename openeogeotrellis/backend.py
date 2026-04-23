@@ -1366,11 +1366,10 @@ class GpsProcessing(ConcreteProcessing):
             source_constraints_copy = deepcopy(source_constraints)
             for source_constraint in source_constraints_copy:
                 source_id, constraints = source_constraint
-                source_id_proc, source_id_args = source_id
-                collection_id = source_id_args[0]
-                if source_id_proc == "load_collection":
+                if source_id.process_id == "load_collection":
+                    cid = source_id.arguments[0]
                     load_params = _extract_load_parameters(env, source_id=source_id)
-                    yield from extra_validation_load_collection(collection_id, load_params, env)
+                    yield from extra_validation_load_collection(collection_id=cid, load_params=load_params, env=env)
         except Exception as e:
             logger.error("extra validation failed", exc_info=True)
             yield {"code": "Internal", "message": str(e)}  # TODO: just propagate errors not related to validation?
