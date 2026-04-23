@@ -2292,11 +2292,11 @@ class GpsBatchJobs(backend.BatchJobs):
         job_dependencies = []
         batch_request_cache = {}
 
-        for (process, arguments), constraints in source_constraints:
+        for source_id, constraints in source_constraints:
             dependency: Optional[dict] = None
-            if process == 'load_collection':
-                collection_id = arguments[0]
-                properties_criteria = arguments[1]
+            if source_id.process_id == "load_collection":
+                collection_id = source_id.arguments[0]
+                properties_criteria = source_id.arguments[1]
 
                 dependency = SentinelHubDependencies.schedule_for_load_collection(
                     supports_async_tasks=supports_async_tasks,
@@ -2315,9 +2315,9 @@ class GpsBatchJobs(backend.BatchJobs):
                     catalog=self._catalog,
                     batch_request_cache=batch_request_cache,
                 )
-            elif process == 'load_stac':
+            elif source_id.process_id == "load_stac":
                 dependency = PartialJobResults.get_partial_results_from_load_stac_arguments(
-                    arguments,
+                    arguments=source_id.arguments,
                     extract_own_job_info=lambda url: load_stac.extract_own_job_info(url, user_id=user_id, batch_jobs=self),
                     logger_adapter=logger_adapter,
                     requests_session=self._requests_session,

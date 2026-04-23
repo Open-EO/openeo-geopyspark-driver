@@ -207,14 +207,14 @@ def _extract_spatial_extent_from_constraint(
     Otherwise returns a tuple of (original_extent, aligned_extent).
     """
     source_id, constraint = source_constraint
-    source_process = source_id[0]
+    source_process = source_id.process_id
     if source_process == "load_collection":
-        collection_id = source_id[1][0]
+        collection_id = source_id.arguments[0]
         return _extract_spatial_extent_from_constraint_load_collection(
             collection_id=collection_id, constraint=constraint, catalog=catalog
         )
     elif source_process == "load_stac":
-        url = source_id[1][0]
+        url = source_id.arguments[0]
         return _extract_spatial_extent_from_constraint_load_stac(stac_url=url, constraint=constraint)
     else:
         # TODO?
