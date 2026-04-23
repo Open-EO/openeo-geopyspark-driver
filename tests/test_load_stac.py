@@ -53,6 +53,7 @@ from openeogeotrellis.load_stac import (
     construct_item_collection,
     extract_own_job_info,
     load_stac,
+    NoDataAvailableException,
 )
 from openeogeotrellis.testing import DummyStacApiServer, gps_config_overrides, OpenSearchClientDumper
 from openeogeotrellis.util.geometry import bbox_to_geojson
@@ -131,7 +132,7 @@ def test_property_filter_from_parameter(requests_mock):
     load_params = LoadParameters(properties=properties)
     env = EvalEnv().push_parameters({"tile_id": "31UFS"})
 
-    with pytest.raises(OpenEOApiException, match="There is no data available for the given extents."):
+    with pytest.raises(NoDataAvailableException):
         load_stac(
             url=stac_collection_url,
             load_params=load_params,
@@ -382,7 +383,7 @@ def test_world_oom(requests_mock, test_data):
         (
             {},
             EvalEnv({"pyramid_levels": "highest"}),
-            pytest.raises(OpenEOApiException, match="There is no data available for the given extents"),
+            pytest.raises(NoDataAvailableException),
         ),
         ({"allow_empty_cube": True}, EvalEnv({"pyramid_levels": "highest"}), nullcontext()),
         ({}, EvalEnv({"pyramid_levels": "highest", "allow_empty_cubes": True}), nullcontext()),
@@ -427,7 +428,7 @@ def test_empty_cube_from_stac_api(requests_mock, featureflags, env, expectation)
         (
             {},
             EvalEnv({"pyramid_levels": "highest"}),
-            pytest.raises(OpenEOApiException, match="There is no data available for the given extents"),
+            pytest.raises(NoDataAvailableException),
         ),
         ({"allow_empty_cube": True}, EvalEnv({"pyramid_levels": "highest"}), nullcontext()),
         ({}, EvalEnv({"pyramid_levels": "highest", "allow_empty_cubes": True}), nullcontext()),
