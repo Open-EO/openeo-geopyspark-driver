@@ -239,7 +239,7 @@ def _prepare_context(
 
         items_found = len(item_collection.items) > 0
         if not allow_empty_cubes and not items_found:
-            raise NoDataAvailableException()
+            raise NoDataAvailableException(message=f"No data available with load_stac of {url=}")
 
         jvm = get_jvm()
 
