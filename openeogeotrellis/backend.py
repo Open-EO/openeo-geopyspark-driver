@@ -1428,7 +1428,7 @@ class GpsBatchJobs(backend.BatchJobs):
         # TODO: clean up this overly Terrascope-coupled constructor
         catalog: GeoPySparkLayerCatalog,
         udf_runtimes: Optional["GpsUdfRuntimes"] = None,
-        jvm: JVMView,
+        jvm: Optional[JVMView] = None,
         principal: Optional[str] = None,
         key_tab: Optional[str] = None,
         vault: Optional[Vault] = None,

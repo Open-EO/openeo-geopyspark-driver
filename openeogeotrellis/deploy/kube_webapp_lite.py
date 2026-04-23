@@ -37,6 +37,7 @@ def create_lite_backend_implementation():
     from openeo_driver.util.http import requests_with_retry
     from openeogeotrellis.backend import (
         GeoPySparkBackendImplementation,
+        GpsBatchJobs,
         GpsProcessing,
         GpsUdfRuntimes,
         get_elastic_job_registry,
@@ -70,11 +71,23 @@ def create_lite_backend_implementation():
             catalog = get_layer_catalog(vault=vault)
             udf_runtimes = GpsUdfRuntimes()
 
+            elastic_job_registry = get_elastic_job_registry(
+                requests_session=requests_session, do_health_check=False
+            )
+            batch_jobs = GpsBatchJobs(
+                catalog=catalog,
+                udf_runtimes=udf_runtimes,
+                jvm=None,  # No JVM in lite pods; start_job/poll_job_dependencies will not be called here
+                vault=vault,
+                elastic_job_registry=elastic_job_registry,
+                requests_session=requests_session,
+            )
+
             # Skip get_jvm(), SparkContext and GpsBatchJobs – call grandparent directly.
             openeo_driver_backend.OpenEoBackendImplementation.__init__(
                 self,
                 catalog=catalog,
-                batch_jobs=None,  # No Spark-based batch jobs in lite pods
+                batch_jobs=batch_jobs,
                 user_defined_processes=user_defined_processes,
                 processing=GpsProcessing(),
                 udf_runtimes=udf_runtimes,
