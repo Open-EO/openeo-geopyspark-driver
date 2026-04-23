@@ -1940,6 +1940,13 @@ class GeopysparkDataCube(DriverDataCube):
 
             return latlng_extent.xmin, latlng_extent.ymin, latlng_extent.xmax, latlng_extent.ymax
 
+        def to_latlng_geometry(bbox: "Extent") -> Polygon:
+            return self.__reproject_polygon(
+                polygon=Polygon.from_bounds(bbox.xmin(), bbox.ymin(), bbox.xmax(), bbox.ymax()),
+                srs=max_level.layer_metadata.crs,
+                dest_srs="EPSG:4326",
+            )
+
         def return_netcdf_items(java_items, nodata) -> dict:
             items = {}
 
@@ -2289,8 +2296,8 @@ class GeopysparkDataCube(DriverDataCube):
                                     ),
                                     "nodata": nodata,
                                     "datetime": stac_datetime,
-                                    "bbox": to_latlng_bbox(bbox),
-                                    "geometry": bbox_to_geojson(to_latlng_bbox(bbox)),
+                                    "bbox": to_latlng_bbox(bbox),  # TODO: should be envelope of geometry
+                                    "geometry": mapping(to_latlng_geometry(bbox)),
                                 }
                                 asset_metadata = asset.metadata()
                                 assets[asset_key]["proj:bbox"] = tuple(asset_metadata.get("proj:bbox"))
