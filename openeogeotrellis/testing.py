@@ -408,6 +408,7 @@ class DummyStacApiServer:
                     proj_code="EPSG:4326",
                     proj_bbox=[2, 49, 3, 50],
                     proj_shape=[32, 1 * 32],
+                    bands=[{"name": "B02"}],
                 )
             },
         )
@@ -424,6 +425,7 @@ class DummyStacApiServer:
                     proj_code="EPSG:4326",
                     proj_bbox=[3, 50, 5, 51],
                     proj_shape=[32, 2 * 32],
+                    bands=[{"name": "B02"}],
                 )
             },
         )
@@ -440,6 +442,7 @@ class DummyStacApiServer:
                     proj_code="EPSG:4326",
                     proj_bbox=[4, 51, 7, 52],
                     proj_shape=[32, 3 * 32],
+                    bands=[{"name": "B02"}],
                 )
             },
         )

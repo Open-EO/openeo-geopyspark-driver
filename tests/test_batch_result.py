@@ -4111,13 +4111,14 @@ def test_load_stac_serialize_item_collection(tmp_path, job_dir, dummy_stac_api, 
         job_dir=job_dir,
     )
     metadata = read_json(metadata_path)
+    expected_item_collection_filename = "stac-item-collection-loadstac1.json"
     assert {
         "rel": "experimental-derived-from-stac-item-collection",
-        "href": "stac-item-collection-loadstac1.json",
+        "href": expected_item_collection_filename,
         "type": "application/json",
     } in metadata["links"]
 
-    item_collection_data = read_json(job_dir / "stac-item-collection-loadstac1.json")
+    item_collection_data = read_json(job_dir / expected_item_collection_filename)
     assert item_collection_data == dirty_equals.IsPartialDict(
         {
             "type": "FeatureCollection",
@@ -4125,6 +4126,83 @@ def test_load_stac_serialize_item_collection(tmp_path, job_dir, dummy_stac_api, 
                 dirty_equals.IsPartialDict(id="item-1"),
                 dirty_equals.IsPartialDict(id="item-2"),
                 dirty_equals.IsPartialDict(id="item-3"),
+            ],
+        }
+    )
+
+
+@pytest.mark.parametrize(
+    ["stac_version"],
+    [
+        (None,),
+        ("1.1",),
+    ],
+)
+def test_load_collection_with_stac_serialize_item_collection(
+    tmp_path, job_dir, dummy_stac_api, metadata_tracker, stac_version, define_extra_collection
+):
+    collection_id = "STAC_COLLECTION_123"
+    stac_url = f"{dummy_stac_api}/collections/collection-123"
+
+    # Define custom collection from run-time dummy_stac_api endpoint
+    define_extra_collection(
+        {
+            "id": collection_id,
+            "_vito": {"data_source": {"type": "stac", "url": stac_url}},
+            "cube:dimensions": {
+                "bands": {
+                    "type": "bands",
+                    "values": ["B02"],
+                }
+            },
+        }
+    )
+
+    process_graph = {
+        "loadcollection1": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": collection_id,
+                "spatial_extent": {"west": 2.5, "south": 49.5, "east": 3.5, "north": 50.1},
+            },
+        },
+        "saveresult1": {
+            "process_id": "save_result",
+            "arguments": {
+                "data": {"from_node": "loadcollection1"},
+                "format": "GTiff",
+            },
+            "result": True,
+        },
+    }
+
+    job_specification = {
+        "process_graph": process_graph,
+        "job_options": {"stac-version": stac_version},
+    }
+    metadata_path = job_dir / JOB_METADATA_FILENAME
+    run_job(
+        job_specification=job_specification,
+        output_file=job_dir / "out",
+        metadata_file=metadata_path,
+        job_dir=job_dir,
+    )
+    metadata = read_json(metadata_path)
+
+    expected_item_collection_filename = "stac-item-collection-loadcollection1.json"
+    assert {
+        "rel": "experimental-derived-from-stac-item-collection",
+        "href": expected_item_collection_filename,
+        "type": "application/json",
+    } in metadata["links"]
+
+    item_collection_data = read_json(job_dir / expected_item_collection_filename)
+    assert item_collection_data == dirty_equals.IsPartialDict(
+        {
+            "type": "FeatureCollection",
+            "features": [
+                dirty_equals.IsPartialDict(id="item-1"),
+                dirty_equals.IsPartialDict(id="item-2"),
             ],
         }
     )

@@ -3307,24 +3307,36 @@ class TestPrepareContext:
             {
                 "id": "item-1",
                 "links": [
-                    {"title": "asset-1", "href": dirty_equals.IsStr(regex=".*/asset-1.tiff"), "bandNames": ["asset-1"]}
+                    {
+                        "title": "asset-1",
+                        "href": dirty_equals.IsStr(regex=".*/asset-1.tiff"),
+                        "bandNames": ["B02"],
+                    }
                 ],
             },
             {
                 "id": "item-2",
                 "links": [
-                    {"title": "asset-2", "href": dirty_equals.IsStr(regex=".*/asset-2.tiff"), "bandNames": ["asset-2"]}
+                    {
+                        "title": "asset-2",
+                        "href": dirty_equals.IsStr(regex=".*/asset-2.tiff"),
+                        "bandNames": ["B02"],
+                    }
                 ],
             },
             {
                 "id": "item-3",
                 "links": [
-                    {"title": "asset-2", "href": dirty_equals.IsStr(regex=".*/asset-3.tiff"), "bandNames": ["asset-2"]}
+                    {
+                        "title": "asset-2",
+                        "href": dirty_equals.IsStr(regex=".*/asset-3.tiff"),
+                        "bandNames": ["B02"],
+                    }
                 ],
             },
         ]
-        assert list(context.pyramid_factory.openSearchLinkTitles()) == ["asset-1", "asset-2"]
-        assert context.metadata.band_names == ["asset-1", "asset-2"]
+        assert list(context.pyramid_factory.openSearchLinkTitles()) == ["B02"]
+        assert context.metadata.band_names == ["B02"]
         assert context.metadata.temporal_extent == ("2024-05-01T00:00:00+00:00", "2024-07-03T00:00:00+00:00")
         assert context.metadata.spatial_extent is None
 
