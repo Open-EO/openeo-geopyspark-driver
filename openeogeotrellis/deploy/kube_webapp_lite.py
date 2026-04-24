@@ -138,13 +138,12 @@ def main():
         app.logger.setLevel("DEBUG")
         deploy.load_custom_processes()
 
-    host, _ = get_socket()
     port = os.environ.get("KUBE_OPENEO_API_PORT", 50001)
 
     run_gunicorn(
         app,
         threads=30,
-        host=host,
+        host="0.0.0.0",
         port=port,
         on_started=on_started,
     )
