@@ -34,7 +34,7 @@ import time_machine
 from _pytest.terminal import TerminalReporter
 from openeo_driver.backend import OpenEoBackendImplementation, UserDefinedProcesses
 from openeo_driver.testing import ApiTester, ephemeral_fileserver, UrllibMocker
-from openeo_driver.utils import smart_bool, get_package_versions
+from openeo_driver.utils import smart_bool, get_package_versions, read_json
 from openeo_driver.views import build_app
 
 from openeogeotrellis.integrations.s3proxy.sts import _STSClient
@@ -870,3 +870,25 @@ def dummy_stac_api(dummy_stac_api_server) -> typing.Iterator[str]:
     """
     with dummy_stac_api_server.serve() as root_url:
         yield root_url
+
+
+@pytest.fixture
+def define_extra_collection(tmp_path):
+    """
+    Fixture to inject extra collections in the layer catalog at run-time.
+    Returns function that takes extra layercatalog dict entry to append
+    """
+    extra_layer_catalog_path = tmp_path / "extra_layer_catalog.json"
+    layer_catalog_files = get_backend_config().layer_catalog_files + [extra_layer_catalog_path]
+
+    def define(metadata: dict):
+        if extra_layer_catalog_path.exists():
+            catalog = read_json(extra_layer_catalog_path)
+        else:
+            catalog = []
+        catalog.append(metadata)
+        with extra_layer_catalog_path.open("w", encoding="utf8") as f:
+            json.dump(catalog, fp=f, indent=2)
+
+    with gps_config_overrides(layer_catalog_files=layer_catalog_files):
+        yield define

@@ -1,19 +1,19 @@
-import functools
 import abc
+import functools
+import json
 import logging
 import re
 import threading
 from collections import OrderedDict
-from typing import Optional, Union, List, Tuple
+from typing import List, Optional, Tuple, Union
 from urllib.parse import urlparse
 
-import requests
 import pystac
 import pystac.stac_io
+import requests
+from openeo_driver.integrations.s3.client import S3ClientBuilder
 from pystac.stac_io import DefaultStacIO
 from pystac_client.stac_api_io import StacApiIO
-
-from openeo_driver.integrations.s3.client import S3ClientBuilder
 
 logger = logging.getLogger(__name__)
 
@@ -341,3 +341,12 @@ class S3StacIO(ComposableStacIO):
             Body=txt.encode("utf-8"),
             ContentEncoding="utf-8",
         )
+
+
+class CompactJsonStacIO(pystac.stac_io.DefaultStacIO):
+    """StacIO implementation that produces compact JSON output without unnecessary whitespace."""
+
+    def json_dumps(self, json_dict: dict, *args, **kwargs) -> str:
+        kwargs.setdefault("indent", None)
+        kwargs.setdefault("separators", (",", ":"))
+        return json.dumps(json_dict, *args, **kwargs)
