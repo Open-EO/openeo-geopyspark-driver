@@ -17,6 +17,7 @@ without compromising stable operations.
 - aspect and slope processes now return radians instead of degrees
 - YARN batch jobs: configure `spark.driver.maxResultSize` dynamically based on driver memory (max of 5g and driver memory) instead of hardcoded 5g ([#631](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1631))
 - Better support for spatial filtering with geometries that have internal overlap ([#1645](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1645))
+- Kubernetes batch jobs: support `driver-corerequest` job option for fractional CPU allocation to the driver (e.g. `"500m"`), using the `coreRequest` field in the Spark operator spec ([#1658](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1658))
 
 
 ## 0.71.0
