@@ -44,6 +44,7 @@ from openeo_driver.util.logging import (
 from openeo_driver.util.utm import auto_utm_epsg_for_geometry
 from py4j.clientserver import ClientServer
 from py4j.java_gateway import JVMView
+import shapely
 from shapely.geometry import GeometryCollection, MultiPolygon, Point, Polygon, box
 from shapely.geometry.base import BaseGeometry
 
@@ -954,3 +955,15 @@ class BadlyHashable:
 
     def __repr__(self):
         return f"BadlyHashable({repr(self.target)})"
+
+
+def equals_approximately(ref_geom: BaseGeometry, actual_geom: BaseGeometry, rel_area_tolerance: float) -> bool:
+    """Geometries are approximately equal if (area of) difference is small."""
+
+    area_difference = ref_geom.symmetric_difference(actual_geom).area
+    return area_difference / ref_geom.area < rel_area_tolerance
+
+
+def reproject_geometry(geometry, src_crs, dst_crs):
+    transformer = pyproj.Transformer.from_crs(src_crs, dst_crs, always_xy=True)
+    return shapely.transform(geometry, transformer.transform, interleaved=False)

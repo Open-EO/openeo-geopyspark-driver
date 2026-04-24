@@ -35,7 +35,7 @@ from openeogeotrellis.backend import JOB_METADATA_FILENAME
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.deploy.batch_job import run_job
 from openeogeotrellis.deploy.batch_job_metadata import extract_result_metadata
-from openeogeotrellis.utils import s3_client, GDALINFO_SUFFIX
+from openeogeotrellis.utils import s3_client, GDALINFO_SUFFIX, equals_approximately, reproject_geometry
 from openeogeotrellis.workspace import ObjectStorageWorkspace
 from openeogeotrellis.workspace.custom_stac_io import CustomStacIO
 from . import assert_cog
@@ -4074,6 +4074,7 @@ def test_item_geometry():
     job_dir = Path("/tmp/test_item_geometry")
 
     process_graph_path = f"/home/bossie/Documents/VITO/openeo-geopyspark-driver/stac item geometry seems inaccurate for rasters in utm #756/process_graph.json"
+    # TODO: replace with TestCollection-LonLat16x16
 
     with open(process_graph_path) as f:
         process = json.load(f)
@@ -4092,5 +4093,16 @@ def test_item_geometry():
     with open(metadata_file) as f:
         results_metadata = json.load(f)
 
-    # TODO: test if geometries for assets are the input rectangle (in 32631) reprojected to 4326 (a parallelogram)
-    # TODO: test bbox as well
+    assets = results_metadata["assets"].values()
+    assert assets
+
+    for asset in assets:
+        with rasterio.open(asset["href"]) as raster:
+            expected_geometry = reproject_geometry(
+                Polygon.from_bounds(*raster.bounds), src_crs=raster.crs, dst_crs=4326
+            )
+
+        asset_geometry = shape(asset["geometry"])
+        assert equals_approximately(expected_geometry, asset_geometry, rel_area_tolerance=0.01)
+
+        # TODO: test bbox as well
