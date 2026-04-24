@@ -629,7 +629,7 @@ class JobTracker:
                 stats["job_costs: failed"] += 1
                 job_costs = None
 
-            total_usage = dict_merge_recursive(job_metadata.usage.to_dict(), result_metadata.get("usage", {}))
+            total_usage = dict_merge_recursive(job_metadata.usage.to_dict(), result_metadata.get("usage") or {})
 
             def set_results_metadata(results_metadata: dict):
                 include_all_results_metadata = "results_metadata_uri" not in job_info
