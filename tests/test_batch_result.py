@@ -4068,3 +4068,29 @@ def test_predict_onnx_reduce_sum(tmp_path):
     assert len(bands) == 1
     assert bands[0]["statistics"]["minimum"] == 15
     assert bands[0]["statistics"]["maximum"] == 15
+
+
+def test_item_geometry():
+    job_dir = Path("/tmp/test_item_geometry")
+
+    process_graph_path = f"/home/bossie/Documents/VITO/openeo-geopyspark-driver/stac item geometry seems inaccurate for rasters in utm #756/process_graph.json"
+
+    with open(process_graph_path) as f:
+        process = json.load(f)
+
+    metadata_file = job_dir / JOB_METADATA_FILENAME
+
+    run_job(
+        process,
+        output_file=job_dir / "out",
+        metadata_file=metadata_file,
+        api_version="2.0.0",
+        job_dir=job_dir,
+        dependencies=[],
+    )
+
+    with open(metadata_file) as f:
+        results_metadata = json.load(f)
+
+    # TODO: test if geometries for assets are the input rectangle (in 32631) reprojected to 4326 (a parallelogram)
+    # TODO: test bbox as well
