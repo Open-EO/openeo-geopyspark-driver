@@ -1,19 +1,20 @@
-from pathlib import Path
 import datetime
+from pathlib import Path
+
 import boto3
 import pystac
 import pytest
 import responses
-
 from openeo.testing.stac import StacDummyBuilder
+
 from openeogeotrellis.integrations.stac import (
+    CompactJsonStacIO,
+    ComposableStacIO,
+    CompositeStacIO,
     ResilientStacIO,
     S3StacIO,
-    CompositeStacIO,
-    ComposableStacIO,
     _TieredStacResponseCache,
     ref_as_str,
-    CompactJsonStacIO,
 )
 
 

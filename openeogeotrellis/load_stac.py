@@ -13,7 +13,7 @@ import time
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterator, List, Optional, Set, Tuple, Union, Iterable, Sequence
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, Iterator, List, Optional, Sequence, Set, Tuple, Union
 from urllib.parse import urlparse
 
 import geopandas
@@ -29,7 +29,7 @@ import shapely
 import shapely.geometry
 from geopyspark import LayerType
 from openeo.metadata import _StacMetadataParser
-from openeo.util import Rfc3339, dict_no_none, TimingLogger
+from openeo.util import Rfc3339, TimingLogger, dict_no_none
 from openeo_driver import filter_properties
 from openeo_driver.backend import BatchJobMetadata, LoadParameters
 from openeo_driver.datacube import DriverVectorCube
@@ -50,17 +50,16 @@ from urllib3 import Retry
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.constants import EVAL_ENV_KEY
 from openeogeotrellis.geopysparkcubemetadata import GeopysparkCubeMetadata
-from typing import TYPE_CHECKING
-from openeogeotrellis.integrations.stac import LoggingStacApiIO, ResilientStacIO, CompactJsonStacIO
+from openeogeotrellis.integrations.stac import CompactJsonStacIO, LoggingStacApiIO, ResilientStacIO
 from openeogeotrellis.util.datetime import DateTimeLikeOrNone, to_datetime_utc_unless_none
 from openeogeotrellis.util.geometry import GeometrySimplifier, GridSnapper
 from openeogeotrellis.util.logging import TrackingIter
 from openeogeotrellis.util.projection import is_utm_epsg_code
-from openeogeotrellis.utils import get_jvm, map_optional, normalize_temporal_extent, to_projected_polygons, unzip
+from openeogeotrellis.utils import get_jvm, map_optional, normalize_temporal_extent, to_projected_polygons
 
 if TYPE_CHECKING:
+
     from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
-    from geopyspark import TiledRasterLayer
 
 logger = logging.getLogger(__name__)
 REQUESTS_TIMEOUT_SECONDS = 60
@@ -715,8 +714,9 @@ def _build_datacube(context: _LoadStacContext) -> GeopysparkDataCube:
     Build the raster pyramid using (heavy) raster loading operations.
     This function performs the actual calls to the PyramidFactory to load raster files.
     """
-    from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
     from geopyspark import Pyramid, TiledRasterLayer
+
+    from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 
     # Unpack context
     pyramid_factory = context.pyramid_factory

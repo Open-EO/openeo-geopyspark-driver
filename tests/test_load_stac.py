@@ -3,7 +3,7 @@ import json
 import logging
 import re
 from contextlib import nullcontext
-from typing import Iterator, List, Tuple, Union
+from typing import Iterator, List, Tuple
 from unittest import mock
 
 import dirty_equals
@@ -23,7 +23,6 @@ from openeo_driver.users import User
 from openeo_driver.util.date_math import now_utc
 from openeo_driver.util.geometry import BoundingBox
 from openeo_driver.utils import EvalEnv
-from py4j.java_gateway import JavaObject
 
 from openeogeotrellis.backend import GpsBatchJobs
 from openeogeotrellis.job_registry import InMemoryJobRegistry
@@ -33,6 +32,7 @@ from openeogeotrellis.load_stac import (
     AdaptingPropertyFilter,
     ItemCollection,
     ItemDeduplicator,
+    NoDataAvailableException,
     PropertyFilter,
     _get_apply_sentinel2_reflectance_offset,
     _get_proj_metadata,
@@ -53,9 +53,8 @@ from openeogeotrellis.load_stac import (
     construct_item_collection,
     extract_own_job_info,
     load_stac,
-    NoDataAvailableException,
 )
-from openeogeotrellis.testing import DummyStacApiServer, gps_config_overrides, OpenSearchClientDumper
+from openeogeotrellis.testing import DummyStacApiServer, OpenSearchClientDumper, gps_config_overrides
 from openeogeotrellis.util.geometry import bbox_to_geojson
 
 

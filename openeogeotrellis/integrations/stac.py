@@ -1,20 +1,19 @@
-import json
-import functools
 import abc
+import functools
+import json
 import logging
 import re
 import threading
 from collections import OrderedDict
-from typing import Optional, Union, List, Tuple, Any, Dict
+from typing import List, Optional, Tuple, Union
 from urllib.parse import urlparse
 
-import requests
 import pystac
 import pystac.stac_io
+import requests
+from openeo_driver.integrations.s3.client import S3ClientBuilder
 from pystac.stac_io import DefaultStacIO
 from pystac_client.stac_api_io import StacApiIO
-
-from openeo_driver.integrations.s3.client import S3ClientBuilder
 
 logger = logging.getLogger(__name__)
 

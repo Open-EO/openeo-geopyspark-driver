@@ -8,7 +8,6 @@ import contextlib
 import dataclasses
 import datetime
 import json
-import rasterio
 import re
 import subprocess
 import uuid
@@ -24,18 +23,18 @@ import kazoo
 import kazoo.exceptions
 import numpy
 import openeo_driver.testing
+import py4j.java_gateway
 import pyspark
 import pystac
 import pytest
+import rasterio
 import shapely
+import shapely.affinity
 import shapely.geometry
 import shapely.geometry.base
-import shapely.affinity
 import werkzeug.exceptions
-import py4j.java_gateway
-
 from openeo.testing.stac import StacDummyBuilder
-from openeo_driver.testing import ephemeral_flask_server, ApiResponse, load_json
+from openeo_driver.testing import ApiResponse, ephemeral_flask_server, load_json
 from openeo_driver.util.geometry import BoundingBox
 from openeo_driver.util.utm import is_utm_crs
 
@@ -43,7 +42,7 @@ import openeogeotrellis
 from openeogeotrellis.config import gps_config_getter
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.util.datetime import to_datetime_utc
-from openeogeotrellis.util.geometry import to_geojson_io_url, bbox_to_geojson
+from openeogeotrellis.util.geometry import bbox_to_geojson, to_geojson_io_url
 from openeogeotrellis.util.runtime import is_package_available
 
 

@@ -75,7 +75,9 @@ from openeogeotrellis.udf import (
 )
 from openeogeotrellis.util.runtime import get_job_id
 from openeogeotrellis.utils import (
+    BadlyHashable,
     add_permissions,
+    add_permissions_with_failsafe,
     describe_path,
     get_jvm,
     json_default,
@@ -84,8 +86,6 @@ from openeogeotrellis.utils import (
     to_s3_url,
     unzip,
     wait_till_path_available,
-    add_permissions_with_failsafe,
-    BadlyHashable,
 )
 
 logger = logging.getLogger("openeogeotrellis.deploy.batch_job")

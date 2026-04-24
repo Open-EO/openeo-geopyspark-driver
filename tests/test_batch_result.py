@@ -1,5 +1,4 @@
 import datetime as dt
-import dirty_equals
 import json
 import os
 import shutil
@@ -11,7 +10,9 @@ from typing import Set
 from unittest import mock
 from urllib.parse import urlparse
 
+import dirty_equals
 import geopandas as gpd
+import osgeo.gdal
 import pystac
 import pytest
 import rasterio
@@ -21,27 +22,25 @@ from openeo_driver.constants import ITEM_LINK_PROPERTY
 from openeo_driver.dry_run import DryRunDataTracer
 from openeo_driver.errors import OpenEOApiException
 from openeo_driver.ProcessGraphDeserializer import ENV_DRY_RUN_TRACER, evaluate
-from openeo_driver.testing import DictSubSet, ephemeral_fileserver, ListSubSet
+from openeo_driver.testing import DictSubSet, ListSubSet, ephemeral_fileserver
 from openeo_driver.util.geometry import validate_geojson_coordinates
 from openeo_driver.utils import EvalEnv, read_json
 from openeo_driver.workspace import DiskWorkspace
-import osgeo.gdal
 from shapely.geometry import Point, Polygon, shape
 
-from openeogeotrellis.geopysparkcubemetadata import Band
-from openeogeotrellis.testing import gps_config_overrides
-from openeogeotrellis.workspace import StacApiWorkspace
 from openeogeotrellis._version import __version__
 from openeogeotrellis.backend import JOB_METADATA_FILENAME
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.deploy.batch_job import run_job
 from openeogeotrellis.deploy.batch_job_metadata import extract_result_metadata
-from openeogeotrellis.utils import s3_client, GDALINFO_SUFFIX
-from openeogeotrellis.workspace import ObjectStorageWorkspace
+from openeogeotrellis.geopysparkcubemetadata import Band
+from openeogeotrellis.testing import gps_config_overrides
+from openeogeotrellis.utils import GDALINFO_SUFFIX, s3_client
+from openeogeotrellis.workspace import ObjectStorageWorkspace, StacApiWorkspace
 from openeogeotrellis.workspace.custom_stac_io import CustomStacIO
-from . import assert_cog
-from .conftest import force_stop_spark_context, _setup_local_spark, TEST_AWS_REGION_NAME
 
+from . import assert_cog
+from .conftest import TEST_AWS_REGION_NAME, _setup_local_spark, force_stop_spark_context
 from .data import TEST_DATA_ROOT, get_test_data_file
 
 
