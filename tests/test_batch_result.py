@@ -4098,11 +4098,9 @@ def test_item_geometry():
 
     for asset in assets:
         with rasterio.open(asset["href"]) as raster:
-            expected_geometry = reproject_geometry(
-                Polygon.from_bounds(*raster.bounds), src_crs=raster.crs, dst_crs=4326
-            )
+            raster_geometry = reproject_geometry(Polygon.from_bounds(*raster.bounds), src_crs=raster.crs, dst_crs=4326)
 
         asset_geometry = shape(asset["geometry"])
-        assert equals_approximately(expected_geometry, asset_geometry, rel_area_tolerance=0.01)
+        assert equals_approximately(raster_geometry, asset_geometry, rel_area_tolerance=0.01)
 
-        # TODO: test bbox as well
+        assert asset["bbox"] == pytest.approx(raster_geometry.bounds, rel=0.01)

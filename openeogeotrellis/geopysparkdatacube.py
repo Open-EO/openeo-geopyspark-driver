@@ -2285,6 +2285,7 @@ class GeopysparkDataCube(DriverDataCube):
                             for asset_key, asset in java_item.assets().items():
                                 path = asset.path()
                                 band_indices = asset.bandIndices()
+                                geometry = to_latlng_geometry(bbox)
                                 assets[asset_key] = {
                                     "href": str(path),
                                     "type": "image/tiff; application=geotiff",
@@ -2296,8 +2297,8 @@ class GeopysparkDataCube(DriverDataCube):
                                     ),
                                     "nodata": nodata,
                                     "datetime": stac_datetime,
-                                    "bbox": to_latlng_bbox(bbox),  # TODO: should be envelope of geometry
-                                    "geometry": mapping(to_latlng_geometry(bbox)),
+                                    "bbox": geometry.bounds,
+                                    "geometry": mapping(geometry),
                                 }
                                 asset_metadata = asset.metadata()
                                 assets[asset_key]["proj:bbox"] = tuple(asset_metadata.get("proj:bbox"))
