@@ -14,6 +14,8 @@ skips those calls and omits GpsBatchJobs entirely.
 import logging
 import os
 
+import flask
+
 from openeo_driver.server import run_gunicorn
 from openeo_driver.util.logging import (
     LOG_HANDLER_STDERR_JSON,
@@ -97,6 +99,15 @@ def create_lite_backend_implementation():
             # provide safe defaults so any inherited method that reads them won't crash.
             self._principal = None
             self._key_tab = None
+
+        def set_request_id(self, request_id: str):
+            pass  # No JVM MDC available in lite pods
+
+        def user_access_validation(self, user, request: flask.Request):
+            return user  # No JVM MDC available in lite pods
+
+        def after_request(self, request_id: str):
+            pass  # No JVM MDC or ScopedMetadataTracker available in lite pods
 
     return LiteBackendImplementation()
 
