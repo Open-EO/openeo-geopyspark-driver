@@ -143,6 +143,15 @@ class BandMetadata:
     # TODO how does gsd at band level work in STAC?
     gsd: Optional[float] = None
 
+    # eo:full_width_half_max: bandwidth in micrometers (μm)
+    eo_full_width_half_max: Optional[float] = None
+
+    # data type, e.g. "int16"
+    data_type: Optional[str] = None
+
+    # openeo:gsd — structured GSD as {"value": [x, y], "unit": "m"} for eo:bands summaries
+    openeo_gsd: Optional[dict] = None
+
     classification_classes: Optional[List[dict]] = None
 
     def to_summaries_raster_bands(self) -> dict:
@@ -152,6 +161,7 @@ class BandMetadata:
             scale=self.raster_scale,
             offset=self.raster_offset,
             unit=self.unit,
+            **{"classification:classes": self.classification_classes} if self.classification_classes else {},
         )
 
     def to_summaries_eo_bands(self) -> dict:
@@ -159,10 +169,16 @@ class BandMetadata:
         return dict_no_none(
             name=self.name,
             description=self.description,
-            common_name=self.eo_common_name,
+            **{"common_name": self.eo_common_name} if self.eo_common_name is not None else {},
             center_wavelength=self.eo_center_wavelength,
+            full_width_half_max=self.eo_full_width_half_max,
             aliases=self.aliases,
             gsd=self.gsd,
+            offset=self.raster_offset,
+            scale=self.raster_scale,
+            type=self.data_type,
+            unit=self.unit,
+            **{"openeo:gsd": self.openeo_gsd} if self.openeo_gsd is not None else {},
         )
 
     def to_summaries_bands(self) -> dict:
@@ -177,8 +193,8 @@ class BandMetadata:
                 "unit": self.unit,
                 "eo:common_name": self.eo_common_name,
                 "eo:center_wavelength": self.eo_center_wavelength,
+                "eo:full_width_half_max": self.eo_full_width_half_max,
                 "gsd": self.gsd,
-                "classification:classes": self.classification_classes,
             }
         )
 
@@ -205,9 +221,22 @@ def build_terrascope_stac_collection_metadata(
     load_stac_feature_flags: Optional[dict] = None,
     x_dim: Optional[dict] = None,
     y_dim: Optional[dict] = None,
+    name: Optional[str] = None,
     common_name: Optional[str] = None,
     provider_backend: Optional[str] = None,
     deprecated: Optional[bool] = None,
+    experimental: Optional[bool] = None,
+    keywords: Optional[List[str]] = None,
+    is_utm: Optional[bool] = None,
+    realign: Optional[bool] = None,
+    consider_as_singular_time_step: Optional[bool] = None,
+    title: Optional[str] = None,
+    properties: Optional[dict] = None,
+    license: Optional[str] = None,
+    include_eo_bands: bool = True,
+    links: Optional[List[dict]] = None,
+    sci_doi: Optional[str] = None,
+    sci_citation: Optional[str] = None,
 ) -> dict:
     """
     Generic openEO collection metadata generator.
@@ -218,6 +247,12 @@ def build_terrascope_stac_collection_metadata(
     }
     if provider_backend:
         data_source["provider:backend"] = provider_backend
+    if is_utm:
+        data_source["is_utm"] = is_utm
+    if realign is not None:
+        data_source["realign"] = realign
+    if consider_as_singular_time_step is not None:
+        data_source["consider_as_singular_time_step"] = consider_as_singular_time_step
     if load_stac_feature_flags:
         data_source["load_stac_feature_flags"] = load_stac_feature_flags
 
@@ -234,22 +269,34 @@ def build_terrascope_stac_collection_metadata(
 
     summaries = upstream_metadata.get("summaries", {})
     summaries["raster:bands"] = [b.to_summaries_raster_bands() for b in bands]
-    summaries["eo:bands"] = [b.to_summaries_eo_bands() for b in bands]
+    if include_eo_bands and bands:
+        summaries["eo:bands"] = [b.to_summaries_eo_bands() for b in bands]
+    elif "eo:bands" in summaries:
+        del summaries["eo:bands"]
     summaries["bands"] = [b.to_summaries_bands() for b in bands]
 
     cube_dimensions_bands_values = [b.name for b in bands]
+    vito = {"data_source": data_source}
+    if properties:
+        vito["properties"] = properties
 
     return dict_no_none(
         {
             "id": id,
+            "name": name,
             "common_name": common_name,
-            "title": upstream_metadata.get("title", id),
+            "title": title or upstream_metadata.get("title", id),
             "description": description,
-            "license": upstream_metadata.get("license", "other"),
+            "experimental": experimental,
+            "keywords": keywords or upstream_metadata.get("keywords") or None,
+            "license": license or upstream_metadata.get("license", "other"),
             "deprecated": deprecated,
             "providers": upstream_metadata.get("providers", []),
             "extent": upstream_metadata.get("extent", None),
-            "_vito": {"data_source": data_source},
+            "links": links,
+            "sci:doi": sci_doi or upstream_metadata.get("sci:doi") or None,
+            "sci:citation": sci_citation or upstream_metadata.get("sci:citation") or None,
+            "_vito": vito,
             "summaries": summaries,
             "cube:dimensions": {
                 "x": x_dim,
