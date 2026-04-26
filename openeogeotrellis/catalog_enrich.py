@@ -124,7 +124,21 @@ def enrich_catalog_metadata(metadata: CatalogDict) -> CatalogDict:
             data_source["dataset_id"] = data_source.get("dataset_id") or enrichment_metadata[cid]["datasource_type"]
 
     if enrichment_metadata:
+        # Collect links from both sources before merging, so we can combine them afterwards.
+        merged_links: Dict[CollectionId, list] = {}
+        for cid in enrichment_metadata:
+            enrichment_links_raw = enrichment_metadata[cid].get("links")
+            local_links_raw = (metadata.get(cid) or {}).get("links")
+            enrichment_links: list = enrichment_links_raw if isinstance(enrichment_links_raw, list) else []
+            local_links: list = local_links_raw if isinstance(local_links_raw, list) else []
+            if enrichment_links or local_links:
+                merged_links[cid] = enrichment_links + local_links
+
         metadata = dict_merge_recursive(enrichment_metadata, metadata, overwrite=True)
+
+        for cid, links in merged_links.items():
+            if cid in metadata:
+                metadata[cid]["links"] = links
 
     return metadata
 
