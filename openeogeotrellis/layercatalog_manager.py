@@ -25,6 +25,8 @@ from typing import List, Optional, Union
 
 import requests
 
+from openeogeotrellis.catalog_enrich import enrich_catalog_metadata
+
 _log = logging.getLogger(__name__)
 
 CRS_AUTO_42001 = {
@@ -65,6 +67,27 @@ class LayerCatalog:
         _log.info(f"Writing layer catalog to {path=} ({len(self._collections)=})")
         with open(path, mode="w", encoding="utf-8") as f:
             json.dump(self._collections, f, indent=2, ensure_ascii=False)
+
+    def enrich(self) -> None:
+        """
+        Enrich collection metadata in-place from external sources (OpenSearch, STAC, Sentinel Hub).
+
+        Applies the same enrichment as the runtime :func:`~openeogeotrellis.catalog_enrich.enrich_catalog_metadata`,
+        but during the manual layercatalog management step so that the result can be persisted to the JSON file.
+        """
+        metadata_dict = {c["id"]: c for c in self._collections}
+        enriched = enrich_catalog_metadata(metadata_dict)
+        # Preserve original ordering, then append any newly added collections
+        seen = set()
+        result = []
+        for c in self._collections:
+            cid = c["id"]
+            result.append(enriched.get(cid, c))
+            seen.add(cid)
+        for cid, c in enriched.items():
+            if cid not in seen:
+                result.append(c)
+        self._collections = result
 
     def index_of(self, id: str) -> Union[int, None]:
         for i, collection in enumerate(self._collections):
