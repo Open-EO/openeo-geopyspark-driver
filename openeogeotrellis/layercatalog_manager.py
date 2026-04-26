@@ -237,6 +237,8 @@ def build_terrascope_stac_collection_metadata(
     links: Optional[List[dict]] = None,
     sci_doi: Optional[str] = None,
     sci_citation: Optional[str] = None,
+    mission: Optional[str] = None,
+    extra_summaries: Optional[dict] = None,
 ) -> dict:
     """
     Generic openEO collection metadata generator.
@@ -274,6 +276,8 @@ def build_terrascope_stac_collection_metadata(
     elif "eo:bands" in summaries:
         del summaries["eo:bands"]
     summaries["bands"] = [b.to_summaries_bands() for b in bands]
+    if extra_summaries:
+        summaries.update(extra_summaries)
 
     cube_dimensions_bands_values = [b.name for b in bands]
     vito = {"data_source": data_source}
@@ -285,6 +289,7 @@ def build_terrascope_stac_collection_metadata(
             "id": id,
             "name": name,
             "common_name": common_name,
+            "mission": mission,
             "title": title or upstream_metadata.get("title", id),
             "description": description,
             "experimental": experimental,
