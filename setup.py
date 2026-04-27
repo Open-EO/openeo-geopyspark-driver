@@ -34,7 +34,7 @@ tests_require = [
     "google-auth<2.46.0; python_version<='3.8'",  # quick-fix for google-auth python 3.8 compatibility issue
     "re-assert",
     "dirty-equals>=0.6",
-    "cryptography>=44.0.0",
+    "cryptography~=46.0.0",
     "responses",
     "rio_cogeo",
     'pydantic~=1.0; python_version<"3.9"',
