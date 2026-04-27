@@ -4070,14 +4070,29 @@ def test_predict_onnx_reduce_sum(tmp_path):
     assert bands[0]["statistics"]["maximum"] == 15
 
 
-def test_item_geometry():
-    job_dir = Path("/tmp/test_item_geometry")
+def test_item_geometry(tmp_path):
+    job_dir = tmp_path
 
-    process_graph_path = f"/home/bossie/Documents/VITO/openeo-geopyspark-driver/stac item geometry seems inaccurate for rasters in utm #756/process_graph.json"
-    # TODO: replace with TestCollection-LonLat16x16
-
-    with open(process_graph_path) as f:
-        process = json.load(f)
+    process = {
+        "process_graph": {
+            "loadcollection1": {
+                "process_id": "load_collection",
+                "arguments": {
+                    "bands": ["B02"],
+                    "id": "SENTINEL2_L2A",
+                    "spatial_extent": {
+                        "west": 570153,
+                        "south": 5650300,
+                        "east": 570870,
+                        "north": 5651422,
+                        "crs": "EPSG:32631",
+                    },
+                    "temporal_extent": ["2023-09-01", "2023-09-10"],
+                },
+                "result": True,
+            }
+        }
+    }
 
     metadata_file = job_dir / JOB_METADATA_FILENAME
 
