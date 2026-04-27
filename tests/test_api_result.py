@@ -9,24 +9,24 @@ import shutil
 import textwrap
 import urllib.parse
 import urllib.request
-from unittest import skip
-
-import requests
 from pathlib import Path
 from typing import List, Optional, Sequence, Union
+from unittest import skip
 
 import dateutil.parser
+import dirty_equals
 import geopandas as gpd
 import mock
 import numpy
 import numpy as np
-import rioxarray
-
 import openeo
 import openeo.processes
+import osgeo.gdal
 import pandas
 import pytest
 import rasterio
+import requests
+import rioxarray
 import xarray
 from mock import MagicMock
 from numpy.testing import assert_equal
@@ -49,7 +49,6 @@ from openeo_driver.util.geometry import (
     as_geojson_feature,
     as_geojson_feature_collection,
 )
-import osgeo.gdal
 from pystac import (
     Asset,
     Catalog,
@@ -68,12 +67,12 @@ from openeogeotrellis.integrations.gdal import read_gdal_info
 from openeogeotrellis.job_registry import InMemoryJobRegistry
 from openeogeotrellis.load_stac import _LoadStacContext
 from openeogeotrellis.testing import (
+    OpenSearchClientDumper,
     Urllib3PoolManagerMocker,
     gps_config_overrides,
     random_name,
     rasterio_metadata_dump,
     spy_on_calls,
-    OpenSearchClientDumper,
 )
 from openeogeotrellis.util.runtime import is_package_available
 from openeogeotrellis.utils import (
@@ -2104,7 +2103,7 @@ def test_aggregate_spatial_netcdf_feature_names(api100, tmp_path):
     assert ds.coords["feature_names"].values.tolist() == ["apples", "oranges"]
 
 
-def test_load_collection_is_cached(api100):
+def test_load_collection_is_cached(api100, caplog):
     # unflattening this process graph will result in two calls to load_collection, unless it is cached
 
     process_graph = {
@@ -2164,23 +2163,29 @@ def test_load_collection_is_cached(api100):
         }
     }
 
-    with mock.patch('openeogeotrellis.layercatalog.logger') as logger:
-        result = api100.check_result(process_graph).json
+    caplog.set_level(logging.INFO)
 
-        assert result == {
-            "2021-01-05T00:00:00Z": [[1.0, 1.0], [1.0, 1.0]],
-            "2021-01-15T00:00:00Z": [[1.0, 1.0], [1.0, 1.0]],
-            "2021-01-25T00:00:00Z": [[1.0, 1.0], [1.0, 1.0]],
-            "2021-02-05T00:00:00Z": [[1.0, 2.0], [1.0, 2.0]],
-            "2021-02-15T00:00:00Z": [[1.0, 2.0], [1.0, 2.0]],
-        }
+    result = api100.check_result(process_graph).json
 
-        # TODO: is there an easier way to count the calls to lru_cache-decorated function load_collection?
-        creating_layer_calls = list(filter(lambda call: call.args[0].startswith("load_collection: Creating raster datacube for TestCollection-LonLat4x4"),
-                                           logger.info.call_args_list))
+    assert result == {
+        "2021-01-05T00:00:00Z": [[1.0, 1.0], [1.0, 1.0]],
+        "2021-01-15T00:00:00Z": [[1.0, 1.0], [1.0, 1.0]],
+        "2021-01-25T00:00:00Z": [[1.0, 1.0], [1.0, 1.0]],
+        "2021-02-05T00:00:00Z": [[1.0, 2.0], [1.0, 2.0]],
+        "2021-02-15T00:00:00Z": [[1.0, 2.0], [1.0, 2.0]],
+    }
 
-        n_load_collection_calls = len(creating_layer_calls)
-        assert n_load_collection_calls == 1
+    # TODO: is there an easier way to count the calls to lru_cache-decorated function load_collection?
+    create_logs = [
+        r.message
+        for r in caplog.records
+        if r.name == "openeogeotrellis.layercatalog"
+        and r.message.startswith("load_collection: Creating raster datacube")
+    ]
+    expected = r"load_collection.*Creating raster datacube.*TestCollection-LonLat4x4.*loadcollection1.*"
+    assert create_logs == [
+        dirty_equals.IsStr(regex=expected, regex_flags=re.DOTALL),
+    ]
 
 
 class TestAggregateSpatial:

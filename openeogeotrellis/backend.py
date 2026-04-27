@@ -816,8 +816,17 @@ Example usage:
 
         return cube
 
-    def load_stac(self, url: str, load_params: LoadParameters, env: EvalEnv) -> GeopysparkDataCube:
-        return self._load_stac_cached(url=url, load_params=load_params, env=WhiteListEvalEnv(env, WHITELIST))
+    def load_stac(
+        self,
+        url: str,
+        *,
+        load_params: LoadParameters,
+        env: EvalEnv,
+        pg_node_id: Optional[str] = None,
+    ) -> GeopysparkDataCube:
+        return self._load_stac_cached(
+            url=url, load_params=load_params, env=WhiteListEvalEnv(env, WHITELIST), pg_node_id=pg_node_id
+        )
 
     def query_stac(
         self,
@@ -845,9 +854,21 @@ Example usage:
         return item_collection.to_dict()
 
     @lru_cache(maxsize=20)
-    def _load_stac_cached(self, url: str, *, load_params: LoadParameters, env: EvalEnv) -> GeopysparkDataCube:
+    def _load_stac_cached(
+        self,
+        url: str,
+        *,
+        load_params: LoadParameters,
+        env: EvalEnv,
+        pg_node_id: Optional[str] = None,
+    ) -> GeopysparkDataCube:
         return load_stac.load_stac(
-            url=url, load_params=load_params, env=env, layer_properties=None, batch_jobs=self.batch_jobs
+            url=url,
+            load_params=load_params,
+            env=env,
+            layer_properties=None,
+            batch_jobs=self.batch_jobs,
+            pg_node_id=pg_node_id,
         )
 
     def load_ml_model(self, model_id: str) -> GeopysparkMlModel:
@@ -1428,7 +1449,7 @@ class GpsBatchJobs(backend.BatchJobs):
         # TODO: clean up this overly Terrascope-coupled constructor
         catalog: GeoPySparkLayerCatalog,
         udf_runtimes: Optional["GpsUdfRuntimes"] = None,
-        jvm: JVMView,
+        jvm: Optional[JVMView] = None,
         principal: Optional[str] = None,
         key_tab: Optional[str] = None,
         vault: Optional[Vault] = None,

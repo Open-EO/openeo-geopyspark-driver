@@ -13,7 +13,7 @@ import time
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterator, List, Optional, Set, Tuple, Union, Iterable, Sequence
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, Iterator, List, Optional, Sequence, Set, Tuple, Union
 from urllib.parse import urlparse
 
 import geopandas
@@ -29,7 +29,7 @@ import shapely
 import shapely.geometry
 from geopyspark import LayerType
 from openeo.metadata import _StacMetadataParser
-from openeo.util import Rfc3339, dict_no_none, TimingLogger
+from openeo.util import Rfc3339, TimingLogger, dict_no_none
 from openeo_driver import filter_properties
 from openeo_driver.backend import BatchJobMetadata, LoadParameters
 from openeo_driver.datacube import DriverVectorCube
@@ -50,17 +50,16 @@ from urllib3 import Retry
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.constants import EVAL_ENV_KEY
 from openeogeotrellis.geopysparkcubemetadata import GeopysparkCubeMetadata
-from typing import TYPE_CHECKING
-from openeogeotrellis.integrations.stac import LoggingStacApiIO, ResilientStacIO
+from openeogeotrellis.integrations.stac import CompactJsonStacIO, LoggingStacApiIO, ResilientStacIO
 from openeogeotrellis.util.datetime import DateTimeLikeOrNone, to_datetime_utc_unless_none
 from openeogeotrellis.util.geometry import GeometrySimplifier, GridSnapper
 from openeogeotrellis.util.logging import TrackingIter
 from openeogeotrellis.util.projection import is_utm_epsg_code
-from openeogeotrellis.utils import get_jvm, map_optional, normalize_temporal_extent, to_projected_polygons, unzip
+from openeogeotrellis.utils import get_jvm, map_optional, normalize_temporal_extent, to_projected_polygons
 
 if TYPE_CHECKING:
+
     from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
-    from geopyspark import TiledRasterLayer
 
 logger = logging.getLogger(__name__)
 REQUESTS_TIMEOUT_SECONDS = 60
@@ -164,6 +163,8 @@ def _prepare_context(
     stac_io: Optional[pystac.stac_io.StacIO] = None,
     feature_flags: Optional[Dict[str, Any]] = None,
     data_cube_parameters: Optional[Any] = None,
+    serialize_item_collection: bool = True,
+    pg_node_id: Optional[str] = None,
 ) -> _LoadStacContext:
     """
     Prepare all metadata and inputs needed to build/load a datacube from raster files.
@@ -239,7 +240,11 @@ def _prepare_context(
 
         items_found = len(item_collection.items) > 0
         if not allow_empty_cubes and not items_found:
-            raise NoDataAvailableException(message=f"No data available with load_stac of {url=}")
+            raise NoDataAvailableException(message=f"No data available with load_stac of {url=} ({pg_node_id})")
+
+        if serialize_item_collection and pg_node_id and (job_dir := env.get(EVAL_ENV_KEY.JOB_DIR)):
+            item_collection_path = Path(job_dir) / get_stac_item_collection_filename(pg_node_id=pg_node_id)
+            item_collection.to_file(path=item_collection_path)
 
         jvm = get_jvm()
 
@@ -709,8 +714,9 @@ def _build_datacube(context: _LoadStacContext) -> GeopysparkDataCube:
     Build the raster pyramid using (heavy) raster loading operations.
     This function performs the actual calls to the PyramidFactory to load raster files.
     """
-    from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
     from geopyspark import Pyramid, TiledRasterLayer
+
+    from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 
     # Unpack context
     pyramid_factory = context.pyramid_factory
@@ -826,6 +832,7 @@ def load_stac(
     stac_io: Optional[pystac.stac_io.StacIO] = None,
     feature_flags: Optional[Dict[str, Any]] = None,
     data_cube_parameters: Optional[Any] = None,
+    pg_node_id: Optional[str] = None,
 ) -> GeopysparkDataCube:
     """
 
@@ -848,6 +855,7 @@ def load_stac(
         stac_io=stac_io,
         feature_flags=feature_flags,
         data_cube_parameters=data_cube_parameters,
+        pg_node_id=pg_node_id,
     )
     return _build_datacube(context)
 
@@ -1582,6 +1590,19 @@ class ItemCollection:
             band_assets = {asset_id: asset for asset_id, asset in sorted(item.assets.items()) if _is_band_asset(asset)}
             if band_assets:
                 yield item, band_assets
+
+    def to_file(self, path: Union[str, Path], stac_io: Optional[pystac.StacIO] = None) -> None:
+        """Serialize item collection to a JSON file."""
+        pystac_item_collection = pystac.item_collection.ItemCollection(items=self.items)
+        # TODO: performance aspects and file size of JSON serialization of large item collections?
+        # Use compact JSON by default
+        pystac_item_collection.save_object(dest_href=str(path), stac_io=stac_io or CompactJsonStacIO())
+
+    @classmethod
+    def from_file(cls, path: Union[str, Path], stac_io: Optional[pystac.StacIO] = None) -> ItemCollection:
+        """Deserialize an item collection from a JSON file."""
+        pystac_item_collection = pystac.item_collection.ItemCollection.from_file(href=str(path), stac_io=stac_io)
+        return cls(items=pystac_item_collection.items)
 
 
 class ItemDeduplicator:
@@ -2605,3 +2626,7 @@ class _ResolutionTracker:
             finest_res = None
 
         return epsgs, finest_res
+
+
+def get_stac_item_collection_filename(*, pg_node_id: str) -> str:
+    return f"stac-item-collection-{pg_node_id}.json"

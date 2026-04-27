@@ -1,13 +1,15 @@
 import json
+import logging
+import re
 
+import dirty_equals
 import geopandas as gpd
 import geopyspark as gps
 import mock
+import openeo
 import pytest
 import rasterio
 from mock import ANY, MagicMock
-
-import openeo
 from openeo_driver.backend import LoadParameters
 from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.datastructs import SarBackscatterArgs
@@ -348,7 +350,7 @@ def test_load_collection_data_cube_params(jvm_mock, catalog):
     )
 
 
-def test_driver_vector_cube_supports_load_collection_caching(jvm_mock, catalog):
+def test_driver_vector_cube_supports_load_collection_caching(jvm_mock, catalog, caplog):
     def load_params1():
         gdf = gpd.read_file(str(get_test_data_file("geometries/FeatureCollection.geojson")))
         return LoadParameters(aggregate_spatial_geometries=DriverVectorCube(gdf))
@@ -357,19 +359,25 @@ def test_driver_vector_cube_supports_load_collection_caching(jvm_mock, catalog):
         gdf = gpd.read_file(str(get_test_data_file("geometries/FeatureCollection02.json")))
         return LoadParameters(aggregate_spatial_geometries=DriverVectorCube(gdf))
 
-    with mock.patch('openeogeotrellis.layercatalog.logger') as logger:
-        catalog.load_collection('SENTINEL1_GRD', load_params=load_params1(), env=EvalEnv({'pyramid_levels': 'highest'}))
-        catalog.load_collection('SENTINEL1_GRD', load_params=load_params1(), env=EvalEnv({'pyramid_levels': 'highest'}))
-        catalog.load_collection('SENTINEL1_GRD', load_params=load_params2(), env=EvalEnv({'pyramid_levels': 'highest'}))
-        catalog.load_collection('SENTINEL1_GRD', load_params=load_params2(), env=EvalEnv({'pyramid_levels': 'highest'}))
-        catalog.load_collection('SENTINEL1_GRD', load_params=load_params1(), env=EvalEnv({'pyramid_levels': 'highest'}))
+    caplog.set_level(logging.INFO)
 
-        # TODO: is there an easier way to count the calls to lru_cache-decorated function load_collection?
-        creating_layer_calls = list(filter(lambda call: call.args[0].startswith("load_collection: Creating raster datacube for SENTINEL1_GRD"),
-                                           logger.info.call_args_list))
+    catalog.load_collection("SENTINEL1_GRD", load_params=load_params1(), env=EvalEnv({"pyramid_levels": "highest"}))
+    catalog.load_collection("SENTINEL1_GRD", load_params=load_params1(), env=EvalEnv({"pyramid_levels": "highest"}))
+    catalog.load_collection("SENTINEL1_GRD", load_params=load_params2(), env=EvalEnv({"pyramid_levels": "highest"}))
+    catalog.load_collection("SENTINEL1_GRD", load_params=load_params2(), env=EvalEnv({"pyramid_levels": "highest"}))
+    catalog.load_collection("SENTINEL1_GRD", load_params=load_params1(), env=EvalEnv({"pyramid_levels": "highest"}))
 
-        n_load_collection_calls = len(creating_layer_calls)
-        assert n_load_collection_calls == 2
+    create_logs = [
+        r.message
+        for r in caplog.records
+        if r.name == "openeogeotrellis.layercatalog"
+        and r.message.startswith("load_collection: Creating raster datacube")
+    ]
+    expected = r"load_collection.*Creating raster datacube.*SENTINEL1_GRD.*"
+    assert create_logs == [
+        dirty_equals.IsStr(regex=expected, regex_flags=re.DOTALL),
+        dirty_equals.IsStr(regex=expected, regex_flags=re.DOTALL),
+    ]
 
 
 def test_load_stac_pixel_shift(api110, tmp_path, flask_app):

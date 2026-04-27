@@ -1,6 +1,5 @@
 import argparse
 import datetime as dt
-import functools
 import json
 import logging
 import math
@@ -14,7 +13,6 @@ import geopyspark
 import py4j.protocol
 import pyproj
 import pytz
-import requests
 import flask
 
 from openeo.metadata import Band
@@ -28,12 +26,12 @@ from openeo_driver.errors import OpenEOApiException, InternalException, ProcessG
 from openeo_driver.filter_properties import extract_literal_match
 from openeo_driver.util.geometry import reproject_bounding_box
 from openeo_driver.util.utm import auto_utm_epsg_for_geometry
-from openeo_driver.util.http import requests_with_retry
 from openeo_driver.utils import read_json, EvalEnv, WhiteListEvalEnv, smart_bool
 from shapely.geometry import box
 from shapely.geometry.base import BaseGeometry
 
 from openeogeotrellis import sentinel_hub, datacube_parameters
+from openeogeotrellis.catalog_enrich import enrich_catalog_metadata
 from openeogeotrellis._backend import post_dry_run
 from openeogeotrellis.catalogs.creo import CreoCatalogClient
 import openeogeotrellis.collections.s1backscatter_orfeo
@@ -43,7 +41,6 @@ from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.constants import EVAL_ENV_KEY
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
 from openeogeotrellis.load_stac import load_stac
-from openeogeotrellis.opensearch import OpenSearch, OpenSearchOscars, OpenSearchCreodias, OpenSearchCdse
 from openeogeotrellis.processgraphvisiting import GeotrellisTileProcessGraphVisitor
 from openeogeotrellis.utils import (
     dict_merge_recursive,
@@ -71,6 +68,7 @@ WHITELIST = [
     EVAL_ENV_KEY.PARAMETERS,
     EVAL_ENV_KEY.OPENEO_API_VERSION,
     EVAL_ENV_KEY.GLOBAL_EXTENT,
+    EVAL_ENV_KEY.JOB_DIR,
 ]
 LARGE_LAYER_THRESHOLD_IN_PIXELS = pow(10, 11)
 LARGE_LAYER_THRESHOLD_IN_PIXELS_SENTINELHUB = pow(10, 10)
@@ -91,7 +89,9 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         self._default_sentinel_hub_client_secret = client_secret
 
     @TimingLogger(title="load_collection", logger=logger)
-    def load_collection(self, collection_id: str, load_params: LoadParameters, env: EvalEnv) -> GeopysparkDataCube:
+    def load_collection(
+        self, collection_id: str, load_params: LoadParameters, env: EvalEnv, pg_node_id: Optional[str] = None
+    ) -> GeopysparkDataCube:
 
         if smart_bool(env.get(EVAL_ENV_KEY.DO_EXTENT_CHECK, True)):
             env_validate = env.push({
@@ -115,11 +115,17 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                         + " ".join(issues)
                     )
 
-        return self._load_collection_cached(collection_id, load_params, WhiteListEvalEnv(env, WHITELIST))
+        return self._load_collection_cached(
+            collection_id, load_params, WhiteListEvalEnv(env, WHITELIST), pg_node_id=pg_node_id
+        )
 
     @lru_cache(maxsize=40)
-    def _load_collection_cached(self, collection_id: str, load_params: LoadParameters, env: EvalEnv) -> GeopysparkDataCube:
-        logger.info(f"load_collection: Creating raster datacube for {collection_id} with arguments {load_params}, environment: {env}")
+    def _load_collection_cached(
+        self, collection_id: str, load_params: LoadParameters, env: EvalEnv, pg_node_id: Optional[str] = None
+    ) -> GeopysparkDataCube:
+        logger.info(
+            f"load_collection: Creating raster datacube for {collection_id=} ({pg_node_id=}) with {load_params=}, {env=}"
+        )
 
         from_date, to_date = temporal_extent = normalize_temporal_extent(load_params.temporal_extent)
         spatial_extent = load_params.spatial_extent
@@ -732,6 +738,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 normalized_band_selection=normalized_band_selection,
                 feature_flags=layer_source_info.get("load_stac_feature_flags", {}),
                 data_cube_parameters=datacubeParams,
+                pg_node_id=pg_node_id,
             )
             pyramid = cube.pyramid.levels
             metadata = cube.metadata
@@ -974,133 +981,9 @@ def _get_layer_catalog(
 
     logger.debug(f"_get_layer_catalog: {enrich_metadata=}")
     if enrich_metadata:
-        enrichment_metadata = {}
-        sh_collection_metadatas = None
-
-        @functools.lru_cache
-        def opensearch_instance(endpoint: str, variant: Optional[str] = None) -> OpenSearch:
-            endpoint = endpoint.lower()
-
-            if "oscars" in endpoint or "terrascope" in endpoint or "vito.be" in endpoint or variant == "oscars":
-                opensearch = OpenSearchOscars(endpoint=endpoint)
-            elif "creodias" in endpoint or variant == "creodias":
-                opensearch = OpenSearchCreodias(endpoint=endpoint)
-            elif "dataspace.copernicus.eu" in endpoint or variant == "cdse":
-                opensearch = OpenSearchCdse(endpoint=endpoint)
-            else:
-                raise ValueError(endpoint)
-
-            return opensearch
-
-        for cid, collection_metadata in metadata.items():
-            data_source = deep_get(collection_metadata, "_vito", "data_source", default={})
-            os_cid = data_source.get("opensearch_collection_id")
-            os_endpoint = data_source.get("opensearch_endpoint") or get_backend_config().default_opensearch_endpoint
-            os_variant = data_source.get("opensearch_variant")
-            data_source_type = data_source.get("type")
-            if os_cid and os_endpoint and os_variant != "disabled":
-                logger.debug(f"Enrich {cid=} ({data_source_type=}): {os_cid=} {os_endpoint=}")
-                try:
-                    enrichment_metadata[cid] = opensearch_instance(
-                        endpoint=os_endpoint, variant=os_variant
-                    ).get_metadata(collection_id=os_cid)
-                except Exception as e:
-                    logger.warning(f"Failed to enrich collection metadata of {cid}: {e}", exc_info=True)
-            elif data_source_type == "stac":
-                stac_url = data_source.get("url")
-                logger.debug(f"Enrich {cid=} ({data_source_type=}): {stac_url=}")
-                try:
-                    enrichment_metadata[cid] = _enrichment_metadata_from_stac(
-                        stac_url,
-                        band_aliases=data_source.get("enrichment_band_aliases"),
-                    )
-                except Exception as e:
-                    logger.warning(f"Failed to enrich collection metadata of {cid}: {e}", exc_info=True)
-
-            elif data_source_type == "sentinel-hub":
-                sh_stac_endpoint = "https://collections.eurodatacube.com/stac/index.json"
-                logger.debug(f"Enrich {cid=} ({data_source_type=}): {sh_stac_endpoint=}")
-
-                # TODO: improve performance by only fetching necessary STACs
-                if sh_collection_metadatas is None:
-                    sh_collections_session = requests_with_retry()
-                    sh_collections_resp = sh_collections_session.get(sh_stac_endpoint, timeout=60)
-                    sh_collections_resp.raise_for_status()
-                    sh_collection_metadatas = {
-                        c["id"]: sh_collections_session.get(c["link"], timeout=60).json()
-                        for c in sh_collections_resp.json()
-                    }
-
-                enrichment_id = data_source.get("enrichment_id")
-
-                # DEM collections have the same datasource_type "dem" so they need an explicit enrichment_id
-                if enrichment_id:
-                    sh_metadata = sh_collection_metadatas[enrichment_id]
-                else:
-                    sh_cid = data_source.get("dataset_id")
-
-                    # PLANETSCOPE doesn't have one so don't try to enrich it
-                    if sh_cid is None:
-                        continue
-
-                    sh_metadatas = [m for _, m in sh_collection_metadatas.items() if m["datasource_type"] == sh_cid]
-
-                    if len(sh_metadatas) == 0:
-                        logger.warning(f"No STAC data available for collection with id {sh_cid}")
-                        continue
-                    elif len(sh_metadatas) > 1:
-                        logger.warning(f"{len(sh_metadatas)} candidates for STAC data for collection with id {sh_cid}")
-                        continue
-
-                    sh_metadata = sh_metadatas[0]
-
-                enrichment_metadata[cid] = sh_metadata
-                if not data_source.get("endpoint"):
-                    endpoint = enrichment_metadata[cid]["providers"][0]["url"]
-                    endpoint = endpoint if endpoint.startswith("http") else "https://{}".format(endpoint)
-                    data_source["endpoint"] = endpoint
-                data_source["dataset_id"] = data_source.get("dataset_id") or enrichment_metadata[cid]["datasource_type"]
-
-        if enrichment_metadata:
-            metadata = dict_merge_recursive(enrichment_metadata, metadata, overwrite=True)
+        metadata = enrich_catalog_metadata(metadata)
 
     metadata = _merge_layers_with_common_name(metadata)
-
-    return metadata
-
-
-def _enrichment_metadata_from_stac(stac_url: str, *, band_aliases: Optional[Dict[str, List[str]]] = None) -> dict:
-    resp = requests.get(url=stac_url, timeout=10)
-    resp.raise_for_status()
-    metadata: dict = resp.json()
-
-    # Normalize band metadata a bit (as there are multiple ways to specify bands in STAC):
-    bands_from_cube_dimensions = deep_get(metadata, "cube:dimensions", "bands", "values", default=None)
-    if bands := deep_get(metadata, "summaries", "bands", default=None):
-        bands_from_summaries_bands = [b["name"] for b in bands]
-    else:
-        bands_from_summaries_bands = None
-    if bands := deep_get(metadata, "summaries", "eo:bands", default=None):
-        bands_from_summaries_eobands = [b["name"] for b in bands]
-    else:
-        bands_from_summaries_eobands = None
-
-    if bands_from_cube_dimensions is None and (bands_from_summaries_bands or bands_from_summaries_eobands):
-        metadata.setdefault("cube:dimensions", {})["bands"] = {
-            "type": "bands",
-            "values": bands_from_summaries_bands or bands_from_summaries_eobands,
-        }
-
-    # Inject band aliases (which is non-standard STAC at the moment)
-    if band_aliases:
-        if bands := deep_get(metadata, "summaries", "bands", default=None):
-            for band in bands:
-                if aliases := band_aliases.get(band["name"]):
-                    band.setdefault("aliases", []).extend(aliases)
-        if bands := deep_get(metadata, "summaries", "eo:bands", default=None):
-            for band in bands:
-                if aliases := band_aliases.get(band["name"]):
-                    band.setdefault("aliases", []).extend(aliases)
 
     return metadata
 
