@@ -965,6 +965,5 @@ def equals_approximately(ref_geom: BaseGeometry, actual_geom: BaseGeometry, rel_
 
 
 def reproject_geometry(geometry, src_crs, dst_crs):
-    # TODO: replace openeogeotrellis.geopysparkdatacube.GeopysparkDataCube.__reproject_polygon with this?
     transformer = pyproj.Transformer.from_crs(src_crs, dst_crs, always_xy=True)
     return transform(transformer.transform, geometry)

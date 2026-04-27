@@ -4208,7 +4208,8 @@ def test_load_collection_with_stac_serialize_item_collection(
     )
 
 
-def test_item_geometry(tmp_path):
+def test_item_geometry_matches_asset_geometry(tmp_path):
+    """Item geometry (in 4326) should match that of the underlying assets (in UTM)."""
     job_dir = tmp_path
 
     process = {

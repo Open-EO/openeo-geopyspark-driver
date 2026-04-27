@@ -198,7 +198,7 @@ class GeopysparkDataCube(DriverDataCube):
             geometry_crs = geometries.get_crs()
             geometries = geometries.to_multipolygon()
 
-        reprojected_polygon = self.__reproject_polygon(polygon=geometries, srs=geometry_crs, dest_srs=layer_crs)
+        reprojected_polygon = reproject_geometry(geometries, src_crs=geometry_crs, dst_srs=layer_crs)
 
         if mask:
             masked = self.mask_polygon(reprojected_polygon,srs=layer_crs)
@@ -968,12 +968,6 @@ class GeopysparkDataCube(DriverDataCube):
         return self.apply_to_levels(aggregate_temporally)
 
 
-    @classmethod
-    def __reproject_polygon(cls, polygon: Union[Polygon, MultiPolygon], srs, dest_srs):
-        from shapely.ops import transform
-        from pyproj import Transformer
-        return transform(Transformer.from_crs(srs, dest_srs, always_xy=True).transform, polygon)  # apply projection
-
     @callsite
     def merge_cubes(self, other: 'GeopysparkDataCube', overlaps_resolver:str=None):
         #we may need to align datacubes automatically?
@@ -1089,7 +1083,7 @@ class GeopysparkDataCube(DriverDataCube):
                      replacement=None, inside=False) -> 'GeopysparkDataCube':
         max_level = self.get_max_level()
         layer_crs = max_level.layer_metadata.crs
-        reprojected_polygon = self.__reproject_polygon(mask,CRS.from_user_input(srs), layer_crs)
+        reprojected_polygon = reproject_geometry(mask, src_crs=CRS.from_user_input(srs), dst_crs=layer_crs)
         # TODO should we warn when masking generates an empty collection?
         # TODO: use `replacement` and `inside`
         return self.apply_to_levels(lambda rdd: rdd.mask(
