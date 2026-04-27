@@ -2357,20 +2357,12 @@ class GpsBatchJobs(backend.BatchJobs):
             raise JobNotFinishedException
 
         results_metadata = self.load_results_metadata(job_id, user_id, job_dict)
-
-        if "items" in results_metadata:
-            return BatchJobResultMetadata(
-                items=self._result_metadata_to_item_assets(results_metadata, job_id),
-                assets=self._results_metadata_to_assets(results_metadata, job_id),
-                links=[],
-                providers=self._get_providers(job_id=job_id, user_id=user_id),
-            )
-        else:
-            return BatchJobResultMetadata(
-                assets=self._results_metadata_to_assets(results_metadata, job_id),
-                links=[],
-                providers=self._get_providers(job_id=job_id, user_id=user_id),
-            )
+        return BatchJobResultMetadata(
+            assets=self._results_metadata_to_assets(results_metadata, job_id),
+            items=self._result_metadata_to_item_assets(results_metadata, job_id),
+            links=results_metadata.get("links", []),
+            providers=self._get_providers(job_id=job_id, user_id=user_id),
+        )
 
     @deprecated("call get_result_metadata instead")
     @lru_cache(maxsize=20)
@@ -2468,14 +2460,15 @@ class GpsBatchJobs(backend.BatchJobs):
 
         return results_dict
 
-    def _result_metadata_to_item_assets(self, results_metadata, job_id):
+    def _result_metadata_to_item_assets(self, results_metadata: dict, job_id: str) -> dict:
         job_dir = self.get_job_output_dir(job_id=job_id)
         logger.info(f"item_assets has job_dir {job_dir}")
-        for item in results_metadata["items"]:
-            for asset_key, asset in item["assets"].items():
+        items = deepcopy(results_metadata.get("items", []))
+        for item in items:
+            for asset in item["assets"].values():
                 if "output_dir" not in asset and not asset["href"].startswith("s3://"):
                     asset["output_dir"] = str(job_dir)
-        return {item["id"]: item for item in results_metadata["items"]}
+        return {item["id"]: item for item in items}
 
 
     def get_results_metadata_path(self, job_id: str) -> Path:

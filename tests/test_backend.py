@@ -11,6 +11,7 @@ import mock
 import pytest
 import shapely
 from openeo.utils.version import ComparableVersion
+from openeo_driver.backend import BatchJobMetadata
 from openeo_driver.config.load import ConfigGetter
 from openeo_driver.constants import JOB_STATUS
 from openeo_driver.datacube import DriverVectorCube
@@ -872,9 +873,9 @@ class TestGpsBatchJobs:
         assert asset["href"] == "file:///path/to/openEO.tif"
         assert asset["bands"] == [Band(name="Flat:2",statistics={"maximum": 2.0, "mean": 0.84375, "minimum": 0.0, "stddev": 0.98771753932994, "valid_percent": 100.0})]
 
-    def test_get_result_items(self, kube_no_zk, backend_implementation, job_registry, tmp_path):
-        self._create_dummy_batch_job(backend_implementation, self._dummy_user)
-        job_id, job = next(iter(job_registry.db.items()))
+    def test_get_result_metadata(self, kube_no_zk, backend_implementation, job_registry, tmp_path):
+        job_metadata = self._create_dummy_batch_job(backend_implementation, self._dummy_user)
+        job_id = job_metadata.id
 
         job_metadata_json_path = tmp_path / "job_metadata.json"
         with open(job_metadata_json_path, "w") as f:
@@ -882,28 +883,40 @@ class TestGpsBatchJobs:
                 {
                     "items": [
                         {"id": "item1", "assets": {"openEO": {"href": "file:///path/to/openEO.tif"}}},
-                    ]
+                    ],
+                    "links": [
+                        {"rel": "aux", "href": "file:///path/to/aux.json"},
+                    ],
                 },
-                f,
+                fp=f,
             )
+        job_registry.set_status(job_id=job_id, status=JOB_STATUS.FINISHED)
+        job_registry.set_results_metadata_uri(job_id=job_id, results_metadata_uri=f"file://{job_metadata_json_path}")
 
-        job["status"] = JOB_STATUS.FINISHED
-        job["results_metadata_uri"] = f"file://{job_metadata_json_path}"
-
-        item_id, item = next(
-            iter(
-                backend_implementation.batch_jobs.get_result_metadata(
-                    job_id=job_id, user_id=self._dummy_user.user_id
-                ).items.items()
-            )
+        result_metadata = backend_implementation.batch_jobs.get_result_metadata(
+            job_id=job_id, user_id=self._dummy_user.user_id
         )
-
-        assert item_id == "item1"
-        assert [asset["href"] for asset in item["assets"].values()] == ["file:///path/to/openEO.tif"]
+        assert result_metadata.items == {
+            "item1": {
+                "id": "item1",
+                "assets": {
+                    "openEO": {
+                        "href": "file:///path/to/openEO.tif",
+                        "output_dir": dirty_equals.IsStr(regex="/batch_jobs/j-.*"),
+                    }
+                },
+            }
+        }
+        assert result_metadata.links == [
+            {
+                "rel": "aux",
+                "href": "file:///path/to/aux.json",
+            }
+        ]
 
     @staticmethod
-    def _create_dummy_batch_job(backend_implementation, user):
-        backend_implementation.batch_jobs.create_job(
+    def _create_dummy_batch_job(backend_implementation, user) -> BatchJobMetadata:
+        return backend_implementation.batch_jobs.create_job(
             user=user,
             process={
                 "process_graph": {
