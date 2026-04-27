@@ -2586,7 +2586,7 @@ class GeopysparkDataCube(DriverDataCube):
             if not zarr_file.endswith(".zarr"):
                 zarr_file = zarr_file + ".zarr"
             if filename_prefix and filename_prefix.isDefined():
-                p = pathlib.Path(save_filename)
+                p = pathlib.Path(zarr_file)
                 ext = p.name[p.name.index("."):]
                 zarr_file = str(p.parent / (filename_prefix.get() + ext))
             zarr_options = get_jvm().org.openeo.geotrellis.zarr.ZarrOptions()
