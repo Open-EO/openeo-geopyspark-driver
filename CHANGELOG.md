@@ -18,7 +18,7 @@ without compromising stable operations.
 - YARN batch jobs: configure `spark.driver.maxResultSize` dynamically based on driver memory (max of 5g and driver memory) instead of hardcoded 5g ([#631](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1631))
 - Better support for spatial filtering with geometries that have internal overlap ([#1645](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1645))
 - Serialize STAC ItemCollection from `load_stac` ([#1618](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1618))
-- Batch job results: fix STAC item geometry ([#756](https://github.com/Open-EO/openeo-geopyspark-driver/issues/756))
+- Batch job results: STAC item geometry should match asset geometry ([#756](https://github.com/Open-EO/openeo-geopyspark-driver/issues/756))
 
 
 ## 0.71.0
