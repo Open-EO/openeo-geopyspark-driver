@@ -35,7 +35,7 @@ from openeogeotrellis.deploy.batch_job import run_job
 from openeogeotrellis.deploy.batch_job_metadata import extract_result_metadata
 from openeogeotrellis.geopysparkcubemetadata import Band
 from openeogeotrellis.testing import gps_config_overrides
-from openeogeotrellis.utils import GDALINFO_SUFFIX, s3_client
+from openeogeotrellis.utils import GDALINFO_SUFFIX, s3_client, equals_approximately, reproject_geometry
 from openeogeotrellis.workspace import ObjectStorageWorkspace, StacApiWorkspace
 from openeogeotrellis.workspace.custom_stac_io import CustomStacIO
 
@@ -4206,3 +4206,55 @@ def test_load_collection_with_stac_serialize_item_collection(
             ],
         }
     )
+
+
+def test_item_geometry_matches_asset_geometry(tmp_path):
+    """Item geometry (in 4326) should match that of the underlying assets (in UTM)."""
+    job_dir = tmp_path
+
+    process = {
+        "process_graph": {
+            "loadcollection1": {
+                "process_id": "load_collection",
+                "arguments": {
+                    "bands": ["B02"],
+                    "id": "SENTINEL2_L2A",
+                    "spatial_extent": {
+                        "west": 570153,
+                        "south": 5650300,
+                        "east": 570870,
+                        "north": 5651422,
+                        "crs": "EPSG:32631",
+                    },
+                    "temporal_extent": ["2023-09-01", "2023-09-10"],
+                },
+                "result": True,
+            }
+        }
+    }
+
+    metadata_file = job_dir / JOB_METADATA_FILENAME
+
+    run_job(
+        process,
+        output_file=job_dir / "out",
+        metadata_file=metadata_file,
+        api_version="2.0.0",
+        job_dir=job_dir,
+        dependencies=[],
+    )
+
+    with open(metadata_file) as f:
+        results_metadata = json.load(f)
+
+    assets = results_metadata["assets"].values()
+    assert assets
+
+    for asset in assets:
+        with rasterio.open(asset["href"]) as raster:
+            raster_geometry = reproject_geometry(Polygon.from_bounds(*raster.bounds), src_crs=raster.crs, dst_crs=4326)
+
+        asset_geometry = shape(asset["geometry"])
+        assert equals_approximately(raster_geometry, asset_geometry, rel_area_tolerance=0.01)
+
+        assert asset["bbox"] == pytest.approx(raster_geometry.bounds, rel=0.01)

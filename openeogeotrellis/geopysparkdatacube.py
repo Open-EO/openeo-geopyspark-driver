@@ -19,6 +19,7 @@ import pandas as pd
 import geopandas as gpd
 import pyproj
 import pytz
+import shapely.geometry
 import xarray as xr
 from geopyspark import TiledRasterLayer, Pyramid, Tile, SpaceTimeKey, SpatialKey, Metadata, zfactor_lat_lng_calculator
 from geopyspark.geotrellis import Extent, ResampleMethod
@@ -58,8 +59,10 @@ from openeogeotrellis.utils import (
     log_memory,
     ensure_executor_logging,
     get_jvm,
+    map_optional,
     temp_csv_dir,
     reproject_cellsize,
+    reproject_geometry,
     normalize_temporal_extent,
     GDALINFO_SUFFIX,
 )
@@ -195,7 +198,7 @@ class GeopysparkDataCube(DriverDataCube):
             geometry_crs = geometries.get_crs()
             geometries = geometries.to_multipolygon()
 
-        reprojected_polygon = self.__reproject_polygon(polygon=geometries, srs=geometry_crs, dest_srs=layer_crs)
+        reprojected_polygon = reproject_geometry(geometries, src_crs=geometry_crs, dst_crs=layer_crs)
 
         if mask:
             masked = self.mask_polygon(reprojected_polygon,srs=layer_crs)
@@ -965,12 +968,6 @@ class GeopysparkDataCube(DriverDataCube):
         return self.apply_to_levels(aggregate_temporally)
 
 
-    @classmethod
-    def __reproject_polygon(cls, polygon: Union[Polygon, MultiPolygon], srs, dest_srs):
-        from shapely.ops import transform
-        from pyproj import Transformer
-        return transform(Transformer.from_crs(srs, dest_srs, always_xy=True).transform, polygon)  # apply projection
-
     @callsite
     def merge_cubes(self, other: 'GeopysparkDataCube', overlaps_resolver:str=None):
         #we may need to align datacubes automatically?
@@ -1086,7 +1083,7 @@ class GeopysparkDataCube(DriverDataCube):
                      replacement=None, inside=False) -> 'GeopysparkDataCube':
         max_level = self.get_max_level()
         layer_crs = max_level.layer_metadata.crs
-        reprojected_polygon = self.__reproject_polygon(mask,CRS.from_user_input(srs), layer_crs)
+        reprojected_polygon = reproject_geometry(mask, src_crs=CRS.from_user_input(srs), dst_crs=layer_crs)
         # TODO should we warn when masking generates an empty collection?
         # TODO: use `replacement` and `inside`
         return self.apply_to_levels(lambda rdd: rdd.mask(
@@ -1943,14 +1940,20 @@ class GeopysparkDataCube(DriverDataCube):
 
             return latlng_extent.xmin, latlng_extent.ymin, latlng_extent.xmax, latlng_extent.ymax
 
+        def to_latlng_geometry(bbox: "Extent") -> Polygon:
+            return reproject_geometry(
+                geometry=shapely.geometry.box(bbox.xmin(), bbox.ymin(), bbox.xmax(), bbox.ymax()),
+                src_crs=max_level.layer_metadata.crs,
+                dst_crs="EPSG:4326",
+            )
+
         def return_netcdf_items(java_items, nodata) -> dict:
             items = {}
 
             for java_item in java_items:
                 assets = {}
-                extent = java_item.bbox()
-                bbox = to_latlng_bbox(extent) if extent else None
-                geometry = bbox_to_geojson(bbox) if bbox else None
+                geometry = map_optional(to_latlng_geometry, java_item.bbox())
+                bbox = map_optional(lambda g: g.bounds, geometry)
 
                 for asset_key, asset in java_item.assets().items():
                     assets[asset_key] = {
@@ -1958,8 +1961,8 @@ class GeopysparkDataCube(DriverDataCube):
                         "type": "application/x-netcdf",
                         "roles": ["data"],
                         "nodata": nodata,
+                        "geometry": map_optional(mapping, geometry),
                         "bbox": bbox,
-                        "geometry": geometry,
                     }
                     bands = []
                     asset_metadata = asset.metadata()
@@ -1977,8 +1980,8 @@ class GeopysparkDataCube(DriverDataCube):
 
                 items[java_item.id()] = {
                     "id": java_item.id(),
+                    "geometry": map_optional(mapping, geometry),
                     "bbox": bbox,
-                    "geometry": geometry,
                     "assets": assets,
                 }
 
@@ -2107,14 +2110,14 @@ class GeopysparkDataCube(DriverDataCube):
                         items = {}
 
                         for java_item in java_items:
-                            bbox = java_item.bbox()
+                            geometry = to_latlng_geometry(java_item.bbox())
                             assets = {}
 
                             for asset_key, asset in java_item.assets().items():
                                 assets[asset_key] = {
                                     "href": asset.path(),
-                                    "bbox": to_latlng_bbox(bbox),
-                                    "geometry": bbox_to_geojson(to_latlng_bbox(bbox)),
+                                    "geometry": mapping(geometry),
+                                    "bbox": geometry.bounds,
                                     "type": "image/tiff; application=geotiff",
                                     "roles": ["data"],
                                 }
@@ -2129,8 +2132,8 @@ class GeopysparkDataCube(DriverDataCube):
                             item = {
                                 "id": java_item.id(),
                                 "properties": {"datetime": java_item.datetime()},
-                                "geometry": bbox_to_geojson(to_latlng_bbox(bbox)),
-                                "bbox": to_latlng_bbox(bbox),
+                                "geometry": mapping(geometry),
+                                "bbox": geometry.bounds,
                                 "assets": assets,
                             }
 
@@ -2141,14 +2144,14 @@ class GeopysparkDataCube(DriverDataCube):
                         _log.info("save_result save_stitched")
                         java_item = self._save_stitched(max_level, save_filename, gtiff_options, crop_bounds, zlevel=zlevel)
 
-                        bbox = java_item.bbox()
+                        geometry = to_latlng_geometry(java_item.bbox())
                         assets = {}
 
                         for asset_key, asset in java_item.assets().items():
                             assets[asset_key] = {
                                 "href": save_filename,
-                                "bbox": to_latlng_bbox(bbox),
-                                "geometry": bbox_to_geojson(to_latlng_bbox(bbox)),
+                                "geometry": mapping(geometry),
+                                "bbox": geometry.bounds,
                                 "type": "image/tiff; application=geotiff",
                                 "roles": ["data"],
                             }
@@ -2163,8 +2166,8 @@ class GeopysparkDataCube(DriverDataCube):
                         item = {
                             "id": java_item.id(),
                             "properties": {"datetime": java_item.datetime()},
-                            "geometry": bbox_to_geojson(to_latlng_bbox(bbox)),
-                            "bbox": to_latlng_bbox(bbox),
+                            "geometry": mapping(geometry),
+                            "bbox": geometry.bounds,
                             "assets": assets,
                         }
 
@@ -2276,11 +2279,12 @@ class GeopysparkDataCube(DriverDataCube):
                             assets = {}
 
                             stac_datetime = java_item.datetime()
-                            bbox = java_item.bbox()
+                            geometry = to_latlng_geometry(java_item.bbox())
 
                             for asset_key, asset in java_item.assets().items():
                                 path = asset.path()
                                 band_indices = asset.bandIndices()
+
                                 assets[asset_key] = {
                                     "href": str(path),
                                     "type": "image/tiff; application=geotiff",
@@ -2292,8 +2296,8 @@ class GeopysparkDataCube(DriverDataCube):
                                     ),
                                     "nodata": nodata,
                                     "datetime": stac_datetime,
-                                    "bbox": to_latlng_bbox(bbox),
-                                    "geometry": bbox_to_geojson(to_latlng_bbox(bbox)),
+                                    "geometry": mapping(geometry),
+                                    "bbox": geometry.bounds,
                                 }
                                 if asset_metadata := asset.metadata():
                                     assets[asset_key]["proj:bbox"] = tuple(asset_metadata.get("proj:bbox"))
@@ -2306,8 +2310,8 @@ class GeopysparkDataCube(DriverDataCube):
                             item = {
                                 "id": java_item.id(),
                                 "properties": {"datetime": stac_datetime},
-                                "geometry": bbox_to_geojson(to_latlng_bbox(bbox)),
-                                "bbox": to_latlng_bbox(bbox),
+                                "geometry": mapping(geometry),
+                                "bbox": geometry.bounds,
                                 "assets": assets,
                             }
 
@@ -2337,7 +2341,7 @@ class GeopysparkDataCube(DriverDataCube):
                             assets = {}
 
                             stac_datetime = java_item.datetime()
-                            bbox = java_item.bbox()
+                            geometry = to_latlng_geometry(java_item.bbox())
 
                             for asset_key, asset in java_item.assets().items():
                                 path = asset.path()
@@ -2353,8 +2357,8 @@ class GeopysparkDataCube(DriverDataCube):
                                     ),
                                     "nodata": nodata,
                                     "datetime": stac_datetime,
-                                    "bbox": to_latlng_bbox(bbox),
-                                    "geometry": bbox_to_geojson(to_latlng_bbox(bbox)),
+                                    "geometry": mapping(geometry),
+                                    "bbox": geometry.bounds,
                                 }
                                 asset_metadata = asset.metadata()
                                 assets[asset_key]["proj:bbox"] = tuple(asset_metadata.get("proj:bbox"))
@@ -2367,8 +2371,8 @@ class GeopysparkDataCube(DriverDataCube):
                             item = {
                                 "id": java_item.id(),
                                 "properties": {"datetime": stac_datetime},
-                                "geometry": bbox_to_geojson(to_latlng_bbox(bbox)),
-                                "bbox": to_latlng_bbox(bbox),
+                                "geometry": mapping(geometry),
+                                "bbox": geometry.bounds,
                                 "assets": assets,
                             }
 
@@ -2399,7 +2403,7 @@ class GeopysparkDataCube(DriverDataCube):
                         for java_item in java_items:
                             assets = {}
 
-                            bbox = java_item.bbox()
+                            geometry = to_latlng_geometry(java_item.bbox())
 
                             for asset_key, asset in java_item.assets().items():
                                 path = asset.path()
@@ -2420,15 +2424,14 @@ class GeopysparkDataCube(DriverDataCube):
                                     assets[asset_key]["bands"] = [
                                         band for i, band in enumerate(bands) if i in band_indices
                                     ]
-                                if bbox:
-                                    assets[asset_key]["bbox"] = to_latlng_bbox(bbox)
-                                    assets[asset_key]["geometry"] = bbox_to_geojson(to_latlng_bbox(bbox))
+                                assets[asset_key]["geometry"] = mapping(geometry)
+                                assets[asset_key]["bbox"] = geometry.bounds
 
                             assets = add_gdalinfo_objects(assets)
                             item = {
                                 "id": java_item.id(),
-                                "geometry": bbox_to_geojson(to_latlng_bbox(bbox)),
-                                "bbox": to_latlng_bbox(bbox),
+                                "geometry": mapping(geometry),
+                                "bbox": geometry.bounds,
                                 "assets": assets,
                             }
 
