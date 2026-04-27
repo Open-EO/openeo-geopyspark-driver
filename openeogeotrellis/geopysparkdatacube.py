@@ -59,6 +59,7 @@ from openeogeotrellis.utils import (
     get_jvm,
     temp_csv_dir,
     reproject_cellsize,
+    reproject_geometry,
     normalize_temporal_extent,
     GDALINFO_SUFFIX,
 )
@@ -1941,10 +1942,10 @@ class GeopysparkDataCube(DriverDataCube):
             return latlng_extent.xmin, latlng_extent.ymin, latlng_extent.xmax, latlng_extent.ymax
 
         def to_latlng_geometry(bbox: "Extent") -> Polygon:
-            return self.__reproject_polygon(
-                polygon=Polygon.from_bounds(bbox.xmin(), bbox.ymin(), bbox.xmax(), bbox.ymax()),
-                srs=max_level.layer_metadata.crs,
-                dest_srs="EPSG:4326",
+            return reproject_geometry(
+                geometry=Polygon.from_bounds(bbox.xmin(), bbox.ymin(), bbox.xmax(), bbox.ymax()),
+                src_crs=max_level.layer_metadata.crs,
+                dst_crs="EPSG:4326",
             )
 
         def return_netcdf_items(java_items, nodata) -> dict:
