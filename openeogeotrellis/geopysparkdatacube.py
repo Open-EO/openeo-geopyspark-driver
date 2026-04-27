@@ -25,6 +25,7 @@ from geopyspark.geotrellis import Extent, ResampleMethod
 from geopyspark.geotrellis.constants import CellType, Unit
 from pandas import Series
 from pyproj import CRS
+from pyspark import TaskContext
 from shapely.geometry import mapping, Point, Polygon, MultiPolygon, GeometryCollection, box
 from shapely.geometry.base import BaseGeometry, BaseMultipartGeometry
 
@@ -820,10 +821,12 @@ class GeopysparkDataCube(DriverDataCube):
 
                     data = UdfData(proj={"EPSG": CRS.from_user_input(metadata.crs).to_epsg()}, datacube_list=[datacube], user_context=context)
 
+                    tc = TaskContext.get()
+                    task_id = "" if tc is None else f"{tc.stageId()}-{tc.partitionId()}"
                     # Run UDF.
-                    _log.debug(f"run_udf: {str_truncate(udf_code, width=1000)!r} on {data}!r")
+                    _log.debug(f"run_udf:{task_id} {str_truncate(udf_code, width=1000)!r} on {data}!r")
                     result_data = run_udf_code(code=udf_code, data=data)
-                    _log.debug(f"run_udf output: {result_data}!r")
+                    _log.debug(f"run_udf {task_id} output: {result_data}!r")
 
                     # Handle the resulting xarray datacube.
                     cubes: List[XarrayDataCube] = result_data.get_datacube_list()
