@@ -44,9 +44,9 @@ from openeo_driver.util.logging import (
 from openeo_driver.util.utm import auto_utm_epsg_for_geometry
 from py4j.clientserver import ClientServer
 from py4j.java_gateway import JVMView
-import shapely
 from shapely.geometry import GeometryCollection, MultiPolygon, Point, Polygon, box
 from shapely.geometry.base import BaseGeometry
+from shapely.ops import transform
 
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
@@ -967,4 +967,4 @@ def equals_approximately(ref_geom: BaseGeometry, actual_geom: BaseGeometry, rel_
 def reproject_geometry(geometry, src_crs, dst_crs):
     # TODO: replace openeogeotrellis.geopysparkdatacube.GeopysparkDataCube.__reproject_polygon with this?
     transformer = pyproj.Transformer.from_crs(src_crs, dst_crs, always_xy=True)
-    return shapely.transform(geometry, transformer.transform, interleaved=False)
+    return transform(transformer.transform, geometry)
