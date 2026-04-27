@@ -198,7 +198,7 @@ class GeopysparkDataCube(DriverDataCube):
             geometry_crs = geometries.get_crs()
             geometries = geometries.to_multipolygon()
 
-        reprojected_polygon = reproject_geometry(geometries, src_crs=geometry_crs, dst_srs=layer_crs)
+        reprojected_polygon = reproject_geometry(geometries, src_crs=geometry_crs, dst_crs=layer_crs)
 
         if mask:
             masked = self.mask_polygon(reprojected_polygon,srs=layer_crs)
