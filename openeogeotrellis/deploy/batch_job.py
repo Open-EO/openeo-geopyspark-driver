@@ -422,9 +422,12 @@ def run_job(
         def result_write_assets(result_arg: SaveResult) -> Tuple[dict, dict]:
             items = result_arg.write_assets(str(output_file))
             if isinstance(result_arg, StacSaveResult):
+                stac_href = result_arg.stac_root_local
+                if ConfigParams().is_kube_deploy and not str(stac_href).startswith("s3://"):
+                    stac_href = to_s3_url(str(stac_href).strip("/"))
                 extra_links.append(
                     {
-                        "href": result_arg.stac_root_local,
+                        "href": stac_href,
                         # https://github.com/radiantearth/stac-spec/blob/master/commons/links.md#relation-types
                         "rel": "child",
                         "title": f"Link to original STAC catalog.",
