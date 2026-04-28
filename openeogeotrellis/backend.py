@@ -1306,57 +1306,61 @@ Example usage:
         """Get resource usage cost associated with (current) synchronous processing request."""
 
         user_id = user.user_id
-
         backend_config = get_backend_config()
 
-        if backend_config.use_etl_api_on_sync_processing:
-            sc = SparkContext.getOrCreate()
+        if not backend_config.use_etl_api_on_sync_processing:
+            return None
 
-            # TODO: replace get-or-create with a plain get to avoid unnecessary Spark accumulator creation?
-            request_metadata_tracker = get_jvm().org.openeo.geotrelliscommon.ScopedMetadataTracker.apply(
-                request_id, sc._jsc.sc()
-            )
-            sentinel_hub_processing_units = request_metadata_tracker.sentinelHubProcessingUnits()
-            requests_session = requests_with_retry(total=3, backoff_factor=2,
-                                                   allowed_methods=Retry.DEFAULT_ALLOWED_METHODS.union({"POST"}))
+        sc = SparkContext.getOrCreate()
 
-            cpu_seconds = backend_config.default_usage_cpu_seconds
-            mb_seconds = backend_config.default_usage_byte_seconds / 1024 / 1024
+        # TODO: replace get-or-create with a plain get to avoid unnecessary Spark accumulator creation?
+        request_metadata_tracker = get_jvm().org.openeo.geotrelliscommon.ScopedMetadataTracker.apply(
+            request_id, sc._jsc.sc()
+        )
+        sentinel_hub_processing_units = request_metadata_tracker.sentinelHubProcessingUnits()
+        requests_session = requests_with_retry(
+            total=3, backoff_factor=2, allowed_methods=Retry.DEFAULT_ALLOWED_METHODS.union({"POST"})
+        )
 
-            etl_api = get_etl_api(
-                user=user,
-                job_options=job_options,
-                allow_dynamic_etl_api=True,
-                requests_session=requests_session,
-                # TODO #531 provide a TtlCache here
-                etl_api_cache=None,
-            )
+        cpu_seconds = backend_config.default_usage_cpu_seconds
+        mb_seconds = backend_config.default_usage_byte_seconds / 1024 / 1024
 
-            costs = etl_api.log_resource_usage(
-                batch_job_id=request_id,
-                title=f"Synchronous processing request {request_id!r}",
-                execution_id=request_id,
-                user_id=user_id,
-                started_ms=None,
-                finished_ms=None,
-                state="FINISHED" if success else "FAILED",
-                status="SUCCEEDED" if success else "FAILED",
-                cpu_seconds=cpu_seconds,
-                mb_seconds=mb_seconds,
-                duration_ms=None,
-                sentinel_hub_processing_units=(sentinel_hub_processing_units
-                                               if sentinel_hub_processing_units and
-                                                  backend_config.report_usage_sentinelhub_pus else None),
-                additional_credits_cost=None,
-                source_id=None,
-                organization_id=(job_options or {}).get(ETL_ORGANIZATION_ID_JOB_OPTION),
-            )
+        etl_api = get_etl_api(
+            user=user,
+            job_options=job_options,
+            allow_dynamic_etl_api=True,
+            requests_session=requests_session,
+            # TODO #531 provide a TtlCache here
+            etl_api_cache=None,
+        )
 
-            logger.info(
-                f"request_costs sync processing {request_id=} {success=} {cpu_seconds=} {mb_seconds=} {sentinel_hub_processing_units=} -> {costs=}"
-            )
+        costs = etl_api.log_resource_usage(
+            batch_job_id=request_id,
+            title=f"Synchronous processing request {request_id!r}",
+            execution_id=request_id,
+            user_id=user_id,
+            started_ms=None,
+            finished_ms=None,
+            state="FINISHED" if success else "FAILED",
+            status="SUCCEEDED" if success else "FAILED",
+            cpu_seconds=cpu_seconds,
+            mb_seconds=mb_seconds,
+            duration_ms=None,
+            sentinel_hub_processing_units=(
+                sentinel_hub_processing_units
+                if sentinel_hub_processing_units and backend_config.report_usage_sentinelhub_pus
+                else None
+            ),
+            additional_credits_cost=None,
+            source_id=None,
+            organization_id=(job_options or {}).get(ETL_ORGANIZATION_ID_JOB_OPTION),
+        )
 
-            return costs
+        logger.info(
+            f"request_costs sync processing {request_id=} {success=} {cpu_seconds=} {mb_seconds=} {sentinel_hub_processing_units=} -> {costs=}"
+        )
+
+        return costs
 
     def post_dry_run(
         self,
