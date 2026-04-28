@@ -4116,6 +4116,7 @@ def test_load_stac_serialize_item_collection(tmp_path, job_dir, dummy_stac_api, 
         "rel": "experimental-derived-from-stac-item-collection",
         "href": expected_item_collection_filename,
         "type": "application/json",
+        ITEM_LINK_PROPERTY.EXPOSE_AUXILIARY: True,
     } in metadata["links"]
 
     item_collection_data = read_json(job_dir / expected_item_collection_filename)
@@ -4194,6 +4195,7 @@ def test_load_collection_with_stac_serialize_item_collection(
         "rel": "experimental-derived-from-stac-item-collection",
         "href": expected_item_collection_filename,
         "type": "application/json",
+        ITEM_LINK_PROPERTY.EXPOSE_AUXILIARY: True,
     } in metadata["links"]
 
     item_collection_data = read_json(job_dir / expected_item_collection_filename)
