@@ -358,7 +358,7 @@ class K8SOptions(JobOptions):
         default="NONE",
         metadata={
             "description": "Fraction of CPUs to actually request, expressed as 'milli-cpus', for instance '600m' for 0.6 of 1 cpu unit.",
-            "public": False
+            "public": True
         })
     goofys:bool = field(default=False,
         metadata={
