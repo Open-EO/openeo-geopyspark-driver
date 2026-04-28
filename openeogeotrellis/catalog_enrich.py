@@ -59,6 +59,10 @@ def enrich_catalog_metadata(metadata: CatalogDict) -> CatalogDict:
         os_variant = data_source.get("opensearch_variant")
         data_source_type = data_source.get("type")
 
+        if not data_source.get("enrich", True):
+            logger.debug(f"Skipping enrichment for {cid=}: enrichment disabled via feature flag")
+            continue
+
         if os_cid and os_endpoint and os_variant != "disabled":
             logger.debug(f"Enrich {cid=} ({data_source_type=}): {os_cid=} {os_endpoint=}")
             try:
