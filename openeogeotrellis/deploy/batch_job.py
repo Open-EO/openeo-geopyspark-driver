@@ -16,6 +16,7 @@ import pystac
 from openeo.util import TimingLogger, dict_no_none, ensure_dir
 from openeo_driver import ProcessGraphDeserializer
 from openeo_driver.backend import BatchJobs
+from openeo_driver.constants import ITEM_LINK_PROPERTY
 from openeo_driver.datacube import DriverDataCube, DriverVectorCube
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import DryRunDataTracer
@@ -504,6 +505,7 @@ def run_job(
                     "rel": "experimental-derived-from-stac-item-collection",
                     "href": str(stac_item_collection_path.relative_to(job_dir)),
                     "type": "application/json",
+                    ITEM_LINK_PROPERTY.EXPOSE_AUXILIARY: True,
                 }
             )
 
