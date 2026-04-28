@@ -354,7 +354,7 @@ class K8SOptions(JobOptions):
             "public": False
         })
 
-    executor_request_cores: int = field(
+    executor_request_cores: str = field(
         default="NONE",
         metadata={
             "description": "Fraction of CPUs to actually request, expressed as 'milli-cpus', for instance '600m' for 0.6 of 1 cpu unit.",

@@ -1980,7 +1980,9 @@ class GpsBatchJobs(backend.BatchJobs):
             mount_tmp = as_boolean_arg("mount_tmp", default_value="false") != "false"
             use_pvc = as_boolean_arg("spark_pvc", default_value="false") != "false"
 
-            executor_corerequest = job_options.get("executor-request-cores", "NONE")
+            k8sOptions: K8SOptions = options
+
+            executor_corerequest = k8sOptions.executor_request_cores
             if executor_corerequest == "NONE":
                 executor_corerequest = str(int(options.executor_cores) / 2 * 1000) + "m"
 
