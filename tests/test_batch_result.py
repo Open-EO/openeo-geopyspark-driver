@@ -4111,15 +4111,16 @@ def test_load_stac_serialize_item_collection(tmp_path, job_dir, dummy_stac_api, 
         job_dir=job_dir,
     )
     metadata = read_json(metadata_path)
-    expected_item_collection_filename = "stac-item-collection-loadstac1.json"
-    assert {
+    expected_item_collection_path = job_dir / "stac-item-collection-loadstac1.json"
+    expected_link = {
         "rel": "experimental-derived-from-stac-item-collection",
-        "href": expected_item_collection_filename,
+        "href": f"file://{expected_item_collection_path}",
         "type": "application/json",
         ITEM_LINK_PROPERTY.EXPOSE_AUXILIARY: True,
-    } in metadata["links"]
+    }
+    assert expected_link in metadata["links"]
 
-    item_collection_data = read_json(job_dir / expected_item_collection_filename)
+    item_collection_data = read_json(expected_item_collection_path)
     assert item_collection_data == dirty_equals.IsPartialDict(
         {
             "type": "FeatureCollection",
@@ -4190,15 +4191,16 @@ def test_load_collection_with_stac_serialize_item_collection(
     )
     metadata = read_json(metadata_path)
 
-    expected_item_collection_filename = "stac-item-collection-loadcollection1.json"
-    assert {
+    expected_item_collection_path = job_dir / "stac-item-collection-loadcollection1.json"
+    expected_link = {
         "rel": "experimental-derived-from-stac-item-collection",
-        "href": expected_item_collection_filename,
+        "href": f"file://{expected_item_collection_path}",
         "type": "application/json",
         ITEM_LINK_PROPERTY.EXPOSE_AUXILIARY: True,
-    } in metadata["links"]
+    }
+    assert expected_link in metadata["links"]
 
-    item_collection_data = read_json(job_dir / expected_item_collection_filename)
+    item_collection_data = read_json(expected_item_collection_path)
     assert item_collection_data == dirty_equals.IsPartialDict(
         {
             "type": "FeatureCollection",

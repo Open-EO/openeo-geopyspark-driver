@@ -503,7 +503,7 @@ def run_job(
                     # TODO: this is a experimental link relation for now
                     #       to not interfere with existing "derived_from" handling logic (e.g. integration tests)
                     "rel": "experimental-derived-from-stac-item-collection",
-                    "href": str(stac_item_collection_path.relative_to(job_dir)),
+                    "href": f"file://{stac_item_collection_path.absolute()}",
                     "type": "application/json",
                     ITEM_LINK_PROPERTY.EXPOSE_AUXILIARY: True,
                 }
