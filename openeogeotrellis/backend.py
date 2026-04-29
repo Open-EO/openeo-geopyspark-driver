@@ -60,6 +60,7 @@ from openeo_driver.jobregistry import (DEPENDENCY_STATUS, JOB_STATUS, ElasticJob
                                        get_ejr_credentials_from_env)
 from openeo_driver.ProcessGraphDeserializer import ENV_FINAL_RESULT, ENV_SAVE_RESULT, ConcreteProcessing, \
     _extract_load_parameters, ENV_MAX_BUFFER, ENV_DRY_RUN_TRACER
+from openeo_driver.processgraph import ProcessGraphFlatDict
 from openeo_driver.save_result import ImageCollectionResult
 from openeo_driver.users import User
 from openeo_driver.util.date_math import now_utc
@@ -67,6 +68,8 @@ from openeo_driver.util.geometry import BoundingBox
 from openeo_driver.util.http import requests_with_retry
 from openeo_driver.util.utm import area_in_square_meters
 from openeo_driver.utils import EvalEnv, generate_unique_id, to_hashable, WhiteListEvalEnv, smart_bool
+from openeogeotrellis.collect_unique_process_ids_visitor import CollectUniqueProcessIdsVisitor
+from openeogeotrellis.deploy.batch_job_metadata import extract_result_metadata
 from pandas import Timedelta
 from py4j.java_gateway import JVMView
 from py4j.protocol import Py4JJavaError
@@ -1299,9 +1302,11 @@ Example usage:
         self,
         *,
         user: User,
+        process_graph: ProcessGraphFlatDict,
         job_options: Union[dict, None] = None,
         request_id: str,
         success: bool,
+        tracer: DryRunDataTracer,
     ) -> Optional[float]:
         """Get resource usage cost associated with (current) synchronous processing request."""
 
@@ -1334,9 +1339,12 @@ Example usage:
             etl_api_cache=None,
         )
 
+        title = f"Synchronous processing request {request_id!r}"
+
+        # TODO: reuse JobCostsCalculator?
         costs = etl_api.log_resource_usage(
             batch_job_id=request_id,
-            title=f"Synchronous processing request {request_id!r}",
+            title=title,
             execution_id=request_id,
             user_id=user_id,
             started_ms=None,
@@ -1356,8 +1364,27 @@ Example usage:
             organization_id=(job_options or {}).get(ETL_ORGANIZATION_ID_JOB_OPTION),
         )
 
+        unique_process_ids = CollectUniqueProcessIdsVisitor().accept_process_graph(process_graph).process_ids
+
+        result_metadata = extract_result_metadata(tracer)
+        square_meters = deep_get(result_metadata, "area", "value", default=None)
+
+        # TODO: add sum to costs
+        for process_id in unique_process_ids:
+            etl_api.log_added_value(
+                batch_job_id=request_id,
+                title=title,
+                execution_id=request_id,
+                user_id=user_id,
+                started_ms=None,
+                finished_ms=None,
+                process_id=process_id,
+                square_meters=square_meters,
+                source_id=None,
+            )
+
         logger.info(
-            f"request_costs sync processing {request_id=} {success=} {cpu_seconds=} {mb_seconds=} {sentinel_hub_processing_units=} -> {costs=}"
+            f"request_costs sync processing {request_id=} {success=} {cpu_seconds=} {mb_seconds=} {sentinel_hub_processing_units=} {unique_process_ids=} {square_meters=} -> {costs=}"
         )
 
         return costs
