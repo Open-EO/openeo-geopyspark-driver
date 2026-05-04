@@ -3094,6 +3094,15 @@ class GeopysparkDataCube(DriverDataCube):
             ),
         )
 
+    def corsa_compress_v2(self, patch_size: int) -> "GeopysparkDataCube":
+        def compute_corsa_compress(rdd, level):
+            pr = gps.get_spark_context()._jvm.org.openeo.geotrellis.OpenEOProcesses()
+            return pr.corsaCompressImproved(rdd, patch_size)
+
+        return self._apply_to_levels_geotrellis_rdd(
+            compute_corsa_compress, metadata=self.metadata.with_new_band_names(["level_0", "level_1"])
+        )
+
     @callsite
     def resolution_merge(self, args: ResolutionMergeArgs) -> 'GeopysparkDataCube':
         high_band_indices = [self.metadata.get_band_index(b) for b in args.high_resolution_bands]
