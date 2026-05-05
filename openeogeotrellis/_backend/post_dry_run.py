@@ -322,7 +322,7 @@ def _extract_spatial_extent_from_constraint_load_stac(
     # Determine most common grid (CRS and resolution) among assets
     target_grid = _determine_best_grid_from_proj_metadata(projection_metadatas)
     target_crs = target_grid.crs_raw if target_grid else None
-    _log.info(f"Determined {target_grid=}")
+    _log.info(f"Determined {target_grid=} {target_crs=}")
 
     # Merge asset bounding boxes (full native extent, and "aligned" part of covered extent).
     # Batch by CRS: compute min/max within each CRS group to avoid
