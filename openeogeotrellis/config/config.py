@@ -126,7 +126,7 @@ class GpsBackendConfig(OpenEoBackendConfig):
     udp_registry_zookeeper_client_reuse: bool = False
 
     ejr_api: Optional[str] = os.environ.get("OPENEO_EJR_API")
-    ejr_backend_id: str = "unknown"
+    ejr_backend_id: str = os.environ.get("OPENEO_EJR_BACKEND_ID", "unknown")
     ejr_credentials_vault_path: Optional[str] = "UNUSED_AND_TO_BE_REMOVED"
     ejr_preserialize_process: bool = False
 
