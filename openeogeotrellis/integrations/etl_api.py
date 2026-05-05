@@ -304,6 +304,12 @@ class SimpleEtlApiConfig(EtlApiConfig):
             raise EtlApiConfigException("Invalid ETL API root URL.")
         return self._client_credentials
 
+    @classmethod
+    def from_env(cls) -> "SimpleEtlApiConfig":
+        return SimpleEtlApiConfig(
+            root_url=os.environ.get("OPENEO_ETL_API"),
+            client_credentials=get_etl_api_credentials_from_env(),
+        )
 
 class MultiEtlApiConfig(EtlApiConfig):
     """
@@ -440,7 +446,7 @@ def get_etl_api(
         )
     else:
         # TODO #531 eliminate this code path
-        _log.debug("get_etl_api: legacy static EtlApi")
+        _log.warning("get_etl_api: legacy static EtlApi")
         return get_cached_or_build(
             cache_key=("get_etl_api", "__static_etl_api__"),
             build=lambda: EtlApi(
