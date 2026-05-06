@@ -25,6 +25,7 @@ from shapely.geometry import Polygon, mapping
 from shapely.geometry.base import BaseGeometry
 
 from openeogeotrellis._version import __version__
+from openeogeotrellis.backend import JOB_METADATA_FILENAME, GeoPySparkBackendImplementation
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.integrations.gdal import _extract_gdal_asset_raster_metadata
 from openeogeotrellis.util.geometry import bbox_to_geojson
@@ -43,8 +44,6 @@ def _assemble_result_metadata(
     ml_model_metadata: Dict = None,
     is_item = False,
 ) -> dict:
-    from openeogeotrellis.backend import GeoPySparkBackendImplementation
-
     metadata = extract_result_metadata(tracer)
 
     def epsg_code(geotrellis_proj4_crs) -> Optional[int]:
@@ -337,8 +336,6 @@ def _convert_asset_outputs_to_s3_urls(job_metadata: dict) -> dict:
 
 
 def _transform_stac_metadata(job_dir: Path):
-    from openeogeotrellis.backend import JOB_METADATA_FILENAME
-
     def relativize(assets: dict) -> dict:
         def relativize_href(asset: dict) -> dict:
             absolute_href = asset["href"]
