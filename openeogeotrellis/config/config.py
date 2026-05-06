@@ -130,9 +130,8 @@ class GpsBackendConfig(OpenEoBackendConfig):
     ejr_credentials_vault_path: Optional[str] = "UNUSED_AND_TO_BE_REMOVED"
     ejr_preserialize_process: bool = False
 
-    # TODO: eliminate hardcoded Terrascope references
     # TODO #531 eliminate this config favor of etl_api_config strategy below
-    etl_api: Optional[str] = os.environ.get("OPENEO_ETL_API", "https://etl.terrascope.be")
+    etl_api: Optional[str] = os.environ.get("OPENEO_ETL_API")
     etl_source_id: str = "TerraScope/MEP"
     use_etl_api_on_sync_processing: bool = False
     etl_dynamic_api_flag: Optional[str] = None  # TODO #531 eliminate this temporary feature flag? Unused now

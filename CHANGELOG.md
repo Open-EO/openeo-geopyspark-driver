@@ -20,6 +20,7 @@ without compromising stable operations.
 - Serialize STAC ItemCollection from `load_stac` ([#1618](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1618))
 - Batch job results: STAC item geometry should match asset geometry ([#756](https://github.com/Open-EO/openeo-geopyspark-driver/issues/756))
 - Support experimental `corsa_compress_v2` and `corsa_decompress_v2` processes ([Open-EO/openeo-geotrellis-extensions#702](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/702))
+- add `SimpleEtlApiConfig.from_env()` helper
 
 
 ## 0.71.0

@@ -304,6 +304,12 @@ class SimpleEtlApiConfig(EtlApiConfig):
             raise EtlApiConfigException("Invalid ETL API root URL.")
         return self._client_credentials
 
+    @classmethod
+    def from_env(cls) -> "SimpleEtlApiConfig":
+        return SimpleEtlApiConfig(
+            root_url=os.environ.get("OPENEO_ETL_API"),
+            client_credentials=get_etl_api_credentials_from_env(),
+        )
 
 class MultiEtlApiConfig(EtlApiConfig):
     """
@@ -393,7 +399,6 @@ class MultiEtlApiConfig(EtlApiConfig):
 
 def get_etl_api(
     *,
-    root_url: Optional[str] = None,
     user: Optional[User] = None,
     job_options: Optional[dict] = None,
     requests_session: Optional[requests.Session] = None,
@@ -402,7 +407,7 @@ def get_etl_api(
     etl_api_cache: Optional[TtlCache] = None,
 ) -> EtlApi:
     """
-    Get EtlApi, possibly depending on additional data (pre-determined root_url, current user, ...).
+    Get EtlApi, possibly depending on additional data (job options, current user, ...).
 
     :param user: (optional) user to dynamically determine ETL API endpoint with `EtlApiConfig.get_root_url` API
     :param job_options: (optional) job options dict to dynamically determine ETL API endpoint with `EtlApiConfig.get_root_url` API
@@ -413,7 +418,6 @@ def get_etl_api(
         Note that the caller is cache owner and responsible for providing the same cache instance on each call
         and setting the default TTL (as desired).
     """
-    # TODO #531 is there a practical need to expose `root_url` to the caller?
     backend_config = get_backend_config()
     etl_config: Optional[EtlApiConfig] = backend_config.etl_api_config
     _log.info(f"get_etl_api with {etl_config=}")
@@ -428,8 +432,7 @@ def get_etl_api(
     dynamic_etl_mode = allow_dynamic_etl_api and (etl_config is not None)
     if dynamic_etl_mode:
         # First get root URL as main ETL API identifier
-        if root_url is None:
-            root_url = etl_config.get_root_url(user=user, job_options=job_options)
+        root_url = etl_config.get_root_url(user=user, job_options=job_options)
         _log.debug(f"get_etl_api: dynamic EtlApiConfig based ETL API selection: {root_url=}")
 
         # Build EtlApi (or get from cache if possible)
@@ -443,7 +446,7 @@ def get_etl_api(
         )
     else:
         # TODO #531 eliminate this code path
-        _log.debug("get_etl_api: legacy static EtlApi")
+        _log.warning("get_etl_api: legacy static EtlApi")
         return get_cached_or_build(
             cache_key=("get_etl_api", "__static_etl_api__"),
             build=lambda: EtlApi(
