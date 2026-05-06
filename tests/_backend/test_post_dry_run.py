@@ -2,7 +2,10 @@ from typing import Callable, List, Optional
 
 import openeo_driver.ProcessGraphDeserializer
 import pytest
+
+from openeo.util import dict_no_none
 from openeo_driver.backend import CollectionCatalog, OpenEoBackendImplementation
+from openeo_driver.constants import RESAMPLE_SPATIAL_ALIGN
 from openeo_driver.dry_run import DryRunDataTracer, SourceConstraint
 from openeo_driver.ProcessGraphDeserializer import ENV_DRY_RUN_TRACER, ConcreteProcessing
 from openeo_driver.util.geometry import BoundingBox
@@ -15,6 +18,7 @@ from openeogeotrellis._backend.post_dry_run import (
     _determine_best_grid_from_proj_metadata,
     _extract_spatial_extent_from_constraint,
     _GridInfo,
+    _resample_extent,
     _snap_bbox,
     determine_global_extent,
 )
@@ -211,6 +215,54 @@ def test_buffer_extent_4326_to_auto_utm():
     assert _buffer_extent(
         bbox, buffer=(3, 3), sampling=_GridInfo(crs="AUTO:42001", resolution=(10, 10))
     ) == BoundingBox(500000 - 30, 5649824 - 30, 507016 + 30, 5660950 + 30, crs="EPSG:32631").approx(abs=1)
+
+
+@pytest.mark.parametrize(
+    ["resolution", "expected"],
+    [
+        ((10, 10), BoundingBox(west=506980, south=5660950, east=514010, north=5672090, crs="EPSG:32631")),
+        ((100, 100), BoundingBox(west=506900, south=5660900, east=514100, north=5672100, crs="EPSG:32631")),
+        ((30, 2000), BoundingBox(west=506970, south=5660000, east=514020, north=5674000, crs="EPSG:32631")),
+    ],
+)
+def test_resample_extent_lonlat_to_utm(resolution, expected):
+    bbox = BoundingBox(3.1, 51.1, 3.2, 51.2, crs="EPSG:4326")
+    resampled = _resample_extent(bbox, crs="EPSG:32631", resolution=resolution)
+    assert resampled == expected
+
+
+@pytest.mark.parametrize(
+    ["align", "expected"],
+    [
+        (
+            None,
+            BoundingBox(west=3969990, south=2970000, east=4040010, north=3040020, crs="EPSG:3035"),
+        ),
+        (
+            RESAMPLE_SPATIAL_ALIGN.UPPER_LEFT,
+            BoundingBox(west=3970000, south=2969980, east=4040020, north=3040000, crs="EPSG:3035"),
+        ),
+        (
+            RESAMPLE_SPATIAL_ALIGN.UPPER_RIGHT,
+            BoundingBox(west=3969980, south=2969980, east=4040000, north=3040000, crs="EPSG:3035"),
+        ),
+        (
+            RESAMPLE_SPATIAL_ALIGN.LOWER_LEFT,
+            BoundingBox(west=3970000, south=2970000, east=4040020, north=3040020, crs="EPSG:3035"),
+        ),
+        (
+            RESAMPLE_SPATIAL_ALIGN.LOWER_RIGHT,
+            BoundingBox(west=3969980, south=2970000, east=4040000, north=3040020, crs="EPSG:3035"),
+        ),
+    ],
+)
+def test_resample_extent_with_align(align, expected):
+    """
+    based on use case from https://github.com/Open-EO/openeo-geopyspark-driver/issues/1662
+    """
+    bbox = BoundingBox(west=3970000, south=2970000, east=4040000, north=3040000, crs="EPSG:3035")
+    resampled = _resample_extent(bbox, crs="EPSG:3035", resolution=(30, 30), align=align)
+    assert resampled == expected
 
 
 class DummyCatalog(CollectionCatalog):
@@ -436,7 +488,7 @@ class TestPostDryRun:
             ((70, 700), BoundingBox(west=644420, south=662200, east=729330, north=5676300, crs="EPSG:32631")),
         ],
     )
-    def test_extract_spatial_extent_from_constraint_load_collection_resample(
+    def test_extract_spatial_extent_from_constraint_load_collection_resample_spatial(
         self, dummy_catalog, extract_source_constraints, resolution, expected
     ):
         dummy_catalog.define_collection_metadata(
@@ -742,6 +794,112 @@ class TestPostDryRun:
                 "original": BoundingBox(west=5.1234, south=51.1234, east=5.8234, north=51.5234, crs="EPSG:4326"),
                 "assets_covered_bbox": BoundingBox(west=5.123, south=51.123, east=5.824, north=51.524, crs="EPSG:4326"),
                 "assets_full_bbox": BoundingBox(west=5, south=51, east=6, north=52, crs="EPSG:4326"),
+                "resampled": expected,
+            },
+        )
+
+    @pytest.mark.parametrize(
+        ["spatial_extent", "resample_spatial_args", "expected"],
+        [
+            (
+                {"west": 3_970_000, "south": 2_970_000, "east": 4_040_000, "north": 3_040_000, "crs": "EPSG:3035"},
+                {
+                    "projection": 3035,
+                    "resolution": 30,
+                    "align": RESAMPLE_SPATIAL_ALIGN.UPPER_LEFT,
+                },
+                BoundingBox(west=3_970_000, south=2_969_980, east=4_040_020, north=3_040_000, crs="EPSG:3035"),
+            ),
+            (
+                {"west": 3_970_000, "south": 2_970_000, "east": 4_040_000, "north": 3_040_000, "crs": "EPSG:3035"},
+                {
+                    "projection": 3035,
+                    "resolution": 30,
+                    "align": RESAMPLE_SPATIAL_ALIGN.UPPER_RIGHT,
+                },
+                BoundingBox(west=3_969_980, south=2_969_980, east=4_040_000, north=3_040_000, crs="EPSG:3035"),
+            ),
+            (
+                {"west": 3_970_000, "south": 2_970_000, "east": 4_040_000, "north": 3_040_000, "crs": "EPSG:3035"},
+                {
+                    "projection": 3035,
+                    "resolution": (103, 107),
+                    "align": RESAMPLE_SPATIAL_ALIGN.LOWER_RIGHT,
+                },
+                BoundingBox(west=3_969_960, south=2_970_000, east=4_040_000, north=3_040_085, crs="EPSG:3035"),
+            ),
+            (
+                {"west": 5.06, "south": 49.73, "east": 6.09, "north": 50.40, "crs": "EPSG:4326"},
+                {
+                    "projection": 3035,
+                    "resolution": (100, 100),
+                    "align": RESAMPLE_SPATIAL_ALIGN.LOWER_RIGHT,
+                },
+                BoundingBox(west=3_965_000, south=2_964_900, east=4_043_200, north=3_043_900, crs="EPSG:3035"),
+            ),
+            (
+                {"west": 646_708, "south": 5_511_652, "east": 722_986, "north": 5_587_956, "crs": "EPSG:32631"},
+                {
+                    "projection": 3035,
+                    "resolution": (103, 107),
+                    "align": RESAMPLE_SPATIAL_ALIGN.LOWER_RIGHT,
+                },
+                BoundingBox(west=3_963_440, south=2_963_365, east=4_046_561, north=3_046_718, crs="EPSG:3035"),
+            ),
+        ],
+    )
+    def test_extract_spatial_extent_from_constraint_load_stac_with_resample_spatial_and_align(
+        self,
+        dummy_catalog,
+        extract_source_constraints,
+        dummy_stac_api_server,
+        dummy_stac_api,
+        spatial_extent,
+        resample_spatial_args,
+        expected,
+    ):
+        """
+        Based on use case from https://github.com/Open-EO/openeo-geopyspark-driver/issues/1662
+        """
+        dummy_stac_api_server.define_collection("collection-1234")
+        dummy_stac_api_server.define_item(
+            collection_id="collection-1234",
+            item_id="item-1",
+            bbox=[5.5, 49.8, 6, 50],
+            assets={
+                "asset-1": {
+                    "href": "https://stac.test/asset-1.tif",
+                    "type": "image/tiff; application=geotiff",
+                    "roles": ["data"],
+                    "proj:code": 4326,
+                    "proj:bbox": [5.5, 49.8, 6, 50],
+                    "proj:shape": [1000, 1000],
+                }
+            },
+        )
+        pg = {
+            "load_stac": {
+                "process_id": "load_stac",
+                "arguments": {
+                    "url": f"{dummy_stac_api}/collections/collection-1234",
+                    "spatial_extent": spatial_extent,
+                },
+            },
+            "resample": {
+                "process_id": "resample_spatial",
+                "arguments": {"data": {"from_node": "load_stac"}, **resample_spatial_args},
+                "result": True,
+            },
+        }
+        source_constraints = extract_source_constraints(pg)
+        [source_constraint] = source_constraints
+        extents = _extract_spatial_extent_from_constraint(source_constraint=source_constraint, catalog=dummy_catalog)
+        assert extents == AlignedExtentResult(
+            extent=expected,
+            variants={
+                "original": BoundingBox.from_dict(spatial_extent),
+                "assets_covered_bbox": BoundingBox(west=5.5, south=49.8, east=6.0, north=50.0, crs="EPSG:4326"),
+                "assets_full_bbox": BoundingBox(west=5.5, south=49.8, east=6.0, north=50.0, crs="EPSG:4326"),
                 "resampled": expected,
             },
         )

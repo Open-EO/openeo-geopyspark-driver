@@ -21,6 +21,7 @@ without compromising stable operations.
 - Batch job results: STAC item geometry should match asset geometry ([#756](https://github.com/Open-EO/openeo-geopyspark-driver/issues/756))
 - Support experimental `corsa_compress_v2` and `corsa_decompress_v2` processes ([Open-EO/openeo-geotrellis-extensions#702](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/702))
 - add `SimpleEtlApiConfig.from_env()` helper
+- Global extent in post-dry-run: at least apply `align` from `resample_spatial` staying withing CRS ([#1662](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1662))
 
 
 ## 0.71.0
