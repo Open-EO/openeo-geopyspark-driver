@@ -226,7 +226,7 @@ class EtlApi:
             "orchestrator": ORCHESTRATOR,
             "jobStart": started_ms,
             "jobFinish": finished_ms,
-            "idempotencyKey": execution_id,
+            "idempotencyKey": execution_id,  # TODO: is this unique enough (for batch jobs and sync requests)? A quick fix might be to combine execution_id and process_id.
             "service": process_id,
             "area": {"value": square_meters, "unit": "square_meter"},
         }
@@ -236,6 +236,7 @@ class EtlApi:
         access_token = self._access_token_helper.get_access_token()
         with self._session.post(f"{self._endpoint}/addedvalue", headers={'Authorization': f"Bearer {access_token}"},
                                 json=data, timeout=REQUESTS_TIMEOUT_SECONDS) as resp:
+            # TODO: this code path is not followed for retried 500 responses?
             # TODO: doing both `resp.ok` and `resp.raise_for_status` is redundant?
             if not resp.ok:
                 log.warning(
