@@ -1338,7 +1338,9 @@ Example usage:
         title = f"Synchronous processing request {request_id!r}"
 
         square_meters = deep_get(extract_result_metadata(tracer), "area", "value", default=None)
-        unique_process_ids = CollectUniqueProcessIdsVisitor().accept_process_graph(process_graph).process_ids
+        unique_process_ids = (
+            CollectUniqueProcessIdsVisitor().accept_process_graph(process_graph).process_ids if process_graph else set()
+        )
 
         costs = DynamicEtlApiJobCostCalculator(user).calculate_costs(
             CostsDetails(
