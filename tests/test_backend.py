@@ -17,7 +17,7 @@ from openeo_driver.constants import JOB_STATUS
 from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.delayed_vector import DelayedVector
-from openeo_driver.dry_run import SourceId
+from openeo_driver.dry_run import SourceId, DryRunDataTracer
 from openeo_driver.processes import ProcessRegistry
 from openeo_driver.ProcessGraphDeserializer import ENV_SOURCE_CONSTRAINTS
 from openeo_driver.specs import read_spec
@@ -572,8 +572,14 @@ def test_request_costs(mock_get_etl_api_credentials_from_env, backend_implementa
         tracker = get_jvm.return_value.org.openeo.geotrelliscommon.ScopedMetadataTracker.apply.return_value
         tracker.sentinelHubProcessingUnits.return_value = shpu
 
+        process_graph = {"pi1": {"process_id": "pi", "result": True}}
+
         credit_cost = backend_implementation.request_costs(
-            user=User(user_id=user_id), request_id="r-abc123", success=success
+            user=User(user_id=user_id),
+            request_id="r-abc123",
+            success=success,
+            process_graph=process_graph,
+            tracer=DryRunDataTracer(),
         )
 
         mock_etl_api.log_resource_usage.assert_called_once_with(
