@@ -9,6 +9,7 @@ from typing import Callable, List, Tuple, Union, Dict, Set, Optional
 
 from openeo.util import deep_get
 from openeo_driver.backend import AbstractCollectionCatalog, LoadParameters
+from openeo_driver.constants import RESAMPLE_SPATIAL_ALIGN
 from openeo_driver.dry_run import SourceConstraint
 from openeo_driver.errors import CollectionNotFoundException
 from openeo_driver.util.geometry import BoundingBox, epsg_code_or_none
@@ -348,8 +349,20 @@ def _extract_spatial_extent_from_constraint_load_stac(
     ):
         to_resample = extent_orig or extent_aligned
         target_grid = _GridInfo(crs=resample_crs, resolution=resample_resolution)
-        extent_resampled = to_resample.reproject(target_grid.crs_epsg).round_to_resolution(*target_grid.resolution)
-        _log.debug(f"Resampled extent {to_resample=} into {extent_resampled=}")
+
+        # For now, only align the resampling grid with the current spatial extent
+        # (typically the requested extent from `load_collection` or `filter_bbox`)
+        # when the resampling CRS is same as the CRS of the requested extent.
+        # TODO: always align, regardless of involved CRSes? https://github.com/Open-EO/openeo-geopyspark-driver/issues/1662
+        if target_grid.crs_epsg == epsg_code_or_none(to_resample.crs):
+            resample_align = constraint["resample"].get("align")
+        else:
+            resample_align = None
+
+        extent_resampled = _resample_extent(
+            to_resample, crs=resample_crs, resolution=resample_resolution, align=resample_align
+        )
+        _log.debug(f"Resampled {to_resample=} to {extent_resampled=} (using {target_grid=} and {resample_align=})")
         extent_variants["resampled"] = extent_resampled
         extent_aligned = extent_resampled
 
@@ -402,6 +415,34 @@ def _determine_best_grid_from_proj_metadata(
     _log.debug(f"_determine_best_grid_from_proj_metadata: {grid=}")
     return grid
 
+
+def _resample_extent(
+    extent: BoundingBox,
+    *,
+    crs: Union[str, int],
+    resolution: Union[Tuple[float, float], List[float]],
+    align: Union[None, str] = None,
+) -> BoundingBox:
+    target_grid = _GridInfo(crs=crs, resolution=resolution)
+
+    if align == RESAMPLE_SPATIAL_ALIGN.UPPER_LEFT:
+        offset_x, offset_y = extent.west, extent.north
+    elif align == RESAMPLE_SPATIAL_ALIGN.UPPER_RIGHT:
+        offset_x, offset_y = extent.east, extent.north
+    elif align == RESAMPLE_SPATIAL_ALIGN.LOWER_LEFT:
+        offset_x, offset_y = extent.west, extent.south
+    elif align == RESAMPLE_SPATIAL_ALIGN.LOWER_RIGHT:
+        offset_x, offset_y = extent.east, extent.south
+    else:
+        if align is not None:
+            _log.warning(f"Ignoring invalid resample {align=}")
+        offset_x, offset_y = 0, 0
+
+    extent_resampled = extent.reproject(target_grid.crs_epsg)
+    extent_resampled = extent_resampled.round_to_resolution(
+        *target_grid.resolution, offset_x=offset_x, offset_y=offset_y
+    )
+    return extent_resampled
 
 class SpatialExtentExtractionError(Exception):
     pass
