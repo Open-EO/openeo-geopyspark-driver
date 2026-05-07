@@ -600,6 +600,8 @@ def test_request_costs(mock_get_etl_api_credentials_from_env, backend_implementa
             organization_id=None,
         )
 
+        mock_etl_api.log_added_value.assert_not_called()
+
         assert credit_cost == 6
 
 
