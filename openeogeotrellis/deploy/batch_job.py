@@ -500,17 +500,16 @@ def run_job(
             raise ValueError(f"Invalid concurrent_save_results: {concurrent_save_results}")
         assets_metadata = list(assets_metadata)
 
-        for stac_item_collection_path in Path(job_dir).glob(get_stac_item_collection_filename(pg_node_id="*")):
-            extra_links.append(
-                {
-                    # TODO: this is a experimental link relation for now
-                    #       to not interfere with existing "derived_from" handling logic (e.g. integration tests)
-                    "rel": "experimental-derived-from-stac-item-collection",
-                    "href": f"file://{stac_item_collection_path.absolute()}",
-                    "type": "application/json",
-                    ITEM_LINK_PROPERTY.EXPOSE_AUXILIARY: True,
-                }
-            )
+        if is_stac11:
+            for stac_item_collection_path in Path(job_dir).glob(get_stac_item_collection_filename(pg_node_id="*")):
+                extra_links.append(
+                    {
+                        "rel": "derived_from",
+                        "href": f"file://{stac_item_collection_path.absolute()}",
+                        "type": "application/geo+json",
+                        ITEM_LINK_PROPERTY.EXPOSE_AUXILIARY: True,
+                    }
+                )
 
         # flattens items for each results into one list
         items = [item for result in results_items for item in result.values()]
