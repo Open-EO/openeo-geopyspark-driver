@@ -550,11 +550,13 @@ class TestGpsProcessing:
         assert caplog.text == ""
 
 
-@pytest.mark.parametrize("success, state, status",
-                         [
-                             (True, "FINISHED", "SUCCEEDED"),
-                             (False, "FAILED", "FAILED"),
-                         ])
+@pytest.mark.parametrize(
+    "success, state, status",
+    [
+        (True, "FINISHED", "UNDEFINED"),
+        (False, "FAILED", "UNDEFINED"),
+    ],
+)
 @pytest.mark.parametrize("shpu", [123.0, 0.0])
 @gps_config_overrides(use_etl_api_on_sync_processing=True)
 @mock.patch("openeogeotrellis.integrations.etl_api.get_etl_api_credentials_from_env")

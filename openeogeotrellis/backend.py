@@ -89,7 +89,7 @@ from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.constants import JOB_OPTION_LOG_LEVEL
 from openeogeotrellis.geopysparkcubemetadata import Band
 from openeogeotrellis.geopysparkdatacube import GeopysparkCubeMetadata, GeopysparkDataCube
-from openeogeotrellis.integrations.etl_api import get_etl_api, ETL_ORGANIZATION_ID_JOB_OPTION
+from openeogeotrellis.integrations.etl_api import ETL_API_STATE, ETL_API_STATUS
 from openeogeotrellis.integrations.identity import IDP_TOKEN_ISSUER
 from openeogeotrellis.integrations.hadoop import setup_kerberos_auth
 from openeogeotrellis.integrations.kubernetes import (
@@ -104,6 +104,7 @@ from openeogeotrellis.integrations.s3proxy.asset_urls import PresignedS3AssetUrl
 from openeogeotrellis.integrations.stac import ResilientStacIO
 from openeogeotrellis.integrations.traefik import Traefik
 from openeogeotrellis.integrations.yarn_jobrunner import YARNBatchJobRunner
+from openeogeotrellis.job_costs_calculator import CostsDetails, DynamicEtlApiJobCostCalculator
 from openeogeotrellis.job_options import JobOptions, K8SOptions, JOB_OPTION_DISABLE
 from openeogeotrellis.job_registry import (
     DoubleJobRegistry,
@@ -1330,64 +1331,39 @@ Example usage:
             request_id, sc._jsc.sc()
         )
         sentinel_hub_processing_units = request_metadata_tracker.sentinelHubProcessingUnits()
-        requests_session = requests_with_retry(
-            total=3, backoff_factor=2, allowed_methods=Retry.DEFAULT_ALLOWED_METHODS.union({"POST"})
-        )
 
         cpu_seconds = backend_config.default_usage_cpu_seconds
         mb_seconds = backend_config.default_usage_byte_seconds / 1024 / 1024
 
-        etl_api = get_etl_api(
-            user=user,
-            job_options=job_options,
-            allow_dynamic_etl_api=True,
-            requests_session=requests_session,
-            # TODO #531 provide a TtlCache here
-            etl_api_cache=None,
-        )
-
         title = f"Synchronous processing request {request_id!r}"
 
-        # TODO: reuse JobCostsCalculator?
-        costs = etl_api.log_resource_usage(
-            batch_job_id=request_id,
-            title=title,
-            execution_id=request_id,
-            user_id=user_id,
-            started_ms=None,
-            finished_ms=None,
-            state="FINISHED" if success else "FAILED",
-            status="SUCCEEDED" if success else "FAILED",
-            cpu_seconds=cpu_seconds,
-            mb_seconds=mb_seconds,
-            duration_ms=None,
-            sentinel_hub_processing_units=(
-                sentinel_hub_processing_units
-                if sentinel_hub_processing_units and backend_config.report_usage_sentinelhub_pus
-                else None
-            ),
-            additional_credits_cost=None,
-            source_id=None,
-            organization_id=(job_options or {}).get(ETL_ORGANIZATION_ID_JOB_OPTION),
-        )
+        square_meters = deep_get(extract_result_metadata(tracer), "area", "value", default=None)
+        unique_process_ids = CollectUniqueProcessIdsVisitor().accept_process_graph(process_graph).process_ids
 
-        if square_meters := deep_get(extract_result_metadata(tracer), "area", "value", default=None):
-            unique_process_ids = CollectUniqueProcessIdsVisitor().accept_process_graph(process_graph).process_ids
-
-            costs += sum(
-                etl_api.log_added_value(
-                    batch_job_id=request_id,
-                    title=title,
-                    execution_id=request_id,
-                    user_id=user_id,
-                    started_ms=None,
-                    finished_ms=None,
-                    process_id=process_id,
-                    square_meters=square_meters,
-                    source_id=None,
-                )
-                for process_id in unique_process_ids
+        costs = DynamicEtlApiJobCostCalculator(user).calculate_costs(
+            CostsDetails(
+                job_id=request_id,
+                user_id=user_id,
+                execution_id=request_id,
+                app_state_etl_api_deprecated=ETL_API_STATE.FINISHED if success else ETL_API_STATE.FAILED,
+                job_status=ETL_API_STATUS.SUCCEEDED if success else ETL_API_STATUS.FAILED,
+                area_square_meters=square_meters,
+                job_title=title,
+                start_time=None,
+                finish_time=None,
+                cpu_seconds=cpu_seconds,
+                mb_seconds=mb_seconds,
+                sentinelhub_processing_units=(
+                    sentinel_hub_processing_units
+                    if sentinel_hub_processing_units and backend_config.report_usage_sentinelhub_pus
+                    else None
+                ),
+                additional_credits_cost=None,
+                unique_process_ids=list(unique_process_ids),
+                job_options=job_options,
+                etl_source_id=None,
             )
+        )
 
         logger.info(
             f"request_costs sync processing {request_id=} {success=} {cpu_seconds=} {mb_seconds=} {sentinel_hub_processing_units=} {square_meters=} -> {costs=}"
