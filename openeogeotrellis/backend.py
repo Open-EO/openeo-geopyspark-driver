@@ -1368,8 +1368,7 @@ Example usage:
         if square_meters := deep_get(extract_result_metadata(tracer), "area", "value", default=None):
             unique_process_ids = CollectUniqueProcessIdsVisitor().accept_process_graph(process_graph).process_ids
 
-            # TODO: add sum to costs
-            for process_id in unique_process_ids:
+            costs += sum(
                 etl_api.log_added_value(
                     batch_job_id=request_id,
                     title=title,
@@ -1381,6 +1380,8 @@ Example usage:
                     square_meters=square_meters,
                     source_id=None,
                 )
+                for process_id in unique_process_ids
+            )
 
         logger.info(
             f"request_costs sync processing {request_id=} {success=} {cpu_seconds=} {mb_seconds=} {sentinel_hub_processing_units=} {square_meters=} -> {costs=}"
