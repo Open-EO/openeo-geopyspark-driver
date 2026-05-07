@@ -1301,11 +1301,11 @@ Example usage:
         self,
         *,
         user: User,
-        process_graph: ProcessGraphFlatDict,
         job_options: Union[dict, None] = None,
         request_id: str,
         success: bool,
-        tracer: DryRunDataTracer,
+        process_graph: Union[ProcessGraphFlatDict, None] = None,
+        tracer: Union[DryRunDataTracer, None] = None,
     ) -> Optional[float]:
         from openeogeotrellis.deploy.batch_job_metadata import extract_result_metadata
 
