@@ -1307,9 +1307,15 @@ Example usage:
         process_graph: Union[ProcessGraphFlatDict, None] = None,
         tracer: Union[DryRunDataTracer, None] = None,
     ) -> Optional[float]:
+        """Get resource usage cost associated with (current) synchronous processing request."""
+
         from openeogeotrellis.deploy.batch_job_metadata import extract_result_metadata
 
-        """Get resource usage cost associated with (current) synchronous processing request."""
+        if process_graph is None:
+            process_graph = {}
+
+        if tracer is None:
+            tracer = DryRunDataTracer()
 
         user_id = user.user_id
         backend_config = get_backend_config()
