@@ -736,9 +736,24 @@ class TestPostDryRun:
     @pytest.mark.parametrize(
         ["resample_resolution", "expected"],
         [
-            (10, BoundingBox(west=647300, south=5665690, east=697580, north=5711820, crs="EPSG:32631")),
-            ((10, 10), BoundingBox(west=647300, south=5665690, east=697580, north=5711820, crs="EPSG:32631")),
-            ((1000, 500), BoundingBox(west=647000, south=5665500, east=698000, north=5712000, crs="EPSG:32631")),
+            (
+                10,
+                BoundingBox(
+                    west=647305.1234, south=5665691.5234, east=697575.1234, north=5711811.5234, crs="EPSG:32631"
+                ),
+            ),
+            (
+                (10, 10),
+                BoundingBox(
+                    west=647305.1234, south=5665691.5234, east=697575.1234, north=5711811.5234, crs="EPSG:32631"
+                ),
+            ),
+            (
+                (1000, 500),
+                BoundingBox(
+                    west=647005.1234, south=5665551.5234, east=698005.1234, north=5712051.5234, crs="EPSG:32631"
+                ),
+            ),
         ],
     )
     def test_extract_spatial_extent_from_constraint_load_stac_with_resample_spatial(
@@ -835,7 +850,9 @@ class TestPostDryRun:
                     "resolution": (100, 100),
                     "align": RESAMPLE_SPATIAL_ALIGN.LOWER_RIGHT,
                 },
-                BoundingBox(west=3_965_000, south=2_964_900, east=4_043_200, north=3_043_900, crs="EPSG:3035"),
+                BoundingBox(
+                    west=3_965_006.09, south=2_964_949.73, east=4_043_206.09, north=3_043_849.73, crs="EPSG:3035"
+                ),
             ),
             (
                 {"west": 646_708, "south": 5_511_652, "east": 722_986, "north": 5_587_956, "crs": "EPSG:32631"},
@@ -844,7 +861,7 @@ class TestPostDryRun:
                     "resolution": (103, 107),
                     "align": RESAMPLE_SPATIAL_ALIGN.LOWER_RIGHT,
                 },
-                BoundingBox(west=3_963_440, south=2_963_365, east=4_046_561, north=3_046_718, crs="EPSG:3035"),
+                BoundingBox(west=3_963_366, south=2_963_340, east=4_046_590, north=3_046_693, crs="EPSG:3035"),
             ),
         ],
     )
