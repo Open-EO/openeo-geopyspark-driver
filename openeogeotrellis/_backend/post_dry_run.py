@@ -350,15 +350,7 @@ def _extract_spatial_extent_from_constraint_load_stac(
         to_resample = extent_orig or extent_aligned
         target_grid = _GridInfo(crs=resample_crs, resolution=resample_resolution)
 
-        # For now, only align the resampling grid with the current spatial extent
-        # (typically the requested extent from `load_collection` or `filter_bbox`)
-        # when the resampling CRS is same as the CRS of the requested extent.
-        # TODO: always align, regardless of involved CRSes? https://github.com/Open-EO/openeo-geopyspark-driver/issues/1662
-        if target_grid.crs_epsg == epsg_code_or_none(to_resample.crs):
-            resample_align = constraint["resample"].get("align")
-        else:
-            resample_align = None
-
+        resample_align = constraint["resample"].get("align")
         extent_resampled = _resample_extent(
             to_resample, crs=resample_crs, resolution=resample_resolution, align=resample_align
         )
