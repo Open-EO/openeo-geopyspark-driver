@@ -8,7 +8,6 @@ import contextlib
 import dataclasses
 import datetime
 import json
-import rasterio
 import re
 import subprocess
 import uuid
@@ -24,18 +23,18 @@ import kazoo
 import kazoo.exceptions
 import numpy
 import openeo_driver.testing
+import py4j.java_gateway
 import pyspark
 import pystac
 import pytest
+import rasterio
 import shapely
+import shapely.affinity
 import shapely.geometry
 import shapely.geometry.base
-import shapely.affinity
 import werkzeug.exceptions
-import py4j.java_gateway
-
 from openeo.testing.stac import StacDummyBuilder
-from openeo_driver.testing import ephemeral_flask_server, ApiResponse, load_json
+from openeo_driver.testing import ApiResponse, ephemeral_flask_server, load_json
 from openeo_driver.util.geometry import BoundingBox
 from openeo_driver.util.utm import is_utm_crs
 
@@ -43,7 +42,7 @@ import openeogeotrellis
 from openeogeotrellis.config import gps_config_getter
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.util.datetime import to_datetime_utc
-from openeogeotrellis.util.geometry import to_geojson_io_url, bbox_to_geojson
+from openeogeotrellis.util.geometry import bbox_to_geojson, to_geojson_io_url
 from openeogeotrellis.util.runtime import is_package_available
 
 
@@ -409,6 +408,7 @@ class DummyStacApiServer:
                     proj_code="EPSG:4326",
                     proj_bbox=[2, 49, 3, 50],
                     proj_shape=[32, 1 * 32],
+                    bands=[{"name": "B02"}],
                 )
             },
         )
@@ -425,6 +425,7 @@ class DummyStacApiServer:
                     proj_code="EPSG:4326",
                     proj_bbox=[3, 50, 5, 51],
                     proj_shape=[32, 2 * 32],
+                    bands=[{"name": "B02"}],
                 )
             },
         )
@@ -441,6 +442,7 @@ class DummyStacApiServer:
                     proj_code="EPSG:4326",
                     proj_bbox=[4, 51, 7, 52],
                     proj_shape=[32, 3 * 32],
+                    bands=[{"name": "B02"}],
                 )
             },
         )
@@ -495,15 +497,14 @@ class DummyStacApiServer:
                 body["description"] = e.description
             return flask.jsonify(body), http_code
 
-        def link(rel: str, endpoint: str, *, method: Optional[str] = None, **kwargs) -> dict:
+        def link(
+            rel: str, endpoint: str, *, method: Optional[str] = None, mimetype: str = "application/json", **kwargs
+        ) -> dict:
             """Helper to build a link dict"""
             link = {
                 "rel": rel,
-                "href": flask.url_for(
-                    endpoint,
-                    **kwargs,
-                    _external=True,
-                ),
+                "href": flask.url_for(endpoint, **kwargs, _external=True),
+                "type": mimetype,
             }
             if method:
                 link["method"] = method
@@ -618,7 +619,21 @@ class DummyStacApiServer:
         ) -> pystac.ItemCollection:
             collection_ids = [cid for cid in collections if cid in self._collections]
 
-            items = [pystac.Item.from_dict(item) for cid in collection_ids for item in self._collections[cid].items]
+            def add_links(item: pystac.Item, cid: str) -> pystac.Item:
+                links = [
+                    pystac.Link.from_dict(link(rel="root", endpoint="get_index")),
+                    pystac.Link.from_dict(link(rel="collection", endpoint="get_collection", collection_id=cid)),
+                    pystac.Link.from_dict(link(rel="parent", endpoint="get_collection", collection_id=cid)),
+                    # TODO: add self link too?
+                ]
+                item.add_links(links)
+                return item
+
+            items = [
+                add_links(pystac.Item.from_dict(item), cid=cid)
+                for cid in collection_ids
+                for item in self._collections[cid].items
+            ]
 
             if date_range:
                 if "/" in date_range:

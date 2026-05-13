@@ -3,7 +3,7 @@ import json
 import logging
 import re
 from contextlib import nullcontext
-from typing import Iterator, List, Tuple, Union
+from typing import Iterator, List, Tuple
 from unittest import mock
 
 import dirty_equals
@@ -23,7 +23,6 @@ from openeo_driver.users import User
 from openeo_driver.util.date_math import now_utc
 from openeo_driver.util.geometry import BoundingBox
 from openeo_driver.utils import EvalEnv
-from py4j.java_gateway import JavaObject
 
 from openeogeotrellis.backend import GpsBatchJobs
 from openeogeotrellis.job_registry import InMemoryJobRegistry
@@ -33,6 +32,7 @@ from openeogeotrellis.load_stac import (
     AdaptingPropertyFilter,
     ItemCollection,
     ItemDeduplicator,
+    NoDataAvailableException,
     PropertyFilter,
     _get_apply_sentinel2_reflectance_offset,
     _get_proj_metadata,
@@ -54,7 +54,7 @@ from openeogeotrellis.load_stac import (
     extract_own_job_info,
     load_stac,
 )
-from openeogeotrellis.testing import DummyStacApiServer, gps_config_overrides, OpenSearchClientDumper
+from openeogeotrellis.testing import DummyStacApiServer, OpenSearchClientDumper, gps_config_overrides
 from openeogeotrellis.util.geometry import bbox_to_geojson
 
 
@@ -131,7 +131,7 @@ def test_property_filter_from_parameter(requests_mock):
     load_params = LoadParameters(properties=properties)
     env = EvalEnv().push_parameters({"tile_id": "31UFS"})
 
-    with pytest.raises(OpenEOApiException, match="There is no data available for the given extents."):
+    with pytest.raises(NoDataAvailableException):
         load_stac(
             url=stac_collection_url,
             load_params=load_params,
@@ -382,7 +382,7 @@ def test_world_oom(requests_mock, test_data):
         (
             {},
             EvalEnv({"pyramid_levels": "highest"}),
-            pytest.raises(OpenEOApiException, match="There is no data available for the given extents"),
+            pytest.raises(NoDataAvailableException),
         ),
         ({"allow_empty_cube": True}, EvalEnv({"pyramid_levels": "highest"}), nullcontext()),
         ({}, EvalEnv({"pyramid_levels": "highest", "allow_empty_cubes": True}), nullcontext()),
@@ -427,7 +427,7 @@ def test_empty_cube_from_stac_api(requests_mock, featureflags, env, expectation)
         (
             {},
             EvalEnv({"pyramid_levels": "highest"}),
-            pytest.raises(OpenEOApiException, match="There is no data available for the given extents"),
+            pytest.raises(NoDataAvailableException),
         ),
         ({"allow_empty_cube": True}, EvalEnv({"pyramid_levels": "highest"}), nullcontext()),
         ({}, EvalEnv({"pyramid_levels": "highest", "allow_empty_cubes": True}), nullcontext()),
@@ -2489,7 +2489,7 @@ class TestItemCollection:
             ((70, 70, 80, 80), ["2025-09-01", "2025-10-01"], []),
         ],
     )
-    @gps_config_overrides(use_zk_job_registry=False)
+    @gps_config_overrides()
     def test_from_own_job(self, bbox, interval, expected):
         from_date, to_date = interval
         spatiotemporal_extent = _SpatioTemporalExtent(
@@ -2965,6 +2965,37 @@ class TestItemCollection:
             "item-5",
         }
 
+    def test_serialization_basic(self, tmp_path):
+        item = pystac.Item.from_dict(StacDummyBuilder.item())
+        spatiotemporal_extent = _SpatioTemporalExtent()
+        orig = ItemCollection.from_stac_item(item, spatiotemporal_extent=spatiotemporal_extent)
+
+        # Serialize to file
+        dump_path = tmp_path / "item_collection.json"
+        orig.to_file(dump_path)
+
+        # Deserialize again
+        loaded = ItemCollection.from_file(dump_path)
+        assert [i.to_dict() for i in loaded.items] == [item.to_dict()]
+
+    def test_serialization_with_stac_api(self, dummy_stac_api, tmp_path):
+        given_url = f"{dummy_stac_api}/collections/collection-123"
+        collection: pystac.Collection = pystac.read_file(given_url)
+        orig = ItemCollection.from_stac_api(
+            collection,
+            original_url=given_url,
+            property_filter=PropertyFilter(properties={}),
+            spatiotemporal_extent=_SpatioTemporalExtent(),
+        )
+
+        # Serialize to file
+        dump_path = tmp_path / "item_collection.json"
+        orig.to_file(dump_path)
+
+        # Deserialize again
+        loaded = ItemCollection.from_file(dump_path)
+        assert [i.to_dict() for i in loaded.items] == [i.to_dict() for i in orig.items]
+
 
 def test_construct_item_collection_minimal(dummy_stac_api):
     url = f"{dummy_stac_api}/collections/collection-123"
@@ -3276,24 +3307,36 @@ class TestPrepareContext:
             {
                 "id": "item-1",
                 "links": [
-                    {"title": "asset-1", "href": dirty_equals.IsStr(regex=".*/asset-1.tiff"), "bandNames": ["asset-1"]}
+                    {
+                        "title": "asset-1",
+                        "href": dirty_equals.IsStr(regex=".*/asset-1.tiff"),
+                        "bandNames": ["B02"],
+                    }
                 ],
             },
             {
                 "id": "item-2",
                 "links": [
-                    {"title": "asset-2", "href": dirty_equals.IsStr(regex=".*/asset-2.tiff"), "bandNames": ["asset-2"]}
+                    {
+                        "title": "asset-2",
+                        "href": dirty_equals.IsStr(regex=".*/asset-2.tiff"),
+                        "bandNames": ["B02"],
+                    }
                 ],
             },
             {
                 "id": "item-3",
                 "links": [
-                    {"title": "asset-2", "href": dirty_equals.IsStr(regex=".*/asset-3.tiff"), "bandNames": ["asset-2"]}
+                    {
+                        "title": "asset-2",
+                        "href": dirty_equals.IsStr(regex=".*/asset-3.tiff"),
+                        "bandNames": ["B02"],
+                    }
                 ],
             },
         ]
-        assert list(context.pyramid_factory.openSearchLinkTitles()) == ["asset-1", "asset-2"]
-        assert context.metadata.band_names == ["asset-1", "asset-2"]
+        assert list(context.pyramid_factory.openSearchLinkTitles()) == ["B02"]
+        assert context.metadata.band_names == ["B02"]
         assert context.metadata.temporal_extent == ("2024-05-01T00:00:00+00:00", "2024-07-03T00:00:00+00:00")
         assert context.metadata.spatial_extent is None
 

@@ -11,11 +11,13 @@ import mock
 import pytest
 import shapely
 from openeo.utils.version import ComparableVersion
+from openeo_driver.backend import BatchJobMetadata
 from openeo_driver.config.load import ConfigGetter
 from openeo_driver.constants import JOB_STATUS
 from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.delayed_vector import DelayedVector
+from openeo_driver.dry_run import SourceId
 from openeo_driver.processes import ProcessRegistry
 from openeo_driver.ProcessGraphDeserializer import ENV_SOURCE_CONSTRAINTS
 from openeo_driver.specs import read_spec
@@ -156,8 +158,8 @@ def test_get_submit_py_files_empty(tmp_path):
 
 def test_extra_validation_layer_too_large_drivervectorcube(backend_implementation):
     processing = GpsProcessing()
-    source_id1 = "load_collection", ("SENTINEL1_GRD", None)
-    source_id2 = "load_collection", ("COPERNICUS_30", None)
+    source_id1 = SourceId("load_collection", arguments=("SENTINEL1_GRD", None), pg_node_id="lc1")
+    source_id2 = SourceId("load_collection", arguments=("COPERNICUS_30", None), pg_node_id="lc2")
     polygon = {"type": "Polygon", "coordinates": [[(0, 0), (180, 0), (0, 90), (180, 90)]]}
     env_source_constraints = [
         (source_id1, {
@@ -183,7 +185,7 @@ def test_extra_validation_layer_too_large_drivervectorcube(backend_implementatio
 
 def test_extra_validation_layer_too_large_open_time_interval(backend_implementation):
     processing = GpsProcessing()
-    source_id1 = "load_collection", ("SENTINEL1_GRD", None)
+    source_id1 = SourceId("load_collection", arguments=("SENTINEL1_GRD", None), pg_node_id="lc1")
     env_source_constraints = [
         (source_id1, {
             "temporal_extent": [None, None],  # Will go from 2014 till current time
@@ -199,9 +201,10 @@ def test_extra_validation_layer_too_large_open_time_interval(backend_implementat
     assert len(errors) == 1
     assert errors[0]['code'] == "ExtentTooLarge"
 
+
 def test_extra_validation_layer_too_large_copernicus_30(backend_implementation):
     processing = GpsProcessing()
-    source_id1 = "load_collection", ("COPERNICUS_30", None)
+    source_id1 = SourceId("load_collection", arguments=("COPERNICUS_30", None), pg_node_id="lc1")
     env_source_constraints = [
         (source_id1, {
             # taken from user example in 'process_graph_list_mep.jsonl'
@@ -221,7 +224,7 @@ def test_extra_validation_layer_too_large_copernicus_30(backend_implementation):
 
 def test_extra_validation_layer_fail(backend_implementation):
     processing = GpsProcessing()
-    source_id1 = "load_collection", ("!!BOGUS_LAYER!!", None)
+    source_id1 = SourceId("load_collection", arguments=("!!BOGUS_LAYER!!", None), pg_node_id="lc1")
     env_source_constraints = [
         (source_id1, {
             "temporal_extent": None,
@@ -238,7 +241,7 @@ def test_extra_validation_layer_fail(backend_implementation):
 
 def test_extra_validation_without_extent(backend_implementation):
     processing = GpsProcessing()
-    source_id1 = "load_collection", ("ESA_WORLDCOVER_10M_2021_V2", None)
+    source_id1 = SourceId("load_collection", arguments=("ESA_WORLDCOVER_10M_2021_V2", None), pg_node_id="lc1")
     env_source_constraints = [
         (source_id1, {
             "temporal_extent": None,
@@ -256,7 +259,7 @@ def test_extra_validation_without_extent(backend_implementation):
 
 def test_extra_validation_layer_too_large_area(backend_implementation):
     processing = GpsProcessing()
-    source_id1 = "load_collection", ("SENTINEL1_GRD", None)
+    source_id1 = SourceId("load_collection", arguments=("SENTINEL1_GRD", None), pg_node_id="lc1")
     env_source_constraints = [
         (source_id1, {
             "temporal_extent": ["2022-01-01", "2022-01-01"],
@@ -277,7 +280,7 @@ def test_extra_validation_layer_too_large_area(backend_implementation):
 
 def test_extra_validation_layer_timezone(backend_implementation):
     processing = GpsProcessing()
-    source_id1 = "load_collection", ("SENTINEL1_GRD", None)
+    source_id1 = SourceId("load_collection", arguments=("SENTINEL1_GRD", None), pg_node_id="lc1")
     env_source_constraints = [
         (source_id1, {
             "temporal_extent": ["2022-01-01T00:00:00Z", "2022-01-09"],
@@ -298,8 +301,8 @@ def test_extra_validation_layer_timezone(backend_implementation):
 
 def test_extra_validation_layer_too_large_delayedvector(backend_implementation):
     processing = GpsProcessing()
-    source_id1 = "load_collection", ("SENTINEL1_GRD", None)
-    source_id2 = "load_collection", ("COPERNICUS_30", None)
+    source_id1 = SourceId("load_collection", arguments=("SENTINEL1_GRD", None), pg_node_id="lc1")
+    source_id2 = SourceId("load_collection", arguments=("COPERNICUS_30", None), pg_node_id="lc2")
     polygon1 = {"type": "Polygon", "coordinates": [[(0.0, 0.0), (0.05, 0.0), (0.0, 0.05), (0.05, 0.05)]]}
     polygon2 = {"type": "Polygon", "coordinates": [[(0.0, 0.0), (90.0, 0.0), (0.0, 180.0), (90.0, 180.0)]]}
     geom_coll = {"type": "GeometryCollection", "geometries": [polygon1, polygon2]}
@@ -331,8 +334,8 @@ def test_extra_validation_layer_too_large_delayedvector(backend_implementation):
 
 def test_extra_validation_layer_too_large_geometrycollection(backend_implementation):
     processing = GpsProcessing()
-    source_id1 = "load_collection", ("SENTINEL1_GRD", None)
-    source_id2 = "load_collection", ("COPERNICUS_30", None)
+    source_id1 = SourceId("load_collection", arguments=("SENTINEL1_GRD", None), pg_node_id="lc1")
+    source_id2 = SourceId("load_collection", arguments=("COPERNICUS_30", None), pg_node_id="lc2")
     polygon1 = shapely.geometry.Polygon([(0, 0), (0.2, 0), (0, 0.2), (0.2, 0.2)])
     polygon2 = shapely.geometry.Polygon([(0, 0), (90, 0), (0, 180), (90, 180)])
     env_source_constraints = [
@@ -365,7 +368,7 @@ def test_extra_validation_layer_too_large_custom_crs(backend_implementation):
     # The user can specify their own CRS in load_collection.
     # Here: The native crs of AGERA5 is LatLon but the user specifies a spatial_extent in EPSG:3035.
     processing = GpsProcessing()
-    source_id1 = "load_collection", ("AGERA5", None)
+    source_id1 = SourceId("load_collection", arguments=("AGERA5", None), pg_node_id="lc1")
     env_source_constraints = [
         (source_id1, {
             "temporal_extent": ["2019-01-01", "2019-01-02"],
@@ -380,7 +383,7 @@ def test_extra_validation_layer_too_large_custom_crs(backend_implementation):
 
 def test_extra_validation_layer_too_large_custom_crs_hourly(backend_implementation):
     processing = GpsProcessing()
-    source_id1 = "load_collection", ("AGERA5_HOURLY", None)
+    source_id1 = SourceId("load_collection", arguments=("AGERA5_HOURLY", None), pg_node_id="lc1")
     env_source_constraints = [
         (source_id1, {
             "temporal_extent": ["2019-01-01", "2019-01-02"],
@@ -399,7 +402,7 @@ def test_extra_validation_layer_too_large_custom_crs_hourly(backend_implementati
 def test_extra_validation_missing_gsd(backend_implementation):
     # Layers with missing GSD should not crash
     processing = GpsProcessing()
-    source_id1 = "load_collection", ("TERRASCOPE_S1_SLC_COHERENCE_V1", None)
+    source_id1 = SourceId("load_collection", arguments=("TERRASCOPE_S1_SLC_COHERENCE_V1", None), pg_node_id="lc1")
     polygon = {"type": "Polygon", "coordinates": [[(0, 0), (180.0, 0), (0, 90.0), (180.0, 90.0)]]}
     env_source_constraints = [
         (source_id1, {
@@ -419,8 +422,8 @@ def test_extra_validation_layer_too_large_resample_spatial(backend_implementatio
     # When resample_spatial or resample_cube_spatial is used, the resolution and crs of the layer is changed.
     # So that needs to be taken into account when estimating the number of pixels.
     processing = GpsProcessing()
-    source_id1 = "load_collection", ("SENTINEL1_GAMMA0_SENTINELHUB", None)
-    source_id2 = "load_collection", ("COPERNICUS_30", None)
+    source_id1 = SourceId("load_collection", arguments=("SENTINEL1_GAMMA0_SENTINELHUB", None), pg_node_id="lc1")
+    source_id2 = SourceId("load_collection", arguments=("COPERNICUS_30", None), pg_node_id="lc2")
     polygon = {"type": "Polygon", "coordinates": [[(0, 0), (180.0, 0), (0, 90.0), (180.0, 90.0)]]}
     env_source_constraints = [
         (source_id1, {
@@ -455,7 +458,7 @@ def test_extra_validation_layer_too_large_resample_spatial(backend_implementatio
 def test_extra_validation_layer_too_large_resample_spatial_auto42001(backend_implementation):
     # Resample spatial with Auto42001 as target projection.
     processing = GpsProcessing()
-    source_id1 = "load_collection", ("COPERNICUS_30", None)
+    source_id1 = SourceId("load_collection", arguments=("COPERNICUS_30", None), pg_node_id="lc1")
     env_source_constraints = [
         (source_id1, {
             "temporal_extent": ["2019-01-01", "2019-01-02"],
@@ -476,10 +479,11 @@ def test_extra_validation_layer_too_large_resample_spatial_auto42001(backend_imp
     errors = list(processing.extra_validation({}, env, None, env_source_constraints))
     assert len(errors) == 0
 
+
 def test_extra_validation_layer_too_large_resample_spatial_zero(backend_implementation):
     # Resample with different CRS, but resolution 0 should be ok.
     processing = GpsProcessing()
-    source_id1 = "load_collection", ("COPERNICUS_30", None)
+    source_id1 = SourceId("load_collection", arguments=("COPERNICUS_30", None), pg_node_id="lc1")
     env_source_constraints = [
         (
             source_id1,
@@ -744,7 +748,6 @@ class TestGpsBatchJobs:
     def kube_no_zk(self, monkeypatch):
         with gps_config_overrides(
             setup_kerberos_auth=False,
-            use_zk_job_registry=False,
             yunikorn_user_specific_queues=True,  # avoid another call to ZK
         ):
             monkeypatch.setenv("KUBE", "TRUE")
@@ -870,9 +873,9 @@ class TestGpsBatchJobs:
         assert asset["href"] == "file:///path/to/openEO.tif"
         assert asset["bands"] == [Band(name="Flat:2",statistics={"maximum": 2.0, "mean": 0.84375, "minimum": 0.0, "stddev": 0.98771753932994, "valid_percent": 100.0})]
 
-    def test_get_result_items(self, kube_no_zk, backend_implementation, job_registry, tmp_path):
-        self._create_dummy_batch_job(backend_implementation, self._dummy_user)
-        job_id, job = next(iter(job_registry.db.items()))
+    def test_get_result_metadata(self, kube_no_zk, backend_implementation, job_registry, tmp_path):
+        job_metadata = self._create_dummy_batch_job(backend_implementation, self._dummy_user)
+        job_id = job_metadata.id
 
         job_metadata_json_path = tmp_path / "job_metadata.json"
         with open(job_metadata_json_path, "w") as f:
@@ -880,28 +883,40 @@ class TestGpsBatchJobs:
                 {
                     "items": [
                         {"id": "item1", "assets": {"openEO": {"href": "file:///path/to/openEO.tif"}}},
-                    ]
+                    ],
+                    "links": [
+                        {"rel": "aux", "href": "file:///path/to/aux.json"},
+                    ],
                 },
-                f,
+                fp=f,
             )
+        job_registry.set_status(job_id=job_id, status=JOB_STATUS.FINISHED)
+        job_registry.set_results_metadata_uri(job_id=job_id, results_metadata_uri=f"file://{job_metadata_json_path}")
 
-        job["status"] = JOB_STATUS.FINISHED
-        job["results_metadata_uri"] = f"file://{job_metadata_json_path}"
-
-        item_id, item = next(
-            iter(
-                backend_implementation.batch_jobs.get_result_metadata(
-                    job_id=job_id, user_id=self._dummy_user.user_id
-                ).items.items()
-            )
+        result_metadata = backend_implementation.batch_jobs.get_result_metadata(
+            job_id=job_id, user_id=self._dummy_user.user_id
         )
-
-        assert item_id == "item1"
-        assert [asset["href"] for asset in item["assets"].values()] == ["file:///path/to/openEO.tif"]
+        assert result_metadata.items == {
+            "item1": {
+                "id": "item1",
+                "assets": {
+                    "openEO": {
+                        "href": "file:///path/to/openEO.tif",
+                        "output_dir": dirty_equals.IsStr(regex="/batch_jobs/j-.*"),
+                    }
+                },
+            }
+        }
+        assert result_metadata.links == [
+            {
+                "rel": "aux",
+                "href": "file:///path/to/aux.json",
+            }
+        ]
 
     @staticmethod
-    def _create_dummy_batch_job(backend_implementation, user):
-        backend_implementation.batch_jobs.create_job(
+    def _create_dummy_batch_job(backend_implementation, user) -> BatchJobMetadata:
+        return backend_implementation.batch_jobs.create_job(
             user=user,
             process={
                 "process_graph": {

@@ -46,6 +46,7 @@ from py4j.clientserver import ClientServer
 from py4j.java_gateway import JVMView
 from shapely.geometry import GeometryCollection, MultiPolygon, Point, Polygon, box
 from shapely.geometry.base import BaseGeometry
+from shapely.ops import transform
 
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
@@ -241,7 +242,10 @@ def to_projected_polygons(
 @contextlib.contextmanager
 def zk_client(hosts: str = ",".join(ConfigParams().zookeepernodes), *, timeout=10.0):
     # TODO: move this to a more generic zookeeper module, e.g. `openeogeotrellis.integrations.zookeeper`?
-    zk = KazooClient(hosts, timeout=timeout)
+    from openeogeotrellis.config.config import get_zookeeper_auth_data
+    config = get_backend_config()
+    auth_data = get_zookeeper_auth_data(config) or None
+    zk = KazooClient(hosts, timeout=timeout, sasl_options=config.zookeeper_sasl_options, auth_data=auth_data)
     zk.start()
 
     try:
@@ -951,3 +955,17 @@ class BadlyHashable:
 
     def __repr__(self):
         return f"BadlyHashable({repr(self.target)})"
+
+
+def equals_approximately(ref_geom: BaseGeometry, actual_geom: BaseGeometry, rel_area_tolerance: float) -> bool:
+    """Geometries are approximately equal if (area of) difference is small."""
+
+    area_difference = ref_geom.symmetric_difference(actual_geom).area
+    return area_difference / ref_geom.area < rel_area_tolerance
+
+
+def reproject_geometry(geometry, src_crs, dst_crs):
+    """Kind of like reprojectAsPolygon but the number of points remains the same."""
+
+    transformer = pyproj.Transformer.from_crs(src_crs, dst_crs, always_xy=True)
+    return transform(transformer.transform, geometry)

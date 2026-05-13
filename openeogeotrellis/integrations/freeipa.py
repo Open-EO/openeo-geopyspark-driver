@@ -30,7 +30,7 @@ import re
 import sys
 import tempfile
 from pathlib import Path
-from typing import Iterable, Iterator, Mapping, Optional, Union
+from typing import Iterable, Iterator, Mapping, Optional, Union, List, Dict
 
 import requests
 from openeo_driver.utils import generate_unique_id, smart_bool
@@ -176,6 +176,14 @@ class FreeIpaClient:
         else:
             _log.error(f"Multiple users found for {uid=}: {users=}")
             raise FreeIpaException(f"Multiple users found for {uid=}")
+
+    def user_find_by_email(self, email: str, size_limit: int = 10) -> Dict[str, dict]:
+        ipa_resp = self._do_request("user_find", options={"mail": [email], "sizelimit": size_limit})
+        users = ipa_resp.result["result"]
+        # Return as dict keyed in uid.
+        # Note that in FreeIPA, although the "uid" is a single value,
+        # it is still wrapped as a list, so we use a double for loop here.
+        return {uid: u for u in users for uid in u["uid"]}
 
     def user_add(
         self, uid: str, first_name: str, last_name: str, email: str, additional_options: Optional[dict] = None

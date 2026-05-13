@@ -13,6 +13,7 @@ batch_jobs_zookeeper_root_path=$1
 deploy_env=$2
 async_task_handler_env=$2
 run_id=$3
+ejr_backend_id="${4:-mep-$deploy_env}"
 
 if [ -n "${run_id}" ]; then
   run_id_arg="--run-id $run_id"
@@ -28,7 +29,7 @@ kinit -kt $keytab openeo@VGT.VITO.BE
 export BATCH_JOBS_ZOOKEEPER_ROOT_PATH=$batch_jobs_zookeeper_root_path
 export ASYNC_TASK_HANDLER_ENV=$async_task_handler_env
 export PYARROW_IGNORE_TIMEZONE=1
-export OPENEO_EJR_BACKEND_ID="mep-$deploy_env"
+export OPENEO_EJR_BACKEND_ID="$ejr_backend_id"
 
 /opt/venv/bin/python -m openeogeotrellis.job_tracker_v2 \
   --app-cluster yarn \

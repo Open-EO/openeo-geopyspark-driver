@@ -105,9 +105,7 @@ from openeogeotrellis.integrations.yarn_jobrunner import YARNBatchJobRunner
 from openeogeotrellis.job_options import JobOptions, K8SOptions, JOB_OPTION_DISABLE
 from openeogeotrellis.job_registry import (
     DoubleJobRegistry,
-    ZkJobRegistry,
     get_deletable_dependency_sources,
-    parse_zk_job_specification,
 )
 from openeogeotrellis.layercatalog import (
     GeoPySparkLayerCatalog,
@@ -350,12 +348,6 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
         elastic_job_registry: Optional[ElasticJobRegistry] = None,
         do_ejr_health_check: bool = True,
     ):
-        self._service_registry = (
-            # TODO #283 #285: eliminate is_ci_context, use some kind of config structure
-            InMemoryServiceRegistry() if not use_zookeeper or ConfigParams().is_ci_context
-            else ZooKeeperServiceRegistry()
-        )
-
         # TODO #283 #285: eliminate is_ci_context, use some kind of config structure
         if not use_zookeeper or ConfigParams().is_ci_context:
             user_defined_processes = InMemoryUserDefinedProcessRepository()
@@ -401,7 +393,6 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
             user_defined_processes=user_defined_processes,
             processing=GpsProcessing(),
             udf_runtimes=udf_runtimes,
-            # secondary_services=GpsSecondaryServices(service_registry=self._service_registry),
         )
 
         self._principal = principal
@@ -467,6 +458,12 @@ class GeoPySparkBackendImplementation(backend.OpenEoBackendImplementation):
                 "Parquet": {
                     "title": "(Geo)Parquet",
                     "description": "GeoParquet is an efficient binary format, to distribute large amounts of vector data.",
+                    "gis_data_types": ["vector"],
+                    "parameters": {},
+                },
+                "FlatGeobuf": {
+                    "title": "FlatGeobuf",
+                    "description": "Cloud-native binary vector format with optional spatial index. Supports S3 access via /vsis3/.",
                     "gis_data_types": ["vector"],
                     "parameters": {},
                 },
@@ -819,8 +816,17 @@ Example usage:
 
         return cube
 
-    def load_stac(self, url: str, load_params: LoadParameters, env: EvalEnv) -> GeopysparkDataCube:
-        return self._load_stac_cached(url=url, load_params=load_params, env=WhiteListEvalEnv(env, WHITELIST))
+    def load_stac(
+        self,
+        url: str,
+        *,
+        load_params: LoadParameters,
+        env: EvalEnv,
+        pg_node_id: Optional[str] = None,
+    ) -> GeopysparkDataCube:
+        return self._load_stac_cached(
+            url=url, load_params=load_params, env=WhiteListEvalEnv(env, WHITELIST), pg_node_id=pg_node_id
+        )
 
     def query_stac(
         self,
@@ -848,9 +854,21 @@ Example usage:
         return item_collection.to_dict()
 
     @lru_cache(maxsize=20)
-    def _load_stac_cached(self, url: str, *, load_params: LoadParameters, env: EvalEnv) -> GeopysparkDataCube:
+    def _load_stac_cached(
+        self,
+        url: str,
+        *,
+        load_params: LoadParameters,
+        env: EvalEnv,
+        pg_node_id: Optional[str] = None,
+    ) -> GeopysparkDataCube:
         return load_stac.load_stac(
-            url=url, load_params=load_params, env=env, layer_properties=None, batch_jobs=self.batch_jobs
+            url=url,
+            load_params=load_params,
+            env=env,
+            layer_properties=None,
+            batch_jobs=self.batch_jobs,
+            pg_node_id=pg_node_id,
         )
 
     def load_ml_model(self, model_id: str) -> GeopysparkMlModel:
@@ -1369,11 +1387,10 @@ class GpsProcessing(ConcreteProcessing):
             source_constraints_copy = deepcopy(source_constraints)
             for source_constraint in source_constraints_copy:
                 source_id, constraints = source_constraint
-                source_id_proc, source_id_args = source_id
-                collection_id = source_id_args[0]
-                if source_id_proc == "load_collection":
+                if source_id.process_id == "load_collection":
+                    cid = source_id.arguments[0]
                     load_params = _extract_load_parameters(env, source_id=source_id)
-                    yield from extra_validation_load_collection(collection_id, load_params, env)
+                    yield from extra_validation_load_collection(collection_id=cid, load_params=load_params, env=env)
         except Exception as e:
             logger.error("extra validation failed", exc_info=True)
             yield {"code": "Internal", "message": str(e)}  # TODO: just propagate errors not related to validation?
@@ -1432,7 +1449,7 @@ class GpsBatchJobs(backend.BatchJobs):
         # TODO: clean up this overly Terrascope-coupled constructor
         catalog: GeoPySparkLayerCatalog,
         udf_runtimes: Optional["GpsUdfRuntimes"] = None,
-        jvm: JVMView,
+        jvm: Optional[JVMView] = None,
         principal: Optional[str] = None,
         key_tab: Optional[str] = None,
         vault: Optional[Vault] = None,
@@ -1460,7 +1477,6 @@ class GpsBatchJobs(backend.BatchJobs):
         )
 
         self._double_job_registry = DoubleJobRegistry(
-            zk_job_registry_factory=ZkJobRegistry if get_backend_config().use_zk_job_registry else None,
             elastic_job_registry=elastic_job_registry,
         )
 
@@ -1853,23 +1869,13 @@ class GpsBatchJobs(backend.BatchJobs):
                     logger.warning(
                         f"GpsBatchJobs._start_job: ill-defined job status transition from {current_status!r} to {JOB_STATUS.CREATED!r}"
                     )
-                    dbl_registry.mark_ongoing(job_id, user_id)
                     # TODO: do we really want to reset the application id?
                     dbl_registry.set_application_id(job_id=job_id, user_id=user_id, application_id=None)
                     dbl_registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.CREATED)
 
-        if "specification" in job_info:
-            # This is old-style (ZK based) job info with "specification" being a JSON string.
-            # TODO #498 #1165 eliminate ZK code path, or at least encapsulate this logic better
-            job_specification_json = job_info["specification"]
-            job_process_graph, job_options = parse_zk_job_specification(job_info, default_job_options={})
-        else:
-            # New style job info (EJR based)
-            job_process_graph = job_info["process"]["process_graph"]
-            job_options = job_info.get("job_options") or {}  # can be None
-            job_specification_json = json.dumps({"process_graph": job_process_graph, "job_options": job_options})
-
-
+        job_process_graph = job_info["process"]["process_graph"]
+        job_options = job_info.get("job_options") or {}  # can be None
+        job_specification_json = json.dumps({"process_graph": job_process_graph, "job_options": job_options})
 
         sentinel_hub_client_alias = deep_get(job_options, 'sentinel-hub', 'client-alias', default="default")
 
@@ -1974,7 +1980,9 @@ class GpsBatchJobs(backend.BatchJobs):
             mount_tmp = as_boolean_arg("mount_tmp", default_value="false") != "false"
             use_pvc = as_boolean_arg("spark_pvc", default_value="false") != "false"
 
-            executor_corerequest = job_options.get("executor-request-cores", "NONE")
+            k8sOptions: K8SOptions = options
+
+            executor_corerequest = k8sOptions.executor_request_cores
             if executor_corerequest == "NONE":
                 executor_corerequest = str(int(options.executor_cores) / 2 * 1000) + "m"
 
@@ -2311,11 +2319,11 @@ class GpsBatchJobs(backend.BatchJobs):
         job_dependencies = []
         batch_request_cache = {}
 
-        for (process, arguments), constraints in source_constraints:
+        for source_id, constraints in source_constraints:
             dependency: Optional[dict] = None
-            if process == 'load_collection':
-                collection_id = arguments[0]
-                properties_criteria = arguments[1]
+            if source_id.process_id == "load_collection":
+                collection_id = source_id.arguments[0]
+                properties_criteria = source_id.arguments[1]
 
                 dependency = SentinelHubDependencies.schedule_for_load_collection(
                     supports_async_tasks=supports_async_tasks,
@@ -2334,9 +2342,9 @@ class GpsBatchJobs(backend.BatchJobs):
                     catalog=self._catalog,
                     batch_request_cache=batch_request_cache,
                 )
-            elif process == 'load_stac':
+            elif source_id.process_id == "load_stac":
                 dependency = PartialJobResults.get_partial_results_from_load_stac_arguments(
-                    arguments,
+                    arguments=source_id.arguments,
                     extract_own_job_info=lambda url: load_stac.extract_own_job_info(url, user_id=user_id, batch_jobs=self),
                     logger_adapter=logger_adapter,
                     requests_session=self._requests_session,
@@ -2356,20 +2364,12 @@ class GpsBatchJobs(backend.BatchJobs):
             raise JobNotFinishedException
 
         results_metadata = self.load_results_metadata(job_id, user_id, job_dict)
-
-        if "items" in results_metadata:
-            return BatchJobResultMetadata(
-                items=self._result_metadata_to_item_assets(results_metadata, job_id),
-                assets=self._results_metadata_to_assets(results_metadata, job_id),
-                links=[],
-                providers=self._get_providers(job_id=job_id, user_id=user_id),
-            )
-        else:
-            return BatchJobResultMetadata(
-                assets=self._results_metadata_to_assets(results_metadata, job_id),
-                links=[],
-                providers=self._get_providers(job_id=job_id, user_id=user_id),
-            )
+        return BatchJobResultMetadata(
+            assets=self._results_metadata_to_assets(results_metadata, job_id),
+            items=self._result_metadata_to_item_assets(results_metadata, job_id),
+            links=results_metadata.get("links", []),
+            providers=self._get_providers(job_id=job_id, user_id=user_id),
+        )
 
     @deprecated("call get_result_metadata instead")
     @lru_cache(maxsize=20)
@@ -2467,14 +2467,15 @@ class GpsBatchJobs(backend.BatchJobs):
 
         return results_dict
 
-    def _result_metadata_to_item_assets(self, results_metadata, job_id):
+    def _result_metadata_to_item_assets(self, results_metadata: dict, job_id: str) -> dict:
         job_dir = self.get_job_output_dir(job_id=job_id)
         logger.info(f"item_assets has job_dir {job_dir}")
-        for item in results_metadata["items"]:
-            for asset_key, asset in item["assets"].items():
+        items = deepcopy(results_metadata.get("items", []))
+        for item in items:
+            for asset in item["assets"].values():
                 if "output_dir" not in asset and not asset["href"].startswith("s3://"):
                     asset["output_dir"] = str(job_dir)
-        return {item["id"]: item for item in results_metadata["items"]}
+        return {item["id"]: item for item in items}
 
 
     def get_results_metadata_path(self, job_id: str) -> Path:

@@ -34,7 +34,7 @@ tests_require = [
     "google-auth<2.46.0; python_version<='3.8'",  # quick-fix for google-auth python 3.8 compatibility issue
     "re-assert",
     "dirty-equals>=0.6",
-    "cryptography>=44.0.0",
+    "cryptography~=46.0.0",
     "responses",
     "rio_cogeo",
     'pydantic~=1.0; python_version<"3.9"',
@@ -74,7 +74,7 @@ setup(
     install_requires=[
         # TODO: avoid excessive `python_version` based version constraints. https://github.com/Open-EO/openeo-geopyspark-driver/issues/1395
         "openeo>=0.48.0.a4.dev",
-        "openeo_driver>=0.139.0a3.dev",
+        "openeo_driver>=0.139.0a8.dev",
         'pyspark>=4.0.0; python_version>"3.8"',
         'pyspark>=3.5.0,<4.0.0; python_version<="3.8"',
         'geopyspark_openeo==0.4.3.post1',
@@ -138,6 +138,7 @@ setup(
     entry_points={
         "console_scripts": [
             "openeo_kube.py = openeogeotrellis.deploy.kube:main",
+            "openeo_kube_lite.py = openeogeotrellis.deploy.kube_webapp_lite:main",
             "openeo_batch.py = openeogeotrellis.deploy.batch_job:start_main",
             "openeo_local.py = openeogeotrellis.deploy.local:main",
             "run_graph_locally.py = openeogeotrellis.deploy.run_graph_locally:main",

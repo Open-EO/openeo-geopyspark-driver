@@ -117,21 +117,21 @@ class GpsBackendConfig(OpenEoBackendConfig):
     zookeeper_root_path: str = attrs.field(
         default="/openeo", validator=attrs.validators.matches_re("^/.+"), converter=lambda s: s.rstrip("/")
     )
-
-    # TODO #236/#498/#632/#1165 long term goal is to fully disable ZK job registry, but for now it's configurable.
-    use_zk_job_registry: bool = False
-    zk_job_registry_max_specification_size: Optional[int] = None
+    # SASL options for ZK connection auth (GSSAPI/Kerberos on rscluster)
+    zookeeper_sasl_options: Optional[dict] = None
+    # Digest ACL credentials for ZK znode-level auth.
+    zookeeper_auth_username: Optional[str] = attrs.Factory(lambda: os.environ.get("ZOOKEEPER_USERNAME"))
+    zookeeper_auth_password: Optional[str] = attrs.Factory(lambda: os.environ.get("ZOOKEEPER_PASSWORD"))
 
     udp_registry_zookeeper_client_reuse: bool = False
 
     ejr_api: Optional[str] = os.environ.get("OPENEO_EJR_API")
-    ejr_backend_id: str = "unknown"
+    ejr_backend_id: str = os.environ.get("OPENEO_EJR_BACKEND_ID", "unknown")
     ejr_credentials_vault_path: Optional[str] = "UNUSED_AND_TO_BE_REMOVED"
     ejr_preserialize_process: bool = False
 
-    # TODO: eliminate hardcoded Terrascope references
     # TODO #531 eliminate this config favor of etl_api_config strategy below
-    etl_api: Optional[str] = os.environ.get("OPENEO_ETL_API", "https://etl.terrascope.be")
+    etl_api: Optional[str] = os.environ.get("OPENEO_ETL_API")
     etl_source_id: str = "TerraScope/MEP"
     use_etl_api_on_sync_processing: bool = False
     etl_dynamic_api_flag: Optional[str] = None  # TODO #531 eliminate this temporary feature flag? Unused now
@@ -340,3 +340,10 @@ class GpsBackendConfig(OpenEoBackendConfig):
     read_results_metadata_file_retry_settings: dict = attrs.Factory(lambda: dict(tries=1))  # fail immediately
 
     load_stac_deduplicate_items_default: bool = False
+
+
+def get_zookeeper_auth_data(config: GpsBackendConfig) -> list:
+    """Return Kazoo auth_data list for ZK digest ACL, or empty list if not configured."""
+    if config.zookeeper_auth_username and config.zookeeper_auth_password:
+        return [("digest", f"{config.zookeeper_auth_username}:{config.zookeeper_auth_password}")]
+    return []

@@ -149,11 +149,16 @@ class Traefik:
 
 
 def update_zookeeper(cluster_id: str, rule: str, host: str, port: int, health_check: str = None) -> None:
-    # TODO: get this from GpsBackendConfig instead
+    from openeogeotrellis.config import get_backend_config
+    from openeogeotrellis.config.config import get_zookeeper_auth_data
+    config = get_backend_config()
     server_id = os.environ.get("OPENEO_TRAEFIK_SERVER_ID", host)
-
-    # TODO: get this from GpsBackendConfig instead
-    zk = KazooClient(hosts=",".join(ConfigParams().zookeepernodes))
+    auth_data = get_zookeeper_auth_data(config) or None
+    zk = KazooClient(
+        hosts=",".join(config.zookeeper_hosts),
+        sasl_options=config.zookeeper_sasl_options,
+        auth_data=auth_data,
+    )
     zk.start()
     try:
         Traefik(zk).add_load_balanced_server(

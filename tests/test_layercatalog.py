@@ -23,8 +23,8 @@ from openeogeotrellis.layercatalog import (
     _get_sar_backscatter_arguments,
     _merge_layers_with_common_name,
     get_layer_catalog,
-    _enrichment_metadata_from_stac,
 )
+from openeogeotrellis.catalog_enrich import _enrichment_metadata_from_stac
 from openeogeotrellis.testing import gps_config_overrides
 from openeogeotrellis.vault import Vault
 from tests.data import get_test_data_file

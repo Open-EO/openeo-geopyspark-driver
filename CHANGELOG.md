@@ -12,12 +12,20 @@ without compromising stable operations.
 
 <!-- start-of-changelog -->
 
+## 0.73.0
+
+- Kubernetes batch jobs: support `driver-corerequest` job option for fractional CPU allocation to the driver (e.g. `"500m"`), using the `coreRequest` field in the Spark operator spec ([#1658](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1658))
+
 ## 0.72.0
 
 - aspect and slope processes now return radians instead of degrees
 - YARN batch jobs: configure `spark.driver.maxResultSize` dynamically based on driver memory (max of 5g and driver memory) instead of hardcoded 5g ([#631](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1631))
 - Better support for spatial filtering with geometries that have internal overlap ([#1645](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1645))
-- Kubernetes batch jobs: support `driver-corerequest` job option for fractional CPU allocation to the driver (e.g. `"500m"`), using the `coreRequest` field in the Spark operator spec ([#1658](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1658))
+- Serialize STAC ItemCollection from `load_stac` ([#1618](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1618))
+- Batch job results: STAC item geometry should match asset geometry ([#756](https://github.com/Open-EO/openeo-geopyspark-driver/issues/756))
+- Support experimental `corsa_compress_v2` and `corsa_decompress_v2` processes ([Open-EO/openeo-geotrellis-extensions#702](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/702))
+- add `SimpleEtlApiConfig.from_env()` helper
+- Global extent in post-dry-run: at least apply `align` from `resample_spatial` staying withing CRS ([#1662](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1662))
 
 
 ## 0.71.0

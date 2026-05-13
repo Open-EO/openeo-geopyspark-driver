@@ -32,8 +32,9 @@ import openeogeotrellis.job_registry
 import openeogeotrellis.sentinel_hub.batchprocessing
 from openeogeotrellis.integrations.s3proxy.asset_urls import PresignedS3AssetUrls
 from openeogeotrellis.backend import JOB_METADATA_FILENAME, GpsBatchJobs
-from openeogeotrellis.job_registry import DoubleJobRegistry, ZkJobRegistry
-from openeogeotrellis.testing import KazooClientMock, gps_config_overrides
+from openeogeotrellis.job_registry import DoubleJobRegistry
+from openeogeotrellis.testing import gps_config_overrides
+
 from openeogeotrellis.utils import to_s3_url
 
 from .data import TEST_DATA_ROOT
@@ -457,14 +458,6 @@ class TestBatchJobs:
 
     @staticmethod
     @contextlib.contextmanager
-    def _mock_kazoo_client() -> KazooClientMock:
-        # TODO #236/#498/#632 eliminate direct dependency on deprecated ZkJobRegistry and related mocking of `KazooClient`
-        zk_client = KazooClientMock()
-        with mock.patch.object(openeogeotrellis.job_registry, 'KazooClient', return_value=zk_client):
-            yield zk_client
-
-    @staticmethod
-    @contextlib.contextmanager
     def _mock_sentinelhub_batch_processing_service():
         service = mock.Mock()
         with mock.patch.object(
@@ -478,39 +471,33 @@ class TestBatchJobs:
         api.get('/jobs').assert_status_code(401).assert_error_code("AuthenticationRequired")
 
     def test_get_user_jobs_empty(self, api):
-        with self._mock_kazoo_client() as zk:
-            result = api.get('/jobs', headers=TEST_USER_AUTH_HEADER).assert_status_code(200).json
-            assert result == {"jobs": [], "links": []}
+        result = api.get('/jobs', headers=TEST_USER_AUTH_HEADER).assert_status_code(200).json
+        assert result == {"jobs": [], "links": []}
 
-    def test_create_job(self, api, time_machine):
+    def test_create_job(self, api, job_registry, time_machine):
         time_machine.move_to("2020-04-20T16:04:03Z")
-        with self._mock_kazoo_client() as zk:
-            data = api.get_process_graph_dict(
-                self.DUMMY_PROCESS_GRAPH, title="Dummy", description="Dummy job!"
-            )
-            res = api.post(
-                "/jobs", json=data, headers=TEST_USER_AUTH_HEADER
-            ).assert_status_code(201)
-            job_id = res.headers["OpenEO-Identifier"]
-            meta_data = zk.get_json_decoded(
-                f"/openeo.test/jobs/ongoing/{TEST_USER}/{job_id}"
-            )
-            assert meta_data["job_id"] == job_id
-            assert meta_data["user_id"] == TEST_USER
-            assert meta_data["status"] == "created"
-            assert meta_data["api_version"] == api.api_version
-            assert meta_data["application_id"] == None
-            assert meta_data["created"] == "2020-04-20T16:04:03Z"
-            assert meta_data["title"] == "Dummy"
-            assert meta_data["description"] == "Dummy job!"
+        data = api.get_process_graph_dict(
+            self.DUMMY_PROCESS_GRAPH, title="Dummy", description="Dummy job!"
+        )
+        res = api.post(
+            "/jobs", json=data, headers=TEST_USER_AUTH_HEADER
+        ).assert_status_code(201)
+        job_id = res.headers["OpenEO-Identifier"]
+        assert job_registry.db[job_id]["job_id"] == job_id
+        assert job_registry.db[job_id]["user_id"] == TEST_USER
+        assert job_registry.db[job_id]["status"] == "created"
+        assert job_registry.db[job_id]["api_version"] == api.api_version
+        assert job_registry.db[job_id]["application_id"] == None
+        assert job_registry.db[job_id]["created"] == "2020-04-20T16:04:03Z"
+        assert job_registry.db[job_id]["title"] == "Dummy"
+        assert job_registry.db[job_id]["description"] == "Dummy job!"
 
     def test_create_and_get(self, api, time_machine):
         time_machine.move_to("2020-04-20T16:04:03Z")
-        with self._mock_kazoo_client() as zk:
-            data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH, title="Dummy")
-            res = api.post('/jobs', json=data, headers=TEST_USER_AUTH_HEADER).assert_status_code(201)
-            job_id = res.headers['OpenEO-Identifier']
-            res = api.get('/jobs/{j}'.format(j=job_id), headers=TEST_USER_AUTH_HEADER).assert_status_code(200).json
+        data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH, title="Dummy")
+        res = api.post('/jobs', json=data, headers=TEST_USER_AUTH_HEADER).assert_status_code(201)
+        job_id = res.headers['OpenEO-Identifier']
+        res = api.get('/jobs/{j}'.format(j=job_id), headers=TEST_USER_AUTH_HEADER).assert_status_code(200).json
 
         if api.api_version_compare.at_least("1.0.0"):
             expected = DictSubSet({
@@ -533,24 +520,23 @@ class TestBatchJobs:
 
     def test_create_and_get_user_jobs(self, api, time_machine):
         time_machine.move_to("2020-04-20T16:04:03Z")
-        with self._mock_kazoo_client() as zk:
-            data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH, title="Dummy")
-            res = api.post('/jobs', json=data, headers=TEST_USER_AUTH_HEADER).assert_status_code(201)
-            job_id = res.headers['OpenEO-Identifier']
-            result = api.get('/jobs', headers=TEST_USER_AUTH_HEADER).assert_status_code(200).json
-            created = "created" if api.api_version_compare.at_least("1.0.0") else "submitted"
-            assert result == {
-                "jobs": [
-                    DictSubSet({
-                        "id": job_id,
-                        "title": "Dummy",
-                        "status": created,
-                        created: "2020-04-20T16:04:03Z",
-                        "updated": "2020-04-20T16:04:03Z",
-                    }),
-                ],
-                "links": []
-            }
+        data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH, title="Dummy")
+        res = api.post('/jobs', json=data, headers=TEST_USER_AUTH_HEADER).assert_status_code(201)
+        job_id = res.headers['OpenEO-Identifier']
+        result = api.get('/jobs', headers=TEST_USER_AUTH_HEADER).assert_status_code(200).json
+        created = "created" if api.api_version_compare.at_least("1.0.0") else "submitted"
+        assert result == {
+            "jobs": [
+                DictSubSet({
+                    "id": job_id,
+                    "title": "Dummy",
+                    "status": created,
+                    created: "2020-04-20T16:04:03Z",
+                    "updated": "2020-04-20T16:04:03Z",
+                }),
+            ],
+            "links": []
+        }
 
     @mock.patch("openeogeotrellis.logs.Elasticsearch.search")
     def test_create_and_start_and_download(
@@ -566,8 +552,7 @@ class TestBatchJobs:
     ):
         time_machine.move_to("2020-04-20T16:04:03Z")
 
-        with self._mock_kazoo_client() as zk, \
-                mock.patch.dict("os.environ", {"OPENEO_SPARK_SUBMIT_PY_FILES": "data/deps/custom_processes.py,data/deps/foolib.whl"}):
+        with mock.patch.dict("os.environ", {"OPENEO_SPARK_SUBMIT_PY_FILES": "data/deps/custom_processes.py,data/deps/foolib.whl"}):
 
             openeo_flask_dir = tmp_path / "openeo-flask"
             openeo_flask_dir.mkdir()
@@ -612,26 +597,11 @@ class TestBatchJobs:
             assert batch_job_args[21:23] == [TEST_USER, job_id]
             assert batch_job_args[23] == '0.1'
 
-            # Check metadata in zookeeper
-            meta_data = zk.get_json_decoded(
-                f"/openeo.test/jobs/ongoing/{TEST_USER}/{job_id}"
-            )
-            assert meta_data["job_id"] == job_id
-            assert meta_data["user_id"] == TEST_USER
-            assert meta_data["status"] == "queued"
-            assert meta_data["api_version"] == api.api_version
-            assert json.loads(meta_data["specification"]) == {
-                "process_graph": {
-                    "loadcollection1": {
-                        "process_id": "load_collection",
-                        "arguments": {"id": "BIOPAR_FAPAR_V1_GLOBAL"},
-                        "result": True,
-                    }
-                },
-                "job_options": {"log_level": "info"},
-            }
-            assert meta_data["application_id"] == 'application_1587387643572_0842'
-            assert meta_data["created"] == "2020-04-20T16:04:03Z"
+            assert job_registry.db[job_id]["job_id"] == job_id
+            assert job_registry.db[job_id]["user_id"] == TEST_USER
+            assert job_registry.db[job_id]["status"] == "queued"
+            assert job_registry.db[job_id]["application_id"] == 'application_1587387643572_0842'
+            assert job_registry.db[job_id]["created"] == "2020-04-20T16:04:03Z"
             res = api.get('/jobs/{j}'.format(j=job_id), headers=TEST_USER_AUTH_HEADER).assert_status_code(200).json
             assert res["status"] == "queued"
 
@@ -643,17 +613,12 @@ class TestBatchJobs:
 
             # Fake update from job tracker
             dbl_job_registry = DoubleJobRegistry(
-                # TODO #236/#498/#632 phase out ZkJobRegistry
-                zk_job_registry_factory=(lambda: ZkJobRegistry(zk_client=zk)),
                 elastic_job_registry=job_registry,
             )
             with dbl_job_registry as jr:
                 jr.set_status(job_id=job_id, user_id=TEST_USER, status=JOB_STATUS.RUNNING)
 
-            meta_data = zk.get_json_decoded(
-                f"/openeo.test/jobs/ongoing/{TEST_USER}/{job_id}"
-            )
-            assert meta_data["status"] == "running"
+            assert job_registry.db[job_id]["status"] == "running"
             res = (
                 api.get(f"/jobs/{job_id}", headers=TEST_USER_AUTH_HEADER)
                 .assert_status_code(200)
@@ -791,7 +756,7 @@ class TestBatchJobs:
         api = request.getfixturevalue(api)
         time_machine.move_to("2020-04-20T16:04:03Z")
 
-        with self._mock_kazoo_client() as zk, mock.patch.dict(
+        with mock.patch.dict(
             "os.environ", {"OPENEO_SPARK_SUBMIT_PY_FILES": "data/deps/custom_processes.py,data/deps/foolib.whl"}
         ):
             openeo_flask_dir = tmp_path / "openeo-flask"
@@ -867,8 +832,6 @@ class TestBatchJobs:
 
             # Fake update from job tracker
             dbl_job_registry = DoubleJobRegistry(
-                # TODO #236/#498/#632 phase out ZkJobRegistry
-                zk_job_registry_factory=(lambda: ZkJobRegistry(zk_client=zk)),
                 elastic_job_registry=job_registry,
             )
             with dbl_job_registry as jr:
@@ -891,7 +854,7 @@ class TestBatchJobs:
         new_callable=mock.PropertyMock,
     )
     def test_download_from_object_storage(
-        self, mock_config_use_object_storage, api, batch_job_output_root, mock_s3_bucket
+        self, mock_config_use_object_storage, api, batch_job_output_root, mock_s3_bucket, job_registry
     ):
         """Test the scenario where the result files we want to download are stored on the objects storage,
         but they are not present in the container that receives the download request.
@@ -944,39 +907,27 @@ class TestBatchJobs:
         # Otherwise the test may pass but it passes for the wrong reasons.
         assert not job_dir.exists()
 
-        with self._mock_kazoo_client() as zk:
-            # where to import dict_no_none from
-            data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH, title="Dummy")
-            job_options = {}
+        job_registry.create_job(
+            job_id=job_id,
+            user_id=TEST_USER,
+            api_version="1.0.0",
+            process={"process_graph": self.DUMMY_PROCESS_GRAPH},
+        )
+        job_registry.set_status(job_id=job_id, status=JOB_STATUS.FINISHED)
 
-            # TODO #236/#498/#632 eliminate direct dependency on deprecated ZkJobRegistry and related mocking (e.g. `self._mock_kazoo_client()` above)
-            with ZkJobRegistry() as registry:
-                registry.register(
-                    job_id=job_id,
-                    user_id=TEST_USER,
-                    api_version="1.0.0",
-                    specification=dict(
-                        process_graph=data,
-                        job_options=job_options,
-                    ),
-                    title="Fake Test Job",
-                    description="Fake job for the purpose of testing"
-                )
-                registry.set_status(job_id=job_id, user_id=TEST_USER, status=JOB_STATUS.FINISHED)
+        # Download
+        res = api.get(
+            '/jobs/{j}/results'.format(j=job_id), headers=TEST_USER_AUTH_HEADER
+        ).assert_status_code(200).json
+        if api.api_version_compare.at_least("1.0.0"):
+            assert "openEO_2017-11-21Z.tif" in res["assets"]
+            download_url = res["assets"]["openEO_2017-11-21Z.tif"]["href"]
+        else:
+            download_url = res["links"][0]["href"]
 
-                # Download
-                res = api.get(
-                    '/jobs/{j}/results'.format(j=job_id), headers=TEST_USER_AUTH_HEADER
-                ).assert_status_code(200).json
-                if api.api_version_compare.at_least("1.0.0"):
-                    assert "openEO_2017-11-21Z.tif" in res["assets"]
-                    download_url = res["assets"]["openEO_2017-11-21Z.tif"]["href"]
-                else:
-                    download_url = res["links"][0]["href"]
-
-                res = api.client.get(download_url, headers=TEST_USER_AUTH_HEADER)
-                assert res.status_code == 200
-                assert res.data == TIFF_DUMMY_DATA
+        res = api.client.get(download_url, headers=TEST_USER_AUTH_HEADER)
+        assert res.status_code == 200
+        assert res.data == TIFF_DUMMY_DATA
 
     @mock.patch(
         "openeogeotrellis.configparams.ConfigParams.use_object_storage",
@@ -1042,7 +993,7 @@ class TestBatchJobs:
     )
     def test_download_from_object_storage_via_proxy(
         self, mock_config_use_object_storage, moto_server, batch_job_output_root, mock_s3_bucket, mock_sts_client,
-        sts_endpoint_on_driver, api, config_overrides, idp_enabled, auth_header: bool, expected_code: int
+        sts_endpoint_on_driver, api, job_registry, config_overrides, idp_enabled, auth_header: bool, expected_code: int
     ):
         """Test the scenario where the result files we want to download are stored on the objects storage,
         but they are not present in the container that receives the download request.
@@ -1096,63 +1047,51 @@ class TestBatchJobs:
         # Otherwise the test may pass but it passes for the wrong reasons.
         assert not job_dir.exists()
 
-        with self._mock_kazoo_client() as zk:
-            # where to import dict_no_none from
-            data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH, title="Dummy")
-            job_options = {}
+        job_registry.create_job(
+            job_id=job_id,
+            user_id=TEST_USER,
+            api_version="1.0.0",
+            process={"process_graph": self.DUMMY_PROCESS_GRAPH},
+        )
+        job_registry.set_status(job_id=job_id, status=JOB_STATUS.FINISHED)
 
-            # TODO #236/#498/#632 eliminate direct dependency on deprecated ZkJobRegistry and related mocking (e.g. `self._mock_kazoo_client()` above)
-            with ZkJobRegistry() as registry:
-                registry.register(
-                    job_id=job_id,
-                    user_id=TEST_USER,
-                    api_version="1.0.0",
-                    specification=dict(
-                        process_graph=data,
-                        job_options=job_options,
-                    ),
-                    title="Fake Test Job",
-                    description="Fake job for the purpose of testing"
-                )
-                registry.set_status(job_id=job_id, user_id=TEST_USER, status=JOB_STATUS.FINISHED)
+        # Download
+        res = api.get(
+            '/jobs/{j}/results'.format(j=job_id), headers=TEST_USER_AUTH_HEADER
+        ).assert_status_code(200).json
+        if api.api_version_compare.at_least("1.0.0"):
+            assert "openEO_2017-11-21Z.tif" in res["assets"]
+            download_url = res["assets"]["openEO_2017-11-21Z.tif"]["href"]
+        else:
+            download_url = res["links"][0]["href"]
 
-                # Download
-                res = api.get(
-                    '/jobs/{j}/results'.format(j=job_id), headers=TEST_USER_AUTH_HEADER
-                ).assert_status_code(200).json
-                if api.api_version_compare.at_least("1.0.0"):
-                    assert "openEO_2017-11-21Z.tif" in res["assets"]
-                    download_url = res["assets"]["openEO_2017-11-21Z.tif"]["href"]
-                else:
-                    download_url = res["links"][0]["href"]
+        retrieve_url = api.client.get
+        if download_url.startswith("http://127.0.0.1:"):
+            # pre-signed urls don't work with flask retriever
+            def retrieve_url_and_set_data(*args, **kwargs):
+                result = requests.get(*args, **kwargs)
+                setattr(result, "data", result.text.encode("utf-8"))
+                return result
+            retrieve_url = retrieve_url_and_set_data
+            # Proxy should allow Head requests which requires extra header.
+            assert "X-Proxy-Head-As-Get=true" in download_url
 
-                retrieve_url = api.client.get
-                if download_url.startswith("http://127.0.0.1:"):
-                    # pre-signed urls don't work with flask retriever
-                    def retrieve_url_and_set_data(*args, **kwargs):
-                        result = requests.get(*args, **kwargs)
-                        setattr(result, "data", result.text.encode("utf-8"))
-                        return result
-                    retrieve_url = retrieve_url_and_set_data
-                    # Proxy should allow Head requests which requires extra header.
-                    assert "X-Proxy-Head-As-Get=true" in download_url
+        if auth_header:
+            res = retrieve_url(download_url, headers=TEST_USER_AUTH_HEADER)
+        else:
+            res = retrieve_url(download_url)
 
-                if auth_header:
-                    res = retrieve_url(download_url, headers=TEST_USER_AUTH_HEADER)
-                else:
-                    res = retrieve_url(download_url)
-
-                assert res.status_code == expected_code
-                if 200 <= expected_code < 300:
-                    # For successfull api requests check response data
-                    assert res.data == TIFF_DUMMY_DATA
+        assert res.status_code == expected_code
+        if 200 <= expected_code < 300:
+            # For successfull api requests check response data
+            assert res.data == TIFF_DUMMY_DATA
 
     @mock.patch(
         "openeogeotrellis.configparams.ConfigParams.use_object_storage",
         new_callable=mock.PropertyMock,
     )
     def test_download_without_object_storage(
-        self, mock_config_use_object_storage, api, batch_job_output_root
+        self, mock_config_use_object_storage, api, batch_job_output_root, job_registry
     ):
         """Test explicitly that the scenario where we **do not* use the objects storage still works correctly.
 
@@ -1212,56 +1151,43 @@ class TestBatchJobs:
         with job_metadata.open('w') as f:
             json.dump(job_metadata_contents,f)
 
-        with self._mock_kazoo_client() as zk:
-            # where to import dict_no_none from
-            data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH, title="Dummy")
-            job_options = {}
+        job_registry.create_job(
+            job_id=job_id,
+            user_id=TEST_USER,
+            api_version="1.0.0",
+            process={"process_graph": self.DUMMY_PROCESS_GRAPH},
+        )
+        job_registry.set_status(job_id=job_id, status=JOB_STATUS.FINISHED)
 
-            # TODO #236/#498/#632 eliminate direct dependency on deprecated ZkJobRegistry and related mocking (e.g. `self._mock_kazoo_client()` above)
-            with ZkJobRegistry() as registry:
-                registry.register(
-                    job_id=job_id,
-                    user_id=TEST_USER,
-                    api_version="1.0.0",
-                    specification=dict(
-                        process_graph=data,
-                        job_options=job_options,
-                    ),
-                    title="Fake Test Job",
-                    description="Fake job for the purpose of testing"
-                )
-                registry.set_status(job_id=job_id, user_id=TEST_USER, status=JOB_STATUS.FINISHED)
+        # Download
+        res = api.get(
+            '/jobs/{j}/results'.format(j=job_id), headers=TEST_USER_AUTH_HEADER
+        ).assert_status_code(200).json
 
-                # Download
-                res = api.get(
-                    '/jobs/{j}/results'.format(j=job_id), headers=TEST_USER_AUTH_HEADER
-                ).assert_status_code(200).json
+        # Verify download of "openEO_2017-11-21Z.tif" works
+        if api.api_version_compare.at_least("1.0.0"):
+            assert "openEO_2017-11-21Z.tif" in res["assets"]
+            download_url = res["assets"]["openEO_2017-11-21Z.tif"]["href"]
+            download_url_out = res["assets"]["out"]["href"]
+        else:
+            download_url = res["links"][0]["href"]
 
-                # Verify download of "openEO_2017-11-21Z.tif" works
-                if api.api_version_compare.at_least("1.0.0"):
-                    assert "openEO_2017-11-21Z.tif" in res["assets"]
-                    download_url = res["assets"]["openEO_2017-11-21Z.tif"]["href"]
-                    download_url_out = res["assets"]["out"]["href"]
-                else:
-                    download_url = res["links"][0]["href"]
+        res = api.client.get(download_url, headers=TEST_USER_AUTH_HEADER)
+        assert res.status_code == 200
+        assert res.data == TIFF_DUMMY_DATA
 
-                res = api.client.get(download_url, headers=TEST_USER_AUTH_HEADER)
-                assert res.status_code == 200
-                assert res.data == TIFF_DUMMY_DATA
-
-                # Also verify that downloading the file named "out" works.
-                if api.api_version_compare.at_least("1.0.0"):
-                    res = api.client.get(download_url_out, headers=TEST_USER_AUTH_HEADER)
-                    assert res.status_code == 200
-                    assert res.data == TIFF_DUMMY_DATA
+        # Also verify that downloading the file named "out" works.
+        if api.api_version_compare.at_least("1.0.0"):
+            res = api.client.get(download_url_out, headers=TEST_USER_AUTH_HEADER)
+            assert res.status_code == 200
+            assert res.data == TIFF_DUMMY_DATA
 
     def test_yarn_mode_create_and_start_job_options(
         self, api, tmp_path, monkeypatch, batch_job_output_root, time_machine, mock_yarn_backend_config
     ):
         time_machine.move_to("2020-04-20T16:04:03Z")
 
-        with self._mock_kazoo_client() as zk, \
-                mock.patch.dict("os.environ", {"OPENEO_SPARK_SUBMIT_PY_FILES": "data/deps/custom_processes.py,data/deps/foolib.whl"}):
+        with mock.patch.dict("os.environ", {"OPENEO_SPARK_SUBMIT_PY_FILES": "data/deps/custom_processes.py,data/deps/foolib.whl"}):
 
             openeo_flask_dir = tmp_path / "openeo-flask"
             openeo_flask_dir.mkdir()
@@ -1435,118 +1361,102 @@ class TestBatchJobs:
         res2.assert_status_code(400)
 
     def test_cancel_job(self, api, job_registry, mock_yarn_backend_config):
-        with self._mock_kazoo_client() as zk:
-            # Create job
-            data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH)
-            res = api.post('/jobs', json=data, headers=TEST_USER_AUTH_HEADER).assert_status_code(201)
-            job_id = res.headers['OpenEO-Identifier']
-            # Start job
-            with mock.patch('subprocess.run') as run:
-                stdout = api.read_file("spark-submit-stdout.txt")
-                run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout=stdout, stderr="")
-                # Trigger job start
-                api.post(
-                    f"/jobs/{job_id}/results", json={}, headers=TEST_USER_AUTH_HEADER
-                ).assert_status_code(202)
-                run.assert_called_once()
-
-            # Fake running
-            dbl_job_registry = DoubleJobRegistry(
-                # TODO #236/#498/#632 phase out ZkJobRegistry
-                zk_job_registry_factory=(lambda: ZkJobRegistry(zk_client=zk)),
-                elastic_job_registry=job_registry,
-            )
-            with dbl_job_registry as jr:
-                jr.set_status(job_id=job_id, user_id=TEST_USER, status=JOB_STATUS.RUNNING)
-            res = api.get('/jobs/{j}'.format(j=job_id), headers=TEST_USER_AUTH_HEADER).assert_status_code(200).json
-            assert res["status"] == "running"
-
-            # Cancel
-            with mock.patch('subprocess.run') as run:
-                res = api.delete('/jobs/{j}/results'.format(j=job_id), headers=TEST_USER_AUTH_HEADER)
-            res.assert_status_code(204)
+        # Create job
+        data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH)
+        res = api.post('/jobs', json=data, headers=TEST_USER_AUTH_HEADER).assert_status_code(201)
+        job_id = res.headers['OpenEO-Identifier']
+        # Start job
+        with mock.patch('subprocess.run') as run:
+            stdout = api.read_file("spark-submit-stdout.txt")
+            run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout=stdout, stderr="")
+            # Trigger job start
+            api.post(
+                f"/jobs/{job_id}/results", json={}, headers=TEST_USER_AUTH_HEADER
+            ).assert_status_code(202)
             run.assert_called_once()
-            command = run.call_args[0][0]
-            assert command == [
-                "curl",
-                "--location-trusted",
-                "--fail",
-                "--negotiate",
-                "-u",
-                ":",
-                "--insecure",
-                "-X",
-                "PUT",
-                "-H",
-                "Content-Type: application/json",
-                "-d",
-                '{"state": "KILLED"}',
-                "https://epod-master1.vgt.vito.be:8090/ws/v1/cluster/apps/application_1587387643572_0842/state",
-            ]
-            meta_data = zk.get_json_decoded(
-                f"/openeo.test/jobs/done/{TEST_USER}/{job_id}"
-            )
-            assert meta_data == DictSubSet({"status": "canceled"})
-            assert job_registry.db[job_id] == DictSubSet({"status": "canceled"})
+
+        # Fake running
+        dbl_job_registry = DoubleJobRegistry(
+            elastic_job_registry=job_registry,
+        )
+        with dbl_job_registry as jr:
+            jr.set_status(job_id=job_id, user_id=TEST_USER, status=JOB_STATUS.RUNNING)
+        res = api.get('/jobs/{j}'.format(j=job_id), headers=TEST_USER_AUTH_HEADER).assert_status_code(200).json
+        assert res["status"] == "running"
+
+        # Cancel
+        with mock.patch('subprocess.run') as run:
+            res = api.delete('/jobs/{j}/results'.format(j=job_id), headers=TEST_USER_AUTH_HEADER)
+        res.assert_status_code(204)
+        run.assert_called_once()
+        command = run.call_args[0][0]
+        assert command == [
+            "curl",
+            "--location-trusted",
+            "--fail",
+            "--negotiate",
+            "-u",
+            ":",
+            "--insecure",
+            "-X",
+            "PUT",
+            "-H",
+            "Content-Type: application/json",
+            "-d",
+            '{"state": "KILLED"}',
+            "https://epod-master1.vgt.vito.be:8090/ws/v1/cluster/apps/application_1587387643572_0842/state",
+        ]
+        assert job_registry.db[job_id] == DictSubSet({"status": "canceled"})
 
     def test_delete_job(self, api, job_registry, mock_yarn_backend_config):
-        with self._mock_kazoo_client() as zk:
-            # Create job
-            data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH)
-            res = api.post(
-                "/jobs", json=data, headers=TEST_USER_AUTH_HEADER
-            ).assert_status_code(201)
-            job_id = res.headers["OpenEO-Identifier"]
-            # Start job
-            with mock.patch("subprocess.run") as run:
-                stdout = api.read_file("spark-submit-stdout.txt")
-                run.return_value = subprocess.CompletedProcess(
-                    args=[], returncode=0, stdout=stdout, stderr=""
-                )
-                # Trigger job start
-                api.post(
-                    f"/jobs/{job_id}/results", headers=TEST_USER_AUTH_HEADER
-                ).assert_status_code(202)
-                run.assert_called_once()
-
-            # Fake running
-            dbl_job_registry = DoubleJobRegistry(
-                # TODO #236/#498/#632 phase out ZkJobRegistry
-                zk_job_registry_factory=(lambda: ZkJobRegistry(zk_client=zk)),
-                elastic_job_registry=job_registry,
+        # Create job
+        data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH)
+        res = api.post(
+            "/jobs", json=data, headers=TEST_USER_AUTH_HEADER
+        ).assert_status_code(201)
+        job_id = res.headers["OpenEO-Identifier"]
+        # Start job
+        with mock.patch("subprocess.run") as run:
+            stdout = api.read_file("spark-submit-stdout.txt")
+            run.return_value = subprocess.CompletedProcess(
+                args=[], returncode=0, stdout=stdout, stderr=""
             )
-            with dbl_job_registry as jr:
-                jr.set_status(job_id=job_id, user_id=TEST_USER, status=JOB_STATUS.RUNNING)
-            res = (
-                api.get(f"/jobs/{job_id}", headers=TEST_USER_AUTH_HEADER)
-                .assert_status_code(200)
-                .json
-            )
-            assert res["status"] == "running"
-
-            # Cancel
-            with mock.patch("subprocess.run") as run:
-                res = api.delete(
-                    f"/jobs/{job_id}/results", headers=TEST_USER_AUTH_HEADER
-                )
-            res.assert_status_code(204)
+            # Trigger job start
+            api.post(
+                f"/jobs/{job_id}/results", headers=TEST_USER_AUTH_HEADER
+            ).assert_status_code(202)
             run.assert_called_once()
-            meta_data = zk.get_json_decoded(
-                f"/openeo.test/jobs/done/{TEST_USER}/{job_id}"
-            )
-            assert meta_data == DictSubSet({"status": "canceled"})
-            assert job_registry.db[job_id] == DictSubSet({"status": "canceled"})
 
-            # Delete
-            res = api.delete(f"/jobs/{job_id}", headers=TEST_USER_AUTH_HEADER)
-            res.assert_status_code(204)
-            with pytest.raises(kazoo.exceptions.NoNodeError):
-                _ = zk.get_json_decoded(f"/openeo.test/jobs/done/{TEST_USER}/{job_id}")
-            # TODO
-            # assert job_registry.db[job_id] == DictSubSet({"deleted": True})
+        # Fake running
+        dbl_job_registry = DoubleJobRegistry(
+            elastic_job_registry=job_registry,
+        )
+        with dbl_job_registry as jr:
+            jr.set_status(job_id=job_id, user_id=TEST_USER, status=JOB_STATUS.RUNNING)
+        res = (
+            api.get(f"/jobs/{job_id}", headers=TEST_USER_AUTH_HEADER)
+            .assert_status_code(200)
+            .json
+        )
+        assert res["status"] == "running"
+
+        # Cancel
+        with mock.patch("subprocess.run") as run:
+            res = api.delete(
+                f"/jobs/{job_id}/results", headers=TEST_USER_AUTH_HEADER
+            )
+        res.assert_status_code(204)
+        run.assert_called_once()
+        assert job_registry.db[job_id] == DictSubSet({"status": "canceled"})
+
+        # Delete
+        res = api.delete(f"/jobs/{job_id}", headers=TEST_USER_AUTH_HEADER)
+        res.assert_status_code(204)
+        # TODO
+        # assert job_registry.db[job_id] == DictSubSet({"deleted": True})
 
     @mock.patch("openeogeotrellis.logs.Elasticsearch.search")
-    def test_get_job_logs_skips_lines_with_empty_loglevel(self, mock_search, api):
+    def test_get_job_logs_skips_lines_with_empty_loglevel(self, mock_search, api, job_registry):
         search_hits = [
             {
                 "_source": {
@@ -1576,39 +1486,25 @@ class TestBatchJobs:
         }
         job_id = "6d11e901-bb5d-4589-b600-8dfb50524740"
 
-        with self._mock_kazoo_client() as zk:
-            # where to import dict_no_none from
-            data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH, title="Dummy")
-            job_options = {}
+        job_registry.create_job(
+            job_id=job_id,
+            user_id=TEST_USER,
+            api_version="1.0.0",
+            process={"process_graph": self.DUMMY_PROCESS_GRAPH},
+        )
+        job_registry.set_status(job_id=job_id, status=JOB_STATUS.FINISHED)
 
-            # TODO #236/#498/#632 eliminate direct dependency on deprecated ZkJobRegistry and related mocking (e.g. `self._mock_kazoo_client()` above)
-            with ZkJobRegistry() as registry:
-                registry.register(
-                    job_id=job_id,
-                    user_id=TEST_USER,
-                    api_version="1.0.0",
-                    specification=dict(
-                        process_graph=data,
-                        job_options=job_options,
-                    ),
-                    title="Fake Test Job",
-                    description="Fake job for the purpose of testing",
-                )
-                registry.set_status(
-                    job_id=job_id, user_id=TEST_USER, status=JOB_STATUS.FINISHED
-                )
+        # Get logs
+        res = (
+            api.get(f"/jobs/{job_id}/logs", headers=TEST_USER_AUTH_HEADER)
+            .assert_status_code(200)
+            .json
+        )
 
-            # Get logs
-            res = (
-                api.get(f"/jobs/{job_id}/logs", headers=TEST_USER_AUTH_HEADER)
-                .assert_status_code(200)
-                .json
-            )
-
-            assert res["logs"] == expected_log_entries
+        assert res["logs"] == expected_log_entries
 
     @mock.patch("openeogeotrellis.logs.Elasticsearch.search")
-    def test_get_job_logs_with_connection_timeout(self, mock_search, api, caplog):
+    def test_get_job_logs_with_connection_timeout(self, mock_search, api, caplog, job_registry):
         caplog.set_level(logging.ERROR)
 
         sensitive_info = "our server"
@@ -1637,61 +1533,47 @@ class TestBatchJobs:
             }
         ]
 
-        with self._mock_kazoo_client() as zk:
-            # where to import dict_no_none from
-            data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH, title="Dummy")
-            job_options = {}
+        job_registry.create_job(
+            job_id=job_id,
+            user_id=TEST_USER,
+            api_version="1.0.0",
+            process={"process_graph": self.DUMMY_PROCESS_GRAPH},
+        )
+        job_registry.set_status(job_id=job_id, status=JOB_STATUS.FINISHED)
 
-            # TODO #236/#498/#632 eliminate direct dependency on deprecated ZkJobRegistry and related mocking (e.g. `self._mock_kazoo_client()` above)
-            with ZkJobRegistry() as registry:
-                registry.register(
-                    job_id=job_id,
-                    user_id=TEST_USER,
-                    api_version="1.0.0",
-                    specification=dict(
-                        process_graph=data,
-                        job_options=job_options,
-                    ),
-                    title="Fake Test Job",
-                    description="Fake job for the purpose of testing",
-                )
-                registry.set_status(
-                    job_id=job_id, user_id=TEST_USER, status=JOB_STATUS.FINISHED
-                )
+        from openeo_driver.util.logging import FlaskRequestCorrelationIdLogging
+        with mock.patch.object(FlaskRequestCorrelationIdLogging, "_build_request_id",
+                               return_value="r-1234-5678-91011"):
+            # Get logs
+            res = (
+                api.get(f"/jobs/{job_id}/logs", headers=TEST_USER_AUTH_HEADER)
+                .assert_status_code(200)
+                .json
+            )
 
-            from openeo_driver.util.logging import FlaskRequestCorrelationIdLogging
-            with mock.patch.object(FlaskRequestCorrelationIdLogging, "_build_request_id",
-                                   return_value="r-1234-5678-91011"):
-                # Get logs
-                res = (
-                    api.get(f"/jobs/{job_id}/logs", headers=TEST_USER_AUTH_HEADER)
-                    .assert_status_code(200)
-                    .json
-                )
+        #
+        # Also explicitly verify that the security sensitive info from the old message is no longer present.
+        # In particular, we don't want "host=" to leak the URL to our server.
+        # This is an extra precaution, though normally the assert below would also fail.
+        #
+        # Example of the old message:
+        # "Log collection failed: ConnectionTimeout('TIMEOUT', \"HTTPSConnectionPool(host='our server', port=443):
+        # Read timed out. (read timeout=60)\", ReadTimeoutError(\"HTTPSConnectionPool(host='our server', port=443):
+        # Read timed out. (read timeout=60)\"))"
+        assert len(res["logs"]) == 1
+        assert sensitive_info not in res["logs"][0]["message"]
 
-            #
-            # Also explicitly verify that the security sensitive info from the old message is no longer present.
-            # In particular, we don't want "host=" to leak the URL to our server.
-            # This is an extra precaution, though normally the assert below would also fail.
-            #
-            # Example of the old message:
-            # "Log collection failed: ConnectionTimeout('TIMEOUT', \"HTTPSConnectionPool(host='our server', port=443):
-            # Read timed out. (read timeout=60)\", ReadTimeoutError(\"HTTPSConnectionPool(host='our server', port=443):
-            # Read timed out. (read timeout=60)\"))"
-            assert len(res["logs"]) == 1
-            assert sensitive_info not in res["logs"][0]["message"]
+        # Verify the expected log entry in full
+        assert res["logs"] == expected_log_entries
 
-            # Verify the expected log entry in full
-            assert res["logs"] == expected_log_entries
+        # The original ConnectionTimeout should be sent to the current (general) logs
+        # which are different from the job-specific logs we just retrieved.
+        # The ConnectionTimeout info should be in the traceback.
+        # To view these logs in caplog.text, run pytest with the '-s' option.
+        print(caplog.text)
+        assert sensitive_info in caplog.text
 
-            # The original ConnectionTimeout should be sent to the current (general) logs
-            # which are different from the job-specific logs we just retrieved.
-            # The ConnectionTimeout info should be in the traceback.
-            # To view these logs in caplog.text, run pytest with the '-s' option.
-            print(caplog.text)
-            assert sensitive_info in caplog.text
-
-    def test_api_job_results_contains_proj_metadata_at_asset_level(self, api, batch_job_output_root):
+    def test_api_job_results_contains_proj_metadata_at_asset_level(self, api, batch_job_output_root, job_registry):
         """Test that projection metadata at the asset level in the job results
         comes through via the API / view.
         """
@@ -1758,58 +1640,46 @@ class TestBatchJobs:
         with job_metadata.open("w") as f:
             json.dump(job_metadata_contents, f)
 
-        with self._mock_kazoo_client() as zk:
-            # where to import dict_no_none from
-            data = api.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH, title="Dummy")
-            job_options = {}
+        job_registry.create_job(
+            job_id=job_id,
+            user_id=TEST_USER,
+            api_version="1.0.0",
+            process={"process_graph": self.DUMMY_PROCESS_GRAPH},
+        )
+        job_registry.set_status(job_id=job_id, status=JOB_STATUS.FINISHED)
 
-            # TODO #236/#498/#632 eliminate direct dependency on deprecated ZkJobRegistry and related mocking (e.g. `self._mock_kazoo_client()` above)
-            with ZkJobRegistry() as registry:
-                registry.register(
-                    job_id=job_id,
-                    user_id=TEST_USER,
-                    api_version="1.0.0",
-                    specification=dict(
-                        process_graph=data,
-                        job_options=job_options,
-                    ),
-                    title="Fake Test Job",
-                    description="Fake job for the purpose of testing",
-                )
-                registry.set_status(job_id=job_id, user_id=TEST_USER, status=JOB_STATUS.FINISHED)
+        # Download
+        res = (
+            api.get("/jobs/{j}/results".format(j=job_id), headers=TEST_USER_AUTH_HEADER)
+            .assert_status_code(200)
+            .json
+        )
 
-                # Download
-                res = (
-                    api.get("/jobs/{j}/results".format(j=job_id), headers=TEST_USER_AUTH_HEADER)
-                    .assert_status_code(200)
-                    .json
-                )
+        assert "openEO_2017-11-21Z.tif" in res["assets"]
+        assert "proj:epsg" in res["assets"]["openEO_2017-11-21Z.tif"]
+        assert res["assets"]["openEO_2017-11-21Z.tif"]["proj:epsg"] == 6234
 
-                assert "openEO_2017-11-21Z.tif" in res["assets"]
-                assert "proj:epsg" in res["assets"]["openEO_2017-11-21Z.tif"]
-                assert res["assets"]["openEO_2017-11-21Z.tif"]["proj:epsg"] == 6234
+        assert "proj:bbox" in res["assets"]["openEO_2017-11-21Z.tif"]
+        assert res["assets"]["openEO_2017-11-21Z.tif"]["proj:bbox"] == [1.0, 2.0, 3.0, 4.0]
 
-                assert "proj:bbox" in res["assets"]["openEO_2017-11-21Z.tif"]
-                assert res["assets"]["openEO_2017-11-21Z.tif"]["proj:bbox"] == [1.0, 2.0, 3.0, 4.0]
+        assert "proj:shape" in res["assets"]["openEO_2017-11-21Z.tif"]
+        assert res["assets"]["openEO_2017-11-21Z.tif"]["proj:shape"] == [321, 654]
 
-                assert "proj:shape" in res["assets"]["openEO_2017-11-21Z.tif"]
-                assert res["assets"]["openEO_2017-11-21Z.tif"]["proj:shape"] == [321, 654]
-
-                assert res["assets"]["openEO_2017-11-21Z.tif"]["raster:bands"] == [
-                    {
-                        "statistics": {
-                            "maximum": 641.22131,
-                            "mean": 403.31786,
-                            "minimum": 149.76655,
-                            "stddev": 98.38930,
-                            "valid_percent": 100.0,
-                        }
-                    }
-                ]
+        assert res["assets"]["openEO_2017-11-21Z.tif"]["raster:bands"] == [
+            {
+                "statistics": {
+                    "maximum": 641.22131,
+                    "mean": 403.31786,
+                    "minimum": 149.76655,
+                    "stddev": 98.38930,
+                    "valid_percent": 100.0,
+                }
+            }
+        ]
 
     # TODO: This test is known to fail with API v1.1.0 / api110. Add coverage, or update the test.
     #   https://github.com/Open-EO/openeo-geopyspark-driver/issues/440
-    def test_api_job_results_contains_proj_metadata_at_item_level(self, api100, batch_job_output_root):
+    def test_api_job_results_contains_proj_metadata_at_item_level(self, api100, batch_job_output_root, job_registry):
         """Test explicitly that the scenario where we **do not* use the objects storage still works correctly.
 
         Some changes were introduced be able to download from S3, so we want to be sure the existing
@@ -1868,57 +1738,46 @@ class TestBatchJobs:
         with job_metadata.open("w") as f:
             json.dump(job_metadata_contents, f)
 
-        with self._mock_kazoo_client() as zk:
-            data = api100.get_process_graph_dict(self.DUMMY_PROCESS_GRAPH, title="Dummy")
-            job_options = {}
+        job_registry.create_job(
+            job_id=job_id,
+            user_id=TEST_USER,
+            api_version="1.0.0",
+            process={"process_graph": self.DUMMY_PROCESS_GRAPH},
+        )
+        job_registry.set_status(job_id=job_id, status=JOB_STATUS.FINISHED)
 
-            # TODO #236/#498/#632 eliminate direct dependency on deprecated ZkJobRegistry and related mocking (e.g. `self._mock_kazoo_client()` above)
-            with ZkJobRegistry() as registry:
-                registry.register(
-                    job_id=job_id,
-                    user_id=TEST_USER,
-                    api_version="1.0.0",
-                    specification=dict(
-                        process_graph=data,
-                        job_options=job_options,
-                    ),
-                    title="Fake Test Job",
-                    description="Fake job for the purpose of testing",
-                )
-                registry.set_status(job_id=job_id, user_id=TEST_USER, status=JOB_STATUS.FINISHED)
+        # Download
+        res = (
+            api100.get("/jobs/{j}/results".format(j=job_id), headers=TEST_USER_AUTH_HEADER)
+            .assert_status_code(200)
+            .json
+        )
 
-                # Download
-                res = (
-                    api100.get("/jobs/{j}/results".format(j=job_id), headers=TEST_USER_AUTH_HEADER)
-                    .assert_status_code(200)
-                    .json
-                )
-
-                assert res == DictSubSet(
+        assert res == DictSubSet(
+            {
+                "properties": DictSubSet(
                     {
-                        "properties": DictSubSet(
-                            {
-                                "proj:epsg": 4326,
-                                "proj:shape": [321, 654],
-                                "proj:bbox": [2, 51, 3, 52],
-                            }
-                        ),
-                        "bbox": [2, 51, 3, 52],
+                        "proj:epsg": 4326,
+                        "proj:shape": [321, 654],
+                        "proj:bbox": [2, 51, 3, 52],
                     }
-                )
+                ),
+                "bbox": [2, 51, 3, 52],
+            }
+        )
 
-                assert "openEO_2017-11-21Z.tif" in res["assets"]
-                assert res["assets"]["openEO_2017-11-21Z.tif"]["raster:bands"] == [
-                    {
-                        "statistics": {
-                            "maximum": 641.22131,
-                            "mean": 403.31786,
-                            "minimum": 149.76655,
-                            "stddev": 98.38930,
-                            "valid_percent": 100.0,
-                        }
-                    }
-                ]
+        assert "openEO_2017-11-21Z.tif" in res["assets"]
+        assert res["assets"]["openEO_2017-11-21Z.tif"]["raster:bands"] == [
+            {
+                "statistics": {
+                    "maximum": 641.22131,
+                    "mean": 403.31786,
+                    "minimum": 149.76655,
+                    "stddev": 98.38930,
+                    "valid_percent": 100.0,
+                }
+            }
+        ]
 
 
 class TestSentinelHubBatchJobs:
@@ -1932,14 +1791,6 @@ class TestSentinelHubBatchJobs:
         )
         api.set_auth_bearer_token(TEST_USER_BEARER_TOKEN)
         return api
-
-    @pytest.fixture
-    def zk_client(self) -> KazooClientMock:
-        zk_client = KazooClientMock()
-        with mock.patch.object(
-            openeogeotrellis.job_registry, "KazooClient", return_value=zk_client
-        ):
-            yield zk_client
 
     @staticmethod
     @contextlib.contextmanager
@@ -2015,7 +1866,7 @@ class TestSentinelHubBatchJobs:
         return args
 
     @pytest.mark.parametrize(["spatial_size"], [(0.1,), (1,)])
-    def test_create(self, api, job_registry, time_machine, zk_client, spatial_size):
+    def test_create(self, api, job_registry, time_machine, spatial_size):
         time_machine.move_to("2020-04-20T12:01:01Z")
 
         job_data = api.get_process_graph_dict(
@@ -2026,18 +1877,6 @@ class TestSentinelHubBatchJobs:
         assert job_id.startswith("j-")
 
         # Check status
-        assert zk_client.get_json_decoded(
-            f"/openeo.test/jobs/ongoing/{TEST_USER}/{job_id}"
-        ) == DictSubSet(
-            {
-                "job_id": job_id,
-                "user_id": TEST_USER,
-                "status": "created",
-                "application_id": None,
-                "created": "2020-04-20T12:01:01Z",
-                "updated": "2020-04-20T12:01:01Z",
-            }
-        )
         assert job_registry.db[job_id] == DictSubSet(
             {
                 "job_id": job_id,
@@ -2061,7 +1900,6 @@ class TestSentinelHubBatchJobs:
         api,
         job_registry,
         time_machine,
-        zk_client,
         batch_job_output_root,
         mock_yarn_backend_config
     ):
@@ -2075,9 +1913,6 @@ class TestSentinelHubBatchJobs:
         assert job_id.startswith("j-")
 
         # Check status
-        assert zk_client.get_json_decoded(
-            f"/openeo.test/jobs/ongoing/{TEST_USER}/{job_id}"
-        ) == DictSubSet({"status": "created"})
         assert job_registry.db[job_id] == DictSubSet({"status": "created"})
         res = api.get(f"/jobs/{job_id}").assert_status_code(200).json
         assert res["status"] == "created"
@@ -2098,19 +1933,6 @@ class TestSentinelHubBatchJobs:
         )
         sh_batch_service.start_batch_process.assert_not_called()
 
-        # Check metadata in zookeeper
-        assert zk_client.get_json_decoded(
-            f"/openeo.test/jobs/ongoing/{TEST_USER}/{job_id}"
-        ) == DictSubSet(
-            {
-                "job_id": job_id,
-                "user_id": TEST_USER,
-                "status": "queued",
-                "application_id": "application_1587387643572_0842",
-                "created": "2020-04-20T12:01:01Z",
-                "updated": "2020-04-20T12:02:02Z",
-            }
-        )
         # Check metadata in (elastic) job tracker
         assert job_registry.db[job_id] == DictSubSet(
             {
@@ -2130,7 +1952,6 @@ class TestSentinelHubBatchJobs:
         api,
         job_registry,
         time_machine,
-        zk_client,
         batch_job_output_root,
     ):
         time_machine.move_to("2020-04-20T12:01:01Z", tick=False)
@@ -2142,10 +1963,6 @@ class TestSentinelHubBatchJobs:
         job_id = res.headers["OpenEO-Identifier"]
         assert job_id.startswith("j-")
 
-        # Check status
-        assert zk_client.get_json_decoded(
-            f"/openeo.test/jobs/ongoing/{TEST_USER}/{job_id}"
-        ) == DictSubSet({"status": "created"})
         # Check metadata in (elastic) job tracker
         assert job_registry.db[job_id] == DictSubSet({"status": "created"})
         res = api.get(f"/jobs/{job_id}").assert_status_code(200).json
@@ -2170,28 +1987,6 @@ class TestSentinelHubBatchJobs:
             topic="openeo-async-tasks", value=mock.ANY, headers=None
         )
 
-        # Check metadata in zookeeper
-        assert zk_client.get_json_decoded(
-            f"/openeo.test/jobs/ongoing/{TEST_USER}/{job_id}"
-        ) == DictSubSet(
-            {
-                "job_id": job_id,
-                "user_id": TEST_USER,
-                "status": "queued",
-                "application_id": None,
-                "created": "2020-04-20T12:01:01Z",
-                "updated": "2020-04-20T12:02:02Z",
-                "dependency_status": "awaiting",
-                "dependencies": [
-                    {
-                        "batch_request_ids": ["224635b-7d60-40f2-bae6-d30e923bcb83"],
-                        "card4l": False,
-                        "collection_id": "SENTINEL2_L2A_SENTINELHUB",
-                        "results_location": "s3://openeo-sentinelhub/224635b-7d60-40f2-bae6-d30e923bcb83",
-                    }
-                ],
-            }
-        )
         # Check metadata in (elastic) job tracker
         assert job_registry.db[job_id] == DictSubSet(
             {
@@ -2220,7 +2015,6 @@ class TestSentinelHubBatchJobs:
         api,
         job_registry,
         time_machine,
-        zk_client,
         batch_job_output_root,
     ):
         time_machine.move_to("2020-04-20T12:01:01Z")
@@ -2347,10 +2141,6 @@ class TestSentinelHubBatchJobs:
         job_id = res.headers["OpenEO-Identifier"]
         assert job_id.startswith("j-")
 
-        # Check status
-        assert zk_client.get_json_decoded(
-            f"/openeo.test/jobs/ongoing/{TEST_USER}/{job_id}"
-        ) == DictSubSet({"status": "created"})
         # Check metadata in (elastic) job tracker
         assert job_registry.db[job_id] == DictSubSet({"status": "created"})
         res = api.get(f"/jobs/{job_id}").assert_status_code(200).json
@@ -2381,7 +2171,6 @@ class TestSentinelHubBatchJobs:
         job_registry,
         backend_implementation,
         time_machine,
-        zk_client,
         mock_yarn_backend_config
     ):
         time_machine.move_to("2020-04-20T12:01:01Z")
@@ -2412,27 +2201,6 @@ class TestSentinelHubBatchJobs:
         )
 
         # Check status
-        assert zk_client.get_json_decoded(
-            f"/openeo.test/jobs/ongoing/{TEST_USER}/{job_id}"
-        ) == DictSubSet(
-            {
-                "job_id": job_id,
-                "user_id": TEST_USER,
-                "status": "queued",
-                "application_id": None,
-                "created": "2020-04-20T12:01:01Z",
-                "updated": "2020-04-20T12:02:02Z",
-                "dependency_status": "awaiting",
-                "dependencies": [
-                    {
-                        "batch_request_ids": ["224635b-7d60-40f2-bae6-d30e923bcb83"],
-                        "card4l": False,
-                        "collection_id": "SENTINEL2_L2A_SENTINELHUB",
-                        "results_location": "s3://openeo-sentinelhub/224635b-7d60-40f2-bae6-d30e923bcb83",
-                    }
-                ],
-            }
-        )
         assert job_registry.db[job_id] == DictSubSet(
             {
                 "job_id": job_id,
@@ -2494,28 +2262,6 @@ class TestSentinelHubBatchJobs:
         )
 
         # Check status
-        assert zk_client.get_json_decoded(
-            f"/openeo.test/jobs/ongoing/{TEST_USER}/{job_id}"
-        ) == DictSubSet(
-            {
-                "job_id": job_id,
-                "user_id": TEST_USER,
-                "status": "queued",
-                "application_id": "application_1587387643572_0842",
-                "created": "2020-04-20T12:01:01Z",
-                "updated": "2020-04-20T12:03:03Z",
-                "dependency_status": "available",
-                "dependencies": [
-                    {
-                        "batch_request_ids": ["224635b-7d60-40f2-bae6-d30e923bcb83"],
-                        "card4l": False,
-                        "collection_id": "SENTINEL2_L2A_SENTINELHUB",
-                        "results_location": "s3://openeo-sentinelhub/224635b-7d60-40f2-bae6-d30e923bcb83",
-                    }
-                ],
-                "dependency_usage": "4.93600000000000000000000000",
-            }
-        )
         assert job_registry.db[job_id] == DictSubSet(
             {
                 "job_id": job_id,
@@ -2546,15 +2292,10 @@ class TestSentinelHubBatchJobs:
 
         # Fake update from job tracker
         dbl_job_registry = DoubleJobRegistry(
-            # TODO #236/#498/#632 phase out ZkJobRegistry
-            zk_job_registry_factory=(lambda: ZkJobRegistry(zk_client=zk_client)),
             elastic_job_registry=job_registry,
         )
         with dbl_job_registry as jr:
             jr.set_status(job_id=job_id, user_id=TEST_USER, status=JOB_STATUS.RUNNING)
-        assert zk_client.get_json_decoded(
-            f"/openeo.test/jobs/ongoing/{TEST_USER}/{job_id}"
-        ) == DictSubSet({"status": "running"})
         assert job_registry.db[job_id] == DictSubSet(
             {
                 "status": "running",
@@ -2602,7 +2343,6 @@ class TestSentinelHubBatchJobs:
         job_registry,
         backend_implementation,
         time_machine,
-        zk_client,
         requests_mock,
         mock_yarn_backend_config
     ):
@@ -2645,24 +2385,6 @@ class TestSentinelHubBatchJobs:
         )
 
         # Check status
-        assert zk_client.get_json_decoded(
-            f"/openeo.test/jobs/ongoing/{TEST_USER}/{job_id}"
-        ) == DictSubSet(
-            {
-                "job_id": job_id,
-                "user_id": TEST_USER,
-                "status": "queued",
-                "application_id": None,
-                "created": "2020-04-20T12:01:01Z",
-                "updated": "2020-04-20T12:02:02Z",
-                "dependency_status": "awaiting",
-                "dependencies": [
-                    {
-                        "partial_job_results_url": partial_job_results_url,
-                    }
-                ],
-            }
-        )
         assert job_registry.db[job_id] == DictSubSet(
             {
                 "job_id": job_id,
@@ -2707,24 +2429,6 @@ class TestSentinelHubBatchJobs:
         )
 
         # Check status
-        assert zk_client.get_json_decoded(
-            f"/openeo.test/jobs/ongoing/{TEST_USER}/{job_id}"
-        ) == DictSubSet(
-            {
-                "job_id": job_id,
-                "user_id": TEST_USER,
-                "status": "queued",
-                "application_id": "application_1587387643572_0842",
-                "created": "2020-04-20T12:01:01Z",
-                "updated": "2020-04-20T12:03:03Z",
-                "dependency_status": "available",
-                "dependencies": [
-                    {
-                        "partial_job_results_url": partial_job_results_url,
-                    }
-                ],
-            }
-        )
         assert job_registry.db[job_id] == DictSubSet(
             {
                 "job_id": job_id,
@@ -2751,15 +2455,10 @@ class TestSentinelHubBatchJobs:
 
         # Fake update from job tracker
         dbl_job_registry = DoubleJobRegistry(
-            # TODO #236/#498/#632 phase out ZkJobRegistry
-            zk_job_registry_factory=(lambda: ZkJobRegistry(zk_client=zk_client)),
             elastic_job_registry=job_registry,
         )
         with dbl_job_registry as jr:
             jr.set_status(job_id=job_id, user_id=TEST_USER, status=JOB_STATUS.RUNNING)
-        assert zk_client.get_json_decoded(
-            f"/openeo.test/jobs/ongoing/{TEST_USER}/{job_id}"
-        ) == DictSubSet({"status": "running"})
         assert job_registry.db[job_id] == DictSubSet(
             {
                 "status": "running",
@@ -2807,7 +2506,6 @@ class TestSentinelHubBatchJobs:
         job_registry,
         backend_implementation,
         time_machine,
-        zk_client,
         mock_yarn_backend_config
     ):
         job_registry.create_job(process={}, user_id=TEST_USER, job_id='j-a778cc99-f741-4512-b304-07fdd692ae22')
@@ -2846,24 +2544,6 @@ class TestSentinelHubBatchJobs:
         )
 
         # Check status
-        assert zk_client.get_json_decoded(
-            f"/openeo.test/jobs/ongoing/{TEST_USER}/{job_id}"
-        ) == DictSubSet(
-            {
-                "job_id": job_id,
-                "user_id": TEST_USER,
-                "status": "queued",
-                "application_id": None,
-                "created": "2020-04-20T12:01:01Z",
-                "updated": dirty_equals.IsStr(regex="2020-04-20T12:02:0.Z"),
-                "dependency_status": "awaiting",
-                "dependencies": [
-                    {
-                        "partial_job_results_url": partial_job_results_url,
-                    }
-                ],
-            }
-        )
         assert job_registry.db[job_id] == DictSubSet(
             {
                 "job_id": job_id,
@@ -2911,24 +2591,6 @@ class TestSentinelHubBatchJobs:
         )
 
         # Check status
-        assert zk_client.get_json_decoded(
-            f"/openeo.test/jobs/ongoing/{TEST_USER}/{job_id}"
-        ) == DictSubSet(
-            {
-                "job_id": job_id,
-                "user_id": TEST_USER,
-                "status": "queued",
-                "application_id": "application_1587387643572_0842",
-                "created": "2020-04-20T12:01:01Z",
-                "updated": "2020-04-20T12:03:03Z",
-                "dependency_status": "available",
-                "dependencies": [
-                    {
-                        "partial_job_results_url": partial_job_results_url,
-                    }
-                ],
-            }
-        )
         assert job_registry.db[job_id] == DictSubSet(
             {
                 "job_id": job_id,
@@ -2955,15 +2617,10 @@ class TestSentinelHubBatchJobs:
 
         # Fake update from job tracker
         dbl_job_registry = DoubleJobRegistry(
-            # TODO #236/#498/#632 phase out ZkJobRegistry
-            zk_job_registry_factory=(lambda: ZkJobRegistry(zk_client=zk_client)),
             elastic_job_registry=job_registry,
         )
         with dbl_job_registry as jr:
             jr.set_status(job_id=job_id, user_id=TEST_USER, status=JOB_STATUS.RUNNING)
-        assert zk_client.get_json_decoded(
-            f"/openeo.test/jobs/ongoing/{TEST_USER}/{job_id}"
-        ) == DictSubSet({"status": "running"})
         assert job_registry.db[job_id] == DictSubSet(
             {
                 "status": "running",

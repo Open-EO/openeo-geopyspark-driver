@@ -179,10 +179,10 @@ class TestDummyStacApiServer:
                 "stac_version": "1.0.0",
                 "type": "Catalog",
                 "links": [
-                    {"rel": "root", "href": f"{root_url}/"},
-                    {"rel": "search", "href": f"{root_url}/search", "method": "GET"},
-                    {"rel": "search", "href": f"{root_url}/search", "method": "POST"},
-                    {"rel": "self", "href": f"{root_url}/"},
+                    {"rel": "root", "href": f"{root_url}/", "type": "application/json"},
+                    {"rel": "search", "href": f"{root_url}/search", "method": "GET", "type": "application/json"},
+                    {"rel": "search", "href": f"{root_url}/search", "method": "POST", "type": "application/json"},
+                    {"rel": "self", "href": f"{root_url}/", "type": "application/json"},
                 ],
             }
         )
@@ -200,15 +200,19 @@ class TestDummyStacApiServer:
                             "stac_version": "1.0.0",
                             "type": "Collection",
                             "links": [
-                                {"rel": "root", "href": f"{root_url}/"},
-                                {"rel": "self", "href": f"{root_url}/collections/collection-123"},
+                                {"rel": "root", "href": f"{root_url}/", "type": "application/json"},
+                                {
+                                    "rel": "self",
+                                    "href": f"{root_url}/collections/collection-123",
+                                    "type": "application/json",
+                                },
                             ],
                         }
                     ),
                 ],
                 "links": [
-                    {"rel": "root", "href": f"{root_url}/"},
-                    {"rel": "self", "href": f"{root_url}/collections"},
+                    {"rel": "root", "href": f"{root_url}/", "type": "application/json"},
+                    {"rel": "self", "href": f"{root_url}/collections", "type": "application/json"},
                 ],
             }
         )
@@ -229,8 +233,8 @@ class TestDummyStacApiServer:
                 "stac_version": "1.0.0",
                 "type": "Collection",
                 "links": [
-                    {"rel": "root", "href": f"{root_url}/"},
-                    {"rel": "self", "href": f"{root_url}/collections/collection-123"},
+                    {"rel": "root", "href": f"{root_url}/", "type": "application/json"},
+                    {"rel": "self", "href": f"{root_url}/collections/collection-123", "type": "application/json"},
                 ],
             }
         )
@@ -416,6 +420,20 @@ class TestDummyStacApiServer:
                 },
             }
         )
+
+    def test_item_links(self):
+        with DummyStacApiServer().serve() as root_url:
+            client = pystac_client.Client.open(root_url)
+            result = client.search(collections=["collection-123"], bbox=[2.5, 48, 3.5, 49.5])
+            items = list(result.items())
+
+        assert {item.id: sorted((k.to_dict() for k in item.links), key=lambda k: k.get("rel")) for item in items} == {
+            "item-1": [
+                {"rel": "collection", "href": f"{root_url}/collections/collection-123", "type": "application/json"},
+                {"rel": "parent", "href": f"{root_url}/collections/collection-123", "type": "application/json"},
+                {"rel": "root", "href": root_url, "type": "application/json"},
+            ]
+        }
 
 
 def test_mock_urllib3_pool_manager():

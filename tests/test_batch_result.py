@@ -10,7 +10,9 @@ from typing import Set
 from unittest import mock
 from urllib.parse import urlparse
 
+import dirty_equals
 import geopandas as gpd
+import osgeo.gdal
 import pystac
 import pytest
 import rasterio
@@ -20,28 +22,33 @@ from openeo_driver.constants import ITEM_LINK_PROPERTY
 from openeo_driver.dry_run import DryRunDataTracer
 from openeo_driver.errors import OpenEOApiException
 from openeo_driver.ProcessGraphDeserializer import ENV_DRY_RUN_TRACER, evaluate
-from openeo_driver.testing import DictSubSet, ephemeral_fileserver, ListSubSet
+from openeo_driver.testing import DictSubSet, ListSubSet, ephemeral_fileserver
 from openeo_driver.util.geometry import validate_geojson_coordinates
-from openeo_driver.utils import EvalEnv
+from openeo_driver.utils import EvalEnv, read_json
 from openeo_driver.workspace import DiskWorkspace
-import osgeo.gdal
 from shapely.geometry import Point, Polygon, shape
 
-from openeogeotrellis.geopysparkcubemetadata import Band
-from openeogeotrellis.testing import gps_config_overrides
-from openeogeotrellis.workspace import StacApiWorkspace
 from openeogeotrellis._version import __version__
 from openeogeotrellis.backend import JOB_METADATA_FILENAME
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.deploy.batch_job import run_job
 from openeogeotrellis.deploy.batch_job_metadata import extract_result_metadata
-from openeogeotrellis.utils import s3_client, GDALINFO_SUFFIX
-from openeogeotrellis.workspace import ObjectStorageWorkspace
+from openeogeotrellis.geopysparkcubemetadata import Band
+from openeogeotrellis.testing import gps_config_overrides
+from openeogeotrellis.utils import GDALINFO_SUFFIX, s3_client, equals_approximately, reproject_geometry
+from openeogeotrellis.workspace import ObjectStorageWorkspace, StacApiWorkspace
 from openeogeotrellis.workspace.custom_stac_io import CustomStacIO
-from . import assert_cog
-from .conftest import force_stop_spark_context, _setup_local_spark, TEST_AWS_REGION_NAME
 
+from . import assert_cog
+from .conftest import TEST_AWS_REGION_NAME, _setup_local_spark, force_stop_spark_context
 from .data import TEST_DATA_ROOT, get_test_data_file
+
+
+@pytest.fixture
+def job_dir(tmp_path) -> Path:
+    job_dir = tmp_path / "job-123"
+    job_dir.mkdir(parents=True, exist_ok=True)
+    return job_dir
 
 
 def test_png_export(tmp_path):
@@ -4068,3 +4075,188 @@ def test_predict_onnx_reduce_sum(tmp_path):
     assert len(bands) == 1
     assert bands[0]["statistics"]["minimum"] == 15
     assert bands[0]["statistics"]["maximum"] == 15
+
+
+@pytest.mark.parametrize(
+    ["stac_version"],
+    [
+        ("1.1",),
+    ],
+)
+def test_load_stac_serialize_item_collection(tmp_path, job_dir, dummy_stac_api, metadata_tracker, stac_version):
+    process_graph = {
+        "loadstac1": {
+            "process_id": "load_stac",
+            "arguments": {"url": f"{dummy_stac_api}/collections/collection-123"},
+        },
+        "saveresult1": {
+            "process_id": "save_result",
+            "arguments": {
+                "data": {"from_node": "loadstac1"},
+                "format": "GTiff",
+            },
+            "result": True,
+        },
+    }
+    job_specification = {
+        "process_graph": process_graph,
+        "job_options": {"stac-version": stac_version},
+    }
+    metadata_path = job_dir / JOB_METADATA_FILENAME
+    run_job(
+        job_specification=job_specification,
+        output_file=job_dir / "out",
+        metadata_file=metadata_path,
+        job_dir=job_dir,
+    )
+    metadata = read_json(metadata_path)
+    expected_item_collection_path = job_dir / "stac-item-collection-loadstac1.json"
+    expected_link = {
+        "rel": "derived_from",
+        "href": f"file://{expected_item_collection_path}",
+        "type": "application/geo+json",
+        ITEM_LINK_PROPERTY.EXPOSE_AUXILIARY: True,
+    }
+    assert expected_link in metadata["links"]
+
+    item_collection_data = read_json(expected_item_collection_path)
+    assert item_collection_data == dirty_equals.IsPartialDict(
+        {
+            "type": "FeatureCollection",
+            "features": [
+                dirty_equals.IsPartialDict(id="item-1"),
+                dirty_equals.IsPartialDict(id="item-2"),
+                dirty_equals.IsPartialDict(id="item-3"),
+            ],
+        }
+    )
+
+
+@pytest.mark.parametrize(
+    ["stac_version"],
+    [
+        ("1.1",),
+    ],
+)
+def test_load_collection_with_stac_serialize_item_collection(
+    tmp_path, job_dir, dummy_stac_api, metadata_tracker, stac_version, define_extra_collection
+):
+    collection_id = "STAC_COLLECTION_123"
+    stac_url = f"{dummy_stac_api}/collections/collection-123"
+
+    # Define custom collection from run-time dummy_stac_api endpoint
+    define_extra_collection(
+        {
+            "id": collection_id,
+            "_vito": {"data_source": {"type": "stac", "url": stac_url}},
+            "cube:dimensions": {
+                "bands": {
+                    "type": "bands",
+                    "values": ["B02"],
+                }
+            },
+        }
+    )
+
+    process_graph = {
+        "loadcollection1": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": collection_id,
+                "spatial_extent": {"west": 2.5, "south": 49.5, "east": 3.5, "north": 50.1},
+            },
+        },
+        "saveresult1": {
+            "process_id": "save_result",
+            "arguments": {
+                "data": {"from_node": "loadcollection1"},
+                "format": "GTiff",
+            },
+            "result": True,
+        },
+    }
+
+    job_specification = {
+        "process_graph": process_graph,
+        "job_options": {"stac-version": stac_version},
+    }
+    metadata_path = job_dir / JOB_METADATA_FILENAME
+    run_job(
+        job_specification=job_specification,
+        output_file=job_dir / "out",
+        metadata_file=metadata_path,
+        job_dir=job_dir,
+    )
+    metadata = read_json(metadata_path)
+
+    expected_item_collection_path = job_dir / "stac-item-collection-loadcollection1.json"
+    expected_link = {
+        "rel": "derived_from",
+        "href": f"file://{expected_item_collection_path}",
+        "type": "application/geo+json",
+        ITEM_LINK_PROPERTY.EXPOSE_AUXILIARY: True,
+    }
+    assert expected_link in metadata["links"]
+
+    item_collection_data = read_json(expected_item_collection_path)
+    assert item_collection_data == dirty_equals.IsPartialDict(
+        {
+            "type": "FeatureCollection",
+            "features": [
+                dirty_equals.IsPartialDict(id="item-1"),
+                dirty_equals.IsPartialDict(id="item-2"),
+            ],
+        }
+    )
+
+
+def test_item_geometry_matches_asset_geometry(tmp_path):
+    """Item geometry (in 4326) should match that of the underlying assets (in UTM)."""
+    job_dir = tmp_path
+
+    process = {
+        "process_graph": {
+            "loadcollection1": {
+                "process_id": "load_collection",
+                "arguments": {
+                    "bands": ["B02"],
+                    "id": "SENTINEL2_L2A",
+                    "spatial_extent": {
+                        "west": 570153,
+                        "south": 5650300,
+                        "east": 570870,
+                        "north": 5651422,
+                        "crs": "EPSG:32631",
+                    },
+                    "temporal_extent": ["2023-09-01", "2023-09-10"],
+                },
+                "result": True,
+            }
+        }
+    }
+
+    metadata_file = job_dir / JOB_METADATA_FILENAME
+
+    run_job(
+        process,
+        output_file=job_dir / "out",
+        metadata_file=metadata_file,
+        api_version="2.0.0",
+        job_dir=job_dir,
+        dependencies=[],
+    )
+
+    with open(metadata_file) as f:
+        results_metadata = json.load(f)
+
+    assets = results_metadata["assets"].values()
+    assert assets
+
+    for asset in assets:
+        with rasterio.open(asset["href"]) as raster:
+            raster_geometry = reproject_geometry(Polygon.from_bounds(*raster.bounds), src_crs=raster.crs, dst_crs=4326)
+
+        asset_geometry = shape(asset["geometry"])
+        assert equals_approximately(raster_geometry, asset_geometry, rel_area_tolerance=0.01)
+
+        assert asset["bbox"] == pytest.approx(raster_geometry.bounds, rel=0.01)

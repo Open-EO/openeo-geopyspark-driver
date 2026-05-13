@@ -16,6 +16,7 @@ import pystac
 from openeo.util import TimingLogger, dict_no_none, ensure_dir
 from openeo_driver import ProcessGraphDeserializer
 from openeo_driver.backend import BatchJobs
+from openeo_driver.constants import ITEM_LINK_PROPERTY
 from openeo_driver.datacube import DriverDataCube, DriverVectorCube
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import DryRunDataTracer
@@ -65,6 +66,7 @@ from openeogeotrellis.deploy.batch_job_metadata import (
 from openeogeotrellis.integrations.gdal import get_abs_path_of_asset
 from openeogeotrellis.integrations.hadoop import setup_kerberos_auth
 from openeogeotrellis.job_options import JobOptions
+from openeogeotrellis.load_stac import get_stac_item_collection_filename
 from openeogeotrellis.stac_save_result import StacSaveResult
 from openeogeotrellis.udf import (
     UdfDependencyHandlingFailure,
@@ -74,7 +76,9 @@ from openeogeotrellis.udf import (
 )
 from openeogeotrellis.util.runtime import get_job_id
 from openeogeotrellis.utils import (
+    BadlyHashable,
     add_permissions,
+    add_permissions_with_failsafe,
     describe_path,
     get_jvm,
     json_default,
@@ -83,8 +87,6 @@ from openeogeotrellis.utils import (
     to_s3_url,
     unzip,
     wait_till_path_available,
-    add_permissions_with_failsafe,
-    BadlyHashable,
 )
 
 logger = logging.getLogger("openeogeotrellis.deploy.batch_job")
@@ -284,7 +286,7 @@ def run_job(
     sentinel_hub_client_alias="default",
     vault_token: str = None,
     access_token: str = None,
-):
+) -> None:
     result_metadata = {}
     tracker_metadata = {}
     items = []
@@ -337,6 +339,7 @@ def run_job(
             "max_soft_errors_ratio": max_soft_errors_ratio,
             "sentinel_hub_client_alias": sentinel_hub_client_alias,
             "vault_token": vault_token,
+            EVAL_ENV_KEY.JOB_DIR: job_dir,
         }
         job_option_whitelist = [
             "data_mask_optimization",
@@ -419,9 +422,12 @@ def run_job(
         def result_write_assets(result_arg: SaveResult) -> Tuple[dict, dict]:
             items = result_arg.write_assets(str(output_file))
             if isinstance(result_arg, StacSaveResult):
+                stac_href = result_arg.stac_root_local
+                if ConfigParams().is_kube_deploy and not str(stac_href).startswith("s3://"):
+                    stac_href = to_s3_url(str(stac_href).strip("/"))
                 extra_links.append(
                     {
-                        "href": result_arg.stac_root_local,
+                        "href": stac_href,
                         # https://github.com/radiantearth/stac-spec/blob/master/commons/links.md#relation-types
                         "rel": "child",
                         "title": f"Link to original STAC catalog.",
@@ -493,6 +499,17 @@ def run_job(
         else:
             raise ValueError(f"Invalid concurrent_save_results: {concurrent_save_results}")
         assets_metadata = list(assets_metadata)
+
+        if is_stac11:
+            for stac_item_collection_path in Path(job_dir).glob(get_stac_item_collection_filename(pg_node_id="*")):
+                extra_links.append(
+                    {
+                        "rel": "derived_from",
+                        "href": f"file://{stac_item_collection_path.absolute()}",
+                        "type": "application/geo+json",
+                        ITEM_LINK_PROPERTY.EXPOSE_AUXILIARY: True,
+                    }
+                )
 
         # flattens items for each results into one list
         items = [item for result in results_items for item in result.values()]
