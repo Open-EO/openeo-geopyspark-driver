@@ -154,8 +154,22 @@ class GeopysparkDataCube(DriverDataCube):
         :param func:
         :return:
         """
+
+        jvm = get_jvm()
+        bandNames = None
+        if self.metadata.has_band_dimension():
+            bandNames = self.metadata.band_names
+
+        def add_band_metadata(geotrellis_cube):
+            if bandNames is not None:
+                wrapped = jvm.org.openeo.geotrellis.OpenEOProcesses().wrapCube(geotrellis_cube)
+                wrapped.openEOMetadata().setBandNames(bandNames)
+                return wrapped
+            else:
+                return geotrellis_cube
+
         pyramid = Pyramid({
-            k: self._create_tilelayer(func(l.srdd.rdd(), k), l.layer_type if target_type==None else target_type , k)
+            k: self._create_tilelayer(func(add_band_metadata(l.srdd.rdd()), k), l.layer_type if target_type==None else target_type , k)
             for k, l in self.pyramid.levels.items()
         })
         return GeopysparkDataCube(pyramid=pyramid, metadata=metadata or self.metadata)
@@ -1422,13 +1436,8 @@ class GeopysparkDataCube(DriverDataCube):
                                                                    float(extent_in_target_projection.xmax), float(extent_in_target_projection.ymax))
 
             def geocode_level(cube):
-                bandNames = ["band_unnamed"]
-                if self.metadata.has_band_dimension():
-                    bandNames = self.metadata.band_names
 
                 jvm = get_jvm()
-                wrapped = jvm.org.openeo.geotrellis.OpenEOProcesses().wrapCube(cube)
-                wrapped.openEOMetadata().setBandNames(bandNames)
                 target_resolution = None
                 if isinstance(resolution, (list, tuple)):
                     target_resolution = jvm.geotrellis.raster.CellSize( float(resolution[0]), float(resolution[1]) )
@@ -1437,7 +1446,7 @@ class GeopysparkDataCube(DriverDataCube):
 
 
                 return jvm.org.openeo.geotrellis.geocoding.GeoCodingProcess().geoCode(
-                    wrapped, scala_target_extent, scala_crs, target_resolution
+                    cube, scala_target_extent, scala_crs, target_resolution
                 )
 
             geoCodedCube = self._apply_to_levels_geotrellis_rdd(lambda rdd, level: geocode_level(rdd))
