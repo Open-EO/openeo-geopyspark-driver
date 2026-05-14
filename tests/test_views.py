@@ -329,7 +329,7 @@ class TestCollections:
                     }
                   ]
         if api.api_version_compare.at_least("1.0.0"):
-            assert resp['stac_version'] == "0.9.0"
+            assert resp['stac_version'] == "1.0.0"
             assert resp['extent'] == {
                 "spatial": {"bbox": [[-180, -56, 180, 83]]},
                 "temporal": {"interval": [["2015-07-06T00:00:00Z", None]]},
