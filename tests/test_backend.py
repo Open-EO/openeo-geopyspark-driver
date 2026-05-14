@@ -17,7 +17,7 @@ from openeo_driver.constants import JOB_STATUS
 from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.delayed_vector import DelayedVector
-from openeo_driver.dry_run import SourceId
+from openeo_driver.dry_run import SourceId, DryRunDataTracer
 from openeo_driver.processes import ProcessRegistry
 from openeo_driver.ProcessGraphDeserializer import ENV_SOURCE_CONSTRAINTS
 from openeo_driver.specs import read_spec
@@ -550,11 +550,13 @@ class TestGpsProcessing:
         assert caplog.text == ""
 
 
-@pytest.mark.parametrize("success, state, status",
-                         [
-                             (True, "FINISHED", "SUCCEEDED"),
-                             (False, "FAILED", "FAILED"),
-                         ])
+@pytest.mark.parametrize(
+    "success, state, status",
+    [
+        (True, "FINISHED", "UNDEFINED"),
+        (False, "FAILED", "UNDEFINED"),
+    ],
+)
 @pytest.mark.parametrize("shpu", [123.0, 0.0])
 @gps_config_overrides(use_etl_api_on_sync_processing=True)
 @mock.patch("openeogeotrellis.integrations.etl_api.get_etl_api_credentials_from_env")
@@ -568,12 +570,48 @@ def test_request_costs(mock_get_etl_api_credentials_from_env, backend_implementa
     ) as get_jvm:
         mock_etl_api = MockEtlApi.return_value
         mock_etl_api.log_resource_usage.return_value = 6
+        mock_etl_api.log_added_value.return_value = 7
 
         tracker = get_jvm.return_value.org.openeo.geotrelliscommon.ScopedMetadataTracker.apply.return_value
         tracker.sentinelHubProcessingUnits.return_value = shpu
 
+        process_graph = {
+            "loadcollection1": {
+                "process_id": "load_collection",
+                "arguments": {
+                    "id": "SOME_COLLECTION",
+                    "spatial_extent": {
+                        "west": 654900,
+                        "south": 5643900,
+                        "east": 656100,
+                        "north": 5645100,
+                        "crs": 32631,
+                    },
+                },
+                "result": True,
+            }
+        }
+
+        tracer = DryRunDataTracer()
+        tracer.load_collection(
+            collection_id="SOME_COLLECTION",
+            arguments={
+                "spatial_extent": {
+                    "west": 654900,
+                    "south": 5643900,
+                    "east": 656100,
+                    "north": 5645100,
+                    "crs": 32631,
+                }
+            },
+        )
+
         credit_cost = backend_implementation.request_costs(
-            user=User(user_id=user_id), request_id="r-abc123", success=success
+            user=User(user_id=user_id),
+            request_id="r-abc123",
+            success=success,
+            process_graph=process_graph,
+            tracer=tracer,
         )
 
         mock_etl_api.log_resource_usage.assert_called_once_with(
@@ -594,7 +632,19 @@ def test_request_costs(mock_get_etl_api_credentials_from_env, backend_implementa
             organization_id=None,
         )
 
-        assert credit_cost == 6
+        mock_etl_api.log_added_value.assert_called_once_with(
+            batch_job_id="r-abc123",
+            title="Synchronous processing request 'r-abc123'",
+            execution_id="r-abc123",
+            user_id=user_id,
+            started_ms=None,
+            finished_ms=None,
+            process_id="load_collection",
+            square_meters=pytest.approx(1200 * 1200, rel=0.01),
+            source_id=None,
+        )
+
+        assert credit_cost == 13
 
 
 def test_k8s_sparkapplication_dict_udf_python_deps(backend_config_path):
