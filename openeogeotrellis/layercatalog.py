@@ -951,7 +951,7 @@ CollectionMetadataDict = Dict[str, Union[str, dict, list]]
 CatalogDict = Dict[CollectionId, CollectionMetadataDict]
 
 
-@TimingLogger(title="_get_layer_catalog", logger=logger.debug)
+@TimingLogger(title="_get_layer_catalog", logger=logger.info)
 def _get_layer_catalog(
     catalog_files: Optional[List[str]] = None,
     enrich_metadata: Optional[bool] = None,
