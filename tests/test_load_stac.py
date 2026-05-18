@@ -2884,6 +2884,93 @@ class TestItemCollection:
         )
         assert [item.id for item in item_collection.items] == expected_items
 
+    def test_from_stac_api_asset_missing_href_is_skipped(self, requests_mock, caplog):
+        """
+        Regression test: STAC API responses where an asset has no 'href' field must not
+        crash the item collection construction (KeyError: 'href' from pystac).
+        The bad asset should be silently dropped (with a warning), while the rest of the
+        item and all valid assets are kept.
+
+        DummyStacApiServer cannot be used here because it also calls pystac.Item.from_dict()
+        server-side and would crash the same way. Instead, the pystac Collection is built
+        directly from dicts (bypassing urllib), and only the search endpoint is mocked via
+        requests_mock so the bad JSON reaches the client code unchanged.
+        """
+        root_url = "https://stac.broken-test"
+        collection_url = f"{root_url}/collections/broken-collection"
+
+        catalog_dict = {
+            "type": "Catalog",
+            "stac_version": "1.0.0",
+            "id": "broken-test",
+            "description": "broken test catalog",
+            "links": [],
+            "conformsTo": ["https://api.stacspec.org/v1.0.0-rc.1/item-search"],
+        }
+        requests_mock.get(root_url, json=catalog_dict)
+        requests_mock.get(
+            f"{root_url}/search",
+            json={
+                "type": "FeatureCollection",
+                "features": [
+                    {
+                        "type": "Feature",
+                        "stac_version": "1.0.0",
+                        "id": "item-with-bad-asset",
+                        "geometry": {"type": "Polygon", "coordinates": [[[3, 50], [5, 50], [5, 51], [3, 51], [3, 50]]]},
+                        "bbox": [3, 50, 5, 51],
+                        "properties": {"datetime": "2024-06-01T00:00:00Z"},
+                        "links": [],
+                        "assets": {
+                            "good-asset": {"href": "/data/good.tif", "type": "image/tiff"},
+                            "bad-asset": {"type": "image/tiff"},  # missing 'href' — triggers KeyError in pystac
+                        },
+                    }
+                ],
+                "links": [],
+            },
+        )
+
+        # Build the pystac Collection directly (without making an HTTP call), because
+        # pystac.read_file() uses urllib which is NOT intercepted by requests_mock.
+        root_catalog = pystac.Catalog.from_dict(catalog_dict)
+        root_catalog.set_self_href(root_url)
+        collection: pystac.Collection = pystac.Collection.from_dict(
+            {
+                "type": "Collection",
+                "stac_version": "1.0.0",
+                "id": "broken-collection",
+                "description": "collection with broken assets",
+                "license": "unknown",
+                "extent": {
+                    "spatial": {"bbox": [[-180, -90, 180, 90]]},
+                    "temporal": {"interval": [[None, None]]},
+                },
+                "links": [{"rel": "root", "href": root_url}],
+            }
+        )
+        collection.set_self_href(collection_url)
+        collection.set_root(root_catalog)
+        with caplog.at_level(logging.WARNING, logger="openeogeotrellis"):
+            item_collection = ItemCollection.from_stac_api(
+                collection,
+                original_url=collection_url,
+                property_filter=PropertyFilter(properties={}),
+                spatiotemporal_extent=_SpatioTemporalExtent(),
+            )
+
+        # The item must be returned despite the bad asset
+        assert len(item_collection.items) == 1
+        assert item_collection.items[0].id == "item-with-bad-asset"
+
+        # The bad asset must have been dropped, but the good one kept
+        assets = item_collection.items[0].assets
+        assert "good-asset" in assets
+        assert "bad-asset" not in assets
+
+        # A warning must have been logged mentioning the bad asset key
+        assert any("bad-asset" in r.message for r in caplog.records)
+
     def test_get_temporal_extent_empty(self):
         item_collection = ItemCollection(items=[])
         assert item_collection.get_temporal_extent() == (None, None)
