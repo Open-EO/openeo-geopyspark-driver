@@ -126,6 +126,7 @@ def test_list_options_k8s():
     options = K8SOptions.list_options(public_only=False)
     assert_listing_shared_options(options)
     assert any(option["name"] == "executor-request-cores" for option in options)
+    assert any(option["name"] == "driver-corerequest" for option in options)
 
 
 

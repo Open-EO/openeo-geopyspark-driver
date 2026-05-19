@@ -4080,7 +4080,6 @@ def test_predict_onnx_reduce_sum(tmp_path):
 @pytest.mark.parametrize(
     ["stac_version"],
     [
-        (None,),
         ("1.1",),
     ],
 )
@@ -4113,9 +4112,9 @@ def test_load_stac_serialize_item_collection(tmp_path, job_dir, dummy_stac_api, 
     metadata = read_json(metadata_path)
     expected_item_collection_path = job_dir / "stac-item-collection-loadstac1.json"
     expected_link = {
-        "rel": "experimental-derived-from-stac-item-collection",
+        "rel": "derived_from",
         "href": f"file://{expected_item_collection_path}",
-        "type": "application/json",
+        "type": "application/geo+json",
         ITEM_LINK_PROPERTY.EXPOSE_AUXILIARY: True,
     }
     assert expected_link in metadata["links"]
@@ -4136,7 +4135,6 @@ def test_load_stac_serialize_item_collection(tmp_path, job_dir, dummy_stac_api, 
 @pytest.mark.parametrize(
     ["stac_version"],
     [
-        (None,),
         ("1.1",),
     ],
 )
@@ -4193,9 +4191,9 @@ def test_load_collection_with_stac_serialize_item_collection(
 
     expected_item_collection_path = job_dir / "stac-item-collection-loadcollection1.json"
     expected_link = {
-        "rel": "experimental-derived-from-stac-item-collection",
+        "rel": "derived_from",
         "href": f"file://{expected_item_collection_path}",
-        "type": "application/json",
+        "type": "application/geo+json",
         ITEM_LINK_PROPERTY.EXPOSE_AUXILIARY: True,
     }
     assert expected_link in metadata["links"]

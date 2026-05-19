@@ -145,7 +145,7 @@ class TestMultipleDates(TestCase):
                                                    index_reduction)
         assert result is not None
         assert "SpacePartitioner(KeyBounds(SpaceTimeKey(0,0,0),SpaceTimeKey(10000000,454874414,100000)))" == str(result.partitioner().get())
-        assert "SparseSpaceTimePartitioner 2 true" == str(result.partitioner().get().index())
+        assert "SparseSpaceTimePartitioner with indexReduction 7 and 3 spacetime keys" == str(result.partitioner().get().index())
 
         contextRDD = jvm.geotrellis.spark.ContextRDD(result,self.tiled_raster_rdd.srdd.rdd().metadata())
         srdd = jvm.geopyspark.geotrellis.TemporalTiledRasterLayer.apply(jvm.scala.Option.apply(0), contextRDD)

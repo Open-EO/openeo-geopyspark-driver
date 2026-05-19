@@ -1535,12 +1535,26 @@ class ItemCollection:
                     query_info += f" {search_request.method} {search_request.url} {search_request.get_parameters()=}"
                 logger.info(f"ItemCollection.from_stac_api: STAC API request: {query_info}")
 
+                def _items_safe(search_request):
+                    """Yield pystac Items, skipping assets without 'href' (broken API responses)."""
+                    for item_dict in search_request.items_as_dicts():
+                        assets = item_dict.get("assets") or {}
+                        bad_assets = [k for k, v in assets.items() if "href" not in v]
+                        if bad_assets:
+                            logger.warning(
+                                f"ItemCollection.from_stac_api: dropping {len(bad_assets)} asset(s) "
+                                f"without 'href' from item {item_dict.get('id')!r}: {bad_assets}"
+                            )
+                            for k in bad_assets:
+                                del item_dict["assets"][k]
+                        yield pystac.Item.from_dict(item_dict, preserve_dict=False)
+
                 tracking_iter_raw = TrackingIter()
                 tracking_iter_filtered = TrackingIter()
                 items.extend(
                     tracking_iter_filtered(
                         item
-                        for item in tracking_iter_raw(search_request.items())
+                        for item in tracking_iter_raw(_items_safe(search_request))
                         if property_matcher(item.properties) and item.id not in seen_item_ids
                         # TODO also do filtering with spatial_filtering_geometries here?
                     )
