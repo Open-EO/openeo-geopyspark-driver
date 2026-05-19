@@ -401,8 +401,8 @@ class TestPostDryRun:
         ["step_x", "step_y", "expected"],
         [
             # TODO: possible to improve numerical precision and avoid need for approx?
-            (0.001, 0.001, BoundingBox(5.067, 51.213, 5.072, 5.988, crs=4326).approx(abs=1e-6)),
-            (0.005, 0.010, BoundingBox(5.065, 51.210, 5.075, 5.990, crs=4326).approx(abs=1e-6)),
+            (0.001, 0.001, BoundingBox(5.067, 51.213, 5.072, 51.988, crs=4326).approx(abs=1e-6)),
+            (0.005, 0.010, BoundingBox(5.065, 51.210, 5.075, 51.990, crs=4326).approx(abs=1e-6)),
         ],
     )
     def test_extract_spatial_extent_from_constraint_load_collection_4236_millidegrees(
@@ -417,7 +417,7 @@ class TestPostDryRun:
                 "process_id": "load_collection",
                 "arguments": {
                     "id": "S123-millidegree",
-                    "spatial_extent": {"west": 5.067891, "south": 51.213456, "east": 5.0712345, "north": 5.9876543},
+                    "spatial_extent": {"west": 5.067891, "south": 51.213456, "east": 5.0712345, "north": 51.9876543},
                 },
                 "result": True,
             },
@@ -428,7 +428,7 @@ class TestPostDryRun:
         assert extents == AlignedExtentResult(
             extent=expected,
             variants={
-                "original": BoundingBox(5.067891, 51.213456, 5.0712345, 5.9876543, crs=4326),
+                "original": BoundingBox(5.067891, 51.213456, 5.0712345, 51.9876543, crs=4326),
                 "target_aligned": expected,
             },
         )
@@ -436,8 +436,12 @@ class TestPostDryRun:
     @pytest.mark.parametrize(
         ["step_x", "step_y", "expected"],
         [
-            (10, 10, BoundingBox(west=644420, south=662270, east=729280, north=5675610, crs="EPSG:32631")),
-            (11, 13, BoundingBox(west=644424, south=662259, east=729278, north=5675605, crs="EPSG:32631")),
+            (10, 10, BoundingBox(west=641990, south=5675590, east=644670, north=5761700, crs="EPSG:32631")),
+            (
+                11,
+                13,
+                BoundingBox(west=58363 * 11, south=436584 * 13, east=58606 * 11, north=443207 * 13, crs="EPSG:32631"),
+            ),
         ],
     )
     def test_extract_spatial_extent_from_constraint_load_collection_auto_utm_alignment(
@@ -464,7 +468,7 @@ class TestPostDryRun:
                 "process_id": "load_collection",
                 "arguments": {
                     "id": "S123-UTM",
-                    "spatial_extent": {"west": 5.067891, "south": 51.213456, "east": 5.0712345, "north": 5.9876543},
+                    "spatial_extent": {"west": 5.067891, "south": 51.213456, "east": 5.0712345, "north": 51.9876543},
                 },
                 "result": True,
             },
@@ -475,7 +479,7 @@ class TestPostDryRun:
         assert extents == AlignedExtentResult(
             extent=expected,
             variants={
-                "original": BoundingBox(5.067891, 51.213456, 5.0712345, 5.9876543, crs=4326),
+                "original": BoundingBox(5.067891, 51.213456, 5.0712345, 51.9876543, crs=4326),
                 "target_aligned": expected,
             },
         )
@@ -483,9 +487,12 @@ class TestPostDryRun:
     @pytest.mark.parametrize(
         ["resolution", "expected"],
         [
-            (100, BoundingBox(west=644400, south=662200, east=729300, north=5675700, crs="EPSG:32631")),
-            (1000, BoundingBox(west=644000, south=662000, east=730000, north=5676000, crs="EPSG:32631")),
-            ((70, 700), BoundingBox(west=644420, south=662200, east=729330, north=5676300, crs="EPSG:32631")),
+            (100, BoundingBox(west=641900, south=5675500, east=644700, north=5761700, crs="EPSG:32631")),
+            (1000, BoundingBox(west=641000, south=5675000, east=645000, north=5762000, crs="EPSG:32631")),
+            (
+                (70, 700),
+                BoundingBox(west=9171 * 70, south=8107 * 700, east=9210 * 70, north=8231 * 700, crs="EPSG:32631"),
+            ),
         ],
     )
     def test_extract_spatial_extent_from_constraint_load_collection_resample_spatial(
@@ -511,7 +518,7 @@ class TestPostDryRun:
                 "process_id": "load_collection",
                 "arguments": {
                     "id": "S123-UTM",
-                    "spatial_extent": {"west": 5.067891, "south": 51.213456, "east": 5.0712345, "north": 5.9876543},
+                    "spatial_extent": {"west": 5.067891, "south": 51.213456, "east": 5.0712345, "north": 51.9876543},
                 },
             },
             "resample": {
@@ -530,7 +537,7 @@ class TestPostDryRun:
         assert extents == AlignedExtentResult(
             extent=expected,
             variants={
-                "original": BoundingBox(5.067891, 51.213456, 5.0712345, 5.9876543, crs=4326),
+                "original": BoundingBox(5.067891, 51.213456, 5.0712345, 51.9876543, crs=4326),
                 "target_aligned": expected,
             },
         )
