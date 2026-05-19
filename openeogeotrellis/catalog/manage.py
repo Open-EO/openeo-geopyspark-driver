@@ -16,6 +16,7 @@ the layercatalog.json file. There is still a lot of room for improvement.
 Also see https://github.com/Open-EO/openeo-geopyspark-driver/issues/1175
 """
 
+import copy
 import dataclasses
 import functools
 import json
@@ -24,6 +25,7 @@ from pathlib import Path
 from typing import List, Optional, Union
 
 import requests
+from openeo.utils.version import ComparableVersion
 
 from openeogeotrellis.catalog import DATA_SOURCE_PROPERTIES
 from openeogeotrellis.catalog.enrich import enrich_catalog_metadata
@@ -76,6 +78,7 @@ class LayerCatalog:
         Applies the same enrichment as the runtime :func:`~openeogeotrellis.catalog.enrich.enrich_catalog_metadata`,
         but during the manual layercatalog management step so that the result can be persisted to the JSON file.
         """
+        # TODO: remove this method? We want to control and finetune enrichment at collection level, not catalog level
         metadata_dict = {c["id"]: c for c in self._collections}
         enriched = enrich_catalog_metadata(metadata_dict)
         # Preserve original ordering, then append any newly added collections
@@ -155,6 +158,13 @@ class BandMetadata:
 
     classification_classes: Optional[List[dict]] = None
 
+    def to_common_bands(self) -> dict:
+        """Common bands metadata (e.g. at collection top-level)"""
+        return dict_no_none(
+            name=self.name,
+            description=self.description,
+        )
+
     def to_summaries_raster_bands(self) -> dict:
         """summaries > raster:bands entry"""
         return dict_no_none(
@@ -216,6 +226,12 @@ def get_upstream_stac_metadata(stac_url: str) -> dict:
 _get_upstream_stac_metadata = get_upstream_stac_metadata
 
 
+class ENRICHMENT_MODE:
+    NONE = "none"
+    LEGACY_AT_RUNTIME = "legacy_at_runtime"
+    LEGACY_AT_BUILD_TIME = "legacy_at_build_time"
+
+
 def build_stac_collection_metadata(
     id: str,
     *,
@@ -244,8 +260,7 @@ def build_stac_collection_metadata(
     sci_citation: Optional[str] = None,
     mission: Optional[str] = None,
     extra_summaries: Optional[dict] = None,
-    # TODO: ultimately, the need for this "enrich" flag will be eliminated
-    still_needs_enrichment: bool = True,
+    enrichment_mode: str = ENRICHMENT_MODE.LEGACY_AT_RUNTIME,
 ) -> dict:
     """
     Generic openEO collection metadata generator.
@@ -265,9 +280,6 @@ def build_stac_collection_metadata(
     if load_stac_feature_flags:
         data_source["load_stac_feature_flags"] = load_stac_feature_flags
 
-    if still_needs_enrichment == False:
-        data_source[DATA_SOURCE_PROPERTIES.ENRICH] = False
-
     if not x_dim:
         x_dim = {"type": "spatial", "axis": "x", "reference_system": CRS_AUTO_42001, "step": 10}
 
@@ -276,8 +288,16 @@ def build_stac_collection_metadata(
 
     upstream_metadata = _get_upstream_stac_metadata(stac_url)
 
+    stac_version = upstream_metadata.get("stac_version", "1.0.0")
+
     if not description:
         description = (description_prefix or "") + upstream_metadata.get("description", "")
+
+    if ComparableVersion("1.1.0").or_higher(stac_version):
+        # Per https://github.com/radiantearth/stac-spec/issues/1346
+        toplevel_bands = [b.to_common_bands() for b in bands]
+    else:
+        toplevel_bands = None
 
     summaries = upstream_metadata.get("summaries", {})
     summaries["raster:bands"] = [b.to_summaries_raster_bands() for b in bands]
@@ -294,8 +314,10 @@ def build_stac_collection_metadata(
     if properties:
         vito["properties"] = properties
 
-    return dict_no_none(
+    metadata = dict_no_none(
         {
+            "stac_version": upstream_metadata.get("stac_version", "1.0.0"),
+            "type": "Collection",
             "id": id,
             "name": name,
             "common_name": common_name,
@@ -319,9 +341,40 @@ def build_stac_collection_metadata(
                 "t": {"type": "temporal"},
                 "bands": {"type": "bands", "values": cube_dimensions_bands_values},
             },
+            "bands": toplevel_bands,
         }
     )
+
+    if enrichment_mode == ENRICHMENT_MODE.LEGACY_AT_RUNTIME:
+        metadata["_vito"]["data_source"][DATA_SOURCE_PROPERTIES.ENRICH] = True
+    elif enrichment_mode == ENRICHMENT_MODE.LEGACY_AT_BUILD_TIME:
+        metadata = _legacy_enrich_collection_metadata(metadata)
+        metadata["_vito"]["data_source"][DATA_SOURCE_PROPERTIES.ENRICH] = False
+    elif enrichment_mode == ENRICHMENT_MODE.NONE:
+        metadata["_vito"]["data_source"][DATA_SOURCE_PROPERTIES.ENRICH] = False
+    else:
+        raise ValueError(f"Unknown {enrichment_mode=}")
+
+    return metadata
 
 
 # Deprecated legacy alias
 build_terrascope_stac_collection_metadata = build_stac_collection_metadata
+
+
+def _legacy_enrich_collection_metadata(collection_metadata: dict) -> dict:
+    """Legacy metadata enrichment"""
+    # Wrap (and unwrap) collection metadata in catalog structure expected by legacy enrichment logic
+    cid = collection_metadata["id"]
+    catalog = {cid: copy.deepcopy(collection_metadata)}
+    enriched_catalog = enrich_catalog_metadata(catalog)
+    enriched_collection_metadata = enriched_catalog[cid]
+
+    # Remove some fields from the metadata
+    # TODO: really necessary to exclude these?
+    # TODO: larger scope? Configurable?
+    for key in {"assets", "item_assets", "auth:schemes", "storage:schemes"}:
+        if key in enriched_collection_metadata:
+            del enriched_collection_metadata[key]
+
+    return enriched_collection_metadata
