@@ -7,8 +7,8 @@ e.g. repeating band aspects in multiple places, auto42001 CRS constructs,
 The main building blocks are:
 - `BandMetadata`: describes a single band (name, wavelength, scale, unit, aliases, ...),
   consolidating fields from multiple STAC extensions (eo, raster) in one place
-- `build_terrascope_stac_collection_metadata`: builds a full openEO collection metadata dict
-  from a list of `BandMetadata` objects and an upstream Terrascope STAC URL
+- `build_stac_collection_metadata`: builds a full openEO collection metadata dict
+  from a list of `BandMetadata` objects and an upstream STAC URL
 - `LayerCatalog`: reads and writes the layercatalog.json file and keeps its entries up to date
 
 Note: this is just some initial attempt at easing the management of
@@ -211,12 +211,12 @@ def _get_upstream_stac_metadata(stac_url: str) -> dict:
     return metadata
 
 
-def build_terrascope_stac_collection_metadata(
+def build_stac_collection_metadata(
     id: str,
     *,
+    stac_url: str,
     description: Optional[str] = None,
     description_prefix: Optional[str] = None,
-    stac_url: str,
     bands: List[BandMetadata],
     load_stac_feature_flags: Optional[dict] = None,
     x_dim: Optional[dict] = None,
@@ -311,3 +311,7 @@ def build_terrascope_stac_collection_metadata(
             },
         }
     )
+
+
+# Deprecated legacy alias
+build_terrascope_stac_collection_metadata = build_stac_collection_metadata
