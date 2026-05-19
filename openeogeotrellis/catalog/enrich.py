@@ -3,13 +3,12 @@ import logging
 from typing import Dict, List, Optional, Union
 
 import requests
-
 from openeo.util import deep_get
 from openeo_driver.util.http import requests_with_retry
 
+from openeogeotrellis.catalog import DATA_SOURCE_PROPERTIES
 from openeogeotrellis.config import get_backend_config
-from openeogeotrellis.layercatalog import DATA_SOURCE_PROPERTIES
-from openeogeotrellis.opensearch import OpenSearch, OpenSearchOscars, OpenSearchCreodias, OpenSearchCdse
+from openeogeotrellis.opensearch import OpenSearch, OpenSearchCdse, OpenSearchCreodias, OpenSearchOscars
 from openeogeotrellis.utils import dict_merge_recursive
 
 logger = logging.getLogger(__name__)
@@ -67,9 +66,9 @@ def enrich_catalog_metadata(metadata: CatalogDict) -> CatalogDict:
         if os_cid and os_endpoint and os_variant != "disabled":
             logger.debug(f"Enrich {cid=} ({data_source_type=}): {os_cid=} {os_endpoint=}")
             try:
-                enrichment_metadata[cid] = opensearch_instance(
-                    endpoint=os_endpoint, variant=os_variant
-                ).get_metadata(collection_id=os_cid)
+                enrichment_metadata[cid] = opensearch_instance(endpoint=os_endpoint, variant=os_variant).get_metadata(
+                    collection_id=os_cid
+                )
             except Exception as e:
                 logger.warning(f"Failed to enrich collection metadata of {cid}: {e}", exc_info=True)
 

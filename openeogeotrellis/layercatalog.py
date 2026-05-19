@@ -31,7 +31,7 @@ from shapely.geometry import box
 from shapely.geometry.base import BaseGeometry
 
 from openeogeotrellis import sentinel_hub, datacube_parameters
-from openeogeotrellis.catalog_enrich import enrich_catalog_metadata
+from openeogeotrellis.catalog.enrich import enrich_catalog_metadata
 from openeogeotrellis._backend import post_dry_run
 from openeogeotrellis.catalogs.creo import CreoCatalogClient
 import openeogeotrellis.collections.s1backscatter_orfeo
@@ -74,14 +74,6 @@ LARGE_LAYER_THRESHOLD_IN_PIXELS = pow(10, 11)
 LARGE_LAYER_THRESHOLD_IN_PIXELS_SENTINELHUB = pow(10, 10)
 
 logger = logging.getLogger(__name__)
-
-
-class DATA_SOURCE_PROPERTIES:
-    # Container for fields used under `"_vito": {"data_source": {` collection metadata
-
-    # TODO: ultimately this flag can be fully eliminated
-    #       once layer catalog management and enrichment is done in integrated, pre-runtime approach
-    ENRICH = "enrich"
 
 
 class GeoPySparkLayerCatalog(CollectionCatalog):
