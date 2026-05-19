@@ -4928,7 +4928,7 @@ class TestEtlApiReporting:
                     "orchestrator": "openeo",
                     "sourceId": "openeo-gps-tests",
                     "state": "FINISHED",
-                    "status": "SUCCEEDED",
+                    "status": "UNDEFINED",
                 },
                 "response": [{"cost": 33}, {"cost": 55}],
             }

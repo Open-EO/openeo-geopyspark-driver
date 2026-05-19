@@ -60,6 +60,7 @@ from openeo_driver.jobregistry import (DEPENDENCY_STATUS, JOB_STATUS, ElasticJob
                                        get_ejr_credentials_from_env)
 from openeo_driver.ProcessGraphDeserializer import ENV_FINAL_RESULT, ENV_SAVE_RESULT, ConcreteProcessing, \
     _extract_load_parameters, ENV_MAX_BUFFER, ENV_DRY_RUN_TRACER
+from openeo_driver.processgraph import ProcessGraphFlatDict
 from openeo_driver.save_result import ImageCollectionResult
 from openeo_driver.users import User
 from openeo_driver.util.date_math import now_utc
@@ -67,6 +68,7 @@ from openeo_driver.util.geometry import BoundingBox
 from openeo_driver.util.http import requests_with_retry
 from openeo_driver.util.utm import area_in_square_meters
 from openeo_driver.utils import EvalEnv, generate_unique_id, to_hashable, WhiteListEvalEnv, smart_bool
+from openeogeotrellis.collect_unique_process_ids_visitor import CollectUniqueProcessIdsVisitor
 from pandas import Timedelta
 from py4j.java_gateway import JVMView
 from py4j.protocol import Py4JJavaError
@@ -87,7 +89,7 @@ from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.constants import JOB_OPTION_LOG_LEVEL
 from openeogeotrellis.geopysparkcubemetadata import Band
 from openeogeotrellis.geopysparkdatacube import GeopysparkCubeMetadata, GeopysparkDataCube
-from openeogeotrellis.integrations.etl_api import get_etl_api, ETL_ORGANIZATION_ID_JOB_OPTION
+from openeogeotrellis.integrations.etl_api import ETL_API_STATE, ETL_API_STATUS
 from openeogeotrellis.integrations.identity import IDP_TOKEN_ISSUER
 from openeogeotrellis.integrations.hadoop import setup_kerberos_auth
 from openeogeotrellis.integrations.kubernetes import (
@@ -102,6 +104,7 @@ from openeogeotrellis.integrations.s3proxy.asset_urls import PresignedS3AssetUrl
 from openeogeotrellis.integrations.stac import ResilientStacIO
 from openeogeotrellis.integrations.traefik import Traefik
 from openeogeotrellis.integrations.yarn_jobrunner import YARNBatchJobRunner
+from openeogeotrellis.job_costs_calculator import CostsDetails, DynamicEtlApiJobCostCalculator
 from openeogeotrellis.job_options import JobOptions, K8SOptions, JOB_OPTION_DISABLE
 from openeogeotrellis.job_registry import (
     DoubleJobRegistry,
@@ -1302,61 +1305,73 @@ Example usage:
         job_options: Union[dict, None] = None,
         request_id: str,
         success: bool,
+        process_graph: Union[ProcessGraphFlatDict, None] = None,
+        tracer: Union[DryRunDataTracer, None] = None,
     ) -> Optional[float]:
         """Get resource usage cost associated with (current) synchronous processing request."""
 
-        user_id = user.user_id
+        from openeogeotrellis.deploy.batch_job_metadata import extract_result_metadata
 
+        if process_graph is None:
+            process_graph = {}
+
+        if tracer is None:
+            tracer = DryRunDataTracer()
+
+        user_id = user.user_id
         backend_config = get_backend_config()
 
-        if backend_config.use_etl_api_on_sync_processing:
-            sc = SparkContext.getOrCreate()
+        if not backend_config.use_etl_api_on_sync_processing:
+            return None
 
-            # TODO: replace get-or-create with a plain get to avoid unnecessary Spark accumulator creation?
-            request_metadata_tracker = get_jvm().org.openeo.geotrelliscommon.ScopedMetadataTracker.apply(
-                request_id, sc._jsc.sc()
-            )
-            sentinel_hub_processing_units = request_metadata_tracker.sentinelHubProcessingUnits()
-            requests_session = requests_with_retry(total=3, backoff_factor=2,
-                                                   allowed_methods=Retry.DEFAULT_ALLOWED_METHODS.union({"POST"}))
+        sc = SparkContext.getOrCreate()
 
-            cpu_seconds = backend_config.default_usage_cpu_seconds
-            mb_seconds = backend_config.default_usage_byte_seconds / 1024 / 1024
+        # TODO: replace get-or-create with a plain get to avoid unnecessary Spark accumulator creation?
+        request_metadata_tracker = get_jvm().org.openeo.geotrelliscommon.ScopedMetadataTracker.apply(
+            request_id, sc._jsc.sc()
+        )
+        sentinel_hub_processing_units = request_metadata_tracker.sentinelHubProcessingUnits()
 
-            etl_api = get_etl_api(
-                user=user,
-                job_options=job_options,
-                allow_dynamic_etl_api=True,
-                requests_session=requests_session,
-                # TODO #531 provide a TtlCache here
-                etl_api_cache=None,
-            )
+        cpu_seconds = backend_config.default_usage_cpu_seconds
+        mb_seconds = backend_config.default_usage_byte_seconds / 1024 / 1024
 
-            costs = etl_api.log_resource_usage(
-                batch_job_id=request_id,
-                title=f"Synchronous processing request {request_id!r}",
-                execution_id=request_id,
+        title = f"Synchronous processing request {request_id!r}"
+
+        square_meters = deep_get(extract_result_metadata(tracer), "area", "value", default=None)
+        unique_process_ids = (
+            CollectUniqueProcessIdsVisitor().accept_process_graph(process_graph).process_ids if process_graph else set()
+        )
+
+        costs = DynamicEtlApiJobCostCalculator(user).calculate_costs(
+            CostsDetails(
+                job_id=request_id,
                 user_id=user_id,
-                started_ms=None,
-                finished_ms=None,
-                state="FINISHED" if success else "FAILED",
-                status="SUCCEEDED" if success else "FAILED",
+                execution_id=request_id,
+                app_state_etl_api_deprecated=ETL_API_STATE.FINISHED if success else ETL_API_STATE.FAILED,
+                job_status=ETL_API_STATUS.SUCCEEDED if success else ETL_API_STATUS.FAILED,
+                area_square_meters=square_meters,
+                job_title=title,
+                start_time=None,
+                finish_time=None,
                 cpu_seconds=cpu_seconds,
                 mb_seconds=mb_seconds,
-                duration_ms=None,
-                sentinel_hub_processing_units=(sentinel_hub_processing_units
-                                               if sentinel_hub_processing_units and
-                                                  backend_config.report_usage_sentinelhub_pus else None),
+                sentinelhub_processing_units=(
+                    sentinel_hub_processing_units
+                    if sentinel_hub_processing_units and backend_config.report_usage_sentinelhub_pus
+                    else None
+                ),
                 additional_credits_cost=None,
-                source_id=None,
-                organization_id=(job_options or {}).get(ETL_ORGANIZATION_ID_JOB_OPTION),
+                unique_process_ids=list(unique_process_ids),
+                job_options=job_options,
+                etl_source_id=None,
             )
+        )
 
-            logger.info(
-                f"request_costs sync processing {request_id=} {success=} {cpu_seconds=} {mb_seconds=} {sentinel_hub_processing_units=} -> {costs=}"
-            )
+        logger.info(
+            f"request_costs sync processing {request_id=} {success=} {cpu_seconds=} {mb_seconds=} {sentinel_hub_processing_units=} {square_meters=} -> {costs=}"
+        )
 
-            return costs
+        return costs
 
     def post_dry_run(
         self,

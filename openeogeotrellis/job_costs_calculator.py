@@ -3,6 +3,7 @@ import datetime as dt
 import logging
 from typing import List, NamedTuple, Optional
 
+from openeo_driver.users import User
 from openeo_driver.util.caching import TtlCache
 from openeo_driver.util.http import requests_with_retry
 from urllib3 import Retry
@@ -80,7 +81,7 @@ class EtlApiJobCostsCalculator(JobCostsCalculator):
         )
 
         if details.area_square_meters is None:
-            added_value_costs_in_credits = 0.0
+            added_value_costs_in_credits = 0
             _log.debug("not logging added value because area is None")
         else:
             added_value_costs_in_credits = sum(
@@ -108,15 +109,17 @@ class DynamicEtlApiJobCostCalculator(JobCostsCalculator):
     to per-case `calculate_costs()` call time
     """
 
-    def __init__(self, cache_ttl: int = 5 * 60):
+    def __init__(self, user: Optional[User] = None, cache_ttl: int = 5 * 60):
         self._request_session = requests_with_retry(total=3, backoff_factor=2,
                                                     allowed_methods=Retry.DEFAULT_ALLOWED_METHODS.union({"POST"}))
         # Cache of `EtlApi` instances, used in `get_etl_api()`
+        self._user = user
         self._etl_cache: Optional[TtlCache] = TtlCache(default_ttl=cache_ttl) if cache_ttl > 0 else None
 
     def calculate_costs(self, details: CostsDetails) -> float:
         job_options = details.job_options or {}
         etl_api = get_etl_api(
+            user=self._user,
             job_options=job_options,
             allow_dynamic_etl_api=True,
             requests_session=self._request_session,
