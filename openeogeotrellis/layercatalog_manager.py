@@ -26,6 +26,7 @@ from typing import List, Optional, Union
 import requests
 
 from openeogeotrellis.catalog_enrich import enrich_catalog_metadata
+from openeogeotrellis.layercatalog import DATA_SOURCE_PROPERTIES
 
 _log = logging.getLogger(__name__)
 
@@ -200,7 +201,7 @@ class BandMetadata:
 
 
 @functools.lru_cache
-def _get_upstream_stac_metadata(stac_url: str) -> dict:
+def get_upstream_stac_metadata(stac_url: str) -> dict:
     _log.info(f"Fetching upstream STAC metadata from {stac_url=}")
     response = requests.get(stac_url)
     response.raise_for_status()
@@ -209,6 +210,10 @@ def _get_upstream_stac_metadata(stac_url: str) -> dict:
     assert metadata["stac_version"] in {"1.0.0", "1.1.0"}
     assert "stac_extensions" in metadata
     return metadata
+
+
+# Legacy alias
+_get_upstream_stac_metadata = get_upstream_stac_metadata
 
 
 def build_stac_collection_metadata(
@@ -239,6 +244,8 @@ def build_stac_collection_metadata(
     sci_citation: Optional[str] = None,
     mission: Optional[str] = None,
     extra_summaries: Optional[dict] = None,
+    # TODO: ultimately, the need for this "enrich" flag will be eliminated
+    still_needs_enrichment: bool = True,
 ) -> dict:
     """
     Generic openEO collection metadata generator.
@@ -257,6 +264,9 @@ def build_stac_collection_metadata(
         data_source["consider_as_singular_time_step"] = consider_as_singular_time_step
     if load_stac_feature_flags:
         data_source["load_stac_feature_flags"] = load_stac_feature_flags
+
+    if still_needs_enrichment == False:
+        data_source[DATA_SOURCE_PROPERTIES.ENRICH] = False
 
     if not x_dim:
         x_dim = {"type": "spatial", "axis": "x", "reference_system": CRS_AUTO_42001, "step": 10}

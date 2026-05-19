@@ -76,6 +76,14 @@ LARGE_LAYER_THRESHOLD_IN_PIXELS_SENTINELHUB = pow(10, 10)
 logger = logging.getLogger(__name__)
 
 
+class DATA_SOURCE_PROPERTIES:
+    # Container for fields used under `"_vito": {"data_source": {` collection metadata
+
+    # TODO: ultimately this flag can be fully eliminated
+    #       once layer catalog management and enrichment is done in integrated, pre-runtime approach
+    ENRICH = "enrich"
+
+
 class GeoPySparkLayerCatalog(CollectionCatalog):
     def __init__(self, all_metadata: List[dict], vault: Vault = None):
         super().__init__(all_metadata=all_metadata)

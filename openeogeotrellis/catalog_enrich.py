@@ -8,6 +8,7 @@ from openeo.util import deep_get
 from openeo_driver.util.http import requests_with_retry
 
 from openeogeotrellis.config import get_backend_config
+from openeogeotrellis.layercatalog import DATA_SOURCE_PROPERTIES
 from openeogeotrellis.opensearch import OpenSearch, OpenSearchOscars, OpenSearchCreodias, OpenSearchCdse
 from openeogeotrellis.utils import dict_merge_recursive
 
@@ -59,7 +60,7 @@ def enrich_catalog_metadata(metadata: CatalogDict) -> CatalogDict:
         os_variant = data_source.get("opensearch_variant")
         data_source_type = data_source.get("type")
 
-        if not data_source.get("enrich", True):
+        if not data_source.get(DATA_SOURCE_PROPERTIES.ENRICH, True):
             logger.debug(f"Skipping enrichment for {cid=}: enrichment disabled via feature flag")
             continue
 
