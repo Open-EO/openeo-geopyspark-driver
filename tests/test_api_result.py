@@ -30,6 +30,8 @@ import rioxarray
 import xarray
 from mock import MagicMock
 from numpy.testing import assert_equal
+
+from openeo.testing.stac import StacDummyBuilder
 from openeo_driver.backend import UserDefinedProcesses
 from openeo_driver.jobregistry import JOB_STATUS
 from openeo_driver.testing import (
@@ -3669,44 +3671,36 @@ class TestLoadStac:
         assert (cube.sel(bands="band2") == 2).all()
         assert (cube.sel(bands="band3") == 3).all()
 
-    def test_load_stac_issue830_alternate_url(self, api110, urllib_and_request_mock, tmp_path):
-        def item_json(path):
-            text = get_test_data_file(path).read_text()
-            path = get_test_data_file("stac/issue830_alternate_url/T31UFS_20240623T104619_flat_color.jp2")
-            text = re.sub(r'"href":\s*"file://(/data/.*\.jp2)"', f'"href": "{path}"', text)
-            return text
-
-        urllib_and_request_mock.get(
-            "https://stac.test/", data=get_test_data_file("stac/issue830_alternate_url/root.json").read_text()
-        )
-        urllib_and_request_mock.get(
-            "https://stac.test/collections/sentinel-2-l2a",
-            data=get_test_data_file("stac/issue830_alternate_url/collections_sentinel-2-l2a.json").read_text(),
-        )
-        # Use get_flexible for search URLs to avoid coupling to the page limit default
-        urllib_and_request_mock.get_flexible(
-            "https://stac.test/search", data=item_json("stac/issue830_alternate_url/search.json"),
-            ignore_params=("limit",),
-        )
-        urllib_and_request_mock.get_flexible(
-            "https://stac.test/search?limit=100&bbox=5.07%2C51.215%2C5.08%2C51.22&datetime=2024-06-23T00%3A00%3A00Z%2F2024-06-23T23%3A59%3A59.999000Z&collections=sentinel-2-l2a&fields=%2Bproperties.proj%3Abbox%2C%2Bproperties.proj%3Aepsg%2C%2Bproperties.proj%3Ashape",
-            data=item_json("stac/issue830_alternate_url/search_queried.json"),
-            ignore_params=("limit",),
-        )
-        urllib_and_request_mock.get_flexible(
-            "https://stac.test/search?limit=100&bbox=5.07%2C51.215%2C5.08%2C51.22&datetime=2024-06-16T00%3A00%3A00Z%2F2024-06-23T23%3A59%3A59.999000Z&collections=sentinel-2-l2a&fields=%2Bproperties.proj%3Abbox%2C%2Bproperties.proj%3Ashape%2C%2Bproperties.proj%3Aepsg&token=MTcxOTEzOTU3OTAyNCxTMkJfTVNJTDJBXzIwMjQwNjIzVDEwNDYxOV9OMDUxMF9SMDUxX1QzMVVGU18yMDI0MDYyM1QxMjIxNTYsc2VudGluZWwtMi1sMmE%3D",
-            data=item_json("stac/issue830_alternate_url/search_queried_page2.json"),
-            ignore_params=("limit",),
-        )
-        urllib_and_request_mock.get_flexible(
-            "https://stac.test/search?limit=100&bbox=5.07%2C51.215%2C5.08%2C51.22&datetime=2024-06-23T00%3A00%3A00Z%2F2024-06-23T23%3A59%3A59.999000Z&collections=sentinel-2-l2a&fields=%2Btype%2C%2Bgeometry%2C%2Bproperties%2C%2Bid%2C%2Bbbox%2C%2Bstac_version%2C%2Bassets%2C%2Blinks%2C%2Bcollection",
-            data=item_json("stac/issue830_alternate_url/search_queried.json"),
-            ignore_params=("limit",),
-        )
-        urllib_and_request_mock.get_flexible(
-            "https://stac.test/search?limit=100&bbox=5.07%2C51.215%2C5.08%2C51.22&datetime=2024-06-23T00%3A00%3A00Z%2F2024-06-23T23%3A59%3A59.999000Z&collections=sentinel-2-l2a",
-            data=item_json("stac/issue830_alternate_url/search_queried.json"),
-            ignore_params=("limit",),
+    @pytest.mark.parametrize(
+        ["alternate_type"],
+        [
+            ("local",),
+            ("s3",),
+        ],
+    )
+    def test_load_stac_issue830_alternate_url(
+        self, api110, dummy_stac_api, dummy_stac_api_server, tmp_path, test_data, alternate_type
+    ):
+        collection_id = "WITH_ALTERNATE_URLS"
+        dummy_stac_api_server.define_collection(collection_id)
+        dummy_stac_api_server.define_item(
+            collection_id=collection_id,
+            item_id="item-123",
+            datetime="2024-05-01",
+            bbox=[2, 49, 3, 50],
+            assets={
+                "asset-1": StacDummyBuilder.asset(
+                    href="https://invalid.test/nope.tiff",
+                    alternate={
+                        alternate_type: {"href": str(test_data.get_path("dummy-stac/collection-123/asset-1.tiff"))},
+                    },
+                    roles=["data"],
+                    proj_code="EPSG:4326",
+                    proj_bbox=[2, 49, 3, 50],
+                    proj_shape=[32, 1 * 32],
+                    bands=[{"name": "B02"}],
+                )
+            },
         )
 
         process_graph = {
@@ -3714,19 +3708,8 @@ class TestLoadStac:
                 "loadstac1": {
                     "process_id": "load_stac",
                     "arguments": {
-                        "spatial_extent": {
-                            "east": 5.08,
-                            "north": 51.22,
-                            "south": 51.215,
-                            "west": 5.07,
-                        },
-                        "temporal_extent": [
-                            "2024-06-23",
-                            "2024-06-24",
-                        ],
-                        "url": "https://stac.test/collections/sentinel-2-l2a",
+                        "url": f"{dummy_stac_api}/collections/{collection_id}",
                     },
-                    "result": False,
                 },
                 "saveresult1": {
                     "process_id": "save_result",
@@ -3741,83 +3724,13 @@ class TestLoadStac:
         res_path.write_bytes(res.data)
         # if the process graph did not throw an error, this test is already fine.
         cube: xarray.DataArray = _load_cube_from_netcdf(res_path)
-        assert cube.sizes == {"t": 1, "x": 73, "y": 58, "bands": 20}
-        assert sorted(cube.coords["bands"].values) == [
-            "AOT_10m",
-            "AOT_20m",
-            "AOT_60m",
-            "B01",
-            "B02",
-            "B03",
-            "B04",
-            "B05",
-            "B06",
-            "B07",
-            "B08",
-            "B09",
-            "B11",
-            "B12",
-            "B8A",
-            "SCL_20m",
-            "SCL_60m",
-            "WVP_10m",
-            "WVP_20m",
-            "WVP_60m",
-        ]
-        assert cube.isel(t=0, x=1, y=2, bands=4).item() == 4.0
-
-    def test_load_stac_issue830_alternate_url_s3(self, api110, urllib_and_request_mock, tmp_path):
-        def item_json(path):
-            text = get_test_data_file(path).read_text()
-            path = get_test_data_file("stac/issue830_alternate_url_s3/TAP_flat_color.jp2")
-            text = re.sub(r'"href":\s*"/eodata([^"]*)"', f'"href": "{path}"', text)
-            return text
-
-        urllib_and_request_mock.get(
-            "https://catalogue.dataspace.copernicus.eu/stac/collections/GLOBAL-MOSAICS",
-            data=get_test_data_file(
-                "stac/issue830_alternate_url_s3/catalogue.dataspace.copernicus.eu/stac/collections/GLOBAL-MOSAICS.json"
-            ).read_text(),
+        assert (
+            cube.sizes,
+            list(cube.coords["bands"].values),
+        ) == (
+            {"t": 1, "bands": 1, "x": 32, "y": 32},
+            ["B02"],
         )
-        urllib_and_request_mock.get(
-            "https://catalogue.dataspace.copernicus.eu/stac",
-            data=get_test_data_file(
-                "stac/issue830_alternate_url_s3/catalogue.dataspace.copernicus.eu/stac/index.json"
-            ).read_text(),
-        )
-        urllib_and_request_mock.get_flexible(
-            "https://catalogue.dataspace.copernicus.eu/stac/search?limit=20&bbox=5.07%2C51.215%2C5.08%2C51.22&datetime=2023-06-01T00%3A00%3A00Z%2F2023-06-30T23%3A59%3A59.999000Z&collections=GLOBAL-MOSAICS",
-            data=item_json("stac/issue830_alternate_url_s3/catalogue.dataspace.copernicus.eu/stac/search_queried.json"),
-            ignore_params=("limit",),
-        )
-
-        process_graph = {
-            "process_graph": {
-                "loadstac1": {
-                    "process_id": "load_stac",
-                    "arguments": {
-                        "spatial_extent": {"east": 5.08, "north": 51.22, "south": 51.215, "west": 5.07},
-                        "temporal_extent": ["2023-06-01", "2023-07-01"],
-                        "url": "https://catalogue.dataspace.copernicus.eu/stac/collections/GLOBAL-MOSAICS",
-                    },
-                    "result": False,
-                },
-                "saveresult1": {
-                    "process_id": "save_result",
-                    "arguments": {"data": {"from_node": "loadstac1"}, "format": "NetCDF"},
-                    "result": True,
-                }
-            }
-        }
-
-        res = api110.result(process_graph).assert_status_code(200)
-        res_path = tmp_path / "res.nc"
-        res_path.write_bytes(res.data)
-        ds = xarray.load_dataset(res_path)
-        # if the process graph did not throw an error, this test is already fine.
-        assert ds.to_dataframe().values[0][1] == 4.0
-        assert ds.dims["x"] == 73
-        assert ds.dims["y"] == 58
 
     @pytest.mark.parametrize(
         ["lower_temporal_bound", "upper_temporal_bound", "expected_timestamps"],
