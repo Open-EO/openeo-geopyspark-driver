@@ -45,6 +45,12 @@ def main():
         help="Number of jobs to process in each batch",
     )
     parser.add_argument(
+        "--log-progress-every",
+        type=int,
+        default=1000,
+        help="Log a progress line every N successfully deleted jobs",
+    )
+    parser.add_argument(
         "--failed-to-delete-file-path",
         type=str,
         default=None,
@@ -55,6 +61,7 @@ def main():
     ejr_backend_id: str = args.ejr_backend_id
     max_age_days: int = args.max_age_days
     batch_size: int = args.batch_size
+    log_progress_every: int = args.log_progress_every
     failed_to_delete_path: str = args.failed_to_delete_file_path
     ejr_api: str = os.environ.get("OPENEO_EJR_API")
     dry_run = False
@@ -87,18 +94,14 @@ def main():
         current_batch_size = min(batch_size, remaining)
 
         # 2. Retrieve jobs to delete (next batch)
-        with TimingLogger(title=f"Retrieving up to {current_batch_size} batch jobs before {upper}", logger=_log):
-            with TimingLogger(
-                    title=f"Collecting jobs to delete: {upper=} {user_ids=} batch_size={current_batch_size}",
-                    logger=_log,
-            ):
-                jobs_before = registry.get_all_started_jobs_before(
-                    upper,
-                    user_ids=user_ids,
-                    max_count=current_batch_size,
-                )
+        with TimingLogger(title=f"Collecting jobs to delete: {upper=} {user_ids=} batch_size={current_batch_size}", logger=_log):
+            jobs_before = registry.get_all_started_jobs_before(
+                upper,
+                user_ids=user_ids,
+                max_count=current_batch_size,
+            )
 
-            _log.info(f"Collected {len(jobs_before)} jobs to delete")
+        _log.info(f"Collected {len(jobs_before)} jobs to delete")
 
         # No more jobs to process
         if not jobs_before:
@@ -107,6 +110,7 @@ def main():
 
         # 3. Delete jobs in this batch
         successful_deletions = 0
+        last_logged_at = processed
         with TimingLogger(title=f"Deleting {len(jobs_before)} jobs", logger=_log):
             for job_info in jobs_before:
                 job_id = job_info["job_id"]
@@ -114,34 +118,37 @@ def main():
                 updated = job_info["updated"]  # e.g. 2026-01-21T13:46:25Z
 
                 if dry_run:
-                    _log.info(f"[DRY RUN] Would delete {job_id=} from {user_id=}, last updated at {updated=}")
-                    continue
-
-                _log.info(f"Deleting {job_id=} from {user_id=}, last updated at {updated=}")
-                try:
-                    batch_jobs.cleanup_job_resources(
-                        job_id,
-                        user_id,
-                        propagate_errors=True,
-                        delete_dependency_sources=False,
-                    )
-                    registry.delete_job(
-                        job_id=job_id,
-                        user_id=user_id,
-                        verify_deletion=False,
-                    )
+                    _log.debug(f"[DRY RUN] Would delete {job_id=} from {user_id=}, last updated at {updated=}")
                     successful_deletions += 1
-                except Exception as e:
-                    # If something goes wrong when deleting the batch job directory, it requires manual intervention.
-                    _log.error(f"Error deleting job {job_id}: {e}", exc_info=e)
-                    failed_job_ids.append(job_id)
-                    if failed_to_delete_path:
-                        # Write failed job_id to file immediately
-                        with open(failed_to_delete_path, "a") as f:
-                            f.write(json.dumps({"job_id": job_id}) + "\n")
+                else:
+                    try:
+                        batch_jobs.cleanup_job_resources(
+                            job_id,
+                            user_id,
+                            propagate_errors=True,
+                            delete_dependency_sources=False,
+                        )
+                        registry.delete_job(
+                            job_id=job_id,
+                            user_id=user_id,
+                            verify_deletion=False,
+                        )
+                        successful_deletions += 1
+                    except Exception as e:
+                        # If something goes wrong when deleting the batch job directory, it requires manual intervention.
+                        _log.error(f"Error deleting job {job_id}: {e}", exc_info=e)
+                        failed_job_ids.append(job_id)
+                        if failed_to_delete_path:
+                            # Write failed job_id to file immediately
+                            with open(failed_to_delete_path, "a") as f:
+                                f.write(json.dumps({"job_id": job_id}) + "\n")
+
+                if (processed + successful_deletions) // log_progress_every > last_logged_at // log_progress_every:
+                    _log.info(f"Progress: deleted {processed + successful_deletions}/{max_count} jobs so far")
+                    last_logged_at = processed + successful_deletions
 
         processed += successful_deletions
-        _log.info(f"Processed {processed}/{max_count} jobs so far (successful deletions in this batch: {successful_deletions}/{len(jobs_before)})")
+        _log.info(f"Batch done: {successful_deletions}/{len(jobs_before)} deleted successfully, {processed}/{max_count} total")
 
     if failed_job_ids:
         # Exit with special code to indicate some jobs failed to delete.
