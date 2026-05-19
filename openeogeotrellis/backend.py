@@ -2157,7 +2157,8 @@ class GpsBatchJobs(backend.BatchJobs):
                 batch_job_config_dir=get_backend_config().batch_job_config_dir,
                 openeo_jar_path=options.openeo_jar_path or 'local:///opt/geotrellis-extensions-static.jar',
                 debug_metrics="true" if options.log_level.lower() == "debug" else "false",
-                open_telemetry_enabled="true" if options.enable_open_telemetry else "false",
+                open_telemetry_enabled="true" if options.open_telemetry_metrics_exporter else "false",
+                open_telemetry_metrics_exporter=options.open_telemetry_metrics_exporter or "prometheus",
             )
 
             with self._double_job_registry as dbl_registry:
