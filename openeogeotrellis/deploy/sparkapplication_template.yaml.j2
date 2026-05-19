@@ -286,6 +286,10 @@ spec:
 {%- endif %}
 {%- endblock %}
   executor:
+    ports:
+      - containerPort: 9464
+        name: prom-executor
+        protocol: TCP
 {%- block executor_options %}
     deleteOnTermination: true
     terminationGracePeriodSeconds: 300
