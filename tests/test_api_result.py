@@ -3337,7 +3337,7 @@ class TestLoadStac:
 
         mock_stac_client = MagicMock()
         mock_item_search = mock_stac_client.search.return_value
-        mock_item_search.items.return_value = [
+        mock_item_search.items_as_dicts.return_value = [
             Item(
                 id="item",
                 geometry={"type": "Polygon", "coordinates": [
@@ -3351,7 +3351,7 @@ class TestLoadStac:
                             "proj:bbox": [4309000, 3014000, 4310000, 3015000],
                             "proj:shape": [100, 100]},
                 assets={"result": Asset(href=f"file://{get_test_data_file('binary/load_stac/BVL_v1/BVL_v1_2021.tif')}",
-                                        extra_fields={"eo:bands": [{"name": "class"}]})})]
+                                        extra_fields={"eo:bands": [{"name": "class"}]})}).to_dict()]
 
         with mock.patch("pystac.read_file", return_value=self._mock_stac_api_collection()), mock.patch(
                 "pystac_client.Client.open", return_value=mock_stac_client):
