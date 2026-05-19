@@ -383,6 +383,11 @@ class K8SOptions(JobOptions):
              "description": "Deprecated, use spark pvcs or not",
              "public": False
          })
+    enable_open_telemetry: bool = field(default=False,
+        metadata={
+            "description": "[Experimental] Configure and enable the OpenTelemetry Java SDK",
+            "public": False
+        })
 
     def validate(self):
         max_cores = 4
