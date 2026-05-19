@@ -3,7 +3,7 @@ import logging
 import os
 import shutil
 from pathlib import Path
-from typing import Union, Dict
+from typing import Union, Dict, Optional
 from urllib.parse import urljoin
 from urllib.parse import urlparse
 
@@ -23,10 +23,10 @@ class StacSaveResult(SaveResult):
     def __init__(self, stac_root: str):
         super().__init__(format=None, options=None)
         self.stac_root = stac_root
-        self.stac_root_local = None
+        self.stac_root_local: Optional[str] = None
 
     def save_result(self, filename: str) -> str:
-        raise NotImplementedError("save_result not implemented for cube type: {t}".format(t=type(self.cube)))
+        raise NotImplementedError("save_result not implemented for type: {t}".format(t=type(self)))
 
     def write_assets(self, directory: Union[str, Path]) -> Dict[str, StacAsset]:
         """
@@ -52,7 +52,6 @@ class StacSaveResult(SaveResult):
             dest_path = urljoin(str(directory) + "/", relative_path)
             Path(dest_path).parent.mkdir(parents=True, exist_ok=True)
             if asset_path_parsed.scheme in ("http", "https"):
-                logging.info(f"URL: copy_asset({asset_path})")
                 response = requests.get(asset_path)
                 response.raise_for_status()
                 with open(dest_path, "wb") as f:
@@ -64,6 +63,7 @@ class StacSaveResult(SaveResult):
             return str(dest_path)
 
         self.stac_root_local = copy_asset(self.stac_root)
+        assert self.stac_root_local
 
         for asset in stac_assets:
             copy_asset(asset)
