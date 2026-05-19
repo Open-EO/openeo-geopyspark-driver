@@ -105,7 +105,7 @@ def main(argv: List[str]) -> None:
 
         logging.basicConfig(level=logging.DEBUG)
 
-        collection = Collection.from_file(str(containing_folder / "collection.json"))
+        collection = Collection.from_file(str(output_folder / "collection.json"))
         collection.validate_all()
         print("pystac validation successful")
     except Exception as e:
