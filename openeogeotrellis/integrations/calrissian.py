@@ -657,7 +657,14 @@ class CalrissianJobLauncher:
             with ContextTimer() as timer:
                 while timer.elapsed() < timeout:
                     job = k8s_batch.read_namespaced_job(name=job_name, namespace=self._namespace)
-                    _log.info(f"CWL job poll loop: {job_name=} {timer.elapsed()=:.2f} {job.status.to_dict()=}")
+                    debug_print_status = {
+                        key: value for key, value in job.status.to_dict().items() if value is not None
+                    }
+                    if "start_time" in debug_print_status:
+                        del debug_print_status["start_time"]
+                    _log.info(
+                        f"CWL job poll loop: {job_name=} {timer.elapsed()=:.2f}s job.status: {debug_print_status}"
+                    )
                     if job.status.failed == 1:
                         final_status = "failed"
                         break

@@ -100,13 +100,12 @@ def main(argv: List[str]) -> None:
     (output_folder / collection_filename).write_text(json.dumps(first_json, indent=2))
 
     try:
-        print("Trying pystac validation...")
         import logging
         from pystac import Collection, Item
 
         logging.basicConfig(level=logging.DEBUG)
 
-        collection = Collection.from_file(output_folder / "collection.json")
+        collection = Collection.from_file(str(output_folder / "collection.json"))
         collection.validate_all()
         print("pystac validation successful")
     except Exception as e:
