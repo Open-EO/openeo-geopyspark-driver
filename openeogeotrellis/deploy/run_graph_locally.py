@@ -3,6 +3,7 @@ import os
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 from openeo_driver.util.logging import FlaskRequestCorrelationIdLogging
 from openeo_driver.views import OpenEoApiApp
@@ -11,7 +12,9 @@ from openeo.internal.graph_building import as_flat_graph
 from openeo.util import ensure_dir
 
 
-def run_graph_locally(process_graph, output_dir):
+def run_graph_locally(process_graph: dict, output_dir: Path, job_options: Optional[dict] = None) -> None:
+    if job_options is None:
+        job_options = {}
     files_orig = set(output_dir.rglob("*"))
     process_start = datetime.now()
     output_dir = ensure_dir(output_dir)
@@ -23,6 +26,7 @@ def run_graph_locally(process_graph, output_dir):
     process_graph = as_flat_graph(process_graph)
     if "process_graph" not in process_graph:
         process_graph = {"process_graph": process_graph}
+    process_graph["job_options"] = {**(process_graph.get("job_options") or {}), **job_options}
     app = OpenEoApiApp(import_name=__name__)
     with app.test_request_context():
         FlaskRequestCorrelationIdLogging.before_request()
