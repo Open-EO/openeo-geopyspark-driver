@@ -14,6 +14,7 @@ from openeogeotrellis.catalog.manage import (
     build_stac_collection_metadata,
     CRS_AUTO_42001,
     ENRICHMENT_MODE,
+    extract_band_metadata_list,
 )
 
 
@@ -249,3 +250,276 @@ class TestBuildMetadata:
                 },
             }
         )
+
+
+class TestExtractBandMetadata:
+    def test_empty(self):
+        assert extract_band_metadata_list({}) == []
+
+    def test_toplevel_bands(self):
+        metadata = {
+            "bands": [{"name": "blue", "description": "Not red"}, {"name": "green", "description": "A frog"}],
+        }
+        assert extract_band_metadata_list(metadata) == [
+            BandMetadata(name="blue", description="Not red"),
+            BandMetadata(name="green", description="A frog"),
+        ]
+
+    def test_clms_lcm_global(self):
+        """Use case clms_lcm_global_10m_yearly_v1_cog"""
+        metadata = {
+            "stac_version": "1.1.0",
+            "bands": [{"name": "map", "description": "MAP"}],
+            "summaries": {
+                "gsd": [10.0],
+            },
+            "item_assets": {
+                "map": {
+                    "bands": [
+                        {
+                            "name": "map",
+                            "description": "MAP",
+                            "classification:classes": [
+                                {"name": "tree_cover", "value": 10},
+                                {"name": "shrubland", "value": 20},
+                            ],
+                        }
+                    ],
+                    "nodata": 255,
+                    "data_type": "uint8",
+                },
+                "Product": {
+                    "title": "Zipped product",
+                    "type": "application/zip",
+                },
+            },
+        }
+        assert extract_band_metadata_list(metadata) == [
+            BandMetadata(
+                name="map",
+                description="MAP",
+                gsd=10.0,
+                data_type="uint8",
+                nodata=255,
+                classification_classes=[
+                    {"name": "tree_cover", "value": 10},
+                    {"name": "shrubland", "value": 20},
+                ],
+            )
+        ]
+
+    def test_clms_ba_global(self):
+        """Use case clms_ba_global_300m_daily_v4_cog"""
+        metadata = {
+            "stac_version": "1.1.0",
+            "bands": [
+                {"name": "cp_nrt", "description": "Probability corresponds"},
+                {
+                    "name": "bf_nrt",
+                    "description": "Fraction of pixel surface",
+                },
+                {"name": "dob_nrt", "description": "Day of burn"},
+                {"name": "lfp_nrt", "description": "Probability fractional"},
+            ],
+            "item_assets": {
+                "Product": {
+                    "type": "application/zip",
+                    "title": "Zipped product",
+                },
+                "ba300_bf_nrt": {
+                    "bands": [{"name": "bf_nrt", "description": "Fraction"}],
+                    "roles": ["data"],
+                    "nodata": -32768.0,
+                    "data_type": "int16",
+                    "raster:scale": 0.001,
+                },
+                "ba300_cp_nrt": {
+                    "bands": [
+                        {
+                            "name": "cp_nrt",
+                            "description": "Probability corresponds",
+                        }
+                    ],
+                    "roles": ["data"],
+                    "nodata": -32768.0,
+                    "data_type": "int16",
+                    "raster:scale": 0.001,
+                },
+                "ba300_dob_nrt": {
+                    "bands": [{"name": "dob_nrt", "description": "Day of burn"}],
+                    "roles": ["data"],
+                    "nodata": -32768.0,
+                    "data_type": "int16",
+                },
+                "ba300_lfp_nrt": {
+                    "bands": [{"name": "lfp_nrt", "description": "Probability fractional"}],
+                    "roles": ["data"],
+                    "nodata": -32768.0,
+                    "data_type": "int16",
+                    "raster:scale": 0.001,
+                },
+            },
+        }
+
+        assert extract_band_metadata_list(metadata) == [
+            BandMetadata(
+                name="cp_nrt",
+                description="Probability corresponds",
+                raster_scale=0.001,
+                raster_offset=None,
+                gsd=None,
+                data_type="int16",
+                nodata=-32768,
+            ),
+            BandMetadata(
+                name="bf_nrt",
+                description="Fraction",
+                raster_scale=0.001,
+                raster_offset=None,
+                gsd=None,
+                data_type="int16",
+                nodata=-32768,
+            ),
+            BandMetadata(
+                name="dob_nrt",
+                description="Day of burn",
+                raster_scale=None,
+                raster_offset=None,
+                gsd=None,
+                data_type="int16",
+                nodata=-32768,
+            ),
+            BandMetadata(
+                name="lfp_nrt",
+                description="Probability fractional",
+                raster_scale=0.001,
+                raster_offset=None,
+                gsd=None,
+                data_type="int16",
+                nodata=-32768,
+            ),
+        ]
+
+    def test_clms_ndvi_global(self):
+        """Use case clms_ndvi_global_300m_10daily_v3_cog"""
+        metadata = {
+            "stac_version": "1.1.0",
+            "bands": [
+                {"name": "nobs", "description": "Number of observation"},
+                {"name": "ndvi", "description": "Normalized Difference Vegetation Index"},
+                {"name": "unc", "description": "Uncertainty on Normalized Difference Vegetation Index"},
+                {"name": "qflag", "description": "Quality Flag on Normalized Difference Vegetation Index"},
+            ],
+            "summaries": {
+                "gsd": [300.0],
+            },
+            "item_assets": {
+                "Product": {
+                    "type": "application/zip",
+                    "title": "Zipped product",
+                },
+                "ndvi300_unc": {
+                    "bands": [{"name": "unc", "description": "Uncertainty on Normalized Difference Vegetation Index"}],
+                    "roles": ["data"],
+                    "nodata": -1.0,
+                    "data_type": "int16",
+                    "raster:scale": 0.001,
+                },
+                "ndvi300_ndvi": {
+                    "bands": [
+                        {
+                            "name": "ndvi",
+                            "description": "Normalized Difference Vegetation Index",
+                            "classification:classes": [
+                                {"name": "unknown", "value": 252},
+                                {"name": "snow", "value": 253},
+                                {"name": "water", "value": 254},
+                                {"name": "missing", "value": 255},
+                            ],
+                        }
+                    ],
+                    "roles": ["data"],
+                    "nodata": 255.0,
+                    "data_type": "uint8",
+                    "raster:scale": 0.004,
+                    "raster:offset": -0.08,
+                },
+                "ndvi300_nobs": {
+                    "bands": [{"name": "nobs", "description": "Number of observation"}],
+                    "roles": ["data"],
+                    "nodata": 255.0,
+                    "data_type": "uint8",
+                },
+                "ndvi300_qflag": {
+                    "bands": [
+                        {
+                            "name": "qflag",
+                            "description": "Quality Flag on Normalized Difference Vegetation Index",
+                            "classification:bitfields": [
+                                {
+                                    "name": "no_observations",
+                                    "length": 1,
+                                    "offset": 0,
+                                    "classes": [
+                                        {"name": "observations_available", "value": 0},
+                                        {"name": "no_observations", "value": 1},
+                                    ],
+                                },
+                                {
+                                    "name": "snow_observation",
+                                    "length": 1,
+                                    "offset": 1,
+                                    "classes": [
+                                        {"name": "no_snow", "value": 0},
+                                        {"name": "snow_detected", "value": 1},
+                                    ],
+                                },
+                            ],
+                        }
+                    ],
+                    "roles": ["data"],
+                    "nodata": 255.0,
+                    "data_type": "uint8",
+                },
+            },
+        }
+        assert extract_band_metadata_list(metadata) == [
+            BandMetadata(
+                name="nobs",
+                description="Number of observation",
+                gsd=300,
+                data_type="uint8",
+                nodata=255,
+            ),
+            BandMetadata(
+                name="ndvi",
+                description="Normalized Difference Vegetation Index",
+                raster_scale=0.004,
+                raster_offset=-0.08,
+                gsd=300,
+                data_type="uint8",
+                nodata=255,
+                classification_classes=[
+                    {"name": "unknown", "value": 252},
+                    {"name": "snow", "value": 253},
+                    {"name": "water", "value": 254},
+                    {"name": "missing", "value": 255},
+                ],
+            ),
+            BandMetadata(
+                name="unc",
+                description="Uncertainty on Normalized Difference Vegetation " "Index",
+                raster_scale=0.001,
+                raster_offset=None,
+                gsd=300,
+                data_type="int16",
+                nodata=-1,
+            ),
+            BandMetadata(
+                name="qflag",
+                description="Quality Flag on Normalized Difference Vegetation " "Index",
+                gsd=300,
+                data_type="uint8",
+                nodata=255,
+            ),
+        ]

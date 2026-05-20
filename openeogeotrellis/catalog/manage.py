@@ -70,6 +70,7 @@ class LayerCatalog:
         _log.info(f"Writing layer catalog to {path=} ({len(self._collections)=})")
         with open(path, mode="w", encoding="utf-8") as f:
             json.dump(self._collections, f, indent=2, ensure_ascii=False)
+            f.write("\n")
 
     def enrich(self) -> None:
         """
@@ -385,3 +386,101 @@ def _legacy_enrich_collection_metadata(collection_metadata: dict) -> dict:
             del enriched_collection_metadata[key]
 
     return enriched_collection_metadata
+
+
+class _BandMetadataCollector:
+    def __init__(self):
+        self._collected_band_metadata: List[dict] = []
+
+    def register(self, name: str, **kwargs):
+        """Register band metadata by name (add to existing, or create new entry)"""
+        metadata = self.get_by_name(name=name, auto_create=True)
+        # TODO: check for overwrites?
+        metadata.update(kwargs)
+
+    def get_band_names(self) -> List[str]:
+        return [b["name"] for b in self._collected_band_metadata]
+
+    def get_by_name(self, name: str, auto_create: bool = True) -> dict:
+        matches = [b for b in self._collected_band_metadata if b["name"] == name]
+        if matches:
+            assert len(matches) == 1
+            return matches[0]
+        elif auto_create:
+            data = {"name": name}
+            self._collected_band_metadata.append(data)
+            return data
+        else:
+            raise LookupError(f"Band {name} not found")
+
+    def collect_from_stac_collection_metadata(self, metadata: dict):
+        """
+        Extract/guess band metadata from raw STAC collection metadata,
+        Based on and trying consolidation of information from:
+        - toplevel "bands"
+        - "summaries" > "bands"
+        - "summaries" > "eo:bands"
+        - "item_assets" > ... > "bands"
+        """
+
+        if "bands" in metadata:
+            for band in metadata["bands"]:
+                self.register(name=band["name"], description=band.get("description"))
+
+        if "summaries" in metadata:
+            if "bands" in metadata["summaries"]:
+                for band in metadata["summaries"]["bands"]:
+                    self.register(
+                        name=band["name"],
+                        eo_common_name=band.get("eo:common_name"),
+                        description=band.get("description"),
+                        gsd=band.get("gsd"),
+                        raster_offset=band.get("raster:offset"),
+                        raster_scale=band.get("raster:scale"),
+                        data_type=band.get("data_type"),
+                        nodata=band.get("nodata"),
+                        unit=band.get("unit"),
+                    )
+            elif "eo:bands" in metadata["summaries"]:
+                for band in metadata["summaries"]["eo:bands"]:
+                    self.register(
+                        name=band["name"],
+                        eo_common_name=band.get("common_name"),
+                        description=band.get("description"),
+                        gsd=band.get("gsd"),
+                        data_type=band.get("data_type"),
+                        nodata=band.get("nodata"),
+                        unit=band.get("unit"),
+                    )
+
+        if "item_assets" in metadata:
+            for asset_key, asset in metadata["item_assets"].items():
+                if "bands" in asset:
+                    for band in asset["bands"]:
+                        self.register(
+                            name=band["name"],
+                            description=band.get("description"),
+                            raster_scale=band.get("raster:scale") or asset.get("raster:scale"),
+                            raster_offset=band.get("raster:offset") or asset.get("raster:offset"),
+                            data_type=band.get("data_ype") or asset.get("data_type"),
+                            nodata=band.get("nodata") or asset.get("nodata"),
+                            classification_classes=band.get("classification:classes"),
+                        )
+
+        # Set GSD from summaries (if not set already)
+        if "summaries" in metadata and "gsd" in metadata["summaries"] and len(metadata["summaries"]["gsd"]) == 1:
+            gsd = metadata["summaries"]["gsd"][0]
+            for name in self.get_band_names():
+                if "gsd" not in self.get_by_name(name=name, auto_create=False):
+                    self.register(name=name, gsd=gsd)
+
+        return self
+
+    def get_band_metadata_list(self) -> List[BandMetadata]:
+        return [BandMetadata(**b) for b in self._collected_band_metadata]
+
+
+def extract_band_metadata_list(metadata: dict) -> List[BandMetadata]:
+    """Extract/guess band metadata from raw STAC collection metadata"""
+    collector = _BandMetadataCollector()
+    return collector.collect_from_stac_collection_metadata(metadata).get_band_metadata_list()
