@@ -57,8 +57,6 @@ class TestBandMetadata:
             nodata=12345,
         ).to_summaries_eo_bands() == {
             "name": "blue",
-            "scale": 0.01,
-            "offset": 42,
             "gsd": 30,
             "data_type": "uint8",
             "nodata": 12345,
@@ -237,8 +235,6 @@ class TestBuildMetadata:
                             "aliases": ["bleu"],
                             "common_name": "blue",
                             "gsd": 123,
-                            "offset": 0.5,
-                            "scale": 0.1,
                             "data_type": "uint8",
                         }
                     ],

@@ -191,8 +191,6 @@ class BandMetadata:
             full_width_half_max=self.eo_full_width_half_max,
             aliases=self.aliases,
             gsd=self.gsd,
-            offset=self.raster_offset,
-            scale=self.raster_scale,
             data_type=self.data_type,
             nodata=self.nodata,
             unit=self.unit,
