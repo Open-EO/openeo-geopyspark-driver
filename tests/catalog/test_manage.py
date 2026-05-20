@@ -1,5 +1,12 @@
+import sys
+
 import dirty_equals
 import pytest
+
+if sys.version_info < (3, 10):
+    # TODO #1060 clean up once python 3.8/3.9 support can be dropped
+    pytest.skip("openeogeotrellis.catalog.manage requires at least Python 3.10+", allow_module_level=True)
+
 
 from openeo.testing.stac import StacDummyBuilder
 from openeogeotrellis.catalog.manage import (
