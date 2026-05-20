@@ -18,6 +18,7 @@ from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import SourceId, DryRunDataTracer
+from openeo_driver.errors import JobLockedException, PropertyNotEditableException
 from openeo_driver.processes import ProcessRegistry
 from openeo_driver.ProcessGraphDeserializer import ENV_SOURCE_CONSTRAINTS
 from openeo_driver.specs import read_spec
@@ -963,6 +964,52 @@ class TestGpsBatchJobs:
                 "href": "file:///path/to/aux.json",
             }
         ]
+
+    def test_update_job_updates_editable_fields(self, backend_implementation, job_registry):
+        job_metadata = self._create_dummy_batch_job(backend_implementation, self._dummy_user)
+        job_id = job_metadata.id
+
+        updated_process = {"process_graph": {"node": {"process_id": "pi", "result": True}}}
+        backend_implementation.batch_jobs.update_job(
+            job_id=job_id,
+            user_id=self._dummy_user.user_id,
+            data={
+                "title": "Updated title",
+                "description": "Updated description",
+                "plan": "advanced",
+                "budget": 42.0,
+                "process": updated_process,
+            },
+        )
+
+        job_info = job_registry.db[job_id]
+        assert job_info["title"] == "Updated title"
+        assert job_info["description"] == "Updated description"
+        assert job_info["plan"] == "advanced"
+        assert job_info["budget"] == 42.0
+        assert job_info["process"] == updated_process
+
+    def test_update_job_rejects_non_editable_field(self, backend_implementation):
+        job_metadata = self._create_dummy_batch_job(backend_implementation, self._dummy_user)
+
+        with pytest.raises(PropertyNotEditableException):
+            backend_implementation.batch_jobs.update_job(
+                job_id=job_metadata.id,
+                user_id=self._dummy_user.user_id,
+                data={"status": JOB_STATUS.FINISHED},
+            )
+
+    @pytest.mark.parametrize("status", [JOB_STATUS.QUEUED, JOB_STATUS.RUNNING])
+    def test_update_job_rejects_locked_jobs(self, backend_implementation, job_registry, status):
+        job_metadata = self._create_dummy_batch_job(backend_implementation, self._dummy_user)
+        job_registry.set_status(job_id=job_metadata.id, status=status)
+
+        with pytest.raises(JobLockedException):
+            backend_implementation.batch_jobs.update_job(
+                job_id=job_metadata.id,
+                user_id=self._dummy_user.user_id,
+                data={"title": "Nope"},
+            )
 
     @staticmethod
     def _create_dummy_batch_job(backend_implementation, user) -> BatchJobMetadata:

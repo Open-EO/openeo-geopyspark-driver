@@ -155,6 +155,13 @@ class InMemoryJobRegistry(JobRegistryInterface):
     ) -> None:
         self._update(job_id=job_id, results_metadata_uri=results_metadata_uri)
 
+    def update_job(self, job_id: str, *, user_id: Optional[str] = None, data: Optional[dict] = None) -> None:
+        self.get_job(job_id=job_id, user_id=user_id)
+        updates = dict(data or {})
+        if updates:
+            updates["updated"] = rfc3339.now_utc()
+            self._update(job_id=job_id, **updates)
+
     def list_user_jobs(
         self,
         user_id: str,
@@ -320,6 +327,14 @@ class DoubleJobRegistry:  # TODO: extend JobRegistryInterface?
             self.elastic_job_registry.set_results_metadata_uri(
                 job_id=job_id, user_id=user_id, results_metadata_uri=results_metadata_uri
             )
+
+    def update_job(self, job_id: str, *, user_id: Optional[str] = None, data: Optional[dict] = None) -> None:
+        if self.elastic_job_registry:
+            update_job = getattr(self.elastic_job_registry, "update_job", None)
+            if update_job is not None:
+                update_job(job_id=job_id, user_id=user_id, data=data)
+                return
+            raise DoubleJobRegistryException("Configured job registry does not support update_job")
 
     def get_user_jobs(
         self,

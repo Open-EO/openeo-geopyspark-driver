@@ -53,9 +53,10 @@ from openeo_driver.datacube import DriverDataCube, DriverVectorCube
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import SourceConstraint, DryRunDataCube, DryRunDataTracer, DataSource
-from openeo_driver.errors import (InternalException, JobNotFinishedException, OpenEOApiException,
-                                  ServiceUnsupportedException,
-                                  ProcessParameterInvalidException, )
+from openeo_driver.errors import (InternalException, JobLockedException, JobNotFinishedException, OpenEOApiException,
+                                   PropertyNotEditableException,
+                                   ServiceUnsupportedException,
+                                   ProcessParameterInvalidException, )
 from openeo_driver.jobregistry import (DEPENDENCY_STATUS, JOB_STATUS, ElasticJobRegistry, PARTIAL_JOB_STATUS,
                                        get_ejr_credentials_from_env)
 from openeo_driver.ProcessGraphDeserializer import ENV_FINAL_RESULT, ENV_SAVE_RESULT, ConcreteProcessing, \
@@ -1457,6 +1458,7 @@ def get_elastic_job_registry(
 
 
 class GpsBatchJobs(backend.BatchJobs):
+    EDITABLE_JOB_FIELDS = {"title", "description", "process", "plan", "budget"}
 
     def __init__(
         self,
@@ -1821,6 +1823,20 @@ class GpsBatchJobs(backend.BatchJobs):
                 limit=limit,
                 request_parameters=request_parameters,
             )
+
+    def update_job(self, job_id: str, user_id: str, data: Optional[dict]):
+        if data is None:
+            data = {}
+
+        with self._double_job_registry as registry:
+            job_info = registry.get_job(job_id=job_id, user_id=user_id)
+            if job_info["status"] in {JOB_STATUS.QUEUED, JOB_STATUS.RUNNING}:
+                raise JobLockedException()
+            for field_name in data:
+                if field_name not in self.EDITABLE_JOB_FIELDS:
+                    raise PropertyNotEditableException(property=field_name)
+            updates = {k: v for k, v in data.items() if k in self.EDITABLE_JOB_FIELDS}
+            registry.update_job(job_id=job_id, user_id=user_id, data=updates)
 
     # TODO: issue #232 we should get this from S3 but should there still be an output dir then?
     def get_job_output_dir(self, job_id: str) -> Path:
