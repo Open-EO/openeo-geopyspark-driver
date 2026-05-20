@@ -1270,7 +1270,7 @@ class GeopysparkDataCube(DriverDataCube):
         retiled_collection = self._apply_to_levels_geotrellis_rdd(
             lambda rdd, level: jvm.org.openeo.geotrellis.OpenEOProcesses().retile(rdd, sizeX, sizeY, overlap_x, overlap_y))
 
-        if "executor-memoryOverhead" in context:
+        if context and "executor-memoryOverhead" in context:
             retiled_collection = self._checkpoint_rdd(retiled_collection, context)
 
         retiled_metadata: Metadata = retiled_collection.pyramid.levels[retiled_collection.pyramid.max_zoom].layer_metadata
