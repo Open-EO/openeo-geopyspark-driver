@@ -153,6 +153,10 @@ class BandMetadata:
     # data type, e.g. "int16"
     data_type: Optional[str] = None
 
+    # From common STAC metadata (https://github.com/radiantearth/stac-spec/blob/master/commons/common-metadata.md#data-values)
+    # or legacy raster extension
+    nodata: Union[int, str, None] = None
+
     # openeo:gsd — structured GSD as {"value": [x, y], "unit": "m"} for eo:bands summaries
     openeo_gsd: Optional[dict] = None
 
@@ -171,6 +175,8 @@ class BandMetadata:
             name=self.name,
             scale=self.raster_scale,
             offset=self.raster_offset,
+            data_type=self.data_type,
+            nodata=self.nodata,
             unit=self.unit,
             **{"classification:classes": self.classification_classes} if self.classification_classes else {},
         )
@@ -187,7 +193,8 @@ class BandMetadata:
             gsd=self.gsd,
             offset=self.raster_offset,
             scale=self.raster_scale,
-            type=self.data_type,
+            data_type=self.data_type,
+            nodata=self.nodata,
             unit=self.unit,
             **{"openeo:gsd": self.openeo_gsd} if self.openeo_gsd is not None else {},
         )
@@ -201,6 +208,8 @@ class BandMetadata:
                 "aliases": self.aliases,
                 "raster:scale": self.raster_scale,
                 "raster:offset": self.raster_offset,
+                "data_type": self.data_type,
+                "nodata": self.nodata,
                 "unit": self.unit,
                 "eo:common_name": self.eo_common_name,
                 "eo:center_wavelength": self.eo_center_wavelength,

@@ -28,6 +28,62 @@ class TestBandMetadata:
             "description": "Not red",
         }
 
+    def test_to_summaries_raster_bands(self):
+        assert BandMetadata(
+            name="blue",
+            raster_scale=0.01,
+            raster_offset=42,
+            unit="scoville",
+            gsd=30,
+            data_type="uint8",
+            nodata=12345,
+        ).to_summaries_raster_bands() == {
+            "name": "blue",
+            "scale": 0.01,
+            "offset": 42,
+            "data_type": "uint8",
+            "nodata": 12345,
+            "unit": "scoville",
+        }
+
+    def test_to_summaries_eo_bands(self):
+        assert BandMetadata(
+            name="blue",
+            raster_scale=0.01,
+            raster_offset=42,
+            unit="scoville",
+            gsd=30,
+            data_type="uint8",
+            nodata=12345,
+        ).to_summaries_eo_bands() == {
+            "name": "blue",
+            "scale": 0.01,
+            "offset": 42,
+            "gsd": 30,
+            "data_type": "uint8",
+            "nodata": 12345,
+            "unit": "scoville",
+        }
+
+    def test_to_summaries_bands(self):
+        assert BandMetadata(
+            name="blue",
+            raster_scale=0.01,
+            raster_offset=42,
+            unit="scoville",
+            gsd=30,
+            data_type="uint8",
+            nodata=12345,
+        ).to_summaries_bands() == {
+            "name": "blue",
+            "raster:scale": 0.01,
+            "raster:offset": 42,
+            "data_type": "uint8",
+            "nodata": 12345,
+            "unit": "scoville",
+            "gsd": 30,
+        }
+
 
 class TestBuildMetadata:
     @pytest.fixture(autouse=True)
@@ -171,6 +227,7 @@ class TestBuildMetadata:
                             "gsd": 123,
                             "raster:offset": 0.5,
                             "raster:scale": 0.1,
+                            "data_type": "uint8",
                         }
                     ],
                     "eo:bands": [
@@ -182,7 +239,7 @@ class TestBuildMetadata:
                             "gsd": 123,
                             "offset": 0.5,
                             "scale": 0.1,
-                            "type": "uint8",
+                            "data_type": "uint8",
                         }
                     ],
                     "raster:bands": [
@@ -190,6 +247,7 @@ class TestBuildMetadata:
                             "name": "B02",
                             "offset": 0.5,
                             "scale": 0.1,
+                            "data_type": "uint8",
                         }
                     ],
                 },
