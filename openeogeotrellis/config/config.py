@@ -285,6 +285,12 @@ class GpsBackendConfig(OpenEoBackendConfig):
         },
     )
 
+    yarn_rest_api_base_url: Optional[str] = os.environ.get(
+        "YARN_REST_API_BASE_URL",
+        # TODO: remove this hardcoded fallback (will be defunct anyway after hdp2 migration)
+        "https://epod-master1.vgt.vito.be:8090",
+    )
+
     """
     Only used by YARN, allows to specify paths to mount in batch job docker containers.
     """
