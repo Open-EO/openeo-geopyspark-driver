@@ -34,7 +34,9 @@ from openeogeotrellis.load_stac import (
     ItemDeduplicator,
     NoDataAvailableException,
     PropertyFilter,
-    _get_apply_sentinel2_reflectance_offset,
+    _get_pixel_value_scaling_mode,
+    _get_pixel_value_scale_and_offset,
+    _get_raster_scale_and_offset,
     _get_proj_metadata,
     _is_band_asset,
     _is_sentinel2_reflectance_asset,
@@ -53,6 +55,7 @@ from openeogeotrellis.load_stac import (
     construct_item_collection,
     extract_own_job_info,
     load_stac,
+    PixelValueScalingMode,
 )
 from openeogeotrellis.testing import DummyStacApiServer, OpenSearchClientDumper, gps_config_overrides
 from openeogeotrellis.util.geometry import bbox_to_geojson
@@ -191,6 +194,7 @@ def test_stac_api_dimensions(requests_mock, test_data, item_path):
                 {
                     "href": dirty_equals.IsStr(regex=".*_AOT_10m.jp2"),
                     "title": "AOT_10m",
+                    "pixelValueScale": 1.0,
                     "pixelValueOffset": 0.0,
                     "bandNames": ["AOT_10m"],
                 }
@@ -204,6 +208,7 @@ def test_stac_api_dimensions(requests_mock, test_data, item_path):
                     "href": dirty_equals.IsStr(regex=".*_B01_60m.jp2"),
                     "title": "B01_60m",
                     # has "raster:scale": 0.0001 and "raster:offset": -0.1
+                    "pixelValueScale": 1.0,
                     "pixelValueOffset": -1000.0,
                     "bandNames": ["B01_60m"],
                 }
@@ -216,6 +221,7 @@ def test_stac_api_dimensions(requests_mock, test_data, item_path):
                 {
                     "href": dirty_equals.IsStr(regex=".*_B01_20m.jp2"),
                     "title": "B01_20m",
+                    "pixelValueScale": 1.0,
                     "pixelValueOffset": -1000.0,
                     "bandNames": ["B01"],
                 }
@@ -228,6 +234,7 @@ def test_stac_api_dimensions(requests_mock, test_data, item_path):
                 {
                     "href": dirty_equals.IsStr(regex=".*_WVP_20m.jp2"),
                     "title": "WVP_20m",
+                    "pixelValueScale": 1.0,
                     "pixelValueOffset": 0.0,
                     "bandNames": ["WVP_20m"],
                 }
@@ -240,6 +247,7 @@ def test_stac_api_dimensions(requests_mock, test_data, item_path):
                 {
                     "href": dirty_equals.IsStr(regex=".*_WVP_60m.jp2"),
                     "title": "WVP_60m",
+                    "pixelValueScale": 1.0,
                     "pixelValueOffset": 0.0,
                     "bandNames": ["WVP_60m"],
                 }
@@ -252,12 +260,14 @@ def test_stac_api_dimensions(requests_mock, test_data, item_path):
                 {
                     "href": dirty_equals.IsStr(regex=".*_AOT_10m.jp2"),
                     "title": "AOT_10m",
+                    "pixelValueScale": 1.0,
                     "pixelValueOffset": 0.0,
                     "bandNames": ["AOT_10m"],
                 },
                 {
                     "href": dirty_equals.IsStr(regex=".*_WVP_20m.jp2"),
                     "title": "WVP_20m",
+                    "pixelValueScale": 1.0,
                     "pixelValueOffset": 0.0,
                     "bandNames": ["WVP_20m"],
                 },
@@ -270,6 +280,7 @@ def test_stac_api_dimensions(requests_mock, test_data, item_path):
                 {
                     "href": dirty_equals.IsStr(regex=".*_B01_20m.jp2"),
                     "title": "B01_20m",
+                    "pixelValueScale": 1.0,
                     "pixelValueOffset": -1000.0,
                     "bandNames": ["B01_20m"],
                 },
@@ -277,6 +288,7 @@ def test_stac_api_dimensions(requests_mock, test_data, item_path):
                     "href": dirty_equals.IsStr(regex=".*_SCL_20m.jp2"),
                     "title": "SCL_20m",
                     # has neither "raster:scale" nor "raster:offset"
+                    "pixelValueScale": 1.0,
                     "pixelValueOffset": 0.0,
                     "bandNames": ["SCL_20m"],
                 },
@@ -3561,18 +3573,86 @@ class TestPrepareContext:
     @pytest.mark.parametrize(
         ["feature_flags", "url", "expected"],
         [
-            ({"apply_sentinel2_reflectance_offset": False}, "https://stac.test/foo", False),
-            ({"apply_sentinel2_reflectance_offset": True}, "https://stac.test/foo", True),
-            ({}, "https://stac.test/foo", False),
-            ({}, "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-2-l2a", True),
-            ({}, "https://stac.terrascope.be/collections/terrascope-s2-toc-v2", True),
+            (
+                {},
+                "https://stac.test/foo",
+                PixelValueScalingMode.NO_SCALING,
+            ),
+            (
+                {"apply_sentinel2_reflectance_offset": False},
+                "https://stac.test/foo",
+                PixelValueScalingMode.NO_SCALING,
+            ),
+            (
+                {"apply_sentinel2_reflectance_offset": True},
+                "https://stac.test/foo",
+                PixelValueScalingMode.S2_REFLECTANCE_SCALED_OFFSET,
+            ),
+            (
+                {},
+                "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-2-l2a",
+                PixelValueScalingMode.S2_REFLECTANCE_SCALED_OFFSET,
+            ),
+            (
+                {},
+                "https://stac.terrascope.be/collections/terrascope-s2-toc-v2",
+                PixelValueScalingMode.S2_REFLECTANCE_SCALED_OFFSET,
+            ),
+            (
+                {"apply_raster_scale_and_offset": True},
+                "https://stac.test/foo",
+                PixelValueScalingMode.SCALE_AND_OFFSET,
+            ),
         ],
     )
-    def test_get_apply_sentinel2_reflectance_offset(self, feature_flags, url, expected):
-        apply_sentinel2_reflectance_offset = _get_apply_sentinel2_reflectance_offset(
-            feature_flags=feature_flags, url=url
-        )
+    def test_get_pixel_value_scaling_mode(self, feature_flags, url, expected):
+        apply_sentinel2_reflectance_offset = _get_pixel_value_scaling_mode(feature_flags=feature_flags, url=url)
         assert apply_sentinel2_reflectance_offset == expected
+
+    @pytest.mark.parametrize(
+        ["item", "asset", "expected"],
+        [
+            (
+                pystac.Item.from_dict(StacDummyBuilder.item()),
+                pystac.Asset(href="https://stac.test/asset.tiff"),
+                (1, 0),
+            ),
+            (
+                pystac.Item.from_dict(StacDummyBuilder.item(properties={"raster:scale": 1.2, "raster:offset": 3.4})),
+                pystac.Asset(href="https://stac.test/asset.tiff"),
+                (1.2, 3.4),
+            ),
+            (
+                pystac.Item.from_dict(StacDummyBuilder.item()),
+                pystac.Asset(
+                    href="https://stac.test/asset.tiff", extra_fields={"raster:scale": 1.2, "raster:offset": 3.4}
+                ),
+                (1.2, 3.4),
+            ),
+        ],
+    )
+    def test_get_raster_scale_and_offset(self, item, asset, expected):
+        assert _get_raster_scale_and_offset(item=item, asset=asset) == expected
+
+    @pytest.mark.parametrize(
+        ["mode", "with_reflectance_band", "expected"],
+        [
+            (PixelValueScalingMode.NO_SCALING, False, (1, 0)),
+            (PixelValueScalingMode.S2_REFLECTANCE_SCALED_OFFSET, False, (1, 0)),
+            (PixelValueScalingMode.S2_REFLECTANCE_SCALED_OFFSET, True, (1, 2.8)),
+            (PixelValueScalingMode.SCALE_AND_OFFSET, False, (1.25, 3.5)),
+        ],
+    )
+    def test_get_pixel_value_scale_and_offset(self, mode, with_reflectance_band, expected):
+        item = pystac.Item.from_dict(StacDummyBuilder.item())
+        asset_properties = {"raster:scale": 1.25, "raster:offset": 3.5}
+        if with_reflectance_band:
+            asset_properties["bands"] = [{"name": "B02", "eo:center_wavelength": 0.493}]
+        asset = pystac.Asset(
+            href="https://stac.test/asset.tiff",
+            extra_fields=asset_properties,
+        )
+        assert _get_pixel_value_scale_and_offset(item=item, asset=asset, pixel_value_scaling_mode=mode) == expected
 
     @pytest.mark.parametrize(
         ["asset", "expected"],
@@ -3583,6 +3663,14 @@ class TestPrepareContext:
                 pystac.Asset(
                     href="https://stac.test/B02.tiff",
                     extra_fields={"bands": [{"eo:center_wavelength": 0.475}]},
+                ),
+                True,
+            ),
+            (
+                # Old style (eo:bands > center_wavelength)
+                pystac.Asset(
+                    href="https://stac.test/B02.tiff",
+                    extra_fields={"eo:bands": [{"center_wavelength": 0.475}]},
                 ),
                 True,
             ),
@@ -3997,6 +4085,98 @@ class TestPrepareContext:
         dumper = OpenSearchClientDumper()
         assert dumper.dump_opensearch_client_features(context.opensearch_client, add_links=False) == [
             {"id": item_id} for item_id in expected_items
+        ]
+
+    @pytest.mark.parametrize(
+        ["feature_flags", "item_properties", "asset_properties", "expected_scale_and_offset"],
+        [
+            (
+                {"apply_raster_scale_and_offset": True},
+                {},
+                {},
+                (1.0, 0.0),
+            ),
+            (
+                {"apply_raster_scale_and_offset": True},
+                {},
+                {"raster:scale": 0.01, "raster:offset": 123},
+                (0.01, 123.0),
+            ),
+            (
+                {"apply_raster_scale_and_offset": True},
+                {"raster:scale": 0.01, "raster:offset": 123},
+                {},
+                (0.01, 123.0),
+            ),
+            (
+                {"apply_raster_scale_and_offset": True},
+                {"raster:scale": 0.01, "raster:offset": 123},
+                {"raster:scale": 0.02, "raster:offset": 456},
+                (0.02, 456.0),
+            ),
+            (
+                {"apply_raster_scale_and_offset": True},
+                {"raster:offset": 123},
+                {"raster:scale": 0.02},
+                (0.02, 123.0),
+            ),
+            (
+                {"apply_raster_scale_and_offset": False},
+                {"raster:scale": 0.01, "raster:offset": 123},
+                {"raster:scale": 0.02, "raster:offset": 456},
+                (1, 0),
+            ),
+        ],
+    )
+    def test_prepare_context_raster_scale_and_offset(
+        self,
+        dummy_stac_api_server,
+        dummy_stac_api,
+        feature_flags,
+        item_properties,
+        asset_properties,
+        expected_scale_and_offset,
+    ):
+        collection_id = "collection-with-scale-and-offset"
+        dummy_stac_api_server.define_collection(id=collection_id)
+        dummy_stac_api_server.define_item(
+            collection_id=collection_id,
+            item_id="item-1",
+            properties=item_properties,
+            assets={
+                "asset-1": StacDummyBuilder.asset(
+                    href="https://example.com/asset-1.tiff",
+                    roles=["data"],
+                    proj_code="EPSG:4326",
+                    proj_bbox=[2, 49, 3, 50],
+                    proj_shape=[32, 1 * 32],
+                    bands=[{"name": "B02"}],
+                    **asset_properties,
+                )
+            },
+        )
+        context = _prepare_context(
+            url=f"{dummy_stac_api}/collections/{collection_id}",
+            load_params=LoadParameters(),
+            env=EvalEnv(),
+            feature_flags=feature_flags,
+        )
+
+        expected_scale, expected_offset = expected_scale_and_offset
+        dumper = OpenSearchClientDumper()
+        assert dumper.dump_opensearch_client_features(context.opensearch_client, add_pixel_value_scaling=True) == [
+            {
+                "id": "item-1",
+                "links": [
+                    {
+                        "href": "https://example.com/asset-1.tiff",
+                        "title": "asset-1",
+                        "pixelValueScale": expected_scale,
+                        "pixelValueOffset": expected_offset,
+                        "bandNames": ["B02"],
+                    }
+                ],
+            }
         ]
 
 

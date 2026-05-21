@@ -380,7 +380,7 @@ class DummyStacApiServer:
 
     def default_setup(self):
         """Predefine a default collection with items"""
-        # TODO: use real HTTP for asset hrefs intead of local file paths
+        # TODO: use real HTTP for asset hrefs instead of local file paths
 
         # Set up collection-123, with this item layout:
         #  52          ┌───────────┐
@@ -852,6 +852,7 @@ class OpenSearchClientDumper:
             "bandNames": list(self.scala_iterate(link.bandNames().get().iterator())),
         }
         if add_pixel_value_scaling:
+            dump["pixelValueScale"] = link.pixelValueScale().get()
             dump["pixelValueOffset"] = link.pixelValueOffset().get()
         return dump
 
