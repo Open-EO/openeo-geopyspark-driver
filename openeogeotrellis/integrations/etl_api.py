@@ -226,7 +226,7 @@ class EtlApi:
             "orchestrator": ORCHESTRATOR,
             "jobStart": started_ms,
             "jobFinish": finished_ms,
-            "idempotencyKey": execution_id,  # TODO: is this unique enough (for batch jobs and sync requests)? A quick fix might be to combine execution_id and process_id.
+            "idempotencyKey": f"{execution_id}_{process_id}",
             "service": process_id,
             "area": {"value": square_meters, "unit": "square_meter"},
         }
