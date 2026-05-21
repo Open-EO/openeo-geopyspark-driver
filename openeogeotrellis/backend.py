@@ -2694,10 +2694,11 @@ class GpsBatchJobs(backend.BatchJobs):
                 #       and get rid of hardcoded VITO references
                 try:
                     # TODO: is it necessary to do this with curl subprocess instead of requests?
+                    yarn_api_base_url=ConfigParams().yarn_rest_api_base_url
                     kill_spark_job = subprocess.run(
                         ["curl", "--location-trusted", "--fail", "--negotiate", "-u", ":", "--insecure", "-X", "PUT",
                          "-H", "Content-Type: application/json", "-d", '{"state": "KILLED"}',
-                         f"https://epod-master1.vgt.vito.be:8090/ws/v1/cluster/apps/{application_id}/state"],
+                         f"https://{yarn_api_base_url}/ws/v1/cluster/apps/{application_id}/state"],
                         timeout=20,
                         check=True,
                         universal_newlines=True,
