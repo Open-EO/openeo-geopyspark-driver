@@ -2698,7 +2698,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     kill_spark_job = subprocess.run(
                         ["curl", "--location-trusted", "--fail", "--negotiate", "-u", ":", "--insecure", "-X", "PUT",
                          "-H", "Content-Type: application/json", "-d", '{"state": "KILLED"}',
-                         f"https://{yarn_api_base_url}/ws/v1/cluster/apps/{application_id}/state"],
+                         f"{yarn_api_base_url}/ws/v1/cluster/apps/{application_id}/state"],
                         timeout=20,
                         check=True,
                         universal_newlines=True,
