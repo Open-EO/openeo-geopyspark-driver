@@ -16,6 +16,7 @@ the layercatalog.json file. There is still a lot of room for improvement.
 Also see https://github.com/Open-EO/openeo-geopyspark-driver/issues/1175
 """
 
+import copy
 import dataclasses
 import functools
 import json
@@ -24,6 +25,7 @@ from pathlib import Path
 from typing import List, Optional, Union
 
 import requests
+from openeo.utils.version import ComparableVersion
 
 from openeogeotrellis.catalog import DATA_SOURCE_PROPERTIES
 from openeogeotrellis.catalog.enrich import enrich_catalog_metadata
@@ -68,6 +70,7 @@ class LayerCatalog:
         _log.info(f"Writing layer catalog to {path=} ({len(self._collections)=})")
         with open(path, mode="w", encoding="utf-8") as f:
             json.dump(self._collections, f, indent=2, ensure_ascii=False)
+            f.write("\n")
 
     def enrich(self) -> None:
         """
@@ -76,6 +79,7 @@ class LayerCatalog:
         Applies the same enrichment as the runtime :func:`~openeogeotrellis.catalog.enrich.enrich_catalog_metadata`,
         but during the manual layercatalog management step so that the result can be persisted to the JSON file.
         """
+        # TODO: remove this method? We want to control and finetune enrichment at collection level, not catalog level
         metadata_dict = {c["id"]: c for c in self._collections}
         enriched = enrich_catalog_metadata(metadata_dict)
         # Preserve original ordering, then append any newly added collections
@@ -150,10 +154,21 @@ class BandMetadata:
     # data type, e.g. "int16"
     data_type: Optional[str] = None
 
+    # From common STAC metadata (https://github.com/radiantearth/stac-spec/blob/master/commons/common-metadata.md#data-values)
+    # or legacy raster extension
+    nodata: Union[int, str, None] = None
+
     # openeo:gsd — structured GSD as {"value": [x, y], "unit": "m"} for eo:bands summaries
     openeo_gsd: Optional[dict] = None
 
     classification_classes: Optional[List[dict]] = None
+
+    def to_common_bands(self) -> dict:
+        """Common bands metadata (e.g. at collection top-level)"""
+        return dict_no_none(
+            name=self.name,
+            description=self.description,
+        )
 
     def to_summaries_raster_bands(self) -> dict:
         """summaries > raster:bands entry"""
@@ -161,6 +176,8 @@ class BandMetadata:
             name=self.name,
             scale=self.raster_scale,
             offset=self.raster_offset,
+            data_type=self.data_type,
+            nodata=self.nodata,
             unit=self.unit,
             **{"classification:classes": self.classification_classes} if self.classification_classes else {},
         )
@@ -175,9 +192,8 @@ class BandMetadata:
             full_width_half_max=self.eo_full_width_half_max,
             aliases=self.aliases,
             gsd=self.gsd,
-            offset=self.raster_offset,
-            scale=self.raster_scale,
-            type=self.data_type,
+            data_type=self.data_type,
+            nodata=self.nodata,
             unit=self.unit,
             **{"openeo:gsd": self.openeo_gsd} if self.openeo_gsd is not None else {},
         )
@@ -191,6 +207,8 @@ class BandMetadata:
                 "aliases": self.aliases,
                 "raster:scale": self.raster_scale,
                 "raster:offset": self.raster_offset,
+                "data_type": self.data_type,
+                "nodata": self.nodata,
                 "unit": self.unit,
                 "eo:common_name": self.eo_common_name,
                 "eo:center_wavelength": self.eo_center_wavelength,
@@ -214,6 +232,12 @@ def get_upstream_stac_metadata(stac_url: str) -> dict:
 
 # Legacy alias
 _get_upstream_stac_metadata = get_upstream_stac_metadata
+
+
+class ENRICHMENT_MODE:
+    NONE = "none"
+    LEGACY_AT_RUNTIME = "legacy_at_runtime"
+    LEGACY_AT_BUILD_TIME = "legacy_at_build_time"
 
 
 def build_stac_collection_metadata(
@@ -244,8 +268,7 @@ def build_stac_collection_metadata(
     sci_citation: Optional[str] = None,
     mission: Optional[str] = None,
     extra_summaries: Optional[dict] = None,
-    # TODO: ultimately, the need for this "enrich" flag will be eliminated
-    still_needs_enrichment: bool = True,
+    enrichment_mode: str = ENRICHMENT_MODE.LEGACY_AT_RUNTIME,
 ) -> dict:
     """
     Generic openEO collection metadata generator.
@@ -265,9 +288,6 @@ def build_stac_collection_metadata(
     if load_stac_feature_flags:
         data_source["load_stac_feature_flags"] = load_stac_feature_flags
 
-    if still_needs_enrichment == False:
-        data_source[DATA_SOURCE_PROPERTIES.ENRICH] = False
-
     if not x_dim:
         x_dim = {"type": "spatial", "axis": "x", "reference_system": CRS_AUTO_42001, "step": 10}
 
@@ -276,8 +296,16 @@ def build_stac_collection_metadata(
 
     upstream_metadata = _get_upstream_stac_metadata(stac_url)
 
+    stac_version = upstream_metadata.get("stac_version", "1.0.0")
+
     if not description:
         description = (description_prefix or "") + upstream_metadata.get("description", "")
+
+    if ComparableVersion("1.1.0").or_higher(stac_version):
+        # Per https://github.com/radiantearth/stac-spec/issues/1346
+        toplevel_bands = [b.to_common_bands() for b in bands]
+    else:
+        toplevel_bands = None
 
     summaries = upstream_metadata.get("summaries", {})
     summaries["raster:bands"] = [b.to_summaries_raster_bands() for b in bands]
@@ -294,8 +322,10 @@ def build_stac_collection_metadata(
     if properties:
         vito["properties"] = properties
 
-    return dict_no_none(
+    metadata = dict_no_none(
         {
+            "stac_version": upstream_metadata.get("stac_version", "1.0.0"),
+            "type": "Collection",
             "id": id,
             "name": name,
             "common_name": common_name,
@@ -319,9 +349,138 @@ def build_stac_collection_metadata(
                 "t": {"type": "temporal"},
                 "bands": {"type": "bands", "values": cube_dimensions_bands_values},
             },
+            "bands": toplevel_bands,
         }
     )
+
+    if enrichment_mode == ENRICHMENT_MODE.LEGACY_AT_RUNTIME:
+        metadata["_vito"]["data_source"][DATA_SOURCE_PROPERTIES.ENRICH] = True
+    elif enrichment_mode == ENRICHMENT_MODE.LEGACY_AT_BUILD_TIME:
+        metadata = _legacy_enrich_collection_metadata(metadata)
+        metadata["_vito"]["data_source"][DATA_SOURCE_PROPERTIES.ENRICH] = False
+    elif enrichment_mode == ENRICHMENT_MODE.NONE:
+        metadata["_vito"]["data_source"][DATA_SOURCE_PROPERTIES.ENRICH] = False
+    else:
+        raise ValueError(f"Unknown {enrichment_mode=}")
+
+    return metadata
 
 
 # Deprecated legacy alias
 build_terrascope_stac_collection_metadata = build_stac_collection_metadata
+
+
+def _legacy_enrich_collection_metadata(collection_metadata: dict) -> dict:
+    """Legacy metadata enrichment"""
+    # Wrap (and unwrap) collection metadata in catalog structure expected by legacy enrichment logic
+    cid = collection_metadata["id"]
+    catalog = {cid: copy.deepcopy(collection_metadata)}
+    enriched_catalog = enrich_catalog_metadata(catalog)
+    enriched_collection_metadata = enriched_catalog[cid]
+
+    # Remove some fields from the metadata
+    # TODO: really necessary to exclude these?
+    # TODO: larger scope? Configurable?
+    for key in {"assets", "item_assets", "auth:schemes", "storage:schemes"}:
+        if key in enriched_collection_metadata:
+            del enriched_collection_metadata[key]
+
+    return enriched_collection_metadata
+
+
+class _BandMetadataCollector:
+    def __init__(self):
+        self._collected_band_metadata: List[dict] = []
+
+    def register(self, name: str, **kwargs):
+        """Register band metadata by name (add to existing, or create new entry)"""
+        metadata = self.get_by_name(name=name, auto_create=True)
+        # TODO: check for overwrites?
+        metadata.update(kwargs)
+
+    def get_band_names(self) -> List[str]:
+        return [b["name"] for b in self._collected_band_metadata]
+
+    def get_by_name(self, name: str, auto_create: bool = True) -> dict:
+        matches = [b for b in self._collected_band_metadata if b["name"] == name]
+        if matches:
+            assert len(matches) == 1
+            return matches[0]
+        elif auto_create:
+            data = {"name": name}
+            self._collected_band_metadata.append(data)
+            return data
+        else:
+            raise LookupError(f"Band {name} not found")
+
+    def collect_from_stac_collection_metadata(self, metadata: dict):
+        """
+        Extract/guess band metadata from raw STAC collection metadata,
+        Based on and trying consolidation of information from:
+        - toplevel "bands"
+        - "summaries" > "bands"
+        - "summaries" > "eo:bands"
+        - "item_assets" > ... > "bands"
+        """
+
+        if "bands" in metadata:
+            for band in metadata["bands"]:
+                self.register(name=band["name"], description=band.get("description"))
+
+        if "summaries" in metadata:
+            if "bands" in metadata["summaries"]:
+                for band in metadata["summaries"]["bands"]:
+                    self.register(
+                        name=band["name"],
+                        eo_common_name=band.get("eo:common_name"),
+                        description=band.get("description"),
+                        gsd=band.get("gsd"),
+                        raster_offset=band.get("raster:offset"),
+                        raster_scale=band.get("raster:scale"),
+                        data_type=band.get("data_type"),
+                        nodata=band.get("nodata"),
+                        unit=band.get("unit"),
+                    )
+            elif "eo:bands" in metadata["summaries"]:
+                for band in metadata["summaries"]["eo:bands"]:
+                    self.register(
+                        name=band["name"],
+                        eo_common_name=band.get("common_name"),
+                        description=band.get("description"),
+                        gsd=band.get("gsd"),
+                        data_type=band.get("data_type"),
+                        nodata=band.get("nodata"),
+                        unit=band.get("unit"),
+                    )
+
+        if "item_assets" in metadata:
+            for asset_key, asset in metadata["item_assets"].items():
+                if "bands" in asset:
+                    for band in asset["bands"]:
+                        self.register(
+                            name=band["name"],
+                            description=band.get("description"),
+                            raster_scale=band.get("raster:scale") or asset.get("raster:scale"),
+                            raster_offset=band.get("raster:offset") or asset.get("raster:offset"),
+                            data_type=band.get("data_ype") or asset.get("data_type"),
+                            nodata=band.get("nodata") or asset.get("nodata"),
+                            classification_classes=band.get("classification:classes"),
+                        )
+
+        # Set GSD from summaries (if not set already)
+        if "summaries" in metadata and "gsd" in metadata["summaries"] and len(metadata["summaries"]["gsd"]) == 1:
+            gsd = metadata["summaries"]["gsd"][0]
+            for name in self.get_band_names():
+                if "gsd" not in self.get_by_name(name=name, auto_create=False):
+                    self.register(name=name, gsd=gsd)
+
+        return self
+
+    def get_band_metadata_list(self) -> List[BandMetadata]:
+        return [BandMetadata(**b) for b in self._collected_band_metadata]
+
+
+def extract_band_metadata_list(metadata: dict) -> List[BandMetadata]:
+    """Extract/guess band metadata from raw STAC collection metadata"""
+    collector = _BandMetadataCollector()
+    return collector.collect_from_stac_collection_metadata(metadata).get_band_metadata_list()

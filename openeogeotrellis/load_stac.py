@@ -3,6 +3,7 @@ from __future__ import annotations
 import collections
 import datetime
 import datetime as dt
+import enum
 import fnmatch
 import functools
 import logging
@@ -70,6 +71,23 @@ STAC_API_BACKOFF_FACTOR = 2
 STAC_API_RETRY_TOTAL = 25
 STAC_API_MINIMUM_BACKOFF_SECONDS = 1
 STAC_API_MAXIMUM_BACKOFF_SECONDS = 240
+
+
+class PixelValueScalingMode(enum.Enum):
+    """
+    Modes of how to handle pixel value scaling
+    based on raster:scale and raster:offset metadata
+    """
+
+    # Legacy default mode: no pixel scaling (keep digital number)
+    NO_SCALING = "NO_SCALING"
+
+    # Special (legacy) Sentinel 2 Reflectance mode:
+    # just offset value with ratio of raster:offset and raster:scale
+    S2_REFLECTANCE_SCALED_OFFSET = "S2_REFLECTANCE_SCALED_OFFSET"
+
+    # Normal mode: apply scale and offset to convert to physical quantities
+    SCALE_AND_OFFSET = "SCALE_AND_OFFSET"
 
 
 class _JitteredRetry(Retry):
@@ -187,7 +205,7 @@ def _prepare_context(
 
     # Collect some  feature flags
     allow_empty_cubes = feature_flags.get("allow_empty_cube", env.get(EVAL_ENV_KEY.ALLOW_EMPTY_CUBES, False))
-    apply_sentinel2_reflectance_offset = _get_apply_sentinel2_reflectance_offset(feature_flags=feature_flags, url=url)
+    pixel_value_scaling_mode = _get_pixel_value_scaling_mode(feature_flags=feature_flags, url=url)
 
     # Merge property filters from layer catalog and user-provided load_params (with precedence to load_params)
     property_filter_pg_map: PropertyFilterPGMap = {
@@ -351,17 +369,24 @@ def _prepare_context(
                     for asset_band_name in asset_band_names:
                         resolution_tracker.track(key=asset_band_name, epsg=proj_epsg, res=asset_cell_size)
 
-                if apply_sentinel2_reflectance_offset and _is_sentinel2_reflectance_asset(asset=asset):
-                    pixel_value_offset = _get_pixel_value_offset(item=itm, asset=asset)
-                else:
-                    pixel_value_offset = 0
-
+                pixel_value_scale, pixel_value_offset = _get_pixel_value_scale_and_offset(
+                    asset=asset, item=itm, pixel_value_scaling_mode=pixel_value_scaling_mode
+                )
                 asset_href = get_best_url(asset)
                 logger.debug(
                     f"FeatureBuilder.addLink {itm.id=} {asset_id=} {asset_href=} {asset_band_names_from_metadata=} {asset_band_names=}"
+                    f" {pixel_value_scale=} {pixel_value_offset=}"
                 )
+
                 opensearch_stats["builder.addLink"] += 1
-                builder = builder.addLink(asset_href, asset_id, float(pixel_value_offset), asset_band_names)
+                builder = builder.addLink(
+                    asset_href,  # scala arg `href: String`
+                    asset_id,  # scala arg `title: String`
+                    float(pixel_value_scale),  # scala arg `pixelValueScale: Double`
+                    float(pixel_value_offset),  # scala arg `pixelValueOffset: Double`
+                    asset_band_names,  # scala arg `bandNames: java.util.List[String]`
+                )
+
                 collected_link_band_names.update(asset_band_names)
 
             # Optionally include additional special assets
@@ -2125,28 +2150,34 @@ def _get_proj_metadata(
     return metadata.epsg, metadata.bbox, metadata.shape
 
 
-def _get_apply_sentinel2_reflectance_offset(*, feature_flags: dict, url: str) -> bool:
+def _get_pixel_value_scaling_mode(*, feature_flags: dict, url: str) -> PixelValueScalingMode:
     """
-    Helper to determine the "apply_sentinel2_reflectance_offset" feature flag,
-    to enable a Sentinel2-specific pixel value offset correction
+    Determine pixel value scaling mode from feature flags or STAC URL
+
+    :param feature_flags: feature flags from collection metadata
+    :param url: STAC URL
     """
-    # TODO: possible to simplify this logic or fully eliminate the need for feature flag?
-    apply_sentinel2_reflectance_offset = False
-    if "apply_sentinel2_reflectance_offset" in feature_flags:
-        apply_sentinel2_reflectance_offset = feature_flags.get("apply_sentinel2_reflectance_offset", False)
-    # Guess from url
-    # TODO: possible to eliminate the need for this ad-hoc URL-based guessing?
-    elif any(
+    if feature_flags.get("apply_sentinel2_reflectance_offset"):
+        return PixelValueScalingMode.S2_REFLECTANCE_SCALED_OFFSET
+
+    if feature_flags.get("apply_raster_scale_and_offset"):
+        return PixelValueScalingMode.SCALE_AND_OFFSET
+
+    # Guess mode from STAC url
+    # TODO: possible to eliminate the need for this ad-hoc URL-based guessing? E.g. discover from STAC metadata itself?
+    if any(
         [
             re.match(r"^https?://stac\.dataspace\.copernicus\.eu/v\d+/collections/sentinel-2-l[12][ac]", url),
             re.match(r"^https?://stac\.terrascope\.be/collections/terrascope-s2-toc-v\d+", url),
             url == "https://stac.test/collections/sentinel-2-l2a",
         ]
     ):
-        apply_sentinel2_reflectance_offset = True
-        logger.warning(f"Inferred {apply_sentinel2_reflectance_offset=} from URL {url=}.")
+        logger.warning(f"Inferred S2_REFLECTANCE_SCALED_OFFSET mode from URL {url=}.")
+        return PixelValueScalingMode.S2_REFLECTANCE_SCALED_OFFSET
 
-    return apply_sentinel2_reflectance_offset
+    # For now, default to legacy mode: no scaling
+    # TODO: make this default configurable?
+    return PixelValueScalingMode.NO_SCALING
 
 
 def _is_sentinel2_reflectance_asset(asset: pystac.Asset) -> bool:
@@ -2154,14 +2185,46 @@ def _is_sentinel2_reflectance_asset(asset: pystac.Asset) -> bool:
     Helper to determine if the given asset is a Sentinel-2 reflectance asset,
     based on the presence of "eo:center_wavelength" band metadata.
     """
-    bands = asset.extra_fields.get("bands") or asset.extra_fields.get("eo:bands")
-    return bool(bands and any("eo:center_wavelength" in band for band in bands))
+    if bands := asset.extra_fields.get("bands"):
+        return any("eo:center_wavelength" in b for b in bands)
+    elif bands := asset.extra_fields.get("eo:bands"):
+        return any("center_wavelength" in b for b in bands)
+    return False
 
 
-def _get_pixel_value_offset(*, item: pystac.Item, asset: pystac.Asset) -> float:
+def _get_pixel_value_scale_and_offset(
+    *, asset: pystac.Asset, item: pystac.Item, pixel_value_scaling_mode: PixelValueScalingMode
+) -> Tuple[float, float]:
+    """
+    Get pixel value scale and offset based on:
+    raster:scale, raster:offset metadata and pixel value scaling mode
+    """
+    if pixel_value_scaling_mode == PixelValueScalingMode.SCALE_AND_OFFSET:
+        raster_scale, raster_offset = _get_raster_scale_and_offset(item=item, asset=asset)
+        pixel_value_scale, pixel_value_offset = raster_scale, raster_offset
+    elif pixel_value_scaling_mode == PixelValueScalingMode.S2_REFLECTANCE_SCALED_OFFSET:
+        if _is_sentinel2_reflectance_asset(asset=asset):
+            raster_scale, raster_offset = _get_raster_scale_and_offset(item=item, asset=asset)
+            pixel_value_scale, pixel_value_offset = 1.0, raster_offset / raster_scale
+        else:
+            pixel_value_scale, pixel_value_offset = 1.0, 0.0
+    elif pixel_value_scaling_mode == PixelValueScalingMode.NO_SCALING:
+        # Legacy mode: don't apply scale nor offset
+        pixel_value_scale, pixel_value_offset = 1.0, 0.0
+    else:
+        logger.warning(f"Unknown {pixel_value_scaling_mode=}, defaulting to no scaling.")
+        pixel_value_scale, pixel_value_offset = 1.0, 0.0
+    return pixel_value_scale, pixel_value_offset
+
+
+def _get_raster_scale_and_offset(*, item: pystac.Item, asset: pystac.Asset) -> Tuple[float, float]:
+    """
+    Get raster:scale and raster:offset metadata from asset or its parent item
+    """
+    # TODO: get parent item through asset.owner, instead of expecting caller to provide it
     raster_scale = asset.extra_fields.get("raster:scale", item.properties.get("raster:scale", 1.0))
     raster_offset = asset.extra_fields.get("raster:offset", item.properties.get("raster:offset", 0.0))
-    return raster_offset / raster_scale
+    return raster_scale, raster_offset
 
 
 def _supports_item_search(collection: pystac.Collection) -> bool:

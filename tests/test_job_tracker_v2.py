@@ -17,7 +17,7 @@ from openeo.util import rfc3339
 from openeo_driver.testing import DictSubSet
 from openeo_driver.utils import generate_unique_id
 
-from openeogeotrellis.configparams import ConfigParams
+from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.integrations.kubernetes import K8S_SPARK_APP_STATE, k8s_job_name
 from openeogeotrellis.integrations.prometheus import Prometheus
 from openeogeotrellis.integrations.yarn import YARN_FINAL_STATUS, YARN_STATE
@@ -222,7 +222,7 @@ class YarnMock:
         with requests_mock.Mocker() as requests_mocker:
             # Mock the requests to the REST API of YARN. The configuration tells us what the base URL is.
             # To direct the request to a fake URL, mock the environment variable YARN_REST_API_BASE_URL.
-            base_url = ConfigParams().yarn_rest_api_base_url
+            base_url = get_backend_config().yarn_rest_api_base_url
             url_matcher = re.compile(f"{base_url}/ws/v1/cluster/apps/")
 
             def response_call_back(request, context):
@@ -371,7 +371,7 @@ class TestYarnJobTracker:
         self, elastic_job_registry, batch_job_output_root, job_costs_calculator
     ) -> JobTracker:
         job_tracker = JobTracker(
-            app_state_getter=YarnStatusGetter(ConfigParams().yarn_rest_api_base_url),
+            app_state_getter=YarnStatusGetter(get_backend_config().yarn_rest_api_base_url),
             principal="john@EXAMPLE.TEST",
             keytab="test/openeo.keytab",
             job_costs_calculator=job_costs_calculator,
@@ -832,7 +832,7 @@ class TestYarnStatusGetter:
             YarnStatusGetter.parse_application_response(data={}, job_id="j-abc123", user_id="johndoe")
 
     def test_response_is_not_valid_json(self, requests_mock):
-        status_getter = YarnStatusGetter(ConfigParams().yarn_rest_api_base_url)
+        status_getter = YarnStatusGetter(get_backend_config().yarn_rest_api_base_url)
         app_id = "app_123"
         app_url = status_getter.get_application_url(app_id)
         m_get = requests_mock.get(
@@ -845,7 +845,7 @@ class TestYarnStatusGetter:
         assert m_get.called
 
     def test_response_is_not_dict(self, requests_mock):
-        status_getter = YarnStatusGetter(ConfigParams().yarn_rest_api_base_url)
+        status_getter = YarnStatusGetter(get_backend_config().yarn_rest_api_base_url)
         app_id = "app_123"
         app_url = status_getter.get_application_url(app_id)
         m_get = requests_mock.get(

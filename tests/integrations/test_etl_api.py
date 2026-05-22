@@ -377,7 +377,7 @@ class TestEtlApi:
                 orchestrator="openeo",
                 jobStart=1704961751000,
                 jobFinish=1704961804000,
-                idempotencyKey="application_1704961751000_456",
+                idempotencyKey="application_1704961751000_456_load_stac",
                 service="load_stac",
                 area={"value": 40.0, "unit": "square_meter"},
             )

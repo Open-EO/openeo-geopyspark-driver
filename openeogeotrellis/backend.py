@@ -1999,11 +1999,11 @@ class GpsBatchJobs(backend.BatchJobs):
 
             executor_corerequest = k8sOptions.executor_request_cores
             if executor_corerequest == "NONE":
-                executor_corerequest = str(int(options.executor_cores) / 2 * 1000) + "m"
+                executor_corerequest = str(int(int(options.executor_cores) / 2 * 1000)) + "m"
 
             driver_corerequest = options.driver_corerequest
             if driver_corerequest == "NONE":
-                driver_corerequest = str(int(options.driver_cores) / 2 * 1000) + "m"
+                driver_corerequest = str(int(options.driver_cores)  * 800) + "m"
 
             gdal_cachemax = str(job_options.get("gdal-cachemax", get_backend_config().default_gdal_cachemax))
 
@@ -2695,10 +2695,11 @@ class GpsBatchJobs(backend.BatchJobs):
                 #       and get rid of hardcoded VITO references
                 try:
                     # TODO: is it necessary to do this with curl subprocess instead of requests?
+                    yarn_api_base_url = get_backend_config().yarn_rest_api_base_url
                     kill_spark_job = subprocess.run(
                         ["curl", "--location-trusted", "--fail", "--negotiate", "-u", ":", "--insecure", "-X", "PUT",
                          "-H", "Content-Type: application/json", "-d", '{"state": "KILLED"}',
-                         f"https://epod-master1.vgt.vito.be:8090/ws/v1/cluster/apps/{application_id}/state"],
+                         f"{yarn_api_base_url}/ws/v1/cluster/apps/{application_id}/state"],
                         timeout=20,
                         check=True,
                         universal_newlines=True,

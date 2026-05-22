@@ -714,10 +714,8 @@ class CliApp:
                     app_cluster = "k8s" if ConfigParams().is_kube_deploy else "yarn"
                 if app_cluster == "yarn":
                     app_state_getter = YarnStatusGetter(
-                        yarn_api_base_url=ConfigParams().yarn_rest_api_base_url,
-                        auth=requests_gssapi.HTTPSPNEGOAuth(
-                            mutual_authentication=requests_gssapi.REQUIRED
-                        ),
+                        yarn_api_base_url=get_backend_config().yarn_rest_api_base_url,
+                        auth=requests_gssapi.HTTPSPNEGOAuth(mutual_authentication=requests_gssapi.REQUIRED),
                     )
                 elif app_cluster == "k8s":
                     app_state_getter = K8sStatusGetter(

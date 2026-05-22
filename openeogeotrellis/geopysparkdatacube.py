@@ -1270,6 +1270,9 @@ class GeopysparkDataCube(DriverDataCube):
         retiled_collection = self._apply_to_levels_geotrellis_rdd(
             lambda rdd, level: jvm.org.openeo.geotrellis.OpenEOProcesses().retile(rdd, sizeX, sizeY, overlap_x, overlap_y))
 
+        if context and "executor-memoryOverhead" in context:
+            retiled_collection = self._checkpoint_rdd(retiled_collection, context)
+
         retiled_metadata: Metadata = retiled_collection.pyramid.levels[retiled_collection.pyramid.max_zoom].layer_metadata
         retiled_tile_layout = retiled_metadata.tile_layout
 
@@ -1348,6 +1351,30 @@ class GeopysparkDataCube(DriverDataCube):
                                                                                       overlap_y))
 
         return result_collection
+
+    def _checkpoint_rdd(self, cube_to_checkpoint, context):
+        """
+        Checkpoint the RDD to avoid data loss and configure a resource profile based on context settings.
+        """
+        from pyspark.resource.requests import TaskResourceRequests, ExecutorResourceRequests
+
+        jvm = get_jvm()
+
+        builder = getattr(jvm, "org.apache.spark.resource.ResourceProfileBuilder")()
+        ereqs = ExecutorResourceRequests(jvm).memoryOverhead(context.get("executor-memoryOverhead"))
+        _log.debug("apply_neighborhood: setting executor memory overhead to %s using resource profiles." % context.get("executor-memoryOverhead"))
+        treqs = TaskResourceRequests(jvm).cpus(1)
+        builder.require(ereqs._java_executor_resource_requests)
+        builder.require(treqs._java_task_resource_requests)
+        jrp = builder.build()
+
+        pr = jvm.org.openeo.geotrellis.OpenEOProcesses()
+
+        def checkpoint(geotrellis_cube):
+            checkpoint = pr.localCheckpoint(geotrellis_cube) if context.get("checkpoint", False) else geotrellis_cube
+            return pr.withResources(checkpoint, jrp)
+
+        return cube_to_checkpoint._apply_to_levels_geotrellis_rdd(lambda rdd, level: checkpoint(rdd))
 
     @callsite
     def resample_cube_spatial(self, target: 'GeopysparkDataCube', method: str = 'near') -> 'GeopysparkDataCube':

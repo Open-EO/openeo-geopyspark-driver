@@ -209,7 +209,10 @@ Some of the supported feature flags are:
             }
           }
     ```
-
+- `apply_raster_scale_and_offset` (boolean toggle)
+    to enable pixel value scaling based on `raster:scale` and `raster:offset` STAC metadata,
+    e.g. to convert digital numbers to physical values.
+    For historic reasons, the current default is no scaling.
 
 ## More advanced data source types
 
