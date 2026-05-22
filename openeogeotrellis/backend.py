@@ -2531,7 +2531,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 return json.loads(contents)
             except Exception:
                 logger.warning(
-                    "Could not retrieve result metadata from object storage %s in bucket %s",
+                    "Could not retrieve result metadata from object storage %s in bucket %s, defaulting to {}",
                     path,
                     bucket or "[default]",
                     exc_info=True,
@@ -2549,13 +2549,18 @@ class GpsBatchJobs(backend.BatchJobs):
             )
             def read_results_metadata_file():
                 with open(path) as f:
-                    return json.load(f)
+                    results_metadata = json.load(f)
+
+                logger.debug(
+                    f"results_metadata in {path} is {results_metadata if not results_metadata else 'not empty'}"
+                )
+                return results_metadata
 
             try:
                 return read_results_metadata_file()
             except FileNotFoundError:
                 logger.warning(
-                    "Could not derive result metadata from %s",
+                    "Could not derive result metadata from %s, defaulting to {}",
                     path,
                     exc_info=True,
                     stack_info=True,
