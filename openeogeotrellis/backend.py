@@ -1880,7 +1880,7 @@ class GpsBatchJobs(backend.BatchJobs):
                     pass
                 elif current_status == [JOB_STATUS.CANCELED, JOB_STATUS.ERROR, JOB_STATUS.FINISHED]:
                     raise OpenEOApiException(
-                        code="Unsupported job transition",
+                        code="JobTransitionUnsupported",
                         message=f"Backend does not support start job for final job state {current_status}",
                         status_code=400,
                     )
@@ -1890,7 +1890,7 @@ class GpsBatchJobs(backend.BatchJobs):
                         f"GpsBatchJobs._start_job: ill-defined job status transition from {current_status!r} to {JOB_STATUS.CREATED!r}"
                     )
                     raise OpenEOApiException(
-                        code="Not implemented job transition",
+                        code="JobTransitionNotImplemented",
                         message=f"Backend does not implement start job for state {current_status}",
                         status_code=501,
                     )
@@ -2174,7 +2174,7 @@ class GpsBatchJobs(backend.BatchJobs):
                         # While we can again check all different job states the only valid state to proceed is CREATED
                         # in other cases a concurrent event caused a job transition. Given that at the start of this
                         # method the state was valid it is best to just NOOP and communicate the job is started.
-                        log.info(f"Job already in state {latest_job_status} ")
+                        log.info(f"Job start requested, but already in state {latest_job_status}")
                         return
                     dbl_registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.QUEUED)
                     if get_backend_config().fuse_mount_batchjob_s3_bucket:
