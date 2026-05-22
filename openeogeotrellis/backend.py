@@ -1878,15 +1878,22 @@ class GpsBatchJobs(backend.BatchJobs):
                     return
                 elif current_status == JOB_STATUS.CREATED:
                     pass
+                elif current_status == [JOB_STATUS.CANCELED, JOB_STATUS.ERROR, JOB_STATUS.FINISHED]:
+                    raise OpenEOApiException(
+                        code="Unsupported job transition",
+                        message=f"Backend does not support start job for final job state {current_status}",
+                        status_code=400,
+                    )
                 else:
-                    # TODO: not in line with the current spec (it must first be canceled)
-                    # TODO: this code path is ill-defined (also on level of openEO API)
-                    logger.warning(
+                    # Another state did not exist at time of having this code so should fail to be safe
+                    logger.error(
                         f"GpsBatchJobs._start_job: ill-defined job status transition from {current_status!r} to {JOB_STATUS.CREATED!r}"
                     )
-                    # TODO: do we really want to reset the application id?
-                    dbl_registry.set_application_id(job_id=job_id, user_id=user_id, application_id=None)
-                    dbl_registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.CREATED)
+                    raise OpenEOApiException(
+                        code="Not implemented job transition",
+                        message=f"Backend does not implement start job for state {current_status}",
+                        status_code=501,
+                    )
 
         job_process_graph = job_info["process"]["process_graph"]
         job_options = job_info.get("job_options") or {}  # can be None
@@ -2162,6 +2169,14 @@ class GpsBatchJobs(backend.BatchJobs):
 
             with self._double_job_registry as dbl_registry:
                 try:
+                    latest_job_status = dbl_registry.get_job(job_id=job_id, user_id=user_id)["status"]
+                    if latest_job_status != JOB_STATUS.CREATED:
+                        # While we can again check all different job states the only valid state to proceed is CREATED
+                        # in other cases a concurrent event caused a job transition. Given that at the start of this
+                        # method the state was valid it is best to just NOOP and communicate the job is started.
+                        log.info(f"Job already in state {latest_job_status} ")
+                        return
+                    dbl_registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.QUEUED)
                     if get_backend_config().fuse_mount_batchjob_s3_bucket:
                         persistentvolume_batch_job_results_dict = k8s_render_manifest_template(
                             "persistentvolume_batch_job_results.yaml.j2",
@@ -2211,26 +2226,6 @@ class GpsBatchJobs(backend.BatchJobs):
                         results_metadata_uri=f"s3://{bucket}/{str(job_work_dir).strip('/')}/{JOB_METADATA_FILENAME}",
                     )
 
-                    status_response = {}
-                    retry = 0
-                    while "status" not in status_response and retry < 10:
-                        retry += 1
-                        time.sleep(10)
-                        try:
-                            status_response = api_instance_custom_object.get_namespaced_custom_object(
-                                "sparkoperator.k8s.io", "v1beta2", pod_namespace, "sparkapplications", spark_app_id
-                            )
-                        except ApiException:
-                            log.warning(
-                                f"failed to fetch status of Spark application at {pod_namespace}:{spark_app_id}",
-                                exc_info=True,
-                            )
-
-                    if "status" not in status_response:
-                        log.warning(
-                            f"invalid status response of Spark application at {pod_namespace}:{spark_app_id}: {status_response}, assuming it is queued."
-                        )
-                        dbl_registry.set_status(job_id=job_id, user_id=user_id, status=JOB_STATUS.QUEUED)
                 except ApiException as e:
                     log.error("failed to submit Spark application", exc_info=True)
                     if "AlreadyExists" in e.body:
