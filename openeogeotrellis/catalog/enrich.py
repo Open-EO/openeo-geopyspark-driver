@@ -1,3 +1,4 @@
+import collections
 import functools
 import logging
 from typing import Dict, List, Optional, Union
@@ -9,6 +10,7 @@ from openeo_driver.util.http import requests_with_retry
 from openeogeotrellis.catalog import DATA_SOURCE_PROPERTIES
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.opensearch import OpenSearch, OpenSearchCdse, OpenSearchCreodias, OpenSearchOscars
+from openeogeotrellis.util.logging import TrackingIter
 from openeogeotrellis.utils import dict_merge_recursive
 
 logger = logging.getLogger(__name__)
@@ -52,35 +54,45 @@ def enrich_catalog_metadata(metadata: CatalogDict) -> CatalogDict:
         else:
             raise ValueError(endpoint)
 
-    for cid, collection_metadata in metadata.items():
+    collection_iterator = TrackingIter()
+    collection_stats = collections.defaultdict(int)
+
+    for cid, collection_metadata in collection_iterator(metadata.items()):
         data_source = deep_get(collection_metadata, "_vito", "data_source", default={})
+        data_source_type = data_source.get("type")
+        collection_stats[f"{data_source_type=}"] += 1
+
         os_cid = data_source.get("opensearch_collection_id")
         os_endpoint = data_source.get("opensearch_endpoint") or get_backend_config().default_opensearch_endpoint
         os_variant = data_source.get("opensearch_variant")
-        data_source_type = data_source.get("type")
 
         if not data_source.get(DATA_SOURCE_PROPERTIES.ENRICH, True):
+            collection_stats["skip enrich from feature flag"] += 1
             logger.debug(f"Skipping enrichment for {cid=}: enrichment disabled via feature flag")
             continue
 
         if os_cid and os_endpoint and os_variant != "disabled":
             logger.debug(f"Enrich {cid=} ({data_source_type=}): {os_cid=} {os_endpoint=}")
             try:
+                collection_stats["opensearch get_metadata"] += 1
                 enrichment_metadata[cid] = opensearch_instance(endpoint=os_endpoint, variant=os_variant).get_metadata(
                     collection_id=os_cid
                 )
             except Exception as e:
+                collection_stats["opensearch fail"] += 1
                 logger.warning(f"Failed to enrich collection metadata of {cid}: {e}", exc_info=True)
 
         elif data_source_type == "stac":
             stac_url = data_source.get("url")
             logger.debug(f"Enrich {cid=} ({data_source_type=}): {stac_url=}")
             try:
+                collection_stats["_enrichment_metadata_from_stac"] += 1
                 enrichment_metadata[cid] = _enrichment_metadata_from_stac(
                     stac_url,
                     band_aliases=data_source.get("enrichment_band_aliases"),
                 )
             except Exception as e:
+                collection_stats["stac fail"] += 1
                 logger.warning(f"Failed to enrich collection metadata of {cid}: {e}", exc_info=True)
 
         elif data_source_type == "sentinel-hub":
@@ -90,6 +102,7 @@ def enrich_catalog_metadata(metadata: CatalogDict) -> CatalogDict:
             # TODO: improve performance by only fetching necessary STACs
             if sh_collection_metadatas is None:
                 sh_collections_session = requests_with_retry()
+                collection_stats["sh_collections_session.get"] += 1
                 sh_collections_resp = sh_collections_session.get(sh_stac_endpoint, timeout=60)
                 sh_collections_resp.raise_for_status()
                 sh_collection_metadatas = {
@@ -126,6 +139,8 @@ def enrich_catalog_metadata(metadata: CatalogDict) -> CatalogDict:
                 endpoint = endpoint if endpoint.startswith("http") else "https://{}".format(endpoint)
                 data_source["endpoint"] = endpoint
             data_source["dataset_id"] = data_source.get("dataset_id") or enrichment_metadata[cid]["datasource_type"]
+
+    logger.info(f"{collection_iterator=!s} {dict(collection_stats)=}")
 
     if enrichment_metadata:
         # Collect links from both sources before merging, so we can combine them afterwards.

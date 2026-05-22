@@ -8,7 +8,7 @@ class TrackingIter:
 
     Usage example:
 
-        tracking_iter = IterationStats()
+        tracking_iter = TrackingIter()
         consumed = [
             consume(item)
             for item in tracking_iter(produce_items())
