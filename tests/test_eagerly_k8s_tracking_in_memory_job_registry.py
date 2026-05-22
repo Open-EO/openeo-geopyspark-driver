@@ -104,11 +104,15 @@ def test_basic(
     # 2: start job
     backend_implementation.batch_jobs.start_job(job_id, user)
     assert mock_create_spark_pod.called
-    assert mock_get_spark_pod_status.called
 
     job_id, job = next(iter(tracking_job_registry.db.items()))
-    assert job["status"] == JOB_STATUS.CREATED
+    assert job["status"] == JOB_STATUS.QUEUED
     assert job["application_id"].startswith("a-")
+
+    # 2b: First check makes sure spark state is in submitted state
+    job_metadata = backend_implementation.batch_jobs.get_job_info(job_id, user.user_id)
+    assert job_metadata.id == job_id
+    assert job_metadata.status == JOB_STATUS.QUEUED
 
     # 3: poll job
     job_metadata = backend_implementation.batch_jobs.get_job_info(job_id, user.user_id)
