@@ -1362,6 +1362,7 @@ class GeopysparkDataCube(DriverDataCube):
 
         builder = getattr(jvm, "org.apache.spark.resource.ResourceProfileBuilder")()
         ereqs = ExecutorResourceRequests(jvm).memoryOverhead(context.get("executor-memoryOverhead"))
+        _log.debug("apply_neighborhood: setting executor memory overhead to %s using resource profiles." % context.get("executor-memoryOverhead"))
         treqs = TaskResourceRequests(jvm).cpus(1)
         builder.require(ereqs._java_executor_resource_requests)
         builder.require(treqs._java_task_resource_requests)
