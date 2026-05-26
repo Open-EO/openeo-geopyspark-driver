@@ -484,3 +484,28 @@ def extract_band_metadata_list(metadata: dict) -> List[BandMetadata]:
     """Extract/guess band metadata from raw STAC collection metadata"""
     collector = _BandMetadataCollector()
     return collector.collect_from_stac_collection_metadata(metadata).get_band_metadata_list()
+
+
+def apply_raster_scale_and_offset_to_band_metadata(bands: List[BandMetadata]) -> List[BandMetadata]:
+    """
+    Convert list of band metadata to reflect the automatic application
+    of `raster:scale` and `raster:offset` to the raster data at data load time,
+    (remove original `raster:scale`, `raster:offset`, update data_type, nodata, ...)
+    """
+    # TODO: how to make sure this is aligned with the actual implementation in openeo-geotrellis-extension?
+    has_scaling = any(b.raster_scale not in {1, None} for b in bands)
+    has_fractional_offset = any(isinstance(b.raster_offset, float) and not b.raster_offset.is_integer() for b in bands)
+    to_float = has_scaling or has_fractional_offset
+
+    def convert(band: BandMetadata) -> BandMetadata:
+        data = dataclasses.asdict(band)
+        # Remove `raster:scale` and `raster:offset` fields
+        data["raster_scale"] = None
+        data["raster_offset"] = None
+        if to_float:
+            data["data_type"] = "float64"
+            # TODO: possible to set `nodata`? e.g. "nan"?
+            data["nodata"] = None
+        return BandMetadata(**data)
+
+    return [convert(b) for b in bands]

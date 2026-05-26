@@ -15,6 +15,7 @@ from openeogeotrellis.catalog.manage import (
     CRS_AUTO_42001,
     ENRICHMENT_MODE,
     extract_band_metadata_list,
+    apply_raster_scale_and_offset_to_band_metadata,
 )
 
 
@@ -522,4 +523,36 @@ class TestExtractBandMetadata:
                 data_type="uint8",
                 nodata=255,
             ),
+        ]
+
+
+class TestBandMetadataList:
+    def test_apply_raster_scale_and_offset_simple(self):
+        bands = [
+            BandMetadata(name="foo"),
+            BandMetadata(name="bar"),
+        ]
+        assert apply_raster_scale_and_offset_to_band_metadata(bands) == [
+            BandMetadata(name="foo"),
+            BandMetadata(name="bar"),
+        ]
+
+    def test_apply_raster_scale_and_offset_with_scale(self):
+        bands = [
+            BandMetadata(name="foo", data_type="int8", nodata=-128),
+            BandMetadata(name="bar", data_type="uint16", raster_scale=0.001),
+        ]
+        assert apply_raster_scale_and_offset_to_band_metadata(bands) == [
+            BandMetadata(name="foo", data_type="float64"),
+            BandMetadata(name="bar", data_type="float64"),
+        ]
+
+    def test_apply_raster_scale_and_offset_with_offset(self):
+        bands = [
+            BandMetadata(name="foo", data_type="int8", nodata=-128),
+            BandMetadata(name="bar", data_type="uint16", raster_offset=-1.5),
+        ]
+        assert apply_raster_scale_and_offset_to_band_metadata(bands) == [
+            BandMetadata(name="foo", data_type="float64"),
+            BandMetadata(name="bar", data_type="float64"),
         ]
