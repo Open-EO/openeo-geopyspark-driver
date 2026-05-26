@@ -558,7 +558,7 @@ class TestGpsProcessing:
     ],
 )
 @pytest.mark.parametrize("shpu", [123.0, 0.0])
-@gps_config_overrides(use_etl_api_on_sync_processing=True)
+@gps_config_overrides(use_etl_api_on_sync_processing=True, etl_api_report_added_value_on_sync_processing=True)
 @mock.patch("openeogeotrellis.integrations.etl_api.get_etl_api_credentials_from_env")
 def test_request_costs(mock_get_etl_api_credentials_from_env, backend_implementation, success, shpu, state, status):
     # TODO: this test does quite a bit of mocking, which might break when internals change

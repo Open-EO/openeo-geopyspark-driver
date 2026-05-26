@@ -1339,7 +1339,9 @@ Example usage:
 
         square_meters = deep_get(extract_result_metadata(tracer), "area", "value", default=None)
         unique_process_ids = (
-            CollectUniqueProcessIdsVisitor().accept_process_graph(process_graph).process_ids if process_graph else set()
+            CollectUniqueProcessIdsVisitor().accept_process_graph(process_graph).process_ids
+            if (backend_config.etl_api_report_added_value_on_sync_processing and process_graph)
+            else set()
         )
 
         costs = DynamicEtlApiJobCostCalculator(user).calculate_costs(
