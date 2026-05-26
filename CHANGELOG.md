@@ -23,7 +23,7 @@ without compromising stable operations.
 - add `SimpleEtlApiConfig.from_env()` helper
 - Global extent in post-dry-run: at least apply `align` from `resample_spatial` staying withing CRS ([#1662](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1662))
 - Kubernetes batch jobs: support `driver-corerequest` job option for fractional CPU allocation to the driver (e.g. `"500m"`), using the `coreRequest` field in the Spark operator spec ([#1658](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1658))
-- ETL API: log added value for synchronous requests ([#1436](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1436))
+- ETL API: support logging added value for synchronous requests ([#1436](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1436))
 - `load_collection` through `load_stac`: add support for applying `raster:scale` and `raster:offset` through a feature flag in collection metadata ([#1666](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1666))
 
 
