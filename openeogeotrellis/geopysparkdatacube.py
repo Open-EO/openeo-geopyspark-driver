@@ -35,7 +35,7 @@ from openeo.metadata import Band
 from openeo.udf import UdfData
 from openeo.udf.xarraydatacube import XarrayDataCube, XarrayIO
 from openeo.util import dict_no_none, str_truncate
-from openeo_driver.datacube import DriverDataCube, DriverVectorCube
+from openeo_driver.datacube import DriverDataCube, DriverVectorCube, SupportsRunUdf
 from openeo_driver.datastructs import ResolutionMergeArgs, StacAsset
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.delayed_vector import DelayedVector
@@ -105,7 +105,39 @@ def callsite(func):
     return run
 
 
-class GeopysparkDataCube(DriverDataCube):
+def _write_stac_catalog(stac_dir: str, items: dict):
+    """Write a STAC catalog JSON file linking to the items produced by write_assets."""
+    catalog = {
+        "type": "Catalog",
+        "id": "run-udf-stac-catalog",
+        "stac_version": "1.0.0",
+        "description": "STAC catalog for raster cube input to run_udf",
+        "links": [],
+    }
+    for item_id, item_data in items.items():
+        item_file = f"{item_id}.json"
+        catalog["links"].append({"rel": "item", "href": f"./{item_file}", "type": "application/geo+json"})
+        # Write item JSON
+        item_json_path = os.path.join(stac_dir, item_file)
+        item_geojson = {
+            "type": "Feature",
+            "stac_version": "1.0.0",
+            "id": item_id,
+            "geometry": item_data.get("geometry", None),
+            "bbox": item_data.get("bbox", None),
+            "properties": item_data.get("properties", {"datetime": None}),
+            "links": [{"rel": "root", "href": "./collection.json", "type": "application/json"}],
+            "assets": item_data.get("assets", {}),
+        }
+        with open(item_json_path, "w") as f:
+            json.dump(item_geojson, f)
+
+    catalog_path = os.path.join(stac_dir, "collection.json")
+    with open(catalog_path, "w") as f:
+        json.dump(catalog, f)
+
+
+class GeopysparkDataCube(DriverDataCube, SupportsRunUdf):
 
     metadata: GeopysparkCubeMetadata = None
 
@@ -118,6 +150,61 @@ class GeopysparkDataCube(DriverDataCube):
 
     def _is_spatial(self):
         return self.get_max_level().layer_type == gps.LayerType.SPATIAL
+
+    def supports_udf(self, udf: str, *, runtime: str = "Python") -> bool:
+        return runtime.lower() == "python"
+
+    def run_udf(self, udf: str, *, runtime: str = "Python", context: Optional[dict] = None, env: EvalEnv):
+        """
+        Materialize the raster datacube to a STAC catalog and pass the catalog URL to the UDF as structured data.
+        """
+        import openeo.udf
+
+        _log = logging.getLogger(__name__)
+
+        # Create a temporary directory to write assets
+        stac_dir = tempfile.mkdtemp(prefix="openeo_run_udf_stac_")
+        stac_output_path = os.path.join(stac_dir, "collection.json")
+
+        # Write the datacube as STAC assets
+        _log.info(f"run_udf on raster cube: materializing datacube to STAC catalog at {stac_dir}")
+        items = self.write_assets(filename=stac_output_path, format="GTiff", format_options={})
+
+        # Build STAC catalog from items
+        _write_stac_catalog(stac_dir, items)
+
+        stac_catalog_url = stac_output_path
+        _log.info(f"run_udf on raster cube: STAC catalog written at {stac_catalog_url}")
+
+        # Pass the STAC catalog URL to the UDF as structured data
+        data = openeo.udf.UdfData(
+            structured_data_list=[
+                openeo.udf.StructuredData(
+                    description="STAC catalog URL for raster cube input",
+                    data={"stac_catalog_url": stac_catalog_url},
+                    type="dict",
+                )
+            ],
+            user_context=context or {},
+        )
+
+        result_data = run_udf_code(code=udf, data=data)
+
+        # Return structured data result
+        structured_result = result_data.get_structured_data_list()
+        if structured_result and len(structured_result) > 0:
+            if len(structured_result) == 1:
+                return structured_result[0].data
+            else:
+                return [s.data for s in structured_result]
+
+        # If the UDF returns feature collections, handle that
+        result_collections = result_data.get_feature_collection_list()
+        if result_collections and len(result_collections) > 0:
+            geo_data = result_collections[0].data
+            return DriverVectorCube.from_geodataframe(data=geo_data)
+
+        return result_data
 
     def apply_to_levels(self, func, metadata: GeopysparkCubeMetadata = None) -> 'GeopysparkDataCube':
         """
