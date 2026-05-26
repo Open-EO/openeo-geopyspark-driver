@@ -162,7 +162,9 @@ class GeopysparkDataCube(DriverDataCube, SupportsRunUdf):
 
         _log = logging.getLogger(__name__)
 
-        # Create a temporary directory to write assets
+        # Create a temporary directory to write assets.
+        # Note: not using TemporaryDirectory context manager because the UDF may need
+        # to access the STAC catalog files (e.g., for CWL processing).
         stac_dir = tempfile.mkdtemp(prefix="openeo_run_udf_stac_")
         stac_output_path = os.path.join(stac_dir, "collection.json")
 
