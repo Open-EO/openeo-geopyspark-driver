@@ -506,6 +506,16 @@ def apply_raster_scale_and_offset_to_band_metadata(bands: List[BandMetadata]) ->
             data["data_type"] = "float64"
             # TODO: possible to set `nodata`? e.g. "nan"?
             data["nodata"] = None
+
+        if (
+            band.raster_scale not in {1, None} or band.raster_offset not in {0.0, None}
+        ) and band.classification_classes:
+            # TODO: how to combine auto-scaling and classification classes?
+            _log.warning(
+                f"Band {band.name!r} with both scaling (scale {band.raster_scale}, offset {band.raster_offset}) and classification classes {band.classification_classes}."
+            )
+            data["classification_classes"] = None
+
         return BandMetadata(**data)
 
     return [convert(b) for b in bands]

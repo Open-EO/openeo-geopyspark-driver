@@ -556,3 +556,19 @@ class TestBandMetadataList:
             BandMetadata(name="foo", data_type="float64"),
             BandMetadata(name="bar", data_type="float64"),
         ]
+
+    def test_apply_raster_scale_and_offset_with_classification_classes(self):
+        bands = [
+            BandMetadata(
+                name="foo",
+                data_type="int8",
+                raster_scale=0.001,
+                classification_classes=[
+                    {"value": 253, "name": "snow"},
+                    {"value": 254, "name": "water"},
+                ],
+            ),
+        ]
+        assert apply_raster_scale_and_offset_to_band_metadata(bands) == [
+            BandMetadata(name="foo", data_type="float64"),
+        ]
