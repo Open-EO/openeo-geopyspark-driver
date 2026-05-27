@@ -1,7 +1,8 @@
+import io
 import pytest
 from time_machine import TimeMachineFixture
 
-from openeogeotrellis.util.logging import TrackingIter
+from openeogeotrellis.util.logging import TrackingIter, tracking_iter
 
 
 class TestTrackingIter:
@@ -44,3 +45,30 @@ class TestTrackingIter:
         assert tracking_iter.count == 4
         assert sum(tracking_iter(range(10))) == 45
         assert tracking_iter.count == 10
+
+    def test_on_done(self, capsys):
+        tracking_iter = TrackingIter()
+        assert sum(tracking_iter(range(4), on_done=print)) == 6
+        assert capsys.readouterr().out.startswith("TrackingIter:4/")
+
+    def test_summary(self, capsys):
+        tracking_iter = TrackingIter()
+        assert (
+            sum(
+                tracking_iter(
+                    range(4),
+                    on_done=lambda ti: print(f"stats:{ti.summary()}"),
+                )
+            )
+            == 6
+        )
+        assert capsys.readouterr().out.startswith("stats:4/")
+
+    def test_tracking_iter(self):
+        string_io = io.StringIO()
+
+        def on_done(i):
+            print(i, file=string_io)
+
+        assert sum(tracking_iter(range(4), on_done=on_done)) == 6
+        assert string_io.getvalue().startswith("TrackingIter:4/")

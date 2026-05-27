@@ -19,6 +19,7 @@ from openeogeotrellis.constants import EVAL_ENV_KEY
 
 import openeogeotrellis.load_stac
 from openeogeotrellis.util.geometry import BoundingBoxMerger
+from openeogeotrellis.util.logging import TrackingIter
 from openeogeotrellis.util.math import logarithmic_round
 
 _log = logging.getLogger(__name__)
@@ -330,14 +331,15 @@ def _extract_spatial_extent_from_constraint_load_stac(
     # per-element reprojection overhead in the merger.
     assets_full_bbox_merger = BoundingBoxMerger(crs=target_crs)
     aligned_extent_coverage_merger = BoundingBoxMerger(crs=target_crs)
-    for proj_metadata in projection_metadatas:
+    tracking_iter_merge = TrackingIter()
+    for proj_metadata in tracking_iter_merge(projection_metadatas):
         if asset_bbox := proj_metadata.to_bounding_box():
             assets_full_bbox_merger.add(asset_bbox)
             if extent_orig and (extent_coverage := proj_metadata.coverage_for(extent_orig)):
                 aligned_extent_coverage_merger.add(extent_coverage)
     assets_full_bbox = assets_full_bbox_merger.get()
     assets_covered_bbox = aligned_extent_coverage_merger.get()
-    _log.info(f"Merged bounding boxes: {assets_full_bbox=} {assets_covered_bbox=}")
+    _log.info(f"Merged bounding boxes: {assets_full_bbox=} {assets_covered_bbox=} {tracking_iter_merge.summary()=}")
     extent_variants["assets_full_bbox"] = assets_full_bbox
     extent_variants["assets_covered_bbox"] = assets_covered_bbox
     extent_aligned = assets_covered_bbox or assets_full_bbox
