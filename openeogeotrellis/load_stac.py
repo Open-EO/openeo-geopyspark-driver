@@ -2264,10 +2264,10 @@ def get_best_url(asset: pystac.Asset, with_vsis3: bool = True, preferred_url_pre
     Relevant doc: https://github.com/stac-extensions/alternate-assets
     """
     for key, alternate_asset in asset.extra_fields.get("alternate", {}).items():
+        href = alternate_asset["href"]
+        if preferred_url_prefix and href.lower().startswith(preferred_url_prefix.lower()):
+            return href
         if key in {"local", "s3"}:
-            href = alternate_asset["href"]
-            if preferred_url_prefix and href.lower().startswith(preferred_url_prefix.lower()):
-                return href
             # Checking if file exists takes around 10ms on /data/MTDA mounted on laptop
             # Checking if URL exists takes around 100ms on https://services.terrascope.be
             # Checking if URL exists depends also on what Datasource is used in the scala code.
