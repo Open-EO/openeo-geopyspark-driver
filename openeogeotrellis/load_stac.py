@@ -372,7 +372,7 @@ def _prepare_context(
                 pixel_value_scale, pixel_value_offset = _get_pixel_value_scale_and_offset(
                     asset=asset, item=itm, pixel_value_scaling_mode=pixel_value_scaling_mode
                 )
-                asset_href = get_best_url(asset)
+                asset_href = get_best_url(asset, preferred_url_prefix=feature_flags.get("preferred_url_prefix"))
                 logger.debug(
                     f"FeatureBuilder.addLink {itm.id=} {asset_id=} {asset_href=} {asset_band_names_from_metadata=} {asset_band_names=}"
                     f" {pixel_value_scale=} {pixel_value_offset=}"
@@ -398,7 +398,7 @@ def _prepare_context(
                     and asset_id == "granule_metadata"
                     and asset.title == "MTD_TL.xml"
                     and "metadata" in (asset.roles or [])
-                    and (asset_href := get_best_url(asset, with_vsis3=False)).endswith("/MTD_TL.xml")
+                    and (asset_href := get_best_url(asset, with_vsis3=False, preferred_url_prefix=feature_flags.get("preferred_url_prefix"))).endswith("/MTD_TL.xml")
                     and (not band_selection or set(band_selection).intersection(granule_metadata_band_map.keys()))
                 ):
                     # TODO: avoid ad-hoc `sorted` and make sure granule_metadata_band_map has intrinsic/intended order from the start
@@ -414,7 +414,7 @@ def _prepare_context(
                     granule_metadata_band_map
                     and asset_id == "GEOMETRY"
                 ):
-                    asset_href = get_best_url(asset, with_vsis3=False)
+                    asset_href = get_best_url(asset, with_vsis3=False, preferred_url_prefix=feature_flags.get("preferred_url_prefix"))
                     link_band_names = sorted(granule_metadata_band_map.values())
                     opensearch_link_titles_map.update(granule_metadata_band_map)
                     logger.debug(
@@ -2259,14 +2259,14 @@ def contains_netcdf_with_time_dimension(collection: pystac.Collection) -> bool:
     return False
 
 
-def get_best_url(asset: pystac.Asset, with_vsis3: bool = True) -> str:
+def get_best_url(asset: pystac.Asset, with_vsis3: bool = True, preferred_url_prefix: Optional[str] = None) -> str:
     """
     Relevant doc: https://github.com/stac-extensions/alternate-assets
     """
     for key, alternate_asset in asset.extra_fields.get("alternate", {}).items():
         if key in {"local", "s3"}:
             href = alternate_asset["href"]
-            if href.lower().startswith("s3://usgs-landsat/".lower()):
+            if preferred_url_prefix and href.lower().startswith(preferred_url_prefix.lower()):
                 return href
             # Checking if file exists takes around 10ms on /data/MTDA mounted on laptop
             # Checking if URL exists takes around 100ms on https://services.terrascope.be
