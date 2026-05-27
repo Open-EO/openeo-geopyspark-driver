@@ -2266,6 +2266,8 @@ def get_best_url(asset: pystac.Asset, with_vsis3: bool = True) -> str:
     for key, alternate_asset in asset.extra_fields.get("alternate", {}).items():
         if key in {"local", "s3"}:
             href = alternate_asset["href"]
+            if href.lower().startswith("s3://usgs-landsat/".lower()):
+                return href
             # Checking if file exists takes around 10ms on /data/MTDA mounted on laptop
             # Checking if URL exists takes around 100ms on https://services.terrascope.be
             # Checking if URL exists depends also on what Datasource is used in the scala code.
