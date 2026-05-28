@@ -390,6 +390,14 @@ class K8SOptions(JobOptions):
             "enum": ["console", "prometheus"]
         })
 
+    force_s3proxy: bool = field(
+        default=False,
+        metadata={
+            "description": "[Experimental] Force all traffic to go via an internal S3Proxy",
+            "public": False
+        },
+    )
+
     def validate(self):
         max_cores = 4
         if int(self.executor_cores) > max_cores:
