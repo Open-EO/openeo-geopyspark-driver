@@ -503,7 +503,7 @@ def apply_raster_scale_and_offset_to_band_metadata(bands: List[BandMetadata]) ->
         data["raster_scale"] = None
         data["raster_offset"] = None
         if to_float:
-            data["data_type"] = "float64"
+            data["data_type"] = "float32"
             # TODO: possible to set `nodata`? e.g. "nan"?
             data["nodata"] = None
 

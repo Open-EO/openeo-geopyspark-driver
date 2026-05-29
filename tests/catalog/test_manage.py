@@ -543,8 +543,8 @@ class TestBandMetadataList:
             BandMetadata(name="bar", data_type="uint16", raster_scale=0.001),
         ]
         assert apply_raster_scale_and_offset_to_band_metadata(bands) == [
-            BandMetadata(name="foo", data_type="float64"),
-            BandMetadata(name="bar", data_type="float64"),
+            BandMetadata(name="foo", data_type="float32"),
+            BandMetadata(name="bar", data_type="float32"),
         ]
 
     def test_apply_raster_scale_and_offset_with_offset(self):
@@ -553,8 +553,8 @@ class TestBandMetadataList:
             BandMetadata(name="bar", data_type="uint16", raster_offset=-1.5),
         ]
         assert apply_raster_scale_and_offset_to_band_metadata(bands) == [
-            BandMetadata(name="foo", data_type="float64"),
-            BandMetadata(name="bar", data_type="float64"),
+            BandMetadata(name="foo", data_type="float32"),
+            BandMetadata(name="bar", data_type="float32"),
         ]
 
     def test_apply_raster_scale_and_offset_with_classification_classes(self):
@@ -570,5 +570,5 @@ class TestBandMetadataList:
             ),
         ]
         assert apply_raster_scale_and_offset_to_band_metadata(bands) == [
-            BandMetadata(name="foo", data_type="float64"),
+            BandMetadata(name="foo", data_type="float32"),
         ]
