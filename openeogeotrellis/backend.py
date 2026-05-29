@@ -2208,6 +2208,7 @@ class GpsBatchJobs(backend.BatchJobs):
                             job_id=job_id,
                             token=IDP_TOKEN_ISSUER.get_job_token(sub_id=user_id, user_id=user_id, job_id=job_id),
                             profile_file_content=S3Config.from_backend_config(job_id, str(token_path)),
+                            force_s3proxy=k8sOptions.force_s3proxy,
                         )
 
                         api_instance_core.create_namespaced_secret(
