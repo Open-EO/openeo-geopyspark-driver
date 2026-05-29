@@ -21,10 +21,11 @@ without compromising stable operations.
 - Batch job results: STAC item geometry should match asset geometry ([#756](https://github.com/Open-EO/openeo-geopyspark-driver/issues/756))
 - Support experimental `corsa_compress_v2` and `corsa_decompress_v2` processes ([Open-EO/openeo-geotrellis-extensions#702](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/702))
 - add `SimpleEtlApiConfig.from_env()` helper
-- Global extent in post-dry-run: at least apply `align` from `resample_spatial` staying withing CRS ([#1662](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1662))
+- Global extent in post-dry-run: at least apply `align` from `resample_spatial` when staying withing CRS ([#1662](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1662))
 - Kubernetes batch jobs: support `driver-corerequest` job option for fractional CPU allocation to the driver (e.g. `"500m"`), using the `coreRequest` field in the Spark operator spec ([#1658](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1658))
 - ETL API: support logging added value for synchronous requests ([#1436](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1436))
 - `load_collection` through `load_stac`: add support for applying `raster:scale` and `raster:offset` through a feature flag in collection metadata ([#1666](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1666))
+- Global extent in post-dry-run: always apply `align` from `resample_spatial`, regardless of correspondence between the CRS'es of the requested spatial extent and requested resampling ([#1662](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1662))
 
 
 ## 0.71.0
