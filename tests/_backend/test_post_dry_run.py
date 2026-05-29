@@ -256,13 +256,55 @@ def test_resample_extent_lonlat_to_utm(resolution, expected):
         ),
     ],
 )
-def test_resample_extent_with_align(align, expected):
+def test_resample_extent_with_align_same_crses(align, expected):
     """
     based on use case from https://github.com/Open-EO/openeo-geopyspark-driver/issues/1662
     """
     bbox = BoundingBox(west=3970000, south=2970000, east=4040000, north=3040000, crs="EPSG:3035")
     resampled = _resample_extent(bbox, crs="EPSG:3035", resolution=(30, 30), align=align)
     assert resampled == expected
+
+
+@pytest.mark.parametrize(
+    ["align", "expected_anchor"],
+    [
+        (None, (0, 0)),
+        (RESAMPLE_SPATIAL_ALIGN.UPPER_LEFT, (646_714.7219281539, 5_674_161.843378654)),
+        (RESAMPLE_SPATIAL_ALIGN.UPPER_RIGHT, (653_700.4186736232, 5_674_366.231674389)),
+        (RESAMPLE_SPATIAL_ALIGN.LOWER_LEFT, (647_032.2494640718, 5_663_042.764772809)),
+        (RESAMPLE_SPATIAL_ALIGN.LOWER_RIGHT, (654_033.0765123185, 5_663_247.308008226)),
+    ],
+)
+def test_resample_extent_with_align_different_crses(align, expected_anchor):
+    """
+    Reprojection of (5.1, 51.1, 5.2, 51.2) from EPSG:4326 to EPSG:32631:
+
+         (646_714.7219281539, 5_674_161.843378654)  -  (653_700.4186736232, 5_674_366.231674389)
+                            |                                             |
+         (647_032.2494640718, 5_663_042.764772809)  -  (654_033.0765123185, 5_663_247.308008226)
+
+    which has bounds: (646_714.7219281539, 5_663_042.764772809, 654_033.0765123185, 5_674_366.231674389)
+    """
+    bbox = BoundingBox(5.1, 51.1, 5.2, 51.2, crs="EPSG:4326")
+
+    resampled = _resample_extent(bbox, crs="EPSG:32631", resolution=(100, 100), align=align)
+
+    # Rough comparison
+    assert resampled == BoundingBox(
+        west=646_714,
+        south=5_663_042,
+        east=654_034,
+        north=5_674_367,
+        crs="EPSG:32631",
+    ).approx(abs=101)
+    # Check sub-pixel alignment
+    corner_x, corner_y = expected_anchor
+    assert (
+        (resampled.west - corner_x) % 100.0,
+        (resampled.south - corner_y) % 100.0,
+        (resampled.east - corner_x) % 100.0,
+        (resampled.north - corner_y) % 100.0,
+    ) == (0, 0, 0, 0)
 
 
 class DummyCatalog(CollectionCatalog):

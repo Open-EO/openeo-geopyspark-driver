@@ -7,6 +7,7 @@ import math
 import typing
 from typing import Callable, List, Tuple, Union, Dict, Set, Optional
 
+import pyproj
 from openeo.util import deep_get
 from openeo_driver.backend import AbstractCollectionCatalog, LoadParameters
 from openeo_driver.constants import RESAMPLE_SPATIAL_ALIGN
@@ -427,14 +428,15 @@ def _resample_extent(
 ) -> BoundingBox:
     target_grid = _GridInfo(crs=crs, resolution=resolution)
 
+    reproject = pyproj.Transformer.from_crs(crs_from=extent.crs, crs_to=target_grid.crs_epsg, always_xy=True).transform
     if align == RESAMPLE_SPATIAL_ALIGN.UPPER_LEFT:
-        offset_x, offset_y = extent.west, extent.north
+        offset_x, offset_y = reproject(extent.west, extent.north)
     elif align == RESAMPLE_SPATIAL_ALIGN.UPPER_RIGHT:
-        offset_x, offset_y = extent.east, extent.north
+        offset_x, offset_y = reproject(extent.east, extent.north)
     elif align == RESAMPLE_SPATIAL_ALIGN.LOWER_LEFT:
-        offset_x, offset_y = extent.west, extent.south
+        offset_x, offset_y = reproject(extent.west, extent.south)
     elif align == RESAMPLE_SPATIAL_ALIGN.LOWER_RIGHT:
-        offset_x, offset_y = extent.east, extent.south
+        offset_x, offset_y = reproject(extent.east, extent.south)
     else:
         if align is not None:
             _log.warning(f"Ignoring invalid resample {align=}")
