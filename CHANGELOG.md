@@ -26,6 +26,7 @@ without compromising stable operations.
 - ETL API: support logging added value for synchronous requests ([#1436](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1436))
 - `load_collection` through `load_stac`: add support for applying `raster:scale` and `raster:offset` through a feature flag in collection metadata ([#1666](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1666))
 - Global extent in post-dry-run: always apply `align` from `resample_spatial`, regardless of correspondence between the CRS'es of the requested spatial extent and requested resampling ([#1662](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1662))
+- Add job option `stac_api_filter_by_geometry` to disable fine-grained geometry based filtering in STAC API queries ([#1689](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1689))
 
 
 ## 0.71.0

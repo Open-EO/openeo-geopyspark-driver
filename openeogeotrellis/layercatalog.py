@@ -69,6 +69,8 @@ WHITELIST = [
     EVAL_ENV_KEY.OPENEO_API_VERSION,
     EVAL_ENV_KEY.GLOBAL_EXTENT,
     EVAL_ENV_KEY.JOB_DIR,
+    # TODO: this linking/allow-listing of job options and eval env keys feels quite cumbersome
+    EVAL_ENV_KEY.STAC_API_FILTER_BY_GEOMETRY,
 ]
 LARGE_LAYER_THRESHOLD_IN_PIXELS = pow(10, 11)
 LARGE_LAYER_THRESHOLD_IN_PIXELS_SENTINELHUB = pow(10, 10)

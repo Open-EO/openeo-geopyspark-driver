@@ -49,7 +49,7 @@ from pystac import STACObject
 from urllib3 import Retry
 
 from openeogeotrellis.config import get_backend_config
-from openeogeotrellis.constants import EVAL_ENV_KEY
+from openeogeotrellis.constants import EVAL_ENV_KEY, STAC_API_FILTER_BY_GEOMETRY_DEFAULT
 from openeogeotrellis.geopysparkcubemetadata import GeopysparkCubeMetadata
 from openeogeotrellis.integrations.stac import CompactJsonStacIO, LoggingStacApiIO, ResilientStacIO
 from openeogeotrellis.util.datetime import DateTimeLikeOrNone, to_datetime_utc_unless_none
@@ -991,6 +991,10 @@ def construct_item_collection(
                     properties_prefix=properties_prefix,
                 )
 
+            stac_api_filter_by_geometry_default: bool = env.get(
+                EVAL_ENV_KEY.STAC_API_FILTER_BY_GEOMETRY, default=STAC_API_FILTER_BY_GEOMETRY_DEFAULT
+            )
+
             with TimingLogger(title=f"ItemCollection.from_stac_api from {url=}", logger=logger.info):
                 item_collection = ItemCollection.from_stac_api(
                     collection=stac_object,
@@ -1002,7 +1006,9 @@ def construct_item_collection(
                     skip_datetime_filter=netcdf_with_time_dimension,
                     per_page_limit=feature_flags.get("stac_api_per_page_limit", STAC_API_PER_PAGE_LIMIT_DEFAULT),
                     max_items=feature_flags.get("stac_api_max_items", STAC_API_MAX_ITEMS_DEFAULT),
-                    filter_by_geometry=feature_flags.get("stac_api_filter_by_geometry", True),
+                    filter_by_geometry=feature_flags.get(
+                        "stac_api_filter_by_geometry", stac_api_filter_by_geometry_default
+                    ),
                     spatial_filtering_geometries=spatial_filtering_geometries,
                 )
         else:

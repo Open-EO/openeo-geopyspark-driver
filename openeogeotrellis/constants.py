@@ -13,7 +13,11 @@ class EVAL_ENV_KEY:
     OPENEO_API_VERSION = "openeo_api_version"
     GLOBAL_EXTENT = "global_extent"
     JOB_DIR = "job_dir"
+    STAC_API_FILTER_BY_GEOMETRY = "stac_api_filter_by_geometry"
 
 
 JOB_OPTION_LOG_LEVEL = "log_level"
 JOB_OPTION_LOGGING_THRESHOLD = "logging-threshold"  # Deprecated in favor of JOB_OPTION_LOG_LEVEL
+
+
+STAC_API_FILTER_BY_GEOMETRY_DEFAULT = True

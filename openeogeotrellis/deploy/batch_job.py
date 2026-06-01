@@ -346,6 +346,8 @@ def run_job(
             "node_caching",
             EVAL_ENV_KEY.ALLOW_EMPTY_CUBES,
             EVAL_ENV_KEY.DO_EXTENT_CHECK,
+            # TODO: this linking/allow-listing of job options and eval env keys feels quite cumbersome
+            EVAL_ENV_KEY.STAC_API_FILTER_BY_GEOMETRY,
         ]
         env_values.update({k: job_options[k] for k in job_option_whitelist if k in job_options})
         env = EvalEnv(env_values)
