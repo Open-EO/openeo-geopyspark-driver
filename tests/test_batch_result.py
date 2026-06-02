@@ -2096,6 +2096,7 @@ def test_results_geometry_from_load_collection_with_crs_not_wgs84(tmp_path):
             "loadcollection1": {
                 "process_id": "load_collection",
                 "arguments": {
+                    # TODO: avoid tests that assume mounted production data
                     "id": "TERRASCOPE_S2_TOC_V2",
                     "spatial_extent": {
                         "west": 3962799.4509550678,
@@ -2104,7 +2105,7 @@ def test_results_geometry_from_load_collection_with_crs_not_wgs84(tmp_path):
                         "north": 3005269.06681928,
                         "crs": 3035,
                     },
-                    "temporal_extent": ["2021-01-04", "2021-01-06"],
+                    "temporal_extent": ["2024-01-05", "2024-01-06"],
                 },
             },
             "saveresult1": {
@@ -2131,6 +2132,7 @@ def test_results_geometry_from_load_collection_with_crs_not_wgs84(tmp_path):
         results_geometry = json.load(f)["geometry"]
 
     validate_geojson_coordinates(results_geometry)
+
 
 @pytest.mark.parametrize(["stac_version","asset_name"], [("1.0","out.tiff"),("1.1","openEO")])
 def test_load_ml_model_via_jobid(tmp_path, stac_version, asset_name):
