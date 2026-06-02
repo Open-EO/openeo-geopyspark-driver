@@ -379,13 +379,26 @@ def _prepare_context(
                 )
 
                 opensearch_stats["builder.addLink"] += 1
-                builder = builder.addLink(
-                    asset_href,  # scala arg `href: String`
-                    asset_id,  # scala arg `title: String`
-                    float(pixel_value_scale),  # scala arg `pixelValueScale: Double`
-                    float(pixel_value_offset),  # scala arg `pixelValueOffset: Double`
-                    asset_band_names,  # scala arg `bandNames: java.util.List[String]`
-                )
+                data_type, nodata = _get_datatype_and_no_data(asset=asset)
+                if data_type is not None and nodata is not None:
+                    builder = builder.addLink(
+                        asset_href,  # scala arg `href: String`
+                        asset_id,  # scala arg `title: String`
+                        float(pixel_value_scale),  # scala arg `pixelValueScale: Double`
+                        float(pixel_value_offset),  # scala arg `pixelValueOffset: Double`
+                        asset_band_names,  # scala arg `bandNames: java.util.List[String]`
+                        data_type,
+                        nodata,
+                    )
+                else:
+                    builder = builder.addLink(
+                        asset_href,  # scala arg `href: String`
+                        asset_id,  # scala arg `title: String`
+                        float(pixel_value_scale),  # scala arg `pixelValueScale: Double`
+                        float(pixel_value_offset),  # scala arg `pixelValueOffset: Double`
+                        asset_band_names,  # scala arg `bandNames: java.util.List[String]`
+                    )
+
 
                 collected_link_band_names.update(asset_band_names)
 
@@ -2226,6 +2239,11 @@ def _get_raster_scale_and_offset(*, item: pystac.Item, asset: pystac.Asset) -> T
     raster_offset = asset.extra_fields.get("raster:offset", item.properties.get("raster:offset", 0.0))
     return raster_scale, raster_offset
 
+
+def _get_datatype_and_no_data(asset:pystac.Asset) -> (str,Union[int,float]):
+    nodata = _get_asset_property(asset, "nodata")
+    datatype = _get_asset_property(asset, "data_type")
+    return datatype, nodata
 
 def _supports_item_search(collection: pystac.Collection) -> bool:
     # TODO: use pystac_client instead?

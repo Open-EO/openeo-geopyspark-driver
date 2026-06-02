@@ -335,6 +335,130 @@ def test_resolution_and_offset_handling(
     ] == [expected_links]
 
 
+
+@pytest.mark.parametrize(
+    ["band_names", "nodata", "expected_links"],
+    [
+        (
+            ["WVP_20m"],
+            0,
+            [
+                {
+                    "href": dirty_equals.IsStr(regex=".*_WVP_20m.jp2"),
+                    "title": "WVP_20m",
+                    "nodata": 0,
+                    "datatype": 'uint16',
+                    "bandNames": ["WVP_20m"],
+                }
+            ],
+        ),
+        (
+            ["SCL_20m", "WVP_20m"],
+            10.0,
+            [
+                {
+                    "href": dirty_equals.IsStr(regex=".*_SCL_20m.jp2"),
+                    "title": "SCL_20m",
+                    "nodata": 0,
+                    "datatype": 'uint8',
+                    "bandNames": ["SCL_20m"],
+                },
+                {
+                    "href": dirty_equals.IsStr(regex=".*_WVP_20m.jp2"),
+                    "title": "WVP_20m",
+                    "nodata": 0,
+                    "datatype": 'uint16',
+                    "bandNames": ["WVP_20m"],
+                },
+            ],
+        ),
+        (
+            ["B01_20m", "SCL_20m"],
+            20.0,
+            [
+                {
+                    "href": dirty_equals.IsStr(regex=".*_B01_20m.jp2"),
+                    "title": "B01_20m",
+                    "nodata": 0,
+                    "datatype": 'uint16',
+                    "bandNames": ["B01_20m"],
+                },
+                {
+                    "href": dirty_equals.IsStr(regex=".*_SCL_20m.jp2"),
+                    "title": "SCL_20m",
+                    "nodata": 0,
+                    "datatype": 'uint8',
+                    "bandNames": ["SCL_20m"],
+                },
+            ],
+        ),
+        (
+            ["B01_20m", "SCL_20m", "CLD_20m"],
+            20.0,
+            [
+                {
+                    "href": dirty_equals.IsStr(regex=".*_B01_20m.jp2"),
+                    "title": "B01_20m",
+                    "nodata": 0,
+                    "datatype": 'uint16',
+                    "bandNames": ["B01_20m"],
+                },
+                {
+                    "href": dirty_equals.IsStr(regex=".*_CLDPRB_20m.jp2"),
+                    "title": "CLD_20m",
+                    # "datatype": 'uint8',
+                    "bandNames": ["CLD_20m"],
+                },
+                {
+                    "href": dirty_equals.IsStr(regex=".*_SCL_20m.jp2"),
+                    "title": "SCL_20m",
+                    "nodata": 0,
+                    "datatype": 'uint8',
+                    "bandNames": ["SCL_20m"],
+                },
+            ],
+        ),
+    ],
+)
+def test_data_type_and_nodata_handling(
+    requests_mock,
+    test_data,
+    band_names,
+    nodata,
+    expected_links,
+):
+    """
+    resolution and offset behind a feature flag; alphabetical head tags are tested elsewhere
+    Originally referred to as "LCFM Improvements"
+    """
+    stac_api_root_url = "https://stac.test"
+    stac_collection_url = f"{stac_api_root_url}/collections/sentinel-2-l2a"
+
+    features = test_data.load_json("stac/issue1547-inconsistent-nodata-handling/FeatureCollection.json")
+
+    _mock_stac_api(
+        requests_mock,
+        stac_api_root_url,
+        stac_collection_url,
+        feature_collection=features,
+    )
+
+    context = _prepare_context(
+        url=stac_collection_url,
+        load_params=LoadParameters(bands=band_names),
+        env=EvalEnv(),
+    )
+
+    dumper = OpenSearchClientDumper()
+    du = dumper.dump_opensearch_client_features(context.opensearch_client, add_data_type=True)
+
+    assert context.extent_crs == "EPSG:32655"
+
+    assert [
+        f["links"]
+        for f in du
+    ] == [expected_links]
+
 def _mock_stac_api(requests_mock, stac_api_root_url, stac_collection_url, feature_collection):
     requests_mock.get(
         stac_collection_url,
