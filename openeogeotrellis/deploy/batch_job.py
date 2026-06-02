@@ -502,6 +502,9 @@ def run_job(
             raise ValueError(f"Invalid concurrent_save_results: {concurrent_save_results}")
         assets_metadata = list(assets_metadata)
 
+        # Flatten all STAC items across all results for use in metadata assembly.
+        all_result_items = [item for result_items in results_items for item in result_items.values()]
+
         if is_stac11:
             for stac_item_collection_path in Path(job_dir).glob(get_stac_item_collection_filename(pg_node_id="*")):
                 extra_links.append(
@@ -603,9 +606,8 @@ def run_job(
             asset_metadata=assets_for_result_metadata,
             ml_model_metadata=ml_model_metadata,
             is_item=is_stac11,
+            result_items=all_result_items,
         )
-
-        tracker_metadata = _get_tracker_metadata("", omit_derived_from_links=omit_derived_from_links)
         tracker_metadata["links"].extend(extra_links)
         if "sar_backscatter_soft_errors" in tracker_metadata.get("usage", {}):
             soft_errors = tracker_metadata["usage"]["sar_backscatter_soft_errors"]["value"]
@@ -639,6 +641,7 @@ def run_job(
             asset_metadata=assets_for_result_metadata,
             ml_model_metadata=ml_model_metadata,
             is_item=is_stac11,
+            result_items=all_result_items,
         )
 
         assert len(results) == len(assets_metadata)
