@@ -608,6 +608,7 @@ def run_job(
             is_item=is_stac11,
             result_items=all_result_items,
         )
+        tracker_metadata = _get_tracker_metadata("", omit_derived_from_links=omit_derived_from_links)
         tracker_metadata["links"].extend(extra_links)
         if "sar_backscatter_soft_errors" in tracker_metadata.get("usage", {}):
             soft_errors = tracker_metadata["usage"]["sar_backscatter_soft_errors"]["value"]
