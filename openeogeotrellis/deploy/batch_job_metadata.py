@@ -46,7 +46,7 @@ def _assemble_result_metadata(
     is_item = False,
     result_items: Optional[List[dict]] = None,
 ) -> dict:
-    metadata = extract_result_metadata(tracer, items=result_items)
+    metadata = extract_result_metadata(tracer, stac_items=result_items)
 
     def epsg_code(geotrellis_proj4_crs) -> Optional[int]:
         # We have to use the original geotrellis.proj4.CRS to avoid proj4 conversion issues.
