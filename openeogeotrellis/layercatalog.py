@@ -286,7 +286,6 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             "opensearch_endpoint", get_backend_config().default_opensearch_endpoint
         )
         max_soft_errors_ratio = env.get(EVAL_ENV_KEY.MAX_SOFT_ERRORS_RATIO, 0.0)
-        no_data_value = metadata.get_nodata_value(load_params.bands, 0.0)
         if feature_flags.get("no_resample_on_read", False):
             logger.info("Setting NoResampleOnRead to true")
             datacubeParams.setNoResampleOnRead(True)
@@ -539,6 +538,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                     shub_band_names.append('localIncidenceAngle')
 
                 cell_size = jvm.geotrellis.raster.CellSize(cell_width, cell_height)
+                no_data_value = metadata.get_nodata_value(load_params.bands, 0.0)
 
                 if ConfigParams().is_kube_deploy:
                     access_token = env[EVAL_ENV_KEY.USER].internal_auth_data["access_token"]
