@@ -22,7 +22,7 @@ import functools
 import json
 import logging
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Tuple, Iterable
 
 import requests
 from openeo.utils.version import ComparableVersion
@@ -55,8 +55,8 @@ CRS_AUTO_42001 = {
 
 
 class LayerCatalog:
-    def __init__(self, collections: List[dict]):
-        self._collections = collections.copy()
+    def __init__(self, collections: Iterable[dict] = ()):
+        self._collections = list(collections)
 
     @classmethod
     def load_json_file(cls, path: Union[str, Path]) -> "LayerCatalog":
@@ -66,10 +66,12 @@ class LayerCatalog:
         _log.info(f"Found {len(collections)=}")
         return cls(collections=collections)
 
-    def write_json_file(self, path: Union[str, Path]) -> None:
+    def write_json_file(
+        self, path: Union[str, Path], indent: Union[int, None] = 2, separators: Tuple[str, str] = (", ", ": ")
+    ) -> None:
         _log.info(f"Writing layer catalog to {path=} ({len(self._collections)=})")
         with open(path, mode="w", encoding="utf-8") as f:
-            json.dump(self._collections, f, indent=2, ensure_ascii=False)
+            json.dump(self._collections, f, indent=indent, separators=separators, ensure_ascii=False)
             f.write("\n")
 
     def enrich(self) -> None:

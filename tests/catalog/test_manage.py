@@ -1,3 +1,4 @@
+import json
 import sys
 
 import dirty_equals
@@ -16,7 +17,30 @@ from openeogeotrellis.catalog.manage import (
     ENRICHMENT_MODE,
     extract_band_metadata_list,
     apply_raster_scale_and_offset_to_band_metadata,
+    LayerCatalog,
 )
+
+
+class TestLayerCatalog:
+    def test_basic(self, tmp_path):
+        layer_catalog = LayerCatalog()
+        layer_catalog.set_collection_metadata(
+            {
+                "id": "FOO",
+                "title": "The FOO dataset",
+            }
+        )
+        path = tmp_path / "layercatalog.json"
+        layer_catalog.write_json_file(path)
+
+        assert json.loads(path.read_text(encoding="utf-8")) == [{"id": "FOO", "title": "The FOO dataset"}]
+
+    def test_compact_settings(self, tmp_path):
+        layer_catalog = LayerCatalog()
+        layer_catalog.set_collection_metadata({"id": "FOO", "title": "The FOO dataset"})
+        path = tmp_path / "layercatalog.json"
+        layer_catalog.write_json_file(path, indent=None, separators=(",", ":"))
+        assert path.read_text(encoding="utf-8") == '[{"id":"FOO","title":"The FOO dataset"}]'
 
 
 class TestBandMetadata:
