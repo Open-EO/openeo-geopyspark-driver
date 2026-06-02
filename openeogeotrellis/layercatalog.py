@@ -1,5 +1,6 @@
 import argparse
 import datetime as dt
+import gzip
 import json
 import logging
 import math
@@ -7,6 +8,7 @@ import sys
 from copy import deepcopy, copy
 from functools import lru_cache
 from typing import List, Dict, Iterable, Optional, Tuple, Union
+from pathlib import Path
 
 import dateutil.parser
 import geopyspark
@@ -959,7 +961,7 @@ def _get_layer_catalog(
     enrich_metadata: Optional[bool] = None,
 ) -> CatalogDict:
     """
-    Get layer catalog (from JSON files)
+    Build layer catalog from JSON files (possibly compressed)
     """
     if enrich_metadata is None:
         enrich_metadata = get_backend_config().opensearch_enrich
@@ -968,11 +970,18 @@ def _get_layer_catalog(
 
     metadata: CatalogDict = {}
 
-    def read_catalog_file(catalog_file) -> CatalogDict:
+    def read_catalog_file(path: str) -> CatalogDict:
+        path = Path(path)
         try:
-            return {coll["id"]: coll for coll in read_json(catalog_file)}
+            if path.is_file() and path.name.lower().endswith(".json"):
+                return {coll["id"]: coll for coll in read_json(path)}
+            elif path.is_file() and path.name.lower().endswith(".json.gz"):
+                with gzip.open(path, mode="rt", encoding="utf-8") as f:
+                    return {coll["id"]: coll for coll in json.load(fp=f)}
+            else:
+                raise ValueError(f"Unsupported catalog format {path=}")
         except Exception as e:
-            raise ValueError(f"Failed to read/parse {catalog_file=}: {e=}") from e
+            raise ValueError(f"Failed to read layer catalog from {path=}: {e=}") from e
 
 
     logger.debug(f"_get_layer_catalog: {catalog_files=}")

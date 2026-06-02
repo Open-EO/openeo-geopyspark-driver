@@ -1,3 +1,5 @@
+import gzip
+import json
 import logging
 import unittest.mock as mock
 from pathlib import Path
@@ -269,6 +271,24 @@ def test_layer_catalog_step_resolution(vault):
                 warnings += warn_str + "\n"
                 break
     assert warnings == ""
+
+
+def test_get_layer_catalog_from_gzip(tmp_path):
+    layer_catalog_data = [
+        {"id": "ZOO", "description": "The ZOO layer"},
+        {"id": "ZAZ", "description": "The ZAZ layer"},
+    ]
+    path = tmp_path / "layercatalog01.json.gz"
+
+    with gzip.open(path, mode="wt") as f:
+        json.dump(obj=layer_catalog_data, fp=f, indent=2)
+    # Check GZIP signature
+    assert path.read_bytes()[:2] == b"\x1f\x8b"
+
+    with gps_config_overrides(layer_catalog_files=[str(path)]):
+        catalog = get_layer_catalog()
+
+    assert sorted(c["id"] for c in catalog.get_all_metadata()) == ["ZAZ", "ZOO"]
 
 
 def test_merge_layers_with_common_name_nothing():
