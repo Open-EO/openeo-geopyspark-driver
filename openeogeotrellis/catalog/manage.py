@@ -67,7 +67,7 @@ class LayerCatalog:
         return cls(collections=collections)
 
     def write_json_file(
-        self, path: Union[str, Path], indent: Union[int, None] = 2, separators: Tuple[str, str] = (", ", ": ")
+        self, path: Union[str, Path], indent: Union[int, None] = 2, separators: Union[Tuple[str, str], None] = None
     ) -> None:
         _log.info(f"Writing layer catalog to {path=} ({len(self._collections)=})")
         with open(path, mode="w", encoding="utf-8") as f:
