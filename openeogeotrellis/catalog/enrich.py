@@ -1,7 +1,7 @@
 import collections
 import functools
 import logging
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Union, Callable
 
 import requests
 from openeo.util import deep_get
@@ -19,9 +19,15 @@ logger = logging.getLogger(__name__)
 CollectionId = str
 CollectionMetadataDict = Dict[str, Union[str, dict, list]]
 CatalogDict = Dict[CollectionId, CollectionMetadataDict]
+LinksList = List[dict]
+LinksFilter = Callable[[LinksList], LinksList]
 
 
-def enrich_catalog_metadata(metadata: CatalogDict) -> CatalogDict:
+def enrich_catalog_metadata(
+    metadata: CatalogDict,
+    *,
+    upstream_links_filter: Optional[LinksFilter],
+) -> CatalogDict:
     """
     Enrich catalog metadata from external sources (OpenSearch, STAC, Sentinel Hub).
 
@@ -36,6 +42,7 @@ def enrich_catalog_metadata(metadata: CatalogDict) -> CatalogDict:
     values take precedence) via :func:`dict_merge_recursive`.
 
     :param metadata: Catalog dict keyed on collection id.
+    :param upstream_links_filter: optional filter function for upstream links, before merging with local links
     :return: Enriched catalog dict (may be a new dict object).
     """
     enrichment_metadata: CatalogDict = {}
@@ -90,6 +97,7 @@ def enrich_catalog_metadata(metadata: CatalogDict) -> CatalogDict:
                 enrichment_metadata[cid] = _enrichment_metadata_from_stac(
                     stac_url,
                     band_aliases=data_source.get("enrichment_band_aliases"),
+                    links_filter=upstream_links_filter,
                 )
             except Exception as e:
                 collection_stats["stac fail"] += 1
@@ -162,7 +170,12 @@ def enrich_catalog_metadata(metadata: CatalogDict) -> CatalogDict:
     return metadata
 
 
-def _enrichment_metadata_from_stac(stac_url: str, *, band_aliases: Optional[Dict[str, List[str]]] = None) -> dict:
+def _enrichment_metadata_from_stac(
+    stac_url: str,
+    *,
+    band_aliases: Optional[Dict[str, List[str]]] = None,
+    links_filter: Optional[LinksFilter] = None,
+) -> dict:
     """Fetch and normalise STAC collection metadata for enrichment purposes."""
     resp = requests.get(url=stac_url, timeout=10)
     resp.raise_for_status()
@@ -195,5 +208,8 @@ def _enrichment_metadata_from_stac(stac_url: str, *, band_aliases: Optional[Dict
             for band in bands:
                 if aliases := band_aliases.get(band["name"]):
                     band.setdefault("aliases", []).extend(aliases)
+
+    if links_filter:
+        metadata["links"] = links_filter(metadata.get("links", []))
 
     return metadata

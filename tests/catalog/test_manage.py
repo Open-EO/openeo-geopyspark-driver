@@ -4,6 +4,8 @@ import sys
 import dirty_equals
 import pytest
 
+from openeogeotrellis.catalog.enrich import LinksList
+
 if sys.version_info < (3, 10):
     # TODO #1060 clean up once python 3.8/3.9 support can be dropped
     pytest.skip("openeogeotrellis.catalog.manage requires at least Python 3.10+", allow_module_level=True)
@@ -40,7 +42,7 @@ class TestLayerCatalog:
         layer_catalog.set_collection_metadata({"id": "FOO", "title": "The FOO dataset"})
         path = tmp_path / "layercatalog.json"
         layer_catalog.write_json_file(path, indent=None, separators=(",", ":"))
-        assert path.read_text(encoding="utf-8") == '[{"id":"FOO","title":"The FOO dataset"}]'
+        assert path.read_text(encoding="utf-8") == '[{"id":"FOO","title":"The FOO dataset"}]\n'
 
 
 class TestBandMetadata:
@@ -122,7 +124,18 @@ class TestBuildMetadata:
                     {
                         "rel": "root",
                         "href": "https://stac.test/",
-                    }
+                        "type": "application/json",
+                    },
+                    {
+                        "rel": "self",
+                        "href": "https://stac.test/c/foobar1",
+                        "type": "application/json",
+                    },
+                    {
+                        "rel": "about",
+                        "href": "https://stac.test/c/foobar1.html",
+                        "type": "text/html",
+                    },
                 ],
             ),
         )
@@ -205,7 +218,11 @@ class TestBuildMetadata:
                 "eo:bands": [{"name": "blue", "description": "Not red"}],
                 "raster:bands": [{"name": "blue"}],
             },
-            "links": [{"href": "https://stac.test/", "rel": "root"}],
+            "links": [
+                {"rel": "root", "href": "https://stac.test/", "type": "application/json"},
+                {"rel": "self", "href": "https://stac.test/c/foobar1", "type": "application/json"},
+                {"rel": "about", "href": "https://stac.test/c/foobar1.html", "type": "text/html"},
+            ],
         }
 
     def test_bands_metadata(self):
@@ -273,6 +290,26 @@ class TestBuildMetadata:
                         }
                     ],
                 },
+            }
+        )
+
+    def test_enrich_at_build_time_with_upstream_links_filter(self):
+        def upstream_links_filter(links: LinksList) -> LinksList:
+            return [link for link in links if link.get("rel") in {"license", "about"}]
+
+        metadata = build_stac_collection_metadata(
+            id="FOOBAR",
+            stac_url="https://stac.test/c/foobar1",
+            bands=[BandMetadata(name="blue", description="Not red")],
+            enrichment_mode=ENRICHMENT_MODE.LEGACY_AT_BUILD_TIME,
+            upstream_links_filter=upstream_links_filter,
+        )
+        assert metadata == dirty_equals.IsPartialDict(
+            {
+                "id": "FOOBAR",
+                "links": [
+                    {"rel": "about", "href": "https://stac.test/c/foobar1.html", "type": "text/html"},
+                ],
             }
         )
 

@@ -70,3 +70,43 @@ class TestEnrichment:
             "summaries": expected,
             "cube:dimensions": {"bands": {"type": "bands", "values": ["B02", "B03"]}},
         }
+
+    @pytest.mark.parametrize(
+        ["links_filter", "expected"],
+        [
+            (
+                None,
+                [
+                    {"rel": "root", "href": "http://stac.test", "type": "application/json"},
+                    {"rel": "license", "href": "http://stac.test/license.html", "type": "text/html"},
+                ],
+            ),
+            (
+                lambda links: [k for k in links if k.get("rel") == "license"],
+                [
+                    {"rel": "license", "href": "http://stac.test/license.html", "type": "text/html"},
+                ],
+            ),
+        ],
+    )
+    def test_from_stac_links_filter(self, requests_mock, links_filter, expected):
+        stac_url = "http://stac.test/collection.json"
+        requests_mock.get(
+            stac_url,
+            json={
+                "id": "Test123",
+                "stac_version": "1.1.0",
+                "type": "Collection",
+                "links": [
+                    {"rel": "root", "href": "http://stac.test", "type": "application/json"},
+                    {"rel": "license", "href": "http://stac.test/license.html", "type": "text/html"},
+                ],
+            },
+        )
+        enriched_metadata = _enrichment_metadata_from_stac(stac_url, links_filter=links_filter)
+        assert enriched_metadata == {
+            "id": "Test123",
+            "stac_version": "1.1.0",
+            "type": "Collection",
+            "links": expected,
+        }

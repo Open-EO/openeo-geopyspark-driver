@@ -28,7 +28,7 @@ import requests
 from openeo.utils.version import ComparableVersion
 
 from openeogeotrellis.catalog import DATA_SOURCE_PROPERTIES
-from openeogeotrellis.catalog.enrich import enrich_catalog_metadata
+from openeogeotrellis.catalog.enrich import enrich_catalog_metadata, LinksFilter
 
 _log = logging.getLogger(__name__)
 
@@ -271,6 +271,7 @@ def build_stac_collection_metadata(
     mission: Optional[str] = None,
     extra_summaries: Optional[dict] = None,
     enrichment_mode: str = ENRICHMENT_MODE.LEGACY_AT_RUNTIME,
+    upstream_links_filter: Optional[LinksFilter] = None,
 ) -> dict:
     """
     Generic openEO collection metadata generator.
@@ -358,7 +359,7 @@ def build_stac_collection_metadata(
     if enrichment_mode == ENRICHMENT_MODE.LEGACY_AT_RUNTIME:
         metadata["_vito"]["data_source"][DATA_SOURCE_PROPERTIES.ENRICH] = True
     elif enrichment_mode == ENRICHMENT_MODE.LEGACY_AT_BUILD_TIME:
-        metadata = _legacy_enrich_collection_metadata(metadata)
+        metadata = _legacy_enrich_collection_metadata(metadata, upstream_links_filter=upstream_links_filter)
         metadata["_vito"]["data_source"][DATA_SOURCE_PROPERTIES.ENRICH] = False
     elif enrichment_mode == ENRICHMENT_MODE.NONE:
         metadata["_vito"]["data_source"][DATA_SOURCE_PROPERTIES.ENRICH] = False
@@ -372,16 +373,19 @@ def build_stac_collection_metadata(
 build_terrascope_stac_collection_metadata = build_stac_collection_metadata
 
 
-def _legacy_enrich_collection_metadata(collection_metadata: dict) -> dict:
+def _legacy_enrich_collection_metadata(
+    collection_metadata: dict, *, upstream_links_filter: Optional[LinksFilter] = None
+) -> dict:
     """Legacy metadata enrichment"""
     # Wrap (and unwrap) collection metadata in catalog structure expected by legacy enrichment logic
     cid = collection_metadata["id"]
     catalog = {cid: copy.deepcopy(collection_metadata)}
-    enriched_catalog = enrich_catalog_metadata(catalog)
+    enriched_catalog = enrich_catalog_metadata(catalog, upstream_links_filter=upstream_links_filter)
     enriched_collection_metadata = enriched_catalog[cid]
 
     # Remove some fields from the metadata
     # TODO: really necessary to exclude these?
+    # TODO: Better work with allow-list than cat-and-mouse ignore-list?
     # TODO: larger scope? Configurable?
     for key in {"assets", "item_assets", "auth:schemes", "storage:schemes"}:
         if key in enriched_collection_metadata:
