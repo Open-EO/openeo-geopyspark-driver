@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from mypy_boto3_s3.client import S3Client
 
+from botocore.config import Config
 import boto3
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.integrations.s3proxy.exceptions import S3ProxyDisabled, S3ProxyUnsupportedBucketType
@@ -33,6 +34,7 @@ def get_proxy_s3_client_for_job(bucket: str, job_id: str, user_id) -> S3Client:
             "s3",
             endpoint_url=endpoint_url,
             region_name=region_name,
+            config=Config(signature_version="s3v4"),
             **creds.as_client_kwargs()
         )
     except KeyError:
