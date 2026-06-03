@@ -20,6 +20,7 @@ from openeogeotrellis.catalog.manage import (
     extract_band_metadata_list,
     apply_raster_scale_and_offset_to_band_metadata,
     LayerCatalog,
+    sort_dict_like_other,
 )
 
 
@@ -633,3 +634,34 @@ class TestBandMetadataList:
         assert apply_raster_scale_and_offset_to_band_metadata(bands) == [
             BandMetadata(name="foo", data_type="float32"),
         ]
+
+
+@pytest.mark.parametrize(
+    ["other", "expected"],
+    [
+        (
+            {},
+            '{"id": "foo", "description": "The foo", "bands": [1, 2, 3], "link": true}',
+        ),
+        (
+            {"id": "bar", "bands": 3},
+            '{"id": "foo", "bands": [1, 2, 3], "description": "The foo", "link": true}',
+        ),
+        (
+            ["id", "color", "link", "flavor"],
+            '{"id": "foo", "link": true, "description": "The foo", "bands": [1, 2, 3]}',
+        ),
+    ],
+)
+def test_sort_dict_like_other(other, expected):
+    orig = {
+        "id": "foo",
+        "description": "The foo",
+        "bands": [1, 2, 3],
+        "link": True,
+    }
+    assert json.dumps(orig) == '{"id": "foo", "description": "The foo", "bands": [1, 2, 3], "link": true}'
+
+    reordered = sort_dict_like_other(orig, other)
+    assert reordered == orig
+    assert json.dumps(reordered) == expected

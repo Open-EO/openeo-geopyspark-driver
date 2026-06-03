@@ -23,7 +23,7 @@ import functools
 import json
 import logging
 from pathlib import Path
-from typing import List, Optional, Union, Tuple, Iterable, Callable
+from typing import List, Optional, Union, Tuple, Iterable, Callable, Any
 
 import requests
 from openeo.utils.version import ComparableVersion
@@ -114,7 +114,8 @@ class LayerCatalog:
         _log.info(f"Setting collection metadata for {collection_id=}")
         index = self.index_of(collection_id)
         if index is not None:
-            self._collections[index] = metadata
+            # Overwrite metadata, but try to preserve original key order to mimimize diff noise.
+            self._collections[index] = sort_dict_like_other(metadata, other=self._collections[index])
         else:
             self._collections.append(metadata)
 
@@ -124,6 +125,19 @@ def dict_no_none(*args, **kwargs) -> dict:
     Helper to build a dict containing given key-value pairs where the value is not None.
     """
     return {k: v for k, v in dict(*args, **kwargs).items() if v is not None}
+
+
+def sort_dict_like_other(d: dict, other: Union[dict, list]) -> dict:
+    """
+    Sort the items in a dictionary (by forcing the insertion order)
+    based on an exiting dictionary or list of keys.
+    Useful to minimize diff noise in JSON.
+    """
+    # Weight map: start with order of other
+    weights = {k: i for i, k in enumerate(other)}
+    # Append remaining keys in original order
+    weights.update({k: len(weights) + i for i, k in enumerate(d) if k not in weights})
+    return dict(sorted(d.items(), key=lambda item: weights.get(item[0])))
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
