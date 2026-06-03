@@ -26,7 +26,7 @@ LinksFilter = Callable[[LinksList], LinksList]
 def enrich_catalog_metadata(
     metadata: CatalogDict,
     *,
-    upstream_links_filter: Optional[LinksFilter],
+    upstream_links_filter: Optional[LinksFilter] = None,
 ) -> CatalogDict:
     """
     Enrich catalog metadata from external sources (OpenSearch, STAC, Sentinel Hub).
