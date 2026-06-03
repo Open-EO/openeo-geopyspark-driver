@@ -18,11 +18,12 @@ Also see https://github.com/Open-EO/openeo-geopyspark-driver/issues/1175
 
 import copy
 import dataclasses
+import difflib
 import functools
 import json
 import logging
 from pathlib import Path
-from typing import List, Optional, Union, Tuple, Iterable
+from typing import List, Optional, Union, Tuple, Iterable, Callable
 
 import requests
 from openeo.utils.version import ComparableVersion
@@ -67,11 +68,17 @@ class LayerCatalog:
         return cls(collections=collections)
 
     def write_json_file(
-        self, path: Union[str, Path], indent: Union[int, None] = 2, separators: Union[Tuple[str, str], None] = None
+        self,
+        path: Union[str, Path],
+        indent: Union[int, None] = 2,
+        separators: Union[Tuple[str, str], None] = None,
+        sort_keys: bool = False,
     ) -> None:
         _log.info(f"Writing layer catalog to {path=} ({len(self._collections)=})")
         with open(path, mode="w", encoding="utf-8") as f:
-            json.dump(self._collections, f, indent=indent, separators=separators, ensure_ascii=False)
+            json.dump(
+                self._collections, f, indent=indent, separators=separators, ensure_ascii=False, sort_keys=sort_keys
+            )
             f.write("\n")
 
     def enrich(self) -> None:
@@ -269,12 +276,20 @@ def build_stac_collection_metadata(
     sci_doi: Optional[str] = None,
     sci_citation: Optional[str] = None,
     mission: Optional[str] = None,
+    contacts: Optional[List[dict]] = None,
     extra_summaries: Optional[dict] = None,
     enrichment_mode: str = ENRICHMENT_MODE.LEGACY_AT_RUNTIME,
     upstream_links_filter: Optional[LinksFilter] = None,
+    debug_enrichment: bool = False,
+    stac_version: str = "1.0.0",
+    stac_extensions: Union[None, List[str], Callable[[List[str]], List[str]]] = None,
 ) -> dict:
     """
     Generic openEO collection metadata generator.
+
+    :param upstream_links_filter: optional filter function for upstream links,
+        before merging with local links. Only used in `LEGACY_AT_BUILD_TIME` mode.
+        This is a pretty awkward API, caused by ad-hoc link handling in legacy enrichment approach.
     """
     data_source = {
         "type": "stac",
@@ -299,7 +314,12 @@ def build_stac_collection_metadata(
 
     upstream_metadata = _get_upstream_stac_metadata(stac_url)
 
-    stac_version = upstream_metadata.get("stac_version", "1.0.0")
+    stac_version = upstream_metadata.get("stac_version", stac_version)
+
+    if callable(stac_extensions):
+        # Allow manipulation (or direct pass-through) of upstream extensions
+        upstream_stac_extensions = upstream_metadata.get("stac_extensions", [])
+        stac_extensions = stac_extensions(upstream_stac_extensions)
 
     if not description:
         description = (description_prefix or "") + upstream_metadata.get("description", "")
@@ -327,7 +347,8 @@ def build_stac_collection_metadata(
 
     metadata = dict_no_none(
         {
-            "stac_version": upstream_metadata.get("stac_version", "1.0.0"),
+            "stac_version": stac_version,
+            "stac_extensions": stac_extensions,
             "type": "Collection",
             "id": id,
             "name": name,
@@ -353,13 +374,18 @@ def build_stac_collection_metadata(
                 "bands": {"type": "bands", "values": cube_dimensions_bands_values},
             },
             "bands": toplevel_bands,
+            "contacts": contacts,
         }
     )
 
     if enrichment_mode == ENRICHMENT_MODE.LEGACY_AT_RUNTIME:
         metadata["_vito"]["data_source"][DATA_SOURCE_PROPERTIES.ENRICH] = True
     elif enrichment_mode == ENRICHMENT_MODE.LEGACY_AT_BUILD_TIME:
+        orig_metadata = copy.deepcopy(metadata)
         metadata = _legacy_enrich_collection_metadata(metadata, upstream_links_filter=upstream_links_filter)
+        if debug_enrichment:
+            diff_lines = dict_compare(orig_metadata, metadata, name1="original", name2="enriched")
+            _log.debug(f"Line-by-line diff of metadata enrichment ({len(diff_lines)=}):\n" + "\n".join(diff_lines))
         metadata["_vito"]["data_source"][DATA_SOURCE_PROPERTIES.ENRICH] = False
     elif enrichment_mode == ENRICHMENT_MODE.NONE:
         metadata["_vito"]["data_source"][DATA_SOURCE_PROPERTIES.ENRICH] = False
@@ -525,3 +551,14 @@ def apply_raster_scale_and_offset_to_band_metadata(bands: List[BandMetadata]) ->
         return BandMetadata(**data)
 
     return [convert(b) for b in bands]
+
+
+def dict_compare(d1: dict, d2: dict, name1: str = "left", name2: str = "right") -> List[str]:
+    """
+    Compare two dictionaries by serializing as JSON and doing a line-by-line diff
+    """
+    s1 = json.dumps(d1, indent=2, sort_keys=True).splitlines()
+    s2 = json.dumps(d2, indent=2, sort_keys=True).splitlines()
+
+    diff = difflib.unified_diff(s1, s2, fromfile=name1, tofile=name2, lineterm="")
+    return list(diff)
