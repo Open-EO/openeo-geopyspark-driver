@@ -154,9 +154,13 @@ def extract_result_metadata(tracer: DryRunDataTracer, stac_items: Optional[List[
         *[sc["temporal_extent"] for _, sc in source_constraints if "temporal_extent" in sc]
     )
 
-    if stac_items and not temporal_extent:
+    if stac_items and (not temporal_extent or not temporal_extent[0] or not temporal_extent[1]):
         item_start, item_end = _extract_temporal_extent_from_items(stac_items)
         if item_start is not None or item_end is not None:
+            logger.info(
+                "Could not get temporal_extent from source constraints. "
+                f"Extracting extent from items: [{item_start}, {item_end}]."
+            )
             # TODO: use stac_items by default to get extent. Avoid relying on source_constraints.
             temporal_extent = (
                 item_start if item_start is not None else temporal_extent[0],
