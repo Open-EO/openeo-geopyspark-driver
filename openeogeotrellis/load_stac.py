@@ -309,6 +309,7 @@ def _prepare_context(
             builder = (
                 jvm.org.openeo.opensearch.OpenSearchResponses.featureBuilder()
                 .withId(itm.id)
+                .withCollectionId(itm.collection_id)
                 .withNominalDate(itm.properties.get("datetime") or itm.properties["start_datetime"])
             )
 
