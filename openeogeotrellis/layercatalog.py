@@ -5,6 +5,7 @@ import json
 import logging
 import math
 import sys
+import zipfile
 from copy import deepcopy, copy
 from functools import lru_cache
 from typing import List, Dict, Iterable, Optional, Tuple, Union
@@ -955,6 +956,36 @@ CollectionMetadataDict = Dict[str, Union[str, dict, list]]
 CatalogDict = Dict[CollectionId, CollectionMetadataDict]
 
 
+def _read_catalog_file(path: Union[str, Path]) -> CatalogDict:
+    path = Path(path)
+    try:
+        if path.is_file() and path.name.lower().endswith(".json"):
+            return {coll["id"]: coll for coll in read_json(path)}
+        elif path.is_file() and path.name.lower().endswith(".json.gz"):
+            with gzip.open(path, mode="rt", encoding="utf-8") as f:
+                return {coll["id"]: coll for coll in json.load(fp=f)}
+        elif path.is_file() and path.name.lower().endswith(".zip"):
+            catalog = {}
+            with zipfile.ZipFile(path, mode="r") as zf:
+                for name in zf.namelist():
+                    if name.lower().endswith(".json"):
+                        with zf.open(name, mode="r") as f:
+                            data = json.load(f)
+                        if isinstance(data, dict):
+                            # File with single collection
+                            catalog[data["id"]] = data
+                        elif isinstance(data, list):
+                            # File with list of collections
+                            catalog.update({coll["id"]: coll for coll in data})
+                        else:
+                            logger.warning(f"Skipping catalog source {path!r}/{name!r}: unexpected {type(data)=}")
+            return catalog
+        else:
+            raise ValueError(f"Unsupported catalog format {path=}")
+    except Exception as e:
+        raise ValueError(f"Failed to read layer catalog from {path=}: {e=}") from e
+
+
 @TimingLogger(title="_get_layer_catalog", logger=logger.info)
 def _get_layer_catalog(
     catalog_files: Optional[List[str]] = None,
@@ -970,24 +1001,10 @@ def _get_layer_catalog(
 
     metadata: CatalogDict = {}
 
-    def read_catalog_file(path: str) -> CatalogDict:
-        path = Path(path)
-        try:
-            if path.is_file() and path.name.lower().endswith(".json"):
-                return {coll["id"]: coll for coll in read_json(path)}
-            elif path.is_file() and path.name.lower().endswith(".json.gz"):
-                with gzip.open(path, mode="rt", encoding="utf-8") as f:
-                    return {coll["id"]: coll for coll in json.load(fp=f)}
-            else:
-                raise ValueError(f"Unsupported catalog format {path=}")
-        except Exception as e:
-            raise ValueError(f"Failed to read layer catalog from {path=}: {e=}") from e
-
-
     logger.debug(f"_get_layer_catalog: {catalog_files=}")
     for path in catalog_files:
         logger.debug(f"_get_layer_catalog: reading {path}")
-        metadata = dict_merge_recursive(metadata, read_catalog_file(path), overwrite=True)
+        metadata = dict_merge_recursive(metadata, _read_catalog_file(path), overwrite=True)
         logger.debug(f"_get_layer_catalog: collected {len(metadata)} collections")
 
     logger.debug(f"_get_layer_catalog: {enrich_metadata=}")
