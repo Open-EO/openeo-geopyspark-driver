@@ -1,9 +1,10 @@
+import datetime as dt
 import json
 import logging
 import os
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Union
+from typing import Any, Dict, List, Optional, Set, Union, Tuple
 from urllib.parse import urlparse
 
 import pyproj
@@ -43,8 +44,9 @@ def _assemble_result_metadata(
     asset_metadata: Dict = None,  # TODO: include "items" instead of "assets"
     ml_model_metadata: Dict = None,
     is_item = False,
+    result_items: Optional[List[dict]] = None,
 ) -> dict:
-    metadata = extract_result_metadata(tracer)
+    metadata = extract_result_metadata(tracer, stac_items=result_items)
 
     def epsg_code(geotrellis_proj4_crs) -> Optional[int]:
         # We have to use the original geotrellis.proj4.CRS to avoid proj4 conversion issues.
@@ -119,7 +121,28 @@ def _assemble_result_metadata(
     return metadata
 
 
-def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
+def _extract_temporal_extent_from_items(stac_items: List[dict]) -> Tuple[Optional[dt.datetime], Optional[dt.datetime]]:
+    def _parse(dt_str: Optional[str]):
+        if not dt_str:
+            return None
+        return Rfc3339(propagate_none=True).parse_datetime(dt_str)
+
+    starts = []
+    ends = []
+    for item in stac_items:
+        props = item.get("properties", {})
+        datetime = _parse(props.get("datetime"))
+        start_datetime = _parse(props.get("start_datetime")) or datetime
+        end_datetime = _parse(props.get("end_datetime")) or datetime
+        if start_datetime is not None:
+            starts.append(start_datetime)
+        if end_datetime is not None:
+            ends.append(end_datetime)
+
+    return min(starts) if starts else None, max(ends) if ends else None
+
+
+def extract_result_metadata(tracer: DryRunDataTracer, stac_items: Optional[List[dict]] = None) -> dict:
     logger.info("Extracting result metadata from {t!r}".format(t=tracer))
 
     rfc3339 = Rfc3339(propagate_none=True)
@@ -130,6 +153,20 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
     temporal_extent = temporal_extent_union(
         *[sc["temporal_extent"] for _, sc in source_constraints if "temporal_extent" in sc]
     )
+
+    if stac_items and (not temporal_extent or not temporal_extent[0] or not temporal_extent[1]):
+        item_start, item_end = _extract_temporal_extent_from_items(stac_items)
+        if item_start is not None or item_end is not None:
+            logger.info(
+                "Could not get temporal_extent from source constraints. "
+                f"Extracting extent from items: [{item_start}, {item_end}]."
+            )
+            # TODO: use stac_items by default to get extent. Avoid relying on source_constraints.
+            temporal_extent = (
+                item_start if item_start is not None else temporal_extent[0],
+                item_end if item_end is not None else temporal_extent[1],
+            )
+
     extents = [sc["spatial_extent"] for _, sc in source_constraints if "spatial_extent" in sc]
     # In the result metadata we want the bbox to be in EPSG:4326 (lat-long).
     # Therefore, keep track of the bbox's CRS to convert it to EPSG:4326 at the end, if needed.
