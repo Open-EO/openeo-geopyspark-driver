@@ -2010,7 +2010,7 @@ class GpsBatchJobs(backend.BatchJobs):
             if executor_corerequest == "NONE":
                 executor_corerequest = str(int(int(options.executor_cores) / 2 * 1000)) + "m"
 
-            driver_corerequest = options.driver_corerequest
+            driver_corerequest = options.driver_request_cores
             if driver_corerequest == "NONE":
                 driver_corerequest = str(int(options.driver_cores)  * 800) + "m"
 

@@ -367,7 +367,7 @@ class K8SOptions(JobOptions):
             "public": False
         })
 
-    driver_corerequest: str = field(
+    driver_request_cores: str = field(
         default="NONE",
         metadata={
             "description": "CPU request for the driver, expressed as 'milli-cpus', for instance '500m' for 0.5 of 1 cpu unit. Allows partial CPU allocation for the driver.",
