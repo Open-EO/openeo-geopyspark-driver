@@ -23,7 +23,7 @@ import functools
 import json
 import logging
 from pathlib import Path
-from typing import List, Optional, Union, Tuple, Iterable, Callable, Any
+from typing import List, Optional, Union, Tuple, Iterable, Callable, Any, Set
 
 import requests
 from openeo.utils.version import ComparableVersion
@@ -58,6 +58,8 @@ CRS_AUTO_42001 = {
 class LayerCatalog:
     def __init__(self, collections: Iterable[dict] = ()):
         self._collections = list(collections)
+        self._original_collection_ids = frozenset(c["id"] for c in self._collections)
+        self._managed_collection_ids = set()
 
     @classmethod
     def load_json_file(cls, path: Union[str, Path]) -> "LayerCatalog":
@@ -111,6 +113,7 @@ class LayerCatalog:
 
     def set_collection_metadata(self, metadata: dict):
         collection_id = metadata["id"]
+        self._managed_collection_ids.add(collection_id)
         _log.info(f"Setting collection metadata for {collection_id=}")
         index = self.index_of(collection_id)
         if index is not None:
@@ -118,6 +121,9 @@ class LayerCatalog:
             self._collections[index] = sort_dict_like_other(metadata, other=self._collections[index])
         else:
             self._collections.append(metadata)
+
+    def get_unmanaged_collection_ids(self) -> Set[str]:
+        return self._original_collection_ids.difference(self._managed_collection_ids)
 
 
 def dict_no_none(*args, **kwargs) -> dict:
