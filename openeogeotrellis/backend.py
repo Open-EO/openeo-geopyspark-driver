@@ -2168,6 +2168,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 debug_metrics="true" if options.log_level.lower() == "debug" else "false",
                 open_telemetry_enabled="true" if options.open_telemetry_metrics_exporter else "false",
                 open_telemetry_metrics_exporter=options.open_telemetry_metrics_exporter or "prometheus",
+                force_s3proxy=k8sOptions.force_s3proxy,
             )
 
             with self._double_job_registry as dbl_registry:
