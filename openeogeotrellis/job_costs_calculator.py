@@ -4,7 +4,7 @@ import logging
 from typing import List, NamedTuple, Optional
 
 from openeo_driver.users import User
-from openeo_driver.util.caching import TtlCache
+from openeo_driver.util.caching import BoundedTtlCache
 from openeo_driver.util.http import requests_with_retry
 from urllib3 import Retry
 
@@ -114,7 +114,7 @@ class DynamicEtlApiJobCostCalculator(JobCostsCalculator):
                                                     allowed_methods=Retry.DEFAULT_ALLOWED_METHODS.union({"POST"}))
         # Cache of `EtlApi` instances, used in `get_etl_api()`
         self._user = user
-        self._etl_cache: Optional[TtlCache] = TtlCache(default_ttl=cache_ttl) if cache_ttl > 0 else None
+        self._etl_cache: Optional[BoundedTtlCache] = BoundedTtlCache(ttl=cache_ttl) if cache_ttl > 0 else None
 
     def calculate_costs(self, details: CostsDetails) -> float:
         job_options = details.job_options or {}
