@@ -28,6 +28,7 @@ without compromising stable operations.
 - Global extent in post-dry-run: always apply `align` from `resample_spatial`, regardless of correspondence between the CRS'es of the requested spatial extent and requested resampling ([#1662](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1662))
 - Add job option `stac_api_filter_by_geometry` to disable fine-grained geometry based filtering in STAC API queries ([#1689](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1689))
 - Support loading layer catalog from GZIP'ed JSON file or ZIP of JSON files ([#1691](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1691))
+- `load_stac`: avoid unnecessary (and sometimes brittle) normalization of STAC Item `self` URL ([#1702](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1702))
 
 
 ## 0.71.0

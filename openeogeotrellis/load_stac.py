@@ -504,9 +504,7 @@ def _prepare_context(
                 builder = builder.withGeometryFromWkt(str(shapely.geometry.shape(itm.geometry)))
 
             self_links = itm.get_links(rel="self")
-            self_url = self_links[0].href if self_links else None
-
-            if self_url:
+            if self_links and (self_url := self_links[0].get_href(transform_href=False)):
                 builder = builder.withSelfUrl(self_url)
                 opensearch_stats["builder.withSelfUrl"] += 1
 
