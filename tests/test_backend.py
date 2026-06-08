@@ -780,6 +780,68 @@ def test_k8s_sparkapplication_dict_propagatable_web_app_driver_envars(backend_co
     )
 
 
+def test_k8s_sparkapplication_dict_gdal_envars(backend_config_path):
+    """
+    Make sure GDAL environment variables are present for
+    """
+    app_dict = k8s_render_manifest_template(
+        "sparkapplication.yaml.j2",
+        propagatable_web_app_driver_envars={},
+        aws_access_key_id="akid",
+        aws_secret_access_key="mysec",
+        aws_endpoint="s3.localhost",
+        aws_region="eodata",
+        aws_https="TRUE",
+    )
+
+    expected_env_values = [
+        {
+            "name": "AWS_ACCESS_KEY_ID",
+            "value": "akid",
+        },
+        {
+            "name": "AWS_SECRET_ACCESS_KEY",
+            "value": "mysec",
+        },
+        {
+            "name": "AWS_S3_ENDPOINT",
+            "value": "s3.localhost",
+        },
+        {
+            "name": "AWS_DEFAULT_REGION",
+            "value": "eodata",
+        },
+        {
+            "name": "AWS_REGION",
+            "value": "eodata",
+        },
+        {
+            "name": "AWS_HTTPS",
+            "value": "TRUE",
+        },
+        {
+            "name": "AWS_VIRTUAL_HOSTING",
+            "value": "FALSE",
+        },
+    ]
+
+    assert app_dict == dirty_equals.IsPartialDict(
+        spec=dirty_equals.IsPartialDict(
+            driver=dirty_equals.IsPartialDict(
+                env=dirty_equals.Contains(*expected_env_values),
+            ),
+        )
+    )
+
+    assert app_dict == dirty_equals.IsPartialDict(
+        spec=dirty_equals.IsPartialDict(
+            executor=dirty_equals.IsPartialDict(
+                env=dirty_equals.Contains(*expected_env_values),
+            ),
+        )
+    )
+
+
 class TestGpsBatchJobs:
     _dummy_user = User(user_id="test_user", internal_auth_data={"access_token": "4cc3ss_t0k3n"})
 
