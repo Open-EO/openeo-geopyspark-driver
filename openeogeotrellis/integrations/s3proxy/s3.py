@@ -10,6 +10,7 @@ from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.integrations.s3proxy.exceptions import S3ProxyDisabled, S3ProxyUnsupportedBucketType
 from openeogeotrellis.integrations.s3proxy.sts import get_job_aws_credentials_for_proxy
 from openeo_driver.integrations.s3.bucket_details import BucketDetails, is_workspace_bucket
+from openeo_driver.util.caching import BoundedTtlCache
 
 
 def _get_role_arn(bucket_details: BucketDetails) -> str:
@@ -19,7 +20,16 @@ def _get_role_arn(bucket_details: BucketDetails) -> str:
     raise S3ProxyUnsupportedBucketType
 
 
+_client_cache = BoundedTtlCache(ttl=10 * 60, max_size=50)
+
+
 def get_proxy_s3_client_for_job(bucket: str, job_id: str, user_id) -> S3Client:
+    return _client_cache.get_or_call(
+        (bucket, job_id, user_id), lambda: _get_proxy_s3_client_for_job(bucket, job_id, user_id)
+    )
+
+
+def _get_proxy_s3_client_for_job(bucket: str, job_id: str, user_id) -> S3Client:
     """
     A proxy S3 client gets a client which is configured for bucket access scoped to an execution context.
 

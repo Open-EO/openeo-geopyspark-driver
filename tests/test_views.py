@@ -32,9 +32,9 @@ import openeogeotrellis.job_registry
 import openeogeotrellis.sentinel_hub.batchprocessing
 from openeogeotrellis.integrations.s3proxy.asset_urls import PresignedS3AssetUrls
 from openeogeotrellis.backend import JOB_METADATA_FILENAME, GpsBatchJobs
+from openeogeotrellis.integrations.s3proxy.s3 import _client_cache
 from openeogeotrellis.job_registry import DoubleJobRegistry
 from openeogeotrellis.testing import gps_config_overrides
-
 from openeogeotrellis.utils import to_s3_url
 
 from .data import TEST_DATA_ROOT
@@ -402,6 +402,17 @@ class TestCollections:
 def create_files_on_s3(s3_bucket, file_names, file_contents):
     for fname, contents in zip(file_names, file_contents):
         s3_bucket.put_object(Key=fname, Body=contents)
+
+
+@pytest.fixture(scope="function")
+def disable_s3_client_cache():
+    """
+    Fixture for tests that would have different endpoint configurations for the same bucket disable s3 client cache.
+    To be safe clean before AND after the test.
+    """
+    _client_cache.flush()
+    yield
+    _client_cache.flush()
 
 
 class TestBatchJobs:
@@ -992,8 +1003,20 @@ class TestBatchJobs:
 
     )
     def test_download_from_object_storage_via_proxy(
-        self, mock_config_use_object_storage, moto_server, batch_job_output_root, mock_s3_bucket, mock_sts_client,
-        sts_endpoint_on_driver, api, job_registry, config_overrides, idp_enabled, auth_header: bool, expected_code: int
+        self,
+        mock_config_use_object_storage,
+        moto_server,
+        batch_job_output_root,
+        mock_s3_bucket,
+        mock_sts_client,
+        sts_endpoint_on_driver,
+        api,
+        job_registry,
+        config_overrides,
+        idp_enabled,
+        auth_header: bool,
+        expected_code: int,
+        disable_s3_client_cache,
     ):
         """Test the scenario where the result files we want to download are stored on the objects storage,
         but they are not present in the container that receives the download request.
