@@ -142,7 +142,7 @@ spec:
       yunikorn.apache.org/schedulingPolicyParameters: "placeholderTimeoutInSeconds={{ yunikorn_scheduling_timeout }} gangSchedulingStyle=Hard"
       yunikorn.apache.org/allow-preemption: "false"
 {%- endif %}
-{%- block driver_options %}    
+{%- block driver_options %}
     coreRequest: {{ driver_corerequest }}
     javaOptions: "-Dscala.concurrent.context.maxThreads=2 -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/data/projects/OpenEO/{{ current_time }}.hprof -Dlog4j2.configurationFile=file:/opt/batch_job_log4j2.xml -Dpixels.treshold=1000000 -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.apache.ApacheSdkHttpService -Dopeneo.logging.threshold={{ logging_threshold }} -Dhttp.credentials.file=/opt/http_credentials/http_credentials.json -Dsun.net.client.defaultReadTimeout=60000 --add-opens=java.base/sun.net.util=ALL-UNNAMED"
     memory: "{{ driver_memory }}"
@@ -184,14 +184,11 @@ spec:
         value: "/opt/layercatalog.json"
       - name: KUBE
         value: "true"
+  {%- block gdal_aws_env %}
       - name: AWS_ACCESS_KEY_ID
         value: {{ aws_access_key_id }}
       - name: AWS_SECRET_ACCESS_KEY
         value: {{ aws_secret_access_key }}
-      - name: SWIFT_ACCESS_KEY_ID
-        value: {{ swift_access_key_id }}
-      - name: SWIFT_SECRET_ACCESS_KEY
-        value: {{ swift_secret_access_key }}
       - name: AWS_S3_ENDPOINT
         value: "{{aws_endpoint}}"
       - name: AWS_DEFAULT_REGION
@@ -202,6 +199,11 @@ spec:
         value: "{{aws_https}}"
       - name: AWS_VIRTUAL_HOSTING
         value: "FALSE"
+  {%- endblock %}
+      - name: SWIFT_ACCESS_KEY_ID
+        value: {{ swift_access_key_id }}
+      - name: SWIFT_SECRET_ACCESS_KEY
+        value: {{ swift_secret_access_key }}
       - name: AWS_DIRECT
         value: "TRUE"
       - name: SWIFT_URL
@@ -291,7 +293,7 @@ spec:
         protocol: TCP
 {%- block executor_options %}
     deleteOnTermination: true
-    terminationGracePeriodSeconds: 300    
+    terminationGracePeriodSeconds: 300
     coreRequest: {{ executor_corerequest }}
     memory: "{{ executor_memory }}"
     memoryOverhead: "{{ executor_memory_overhead }}"
@@ -330,20 +332,7 @@ spec:
         value: "/opt/layercatalog.json"
       - name: KUBE
         value: "true"
-      - name: AWS_ACCESS_KEY_ID
-        value: {{ aws_access_key_id }}
-      - name: AWS_SECRET_ACCESS_KEY
-        value: {{ aws_secret_access_key }}
-      - name: AWS_S3_ENDPOINT
-        value: "{{aws_endpoint}}"
-      - name: AWS_DEFAULT_REGION
-        value: "{{aws_region}}"
-      - name: AWS_REGION
-        value: "{{aws_region}}"
-      - name: AWS_HTTPS
-        value: "{{aws_https}}"
-      - name: AWS_VIRTUAL_HOSTING
-        value: "FALSE"
+{{ self.gdal_aws_env() }}
       - name: AWS_DIRECT
         value: "TRUE"
       - name: SWIFT_URL
