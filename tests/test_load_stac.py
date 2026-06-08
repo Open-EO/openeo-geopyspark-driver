@@ -337,11 +337,10 @@ def test_resolution_and_offset_handling(
 
 
 @pytest.mark.parametrize(
-    ["band_names", "nodata", "expected_links"],
+    ["band_names", "expected_links"],
     [
         (
             ["WVP_20m"],
-            0,
             [
                 {
                     "href": dirty_equals.IsStr(regex=".*_WVP_20m.jp2"),
@@ -354,7 +353,6 @@ def test_resolution_and_offset_handling(
         ),
         (
             ["SCL_20m", "WVP_20m"],
-            10.0,
             [
                 {
                     "href": dirty_equals.IsStr(regex=".*_SCL_20m.jp2"),
@@ -374,7 +372,6 @@ def test_resolution_and_offset_handling(
         ),
         (
             ["B01_20m", "SCL_20m"],
-            20.0,
             [
                 {
                     "href": dirty_equals.IsStr(regex=".*_B01_20m.jp2"),
@@ -394,7 +391,6 @@ def test_resolution_and_offset_handling(
         ),
         (
             ["B01_20m", "SCL_20m", "CLD_20m"],
-            20.0,
             [
                 {
                     "href": dirty_equals.IsStr(regex=".*_B01_20m.jp2"),
@@ -406,7 +402,7 @@ def test_resolution_and_offset_handling(
                 {
                     "href": dirty_equals.IsStr(regex=".*_CLDPRB_20m.jp2"),
                     "title": "CLD_20m",
-                    # "datatype": 'uint8',
+                    "datatype": 'uint8',
                     "bandNames": ["CLD_20m"],
                 },
                 {
@@ -424,7 +420,6 @@ def test_data_type_and_nodata_handling(
     requests_mock,
     test_data,
     band_names,
-    nodata,
     expected_links,
 ):
     """

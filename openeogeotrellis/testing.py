@@ -856,7 +856,7 @@ class OpenSearchClientDumper:
             dump["pixelValueOffset"] = link.pixelValueOffset().get()
         if add_data_type:
             if link.nodata().isDefined():
-                dump["nodata"] = link.nodata().get().value()
+                dump["nodata"] = link.nodata().get()
             if link.datatype().isDefined():
                 dump["datatype"] = link.datatype().get().name()
         return dump

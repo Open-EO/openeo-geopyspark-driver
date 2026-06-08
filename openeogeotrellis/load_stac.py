@@ -380,16 +380,26 @@ def _prepare_context(
 
                 opensearch_stats["builder.addLink"] += 1
                 data_type, nodata = _get_datatype_and_no_data(asset=asset)
-                if data_type is not None and nodata is not None:
-                    builder = builder.addLink(
-                        asset_href,  # scala arg `href: String`
-                        asset_id,  # scala arg `title: String`
-                        float(pixel_value_scale),  # scala arg `pixelValueScale: Double`
-                        float(pixel_value_offset),  # scala arg `pixelValueOffset: Double`
-                        asset_band_names,  # scala arg `bandNames: java.util.List[String]`
-                        data_type,
-                        nodata,
-                    )
+                if data_type is not None:
+                    if nodata is not None:
+                        builder = builder.addLink(
+                            asset_href,  # scala arg `href: String`
+                            asset_id,  # scala arg `title: String`
+                            float(pixel_value_scale),  # scala arg `pixelValueScale: Double`
+                            float(pixel_value_offset),  # scala arg `pixelValueOffset: Double`
+                            asset_band_names,  # scala arg `bandNames: java.util.List[String]`
+                            data_type,
+                            float(nodata),
+                        )
+                    else:
+                        builder = builder.addLink(
+                            asset_href,  # scala arg `href: String`
+                            asset_id,  # scala arg `title: String`
+                            float(pixel_value_scale),  # scala arg `pixelValueScale: Double`
+                            float(pixel_value_offset),  # scala arg `pixelValueOffset: Double`
+                            asset_band_names,  # scala arg `bandNames: java.util.List[String]`
+                            data_type,
+                        )
                 else:
                     builder = builder.addLink(
                         asset_href,  # scala arg `href: String`
