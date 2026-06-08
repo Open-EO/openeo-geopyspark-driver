@@ -2010,7 +2010,7 @@ class GpsBatchJobs(backend.BatchJobs):
             if executor_corerequest == "NONE":
                 executor_corerequest = str(int(int(options.executor_cores) / 2 * 1000)) + "m"
 
-            driver_corerequest = options.driver_corerequest
+            driver_corerequest = options.driver_request_cores
             if driver_corerequest == "NONE":
                 driver_corerequest = str(int(options.driver_cores)  * 800) + "m"
 
@@ -2168,6 +2168,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 debug_metrics="true" if options.log_level.lower() == "debug" else "false",
                 open_telemetry_enabled="true" if options.open_telemetry_metrics_exporter else "false",
                 open_telemetry_metrics_exporter=options.open_telemetry_metrics_exporter or "prometheus",
+                force_s3proxy=k8sOptions.force_s3proxy,
             )
 
             with self._double_job_registry as dbl_registry:
@@ -2208,6 +2209,7 @@ class GpsBatchJobs(backend.BatchJobs):
                             job_id=job_id,
                             token=IDP_TOKEN_ISSUER.get_job_token(sub_id=user_id, user_id=user_id, job_id=job_id),
                             profile_file_content=S3Config.from_backend_config(job_id, str(token_path)),
+                            force_s3proxy=k8sOptions.force_s3proxy,
                         )
 
                         api_instance_core.create_namespaced_secret(

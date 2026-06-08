@@ -6,7 +6,7 @@ import pytest
 from openeo.rest.auth.testing import OidcMock
 from openeo_driver.users import User
 from openeo_driver.util.auth import ClientCredentials
-from openeo_driver.util.caching import TtlCache
+from openeo_driver.util.caching import BoundedTtlCache
 
 from openeogeotrellis.config.config import EtlApiConfig
 from openeogeotrellis.integrations.etl_api import (
@@ -160,7 +160,7 @@ class TestGetEtlApi:
         assert oidc_mock.mocks["oidc_discovery"].call_count == 0
 
         time_machine.move_to("2023-04-05T12:00:00Z")
-        etl_api_cache = TtlCache(default_ttl=60)
+        etl_api_cache = BoundedTtlCache(ttl=60)
         etl_api1 = get_etl_api(etl_api_cache=etl_api_cache)
         assert isinstance(etl_api1, EtlApi)
         assert oidc_mock.mocks["oidc_discovery"].call_count == 1
@@ -184,7 +184,7 @@ class TestGetEtlApi:
 
     def test_dynamic_mode_with_caching(self, custom_etl_api_config, time_machine, oidc_mock):
         with gps_config_overrides(etl_api_config=custom_etl_api_config):
-            etl_api_cache = TtlCache(default_ttl=60)
+            etl_api_cache = BoundedTtlCache(ttl=60)
             assert oidc_mock.mocks["oidc_discovery"].call_count == 0
 
             time_machine.move_to("2023-04-05T12:00:00Z")

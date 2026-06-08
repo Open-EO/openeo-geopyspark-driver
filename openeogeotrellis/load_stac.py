@@ -49,7 +49,7 @@ from pystac import STACObject
 from urllib3 import Retry
 
 from openeogeotrellis.config import get_backend_config
-from openeogeotrellis.constants import EVAL_ENV_KEY
+from openeogeotrellis.constants import EVAL_ENV_KEY, STAC_API_FILTER_BY_GEOMETRY_DEFAULT
 from openeogeotrellis.geopysparkcubemetadata import GeopysparkCubeMetadata
 from openeogeotrellis.integrations.stac import CompactJsonStacIO, LoggingStacApiIO, ResilientStacIO
 from openeogeotrellis.util.datetime import DateTimeLikeOrNone, to_datetime_utc_unless_none
@@ -309,6 +309,7 @@ def _prepare_context(
             builder = (
                 jvm.org.openeo.opensearch.OpenSearchResponses.featureBuilder()
                 .withId(itm.id)
+                .withCollectionId(itm.collection_id)
                 .withNominalDate(itm.properties.get("datetime") or itm.properties["start_datetime"])
             )
 
@@ -372,7 +373,7 @@ def _prepare_context(
                 pixel_value_scale, pixel_value_offset = _get_pixel_value_scale_and_offset(
                     asset=asset, item=itm, pixel_value_scaling_mode=pixel_value_scaling_mode
                 )
-                asset_href = get_best_url(asset)
+                asset_href = get_best_url(asset, preferred_url_prefix=feature_flags.get("preferred_url_prefix"))
                 logger.debug(
                     f"FeatureBuilder.addLink {itm.id=} {asset_id=} {asset_href=} {asset_band_names_from_metadata=} {asset_band_names=}"
                     f" {pixel_value_scale=} {pixel_value_offset=}"
@@ -421,7 +422,7 @@ def _prepare_context(
                     and asset_id == "granule_metadata"
                     and asset.title == "MTD_TL.xml"
                     and "metadata" in (asset.roles or [])
-                    and (asset_href := get_best_url(asset, with_vsis3=False)).endswith("/MTD_TL.xml")
+                    and (asset_href := get_best_url(asset, with_vsis3=False, preferred_url_prefix=feature_flags.get("preferred_url_prefix"))).endswith("/MTD_TL.xml")
                     and (not band_selection or set(band_selection).intersection(granule_metadata_band_map.keys()))
                 ):
                     # TODO: avoid ad-hoc `sorted` and make sure granule_metadata_band_map has intrinsic/intended order from the start
@@ -437,7 +438,7 @@ def _prepare_context(
                     granule_metadata_band_map
                     and asset_id == "GEOMETRY"
                 ):
-                    asset_href = get_best_url(asset, with_vsis3=False)
+                    asset_href = get_best_url(asset, with_vsis3=False, preferred_url_prefix=feature_flags.get("preferred_url_prefix"))
                     link_band_names = sorted(granule_metadata_band_map.values())
                     opensearch_link_titles_map.update(granule_metadata_band_map)
                     logger.debug(
@@ -526,9 +527,7 @@ def _prepare_context(
                 builder = builder.withGeometryFromWkt(str(shapely.geometry.shape(itm.geometry)))
 
             self_links = itm.get_links(rel="self")
-            self_url = self_links[0].href if self_links else None
-
-            if self_url:
+            if self_links and (self_url := self_links[0].get_href(transform_href=False)):
                 builder = builder.withSelfUrl(self_url)
                 opensearch_stats["builder.withSelfUrl"] += 1
 
@@ -1014,6 +1013,10 @@ def construct_item_collection(
                     properties_prefix=properties_prefix,
                 )
 
+            stac_api_filter_by_geometry_default: bool = env.get(
+                EVAL_ENV_KEY.STAC_API_FILTER_BY_GEOMETRY, default=STAC_API_FILTER_BY_GEOMETRY_DEFAULT
+            )
+
             with TimingLogger(title=f"ItemCollection.from_stac_api from {url=}", logger=logger.info):
                 item_collection = ItemCollection.from_stac_api(
                     collection=stac_object,
@@ -1025,7 +1028,9 @@ def construct_item_collection(
                     skip_datetime_filter=netcdf_with_time_dimension,
                     per_page_limit=feature_flags.get("stac_api_per_page_limit", STAC_API_PER_PAGE_LIMIT_DEFAULT),
                     max_items=feature_flags.get("stac_api_max_items", STAC_API_MAX_ITEMS_DEFAULT),
-                    filter_by_geometry=feature_flags.get("stac_api_filter_by_geometry", True),
+                    filter_by_geometry=feature_flags.get(
+                        "stac_api_filter_by_geometry", stac_api_filter_by_geometry_default
+                    ),
                     spatial_filtering_geometries=spatial_filtering_geometries,
                 )
         else:
@@ -2287,13 +2292,15 @@ def contains_netcdf_with_time_dimension(collection: pystac.Collection) -> bool:
     return False
 
 
-def get_best_url(asset: pystac.Asset, with_vsis3: bool = True) -> str:
+def get_best_url(asset: pystac.Asset, with_vsis3: bool = True, preferred_url_prefix: Optional[str] = None) -> str:
     """
     Relevant doc: https://github.com/stac-extensions/alternate-assets
     """
     for key, alternate_asset in asset.extra_fields.get("alternate", {}).items():
+        href = alternate_asset["href"]
+        if preferred_url_prefix and href.lower().startswith(preferred_url_prefix.lower()):
+            return href
         if key in {"local", "s3"}:
-            href = alternate_asset["href"]
             # Checking if file exists takes around 10ms on /data/MTDA mounted on laptop
             # Checking if URL exists takes around 100ms on https://services.terrascope.be
             # Checking if URL exists depends also on what Datasource is used in the scala code.

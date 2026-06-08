@@ -17,6 +17,8 @@ import pystac
 import pytest
 import rasterio
 import xarray
+import openeo
+import openeo.processes
 from openeo.util import ensure_dir
 from openeo_driver.constants import ITEM_LINK_PROPERTY
 from openeo_driver.dry_run import DryRunDataTracer
@@ -2094,6 +2096,7 @@ def test_results_geometry_from_load_collection_with_crs_not_wgs84(tmp_path):
             "loadcollection1": {
                 "process_id": "load_collection",
                 "arguments": {
+                    # TODO: avoid tests that assume mounted production data
                     "id": "TERRASCOPE_S2_TOC_V2",
                     "spatial_extent": {
                         "west": 3962799.4509550678,
@@ -2102,7 +2105,7 @@ def test_results_geometry_from_load_collection_with_crs_not_wgs84(tmp_path):
                         "north": 3005269.06681928,
                         "crs": 3035,
                     },
-                    "temporal_extent": ["2021-01-04", "2021-01-06"],
+                    "temporal_extent": ["2024-01-05", "2024-01-06"],
                 },
             },
             "saveresult1": {
@@ -2129,6 +2132,7 @@ def test_results_geometry_from_load_collection_with_crs_not_wgs84(tmp_path):
         results_geometry = json.load(f)["geometry"]
 
     validate_geojson_coordinates(results_geometry)
+
 
 @pytest.mark.parametrize(["stac_version","asset_name"], [("1.0","out.tiff"),("1.1","openEO")])
 def test_load_ml_model_via_jobid(tmp_path, stac_version, asset_name):
@@ -4260,3 +4264,105 @@ def test_item_geometry_matches_asset_geometry(tmp_path):
         assert equals_approximately(raster_geometry, asset_geometry, rel_area_tolerance=0.01)
 
         assert asset["bbox"] == pytest.approx(raster_geometry.bounds, rel=0.01)
+
+
+class TestLoadStac:
+
+    # Geometry that covers `item-1` and `item-3` of DummyStacApiServer's default `collection-123`
+    COLLECTION123_GEOMETRY_COVERING_ITEM_1_AND_3 = {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "properties": {},
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [[[2.5, 48.5], [2.5, 49.5], [1.5, 49.5], [1.5, 48.5], [2.5, 48.5]]],
+                },
+            },
+            {
+                "type": "Feature",
+                "properties": {},
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [[[7.0, 50.0], [7.0, 52.0], [6.0, 52.0], [6.0, 50.0], [7.0, 50.0]]],
+                },
+            },
+        ],
+    }
+
+    def test_basic(self, job_dir, dummy_stac_api):
+        process_graph = {
+            "loadstac1": {
+                "process_id": "load_stac",
+                "arguments": {"url": f"{dummy_stac_api}/collections/collection-123"},
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "loadstac1"}, "format": "GTiff"},
+                "result": True,
+            },
+        }
+        job_specification = {"process_graph": process_graph}
+        metadata_path = job_dir / JOB_METADATA_FILENAME
+        run_job(
+            job_specification=job_specification,
+            output_file=job_dir / "out",
+            metadata_file=metadata_path,
+            job_dir=job_dir,
+        )
+        assert sorted(p.name for p in job_dir.glob("*.tif")) == [
+            "openEO_2024-05-01Z.tif",
+            "openEO_2024-06-02Z.tif",
+            "openEO_2024-07-03Z.tif",
+        ]
+
+    @pytest.mark.parametrize(
+        ["feature_flags", "job_options", "expected_items"],
+        [
+            # Default: enable filter_by_geometry
+            ({}, {}, ["item-1", "item-3"]),
+            # Disable filter_by_geometry through feature flags
+            ({"stac_api_filter_by_geometry": False}, {}, ["item-1", "item-2", "item-3"]),
+            # Disable filter_by_geometry through job option
+            ({}, {"stac_api_filter_by_geometry": False}, ["item-1", "item-2", "item-3"]),
+            # Feature flag overrides job option
+            (
+                {"stac_api_filter_by_geometry": True},
+                {"stac_api_filter_by_geometry": False},
+                ["item-1", "item-3"],
+            ),
+        ],
+    )
+    def test_stac_api_filter_by_geometry(self, job_dir, dummy_stac_api, feature_flags, job_options, expected_items):
+        """
+        Test `filter_by_geometry` feature
+        (introduced under https://github.com/Open-EO/openeo-geopyspark-driver/issues/1225)
+        enabled by default,
+        and with a feature flag and job option (`stac_api_filter_by_geometry`) to disable
+        """
+        process_graph = (
+            openeo.processes.process(
+                # Custom load_stac construction to be able to inject feature flags
+                process_id="load_stac",
+                url=f"{dummy_stac_api}/collections/collection-123",
+                **({"featureflags": feature_flags} if feature_flags else {}),
+            )
+            .aggregate_spatial(geometries=self.COLLECTION123_GEOMETRY_COVERING_ITEM_1_AND_3, reducer="mean")
+            .save_result(format="JSON")
+            .flat_graph()
+        )
+        job_specification = {
+            "process_graph": process_graph,
+            "job_options": job_options,
+        }
+        metadata_path = job_dir / JOB_METADATA_FILENAME
+        run_job(
+            job_specification=job_specification,
+            output_file=job_dir / "out",
+            metadata_file=metadata_path,
+            job_dir=job_dir,
+        )
+        # Check load_stac's ItemCollection
+        item_collection = read_json(job_dir / "stac-item-collection-loadstac1.json")
+        assert sorted(i["id"] for i in item_collection["features"]) == expected_items

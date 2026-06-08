@@ -18,17 +18,18 @@ Also see https://github.com/Open-EO/openeo-geopyspark-driver/issues/1175
 
 import copy
 import dataclasses
+import difflib
 import functools
 import json
 import logging
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Tuple, Iterable, Callable, Any, Set
 
 import requests
 from openeo.utils.version import ComparableVersion
 
 from openeogeotrellis.catalog import DATA_SOURCE_PROPERTIES
-from openeogeotrellis.catalog.enrich import enrich_catalog_metadata
+from openeogeotrellis.catalog.enrich import enrich_catalog_metadata, LinksFilter
 
 _log = logging.getLogger(__name__)
 
@@ -55,8 +56,10 @@ CRS_AUTO_42001 = {
 
 
 class LayerCatalog:
-    def __init__(self, collections: List[dict]):
-        self._collections = collections.copy()
+    def __init__(self, collections: Iterable[dict] = ()):
+        self._collections = list(collections)
+        self._original_collection_ids = frozenset(c["id"] for c in self._collections)
+        self._managed_collection_ids = set()
 
     @classmethod
     def load_json_file(cls, path: Union[str, Path]) -> "LayerCatalog":
@@ -66,10 +69,18 @@ class LayerCatalog:
         _log.info(f"Found {len(collections)=}")
         return cls(collections=collections)
 
-    def write_json_file(self, path: Union[str, Path]) -> None:
+    def write_json_file(
+        self,
+        path: Union[str, Path],
+        indent: Union[int, None] = 2,
+        separators: Union[Tuple[str, str], None] = None,
+        sort_keys: bool = False,
+    ) -> None:
         _log.info(f"Writing layer catalog to {path=} ({len(self._collections)=})")
         with open(path, mode="w", encoding="utf-8") as f:
-            json.dump(self._collections, f, indent=2, ensure_ascii=False)
+            json.dump(
+                self._collections, f, indent=indent, separators=separators, ensure_ascii=False, sort_keys=sort_keys
+            )
             f.write("\n")
 
     def enrich(self) -> None:
@@ -102,12 +113,17 @@ class LayerCatalog:
 
     def set_collection_metadata(self, metadata: dict):
         collection_id = metadata["id"]
+        self._managed_collection_ids.add(collection_id)
         _log.info(f"Setting collection metadata for {collection_id=}")
         index = self.index_of(collection_id)
         if index is not None:
-            self._collections[index] = metadata
+            # Overwrite metadata, but try to preserve original key order to mimimize diff noise.
+            self._collections[index] = sort_dict_like_other(metadata, other=self._collections[index])
         else:
             self._collections.append(metadata)
+
+    def get_unmanaged_collection_ids(self) -> Set[str]:
+        return self._original_collection_ids.difference(self._managed_collection_ids)
 
 
 def dict_no_none(*args, **kwargs) -> dict:
@@ -115,6 +131,19 @@ def dict_no_none(*args, **kwargs) -> dict:
     Helper to build a dict containing given key-value pairs where the value is not None.
     """
     return {k: v for k, v in dict(*args, **kwargs).items() if v is not None}
+
+
+def sort_dict_like_other(d: dict, other: Union[dict, list]) -> dict:
+    """
+    Sort the items in a dictionary (by forcing the insertion order)
+    based on an exiting dictionary or list of keys.
+    Useful to minimize diff noise in JSON.
+    """
+    # Weight map: start with order of other
+    weights = {k: i for i, k in enumerate(other)}
+    # Append remaining keys in original order
+    weights.update({k: len(weights) + i for i, k in enumerate(d) if k not in weights})
+    return dict(sorted(d.items(), key=lambda item: weights.get(item[0])))
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -267,11 +296,20 @@ def build_stac_collection_metadata(
     sci_doi: Optional[str] = None,
     sci_citation: Optional[str] = None,
     mission: Optional[str] = None,
+    contacts: Optional[List[dict]] = None,
     extra_summaries: Optional[dict] = None,
     enrichment_mode: str = ENRICHMENT_MODE.LEGACY_AT_RUNTIME,
+    upstream_links_filter: Optional[LinksFilter] = None,
+    debug_enrichment: bool = False,
+    stac_version: str = "1.0.0",
+    stac_extensions: Union[None, List[str], Callable[[List[str]], List[str]]] = None,
 ) -> dict:
     """
     Generic openEO collection metadata generator.
+
+    :param upstream_links_filter: optional filter function for upstream links,
+        before merging with local links. Only used in `LEGACY_AT_BUILD_TIME` mode.
+        This is a pretty awkward API, caused by ad-hoc link handling in legacy enrichment approach.
     """
     data_source = {
         "type": "stac",
@@ -296,7 +334,12 @@ def build_stac_collection_metadata(
 
     upstream_metadata = _get_upstream_stac_metadata(stac_url)
 
-    stac_version = upstream_metadata.get("stac_version", "1.0.0")
+    stac_version = upstream_metadata.get("stac_version", stac_version)
+
+    if callable(stac_extensions):
+        # Allow manipulation (or direct pass-through) of upstream extensions
+        upstream_stac_extensions = upstream_metadata.get("stac_extensions", [])
+        stac_extensions = stac_extensions(upstream_stac_extensions)
 
     if not description:
         description = (description_prefix or "") + upstream_metadata.get("description", "")
@@ -324,7 +367,8 @@ def build_stac_collection_metadata(
 
     metadata = dict_no_none(
         {
-            "stac_version": upstream_metadata.get("stac_version", "1.0.0"),
+            "stac_version": stac_version,
+            "stac_extensions": stac_extensions,
             "type": "Collection",
             "id": id,
             "name": name,
@@ -350,13 +394,18 @@ def build_stac_collection_metadata(
                 "bands": {"type": "bands", "values": cube_dimensions_bands_values},
             },
             "bands": toplevel_bands,
+            "contacts": contacts,
         }
     )
 
     if enrichment_mode == ENRICHMENT_MODE.LEGACY_AT_RUNTIME:
         metadata["_vito"]["data_source"][DATA_SOURCE_PROPERTIES.ENRICH] = True
     elif enrichment_mode == ENRICHMENT_MODE.LEGACY_AT_BUILD_TIME:
-        metadata = _legacy_enrich_collection_metadata(metadata)
+        orig_metadata = copy.deepcopy(metadata)
+        metadata = _legacy_enrich_collection_metadata(metadata, upstream_links_filter=upstream_links_filter)
+        if debug_enrichment:
+            diff_lines = dict_compare(orig_metadata, metadata, name1="original", name2="enriched")
+            _log.debug(f"Line-by-line diff of metadata enrichment ({len(diff_lines)=}):\n" + "\n".join(diff_lines))
         metadata["_vito"]["data_source"][DATA_SOURCE_PROPERTIES.ENRICH] = False
     elif enrichment_mode == ENRICHMENT_MODE.NONE:
         metadata["_vito"]["data_source"][DATA_SOURCE_PROPERTIES.ENRICH] = False
@@ -370,16 +419,19 @@ def build_stac_collection_metadata(
 build_terrascope_stac_collection_metadata = build_stac_collection_metadata
 
 
-def _legacy_enrich_collection_metadata(collection_metadata: dict) -> dict:
+def _legacy_enrich_collection_metadata(
+    collection_metadata: dict, *, upstream_links_filter: Optional[LinksFilter] = None
+) -> dict:
     """Legacy metadata enrichment"""
     # Wrap (and unwrap) collection metadata in catalog structure expected by legacy enrichment logic
     cid = collection_metadata["id"]
     catalog = {cid: copy.deepcopy(collection_metadata)}
-    enriched_catalog = enrich_catalog_metadata(catalog)
+    enriched_catalog = enrich_catalog_metadata(catalog, upstream_links_filter=upstream_links_filter)
     enriched_collection_metadata = enriched_catalog[cid]
 
     # Remove some fields from the metadata
     # TODO: really necessary to exclude these?
+    # TODO: Better work with allow-list than cat-and-mouse ignore-list?
     # TODO: larger scope? Configurable?
     for key in {"assets", "item_assets", "auth:schemes", "storage:schemes"}:
         if key in enriched_collection_metadata:
@@ -503,7 +555,7 @@ def apply_raster_scale_and_offset_to_band_metadata(bands: List[BandMetadata]) ->
         data["raster_scale"] = None
         data["raster_offset"] = None
         if to_float:
-            data["data_type"] = "float64"
+            data["data_type"] = "float32"
             # TODO: possible to set `nodata`? e.g. "nan"?
             data["nodata"] = None
 
@@ -519,3 +571,14 @@ def apply_raster_scale_and_offset_to_band_metadata(bands: List[BandMetadata]) ->
         return BandMetadata(**data)
 
     return [convert(b) for b in bands]
+
+
+def dict_compare(d1: dict, d2: dict, name1: str = "left", name2: str = "right") -> List[str]:
+    """
+    Compare two dictionaries by serializing as JSON and doing a line-by-line diff
+    """
+    s1 = json.dumps(d1, indent=2, sort_keys=True).splitlines()
+    s2 = json.dumps(d2, indent=2, sort_keys=True).splitlines()
+
+    diff = difflib.unified_diff(s1, s2, fromfile=name1, tofile=name2, lineterm="")
+    return list(diff)

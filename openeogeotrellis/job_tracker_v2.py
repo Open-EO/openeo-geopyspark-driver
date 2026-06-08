@@ -26,6 +26,7 @@ except ImportError:
 
 from openeo.util import TimingLogger, repr_truncate, Rfc3339, url_join, deep_get
 from openeo_driver.jobregistry import JOB_STATUS, ElasticJobRegistry, EjrApiResponseError
+from openeo_driver.util.date_math import now_utc
 from openeo_driver.util.http import requests_with_retry
 from openeo_driver.util.logging import (
     get_logging_config,
@@ -302,6 +303,9 @@ class K8sStatusGetter(JobMetadataGetterInterface):
                 raise AppNotFound() from e
             raise
 
+        # Threshold after which a stuck SUCCEEDING app is treated as COMPLETED
+        _SUCCEEDING_STUCK_THRESHOLD = dt.timedelta(hours=1)
+
         if "status" in metadata:
             app_state = metadata["status"]["applicationState"]["state"]
             if "FAILED" == app_state and "errorMessage" in metadata["status"]["applicationState"]:
@@ -317,6 +321,22 @@ class K8sStatusGetter(JobMetadataGetterInterface):
             datetime_formatter = Rfc3339(propagate_none=True)
             start_time = datetime_formatter.parse_datetime(metadata["status"]["lastSubmissionAttemptTime"])
             finish_time = datetime_formatter.parse_datetime(metadata["status"]["terminationTime"])
+
+            # Detect apps stuck in SUCCEEDING (driver finished but operator never transitioned to COMPLETED).
+            # This can happen due to Spark operator bugs.
+            now = now_utc().replace(tzinfo=None)
+            if (
+                app_state == K8S_SPARK_APP_STATE.SUCCEEDING
+                and finish_time is None
+                and start_time is not None
+                and (now - start_time) > _SUCCEEDING_STUCK_THRESHOLD
+            ):
+                stuck_duration = now - start_time
+                _log.warning(
+                    f"K8s app {app_id} has been stuck in SUCCEEDING state for {stuck_duration} "
+                    f"(threshold={_SUCCEEDING_STUCK_THRESHOLD}).",
+                    extra={"job_id": job_id, "user_id": user_id},
+                )
         else:
             _log.warning("No K8s app status found, assuming new app", extra={"job_id": job_id, "user_id": user_id})
             app_state = K8S_SPARK_APP_STATE.NEW

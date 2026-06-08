@@ -7,6 +7,7 @@ import math
 import typing
 from typing import Callable, List, Tuple, Union, Dict, Set, Optional
 
+import pyproj
 from openeo.util import deep_get
 from openeo_driver.backend import AbstractCollectionCatalog, LoadParameters
 from openeo_driver.constants import RESAMPLE_SPATIAL_ALIGN
@@ -19,6 +20,7 @@ from openeogeotrellis.constants import EVAL_ENV_KEY
 
 import openeogeotrellis.load_stac
 from openeogeotrellis.util.geometry import BoundingBoxMerger
+from openeogeotrellis.util.logging import TrackingIter
 from openeogeotrellis.util.math import logarithmic_round
 
 _log = logging.getLogger(__name__)
@@ -330,14 +332,15 @@ def _extract_spatial_extent_from_constraint_load_stac(
     # per-element reprojection overhead in the merger.
     assets_full_bbox_merger = BoundingBoxMerger(crs=target_crs)
     aligned_extent_coverage_merger = BoundingBoxMerger(crs=target_crs)
-    for proj_metadata in projection_metadatas:
+    tracking_iter_merge = TrackingIter()
+    for proj_metadata in tracking_iter_merge(projection_metadatas):
         if asset_bbox := proj_metadata.to_bounding_box():
             assets_full_bbox_merger.add(asset_bbox)
             if extent_orig and (extent_coverage := proj_metadata.coverage_for(extent_orig)):
                 aligned_extent_coverage_merger.add(extent_coverage)
     assets_full_bbox = assets_full_bbox_merger.get()
     assets_covered_bbox = aligned_extent_coverage_merger.get()
-    _log.info(f"Merged bounding boxes: {assets_full_bbox=} {assets_covered_bbox=}")
+    _log.info(f"Merged bounding boxes: {assets_full_bbox=} {assets_covered_bbox=} {tracking_iter_merge.summary()=}")
     extent_variants["assets_full_bbox"] = assets_full_bbox
     extent_variants["assets_covered_bbox"] = assets_covered_bbox
     extent_aligned = assets_covered_bbox or assets_full_bbox
@@ -350,15 +353,7 @@ def _extract_spatial_extent_from_constraint_load_stac(
         to_resample = extent_orig or extent_aligned
         target_grid = _GridInfo(crs=resample_crs, resolution=resample_resolution)
 
-        # For now, only align the resampling grid with the current spatial extent
-        # (typically the requested extent from `load_collection` or `filter_bbox`)
-        # when the resampling CRS is same as the CRS of the requested extent.
-        # TODO: always align, regardless of involved CRSes? https://github.com/Open-EO/openeo-geopyspark-driver/issues/1662
-        if target_grid.crs_epsg == epsg_code_or_none(to_resample.crs):
-            resample_align = constraint["resample"].get("align")
-        else:
-            resample_align = None
-
+        resample_align = constraint["resample"].get("align")
         extent_resampled = _resample_extent(
             to_resample, crs=resample_crs, resolution=resample_resolution, align=resample_align
         )
@@ -425,14 +420,15 @@ def _resample_extent(
 ) -> BoundingBox:
     target_grid = _GridInfo(crs=crs, resolution=resolution)
 
+    reproject = pyproj.Transformer.from_crs(crs_from=extent.crs, crs_to=target_grid.crs_epsg, always_xy=True).transform
     if align == RESAMPLE_SPATIAL_ALIGN.UPPER_LEFT:
-        offset_x, offset_y = extent.west, extent.north
+        offset_x, offset_y = reproject(extent.west, extent.north)
     elif align == RESAMPLE_SPATIAL_ALIGN.UPPER_RIGHT:
-        offset_x, offset_y = extent.east, extent.north
+        offset_x, offset_y = reproject(extent.east, extent.north)
     elif align == RESAMPLE_SPATIAL_ALIGN.LOWER_LEFT:
-        offset_x, offset_y = extent.west, extent.south
+        offset_x, offset_y = reproject(extent.west, extent.south)
     elif align == RESAMPLE_SPATIAL_ALIGN.LOWER_RIGHT:
-        offset_x, offset_y = extent.east, extent.south
+        offset_x, offset_y = reproject(extent.east, extent.south)
     else:
         if align is not None:
             _log.warning(f"Ignoring invalid resample {align=}")

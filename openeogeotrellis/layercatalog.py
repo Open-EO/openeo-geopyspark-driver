@@ -1,12 +1,15 @@
 import argparse
 import datetime as dt
+import gzip
 import json
 import logging
 import math
 import sys
+import zipfile
 from copy import deepcopy, copy
 from functools import lru_cache
 from typing import List, Dict, Iterable, Optional, Tuple, Union
+from pathlib import Path
 
 import dateutil.parser
 import geopyspark
@@ -69,6 +72,8 @@ WHITELIST = [
     EVAL_ENV_KEY.OPENEO_API_VERSION,
     EVAL_ENV_KEY.GLOBAL_EXTENT,
     EVAL_ENV_KEY.JOB_DIR,
+    # TODO: this linking/allow-listing of job options and eval env keys feels quite cumbersome
+    EVAL_ENV_KEY.STAC_API_FILTER_BY_GEOMETRY,
 ]
 LARGE_LAYER_THRESHOLD_IN_PIXELS = pow(10, 11)
 LARGE_LAYER_THRESHOLD_IN_PIXELS_SENTINELHUB = pow(10, 10)
@@ -282,7 +287,6 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             "opensearch_endpoint", get_backend_config().default_opensearch_endpoint
         )
         max_soft_errors_ratio = env.get(EVAL_ENV_KEY.MAX_SOFT_ERRORS_RATIO, 0.0)
-        no_data_value = metadata.get_nodata_value(load_params.bands, 0.0)
         if feature_flags.get("no_resample_on_read", False):
             logger.info("Setting NoResampleOnRead to true")
             datacubeParams.setNoResampleOnRead(True)
@@ -535,6 +539,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                     shub_band_names.append('localIncidenceAngle')
 
                 cell_size = jvm.geotrellis.raster.CellSize(cell_width, cell_height)
+                no_data_value = metadata.get_nodata_value(load_params.bands, 0.0)
 
                 if ConfigParams().is_kube_deploy:
                     access_token = env[EVAL_ENV_KEY.USER].internal_auth_data["access_token"]
@@ -951,13 +956,43 @@ CollectionMetadataDict = Dict[str, Union[str, dict, list]]
 CatalogDict = Dict[CollectionId, CollectionMetadataDict]
 
 
+def _read_catalog_file(path: Union[str, Path]) -> CatalogDict:
+    path = Path(path)
+    try:
+        if path.is_file() and path.name.lower().endswith(".json"):
+            return {coll["id"]: coll for coll in read_json(path)}
+        elif path.is_file() and path.name.lower().endswith(".json.gz"):
+            with gzip.open(path, mode="rt", encoding="utf-8") as f:
+                return {coll["id"]: coll for coll in json.load(fp=f)}
+        elif path.is_file() and path.name.lower().endswith(".zip"):
+            catalog = {}
+            with zipfile.ZipFile(path, mode="r") as zf:
+                for name in zf.namelist():
+                    if name.lower().endswith(".json"):
+                        with zf.open(name, mode="r") as f:
+                            data = json.load(f)
+                        if isinstance(data, dict):
+                            # File with single collection
+                            catalog[data["id"]] = data
+                        elif isinstance(data, list):
+                            # File with list of collections
+                            catalog.update({coll["id"]: coll for coll in data})
+                        else:
+                            logger.warning(f"Skipping catalog source {path!r}/{name!r}: unexpected {type(data)=}")
+            return catalog
+        else:
+            raise ValueError(f"Unsupported catalog format {path=}")
+    except Exception as e:
+        raise ValueError(f"Failed to read layer catalog from {path=}: {e=}") from e
+
+
 @TimingLogger(title="_get_layer_catalog", logger=logger.info)
 def _get_layer_catalog(
     catalog_files: Optional[List[str]] = None,
     enrich_metadata: Optional[bool] = None,
 ) -> CatalogDict:
     """
-    Get layer catalog (from JSON files)
+    Build layer catalog from JSON files (possibly compressed)
     """
     if enrich_metadata is None:
         enrich_metadata = get_backend_config().opensearch_enrich
@@ -966,17 +1001,10 @@ def _get_layer_catalog(
 
     metadata: CatalogDict = {}
 
-    def read_catalog_file(catalog_file) -> CatalogDict:
-        try:
-            return {coll["id"]: coll for coll in read_json(catalog_file)}
-        except Exception as e:
-            raise ValueError(f"Failed to read/parse {catalog_file=}: {e=}") from e
-
-
     logger.debug(f"_get_layer_catalog: {catalog_files=}")
     for path in catalog_files:
         logger.debug(f"_get_layer_catalog: reading {path}")
-        metadata = dict_merge_recursive(metadata, read_catalog_file(path), overwrite=True)
+        metadata = dict_merge_recursive(metadata, _read_catalog_file(path), overwrite=True)
         logger.debug(f"_get_layer_catalog: collected {len(metadata)} collections")
 
     logger.debug(f"_get_layer_catalog: {enrich_metadata=}")

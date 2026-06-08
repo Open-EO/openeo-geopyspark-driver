@@ -7,7 +7,11 @@ from typing import Any, Dict, List
 from openeo_driver.constants import DEFAULT_LOG_LEVEL_PROCESSING
 from openeo_driver.errors import OpenEOApiException
 from openeogeotrellis.config import get_backend_config
-from openeogeotrellis.constants import JOB_OPTION_LOG_LEVEL, JOB_OPTION_LOGGING_THRESHOLD
+from openeogeotrellis.constants import (
+    JOB_OPTION_LOG_LEVEL,
+    JOB_OPTION_LOGGING_THRESHOLD,
+    STAC_API_FILTER_BY_GEOMETRY_DEFAULT,
+)
 from openeogeotrellis.udf.udf_runtime_images import UdfRuntimeImageRepository
 from openeogeotrellis.util.byteunit import byte_string_as
 
@@ -142,6 +146,15 @@ class JobOptions:
         metadata={
             "description": "[Experimental] The number of save-result nodes to evaluate concurrently. Increasing this setting may improve resource utilization, but too high values usually increase costs.",
             "public": True
+        },
+    )
+
+    stac_api_filter_by_geometry: bool = field(
+        default=STAC_API_FILTER_BY_GEOMETRY_DEFAULT,
+        metadata={
+            "description": "Whether to enable fine-grained filtering with geometries in STAC API queries (`intersects` parameter), instead of a simple global bounding box.",
+            "experimental": True,
+            "public": False,
         },
     )
 
@@ -354,7 +367,7 @@ class K8SOptions(JobOptions):
             "public": False
         })
 
-    driver_corerequest: str = field(
+    driver_request_cores: str = field(
         default="NONE",
         metadata={
             "description": "CPU request for the driver, expressed as 'milli-cpus', for instance '500m' for 0.5 of 1 cpu unit. Allows partial CPU allocation for the driver.",
@@ -389,6 +402,14 @@ class K8SOptions(JobOptions):
             "public": False,
             "enum": ["console", "prometheus"]
         })
+
+    force_s3proxy: bool = field(
+        default=False,
+        metadata={
+            "description": "[Experimental] Force all traffic to go via an internal S3Proxy",
+            "public": False
+        },
+    )
 
     def validate(self):
         max_cores = 4

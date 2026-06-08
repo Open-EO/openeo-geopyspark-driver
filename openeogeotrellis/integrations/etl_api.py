@@ -6,7 +6,7 @@ import requests
 from openeo_driver.config import get_backend_config
 from openeo_driver.users import User
 from openeo_driver.util.auth import ClientCredentials, ClientCredentialsAccessTokenHelper
-from openeo_driver.util.caching import TtlCache
+from openeo_driver.util.caching import BoundedTtlCache
 
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.config.config import EtlApiConfig
@@ -405,7 +405,7 @@ def get_etl_api(
     requests_session: Optional[requests.Session] = None,
     # TODO #531 remove this temporary feature flag/toggle for dynamic ETL selection. (True from all call locations now)
     allow_dynamic_etl_api: bool = False,
-    etl_api_cache: Optional[TtlCache] = None,
+    etl_api_cache: Optional[BoundedTtlCache] = None,
 ) -> EtlApi:
     """
     Get EtlApi, possibly depending on additional data (job options, current user, ...).
@@ -413,7 +413,7 @@ def get_etl_api(
     :param user: (optional) user to dynamically determine ETL API endpoint with `EtlApiConfig.get_root_url` API
     :param job_options: (optional) job options dict to dynamically determine ETL API endpoint with `EtlApiConfig.get_root_url` API
     :param requests_session: (optional) provide a `requests.Session` (e.g. with desired retry settings) to use for HTTP requests
-    :param etl_api_cache: (optional) provide a `TtlCache` to fetch existing `EtlApi` instances from
+    :param etl_api_cache: (optional) provide a `BoundedTtlCache` to fetch existing `EtlApi` instances from
         to avoid repeatedly setting up `EtlApi` instances each time
         (which can be costly due to client credentials related OIDC discovery requests).
         Note that the caller is cache owner and responsible for providing the same cache instance on each call

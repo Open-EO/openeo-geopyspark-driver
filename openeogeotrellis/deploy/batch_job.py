@@ -346,6 +346,8 @@ def run_job(
             "node_caching",
             EVAL_ENV_KEY.ALLOW_EMPTY_CUBES,
             EVAL_ENV_KEY.DO_EXTENT_CHECK,
+            # TODO: this linking/allow-listing of job options and eval env keys feels quite cumbersome
+            EVAL_ENV_KEY.STAC_API_FILTER_BY_GEOMETRY,
         ]
         env_values.update({k: job_options[k] for k in job_option_whitelist if k in job_options})
         env = EvalEnv(env_values)
@@ -500,6 +502,9 @@ def run_job(
             raise ValueError(f"Invalid concurrent_save_results: {concurrent_save_results}")
         assets_metadata = list(assets_metadata)
 
+        # Flatten all STAC items across all results for use in metadata assembly.
+        all_result_items = [item for result_items in results_items for item in result_items.values()]
+
         if is_stac11:
             for stac_item_collection_path in Path(job_dir).glob(get_stac_item_collection_filename(pg_node_id="*")):
                 extra_links.append(
@@ -601,8 +606,8 @@ def run_job(
             asset_metadata=assets_for_result_metadata,
             ml_model_metadata=ml_model_metadata,
             is_item=is_stac11,
+            result_items=all_result_items,
         )
-
         tracker_metadata = _get_tracker_metadata("", omit_derived_from_links=omit_derived_from_links)
         tracker_metadata["links"].extend(extra_links)
         if "sar_backscatter_soft_errors" in tracker_metadata.get("usage", {}):
@@ -637,6 +642,7 @@ def run_job(
             asset_metadata=assets_for_result_metadata,
             ml_model_metadata=ml_model_metadata,
             is_item=is_stac11,
+            result_items=all_result_items,
         )
 
         assert len(results) == len(assets_metadata)
