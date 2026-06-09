@@ -346,7 +346,7 @@ class GpsBackendConfig(OpenEoBackendConfig):
 
     read_results_metadata_file_retry_settings: dict = attrs.Factory(lambda: dict(tries=1))  # fail immediately
 
-    load_stac_deduplicate_items_default: bool = False
+    load_stac_deduplicate_items_default: Union[bool, dict] = False
 
 
 def get_zookeeper_auth_data(config: GpsBackendConfig) -> list:

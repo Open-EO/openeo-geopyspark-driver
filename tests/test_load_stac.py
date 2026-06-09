@@ -56,6 +56,7 @@ from openeogeotrellis.load_stac import (
     extract_own_job_info,
     load_stac,
     PixelValueScalingMode,
+    _deduplicator_from_feature_flags,
 )
 from openeogeotrellis.testing import DummyStacApiServer, OpenSearchClientDumper, gps_config_overrides
 from openeogeotrellis.util.geometry import bbox_to_geojson
@@ -3512,9 +3513,91 @@ class TestItemDeduplicator:
             )
         )
 
-        depuplicator = ItemDeduplicator(**duplicator_kwargs)
-        deduped = depuplicator.deduplicate([item_0, item_1, item_2])
+        deduplicator = ItemDeduplicator(**duplicator_kwargs)
+        deduped = deduplicator.deduplicate([item_0, item_1, item_2])
         assert [i.id for i in deduped] == [f"c_gls_LAI300-{e}_202602200000_GLOBE" for e in expected]
+
+    @pytest.mark.parametrize(
+        ["feature_flags", "expected"],
+        [
+            (
+                # Default: no deduplication
+                {},
+                ["RT0", "RT1", "RT2"],
+            ),
+            (
+                # Default deduplication: pick item with highest "updated" value
+                {"deduplicate_items": True},
+                ["RT1"],
+            ),
+            (
+                # Score by RT value
+                {
+                    "deduplicate_items": {
+                        "properties_from_id": {"consolidation_period": r"-(RT\d+)_"},
+                        "score_property_preference": {
+                            "consolidation_period": ["RT6", "RT5", "RT4", "RT3", "RT2", "RT1", "RT0"]
+                        },
+                    }
+                },
+                ["RT2"],
+            ),
+            (
+                # Deprecated feature flag usage
+                {
+                    "deduplicate_items": True,
+                    "deduplicator_properties_from_id": {"consolidation_period": r"-(RT\d+)_"},
+                    "score_property_preference": {
+                        "consolidation_period": ["RT6", "RT5", "RT4", "RT3", "RT2", "RT1", "RT0"]
+                    },
+                },
+                ["RT2"],
+            ),
+            (
+                # use RT as deduplication property
+                {
+                    "deduplicate_items": {
+                        "properties_from_id": {"consolidation_period": r"-(RT\d+)_"},
+                        "duplication_properties": ["consolidation_period"],
+                    },
+                },
+                ["RT0", "RT1", "RT2"],
+            ),
+        ],
+    )
+    def test_from_feature_flags(self, feature_flags, expected):
+        # Three items with different consolidation periods (only in "RT" part of id)
+        # and different "updated" properties.
+        # Note that consolidation period and "updated" follow different order
+        # (RT1 is updated after RT2)
+        item_0 = pystac.Item.from_dict(
+            StacDummyBuilder.item(
+                id="c_gls_LAI300-RT0_202602200000_GLOBE",
+                datetime="2026-02-20T00:00:00Z",
+                properties={"updated": "2026-02-22T00:00:00Z"},
+            )
+        )
+        item_1 = pystac.Item.from_dict(
+            StacDummyBuilder.item(
+                id="c_gls_LAI300-RT1_202602200000_GLOBE",
+                datetime="2026-02-20T00:00:00Z",
+                properties={"updated": "2026-02-25T00:00:00Z"},
+            )
+        )
+        item_2 = pystac.Item.from_dict(
+            StacDummyBuilder.item(
+                id="c_gls_LAI300-RT2_202602200000_GLOBE",
+                datetime="2026-02-20T00:00:00Z",
+                properties={"updated": "2026-02-21T00:00:00Z"},
+            )
+        )
+
+        item_collection = ItemCollection([item_0, item_1, item_2])
+        deduplicator = _deduplicator_from_feature_flags(feature_flags)
+        if deduplicator:
+            item_collection = item_collection.deduplicated(deduplicator=deduplicator)
+
+        assert [i.id for i in item_collection.items] == [f"c_gls_LAI300-{e}_202602200000_GLOBE" for e in expected]
 
 
 class TestPrepareContext:

@@ -1059,17 +1059,8 @@ def construct_item_collection(
     # Deduplicate items
     # TODO: smarter and more fine-grained deduplication behavior?
     #       - enable by default or only do it on STAC API usage?
-    if feature_flags.get("deduplicate_items", get_backend_config().load_stac_deduplicate_items_default):
-        duplication_properties = feature_flags.get("duplication_properties")
-        score_property_preference = feature_flags.get("score_property_preference")
-        properties_from_id = feature_flags.get("deduplicator_properties_from_id")
-        item_collection = item_collection.deduplicated(
-            deduplicator=ItemDeduplicator(
-                duplication_properties=duplication_properties,
-                score_property_preference=score_property_preference,
-                properties_from_id=properties_from_id,
-            )
-        )
+    if deduplicator := _deduplicator_from_feature_flags(feature_flags=feature_flags, id=url):
+        item_collection = item_collection.deduplicated(deduplicator=deduplicator)
 
     # TODO: possible to embed band names in metadata directly?
     #       And related: metadata/GeopysparkCubeMetadata as an API is too large and too loosely defined.
@@ -1864,6 +1855,33 @@ class ItemDeduplicator:
                 best = group[0]
             result.append(best)
         return result
+
+
+def _deduplicator_from_feature_flags(feature_flags: dict, *, id: Optional[str] = None) -> Union[ItemDeduplicator, None]:
+    deduplicate_items = feature_flags.get("deduplicate_items", get_backend_config().load_stac_deduplicate_items_default)
+
+    if deduplicate_items:
+        if isinstance(deduplicate_items, dict):
+            if not deduplicate_items.get("enable", True):
+                return None
+            duplication_properties = deduplicate_items.get("duplication_properties")
+            score_property_preference = deduplicate_items.get("score_property_preference")
+            properties_from_id = deduplicate_items.get("properties_from_id")
+        else:
+            # Legacy feature flags
+            # TODO: remove support for these sub-feature flags at top-level
+            duplication_properties = feature_flags.get("duplication_properties")
+            score_property_preference = feature_flags.get("score_property_preference")
+            properties_from_id = feature_flags.get("deduplicator_properties_from_id")
+            if duplication_properties or score_property_preference or properties_from_id:
+                logger.warning(f"Deprecated 'deduplicate_items' feature flag usage ({id=})")
+
+        return ItemDeduplicator(
+            duplication_properties=duplication_properties,
+            score_property_preference=score_property_preference,
+            properties_from_id=properties_from_id,
+        )
+    return None
 
 
 def _is_supported_raster_mime_type(mime_type: str) -> bool:
