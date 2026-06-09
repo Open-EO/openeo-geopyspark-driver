@@ -2306,7 +2306,7 @@ def _get_raster_scale_and_offset(*, item: pystac.Item, asset: pystac.Asset) -> T
     return raster_scale, raster_offset
 
 
-def _get_datatype_and_no_data(asset:pystac.Asset) -> (str, float):
+def _get_datatype_and_no_data(asset: pystac.Asset) -> Tuple[Union[str, None], Union[float, None]]:
     nodata = _get_asset_property(asset, "nodata")
     datatype = _get_asset_property(asset, "data_type")
     return datatype, nodata
