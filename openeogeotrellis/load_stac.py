@@ -382,6 +382,8 @@ def _prepare_context(
                 opensearch_stats["builder.addLink"] += 1
                 data_type, nodata = _get_datatype_and_no_data(asset=asset)
                 if data_type is not None:
+                    if data_type == "uint32":
+                        data_type = "float64"
                     if nodata is not None:
                         builder = builder.addLink(
                             asset_href,  # scala arg `href: String`
