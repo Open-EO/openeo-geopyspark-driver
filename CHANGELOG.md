@@ -29,6 +29,7 @@ without compromising stable operations.
 - Add job option `stac_api_filter_by_geometry` to disable fine-grained geometry based filtering in STAC API queries ([#1689](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1689))
 - Support loading layer catalog from GZIP'ed JSON file or ZIP of JSON files ([#1691](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1691))
 - `load_stac`: avoid unnecessary (and sometimes brittle) normalization of STAC Item `self` URL ([#1702](https://github.com/Open-EO/openeo-geopyspark-driver/issues/1702))
+- `load_stac`: support deduplication based on "properties" extracted from item id ([eu-cdse/openeo-cdse-infra#1127](https://github.com/eu-cdse/openeo-cdse-infra/issues/1127))
 
 
 ## 0.71.0

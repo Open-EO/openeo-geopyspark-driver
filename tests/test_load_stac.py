@@ -3449,6 +3449,73 @@ class TestItemDeduplicator:
         # Property absent → same fallback as unknown value: uses updated+id
         assert [r.id for r in deduplicator.deduplicate([item_no_version, item_v100])] == ["item-v100"]
 
+    @pytest.mark.parametrize(
+        ["duplicator_kwargs", "expected"],
+        [
+            (
+                # Default: pick item with highest "updated" value
+                {},
+                ["RT1"],
+            ),
+            (
+                # Score by RT value
+                dict(
+                    properties_from_id={"consolidation_period": r"-(RT\d+)_"},
+                    score_property_preference={
+                        "consolidation_period": ["RT6", "RT5", "RT4", "RT3", "RT2", "RT1", "RT0"]
+                    },
+                ),
+                ["RT2"],
+            ),
+            (
+                # Reverse RT value scoring
+                dict(
+                    properties_from_id={"consolidation_period": r"-(RT\d+)_"},
+                    score_property_preference={"consolidation_period": ["RT0", "RT1"]},
+                ),
+                ["RT0"],
+            ),
+            (
+                # use RT as deduplication property
+                dict(
+                    properties_from_id={"consolidation_period": r"-(RT\d+)_"},
+                    duplication_properties=["consolidation_period"],
+                ),
+                ["RT0", "RT1", "RT2"],
+            ),
+        ],
+    )
+    def test_by_consolidation_period_from_id(self, duplicator_kwargs, expected):
+        # Three items with different consolidation periods (only in "RT" part of id)
+        # and different "updated" properties.
+        # Note that consolidation period and "updated" follow different order
+        # (RT1 is updated after RT2)
+        item_0 = pystac.Item.from_dict(
+            StacDummyBuilder.item(
+                id="c_gls_LAI300-RT0_202602200000_GLOBE",
+                datetime="2026-02-20T00:00:00Z",
+                properties={"updated": "2026-02-22T00:00:00Z"},
+            )
+        )
+        item_1 = pystac.Item.from_dict(
+            StacDummyBuilder.item(
+                id="c_gls_LAI300-RT1_202602200000_GLOBE",
+                datetime="2026-02-20T00:00:00Z",
+                properties={"updated": "2026-02-25T00:00:00Z"},
+            )
+        )
+        item_2 = pystac.Item.from_dict(
+            StacDummyBuilder.item(
+                id="c_gls_LAI300-RT2_202602200000_GLOBE",
+                datetime="2026-02-20T00:00:00Z",
+                properties={"updated": "2026-02-21T00:00:00Z"},
+            )
+        )
+
+        depuplicator = ItemDeduplicator(**duplicator_kwargs)
+        deduped = depuplicator.deduplicate([item_0, item_1, item_2])
+        assert [i.id for i in deduped] == [f"c_gls_LAI300-{e}_202602200000_GLOBE" for e in expected]
+
 
 class TestPrepareContext:
     def _define_collection_s2_with_granule_metadata(

@@ -1059,14 +1059,15 @@ def construct_item_collection(
     # Deduplicate items
     # TODO: smarter and more fine-grained deduplication behavior?
     #       - enable by default or only do it on STAC API usage?
-    #       - allow custom deduplicators (e.g. based on layer catalog info about openeo collections)
     if feature_flags.get("deduplicate_items", get_backend_config().load_stac_deduplicate_items_default):
         duplication_properties = feature_flags.get("duplication_properties")
         score_property_preference = feature_flags.get("score_property_preference")
+        properties_from_id = feature_flags.get("deduplicator_properties_from_id")
         item_collection = item_collection.deduplicated(
             deduplicator=ItemDeduplicator(
                 duplication_properties=duplication_properties,
                 score_property_preference=score_property_preference,
+                properties_from_id=properties_from_id,
             )
         )
 
@@ -1644,7 +1645,7 @@ class ItemCollection:
                 end = item_end
         return start, end
 
-    def deduplicated(self, deduplicator: "ItemDeduplicator") -> ItemCollection:
+    def deduplicated(self, deduplicator: ItemDeduplicator) -> ItemCollection:
         """Create new ItemCollection by deduplicating items using the given deduplicator."""
         orig_count = len(self.items)
         logger.info(f"ItemCollection.deduplicated: deduplicating {orig_count} items using {deduplicator=}")
@@ -1701,7 +1702,19 @@ class ItemDeduplicator:
         time_shift_max: float = 30,
         duplication_properties: Optional[List[str]] = None,
         score_property_preference: Optional[Dict[str, List]] = None,
+        properties_from_id: Optional[Dict[str, Union[str, re.Pattern]]] = None,
     ):
+        """
+
+        :param properties_from_id: optional mapping to support extracting (fake) properties
+            from item id using regular expressions. For example,
+            to extract the "RT" value (consolidation period) from
+            item ids like "c_gls_GPP300-RT0_202603310000_GLOBE"
+            and pick the items with the highest RT value, use something like:
+
+                properties_from_id={"rt": "-(RT[0-9]+)_"},
+                score_property_preference={"rt": ["RT2", "RT1", "RT0"]},
+        """
         self._time_shift_max = time_shift_max
 
         # Duplication properties: properties that will be compared
@@ -1716,6 +1729,13 @@ class ItemDeduplicator:
         # over those with 100; values not in the list (or property absent) fall back to default scoring.
         self._score_property_preference: Dict[str, List] = score_property_preference or {}
 
+        # Dict of regular expressions to allow extracting (fake) properties from item id, e.g. as fallback
+        self._properties_from_id: Optional[Dict[str, re.Pattern]] = (
+            {k: (v if isinstance(v, re.Pattern) else re.compile(v)) for k, v in properties_from_id.items()}
+            if properties_from_id
+            else None
+        )
+
     @staticmethod
     def _item_nominal_date(item: pystac.Item) -> datetime.datetime:
         # TODO: cache result (e.g. by item id)?
@@ -1724,6 +1744,14 @@ class ItemDeduplicator:
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=datetime.timezone.utc)
         return dt
+
+    def _get_item_property(self, item: pystac.Item, property: str) -> Any:
+        if property in item.properties:
+            return item.properties[property]
+        elif self._properties_from_id and property in self._properties_from_id:
+            if match := self._properties_from_id[property].search(item.id):
+                return match.group(1)
+        return None
 
     def _is_duplicate_item(self, item1: pystac.Item, item2: pystac.Item) -> bool:
         try:
@@ -1737,7 +1765,10 @@ class ItemDeduplicator:
                     < self._time_shift_max
                 )
                 # Same properties
-                and all(item1.properties.get(p) == item2.properties.get(p) for p in self._duplication_properties)
+                and all(
+                    self._get_item_property(item1, property=p) == self._get_item_property(item2, property=p)
+                    for p in self._duplication_properties
+                )
                 # Comparable bbox
                 and self._is_same_bbox(item1.bbox, item2.bbox, epsilon=1e-3)  # 1e-3 degrees ≈ 111 meters
                 # Same geometry
@@ -1790,7 +1821,7 @@ class ItemDeduplicator:
         # Primary: score by property preference (if configured)
         preference_scores = []
         for prop, preferred_values in self._score_property_preference.items():
-            value = item.properties.get(prop)
+            value = self._get_item_property(item, property=prop)
             if value is not None and value in preferred_values:
                 # Earlier position in preference list → higher score
                 preference_scores.append(len(preferred_values) - preferred_values.index(value))
