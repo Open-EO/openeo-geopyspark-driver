@@ -3227,8 +3227,8 @@ def test_construct_item_collection_minimal(dummy_stac_api):
 class TestItemDeduplicator:
     def test_trivial(self):
         item = pystac.Item.from_dict(StacDummyBuilder.item())
-        depuplicator = ItemDeduplicator()
-        assert depuplicator.deduplicate([item]) == [item]
+        deduplicator = ItemDeduplicator()
+        assert deduplicator.deduplicate([item]) == [item]
 
     def test_basic(self):
         item10 = pystac.Item.from_dict(StacDummyBuilder.item(id="item-10", datetime="2025-11-10T00:00:00Z"))
@@ -3236,9 +3236,9 @@ class TestItemDeduplicator:
         item10_1h = pystac.Item.from_dict(StacDummyBuilder.item(id="item-10+1h", datetime="2025-11-10T01:00:00Z"))
         item11 = pystac.Item.from_dict(StacDummyBuilder.item(id="item-11", datetime="2025-11-11T00:00:00Z"))
 
-        depuplicator = ItemDeduplicator()
-        assert depuplicator.deduplicate([item10, item10_1s, item11]) == [item10_1s, item11]
-        assert depuplicator.deduplicate([item10, item10_1h, item11]) == [item10, item10_1h, item11]
+        deduplicator = ItemDeduplicator()
+        assert deduplicator.deduplicate([item10, item10_1s, item11]) == [item10_1s, item11]
+        assert deduplicator.deduplicate([item10, item10_1h, item11]) == [item10, item10_1h, item11]
 
     def test_property_based(self):
         item600 = pystac.Item.from_dict(
@@ -3251,11 +3251,11 @@ class TestItemDeduplicator:
             StacDummyBuilder.item(id="item3", properties={"product:type": "b", "flavor": "apple"})
         )
 
-        depuplicator = ItemDeduplicator()
-        assert depuplicator.deduplicate([item600, item600b, item601]) == [item600b, item601]
+        deduplicator = ItemDeduplicator()
+        assert deduplicator.deduplicate([item600, item600b, item601]) == [item600b, item601]
 
-        depuplicator = ItemDeduplicator(duplication_properties=["flavor"])
-        assert depuplicator.deduplicate([item600, item600b, item601]) == [item601, item600b]
+        deduplicator = ItemDeduplicator(duplication_properties=["flavor"])
+        assert deduplicator.deduplicate([item600, item600b, item601]) == [item601, item600b]
 
     @pytest.mark.parametrize(
         ["item2_updated", "best"],
@@ -3267,8 +3267,8 @@ class TestItemDeduplicator:
     def test_updated(self, item2_updated, best):
         item1 = pystac.Item.from_dict(StacDummyBuilder.item(id="item1", properties={"updated": "2025-11-12T12:00:00Z"}))
         item2 = pystac.Item.from_dict(StacDummyBuilder.item(id="item2", properties={"updated": item2_updated}))
-        depuplicator = ItemDeduplicator()
-        result = depuplicator.deduplicate([item1, item2])
+        deduplicator = ItemDeduplicator()
+        result = deduplicator.deduplicate([item1, item2])
         assert [r.id for r in result] == [best]
 
     @pytest.mark.parametrize(
@@ -3295,8 +3295,8 @@ class TestItemDeduplicator:
             StacDummyBuilder.item(id="item3", bbox=[4, 50, 5, 51], properties={"updated": "2025-11-03"})
         )
 
-        depuplicator = ItemDeduplicator()
-        result = depuplicator.deduplicate([item1, item2, item3])
+        deduplicator = ItemDeduplicator()
+        result = deduplicator.deduplicate([item1, item2, item3])
         assert [r.id for r in result] == expected
 
     @pytest.mark.parametrize(
@@ -3343,8 +3343,8 @@ class TestItemDeduplicator:
             )
         )
 
-        depuplicator = ItemDeduplicator()
-        result = depuplicator.deduplicate([item1, item2, item3])
+        deduplicator = ItemDeduplicator()
+        result = deduplicator.deduplicate([item1, item2, item3])
         assert [r.id for r in result] == expected
 
     @pytest.mark.parametrize(
@@ -3365,8 +3365,8 @@ class TestItemDeduplicator:
         item2 = pystac.Item.from_dict(StacDummyBuilder.item(id="item2", datetime=datetime2))
         item3 = pystac.Item.from_dict(StacDummyBuilder.item(id="item3", datetime="2025-11-11T00:00:00Z"))
 
-        depuplicator = ItemDeduplicator()
-        result = depuplicator.deduplicate([item1, item2, item3])
+        deduplicator = ItemDeduplicator()
+        result = deduplicator.deduplicate([item1, item2, item3])
         assert [r.id for r in result] == expected
 
     def test_s1_sigma0_version_dedup(self):
