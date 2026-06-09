@@ -843,7 +843,7 @@ class OpenSearchClientDumper:
         while iterator.hasNext():
             yield iterator.next()
 
-    def dump_link(self, link: py4j.java_gateway.JavaObject, add_pixel_value_scaling: bool = False) -> dict:
+    def dump_link(self, link: py4j.java_gateway.JavaObject, add_pixel_value_scaling: bool = False, add_data_type: bool = False) -> dict:
         """dump org.openeo.opensearch.OpenSearchResponses.Link"""
         dump = {
             # "toString": l.toString(),
@@ -854,6 +854,11 @@ class OpenSearchClientDumper:
         if add_pixel_value_scaling:
             dump["pixelValueScale"] = link.pixelValueScale().get()
             dump["pixelValueOffset"] = link.pixelValueOffset().get()
+        if add_data_type:
+            if link.nodata().isDefined():
+                dump["nodata"] = link.nodata().get()
+            if link.datatype().isDefined():
+                dump["datatype"] = link.datatype().get().name()
         return dump
 
     def dump_extent(self, extent: py4j.java_gateway.JavaObject) -> Union[Tuple[float, float, float, float], None]:
@@ -869,12 +874,13 @@ class OpenSearchClientDumper:
         add_links: bool = True,
         add_bbox: bool = False,
         add_pixel_value_scaling: bool = False,
+        add_data_type: bool = False,
     ) -> dict:
         """dump org.openeo.opensearch.OpenSearchResponses.Feature"""
         dump = {"id": feature.id()}
         if add_links:
             dump["links"] = [
-                self.dump_link(link, add_pixel_value_scaling=add_pixel_value_scaling) for link in feature.links()
+                self.dump_link(link, add_pixel_value_scaling=add_pixel_value_scaling, add_data_type=add_data_type) for link in feature.links()
             ]
         if add_bbox:
             dump["bbox"] = self.dump_extent(feature.bbox())
@@ -887,12 +893,13 @@ class OpenSearchClientDumper:
         add_links: bool = True,
         add_bbox: bool = False,
         add_pixel_value_scaling: bool = False,
+        add_data_type: bool = False,
     ) -> List[dict]:
         """Dump all features from org.openeo.opensearch.OpenSearchClient"""
         feature_iterator = opensearch_client.features().iterator()
         return [
             self.dump_feature(
-                feature=feature, add_links=add_links, add_bbox=add_bbox, add_pixel_value_scaling=add_pixel_value_scaling
+                feature=feature, add_links=add_links, add_bbox=add_bbox, add_pixel_value_scaling=add_pixel_value_scaling, add_data_type=add_data_type
             )
             for feature in self.scala_iterate(feature_iterator)
         ]
