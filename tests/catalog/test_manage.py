@@ -159,6 +159,7 @@ class TestBuildMetadata:
                     "url": "https://stac.test/c/foobar1",
                     "enrich": True,
                 },
+                "management_info": {"enrichment_mode": "legacy_at_runtime"},
             },
             "bands": [{"name": "blue", "description": "Not red"}],
             "cube:dimensions": {
@@ -200,6 +201,7 @@ class TestBuildMetadata:
                     "url": "https://stac.test/c/foobar1",
                     "enrich": False,
                 },
+                "management_info": {"enrichment_mode": "legacy_at_build_time"},
             },
             "bands": [{"name": "blue", "description": "Not red"}],
             "cube:dimensions": {
