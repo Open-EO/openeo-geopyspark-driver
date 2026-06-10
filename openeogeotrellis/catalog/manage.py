@@ -361,7 +361,12 @@ def build_stac_collection_metadata(
         summaries.update(extra_summaries)
 
     cube_dimensions_bands_values = [b.name for b in bands]
-    vito = {"data_source": data_source}
+    vito = {
+        "data_source": data_source,
+        "management_info": {
+            "enrichment_mode": enrichment_mode,
+        },
+    }
     if properties:
         vito["properties"] = properties
 
