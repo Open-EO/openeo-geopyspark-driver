@@ -780,6 +780,117 @@ def test_k8s_sparkapplication_dict_propagatable_web_app_driver_envars(backend_co
     )
 
 
+def test_k8s_sparkapplication_dict_gdal_envars(backend_config_path):
+    """
+    Make sure GDAL environment variables are present for driver and executor
+    """
+    app_dict = k8s_render_manifest_template(
+        "sparkapplication.yaml.j2",
+        propagatable_web_app_driver_envars={},
+        aws_access_key_id="akid",
+        aws_secret_access_key="mysec",
+        aws_endpoint="s3.localhost",
+        aws_region="eodata",
+        aws_https="TRUE",
+    )
+
+    expected_env_values = [
+        {
+            "name": "AWS_ACCESS_KEY_ID",
+            "value": "akid",
+        },
+        {
+            "name": "AWS_SECRET_ACCESS_KEY",
+            "value": "mysec",
+        },
+        {
+            "name": "AWS_S3_ENDPOINT",
+            "value": "s3.localhost",
+        },
+        {
+            "name": "AWS_DEFAULT_REGION",
+            "value": "eodata",
+        },
+        {
+            "name": "AWS_REGION",
+            "value": "eodata",
+        },
+        {
+            "name": "AWS_HTTPS",
+            "value": "TRUE",
+        },
+        {
+            "name": "AWS_VIRTUAL_HOSTING",
+            "value": "FALSE",
+        },
+    ]
+
+    for spark_component in ["driver", "executor"]:
+        spark_component_env = app_dict["spec"][spark_component]["env"]
+
+        assert spark_component_env == dirty_equals.Contains(*expected_env_values)
+
+
+def test_k8s_sparkapplication_dict_gdal_envars_with_proxy(backend_config_path):
+    """
+    Make sure adapted GDAL environment variables are present for driver and executor and make sure other
+    environment variables are NOT set.
+    """
+    app_dict = k8s_render_manifest_template(
+        "sparkapplication.yaml.j2",
+        propagatable_web_app_driver_envars={},
+        force_s3proxy=True,
+        aws_role_arn="arn:aws:iam:::role/my-role",
+        aws_web_identity_token_file="/tmp/token",
+        s3_proxy_endpoint="s3.localhost",
+        sts_proxy_endpoint="sts.localhost",
+        aws_region="eodata",
+        aws_https="TRUE",
+    )
+
+    expected_env_values = [
+        {
+            "name": "AWS_ROLE_ARN",
+            "value": "arn:aws:iam:::role/my-role",
+        },
+        {
+            "name": "AWS_WEB_IDENTITY_TOKEN_FILE",
+            "value": "/tmp/token",
+        },
+        {
+            "name": "AWS_S3_ENDPOINT",
+            "value": "s3.localhost",
+        },
+        {
+            "name": "AWS_STS_ENDPOINT",
+            "value": "sts.localhost",
+        },
+        {
+            "name": "AWS_DEFAULT_REGION",
+            "value": "eodata",
+        },
+        {
+            "name": "AWS_REGION",
+            "value": "eodata",
+        },
+        {
+            "name": "AWS_HTTPS",
+            "value": "TRUE",
+        },
+        {
+            "name": "AWS_VIRTUAL_HOSTING",
+            "value": "FALSE",
+        },
+    ]
+
+    for spark_component in ["driver", "executor"]:
+        spark_component_env = app_dict["spec"][spark_component]["env"]
+
+        assert spark_component_env == dirty_equals.Contains(*expected_env_values)
+        for problem_env_vars in ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"]:
+            assert problem_env_vars not in [e["name"] for e in spark_component_env]
+
+
 class TestGpsBatchJobs:
     _dummy_user = User(user_id="test_user", internal_auth_data={"access_token": "4cc3ss_t0k3n"})
 
