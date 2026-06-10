@@ -45,7 +45,7 @@ def _get_proxy_s3_client_for_job(bucket: str, job_id: str, user_id) -> S3Client:
             endpoint_url=endpoint_url,
             region_name=region_name,
             config=Config(signature_version="s3v4"),
-            **creds.as_client_kwargs()
+            **creds.as_client_kwargs(),
         )
     except KeyError:
         raise S3ProxyDisabled(f"Region {region_name} is not supported by proxy.")
