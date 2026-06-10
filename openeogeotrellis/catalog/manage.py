@@ -54,6 +54,8 @@ CRS_AUTO_42001 = {
     "id": {"authority": "OGC", "version": "1.3", "code": "Auto42001"},
 }
 
+GUESS_BANDS_FROM_UPSTREAM = "guess_bands_from_upstream"
+
 
 class LayerCatalog:
     def __init__(self, collections: Iterable[dict] = ()):
@@ -275,7 +277,7 @@ def build_stac_collection_metadata(
     stac_url: str,
     description: Optional[str] = None,
     description_prefix: Optional[str] = None,
-    bands: List[BandMetadata],
+    bands: Union[List[BandMetadata], str],
     load_stac_feature_flags: Optional[dict] = None,
     x_dim: Optional[dict] = None,
     y_dim: Optional[dict] = None,
@@ -343,6 +345,13 @@ def build_stac_collection_metadata(
 
     if not description:
         description = (description_prefix or "") + upstream_metadata.get("description", "")
+
+    if bands == GUESS_BANDS_FROM_UPSTREAM:
+        bands = extract_band_metadata_list(upstream_metadata)
+    elif isinstance(bands, list):
+        pass
+    else:
+        raise ValueError(bands)
 
     if ComparableVersion("1.1.0").or_higher(stac_version):
         # Per https://github.com/radiantearth/stac-spec/issues/1346
