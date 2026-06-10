@@ -1692,11 +1692,16 @@ class ItemDeduplicator:
         *,
         time_shift_max: float = 30,
         duplication_properties: Optional[List[str]] = None,
-        score_property_preference: Optional[Dict[str, List]] = None,
+        score_property_preference: Optional[Dict[str, Union[List, Dict]]] = None,
         properties_from_id: Optional[Dict[str, Union[str, re.Pattern]]] = None,
     ):
         """
 
+        :param score_property_preference: dict mapping property name to a value scoring, given as:
+            - ordered list from most preferred to least preferred
+              e.g. {"processing:version": [110, 100]} means:
+              prefer items where processing:version==110 over those with 100
+            - or as dict mapping a value to a score
         :param properties_from_id: optional mapping to support extracting (fake) properties
             from item id using regular expressions. For example,
             to extract the "RT" value (consolidation period) from
@@ -1715,16 +1720,28 @@ class ItemDeduplicator:
         else:
             self._duplication_properties = duplication_properties
 
-        # score_property_preference: dict mapping property name to ordered list of preferred values.
-        # e.g. {"processing:version": [110, 100]} means: prefer items where processing:version==110
-        # over those with 100; values not in the list (or property absent) fall back to default scoring.
-        self._score_property_preference: Dict[str, List] = score_property_preference or {}
+        # Pre-compute the property-score mapping
+        self._score_property_preference: Dict[str, Dict[str, int]] = {
+            p: self._to_score_map(m) for p, m in (score_property_preference or {}).items()
+        }
 
         # Dict of regular expressions to allow extracting (fake) properties from item id, e.g. as fallback
         self._properties_from_id: Optional[Dict[str, re.Pattern]] = (
             {k: (v if isinstance(v, re.Pattern) else re.compile(v)) for k, v in properties_from_id.items()}
             if properties_from_id
             else None
+        )
+
+    @staticmethod
+    def _to_score_map(score_map: Union[list, dict]) -> Dict[str, int]:
+        if isinstance(score_map, list):
+            return {v: len(score_map) - i for i, v in enumerate(score_map)}
+        else:
+            return score_map
+
+    def __repr__(self):
+        return f"ItemDeduplicator({self._duplication_properties=}, {self._score_property_preference=}, {self._properties_from_id=})".replace(
+            "self._", ""
         )
 
     @staticmethod
@@ -1810,16 +1827,12 @@ class ItemDeduplicator:
     def _score(self, item: pystac.Item) -> tuple:
         """Score an item for deduplication preference (higher is better)."""
         # Primary: score by property preference (if configured)
-        preference_scores = []
-        for prop, preferred_values in self._score_property_preference.items():
-            value = self._get_item_property(item, property=prop)
-            if value is not None and value in preferred_values:
-                # Earlier position in preference list → higher score
-                preference_scores.append(len(preferred_values) - preferred_values.index(value))
-            else:
-                preference_scores.append(0)
+        score = tuple(
+            score_map.get(self._get_item_property(item, property=prop), 0)
+            for prop, score_map in self._score_property_preference.items()
+        )
         # Fallback: prefer more recently updated items, then use item id as tie breaker
-        return (*preference_scores, item.properties.get("updated", ""), item.id)
+        return score + (item.properties.get("updated", ""), item.id)
 
     def _group_duplicates(self, items: Iterable[pystac.Item]) -> Iterator[List[pystac.Item]]:
         """Produce groups of duplicate items."""

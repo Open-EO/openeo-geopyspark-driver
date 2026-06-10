@@ -3230,6 +3230,14 @@ class TestItemDeduplicator:
         deduplicator = ItemDeduplicator()
         assert deduplicator.deduplicate([item]) == [item]
 
+    def test_repr(self):
+        deduplicator = ItemDeduplicator(
+            duplication_properties=["platform"], score_property_preference={"gsd": [10, 100]}
+        )
+        expected = "ItemDeduplicator(duplication_properties=['platform'], score_property_preference={'gsd': {10: 2, 100: 1}}, properties_from_id=None)"
+        assert repr(deduplicator) == expected
+        assert str(deduplicator) == expected
+
     def test_basic(self):
         item10 = pystac.Item.from_dict(StacDummyBuilder.item(id="item-10", datetime="2025-11-10T00:00:00Z"))
         item10_1s = pystac.Item.from_dict(StacDummyBuilder.item(id="item-10+1s", datetime="2025-11-10T00:00:01Z"))
