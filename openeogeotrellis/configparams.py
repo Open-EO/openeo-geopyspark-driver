@@ -40,16 +40,6 @@ class ConfigParams:
         self.pod_namespace = env.get("POD_NAMESPACE", "spark-jobs")
         self.concurrent_pod_limit = int(env.get("CONCURRENT_POD_LIMIT", 0))  # 0 means no limit.
 
-        self.batch_job_output_root = Path(
-            env.get("OPENEO_BATCH_JOB_OUTPUT_ROOT")
-            or (
-                # TODO #283 using this "is_kube_deploy" switch is an anti-pattern (induces hard to maintain code and make unit testing difficult)
-                "/batch_jobs"
-                if self.is_kube_deploy
-                else "/data/projects/OpenEO/"
-            )
-        )
-
     def __str__(self) -> str:
         return pformat(vars(self))
 

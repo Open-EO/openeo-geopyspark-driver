@@ -1013,6 +1013,7 @@ class TestGpsBatchJobs:
         with gps_config_overrides(
             setup_kerberos_auth=False,
             yunikorn_user_specific_queues=True,  # avoid another call to ZK
+            batch_job_work_dir_root="/batch_jobs/",
         ):
             monkeypatch.setenv("KUBE", "TRUE")
             yield
