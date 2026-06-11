@@ -3792,6 +3792,7 @@ def test_export_workspace_derived_from(
 
 
 def test_webapp_derived_from(tmp_path, metadata_tracker):
+    # TODO: what has this to do with "webapp"?
     process_graph = {
         "loadcollection1": {
             "process_id": "load_collection",
@@ -4087,7 +4088,25 @@ def test_predict_onnx_reduce_sum(tmp_path):
         ("1.1",),
     ],
 )
-def test_load_stac_serialize_item_collection(tmp_path, job_dir, dummy_stac_api, metadata_tracker, stac_version):
+@pytest.mark.parametrize(
+    ["config_overrides", "expected_href"],
+    [
+        (
+            {"job_local_href_format": None},
+            "file://{expected_item_collection_path}",
+        ),
+        (
+            {
+                "job_local_href_format": "s3",
+                "s3_bucket_name": "openeo-batch-job-data",
+            },
+            "s3://openeo-batch-job-data{expected_item_collection_path}",
+        ),
+    ],
+)
+def test_load_stac_serialize_item_collection(
+    tmp_path, job_dir, dummy_stac_api, metadata_tracker, stac_version, config_overrides, expected_href
+):
     process_graph = {
         "loadstac1": {
             "process_id": "load_stac",
@@ -4107,17 +4126,20 @@ def test_load_stac_serialize_item_collection(tmp_path, job_dir, dummy_stac_api, 
         "job_options": {"stac-version": stac_version},
     }
     metadata_path = job_dir / JOB_METADATA_FILENAME
-    run_job(
-        job_specification=job_specification,
-        output_file=job_dir / "out",
-        metadata_file=metadata_path,
-        job_dir=job_dir,
-    )
+
+    with gps_config_overrides(**config_overrides):
+        run_job(
+            job_specification=job_specification,
+            output_file=job_dir / "out",
+            metadata_file=metadata_path,
+            job_dir=job_dir,
+        )
+
     metadata = read_json(metadata_path)
     expected_item_collection_path = job_dir / "stac-item-collection-loadstac1.json"
     expected_link = {
         "rel": "derived_from",
-        "href": f"file://{expected_item_collection_path}",
+        "href": expected_href.format(expected_item_collection_path=expected_item_collection_path),
         "type": "application/geo+json",
         ITEM_LINK_PROPERTY.EXPOSE_AUXILIARY: True,
     }
@@ -4142,8 +4164,31 @@ def test_load_stac_serialize_item_collection(tmp_path, job_dir, dummy_stac_api, 
         ("1.1",),
     ],
 )
+@pytest.mark.parametrize(
+    ["config_overrides", "expected_href"],
+    [
+        (
+            {"job_local_href_format": None},
+            "file://{expected_item_collection_path}",
+        ),
+        (
+            {
+                "job_local_href_format": "s3",
+                "s3_bucket_name": "openeo-batch-job-data",
+            },
+            "s3://openeo-batch-job-data{expected_item_collection_path}",
+        ),
+    ],
+)
 def test_load_collection_with_stac_serialize_item_collection(
-    tmp_path, job_dir, dummy_stac_api, metadata_tracker, stac_version, define_extra_collection
+    tmp_path,
+    job_dir,
+    dummy_stac_api,
+    metadata_tracker,
+    stac_version,
+    define_extra_collection,
+    config_overrides,
+    expected_href,
 ):
     collection_id = "STAC_COLLECTION_123"
     stac_url = f"{dummy_stac_api}/collections/collection-123"
@@ -4185,18 +4230,20 @@ def test_load_collection_with_stac_serialize_item_collection(
         "job_options": {"stac-version": stac_version},
     }
     metadata_path = job_dir / JOB_METADATA_FILENAME
-    run_job(
-        job_specification=job_specification,
-        output_file=job_dir / "out",
-        metadata_file=metadata_path,
-        job_dir=job_dir,
-    )
+
+    with gps_config_overrides(**config_overrides):
+        run_job(
+            job_specification=job_specification,
+            output_file=job_dir / "out",
+            metadata_file=metadata_path,
+            job_dir=job_dir,
+        )
     metadata = read_json(metadata_path)
 
     expected_item_collection_path = job_dir / "stac-item-collection-loadcollection1.json"
     expected_link = {
         "rel": "derived_from",
-        "href": f"file://{expected_item_collection_path}",
+        "href": expected_href.format(expected_item_collection_path=expected_item_collection_path),
         "type": "application/geo+json",
         ITEM_LINK_PROPERTY.EXPOSE_AUXILIARY: True,
     }
