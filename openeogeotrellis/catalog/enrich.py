@@ -150,6 +150,7 @@ def enrich_catalog_metadata(
         else:
             logger.info(f"No enrichment implementation for {data_source_type=}")
             enrichment_stats["no enrichment implementation"] += 1
+            enrichment_stats[f"no enrichment for {data_source_type=}"] += 1
 
     logger.info(f"Enrichment stats: {collection_iterator=!s} {dict(enrichment_stats)=}")
 
