@@ -355,6 +355,8 @@ class GpsBackendConfig(OpenEoBackendConfig):
 
     load_stac_deduplicate_items_default: Union[bool, dict] = False
 
+    job_local_href_format: Optional[str] = "s3" if _is_kube_deploy else None
+
 
 def get_zookeeper_auth_data(config: GpsBackendConfig) -> list:
     """Return Kazoo auth_data list for ZK digest ACL, or empty list if not configured."""
