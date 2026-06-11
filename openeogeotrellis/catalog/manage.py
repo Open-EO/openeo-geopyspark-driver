@@ -487,6 +487,7 @@ class _BandMetadataCollector:
         - "summaries" > "bands"
         - "summaries" > "eo:bands"
         - "item_assets" > ... > "bands"
+        - "cube:dimensions" > "bands" dimension
         """
 
         if "bands" in metadata:
@@ -532,6 +533,12 @@ class _BandMetadataCollector:
                             nodata=band.get("nodata") or asset.get("nodata"),
                             classification_classes=band.get("classification:classes"),
                         )
+
+        if "cube:dimensions" in metadata:
+            for _, dim in metadata["cube:dimensions"].items():
+                if dim.get("type") == "bands":
+                    for b in dim.get("values"):
+                        self.register(name=b)
 
         # Set GSD from summaries (if not set already)
         if "summaries" in metadata and "gsd" in metadata["summaries"] and len(metadata["summaries"]["gsd"]) == 1:

@@ -589,6 +589,16 @@ class TestExtractBandMetadata:
             ),
         ]
 
+    def test_only_cube_dimensions(self):
+        metadata = {
+            "cube:dimensions": {
+                "x": {"type": "spatial", "axis": "x"},
+                "y": {"type": "spatial", "axis": "y"},
+                "t": {"type": "temporal", "extent": ["2024-04-01T00:00:00Z", None], "step": "P5D"},
+                "bands": {"type": "bands", "values": ["FAPAR"]},
+            },
+        }
+        assert extract_band_metadata_list(metadata) == [BandMetadata(name="FAPAR")]
 
 class TestBandMetadataList:
     def test_apply_raster_scale_and_offset_simple(self):
