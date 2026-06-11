@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from openeo.util import TimingLogger
 from openeo_driver.jobregistry import ElasticJobRegistry, get_ejr_credentials_from_env
 from openeogeotrellis.backend import GpsBatchJobs
+from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
 
 logging.basicConfig(level=logging.INFO)
@@ -14,8 +15,8 @@ _log = logging.getLogger("openeogeotrellis.cleaner")
 def main():
     assert os.environ.get("OPENEO_EJR_OIDC_CLIENT_CREDENTIALS") is not None, "OPENEO_EJR_OIDC_CLIENT_CREDENTIALS is not set"
     assert os.environ.get("OPENEO_EJR_API") is not None, "OPENEO_EJR_API is not set"
-    batch_job_output_root = ConfigParams().batch_job_output_root
-    assert os.path.exists(batch_job_output_root), f"{batch_job_output_root=} does not exist"
+    batch_job_work_dir_root = get_backend_config().batch_job_work_dir_root
+    assert os.path.exists(batch_job_work_dir_root), f"{batch_job_work_dir_root=} does not exist"
 
     # Parse command line arguments.
     parser = argparse.ArgumentParser(usage="OpenEO Cleaner", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
