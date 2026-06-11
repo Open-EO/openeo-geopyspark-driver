@@ -985,7 +985,6 @@ class BadlyHashable:
 
     def __eq__(self, other):
         equal = isinstance(other, BadlyHashable) and self.target == other.target
-        print(f"{equal=}")
         return equal
 
     def __hash__(self):
