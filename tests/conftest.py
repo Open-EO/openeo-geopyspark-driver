@@ -26,7 +26,8 @@ from openeogeotrellis.integrations.identity import IDPTokenIssuer
 from openeogeotrellis.integrations.stac import _stac_response_cache
 
 from openeogeotrellis.config.s3_config import AWSConfig
-from openeo_driver.integrations.s3.client import S3ClientBuilder
+from openeo_driver.integrations.s3.client import S3ClientBuilder as PythonDriverS3ClientBuilder
+from openeogeotrellis.utils import S3ClientBuilder
 
 import openeogeotrellis
 import pytest
@@ -552,6 +553,31 @@ def urllib_and_request_mock(urllib_mock, requests_mock) -> UrllibAndRequestMocke
 TEST_AWS_REGION_NAME = "eu-central-1"
 
 
+@pytest.fixture(autouse=True)
+def aws_dummy_s3_endpoint(monkeypatch):
+    """
+    Client creation logic for direct clients expect a SWIFT_URL to be defined
+    """
+    monkeypatch.setenv("SWIFT_URL", "http://s3.testdummy.localhost")
+
+
+@pytest.fixture()
+def moto_custom_endpoints(aws_dummy_s3_endpoint, monkeypatch):
+    """
+    In order for moto mocking to work properly the MOTO_S3_CUSTOM_ENDPOINTS environment variable needs to be
+    configured with the endpoints prior to creating the mock. This fixture sets custom endpoints and yields the
+    endpoints so runtime client creations can verify it is safe to create the client.
+    https://docs.getmoto.org/en/4.1.13/docs/services/s3.html
+    """
+    mocked_endpoints = [
+        os.getenv("SWIFT_URL"),
+        "https://s3.waw3-1.cloudferro.com",
+        "https://obs.eu-nl.otc.t-systems.com",
+    ]
+    monkeypatch.setenv("MOTO_S3_CUSTOM_ENDPOINTS", ",".join(mocked_endpoints))
+    yield mocked_endpoints
+
+
 @pytest.fixture(scope="function")
 def aws_credentials(monkeypatch):
     """Mocked AWS Credentials for moto."""
@@ -566,28 +592,50 @@ def aws_credentials(monkeypatch):
 @pytest.fixture(scope="function")
 def mock_s3_resource(aws_credentials, mock_s3_client):
     if moto_server_address is None:
-        with moto.mock_aws():
-            yield boto3.resource("s3", region_name=TEST_AWS_REGION_NAME)
+        yield boto3.resource("s3", region_name=TEST_AWS_REGION_NAME)
     else:
         yield boto3.resource("s3", region_name=TEST_AWS_REGION_NAME, endpoint_url=moto_server_address)
 
+
 @pytest.fixture(scope="function")
-def mocked_s3_client(aws_credentials):
+def mocked_s3_client_builder(aws_credentials, monkeypatch, moto_custom_endpoints):
+    """
+    A fixture that will give you a builder to create s3 clients which can be used where one wants to do a
+    boto3.client("s3", ...) call that should result in a client against moto.
+    """
     if moto_server_address is None:
         with moto.mock_aws():
-            yield boto3.client("s3", region_name=TEST_AWS_REGION_NAME)
+
+            def _mocked_client_builder_inline_mock(*args, **kwargs):
+                assert len(args) == 0 or args[0] != "s3", "s3_client_builder should not get the s3 arg"
+                if "region_name" not in kwargs:
+                    kwargs["region_name"] = TEST_AWS_REGION_NAME
+                if "endpoint_url" in kwargs:
+                    # Moto must be made aware to intercept the custom endpoint used otherwise it fails to mock
+                    # https://docs.getmoto.org/en/4.1.13/docs/services/s3.html
+                    assert kwargs["endpoint_url"] in moto_custom_endpoints, "S3Client with unsafe custom endpoint"
+                return boto3.client("s3", *args, **kwargs)
+
+            yield _mocked_client_builder_inline_mock
     else:
-        yield boto3.client("s3", region_name=TEST_AWS_REGION_NAME, endpoint_url=moto_server_address)
+
+        def _mocked_client_builder_standalone_server_mock(*args, **kwargs):
+            assert len(args) == 0 or args[0] != "s3", "s3_client_builder should not get the s3 arg"
+            if "region_name" not in kwargs:
+                kwargs["region_name"] = TEST_AWS_REGION_NAME
+            # Always override endpoint because we MUST go via the server
+            kwargs["endpoint_url"] = moto_server_address
+            return boto3.client("s3", *args, **kwargs)
+
+        yield _mocked_client_builder_standalone_server_mock
 
 
 @pytest.fixture(scope="function")
-def mock_s3_client(mocked_s3_client, monkeypatch):
-    def _get_client(*args, **kwargs):
-        return mocked_s3_client
-
+def mock_s3_client(mocked_s3_client_builder, monkeypatch):
     # monkeypatch in case motoserver runs standalone
-    monkeypatch.setattr(S3ClientBuilder, "from_region", _get_client)
-    yield mocked_s3_client
+    monkeypatch.setattr(PythonDriverS3ClientBuilder, "_s3_client", mocked_s3_client_builder)
+    yield mocked_s3_client_builder()
+
 
 @pytest.fixture(scope="function")
 def mock_sts_client(monkeypatch):
@@ -627,12 +675,24 @@ def mock_s3_bucket(mock_s3_resource, monkeypatch):
 moto_server_address: Optional[str] = None
 
 
+@pytest.fixture
+def clean_s3_client_cache():
+    """
+    Client caching is good for production environment but for test environments where mock servers are spawned
+    this caching leads to problem if the mock server changes between tests.
+    """
+    S3ClientBuilder._s3_client_cache.flush()
+    yield
+    S3ClientBuilder._s3_client_cache.flush()
+
+
 @pytest.fixture(scope="function")
-def moto_server(monkeypatch) -> typing.Generator[str, None, None]:
+def moto_server(monkeypatch, clean_s3_client_cache) -> typing.Generator[str, None, None]:
     """
     Fixture to run Moto in server mode,
     so that subprocesses also can access mocked services
     (when pointed to the correct endpoint URL).
+    Always make sure this is the leftmost fixture in test function arguments!
     """
     server = moto.server.ThreadedMotoServer(
         # Automatically find an open port

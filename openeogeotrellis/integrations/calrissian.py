@@ -36,7 +36,7 @@ from openeogeotrellis.integrations.kubernetes import ensure_kubernetes_config
 from openeogeotrellis.integrations.s3proxy import sts
 from openeogeotrellis.util.byteunit import byte_string_as
 from openeogeotrellis.util.runtime import get_job_id, get_request_id, ENV_VAR_OPENEO_BATCH_JOB_ID
-from openeogeotrellis.utils import s3_client
+from openeogeotrellis.utils import S3ClientBuilder
 
 try:
     # TODO #1060 importlib.resources on Python 3.8 is pretty limited so we need backport
@@ -139,7 +139,7 @@ class CalrissianS3Result:
         assert "<" not in self.s3_key, self.s3_key
 
         _log.info(f"Reading from S3: {self.s3_bucket=}, {self.s3_key=}")
-        s3_file_object = s3_client().get_object(Bucket=self.s3_bucket, Key=self.s3_key)
+        s3_file_object = S3ClientBuilder.from_bucket(self.s3_bucket).get_object(Bucket=self.s3_bucket, Key=self.s3_key)
         body = s3_file_object["Body"]
         content = body.read()
         if encoding:
@@ -147,7 +147,7 @@ class CalrissianS3Result:
         return content
 
     def generate_presigned_url(self, expiration=3600) -> str:
-        return s3_client().generate_presigned_url(
+        return S3ClientBuilder.from_bucket(self.s3_bucket).generate_presigned_url(
             ClientMethod="get_object",
             Params={"Bucket": self.s3_bucket, "Key": self.s3_key},
             ExpiresIn=expiration,
@@ -165,7 +165,9 @@ class CalrissianS3Result:
             target = target / Path(self.s3_key).name
         _log.info(f"Downloading from S3: {self.s3_bucket=} {self.s3_key=} to {target=}")
         with target.open(mode="wb") as f:
-            s3_client().download_fileobj(Bucket=self.s3_bucket, Key=self.s3_key, Fileobj=f)
+            S3ClientBuilder.from_bucket(self.s3_bucket).download_fileobj(
+                Bucket=self.s3_bucket, Key=self.s3_key, Fileobj=f
+            )
         return target
 
 
@@ -458,7 +460,7 @@ class CalrissianJobLauncher:
             f"create_input_staging_job_manifest creating {cwl_path=} from {cwl_content[:32]=} through {cwl_serialized[:32]=}"
         )
 
-        s3_client().head_bucket(Bucket=self._s3_bucket)  # check if the bucket exists
+        S3ClientBuilder.from_bucket(self._s3_bucket).head_bucket(Bucket=self._s3_bucket)  # check if the bucket exists
 
         container = kubernetes.client.V1Container(
             name=name,

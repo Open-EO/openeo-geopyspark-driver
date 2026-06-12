@@ -334,9 +334,10 @@ def get_s3_file_contents(filename: Union[os.PathLike, str], bucket: Optional[str
     Get contents of a text file in an S3 bucket; the bucket defaults to ConfigParams().s3_bucket_name.
     """
     # TODO: move this to openeodriver.integrations.s3?
-    s3_instance = s3_client()
+    _bucket = bucket or get_backend_config().s3_bucket_name
+    s3_instance = S3ClientBuilder.from_bucket(_bucket)
     s3_file_object = s3_instance.get_object(
-        Bucket=bucket or get_backend_config().s3_bucket_name,
+        Bucket=_bucket,
         Key=str(filename).strip("/"),
     )
     body = s3_file_object["Body"]
@@ -355,7 +356,7 @@ def stream_s3_binary_file_contents(s3_url: str) -> Iterable[bytes]:
     bucket, file_name = s3_url[5:].split("/", 1)
     logger.debug(f"Streaming contents from S3 object storage: {bucket=}, key={file_name}")
 
-    s3_instance = s3_client()
+    s3_instance = S3ClientBuilder.from_bucket(bucket)
     s3_file_object = s3_instance.get_object(Bucket=bucket, Key=file_name)
     body = s3_file_object["Body"]
     return body.iter_chunks()
@@ -379,10 +380,7 @@ def download_s3_directory(s3_url: str, output_dir: str):
     bucket, input_dir = s3_url[5:].split("/", 1)
     logger.debug(f"Downloading directory from S3 object storage: {bucket=}, key={input_dir}")
 
-    if bucket.lower() == "eodata":
-        s3_instance = eodata_s3_client()
-    else:
-        s3_instance = s3_client()
+    s3_instance = S3ClientBuilder.from_bucket(bucket)
 
     bucket_keys = s3_instance.list_objects_v2(Bucket=bucket, MaxKeys=1000, Prefix=input_dir)
     for obj in bucket_keys["Contents"]:
