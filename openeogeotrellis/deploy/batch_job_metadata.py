@@ -26,6 +26,7 @@ from shapely.geometry import Polygon, mapping
 from shapely.geometry.base import BaseGeometry
 
 from openeogeotrellis._version import __version__
+from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.backend import JOB_METADATA_FILENAME, GeoPySparkBackendImplementation
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.integrations.gdal import _extract_gdal_asset_raster_metadata
@@ -471,3 +472,34 @@ def _get_tracker_metadata(tracker_id: str = "", *, omit_derived_from_links: bool
         else:
             usage["input_pixel"] = {"value": sar_backscatter_inputpixels / (1024 * 1024), "unit": "mega-pixel"}
     return dict_no_none(usage=usage or None, links=all_links, auxiliary_links=auxiliary_links or None)
+
+
+def convert_job_local_hrefs(metadata: dict) -> dict:
+    """
+    Walk through the metadata and look for 'openeo-job-local://' hrefs,
+    which are local paths that only make sense inside/during a batch job context,
+    but need conversion to be resolvable after the job finished.
+    """
+
+    # TODO: more conversion options? E.g. directly to signed s3 URL?
+    if get_backend_config().job_local_href_format == "s3":
+        convert_path = to_s3_url
+    else:
+        # By default, assume job local path is directly usable
+        convert_path = lambda p: f"file://{p}"
+
+    def _convert(data: Any) -> Any:
+        if isinstance(data, dict):
+            converted = {k: _convert(v) for k, v in data.items()}
+            if (href := data.get("href")) and "rel" in data:
+                # This is a link object: convert href if possible
+                if href.startswith("openeo-job-local://"):
+                    path = href.split("://", 1)[-1]
+                    converted["href"] = convert_path(path)
+            return converted
+        elif isinstance(data, list):
+            return [_convert(v) for v in data]
+        else:
+            return data
+
+    return _convert(metadata)

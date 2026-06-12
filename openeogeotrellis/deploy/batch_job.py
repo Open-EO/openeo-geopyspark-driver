@@ -62,6 +62,7 @@ from openeogeotrellis.deploy.batch_job_metadata import (
     _convert_asset_outputs_to_s3_urls,
     _get_tracker_metadata,
     _transform_stac_metadata,
+    convert_job_local_hrefs,
 )
 from openeogeotrellis.integrations.gdal import get_abs_path_of_asset
 from openeogeotrellis.integrations.hadoop import setup_kerberos_auth
@@ -507,11 +508,12 @@ def run_job(
         all_result_items = [item for result_items in results_items for item in result_items.values()]
 
         if is_stac11:
+            # TODO: more structural way to keep track of "derived_from" item_collection paths (instead of globbing a path)?
             for stac_item_collection_path in Path(job_dir).glob(get_stac_item_collection_filename(pg_node_id="*")):
                 extra_links.append(
                     {
                         "rel": "derived_from",
-                        "href": f"file://{stac_item_collection_path.absolute()}",
+                        "href": f"openeo-job-local://{stac_item_collection_path.absolute()}",
                         "type": "application/geo+json",
                         ITEM_LINK_PROPERTY.EXPOSE_AUXILIARY: True,
                     }
@@ -696,6 +698,8 @@ def write_metadata(metadata: dict, metadata_file: Path, is_stac11: bool):
     if ConfigParams().is_kube_deploy:
         out_metadata = _convert_asset_outputs_to_s3_urls(metadata)
     log_asset_hrefs("output")
+
+    out_metadata = convert_job_local_hrefs(out_metadata)
 
     if is_stac11:
         out_metadata = deepcopy(out_metadata)  # avoid mutating an object that is going to be reused

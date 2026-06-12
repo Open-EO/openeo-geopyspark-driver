@@ -1541,11 +1541,7 @@ class GpsBatchJobs(backend.BatchJobs):
         self._requests_session = requests_session or requests.Session()
 
         # TODO: Generalize assumption that output_dir == local FS? (e.g. results go to non-local S3)
-        # TODO: What's called here "output" dir is also used for input (e.g. specification file or UDF dependencies).
-        #       Rename to more general "work" dir, or have clean separation between input/output dirs?
-        self._output_root_dir = Path(
-            output_root_dir or ConfigParams().batch_job_output_root
-        )
+        self._batch_job_work_dir_root = Path(output_root_dir or get_backend_config().batch_job_work_dir_root)
 
         self._double_job_registry = DoubleJobRegistry(
             elastic_job_registry=elastic_job_registry,
@@ -1884,7 +1880,7 @@ class GpsBatchJobs(backend.BatchJobs):
         #       add an intermediate level (e.g. based on job_id/user_id prefix or date or ...)?
         # TODO: this so called "output" dir is also being used for "input" (e.g. specification file, UDF deps, ...),
         #       so "work dir" would be a better name. Also see `get_job_work_dir`.
-        return self._output_root_dir / job_id
+        return self._batch_job_work_dir_root / job_id
 
     def get_job_work_dir(self, job_id: str) -> Path:
         """
@@ -1892,7 +1888,7 @@ class GpsBatchJobs(backend.BatchJobs):
 
         also see get_job_output_dir (deprecated)
         """
-        return self._output_root_dir / job_id
+        return self._batch_job_work_dir_root / job_id
 
 
 
