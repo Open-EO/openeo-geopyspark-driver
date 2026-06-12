@@ -1395,6 +1395,60 @@ Example usage:
 
 
 class GpsProcessing(ConcreteProcessing):
+
+
+
+    def __init__(self):
+        super().__init__()
+        registry12 = self.get_process_registry(ComparableVersion("1.2.0"))
+
+        try:
+            jvm = get_jvm()
+            registry = jvm.org.openeo.geotrelliscommon.CubeProcessRegistry
+            processes = list(registry.listProcesses())
+        except Exception as e:
+            logger.debug("CubeProcessRegistry not available, skipping dynamic method generation: %s", e)
+            return
+
+        from openeo_driver.processes import ProcessArgs
+
+        for proc in processes:
+            process_id: str = proc["id"]
+            description: str = proc.get("description") or f"openEO process '{process_id}' (auto-generated from CubeProcessRegistry)."
+            if registry12.contains(process_id):
+                continue
+
+            def _make_handler(pid: str):
+                def _handler(args: ProcessArgs, env: EvalEnv) -> DriverDataCube:
+                    cube: DriverDataCube = args.get_required("data", expected_type=DriverDataCube)
+                    method = getattr(cube, pid, None)
+                    if method is None or not callable(method):
+                        raise ProcessUnsupportedException(process=pid)
+                    # Pass all arguments except "data" as keyword arguments to the cube method.
+                    remaining = {k: v for k, v in dict(args).items() if k != "data"}
+                    return method(**remaining)
+                _handler.__name__ = pid
+                return _handler
+
+            spec = {
+                "id": process_id,
+                "summary": description.splitlines()[0] if description else process_id,
+                "description": description,
+                "parameters": [
+                    {
+                        "name": "data",
+                        "description": "A data cube.",
+                        "schema": {"type": "object", "subtype": "datacube"},
+                    }
+                ],
+                "returns": {
+                    "description": "Processed data cube.",
+                    "schema": {"type": "object", "subtype": "datacube"},
+                },
+            }
+            registry12.add_process(name=process_id, function=_make_handler(process_id), spec=spec)
+
+
     def extra_validation(
             self, process_graph: dict, env: EvalEnv, result, source_constraints: List[SourceConstraint]
     ) -> Iterable[dict]:
