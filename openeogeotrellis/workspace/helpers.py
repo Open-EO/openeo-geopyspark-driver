@@ -8,7 +8,7 @@ from openeo_driver.util.auth import _AccessTokenCache
 from openeo.rest.auth.oidc import OidcClientCredentialsAuthenticator, OidcClientInfo, OidcProviderInfo
 
 from .stac_api_workspace import StacApiWorkspace
-from openeogeotrellis.utils import s3_client, md5_checksum
+from openeogeotrellis.utils import S3ClientBuilder, md5_checksum
 
 
 def vito_stac_api_workspace(  # for lack of a better name, can still be aliased
@@ -51,7 +51,7 @@ def vito_stac_api_workspace(  # for lack of a better name, can still be aliased
         target_key = f"{target_prefix}/{relative_asset_path}"
 
         if source_uri_parts.scheme in ["", "file"]:
-            s3_client().upload_file(
+            S3ClientBuilder.from_bucket(asset_bucket).upload_file(
                 str(source_path),
                 asset_bucket,
                 target_key,
@@ -69,7 +69,7 @@ def vito_stac_api_workspace(  # for lack of a better name, can still be aliased
             source_bucket = source_uri_parts.netloc
             source_key = str(source_path).lstrip("/")
 
-            s3 = s3_client()
+            s3 = S3ClientBuilder.from_bucket(asset_bucket)
             s3.copy_object(CopySource={"Bucket": source_bucket, "Key": source_key}, Bucket=asset_bucket, Key=target_key)
             if remove_original:
                 s3.delete_object(Bucket=source_bucket, Key=source_key)

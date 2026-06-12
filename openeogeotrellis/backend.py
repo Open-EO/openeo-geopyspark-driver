@@ -150,7 +150,7 @@ from openeogeotrellis.utils import (
     mdc_include,
     mdc_remove,
     normalize_temporal_extent,
-    s3_client,
+    S3ClientBuilder,
     single_value,
     to_projected_polygons,
     zk_client,
@@ -2115,8 +2115,9 @@ class GpsBatchJobs(backend.BatchJobs):
                     )
 
             bucket = get_backend_config().s3_bucket_name
-            s3_instance = s3_client()
+            s3_instance = S3ClientBuilder.from_bucket(bucket)
 
+            # TODO: Should get rid of runtime bucket creation
             all_buckets = s3_instance.list_buckets()
 
             if not any('Name' in item and item['Name'] == bucket for item in all_buckets['Buckets']):

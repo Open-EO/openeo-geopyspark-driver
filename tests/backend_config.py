@@ -31,7 +31,7 @@ def _stac_api_workspace() -> StacApiWorkspace:
     import pystac
     from pathlib import Path
     from urllib.parse import urlparse
-    from openeogeotrellis.utils import s3_client
+    from openeogeotrellis.utils import S3ClientBuilder
 
     target_bucket = "openeo-fake-bucketname"
 
@@ -47,7 +47,7 @@ def _stac_api_workspace() -> StacApiWorkspace:
         source_path = Path(asset.get_absolute_href())
         target_key = str(merge / relative_asset_path)
 
-        s3_client().upload_file(str(source_path), target_bucket, target_key)
+        S3ClientBuilder.from_bucket(target_bucket).upload_file(str(source_path), target_bucket, target_key)
 
         return f"s3://{target_bucket}/{target_key}"
 
@@ -59,7 +59,9 @@ def _stac_api_workspace() -> StacApiWorkspace:
         assert uri_parts.scheme == "file"
 
         source_path = Path(uri_parts.path)
-        s3_client().upload_file(str(source_path), target_bucket, str(merge / source_path.name))
+        S3ClientBuilder.from_bucket(target_bucket).upload_file(
+            str(source_path), target_bucket, str(merge / source_path.name)
+        )
 
         return f"s3://{target_bucket}/{merge / source_path.name}"
 

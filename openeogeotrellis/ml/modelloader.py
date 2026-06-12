@@ -15,7 +15,7 @@ from openeo_driver.errors import OpenEOApiException, FileNotFoundException
 from openeo_driver.utils import generate_unique_id
 
 from openeogeotrellis.configparams import ConfigParams
-from openeogeotrellis.utils import s3_client, set_permissions
+from openeogeotrellis.utils import S3ClientBuilder, set_permissions
 from openeogeotrellis.ml.geopysparkmlmodel import GeopysparkMlModel, ModelArchitecture
 from openeogeotrellis.ml.geopysparkcatboostmodel import GeopySparkCatBoostModel
 from openeogeotrellis.ml.geopysparkrandomforestmodel import GeopySparkRandomForestModel
@@ -221,7 +221,7 @@ class ModelLoader:
             raise ValueError(f"Invalid S3 path format: {s3_path}")
 
         bucket, key = path_split[0], path_split[1]
-        s3 = s3_client()
+        s3 = S3ClientBuilder.from_bucket(bucket)
 
         for root, dirs, files in os.walk(local_path):
             for file in files:
