@@ -55,7 +55,7 @@ from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import SourceConstraint, DryRunDataCube, DryRunDataTracer, DataSource
 from openeo_driver.errors import (InternalException, JobNotFinishedException, OpenEOApiException,
                                   ServiceUnsupportedException,
-                                  ProcessParameterInvalidException, )
+                                  ProcessParameterInvalidException, ProcessUnsupportedException, )
 from openeo_driver.jobregistry import (DEPENDENCY_STATUS, JOB_STATUS, ElasticJobRegistry, PARTIAL_JOB_STATUS,
                                        get_ejr_credentials_from_env)
 from openeo_driver.ProcessGraphDeserializer import ENV_FINAL_RESULT, ENV_SAVE_RESULT, ConcreteProcessing, \
@@ -2322,12 +2322,15 @@ class GpsBatchJobs(backend.BatchJobs):
         result_node = process_graph[top_level_node]
 
         dry_run_tracer = DryRunDataTracer()
-        convert_node(result_node, env=env.push({
-            ENV_DRY_RUN_TRACER: dry_run_tracer,
-            ENV_SAVE_RESULT: [],
-            ENV_FINAL_RESULT: [None],
-            "node_caching": False
-        }))
+        try:
+            convert_node(result_node, env=env.push({
+                ENV_DRY_RUN_TRACER: dry_run_tracer,
+                ENV_SAVE_RESULT: [],
+                ENV_FINAL_RESULT: [None],
+                "node_caching": False
+            }))
+        except ProcessUnsupportedException as e:
+            logger_adapter.warning(f"start job encountered unknown process - ignoring: {e}")
 
         source_constraints = dry_run_tracer.get_source_constraints()
         logger_adapter.info("Dry run extracted these source constraints: {s}".format(s=source_constraints))
