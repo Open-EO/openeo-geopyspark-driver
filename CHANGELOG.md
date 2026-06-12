@@ -12,6 +12,10 @@ without compromising stable operations.
 
 <!-- start-of-changelog -->
 
+## 0.73.0
+
+- Starting batch jobs is made more lenient to support processes not known by the web application.
+
 ## 0.72.0
 
 - aspect and slope processes now return radians instead of degrees
