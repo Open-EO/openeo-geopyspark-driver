@@ -906,7 +906,11 @@ def load_stac(
         data_cube_parameters=data_cube_parameters,
         pg_node_id=pg_node_id,
     )
-    return _build_datacube(context)
+    merged_flags = {**(feature_flags or {}), **load_params.get("featureflags", {})}
+    from openeogeotrellis.datacube_builder import get_builder
+    builder = get_builder(merged_flags)
+    return builder.build(context)
+    #return _build_datacube(context)
 
 
 def construct_item_collection(
@@ -2387,10 +2391,11 @@ def get_best_url(asset: pystac.Asset, with_vsis3: bool = True, preferred_url_pre
     href = asset.get_absolute_href() or asset.href
 
     # TODO: this vsis3 upper-lower-case juggling should be moved to geotrellis extensions instead of this undocumented coupling (and hardcoded deployment details)
+    # TODO replacement with vsis3 should happen at more specific reader locations instead of doing it globally here?
     return (
         href.replace("s3://eodata/", "/vsis3/eodata/")
         if (with_vsis3 and os.environ.get("AWS_DIRECT") == "TRUE")
-        else href.replace("s3://eodata/", "/eodata/")
+        else href
     )
 
 
