@@ -11,7 +11,7 @@ from urllib.parse import urlparse
 import pystac
 import pystac.stac_io
 import requests
-from openeo_driver.integrations.s3.client import S3ClientBuilder
+from openeogeotrellis.utils import S3ClientBuilder
 from pystac.stac_io import DefaultStacIO
 from pystac_client.stac_api_io import StacApiIO
 
@@ -324,18 +324,14 @@ class S3StacIO(ComposableStacIO):
         key = parsed.path.lstrip("/")
         return bucket, key
 
-    @functools.lru_cache(maxsize=None)
-    def _s3_client(self):
-        return S3ClientBuilder.from_region(region_name=self._region)
-
     def read_text(self, source: Union[pystac.stac_io.HREF, pystac.Link], *args, **kwargs) -> str:
         bucket, key = self._parse(source)
-        response = self._s3_client().get_object(Bucket=bucket, Key=key)
+        response = S3ClientBuilder.from_bucket(bucket).get_object(Bucket=bucket, Key=key)
         return response["Body"].read().decode("utf-8")
 
     def write_text(self, dest: Union[pystac.stac_io.HREF, pystac.Link], txt: str, *args, **kwargs) -> None:
         bucket, key = self._parse(dest)
-        self._s3_client().put_object(
+        S3ClientBuilder.from_bucket(bucket).put_object(
             Bucket=bucket,
             Key=key,
             Body=txt.encode("utf-8"),

@@ -12,9 +12,8 @@ from openeo_driver.workspace import Workspace, _merge_collection_metadata
 from pystac import STACObject, Collection, CatalogType, Item, Asset
 from pystac.layout import HrefLayoutStrategy, CustomLayoutStrategy
 
-from openeo_driver.integrations.s3.client import S3ClientBuilder
 from .custom_stac_io import CustomStacIO
-from openeogeotrellis.utils import md5_checksum
+from openeogeotrellis.utils import md5_checksum, S3ClientBuilder
 
 _log = logging.getLogger(__name__)
 
@@ -42,7 +41,7 @@ class ObjectStorageWorkspace(Workspace):
         config = TransferConfig(multipart_threshold=self.MULTIPART_THRESHOLD_IN_MB * MB)
 
         key = f"{subdirectory}/{file_relative}"
-        S3ClientBuilder.from_region(self.region).upload_file(
+        S3ClientBuilder.from_bucket(self.bucket).upload_file(
             str(file_absolute),
             self.bucket,
             key,
@@ -70,7 +69,7 @@ class ObjectStorageWorkspace(Workspace):
 
         target_key = f"{merge}/{file_relative}"
 
-        s3 = S3ClientBuilder.from_region(self.region)
+        s3 = S3ClientBuilder.from_bucket(self.bucket)
         s3.copy_object(CopySource={"Bucket": source_bucket, "Key": source_key}, Bucket=self.bucket, Key=target_key)
         if remove_original:
             s3.delete_object(Bucket=source_bucket, Key=source_key)
@@ -193,7 +192,7 @@ class ObjectStorageWorkspace(Workspace):
         workspace_uri = f"s3://{self.bucket}/{target_key}"
 
         if source_uri_parts.scheme in ["", "file"]:
-            S3ClientBuilder.from_region(self.region).upload_file(
+            S3ClientBuilder.from_bucket(self.bucket).upload_file(
                 str(source_path), self.bucket, target_key, ExtraArgs={"Metadata": self._object_metadata(source_path)}
             )
 
@@ -206,7 +205,7 @@ class ObjectStorageWorkspace(Workspace):
             source_key = str(source_path).lstrip("/")
 
             # TODO: Move away from copy_object because unreliable for cross region
-            s3 = S3ClientBuilder.from_region(self.region)
+            s3 = S3ClientBuilder.from_bucket(self.bucket)
             s3.copy_object(CopySource={"Bucket": source_bucket, "Key": source_key}, Bucket=self.bucket, Key=target_key)
             if remove_original:
                 s3.delete_object(Bucket=source_bucket, Key=source_key)

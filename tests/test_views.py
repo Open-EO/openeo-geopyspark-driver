@@ -32,7 +32,7 @@ import openeogeotrellis.job_registry
 import openeogeotrellis.sentinel_hub.batchprocessing
 from openeogeotrellis.integrations.s3proxy.asset_urls import PresignedS3AssetUrls
 from openeogeotrellis.backend import JOB_METADATA_FILENAME, GpsBatchJobs
-from openeogeotrellis.integrations.s3proxy.s3 import _client_cache
+from openeogeotrellis.integrations.s3proxy.s3_shared_context import _client_cache
 from openeogeotrellis.job_registry import DoubleJobRegistry
 from openeogeotrellis.testing import gps_config_overrides
 from openeogeotrellis.utils import to_s3_url

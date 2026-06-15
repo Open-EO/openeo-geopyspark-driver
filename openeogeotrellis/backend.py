@@ -55,7 +55,7 @@ from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.dry_run import SourceConstraint, DryRunDataCube, DryRunDataTracer, DataSource
 from openeo_driver.errors import (InternalException, JobNotFinishedException, OpenEOApiException,
                                   ServiceUnsupportedException,
-                                  ProcessParameterInvalidException, )
+                                  ProcessParameterInvalidException, ProcessUnsupportedException, )
 from openeo_driver.jobregistry import (DEPENDENCY_STATUS, JOB_STATUS, ElasticJobRegistry, PARTIAL_JOB_STATUS,
                                        get_ejr_credentials_from_env)
 from openeo_driver.ProcessGraphDeserializer import ENV_FINAL_RESULT, ENV_SAVE_RESULT, ConcreteProcessing, \
@@ -150,7 +150,7 @@ from openeogeotrellis.utils import (
     mdc_include,
     mdc_remove,
     normalize_temporal_extent,
-    s3_client,
+    S3ClientBuilder,
     single_value,
     to_projected_polygons,
     zk_client,
@@ -1395,6 +1395,61 @@ Example usage:
 
 
 class GpsProcessing(ConcreteProcessing):
+
+
+
+    def __init__(self):
+        super().__init__()
+        registry12 = self.get_process_registry(ComparableVersion("1.2.0"))
+
+        try:
+            jvm = get_jvm()
+            registry = jvm.org.openeo.geotrelliscommon.CubeProcessRegistry
+            processes = list(registry.listProcesses())
+        except Exception as e:
+            logger.debug("CubeProcessRegistry not available, skipping dynamic method generation: %s", e)
+            return
+
+        from openeo_driver.processes import ProcessArgs
+
+        for proc in processes:
+            process_id: str = proc["id"]
+            description: str = proc.get("description") or f"openEO process '{process_id}' (auto-generated from CubeProcessRegistry)."
+            if registry12.contains(process_id):
+                continue
+
+            def _make_handler(pid: str):
+                def _handler(args: ProcessArgs, env: EvalEnv) -> DriverDataCube:
+                    cube: DriverDataCube = args.get_required("data", expected_type=DriverDataCube)
+                    method = getattr(cube, pid, None)
+                    if method is None or not callable(method):
+                        raise ProcessUnsupportedException(process=pid)
+                    # Pass all arguments except "data" as keyword arguments to the cube method.
+                    remaining = {k: v for k, v in dict(args).items() if k != "data"}
+                    return method(**remaining)
+                _handler.__name__ = pid
+                return _handler
+
+            spec = {
+                "id": process_id,
+                "summary": description.splitlines()[0] if description else process_id,
+                "description": description,
+                "parameters": [
+                    {
+                        "name": "data",
+                        "description": "A data cube.",
+                        "schema": {"type": "object", "subtype": "datacube"},
+                    }
+                ],
+                "returns": {
+                    "description": "Processed data cube.",
+                    "schema": {"type": "object", "subtype": "datacube"},
+                },
+            }
+            logger.debug(f"Registering process {process_id}")
+            registry12.add_process(name=process_id, function=_make_handler(process_id), spec=spec)
+
+
     def extra_validation(
             self, process_graph: dict, env: EvalEnv, result, source_constraints: List[SourceConstraint]
     ) -> Iterable[dict]:
@@ -2061,8 +2116,9 @@ class GpsBatchJobs(backend.BatchJobs):
                     )
 
             bucket = get_backend_config().s3_bucket_name
-            s3_instance = s3_client()
+            s3_instance = S3ClientBuilder.from_bucket(bucket)
 
+            # TODO: Should get rid of runtime bucket creation
             all_buckets = s3_instance.list_buckets()
 
             if not any('Name' in item and item['Name'] == bucket for item in all_buckets['Buckets']):
@@ -2322,12 +2378,15 @@ class GpsBatchJobs(backend.BatchJobs):
         result_node = process_graph[top_level_node]
 
         dry_run_tracer = DryRunDataTracer()
-        convert_node(result_node, env=env.push({
-            ENV_DRY_RUN_TRACER: dry_run_tracer,
-            ENV_SAVE_RESULT: [],
-            ENV_FINAL_RESULT: [None],
-            "node_caching": False
-        }))
+        try:
+            convert_node(result_node, env=env.push({
+                ENV_DRY_RUN_TRACER: dry_run_tracer,
+                ENV_SAVE_RESULT: [],
+                ENV_FINAL_RESULT: [None],
+                "node_caching": False
+            }))
+        except ProcessUnsupportedException as e:
+            logger_adapter.warning(f"start job encountered unknown process - ignoring: {e}")
 
         source_constraints = dry_run_tracer.get_source_constraints()
         logger_adapter.info("Dry run extracted these source constraints: {s}".format(s=source_constraints))

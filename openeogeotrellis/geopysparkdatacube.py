@@ -109,12 +109,71 @@ class GeopysparkDataCube(DriverDataCube):
 
     metadata: GeopysparkCubeMetadata = None
 
+    # Set to True once CubeProcessRegistry methods have been injected (class-level, done once per JVM).
+    _registry_extended: bool = False
+
     def __init__(
             self, pyramid: Pyramid,
             metadata: GeopysparkCubeMetadata = None
     ):
         super().__init__(metadata=metadata or GeopysparkCubeMetadata({}))
         self.pyramid = pyramid
+        if not GeopysparkDataCube._registry_extended:
+            GeopysparkDataCube._extend_from_cube_process_registry(get_jvm())
+
+    @classmethod
+    def _extend_from_cube_process_registry(cls, jvm) -> None:
+        """
+        Dynamically add methods to this class from the Scala CubeProcessRegistry.
+
+        Each ``@OpenEOProcess``-annotated method that is registered in
+        ``CubeProcessRegistry`` gets a matching Python method, provided no method
+        with that name already exists on the class.  The generated methods are
+        wrapped with the ``@callsite`` decorator so Spark call-site tracking works
+        identically to hand-written methods.
+
+        This is a no-op when ``CubeProcessRegistry`` is not present in the JVM
+        (e.g. in unit tests that run without a full Scala classpath).
+        """
+        cls._registry_extended = True  # guard against re-entry even if the block below raises
+        try:
+            registry = jvm.org.openeo.geotrelliscommon.CubeProcessRegistry
+            processes = list(registry.listProcesses())
+        except Exception as e:
+            _log.debug("CubeProcessRegistry not available, skipping dynamic method generation: %s", e)
+            return
+
+        added = []
+        for proc in processes:
+            process_id: str = proc["id"]
+            returns: str = proc.get("returns", "datacube")
+
+            if hasattr(cls, process_id):
+                _log.debug("Skipping CubeProcessRegistry process '%s': already defined on %s", process_id, cls.__name__)
+                continue
+
+            def _make_method(pid: str, ret: str):
+                def _method(self: "GeopysparkDataCube", **kwargs):
+                    jvm_ = get_jvm()
+                    reg = jvm_.org.openeo.geotrelliscommon.CubeProcessRegistry
+                    if ret == "datacube":
+                        return self._apply_to_levels_geotrellis_rdd(
+                            lambda rdd, _level: reg.invoke(rdd, pid, kwargs)
+                        )
+                    else:
+                        rdd = self.get_max_level().srdd.rdd()
+                        return reg.invoke(rdd, pid, kwargs)
+
+                _method.__name__ = pid
+                _method.__qualname__ = f"{cls.__name__}.{pid}"
+                _method.__doc__ = proc.get("description") or f"openEO process '{pid}' (auto-generated from CubeProcessRegistry)."
+                return callsite(_method)
+
+            setattr(cls, process_id, _make_method(process_id, returns))
+            added.append(process_id)
+
+        if added:
+            _log.info("Added %d dynamic method(s) from CubeProcessRegistry to %s: %s", len(added), cls.__name__, added)
 
     def _is_spatial(self):
         return self.get_max_level().layer_type == gps.LayerType.SPATIAL

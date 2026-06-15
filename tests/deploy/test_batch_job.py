@@ -45,7 +45,7 @@ from openeogeotrellis.integrations.gdal import (
 )
 from openeogeotrellis.metrics_tracking import MetricsTracker, global_tracker
 from openeogeotrellis.testing import gps_config_overrides
-from openeogeotrellis.utils import get_jvm, s3_client, stream_s3_binary_file_contents, to_s3_url
+from openeogeotrellis.utils import get_jvm, S3ClientBuilder, stream_s3_binary_file_contents, to_s3_url
 from tests.data import get_test_data_file
 
 _log = logging.getLogger(__name__)
@@ -1284,7 +1284,7 @@ def test_run_job_get_projection_extension_metadata_job_dir_is_relative_path(eval
 )
 @mock.patch("openeo_driver.ProcessGraphDeserializer.evaluate")
 def test_run_job_get_projection_extension_metadata_assets_in_s3(
-    evaluate, mock_config_use_object_storage, tmp_path, mock_s3_bucket, moto_server
+    evaluate, mock_config_use_object_storage, tmp_path, moto_server, mock_s3_bucket
 ):
     mock_config_use_object_storage.return_value = True
     cube_mock = MagicMock()
@@ -1327,9 +1327,8 @@ def test_run_job_get_projection_extension_metadata_assets_in_s3(
     # starting the job. It will be downloaded when gdalinfo needs it.
     first_asset_dest = job_dir / single_asset_name
     assert not first_asset_dest.exists()
-    from openeogeotrellis.utils import s3_client
 
-    s3_instance = s3_client()
+    s3_instance = S3ClientBuilder.from_bucket(get_backend_config().s3_bucket_name)
 
     files_before = {o["Key"] for o in s3_instance.list_objects(Bucket=get_backend_config().s3_bucket_name)["Contents"]}
     assert files_before == {"j-123/Copernicus_DSM_COG_10_N50_00_E005_00_DEM.tif"}
@@ -1385,7 +1384,7 @@ def test_run_job_get_projection_extension_metadata_assets_in_s3(
 )
 @mock.patch("openeo_driver.ProcessGraphDeserializer.evaluate")
 def test_run_job_get_projection_extension_metadata_assets_in_s3_multiple_assets(
-    evaluate, mock_config_use_object_storage, tmp_path, mock_s3_bucket, moto_server
+    evaluate, mock_config_use_object_storage, tmp_path, moto_server, mock_s3_bucket
 ):
     mock_config_use_object_storage.return_value = True
     cube_mock = MagicMock()
@@ -1489,8 +1488,8 @@ def test_run_job_get_projection_extension_metadata_assets_in_s3_multiple_assets(
 @pytest.mark.skip("Can only run manually")  # TODO: Fix so it can run in Jenkins too
 def test_run_job_to_s3(
     tmp_path,
-    mock_s3_bucket,
     moto_server,
+    mock_s3_bucket,
     monkeypatch,
 ):
     monkeypatch.setenv("KUBE", "TRUE")
@@ -1548,8 +1547,9 @@ def test_run_job_to_s3(
 
         run_graph_locally(process_graph, tmp_path)
 
-    s3_instance = s3_client()
     from openeogeotrellis.config import get_backend_config
+
+    s3_instance = S3ClientBuilder.from_bucket(get_backend_config().s3_bucket_name)
 
     files_absolute = {
         o["Key"] for o in s3_instance.list_objects(Bucket=get_backend_config().s3_bucket_name)["Contents"]

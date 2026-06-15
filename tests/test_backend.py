@@ -5,11 +5,14 @@ import logging
 
 import os
 from typing import Union
+from unittest.mock import MagicMock
 
 import dirty_equals
 import mock
 import pytest
 import shapely
+
+from geopyspark import Pyramid, TiledRasterLayer, LayerType
 from openeo.utils.version import ComparableVersion
 from openeo_driver.backend import BatchJobMetadata
 from openeo_driver.config.load import ConfigGetter
@@ -28,10 +31,12 @@ from openeogeotrellis.backend import GpsProcessing, GeoPySparkBackendImplementat
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.config.s3_config import S3Config
 from openeogeotrellis.geopysparkcubemetadata import Band
+from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.integrations.kubernetes import k8s_render_manifest_template, K8S_SPARK_APP_STATE
 from openeogeotrellis.integrations.yarn_jobrunner import YARNBatchJobRunner
 from openeogeotrellis.job_registry import InMemoryJobRegistry
 from openeogeotrellis.testing import gps_config_overrides
+from openeogeotrellis.utils import get_jvm
 from tests.conftest import TEST_AWS_REGION_NAME
 
 
@@ -548,6 +553,104 @@ class TestGpsProcessing:
         assert isinstance(sar_backscatter_arguments, SarBackscatterArgs)
         assert sar_backscatter_arguments._asdict() == dirty_equals.IsPartialDict(expected)
         assert caplog.text == ""
+
+    def test_dynamic_processes_from_cube_process_registry(self):
+        """
+        GpsProcessing.__init__ should register processes listed by the JVM-side
+        CubeProcessRegistry, generate a spec from id/description, and the
+        generated handler should invoke the cube method with the remaining args.
+        """
+        # Fake JVM-side process descriptors (list of dict-likes).
+        fake_processes = [
+            {"id": "fancy_cube_op", "description": "Does something fancy to a cube."},
+            {"id": "load_collection", "description": "Should be skipped: already exists."},
+            {"id": "no_desc_op"},  # no description -> auto-generated
+        ]
+
+        fake_registry = mock.Mock()
+        fake_registry.listProcesses.return_value = fake_processes
+        fake_jvm = mock.Mock()
+        fake_jvm.org.openeo.geotrelliscommon.CubeProcessRegistry = fake_registry
+
+        with mock.patch("openeogeotrellis.backend.get_jvm", return_value=fake_jvm):
+            processing = GpsProcessing()
+
+        registry = processing.get_process_registry(ComparableVersion("1.2.0"))
+
+        # New processes are registered ...
+        assert registry.contains("fancy_cube_op")
+        assert registry.contains("no_desc_op")
+
+        # ... with a spec built from id + description.
+        spec = registry.get_spec("fancy_cube_op")
+        assert spec["id"] == "fancy_cube_op"
+        assert spec["description"] == "Does something fancy to a cube."
+        param_names = [p["name"] for p in spec["parameters"]]
+        assert "data" in param_names
+
+        # Existing standard processes are not overridden.
+        load_collection_spec = registry.get_spec("load_collection")
+        assert "Should be skipped" not in (load_collection_spec.get("description") or "")
+
+        # The handler retrieves the method by name on the cube and invokes it
+        # with all non-"data" arguments as keyword arguments.
+        from openeo_driver.datacube import DriverDataCube
+        from openeo_driver.processes import ProcessArgs
+
+        GeopysparkDataCube._extend_from_cube_process_registry(fake_jvm)
+
+        layerMock = MagicMock(spec=TiledRasterLayer)
+        layerMock.layer_type = LayerType.SPATIAL
+
+        gpsCube = GeopysparkDataCube(Pyramid({0: layerMock}))
+        assert hasattr(gpsCube, "fancy_cube_op")
+
+        jvm = get_jvm()
+        with mock.patch.object(jvm, "org", new=mock.MagicMock()) as m:
+            with mock.patch.object(jvm, "geopyspark", new=mock.MagicMock()) as g:
+                with mock.patch.object(gpsCube, "_create_tilelayer", return_value=layerMock) as create_tl:
+                    gpsCube.fancy_cube_op(factor=2, label="y")
+                    m.openeo.geotrelliscommon.CubeProcessRegistry.invoke.assert_called_once()
+
+
+        class MyCube(DriverDataCube):
+            def __init__(self):
+                super().__init__()
+                self.calls = []
+
+            def fancy_cube_op(self, **kwargs):
+                self.calls.append(kwargs)
+                return self
+
+        cube = MyCube()
+        handler = registry.get_function("fancy_cube_op")
+        args = ProcessArgs({"data": cube, "factor": 3, "label": "x"}, process_id="fancy_cube_op")
+        result = handler(args, EvalEnv())
+        assert result is cube
+        assert cube.calls == [{"factor": 3, "label": "x"}]
+
+        # If the cube does not implement the method, a ProcessUnsupportedException is raised.
+        from openeo_driver.errors import ProcessUnsupportedException
+
+        class CubeWithoutMethod(DriverDataCube):
+            pass
+
+        handler2 = registry.get_function("no_desc_op")
+        with pytest.raises(ProcessUnsupportedException):
+            handler2(
+                ProcessArgs({"data": CubeWithoutMethod()}, process_id="no_desc_op"),
+                EvalEnv(),
+            )
+
+    def test_dynamic_processes_jvm_unavailable(self, caplog):
+        """When the JVM/CubeProcessRegistry is not available, init must not raise."""
+        caplog.set_level(logging.DEBUG)
+        with mock.patch("openeogeotrellis.backend.get_jvm", side_effect=RuntimeError("no jvm")):
+            processing = GpsProcessing()
+        # Should not have added any dynamic process, just logged.
+        assert "CubeProcessRegistry not available" in caplog.text
+        assert isinstance(processing, GpsProcessing)
+
 
 
 @pytest.mark.parametrize(

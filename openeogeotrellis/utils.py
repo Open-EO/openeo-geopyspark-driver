@@ -19,7 +19,15 @@ import tempfile
 import time
 from functools import partial
 from pathlib import Path
-from typing import Callable, Iterable, Optional, Tuple, Union, Dict, Any, TypeVar, Iterator
+from typing import Callable, Iterable, Optional, Tuple, Union, Dict, Any, TypeVar, Iterator, TYPE_CHECKING
+
+from openeo_driver.integrations.s3.client import S3ClientBuilder as PythonDriverS3ClientBuilder
+from openeo_driver.util.caching import BoundedTtlCache
+
+from openeogeotrellis.integrations.s3proxy.s3_user_context import should_proxy_be_used, build_proxy_s3_client
+
+if TYPE_CHECKING:
+    from mypy_boto3_s3.client import S3Client
 
 import dateutil.parser
 import pyproj
@@ -274,7 +282,7 @@ def eodata_s3_client():
     return s3_client
 
 def s3_client():
-    # TODO: replace all use cases with openeodriver.integrations.s3.get_s3_client because all remaining calls
+    # TODO: replace all use cases with get_s3_client(bucket_name)
     # imply a region dependency
     import boto3
 
@@ -289,14 +297,47 @@ def s3_client():
     return s3_client
 
 
+class S3ClientBuilder:
+    _s3_client_cache = BoundedTtlCache(ttl=12 * 60 * 60, max_size=5)
+
+    @classmethod
+    def from_bucket(cls, bucket_name: str) -> S3Client:
+        """
+        Get an S3 client to allow for interaction with a certain bucket.
+        """
+        return cls._s3_client_cache.get_or_call(bucket_name, lambda: cls._get_s3_client(bucket_name))
+
+    @classmethod
+    def _get_s3_client(cls, bucket_name: str) -> S3Client:
+        if should_proxy_be_used():
+            client = build_proxy_s3_client(bucket_name)
+            if client is None:
+                raise RuntimeError(f"Failed to build proxy S3 client for bucket '{bucket_name}'; see prior warnings.")
+            return client
+        else:
+            return cls._get_direct_s3_client(bucket_name)
+
+    @classmethod
+    def _get_direct_s3_client(cls, bucket_name: str) -> S3Client:
+        """
+        For clients that do not run in a context with OIDC access tokens. eodata is a special case.
+        """
+        if bucket_name.lower() == "eodata":
+            logger.debug("Getting direct S3 client for eodata access")
+            return eodata_s3_client()
+        else:
+            return PythonDriverS3ClientBuilder.from_bucket(bucket_name)
+
+
 def get_s3_file_contents(filename: Union[os.PathLike, str], bucket: Optional[str] = None) -> str:
     """
     Get contents of a text file in an S3 bucket; the bucket defaults to ConfigParams().s3_bucket_name.
     """
     # TODO: move this to openeodriver.integrations.s3?
-    s3_instance = s3_client()
+    _bucket = bucket or get_backend_config().s3_bucket_name
+    s3_instance = S3ClientBuilder.from_bucket(_bucket)
     s3_file_object = s3_instance.get_object(
-        Bucket=bucket or get_backend_config().s3_bucket_name,
+        Bucket=_bucket,
         Key=str(filename).strip("/"),
     )
     body = s3_file_object["Body"]
@@ -315,7 +356,7 @@ def stream_s3_binary_file_contents(s3_url: str) -> Iterable[bytes]:
     bucket, file_name = s3_url[5:].split("/", 1)
     logger.debug(f"Streaming contents from S3 object storage: {bucket=}, key={file_name}")
 
-    s3_instance = s3_client()
+    s3_instance = S3ClientBuilder.from_bucket(bucket)
     s3_file_object = s3_instance.get_object(Bucket=bucket, Key=file_name)
     body = s3_file_object["Body"]
     return body.iter_chunks()
@@ -339,10 +380,7 @@ def download_s3_directory(s3_url: str, output_dir: str):
     bucket, input_dir = s3_url[5:].split("/", 1)
     logger.debug(f"Downloading directory from S3 object storage: {bucket=}, key={input_dir}")
 
-    if bucket.lower() == "eodata":
-        s3_instance = eodata_s3_client()
-    else:
-        s3_instance = s3_client()
+    s3_instance = S3ClientBuilder.from_bucket(bucket)
 
     bucket_keys = s3_instance.list_objects_v2(Bucket=bucket, MaxKeys=1000, Prefix=input_dir)
     for obj in bucket_keys["Contents"]:

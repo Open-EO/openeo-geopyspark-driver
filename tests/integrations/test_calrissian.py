@@ -1,15 +1,14 @@
 import datetime
 import json
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterator, Optional
 from unittest import mock
 
-import boto3
 import dirty_equals
 import kubernetes.client
-import moto
 import pytest
 import yaml
 
@@ -31,7 +30,7 @@ from openeogeotrellis.integrations.calrissian import (
 from openeogeotrellis.integrations.s3proxy.sts import STSCredentials
 from openeogeotrellis.testing import gps_config_overrides
 from openeogeotrellis.util.runtime import ENV_VAR_OPENEO_BATCH_JOB_ID
-from openeogeotrellis.utils import s3_client
+from openeogeotrellis.utils import S3ClientBuilder
 from tests.data import get_test_data_file
 
 
@@ -54,12 +53,10 @@ class TestCalrissianJobLauncher:
     JOB_NAME = "j-hello123"
 
     @pytest.fixture
-    def s3_calrissian_bucket(self) -> str:
-        with moto.mock_aws():
-            s3 = boto3.client("s3")
-            bucket = self.BUCKET
-            s3.create_bucket(Bucket=bucket)
-            yield bucket
+    def s3_calrissian_bucket(self, mock_s3_client) -> str:
+        bucket = self.BUCKET
+        mock_s3_client.create_bucket(Bucket=bucket, CreateBucketConfiguration={"LocationConstraint": "eu-central-1"})
+        yield bucket
 
     @pytest.fixture
     def mock_sts(self, monkeypatch) -> Iterator[STSCredentials]:
@@ -403,7 +400,7 @@ class TestCalrissianJobLauncher:
             s3_bucket=s3_calrissian_bucket,
         )
         # mock calrissian output listing file in S3
-        s3_client().put_object(
+        S3ClientBuilder.from_bucket(s3_calrissian_bucket).put_object(
             Bucket=s3_calrissian_bucket,
             Key="1234-abcd-5678-efgh/r-456-cal-cwl-01234567.cwl-outputs.json",
             Body=get_test_data_file("parse_cwl_outputs_listing/cwl_outputs_listing_txt.json").open(mode="rb"),
@@ -571,7 +568,7 @@ class TestCalrissianJobLauncher:
             launcher = CalrissianJobLauncher.from_context()
 
             # Mock calrissian output listing file in S3.
-            s3_client().put_object(
+            S3ClientBuilder.from_bucket(s3_calrissian_bucket).put_object(
                 Bucket=s3_calrissian_bucket,
                 Key="1234-abcd-5678-efgh/j-hello123-cal-cwl-01234567.cwl-outputs.json",
                 Body=get_test_data_file("parse_cwl_outputs_listing/cwl_outputs_listing_txt.json").open(mode="rb"),
@@ -660,14 +657,12 @@ class TestCalrissianJobLauncher:
 
 class TestCalrissianS3Result:
     @pytest.fixture
-    def s3_output(self):
-        with moto.mock_aws():
-            s3 = boto3.client("s3")
-            bucket = "the-bucket"
-            s3.create_bucket(Bucket=bucket)
-            key = "path/to/output.txt"
-            s3.put_object(Bucket=bucket, Key=key, Body="Howdy, Earth!")
-            yield bucket, key
+    def s3_output(self, mock_s3_client):
+        bucket = "the-bucket"
+        mock_s3_client.create_bucket(Bucket=bucket, CreateBucketConfiguration={"LocationConstraint": "eu-central-1"})
+        key = "path/to/output.txt"
+        mock_s3_client.put_object(Bucket=bucket, Key=key, Body="Howdy, Earth!")
+        yield bucket, key
 
     def test_s3_uri(self):
         result = CalrissianS3Result(s3_bucket="bucky", s3_key="path/to/collection.json")
@@ -684,18 +679,20 @@ class TestCalrissianS3Result:
         assert result.read(encoding="utf-8") == "Howdy, Earth!"
 
     def test_generate_presigned_url(self, s3_output, monkeypatch):
-        monkeypatch.setenv("SWIFT_URL", "https://s3.example.com")
+        url_start = os.environ["SWIFT_URL"]
         bucket, key = s3_output
         result = CalrissianS3Result(s3_bucket=bucket, s3_key=key)
         assert result.generate_presigned_url() == dirty_equals.IsStr(
-            regex=r"https://s3.example.com/the-bucket/path/to/output.txt\?AWSAccessKeyId=.*"
+            regex=url_start + r"/the-bucket/path/to/output.txt\?AWSAccessKeyId=.*"
+        ) or result.generate_presigned_url() == dirty_equals.IsStr(
+            regex=url_start + r"/the-bucket/path/to/output.txt\?X-Amz-Algorithm=.*"
         )
 
     def test_generate_public_url(self, s3_output, monkeypatch):
-        monkeypatch.setenv("SWIFT_URL", "https://s3.example.com")
+        s3_endpoint = os.getenv("SWIFT_URL")
         bucket, key = s3_output
         result = CalrissianS3Result(s3_bucket=bucket, s3_key=key)
-        assert result.generate_public_url() == "https://s3.example.com/the-bucket/path/to/output.txt"
+        assert result.generate_public_url() == f"{s3_endpoint}/the-bucket/path/to/output.txt"
 
     def test_download(self, s3_output, tmp_path):
         bucket, key = s3_output

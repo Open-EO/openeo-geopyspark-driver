@@ -56,6 +56,12 @@ def main():
         default=None,
         help="Optional path to file where failed job IDs will be logged. For example: /data/projects/OpenEO/{ejr_backend_id}_failed_to_delete_jobs.jsonl",
     )
+    parser.add_argument(
+        "--log-deletion-errors",
+        action="store_true",
+        default=False,
+        help="Log an error line for each job that fails to delete (can be very verbose when there are many failures; failures are always written to --failed-to-delete-file-path if set).",
+    )
     args = parser.parse_args()
     max_count: int = args.max_count
     ejr_backend_id: str = args.ejr_backend_id
@@ -63,6 +69,7 @@ def main():
     batch_size: int = args.batch_size
     log_progress_every: int = args.log_progress_every
     failed_to_delete_path: str = args.failed_to_delete_file_path
+    log_deletion_errors: bool = args.log_deletion_errors
     ejr_api: str = os.environ.get("OPENEO_EJR_API")
     dry_run = False
     user_ids = None
@@ -94,14 +101,14 @@ def main():
         current_batch_size = min(batch_size, remaining)
 
         # 2. Retrieve jobs to delete (next batch)
-        with TimingLogger(title=f"Collecting jobs to delete: {upper=} {user_ids=} batch_size={current_batch_size}", logger=_log):
+        with TimingLogger(title=f"Collecting jobs to delete: {upper=} {user_ids=} batch_size={current_batch_size}", logger=_log.debug):
             jobs_before = registry.get_all_started_jobs_before(
                 upper,
                 user_ids=user_ids,
                 max_count=current_batch_size,
             )
 
-        _log.info(f"Collected {len(jobs_before)} jobs to delete")
+        _log.debug(f"Collected {len(jobs_before)} jobs to delete")
 
         # No more jobs to process
         if not jobs_before:
@@ -111,7 +118,7 @@ def main():
         # 3. Delete jobs in this batch
         successful_deletions = 0
         last_logged_at = processed
-        with TimingLogger(title=f"Deleting {len(jobs_before)} jobs", logger=_log):
+        with TimingLogger(title=f"Deleting {len(jobs_before)} jobs", logger=_log.debug):
             for job_info in jobs_before:
                 job_id = job_info["job_id"]
                 user_id = job_info["user_id"]
@@ -136,7 +143,8 @@ def main():
                         successful_deletions += 1
                     except Exception as e:
                         # If something goes wrong when deleting the batch job directory, it requires manual intervention.
-                        _log.error(f"Error deleting job {job_id}: {e}", exc_info=e)
+                        if log_deletion_errors:
+                            _log.error(f"Error deleting job {job_id}: {e}", exc_info=e)
                         failed_job_ids.append(job_id)
                         if failed_to_delete_path:
                             # Write failed job_id to file immediately
@@ -148,7 +156,7 @@ def main():
                     last_logged_at = processed + successful_deletions
 
         processed += successful_deletions
-        _log.info(f"Batch done: {successful_deletions}/{len(jobs_before)} deleted successfully, {processed}/{max_count} total")
+        _log.debug(f"Batch done: {successful_deletions}/{len(jobs_before)} deleted successfully, {processed}/{max_count} total")
 
     if failed_job_ids:
         # Exit with special code to indicate some jobs failed to delete.

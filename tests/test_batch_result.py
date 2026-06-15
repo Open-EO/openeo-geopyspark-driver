@@ -37,7 +37,7 @@ from openeogeotrellis.deploy.batch_job import run_job
 from openeogeotrellis.deploy.batch_job_metadata import extract_result_metadata
 from openeogeotrellis.geopysparkcubemetadata import Band
 from openeogeotrellis.testing import gps_config_overrides
-from openeogeotrellis.utils import GDALINFO_SUFFIX, s3_client, equals_approximately, reproject_geometry
+from openeogeotrellis.utils import GDALINFO_SUFFIX, S3ClientBuilder, equals_approximately, reproject_geometry
 from openeogeotrellis.workspace import ObjectStorageWorkspace, StacApiWorkspace
 from openeogeotrellis.workspace.custom_stac_io import CustomStacIO
 
@@ -1311,8 +1311,8 @@ def test_export_workspace_with_asset_per_band(tmp_path, stac_version, asset_name
 def test_filepath_per_band(
     tmp_path,
     use_s3,
-    mock_s3_bucket,
     moto_server,
+    mock_s3_bucket,
     monkeypatch,
 ):
     if use_s3:
@@ -1326,7 +1326,7 @@ def test_filepath_per_band(
         workspace_id = "tmp_workspace"
 
     workspace = get_backend_config().workspaces[workspace_id]
-    s3_instance = s3_client()
+    s3_instance = S3ClientBuilder.from_bucket(get_backend_config().s3_bucket_name)
 
     merge = _random_merge()
     attach_gdalinfo_assets = True
@@ -1757,12 +1757,12 @@ def test_export_workspace_merge_filepath_per_band(tmp_path, mock_s3_bucket, stac
 @pytest.mark.parametrize("stac_version", ["1.0", "1.1"])
 def test_export_workspace_merge_into_stac_api(
     tmp_path,
+    moto_server,
     mock_s3_bucket,
     requests_mock,
     kube,
     merge,
     stac_version,
-    moto_server,
     monkeypatch,
 ):
     if kube:
