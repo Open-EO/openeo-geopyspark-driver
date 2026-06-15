@@ -1424,6 +1424,10 @@ class GpsProcessing(ConcreteProcessing):
                     cube: DriverDataCube = args.get_required("data", expected_type=DriverDataCube)
                     method = getattr(cube, pid, None)
                     if method is None or not callable(method):
+                        if isinstance(cube,DryRunDataCube):
+                            #no-op
+                            return cube
+                        logger.debug(f"Method {pid} not available on cube {cube}")
                         raise ProcessUnsupportedException(process=pid)
                     # Pass all arguments except "data" as keyword arguments to the cube method.
                     remaining = {k: v for k, v in dict(args).items() if k != "data"}
