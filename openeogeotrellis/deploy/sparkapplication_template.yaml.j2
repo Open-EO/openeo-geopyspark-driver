@@ -137,8 +137,9 @@ spec:
 {%- endif %}
 {%- endblock %}
   driver:
-{%- if batch_scheduler == 'yunikorn' %}
     annotations:
+      cluster-autoscaler.kubernetes.io/safe-to-evict: "false"
+{%- if batch_scheduler == 'yunikorn' %}
       yunikorn.apache.org/schedulingPolicyParameters: "placeholderTimeoutInSeconds={{ yunikorn_scheduling_timeout }} gangSchedulingStyle=Hard"
       yunikorn.apache.org/allow-preemption: "false"
 {%- endif %}
@@ -287,6 +288,8 @@ spec:
 {%- endif %}
 {%- endblock %}
   executor:
+    annotations:
+      cluster-autoscaler.kubernetes.io/safe-to-evict: "false"
     ports:
       - containerPort: 9464
         name: prom-executor
