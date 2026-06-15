@@ -1446,6 +1446,7 @@ class GpsProcessing(ConcreteProcessing):
                     "schema": {"type": "object", "subtype": "datacube"},
                 },
             }
+            logger.debug(f"Registering process {process_id}")
             registry12.add_process(name=process_id, function=_make_handler(process_id), spec=spec)
 
 
