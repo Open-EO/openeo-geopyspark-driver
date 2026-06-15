@@ -1087,6 +1087,15 @@ class GeopysparkDataCube(DriverDataCube):
                 (min([self_lower, other_lower]), max([self_upper, other_upper]))  # compared lexicographically
             )
 
+        self_spatial = self.metadata.spatial_extent
+        other_spatial= other.metadata.spatial_extent
+        if self_spatial is not None and other_spatial is not None and self_spatial.get("crs") == other_spatial.get("crs"):
+            west = min([self_spatial.get("west"),other_spatial.get("west")])
+            south = min([self_spatial.get("south"),other_spatial.get("south")])
+            east = max([self_spatial.get("east"),other_spatial.get("east")])
+            north = max([self_spatial.get("north"),other_spatial.get("north")])
+            merged_data.metadata = merged_data.metadata.filter_bbox(west,south,east,north,self_spatial.get("crs"))
+
         return merged_data
 
     # TODO legacy alias to be removed
