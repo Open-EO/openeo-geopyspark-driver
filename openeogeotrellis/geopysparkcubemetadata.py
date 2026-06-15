@@ -78,6 +78,28 @@ class GeopysparkCubeMetadata(CollectionMetadata):
             spatial_extent={"west": west, "south": south, "east": east, "north": north, "crs": crs}
         )
 
+    def union_bbox(self, west, south, east, north, crs) -> 'GeopysparkCubeMetadata':
+        """Create new metadata instance with spatial extent"""
+        if self._spatial_extent is None:
+            return self.filter_bbox(west, south, east, north, crs)
+
+        existing_bbox = BoundingBox(
+            west=self._spatial_extent["west"],
+            south=self._spatial_extent["south"],
+            east=self._spatial_extent["east"],
+            north=self._spatial_extent["north"],
+            crs=self._spatial_extent["crs"]
+        )
+        new_bbox = BoundingBox(west=west, south=south, east=east, north=north, crs=crs)
+        union_bbox = existing_bbox.union(new_bbox)
+        return self.filter_bbox(
+            west=union_bbox.west,
+            south=union_bbox.south,
+            east=union_bbox.east,
+            north=union_bbox.north,
+            crs=union_bbox.crs
+        )
+
     @property
     def spatial_extent(self) -> dict:
         return self._spatial_extent
