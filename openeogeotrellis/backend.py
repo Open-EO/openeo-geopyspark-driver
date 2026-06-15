@@ -1401,6 +1401,7 @@ class GpsProcessing(ConcreteProcessing):
     def __init__(self):
         super().__init__()
         registry12 = self.get_process_registry(ComparableVersion("1.2.0"))
+        registry11 = self.get_process_registry(ComparableVersion("1.0.0"))
 
         try:
             jvm = get_jvm()
@@ -1449,6 +1450,7 @@ class GpsProcessing(ConcreteProcessing):
             handler = _make_handler(process_id)
             logger.debug(f"Registering process {process_id}, {handler=}, {spec=}")
             registry12.add_process(name=process_id, function=handler, spec=spec)
+            registry11.add_process(name=process_id, function=handler, spec=spec)
 
 
     def extra_validation(
