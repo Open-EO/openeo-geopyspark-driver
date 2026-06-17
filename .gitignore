@@ -81,6 +81,7 @@ celerybeat-schedule
 
 # dotenv
 .env
+*.env
 
 # virtualenv
 .venv
@@ -125,3 +126,7 @@ docker/requirements-docker.txt
 
 # Skaffold related configs and resources (https://skaffold.dev/)
 skaffold*
+
+
+# Annoying temp files created by openeo-geotrellis-extension when running tests
+unknown-job_input_items_*.geojson

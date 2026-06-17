@@ -192,6 +192,9 @@ class TestDownload:
                 "nodata": -1,
                 "roles": ["data"],
                 "type": "image/tiff; application=geotiff",
+                "proj:epsg": 4326,
+                "proj:shape": dirty_equals.IsListOrTuple(length=2),
+                "proj:bbox": dirty_equals.IsListOrTuple(length=4),
             }
             for name in [
                 "filenamePrefixTest_2017-09-25Z_0.tif",
@@ -325,6 +328,10 @@ class TestDownload:
                         "proj:epsg" : 4326,
                         "proj:bbox": dirty_equals.IsListOrTuple(length=4),
                         "proj:shape": dirty_equals.IsListOrTuple(length=2),
+                        "raster:bands": [
+                            dirty_equals.IsPartialDict(name="red"),
+                            dirty_equals.IsPartialDict(name="nir"),
+                        ],
                         "roles": ["data"],
                         "type": expected_type,
                     }

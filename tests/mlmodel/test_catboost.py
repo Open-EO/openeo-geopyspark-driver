@@ -21,10 +21,9 @@ from shapely.geometry import GeometryCollection, Point
 import openeogeotrellis.ml.catboost_spark as catboost_spark
 from openeogeotrellis.backend import JOB_METADATA_FILENAME
 from openeogeotrellis.deploy.batch_job import run_job
-from openeogeotrellis.job_registry import DoubleJobRegistry, ZkJobRegistry
+from openeogeotrellis.job_registry import DoubleJobRegistry
 from openeogeotrellis.ml.aggregatespatialvectorcube import AggregateSpatialVectorCube
 from openeogeotrellis.ml.geopysparkcatboostmodel import GeopySparkCatBoostModel
-from openeogeotrellis.testing import KazooClientMock
 
 FEATURE_COLLECTION_1 = {
     "type": "FeatureCollection",
@@ -42,12 +41,6 @@ FEATURE_COLLECTION_1 = {
     ]
 }
 
-
-@pytest.fixture
-def zk_client() -> Iterator[KazooClientMock]:
-    zk_client = KazooClientMock()
-    with mock.patch("openeogeotrellis.job_registry.KazooClient", return_value=zk_client):
-        yield zk_client
 
 
 class DummyAggregateSpatialVectorCube(AggregateSpatialVectorCube):
@@ -87,7 +80,7 @@ def test_fit_class_catboost_model():
 @mock.patch('openeo_driver.ProcessGraphDeserializer.evaluate')
 @mock.patch('openeogeotrellis.backend.GpsBatchJobs.get_job_output_dir')
 def test_fit_class_catboost_batch_job_metadata(
-    get_job_output_dir, evaluate, tmp_path: Path, api110, zk_client, job_registry
+    get_job_output_dir, evaluate, tmp_path: Path, api110, job_registry
 ):
     """
     Test the metadata generation for a CatBoost model trained using a batch job.
@@ -158,8 +151,6 @@ def test_fit_class_catboost_batch_job_metadata(
     job_id = res.headers["OpenEO-Identifier"]
 
     dbl_job_registry = DoubleJobRegistry(
-        # TODO #236/#498/#632 phase out ZkJobRegistry
-        zk_job_registry_factory=(lambda: ZkJobRegistry(zk_client=zk_client)),
         elastic_job_registry=job_registry,
     )
     with dbl_job_registry:

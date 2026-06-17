@@ -5,17 +5,22 @@ import logging
 
 import os
 from typing import Union
+from unittest.mock import MagicMock
 
 import dirty_equals
 import mock
 import pytest
 import shapely
+
+from geopyspark import Pyramid, TiledRasterLayer, LayerType
 from openeo.utils.version import ComparableVersion
+from openeo_driver.backend import BatchJobMetadata
 from openeo_driver.config.load import ConfigGetter
 from openeo_driver.constants import JOB_STATUS
 from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.datastructs import SarBackscatterArgs
 from openeo_driver.delayed_vector import DelayedVector
+from openeo_driver.dry_run import SourceId, DryRunDataTracer
 from openeo_driver.processes import ProcessRegistry
 from openeo_driver.ProcessGraphDeserializer import ENV_SOURCE_CONSTRAINTS
 from openeo_driver.specs import read_spec
@@ -25,10 +30,13 @@ from openeo_driver.utils import EvalEnv
 from openeogeotrellis.backend import GpsProcessing, GeoPySparkBackendImplementation, GpsUdfRuntimes, GpsBatchJobs
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.config.s3_config import S3Config
+from openeogeotrellis.geopysparkcubemetadata import Band
+from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.integrations.kubernetes import k8s_render_manifest_template, K8S_SPARK_APP_STATE
 from openeogeotrellis.integrations.yarn_jobrunner import YARNBatchJobRunner
 from openeogeotrellis.job_registry import InMemoryJobRegistry
 from openeogeotrellis.testing import gps_config_overrides
+from openeogeotrellis.utils import get_jvm
 from tests.conftest import TEST_AWS_REGION_NAME
 
 
@@ -155,8 +163,8 @@ def test_get_submit_py_files_empty(tmp_path):
 
 def test_extra_validation_layer_too_large_drivervectorcube(backend_implementation):
     processing = GpsProcessing()
-    source_id1 = "load_collection", ("SENTINEL1_GRD", None)
-    source_id2 = "load_collection", ("COPERNICUS_30", None)
+    source_id1 = SourceId("load_collection", arguments=("SENTINEL1_GRD", None), pg_node_id="lc1")
+    source_id2 = SourceId("load_collection", arguments=("COPERNICUS_30", None), pg_node_id="lc2")
     polygon = {"type": "Polygon", "coordinates": [[(0, 0), (180, 0), (0, 90), (180, 90)]]}
     env_source_constraints = [
         (source_id1, {
@@ -182,7 +190,7 @@ def test_extra_validation_layer_too_large_drivervectorcube(backend_implementatio
 
 def test_extra_validation_layer_too_large_open_time_interval(backend_implementation):
     processing = GpsProcessing()
-    source_id1 = "load_collection", ("SENTINEL1_GRD", None)
+    source_id1 = SourceId("load_collection", arguments=("SENTINEL1_GRD", None), pg_node_id="lc1")
     env_source_constraints = [
         (source_id1, {
             "temporal_extent": [None, None],  # Will go from 2014 till current time
@@ -198,9 +206,10 @@ def test_extra_validation_layer_too_large_open_time_interval(backend_implementat
     assert len(errors) == 1
     assert errors[0]['code'] == "ExtentTooLarge"
 
+
 def test_extra_validation_layer_too_large_copernicus_30(backend_implementation):
     processing = GpsProcessing()
-    source_id1 = "load_collection", ("COPERNICUS_30", None)
+    source_id1 = SourceId("load_collection", arguments=("COPERNICUS_30", None), pg_node_id="lc1")
     env_source_constraints = [
         (source_id1, {
             # taken from user example in 'process_graph_list_mep.jsonl'
@@ -220,7 +229,7 @@ def test_extra_validation_layer_too_large_copernicus_30(backend_implementation):
 
 def test_extra_validation_layer_fail(backend_implementation):
     processing = GpsProcessing()
-    source_id1 = "load_collection", ("!!BOGUS_LAYER!!", None)
+    source_id1 = SourceId("load_collection", arguments=("!!BOGUS_LAYER!!", None), pg_node_id="lc1")
     env_source_constraints = [
         (source_id1, {
             "temporal_extent": None,
@@ -237,7 +246,7 @@ def test_extra_validation_layer_fail(backend_implementation):
 
 def test_extra_validation_without_extent(backend_implementation):
     processing = GpsProcessing()
-    source_id1 = "load_collection", ("ESA_WORLDCOVER_10M_2021_V2", None)
+    source_id1 = SourceId("load_collection", arguments=("ESA_WORLDCOVER_10M_2021_V2", None), pg_node_id="lc1")
     env_source_constraints = [
         (source_id1, {
             "temporal_extent": None,
@@ -255,7 +264,7 @@ def test_extra_validation_without_extent(backend_implementation):
 
 def test_extra_validation_layer_too_large_area(backend_implementation):
     processing = GpsProcessing()
-    source_id1 = "load_collection", ("SENTINEL1_GRD", None)
+    source_id1 = SourceId("load_collection", arguments=("SENTINEL1_GRD", None), pg_node_id="lc1")
     env_source_constraints = [
         (source_id1, {
             "temporal_extent": ["2022-01-01", "2022-01-01"],
@@ -276,7 +285,7 @@ def test_extra_validation_layer_too_large_area(backend_implementation):
 
 def test_extra_validation_layer_timezone(backend_implementation):
     processing = GpsProcessing()
-    source_id1 = "load_collection", ("SENTINEL1_GRD", None)
+    source_id1 = SourceId("load_collection", arguments=("SENTINEL1_GRD", None), pg_node_id="lc1")
     env_source_constraints = [
         (source_id1, {
             "temporal_extent": ["2022-01-01T00:00:00Z", "2022-01-09"],
@@ -297,8 +306,8 @@ def test_extra_validation_layer_timezone(backend_implementation):
 
 def test_extra_validation_layer_too_large_delayedvector(backend_implementation):
     processing = GpsProcessing()
-    source_id1 = "load_collection", ("SENTINEL1_GRD", None)
-    source_id2 = "load_collection", ("COPERNICUS_30", None)
+    source_id1 = SourceId("load_collection", arguments=("SENTINEL1_GRD", None), pg_node_id="lc1")
+    source_id2 = SourceId("load_collection", arguments=("COPERNICUS_30", None), pg_node_id="lc2")
     polygon1 = {"type": "Polygon", "coordinates": [[(0.0, 0.0), (0.05, 0.0), (0.0, 0.05), (0.05, 0.05)]]}
     polygon2 = {"type": "Polygon", "coordinates": [[(0.0, 0.0), (90.0, 0.0), (0.0, 180.0), (90.0, 180.0)]]}
     geom_coll = {"type": "GeometryCollection", "geometries": [polygon1, polygon2]}
@@ -330,8 +339,8 @@ def test_extra_validation_layer_too_large_delayedvector(backend_implementation):
 
 def test_extra_validation_layer_too_large_geometrycollection(backend_implementation):
     processing = GpsProcessing()
-    source_id1 = "load_collection", ("SENTINEL1_GRD", None)
-    source_id2 = "load_collection", ("COPERNICUS_30", None)
+    source_id1 = SourceId("load_collection", arguments=("SENTINEL1_GRD", None), pg_node_id="lc1")
+    source_id2 = SourceId("load_collection", arguments=("COPERNICUS_30", None), pg_node_id="lc2")
     polygon1 = shapely.geometry.Polygon([(0, 0), (0.2, 0), (0, 0.2), (0.2, 0.2)])
     polygon2 = shapely.geometry.Polygon([(0, 0), (90, 0), (0, 180), (90, 180)])
     env_source_constraints = [
@@ -364,7 +373,7 @@ def test_extra_validation_layer_too_large_custom_crs(backend_implementation):
     # The user can specify their own CRS in load_collection.
     # Here: The native crs of AGERA5 is LatLon but the user specifies a spatial_extent in EPSG:3035.
     processing = GpsProcessing()
-    source_id1 = "load_collection", ("AGERA5", None)
+    source_id1 = SourceId("load_collection", arguments=("AGERA5", None), pg_node_id="lc1")
     env_source_constraints = [
         (source_id1, {
             "temporal_extent": ["2019-01-01", "2019-01-02"],
@@ -379,7 +388,7 @@ def test_extra_validation_layer_too_large_custom_crs(backend_implementation):
 
 def test_extra_validation_layer_too_large_custom_crs_hourly(backend_implementation):
     processing = GpsProcessing()
-    source_id1 = "load_collection", ("AGERA5_HOURLY", None)
+    source_id1 = SourceId("load_collection", arguments=("AGERA5_HOURLY", None), pg_node_id="lc1")
     env_source_constraints = [
         (source_id1, {
             "temporal_extent": ["2019-01-01", "2019-01-02"],
@@ -398,7 +407,7 @@ def test_extra_validation_layer_too_large_custom_crs_hourly(backend_implementati
 def test_extra_validation_missing_gsd(backend_implementation):
     # Layers with missing GSD should not crash
     processing = GpsProcessing()
-    source_id1 = "load_collection", ("TERRASCOPE_S1_SLC_COHERENCE_V1", None)
+    source_id1 = SourceId("load_collection", arguments=("TERRASCOPE_S1_SLC_COHERENCE_V1", None), pg_node_id="lc1")
     polygon = {"type": "Polygon", "coordinates": [[(0, 0), (180.0, 0), (0, 90.0), (180.0, 90.0)]]}
     env_source_constraints = [
         (source_id1, {
@@ -418,8 +427,8 @@ def test_extra_validation_layer_too_large_resample_spatial(backend_implementatio
     # When resample_spatial or resample_cube_spatial is used, the resolution and crs of the layer is changed.
     # So that needs to be taken into account when estimating the number of pixels.
     processing = GpsProcessing()
-    source_id1 = "load_collection", ("SENTINEL1_GAMMA0_SENTINELHUB", None)
-    source_id2 = "load_collection", ("COPERNICUS_30", None)
+    source_id1 = SourceId("load_collection", arguments=("SENTINEL1_GAMMA0_SENTINELHUB", None), pg_node_id="lc1")
+    source_id2 = SourceId("load_collection", arguments=("COPERNICUS_30", None), pg_node_id="lc2")
     polygon = {"type": "Polygon", "coordinates": [[(0, 0), (180.0, 0), (0, 90.0), (180.0, 90.0)]]}
     env_source_constraints = [
         (source_id1, {
@@ -454,7 +463,7 @@ def test_extra_validation_layer_too_large_resample_spatial(backend_implementatio
 def test_extra_validation_layer_too_large_resample_spatial_auto42001(backend_implementation):
     # Resample spatial with Auto42001 as target projection.
     processing = GpsProcessing()
-    source_id1 = "load_collection", ("COPERNICUS_30", None)
+    source_id1 = SourceId("load_collection", arguments=("COPERNICUS_30", None), pg_node_id="lc1")
     env_source_constraints = [
         (source_id1, {
             "temporal_extent": ["2019-01-01", "2019-01-02"],
@@ -475,10 +484,11 @@ def test_extra_validation_layer_too_large_resample_spatial_auto42001(backend_imp
     errors = list(processing.extra_validation({}, env, None, env_source_constraints))
     assert len(errors) == 0
 
+
 def test_extra_validation_layer_too_large_resample_spatial_zero(backend_implementation):
     # Resample with different CRS, but resolution 0 should be ok.
     processing = GpsProcessing()
-    source_id1 = "load_collection", ("COPERNICUS_30", None)
+    source_id1 = SourceId("load_collection", arguments=("COPERNICUS_30", None), pg_node_id="lc1")
     env_source_constraints = [
         (
             source_id1,
@@ -544,14 +554,114 @@ class TestGpsProcessing:
         assert sar_backscatter_arguments._asdict() == dirty_equals.IsPartialDict(expected)
         assert caplog.text == ""
 
+    def test_dynamic_processes_from_cube_process_registry(self):
+        """
+        GpsProcessing.__init__ should register processes listed by the JVM-side
+        CubeProcessRegistry, generate a spec from id/description, and the
+        generated handler should invoke the cube method with the remaining args.
+        """
+        # Fake JVM-side process descriptors (list of dict-likes).
+        fake_processes = [
+            {"id": "fancy_cube_op", "description": "Does something fancy to a cube."},
+            {"id": "load_collection", "description": "Should be skipped: already exists."},
+            {"id": "no_desc_op"},  # no description -> auto-generated
+        ]
 
-@pytest.mark.parametrize("success, state, status",
-                         [
-                             (True, "FINISHED", "SUCCEEDED"),
-                             (False, "FAILED", "FAILED"),
-                         ])
+        fake_registry = mock.Mock()
+        fake_registry.listProcesses.return_value = fake_processes
+        fake_jvm = mock.Mock()
+        fake_jvm.org.openeo.geotrelliscommon.CubeProcessRegistry = fake_registry
+
+        with mock.patch("openeogeotrellis.backend.get_jvm", return_value=fake_jvm):
+            processing = GpsProcessing()
+
+        registry = processing.get_process_registry(ComparableVersion("1.2.0"))
+
+        # New processes are registered ...
+        assert registry.contains("fancy_cube_op")
+        assert registry.contains("no_desc_op")
+
+        # ... with a spec built from id + description.
+        spec = registry.get_spec("fancy_cube_op")
+        assert spec["id"] == "fancy_cube_op"
+        assert spec["description"] == "Does something fancy to a cube."
+        param_names = [p["name"] for p in spec["parameters"]]
+        assert "data" in param_names
+
+        # Existing standard processes are not overridden.
+        load_collection_spec = registry.get_spec("load_collection")
+        assert "Should be skipped" not in (load_collection_spec.get("description") or "")
+
+        # The handler retrieves the method by name on the cube and invokes it
+        # with all non-"data" arguments as keyword arguments.
+        from openeo_driver.datacube import DriverDataCube
+        from openeo_driver.processes import ProcessArgs
+
+        GeopysparkDataCube._extend_from_cube_process_registry(fake_jvm)
+
+        layerMock = MagicMock(spec=TiledRasterLayer)
+        layerMock.layer_type = LayerType.SPATIAL
+
+        gpsCube = GeopysparkDataCube(Pyramid({0: layerMock}))
+        assert hasattr(gpsCube, "fancy_cube_op")
+
+        jvm = get_jvm()
+        with mock.patch.object(jvm, "org", new=mock.MagicMock()) as m:
+            with mock.patch.object(jvm, "geopyspark", new=mock.MagicMock()) as g:
+                with mock.patch.object(gpsCube, "_create_tilelayer", return_value=layerMock) as create_tl:
+                    gpsCube.fancy_cube_op(factor=2, label="y")
+                    m.openeo.geotrelliscommon.CubeProcessRegistry.invoke.assert_called_once()
+
+
+        class MyCube(DriverDataCube):
+            def __init__(self):
+                super().__init__()
+                self.calls = []
+
+            def fancy_cube_op(self, **kwargs):
+                self.calls.append(kwargs)
+                return self
+
+        cube = MyCube()
+        handler = registry.get_function("fancy_cube_op")
+        args = ProcessArgs({"data": cube, "factor": 3, "label": "x"}, process_id="fancy_cube_op")
+        result = handler(args, EvalEnv())
+        assert result is cube
+        assert cube.calls == [{"factor": 3, "label": "x"}]
+
+        # If the cube does not implement the method, a ProcessUnsupportedException is raised.
+        from openeo_driver.errors import ProcessUnsupportedException
+
+        class CubeWithoutMethod(DriverDataCube):
+            pass
+
+        handler2 = registry.get_function("no_desc_op")
+        with pytest.raises(ProcessUnsupportedException):
+            handler2(
+                ProcessArgs({"data": CubeWithoutMethod()}, process_id="no_desc_op"),
+                EvalEnv(),
+            )
+
+    def test_dynamic_processes_jvm_unavailable(self, caplog):
+        """When the JVM/CubeProcessRegistry is not available, init must not raise."""
+        caplog.set_level(logging.DEBUG)
+        with mock.patch("openeogeotrellis.backend.get_jvm", side_effect=RuntimeError("no jvm")):
+            processing = GpsProcessing()
+        # Should not have added any dynamic process, just logged.
+        assert "CubeProcessRegistry not available" in caplog.text
+        assert isinstance(processing, GpsProcessing)
+
+
+
+@pytest.mark.parametrize(
+    "success, state, status",
+    [
+        (True, "FINISHED", "UNDEFINED"),
+        (False, "FAILED", "UNDEFINED"),
+    ],
+)
 @pytest.mark.parametrize("shpu", [123.0, 0.0])
-@gps_config_overrides(use_etl_api_on_sync_processing=True)
+@gps_config_overrides(use_etl_api_on_sync_processing=True, etl_api_report_added_value_on_sync_processing=True)
 @mock.patch("openeogeotrellis.integrations.etl_api.get_etl_api_credentials_from_env")
 def test_request_costs(mock_get_etl_api_credentials_from_env, backend_implementation, success, shpu, state, status):
     # TODO: this test does quite a bit of mocking, which might break when internals change
@@ -563,12 +673,48 @@ def test_request_costs(mock_get_etl_api_credentials_from_env, backend_implementa
     ) as get_jvm:
         mock_etl_api = MockEtlApi.return_value
         mock_etl_api.log_resource_usage.return_value = 6
+        mock_etl_api.log_added_value.return_value = 7
 
         tracker = get_jvm.return_value.org.openeo.geotrelliscommon.ScopedMetadataTracker.apply.return_value
         tracker.sentinelHubProcessingUnits.return_value = shpu
 
+        process_graph = {
+            "loadcollection1": {
+                "process_id": "load_collection",
+                "arguments": {
+                    "id": "SOME_COLLECTION",
+                    "spatial_extent": {
+                        "west": 654900,
+                        "south": 5643900,
+                        "east": 656100,
+                        "north": 5645100,
+                        "crs": 32631,
+                    },
+                },
+                "result": True,
+            }
+        }
+
+        tracer = DryRunDataTracer()
+        tracer.load_collection(
+            collection_id="SOME_COLLECTION",
+            arguments={
+                "spatial_extent": {
+                    "west": 654900,
+                    "south": 5643900,
+                    "east": 656100,
+                    "north": 5645100,
+                    "crs": 32631,
+                }
+            },
+        )
+
         credit_cost = backend_implementation.request_costs(
-            user=User(user_id=user_id), request_id="r-abc123", success=success
+            user=User(user_id=user_id),
+            request_id="r-abc123",
+            success=success,
+            process_graph=process_graph,
+            tracer=tracer,
         )
 
         mock_etl_api.log_resource_usage.assert_called_once_with(
@@ -589,7 +735,19 @@ def test_request_costs(mock_get_etl_api_credentials_from_env, backend_implementa
             organization_id=None,
         )
 
-        assert credit_cost == 6
+        mock_etl_api.log_added_value.assert_called_once_with(
+            batch_job_id="r-abc123",
+            title="Synchronous processing request 'r-abc123'",
+            execution_id="r-abc123",
+            user_id=user_id,
+            started_ms=None,
+            finished_ms=None,
+            process_id="load_collection",
+            square_meters=pytest.approx(1200 * 1200, rel=0.01),
+            source_id=None,
+        )
+
+        assert credit_cost == 13
 
 
 def test_k8s_sparkapplication_dict_udf_python_deps(backend_config_path):
@@ -609,10 +767,6 @@ def test_k8s_sparkapplication_dict_udf_python_deps(backend_config_path):
             driver=dirty_equals.IsPartialDict(
                 env=dirty_equals.Contains(
                     {
-                        "name": "PYTHONPATH",
-                        "value": dirty_equals.IsStr(regex=r".+:/jobs/j123/udfdepz\.d(:|$)"),
-                    },
-                    {
                         "name": "UDF_PYTHON_DEPENDENCIES_FOLDER_PATH",
                         "value": "/jobs/j123/udfdepz.d",
                     },
@@ -625,10 +779,6 @@ def test_k8s_sparkapplication_dict_udf_python_deps(backend_config_path):
             ),
             executor=dirty_equals.IsPartialDict(
                 env=dirty_equals.Contains(
-                    {
-                        "name": "PYTHONPATH",
-                        "value": dirty_equals.IsStr(regex=r".+:/jobs/j123/udfdepz\.d(:|$)"),
-                    },
                     {
                         "name": "UDF_PYTHON_DEPENDENCIES_FOLDER_PATH",
                         "value": "/jobs/j123/udfdepz.d",
@@ -733,6 +883,117 @@ def test_k8s_sparkapplication_dict_propagatable_web_app_driver_envars(backend_co
     )
 
 
+def test_k8s_sparkapplication_dict_gdal_envars(backend_config_path):
+    """
+    Make sure GDAL environment variables are present for driver and executor
+    """
+    app_dict = k8s_render_manifest_template(
+        "sparkapplication.yaml.j2",
+        propagatable_web_app_driver_envars={},
+        aws_access_key_id="akid",
+        aws_secret_access_key="mysec",
+        aws_endpoint="s3.localhost",
+        aws_region="eodata",
+        aws_https="TRUE",
+    )
+
+    expected_env_values = [
+        {
+            "name": "AWS_ACCESS_KEY_ID",
+            "value": "akid",
+        },
+        {
+            "name": "AWS_SECRET_ACCESS_KEY",
+            "value": "mysec",
+        },
+        {
+            "name": "AWS_S3_ENDPOINT",
+            "value": "s3.localhost",
+        },
+        {
+            "name": "AWS_DEFAULT_REGION",
+            "value": "eodata",
+        },
+        {
+            "name": "AWS_REGION",
+            "value": "eodata",
+        },
+        {
+            "name": "AWS_HTTPS",
+            "value": "TRUE",
+        },
+        {
+            "name": "AWS_VIRTUAL_HOSTING",
+            "value": "FALSE",
+        },
+    ]
+
+    for spark_component in ["driver", "executor"]:
+        spark_component_env = app_dict["spec"][spark_component]["env"]
+
+        assert spark_component_env == dirty_equals.Contains(*expected_env_values)
+
+
+def test_k8s_sparkapplication_dict_gdal_envars_with_proxy(backend_config_path):
+    """
+    Make sure adapted GDAL environment variables are present for driver and executor and make sure other
+    environment variables are NOT set.
+    """
+    app_dict = k8s_render_manifest_template(
+        "sparkapplication.yaml.j2",
+        propagatable_web_app_driver_envars={},
+        force_s3proxy=True,
+        aws_role_arn="arn:aws:iam:::role/my-role",
+        aws_web_identity_token_file="/tmp/token",
+        s3_proxy_endpoint="s3.localhost",
+        sts_proxy_endpoint="sts.localhost",
+        aws_region="eodata",
+        aws_https="TRUE",
+    )
+
+    expected_env_values = [
+        {
+            "name": "AWS_ROLE_ARN",
+            "value": "arn:aws:iam:::role/my-role",
+        },
+        {
+            "name": "AWS_WEB_IDENTITY_TOKEN_FILE",
+            "value": "/tmp/token",
+        },
+        {
+            "name": "AWS_S3_ENDPOINT",
+            "value": "s3.localhost",
+        },
+        {
+            "name": "AWS_STS_ENDPOINT",
+            "value": "sts.localhost",
+        },
+        {
+            "name": "AWS_DEFAULT_REGION",
+            "value": "eodata",
+        },
+        {
+            "name": "AWS_REGION",
+            "value": "eodata",
+        },
+        {
+            "name": "AWS_HTTPS",
+            "value": "TRUE",
+        },
+        {
+            "name": "AWS_VIRTUAL_HOSTING",
+            "value": "FALSE",
+        },
+    ]
+
+    for spark_component in ["driver", "executor"]:
+        spark_component_env = app_dict["spec"][spark_component]["env"]
+
+        assert spark_component_env == dirty_equals.Contains(*expected_env_values)
+        for problem_env_vars in ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"]:
+            assert problem_env_vars not in [e["name"] for e in spark_component_env]
+
+
 class TestGpsBatchJobs:
     _dummy_user = User(user_id="test_user", internal_auth_data={"access_token": "4cc3ss_t0k3n"})
 
@@ -751,7 +1012,6 @@ class TestGpsBatchJobs:
     def kube_no_zk(self, monkeypatch):
         with gps_config_overrides(
             setup_kerberos_auth=False,
-            use_zk_job_registry=False,
             yunikorn_user_specific_queues=True,  # avoid another call to ZK
         ):
             monkeypatch.setenv("KUBE", "TRUE")
@@ -764,6 +1024,7 @@ class TestGpsBatchJobs:
         bucket.create(CreateBucketConfiguration={"LocationConstraint": TEST_AWS_REGION_NAME})
         yield bucket
 
+    @mock.patch("kubernetes.config.load_kube_config", return_value=mock.MagicMock())
     @mock.patch("kubernetes.config.load_incluster_config", return_value=mock.MagicMock())
     @mock.patch("kubernetes.client.CoreV1Api.read_namespaced_pod", return_value=mock.MagicMock())
     @mock.patch("kubernetes.client.CustomObjectsApi.create_namespaced_custom_object", return_value=mock.MagicMock())
@@ -776,7 +1037,8 @@ class TestGpsBatchJobs:
         mock_get_spark_pod_status,
         mock_create_spark_pod,
         mock_get_pod_image,
-        mock_k8s_config,
+        mock_k8s_config_incluster_config,
+        mock_k8s_config_load_kube_config,
         kube_no_zk,
         backend_implementation,
         job_registry,
@@ -859,7 +1121,7 @@ class TestGpsBatchJobs:
 
         job_metadata_json_path = tmp_path / "job_metadata.json"
         with open(job_metadata_json_path, "w") as f:
-            f.write('{"assets": {"openEO": {"href": "file:///path/to/openEO.tif"}}}')
+            f.write('{"assets": {"openEO": {"href": "file:///path/to/openEO.tif", "bands": [{"name": "Flat:2" , "statistics": {"maximum": 2.0, "mean": 0.84375, "minimum": 0.0, "stddev": 0.98771753932994, "valid_percent": 100.0} } ]}}}')
         job["status"] = JOB_STATUS.FINISHED
         job["results_metadata_uri"] = f"{results_metadata_uri_prefix}{job_metadata_json_path}"
 
@@ -873,10 +1135,11 @@ class TestGpsBatchJobs:
 
         assert asset_key == "openEO"
         assert asset["href"] == "file:///path/to/openEO.tif"
+        assert asset["bands"] == [Band(name="Flat:2",statistics={"maximum": 2.0, "mean": 0.84375, "minimum": 0.0, "stddev": 0.98771753932994, "valid_percent": 100.0})]
 
-    def test_get_result_items(self, kube_no_zk, backend_implementation, job_registry, tmp_path):
-        self._create_dummy_batch_job(backend_implementation, self._dummy_user)
-        job_id, job = next(iter(job_registry.db.items()))
+    def test_get_result_metadata(self, kube_no_zk, backend_implementation, job_registry, tmp_path):
+        job_metadata = self._create_dummy_batch_job(backend_implementation, self._dummy_user)
+        job_id = job_metadata.id
 
         job_metadata_json_path = tmp_path / "job_metadata.json"
         with open(job_metadata_json_path, "w") as f:
@@ -884,28 +1147,40 @@ class TestGpsBatchJobs:
                 {
                     "items": [
                         {"id": "item1", "assets": {"openEO": {"href": "file:///path/to/openEO.tif"}}},
-                    ]
+                    ],
+                    "links": [
+                        {"rel": "aux", "href": "file:///path/to/aux.json"},
+                    ],
                 },
-                f,
+                fp=f,
             )
+        job_registry.set_status(job_id=job_id, status=JOB_STATUS.FINISHED)
+        job_registry.set_results_metadata_uri(job_id=job_id, results_metadata_uri=f"file://{job_metadata_json_path}")
 
-        job["status"] = JOB_STATUS.FINISHED
-        job["results_metadata_uri"] = f"file://{job_metadata_json_path}"
-
-        item_id, item = next(
-            iter(
-                backend_implementation.batch_jobs.get_result_metadata(
-                    job_id=job_id, user_id=self._dummy_user.user_id
-                ).items.items()
-            )
+        result_metadata = backend_implementation.batch_jobs.get_result_metadata(
+            job_id=job_id, user_id=self._dummy_user.user_id
         )
-
-        assert item_id == "item1"
-        assert [asset["href"] for asset in item["assets"].values()] == ["file:///path/to/openEO.tif"]
+        assert result_metadata.items == {
+            "item1": {
+                "id": "item1",
+                "assets": {
+                    "openEO": {
+                        "href": "file:///path/to/openEO.tif",
+                        "output_dir": dirty_equals.IsStr(regex="/batch_jobs/j-.*"),
+                    }
+                },
+            }
+        }
+        assert result_metadata.links == [
+            {
+                "rel": "aux",
+                "href": "file:///path/to/aux.json",
+            }
+        ]
 
     @staticmethod
-    def _create_dummy_batch_job(backend_implementation, user):
-        backend_implementation.batch_jobs.create_job(
+    def _create_dummy_batch_job(backend_implementation, user) -> BatchJobMetadata:
+        return backend_implementation.batch_jobs.create_job(
             user=user,
             process={
                 "process_graph": {

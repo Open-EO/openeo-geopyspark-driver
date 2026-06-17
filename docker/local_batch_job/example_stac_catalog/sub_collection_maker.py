@@ -58,6 +58,19 @@ def main(argv: List[str]) -> None:
 
 
 if __name__ == "__main__":
+
+    try:
+        import logging
+        from pystac import Collection, Item
+
+        logging.basicConfig(level=logging.DEBUG)
+
+        collection = Collection.from_file(str(containing_folder / "collection.json"))
+        collection.validate_all()
+        print("pystac validation successful")
+    except Exception as e:
+        print("pystac validation failed: " + str(e))
+
     if len(sys.argv) <= 1:
         # request_date = "*"
         request_date = "2023-06-01"

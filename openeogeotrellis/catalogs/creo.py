@@ -24,7 +24,7 @@ class CreoCatalogEntry(CatalogEntryBase):
         self._s3_key = s3_key
         if self._s3_bucket is None:
             if len(prarr) == 1:
-                self._s3_bucket = 'EODATA'
+                self._s3_bucket = "eodata"
             else:
                 self._s3_bucket = prarr[1].upper()
         if self._s3_key is None:

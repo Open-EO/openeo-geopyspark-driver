@@ -52,6 +52,7 @@ def setup_local_spark(log_dir: Path = Path.cwd(), verbosity=0):
             "Failed to import kube. Some kubernetes specific processes might not get attached (CWL). error: " + str(e)
         )
     master_str = "local[*]"
+    # master_str = "local-cluster[4,1,10240]"
 
     if "PYSPARK_PYTHON" not in os.environ:
         os.environ["PYSPARK_PYTHON"] = sys.executable
@@ -67,7 +68,7 @@ def setup_local_spark(log_dir: Path = Path.cwd(), verbosity=0):
 
     spark_jars = conf.get("spark.jars").split(",")
     # geotrellis-extensions needs to be loaded first to avoid "java.lang.NoClassDefFoundError: shapeless/lazily$"
-    spark_jars.sort(key=lambda x: "geotrellis-extensions" not in x)
+    spark_jars.sort(key=lambda x: "geotrellis-extensions" not in x and "geotrellis-dependencies" not in x)
     conf.set(key="spark.jars", value=",".join(spark_jars))
 
     # Use UTC timezone by default when formatting/parsing dates (e.g. CSV export of timeseries)
@@ -107,7 +108,7 @@ def setup_local_spark(log_dir: Path = Path.cwd(), verbosity=0):
     more_jars = [] if "GEOPYSPARK_JARS_PATH" not in os.environ else os.environ["GEOPYSPARK_JARS_PATH"].split(":")
     for jar_dir in more_jars:
         for jar_path in Path(jar_dir).iterdir():
-            if jar_path.match("openeo-logging-*.jar"):
+            if jar_path.match("openeo-logging-*.jar") or jar_path.match("geotrellis-dependencies-*.jar"):
                 jars.append(str(jar_path))
     extraClassPath = ":".join(jars)
     conf.set("spark.driver.extraClassPath", extraClassPath)
@@ -142,11 +143,11 @@ def setup_local_spark(log_dir: Path = Path.cwd(), verbosity=0):
         -Dscala.concurrent.context.numThreads=8"
     conf.set("spark.executor.extraJavaOptions", sparkExecutorJavaOptions)
 
-    _log.info("[conftest.py] SparkContext.getOrCreate with {c!r}".format(c=conf.getAll()))
+    _log.info("[local.py] SparkContext.getOrCreate with {c!r}".format(c=conf.getAll()))
     context = SparkContext.getOrCreate(conf)
     context.setLogLevel(logging_threshold)
     _log.info(
-        "[conftest.py] JVM info: {d!r}".format(
+        "[local.py] JVM info: {d!r}".format(
             d={
                 f: context._jvm.System.getProperty(f)
                 for f in [
@@ -160,21 +161,17 @@ def setup_local_spark(log_dir: Path = Path.cwd(), verbosity=0):
         )
     )
 
-    try:
-        scala_version = context._jvm.scala.util.Properties.versionNumberString()
-    except Exception as e:
-        scala_version = str(e)
-    _log.info("[conftest.py] Scala version: " + scala_version)
+    _log.info("[local.py] Scala version: " + context._jvm.scala.util.Properties.versionNumberString())
 
     if OPENEO_LOCAL_DEBUGGING:
         # TODO: Activate default logging for this message
         print("Spark web UI: " + str(context.uiWebUrl))
 
     if OPENEO_LOCAL_DEBUGGING:
-        _log.info("[conftest.py] Validating the Spark context")
+        _log.info("[local.py] Validating the Spark context")
         dummy = context._jvm.org.openeo.geotrellis.OpenEOProcesses()
         answer = context.parallelize([9, 10, 11, 12]).sum()
-        _log.info("[conftest.py] " + repr((answer, dummy)))
+        _log.info("[local.py] " + repr((answer, dummy)))
 
     return context
 

@@ -25,7 +25,7 @@ from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.layercatalog import get_layer_catalog
 from openeogeotrellis.vault import Vault
-from openeogeotrellis.job_registry import ZkJobRegistry, DoubleJobRegistry
+from openeogeotrellis.job_registry import DoubleJobRegistry
 
 ARG_BATCH_JOB_ID = 'batch_job_id'
 ARG_USER_ID = 'user_id'
@@ -249,7 +249,6 @@ def main():
                 max_poll_time = time.time() + backend_config.job_dependencies_max_poll_delay_seconds
 
                 double_job_registry = DoubleJobRegistry(
-                    zk_job_registry_factory=ZkJobRegistry if backend_config.use_zk_job_registry else None,
                     elastic_job_registry=elastic_job_registry,
                 )
 

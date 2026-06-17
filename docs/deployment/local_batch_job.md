@@ -41,5 +41,5 @@ Note, you can refer to local stac collections by file path on Linux, but not on 
 
 ## Example:
 
-[local_batch_job_example.py](./local_batch_job_example.py)  runs a small openEO process in a local docker container.
+[local_batch_job_example.py](../../docker/local_batch_job/local_batch_job_example.py)  runs a small openEO process in a local docker container.
 It shows you can use load_stac on static STAC catalogs that are hosted locally.

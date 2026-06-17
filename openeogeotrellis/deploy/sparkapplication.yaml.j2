@@ -1,1 +1,23 @@
 {% extends "sparkapplication_template.yaml.j2" %}
+{%- block gdal_aws_env %}
+  {%- if force_s3proxy is true %}
+      - name: AWS_ROLE_ARN
+        value: {{ aws_role_arn }}
+      - name: AWS_WEB_IDENTITY_TOKEN_FILE
+        value: {{ aws_web_identity_token_file }}
+      - name: AWS_S3_ENDPOINT
+        value: "{{s3_proxy_endpoint}}"
+      - name: AWS_STS_ENDPOINT
+        value: "{{sts_proxy_endpoint}}"
+      - name: AWS_DEFAULT_REGION
+        value: "eodata"
+      - name: AWS_REGION
+        value: "eodata"
+      - name: AWS_HTTPS
+        value: "{{aws_https}}"
+      - name: AWS_VIRTUAL_HOSTING
+        value: "FALSE"
+  {%- else %}
+    {{ super() }}
+  {%- endif %}
+{%- endblock %}

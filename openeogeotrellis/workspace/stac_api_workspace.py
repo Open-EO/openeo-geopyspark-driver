@@ -15,7 +15,7 @@ import requests.adapters
 from requests import JSONDecodeError
 from urllib3 import Retry
 
-from openeogeotrellis.integrations.stac import ResilientStacIO
+from openeogeotrellis.integrations.stac import ResilientStacIO, LoggingStacApiIO
 
 _log = logging.getLogger(__name__)
 
@@ -66,6 +66,10 @@ class StacApiWorkspace(Workspace):
         self, common_path: Union[str, Path], s3_uri: str, merge: str, remove_original: bool = False
     ) -> str:
         raise NotImplementedError(f"export_workspace: import_file to {self.root_url} not implemented {common_path}")
+
+    @property
+    def merges_by_default(self) -> bool:
+        return True
 
     def merge(self, stac_resource: STACObject, target: PurePath, remove_original: bool = False) -> STACObject:
         self._assert_catalog_supports_necessary_api()
@@ -248,7 +252,7 @@ class StacApiWorkspace(Workspace):
             status_forcelist=frozenset([429, 500, 502, 503, 504]),
         )
 
-        stac_io = pystac_client.stac_api_io.StacApiIO(timeout=self.REQUESTS_TIMEOUT_SECONDS, max_retries=retry)
+        stac_io = LoggingStacApiIO(timeout=self.REQUESTS_TIMEOUT_SECONDS, max_retries=retry)
         root_catalog_client = pystac_client.Client.open(self.root_url, stac_io=stac_io)
 
         if not root_catalog_client.conforms_to(ConformanceClasses.COLLECTIONS):

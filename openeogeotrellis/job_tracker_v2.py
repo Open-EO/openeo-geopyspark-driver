@@ -8,12 +8,13 @@ import argparse
 import collections
 import datetime as dt
 import logging
-from decimal import Decimal
+import os
 from pathlib import Path
 from typing import Any, List, NamedTuple, Optional, Union
 
 import requests
 
+from openeo_driver.utils import smart_bool
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.integrations.prometheus import Prometheus
 
@@ -25,6 +26,7 @@ except ImportError:
 
 from openeo.util import TimingLogger, repr_truncate, Rfc3339, url_join, deep_get
 from openeo_driver.jobregistry import JOB_STATUS, ElasticJobRegistry, EjrApiResponseError
+from openeo_driver.util.date_math import now_utc
 from openeo_driver.util.http import requests_with_retry
 from openeo_driver.util.logging import (
     get_logging_config,
@@ -51,7 +53,7 @@ from openeogeotrellis.job_costs_calculator import (
     DynamicEtlApiJobCostCalculator,
     NoJobCostsCalculator,
 )
-from openeogeotrellis.job_registry import DoubleJobRegistry, ZkJobRegistry, get_deletable_dependency_sources
+from openeogeotrellis.job_registry import DoubleJobRegistry, get_deletable_dependency_sources
 from openeogeotrellis.utils import StatsReporter, dict_merge_recursive, to_jsonable
 
 # Note: hardcoded logger name as this script is executed directly which kills the usefulness of `__name__`.
@@ -301,6 +303,9 @@ class K8sStatusGetter(JobMetadataGetterInterface):
                 raise AppNotFound() from e
             raise
 
+        # Threshold after which a stuck SUCCEEDING app is treated as COMPLETED
+        _SUCCEEDING_STUCK_THRESHOLD = dt.timedelta(hours=1)
+
         if "status" in metadata:
             app_state = metadata["status"]["applicationState"]["state"]
             if "FAILED" == app_state and "errorMessage" in metadata["status"]["applicationState"]:
@@ -311,11 +316,27 @@ class K8sStatusGetter(JobMetadataGetterInterface):
                         extra={"job_id": job_id, "user_id": user_id}
                     )
                 else:
-                    _log.warning(f"Final application error message: {msg}", extra={"job_id": job_id, "user_id": user_id})
+                    _log.error(f"Final application error message: {msg}", extra={"job_id": job_id, "user_id": user_id})
 
             datetime_formatter = Rfc3339(propagate_none=True)
             start_time = datetime_formatter.parse_datetime(metadata["status"]["lastSubmissionAttemptTime"])
             finish_time = datetime_formatter.parse_datetime(metadata["status"]["terminationTime"])
+
+            # Detect apps stuck in SUCCEEDING (driver finished but operator never transitioned to COMPLETED).
+            # This can happen due to Spark operator bugs.
+            now = now_utc().replace(tzinfo=None)
+            if (
+                app_state == K8S_SPARK_APP_STATE.SUCCEEDING
+                and finish_time is None
+                and start_time is not None
+                and (now - start_time) > _SUCCEEDING_STUCK_THRESHOLD
+            ):
+                stuck_duration = now - start_time
+                _log.warning(
+                    f"K8s app {app_id} has been stuck in SUCCEEDING state for {stuck_duration} "
+                    f"(threshold={_SUCCEEDING_STUCK_THRESHOLD}).",
+                    extra={"job_id": job_id, "user_id": user_id},
+                )
         else:
             _log.warning("No K8s app status found, assuming new app", extra={"job_id": job_id, "user_id": user_id})
             app_state = K8S_SPARK_APP_STATE.NEW
@@ -336,14 +357,46 @@ class K8sStatusGetter(JobMetadataGetterInterface):
     def _get_usage(self, application_id: str, start_time: Optional[dt.datetime], finish_time: Optional[dt.datetime],
                    job_id: str, user_id: str) -> _Usage:
         try:
+            log_billable_metrics = smart_bool(os.environ.get("LOG_BILLABLE_METRICS", "FALSE"))
+            cpu_seconds_new = None
+            cpu_seconds_old = None
+            if not get_backend_config().use_new_billing_system or log_billable_metrics:
+                cpu_seconds_old = self._prometheus_api.get_cpu_usage(application_id)
+
             if start_time is None or finish_time is None:
+                # The job is not finished this point
                 application_duration_s = None
                 byte_seconds = None
             else:
                 application_duration_s = (finish_time - start_time).total_seconds()
-                byte_seconds = self._prometheus_api.get_memory_usage(application_id, application_duration_s)
+                byte_seconds_old = None
+                if not get_backend_config().use_new_billing_system or log_billable_metrics:
+                    byte_seconds_old = self._prometheus_api.get_memory_usage(application_id, application_duration_s)
 
-            cpu_seconds = self._prometheus_api.get_cpu_usage(application_id)
+                byte_seconds_new = None
+                if get_backend_config().use_new_billing_system or log_billable_metrics:
+                    byte_seconds_new = self._prometheus_api.get_billable_memory_requested(
+                        job_id, start=start_time.timestamp(), end=finish_time.timestamp()
+                    )
+                    cpu_seconds_new = self._prometheus_api.get_billable_cpu_requested(
+                        job_id, start=start_time.timestamp(), end=finish_time.timestamp()
+                    )
+                byte_seconds = byte_seconds_new if get_backend_config().use_new_billing_system else byte_seconds_old
+
+                if log_billable_metrics:
+                    _log.debug(
+                        f"Retrieved usage stats for comparison",
+                        extra={
+                            "job_id": job_id,
+                            "user_id": user_id,
+                            "cpu_seconds_old": cpu_seconds_old,
+                            "byte_seconds_old": byte_seconds_old,
+                            "cpu_seconds_new": cpu_seconds_new,
+                            "byte_seconds_new": byte_seconds_new,
+                        },
+                    )
+            cpu_seconds = cpu_seconds_new if get_backend_config().use_new_billing_system else cpu_seconds_old
+
             network_receive_bytes = self._prometheus_api.get_network_received_usage(application_id)
 
             max_executor_gigabyte = self._prometheus_api.get_max_executor_memory_usage(application_id)
@@ -400,8 +453,8 @@ class K8sStatusGetter(JobMetadataGetterInterface):
 class JobTracker:
     def __init__(
         self,
+        *,
         app_state_getter: JobMetadataGetterInterface,
-        zk_job_registry: Optional[ZkJobRegistry],
         principal: str,
         keytab: str,
         job_costs_calculator: Optional[JobCostsCalculator] = None,
@@ -422,7 +475,6 @@ class JobTracker:
             elastic_job_registry=elastic_job_registry,
         )
         self._double_job_registry = DoubleJobRegistry(
-            zk_job_registry_factory=(lambda: zk_job_registry) if zk_job_registry else None,
             elastic_job_registry=elastic_job_registry,
         )
 
@@ -514,7 +566,7 @@ class JobTracker:
             log.warning(
                 f"App not found: {job_id=} {application_id=}; "
                 f"this is not necessarily a problem (https://github.com/eu-cdse/openeo-cdse-infra/issues/147)",
-                exc_info=True,
+                exc_info=False,  # omit noisy stack trace for non-exceptional situation
             )
             # TODO: originally, we set the job status here to "error", but that is potentially
             #       destructive in distributed context with partial replication.
@@ -560,8 +612,7 @@ class JobTracker:
                     .get("value", 0.0)
                 )
 
-                sentinelhub_batch_processing_units = float(ZkJobRegistry.get_dependency_usage(job_info)
-                                                           or Decimal("0.0"))
+                sentinelhub_batch_processing_units = float(job_info.get("dependency_usage") or 0.0)
 
                 sentinelhub_processing_units_to_report = (sentinelhub_processing_units +
                                                           sentinelhub_batch_processing_units) or None
@@ -598,7 +649,7 @@ class JobTracker:
                 stats["job_costs: failed"] += 1
                 job_costs = None
 
-            total_usage = dict_merge_recursive(job_metadata.usage.to_dict(), result_metadata.get("usage", {}))
+            total_usage = dict_merge_recursive(job_metadata.usage.to_dict(), result_metadata.get("usage") or {})
 
             def set_results_metadata(results_metadata: dict):
                 include_all_results_metadata = "results_metadata_uri" not in job_info
@@ -671,14 +722,6 @@ class CliApp:
             try:
                 config = get_backend_config()
 
-                # ZooKeeper Job Registry
-                if config.use_zk_job_registry:
-                    zk_root_path = args.zk_job_registry_root_path
-                    _log.info(f"Using {zk_root_path=}")
-                    zk_job_registry = ZkJobRegistry(root_path=zk_root_path)
-                else:
-                    zk_job_registry = None
-
                 requests_session = requests_with_retry(total=3, backoff_factor=2)
 
                 # Elastic Job Registry (EJR)
@@ -691,10 +734,8 @@ class CliApp:
                     app_cluster = "k8s" if ConfigParams().is_kube_deploy else "yarn"
                 if app_cluster == "yarn":
                     app_state_getter = YarnStatusGetter(
-                        yarn_api_base_url=ConfigParams().yarn_rest_api_base_url,
-                        auth=requests_gssapi.HTTPSPNEGOAuth(
-                            mutual_authentication=requests_gssapi.REQUIRED
-                        ),
+                        yarn_api_base_url=get_backend_config().yarn_rest_api_base_url,
+                        auth=requests_gssapi.HTTPSPNEGOAuth(mutual_authentication=requests_gssapi.REQUIRED),
                     )
                 elif app_cluster == "k8s":
                     app_state_getter = K8sStatusGetter(
@@ -709,7 +750,6 @@ class CliApp:
 
                 job_tracker = JobTracker(
                     app_state_getter=app_state_getter,
-                    zk_job_registry=zk_job_registry,
                     principal=args.principal,
                     keytab=args.keytab,
                     elastic_job_registry=elastic_job_registry,
@@ -764,11 +804,6 @@ class CliApp:
             default=None,
             dest="rotating_log",
             help="Rotating log file (path).",
-        )
-        parser.add_argument(
-            "--zk-job-registry-root-path",
-            default=ConfigParams().batch_jobs_zookeeper_root_path,
-            help="ZooKeeper root path for the job registry",
         )
         parser.add_argument(
             "--run-id",

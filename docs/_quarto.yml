@@ -39,6 +39,8 @@ website:
         text: Running UDF on vector cube
       - href: calrissian-cwl.md
         text: Calrissian CWL
+      - href: udf-eoap-cwl.md
+        text: UDF EOAP-CWL
       - href: job_options.md
         text: Job options
       - href: layercatalog.md

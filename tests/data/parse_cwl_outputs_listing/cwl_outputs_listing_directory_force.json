@@ -1,0 +1,74 @@
+{
+  "force_level2_ard": {
+    "location": "file:///home/emile/openeo/apex-force-openeo/l2-ard",
+    "basename": "l2-ard",
+    "class": "Directory",
+    "listing": [
+      {
+        "class": "Directory",
+        "location": "file:///home/emile/openeo/apex-force-openeo/l2-ard/europe",
+        "basename": "europe",
+        "listing": [
+          {
+            "class": "Directory",
+            "location": "file:///home/emile/openeo/apex-force-openeo/l2-ard/europe/X0031_Y0029",
+            "basename": "X0031_Y0029",
+            "listing": [
+              {
+                "class": "File",
+                "location": "file:///home/emile/openeo/apex-force-openeo/l2-ard/europe/X0031_Y0029/20241113_LEVEL2_SEN2A_OVV.jpg",
+                "basename": "20241113_LEVEL2_SEN2A_OVV.jpg",
+                "size": 126508,
+                "checksum": "sha1$ceee8756fb6abf68a6d8541bd9a1ba7eb7b4ce8e",
+                "path": "/home/emile/openeo/apex-force-openeo/l2-ard/europe/X0031_Y0029/20241113_LEVEL2_SEN2A_OVV.jpg"
+              },
+              {
+                "class": "File",
+                "location": "file:///home/emile/openeo/apex-force-openeo/l2-ard/europe/X0031_Y0029/20241113_LEVEL2_SEN2A_QAI.tif",
+                "basename": "20241113_LEVEL2_SEN2A_QAI.tif",
+                "size": 1353789,
+                "checksum": "sha1$ba67833142335b83a0ea39b1b485f60d3e295bb5",
+                "path": "/home/emile/openeo/apex-force-openeo/l2-ard/europe/X0031_Y0029/20241113_LEVEL2_SEN2A_QAI.tif"
+              }
+            ],
+            "path": "/home/emile/openeo/apex-force-openeo/l2-ard/europe/X0031_Y0029"
+          },
+          {
+            "class": "Directory",
+            "location": "file:///home/emile/openeo/apex-force-openeo/l2-ard/europe/X0032_Y0030",
+            "basename": "X0032_Y0030",
+            "listing": [
+              {
+                "class": "File",
+                "location": "file:///home/emile/openeo/apex-force-openeo/l2-ard/europe/X0032_Y0030/20241113_LEVEL2_SEN2A_OVV.jpg",
+                "basename": "20241113_LEVEL2_SEN2A_OVV.jpg",
+                "size": 14579,
+                "checksum": "sha1$62d993ccea99536ab641f51024350219561eb988",
+                "path": "/home/emile/openeo/apex-force-openeo/l2-ard/europe/X0032_Y0030/20241113_LEVEL2_SEN2A_OVV.jpg"
+              }
+            ],
+            "path": "/home/emile/openeo/apex-force-openeo/l2-ard/europe/X0032_Y0030"
+          },
+          {
+            "class": "File",
+            "location": "file:///home/emile/openeo/apex-force-openeo/l2-ard/europe/datacube-definition.prj",
+            "basename": "datacube-definition.prj",
+            "size": 481,
+            "checksum": "sha1$1bd59f244455a27108e2f0e29a5ebf5f86401dff",
+            "path": "/home/emile/openeo/apex-force-openeo/l2-ard/europe/datacube-definition.prj"
+          }
+        ],
+        "path": "/home/emile/openeo/apex-force-openeo/l2-ard/europe"
+      },
+      {
+        "class": "File",
+        "location": "file:///home/emile/openeo/apex-force-openeo/l2-ard/bologna-l2-ard.json",
+        "basename": "bologna-l2-ard.json",
+        "size": 51219,
+        "checksum": "sha1$bb9a84dad829e7ad06ac38d06339604e4a49bd42",
+        "path": "/home/emile/openeo/apex-force-openeo/l2-ard/bologna-l2-ard.json"
+      }
+    ],
+    "path": "/home/emile/openeo/apex-force-openeo/l2-ard"
+  }
+}

@@ -1,29 +1,37 @@
 import datetime
+import json
+import os
 import re
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterator
+from typing import Dict, Iterator, Optional
 from unittest import mock
 
-import boto3
 import dirty_equals
 import kubernetes.client
-import moto
 import pytest
 import yaml
 
+from openeo_driver.utils import EvalEnv
 from openeogeotrellis.config.integrations.calrissian_config import (
-    CalrissianConfig,
     DEFAULT_CALRISSIAN_IMAGE,
+    DEFAULT_CALRISSIAN_RUNNER_RESOURCE_REQUIREMENTS,
+    CalrissianConfig,
 )
 from openeogeotrellis.integrations.calrissian import (
     CalrissianJobLauncher,
+    CalrissianLaunchConfigBuilder,
     CalrissianS3Result,
     CwLSource,
-    CalrissianLaunchConfigBuilder,
+    parse_cwl_outputs_listing,
+    find_stac_root,
+    cwl_to_stac,
 )
+from openeogeotrellis.integrations.s3proxy.sts import STSCredentials
 from openeogeotrellis.testing import gps_config_overrides
 from openeogeotrellis.util.runtime import ENV_VAR_OPENEO_BATCH_JOB_ID
-from openeogeotrellis.integrations.s3proxy.sts import STSCredentials
+from openeogeotrellis.utils import S3ClientBuilder
+from tests.data import get_test_data_file
 
 
 @pytest.fixture
@@ -45,12 +53,10 @@ class TestCalrissianJobLauncher:
     JOB_NAME = "j-hello123"
 
     @pytest.fixture
-    def s3_calrissian_bucket(self):
-        with moto.mock_aws():
-            s3 = boto3.client("s3")
-            bucket = self.BUCKET
-            s3.create_bucket(Bucket=bucket)
-            yield bucket
+    def s3_calrissian_bucket(self, mock_s3_client) -> str:
+        bucket = self.BUCKET
+        mock_s3_client.create_bucket(Bucket=bucket, CreateBucketConfiguration={"LocationConstraint": "eu-central-1"})
+        yield bucket
 
     @pytest.fixture
     def mock_sts(self, monkeypatch) -> Iterator[STSCredentials]:
@@ -109,7 +115,7 @@ class TestCalrissianJobLauncher:
                         {
                             "name": "r-1234-cal-inp-01234567",
                             "image": "alpine:3",
-                            "image_pull_policy": "Always",
+                            "image_pull_policy": "IfNotPresent",
                             "command": ["/bin/sh"],
                             "args": [
                                 "-c",
@@ -124,6 +130,9 @@ class TestCalrissianJobLauncher:
                                     }
                                 ),
                             ],
+                            "resources": dirty_equals.IsPartialDict(
+                                CalrissianJobLauncher._HARD_CODED_STAGE_JOB_RESOURCES
+                            ),
                         }
                     )
                 ],
@@ -172,7 +181,7 @@ class TestCalrissianJobLauncher:
                         {
                             "name": "r-123-cal-cwl-01234567",
                             "image": DEFAULT_CALRISSIAN_IMAGE,
-                            "image_pull_policy": "Always",
+                            "image_pull_policy": "IfNotPresent",
                             "command": ["calrissian"],
                             "args": dirty_equals.Contains(
                                 "--tmp-outdir-prefix",
@@ -387,19 +396,40 @@ class TestCalrissianJobLauncher:
             launch_config=calrissian_launch_config,
             namespace=self.NAMESPACE,
             name_base="r-456",
+            s3_region="tatooine-east-1",
             s3_bucket=s3_calrissian_bucket,
+        )
+        # mock calrissian output listing file in S3
+        S3ClientBuilder.from_bucket(s3_calrissian_bucket).put_object(
+            Bucket=s3_calrissian_bucket,
+            Key="1234-abcd-5678-efgh/r-456-cal-cwl-01234567.cwl-outputs.json",
+            Body=get_test_data_file("parse_cwl_outputs_listing/cwl_outputs_listing_txt.json").open(mode="rb"),
         )
         res = launcher.run_cwl_workflow(
             cwl_source=CwLSource.from_string("class: Dummy"),
             cwl_arguments=["--message", "Howdy Earth!"],
-            output_paths=["output.txt"],
         )
         assert res == {
             "output.txt": CalrissianS3Result(
+                s3_region="tatooine-east-1",
                 s3_bucket=s3_calrissian_bucket,
                 s3_key="1234-abcd-5678-efgh/r-456-cal-cwl-01234567/output.txt",
             ),
         }
+
+    def test_run_cwl_workflow_request_too_much(self, calrissian_launch_config):
+        launcher = CalrissianJobLauncher(
+            launch_config=calrissian_launch_config,
+            namespace=self.NAMESPACE,
+            name_base="r-456",
+            s3_region="tatooine-east-1",
+        )
+        cwl = CwLSource.from_resource(anchor="openeogeotrellis.integrations", path="cwl/request_too_much_1.cwl")
+        with pytest.raises(ValueError):
+            launcher.run_cwl_workflow(
+                cwl_source=cwl,
+                cwl_arguments=[],
+            )
 
     @pytest.fixture()
     def job_context(self, monkeypatch, tmp_path):
@@ -524,6 +554,7 @@ class TestCalrissianJobLauncher:
         s3_calrissian_bucket,
         k8s_batch_api,
         k8s_secret_api_verify_mocked_sts,
+        k8s_pvc_api,
         calrissian_launch_config,
         job_context,
     ):
@@ -535,22 +566,103 @@ class TestCalrissianJobLauncher:
 
         with gps_config_overrides(calrissian_config=calrissian_config):
             launcher = CalrissianJobLauncher.from_context()
+
+            # Mock calrissian output listing file in S3.
+            S3ClientBuilder.from_bucket(s3_calrissian_bucket).put_object(
+                Bucket=s3_calrissian_bucket,
+                Key="1234-abcd-5678-efgh/j-hello123-cal-cwl-01234567.cwl-outputs.json",
+                Body=get_test_data_file("parse_cwl_outputs_listing/cwl_outputs_listing_txt.json").open(mode="rb"),
+            )
+
             launcher.run_cwl_workflow(
                 cwl_source=CwLSource.from_string("class: Dummy"),
                 cwl_arguments=["--message", "Howdy Earth!"],
-                output_paths=["output.txt"],
             )
+
+    def test_from_context_sets_container_resources(
+        self,
+        monkeypatch,
+        generate_unique_id_mock,
+        s3_calrissian_bucket,
+        k8s_core_v1_api,
+        calrissian_launch_config,
+        mock_sts,
+        job_context,
+    ):
+        @dataclass
+        class TestCase:
+            description: str
+            givenConfigRunnerRequirents: Optional[dict]
+            expectedResourcesDict: dict
+
+        testcases = [
+            TestCase(
+                description="ConfigOverrides should be set",
+                givenConfigRunnerRequirents=dict(limits={"memory": "10Mi"}, requests={"cpu": "1m", "memory": "10Mi"}),
+                expectedResourcesDict={"limits": {"memory": "10Mi"}, "requests": {"memory": "10Mi", "cpu": "1m"}},
+            ),
+            TestCase(
+                description="If no config overrides we expect the defaults to be set",
+                givenConfigRunnerRequirents=None,
+                expectedResourcesDict=DEFAULT_CALRISSIAN_RUNNER_RESOURCE_REQUIREMENTS,
+            ),
+        ]
+
+        for testcase in testcases:
+            calrissian_config = CalrissianConfig(
+                namespace="namezpace",
+                input_staging_image="albino:3.14",
+                s3_bucket=s3_calrissian_bucket,
+                runner_resource_requirements=testcase.givenConfigRunnerRequirents,
+            )
+
+            with gps_config_overrides(calrissian_config=calrissian_config):
+                launcher = CalrissianJobLauncher.from_context()
+                manifest, output_dir, cwl_outputs_listing = launcher.create_cwl_job_manifest(
+                    cwl_path="/calrissian/input-data/r-1234-cal-inp-01234567.cwl",
+                    cwl_arguments=["--message", "Howdy Earth!"],
+                )
+
+            assert isinstance(manifest, kubernetes.client.V1Job)
+            manifest_dict = manifest.to_dict()
+
+            pod_template_spec = manifest_dict["spec"]["template"]["spec"]
+
+            assert pod_template_spec["containers"] == [
+                dirty_equals.IsPartialDict(
+                    {
+                        "name": "j-hello123-cal-cwl-01234567",
+                        "command": ["calrissian"],
+                        "args": dirty_equals.Contains(
+                            "--pod-env-vars",
+                            "/calrissian/config/environment.yaml",
+                            "--message",
+                            "Howdy Earth!",
+                        ),
+                        "resources": dirty_equals.IsPartialDict(testcase.expectedResourcesDict),
+                    }
+                )
+            ]
+
+    def test_no_sync(self):
+        env = EvalEnv({"sync_job": "true"})
+        # Sync jobs are disabled for CWL, as it has no credit tracking.
+        with pytest.raises(RuntimeError):
+            cwl_to_stac(
+                cwl_arguments=[],
+                env=env,
+                cwl_source=CwLSource.from_string("class: Dummy"),
+            )
+
 
 class TestCalrissianS3Result:
     @pytest.fixture
-    def s3_output(self):
-        with moto.mock_aws():
-            s3 = boto3.client("s3")
-            bucket = "the-bucket"
-            s3.create_bucket(Bucket=bucket)
-            key = "path/to/output.txt"
-            s3.put_object(Bucket=bucket, Key=key, Body="Howdy, Earth!")
-            yield bucket, key
+    def s3_output(self, mock_s3_client):
+        bucket = "the-bucket"
+        mock_s3_client.create_bucket(Bucket=bucket, CreateBucketConfiguration={"LocationConstraint": "eu-central-1"})
+        key = "path/to/output.txt"
+        mock_s3_client.put_object(Bucket=bucket, Key=key, Body="Howdy, Earth!")
+        yield bucket, key
 
     def test_s3_uri(self):
         result = CalrissianS3Result(s3_bucket="bucky", s3_key="path/to/collection.json")
@@ -567,18 +679,20 @@ class TestCalrissianS3Result:
         assert result.read(encoding="utf-8") == "Howdy, Earth!"
 
     def test_generate_presigned_url(self, s3_output, monkeypatch):
-        monkeypatch.setenv("SWIFT_URL", "https://s3.example.com")
+        url_start = os.environ["SWIFT_URL"]
         bucket, key = s3_output
         result = CalrissianS3Result(s3_bucket=bucket, s3_key=key)
         assert result.generate_presigned_url() == dirty_equals.IsStr(
-            regex=r"https://s3.example.com/the-bucket/path/to/output.txt\?AWSAccessKeyId=.*"
+            regex=url_start + r"/the-bucket/path/to/output.txt\?AWSAccessKeyId=.*"
+        ) or result.generate_presigned_url() == dirty_equals.IsStr(
+            regex=url_start + r"/the-bucket/path/to/output.txt\?X-Amz-Algorithm=.*"
         )
 
     def test_generate_public_url(self, s3_output, monkeypatch):
-        monkeypatch.setenv("SWIFT_URL", "https://s3.example.com")
+        s3_endpoint = os.getenv("SWIFT_URL")
         bucket, key = s3_output
         result = CalrissianS3Result(s3_bucket=bucket, s3_key=key)
-        assert result.generate_public_url() == "https://s3.example.com/the-bucket/path/to/output.txt"
+        assert result.generate_public_url() == f"{s3_endpoint}/the-bucket/path/to/output.txt"
 
     def test_download(self, s3_output, tmp_path):
         bucket, key = s3_output
@@ -630,3 +744,54 @@ class TestCwlSource:
     def test_from_resource(self):
         cwl = CwLSource.from_resource(anchor="openeogeotrellis.integrations", path="cwl/hello.cwl")
         assert "Hello World" in cwl.get_content()
+
+    @pytest.mark.parametrize(
+        ["cwl_path", "expected_memory"],
+        [
+            ("cwl/request_too_much_1.cwl", 999000),
+            ("cwl/request_too_much_2.cwl", 999000),
+            ("cwl/request_too_much_3.cwl", 999000),
+            ("cwl/hello.cwl", -1),
+            ("cwl/multistep.cwl", 7000),
+        ],
+    )
+    def test_request_too_much(self, cwl_path, expected_memory):
+        cwl = CwLSource.from_resource(anchor="openeogeotrellis.integrations", path=cwl_path)
+        max_memory = cwl.estimate_max_memory_usage()
+        print(f"{max_memory=}")
+        print(f"{expected_memory=}")
+        assert max_memory == expected_memory
+
+
+class TestCalrissianUtils:
+    def test_parse_cwl_outputs_listing_directory(self):
+        results = parse_cwl_outputs_listing(
+            json.load(get_test_data_file("parse_cwl_outputs_listing/cwl_outputs_listing_directory.json").open())
+        )
+        print(results)
+        assert len(results) == 7
+        assert results[0].startswith("r-")
+
+    def test_parse_cwl_outputs_listing_directory_force(self):
+        # JSON trimmed for brevity. Got json from cwltool without calrissian.
+        results = parse_cwl_outputs_listing(
+            json.load(get_test_data_file("parse_cwl_outputs_listing/cwl_outputs_listing_directory_force.json").open())
+        )
+        print(results)
+        assert len(results) == 5
+        assert results[0].startswith("/home/emile/openeo/apex-force-openeo/l2-ard")
+
+    def test_parse_cwl_outputs_listing_file_array(self):
+        results = parse_cwl_outputs_listing(
+            json.load(get_test_data_file("parse_cwl_outputs_listing/cwl_outputs_listing_file_array.json").open())
+        )
+        print(results)
+        assert len(results) == 7
+        assert results[0].startswith("r-")
+
+    def test_parse_cwl_outputs_listing_txt(self):
+        results = parse_cwl_outputs_listing(
+            json.load(get_test_data_file("parse_cwl_outputs_listing/cwl_outputs_listing_txt.json").open())
+        )
+        print(results)
+        assert len(results) == 1

@@ -1,0 +1,11 @@
+{
+  "output": [
+    {
+      "basename": "output.txt",
+      "class": "File",
+      "location": "file:///calrissian/output-data/output.txt",
+      "path": "/calrissian/output-data/output.txt",
+      "size": 666
+    }
+  ]
+}

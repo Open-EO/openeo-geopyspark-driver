@@ -1,5 +1,8 @@
+import gzip
+import json
 import logging
 import unittest.mock as mock
+import zipfile
 from pathlib import Path
 from typing import List, Tuple, Union
 
@@ -23,9 +26,11 @@ from openeogeotrellis.layercatalog import (
     _get_sar_backscatter_arguments,
     _merge_layers_with_common_name,
     get_layer_catalog,
+    _read_catalog_file,
 )
 from openeogeotrellis.testing import gps_config_overrides
 from openeogeotrellis.vault import Vault
+from tests.data import get_test_data_file
 
 
 def _get_layers() -> List[Tuple[str, dict]]:
@@ -79,8 +84,8 @@ def test_layer_metadata(id, layer):
 def test_get_layer_catalog_with_updates(vault):
     with gps_config_overrides(
         layer_catalog_files=[
-            "tests/data/layercatalog01.json",
-            "tests/data/layercatalog02.json",
+            get_test_data_file("layercatalog01.json"),
+            get_test_data_file("layercatalog02.json"),
         ]
     ):
         catalog = get_layer_catalog(vault)
@@ -109,15 +114,14 @@ def skip_sentinelhub_layer(vault):
 
 
 def test_get_layer_catalog_opensearch_enrich_oscars(requests_mock, vault):
-    test_root = Path(__file__).parent / "data"
     with gps_config_overrides(
         layer_catalog_files=[
-            test_root / "layercatalog01.json",
-            test_root / "layercatalog02.json",
-            test_root / "layercatalog03_oscars.json",
+            get_test_data_file("layercatalog01.json"),
+            get_test_data_file("layercatalog02.json"),
+            get_test_data_file("layercatalog03_oscars.json"),
         ]
     ):
-        collections_response = read_json(test_root / "collections_oscars01.json")
+        collections_response = read_json(get_test_data_file("collections_oscars01.json"))
         requests_mock.get("https://services.terrascope.test/catalogue/collections", json=collections_response)
 
         all_metadata = get_layer_catalog(vault, opensearch_enrich=True).get_all_metadata()
@@ -213,11 +217,11 @@ def test_get_layer_catalog_opensearch_enrich_oscars(requests_mock, vault):
 def test_get_layer_catalog_opensearch_enrich_creodias(requests_mock, vault):
     with gps_config_overrides(
         layer_catalog_files=[
-            "tests/data/layercatalog01.json",
-            "tests/data/layercatalog04_creodias.json",
+            get_test_data_file("layercatalog01.json"),
+            get_test_data_file("layercatalog04_creodias.json"),
         ]
     ):
-        collections_response = read_json("tests/data/collections_creodias01.json")
+        collections_response = read_json(get_test_data_file("collections_creodias01.json"))
         requests_mock.get("https://finder.creodias.test/resto/collections.json", json=collections_response)
 
         all_metadata = get_layer_catalog(vault, opensearch_enrich=True).get_all_metadata()
@@ -247,13 +251,8 @@ def test_get_layer_catalog_opensearch_enrich_creodias(requests_mock, vault):
 
 
 def test_layer_catalog_step_resolution(vault):
-    with gps_config_overrides(
-        layer_catalog_files=[
-            str(Path(__file__).parent / "layercatalog.json"),
-        ]
-    ):
-        catalog = get_layer_catalog(vault, opensearch_enrich=True)
-        all_metadata = catalog.get_all_metadata()
+    catalog = get_layer_catalog(vault, opensearch_enrich=True)
+    all_metadata = catalog.get_all_metadata()
 
     warnings = ""
     for layer in all_metadata:
@@ -276,36 +275,68 @@ def test_layer_catalog_step_resolution(vault):
     assert warnings == ""
 
 
-def test_get_layer_native_extent_specific(vault):
-    with gps_config_overrides(
-        layer_catalog_files=[
-            str(Path(__file__).parent / "layercatalog.json"),
-        ]
-    ):
-        catalog = get_layer_catalog(vault, opensearch_enrich=True)
-        metadata = GeopysparkCubeMetadata(catalog.get_collection_metadata(collection_id="SENTINEL1_CARD4L"))
-        assert metadata.get_layer_native_extent() == BoundingBox(
-            west=-26.15, south=-48, east=60.42, north=39, crs="EPSG:4326"
+@pytest.fixture
+def layercatalog_json_gz(tmp_path) -> Path:
+    """Fixture for building a layercatalog.json.gz file"""
+    layer_catalog_data = [
+        {"id": "ZOO", "description": "The ZOO layer"},
+        {"id": "ZAZ", "description": "The ZAZ layer"},
+    ]
+    path = tmp_path / "layercatalog01.json.gz"
+    assert not path.exists()
+
+    with gzip.open(path, mode="wt") as f:
+        json.dump(obj=layer_catalog_data, fp=f, indent=2)
+    # Check GZIP signature
+    assert path.read_bytes()[:2] == b"\x1f\x8b"
+
+    return path
+
+
+def test_get_layer_catalog_from_gzip(layercatalog_json_gz):
+    with gps_config_overrides(layer_catalog_files=[str(layercatalog_json_gz)]):
+        catalog = get_layer_catalog()
+
+    assert sorted(c["id"] for c in catalog.get_all_metadata()) == ["ZAZ", "ZOO"]
+
+
+def test_read_catalog_file_json():
+    path = get_test_data_file("layercatalog01.json")
+    assert _read_catalog_file(path) == {
+        "BAR": {"id": "BAR", "description": "bar", "links": ["example.com/bar"]},
+        "BZZ": {"id": "BZZ"},
+        "FOO": {"id": "FOO", "license": "mit"},
+    }
+
+
+def test_read_catalog_file_json_gz(layercatalog_json_gz):
+    assert _read_catalog_file(layercatalog_json_gz) == {
+        "ZAZ": {"id": "ZAZ", "description": "The ZAZ layer"},
+        "ZOO": {"id": "ZOO", "description": "The ZOO layer"},
+    }
+
+
+def test_read_catalog_file_zip(tmp_path):
+    layercatalog_zip = tmp_path / "layercatalog.zip"
+    with zipfile.ZipFile(layercatalog_zip, mode="w") as zf:
+        # A file with single, top-level collection (no list)
+        zf.writestr(
+            "one-collection.json",
+            json.dumps({"id": "THE_ONE"}),
         )
+        # A file with list of collections
+        zf.writestr(
+            "multiple.json",
+            json.dumps([{"id": "TWO"}, {"id": "THREE"}]),
+        )
+    # Check ZIP signature
+    assert layercatalog_zip.read_bytes()[:2] == b"\x50\x4b"
 
-
-def test_get_layer_native_extent_all(vault):
-    with gps_config_overrides(
-        layer_catalog_files=[
-            str(Path(__file__).parent / "layercatalog.json"),
-        ]
-    ):
-        catalog = get_layer_catalog(vault, opensearch_enrich=True)
-    all_metadata = catalog.get_all_metadata()
-    for layer in all_metadata:
-        print(layer["id"])
-        metadata = GeopysparkCubeMetadata(catalog.get_collection_metadata(collection_id=layer["id"]))
-        metadata.get_layer_native_extent()
-
-
-def test_get_layer_native_extent_empty(vault):
-    metadata = GeopysparkCubeMetadata({})
-    assert metadata.get_layer_native_extent() is None
+    assert _read_catalog_file(layercatalog_zip) == {
+        "THE_ONE": {"id": "THE_ONE"},
+        "TWO": {"id": "TWO"},
+        "THREE": {"id": "THREE"},
+    }
 
 
 def test_merge_layers_with_common_name_nothing():

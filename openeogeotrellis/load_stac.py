@@ -1,29 +1,36 @@
 from __future__ import annotations
 
+import collections
 import datetime
 import datetime as dt
+import enum
+import fnmatch
+import functools
 import logging
 import os
+import random
 import re
 import time
+from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterator, List, Optional, Set, Tuple, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, Iterator, List, Optional, Sequence, Set, Tuple, Union
 from urllib.parse import urlparse
 
-import dateutil.parser
-import geopyspark as gps
+import geopandas
 import openeo_driver.backend
-import planetary_computer
 import pyproj
 import pystac
 import pystac.stac_io
+import pystac.utils
 import pystac_client
 import pystac_client.stac_api_io
 import requests.adapters
-from geopyspark import LayerType, TiledRasterLayer
+import shapely
+import shapely.geometry
+from geopyspark import LayerType
 from openeo.metadata import _StacMetadataParser
-from openeo.util import Rfc3339, dict_no_none
+from openeo.util import Rfc3339, TimingLogger, dict_no_none
 from openeo_driver import filter_properties
 from openeo_driver.backend import BatchJobMetadata, LoadParameters
 from openeo_driver.datacube import DriverVectorCube
@@ -31,31 +38,78 @@ from openeo_driver.errors import (
     JobNotFoundException,
     OpenEOApiException,
     ProcessParameterInvalidException,
-    ProcessParameterRequiredException,
     ProcessParameterUnsupportedException,
 )
 from openeo_driver.jobregistry import PARTIAL_JOB_STATUS
-from openeo_driver.ProcessGraphDeserializer import DEFAULT_TEMPORAL_EXTENT
 from openeo_driver.users import User
 from openeo_driver.util.geometry import BoundingBox, GeometryBufferer
-from openeo_driver.util.http import requests_with_retry
 from openeo_driver.util.utm import utm_zone_from_epsg
 from openeo_driver.utils import EvalEnv
 from pystac import STACObject
-from shapely.geometry import Polygon, shape
 from urllib3 import Retry
 
-from openeogeotrellis import datacube_parameters
 from openeogeotrellis.config import get_backend_config
-from openeogeotrellis.constants import EVAL_ENV_KEY
+from openeogeotrellis.constants import EVAL_ENV_KEY, STAC_API_FILTER_BY_GEOMETRY_DEFAULT
 from openeogeotrellis.geopysparkcubemetadata import GeopysparkCubeMetadata
-from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
-from openeogeotrellis.integrations.stac import ResilientStacIO
+from openeogeotrellis.integrations.stac import CompactJsonStacIO, LoggingStacApiIO, ResilientStacIO
 from openeogeotrellis.util.datetime import DateTimeLikeOrNone, to_datetime_utc_unless_none
-from openeogeotrellis.utils import get_jvm, map_optional, normalize_temporal_extent, to_projected_polygons, unzip
+from openeogeotrellis.util.geometry import GeometrySimplifier, GridSnapper
+from openeogeotrellis.util.logging import TrackingIter
+from openeogeotrellis.util.projection import is_utm_epsg_code
+from openeogeotrellis.utils import get_jvm, map_optional, normalize_temporal_extent, to_projected_polygons
+
+if TYPE_CHECKING:
+
+    from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 
 logger = logging.getLogger(__name__)
 REQUESTS_TIMEOUT_SECONDS = 60
+
+STAC_API_PER_PAGE_LIMIT_DEFAULT = 100
+STAC_API_MAX_ITEMS_DEFAULT = 5000
+STAC_API_BACKOFF_FACTOR = 2
+STAC_API_RETRY_TOTAL = 25
+STAC_API_MINIMUM_BACKOFF_SECONDS = 1
+STAC_API_MAXIMUM_BACKOFF_SECONDS = 240
+
+
+class PixelValueScalingMode(enum.Enum):
+    """
+    Modes of how to handle pixel value scaling
+    based on raster:scale and raster:offset metadata
+    """
+
+    # Legacy default mode: no pixel scaling (keep digital number)
+    NO_SCALING = "NO_SCALING"
+
+    # Special (legacy) Sentinel 2 Reflectance mode:
+    # just offset value with ratio of raster:offset and raster:scale
+    S2_REFLECTANCE_SCALED_OFFSET = "S2_REFLECTANCE_SCALED_OFFSET"
+
+    # Normal mode: apply scale and offset to convert to physical quantities
+    SCALE_AND_OFFSET = "SCALE_AND_OFFSET"
+
+
+class _JitteredRetry(Retry):
+    """Retry with jitter to avoid thundering herd on 429 responses.
+
+    - No Retry-After header: full jitter (random in [0, base_backoff])
+    - Retry-After header present: respects it as a minimum with full jitter
+    """
+
+    def get_backoff_time(self) -> float:
+        base = min(super().get_backoff_time(), STAC_API_MAXIMUM_BACKOFF_SECONDS)
+        return random.uniform(0, base)
+
+    def sleep_for_retry(self, response=None) -> bool:
+        retry_after = self.get_retry_after(response)
+        if retry_after is not None:
+            backoff_time = max(super().get_backoff_time(), STAC_API_MINIMUM_BACKOFF_SECONDS)
+            backoff_time = min(backoff_time, STAC_API_MAXIMUM_BACKOFF_SECONDS)
+            jitter = random.uniform(0, backoff_time)
+            time.sleep(retry_after + jitter)
+            return True
+        return False
 
 
 class NoDataAvailableException(OpenEOApiException):
@@ -85,171 +139,177 @@ class LoadStacException(OpenEOApiException):
         self.url = url
 
 
-def load_stac(
+# Some type aliases related to property filters expressed as process graphs
+# (e.g. like the `properties` argument of `load_collection`/`load_stac` processes).
+FlatProcessGraph = Dict[str, dict]
+PropertyFilterPGMap = Dict[str, FlatProcessGraph]
+
+
+@dataclass
+class _LoadStacContext:
+    """Context object containing all inputs needed to build a datacube."""
+    pyramid_factory: Any
+    projected_polygons: Any
+    from_date: dt.datetime
+    to_date: dt.datetime
+    metadata_properties: Dict[str, Any]
+    correlation_id: str
+    data_cube_parameters: Any
+    opensearch_client: Any
+    single_level: bool
+    items_found: bool
+    allow_empty_cubes: bool
+    extent: Any
+    extent_crs: Any
+    netcdf_with_time_dimension: bool
+    requested_bbox: Optional[BoundingBox]
+    metadata: GeopysparkCubeMetadata
+    spatiotemporal_extent: _SpatioTemporalExtent
+    cellsize: Tuple[float, float]
+    url: str
+    jvm: Any
+
+
+def _prepare_context(
     url: str,
     *,
     load_params: LoadParameters,
     env: EvalEnv,
-    layer_properties: Optional[Dict[str, object]] = None,
+    layer_properties: Optional[PropertyFilterPGMap] = None,
     batch_jobs: Optional[openeo_driver.backend.BatchJobs] = None,
-    override_band_names: Optional[List[str]] = None,
+    normalized_band_selection: Optional[List[str]] = None,
     stac_io: Optional[pystac.stac_io.StacIO] = None,
-) -> GeopysparkDataCube:
-    if override_band_names is None:
-        override_band_names = []
+    feature_flags: Optional[Dict[str, Any]] = None,
+    data_cube_parameters: Optional[Any] = None,
+    serialize_item_collection: bool = True,
+    pg_node_id: Optional[str] = None,
+) -> _LoadStacContext:
+    """
+    Prepare all metadata and inputs needed to build/load a datacube from raster files.
 
-    logger.info("load_stac from url {u!r} with load params {p!r}".format(u=url, p=load_params))
+    :param normalized_band_selection: (Optional) list of normalized band names
+        of the bands selected by the user or, as fallback, defined in the openEO collection metadata.
+        Intended for openEO `load_collection` use cases, where:
+        - openEO collection metadata only exposes a subset of all bands in the STAC collection
+        - user is allowed to use band name aliases/variants defined in openEO collection metadata,
+          like "eo:common_name" (from STAC EO extension)
+          and "aliases" (non-standardized openeo-geopyspark-driver feature).
+          `normalized_band_selection` must contain the standard band names after resolving these aliases.
+    """
+    from openeogeotrellis import datacube_parameters
 
-    feature_flags = load_params.get("featureflags", {})
+    # Feature flags: merge global (e.g. from layer catalog info) and user-provided (higher precedence)
+    feature_flags = {**(feature_flags or {}), **load_params.get("featureflags", {})}
+
+    logger.info(f"load_stac with {url=} {load_params=} {feature_flags=}")
+
+    # Collect some  feature flags
     allow_empty_cubes = feature_flags.get("allow_empty_cube", env.get(EVAL_ENV_KEY.ALLOW_EMPTY_CUBES, False))
+    pixel_value_scaling_mode = _get_pixel_value_scaling_mode(feature_flags=feature_flags, url=url)
 
-    all_properties = {**layer_properties, **load_params.properties} if layer_properties else load_params.properties
+    # Merge property filters from layer catalog and user-provided load_params (with precedence to load_params)
+    property_filter_pg_map: PropertyFilterPGMap = {
+        **(layer_properties or {}),
+        **(load_params.properties or {}),
+    }
 
     user: Optional[User] = env.get("user")
 
     requested_bbox = BoundingBox.from_dict_or_none(load_params.spatial_extent, default_crs="EPSG:4326")
+    requested_temporal_extent = _TemporalExtent.from_load_param_extent(load_params.temporal_extent)
 
-    temporal_extent = load_params.temporal_extent
-    from_date, until_date = map(dt.datetime.fromisoformat, normalize_temporal_extent(temporal_extent))
+    # TODO normalize_temporal_extent replaces 'None' with "2000-01-01", which is not a good fallback date.
+    from_date, until_date = map(dt.datetime.fromisoformat, normalize_temporal_extent(load_params.temporal_extent))
     to_date = (
         dt.datetime.combine(until_date, dt.time.max, until_date.tzinfo)
         if from_date == until_date
         else until_date - dt.timedelta(milliseconds=1)
     )
-
-    spatiotemporal_extent = _SpatioTemporalExtent(bbox=requested_bbox, from_date=from_date, to_date=to_date)
-
-    def get_pixel_value_offset(itm: pystac.Item, asst: pystac.Asset) -> float:
-        raster_scale = asst.extra_fields.get("raster:scale", itm.properties.get("raster:scale", 1.0))
-        raster_offset = asst.extra_fields.get("raster:offset", itm.properties.get("raster:offset", 0.0))
-
-        return raster_offset / raster_scale
-
-    property_filter = PropertyFilter(properties=all_properties, env=env)
-
-    collection = None
-    metadata = None
-
-    netcdf_with_time_dimension = False
-    asset_band_names = None
-
-    backend_config = get_backend_config()
-    poll_interval_seconds = backend_config.job_dependencies_poll_interval_seconds
-    max_poll_delay_seconds = backend_config.job_dependencies_max_poll_delay_seconds
-    max_poll_time = time.time() + max_poll_delay_seconds
-
-    dependency_job_info = (
-        _await_dependency_job(
-            url=url,
-            user=user,
-            batch_jobs=batch_jobs,
-            poll_interval_seconds=poll_interval_seconds,
-            max_poll_delay_seconds=max_poll_delay_seconds,
-            max_poll_time=max_poll_time,
-        )
-        if user and batch_jobs
-        else None
+    spatiotemporal_extent = _spatiotemporal_extent_from_load_params(
+        spatial_extent=load_params.spatial_extent,
+        temporal_extent=load_params.temporal_extent,
     )
+    spatial_filtering_geometries = _SpatialFilteringGeometries(geometries=load_params.aggregate_spatial_geometries)
 
-    stac_metadata_parser = _StacMetadataParser(logger=logger)
+    # Band selection: subset of bands to load from STAC assets.
+    # Prefer `normalized_band_selection` (if available) over raw `load_params.bands`
+    # as the former is result of resolving aliases/common_name to standard/expected band names.
+    band_selection: Union[List[str], None] = normalized_band_selection or load_params.bands
+    logger.debug(f"{band_selection=} (from {normalized_band_selection=} and {load_params.bands=})")
+
+    collected_link_band_names = set()
 
     try:
-        if dependency_job_info and batch_jobs:
-            item_collection = ItemCollection.from_own_job(
-                job=dependency_job_info, spatiotemporal_extent=spatiotemporal_extent, batch_jobs=batch_jobs, user=user
-            )
-            band_names = []
-        else:
-            logger.info(f"load_stac of arbitrary URL {url}")
-
-            stac_object = _await_stac_object(
+        # `available_band_names`: all bands that were detected in STAC metadata,
+        #       mainly to be used as fallback band listing when no user-specified band selection was made,
+        #       and bit of validation too where appropriate.
+        with TimingLogger(title=f"construct_item_collection({url=})", logger=logger.info):
+            item_collection, metadata, available_band_names, netcdf_with_time_dimension = construct_item_collection(
                 url=url,
-                poll_interval_seconds=poll_interval_seconds,
-                max_poll_delay_seconds=max_poll_delay_seconds,
-                max_poll_time=max_poll_time,
+                spatiotemporal_extent=spatiotemporal_extent,
+                property_filter_pg_map=property_filter_pg_map,
+                batch_jobs=batch_jobs,
+                env=env,
+                feature_flags=feature_flags,
                 stac_io=stac_io,
+                user=user,
+                spatial_filtering_geometries=spatial_filtering_geometries,
             )
 
-            if isinstance(stac_object, pystac.Item):
-                if load_params.properties:
-                    # as dictated by the load_stac spec
-                    # TODO: it's not that simple see https://github.com/Open-EO/openeo-processes/issues/536 and https://github.com/Open-EO/openeo-processes/pull/547
-                    raise ProcessParameterUnsupportedException(process="load_stac", parameter="properties")
+        items_found = len(item_collection.items) > 0
+        if not allow_empty_cubes and not items_found:
+            raise NoDataAvailableException(message=f"No data available with load_stac of {url=} ({pg_node_id})")
 
-                item = stac_object
-                band_names = stac_metadata_parser.bands_from_stac_item(item=item).band_names()
-                item_collection = ItemCollection.from_stac_item(item=item, spatiotemporal_extent=spatiotemporal_extent)
-            elif isinstance(stac_object, pystac.Collection) and _supports_item_search(stac_object):
-                collection = stac_object
-                netcdf_with_time_dimension = contains_netcdf_with_time_dimension(collection)
-                metadata = GeopysparkCubeMetadata(
-                    metadata=collection.to_dict(include_self_link=False, transform_hrefs=False)
-                )
-
-                band_names = stac_metadata_parser.bands_from_stac_collection(collection=collection).band_names()
-
-                item_collection = ItemCollection.from_stac_api(
-                    collection=stac_object,
-                    original_url=url,
-                    property_filter=property_filter,
-                    spatiotemporal_extent=spatiotemporal_extent,
-                    use_filter_extension=feature_flags.get("use-filter-extension", True),
-                    skip_datetime_filter=((temporal_extent is DEFAULT_TEMPORAL_EXTENT) or netcdf_with_time_dimension),
-                )
-            else:
-                assert isinstance(stac_object, pystac.Catalog)  # static Catalog + Collection
-                catalog = stac_object
-                metadata = GeopysparkCubeMetadata(
-                    metadata=catalog.to_dict(include_self_link=False, transform_hrefs=False)
-                )
-
-                if load_params.properties:
-                    # as dictated by the load_stac spec
-                    # TODO: it's not that simple see https://github.com/Open-EO/openeo-processes/issues/536 and https://github.com/Open-EO/openeo-processes/pull/547
-                    raise ProcessParameterUnsupportedException(process="load_stac", parameter="properties")
-
-                if isinstance(catalog, pystac.Collection):
-                    netcdf_with_time_dimension = contains_netcdf_with_time_dimension(collection=catalog)
-
-                band_names = stac_metadata_parser.bands_from_stac_object(obj=stac_object).band_names()
-
-                item_collection = ItemCollection.from_stac_catalog(catalog, spatiotemporal_extent=spatiotemporal_extent)
+        if serialize_item_collection and pg_node_id and (job_dir := env.get(EVAL_ENV_KEY.JOB_DIR)):
+            item_collection_path = Path(job_dir) / get_stac_item_collection_filename(pg_node_id=pg_node_id)
+            item_collection.to_file(path=item_collection_path)
 
         jvm = get_jvm()
 
         opensearch_client = jvm.org.openeo.geotrellis.file.FixedFeaturesOpenSearchClient()
+        opensearch_link_titles_map = {}
+        opensearch_stats = collections.defaultdict(int)
 
+        # TODO: code smell: (most of) these vars should not be initialized with None here
+        # asset_band_names = the full list of band names contained by the asset
+        # in the same order as defined in the asset (e.g. NetCDF file) itself.
+        # Note that this list is not yet filtered by the requested bands, as the asset loader needs to know
+        # which band index in the file to read.
+        asset_band_names = None
         stac_bbox = None
-        items_found = False
-        start_datetime = end_datetime = None
         proj_epsg = None
         proj_bbox = None
         proj_shape = None
 
-        # assumes a band has the same resolution across features/assets
-        band_cell_size: Dict[str, Tuple[float, float]] = {}
-        band_epsgs: Dict[str, Set[int]] = {}
+        stac_metadata_parser = _StacMetadataParser(logger=logger)
+        resolution_tracker = _ResolutionTracker()
+        observed_epsgs: Set[int] = set()
 
-        for itm in item_collection.items:
-            items_found = True
+        # layercatalog feature flag to handle "granule_metadata" assets.
+        # E.g. for azimuth/zenith "bands" in SENTINEL2_L2A:
+        #     {
+        #         "sunAzimuthAngles": "granule_metadata##0",
+        #         "sunZenithAngles": "granule_metadata##1",
+        #         ...
+        granule_metadata_band_map = feature_flags.get("granule_metadata_band_map")
+        if granule_metadata_band_map:
+            # Add "granule_metadata" based bands (as they were probably not generically declared in STAC metadata).
+            # TODO: possible to move this logic to the level of `construct_item_collection`/`StacMetadataParser`?
+            available_band_names.extend(b for b in granule_metadata_band_map.keys() if b not in available_band_names)
 
-            item_start_datetime = dateutil.parser.parse(
-                itm.properties.get("datetime") or itm.properties["start_datetime"]
-            )
-            item_end_datetime = dateutil.parser.parse(itm.properties.get("datetime") or itm.properties["end_datetime"])
+        cellsize_override = feature_flags.get("cellsize_override")
+        fix_proj_transform = feature_flags.get("fix_proj_transform", False)
+        skipped_assets = feature_flags.get("skipped_assets", [])
 
-            if not start_datetime or item_start_datetime < start_datetime:
-                start_datetime = item_start_datetime
-            if not end_datetime or item_end_datetime > end_datetime:
-                end_datetime = item_end_datetime
-
-            band_assets = {
-                asset_id: asset for asset_id, asset in dict(sorted(itm.assets.items())).items() if _is_band_asset(asset)
-            }
+        logger.info(f"Building OpenSearch features for {len(item_collection.items)} items (band_selection={band_selection})")
+        for itm, band_assets in item_collection.iter_items_with_band_assets():
+            opensearch_stats["items"] += 1
+            opensearch_stats[f"items with {len(band_assets)=}"] += 1
 
             builder = (
                 jvm.org.openeo.opensearch.OpenSearchResponses.featureBuilder()
                 .withId(itm.id)
+                .withCollectionId(itm.collection_id)
                 .withNominalDate(itm.properties.get("datetime") or itm.properties["start_datetime"])
             )
 
@@ -258,96 +318,241 @@ def load_stac(
                 # Go through assets ordered by asset GSD (from finer to coarser) if possible,
                 # falling back on deterministic alphabetical asset_id order.
                 # see https://github.com/Open-EO/openeo-geopyspark-driver/pull/1213#discussion_r2107353442
+                # TODO: move this sorting feature inside iter_items_with_band_assets
                 band_assets.items(),
                 key=lambda kv: (
                     float(kv[1].extra_fields.get("gsd") or itm.properties.get("gsd") or 40e6),
                     kv[0],
                 ),
             ):
-                proj_epsg, proj_bbox, proj_shape = _get_proj_metadata(asset=asset, item=itm)
+                if asset_id in skipped_assets:
+                    continue
+                opensearch_stats["assets"] += 1
 
-                asset_band_names_from_metadata = stac_metadata_parser.bands_from_stac_asset(asset=asset).band_names()
+                proj_epsg, proj_bbox, proj_shape = _get_proj_metadata(
+                    asset=asset, item=itm, fix_proj_transform=fix_proj_transform
+                )
+                opensearch_stats[f"assets with {proj_epsg=}"] += 1
+                if proj_epsg:
+                    observed_epsgs.add(proj_epsg)
+
+                asset_band_names_from_metadata: List[str] = stac_metadata_parser.bands_from_stac_asset(asset=asset).band_names()
+                opensearch_stats[f"assets with {len(asset_band_names_from_metadata)=}"] += 1
+
+                if not asset_band_names_from_metadata:
+                    asset_band_names_from_metadata = feature_flags.get("asset_id_to_bands_map", {}).get(asset_id, [])
+                    logger.debug(f"using `asset_id_to_bands_map`: mapping {asset_id} to {asset_band_names_from_metadata}")
                 logger.debug(f"from intersecting_items: {itm.id=} {asset_id=} {asset_band_names_from_metadata=}")
 
-                if not load_params.bands:
+                if not band_selection:
                     # No user-specified band filtering: follow band names from metadata (if possible)
                     asset_band_names = asset_band_names_from_metadata or [asset_id]
-                elif isinstance(load_params.bands, list) and asset_id in load_params.bands:
-                    # User-specified asset_id as band name: use that directly
-                    if asset_id not in band_names:
-                        logger.warning(f"Using asset key {asset_id!r} as band name.")
-                    asset_band_names = [asset_id]
-                elif set(asset_band_names_from_metadata).intersection(load_params.bands or []):
+                elif set(asset_band_names_from_metadata).intersection(band_selection or []):
                     # User-specified bands match with band names in metadata
                     asset_band_names = asset_band_names_from_metadata
+                elif isinstance(band_selection, list) and asset_id in band_selection:
+                    # User-specified asset_id as band name: use that directly
+                    if asset_id not in available_band_names and asset_id not in collected_link_band_names:
+                        logger.warning(f"Using {asset_id=} as band name (while not in {available_band_names=}).")
+                    asset_band_names = [asset_id]
                 else:
-                    # No match with load_params.bands in some way -> skip this asset
+                    # No match with band_selection in some way -> skip this asset
                     continue
+
+                opensearch_stats[f"assets with {len(asset_band_names)=}"] += 1
 
                 if band_names_tracker.already_seen(sorted(asset_band_names)):
-                    # We've already seen these bands (e.g. at finer GSD), so skip this asset.
+                    # We've already seen this set of bands (e.g. at finer GSD), so skip this asset.
                     continue
 
-                for asset_band_name in asset_band_names:
-                    if asset_band_name not in band_names:
-                        band_names.append(asset_band_name)
+                if proj_epsg and proj_bbox and proj_shape:
+                    asset_cell_size = _compute_cellsize(proj_bbox, proj_shape)
+                    for asset_band_name in asset_band_names:
+                        resolution_tracker.track(key=asset_band_name, epsg=proj_epsg, res=asset_cell_size)
 
-                    if proj_bbox and proj_shape:
-                        band_cell_size[asset_band_name] = _compute_cellsize(proj_bbox, proj_shape)
-                    if proj_epsg:
-                        band_epsgs.setdefault(asset_band_name, set()).add(proj_epsg)
-
-                pixel_value_offset = get_pixel_value_offset(itm, asset)
-                logger.debug(
-                    f"FeatureBuilder.addlink {itm.id=} {asset_id=} {asset_band_names_from_metadata=} {asset_band_names=}"
+                pixel_value_scale, pixel_value_offset = _get_pixel_value_scale_and_offset(
+                    asset=asset, item=itm, pixel_value_scaling_mode=pixel_value_scaling_mode
                 )
-                builder = builder.addLink(get_best_url(asset), asset_id, pixel_value_offset, asset_band_names)
+                asset_href = get_best_url(asset, preferred_url_prefix=feature_flags.get("preferred_url_prefix"))
+                logger.debug(
+                    f"FeatureBuilder.addLink {itm.id=} {asset_id=} {asset_href=} {asset_band_names_from_metadata=} {asset_band_names=}"
+                    f" {pixel_value_scale=} {pixel_value_offset=}"
+                )
+
+                opensearch_stats["builder.addLink"] += 1
+                data_type, nodata = _get_datatype_and_no_data(asset=asset)
+                if data_type is not None:
+                    if data_type == "uint32":
+                        data_type = "float64"
+                    if nodata is not None:
+                        builder = builder.addLink(
+                            asset_href,  # scala arg `href: String`
+                            asset_id,  # scala arg `title: String`
+                            float(pixel_value_scale),  # scala arg `pixelValueScale: Double`
+                            float(pixel_value_offset),  # scala arg `pixelValueOffset: Double`
+                            asset_band_names,  # scala arg `bandNames: java.util.List[String]`
+                            data_type,
+                            float(nodata),
+                        )
+                    else:
+                        builder = builder.addLink(
+                            asset_href,  # scala arg `href: String`
+                            asset_id,  # scala arg `title: String`
+                            float(pixel_value_scale),  # scala arg `pixelValueScale: Double`
+                            float(pixel_value_offset),  # scala arg `pixelValueOffset: Double`
+                            asset_band_names,  # scala arg `bandNames: java.util.List[String]`
+                            data_type,
+                        )
+                else:
+                    builder = builder.addLink(
+                        asset_href,  # scala arg `href: String`
+                        asset_id,  # scala arg `title: String`
+                        float(pixel_value_scale),  # scala arg `pixelValueScale: Double`
+                        float(pixel_value_offset),  # scala arg `pixelValueOffset: Double`
+                        asset_band_names,  # scala arg `bandNames: java.util.List[String]`
+                    )
+
+
+                collected_link_band_names.update(asset_band_names)
+
+            # Optionally include additional special assets
+            for asset_id, asset in itm.assets.items():
+                # "granule_metadata" with S2 azimuth/zenit angle data
+                if (
+                    granule_metadata_band_map
+                    # TODO: less strict checking for wider applicability?
+                    and asset_id == "granule_metadata"
+                    and asset.title == "MTD_TL.xml"
+                    and "metadata" in (asset.roles or [])
+                    and (asset_href := get_best_url(asset, with_vsis3=False, preferred_url_prefix=feature_flags.get("preferred_url_prefix"))).endswith("/MTD_TL.xml")
+                    and (not band_selection or set(band_selection).intersection(granule_metadata_band_map.keys()))
+                ):
+                    # TODO: avoid ad-hoc `sorted` and make sure granule_metadata_band_map has intrinsic/intended order from the start
+                    link_band_names = sorted(granule_metadata_band_map.values())
+                    opensearch_link_titles_map.update(granule_metadata_band_map)
+                    logger.debug(
+                        f"FeatureBuilder.addLink {itm.id=} {asset_id=} {asset_href=} {link_band_names=} from {granule_metadata_band_map=}"
+                    )
+                    opensearch_stats["builder.addLink"] += 1
+                    builder = builder.addLink(asset_href, asset_id, link_band_names)
+                # ProbaV Geometry asset
+                elif (
+                    granule_metadata_band_map
+                    and asset_id == "GEOMETRY"
+                ):
+                    asset_href = get_best_url(asset, with_vsis3=False, preferred_url_prefix=feature_flags.get("preferred_url_prefix"))
+                    link_band_names = sorted(granule_metadata_band_map.values())
+                    opensearch_link_titles_map.update(granule_metadata_band_map)
+                    logger.debug(
+                        f"FeatureBuilder.addLink {itm.id=} {asset_id=} {asset_href=} {link_band_names=} from {granule_metadata_band_map=}"
+                    )
+                    opensearch_stats["builder.addLink"] += 1
+                    builder = builder.addLink(asset_href, asset_id, link_band_names)
+
+            # Skip item if no assets/links were collected
+            link_count = len(builder.links())
+            opensearch_stats[f"item with {link_count=}"] += 1
+            if link_count == 0:
+                opensearch_stats["item skip: no links"] += 1
+                continue
+
+            # TODO: the proj_* values are assigned in inner per-asset loop,
+            #       so the values here are ill-defined (the values might even come from another item)
+
+            item_bbox_is_implausible = (
+                # Implausible bounding box: far too wide longitude span for UTM item/assets,
+                # likely due poor antimeridian handling.
+                itm.bbox
+                and proj_epsg
+                and is_utm_epsg_code(proj_epsg)
+                and itm.bbox[2] - itm.bbox[0] > 180
+            )
+            if item_bbox_is_implausible:
+                opensearch_stats["implausible bbox"] += 1
+                # Check other metadata for match with spatial extent to decide to keep or skip item.
+                # TODO: hopefully this special handling can be eliminated once STAC API implementations mature.
+                try:
+                    if proj_bbox:
+                        fallback_geometry = BoundingBox.from_wsen_tuple(proj_bbox, crs=proj_epsg)
+                    elif itm.geometry:
+                        # TODO: check if geometry is valid wrt antimeridian handling?
+                        fallback_geometry = shapely.geometry.shape(itm.geometry)
+                    else:
+                        fallback_geometry = None
+                except Exception as e:
+                    logger.error(
+                        f"Failed to obtain fallback geometry for {itm.id!r} with implausible bbox {itm.bbox!r}",
+                        exc_info=True,
+                    )
+                    fallback_geometry = None
+
+                if fallback_geometry and spatiotemporal_extent.spatial_extent.intersects(fallback_geometry):
+                    opensearch_stats["implausible bbox: keep"] += 1
+                    logger.warning(
+                        f"Detected implausible bbox {itm.bbox!r} in item {itm.id!r} ({proj_epsg=} {proj_bbox=} {fallback_geometry=})"
+                    )
+                else:
+                    opensearch_stats["implausible bbox: skip"] += 1
+                    logger.warning(
+                        f"Skipping item {itm.id!r} with implausible bbox {itm.bbox!r} ({proj_epsg=} {proj_bbox=} {fallback_geometry=})"
+                    )
+                    continue
 
             if proj_epsg:
                 builder = builder.withCRS(f"EPSG:{proj_epsg}")
             if proj_bbox:
-                builder = builder.withRasterExtent(*proj_bbox)
+                builder = builder.withRasterExtent(*(float(b) for b in proj_bbox))
 
-            # TODO: does not seem right conceptually; an Item's assets can have different resolutions (and CRS)
             if proj_bbox and proj_shape:
-                cell_width, cell_height = _compute_cellsize(proj_bbox, proj_shape)
+                cell_width, cell_height = cellsize_override or _compute_cellsize(proj_bbox, proj_shape)
                 builder = builder.withResolution(cell_width)
 
-            latlon_bbox = BoundingBox.from_wsen_tuple(itm.bbox, 4326) if itm.bbox else None
-            item_bbox = latlon_bbox
-            if proj_bbox is not None and proj_epsg is not None:
+
+            if proj_bbox and proj_epsg:
                 item_bbox = BoundingBox.from_wsen_tuple(proj_bbox, crs=proj_epsg)
                 latlon_bbox = item_bbox.reproject(4326)
+            elif itm.bbox and not item_bbox_is_implausible:
+                item_bbox = latlon_bbox = BoundingBox.from_wsen_tuple(itm.bbox, 4326)
+            else:
+                latlon_bbox = item_bbox = None
 
             if latlon_bbox is not None:
-                builder = builder.withBBox(*map(float, latlon_bbox.as_wsen_tuple()))
+                w, s, e, n = latlon_bbox.as_wsen_tuple()
+                if e < w:
+                    # Workaround for `withBBox` not properly supporting bounding boxes across antimeridian
+                    e += 360
+                opensearch_stats["builder.withBBox"] += 1
+                builder = builder.withBBox(float(w), float(s), float(e), float(n))
 
             if itm.geometry is not None:
-                builder = builder.withGeometryFromWkt(str(shape(itm.geometry)))
+                opensearch_stats["builder.withGeometryFromWkt"] += 1
+                builder = builder.withGeometryFromWkt(str(shapely.geometry.shape(itm.geometry)))
 
             self_links = itm.get_links(rel="self")
-            self_url = self_links[0].href if self_links else None
-
-            if self_url:
+            if self_links and (self_url := self_links[0].get_href(transform_href=False)):
                 builder = builder.withSelfUrl(self_url)
+                opensearch_stats["builder.withSelfUrl"] += 1
 
+            logger.debug(f"opensearch.addFeature {itm.id=}")
             opensearch_client.addFeature(builder.build())
+            opensearch_stats["opensearch.addFeature"] += 1
 
-            stac_bbox = (
-                item_bbox
-                if stac_bbox is None
-                else BoundingBox.from_wsen_tuple(
-                    item_bbox.as_polygon().union(stac_bbox.as_polygon()).bounds, stac_bbox.crs
+            if item_bbox:
+                stac_bbox = (
+                    item_bbox
+                    if stac_bbox is None
+                    else BoundingBox.from_wsen_tuple(
+                        item_bbox.as_polygon().union(stac_bbox.as_polygon()).bounds, stac_bbox.crs
+                    )
                 )
-            )
 
-    except LoadStacException:
+        opensearch_stats = dict(sorted(opensearch_stats.items()))
+        logger.info(f"{opensearch_stats=}")
+    except OpenEOApiException:
         raise
     except Exception as e:
         raise LoadStacException(url=url, info=repr(e)) from e
 
-    if not allow_empty_cubes and not items_found:
-        raise NoDataAvailableException()
 
     target_bbox = requested_bbox or stac_bbox
 
@@ -359,64 +564,97 @@ def load_stac(
             f"please provide a spatial extent.",
         )
 
-    if not metadata:
-        metadata = GeopysparkCubeMetadata(metadata={})
-
     if "x" not in metadata.dimension_names():
         metadata = metadata.add_spatial_dimension(name="x", extent=[])
     if "y" not in metadata.dimension_names():
         metadata = metadata.add_spatial_dimension(name="y", extent=[])
 
+    item_collection_temporal_extent = item_collection.get_temporal_extent()
+    metadata_temporal_extent = (
+        map_optional(dt.datetime.isoformat, requested_temporal_extent.from_date or item_collection_temporal_extent[0]),
+        map_optional(dt.datetime.isoformat, requested_temporal_extent.to_date or item_collection_temporal_extent[1]),
+    )
+    logger.info(f"_prepare_context {url=} {metadata_temporal_extent=}")
     metadata = metadata.with_temporal_extent(
-        temporal_extent=(
-            map_optional(dt.datetime.isoformat, start_datetime) or temporal_extent[0],
-            map_optional(dt.datetime.isoformat, end_datetime) or temporal_extent[1],
-        ),
+        temporal_extent=metadata_temporal_extent,
         allow_adding_dimension=True,
     )
-    # Overwrite band_names because new bands could be detected in stac items:
-    metadata = metadata.with_new_band_names(override_band_names or band_names)
 
-    if allow_empty_cubes and not metadata.band_names:
-        # no knowledge of bands except for what the user requested
-        if load_params.bands:
-            metadata = metadata.with_new_band_names(load_params.bands)
-        else:
-            raise ProcessParameterRequiredException(process="load_stac", parameter="bands")
+    fallback_band_names: List[str] = available_band_names.copy()
+    if extra_fallback := sorted(b for b in collected_link_band_names if b not in available_band_names):
+        # TODO: possible to eliminate need for this?
+        logger.debug(f"Adding {extra_fallback=} to {available_band_names=}")
+        fallback_band_names = available_band_names + extra_fallback
+    # Source band names: normalized/standardized band names to be included in the cube,
+    #   with naming as defined in openEO collection metadata or extracted from STAC metadata
+    source_band_names: List[str] = normalized_band_selection or load_params.bands or fallback_band_names
+    # Target band names: possibly contains user-picked aliases, expected as band names in resulting cube
+    target_band_names: List[str] = load_params.bands or normalized_band_selection or fallback_band_names
+    logger.debug(
+        f"{source_band_names=} {target_band_names=} from {load_params.bands=} {normalized_band_selection=} {fallback_band_names=}"
+    )
+    if not target_band_names:
+        raise OpenEOApiException(
+            status_code=400,
+            code="UndefinedBandSelection",
+            message="Unable to determine bands in load_stac. Consider specifying bands explicitly.",
+        )
+    metadata = metadata.with_new_band_names(target_band_names)
 
-    if load_params.global_extent is None or len(load_params.global_extent) == 0:
-        layer_native_extent = metadata.get_layer_native_extent()
-        if layer_native_extent:
-            load_params = load_params.copy()
-            load_params.global_extent = layer_native_extent.as_dict()
+    # TODO: calling this "requested" is misleading, as requested "bands" might be empty, while this variable is non-empty.
+    #       Just reuse "target_band_names" here directly?
+    requested_band_names = metadata.band_names
 
-    if load_params.bands:
-        metadata = metadata.filter_bands(load_params.bands)
+    unique_epsgs, finest_cell_size = resolution_tracker.finest_for(keys=source_band_names)
 
-    band_names = metadata.band_names
-
-    requested_band_epsgs = [epsgs for band_name, epsgs in band_epsgs.items() if band_name in band_names]
-    unique_epsgs = {epsg for epsgs in requested_band_epsgs for epsg in epsgs}
-    requested_band_cell_sizes = [size for band_name, size in band_cell_size.items() if band_name in band_names]
-
-    if len(unique_epsgs) == 1 and requested_band_cell_sizes:  # exact resolution
-        target_epsg = unique_epsgs.pop()
-        cell_widths, cell_heights = unzip(*requested_band_cell_sizes)
-        cell_width = min(cell_widths)
-        cell_height = min(cell_heights)
-    elif len(unique_epsgs) == 1:  # about 10m in given CRS
-        target_epsg = unique_epsgs.pop()
-        try:
-            utm_zone_from_epsg(proj_epsg)
-            cell_width = cell_height = 10.0
-        except ValueError:
-            target_bbox_center = target_bbox.as_polygon().centroid
-            cell_width = cell_height = GeometryBufferer.transform_meter_to_crs(
-                10.0, f"EPSG:{proj_epsg}", loi=(target_bbox_center.x, target_bbox_center.y)
-            )
-    else:  # 10m UTM
+    if len(unique_epsgs) == 1:
+        [target_epsg] = unique_epsgs
+        logger.info(f"{target_epsg=} from {unique_epsgs=}")
+    elif unique_epsgs and all(is_utm_epsg_code(e) for e in unique_epsgs):
         target_epsg = target_bbox.best_utm()
-        cell_width = cell_height = 10.0
+        logger.info(f"{target_epsg=} from {unique_epsgs=}")
+    elif not unique_epsgs and len(observed_epsgs) == 1:
+        # No resolution info available, but all assets agree on a single EPSG (e.g. from item-level proj:code)
+        [target_epsg] = observed_epsgs
+        logger.info(f"{target_epsg=} from {observed_epsgs=} (no resolution info available)")
+    elif not unique_epsgs and observed_epsgs and all(is_utm_epsg_code(e) for e in observed_epsgs):
+        target_epsg = target_bbox.best_utm()
+        logger.info(f"{target_epsg=} from {observed_epsgs=} (no resolution info available)")
+    else:
+        # TODO: picking UTM as target, while the source CRMs are not is probably not ideal.
+        target_epsg = target_bbox.best_utm()
+        logger.warning(f"{target_epsg=} from {unique_epsgs=} {observed_epsgs=}: legacy behavior, but possibly ill-defined")
+
+    cellsize_fallback = feature_flags.get("cellsize_fallback", None)
+    if cellsize_override:
+        (cell_width, cell_height) = cellsize_override
+    elif finest_cell_size:  # exact resolution
+        (cell_width, cell_height) = finest_cell_size
+    elif cellsize_fallback:
+        (cell_width, cell_height) = cellsize_fallback
+    elif len(unique_epsgs) == 1 or (not unique_epsgs and len(observed_epsgs) == 1):
+        logger.warning(f"cellsize: fallback on hardcoded 10m assumption")
+        (cell_width, cell_height) = (10.0, 10.0)
+        # TODO: there is assumption here that cellsize_fallback is given in meter, which is not true in general
+        try:
+            utm_zone_from_epsg(target_epsg)
+        except ValueError:
+            # Cannot convert EPSG to UTM zone. Use unit from CRS instead of meters.
+            target_bbox_center = target_bbox.as_polygon().centroid
+            # TODO: GeometryBufferer.transform_meter_to_crs doesn't work properly in y-dimension
+            cell_width = GeometryBufferer.transform_meter_to_crs(
+                cell_width, f"EPSG:{target_epsg}", loi=(target_bbox_center.x, target_bbox_center.y)
+            )
+            cell_height = GeometryBufferer.transform_meter_to_crs(
+                cell_height, f"EPSG:{target_epsg}", loi=(target_bbox_center.x, target_bbox_center.y)
+            )
+    else:
+        logger.warning(f"cellsize: fallback on hardcoded 10m assumption")
+        (cell_width, cell_height) = (10.0, 10.0)
+
+    logger.info(
+        f"cellsize: {cell_width=} {cell_height=} from {unique_epsgs=} {cellsize_override=} {finest_cell_size=} {cellsize_fallback=}"
+    )
 
     if load_params.target_resolution is not None:
         if load_params.target_resolution[0] != 0.0 and load_params.target_resolution[1] != 0.0:
@@ -440,24 +678,29 @@ def load_stac(
                 target_epsg = pyproj.CRS.from_user_input(load_params.target_crs).to_epsg()
 
     if netcdf_with_time_dimension:
+        # TODO: avoid `asset_band_names` as it is an ill-defined here (outside its original for-loop scoped life cycle)
         if asset_band_names:  # When no products are found, asset_band_names is None
             sorted_bands_from_catalog = sorted(asset_band_names)
-            if band_names != sorted_bands_from_catalog:
+            if requested_band_names != sorted_bands_from_catalog:
                 # TODO: Pass band_names to NetCDFCollection, just like PyramidFactory.
                 logger.warning(
                     f"load_stac: Band order should be alphabetical for NetCDF STAC-catalog with a time dimension. "
-                    f"Was {band_names}, but should be {sorted_bands_from_catalog} instead.",
+                    f"Was {requested_band_names}, but should be {sorted_bands_from_catalog} instead.",
                 )
+        logger.info("Creating NetCDFCollection pyramid factory")
         pyramid_factory = jvm.org.openeo.geotrellis.layers.NetCDFCollection
     else:
+        opensearch_link_titles = [opensearch_link_titles_map.get(b, b) for b in source_band_names]
+        logger.info(f"Creating PyramidFactory for {len(opensearch_link_titles)} band(s): {opensearch_link_titles}")
+        logger.debug(f"{opensearch_link_titles=} (from {source_band_names=} and {opensearch_link_titles_map=})")
         max_soft_errors_ratio = env.get(EVAL_ENV_KEY.MAX_SOFT_ERRORS_RATIO, 0.0)
-
         pyramid_factory = jvm.org.openeo.geotrellis.file.PyramidFactory(
             opensearch_client,
             url,  # openSearchCollectionId, not important
-            band_names,  # openSearchLinkTitles
+            opensearch_link_titles,  # openSearchLinkTitles
             None,  # rootPath, not important
-            jvm.geotrellis.raster.CellSize(cell_width, cell_height),
+            # TODO how does this work? Specifying a cell size without any reference to the corresponding CRS?
+            jvm.geotrellis.raster.CellSize(float(cell_width), float(cell_height)),  # maxSpatialResolution
             False,  # experimental
             max_soft_errors_ratio,
         )
@@ -481,15 +724,73 @@ def load_stac(
     metadata_properties = {}
     correlation_id = env.get(EVAL_ENV_KEY.CORRELATION_ID, "")
 
-    data_cube_parameters, single_level = datacube_parameters.create(load_params, env, jvm)
+    if data_cube_parameters is not None:
+        single_level = env.get(EVAL_ENV_KEY.PYRAMID_LEVELS, "all") != "all"
+    else:
+        data_cube_parameters, single_level = datacube_parameters.create(load_params=load_params, env=env, jvm=jvm)
     getattr(data_cube_parameters, "layoutScheme_$eq")("FloatingLayoutScheme")
 
     tilesize = feature_flags.get("tilesize", None)
     if tilesize:
         getattr(data_cube_parameters, "tileSize_$eq")(tilesize)
 
+    return _LoadStacContext(
+        pyramid_factory=pyramid_factory,
+        projected_polygons=projected_polygons,
+        from_date=from_date,
+        to_date=to_date,
+        metadata_properties=metadata_properties,
+        correlation_id=correlation_id,
+        data_cube_parameters=data_cube_parameters,
+        opensearch_client=opensearch_client,
+        single_level=single_level,
+        items_found=items_found,
+        allow_empty_cubes=allow_empty_cubes,
+        extent=extent,
+        extent_crs=extent_crs,
+        netcdf_with_time_dimension=netcdf_with_time_dimension,
+        requested_bbox=requested_bbox,
+        metadata=metadata,
+        spatiotemporal_extent=spatiotemporal_extent,
+        cellsize=(float(cell_width), float(cell_height)),
+        url=url,
+        jvm=jvm,
+    )
+
+
+def _build_datacube(context: _LoadStacContext) -> GeopysparkDataCube:
+    """
+    Build the raster pyramid using (heavy) raster loading operations.
+    This function performs the actual calls to the PyramidFactory to load raster files.
+    """
+    from geopyspark import Pyramid, TiledRasterLayer
+
+    from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
+
+    # Unpack context
+    pyramid_factory = context.pyramid_factory
+    projected_polygons = context.projected_polygons
+    from_date = context.from_date
+    to_date = context.to_date
+    metadata_properties = context.metadata_properties
+    correlation_id = context.correlation_id
+    data_cube_parameters = context.data_cube_parameters
+    opensearch_client = context.opensearch_client
+    single_level = context.single_level
+    items_found = context.items_found
+    allow_empty_cubes = context.allow_empty_cubes
+    extent = context.extent
+    extent_crs = context.extent_crs
+    netcdf_with_time_dimension = context.netcdf_with_time_dimension
+    requested_bbox = context.requested_bbox
+    metadata = context.metadata
+    spatiotemporal_extent = context.spatiotemporal_extent
+    url = context.url
+    jvm = context.jvm
+
     try:
         if netcdf_with_time_dimension:
+            logger.info("_build_datacube: calling NetCDFCollection.datacube_seq")
             pyramid = pyramid_factory.datacube_seq(
                 projected_polygons,
                 from_date.isoformat(),
@@ -501,6 +802,7 @@ def load_stac(
             )
         elif single_level:
             if not items_found and allow_empty_cubes:
+                logger.info("_build_datacube: calling PyramidFactory.empty_datacube_seq")
                 pyramid = pyramid_factory.empty_datacube_seq(
                     projected_polygons,
                     from_date.isoformat(),
@@ -508,6 +810,7 @@ def load_stac(
                     data_cube_parameters,
                 )
             else:
+                logger.info("_build_datacube: calling PyramidFactory.datacube_seq")
                 pyramid = pyramid_factory.datacube_seq(
                     projected_polygons,
                     from_date.isoformat(),
@@ -525,20 +828,24 @@ def load_stac(
                 extent_crs = "EPSG:4326"
 
             if not items_found and allow_empty_cubes:
+                logger.info("_build_datacube: calling PyramidFactory.empty_pyramid_seq")
                 pyramid = pyramid_factory.empty_pyramid_seq(
                     extent, extent_crs, from_date.isoformat(), to_date.isoformat()
                 )
             else:
+                logger.info("_build_datacube: calling PyramidFactory.pyramid_seq")
                 pyramid = pyramid_factory.pyramid_seq(
                     extent, extent_crs, from_date.isoformat(), to_date.isoformat(), metadata_properties, correlation_id
                 )
+        logger.info(f"_build_datacube: done building pyramid")
     except Exception as e:
         raise OpenEOApiException(
             message=f"load_stac: Error when constructing datacube from {url}: {e}",
             status_code=500,
         ) from e
 
-    metadata = metadata.filter_temporal(from_date.isoformat(), to_date.isoformat())
+    if not spatiotemporal_extent.temporal_extent.is_unbounded():
+        metadata = metadata.filter_temporal(*spatiotemporal_extent.temporal_extent.isoformat())
 
     metadata = metadata.filter_bbox(
         west=extent.xmin(),
@@ -560,7 +867,205 @@ def load_stac(
         for index in range(0, pyramid.size())
     }
 
-    return GeopysparkDataCube(pyramid=gps.Pyramid(levels), metadata=metadata)
+    return GeopysparkDataCube(pyramid=Pyramid(levels), metadata=metadata)
+
+
+def load_stac(
+    url: str,
+    *,
+    load_params: LoadParameters,
+    env: EvalEnv,
+    layer_properties: Optional[PropertyFilterPGMap] = None,
+    batch_jobs: Optional[openeo_driver.backend.BatchJobs] = None,
+    normalized_band_selection: Optional[List[str]] = None,
+    stac_io: Optional[pystac.stac_io.StacIO] = None,
+    feature_flags: Optional[Dict[str, Any]] = None,
+    data_cube_parameters: Optional[Any] = None,
+    pg_node_id: Optional[str] = None,
+) -> GeopysparkDataCube:
+    """
+
+    :param normalized_band_selection: (Optional) list of normalized band names
+        of the bands selected by the user or, as fallback, defined in the openEO collection metadata.
+        Intended for openEO `load_collection` use cases, where:
+        - openEO collection metadata only exposes a subset of all bands in the STAC collection
+        - user is allowed to use band name aliases/variants defined in openEO collection metadata,
+          like "eo:common_name" (from STAC EO extension)
+          and "aliases" (non-standardized openeo-geopyspark-driver feature).
+          `normalized_band_selection` must contain the standard band names after resolving these aliases.
+    """
+    context = _prepare_context(
+        url=url,
+        load_params=load_params,
+        env=env,
+        layer_properties=layer_properties,
+        batch_jobs=batch_jobs,
+        normalized_band_selection=normalized_band_selection,
+        stac_io=stac_io,
+        feature_flags=feature_flags,
+        data_cube_parameters=data_cube_parameters,
+        pg_node_id=pg_node_id,
+    )
+    return _build_datacube(context)
+
+
+def construct_item_collection(
+    url: str,
+    *,
+    spatiotemporal_extent: Optional[_SpatioTemporalExtent] = None,
+    property_filter_pg_map: Optional[PropertyFilterPGMap] = None,
+    batch_jobs: Optional[openeo_driver.backend.BatchJobs] = None,
+    env: Optional[EvalEnv] = None,
+    feature_flags: Optional[Dict[str, Any]] = None,
+    stac_io: Optional[pystac.stac_io.StacIO] = None,
+    user: Optional[User] = None,
+    spatial_filtering_geometries: Union[_SpatialFilteringGeometries, None] = None,
+) -> Tuple[ItemCollection, GeopysparkCubeMetadata, List[str], bool]:
+    """
+    Construct Stac ItemCollection from given load_stac URL
+    """
+    spatiotemporal_extent = spatiotemporal_extent or _SpatioTemporalExtent()
+    property_filter_pg_map = property_filter_pg_map or {}
+    env = env or EvalEnv()
+    feature_flags = feature_flags or {}
+
+    netcdf_with_time_dimension = False
+
+    backend_config = get_backend_config()
+    poll_interval_seconds = backend_config.job_dependencies_poll_interval_seconds
+    max_poll_delay_seconds = backend_config.job_dependencies_max_poll_delay_seconds
+    max_poll_time = time.time() + max_poll_delay_seconds
+
+    dependency_job_info = (
+        _await_dependency_job(
+            url=url,
+            user=user,
+            batch_jobs=batch_jobs,
+            poll_interval_seconds=poll_interval_seconds,
+            max_poll_delay_seconds=max_poll_delay_seconds,
+            max_poll_time=max_poll_time,
+        )
+        if user and batch_jobs
+        else None
+    )
+
+    stac_metadata_parser = _StacMetadataParser(logger=logger)
+
+    if dependency_job_info and batch_jobs:
+        logger.info(f"construct_item_collection: loading from dependency job {dependency_job_info.id!r}")
+        # TODO: improve metadata for this case
+        metadata = GeopysparkCubeMetadata(metadata={})
+        item_collection = ItemCollection.from_own_job(
+            job=dependency_job_info, spatiotemporal_extent=spatiotemporal_extent, batch_jobs=batch_jobs, user=user
+        )
+        # TODO: improve band name detection for this case
+        band_names = []
+    else:
+        logger.info(f"construct_item_collection: fetching STAC object from {url=} {spatiotemporal_extent=}")
+
+        stac_object = _await_stac_object(
+            url=url,
+            poll_interval_seconds=poll_interval_seconds,
+            max_poll_delay_seconds=max_poll_delay_seconds,
+            max_poll_time=max_poll_time,
+            stac_io=stac_io,
+        )
+        logger.info(f"construct_item_collection: got {type(stac_object).__name__} {stac_object.id!r}")
+
+        if isinstance(stac_object, pystac.Item):
+            if property_filter_pg_map:
+                # as dictated by the load_stac spec
+                # TODO: it's not that simple see https://github.com/Open-EO/openeo-processes/issues/536 and https://github.com/Open-EO/openeo-processes/pull/547
+                raise ProcessParameterUnsupportedException(process="load_stac", parameter="properties")
+
+            item = stac_object
+            # TODO: improve metadata for this case
+            metadata = GeopysparkCubeMetadata(metadata={})
+            band_names = stac_metadata_parser.bands_from_stac_item(item=item).band_names()
+            item_collection = ItemCollection.from_stac_item(item=item, spatiotemporal_extent=spatiotemporal_extent)
+            logger.info(f"construct_item_collection: single Item, {band_names=}, collected {len(item_collection.items)} item(s)")
+        elif isinstance(stac_object, pystac.Collection) and _supports_item_search(stac_object):
+            collection = stac_object
+            netcdf_with_time_dimension = contains_netcdf_with_time_dimension(collection)
+
+            # TODO: remove workaround for "alternate:name": "S3" in band summary
+            #  (https://github.com/eu-cdse/openeo-cdse-infra/issues/644)
+            collection_dict = collection.to_dict(include_self_link=False, transform_hrefs=False)
+            for band in collection_dict.get("summaries", {}).get("bands", []):
+                if not "name" in band and "alternate:name" in band:
+                    band["name"] = band["alternate:name"]
+
+            metadata = GeopysparkCubeMetadata(metadata=collection_dict)
+
+            band_names = stac_metadata_parser.bands_from_stac_collection(collection=collection).band_names()
+            logger.info(f"construct_item_collection: STAC API Collection {collection.id!r}, {band_names=}, {netcdf_with_time_dimension=}")
+
+            # TODO: _experimental_properties_prefix is just a temporary feature flag to allow easy fall back to old behavior.
+            #       Ideally however, this prefix stuff should just be dropped #1584
+            properties_prefix = feature_flags.get("_experimental_properties_prefix", "")
+            property_filter = PropertyFilter(
+                properties=property_filter_pg_map, env=env, properties_prefix=properties_prefix
+            )
+            if property_filter_adaptations := feature_flags.get("property_filter_adaptations"):
+                logger.debug(f"AdaptingPropertyFilter with {property_filter_adaptations=}")
+                property_filter = AdaptingPropertyFilter(
+                    properties=property_filter_pg_map,
+                    env=env,
+                    adaptations=property_filter_adaptations,
+                    properties_prefix=properties_prefix,
+                )
+
+            stac_api_filter_by_geometry_default: bool = env.get(
+                EVAL_ENV_KEY.STAC_API_FILTER_BY_GEOMETRY, default=STAC_API_FILTER_BY_GEOMETRY_DEFAULT
+            )
+
+            with TimingLogger(title=f"ItemCollection.from_stac_api from {url=}", logger=logger.info):
+                item_collection = ItemCollection.from_stac_api(
+                    collection=stac_object,
+                    original_url=url,
+                    property_filter=property_filter,
+                    spatiotemporal_extent=spatiotemporal_extent,
+                    use_filter_extension=feature_flags.get("use-filter-extension", True),
+                    # TODO #1312 why skipping datetime filter especially for netcdf with time dimension?
+                    skip_datetime_filter=netcdf_with_time_dimension,
+                    per_page_limit=feature_flags.get("stac_api_per_page_limit", STAC_API_PER_PAGE_LIMIT_DEFAULT),
+                    max_items=feature_flags.get("stac_api_max_items", STAC_API_MAX_ITEMS_DEFAULT),
+                    filter_by_geometry=feature_flags.get(
+                        "stac_api_filter_by_geometry", stac_api_filter_by_geometry_default
+                    ),
+                    spatial_filtering_geometries=spatial_filtering_geometries,
+                )
+        else:
+            assert isinstance(stac_object, pystac.Catalog)  # static Catalog + Collection
+            catalog = stac_object
+            metadata = GeopysparkCubeMetadata(metadata=catalog.to_dict(include_self_link=False, transform_hrefs=False))
+
+            if property_filter_pg_map:
+                # as dictated by the load_stac spec
+                # TODO: it's not that simple see https://github.com/Open-EO/openeo-processes/issues/536 and https://github.com/Open-EO/openeo-processes/pull/547
+                raise ProcessParameterUnsupportedException(process="load_stac", parameter="properties")
+
+            if isinstance(catalog, pystac.Collection):
+                netcdf_with_time_dimension = contains_netcdf_with_time_dimension(collection=catalog)
+
+            band_names = stac_metadata_parser.bands_from_stac_object(obj=stac_object).band_names()
+            logger.info(f"construct_item_collection: static Catalog {catalog.id!r}, {band_names=}, {netcdf_with_time_dimension=}")
+
+            with TimingLogger(title=f"ItemCollection.from_stac_catalog from {url=}", logger=logger.info):
+                item_collection = ItemCollection.from_stac_catalog(catalog, spatiotemporal_extent=spatiotemporal_extent)
+
+    logger.info(f"construct_item_collection: collected {len(item_collection.items)} items")
+
+    # Deduplicate items
+    # TODO: smarter and more fine-grained deduplication behavior?
+    #       - enable by default or only do it on STAC API usage?
+    if deduplicator := _deduplicator_from_feature_flags(feature_flags=feature_flags, id=url):
+        item_collection = item_collection.deduplicated(deduplicator=deduplicator)
+
+    # TODO: possible to embed band names in metadata directly?
+    #       And related: metadata/GeopysparkCubeMetadata as an API is too large and too loosely defined.
+    #       Reduce the surface area here to what is really necessary or expected in later processing steps.
+    return item_collection, metadata, band_names, netcdf_with_time_dimension
 
 
 class _TemporalExtent:
@@ -576,15 +1081,67 @@ class _TemporalExtent:
     """
 
     # TODO: move this to a more generic location for better reuse
+    # TODO: re-implement in dataclasses/attrs to better enforce immutability and simplify equality/hash implementation
 
-    __slots__ = ("from_date", "to_date")
+    __slots__ = ("_from_date", "_to_date")
 
     def __init__(self, from_date: DateTimeLikeOrNone, to_date: DateTimeLikeOrNone):
-        self.from_date: Union[datetime.datetime, None] = to_datetime_utc_unless_none(from_date)
-        self.to_date: Union[datetime.datetime, None] = to_datetime_utc_unless_none(to_date)
+        self._from_date: Union[datetime.datetime, None] = to_datetime_utc_unless_none(from_date)
+        self._to_date: Union[datetime.datetime, None] = to_datetime_utc_unless_none(to_date)
+
+    @property
+    def from_date(self) -> Union[datetime.datetime, None]:
+        return self._from_date
+
+    @property
+    def to_date(self) -> Union[datetime.datetime, None]:
+        return self._to_date
+
+    def _key(self) -> tuple:
+        return (self.from_date, self.to_date)
+
+    def __hash__(self):
+        return hash(self._key())
+
+    def __eq__(self, other):
+        if isinstance(other, _TemporalExtent):
+            return self._key() == other._key()
+        return NotImplemented
+
+    @classmethod
+    def from_load_param_extent(cls, extent: Tuple[DateTimeLikeOrNone, DateTimeLikeOrNone]) -> _TemporalExtent:
+        """
+        Create from openEO load_collection/load_stac-style temporal extent, considering:
+        - given as end-exclusive, per openEO convention
+        - possibly given in legacy (but invalid) way, where from and end date/day are identical,
+          which should be interpreted as a single-day extent
+        """
+        (from_date, until_date) = (to_datetime_utc_unless_none(d) for d in extent)
+        if until_date is None:
+            to_date = None
+        elif from_date == until_date:
+            # Fallback mechanism for legacy usage patterns
+            to_date = datetime.datetime.combine(until_date, datetime.time.max, until_date.tzinfo)
+            logger.warning(
+                f"Invalid temporal extent (identical start and end: {from_date!r}). Normalized end to {to_date!r}."
+            )
+        else:
+            # Convert openEO temporal extent convention (end-exclusive) to internal(?) convention (end-inclusive)
+            # TODO: isn't it just more transparant/consistent to keep working with end-exclusive definition instead of subtracting 1 millisecond here?
+            to_date = until_date - datetime.timedelta(milliseconds=1)
+        return cls(from_date=from_date, to_date=to_date)
 
     def as_tuple(self) -> Tuple[Union[datetime.datetime, None], Union[datetime.datetime, None]]:
         return self.from_date, self.to_date
+
+    def isoformat(self) -> Tuple[Union[str, None], Union[str, None]]:
+        return (
+            self.from_date.isoformat() if self.from_date else None,
+            self.to_date.isoformat() if self.to_date else None,
+        )
+
+    def is_unbounded(self) -> bool:
+        return self.from_date is None and self.to_date is None
 
     def intersects(
         self,
@@ -630,14 +1187,28 @@ class _SpatialExtent:
     """
 
     # TODO: move this to a more generic location for better reuse
+    # TODO: enforce/ensure immutability
+    # TODO: re-implement in dataclasses/attrs to better enforce immutability and simplify equality/hash implementation
 
     __slots__ = ("_bbox", "_bbox_lonlat_shape")
 
     def __init__(self, *, bbox: Union[BoundingBox, None]):
         # TODO: support more bbox representations as input
         self._bbox = bbox
-        # cache for shapely polygon in lon/lat
-        self._bbox_lonlat_shape = self._bbox.reproject("EPSG:4326").as_polygon() if self._bbox else None
+        # Cache for shapely polygon in lon/lat
+        # Note that for cross-antimeridian cases this will be a multipolygon (two polygons on either side of the antimeridian)
+        self._bbox_lonlat_shape = self._bbox.reproject("EPSG:4326").as_geometry() if self._bbox else None
+
+    def _key(self) -> tuple:
+        return (self._bbox,)
+
+    def __hash__(self):
+        return hash(self._key())
+
+    def __eq__(self, other):
+        if isinstance(other, _SpatialExtent):
+            return self._key() == other._key()
+        return NotImplemented
 
     def as_bbox(self, crs: Optional[str] = None) -> Union[BoundingBox, None]:
         bbox = self._bbox
@@ -645,18 +1216,112 @@ class _SpatialExtent:
             bbox = bbox.reproject(crs)
         return bbox
 
-    def intersects(self, bbox: Union[List[float], Tuple[float, float, float, float], None]):
+    def intersects(
+        self,
+        geometry: Union[
+            List[float],
+            Tuple[float, float, float, float],
+            BoundingBox,
+            shapely.geometry.base.BaseGeometry,
+            None,
+        ],
+    ):
+        """
+        Check if given bbox/geometry is within the spatial extent.
+
+        :param geometry: One of:
+
+            - list/tuple of floats: assumed to be bounding box following GeoJSON conventions:
+                - lon-lat (EPSG:4326) coordinates
+                - antimeridian crossing is represented by `west` > `east`
+            - BoundingBox object with valid CRS
+            - shapely geometry (assumed to be in EPSG:4326, with proper antimeridian split if crossing)
+        """
         # TODO: this assumes bbox is in lon/lat coordinates, also support other CRSes?
-        if not self._bbox or bbox is None:
+        if not self._bbox or geometry is None:
             return True
-        return self._bbox_lonlat_shape.intersects(Polygon.from_bounds(*bbox))
+        if isinstance(geometry, (list, tuple)):
+            shape = BoundingBox(*geometry, crs=4326).as_geometry()
+        elif isinstance(geometry, BoundingBox):
+            # TODO: this is technically not correct
+            #       (better is first to convert to geometry and reproject that)
+            #       but this is good enough for most intents and purposes
+            shape = geometry.reproject("EPSG:4326").as_geometry()
+        elif isinstance(geometry, shapely.geometry.base.BaseGeometry):
+            shape = geometry
+        else:
+            raise ValueError(geometry)
+        return self._bbox_lonlat_shape.intersects(shape)
+
+
+class _SpatialFilteringGeometries:
+    """Like _SpatialExtent but geometry based (instead of bounding box based)"""
+
+    __slots__ = ("_geometries",)
+
+    def __init__(
+        self, geometries: Union[geopandas.GeoSeries, DriverVectorCube, shapely.geometry.base.BaseGeometry, None]
+    ):
+        # TODO: do this geometry normalization lazily and only when it will be used
+        self._geometries: Union[geopandas.GeoSeries, None]
+        if isinstance(geometries, geopandas.GeoSeries):
+            self._geometries = geometries
+        elif isinstance(geometries, DriverVectorCube):
+            self._geometries = geometries.get_geometries()
+        elif isinstance(geometries, shapely.geometry.base.BaseGeometry):
+            self._geometries = geopandas.GeoSeries([geometries])
+        elif geometries is None:
+            self._geometries = None
+        else:
+            self._geometries = None
+            logger.warning(f"Unsupported geometries for _SpatialFilteringGeometries: {type(geometries)=}")
+
+    def get_simplified_geojson(self, *, vertex_threshold: int = 100) -> Union[str, None]:
+        """
+        Get simplification (if necessary) of the geometries as GeoJSON string
+        to be used as spatial filter (`intersects` parameter) in STAC API queries
+        """
+        if self._geometries is None:
+            return None
+        try:
+            simplified = GeometrySimplifier().to_simplified_geojson(
+                geometry=self._geometries, vertex_threshold=vertex_threshold
+            )
+            return simplified
+        except Exception as e:
+            logger.warning(f"Failed to simplify spatial filtering geometries: {e}")
+        return None
 
 
 class _SpatioTemporalExtent:
+    """Container of spatio-temporal constraints for filtering STAC entities"""
     # TODO: move this to a more generic location for better reuse
-    def __init__(self, *, bbox: Union[BoundingBox, None], from_date: DateTimeLikeOrNone, to_date: DateTimeLikeOrNone):
+    # TODO: enforce/ensure immutability
+    # TODO: re-implement in dataclasses/attrs to better enforce immutability and simplify equality/hash implementation
+
+    __slots__ = ("_spatial_extent", "_temporal_extent")
+
+    def __init__(
+        self,
+        *,
+        bbox: Union[BoundingBox, None] = None,
+        temporal_extent: Optional[_TemporalExtent] = None,
+        from_date: DateTimeLikeOrNone = None,
+        to_date: DateTimeLikeOrNone = None,
+    ):
         self._spatial_extent = _SpatialExtent(bbox=bbox)
-        self._temporal_extent = _TemporalExtent(from_date=from_date, to_date=to_date)
+        self._temporal_extent = temporal_extent or _TemporalExtent(from_date=from_date, to_date=to_date)
+
+    def _key(self) -> tuple:
+        return (self._spatial_extent, self._temporal_extent)
+
+    def __hash__(self):
+        return hash(self._key())
+
+    def __eq__(self, other):
+        if isinstance(other, _SpatioTemporalExtent):
+            return self._key() == other._key()
+        return NotImplemented
 
     @property
     def spatial_extent(self) -> _SpatialExtent:
@@ -686,6 +1351,27 @@ class _SpatioTemporalExtent:
         return any(self._spatial_extent.intersects(bbox) for bbox in bboxes) and any(
             self._temporal_extent.intersects_interval(interval) for interval in intervals
         )
+
+
+def _spatiotemporal_extent_from_load_params(
+    spatial_extent: Union[Dict, BoundingBox, None],
+    temporal_extent: Tuple[Optional[str], Optional[str]],
+) -> _SpatioTemporalExtent:
+    bbox = BoundingBox.from_dict_or_none(spatial_extent, default_crs="EPSG:4326")
+    temporal_extent = _TemporalExtent.from_load_param_extent(temporal_extent)
+    return _SpatioTemporalExtent(bbox=bbox, temporal_extent=temporal_extent)
+
+
+def _get_item_temporal_extent(item: pystac.Item) -> Tuple[datetime.datetime, datetime.datetime]:
+    if start := item.properties.get("start_datetime"):
+        start = pystac.utils.str_to_datetime(start)
+    else:
+        start = item.datetime
+    if end := item.properties.get("end_datetime"):
+        end = pystac.utils.str_to_datetime(end)
+    else:
+        end = item.datetime
+    return start, end
 
 
 class ItemCollection:
@@ -787,14 +1473,20 @@ class ItemCollection:
         property_filter: PropertyFilter,
         spatiotemporal_extent: _SpatioTemporalExtent,
         use_filter_extension: Union[bool, str] = True,
+        # TODO: is it possible to eliminate the need for this parameter?
         skip_datetime_filter: bool = False,
         original_url: str = "n/a",
+        per_page_limit: int = STAC_API_PER_PAGE_LIMIT_DEFAULT,
+        max_items: Union[int, None] = STAC_API_MAX_ITEMS_DEFAULT,
+        filter_by_geometry: bool = False,
+        spatial_filtering_geometries: Union[_SpatialFilteringGeometries, None] = None,
     ) -> ItemCollection:
         root_catalog = collection.get_root()
 
         # TODO: avoid hardcoded domain sniffing. Possible to discover capabilities in some way?
         # TODO: still necessary to handle `fields` here? It's apparently always the same.
         if root_catalog.get_self_href().startswith("https://planetarycomputer.microsoft.com/api/stac/v1"):
+            import planetary_computer
             modifier = planetary_computer.sign_inplace
             # by default, returns all properties and an invalid STAC Item if fields are specified
             fields = None
@@ -813,16 +1505,16 @@ class ItemCollection:
             # https://stac.openeo.vito.be/ and https://stac.terrascope.be
             fields = None
 
-        retry = requests.adapters.Retry(
-            total=3,
-            backoff_factor=2,
+        retry = _JitteredRetry(
+            total=STAC_API_RETRY_TOTAL,
+            backoff_factor=STAC_API_BACKOFF_FACTOR,
             status_forcelist=frozenset([429, 500, 502, 503, 504]),
             allowed_methods=Retry.DEFAULT_ALLOWED_METHODS.union({"POST"}),
             raise_on_status=False,  # otherwise StacApiIO will catch this and lose the response body
         )
         query_info = ""
         try:
-            stac_io = pystac_client.stac_api_io.StacApiIO(timeout=REQUESTS_TIMEOUT_SECONDS, max_retries=retry)
+            stac_io = LoggingStacApiIO(timeout=REQUESTS_TIMEOUT_SECONDS, max_retries=retry)
             client = pystac_client.Client.open(root_catalog.get_self_href(), modifier=modifier, stac_io=stac_io)
 
             cql2_filter = property_filter.to_cql2_filter(
@@ -830,33 +1522,379 @@ class ItemCollection:
                 use_filter_extension=use_filter_extension,
             )
             method = "POST" if isinstance(cql2_filter, dict) else "GET"
-            query_info += f" {use_filter_extension=} {cql2_filter=} {method=}"
+            query_info += f" {use_filter_extension=} {cql2_filter=}"
 
             bbox = spatiotemporal_extent.spatial_extent.as_bbox(crs="EPSG:4326")
-            bbox = bbox.as_wsen_tuple() if bbox else None
-            search_request = client.search(
-                method=method,
-                collections=collection.id,
-                bbox=bbox,
-                limit=20,
-                datetime=None if skip_datetime_filter else spatiotemporal_extent.temporal_extent.as_tuple(),
-                filter=cql2_filter,
-                fields=fields,
-            )
-            query_info += f" {search_request.url=} {search_request.get_parameters()=}"
-            logger.info(f"ItemCollection.from_stac_api: STAC API request: {query_info}")
+            if bbox is None:
+                query_bboxes = [None]
+            elif bbox.cyclic_antimeridian_crossing():
+                # TODO: proper antimeridian handling should be supported directly by a STAC API
+                #       (https://github.com/radiantearth/stac-api-spec/issues/473)
+                #       but unfortunately that isn't the case in the CDSE pgSTAC deployment (CDSE-2834) and maybe others.
+                #       Can we at some point eliminate this hack to split the query bounding box
+                #       and all the additional housekeeping overhead that comes with it?
+                query_bboxes = [b.as_wsen_tuple() for b in bbox.cyclic_antimeridian_split()]
+                logger.warning(
+                    f"Query across the antimeridian, which should be supported transparently by a STAC API, but some implementations don't, so we split up the query for now: {query_bboxes=}"
+                )
+            else:
+                query_bboxes = [bbox.as_wsen_tuple()]
 
-            # STAC API might not support Filter Extension so always use client-side filtering as well
+            intersects_geometry = None
+            if filter_by_geometry and spatial_filtering_geometries:
+                # Include geometry filtering already in STAC API query
+                intersects_geometry = spatial_filtering_geometries.get_simplified_geojson()
+
+            # Note that per STAC API spec, "Only one of either `intersects` or `bbox` may be specified"
+            if intersects_geometry:
+                query_bboxes = [None]
+
+            query_datetime = (
+                None
+                if spatiotemporal_extent.temporal_extent.is_unbounded() or skip_datetime_filter
+                else spatiotemporal_extent.temporal_extent.as_tuple()
+            )
+
+            # STAC API might not support Filter Extension so always do post-process filtering as well
             # TODO: check "filter" conformance class for this instead of blindly trying to do double work
             #       see https://github.com/stac-api-extensions/filter
             property_matcher = property_filter.build_matcher()
-            items = [item for item in search_request.items() if property_matcher(item.properties)]
+
+            # Set of item ids for on the fly deduplication (when we have to do two queries around the antimeridian)
+            seen_item_ids = set()
+
+            items = []
+            for query_bbox in query_bboxes:
+                search_request = client.search(
+                    method=method,
+                    collections=collection.id,
+                    bbox=query_bbox,
+                    intersects=intersects_geometry,
+                    max_items=max_items,
+                    limit=per_page_limit,
+                    datetime=query_datetime,
+                    filter=cql2_filter,
+                    fields=fields,
+                )
+                if search_request.method == "GET":
+                    query_info += f" {search_request.method} {search_request.url_with_parameters()}"
+                else:
+                    query_info += f" {search_request.method} {search_request.url} {search_request.get_parameters()=}"
+                logger.info(f"ItemCollection.from_stac_api: STAC API request: {query_info}")
+
+                def _items_safe(search_request):
+                    """Yield pystac Items, skipping assets without 'href' (broken API responses)."""
+                    for item_dict in search_request.items_as_dicts():
+                        assets = item_dict.get("assets") or {}
+                        bad_assets = [k for k, v in assets.items() if "href" not in v]
+                        if bad_assets:
+                            logger.warning(
+                                f"ItemCollection.from_stac_api: dropping {len(bad_assets)} asset(s) "
+                                f"without 'href' from item {item_dict.get('id')!r}: {bad_assets}"
+                            )
+                            for k in bad_assets:
+                                del item_dict["assets"][k]
+                        yield pystac.Item.from_dict(item_dict, preserve_dict=False)
+
+                tracking_iter_raw = TrackingIter()
+                tracking_iter_filtered = TrackingIter()
+                items.extend(
+                    tracking_iter_filtered(
+                        item
+                        for item in tracking_iter_raw(_items_safe(search_request))
+                        if property_matcher(item.properties) and item.id not in seen_item_ids
+                        # TODO also do filtering with spatial_filtering_geometries here?
+                    )
+                )
+                logger.info(f"ItemCollection.from_stac_api: {tracking_iter_raw=!s} {tracking_iter_filtered=!s}")
+                if max_items and tracking_iter_raw.count >= max_items:
+                    logger.warning(
+                        f"ItemCollection.from_stac_api: reached {max_items=}: {tracking_iter_raw!s}, item collection is probably incomplete"
+                    )
+
+                if len(query_bboxes) > 1:
+                    # Only track seen items when we're going to check for duplicates (multiple query bboxes)
+                    seen_item_ids.update(item.id for item in items)
+
+            logger.info(f"ItemCollection.from_stac_api: Collected {len(items)} items (from {query_bboxes=})")
         except Exception as e:
             raise LoadStacException(
                 url=original_url, info=f"failed to construct ItemCollection from STAC API. {query_info=} {e=}"
             ) from e
 
         return ItemCollection(items)
+
+    def get_temporal_extent(self) -> Tuple[Union[datetime.datetime, None], Union[datetime.datetime, None]]:
+        """Get overall temporal extent of all items in the collection."""
+        start = None
+        end = None
+        for item in self.items:
+            item_start, item_end = _get_item_temporal_extent(item=item)
+            if not start or item_start < start:
+                start = item_start
+            if not end or item_end > end:
+                end = item_end
+        return start, end
+
+    def deduplicated(self, deduplicator: ItemDeduplicator) -> ItemCollection:
+        """Create new ItemCollection by deduplicating items using the given deduplicator."""
+        orig_count = len(self.items)
+        logger.info(f"ItemCollection.deduplicated: deduplicating {orig_count} items using {deduplicator=}")
+        items = deduplicator.deduplicate(items=self.items)
+        logger.info(f"ItemCollection.deduplicated: from {orig_count} to {len(items)} items")
+        return ItemCollection(items=items)
+
+
+    def iter_items_with_band_assets(self) -> Iterator[Tuple[pystac.Item, Dict[str, pystac.Asset]]]:
+        """Iterate over items along with their band assets only."""
+        for item in self.items:
+            band_assets = {asset_id: asset for asset_id, asset in sorted(item.assets.items()) if _is_band_asset(asset)}
+            if band_assets:
+                yield item, band_assets
+
+    def to_file(self, path: Union[str, Path], stac_io: Optional[pystac.StacIO] = None) -> None:
+        """Serialize item collection to a JSON file."""
+        pystac_item_collection = pystac.item_collection.ItemCollection(items=self.items)
+        # TODO: performance aspects and file size of JSON serialization of large item collections?
+        # Use compact JSON by default
+        pystac_item_collection.save_object(dest_href=str(path), stac_io=stac_io or CompactJsonStacIO())
+
+    @classmethod
+    def from_file(cls, path: Union[str, Path], stac_io: Optional[pystac.StacIO] = None) -> ItemCollection:
+        """Deserialize an item collection from a JSON file."""
+        pystac_item_collection = pystac.item_collection.ItemCollection.from_file(href=str(path), stac_io=stac_io)
+        return cls(items=pystac_item_collection.items)
+
+
+class ItemDeduplicator:
+    """
+    Deduplicate STAC Items based on nominal datetime and selected properties.
+    """
+
+    DEFAULT_DUPLICATION_PROPERTIES = [
+        "platform",
+        "constellation",
+        "gsd",
+        "processing:level",
+        "product:timeliness",
+        "product:type",
+        # "proj:code", TODO: Sometimes UTM zone can differ.
+        "sar:frequency_band",
+        "sar:instrument_mode",
+        "sar:observation_direction",
+        "sar:polarizations",
+        "sat:absolute_orbit",
+        "sat:orbit_state",
+    ]
+
+    def __init__(
+        self,
+        *,
+        time_shift_max: float = 30,
+        duplication_properties: Optional[List[str]] = None,
+        score_property_preference: Optional[Dict[str, Union[List, Dict]]] = None,
+        properties_from_id: Optional[Dict[str, Union[str, re.Pattern]]] = None,
+    ):
+        """
+
+        :param score_property_preference: dict mapping property name to a value scoring, given as:
+            - ordered list from most preferred to least preferred
+              e.g. {"processing:version": [110, 100]} means:
+              prefer items where processing:version==110 over those with 100
+            - or as dict mapping a value to a score
+        :param properties_from_id: optional mapping to support extracting (fake) properties
+            from item id using regular expressions. For example,
+            to extract the "RT" value (consolidation period) from
+            item ids like "c_gls_GPP300-RT0_202603310000_GLOBE"
+            and pick the items with the highest RT value, use something like:
+
+                properties_from_id={"rt": "-(RT[0-9]+)_"},
+                score_property_preference={"rt": ["RT2", "RT1", "RT0"]},
+        """
+        self._time_shift_max = time_shift_max
+
+        # Duplication properties: properties that will be compared
+        # with simple equality to determine duplication (among other criteria).
+        if duplication_properties is None:
+            self._duplication_properties = self.DEFAULT_DUPLICATION_PROPERTIES
+        else:
+            self._duplication_properties = duplication_properties
+
+        # Pre-compute the property-score mapping
+        self._score_property_preference: Dict[str, Dict[str, int]] = {
+            p: self._to_score_map(m) for p, m in (score_property_preference or {}).items()
+        }
+
+        # Dict of regular expressions to allow extracting (fake) properties from item id, e.g. as fallback
+        self._properties_from_id: Optional[Dict[str, re.Pattern]] = (
+            {k: (v if isinstance(v, re.Pattern) else re.compile(v)) for k, v in properties_from_id.items()}
+            if properties_from_id
+            else None
+        )
+
+    @staticmethod
+    def _to_score_map(score_map: Union[list, dict]) -> Dict[str, int]:
+        if isinstance(score_map, list):
+            return {v: len(score_map) - i for i, v in enumerate(score_map)}
+        else:
+            return score_map
+
+    def __repr__(self):
+        return f"ItemDeduplicator({self._duplication_properties=}, {self._score_property_preference=}, {self._properties_from_id=})".replace(
+            "self._", ""
+        )
+
+    @staticmethod
+    def _item_nominal_date(item: pystac.Item) -> datetime.datetime:
+        # TODO: cache result (e.g. by item id)?
+        dt = item.datetime or pystac.utils.str_to_datetime(item.properties["start_datetime"])
+        # ensure UTC timezone for proper comparison
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=datetime.timezone.utc)
+        return dt
+
+    def _get_item_property(self, item: pystac.Item, property: str) -> Any:
+        if property in item.properties:
+            return item.properties[property]
+        elif self._properties_from_id and property in self._properties_from_id:
+            if match := self._properties_from_id[property].search(item.id):
+                return match.group(1)
+        return None
+
+    def _is_duplicate_item(self, item1: pystac.Item, item2: pystac.Item) -> bool:
+        try:
+            # Note this large `and` chain to leverage short-circuiting so that
+            # the more expensive checks (e.g. geometry) are only done
+            # when cheaper checks (e.g. date and properties) pass.
+            return (
+                # Same date
+                (
+                    abs((self._item_nominal_date(item1) - self._item_nominal_date(item2)).total_seconds())
+                    < self._time_shift_max
+                )
+                # Same properties
+                and all(
+                    self._get_item_property(item1, property=p) == self._get_item_property(item2, property=p)
+                    for p in self._duplication_properties
+                )
+                # Comparable bbox
+                and self._is_same_bbox(item1.bbox, item2.bbox, epsilon=1e-3)  # 1e-3 degrees ≈ 111 meters
+                # Same geometry
+                and self._is_same_geometry(item1.geometry, item2.geometry)
+            )
+        except Exception as e:
+            logger.warning(f"Failed to compare {item1.id=} and {item2.id=} for duplication: {e=}", exc_info=True)
+            return False
+
+    def _is_same_bbox(self, bbox1: Optional[List[float]], bbox2: Optional[List[float]], epsilon=1e-6) -> bool:
+        if isinstance(bbox1, list) and isinstance(bbox2, list):
+            return len(bbox1) == 4 and len(bbox2) == 4 and all(abs(a - b) <= epsilon for a, b in zip(bbox1, bbox2))
+        elif bbox1 is None and bbox2 is None:
+            return True
+        else:
+            return False
+
+    def _is_same_geometry(self, geom1: Optional[Dict], geom2: Optional[Dict], epsilon=3e-4, dice_threshold=0.99) -> bool:
+        """Check if two GeoJSON geometries are approximately equal.
+
+        First tries shapely.equals_exact (cheap coordinate-wise comparison with tolerance).
+        If that fails (e.g. different vertex counts), falls back to the Sorensen-Dice
+        coefficient on area overlap, same approach as isDuplicate in OpenSearchResponses.scala.
+
+        STAC item geometries are always in WGS 84 (EPSG:4326),
+        so the epsilon is in degrees (3e-4 degrees ≈ 33 meters at the equator).
+        """
+        if isinstance(geom1, dict) and isinstance(geom2, dict):
+            shape1 = shapely.geometry.shape(geom1)
+            shape2 = shapely.geometry.shape(geom2)
+            if shapely.equals_exact(shapely.normalize(shape1), shapely.normalize(shape2), tolerance=epsilon):
+                return True
+            # Fallback: Dice coefficient on area overlap
+            try:
+                area_sum = shape1.area + shape2.area
+                if area_sum == 0:
+                    return False
+                dice_score = 2 * shape1.intersection(shape2).area / area_sum
+                return dice_score >= dice_threshold
+            except Exception as e:
+                logger.warning(f"Failed geometry Dice score comparison: {e}", exc_info=True)
+                return False
+        elif geom1 is None and geom2 is None:
+            return True
+        else:
+            return False
+
+    def _score(self, item: pystac.Item) -> tuple:
+        """Score an item for deduplication preference (higher is better)."""
+        # Primary: score by property preference (if configured)
+        score = tuple(
+            score_map.get(self._get_item_property(item, property=prop), 0)
+            for prop, score_map in self._score_property_preference.items()
+        )
+        # Fallback: prefer more recently updated items, then use item id as tie breaker
+        return score + (item.properties.get("updated", ""), item.id)
+
+    def _group_duplicates(self, items: Iterable[pystac.Item]) -> Iterator[List[pystac.Item]]:
+        """Produce groups of duplicate items."""
+        # Pre-sort items, to allow quick breaking out of inner loop
+        items = sorted(items, key=self._item_nominal_date)
+        handled = set()
+        time_shift_max = datetime.timedelta(seconds=self._time_shift_max)
+        stats = {"items": 0, "groups": 0}
+        for i, item_i in enumerate(items):
+            stats["items"] += 1
+            if i in handled:
+                continue
+            group = [item_i]
+            horizon = self._item_nominal_date(item_i) + time_shift_max
+            for j in range(i + 1, len(items)):
+                item_j = items[j]
+                if self._item_nominal_date(item_j) > horizon:
+                    break
+                if self._is_duplicate_item(item_i, item_j):
+                    group.append(item_j)
+                    handled.add(j)
+            yield group
+            stats["groups"] += 1
+        logger.debug(f"ItemDeduplicator._group_duplicates {stats=}")
+
+    def deduplicate(self, items: Iterable[pystac.Item]) -> List[pystac.Item]:
+        result = []
+        for group in self._group_duplicates(items):
+            if len(group) > 1:
+                best = max(group, key=self._score)
+                logger.debug(f"Deduplicate: keeping {best.id=} from {len(group)=}")
+            else:
+                best = group[0]
+            result.append(best)
+        return result
+
+
+def _deduplicator_from_feature_flags(feature_flags: dict, *, id: Optional[str] = None) -> Union[ItemDeduplicator, None]:
+    deduplicate_items = feature_flags.get("deduplicate_items", get_backend_config().load_stac_deduplicate_items_default)
+
+    if deduplicate_items:
+        if isinstance(deduplicate_items, dict):
+            if not deduplicate_items.get("enable", True):
+                return None
+            duplication_properties = deduplicate_items.get("duplication_properties")
+            score_property_preference = deduplicate_items.get("score_property_preference")
+            properties_from_id = deduplicate_items.get("properties_from_id")
+        else:
+            # Legacy feature flags
+            # TODO: remove support for these sub-feature flags at top-level
+            duplication_properties = feature_flags.get("duplication_properties")
+            score_property_preference = feature_flags.get("score_property_preference")
+            properties_from_id = feature_flags.get("deduplicator_properties_from_id")
+            if duplication_properties or score_property_preference or properties_from_id:
+                logger.warning(f"Deprecated 'deduplicate_items' feature flag usage ({id=})")
+
+        return ItemDeduplicator(
+            duplication_properties=duplication_properties,
+            score_property_preference=score_property_preference,
+            properties_from_id=properties_from_id,
+        )
+    return None
 
 
 def _is_supported_raster_mime_type(mime_type: str) -> bool:
@@ -905,31 +1943,386 @@ def _is_band_asset(asset: pystac.Asset) -> bool:
     )
 
 
+_REGEX_EPSG_CODE = re.compile(r"^EPSG:(\d+)$", re.IGNORECASE)
+
+
+@functools.lru_cache
+def _proj_code_to_epsg(proj_code: str) -> Union[int, None]:
+    if isinstance(proj_code, str) and (match := _REGEX_EPSG_CODE.match(proj_code)):
+        return int(match.group(1))
+    # TODO pass-through integers as-is?
+    return None
+
+
+def _get_asset_property(asset: pystac.Asset, field: str) -> Union[Any, None]:
+    """
+    Helper to get a property directly from asset,
+    or from bands metadata embedded in asset metadata (if consistent across all bands).
+    """
+    if field in asset.extra_fields:
+        return asset.extra_fields.get(field)
+    if "bands" in asset.extra_fields:
+        # TODO: Is it actually ok to look for projection properties at bands level?
+        #       See https://github.com/stac-extensions/projection/issues/25
+        values = []
+        for band in asset.extra_fields["bands"]:
+            if field in band and band[field] and band[field] not in values:
+                values.append(band.get(field))
+        if len(values) == 1:
+            return values[0]
+        if len(values) > 1:
+            # For now, using debug level here instead of warning,
+            # as this can be done for each asset, which might be too much
+            logger.debug(f"Multiple differing values for {field=} found in asset bands: {values=}")
+
+    return None
+
+
+class _ProjectionMetadata:
+    """
+    Container of and conversion interface for projection metadata from STAC Projection Extension.
+    https://github.com/stac-extensions/projection
+
+    Covering these fields:
+    - "proj:code" (preferably, with (less ideal) alternative sources:
+        "proj:epsg" (deprecated), "proj:wkt2" or "proj:projjson")
+    - "proj:bbox"
+    - "proj:shape"
+    - "proj:transform"
+    """
+
+    # TODO: enforce immutability better (e.g. by implementing through dataclasses/attrs)?
+    # TODO: move to more generic geometry/projection utility module for better reuse and cleaner separation?
+    # TODO: any added value to leverage projection extension support from pystac in some way?
+
+    __slots__ = ("_code", "_bbox", "_shape", "_transform", "_ref")
+
+    def __init__(
+        self,
+        *,
+        code: Optional[str] = None,
+        epsg: Optional[int] = None,
+        bbox: Optional[Sequence[float]] = None,
+        shape: Optional[Sequence[int]] = None,
+        transform: Optional[Sequence[float]] = None,
+        # Reference describing where the metadata came from (STAC item, asset, ...)
+        ref: Optional[str] = None,
+    ):
+        # TODO: support wkt2 and projjson as well in some way?
+        self._code = code or (f"EPSG:{epsg}" if epsg is not None else None)
+        self._bbox = tuple(bbox) if bbox else None
+        self._shape = tuple(shape) if shape else None
+        self._transform = tuple(transform) if transform else None
+        self._ref = ref
+
+    def __repr__(self) -> str:
+        return (
+            f"_ProjectionMetadata(code={self._code!r}, bbox={self._bbox!r}, shape={self._shape!r}, ref={self._ref!r})"
+        )
+
+    def _key(self) -> tuple:
+        # TODO: use normalized `self.bbox` instead of `self._bbox` + `self._transform`
+        #       to also cover equivalence of these two?
+        return (self._code, self._shape, self._bbox, self._transform, self._ref)
+
+    def __hash__(self):
+        return hash(self._key())
+
+    def __eq__(self, other):
+        if isinstance(other, _ProjectionMetadata):
+            return self._key() == other._key()
+        return NotImplemented
+
+    @property
+    def code(self) -> Union[str, None]:
+        return self._code
+
+    @property
+    def epsg(self) -> Union[int, None]:
+        # Note: The field `proj:epsg` has been deprecated in v1.2.0 of projection extension
+        # in favor of `proj:code` and has been removed in v2.0.0.
+        return _proj_code_to_epsg(self._code) if self._code else None
+
+    @property
+    def bbox(self) -> Union[Tuple[float, float, float, float], None]:
+        """
+        Bounding box of the assets represented by this Item in the asset data CRS.
+        Specified as 4 or 6 coordinates ... e.g., [west, south, east, north], ...
+        """
+        if self._bbox and len(self._bbox) in {4, 6}:
+            # TODO: need for support of 6 values?
+            return self._bbox[:4]
+        elif self._shape and self._transform:
+            # per https://github.com/soxofaan/projection/blob/reformat-best-practices/README.md#projtransform
+            a0, a1, a2, a3, a4, a5 = self._transform[:6]
+
+            def project(x: float, y: float) -> Tuple[float, float]:
+                return a0 * x + a1 * y + a2, a3 * x + a4 * y + a5
+
+            sy, sx = self._shape
+            p00 = project(0, 0)
+            px0 = project(sx, 0)
+            p0y = project(0, sy)
+            pxy = project(sx, sy)
+            xs, ys = zip(p00, px0, p0y, pxy)
+            return (min(xs), min(ys), max(xs), max(ys))
+
+    def to_bounding_box(self) -> Union[BoundingBox, None]:
+        """Get bbox (if any) as BoundingBox object."""
+        if bbox := self.bbox:
+            return BoundingBox.from_wsen_tuple(bbox, crs=self.code)
+
+    @property
+    def shape(self) -> Union[Tuple[int, int], None]:
+        """Number of pixels in the most common pixel grid used by the assets (in Y, X order)."""
+        if self._shape and len(self._shape) == 2:
+            return self._shape
+        # TODO: calculate from bbox and transform?
+
+    def resolution(self, *, fail_on_miss: bool = True) -> Union[Tuple[float, float], None]:
+        """
+        Calculate resolution (xres, yres) expressed as distance in the projection CRS
+        based on bbox/shape/transform.
+        """
+        # TODO: rename to resolution(), which is more self-descriptive than "cell size"?
+        if self._bbox and self._shape:
+            xmin, ymin, xmax, ymax = self._bbox[:4]
+            yn, xn = self.shape
+            return float(xmax - xmin) / xn, float(ymax - ymin) / yn
+        elif self._transform:
+            a0, _, _, _, a4, _ = self._transform[:6]
+            return abs(a0), abs(a4)
+
+        if fail_on_miss:
+            raise ValueError(
+                f"Unable to calculate cell size with {self._shape=}, {self._bbox=}, {self._transform=} ({self._ref})"
+            )
+        else:
+            return None
+
+    @classmethod
+    def from_item(cls, item: pystac.Item) -> "_ProjectionMetadata":
+        return cls(
+            code=item.properties.get("proj:code"),
+            epsg=item.properties.get("proj:epsg"),
+            bbox=item.properties.get("proj:bbox"),
+            shape=item.properties.get("proj:shape"),
+            transform=item.properties.get("proj:transform"),
+            ref=f"item {item.id!r}",
+        )
+
+    @classmethod
+    def from_asset(
+        cls,
+        asset: pystac.Asset,
+        *,
+        item: Optional[pystac.Item] = None,
+        fix_proj_transform: bool = False,
+    ) -> "_ProjectionMetadata":
+        """
+        Extract projection metadata from asset, with fallback to asset bands or (owning) item.
+        """
+        if item is None:
+            item = asset.owner
+
+        def get(field):
+            return _get_asset_property(asset, field=field) or (item and item.properties.get(field))
+
+        transform = get("proj:transform")
+        if fix_proj_transform and transform:
+            transform = cls._fix_gdal_ordered_transform(transform)
+
+        ref = f"asset with href={asset.href!r}"
+        if item:
+            ref += f" from item {item.id!r}"
+
+        return cls(
+            code=get("proj:code"),
+            epsg=get("proj:epsg"),
+            bbox=get("proj:bbox"),
+            shape=get("proj:shape"),
+            transform=transform,
+            ref=ref,
+        )
+
+    @staticmethod
+    def _fix_gdal_ordered_transform(
+        transform: Sequence[float], also_check_yx_transposed: bool = False
+    ) -> Sequence[float]:
+        """
+        Detect and fix a proj:transform that is wrongly in GDAL GetGeoTransform order
+
+            [xOrigin, xPixelSize, xSkew, yOrigin, ySkew, yPixelSize]
+
+        instead of the expected order (rasterio/affine style):
+
+            [xPixelSize, xSkew, xOrigin, ySkew, yPixelSize, yOrigin]
+
+        Detection heuristic (for the common XY oriented case):
+        - In rasterio order: (non-zero) pixel sizes are at positions 0 and 4,
+          skew values at positions 1 and 3 are small/zero
+        - In GDAL order: (non-zero) pixel sizes are at positions 1 and 5,
+          skew values at positions 2 and 4 are small/zero
+
+        :param also_check_yx_transposed: whether to also consider the possibility of YX oriented data
+        """
+        if len(transform) < 6:
+            return transform
+        t0, t1, t2, t3, t4, t5 = transform[:6]
+
+        # Data consistent with rasterio order?
+        rasterio_xy_consistent = (abs(t0) > abs(t1)) and (abs(t3) < abs(t4))
+        rasterio_yx_consistent = also_check_yx_transposed and (abs(t0) < abs(t1)) and (abs(t3) > abs(t4))
+
+        # Data consistent with GDAL order?
+        gdal_xy_consistent = (abs(t1) > abs(t2)) and (abs(t4) < abs(t5))
+        gdal_yx_consistent = also_check_yx_transposed and (abs(t1) < abs(t2)) and (abs(t4) > abs(t5))
+
+        if rasterio_xy_consistent or rasterio_yx_consistent:
+            pass
+        elif gdal_xy_consistent or gdal_yx_consistent:
+            transform = [t1, t2, t0, t4, t5, t3] + list(transform[6:])
+        else:
+            logger.debug(f"Failed to detect proj:transform order from {transform=}, leaving as-is.")
+
+        return transform
+
+    @functools.lru_cache
+    def _snappers(self) -> Tuple[GridSnapper, GridSnapper]:
+        """Lazy init of x and y coordinate snappers based on bbox and shape"""
+        xres, yres = self.resolution(fail_on_miss=True)
+        xmin, ymin, xmax, ymax = self.bbox
+        x_snapper = GridSnapper(origin=xmin, resolution=xres)
+        y_snapper = GridSnapper(origin=ymin, resolution=yres)
+        return x_snapper, y_snapper
+
+    def coverage_for(self, extent: BoundingBox, snap: bool = True) -> Union[BoundingBox, None]:
+        """
+        Find the coverage (as bounding box) of the given extent
+        within the pixel grid defined by this `_ProjectionMetadata`,
+        including reprojection (if necessary), aligning/snapping to the pixel grid
+        and clamping to the bounds.
+
+        Returns None if no intersection or bbox.
+        """
+        bbox = self.to_bounding_box()
+        if not bbox:
+            logger.warning(f"coverage_for: missing bbox.")
+            return None
+        intersection = bbox.intersection(extent)
+        if not intersection:
+            return None
+
+        if snap:
+            x_snapper, y_snapper = self._snappers()
+            return BoundingBox(
+                west=x_snapper.down(intersection.west),
+                south=y_snapper.down(intersection.south),
+                east=x_snapper.up(intersection.east),
+                north=y_snapper.up(intersection.north),
+                crs=self.code,
+            )
+        else:
+            return intersection
+
+
+
 def _get_proj_metadata(
-    asset: pystac.Asset, *, item: pystac.Item
+    asset: pystac.Asset,
+    *,
+    item: pystac.Item,
+    fix_proj_transform: bool = False,
 ) -> Tuple[Optional[int], Optional[Tuple[float, float, float, float]], Optional[Tuple[int, int]]]:
-    """Returns EPSG code, bbox (in that EPSG) and number of pixels (rows, cols), if available."""
-    # TODO: possible to avoid item argument and just use asset.owner?
+    """
+    Get projection metadata from asset:
+    EPSG code (int), bbox (in that EPSG) and number of pixels (rows, cols), if available.
+    """
+    # TODO: phase out usage and switch to using _ProjectionMetadata directly?
+    metadata = _ProjectionMetadata.from_asset(asset, item=item, fix_proj_transform=fix_proj_transform)
+    return metadata.epsg, metadata.bbox, metadata.shape
 
-    def to_epsg(proj_code: str) -> Optional[int]:
-        prefix = "EPSG:"
-        return int(proj_code[len(prefix) :]) if proj_code.upper().startswith(prefix) else None
 
-    code = asset.extra_fields.get("proj:code") or item.properties.get("proj:code")
-    epsg = map_optional(to_epsg, code) or asset.extra_fields.get("proj:epsg") or item.properties.get("proj:epsg")
-    bbox = asset.extra_fields.get("proj:bbox") or item.properties.get("proj:bbox")
+def _get_pixel_value_scaling_mode(*, feature_flags: dict, url: str) -> PixelValueScalingMode:
+    """
+    Determine pixel value scaling mode from feature flags or STAC URL
 
-    if not bbox and epsg == 4326:
-        bbox = item.bbox
+    :param feature_flags: feature flags from collection metadata
+    :param url: STAC URL
+    """
+    if feature_flags.get("apply_sentinel2_reflectance_offset"):
+        return PixelValueScalingMode.S2_REFLECTANCE_SCALED_OFFSET
 
-    shape = asset.extra_fields.get("proj:shape") or item.properties.get("proj:shape")
+    if feature_flags.get("apply_raster_scale_and_offset"):
+        return PixelValueScalingMode.SCALE_AND_OFFSET
 
-    return (
-        epsg,
-        tuple(map(float, bbox)) if bbox else None,
-        tuple(shape) if shape else None,
-    )
+    # Guess mode from STAC url
+    # TODO: possible to eliminate the need for this ad-hoc URL-based guessing? E.g. discover from STAC metadata itself?
+    if any(
+        [
+            re.match(r"^https?://stac\.dataspace\.copernicus\.eu/v\d+/collections/sentinel-2-l[12][ac]", url),
+            re.match(r"^https?://stac\.terrascope\.be/collections/terrascope-s2-toc-v\d+", url),
+            url == "https://stac.test/collections/sentinel-2-l2a",
+        ]
+    ):
+        logger.warning(f"Inferred S2_REFLECTANCE_SCALED_OFFSET mode from URL {url=}.")
+        return PixelValueScalingMode.S2_REFLECTANCE_SCALED_OFFSET
 
+    # For now, default to legacy mode: no scaling
+    # TODO: make this default configurable?
+    return PixelValueScalingMode.NO_SCALING
+
+
+def _is_sentinel2_reflectance_asset(asset: pystac.Asset) -> bool:
+    """
+    Helper to determine if the given asset is a Sentinel-2 reflectance asset,
+    based on the presence of "eo:center_wavelength" band metadata.
+    """
+    if bands := asset.extra_fields.get("bands"):
+        return any("eo:center_wavelength" in b for b in bands)
+    elif bands := asset.extra_fields.get("eo:bands"):
+        return any("center_wavelength" in b for b in bands)
+    return False
+
+
+def _get_pixel_value_scale_and_offset(
+    *, asset: pystac.Asset, item: pystac.Item, pixel_value_scaling_mode: PixelValueScalingMode
+) -> Tuple[float, float]:
+    """
+    Get pixel value scale and offset based on:
+    raster:scale, raster:offset metadata and pixel value scaling mode
+    """
+    if pixel_value_scaling_mode == PixelValueScalingMode.SCALE_AND_OFFSET:
+        raster_scale, raster_offset = _get_raster_scale_and_offset(item=item, asset=asset)
+        pixel_value_scale, pixel_value_offset = raster_scale, raster_offset
+    elif pixel_value_scaling_mode == PixelValueScalingMode.S2_REFLECTANCE_SCALED_OFFSET:
+        if _is_sentinel2_reflectance_asset(asset=asset):
+            raster_scale, raster_offset = _get_raster_scale_and_offset(item=item, asset=asset)
+            pixel_value_scale, pixel_value_offset = 1.0, raster_offset / raster_scale
+        else:
+            pixel_value_scale, pixel_value_offset = 1.0, 0.0
+    elif pixel_value_scaling_mode == PixelValueScalingMode.NO_SCALING:
+        # Legacy mode: don't apply scale nor offset
+        pixel_value_scale, pixel_value_offset = 1.0, 0.0
+    else:
+        logger.warning(f"Unknown {pixel_value_scaling_mode=}, defaulting to no scaling.")
+        pixel_value_scale, pixel_value_offset = 1.0, 0.0
+    return pixel_value_scale, pixel_value_offset
+
+
+def _get_raster_scale_and_offset(*, item: pystac.Item, asset: pystac.Asset) -> Tuple[float, float]:
+    """
+    Get raster:scale and raster:offset metadata from asset or its parent item
+    """
+    # TODO: get parent item through asset.owner, instead of expecting caller to provide it
+    raster_scale = asset.extra_fields.get("raster:scale", item.properties.get("raster:scale", 1.0))
+    raster_offset = asset.extra_fields.get("raster:offset", item.properties.get("raster:offset", 0.0))
+    return raster_scale, raster_offset
+
+
+def _get_datatype_and_no_data(asset: pystac.Asset) -> Tuple[Union[str, None], Union[float, None]]:
+    nodata = _get_asset_property(asset, "nodata")
+    datatype = _get_asset_property(asset, "data_type")
+    return datatype, nodata
 
 def _supports_item_search(collection: pystac.Collection) -> bool:
     # TODO: use pystac_client instead?
@@ -963,13 +2356,15 @@ def contains_netcdf_with_time_dimension(collection: pystac.Collection) -> bool:
     return False
 
 
-def get_best_url(asset: pystac.Asset):
+def get_best_url(asset: pystac.Asset, with_vsis3: bool = True, preferred_url_prefix: Optional[str] = None) -> str:
     """
     Relevant doc: https://github.com/stac-extensions/alternate-assets
     """
     for key, alternate_asset in asset.extra_fields.get("alternate", {}).items():
+        href = alternate_asset["href"]
+        if preferred_url_prefix and href.lower().startswith(preferred_url_prefix.lower()):
+            return href
         if key in {"local", "s3"}:
-            href = alternate_asset["href"]
             # Checking if file exists takes around 10ms on /data/MTDA mounted on laptop
             # Checking if URL exists takes around 100ms on https://services.terrascope.be
             # Checking if URL exists depends also on what Datasource is used in the scala code.
@@ -991,9 +2386,10 @@ def get_best_url(asset: pystac.Asset):
 
     href = asset.get_absolute_href() or asset.href
 
+    # TODO: this vsis3 upper-lower-case juggling should be moved to geotrellis extensions instead of this undocumented coupling (and hardcoded deployment details)
     return (
-        href.replace("s3://eodata/", "/vsis3/EODATA/")
-        if os.environ.get("AWS_DIRECT") == "TRUE"
+        href.replace("s3://eodata/", "/vsis3/eodata/")
+        if (with_vsis3 and os.environ.get("AWS_DIRECT") == "TRUE")
         else href.replace("s3://eodata/", "/eodata/")
     )
 
@@ -1002,6 +2398,7 @@ def _compute_cellsize(
     proj_bbox: Tuple[float, float, float, float],
     proj_shape: Tuple[float, float],
 ) -> Tuple[float, float]:
+    # TODO: replace usage with _ProjectionMetadata.cell_size()?
     xmin, ymin, xmax, ymax = proj_bbox
     rows, cols = proj_shape
     cell_width = (xmax - xmin) / cols
@@ -1049,7 +2446,7 @@ def _await_dependency_job(
     while True:
         partial_job_status = PARTIAL_JOB_STATUS.for_job_status(dependency_job_info.status)
 
-        logger.debug(f"OpenEO batch job results status of own job {dependency_job_info.id}: {partial_job_status}")
+        logger.debug(f"OpenEO batch job results status of own job {dependency_job_info.id}: {partial_job_status=}")
 
         if partial_job_status in [PARTIAL_JOB_STATUS.ERROR, PARTIAL_JOB_STATUS.CANCELED]:
             logger.error(f"Failing because own OpenEO batch job {dependency_job_info.id} failed")
@@ -1060,10 +2457,9 @@ def _await_dependency_job(
         if time.time() >= max_poll_time:
             max_poll_delay_reached_error = (
                 f"OpenEO batch job results dependency of"
-                f"own job {dependency_job_info.id} was not satisfied after"
-                f" {max_poll_delay_seconds} s, aborting"
+                f" own job {dependency_job_info.id} was not satisfied after"
+                f" {max_poll_delay_seconds}s, aborting"
             )
-
             raise Exception(max_poll_delay_reached_error)
 
         time.sleep(poll_interval_seconds)
@@ -1082,7 +2478,11 @@ def _await_stac_object(
     stac_io: Optional[pystac.stac_io.StacIO] = None,
 ) -> STACObject:
     if stac_io is None:
-        session = requests_with_retry(total=5, backoff_factor=0.1, status_forcelist={500, 502, 503, 504})
+        retry = _JitteredRetry(total=STAC_API_RETRY_TOTAL, backoff_factor=STAC_API_BACKOFF_FACTOR, status_forcelist={429, 500, 502, 503, 504})
+        adapter = requests.adapters.HTTPAdapter(max_retries=retry)
+        session = requests.Session()
+        session.mount("http://", adapter)
+        session.mount("https://", adapter)
         stac_io = ResilientStacIO(session)
 
     while True:
@@ -1127,14 +2527,34 @@ class PropertyFilter:
 
     # TODO: move this utility to a more generic location for better reuse
 
-    def __init__(self, properties: Dict[str, dict], *, env: Optional[EvalEnv] = None):
+    def __init__(
+        self,
+        properties: PropertyFilterPGMap,
+        *,
+        env: Optional[EvalEnv] = None,
+        # TODO: remove this prefix option again, as the consensus seems that prefix should not be used. #1584
+        properties_prefix: str = "",
+    ):
         self._properties = properties
         self._env = env or EvalEnv()
+        if properties_prefix:
+            logger.warning(f"PropertyFilter with non-empty {properties_prefix=} which is deprecated")
+        self._properties_prefix = properties_prefix
+
+    def _iter_literal_matches(self) -> Iterator[Tuple[str, str, Any]]:
+        """Helper to produce tuples of property-name, operator and value"""
+        for property_name, pg in self._properties.items():
+            for operator, value in filter_properties.extract_literal_match(pg, env=self._env).items():
+                if operator == "eq" and isinstance(value, str) and ("*" in value or "?" in value):
+                    operator = "like"
+                yield property_name, operator, value
 
     @staticmethod
     def _build_callable(operator: str, value: Any) -> Callable[[Any], bool]:
         if operator == "eq":
             return lambda actual: actual == value
+        elif operator == "like":
+            return lambda actual, p=value: actual is not None and fnmatch.fnmatch(str(actual), p)
         elif operator == "lte":
             return lambda actual: actual is not None and actual <= value
         elif operator == "gte":
@@ -1151,9 +2571,8 @@ class PropertyFilter:
         that can be used to check if properties match the filter conditions.
         """
         conditions = [
-            (name, self._build_callable(operator, value))
-            for name, pg in self._properties.items()
-            for operator, value in filter_properties.extract_literal_match(pg, env=self._env).items()
+            (property_name, self._build_callable(operator, value))
+            for property_name, operator, value in self._iter_literal_matches()
         ]
 
         def match(properties: Dict[str, Any]) -> bool:
@@ -1192,57 +2611,139 @@ class PropertyFilter:
 
     def to_cql2_text(self) -> str:
         """Convert the property filter to a CQL2 text representation."""
-        literal_matches = {
-            property_name: filter_properties.extract_literal_match(condition, self._env)
-            for property_name, condition in self._properties.items()
-        }
-        cql2_text_formatter = get_jvm().org.openeo.geotrellissentinelhub.Cql2TextFormatter()
+        filters = []
+        for property_name, operator, value in self._iter_literal_matches():
+            if operator == "like":
+                continue
+            operator = self._to_cql2_operator(operator)
+            # Bit of ad-hoc value encoding (note that we exploit the fact here
+            # that `repr` produces single quoted strings, as expected in CQL2 text format)
+            if isinstance(value, (list, set)):
+                value = repr(tuple(value))
+            else:
+                value = repr(value)
+            filters.append(f'"{self._properties_prefix}{property_name}" {operator} {value}')
+        return " and ".join(filters)
 
-        return cql2_text_formatter.format(
-            # Cql2TextFormatter won't add necessary quotes so provide them up front
-            # TODO: are these quotes actually necessary?
-            {f'"properties.{name}"': criteria for name, criteria in literal_matches.items()}
-        )
-
-    def to_cql2_json(self) -> Union[Dict, None]:
-        literal_matches = {
-            property_name: filter_properties.extract_literal_match(condition, self._env)
-            for property_name, condition in self._properties.items()
-        }
-        if len(literal_matches) == 0:
-            return None
-
-        operator_mapping = {
+    def _to_cql2_operator(self, operator: str):
+        """Map operators produced by extract_literal_match to CQL2 operators."""
+        cql2_op = {
             "eq": "=",
             "neq": "<>",
             "lt": "<",
             "lte": "<=",
             "gt": ">",
             "gte": ">=",
+            # Note that the operators produced by `extract_literal_match`
+            # (the keys in this mapping) are currently somewhat arbitrairy:
+            # most correspond directly to openEO-processes naming,
+            # while openEO's `array_contains` is translated to `in` for some reason,
             "in": "in",
-        }
+            "array_contains": "in",  # Still cover for openEO-style naming here to be future-proof
+        }.get(operator)
+        if not cql2_op:
+            raise ValueError(f"Unsupported operator {operator}")
+        return cql2_op
 
-        def single_filter(property, operator, value) -> dict:
-            cql2_json_operator = operator_mapping.get(operator)
-
-            if cql2_json_operator is None:
-                raise ValueError(f"unsupported operator {operator}")
-
-            return {"op": cql2_json_operator, "args": [{"property": f"properties.{property}"}, value]}
-
+    def to_cql2_json(self) -> Union[dict, None]:
         filters = [
-            single_filter(property, operator, value)
-            for property, criteria in literal_matches.items()
-            for operator, value in criteria.items()
+            {
+                "op": self._to_cql2_operator(operator),
+                "args": [{"property": f"{self._properties_prefix}{property_name}"}, value],
+            }
+            for property_name, operator, value in self._iter_literal_matches()
+            if operator != "like"
         ]
-
-        if len(filters) == 1:
+        if len(filters) == 0:
+            return None
+        elif len(filters) == 1:
             return filters[0]
+        else:
+            return {"op": "and", "args": filters}
 
-        return {
-            "op": "and",
-            "args": filters,
-        }
+
+class AdaptingPropertyFilter(PropertyFilter):
+    """
+    PropertyFilter subclass with extra mapping of (legacy) property names and values.
+
+    Mapping instructions are given as a dictionary, with (legacy) user-provided property names as key
+    (named "legacy_property" in exmples below), supporting the following transformations:
+
+    - drop filtering on a property (e.g. because legacy property is no longer available,
+      and filtering would cause nothing to match):
+
+           {"legacy_property": "drop"}
+
+    - rename legacy property to new property name:
+
+          {"legacy_property": {"rename" : "new_name"}}
+
+    - Rename property values:
+
+          {"legacy_property": {"value_mapping": {"old_value": "new_value"}}}
+
+      "value_mapping" here can be
+      - a dictionary for simple mapping (missing values are kept)
+      - (string) "add-MGRS-prefix": to add a "MGRS-" prefix to the legacy value.
+    """
+
+    def __init__(
+        self,
+        properties: PropertyFilterPGMap,
+        *,
+        env: Optional[EvalEnv] = None,
+        adaptations: Dict[str, Union[dict, str]],
+        properties_prefix: str = "",
+    ):
+        super().__init__(properties=properties, env=env, properties_prefix=properties_prefix)
+        self._adaptations = adaptations
+
+    def _iter_literal_matches(self) -> Iterator[Tuple[str, str, Any]]:
+        updates = []
+        for property_name, operator, value in super()._iter_literal_matches():
+            adaptation = self._adaptations.get(property_name, "preserve")
+            if adaptation == "preserve":
+                # Keep everyting as-is (default)
+                pass
+            elif adaptation == "drop":
+                updates.append(f"Drop {property_name!r}")
+                # Skip yield
+                continue
+            elif isinstance(adaptation, dict):
+                if rename := adaptation.get("rename"):
+                    updates.append(f"Rename {property_name!r} to {rename!r}")
+                    property_name = rename
+                if value_mapping := adaptation.get("value_mapping"):
+                    new_value = self._map_value(value_mapping=value_mapping, value=value)
+                    if new_value != value:
+                        updates.append(f"Map {property_name!r} value {value!r} to {new_value!r}")
+                        value = new_value
+            else:
+                raise ValueError(f"Invalid {adaptation=}")
+
+            yield property_name, operator, value
+        if updates:
+            # TODO: make this a (more descriptive) warning to push users to update their filters?
+            logger.info(f"AdaptingPropertyFilter: {updates=}")
+
+    def _map_value(self, value_mapping: Union[dict, str], value: Any) -> Any:
+        if isinstance(value_mapping, dict):
+            mapper = lambda v: value_mapping.get(v, v)
+        elif value_mapping == "add-MGRS-prefix":
+            # TODO: make this more generic with something like "add-prefix:<prefix>"?
+            mapper = lambda v: f"MGRS-{v}"
+        elif value_mapping == "make_lower_case":
+            mapper = lambda v: v.lower() if isinstance(v, str) else v
+        elif value_mapping == "make_upper_case":
+            mapper = lambda v: v.upper() if isinstance(v, str) else v
+        else:
+            raise ValueError(f"Invalid {value_mapping=}")
+
+        if isinstance(value, (list, tuple, set)):
+            new_value = type(value)(mapper(v) for v in value)
+        else:
+            new_value = mapper(value)
+        return new_value
 
 
 class NoveltyTracker:
@@ -1269,3 +2770,39 @@ class NoveltyTracker:
     def already_seen(self, x) -> bool:
         """Check if the item was seen before."""
         return not self.is_new(x)
+
+
+class _ResolutionTracker:
+    """
+    Track resolution (cell size in a CRS), keyed on something (e.g. asset id, band, ...)
+    and allow to determine the finest one afterwards based on subselection
+    """
+
+    def __init__(self):
+        # Mapping of key -> set of (epsg_code, resolution) tuples (with resolution as (x_size, y_size) tuple)
+        self._resolutions: Dict[str, Set[Tuple[int, Tuple[float, float]]]] = collections.defaultdict(set)
+
+    def track(self, *, key: str = "_default", epsg: int, res: Tuple[float, float]):
+        self._resolutions[key].add((epsg, res))
+
+    def finest_for(self, keys: Iterable[str] = ("_default",)) -> Tuple[Set[int], Union[Tuple[float, float], None]]:
+        """
+        Determine finest resolution (smallest cell size) associated with the given keys,
+        but only if that makes sense: there is just a single EPSG code in play
+        or all are UTM zones.
+
+        return set of EPSG codes and finest resolution (if any)
+        """
+        selection = set(r for k in keys if k in self._resolutions for r in self._resolutions[k])
+
+        epsgs = set(epsg for (epsg, _) in selection)
+        if selection and (len(epsgs) == 1 or all(is_utm_epsg_code(e) for e in epsgs)):
+            finest_res = min(res for (_, res) in selection)
+        else:
+            finest_res = None
+
+        return epsgs, finest_res
+
+
+def get_stac_item_collection_filename(*, pg_node_id: str) -> str:
+    return f"stac-item-collection-{pg_node_id}.json"

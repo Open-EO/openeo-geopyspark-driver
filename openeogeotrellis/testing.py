@@ -23,17 +23,26 @@ import kazoo
 import kazoo.exceptions
 import numpy
 import openeo_driver.testing
+import py4j.java_gateway
 import pyspark
 import pystac
 import pytest
+import rasterio
 import shapely
+import shapely.affinity
+import shapely.geometry
+import shapely.geometry.base
 import werkzeug.exceptions
 from openeo.testing.stac import StacDummyBuilder
-from openeo_driver.testing import ephemeral_flask_server
+from openeo_driver.testing import ApiResponse, ephemeral_flask_server, load_json
+from openeo_driver.util.geometry import BoundingBox
+from openeo_driver.util.utm import is_utm_crs
 
+import openeogeotrellis
 from openeogeotrellis.config import gps_config_getter
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.util.datetime import to_datetime_utc
+from openeogeotrellis.util.geometry import bbox_to_geojson, to_geojson_io_url
 from openeogeotrellis.util.runtime import is_package_available
 
 
@@ -371,6 +380,20 @@ class DummyStacApiServer:
 
     def default_setup(self):
         """Predefine a default collection with items"""
+        # TODO: use real HTTP for asset hrefs instead of local file paths
+
+        # Set up collection-123, with this item layout:
+        #  52          ┌───────────┐
+        #              │  item-3   │
+        #  51      ┌───└───────────┘
+        #          │ item-2│
+        #  50  ┌───└───────┘
+        #      │ item-1
+        #  49  └───┘
+        #      2   3   4   5   6   7   8
+        # Also see https://geojson.io/#data=data:application/json,%7B%22type%22%3A%20%22FeatureCollection%22%2C%20%22features%22%3A%20%5B%7B%22type%22%3A%20%22Feature%22%2C%20%22properties%22%3A%20%7B%7D%2C%20%22geometry%22%3A%20%7B%22type%22%3A%20%22Polygon%22%2C%20%22coordinates%22%3A%20%5B%5B%5B3.0%2C%2049.0%5D%2C%20%5B3.0%2C%2050.0%5D%2C%20%5B2.0%2C%2050.0%5D%2C%20%5B2.0%2C%2049.0%5D%2C%20%5B3.0%2C%2049.0%5D%5D%5D%7D%7D%2C%20%7B%22type%22%3A%20%22Feature%22%2C%20%22properties%22%3A%20%7B%7D%2C%20%22geometry%22%3A%20%7B%22type%22%3A%20%22Polygon%22%2C%20%22coordinates%22%3A%20%5B%5B%5B5.0%2C%2050.0%5D%2C%20%5B5.0%2C%2051.0%5D%2C%20%5B3.0%2C%2051.0%5D%2C%20%5B3.0%2C%2050.0%5D%2C%20%5B5.0%2C%2050.0%5D%5D%5D%7D%7D%2C%20%7B%22type%22%3A%20%22Feature%22%2C%20%22properties%22%3A%20%7B%7D%2C%20%22geometry%22%3A%20%7B%22type%22%3A%20%22Polygon%22%2C%20%22coordinates%22%3A%20%5B%5B%5B7.0%2C%2051.0%5D%2C%20%5B7.0%2C%2052.0%5D%2C%20%5B4.0%2C%2052.0%5D%2C%20%5B4.0%2C%2051.0%5D%2C%20%5B7.0%2C%2051.0%5D%5D%5D%7D%7D%5D%7D
+        # (generated with `openeogeotrellis.testing.DummyStacApiServer().collection_as_geojson_io_url("collection-123")`)
+        asset_root = Path(openeogeotrellis.__file__).parent.parent / "tests" / "data" / "dummy-stac" / "collection-123"
         self.define_collection(id="collection-123")
         self.define_item(
             collection_id="collection-123",
@@ -378,6 +401,16 @@ class DummyStacApiServer:
             datetime="2024-05-01",
             bbox=[2, 49, 3, 50],
             properties={"flavor": "apple"},
+            assets={
+                "asset-1": StacDummyBuilder.asset(
+                    href=str(asset_root / "asset-1.tiff"),
+                    roles=["data"],
+                    proj_code="EPSG:4326",
+                    proj_bbox=[2, 49, 3, 50],
+                    proj_shape=[32, 1 * 32],
+                    bands=[{"name": "B02"}],
+                )
+            },
         )
         self.define_item(
             collection_id="collection-123",
@@ -385,6 +418,16 @@ class DummyStacApiServer:
             datetime="2024-06-02",
             bbox=[3, 50, 5, 51],
             properties={"flavor": "banana"},
+            assets={
+                "asset-2": StacDummyBuilder.asset(
+                    href=str(asset_root / "asset-2.tiff"),
+                    roles=["data"],
+                    proj_code="EPSG:4326",
+                    proj_bbox=[3, 50, 5, 51],
+                    proj_shape=[32, 2 * 32],
+                    bands=[{"name": "B02"}],
+                )
+            },
         )
         self.define_item(
             collection_id="collection-123",
@@ -392,6 +435,16 @@ class DummyStacApiServer:
             datetime="2024-07-03",
             bbox=[4, 51, 7, 52],
             properties={"flavor": "coconut"},
+            assets={
+                "asset-2": StacDummyBuilder.asset(
+                    href=str(asset_root / "asset-3.tiff"),
+                    roles=["data"],
+                    proj_code="EPSG:4326",
+                    proj_bbox=[4, 51, 7, 52],
+                    proj_shape=[32, 3 * 32],
+                    bands=[{"name": "B02"}],
+                )
+            },
         )
 
     def define_collection(self, id: str, *, extent: Optional[dict] = None, **kwargs):
@@ -409,7 +462,14 @@ class DummyStacApiServer:
 
     def define_item(self, collection_id: str, item_id: str, **kwargs):
         assert collection_id in self._collections
+        if (bbox := kwargs.get("bbox")) and not "geometry" in kwargs:
+            # Automatically set geometry from bbox if not provided
+            kwargs["geometry"] = bbox_to_geojson(bbox)
         item = StacDummyBuilder.item(id=item_id, **kwargs)
+        self._collections[collection_id].items.append(item)
+
+    def define_item_from_file(self, collection_id: str, source: Union[str, Path]):
+        item = load_json(source)
         self._collections[collection_id].items.append(item)
 
     def _build_flask_app(self) -> flask.Flask:
@@ -437,15 +497,14 @@ class DummyStacApiServer:
                 body["description"] = e.description
             return flask.jsonify(body), http_code
 
-        def link(rel: str, endpoint: str, *, method: Optional[str] = None, **kwargs) -> dict:
+        def link(
+            rel: str, endpoint: str, *, method: Optional[str] = None, mimetype: str = "application/json", **kwargs
+        ) -> dict:
             """Helper to build a link dict"""
             link = {
                 "rel": rel,
-                "href": flask.url_for(
-                    endpoint,
-                    **kwargs,
-                    _external=True,
-                ),
+                "href": flask.url_for(endpoint, **kwargs, _external=True),
+                "type": mimetype,
             }
             if method:
                 link["method"] = method
@@ -522,10 +581,13 @@ class DummyStacApiServer:
             collections = collections.split(",") if collections else []
             bbox = flask.request.args.get("bbox")
             bbox = [float(x) for x in bbox.split(",")] if bbox else None
+            intersects = flask.request.args.get("intersects")
+            intersects = json.loads(intersects) if intersects else None
             item_collection = _search(
                 collections=collections,
                 date_range=flask.request.args.get("datetime"),
                 bbox=bbox,
+                intersects=intersects,
                 filter=flask.request.args.get("filter"),
                 filter_language=flask.request.args.get("filter-lang"),
                 limit=flask.request.args.get("limit", type=int),
@@ -539,6 +601,7 @@ class DummyStacApiServer:
                 collections=body.get("collections", []),
                 date_range=body.get("datetime"),
                 bbox=body.get("bbox"),
+                intersects=body.get("intersects"),
                 filter=body.get("filter"),
                 filter_language=body.get("filter-lang"),
                 limit=body.get("limit"),
@@ -549,13 +612,28 @@ class DummyStacApiServer:
             collections: List[str],
             date_range: Optional[str] = None,
             bbox: Optional[List[float]] = None,
+            intersects: Optional[dict] = None,
             filter: Optional[Union[str, dict]] = None,
             filter_language: Optional[str] = None,
             limit: Optional[int] = None,
         ) -> pystac.ItemCollection:
             collection_ids = [cid for cid in collections if cid in self._collections]
 
-            items = [pystac.Item.from_dict(item) for cid in collection_ids for item in self._collections[cid].items]
+            def add_links(item: pystac.Item, cid: str) -> pystac.Item:
+                links = [
+                    pystac.Link.from_dict(link(rel="root", endpoint="get_index")),
+                    pystac.Link.from_dict(link(rel="collection", endpoint="get_collection", collection_id=cid)),
+                    pystac.Link.from_dict(link(rel="parent", endpoint="get_collection", collection_id=cid)),
+                    # TODO: add self link too?
+                ]
+                item.add_links(links)
+                return item
+
+            items = [
+                add_links(pystac.Item.from_dict(item), cid=cid)
+                for cid in collection_ids
+                for item in self._collections[cid].items
+            ]
 
             if date_range:
                 if "/" in date_range:
@@ -570,11 +648,30 @@ class DummyStacApiServer:
                     target_dt = to_datetime_utc(date_range)
                     items = [item for item in items if item.datetime == target_dt]
 
-            if bbox:
-                assert len(bbox) == 4
-                bbox = shapely.box(*bbox)
-                # TODO: also support item geometry fields (not just bbox)
-                items = [item for item in items if item.bbox and bbox.intersects(shapely.box(*item.bbox))]
+            def duplicate360(shape: shapely.geometry.base.BaseGeometry) -> shapely.geometry.base.BaseGeometry:
+                """
+                Helper to duplicate a geometry with 360 offsets
+                to easily handle geometry matching in anti-meridian and other wrap-around cases.
+                """
+                return shapely.union_all([shapely.affinity.translate(shape, xoff=x) for x in [-360, 0, 360]])
+
+            if bbox and intersects:
+                flask.abort(code=404, description="Only one of either intersects or bbox may be specified")
+            elif bbox:
+                bbox360 = duplicate360(BoundingBox(*bbox, crs="EPSG:4326").as_polygon())
+                items = [
+                    item
+                    for item in items
+                    if item.bbox and bbox360.intersects(BoundingBox.from_wsen_tuple(item.bbox, crs=4326).as_geometry())
+                ]
+            elif intersects:
+                intersects360 = duplicate360(shapely.geometry.shape(intersects))
+                items = [
+                    item
+                    for item in items
+                    if item.bbox
+                    and intersects360.intersects(BoundingBox.from_wsen_tuple(item.bbox, crs=4326).as_geometry())
+                ]
 
             if filter:
                 filter = self._build_property_filter(filter=filter, filter_language=filter_language)
@@ -590,14 +687,14 @@ class DummyStacApiServer:
     def _build_property_filter(self, filter: Union[str, dict], filter_language: str) -> Callable[[pystac.Item], bool]:
         if filter_language == "cql2-text":
             # Just very basic filter support here: single property equality check, e.g.:
-            #     "properties.flavor" = 'banana'
-            if m := re.fullmatch(r"['\"]properties.(?P<property>\w+)['\"]\s*=\s*'(?P<value>[^']+)'", filter):
+            #     "flavor" = 'banana'
+            if m := re.fullmatch(r"['\"](?P<property>\w+)['\"]\s*=\s*'(?P<value>[^']+)'", filter):
                 prop = m.group("property")
                 value = m.group("value")
                 return lambda item: item.properties.get(prop) == value
         elif filter_language == "cql2-json":
             # Just very basic filter support here: single property equality check, e.g.:
-            #     {"op": "=", "args": [{"property": "properties.flavor"}, "banana"]}
+            #     {"op": "=", "args": [{"property": "flavor"}, "banana"]}
             if (
                 isinstance(filter, dict)
                 and filter.get("op") == "="
@@ -607,13 +704,13 @@ class DummyStacApiServer:
                 arg1, arg2 = filter["args"]
                 if not isinstance(arg1, dict):
                     arg1, arg2 = arg2, arg1
-                if isinstance(arg1, dict) and isinstance(arg2, str) and arg1.get("property").startswith("properties."):
-                    prop = arg1["property"].split(".", 1)[-1]
+                if isinstance(arg1, dict) and isinstance(arg2, str) and "property" in arg1:
+                    prop = arg1["property"]
                     value = arg2
                     return lambda item: item.properties.get(prop) == value
         raise ValueError(f"Unsupported CQL filter: {filter_language=} {filter=}")
 
-    def serve(self) -> Iterator[str]:
+    def serve(self) -> contextlib.AbstractContextManager[str]:
         """
         Run dummy STAC API as ephemeral server.
         To be used as context manager, that generates the root url of the server.
@@ -625,3 +722,201 @@ class DummyStacApiServer:
         """
         app = self._build_flask_app()
         return ephemeral_flask_server(app)
+
+    def history_has(self, *, method: Optional[str] = None, path: Optional[str] = None) -> List[dict]:
+        """Assert helper to find requests in the request history by method and/or path substring."""
+        return [
+            entry
+            for entry in self.request_history
+            if (method is None or entry["method"] == method) and (path is None or path in entry["path"])
+        ]
+
+    def collection_as_geojson_io_url(self, collection_id: str) -> str:
+        """Generate a geojson.io URL to quickly visualize the items of a given collection."""
+        assert collection_id in self._collections
+        items = [BoundingBox.from_wsen_tuple(item["bbox"]) for item in self._collections[collection_id].items]
+        return to_geojson_io_url(items)
+
+
+def create_dummy_geotiff(
+    path: Union[Path, str], bbox: BoundingBox, shape: Tuple[int, int] = (32, 32), scale: Optional[float] = None
+):
+    """
+    Create a dummy GeoTIFF file with synthetic data for testing purposes,
+    georeferenced according to given bounding box.
+    """
+    # TODO: support for multiple bands
+    xmin, ymin, xmax, ymax = bbox.as_wsen_tuple()
+    xn, yn = shape
+    xstep = (xmax - xmin) / xn
+    ystep = (ymax - ymin) / yn
+    y, x = numpy.ogrid[ymax - 0.5 * ystep : ymin : -ystep, xmin + 0.5 * xstep : xmax : xstep]
+    # Some multi-scale sine waves
+    if not scale:
+        scale = 0.001 if is_utm_crs(bbox.crs) else 1
+    data = (
+        (numpy.sin(scale * x) + numpy.sin(scale * y))
+        + 0.5 * numpy.sin(10 * scale * x) * numpy.sin(10 * scale * y)
+        + 0.25 * (numpy.sin(100 * scale * x) + numpy.sin(100 * scale * y))
+    )
+    data = 100 + 30 * data
+    data = data.astype(numpy.uint8)
+
+    transform = rasterio.transform.from_bounds(west=xmin, south=ymin, east=xmax, north=ymax, width=xn, height=yn)
+    with rasterio.open(
+        path,
+        mode="w",
+        driver="GTiff",
+        height=yn,
+        width=xn,
+        count=1,
+        dtype=data.dtype,
+        crs=bbox.crs,
+        transform=transform,
+        compress="deflate",
+    ) as writer:
+        writer.write(data, 1)
+    return path
+
+
+def rasterio_metadata_dump(source: Union[str, Path, bytes, ApiResponse]) -> dict:
+    """
+    Extract basic raster metadata using rasterio from a file path, raw bytes, or ApiResponse object.
+    """
+    # TODO: put this in a more central place for better reuse
+    if isinstance(source, ApiResponse):
+        source = source.data
+    if isinstance(source, bytes):
+        source_context = rasterio.io.MemoryFile(source)
+    else:
+        source_context = contextlib.nullcontext(source)
+
+    with source_context as fp:
+        with rasterio.open(fp) as ds:
+            return {
+                "epsg": ds.crs.to_epsg(),
+                "bounds": ds.bounds,
+                "shape": ds.shape,
+            }
+
+
+class Urllib3PoolManagerMocker:
+    def __init__(self):
+        self._responses = {}
+
+    class _Response:
+        def __init__(self, data: bytes):
+            self.data = data
+
+        def read(self) -> bytes:
+            return self.data
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            pass
+
+    def register(self, method: str, url: str, data: bytes):
+        self._responses[(method, url)] = self._Response(data)
+
+    def get(self, url: str, data):
+        self.register("GET", url, data)
+
+    def _return_registered_response(self, method: str, url: str, **kwargs) -> _Response:
+        response = self._responses.get((method, url))
+        if not response:
+            raise Exception(f"no response registered for {method} {url}")
+        return response
+
+    @contextlib.contextmanager
+    def patch(self):
+        with mock.patch("urllib3.PoolManager.request") as mock_request:
+            mock_request.side_effect = self._return_registered_response
+            yield self
+
+
+class OpenSearchClientDumper:
+    """Helper to extract/dump OpenSearchClient contents for testing."""
+
+    def scala_iterate(self, iterator):
+        while iterator.hasNext():
+            yield iterator.next()
+
+    def dump_link(self, link: py4j.java_gateway.JavaObject, add_pixel_value_scaling: bool = False, add_data_type: bool = False) -> dict:
+        """dump org.openeo.opensearch.OpenSearchResponses.Link"""
+        dump = {
+            # "toString": l.toString(),
+            "href": link.href().toString(),
+            "title": link.title().get(),
+            "bandNames": list(self.scala_iterate(link.bandNames().get().iterator())),
+        }
+        if add_pixel_value_scaling:
+            dump["pixelValueScale"] = link.pixelValueScale().get()
+            dump["pixelValueOffset"] = link.pixelValueOffset().get()
+        if add_data_type:
+            if link.nodata().isDefined():
+                dump["nodata"] = link.nodata().get()
+            if link.datatype().isDefined():
+                dump["datatype"] = link.datatype().get().name()
+        return dump
+
+    def dump_extent(self, extent: py4j.java_gateway.JavaObject) -> Union[Tuple[float, float, float, float], None]:
+        if extent:
+            return extent.xmin(), extent.ymin(), extent.xmax(), extent.ymax()
+        else:
+            return None
+
+    def dump_feature(
+        self,
+        feature: py4j.java_gateway.JavaObject,
+        *,
+        add_links: bool = True,
+        add_bbox: bool = False,
+        add_pixel_value_scaling: bool = False,
+        add_data_type: bool = False,
+    ) -> dict:
+        """dump org.openeo.opensearch.OpenSearchResponses.Feature"""
+        dump = {"id": feature.id()}
+        if add_links:
+            dump["links"] = [
+                self.dump_link(link, add_pixel_value_scaling=add_pixel_value_scaling, add_data_type=add_data_type) for link in feature.links()
+            ]
+        if add_bbox:
+            dump["bbox"] = self.dump_extent(feature.bbox())
+        return dump
+
+    def dump_opensearch_client_features(
+        self,
+        opensearch_client: py4j.java_gateway.JavaObject,
+        *,
+        add_links: bool = True,
+        add_bbox: bool = False,
+        add_pixel_value_scaling: bool = False,
+        add_data_type: bool = False,
+    ) -> List[dict]:
+        """Dump all features from org.openeo.opensearch.OpenSearchClient"""
+        feature_iterator = opensearch_client.features().iterator()
+        return [
+            self.dump_feature(
+                feature=feature, add_links=add_links, add_bbox=add_bbox, add_pixel_value_scaling=add_pixel_value_scaling, add_data_type=add_data_type
+            )
+            for feature in self.scala_iterate(feature_iterator)
+        ]
+
+
+@contextlib.contextmanager
+def spy_on_calls(target: "Callable"):
+    """
+    Context manager to spy on results produced by calls to a target function or class.
+    """
+    results = []
+
+    def wrapped(*args, **kwargs):
+        res = target(*args, **kwargs)
+        results.append(res)
+        return res
+
+    target_name = f"{target.__module__}.{target.__qualname__}"
+    with mock.patch(target_name, side_effect=wrapped):
+        yield results

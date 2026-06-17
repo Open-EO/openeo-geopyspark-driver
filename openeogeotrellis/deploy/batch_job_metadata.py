@@ -1,9 +1,10 @@
+import datetime as dt
 import json
 import logging
 import os
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Union
+from typing import Any, Dict, List, Optional, Set, Union, Tuple
 from urllib.parse import urlparse
 
 import pyproj
@@ -20,6 +21,7 @@ from openeo_driver.save_result import (
 from openeo_driver.util.geometry import reproject_bounding_box, spatial_extent_union
 from openeo_driver.util.utm import area_in_square_meters
 from openeo_driver.utils import temporal_extent_union
+import shapely.geometry
 from shapely.geometry import Polygon, mapping
 from shapely.geometry.base import BaseGeometry
 
@@ -27,6 +29,7 @@ from openeogeotrellis._version import __version__
 from openeogeotrellis.backend import JOB_METADATA_FILENAME, GeoPySparkBackendImplementation
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.integrations.gdal import _extract_gdal_asset_raster_metadata
+from openeogeotrellis.util.geometry import bbox_to_geojson
 from openeogeotrellis.utils import _make_set_for_key, get_jvm, to_s3_url, map_optional
 
 logger = logging.getLogger(__name__)
@@ -41,8 +44,9 @@ def _assemble_result_metadata(
     asset_metadata: Dict = None,  # TODO: include "items" instead of "assets"
     ml_model_metadata: Dict = None,
     is_item = False,
+    result_items: Optional[List[dict]] = None,
 ) -> dict:
-    metadata = extract_result_metadata(tracer)
+    metadata = extract_result_metadata(tracer, stac_items=result_items)
 
     def epsg_code(geotrellis_proj4_crs) -> Optional[int]:
         # We have to use the original geotrellis.proj4.CRS to avoid proj4 conversion issues.
@@ -117,7 +121,28 @@ def _assemble_result_metadata(
     return metadata
 
 
-def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
+def _extract_temporal_extent_from_items(stac_items: List[dict]) -> Tuple[Optional[dt.datetime], Optional[dt.datetime]]:
+    def _parse(dt_str: Optional[str]):
+        if not dt_str:
+            return None
+        return Rfc3339(propagate_none=True).parse_datetime(dt_str)
+
+    starts = []
+    ends = []
+    for item in stac_items:
+        props = item.get("properties", {})
+        datetime = _parse(props.get("datetime"))
+        start_datetime = _parse(props.get("start_datetime")) or datetime
+        end_datetime = _parse(props.get("end_datetime")) or datetime
+        if start_datetime is not None:
+            starts.append(start_datetime)
+        if end_datetime is not None:
+            ends.append(end_datetime)
+
+    return min(starts) if starts else None, max(ends) if ends else None
+
+
+def extract_result_metadata(tracer: DryRunDataTracer, stac_items: Optional[List[dict]] = None) -> dict:
     logger.info("Extracting result metadata from {t!r}".format(t=tracer))
 
     rfc3339 = Rfc3339(propagate_none=True)
@@ -128,6 +153,20 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
     temporal_extent = temporal_extent_union(
         *[sc["temporal_extent"] for _, sc in source_constraints if "temporal_extent" in sc]
     )
+
+    if stac_items and (not temporal_extent or not temporal_extent[0] or not temporal_extent[1]):
+        item_start, item_end = _extract_temporal_extent_from_items(stac_items)
+        if item_start is not None or item_end is not None:
+            logger.info(
+                "Could not get temporal_extent from source constraints. "
+                f"Extracting extent from items: [{item_start}, {item_end}]."
+            )
+            # TODO: use stac_items by default to get extent. Avoid relying on source_constraints.
+            temporal_extent = (
+                item_start if item_start is not None else temporal_extent[0],
+                item_end if item_end is not None else temporal_extent[1],
+            )
+
     extents = [sc["spatial_extent"] for _, sc in source_constraints if "spatial_extent" in sc]
     # In the result metadata we want the bbox to be in EPSG:4326 (lat-long).
     # Therefore, keep track of the bbox's CRS to convert it to EPSG:4326 at the end, if needed.
@@ -141,8 +180,8 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
         temp_bbox = [spatial_extent[b] for b in ["west", "south", "east", "north"]]
         if all(b is not None for b in temp_bbox):
             bbox = temp_bbox  # Only set bbox once we are sure we have all the info
-            area = area_in_square_meters(Polygon.from_bounds(*bbox), bbox_crs)
-            lonlat_geometry = mapping(Polygon.from_bounds(*convert_bbox_to_lat_long(bbox, bbox_crs)))
+            area = area_in_square_meters(shapely.geometry.box(*bbox), bbox_crs)
+            lonlat_geometry = mapping(shapely.geometry.box(*convert_bbox_to_lat_long(bbox, bbox_crs)))
 
     start_date, end_date = [rfc3339.datetime(d) for d in temporal_extent]
 
@@ -165,7 +204,7 @@ def extract_result_metadata(tracer: DryRunDataTracer) -> dict:
             bbox = agg_geometry.bounds
             bbox_crs = agg_geometry.crs
             # Intentionally don't return the complete vector file. https://github.com/Open-EO/openeo-api/issues/339
-            lonlat_geometry = mapping(Polygon.from_bounds(*convert_bbox_to_lat_long(bbox, bbox_crs)))
+            lonlat_geometry = bbox_to_geojson(convert_bbox_to_lat_long(bbox, bbox_crs))
             area = DriverVectorCube.from_fiona([agg_geometry.path]).get_area()
         elif isinstance(agg_geometry, DriverVectorCube):
             if agg_geometry.geometry_count() != 0:
@@ -316,14 +355,19 @@ def convert_bbox_to_lat_long(bbox: List[int], bbox_crs: Optional[Union[str, int,
 
 
 def _convert_asset_outputs_to_s3_urls(job_metadata: dict) -> dict:
-    """Convert each asset's output_dir value to a URL on S3 in the metadata dictionary."""
+    """Convert each asset's href value to a URL on S3 in the metadata dictionary."""
 
     job_metadata = deepcopy(job_metadata)
 
-    out_assets = job_metadata.get("assets", {})
-    for asset in out_assets.values():
-        if "href" in asset and not str(asset["href"]).startswith("s3://"):
-            asset["href"] = to_s3_url(asset["href"])
+    def replace_hrefs(assets: dict):
+        for asset in assets.values():
+            if "href" in asset and not str(asset["href"]).startswith("s3://"):
+                asset["href"] = to_s3_url(asset["href"])
+
+    replace_hrefs(job_metadata.get("assets", {}))  # top-level
+
+    for item in job_metadata.get("items", []):  # those nested in items
+        replace_hrefs(item.get("assets", {}))
 
     return job_metadata
 

@@ -7,7 +7,11 @@ from typing import Any, Dict, List
 from openeo_driver.constants import DEFAULT_LOG_LEVEL_PROCESSING
 from openeo_driver.errors import OpenEOApiException
 from openeogeotrellis.config import get_backend_config
-from openeogeotrellis.constants import JOB_OPTION_LOG_LEVEL, JOB_OPTION_LOGGING_THRESHOLD
+from openeogeotrellis.constants import (
+    JOB_OPTION_LOG_LEVEL,
+    JOB_OPTION_LOGGING_THRESHOLD,
+    STAC_API_FILTER_BY_GEOMETRY_DEFAULT,
+)
 from openeogeotrellis.udf.udf_runtime_images import UdfRuntimeImageRepository
 from openeogeotrellis.util.byteunit import byte_string_as
 
@@ -124,6 +128,11 @@ class JobOptions:
         metadata={"name":"log_level","description": "log level, can be 'debug', 'info', 'warning' or 'error'", "public":True},
     )
 
+    stac_version : str = field(
+        default="1.0",
+        metadata={"description": "The STAC version to use for the metadata of outputs.", "public": False,  "enum": ["1.0", "1.1"]},
+    )
+
     omit_derived_from_links: bool = field(
         default=False,
         metadata={
@@ -140,6 +149,15 @@ class JobOptions:
         },
     )
 
+    stac_api_filter_by_geometry: bool = field(
+        default=STAC_API_FILTER_BY_GEOMETRY_DEFAULT,
+        metadata={
+            "description": "Whether to enable fine-grained filtering with geometries in STAC API queries (`intersects` parameter), instead of a simple global bounding box.",
+            "experimental": True,
+            "public": False,
+        },
+    )
+
     @staticmethod
     def as_logging_threshold_arg(value) -> str:
         value = value.upper()
@@ -150,6 +168,13 @@ class JobOptions:
 
     def validate(self):
 
+        allowed_stac_versions = {"1.0", "1.1"}
+        if self.stac_version not in allowed_stac_versions:
+            raise OpenEOApiException(
+                code="InvalidStacVersion",
+                status_code=400,
+                message=f"Invalid stac-version in batch job options {self.stac_version!r}. Should be one of {sorted(allowed_stac_versions)}.",
+            )
 
         if self.log_level.upper() not in ["DEBUG", "INFO", "WARN", "ERROR"]:
             raise OpenEOApiException(
@@ -286,12 +311,16 @@ class JobOptions:
             if public_only and field.metadata.get("public", False):
                 continue
             default = get_default(field)
+            schema = cls.python_type_to_json_schema(field.type)
+            if "enum" in field.metadata:
+                schema["enum"] = field.metadata["enum"]
+
             options.append({
                 "name": field.metadata.get("name", field.name.replace("_","-")),
                 "description": field.metadata.get("description", ""),
                 "optional": True,
                 "default": default,
-                "schema": cls.python_type_to_json_schema(field.type)
+                "schema": schema
             })
         return options
 
@@ -338,11 +367,19 @@ class K8SOptions(JobOptions):
             "public": False
         })
 
-    executor_request_cores: int = field(
+    driver_request_cores: str = field(
+        default="NONE",
+        metadata={
+            "description": "CPU request for the driver, expressed as 'milli-cpus', for instance '500m' for 0.5 of 1 cpu unit. Allows partial CPU allocation for the driver.",
+            "public": False
+        })
+
+    executor_request_cores: str = field(
+
         default="NONE",
         metadata={
             "description": "Fraction of CPUs to actually request, expressed as 'milli-cpus', for instance '600m' for 0.6 of 1 cpu unit.",
-            "public": False
+            "public": True
         })
     goofys:bool = field(default=False,
         metadata={
@@ -359,6 +396,20 @@ class K8SOptions(JobOptions):
              "description": "Deprecated, use spark pvcs or not",
              "public": False
          })
+    open_telemetry_metrics_exporter: str = field(default=None,
+         metadata={
+            "description": "[Experimental] Configure and enable the OpenTelemetry Java SDK exporter",
+            "public": False,
+            "enum": ["console", "prometheus"]
+        })
+
+    force_s3proxy: bool = field(
+        default=False,
+        metadata={
+            "description": "[Experimental] Force all traffic to go via an internal S3Proxy",
+            "public": False
+        },
+    )
 
     def validate(self):
         max_cores = 4

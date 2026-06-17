@@ -17,12 +17,12 @@ from openeo.util import rfc3339
 from openeo_driver.testing import DictSubSet
 from openeo_driver.utils import generate_unique_id
 
-from openeogeotrellis.configparams import ConfigParams
+from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.integrations.kubernetes import K8S_SPARK_APP_STATE, k8s_job_name
 from openeogeotrellis.integrations.prometheus import Prometheus
 from openeogeotrellis.integrations.yarn import YARN_FINAL_STATUS, YARN_STATE
 from openeogeotrellis.job_costs_calculator import CostsDetails
-from openeogeotrellis.job_registry import InMemoryJobRegistry, ZkJobRegistry
+from openeogeotrellis.job_registry import InMemoryJobRegistry
 from openeogeotrellis.job_tracker_v2 import (
     JobCostsCalculator,
     JobTracker,
@@ -30,7 +30,7 @@ from openeogeotrellis.job_tracker_v2 import (
     YarnAppReportParseException,
     YarnStatusGetter,
 )
-from openeogeotrellis.testing import KazooClientMock, gps_config_overrides
+from openeogeotrellis.testing import gps_config_overrides
 from openeogeotrellis.utils import json_write
 
 # TODO: move YARN related mocks to openeogeotrellis.testing
@@ -222,7 +222,7 @@ class YarnMock:
         with requests_mock.Mocker() as requests_mocker:
             # Mock the requests to the REST API of YARN. The configuration tells us what the base URL is.
             # To direct the request to a fake URL, mock the environment variable YARN_REST_API_BASE_URL.
-            base_url = ConfigParams().yarn_rest_api_base_url
+            base_url = get_backend_config().yarn_rest_api_base_url
             url_matcher = re.compile(f"{base_url}/ws/v1/cluster/apps/")
 
             def response_call_back(request, context):
@@ -330,16 +330,6 @@ class KubernetesMock:
 
 
 @pytest.fixture
-def zk_client() -> KazooClientMock:
-    return KazooClientMock()
-
-
-@pytest.fixture
-def zk_job_registry(zk_client) -> ZkJobRegistry:
-    return ZkJobRegistry(zk_client=zk_client)
-
-
-@pytest.fixture
 def yarn_mock() -> YarnMock:
     yarn = YarnMock()
     with yarn.patch():
@@ -378,11 +368,10 @@ def _extract_update_statuses_stats(caplog) -> List[dict]:
 class TestYarnJobTracker:
     @pytest.fixture
     def job_tracker(
-        self, zk_job_registry, elastic_job_registry, batch_job_output_root, job_costs_calculator
+        self, elastic_job_registry, batch_job_output_root, job_costs_calculator
     ) -> JobTracker:
         job_tracker = JobTracker(
-            app_state_getter=YarnStatusGetter(ConfigParams().yarn_rest_api_base_url),
-            zk_job_registry=zk_job_registry,
+            app_state_getter=YarnStatusGetter(get_backend_config().yarn_rest_api_base_url),
             principal="john@EXAMPLE.TEST",
             keytab="test/openeo.keytab",
             job_costs_calculator=job_costs_calculator,
@@ -394,7 +383,6 @@ class TestYarnJobTracker:
     @pytest.mark.parametrize("job_options", [None, DUMMY_JOB_OPTIONS])
     def test_yarn_zookeeper_basic(
         self,
-        zk_job_registry,
         yarn_mock,
         job_tracker,
         elastic_job_registry,
@@ -409,29 +397,11 @@ class TestYarnJobTracker:
         # Create openeo batch job (not started yet)
         user_id = "john"
         job_id = "job-123"
-        zk_job_registry.register(
-            job_id=job_id,
-            user_id=user_id,
-            api_version="1.2.3",
-            specification=ZkJobRegistry.build_specification_dict(process_graph=DUMMY_PG_1, job_options=job_options),
-        )
         elastic_job_registry.create_job(
             job_id=job_id, user_id=user_id, process=DUMMY_PROCESS_1, job_options=job_options
         )
 
-        def zk_job_info() -> dict:
-            return zk_job_registry.get_job(job_id=job_id, user_id=user_id)
-
         # Check initial status in registry
-        assert zk_job_info() == DictSubSet(
-            {
-                "job_id": job_id,
-                "user_id": user_id,
-                "status": "created",
-                "created": "2022-12-14T12:00:00Z",
-                # "updated": "2022-12-14T12:00:00Z",  # TODO: get this working?
-            }
-        )
         assert elastic_job_registry.db == {
             "job-123": DictSubSet(
                 {
@@ -449,26 +419,15 @@ class TestYarnJobTracker:
         time_machine.coordinates.shift(70)
         yarn_app = yarn_mock.submit(app_id="app-123")
         yarn_app.set_submitted()
-        zk_job_registry.set_application_id(
-            job_id=job_id, user_id=user_id, application_id=yarn_app.app_id
-        )
+        elastic_job_registry.set_application_id(job_id=job_id, application_id=yarn_app.app_id)
 
         # Trigger `update_statuses`
         job_tracker.update_statuses()
-        assert zk_job_info() == DictSubSet(
-            {
-                "status": "queued",
-                "created": "2022-12-14T12:00:00Z",
-                "application_id": yarn_app.app_id,
-                # "updated": "2022-12-14T12:01:10Z",  # TODO: get this working?
-            }
-        )
         assert elastic_job_registry.db[job_id] == DictSubSet(
             {
                 "status": "queued",
                 "created": "2022-12-14T12:00:00Z",
                 "updated": "2022-12-14T12:01:10Z",
-                # "application_id": yarn_app.app_id,  # TODO: get this working?
             }
         )
 
@@ -476,13 +435,6 @@ class TestYarnJobTracker:
         time_machine.coordinates.shift(70)
         yarn_app.set_accepted()
         job_tracker.update_statuses()
-        assert zk_job_info() == DictSubSet(
-            {
-                "status": "queued",
-                "created": "2022-12-14T12:00:00Z",
-                # "updated": "2022-12-14T12:02:20Z",  # TODO: get this working?
-            }
-        )
         assert elastic_job_registry.db[job_id] == DictSubSet(
             {
                 "status": "queued",
@@ -495,13 +447,6 @@ class TestYarnJobTracker:
         time_machine.coordinates.shift(70)
         yarn_app.set_running()
         job_tracker.update_statuses()
-        assert zk_job_info() == DictSubSet(
-            {
-                "status": "running",
-                "created": "2022-12-14T12:00:00Z",
-                # "updated": "2022-12-14T12:03:30Z",  # TODO: get this working?
-            }
-        )
         assert elastic_job_registry.db[job_id] == DictSubSet(
             {
                 "status": "running",
@@ -522,20 +467,6 @@ class TestYarnJobTracker:
             },
         )
         job_tracker.update_statuses()
-        assert zk_job_info() == DictSubSet(
-            {
-                "status": "finished",
-                "created": "2022-12-14T12:00:00Z",
-                # "updated": "2022-12-14T12:04:40Z",  # TODO: get this working?,
-                "foo": "bar",
-                "usage": {
-                    "input_pixel": {"unit": "mega-pixel", "value": 1.125},
-                    "cpu": {"unit": "cpu-seconds", "value": 32},
-                    "memory": {"unit": "mb-seconds", "value": 1234},
-                },
-                "costs": 129.95
-            }
-        )
         assert elastic_job_registry.db[job_id] == DictSubSet(
             {
                 "status": "finished",
@@ -548,6 +479,7 @@ class TestYarnJobTracker:
                     "cpu": {"unit": "cpu-seconds", "value": 32},
                     "memory": {"unit": "mb-seconds", "value": 1234},
                 },
+                "input_pixel": 1.125,
                 "costs": 129.95
             }
         )
@@ -578,7 +510,6 @@ class TestYarnJobTracker:
 
     def test_yarn_zookeeper_lost_yarn_app(
         self,
-        zk_job_registry,
         yarn_mock,
         job_tracker,
         elastic_job_registry,
@@ -592,30 +523,16 @@ class TestYarnJobTracker:
             job_id = f"job-{j}"
             user_id = f"user{j}"
             app_id = f"app-{j}"
-            zk_job_registry.register(
-                job_id=job_id,
-                user_id=user_id,
-                api_version="1.2.3",
-                specification=ZkJobRegistry.build_specification_dict(
-                    process_graph=DUMMY_PG_1, job_options=DUMMY_JOB_OPTIONS
-                ),
-            )
-            zk_job_registry.set_application_id(
-                job_id=job_id, user_id=user_id, application_id=app_id
-            )
             elastic_job_registry.create_job(
                 job_id=job_id, user_id=user_id, process=DUMMY_PROCESS_1, job_options=DUMMY_JOB_OPTIONS
             )
+            elastic_job_registry.set_application_id(job_id=job_id, application_id=app_id)
             # YARN apps 1 and 3 are running but app 2 is lost/missing
             if j != 2:
                 yarn_mock.submit(app_id=app_id, state=YARN_STATE.RUNNING)
 
         # Let job tracker do status updates
         job_tracker.update_statuses()
-
-        assert zk_job_registry.get_job(job_id="job-1", user_id="user1") == DictSubSet({"status": "running"})
-        assert zk_job_registry.get_job(job_id="job-2", user_id="user2") == DictSubSet({"status": "created"})
-        assert zk_job_registry.get_job(job_id="job-3", user_id="user3") == DictSubSet({"status": "running"})
 
         assert elastic_job_registry.db == {
             "job-1": DictSubSet(status="running"),
@@ -634,7 +551,6 @@ class TestYarnJobTracker:
 
     def test_yarn_zookeeper_unexpected_yarn_error(
         self,
-        zk_job_registry,
         yarn_mock,
         job_tracker,
         elastic_job_registry,
@@ -645,21 +561,11 @@ class TestYarnJobTracker:
         """
         caplog.set_level(logging.WARNING)
         for j in [1, 2, 3]:
-            zk_job_registry.register(
-                job_id=f"job-{j}",
-                user_id=f"user{j}",
-                api_version="1.2.3",
-                specification=ZkJobRegistry.build_specification_dict(
-                    process_graph=DUMMY_PG_1, job_options=DUMMY_JOB_OPTIONS
-                ),
-            )
-            zk_job_registry.set_application_id(
-                job_id=f"job-{j}", user_id=f"user{j}", application_id=f"app-{j}"
-            )
             elastic_job_registry.create_job(
                 job_id=f"job-{j}", user_id=f"user{j}", process=DUMMY_PROCESS_1, job_options=DUMMY_JOB_OPTIONS
             )
-            # YARN apps 1 and 3 are running but app 2 is lost/missing
+            elastic_job_registry.set_application_id(job_id=f"job-{j}", application_id=f"app-{j}")
+            # YARN apps 1 and 3 are running but app 2 is corrupt
             if j != 2:
                 yarn_mock.submit(app_id=f"app-{j}", state=YARN_STATE.RUNNING)
             else:
@@ -667,17 +573,6 @@ class TestYarnJobTracker:
 
         # Let job tracker do status updates
         job_tracker.update_statuses()
-
-        assert zk_job_registry.get_job(job_id="job-1", user_id="user1") == DictSubSet(
-            {"status": "running"}
-        )
-        # job-2 is currently stuck in state "created"
-        assert zk_job_registry.get_job(job_id="job-2", user_id="user2") == DictSubSet(
-            {"status": "created"}
-        )
-        assert zk_job_registry.get_job(job_id="job-3", user_id="user3") == DictSubSet(
-            {"status": "running"}
-        )
 
         assert elastic_job_registry.db == {
             "job-1": DictSubSet(status="running"),
@@ -700,7 +595,6 @@ class TestYarnJobTracker:
 
     def test_yarn_zookeeper_yarn_failed_to_launch_container(
         self,
-        zk_job_registry,
         yarn_mock,
         job_tracker,
         elastic_job_registry,
@@ -713,31 +607,11 @@ class TestYarnJobTracker:
         # Create openeo batch job (not started yet)
         user_id = "john"
         job_id = "job-123"
-        zk_job_registry.register(
-            job_id=job_id,
-            user_id=user_id,
-            api_version="1.2.3",
-            specification=ZkJobRegistry.build_specification_dict(
-                process_graph=DUMMY_PG_1, job_options=DUMMY_JOB_OPTIONS
-            ),
-        )
         elastic_job_registry.create_job(
             job_id=job_id, user_id=user_id, process=DUMMY_PROCESS_1, job_options=DUMMY_JOB_OPTIONS
         )
 
-        def zk_job_info() -> dict:
-            return zk_job_registry.get_job(job_id=job_id, user_id=user_id)
-
         # Check initial status in registry
-        assert zk_job_info() == DictSubSet(
-            {
-                "job_id": job_id,
-                "user_id": user_id,
-                "status": "created",
-                "created": "2022-12-14T12:00:00Z",
-                # "updated": "2022-12-14T12:00:00Z",  # TODO: get this working?
-            }
-        )
         assert elastic_job_registry.db == {
             "job-123": DictSubSet(
                 {
@@ -756,20 +630,10 @@ class TestYarnJobTracker:
         yarn_app = yarn_mock.submit(app_id="app-123")
         # Simulate that the yarn launch failed.
         yarn_app.set_launch_failed()
-        zk_job_registry.set_application_id(
-            job_id=job_id, user_id=user_id, application_id=yarn_app.app_id
-        )
+        elastic_job_registry.set_application_id(job_id=job_id, application_id=yarn_app.app_id)
 
         # Trigger `update_statuses`
         job_tracker.update_statuses()
-        assert zk_job_info() == DictSubSet(
-            {
-                "status": "error",
-                "created": "2022-12-14T12:00:00Z",
-                "application_id": yarn_app.app_id,
-                # "updated": "2022-12-14T12:01:10Z",  # TODO: get this working?
-            }
-        )
         assert elastic_job_registry.db[job_id] == DictSubSet(
             {
                 "status": "error",
@@ -789,7 +653,6 @@ class TestYarnJobTracker:
 
     def test_yarn_zookeeper_stats(
         self,
-        zk_job_registry,
         elastic_job_registry,
         yarn_mock,
         job_tracker,
@@ -803,20 +666,10 @@ class TestYarnJobTracker:
             job_id = f"job-{j}"
             user_id = f"user{j}"
             app_id = f"app-{j}"
-            zk_job_registry.register(
-                job_id=job_id,
-                user_id=user_id,
-                api_version="1.2.3",
-                specification=ZkJobRegistry.build_specification_dict(
-                    process_graph=DUMMY_PG_1, job_options=DUMMY_JOB_OPTIONS
-                ),
-            )
-            zk_job_registry.set_application_id(
-                job_id=job_id, user_id=user_id, application_id=app_id
-            )
             elastic_job_registry.create_job(
                 job_id=job_id, user_id=user_id, process=DUMMY_PROCESS_1, job_options=DUMMY_JOB_OPTIONS
             )
+            elastic_job_registry.set_application_id(job_id=job_id, application_id=app_id)
             # YARN apps 1 and 3 are running but app 2 is lost/missing
             if j != 2:
                 yarn_mock.submit(app_id=app_id, state=YARN_STATE.RUNNING)
@@ -872,7 +725,6 @@ class TestYarnJobTracker:
     )
     def test_yarn_zookeeper_job_cost(
         self,
-        zk_job_registry,
         yarn_mock,
         job_tracker,
         elastic_job_registry,
@@ -891,12 +743,6 @@ class TestYarnJobTracker:
         # Create openeo batch job (not started yet)
         user_id = "john"
         job_id = "job-123"
-        zk_job_registry.register(
-            job_id=job_id,
-            user_id=user_id,
-            api_version="1.2.3",
-            specification=ZkJobRegistry.build_specification_dict(process_graph=DUMMY_PG_1, job_options=job_options),
-        )
         elastic_job_registry.create_job(
             job_id=job_id, user_id=user_id, process=DUMMY_PROCESS_1, job_options=job_options
         )
@@ -904,7 +750,7 @@ class TestYarnJobTracker:
         # Start job: submit app to YARN and set running
         time_machine.coordinates.shift(70)
         yarn_app = yarn_mock.submit(app_id="app-123")
-        zk_job_registry.set_application_id(job_id=job_id, user_id=user_id, application_id=yarn_app.app_id)
+        elastic_job_registry.set_application_id(job_id=job_id, application_id=yarn_app.app_id)
         yarn_app.set_running()
         job_tracker.update_statuses()
 
@@ -986,7 +832,7 @@ class TestYarnStatusGetter:
             YarnStatusGetter.parse_application_response(data={}, job_id="j-abc123", user_id="johndoe")
 
     def test_response_is_not_valid_json(self, requests_mock):
-        status_getter = YarnStatusGetter(ConfigParams().yarn_rest_api_base_url)
+        status_getter = YarnStatusGetter(get_backend_config().yarn_rest_api_base_url)
         app_id = "app_123"
         app_url = status_getter.get_application_url(app_id)
         m_get = requests_mock.get(
@@ -999,7 +845,7 @@ class TestYarnStatusGetter:
         assert m_get.called
 
     def test_response_is_not_dict(self, requests_mock):
-        status_getter = YarnStatusGetter(ConfigParams().yarn_rest_api_base_url)
+        status_getter = YarnStatusGetter(get_backend_config().yarn_rest_api_base_url)
         app_id = "app_123"
         app_url = status_getter.get_application_url(app_id)
         m_get = requests_mock.get(
@@ -1022,8 +868,10 @@ class TestK8sJobTracker:
         prometheus_mock = mock.Mock()
         prometheus_mock.endpoint = "https://prometheus.test/api/v1"
         prometheus_mock.get_cpu_usage.return_value = 2.34 * 3600
+        prometheus_mock.get_billable_cpu_requested.return_value = prometheus_mock.get_cpu_usage.return_value
         prometheus_mock.get_network_received_usage.return_value = 370841160371254.75
         prometheus_mock.get_memory_usage.return_value = 5.678 * 1024 * 1024 * 3600
+        prometheus_mock.get_billable_memory_requested.return_value = prometheus_mock.get_memory_usage.return_value
         prometheus_mock.get_max_executor_memory_usage.return_value = 3.5
 
         return prometheus_mock
@@ -1031,7 +879,6 @@ class TestK8sJobTracker:
     @pytest.fixture
     def job_tracker(
         self,
-        zk_job_registry,
         elastic_job_registry,
         batch_job_output_root,
         k8s_mock,
@@ -1040,7 +887,6 @@ class TestK8sJobTracker:
     ) -> JobTracker:
         job_tracker = JobTracker(
             app_state_getter=K8sStatusGetter(k8s_mock, prometheus_mock),
-            zk_job_registry=zk_job_registry,
             principal="john@EXAMPLE.TEST",
             keytab="test/openeo.keytab",
             job_costs_calculator=job_costs_calculator,
@@ -1053,7 +899,6 @@ class TestK8sJobTracker:
     @pytest.mark.parametrize("etl_source_id_override", [None, "overridden"])
     def test_k8s_zookeeper_basic(
         self,
-        zk_job_registry,
         job_tracker,
         elastic_job_registry,
         caplog,
@@ -1068,29 +913,11 @@ class TestK8sJobTracker:
 
         user_id = "john"
         job_id = "job-123"
-        zk_job_registry.register(
-            job_id=job_id,
-            user_id=user_id,
-            api_version="1.2.3",
-            specification=ZkJobRegistry.build_specification_dict(process_graph=DUMMY_PG_1, job_options=job_options),
-        )
         elastic_job_registry.create_job(
             job_id=job_id, user_id=user_id, process=DUMMY_PROCESS_1, job_options=job_options
         )
 
-        def zk_job_info() -> dict:
-            return zk_job_registry.get_job(job_id=job_id, user_id=user_id)
-
         # Check initial status in registry
-        assert zk_job_info() == DictSubSet(
-            {
-                "job_id": job_id,
-                "user_id": user_id,
-                "status": "created",
-                "created": "2022-12-14T12:00:00Z",
-                # "updated": "2022-12-14T12:00:00Z",  # TODO: get this working?
-            }
-        )
         assert elastic_job_registry.db == {
             "job-123": DictSubSet(
                 {
@@ -1109,19 +936,12 @@ class TestK8sJobTracker:
         app_id = k8s_job_name()
         kube_app = k8s_mock.submit(app_id=app_id, etl_source_id_override=etl_source_id_override)
         kube_app.set_submitted()
-        zk_job_registry.set_application_id(
-            job_id=job_id, user_id=user_id, application_id=app_id
+        elastic_job_registry.set_application_id(
+            job_id=job_id, application_id=app_id
         )
 
         # Trigger `update_statuses`
         job_tracker.update_statuses()
-        assert zk_job_info() == DictSubSet(
-            {
-                "status": "queued",
-                "created": "2022-12-14T12:00:00Z",
-                # "updated": "2022-12-14T12:02:20Z",  # TODO: get this working?
-            }
-        )
         assert elastic_job_registry.db[job_id] == DictSubSet(
             {
                 "status": "queued",
@@ -1134,13 +954,6 @@ class TestK8sJobTracker:
         time_machine.coordinates.shift(70)
         kube_app.set_running()
         job_tracker.update_statuses()
-        assert zk_job_info() == DictSubSet(
-            {
-                "status": "running",
-                "created": "2022-12-14T12:00:00Z",
-                # "updated": "2022-12-14T12:03:30Z",  # TODO: get this working?
-            }
-        )
         assert elastic_job_registry.db[job_id] == DictSubSet(
             {
                 "status": "running",
@@ -1162,24 +975,6 @@ class TestK8sJobTracker:
             },
         )
         job_tracker.update_statuses()
-        assert zk_job_info() == DictSubSet(
-            {
-                "status": "finished",
-                "created": "2022-12-14T12:00:00Z",
-                # "updated": "2022-12-14T12:04:40Z",  # TODO: get this working?
-                "foo": "bar",
-                "usage": {
-                    "input_pixel": {"unit": "mega-pixel", "value": 1.125},
-                    "max_executor_memory": {"unit": "gb", "value": 3.5},
-                    "cpu": {"unit": "cpu-seconds", "value": pytest.approx(2.34 * 3600, rel=0.001)},
-                    "memory": {"unit": "mb-seconds", "value": pytest.approx(5.678 * 3600, rel=0.001)},
-                    'memory_requested': {'unit': 'mb-seconds', 'value': pytest.approx(5.678 * 3600, rel=0.001)},
-                    "network_received": {"unit": "b", "value": pytest.approx(370841160371254.75, rel=0.001)},
-                    "sentinelhub": {"unit": "sentinelhub_processing_unit", "value": 1.25},
-                },
-                "costs": 129.95
-            }
-        )
         assert elastic_job_registry.db[job_id] == DictSubSet(
             {
                 "status": "finished",
@@ -1226,7 +1021,6 @@ class TestK8sJobTracker:
 
     def test_k8s_zookeeper_new_app(
         self,
-        zk_job_registry,
         job_tracker,
         elastic_job_registry,
         caplog,
@@ -1240,38 +1034,20 @@ class TestK8sJobTracker:
 
         user_id = "john"
         job_id = "job-123"
-        zk_job_registry.register(
-            job_id=job_id,
-            user_id=user_id,
-            api_version="1.2.3",
-            specification=ZkJobRegistry.build_specification_dict(
-                process_graph=DUMMY_PG_1, job_options=DUMMY_JOB_OPTIONS
-            ),
-        )
         elastic_job_registry.create_job(
             job_id=job_id, user_id=user_id, process=DUMMY_PROCESS_1, job_options=DUMMY_JOB_OPTIONS
         )
-
-        def zk_job_info() -> dict:
-            return zk_job_registry.get_job(job_id=job_id, user_id=user_id)
 
         # Submit Kubernetes app
         time_machine.coordinates.shift(70)
         app_id = k8s_job_name()
         kube_app = k8s_mock.submit(app_id=app_id, state=K8S_SPARK_APP_STATE.NEW)
-        zk_job_registry.set_application_id(
-            job_id=job_id, user_id=user_id, application_id=app_id
+        elastic_job_registry.set_application_id(
+            job_id=job_id, application_id=app_id
         )
 
         # Trigger `update_statuses`
         job_tracker.update_statuses()
-        assert zk_job_info() == DictSubSet(
-            {
-                "status": "queued",
-                "created": "2022-12-14T12:00:00Z",
-                # "updated": "2022-12-14T12:02:20Z",  # TODO: get this working?
-            }
-        )
         assert elastic_job_registry.db[job_id] == DictSubSet(
             {
                 "status": "queued",
@@ -1289,7 +1065,6 @@ class TestK8sJobTracker:
 
     def test_k8s_zookeeper_lost_app(
         self,
-        zk_job_registry,
         job_tracker,
         elastic_job_registry,
         caplog,
@@ -1308,30 +1083,16 @@ class TestK8sJobTracker:
             user_id = f"user{j}"
             app_ids[j] = app_id = k8s_job_name()
 
-            zk_job_registry.register(
-                job_id=job_id,
-                user_id=user_id,
-                api_version="1.2.3",
-                specification=ZkJobRegistry.build_specification_dict(
-                    process_graph=DUMMY_PG_1, job_options=DUMMY_JOB_OPTIONS
-                ),
-            )
-            zk_job_registry.set_application_id(
-                job_id=job_id, user_id=user_id, application_id=app_id
-            )
             elastic_job_registry.create_job(
                 job_id=job_id, user_id=user_id, process=DUMMY_PROCESS_1, job_options=DUMMY_JOB_OPTIONS
             )
+            elastic_job_registry.set_application_id(job_id=job_id, application_id=app_id)
             # K8s apps 1 and 3 are running but app 2 is lost/missing
             if j != 2:
                 k8s_mock.submit(app_id=app_id, state=YARN_STATE.RUNNING)
 
         # Let job tracker do status updates
         job_tracker.update_statuses()
-
-        assert zk_job_registry.get_job(job_id="job-1", user_id="user1") == DictSubSet({"status": "running"})
-        assert zk_job_registry.get_job(job_id="job-2", user_id="user2") == DictSubSet({"status": "created"})
-        assert zk_job_registry.get_job(job_id="job-3", user_id="user3") == DictSubSet({"status": "running"})
 
         assert elastic_job_registry.db == {
             "job-1": DictSubSet(status="running"),
@@ -1350,7 +1111,6 @@ class TestK8sJobTracker:
 
     def test_k8s_zookeeper_unexpected_k8s_error(
         self,
-        zk_job_registry,
         job_tracker,
         elastic_job_registry,
         caplog,
@@ -1367,20 +1127,10 @@ class TestK8sJobTracker:
             user_id = f"user{j}"
             app_id = k8s_job_name()
 
-            zk_job_registry.register(
-                job_id=job_id,
-                user_id=user_id,
-                api_version="1.2.3",
-                specification=ZkJobRegistry.build_specification_dict(
-                    process_graph=DUMMY_PG_1, job_options=DUMMY_JOB_OPTIONS
-                ),
-            )
-            zk_job_registry.set_application_id(
-                job_id=job_id, user_id=user_id, application_id=app_id
-            )
             elastic_job_registry.create_job(
                 job_id=job_id, user_id=user_id, process=DUMMY_PROCESS_1, job_options=DUMMY_JOB_OPTIONS
             )
+            elastic_job_registry.set_application_id(job_id=job_id, application_id=app_id)
             # K8s apps 1 and 3 are running but app 2 is lost/missing
             if j != 2:
                 k8s_mock.submit(app_id=app_id, state=YARN_STATE.RUNNING)
@@ -1389,17 +1139,6 @@ class TestK8sJobTracker:
 
         # Let job tracker do status updates
         job_tracker.update_statuses()
-
-        assert zk_job_registry.get_job(job_id="job-1", user_id="user1") == DictSubSet(
-            {"status": "running"}
-        )
-        assert zk_job_registry.get_job(job_id="job-2", user_id="user2") == DictSubSet(
-            # job-2 is currently stuck in state "created"
-            {"status": "created"}
-        )
-        assert zk_job_registry.get_job(job_id="job-3", user_id="user3") == DictSubSet(
-            {"status": "running"}
-        )
 
         assert elastic_job_registry.db == {
             "job-1": DictSubSet(status="running"),
@@ -1430,7 +1169,6 @@ class TestK8sJobTracker:
     @pytest.mark.parametrize("batch_job_base_fee_credits", [None, 1.23])
     def test_k8s_zookeeper_job_cost(
         self,
-        zk_job_registry,
         job_tracker,
         elastic_job_registry,
         caplog,
@@ -1453,12 +1191,6 @@ class TestK8sJobTracker:
 
             user_id = "john"
             job_id = "job-123"
-            zk_job_registry.register(
-                job_id=job_id,
-                user_id=user_id,
-                api_version="1.2.3",
-                specification=ZkJobRegistry.build_specification_dict(process_graph=DUMMY_PG_1, job_options=job_options),
-            )
             elastic_job_registry.create_job(
                 job_id=job_id, user_id=user_id, process=DUMMY_PROCESS_1, job_options=job_options
             )
@@ -1467,7 +1199,7 @@ class TestK8sJobTracker:
             time_machine.coordinates.shift(70)
             app_id = k8s_job_name()
             kube_app = k8s_mock.submit(app_id=app_id)
-            zk_job_registry.set_application_id(job_id=job_id, user_id=user_id, application_id=app_id)
+            elastic_job_registry.set_application_id(job_id=job_id, application_id=app_id)
             kube_app.set_submitted()
             kube_app.set_running()
             job_tracker.update_statuses()
@@ -1533,7 +1265,6 @@ class TestK8sJobTracker:
     ):
         job_tracker = JobTracker(
             app_state_getter=K8sStatusGetter(k8s_mock, prometheus_mock),
-            zk_job_registry=None,
             principal="john@EXAMPLE.TEST",
             keytab="test/openeo.keytab",
             job_costs_calculator=job_costs_calculator,
@@ -1660,7 +1391,9 @@ class TestK8sStatusGetter:
 
         prometheus_mock = mock.Mock(Prometheus)
         prometheus_mock.get_cpu_usage.return_value = None
+        prometheus_mock.get_billable_cpu_requested.return_value = None
         prometheus_mock.get_memory_usage.return_value = 0.0
+        prometheus_mock.get_billable_memory_requested.return_value = 0.0
         prometheus_mock.endpoint = "https://prometheus.test/api/v1"
 
         k8s_mock = mock.Mock()

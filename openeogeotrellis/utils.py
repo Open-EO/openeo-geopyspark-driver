@@ -19,7 +19,15 @@ import tempfile
 import time
 from functools import partial
 from pathlib import Path
-from typing import Callable, Iterable, Optional, Tuple, Union, Dict, Any, TypeVar, Iterator
+from typing import Callable, Iterable, Optional, Tuple, Union, Dict, Any, TypeVar, Iterator, TYPE_CHECKING
+
+from openeo_driver.integrations.s3.client import S3ClientBuilder as PythonDriverS3ClientBuilder
+from openeo_driver.util.caching import BoundedTtlCache
+
+from openeogeotrellis.integrations.s3proxy.s3_user_context import should_proxy_be_used, build_proxy_s3_client
+
+if TYPE_CHECKING:
+    from mypy_boto3_s3.client import S3Client
 
 import dateutil.parser
 import pyproj
@@ -46,6 +54,7 @@ from py4j.clientserver import ClientServer
 from py4j.java_gateway import JVMView
 from shapely.geometry import GeometryCollection, MultiPolygon, Point, Polygon, box
 from shapely.geometry.base import BaseGeometry
+from shapely.ops import transform
 
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
@@ -241,7 +250,10 @@ def to_projected_polygons(
 @contextlib.contextmanager
 def zk_client(hosts: str = ",".join(ConfigParams().zookeepernodes), *, timeout=10.0):
     # TODO: move this to a more generic zookeeper module, e.g. `openeogeotrellis.integrations.zookeeper`?
-    zk = KazooClient(hosts, timeout=timeout)
+    from openeogeotrellis.config.config import get_zookeeper_auth_data
+    config = get_backend_config()
+    auth_data = get_zookeeper_auth_data(config) or None
+    zk = KazooClient(hosts, timeout=timeout, sasl_options=config.zookeeper_sasl_options, auth_data=auth_data)
     zk.start()
 
     try:
@@ -257,9 +269,20 @@ def set_max_memory(max_total_memory_in_bytes: int):
 
     logger.info("set resource.RLIMIT_AS to {b} bytes".format(b=max_total_memory_in_bytes))
 
+def eodata_s3_client():
+    import boto3
+    aws_access_key_id =  os.environ.get("AWS_ACCESS_KEY_ID")
+    aws_secret_access_key =  os.environ.get("AWS_SECRET_ACCESS_KEY")
+    endpoint = os.environ.get("AWS_S3_ENDPOINT")
+    https = "http" if os.environ.get("AWS_HTTPS").lower() == "no" else "https"
+    s3_client = boto3.client("s3",
+                             aws_access_key_id=aws_access_key_id,
+                             aws_secret_access_key=aws_secret_access_key,
+                             endpoint_url=https + "://" + endpoint)
+    return s3_client
 
 def s3_client():
-    # TODO: replace all use cases with openeodriver.integrations.s3.get_s3_client because all remaining calls
+    # TODO: replace all use cases with get_s3_client(bucket_name)
     # imply a region dependency
     import boto3
 
@@ -274,14 +297,47 @@ def s3_client():
     return s3_client
 
 
+class S3ClientBuilder:
+    _s3_client_cache = BoundedTtlCache(ttl=12 * 60 * 60, max_size=5)
+
+    @classmethod
+    def from_bucket(cls, bucket_name: str) -> S3Client:
+        """
+        Get an S3 client to allow for interaction with a certain bucket.
+        """
+        return cls._s3_client_cache.get_or_call(bucket_name, lambda: cls._get_s3_client(bucket_name))
+
+    @classmethod
+    def _get_s3_client(cls, bucket_name: str) -> S3Client:
+        if should_proxy_be_used():
+            client = build_proxy_s3_client(bucket_name)
+            if client is None:
+                raise RuntimeError(f"Failed to build proxy S3 client for bucket '{bucket_name}'; see prior warnings.")
+            return client
+        else:
+            return cls._get_direct_s3_client(bucket_name)
+
+    @classmethod
+    def _get_direct_s3_client(cls, bucket_name: str) -> S3Client:
+        """
+        For clients that do not run in a context with OIDC access tokens. eodata is a special case.
+        """
+        if bucket_name.lower() == "eodata":
+            logger.debug("Getting direct S3 client for eodata access")
+            return eodata_s3_client()
+        else:
+            return PythonDriverS3ClientBuilder.from_bucket(bucket_name)
+
+
 def get_s3_file_contents(filename: Union[os.PathLike, str], bucket: Optional[str] = None) -> str:
     """
     Get contents of a text file in an S3 bucket; the bucket defaults to ConfigParams().s3_bucket_name.
     """
     # TODO: move this to openeodriver.integrations.s3?
-    s3_instance = s3_client()
+    _bucket = bucket or get_backend_config().s3_bucket_name
+    s3_instance = S3ClientBuilder.from_bucket(_bucket)
     s3_file_object = s3_instance.get_object(
-        Bucket=bucket or get_backend_config().s3_bucket_name,
+        Bucket=_bucket,
         Key=str(filename).strip("/"),
     )
     body = s3_file_object["Body"]
@@ -300,7 +356,7 @@ def stream_s3_binary_file_contents(s3_url: str) -> Iterable[bytes]:
     bucket, file_name = s3_url[5:].split("/", 1)
     logger.debug(f"Streaming contents from S3 object storage: {bucket=}, key={file_name}")
 
-    s3_instance = s3_client()
+    s3_instance = S3ClientBuilder.from_bucket(bucket)
     s3_file_object = s3_instance.get_object(Bucket=bucket, Key=file_name)
     body = s3_file_object["Body"]
     return body.iter_chunks()
@@ -324,7 +380,8 @@ def download_s3_directory(s3_url: str, output_dir: str):
     bucket, input_dir = s3_url[5:].split("/", 1)
     logger.debug(f"Downloading directory from S3 object storage: {bucket=}, key={input_dir}")
 
-    s3_instance = s3_client()
+    s3_instance = S3ClientBuilder.from_bucket(bucket)
+
     bucket_keys = s3_instance.list_objects_v2(Bucket=bucket, MaxKeys=1000, Prefix=input_dir)
     for obj in bucket_keys["Contents"]:
         key = obj["Key"]
@@ -333,6 +390,8 @@ def download_s3_directory(s3_url: str, output_dir: str):
         if not key.endswith("/"):
             output_file_path = os.path.join(output_dir, key)
             s3_instance.download_file(Bucket=bucket, Key=key, Filename=output_file_path)
+
+
 
 
 def to_s3_url(file_or_dir_name: Union[os.PathLike,str], bucketname: str = None) -> str:
@@ -913,3 +972,38 @@ def md5_checksum(file: Path) -> str:
         for chunk in iter(lambda: f.read(4096), b""):
             hash_md5.update(chunk)
     return hash_md5.hexdigest()
+
+
+class BadlyHashable:
+    """
+    Simplifies implementation by allowing unhashable types in a dict-based cache. The number of
+    items in this cache is very small anyway.
+    """
+
+    def __init__(self, target):
+        self.target = target
+
+    def __eq__(self, other):
+        equal = isinstance(other, BadlyHashable) and self.target == other.target
+        print(f"{equal=}")
+        return equal
+
+    def __hash__(self):
+        return 0
+
+    def __repr__(self):
+        return f"BadlyHashable({repr(self.target)})"
+
+
+def equals_approximately(ref_geom: BaseGeometry, actual_geom: BaseGeometry, rel_area_tolerance: float) -> bool:
+    """Geometries are approximately equal if (area of) difference is small."""
+
+    area_difference = ref_geom.symmetric_difference(actual_geom).area
+    return area_difference / ref_geom.area < rel_area_tolerance
+
+
+def reproject_geometry(geometry, src_crs, dst_crs):
+    """Kind of like reprojectAsPolygon but the number of points remains the same."""
+
+    transformer = pyproj.Transformer.from_crs(src_crs, dst_crs, always_xy=True)
+    return transform(transformer.transform, geometry)

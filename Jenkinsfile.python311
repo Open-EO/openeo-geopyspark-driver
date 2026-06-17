@@ -22,7 +22,7 @@ pythonPipeline {
   ]
   python_version = ["3.11"]
   docker_registry = 'vito-docker-private.artifactory.vgt.vito.be'
-  downstream_job = ''
+  downstream_job = 'openEO/trigger-python311-build'
   wheel_repo = ''
   wheel_repo_dev = ''
   test_module_name = 'openeogeotrellis'
@@ -31,10 +31,11 @@ pythonPipeline {
   build_wheel = false
   pep440 = true
   venv_rpm_deps = ['gcc-c++', 'kstart', 'krb5-devel']
-  custom_test_image = 'vito-docker.artifactory.vgt.vito.be/almalinux9-spark4-py311-openeo:1.0.9'
+  custom_test_image = 'vito-docker.artifactory.vgt.vito.be/almalinux9-spark4-py311-openeo:1.0.26'
   extra_container_volumes = [
     '/data/MTDA:/data/MTDA:ro'
   ]
   enable_caching = true
   enable_uv = true
+  test_coverage = false
 }

@@ -5,16 +5,22 @@ import pystac_client
 import pystac_client.exceptions
 import pytest
 import requests
+import shapely
+import urllib3
 from kazoo.exceptions import BadVersionError, NoNodeError
+from openeo_driver.util.geometry import BoundingBox
 
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.testing import (
     DummyCubeBuilder,
     DummyStacApiServer,
     KazooClientMock,
+    Urllib3PoolManagerMocker,
     _ZNodeStat,
     gps_config_overrides,
+    spy_on_calls,
 )
+from openeogeotrellis.util.datetime import to_datetime_utc
 
 
 def test_kazoo_mock_basic():
@@ -173,10 +179,10 @@ class TestDummyStacApiServer:
                 "stac_version": "1.0.0",
                 "type": "Catalog",
                 "links": [
-                    {"rel": "root", "href": f"{root_url}/"},
-                    {"rel": "search", "href": f"{root_url}/search", "method": "GET"},
-                    {"rel": "search", "href": f"{root_url}/search", "method": "POST"},
-                    {"rel": "self", "href": f"{root_url}/"},
+                    {"rel": "root", "href": f"{root_url}/", "type": "application/json"},
+                    {"rel": "search", "href": f"{root_url}/search", "method": "GET", "type": "application/json"},
+                    {"rel": "search", "href": f"{root_url}/search", "method": "POST", "type": "application/json"},
+                    {"rel": "self", "href": f"{root_url}/", "type": "application/json"},
                 ],
             }
         )
@@ -194,15 +200,19 @@ class TestDummyStacApiServer:
                             "stac_version": "1.0.0",
                             "type": "Collection",
                             "links": [
-                                {"rel": "root", "href": f"{root_url}/"},
-                                {"rel": "self", "href": f"{root_url}/collections/collection-123"},
+                                {"rel": "root", "href": f"{root_url}/", "type": "application/json"},
+                                {
+                                    "rel": "self",
+                                    "href": f"{root_url}/collections/collection-123",
+                                    "type": "application/json",
+                                },
                             ],
                         }
                     ),
                 ],
                 "links": [
-                    {"rel": "root", "href": f"{root_url}/"},
-                    {"rel": "self", "href": f"{root_url}/collections"},
+                    {"rel": "root", "href": f"{root_url}/", "type": "application/json"},
+                    {"rel": "self", "href": f"{root_url}/collections", "type": "application/json"},
                 ],
             }
         )
@@ -223,8 +233,8 @@ class TestDummyStacApiServer:
                 "stac_version": "1.0.0",
                 "type": "Collection",
                 "links": [
-                    {"rel": "root", "href": f"{root_url}/"},
-                    {"rel": "self", "href": f"{root_url}/collections/collection-123"},
+                    {"rel": "root", "href": f"{root_url}/", "type": "application/json"},
+                    {"rel": "self", "href": f"{root_url}/collections/collection-123", "type": "application/json"},
                 ],
             }
         )
@@ -331,17 +341,40 @@ class TestDummyStacApiServer:
 
         assert [item.id for item in items] == expected_items
 
+    @pytest.mark.parametrize("method", ["GET", "POST"])
+    @pytest.mark.parametrize(
+        ["intersects", "expected_items"],
+        [
+            (
+                shapely.geometry.box(2.5, 49.5, 3.5, 51.5),
+                ["item-1", "item-2"],
+            ),
+            (
+                # Well-chosen L-shape that only overlaps item-1 and item-3
+                shapely.geometry.Polygon([(6.2, 49.8), (6.5, 51.5), (7, 49), (2.5, 49.5), (6.2, 49.8)]),
+                ["item-1", "item-3"],
+            ),
+        ],
+    )
+    def test_item_search_intersects(self, method, intersects, expected_items):
+        with DummyStacApiServer().serve() as root_url:
+            client = pystac_client.Client.open(root_url)
+            result = client.search(method=method, collections=["collection-123"], intersects=intersects)
+            items = list(result.items())
+
+        assert [item.id for item in items] == expected_items
+
     @pytest.mark.parametrize(
         ["method", "filter", "expected_items"],
         [
             # GET with CQL2-text
-            ("GET", "\"properties.flavor\" = 'banana'", ["item-2"]),
-            ("GET", "\"properties.flavor\" = 'coconut'", ["item-3"]),
-            ("GET", "\"properties.topping\" = 'chocolate'", []),
+            ("GET", "\"flavor\" = 'banana'", ["item-2"]),
+            ("GET", "\"flavor\" = 'coconut'", ["item-3"]),
+            ("GET", "\"topping\" = 'chocolate'", []),
             # POST with CQL2-JSON
-            ("POST", {"op": "=", "args": [{"property": "properties.flavor"}, "apple"]}, ["item-1"]),
-            ("POST", {"op": "=", "args": [{"property": "properties.flavor"}, "banana"]}, ["item-2"]),
-            ("POST", {"op": "=", "args": [{"property": "properties.topping"}, "chocolate"]}, []),
+            ("POST", {"op": "=", "args": [{"property": "flavor"}, "apple"]}, ["item-1"]),
+            ("POST", {"op": "=", "args": [{"property": "flavor"}, "banana"]}, ["item-2"]),
+            ("POST", {"op": "=", "args": [{"property": "topping"}, "chocolate"]}, []),
         ],
     )
     def test_item_search_filter_get_cql2_text(self, method, filter, expected_items):
@@ -355,3 +388,99 @@ class TestDummyStacApiServer:
             items = list(result.items())
 
         assert [item.id for item in items] == expected_items
+
+    def test_item_auto_geometry_from_bbox(self):
+        """
+        Since PyStac 1.11 (https://github.com/stac-utils/pystac/pull/1423),
+        an Item's bbox might be lost if there is no geometry as well,
+        following the STAC Item spec (https://github.com/radiantearth/stac-spec/blob/master/item-spec/item-spec.md#item-fields)
+
+        DummyStacApiServer.define_item() should automatically set the geometry from the bbox if unspecified as convenience.
+        """
+        server = DummyStacApiServer()
+        server.define_collection("auto-geometry")
+        server.define_item(
+            "auto-geometry",
+            "item-123",
+            bbox=[1, 2, 3, 4],
+        )
+
+        with server.serve() as root_url:
+            client = pystac_client.Client.open(root_url)
+            result = client.search(collections=["auto-geometry"])
+            [item123] = list(result.items())
+
+        assert item123.to_dict() == dirty_equals.IsPartialDict(
+            {
+                "id": "item-123",
+                "bbox": [1, 2, 3, 4],
+                "geometry": {
+                    "coordinates": [[[3, 2], [3, 4], [1, 4], [1, 2], [3, 2]]],
+                    "type": "Polygon",
+                },
+            }
+        )
+
+    def test_item_links(self):
+        with DummyStacApiServer().serve() as root_url:
+            client = pystac_client.Client.open(root_url)
+            result = client.search(collections=["collection-123"], bbox=[2.5, 48, 3.5, 49.5])
+            items = list(result.items())
+
+        assert {item.id: sorted((k.to_dict() for k in item.links), key=lambda k: k.get("rel")) for item in items} == {
+            "item-1": [
+                {"rel": "collection", "href": f"{root_url}/collections/collection-123", "type": "application/json"},
+                {"rel": "parent", "href": f"{root_url}/collections/collection-123", "type": "application/json"},
+                {"rel": "root", "href": root_url, "type": "application/json"},
+            ]
+        }
+
+
+def test_mock_urllib3_pool_manager():
+    with Urllib3PoolManagerMocker().patch() as mocker:
+        mocker.get("https://stac.test", data="hello")
+
+        http = urllib3.PoolManager()
+        with http.request("GET", "https://stac.test", preload_content=False) as response:
+            assert response.read() == "hello"
+
+
+def test_spy_on_calls_class():
+    def implementation_detail(x: int) -> float:
+        # Note: this local import is intentional to simulate
+        # some implementation detail in a separate module with its own imports.
+        from openeo_driver.util.geometry import BoundingBox
+
+        bbox = BoundingBox(x, x, 2 * x, 3 * x)
+        return bbox.north
+
+    implementation_detail(1)
+    with spy_on_calls(BoundingBox) as spy:
+        implementation_detail(2)
+        implementation_detail(3)
+    implementation_detail(4)
+
+    assert spy == [
+        BoundingBox(2, 2, 4, 6),
+        BoundingBox(3, 3, 6, 9),
+    ]
+
+
+def test_spy_on_calls_function():
+    def implementation_detail(x: int):
+        # Note: this local import is intentional to simulate
+        # some implementation detail in a separate module with its own imports.
+        from openeogeotrellis.util.datetime import to_datetime_utc
+
+        return to_datetime_utc(f"2026-03-{x:02d}").year
+
+    implementation_detail(1)
+    with spy_on_calls(to_datetime_utc) as spy:
+        implementation_detail(2)
+        implementation_detail(3)
+    implementation_detail(4)
+
+    assert spy == [
+        datetime.datetime(2026, 3, 2, tzinfo=datetime.timezone.utc),
+        datetime.datetime(2026, 3, 3, tzinfo=datetime.timezone.utc),
+    ]

@@ -94,6 +94,7 @@ class GpsBackendConfig(OpenEoBackendConfig):
     setup_kerberos_auth: bool = not _is_kube_deploy
 
     # TODO: possible to disable enrichment by default?
+    # TODO: bad config name: enrichment is not only about opensearch anymore (it's even being phased out completely)
     opensearch_enrich: bool = True
     # TODO: eliminate hardcoded VITO/Terrascope resources
     default_opensearch_endpoint: str = "https://services.terrascope.be/catalogue"
@@ -116,23 +117,24 @@ class GpsBackendConfig(OpenEoBackendConfig):
     zookeeper_root_path: str = attrs.field(
         default="/openeo", validator=attrs.validators.matches_re("^/.+"), converter=lambda s: s.rstrip("/")
     )
-
-    # TODO #236/#498/#632 long term goal is to fully disable ZK job registry, but for now it's configurable.
-    use_zk_job_registry: bool = False
-    zk_job_registry_max_specification_size: Optional[int] = None
+    # SASL options for ZK connection auth (GSSAPI/Kerberos on rscluster)
+    zookeeper_sasl_options: Optional[dict] = None
+    # Digest ACL credentials for ZK znode-level auth.
+    zookeeper_auth_username: Optional[str] = attrs.Factory(lambda: os.environ.get("ZOOKEEPER_USERNAME"))
+    zookeeper_auth_password: Optional[str] = attrs.Factory(lambda: os.environ.get("ZOOKEEPER_PASSWORD"))
 
     udp_registry_zookeeper_client_reuse: bool = False
 
     ejr_api: Optional[str] = os.environ.get("OPENEO_EJR_API")
-    ejr_backend_id: str = "unknown"
+    ejr_backend_id: str = os.environ.get("OPENEO_EJR_BACKEND_ID", "unknown")
     ejr_credentials_vault_path: Optional[str] = "UNUSED_AND_TO_BE_REMOVED"
     ejr_preserialize_process: bool = False
 
-    # TODO: eliminate hardcoded Terrascope references
     # TODO #531 eliminate this config favor of etl_api_config strategy below
-    etl_api: Optional[str] = os.environ.get("OPENEO_ETL_API", "https://etl.terrascope.be")
+    etl_api: Optional[str] = os.environ.get("OPENEO_ETL_API")
     etl_source_id: str = "TerraScope/MEP"
     use_etl_api_on_sync_processing: bool = False
+    etl_api_report_added_value_on_sync_processing: bool = False
     etl_dynamic_api_flag: Optional[str] = None  # TODO #531 eliminate this temporary feature flag? Unused now
 
     # TODO #531 this config is meant to replace `etl_api` from above
@@ -148,6 +150,7 @@ class GpsBackendConfig(OpenEoBackendConfig):
     default_usage_byte_seconds: float = 3 * 1024 * 1024 * 1024 * 3600
     report_usage_sentinelhub_pus: bool = True
     batch_job_base_fee_credits: Optional[float] = None
+    use_new_billing_system: bool = False
 
     default_soft_errors: float = 0.1
 
@@ -216,6 +219,12 @@ class GpsBackendConfig(OpenEoBackendConfig):
     default_executor_cores: int = 2
 
     """
+    The default JVM thread stack size for batch job executors. The default JVM stack size (512KB) may be insufficient
+    for deeply recursive call stacks (e.g. during object deserialization), leading to StackOverflowErrors.
+    """
+    default_executor_stack_size: str = "4m"
+
+    """
     The default tile size to use for processing. By default, it is not set and the backend tries to determine a value.
     To minimize memory use, a small default size like 128 can be set. For cases with more memory per cpu, larger sizes are relevant.
     """
@@ -277,6 +286,12 @@ class GpsBackendConfig(OpenEoBackendConfig):
         },
     )
 
+    yarn_rest_api_base_url: Optional[str] = os.environ.get(
+        "YARN_REST_API_BASE_URL",
+        # TODO: remove this hardcoded fallback (will be defunct anyway after hdp2 migration)
+        "https://epod-master1.vgt.vito.be:8090",
+    )
+
     """
     Only used by YARN, allows to specify paths to mount in batch job docker containers.
     """
@@ -330,3 +345,12 @@ class GpsBackendConfig(OpenEoBackendConfig):
     supports_async_tasks: bool = False
 
     read_results_metadata_file_retry_settings: dict = attrs.Factory(lambda: dict(tries=1))  # fail immediately
+
+    load_stac_deduplicate_items_default: Union[bool, dict] = False
+
+
+def get_zookeeper_auth_data(config: GpsBackendConfig) -> list:
+    """Return Kazoo auth_data list for ZK digest ACL, or empty list if not configured."""
+    if config.zookeeper_auth_username and config.zookeeper_auth_password:
+        return [("digest", f"{config.zookeeper_auth_username}:{config.zookeeper_auth_password}")]
+    return []

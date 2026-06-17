@@ -1,13 +1,15 @@
 import json
+import logging
+import re
 
+import dirty_equals
 import geopandas as gpd
 import geopyspark as gps
 import mock
+import openeo
 import pytest
 import rasterio
 from mock import ANY, MagicMock
-
-import openeo
 from openeo_driver.backend import LoadParameters
 from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.datastructs import SarBackscatterArgs
@@ -348,105 +350,7 @@ def test_load_collection_data_cube_params(jvm_mock, catalog):
     )
 
 
-@pytest.mark.parametrize(["missing_products", "expected_source"], [
-    (False, "TERRASCOPE_S2_TOC_V2"),
-    (True, "SENTINEL2_L2A_SENTINELHUB"),
-])
-@pytest.mark.parametrize("creo_features", [
-    # Different tile_ids, same date
-    [{"tile_id": "16WEA"}, {"tile_id": "16WDA"}],
-    # Same tile_id, different dates
-    [{"tile_id": "16WEA", "date": "20200302"}, {"tile_id": "16WEA", "date": "20200307"}],
-])
-def test_load_collection_common_name_by_missing_products(
-        jvm_mock, missing_products, expected_source, creo_features, catalog
-):
-    load_params = LoadParameters(
-        temporal_extent=('2020-03-01', '2020-03-03'),
-        spatial_extent={'west': 4, 'east': 4.001, 'north': 52, 'south': 51.9999, 'crs': 4326},
-        bands=['B03'],
-    )
-
-    simple_layer = jvm_mock.geopyspark.geotrellis.TemporalTiledRasterLayer()
-    jvm_mock.org.openeo.geotrellis.file.PyramidFactory.datacube_seq.return_value = simple_layer
-    jvm_mock.org.openeo.geotrellis.file.PyramidFactory.pyramid_seq.return_value = simple_layer
-
-    if missing_products:
-        tfs = creo_features[1::2]
-    else:
-        tfs = creo_features
-
-    def mock_query_jvm_opensearch_client(open_search_client, collection_id, _query_kwargs, processing_level=""):
-        if "CreodiasClient" in str(open_search_client):
-            mock_collection = creo_features
-        elif "OscarsClient" in str(open_search_client) or "OpenSearchClient" in str(open_search_client):
-            mock_collection = tfs
-        else:
-            raise Exception("Unknown open_search_client: " + str(open_search_client))
-        if len(mock_collection) == 0:
-            return {}
-        elif "date" in mock_collection[0]:
-            return {
-                (p["tile_id"], p["date"])
-                for p in mock_collection
-            }
-        else:
-            return {
-                (p["tile_id"])
-                for p in mock_collection
-            }
-
-    with mock.patch("openeogeotrellis.layercatalog.query_jvm_opensearch_client", new=mock_query_jvm_opensearch_client):
-
-        collection = catalog.load_collection('SENTINEL2_L2A', load_params=load_params, env=EvalEnv())
-        assert collection.metadata.get('id') == expected_source
-
-
-def test_load_disk_collection_pyramid(
-    imagecollection_with_two_bands_and_three_dates, backend_implementation, tmp_path
-):
-    out = imagecollection_with_two_bands_and_three_dates.write_assets(
-        filename=tmp_path / "out.tif",
-        format="GTiff",
-        format_options=dict(batch_mode=True),
-    )
-    # example output path: /tmp/pytest-of-driesj/pytest-1/test_load_disk_collection0/openEO_2017-10-25Z.tif
-    cube = backend_implementation.load_disk_data(
-        format="GTiff",
-        glob_pattern=str(tmp_path / "openEO_*.tif"),
-        options=dict(date_regex=r".*\/openEO_(\d{4})(\d{2})(\d{2})T.*Z.tif"),
-        load_params=LoadParameters(),
-        env=EvalEnv(),
-    )
-    cube = cube.rename_labels("bands", ["band1", "bands"])
-
-    assert len(cube.metadata.spatial_dimensions) == 2
-    assert len(cube.pyramid.levels) == 4
-
-
-def test_load_disk_collection_batch(imagecollection_with_two_bands_and_three_dates,backend_implementation,tmp_path):
-    out = imagecollection_with_two_bands_and_three_dates.write_assets(filename=tmp_path/"out.tif",format="GTiff",format_options=dict(batch_mode=True))
-    #example output path: /tmp/pytest-of-driesj/pytest-1/test_load_disk_collection0/openEO_2017-10-25Z.tif
-    load_params = LoadParameters()
-
-    load_params.spatial_extent = dict(west=2,east=3,south=1,north=2)
-    env = EvalEnv(dict(pyramid_levels="1"))
-
-    cube = backend_implementation.load_disk_data(
-        format="GTiff",
-        glob_pattern=str(tmp_path / "openEO_*.tif"),
-        options=dict(date_regex=r".*\/openEO_(\d{4})(\d{2})(\d{2})T.*Z.tif"),
-        load_params=load_params,
-        env=env,
-    )
-    cube = cube.rename_labels("bands", ["band1", "bands"])
-
-    assert len(cube.metadata.spatial_dimensions) == 2
-    assert len(cube.pyramid.levels)==1
-    print(cube.get_max_level().layer_metadata)
-
-
-def test_driver_vector_cube_supports_load_collection_caching(jvm_mock, catalog):
+def test_driver_vector_cube_supports_load_collection_caching(jvm_mock, catalog, caplog):
     def load_params1():
         gdf = gpd.read_file(str(get_test_data_file("geometries/FeatureCollection.geojson")))
         return LoadParameters(aggregate_spatial_geometries=DriverVectorCube(gdf))
@@ -455,22 +359,31 @@ def test_driver_vector_cube_supports_load_collection_caching(jvm_mock, catalog):
         gdf = gpd.read_file(str(get_test_data_file("geometries/FeatureCollection02.json")))
         return LoadParameters(aggregate_spatial_geometries=DriverVectorCube(gdf))
 
-    with mock.patch('openeogeotrellis.layercatalog.logger') as logger:
-        catalog.load_collection('SENTINEL1_GRD', load_params=load_params1(), env=EvalEnv({'pyramid_levels': 'highest'}))
-        catalog.load_collection('SENTINEL1_GRD', load_params=load_params1(), env=EvalEnv({'pyramid_levels': 'highest'}))
-        catalog.load_collection('SENTINEL1_GRD', load_params=load_params2(), env=EvalEnv({'pyramid_levels': 'highest'}))
-        catalog.load_collection('SENTINEL1_GRD', load_params=load_params2(), env=EvalEnv({'pyramid_levels': 'highest'}))
-        catalog.load_collection('SENTINEL1_GRD', load_params=load_params1(), env=EvalEnv({'pyramid_levels': 'highest'}))
+    caplog.set_level(logging.INFO)
 
-        # TODO: is there an easier way to count the calls to lru_cache-decorated function load_collection?
-        creating_layer_calls = list(filter(lambda call: call.args[0].startswith("load_collection: Creating raster datacube for SENTINEL1_GRD"),
-                                           logger.info.call_args_list))
+    catalog.load_collection("SENTINEL1_GRD", load_params=load_params1(), env=EvalEnv({"pyramid_levels": "highest"}))
+    catalog.load_collection("SENTINEL1_GRD", load_params=load_params1(), env=EvalEnv({"pyramid_levels": "highest"}))
+    catalog.load_collection("SENTINEL1_GRD", load_params=load_params2(), env=EvalEnv({"pyramid_levels": "highest"}))
+    catalog.load_collection("SENTINEL1_GRD", load_params=load_params2(), env=EvalEnv({"pyramid_levels": "highest"}))
+    catalog.load_collection("SENTINEL1_GRD", load_params=load_params1(), env=EvalEnv({"pyramid_levels": "highest"}))
 
-        n_load_collection_calls = len(creating_layer_calls)
-        assert n_load_collection_calls == 2
+    create_logs = [
+        r.message
+        for r in caplog.records
+        if r.name == "openeogeotrellis.layercatalog"
+        and r.message.startswith("load_collection: Creating raster datacube")
+    ]
+    expected = r"load_collection.*Creating raster datacube.*SENTINEL1_GRD.*"
+    assert create_logs == [
+        dirty_equals.IsStr(regex=expected, regex_flags=re.DOTALL),
+        dirty_equals.IsStr(regex=expected, regex_flags=re.DOTALL),
+    ]
 
 
 def test_load_stac_pixel_shift(api110, tmp_path, flask_app):
+    """
+    https://github.com/Open-EO/openeo-geopyspark-driver/issues/648
+    """
     data_cube = openeo.DataCube.load_stac(
         url=str(get_test_data_file("stac/issue648-pixel-shift/collection.json")),
         temporal_extent=["2023-01-20", "2023-02-01"],
@@ -482,13 +395,12 @@ def test_load_stac_pixel_shift(api110, tmp_path, flask_app):
         metadata_file=tmp_path / JOB_METADATA_FILENAME,
         api_version="2.0.0",
         job_dir=tmp_path,
-        dependencies=[],
         user_id="jenkins",
     )
     with (tmp_path / JOB_METADATA_FILENAME).open("r", encoding="utf-8") as f:
         metadata = json.load(f)
     bbox = metadata["proj:bbox"]
-    assert bbox[0] == 631800
+    assert bbox == [631800, 5167700, 655800, 5184200]
 
 
 @pytest.mark.parametrize(["bands", "expected_bands"], [
@@ -497,22 +409,35 @@ def test_load_stac_pixel_shift(api110, tmp_path, flask_app):
     (["TPROD", "QFLAG", "SPROD"], ["TPROD", "QFLAG", "SPROD"])  # override order
 ])
 def test_load_stac_collection_with_property_filters(catalog, tmp_path, requests_mock, bands, expected_bands):
-    requests_mock.get("https://stac.openeo.vito.be/", text=get_test_data_file("stac/issue640-api-layer-property-filter/stac.openeo.vito.be.json").read_text())
-    requests_mock.get("https://stac.openeo.vito.be/collections/copernicus_r_utm-wgs84_10_m_hrvpp-vpp_p_2017-now_v01",
-                      text=get_test_data_file("stac/issue640-api-layer-property-filter/copernicus_r_utm-wgs84_10_m_hrvpp-vpp_p_2017-now_v01_collection.json").read_text())
-    requests_mock.post("https://stac.openeo.vito.be/search", text=get_test_data_file(
-        "stac/issue640-api-layer-property-filter/copernicus_r_utm-wgs84_10_m_hrvpp-vpp_p_2017-now_v01_features.json")
-                       .read_text()
-                       .replace("$SPROD_TIF",
-                                str(get_test_data_file(
-                                    "binary/load_stac/copernicus_r_utm-wgs84_10_m_hrvpp-vpp_p_2017-now_v01/VPP_2018_S2_T31UFS-010m_V101_s1_SPROD_small.tif").absolute()))
-                       .replace("$TPROD_TIF",
-                                str(get_test_data_file(
-                                    "binary/load_stac/copernicus_r_utm-wgs84_10_m_hrvpp-vpp_p_2017-now_v01/VPP_2018_S2_T31UFS-010m_V101_s1_TPROD_small.tif").absolute()))
-                       .replace("$QFLAG_TIF",
-                                str(get_test_data_file(
-                                    "binary/load_stac/copernicus_r_utm-wgs84_10_m_hrvpp-vpp_p_2017-now_v01/VPP_2018_S2_T31UFS-010m_V101_s1_QFLAG_small.tif").absolute())),
-                       )
+    requests_mock.get(
+        "https://stac.openeo.vito.be/",
+        text=get_test_data_file("stac/issue640-api-layer-property-filter/stac.openeo.vito.be.json").read_text(),
+    )
+    requests_mock.get(
+        "https://stac.openeo.vito.be/collections/copernicus_r_utm-wgs84_10_m_hrvpp-vpp_p_2017-now_v01",
+        text=get_test_data_file(
+            "stac/issue640-api-layer-property-filter/copernicus_r_utm-wgs84_10_m_hrvpp-vpp_p_2017-now_v01_collection.json"
+        ).read_text(),
+    )
+    requests_mock.post(
+        "https://stac.openeo.vito.be/search",
+        text=get_test_data_file(
+            "stac/issue640-api-layer-property-filter/copernicus_r_utm-wgs84_10_m_hrvpp-vpp_p_2017-now_v01_features.json"
+        )
+        .read_text()
+        .replace(
+            "$SPROD_TIF",
+            f'file://{get_test_data_file("binary/load_stac/copernicus_r_utm-wgs84_10_m_hrvpp-vpp_p_2017-now_v01/VPP_2018_S2_T31UFS-010m_V101_s1_SPROD_small.tif")}',
+        )
+        .replace(
+            "$TPROD_TIF",
+            f'file://{get_test_data_file("binary/load_stac/copernicus_r_utm-wgs84_10_m_hrvpp-vpp_p_2017-now_v01/VPP_2018_S2_T31UFS-010m_V101_s1_TPROD_small.tif")}',
+        )
+        .replace(
+            "$QFLAG_TIF",
+            f'file://{get_test_data_file("binary/load_stac/copernicus_r_utm-wgs84_10_m_hrvpp-vpp_p_2017-now_v01/VPP_2018_S2_T31UFS-010m_V101_s1_QFLAG_small.tif")}',
+        ),
+    )
 
     load_params = LoadParameters(spatial_extent={"west": 5.00, "south": 51.20, "east": 5.01, "north": 51.21},
                                  temporal_extent=["2017-07-01T00:00Z", "2018-07-31T00:00Z"],

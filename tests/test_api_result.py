@@ -9,27 +9,29 @@ import shutil
 import textwrap
 import urllib.parse
 import urllib.request
-from unittest import skip
-
-import requests
 from pathlib import Path
 from typing import List, Optional, Sequence, Union
+from unittest import skip
 
 import dateutil.parser
+import dirty_equals
 import geopandas as gpd
 import mock
 import numpy
 import numpy as np
-import rioxarray
-
 import openeo
 import openeo.processes
+import osgeo.gdal
 import pandas
 import pytest
 import rasterio
+import requests
+import rioxarray
 import xarray
 from mock import MagicMock
 from numpy.testing import assert_equal
+
+from openeo.testing.stac import StacDummyBuilder
 from openeo_driver.backend import UserDefinedProcesses
 from openeo_driver.jobregistry import JOB_STATUS
 from openeo_driver.testing import (
@@ -49,7 +51,6 @@ from openeo_driver.util.geometry import (
     as_geojson_feature,
     as_geojson_feature_collection,
 )
-import osgeo.gdal
 from pystac import (
     Asset,
     Catalog,
@@ -65,8 +66,16 @@ from openeogeotrellis._version import __version__
 from openeogeotrellis.backend import JOB_METADATA_FILENAME
 from openeogeotrellis.config.config import EtlApiConfig
 from openeogeotrellis.integrations.gdal import read_gdal_info
-from openeogeotrellis.job_registry import ZkJobRegistry
-from openeogeotrellis.testing import KazooClientMock, gps_config_overrides, random_name
+from openeogeotrellis.job_registry import InMemoryJobRegistry
+from openeogeotrellis.load_stac import _LoadStacContext
+from openeogeotrellis.testing import (
+    OpenSearchClientDumper,
+    Urllib3PoolManagerMocker,
+    gps_config_overrides,
+    random_name,
+    rasterio_metadata_dump,
+    spy_on_calls,
+)
 from openeogeotrellis.util.runtime import is_package_available
 from openeogeotrellis.utils import (
     drop_empty_from_aggregate_polygon_result,
@@ -1945,73 +1954,6 @@ def jvm_mock():
         yield jvm_mock
 
 
-@pytest.fixture
-def zk_client() -> KazooClientMock:
-    zk_client = KazooClientMock()
-    with mock.patch(
-        "openeogeotrellis.job_registry.KazooClient", return_value=zk_client
-    ):
-        yield zk_client
-
-
-@pytest.fixture
-def zk_job_registry(zk_client) -> ZkJobRegistry:
-    return ZkJobRegistry(zk_client=zk_client)
-
-
-def test_extra_validation_terrascope(jvm_mock, api100):
-    pg = {"lc": {
-        "process_id": "load_collection",
-        "arguments": {
-            "id": "TERRASCOPE_S2_TOC_V2",
-            "temporal_extent": ["2020-03-01", "2020-03-10"],
-            "spatial_extent": {"west": -86.1, "south": 67, "east": -86, "north": 67.1},
-            "properties": {"eo:cloud_cover": {"process_graph": {
-                "lte1": {"process_id": "lte", "arguments": {"x": {"from_parameter": "value"}, "y": 50},
-                         "result": True}}}}
-        },
-        "result": True
-    }}
-
-    simple_layer = jvm_mock.geopyspark.geotrellis.TemporalTiledRasterLayer()
-    jvm_mock.org.openeo.geotrellis.file.PyramidFactory.datacube_seq.return_value = simple_layer
-    jvm_mock.org.openeo.geotrellis.file.PyramidFactory.pyramid_seq.return_value = simple_layer
-
-    def mock_query_jvm_opensearch_client(open_search_client, collection_id, _query_kwargs, processing_level=""):
-        if "CreodiasClient" in str(open_search_client):
-            mock_collection = [{"tile_id": "16WEA", "date": '20200301'}, {"tile_id": "16WDA", "date": '20200301'}]
-        elif "OscarsClient" in str(open_search_client) or "OpenSearchClient" in str(open_search_client):
-            mock_collection = [{"tile_id": "16WEA", "date": '20200301'}]
-        else:
-            raise Exception("Unknown open_search_client: " + str(open_search_client))
-        return {
-            (p["tile_id"], p["date"])
-            for p in mock_collection
-        }
-
-    with mock.patch("openeogeotrellis.layercatalog.query_jvm_opensearch_client", new=mock_query_jvm_opensearch_client):
-
-        response = api100.validation(pg)
-        expected = {'errors': [
-            {'code': 'MissingProduct',
-             'message': "Tile ('16WDA', '20200301') in collection 'TERRASCOPE_S2_TOC_V2' is not available."}
-        ]}
-        assert list(sorted(map(str, response.json["errors"]))) == list(sorted(map(str, expected["errors"])))
-
-
-@pytest.mark.parametrize(
-    "lc_args",
-    [
-        {"id": "TERRASCOPE_S2_TOC_V2"},
-        {"id": "TERRASCOPE_S2_TOC_V2", "temporal_extent": ["2020-03-01", "2020-03-10"]},
-        {"id": "TERRASCOPE_S2_TOC_V2", "spatial_extent": {"east": 5.08, "north": 51.22, "south": 51.215, "west": 5.07}},
-    ],
-)
-def test_extra_validation_unlimited_extent(api100, lc_args):
-    pg = {"lc": {"process_id": "load_collection", "arguments": lc_args, "result": True}}
-    response = api100.validation(pg)
-    for m in response.json["errors"]:
-        assert m["code"] == "ExtentTooLarge"
 
 
 @pytest.mark.parametrize(["temporal_extent", "expected"], [
@@ -2163,7 +2105,7 @@ def test_aggregate_spatial_netcdf_feature_names(api100, tmp_path):
     assert ds.coords["feature_names"].values.tolist() == ["apples", "oranges"]
 
 
-def test_load_collection_is_cached(api100):
+def test_load_collection_is_cached(api100, caplog):
     # unflattening this process graph will result in two calls to load_collection, unless it is cached
 
     process_graph = {
@@ -2223,23 +2165,29 @@ def test_load_collection_is_cached(api100):
         }
     }
 
-    with mock.patch('openeogeotrellis.layercatalog.logger') as logger:
-        result = api100.check_result(process_graph).json
+    caplog.set_level(logging.INFO)
 
-        assert result == {
-            "2021-01-05T00:00:00Z": [[1.0, 1.0], [1.0, 1.0]],
-            "2021-01-15T00:00:00Z": [[1.0, 1.0], [1.0, 1.0]],
-            "2021-01-25T00:00:00Z": [[1.0, 1.0], [1.0, 1.0]],
-            "2021-02-05T00:00:00Z": [[1.0, 2.0], [1.0, 2.0]],
-            "2021-02-15T00:00:00Z": [[1.0, 2.0], [1.0, 2.0]],
-        }
+    result = api100.check_result(process_graph).json
 
-        # TODO: is there an easier way to count the calls to lru_cache-decorated function load_collection?
-        creating_layer_calls = list(filter(lambda call: call.args[0].startswith("load_collection: Creating raster datacube for TestCollection-LonLat4x4"),
-                                           logger.info.call_args_list))
+    assert result == {
+        "2021-01-05T00:00:00Z": [[1.0, 1.0], [1.0, 1.0]],
+        "2021-01-15T00:00:00Z": [[1.0, 1.0], [1.0, 1.0]],
+        "2021-01-25T00:00:00Z": [[1.0, 1.0], [1.0, 1.0]],
+        "2021-02-05T00:00:00Z": [[1.0, 2.0], [1.0, 2.0]],
+        "2021-02-15T00:00:00Z": [[1.0, 2.0], [1.0, 2.0]],
+    }
 
-        n_load_collection_calls = len(creating_layer_calls)
-        assert n_load_collection_calls == 1
+    # TODO: is there an easier way to count the calls to lru_cache-decorated function load_collection?
+    create_logs = [
+        r.message
+        for r in caplog.records
+        if r.name == "openeogeotrellis.layercatalog"
+        and r.message.startswith("load_collection: Creating raster datacube")
+    ]
+    expected = r"load_collection.*Creating raster datacube.*TestCollection-LonLat4x4.*loadcollection1.*"
+    assert create_logs == [
+        dirty_equals.IsStr(regex=expected, regex_flags=re.DOTALL),
+    ]
 
 
 class TestAggregateSpatial:
@@ -2924,7 +2872,7 @@ def _setup_existing_job(
     job_id: str,
     api: ApiTester,
     batch_job_output_root: Path,
-    zk_job_registry: ZkJobRegistry,
+    job_registry: InMemoryJobRegistry,
     user_id=TEST_USER,
 ) -> Path:
     """
@@ -2947,17 +2895,15 @@ def _setup_existing_job(
     )
 
     # Register metadata in job registry too
-    zk_job_registry.register(
+    job_registry.create_job(
         job_id=job_id,
         user_id=user_id,
+        process={"process_graph": load_json(result_dir / "process_graph.json")["process_graph"]},
         api_version="1.1.0",
-        specification=ZkJobRegistry.build_specification_dict(
-            process_graph=load_json(result_dir / "process_graph.json")["process_graph"],
-        ),
     )
-    zk_job_registry.set_results_metadata_uri(job_id, user_id, results_metadata_uri=f"file://{job_metadata_file}")
-    zk_job_registry.set_status(
-        job_id=job_id, user_id=user_id, status=JOB_STATUS.FINISHED
+    job_registry.set_results_metadata_uri(job_id, results_metadata_uri=f"file://{job_metadata_file}")
+    job_registry.set_status(
+        job_id=job_id, status=JOB_STATUS.FINISHED
     )
 
     return result_dir
@@ -2984,13 +2930,13 @@ def _setup_metadata_request_mocking(
             # Change asset urls to local paths so the data can easily be read (without URL mocking in scala) by
             # org.openeo.geotrellis.geotiff.PyramidFactory.from_uris()
             for k in item_metadata["assets"]:
-                item_metadata["assets"][k]["href"] = str(results_dir / k)
+                item_metadata["assets"][k]["href"] = f"file://{results_dir / k!s}"
             requests_mock.get(link["href"], json=item_metadata)
 
 
 class TestLoadResult:
     def test_load_result_job_id_basic(
-        self, api110, zk_client, zk_job_registry, batch_job_output_root
+        self, api110, job_registry, batch_job_output_root
     ):
         job_id = "j-ec5d3e778ba5423d8d88a50b08cb9f63"
 
@@ -2998,7 +2944,7 @@ class TestLoadResult:
             job_id=job_id,
             api=api110,
             batch_job_output_root=batch_job_output_root,
-            zk_job_registry=zk_job_registry,
+            job_registry=job_registry,
         )
 
         process_graph = {
@@ -3128,8 +3074,7 @@ class TestLoadResult:
     def test_load_result_job_id_filtering(
         self,
         api110,
-        zk_client,
-        zk_job_registry,
+        job_registry,
         batch_job_output_root,
         load_result_kwargs,
         expected,
@@ -3140,7 +3085,7 @@ class TestLoadResult:
             job_id=job_id,
             api=api110,
             batch_job_output_root=batch_job_output_root,
-            zk_job_registry=zk_job_registry,
+            job_registry=job_registry,
         )
 
         process_graph = {
@@ -3169,8 +3114,7 @@ class TestLoadResult:
     def test_load_result_url_basic(
         self,
         api110,
-        zk_client,
-        zk_job_registry,
+        job_registry,
         batch_job_output_root,
         requests_mock,
     ):
@@ -3181,7 +3125,7 @@ class TestLoadResult:
             job_id=job_id,
             api=api110,
             batch_job_output_root=batch_job_output_root,
-            zk_job_registry=zk_job_registry,
+            job_registry=job_registry,
         )
         _setup_metadata_request_mocking(
             job_id=job_id,
@@ -3318,8 +3262,7 @@ class TestLoadResult:
     def test_load_result_url_filtering(
         self,
         api110,
-        zk_client,
-        zk_job_registry,
+        job_registry,
         batch_job_output_root,
         requests_mock,
         load_result_kwargs,
@@ -3332,7 +3275,7 @@ class TestLoadResult:
             job_id=job_id,
             api=api110,
             batch_job_output_root=batch_job_output_root,
-            zk_job_registry=zk_job_registry,
+            job_registry=job_registry,
         )
         _setup_metadata_request_mocking(
             job_id=job_id,
@@ -3396,7 +3339,7 @@ class TestLoadStac:
 
         mock_stac_client = MagicMock()
         mock_item_search = mock_stac_client.search.return_value
-        mock_item_search.items.return_value = [
+        mock_item_search.items_as_dicts.return_value = [
             Item(
                 id="item",
                 geometry={"type": "Polygon", "coordinates": [
@@ -3410,7 +3353,7 @@ class TestLoadStac:
                             "proj:bbox": [4309000, 3014000, 4310000, 3015000],
                             "proj:shape": [100, 100]},
                 assets={"result": Asset(href=f"file://{get_test_data_file('binary/load_stac/BVL_v1/BVL_v1_2021.tif')}",
-                                        extra_fields={"eo:bands": [{"name": "class"}]})})]
+                                        extra_fields={"eo:bands": [{"name": "class"}]})}).to_dict()]
 
         with mock.patch("pystac.read_file", return_value=self._mock_stac_api_collection()), mock.patch(
                 "pystac_client.Client.open", return_value=mock_stac_client):
@@ -3421,7 +3364,7 @@ class TestLoadStac:
                                                 9.844419570631366, 50.246156678379016))
 
     def test_stac_collection_multiple_items_no_spatial_extent_specified(
-        self, api110, zk_job_registry, batch_job_output_root, requests_mock
+        self, api110, job_registry, batch_job_output_root, requests_mock
     ):
         job_id = "j-ec5d3e778ba5423d8d88a50b08cb9f63"
         results_url = f"https://foobar.test/job/{job_id}/results"
@@ -3430,7 +3373,7 @@ class TestLoadStac:
             job_id=job_id,
             api=api110,
             batch_job_output_root=batch_job_output_root,
-            zk_job_registry=zk_job_registry,
+            job_registry=job_registry,
         )
         _setup_metadata_request_mocking(
             job_id=job_id,
@@ -3461,12 +3404,12 @@ class TestLoadStac:
 
         api110.result(process_graph).assert_status_code(200)
 
-    def test_stac_api_no_spatial_extent_specified(self, api110):
+    def test_stac_api_no_spatial_extent_specified(self, api110, dummy_stac_api_server, dummy_stac_api):
         process_graph = {
             "loadstac1": {
                 "process_id": "load_stac",
                 "arguments": {
-                    "url": "https://somestacapi/collections/BVL_v1",
+                    "url": f"{dummy_stac_api}/collections/collection-123",
                 }
             },
             "saveresult1": {
@@ -3476,15 +3419,15 @@ class TestLoadStac:
             }
         }
 
-        with mock.patch("pystac.read_file", return_value=self._mock_stac_api_collection()), mock.patch(
-                "pystac_client.Client.open") as mock_pystac_client_open:
-            api110.result(process_graph).assert_error(400, error_code="NoDataAvailable")
+        res = api110.result(process_graph).assert_http_status_code(200)
+        assert rasterio_metadata_dump(res) == {
+            "epsg": 4326,
+            "bounds": (2.0, 49.0, 7.0, 52.0),
+            "shape": (3 * 32, 5 * 32),
+        }
+        assert dummy_stac_api_server.history_has(method="GET", path="/search")
 
-        mock_stac_client = mock_pystac_client_open.return_value
-        mock_stac_client.search.assert_called_once()
-
-
-    def test_stac_api_caching(self, imagecollection_with_two_bands_and_one_date, api110, tmp_path):
+    def test_stac_api_caching(self, imagecollection_with_two_bands_and_one_date, api110, tmp_path, fast_sleep):
         with mock.patch("openeogeotrellis.load_stac.load_stac") as mock_load_stac:
             mock_load_stac.return_value = imagecollection_with_two_bands_and_one_date
 
@@ -3605,32 +3548,38 @@ class TestLoadStac:
         """load_stac with a STAC item that lacks "properties"/"eo:bands" and therefore falls back to its
         collection's "summaries"/"eo:bands"
         """
-        item_url = f"https://stac.test/{Path(item_path).name}"
-        item_json = test_data.load_text(
-            item_path,
-            preprocess={
-                "asset01.tiff": f"file://{test_data.get_path('binary/load_stac/collection01/asset01.tif').absolute()}",
-                "asset02.tiff": f"file://{test_data.get_path('binary/load_stac/collection01/asset02.tif').absolute()}",
-            },
-        )
-        urllib_and_request_mock.get(item_url, data=item_json)
 
-        collection_url = f"https://stac.test/{Path(collection_path).name}"
-        urllib_and_request_mock.get(collection_url, data=test_data.load_text(collection_path))
+        with Urllib3PoolManagerMocker().patch() as pool_manager_mock:
+            item_url = f"https://stac.test/{Path(item_path).name}"
+            item_json = test_data.load_text(
+                item_path,
+                preprocess={
+                    "asset01.tiff": f"file://{test_data.get_path('binary/load_stac/collection01/asset01.tif').absolute()}",
+                    "asset02.tiff": f"file://{test_data.get_path('binary/load_stac/collection01/asset02.tif').absolute()}",
+                },
+            )
+            urllib_and_request_mock.get(item_url, data=item_json)
+            pool_manager_mock.get(item_url, data=item_json.encode())
 
-        process_graph = {
-            "loadstac1": {
-                "process_id": "load_stac",
-                "arguments": {"url": item_url},
-            },
-            "saveresult1": {
-                "process_id": "save_result",
-                "arguments": {"data": {"from_node": "loadstac1"}, "format": "NetCDF"},
-                "result": True,
-            },
-        }
+            collection_url = f"https://stac.test/{Path(collection_path).name}"
+            collection_json = test_data.load_text(collection_path)
+            urllib_and_request_mock.get(collection_url, data=collection_json)
+            pool_manager_mock.get(collection_url, collection_json.encode())
 
-        res = api110.result(process_graph).assert_status_code(200)
+            process_graph = {
+                "loadstac1": {
+                    "process_id": "load_stac",
+                    "arguments": {"url": item_url},
+                },
+                "saveresult1": {
+                    "process_id": "save_result",
+                    "arguments": {"data": {"from_node": "loadstac1"}, "format": "NetCDF"},
+                    "result": True,
+                },
+            }
+
+            res = api110.result(process_graph).assert_status_code(200)
+
         res_path = tmp_path / "res.nc"
         res_path.write_bytes(res.data)
         cube: xarray.DataArray = _load_cube_from_netcdf(res_path)
@@ -3722,36 +3671,36 @@ class TestLoadStac:
         assert (cube.sel(bands="band2") == 2).all()
         assert (cube.sel(bands="band3") == 3).all()
 
-    def test_load_stac_issue830_alternate_url(self, api110, urllib_and_request_mock, tmp_path):
-        def item_json(path):
-            text = get_test_data_file(path).read_text()
-            path = get_test_data_file("stac/issue830_alternate_url/T31UFS_20240623T104619_flat_color.jp2")
-            text = re.sub(r'"href":\s*"file://(/data/.*\.jp2)"', f'"href": "{path}"', text)
-            return text
-
-        urllib_and_request_mock.get(
-            "https://stac.test/", data=get_test_data_file("stac/issue830_alternate_url/root.json").read_text()
-        )
-        urllib_and_request_mock.get(
-            "https://stac.test/collections/sentinel-2-l2a",
-            data=get_test_data_file("stac/issue830_alternate_url/collections_sentinel-2-l2a.json").read_text(),
-        )
-        urllib_and_request_mock.get(
-            "https://stac.test/search", data=item_json("stac/issue830_alternate_url/search.json")
-        )
-        urllib_and_request_mock.get(
-            "https://stac.test/search?limit=20&bbox=5.07%2C51.215%2C5.08%2C51.22&datetime=2024-06-23T00%3A00%3A00Z%2F2024-06-23T23%3A59%3A59.999000Z&collections=sentinel-2-l2a&fields=%2Bproperties.proj%3Abbox%2C%2Bproperties.proj%3Aepsg%2C%2Bproperties.proj%3Ashape",
-            data=item_json("stac/issue830_alternate_url/search_queried.json"))
-        urllib_and_request_mock.get(
-            "https://stac.test/search?limit=20&bbox=5.07%2C51.215%2C5.08%2C51.22&datetime=2024-06-16T00%3A00%3A00Z%2F2024-06-23T23%3A59%3A59.999000Z&collections=sentinel-2-l2a&fields=%2Bproperties.proj%3Abbox%2C%2Bproperties.proj%3Ashape%2C%2Bproperties.proj%3Aepsg&token=MTcxOTEzOTU3OTAyNCxTMkJfTVNJTDJBXzIwMjQwNjIzVDEwNDYxOV9OMDUxMF9SMDUxX1QzMVVGU18yMDI0MDYyM1QxMjIxNTYsc2VudGluZWwtMi1sMmE%3D",
-            data=item_json("stac/issue830_alternate_url/search_queried_page2.json"))
-        urllib_and_request_mock.get(
-            "https://stac.test/search?limit=20&bbox=5.07%2C51.215%2C5.08%2C51.22&datetime=2024-06-23T00%3A00%3A00Z%2F2024-06-23T23%3A59%3A59.999000Z&collections=sentinel-2-l2a&fields=%2Btype%2C%2Bgeometry%2C%2Bproperties%2C%2Bid%2C%2Bbbox%2C%2Bstac_version%2C%2Bassets%2C%2Blinks%2C%2Bcollection",
-            data=item_json("stac/issue830_alternate_url/search_queried.json"),
-        )
-        urllib_and_request_mock.get(
-            "https://stac.test/search?limit=20&bbox=5.07%2C51.215%2C5.08%2C51.22&datetime=2024-06-23T00%3A00%3A00Z%2F2024-06-23T23%3A59%3A59.999000Z&collections=sentinel-2-l2a",
-            data=item_json("stac/issue830_alternate_url/search_queried.json"),
+    @pytest.mark.parametrize(
+        ["alternate_type"],
+        [
+            ("local",),
+            ("s3",),
+        ],
+    )
+    def test_load_stac_issue830_alternate_url(
+        self, api110, dummy_stac_api, dummy_stac_api_server, tmp_path, test_data, alternate_type
+    ):
+        collection_id = "WITH_ALTERNATE_URLS"
+        dummy_stac_api_server.define_collection(collection_id)
+        dummy_stac_api_server.define_item(
+            collection_id=collection_id,
+            item_id="item-123",
+            datetime="2024-05-01",
+            bbox=[2, 49, 3, 50],
+            assets={
+                "asset-1": StacDummyBuilder.asset(
+                    href="https://invalid.test/nope.tiff",
+                    alternate={
+                        alternate_type: {"href": str(test_data.get_path("dummy-stac/collection-123/asset-1.tiff"))},
+                    },
+                    roles=["data"],
+                    proj_code="EPSG:4326",
+                    proj_bbox=[2, 49, 3, 50],
+                    proj_shape=[32, 1 * 32],
+                    bands=[{"name": "B02"}],
+                )
+            },
         )
 
         process_graph = {
@@ -3759,19 +3708,8 @@ class TestLoadStac:
                 "loadstac1": {
                     "process_id": "load_stac",
                     "arguments": {
-                        "spatial_extent": {
-                            "east": 5.08,
-                            "north": 51.22,
-                            "south": 51.215,
-                            "west": 5.07,
-                        },
-                        "temporal_extent": [
-                            "2024-06-23",
-                            "2024-06-24",
-                        ],
-                        "url": "https://stac.test/collections/sentinel-2-l2a",
+                        "url": f"{dummy_stac_api}/collections/{collection_id}",
                     },
-                    "result": False,
                 },
                 "saveresult1": {
                     "process_id": "save_result",
@@ -3786,82 +3724,13 @@ class TestLoadStac:
         res_path.write_bytes(res.data)
         # if the process graph did not throw an error, this test is already fine.
         cube: xarray.DataArray = _load_cube_from_netcdf(res_path)
-        assert cube.sizes == {"t": 1, "x": 73, "y": 58, "bands": 20}
-        assert sorted(cube.coords["bands"].values) == [
-            "AOT_10m",
-            "AOT_20m",
-            "AOT_60m",
-            "B01",
-            "B02",
-            "B03",
-            "B04",
-            "B05",
-            "B06",
-            "B07",
-            "B08",
-            "B09",
-            "B11",
-            "B12",
-            "B8A",
-            "SCL_20m",
-            "SCL_60m",
-            "WVP_10m",
-            "WVP_20m",
-            "WVP_60m",
-        ]
-        assert cube.isel(t=0, x=1, y=2, bands=4).item() == 4.0
-
-    def test_load_stac_issue830_alternate_url_s3(self, api110, urllib_and_request_mock, tmp_path):
-        def item_json(path):
-            text = get_test_data_file(path).read_text()
-            path = get_test_data_file("stac/issue830_alternate_url_s3/TAP_flat_color.jp2")
-            text = re.sub(r'"href":\s*"/eodata([^"]*)"', f'"href": "{path}"', text)
-            return text
-
-        urllib_and_request_mock.get(
-            "https://catalogue.dataspace.copernicus.eu/stac/collections/GLOBAL-MOSAICS",
-            data=get_test_data_file(
-                "stac/issue830_alternate_url_s3/catalogue.dataspace.copernicus.eu/stac/collections/GLOBAL-MOSAICS.json"
-            ).read_text(),
+        assert (
+            cube.sizes,
+            list(cube.coords["bands"].values),
+        ) == (
+            {"t": 1, "bands": 1, "x": 32, "y": 32},
+            ["B02"],
         )
-        urllib_and_request_mock.get(
-            "https://catalogue.dataspace.copernicus.eu/stac",
-            data=get_test_data_file(
-                "stac/issue830_alternate_url_s3/catalogue.dataspace.copernicus.eu/stac/index.json"
-            ).read_text(),
-        )
-        urllib_and_request_mock.get(
-            "https://catalogue.dataspace.copernicus.eu/stac/search?limit=20&bbox=5.07%2C51.215%2C5.08%2C51.22&datetime=2023-06-01T00%3A00%3A00Z%2F2023-06-30T23%3A59%3A59.999000Z&collections=GLOBAL-MOSAICS",
-            data=item_json("stac/issue830_alternate_url_s3/catalogue.dataspace.copernicus.eu/stac/search_queried.json"),
-        )
-
-        process_graph = {
-            "process_graph": {
-                "loadstac1": {
-                    "process_id": "load_stac",
-                    "arguments": {
-                        "spatial_extent": {"east": 5.08, "north": 51.22, "south": 51.215, "west": 5.07},
-                        "temporal_extent": ["2023-06-01", "2023-07-01"],
-                        "url": "https://catalogue.dataspace.copernicus.eu/stac/collections/GLOBAL-MOSAICS",
-                    },
-                    "result": False,
-                },
-                "saveresult1": {
-                    "process_id": "save_result",
-                    "arguments": {"data": {"from_node": "loadstac1"}, "format": "NetCDF"},
-                    "result": True,
-                }
-            }
-        }
-
-        res = api110.result(process_graph).assert_status_code(200)
-        res_path = tmp_path / "res.nc"
-        res_path.write_bytes(res.data)
-        ds = xarray.load_dataset(res_path)
-        # if the process graph did not throw an error, this test is already fine.
-        assert ds.to_dataframe().values[0][1] == 4.0
-        assert ds.dims["x"] == 73
-        assert ds.dims["y"] == 58
 
     @pytest.mark.parametrize(
         ["lower_temporal_bound", "upper_temporal_bound", "expected_timestamps"],
@@ -4016,7 +3885,7 @@ class TestLoadStac:
             data=test_data.load_text(
                 test_data_dir / "item01.json",
                 preprocess={
-                    "asset01.nc": f"{test_data.get_path('binary/load_stac/spatial_netcdf/openEO_0.nc').absolute()}",
+                    "asset01.nc": f"file://{test_data.get_path('binary/load_stac/spatial_netcdf/openEO_0.nc').absolute()}",
                 },
             ),
         )
@@ -4025,7 +3894,7 @@ class TestLoadStac:
             data=test_data.load_text(
                 test_data_dir / "item02.json",
                 preprocess={
-                    "asset02.nc": f"{test_data.get_path('binary/load_stac/spatial_netcdf/openEO_1.nc').absolute()}",
+                    "asset02.nc": f"file://{test_data.get_path('binary/load_stac/spatial_netcdf/openEO_1.nc').absolute()}",
                 },
             ),
         )
@@ -4367,10 +4236,10 @@ class TestLoadStac:
                     "collections": ["collection"],
                     "limit": 20,
                     "filter-lang": "cql2-json",
-                    "filter": {"op": "=", "args": [{"property": "properties.season"}, "s1"]},
+                    "filter": {"op": "=", "args": [{"property": "season"}, "s1"]},
                 },
             ),
-            ("cql2-text", ["cql2-text"], [""""properties.season" = 's1'"""], None),
+            ("cql2-text", ["cql2-text"], [""""season" = 's1'"""], None),
         ],
     )
     def test_stac_api_property_filter(
@@ -4380,7 +4249,11 @@ class TestLoadStac:
             assert "fields" not in request.qs
             assert request.qs.get("filter-lang") == filter_lang
             assert request.qs.get("filter") == filter
-            assert request.body == body or request.json() == body
+            if body:
+                for k, v in body.items():
+                    if k == "limit":
+                        continue
+                    assert (isinstance(request.body, dict) and request.body.get(k) == v) or request.json().get(k) == v
 
             def item(path) -> dict:
                 return json.loads(
@@ -4457,13 +4330,13 @@ class TestLoadStac:
             assert tuple(ds.bounds) == (5.0, 50.0, 6.0, 51.0)
 
     def test_load_stac_from_unsigned_job_results_respects_proj_metadata(self, api110, tmp_path,
-                                                                        batch_job_output_root, zk_job_registry):
+                                                                        batch_job_output_root, job_registry, fast_sleep):
         # get results from own batch job rather than crawl signed STAC URLs
         results_dir = _setup_existing_job(
             job_id="j-2405078f40904a0b85cf8dc5dd55b07e",
             api=api110,
             batch_job_output_root=batch_job_output_root,
-            zk_job_registry=zk_job_registry
+            job_registry=job_registry
         )
 
         process_graph = {
@@ -4500,7 +4373,7 @@ class TestLoadStac:
             assert tuple(ds.bounds) == tuple(map(pytest.approx, expected_bbox))
 
     @gps_config_overrides(job_dependencies_poll_interval_seconds=0, job_dependencies_max_poll_delay_seconds=60)
-    def test_load_stac_from_partial_job_results_basic(self, api110, requests_mock, tmp_path, caplog):
+    def test_load_stac_from_partial_job_results_basic(self, api110, requests_mock, tmp_path, caplog, fast_sleep):
         """load_stac from partial job results Collection (signed case)"""
 
         caplog.set_level("DEBUG")
@@ -4549,8 +4422,8 @@ class TestLoadStac:
         assert ("OpenEO batch job results status of " + results_url + ": finished" in caplog.messages)
 
     @gps_config_overrides(job_dependencies_poll_interval_seconds=0, job_dependencies_max_poll_delay_seconds=60)
-    def test_load_stac_from_unsigned_partial_job_results_basic(self, api110, batch_job_output_root, zk_job_registry,
-                                                               backend_implementation, caplog):
+    def test_load_stac_from_unsigned_partial_job_results_basic(self, api110, batch_job_output_root, job_registry,
+                                                               backend_implementation, caplog, fast_sleep):
         """load_stac from partial job results Collection (unsigned case)"""
 
         caplog.set_level("DEBUG")
@@ -4560,7 +4433,7 @@ class TestLoadStac:
             job_id="j-2405078f40904a0b85cf8dc5dd55b07e",
             api=api110,
             batch_job_output_root=batch_job_output_root,
-            zk_job_registry=zk_job_registry
+            job_registry=job_registry
         )
 
         process_graph = {
@@ -4591,10 +4464,14 @@ class TestLoadStac:
                         side_effect=[ongoing_job_info, finished_job_info]):
             api110.result(process_graph).assert_status_code(200)
 
-        assert ("OpenEO batch job results status of own job j-2405078f40904a0b85cf8dc5dd55b07e: running"
-                in caplog.messages)
-        assert ("OpenEO batch job results status of own job j-2405078f40904a0b85cf8dc5dd55b07e: finished"
-                in caplog.messages)
+        assert (
+            "OpenEO batch job results status of own job j-2405078f40904a0b85cf8dc5dd55b07e: partial_job_status='running'"
+            in caplog.messages
+        )
+        assert (
+            "OpenEO batch job results status of own job j-2405078f40904a0b85cf8dc5dd55b07e: partial_job_status='finished'"
+            in caplog.messages
+        )
 
     def test_load_stac_loads_assets_without_eo_bands(self, api110, urllib_and_request_mock, requests_mock, tmp_path):
         """load_stac from a STAC API with one item and two assets, one of which does not carry eo:bands"""
@@ -4727,7 +4604,7 @@ class TestLoadStac:
         def item_json(path):
             text = get_test_data_file(path).read_text()
             path = get_test_data_file("stac/issue_copernicus_global_mosaics/B02_flat_color.tif")
-            text = re.sub(r'"href":\s*"s3:/(/eodata/[^"]*\.tif|jp2)"', f'"href": "{path}"', text)
+            text = re.sub(r'"href":\s*"s3:/(/eodata/[^"]*\.tif|jp2)"', f'"href": "file://{path}"', text)
             return text
 
         urllib_and_request_mock.get(
@@ -4736,9 +4613,10 @@ class TestLoadStac:
                 "stac/issue_copernicus_global_mosaics/stac.dataspace.copernicus.eu/v1/collections/sentinel-2-global-mosaics.json"
             ),
         )
-        urllib_and_request_mock.get(
+        urllib_and_request_mock.get_flexible(
             "https://stac.dataspace.copernicus.eu/v1/search?limit=20&bbox=2.1%2C35.31%2C2.2%2C35.32&datetime=2023-01-01T00%3A00%3A00Z%2F2023-01-01T23%3A59%3A59.999000Z&collections=sentinel-2-global-mosaics",
             data=item_json("stac/issue_copernicus_global_mosaics/stac.dataspace.copernicus.eu/v1/search_queried.json"),
+            ignore_params=("limit",),
         )
         urllib_and_request_mock.get(
             "https://stac.dataspace.copernicus.eu/v1/",
@@ -4799,6 +4677,59 @@ class TestLoadStac:
             assert b02_10m is None
             assert b03_10m is None
 
+    @pytest.mark.parametrize(
+        ["operation", "geometry", "expected_items"],
+        [
+            (
+                None,
+                None,
+                ["item-1", "item-2", "item-3"],
+            ),
+            (
+                "filter_spatial",
+                {"type": "Polygon", "coordinates": [[[2, 49], [3.5, 49], [3.5, 51.5], [2, 51.5], [2, 49]]]},
+                ["item-1", "item-2"],
+            ),
+            (
+                "filter_spatial",
+                {"type": "Polygon", "coordinates": [[[6.2, 49.8], [6.5, 51.5], [7, 49], [2.5, 49.5], [6.2, 49.8]]]},
+                ["item-1", "item-3"],
+            ),
+            (
+                "aggregate_spatial",
+                {"type": "Polygon", "coordinates": [[[2, 49], [3.5, 49], [3.5, 51.5], [2, 51.5], [2, 49]]]},
+                ["item-1", "item-2"],
+            ),
+            (
+                "aggregate_spatial",
+                {"type": "Polygon", "coordinates": [[[6.2, 49.8], [6.5, 51.5], [7, 49], [2.5, 49.5], [6.2, 49.8]]]},
+                ["item-1", "item-3"],
+            ),
+        ],
+    )
+    def test_sparse_spatial_filtering(self, api110, dummy_stac_api_server, operation, geometry, expected_items):
+        """https://github.com/Open-EO/openeo-geopyspark-driver/issues/1225"""
+        with dummy_stac_api_server.serve() as root_url:
+            cube = openeo.processes.load_stac(url=f"{root_url}/collections/collection-123")
+            if operation == "filter_spatial":
+                cube = cube.filter_spatial(geometries=geometry)
+                cube = cube.save_result(format="GTiff")
+            elif operation == "aggregate_spatial":
+                cube = cube.aggregate_spatial(geometries=geometry, reducer="mean")
+
+            process_graph = cube.flat_graph()
+            _log.info(f"{process_graph=}")
+
+            with spy_on_calls(_LoadStacContext) as spy:
+                _ = api110.result(process_graph).assert_status_code(200)
+
+            assert len(spy) == 1
+            context: _LoadStacContext = spy[0]
+            dumper = OpenSearchClientDumper()
+            assert dumper.dump_opensearch_client_features(context.opensearch_client, add_links=False) == [
+                {"id": item} for item in expected_items
+            ]
+
 
 class TestEtlApiReporting:
     @pytest.fixture(autouse=True)
@@ -4854,7 +4785,7 @@ class TestEtlApiReporting:
                 "grant_type": ["client_credentials"],
                 "scope": ["openid"],
             }
-            return {"access_token": self._ETL_API_ACCESS_TOKEN}
+            return {"access_token": self._ETL_API_ACCESS_TOKEN, "token_type": "Bearer"}
 
         requests_mock.post("https://oidc.test/token", json=post_token)
 
@@ -4910,7 +4841,7 @@ class TestEtlApiReporting:
                     "orchestrator": "openeo",
                     "sourceId": "openeo-gps-tests",
                     "state": "FINISHED",
-                    "status": "SUCCEEDED",
+                    "status": "UNDEFINED",
                 },
                 "response": [{"cost": 33}, {"cost": 55}],
             }

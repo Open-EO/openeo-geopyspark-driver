@@ -1,28 +1,27 @@
 import argparse
 import datetime as dt
-import functools
+import gzip
 import json
 import logging
 import math
 import sys
+import zipfile
 from copy import deepcopy, copy
-from datetime import datetime
 from functools import lru_cache
 from typing import List, Dict, Iterable, Optional, Tuple, Union
+from pathlib import Path
 
 import dateutil.parser
 import geopyspark
 import py4j.protocol
 import pyproj
-import pyspark.sql.utils
 import pytz
-from py4j.protocol import Py4JJavaError
-import requests
+import flask
 
 from openeo.metadata import Band
 from openeo.util import TimingLogger, deep_get, str_truncate
 from openeo_driver import filter_properties
-from openeo_driver.backend import CollectionCatalog, LoadParameters
+from openeo_driver.backend import CollectionCatalog, LoadParameters, QueryablesListing
 from openeo_driver.datacube import DriverVectorCube
 from openeo_driver.delayed_vector import DelayedVector
 from openeo_driver.datastructs import SarBackscatterArgs
@@ -30,22 +29,21 @@ from openeo_driver.errors import OpenEOApiException, InternalException, ProcessG
 from openeo_driver.filter_properties import extract_literal_match
 from openeo_driver.util.geometry import reproject_bounding_box
 from openeo_driver.util.utm import auto_utm_epsg_for_geometry
-from openeo_driver.util.http import requests_with_retry
 from openeo_driver.utils import read_json, EvalEnv, WhiteListEvalEnv, smart_bool
 from shapely.geometry import box
 from shapely.geometry.base import BaseGeometry
 
 from openeogeotrellis import sentinel_hub, datacube_parameters
-import openeogeotrellis.backend
+from openeogeotrellis.catalog.enrich import enrich_catalog_metadata
+from openeogeotrellis._backend import post_dry_run
 from openeogeotrellis.catalogs.creo import CreoCatalogClient
-from openeogeotrellis.collections.s1backscatter_orfeo import get_implementation as get_s1_backscatter_orfeo
+import openeogeotrellis.collections.s1backscatter_orfeo
 from openeogeotrellis.collections.testing import load_test_collection
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.constants import EVAL_ENV_KEY
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube, GeopysparkCubeMetadata
 from openeogeotrellis.load_stac import load_stac
-from openeogeotrellis.opensearch import OpenSearch, OpenSearchOscars, OpenSearchCreodias, OpenSearchCdse
 from openeogeotrellis.processgraphvisiting import GeotrellisTileProcessGraphVisitor
 from openeogeotrellis.utils import (
     dict_merge_recursive,
@@ -72,6 +70,10 @@ WHITELIST = [
     EVAL_ENV_KEY.DO_EXTENT_CHECK,
     EVAL_ENV_KEY.PARAMETERS,
     EVAL_ENV_KEY.OPENEO_API_VERSION,
+    EVAL_ENV_KEY.GLOBAL_EXTENT,
+    EVAL_ENV_KEY.JOB_DIR,
+    # TODO: this linking/allow-listing of job options and eval env keys feels quite cumbersome
+    EVAL_ENV_KEY.STAC_API_FILTER_BY_GEOMETRY,
 ]
 LARGE_LAYER_THRESHOLD_IN_PIXELS = pow(10, 11)
 LARGE_LAYER_THRESHOLD_IN_PIXELS_SENTINELHUB = pow(10, 10)
@@ -92,7 +94,9 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         self._default_sentinel_hub_client_secret = client_secret
 
     @TimingLogger(title="load_collection", logger=logger)
-    def load_collection(self, collection_id: str, load_params: LoadParameters, env: EvalEnv) -> GeopysparkDataCube:
+    def load_collection(
+        self, collection_id: str, load_params: LoadParameters, env: EvalEnv, pg_node_id: Optional[str] = None
+    ) -> GeopysparkDataCube:
 
         if smart_bool(env.get(EVAL_ENV_KEY.DO_EXTENT_CHECK, True)):
             env_validate = env.push({
@@ -116,11 +120,17 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                         + " ".join(issues)
                     )
 
-        return self._load_collection_cached(collection_id, load_params, WhiteListEvalEnv(env, WHITELIST))
+        return self._load_collection_cached(
+            collection_id, load_params, WhiteListEvalEnv(env, WHITELIST), pg_node_id=pg_node_id
+        )
 
     @lru_cache(maxsize=40)
-    def _load_collection_cached(self, collection_id: str, load_params: LoadParameters, env: EvalEnv) -> GeopysparkDataCube:
-        logger.info(f"load_collection: Creating raster datacube for {collection_id} with arguments {load_params}, environment: {env}")
+    def _load_collection_cached(
+        self, collection_id: str, load_params: LoadParameters, env: EvalEnv, pg_node_id: Optional[str] = None
+    ) -> GeopysparkDataCube:
+        logger.info(
+            f"load_collection: Creating raster datacube for {collection_id=} ({pg_node_id=}) with {load_params=}, {env=}"
+        )
 
         from_date, to_date = temporal_extent = normalize_temporal_extent(load_params.temporal_extent)
         spatial_extent = load_params.spatial_extent
@@ -179,9 +189,16 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         if bands:
             band_indices = [metadata.get_band_index(b) for b in bands]
             metadata = metadata.filter_bands(bands)
-            metadata = metadata.rename_labels(metadata.band_dimension.name, bands, metadata.band_names)
+            # Note: the `metadata.filter_bands()` includes resolving band naming ("common_name" and aliases)
+            #       which we want to preserve in `normalized_band_selection`,
+            #       before `metadata.rename_labels()` changes it back to the originally requested band names.
+            normalized_band_selection = metadata.band_names
+            metadata = metadata.rename_labels(metadata.band_dimension.name, target=bands, source=metadata.band_names)
         else:
             band_indices = None
+            # Use ordered bands selection from metadata
+            normalized_band_selection = metadata.band_names if metadata.has_band_dimension() else None
+
         logger.debug("band_indices: {b!r}".format(b=band_indices))
         # TODO: avoid this `still_needs_band_filter` ugliness.
         #       Also see https://github.com/Open-EO/openeo-geopyspark-driver/issues/29
@@ -270,7 +287,6 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             "opensearch_endpoint", get_backend_config().default_opensearch_endpoint
         )
         max_soft_errors_ratio = env.get(EVAL_ENV_KEY.MAX_SOFT_ERRORS_RATIO, 0.0)
-        no_data_value = metadata.get_nodata_value(load_params.bands, 0.0)
         if feature_flags.get("no_resample_on_read", False):
             logger.info("Setting NoResampleOnRead to true")
             datacubeParams.setNoResampleOnRead(True)
@@ -523,6 +539,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                     shub_band_names.append('localIncidenceAngle')
 
                 cell_size = jvm.geotrellis.raster.CellSize(cell_width, cell_height)
+                no_data_value = metadata.get_nodata_value(load_params.bands, 0.0)
 
                 if ConfigParams().is_kube_deploy:
                     access_token = env[EVAL_ENV_KEY.USER].internal_auth_data["access_token"]
@@ -682,7 +699,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             #make a copy before modifying: it is used as a cache key
             sar_backscatter_arguments = deepcopy(sar_backscatter_arguments)
             sar_backscatter_arguments.options["resolution"] = (cell_width, cell_height)
-            s1_backscatter_orfeo = get_s1_backscatter_orfeo(
+            s1_backscatter_orfeo = openeogeotrellis.collections.s1backscatter_orfeo.get_implementation(
                 version=sar_backscatter_arguments.options.get("implementation_version", "2"),
                 jvm=jvm
             )
@@ -694,7 +711,10 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 bands=bands,
                 extra_properties=metadata_properties(),
                 datacubeParams = datacubeParams,
-                max_soft_errors_ratio=max_soft_errors_ratio
+                max_soft_errors_ratio=max_soft_errors_ratio,
+                spatial_extent=load_params.spatial_extent,
+                use_stac_client=layer_source_info.get("use_stac_client", False),
+                feature_flags=layer_source_info.get("load_stac_feature_flags", {}),
             )
         elif layer_source_type == 'file-s3':
             native_cell_size = jvm.geotrellis.raster.CellSize(
@@ -707,7 +727,11 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             pyramid = sentinel3.pyramid(metadata_properties(),
                                         projected_polygons_native_crs, from_date, to_date,
                                         metadata.opensearch_link_titles, datacubeParams,
-                                        native_cell_size, feature_flags, jvm,
+                                        native_cell_size,
+                                        {**feature_flags, "load_stac_feature_flags": layer_source_info.get("load_stac_feature_flags", {})},
+                                        jvm,
+                                        spatial_extent=load_params.spatial_extent,
+                                        use_stac_client=layer_source_info.get("use_stac_client", False)
                                         )
         elif layer_source_type == "stac":
             cube = load_stac(
@@ -716,7 +740,10 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 env=env,
                 layer_properties=metadata.get("_vito", "properties", default={}),
                 batch_jobs=None,
-                override_band_names=metadata.band_names,
+                normalized_band_selection=normalized_band_selection,
+                feature_flags=layer_source_info.get("load_stac_feature_flags", {}),
+                data_cube_parameters=datacubeParams,
+                pg_node_id=pg_node_id,
             )
             pyramid = cube.pyramid.levels
             metadata = cube.metadata
@@ -911,6 +938,17 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
         number_of_temporal_observations = max(math.floor(number_of_temporal_observations), 1)
         return number_of_temporal_observations
 
+    def get_collection_queryables(self, collection_id: Union[str, None]) -> Union[QueryablesListing, flask.Response]:
+        metadata = self.get_collection_metadata(collection_id)
+        data_source = deep_get(metadata, "_vito", "data_source", default={})
+        if data_source.get("type") == "stac" and (url := data_source.get("url")):
+            # TODO: for now (experimental phase), we just do naive redirect here.
+            #       Instead: proxy+cache this document.
+            #       Or include it in (precompiled) layercatalog (#1175)?
+            return flask.redirect(location=f"{url}/queryables")
+
+        return super().get_collection_queryables(collection_id=collection_id)
+
 
 # Type annotation aliases to make things more self-documenting
 CollectionId = str
@@ -918,120 +956,60 @@ CollectionMetadataDict = Dict[str, Union[str, dict, list]]
 CatalogDict = Dict[CollectionId, CollectionMetadataDict]
 
 
+def _read_catalog_file(path: Union[str, Path]) -> CatalogDict:
+    path = Path(path)
+    try:
+        if path.is_file() and path.name.lower().endswith(".json"):
+            return {coll["id"]: coll for coll in read_json(path)}
+        elif path.is_file() and path.name.lower().endswith(".json.gz"):
+            with gzip.open(path, mode="rt", encoding="utf-8") as f:
+                return {coll["id"]: coll for coll in json.load(fp=f)}
+        elif path.is_file() and path.name.lower().endswith(".zip"):
+            catalog = {}
+            with zipfile.ZipFile(path, mode="r") as zf:
+                for name in zf.namelist():
+                    if name.lower().endswith(".json"):
+                        with zf.open(name, mode="r") as f:
+                            data = json.load(f)
+                        if isinstance(data, dict):
+                            # File with single collection
+                            catalog[data["id"]] = data
+                        elif isinstance(data, list):
+                            # File with list of collections
+                            catalog.update({coll["id"]: coll for coll in data})
+                        else:
+                            logger.warning(f"Skipping catalog source {path!r}/{name!r}: unexpected {type(data)=}")
+            return catalog
+        else:
+            raise ValueError(f"Unsupported catalog format {path=}")
+    except Exception as e:
+        raise ValueError(f"Failed to read layer catalog from {path=}: {e=}") from e
+
+
+@TimingLogger(title="_get_layer_catalog", logger=logger.info)
 def _get_layer_catalog(
     catalog_files: Optional[List[str]] = None,
-    opensearch_enrich: Optional[bool] = None,
+    enrich_metadata: Optional[bool] = None,
 ) -> CatalogDict:
     """
-    Get layer catalog (from JSON files)
+    Build layer catalog from JSON files (possibly compressed)
     """
-    if opensearch_enrich is None:
-        opensearch_enrich = get_backend_config().opensearch_enrich
+    if enrich_metadata is None:
+        enrich_metadata = get_backend_config().opensearch_enrich
     if catalog_files is None:
         catalog_files = get_backend_config().layer_catalog_files
 
     metadata: CatalogDict = {}
 
-    def read_catalog_file(catalog_file) -> CatalogDict:
-        try:
-            return {coll["id"]: coll for coll in read_json(catalog_file)}
-        except Exception as e:
-            raise ValueError(f"Failed to read/parse {catalog_file=}: {e=}") from e
-
-
     logger.debug(f"_get_layer_catalog: {catalog_files=}")
     for path in catalog_files:
         logger.debug(f"_get_layer_catalog: reading {path}")
-        metadata = dict_merge_recursive(metadata, read_catalog_file(path), overwrite=True)
+        metadata = dict_merge_recursive(metadata, _read_catalog_file(path), overwrite=True)
         logger.debug(f"_get_layer_catalog: collected {len(metadata)} collections")
 
-    logger.debug(f"_get_layer_catalog: {opensearch_enrich=}")
-    if opensearch_enrich:
-        opensearch_metadata = {}
-        sh_collection_metadatas = None
-
-        @functools.lru_cache
-        def opensearch_instance(endpoint: str, variant: Optional[str] = None) -> OpenSearch:
-            endpoint = endpoint.lower()
-
-            if "oscars" in endpoint or "terrascope" in endpoint or "vito.be" in endpoint or variant == "oscars":
-                opensearch = OpenSearchOscars(endpoint=endpoint)
-            elif "creodias" in endpoint or variant == "creodias":
-                opensearch = OpenSearchCreodias(endpoint=endpoint)
-            elif "dataspace.copernicus.eu" in endpoint or variant == "cdse":
-                opensearch = OpenSearchCdse(endpoint=endpoint)
-            else:
-                raise ValueError(endpoint)
-
-            return opensearch
-
-        for cid, collection_metadata in metadata.items():
-            data_source = deep_get(collection_metadata, "_vito", "data_source", default={})
-            os_cid = data_source.get("opensearch_collection_id")
-            os_endpoint = data_source.get("opensearch_endpoint") or get_backend_config().default_opensearch_endpoint
-            os_variant = data_source.get("opensearch_variant")
-            if os_cid and os_endpoint and os_variant != "disabled":
-                try:
-                    opensearch_metadata[cid] = opensearch_instance(
-                        endpoint=os_endpoint, variant=os_variant
-                    ).get_metadata(collection_id=os_cid)
-                except Exception as e:
-                    logger.warning(f"Failed to enrich collection metadata of {cid}: {e}", exc_info=True)
-            elif data_source.get("type") == "stac":
-                url = data_source.get("url")
-                logger.debug(f"Getting collection metadata from {url}")
-                try:
-                    resp = requests.get(url=url, timeout=10)
-                    resp.raise_for_status()
-                    opensearch_metadata[cid] = resp.json()
-                except Exception as e:
-                    logger.warning(f"Failed to enrich collection metadata of {cid}: {e}", exc_info=True)
-
-            elif data_source.get("type") == "sentinel-hub":
-                sh_stac_endpoint = "https://collections.eurodatacube.com/stac/index.json"
-
-                # TODO: improve performance by only fetching necessary STACs
-                if sh_collection_metadatas is None:
-                    sh_collections_session = requests_with_retry()
-                    sh_collections_resp = sh_collections_session.get(sh_stac_endpoint, timeout=60)
-                    sh_collections_resp.raise_for_status()
-                    sh_collection_metadatas = {
-                        c["id"]: sh_collections_session.get(c["link"], timeout=60).json()
-                        for c in sh_collections_resp.json()
-                    }
-
-                enrichment_id = data_source.get("enrichment_id")
-
-                # DEM collections have the same datasource_type "dem" so they need an explicit enrichment_id
-                if enrichment_id:
-                    sh_metadata = sh_collection_metadatas[enrichment_id]
-                else:
-                    sh_cid = data_source.get("dataset_id")
-
-                    # PLANETSCOPE doesn't have one so don't try to enrich it
-                    if sh_cid is None:
-                        continue
-
-                    sh_metadatas = [m for _, m in sh_collection_metadatas.items() if m["datasource_type"] == sh_cid]
-
-                    if len(sh_metadatas) == 0:
-                        logger.warning(f"No STAC data available for collection with id {sh_cid}")
-                        continue
-                    elif len(sh_metadatas) > 1:
-                        logger.warning(f"{len(sh_metadatas)} candidates for STAC data for collection with id {sh_cid}")
-                        continue
-
-                    sh_metadata = sh_metadatas[0]
-
-                opensearch_metadata[cid] = sh_metadata
-                if not data_source.get("endpoint"):
-                    endpoint = opensearch_metadata[cid]["providers"][0]["url"]
-                    endpoint = endpoint if endpoint.startswith("http") else "https://{}".format(endpoint)
-                    data_source["endpoint"] = endpoint
-                data_source["dataset_id"] = data_source.get("dataset_id") or opensearch_metadata[cid]["datasource_type"]
-
-        if opensearch_metadata:
-            metadata = dict_merge_recursive(opensearch_metadata, metadata, overwrite=True)
+    logger.debug(f"_get_layer_catalog: {enrich_metadata=}")
+    if enrich_metadata:
+        metadata = enrich_catalog_metadata(metadata)
 
     metadata = _merge_layers_with_common_name(metadata)
 
@@ -1040,9 +1018,10 @@ def _get_layer_catalog(
 
 def get_layer_catalog(
     vault: Vault = None,
+    # TODO: just call this arg `enrich_metadata` is this is about more than just OpenSearch
     opensearch_enrich: Optional[bool] = None,
 ) -> GeoPySparkLayerCatalog:
-    metadata = _get_layer_catalog(opensearch_enrich=opensearch_enrich)
+    metadata = _get_layer_catalog(enrich_metadata=opensearch_enrich)
     return GeoPySparkLayerCatalog(
         all_metadata=list(metadata.values()),
         vault=vault,
@@ -1050,9 +1029,9 @@ def get_layer_catalog(
 
 
 def dump_layer_catalog():
-    """CLI tool to dump layer catalog"""
+    """CLI tool to dump layer catalog with enrichment"""
     cli = argparse.ArgumentParser()
-    cli.add_argument("--opensearch-enrich", action="store_true", help="Enable OpenSearch based enriching.")
+    cli.add_argument("--enrich", action="store_true", help="Enable metadata enrichment.")
     cli.add_argument(
         "--catalog-file", action="append", help="Path to catalog JSON file. Can be specified multiple times."
     )
@@ -1067,7 +1046,7 @@ def dump_layer_catalog():
 
     logging.basicConfig(level=logging.DEBUG if arguments.verbose else logging.DEBUG)
 
-    metadata = _get_layer_catalog(catalog_files=arguments.catalog_file, opensearch_enrich=arguments.opensearch_enrich)
+    metadata = _get_layer_catalog(catalog_files=arguments.catalog_file, enrich_metadata=arguments.enrich)
     if arguments.container == "list":
         metadata = list(metadata.values())
     json.dump(metadata, fp=sys.stdout, indent=2)
@@ -1148,32 +1127,6 @@ def _merge_layers_with_common_name(metadata: CatalogDict):
     return metadata
 
 
-def query_jvm_opensearch_client(open_search_client, collection_id, _query_kwargs, processing_level=""):
-    jvm = get_jvm()
-    fromDate = jvm.java.time.ZonedDateTime.parse(str(_query_kwargs["start_date"]).replace(" ", "T") + "Z")
-    toDate = jvm.java.time.ZonedDateTime.parse(str(_query_kwargs["end_date"]).replace(" ", "T") + "Z")
-    dateRange = jvm.scala.Some(jvm.scala.Tuple2(fromDate, toDate))
-    extent = jvm.geotrellis.vector.Extent(float(_query_kwargs["ulx"]), float(_query_kwargs["bry"]),
-                                          float(_query_kwargs["brx"]), float(_query_kwargs["uly"]))
-    crs = jvm.geotrellis.proj4.CRS.fromEpsgCode(4326)
-    bbox = jvm.geotrellis.vector.ProjectedExtent(extent, crs)
-    attribute_values_dict = {}
-    if "cldPrcnt" in _query_kwargs:
-        attribute_values_dict["eo:cloud_cover"] = _query_kwargs["cldPrcnt"]
-    attributeV_values = jvm.PythonUtils.toScalaMap(attribute_values_dict)
-    products = open_search_client.getProducts(
-        collection_id, dateRange,
-        bbox, attributeV_values, "", processing_level
-    )
-    return {
-        (
-            products.apply(i).tileID().getOrElse(None),
-            products.apply(i).nominalDate().toLocalDate().toString().replace("-", "")
-        )
-        for i in range(products.length())
-    }
-
-
 def check_missing_products(
         collection_metadata: Union[GeopysparkCubeMetadata, dict],
         temporal_extent: Tuple[str, str], spatial_extent: dict,
@@ -1216,40 +1169,11 @@ def check_missing_products(
                 raise InternalException("Failed to handle cloud cover condition")
 
         method = check_data.get("method")
-        if method == "creo":
-            logger.warning("At the moment it is not supported to check missing products on creo.")
-            # We could query with status="all" and see if some offline products survive the deduplication and log those.
+        if method in {"creo", "terrascope"}:
+            logger.warning(
+                f"check_missing_products with {method=} is now unsupported. https://github.com/Open-EO/openeo-geopyspark-driver/issues/1572"
+            )
             missing = []
-        elif method == "terrascope":
-            jvm = get_jvm()
-
-            try:
-                expected_tiles = query_jvm_opensearch_client(
-                    open_search_client=jvm.org.openeo.opensearch.backends.CreodiasClient.apply(),
-                    collection_id=check_data["creo_catalog"]["mission"],
-                    _query_kwargs=query_kwargs,
-                    processing_level=check_data["creo_catalog"]["level"],
-                )
-                logger.debug(f"Expected tiles ({len(expected_tiles)}): {str_truncate(repr(expected_tiles), 200)}")
-                opensearch_collection_id = collection_metadata.get("_vito", "data_source", "opensearch_collection_id")
-
-                url = jvm.java.net.URL("https://services.terrascope.be/catalogue")
-                # Terrascope has a different calculation for cloudCover
-                query_kwargs_no_cldPrcnt = query_kwargs.copy()
-                if "cldPrcnt" in query_kwargs_no_cldPrcnt:
-                    del query_kwargs_no_cldPrcnt["cldPrcnt"]
-                terrascope_tiles = query_jvm_opensearch_client(
-                    open_search_client=jvm.org.openeo.opensearch.OpenSearchClient.apply(url, False, ""),
-                    collection_id=opensearch_collection_id,
-                    _query_kwargs=query_kwargs_no_cldPrcnt,
-                )
-
-                logger.debug(f"Oscar tiles ({len(terrascope_tiles)}): {str_truncate(repr(terrascope_tiles), 200)}")
-                missing = list(expected_tiles.difference(terrascope_tiles))
-            except Py4JJavaError as e:
-                logger.error(f"load_collection: Failed to retrieve list of expected products from CDSE. {e}")
-                missing = [f"unknown - CDSE query failed with {e}"]
-
         else:
             logger.error(f"Invalid check_missing_products data {check_data}")
             raise InternalException("Invalid check_missing_products data")
@@ -1303,7 +1227,9 @@ def extra_validation_load_collection(collection_id: str, load_params: LoadParame
 
     spatial_extent = load_params.spatial_extent
     if spatial_extent is None or len(spatial_extent) == 0:
-        spatial_extent = load_params.global_extent
+        spatial_extent = post_dry_run.get_global_extent(load_params=load_params, env=env)
+        if spatial_extent:
+            spatial_extent = spatial_extent.as_dict()
     if spatial_extent is None or len(spatial_extent) == 0:
         spatial_extent = metadata.get_overall_spatial_extent()
     load_params.spatial_extent = spatial_extent
@@ -1516,6 +1442,9 @@ def _get_sar_backscatter_arguments(load_params: LoadParameters, env: EvalEnv) ->
             # TODO: is it possible to avoid hardcoding `GpsProcessing` here?
             #       Note that `env.get("backend_implementation").processing` is not available here anymore
             #       because of that WhiteListEvalEnv caching business.
+            #       Also note that this requires a local import to break an import cycle between
+            #       openeogeotrellis.backend and openeogeotrellis.layercatalog
+            import openeogeotrellis.backend
             processing = openeogeotrellis.backend.GpsProcessing()
             api_version = env.openeo_api_version()
             sar_backscatter_arguments = processing.get_default_sar_backscatter_arguments(api_version=api_version)

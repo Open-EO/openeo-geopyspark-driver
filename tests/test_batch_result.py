@@ -10,38 +10,47 @@ from typing import Set
 from unittest import mock
 from urllib.parse import urlparse
 
+import dirty_equals
 import geopandas as gpd
+import osgeo.gdal
 import pystac
 import pytest
 import rasterio
 import xarray
-from openeo.metadata import Band
+import openeo
+import openeo.processes
 from openeo.util import ensure_dir
 from openeo_driver.constants import ITEM_LINK_PROPERTY
 from openeo_driver.dry_run import DryRunDataTracer
 from openeo_driver.errors import OpenEOApiException
 from openeo_driver.ProcessGraphDeserializer import ENV_DRY_RUN_TRACER, evaluate
-from openeo_driver.testing import DictSubSet, ephemeral_fileserver, ListSubSet
+from openeo_driver.testing import DictSubSet, ListSubSet, ephemeral_fileserver
 from openeo_driver.util.geometry import validate_geojson_coordinates
-from openeo_driver.utils import EvalEnv
+from openeo_driver.utils import EvalEnv, read_json
 from openeo_driver.workspace import DiskWorkspace
-import osgeo.gdal
 from shapely.geometry import Point, Polygon, shape
 
-from openeogeotrellis.testing import gps_config_overrides
-from openeogeotrellis.workspace import StacApiWorkspace
 from openeogeotrellis._version import __version__
 from openeogeotrellis.backend import JOB_METADATA_FILENAME
 from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.deploy.batch_job import run_job
 from openeogeotrellis.deploy.batch_job_metadata import extract_result_metadata
-from openeogeotrellis.utils import s3_client, GDALINFO_SUFFIX
-from openeogeotrellis.workspace import ObjectStorageWorkspace
+from openeogeotrellis.geopysparkcubemetadata import Band
+from openeogeotrellis.testing import gps_config_overrides
+from openeogeotrellis.utils import GDALINFO_SUFFIX, S3ClientBuilder, equals_approximately, reproject_geometry
+from openeogeotrellis.workspace import ObjectStorageWorkspace, StacApiWorkspace
 from openeogeotrellis.workspace.custom_stac_io import CustomStacIO
-from . import assert_cog
-from .conftest import force_stop_spark_context, _setup_local_spark, TEST_AWS_REGION_NAME
 
+from . import assert_cog
+from .conftest import TEST_AWS_REGION_NAME, _setup_local_spark, force_stop_spark_context
 from .data import TEST_DATA_ROOT, get_test_data_file
+
+
+@pytest.fixture
+def job_dir(tmp_path) -> Path:
+    job_dir = tmp_path / "job-123"
+    job_dir.mkdir(parents=True, exist_ok=True)
+    return job_dir
 
 
 def test_png_export(tmp_path):
@@ -135,7 +144,7 @@ def test_simple_math(tmp_path):
 def test_ep3899_netcdf_no_bands(tmp_path, stac_version, asset_name, bands_name):
 
     job_spec = {
-        "job_options": {"stac-version-experimental":stac_version},
+        "job_options": {"stac-version": stac_version},
         "title": "my job",
         "description": "*minimum band*",
         "process_graph":{
@@ -201,7 +210,7 @@ def test_ep3899_netcdf_no_bands(tmp_path, stac_version, asset_name, bands_name):
 ])
 def test_ep3874_sample_by_feature_filter_spatial_inline_geojson(prefix, tmp_path, stac_version, asset_name):
     job_spec = {
-        "job_options": {"stac-version-experimental": stac_version},
+        "job_options": {"stac-version": stac_version},
         "process_graph":{
         "lc": {
             "process_id": "load_collection",
@@ -295,7 +304,7 @@ def test_ep3874_sample_by_feature_filter_spatial_inline_geojson(prefix, tmp_path
 @pytest.mark.parametrize("stac_version", ["1.0","1.1",])
 def test_separate_asset_per_band(tmp_path, from_node, expected_filenames, stac_version):
     job_spec = {
-        "job_options": {"stac-version-experimental": stac_version},
+        "job_options": {"stac-version": stac_version},
         "process_graph": {
             "loadcollection_sentinel2": {
                 "process_id": "load_collection",
@@ -407,7 +416,7 @@ def test_sample_by_feature_filter_spatial_vector_cube_from_load_url(tmp_path, st
     """
     with ephemeral_fileserver(TEST_DATA_ROOT) as fileserver_root:
         job_spec = {
-            "job_options": {"stac-version-experimental": stac_version},
+            "job_options": {"stac-version": stac_version},
             "process_graph": {
                 "lc": {
                     "process_id": "load_collection",
@@ -713,15 +722,15 @@ def test_spatial_geoparquet(tmp_path):
         'geometry': [Point(4.834132470464912, 51.14651864980539), Point(4.826795583109673, 51.154775560357045)],
         'feature_index': [0, 1],
         'name': ['maize', 'maize'],
-        'Flat_1': [1.0, 1.0],
-        'Flat_2': [2.0, 2.0],
+        'Flat:1': [1.0, 1.0],
+        'Flat:2': [2.0, 2.0],
     }
 
 
 def test_spatial_cube_to_netcdf_sample_by_feature(tmp_path):
     job_spec = {
         "job_options": {
-            "stac-version-experimental": "1.1",
+            "stac-version": "1.1",
             "detailed_asset_metadata": False,
         },
         "process_graph": {
@@ -828,9 +837,9 @@ def test_spatial_cube_to_netcdf_sample_by_feature(tmp_path):
     assert asset0.get("proj:bbox") == [0.0, 0.0, 2.0, 2.0]
     assert asset0.get("proj:epsg") == 4326
     assert asset0.get("proj:shape") == [8,8]
-    assert asset0.get("bands") == [{
+    assert asset0.get("raster:bands") == [{
         'name': 'Flat:2',
-        'statistics': {'max': 2.0, 'mean': 2.0, 'min': 2.0, 'stddev': 0.0, 'valid_percent': 53.125}
+        'statistics': {'maximum': 2.0, 'mean': 2.0, 'minimum': 2.0, 'stddev': 0.0, 'valid_percent': 53.125}
     }]
 
     item1 = [item for item in items for asset in item["assets"].values() if asset["href"].endswith("/openEO_1.nc")][0]
@@ -844,9 +853,9 @@ def test_spatial_cube_to_netcdf_sample_by_feature(tmp_path):
     assert asset1.get("proj:bbox") == [0.5, -1.5, 3.00, 1.75]
     assert asset1.get("proj:epsg") == 4326
     assert asset1.get("proj:shape") == [13, 10]
-    assert asset1.get("bands") == [{
+    assert asset1.get("raster:bands") == [{
         'name': 'Flat:2',
-        'statistics': {'max': 2.0, 'mean': 2.0, 'min': 2.0, 'stddev': 0.0, 'valid_percent': 56.15384615384615}
+        'statistics': {'maximum': 2.0, 'mean': 2.0, 'minimum': 2.0, 'stddev': 0.0, 'valid_percent': 56.15384615384615}
     }]
 
 
@@ -1007,7 +1016,7 @@ def test_export_workspace(tmp_path, remove_original, attach_gdalinfo_assets, sta
     process = {
         "process_graph": process_graph,
         "job_options": {
-            "stac-version-experimental": stac_version,
+            "stac-version": stac_version,
             "remove-exported-assets": remove_original,
         },
     }
@@ -1070,6 +1079,17 @@ def test_export_workspace(tmp_path, remove_original, attach_gdalinfo_assets, sta
         assert stac_collection.extent.temporal.intervals == [
             [dt.datetime(2021, 1, 5, tzinfo=dt.timezone.utc), dt.datetime(2021, 1, 16, tzinfo=dt.timezone.utc)]
         ]
+        if stac_version == "1.1":
+            item_assets = stac_collection.extra_fields.get("item_assets")
+            assert len(item_assets) == 3 if attach_gdalinfo_assets else len(item_assets) == 1
+            assert item_assets.get("openEO") == {
+                'bands': [{
+                    'name': 'Flat:2',
+                    'statistics': {'maximum': 2.0, 'mean': 2.0, 'minimum': 2.0, 'stddev': 0.0, 'valid_percent': 100.0}
+                }],
+                'roles': ['data'],
+                'type': 'image/tiff; application=geotiff'
+            }
 
         item_links = [item_link for item_link in stac_collection.links if item_link.rel == "item"]
         assert len(item_links) == 4 if (attach_gdalinfo_assets & (stac_version == "1.0")) else len(item_links) == 2
@@ -1107,9 +1127,7 @@ def test_export_workspace(tmp_path, remove_original, attach_gdalinfo_assets, sta
             assert "statistics" in bands[0]
             assert len(bands[0]["statistics"]) == 5
             if stac_version== "1.1":
-                assert "bbox" in asset_fields
-                assert asset_fields["bbox"] == [0.0, 0.0, 1.0, 2.0]
-                assert "geometry" in asset_fields
+                assert asset_fields.get("bands") == [{'name': 'Flat:2', 'statistics': {'maximum': 2.0, 'mean': 2.0, 'minimum': 2.0, 'stddev': 0.0, 'valid_percent': 100.0}}]
 
         item = [item for item in items if "2021-01-05" in item.id ][0]
         assert item.bbox == [0.0, 0.0, 1.0, 2.0]
@@ -1145,9 +1163,9 @@ def test_export_workspace(tmp_path, remove_original, attach_gdalinfo_assets, sta
         with open(metadata_file) as f:
             job_metadata = json.load(f)
         if stac_version== "1.1":
-            item_assets  = job_metadata["items"]
-            assert len(item_assets) ==  2
-            assets = [item["assets"] for item in item_assets]
+            item_with_assets  = job_metadata["items"]
+            assert len(item_with_assets) ==  2
+            assets = [item["assets"] for item in item_with_assets]
         else:
             assets = [{asset_key:asset} for asset_key,asset in job_metadata["assets"].items() if "gdalinfo" not in asset_key]
         item_assets0 =assets[0]
@@ -1170,7 +1188,7 @@ def test_export_workspace(tmp_path, remove_original, attach_gdalinfo_assets, sta
 
 @pytest.mark.parametrize(["stac_version","asset_name","bands_name"], [
     ("1.0",["openEO_2021-01-05Z_Latitude.tif","openEO_2021-01-05Z_Longitude.tif"],"raster:bands"),
-    ("1.1",["openEO_Latitude","openEO_Longitude"],"bands"),
+    ("1.1",["Latitude","Longitude"],"bands"),
 ])
 def test_export_workspace_with_asset_per_band(tmp_path, stac_version, asset_name, bands_name):
     workspace_id = "tmp"
@@ -1206,7 +1224,7 @@ def test_export_workspace_with_asset_per_band(tmp_path, stac_version, asset_name
     }
 
     process = {
-        "job_options": {"stac-version-experimental": stac_version},
+        "job_options": {"stac-version": stac_version},
         "process_graph": process_graph,
     }
 
@@ -1293,8 +1311,8 @@ def test_export_workspace_with_asset_per_band(tmp_path, stac_version, asset_name
 def test_filepath_per_band(
     tmp_path,
     use_s3,
-    mock_s3_bucket,
     moto_server,
+    mock_s3_bucket,
     monkeypatch,
 ):
     if use_s3:
@@ -1308,7 +1326,7 @@ def test_filepath_per_band(
         workspace_id = "tmp_workspace"
 
     workspace = get_backend_config().workspaces[workspace_id]
-    s3_instance = s3_client()
+    s3_instance = S3ClientBuilder.from_bucket(get_backend_config().s3_bucket_name)
 
     merge = _random_merge()
     attach_gdalinfo_assets = True
@@ -1524,7 +1542,7 @@ def test_export_workspace_merge_into_existing(tmp_path, mock_s3_bucket, stac_ver
             "process_graph": process_graph,
             "job_options": {
                 "export-workspace-enable-merge": enable_merge,
-                "stac-version-experimental": stac_version
+                "stac-version": stac_version
             },
         }
 
@@ -1548,7 +1566,7 @@ def test_export_workspace_merge_into_existing(tmp_path, mock_s3_bucket, stac_ver
         asset_name = "openEO" if stac_version == "1.1" else expected_asset_filename
         (asset_alternate,) = item["assets"][asset_name]["alternate"].values()
         # noinspection PyUnresolvedReferences
-        assert asset_alternate["href"] == f"s3://{object_workspace.bucket}/{merge}/{expected_asset_filename}"
+        assert asset_alternate["href"] == f"s3://{object_workspace.bucket}/{merge}_items/{expected_asset_filename}"
 
     run_merge_job(
         job_dir=tmp_path / "first",
@@ -1562,14 +1580,28 @@ def test_export_workspace_merge_into_existing(tmp_path, mock_s3_bucket, stac_ver
         expected_asset_filename="openEO_2021-01-15Z.tif",
     )
 
-    object_workspace_keys = [PurePath(obj.key) for obj in mock_s3_bucket.objects.all()]
+    object_workspace_keys = [obj.key for obj in mock_s3_bucket.objects.all()]
     assert len(object_workspace_keys) == 5, "STAC item document(s) not found"
 
     assert object_workspace_keys == ListSubSet([
-        merge,  # the Collection itself
-        merge / "openEO_2021-01-05Z.tif",
-        merge / "openEO_2021-01-15Z.tif",
+        f"{merge}",  # the Collection itself
+        f"{merge}_items/openEO_2021-01-05Z.tif",
+        f"{merge}_items/openEO_2021-01-15Z.tif",
     ])
+
+    stac_collection = pystac.Collection.from_file(
+        f"s3://{mock_s3_bucket.name}/{merge}", stac_io=CustomStacIO(object_workspace.region)
+    )
+
+    assert stac_collection.validate_all() == 2
+
+    for item in stac_collection.get_items():
+        for asset in item.get_assets().values():
+            object_key = _object_key(asset.get_absolute_href())
+
+            with tempfile.NamedTemporaryFile() as f:
+                mock_s3_bucket.download_file(object_key, f.name)
+
 
 @pytest.mark.parametrize("stac_version", ["1.0", "1.1"])
 def test_export_workspace_merge_filepath_per_band(tmp_path, mock_s3_bucket, stac_version):
@@ -1642,7 +1674,7 @@ def test_export_workspace_merge_filepath_per_band(tmp_path, mock_s3_bucket, stac
     process = {
         "process_graph": process_graph,
         "job_options": {
-            "stac-version-experimental": stac_version,
+            "stac-version": stac_version,
             "export-workspace-enable-merge": enable_merge,
             "concurrent-save-results": 4,  # TODO: Make this the default
         },
@@ -1667,7 +1699,7 @@ def test_export_workspace_merge_filepath_per_band(tmp_path, mock_s3_bucket, stac
             Path("lat.tif"),
         ])
 
-        # collection STAC document and assets have to remain in the same place, regardless of "stac-version-experimental" job_option
+        # collection STAC document and assets have to remain in the same place, regardless of "stac-version" job_option
         assert {
             Path("collection.json"),
             Path("collection.json_items") / "some/deeply/nested/folder" / "lon.tif",
@@ -1678,12 +1710,12 @@ def test_export_workspace_merge_filepath_per_band(tmp_path, mock_s3_bucket, stac
         assert isinstance(object_workspace, ObjectStorageWorkspace)
         assert object_workspace.bucket == get_backend_config().s3_bucket_name
 
-        object_workspace_keys = {PurePath(obj.key) for obj in mock_s3_bucket.objects.all()}
+        object_workspace_keys = {obj.key for obj in mock_s3_bucket.objects.all()}
 
         assert {
-            merge,  # the Collection itself
-            merge / "some/deeply/nested/folder/lon.tif",
-            merge / "lat.tif",
+            f"{merge}",  # the Collection itself
+            f"{merge}_items/some/deeply/nested/folder/lon.tif",
+            f"{merge}_items/lat.tif",
         } <= object_workspace_keys
 
         assert len(object_workspace_keys) == 4 if stac_version == "1.1" else len(object_workspace_keys) == 5,  "STAC item document(s) not found"
@@ -1725,12 +1757,12 @@ def test_export_workspace_merge_filepath_per_band(tmp_path, mock_s3_bucket, stac
 @pytest.mark.parametrize("stac_version", ["1.0", "1.1"])
 def test_export_workspace_merge_into_stac_api(
     tmp_path,
+    moto_server,
     mock_s3_bucket,
     requests_mock,
     kube,
     merge,
     stac_version,
-    moto_server,
     monkeypatch,
 ):
     if kube:
@@ -1752,7 +1784,6 @@ def test_export_workspace_merge_into_stac_api(
     stac_api_workspace = get_backend_config().workspaces[stac_api_workspace_id]
     assert isinstance(stac_api_workspace, StacApiWorkspace)
 
-    enable_merge = True
     collection_id = merge.name
 
     # the root Catalog
@@ -1829,8 +1860,7 @@ def test_export_workspace_merge_into_stac_api(
     process = {
         "process_graph": process_graph,
         "job_options": {
-            "stac-version-experimental": stac_version,
-            "export-workspace-enable-merge": enable_merge,
+            "stac-version": stac_version,
         },
     }
 
@@ -1848,7 +1878,7 @@ def test_export_workspace_merge_into_stac_api(
         assert create_item.call_count == 1
 
         assert create_item.request_history[0].json()["assets"] == {
-            "openEO_Latitude": DictSubSet(
+            "Latitude": DictSubSet(
                 {
                     "href": f"s3://openeo-fake-bucketname/{merge}/lat.tif",
                     "bands": [
@@ -1860,7 +1890,7 @@ def test_export_workspace_merge_into_stac_api(
                     ],
                 }
             ),
-            "openEO_Longitude": DictSubSet(
+            "Longitude": DictSubSet(
                 {
                     "href": f"s3://openeo-fake-bucketname/{merge}/some/deeply/nested/folder/lon.tif",
                     "bands": [
@@ -2066,6 +2096,7 @@ def test_results_geometry_from_load_collection_with_crs_not_wgs84(tmp_path):
             "loadcollection1": {
                 "process_id": "load_collection",
                 "arguments": {
+                    # TODO: avoid tests that assume mounted production data
                     "id": "TERRASCOPE_S2_TOC_V2",
                     "spatial_extent": {
                         "west": 3962799.4509550678,
@@ -2074,7 +2105,7 @@ def test_results_geometry_from_load_collection_with_crs_not_wgs84(tmp_path):
                         "north": 3005269.06681928,
                         "crs": 3035,
                     },
-                    "temporal_extent": ["2021-01-04", "2021-01-06"],
+                    "temporal_extent": ["2024-01-05", "2024-01-06"],
                 },
             },
             "saveresult1": {
@@ -2102,10 +2133,11 @@ def test_results_geometry_from_load_collection_with_crs_not_wgs84(tmp_path):
 
     validate_geojson_coordinates(results_geometry)
 
+
 @pytest.mark.parametrize(["stac_version","asset_name"], [("1.0","out.tiff"),("1.1","openEO")])
 def test_load_ml_model_via_jobid(tmp_path, stac_version, asset_name):
     job_spec = {
-      "job_options": {"stac-version-experimental": stac_version},
+      "job_options": {"stac-version": stac_version},
       "process_graph": {
         "loadmlmodel1": {
           "process_id": "load_ml_model",
@@ -2246,7 +2278,7 @@ def test_load_stac_temporal_extent_in_result_metadata(tmp_path, requests_mock, s
 
     requests_mock.get(geoparquet_url, content=geoparquet_content)
 
-    process["job_options"] = {"stac-version-experimental": stac_version}
+    process["job_options"] = {"stac-version": stac_version}
 
     run_job(
         process,
@@ -2325,7 +2357,7 @@ def test_multiple_save_result_single_export_workspace(tmp_path, stac_version, as
     }
 
     process = {
-        "job_options": {"stac-version-experimental": stac_version},
+        "job_options": {"stac-version": stac_version},
         "process_graph": process_graph,
     }
 
@@ -2542,7 +2574,7 @@ def test_export_to_multiple_workspaces(tmp_path, remove_original, stac_version, 
         "process_graph": process_graph,
         "job_options": {
             "remove-exported-assets": remove_original,
-            "stac-version-experimental": stac_version
+            "stac-version": stac_version
         },
     }
 
@@ -2718,7 +2750,7 @@ def test_spatial_geotiff_metadata(tmp_path, stac_version, asset_name):
     }
 
     process = {
-        "job_options": {"stac-version-experimental": stac_version},
+        "job_options": {"stac-version": stac_version},
         "process_graph": process_graph,
     }
 
@@ -2870,7 +2902,7 @@ def test_geotiff_tile_size(tmp_path, window_size, default_tile_size, requested_t
                 "openEO_2025-04-15Z_Flat:1.tif",
                 "openEO_2025-04-15Z_Flat:2.tif",
             },
-            {"openEO_Flat:0", "openEO_Flat:1", "openEO_Flat:2"},
+            {"Flat:0", "Flat:1", "Flat:2"},
         ),
     ],
 )
@@ -2909,7 +2941,7 @@ def test_unified_asset_keys_spatiotemporal_geotiff(
 
     process = {
         "process_graph": process_graph,
-        "job_options": {"stac-version-experimental": "1.1"},
+        "job_options": {"stac-version": "1.1"},
     }
 
     job_dir = tmp_path
@@ -2974,7 +3006,7 @@ def test_unified_asset_keys_tile_grid(tmp_path):
 
     process = {
         "process_graph": process_graph,
-        "job_options": {"stac-version-experimental": "1.1"},
+        "job_options": {"stac-version": "1.1"},
     }
 
     job_dir = tmp_path
@@ -3059,7 +3091,7 @@ def test_unified_asset_keys_tile_grid_spatial(tmp_path):
 
     process = {
         "process_graph": process_graph,
-        "job_options": {"stac-version-experimental": "1.1"},
+        "job_options": {"stac-version": "1.1"},
     }
 
     job_dir = tmp_path
@@ -3152,7 +3184,7 @@ def test_unified_asset_keys_sample_by_feature(tmp_path):
 
     process = {
         "process_graph": process_graph,
-        "job_options": {"stac-version-experimental": "1.1"},
+        "job_options": {"stac-version": "1.1"},
     }
 
     job_dir = tmp_path
@@ -3199,7 +3231,7 @@ def test_unified_asset_keys_sample_by_feature(tmp_path):
                 "openEO_Flat:1.tif",
                 "openEO_Flat:2.tif",
             },
-            {"openEO_Flat:0", "openEO_Flat:1", "openEO_Flat:2"},
+            {"Flat:0", "Flat:1", "Flat:2"},
         ),
     ],
 )
@@ -3254,7 +3286,7 @@ def test_unified_asset_keys_spatial_geotiff(
 
     process = {
         "process_graph": process_graph,
-        "job_options": {"stac-version-experimental": "1.1"},
+        "job_options": {"stac-version": "1.1"},
     }
 
     job_dir = tmp_path
@@ -3322,7 +3354,7 @@ def test_unified_asset_keys_stitch_geotiff(tmp_path):
 
     process = {
         "process_graph": process_graph,
-        "job_options": {"stac-version-experimental": "1.1"},
+        "job_options": {"stac-version": "1.1"},
     }
 
     job_dir = tmp_path
@@ -3392,7 +3424,7 @@ def test_unified_asset_keys_stitch_tile_grid(tmp_path):
 
     process = {
         "process_graph": process_graph,
-        "job_options": {"stac-version-experimental": "1.1"},
+        "job_options": {"stac-version": "1.1"},
     }
 
     job_dir = tmp_path
@@ -3434,7 +3466,7 @@ def test_unified_asset_keys_stitch_tile_grid(tmp_path):
 def test_netcdf_sample_by_feature_asset_bbox_geometry(tmp_path):
     """
     An asset's bbox and geometry become those of the corresponding item in the openeo-python-driver
-    (this is pre-"stac-version-experimental": "1.1").
+    (this is pre-"stac-version": "1.1").
     """
 
     job_spec = {
@@ -3507,27 +3539,29 @@ def test_netcdf_sample_by_feature_asset_bbox_geometry(tmp_path):
     assert assets["openEO_0.nc"]["bbox"] == [0.0, 0.0, 1.0, 1.0]
     assert assets["openEO_0.nc"]["geometry"] == {
         "type": "Polygon",
-        "coordinates": [[[0.0, 0.0], [0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]]],
+        "coordinates": [[[1.0, 0.0], [1.0, 1.0], [0.0, 1.0], [0.0, 0.0], [1.0, 0.0]]],
     }
 
     assert assets["openEO_1.nc"]["bbox"] == [4.0, 4.0, 5.0, 5.0]
     assert assets["openEO_1.nc"]["geometry"] == {
         "type": "Polygon",
-        "coordinates": [[[4.0, 4.0], [4.0, 5.0], [5.0, 5.0], [5.0, 4.0], [4.0, 4.0]]],
+        "coordinates": [[[5.0, 4.0], [5.0, 5.0], [4.0, 5.0], [4.0, 4.0], [5.0, 4.0]]],
     }
 
 
-@pytest.mark.parametrize("derived_from_document_experimental", [False, True])
+@pytest.mark.parametrize("stac_version", [None, "1.1"])
 def test_export_workspace_derived_from(
-    tmp_path, requests_mock, mock_s3_bucket, metadata_tracker, derived_from_document_experimental
+    tmp_path, requests_mock, mock_s3_bucket, metadata_tracker, stac_version, caplog
 ):
+    derived_from_document = stac_version == "1.1"
+
+    caplog.set_level("DEBUG")
+
     stac_api_workspace_id = "stac_api_workspace"
     stac_api_workspace = get_backend_config().workspaces[stac_api_workspace_id]
     assert isinstance(stac_api_workspace, StacApiWorkspace)
 
-    enable_merge = True
-
-    merge = _random_merge(is_actual_collection_document=enable_merge)
+    merge = _random_merge(is_actual_collection_document=True)
     collection_id = merge.name
 
     process_graph = {
@@ -3605,7 +3639,7 @@ def test_export_workspace_derived_from(
         nonlocal new_collection
         new_collection = request.json()  # save it for second "get existing collection"
 
-        if derived_from_document_experimental:
+        if derived_from_document:
             assert new_collection["links"] == []  # items get a link to a derived_from document instead
         else:
             assert new_collection["links"] == [  # input products for the _entire_ job
@@ -3629,7 +3663,7 @@ def test_export_workspace_derived_from(
     def update_collection_callback(request, context) -> dict:
         updated_collection = request.json()
 
-        if derived_from_document_experimental:
+        if derived_from_document:
             assert updated_collection["links"] == []
         else:
             assert updated_collection["links"] == [  # the same because export_workspace avoids duplicates
@@ -3654,7 +3688,7 @@ def test_export_workspace_derived_from(
 
         links = new_item.get("links")
 
-        if derived_from_document_experimental:
+        if derived_from_document:
             assert len(links) == 1, f"expected one link to an ItemCollection but got {links}"
             derived_from_document_link = links[0]
 
@@ -3692,8 +3726,7 @@ def test_export_workspace_derived_from(
     process = {
         "process_graph": process_graph,
         "job_options": {
-            "export-workspace-enable-merge": enable_merge,
-            "derived-from-document-experimental": derived_from_document_experimental,
+            "stac-version": stac_version,
         }
     }
 
@@ -3726,10 +3759,10 @@ def test_export_workspace_derived_from(
 
         derived_from_hrefs = [link["href"] for link in results_metadata["links"] if link["rel"] == "derived_from"]
 
-        if derived_from_document_experimental:
+        if derived_from_document:
             assert (
                 not derived_from_hrefs
-            ), f'expected no Collection-level "derived_from" links for stac_version {derived_from_document_experimental=}'
+            ), f'expected no Collection-level "derived_from" links for stac_version {derived_from_document=}'
 
             # these should get rendered in the job result items STAC documents
             for item in results_metadata["items"]:
@@ -3746,6 +3779,16 @@ def test_export_workspace_derived_from(
         else:
             # these get rendered in the /jobs/<job_id>/results STAC Collection document
             assert derived_from_hrefs == ["http://s2.test/p1", "http://s2.test/p2"]
+
+    if derived_from_document:
+        copy_derived_from_document_logs = [
+            log
+            for log in caplog.records
+            if log.name == "openeogeotrellis.deploy.batch_job"
+            and log.levelname == "DEBUG"
+            and log.message.startswith("copied ")
+        ]
+        assert len(copy_derived_from_document_logs) == 2
 
 
 def test_webapp_derived_from(tmp_path, metadata_tracker):
@@ -3777,7 +3820,7 @@ def test_webapp_derived_from(tmp_path, metadata_tracker):
     process = {
         "process_graph": process_graph,
         "job_options": {
-            "derived-from-document-experimental": True,
+            "stac-version": "1.1",
         },
     }
 
@@ -3837,3 +3880,489 @@ def test_webapp_derived_from(tmp_path, metadata_tracker):
             f"?collection={collection_id.replace(':', '%3A')}"
             f"&uid={feature_id.replace(':', '%3A')}"
         )
+
+
+@pytest.mark.skipif(not os.getenv("CORSA_MODEL_DIR"), reason="CORSA_MODEL_DIR is not set")
+def test_corsa_compress():
+    job_dir = Path("/tmp/test_corsa_compress")
+
+    larger = False
+
+    process_graph_file = "corsa_compress_resample_spatial_process_graph.json"
+    process_graph_file = "corsa_compress_process_graph.json"
+    process_graph_file = "corsa_compress_spatial_process_graph.json"
+
+    process_graph_path = (
+        f"/home/bossie/Documents/VITO/openeo-geotrellis-extensions/CORSA encode process #563/{process_graph_file}"
+    )
+    # process_graph_path = "/tmp/process_graph.json"
+
+    with open(process_graph_path) as f:
+        process = json.load(f)
+
+    if larger:
+        process["process_graph"]["loadcollection1"]["arguments"]["spatial_extent"] = {
+            "crs": 32631,
+            "east": 658500,
+            "north": 5647500,
+            "south": 5643900,
+            "west": 654900,
+        }
+
+    run_job(
+        process,
+        output_file=job_dir / "out",
+        metadata_file=job_dir / "job_metadata.json",
+        api_version="2.0.0",
+        job_dir=job_dir,
+        dependencies=[],
+    )
+
+
+@pytest.mark.skipif(not os.getenv("CORSA_MODEL_DIR"), reason="CORSA_MODEL_DIR is not set")
+def test_corsa_decompress():
+    job_dir = Path("/tmp/test_corsa_decompress")
+
+    larger = False
+    longer = False
+
+    process_graph_file = "corsa_decompress_process_graph.json"
+    process_graph_file = "corsa_decompress_intermediate_process_graph.json"
+    # process_graph_file = "load_stac_process_graph.json"
+
+    process_graph_path = (
+        f"/home/bossie/Documents/VITO/openeo-geotrellis-extensions/CORSA encode process #563/{process_graph_file}"
+    )
+
+    with open(process_graph_path) as f:
+        process = json.load(f)
+
+    if larger:
+        process["process_graph"]["loadcollection1"]["arguments"]["spatial_extent"] = {
+            "crs": 32631,
+            "east": 658500,
+            "north": 5647500,
+            "south": 5643900,
+            "west": 654900,
+        }
+
+    if longer:
+        process["process_graph"]["loadcollection1"]["arguments"]["temporal_extent"] = ["2021-09-01", "2021-12-01"]
+
+    run_job(
+        process,
+        output_file=job_dir / "out",
+        metadata_file=job_dir / "job_metadata.json",
+        api_version="2.0.0",
+        job_dir=job_dir,
+        dependencies=[],
+    )
+
+
+def test_predict_onnx_double(tmp_path):
+    model = "https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis-extensions/test_model_double.onnx"
+    process_graph = {
+        "predictOnnx1": {
+            "arguments": {
+                "data": {
+                    "from_node": "loadcollection1"
+                },
+                "model": model
+            },
+            "process_id": "predict_onnx"
+        },
+        "loadcollection1": {
+            "process_id": "load_collection",
+            "arguments": {
+                "bands": ["Longitude"],
+                "id": "TestCollection-LonLat4x4",
+                "properties": {},
+                "spatial_extent": {"east": 5.08, "north": 51.22, "south": 51.215, "west": 5.07},
+                "temporal_extent": ["2023-06-01", "2023-06-06"],
+            },
+        },
+        "saveresult1": {
+            "arguments": {
+                "data": {
+                    "from_node": "predictOnnx1"
+                },
+                "format": "GTiff",
+            },
+            "process_id": "save_result",
+            "result": True
+        }
+    }
+
+    process = {
+        "process_graph": process_graph,
+        "job_options": {},
+    }
+
+    job_dir = tmp_path
+    metadata_file = job_dir / "job_metadata.json"
+
+    run_job(
+        process,
+        output_file=job_dir / "out",
+        metadata_file=metadata_file,
+        api_version="2.0.0",
+        job_dir=tmp_path,
+        dependencies=[],
+    )
+
+
+    with metadata_file.open() as f:
+        metadata = json.load(f)
+
+    bands = metadata["assets"]['openEO_2023-06-05Z.tif']["raster:bands"]
+    assert len(bands) == 1
+    assert bands[0]["statistics"]["minimum"] == 10
+    assert bands[0]["statistics"]["maximum"] == 10
+
+
+def test_predict_onnx_reduce_sum(tmp_path):
+    model = "https://artifactory.vgt.vito.be/artifactory/testdata-public/openeo/geotrellis-extensions/test_model_sum_double.onnx"
+    process_graph = {
+        "predictOnnx1": {
+            "arguments": {
+                "data": {
+                    "from_node": "loadcollection1"
+                },
+                "model": model
+            },
+            "process_id": "predict_onnx"
+        },
+        "loadcollection1": {
+            "process_id": "load_collection",
+            "arguments": {
+                "bands": ["Longitude","Longitude","Longitude"],
+                "id": "TestCollection-LonLat4x4",
+                "properties": {},
+                "spatial_extent": {"east": 5.08, "north": 51.22, "south": 51.215, "west": 5.07},
+                "temporal_extent": ["2023-06-01", "2023-06-06"],
+            },
+        },
+        "saveresult1": {
+            "arguments": {
+                "data": {
+                    "from_node": "predictOnnx1"
+                },
+                "format": "GTiff",
+            },
+            "process_id": "save_result",
+            "result": True
+        }
+    }
+
+    process = {
+        "process_graph": process_graph,
+        "job_options": {},
+    }
+
+    job_dir = tmp_path
+    metadata_file = job_dir / "job_metadata.json"
+
+    run_job(
+        process,
+        output_file=job_dir / "out",
+        metadata_file=metadata_file,
+        api_version="2.0.0",
+        job_dir=tmp_path,
+        dependencies=[],
+    )
+
+
+    with metadata_file.open() as f:
+        metadata = json.load(f)
+
+    bands = metadata["assets"]['openEO_2023-06-05Z.tif']["raster:bands"]
+    assert len(bands) == 1
+    assert bands[0]["statistics"]["minimum"] == 15
+    assert bands[0]["statistics"]["maximum"] == 15
+
+
+@pytest.mark.parametrize(
+    ["stac_version"],
+    [
+        ("1.1",),
+    ],
+)
+def test_load_stac_serialize_item_collection(tmp_path, job_dir, dummy_stac_api, metadata_tracker, stac_version):
+    process_graph = {
+        "loadstac1": {
+            "process_id": "load_stac",
+            "arguments": {"url": f"{dummy_stac_api}/collections/collection-123"},
+        },
+        "saveresult1": {
+            "process_id": "save_result",
+            "arguments": {
+                "data": {"from_node": "loadstac1"},
+                "format": "GTiff",
+            },
+            "result": True,
+        },
+    }
+    job_specification = {
+        "process_graph": process_graph,
+        "job_options": {"stac-version": stac_version},
+    }
+    metadata_path = job_dir / JOB_METADATA_FILENAME
+    run_job(
+        job_specification=job_specification,
+        output_file=job_dir / "out",
+        metadata_file=metadata_path,
+        job_dir=job_dir,
+    )
+    metadata = read_json(metadata_path)
+    expected_item_collection_path = job_dir / "stac-item-collection-loadstac1.json"
+    expected_link = {
+        "rel": "derived_from",
+        "href": f"file://{expected_item_collection_path}",
+        "type": "application/geo+json",
+        ITEM_LINK_PROPERTY.EXPOSE_AUXILIARY: True,
+    }
+    assert expected_link in metadata["links"]
+
+    item_collection_data = read_json(expected_item_collection_path)
+    assert item_collection_data == dirty_equals.IsPartialDict(
+        {
+            "type": "FeatureCollection",
+            "features": [
+                dirty_equals.IsPartialDict(id="item-1"),
+                dirty_equals.IsPartialDict(id="item-2"),
+                dirty_equals.IsPartialDict(id="item-3"),
+            ],
+        }
+    )
+
+
+@pytest.mark.parametrize(
+    ["stac_version"],
+    [
+        ("1.1",),
+    ],
+)
+def test_load_collection_with_stac_serialize_item_collection(
+    tmp_path, job_dir, dummy_stac_api, metadata_tracker, stac_version, define_extra_collection
+):
+    collection_id = "STAC_COLLECTION_123"
+    stac_url = f"{dummy_stac_api}/collections/collection-123"
+
+    # Define custom collection from run-time dummy_stac_api endpoint
+    define_extra_collection(
+        {
+            "id": collection_id,
+            "_vito": {"data_source": {"type": "stac", "url": stac_url}},
+            "cube:dimensions": {
+                "bands": {
+                    "type": "bands",
+                    "values": ["B02"],
+                }
+            },
+        }
+    )
+
+    process_graph = {
+        "loadcollection1": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": collection_id,
+                "spatial_extent": {"west": 2.5, "south": 49.5, "east": 3.5, "north": 50.1},
+            },
+        },
+        "saveresult1": {
+            "process_id": "save_result",
+            "arguments": {
+                "data": {"from_node": "loadcollection1"},
+                "format": "GTiff",
+            },
+            "result": True,
+        },
+    }
+
+    job_specification = {
+        "process_graph": process_graph,
+        "job_options": {"stac-version": stac_version},
+    }
+    metadata_path = job_dir / JOB_METADATA_FILENAME
+    run_job(
+        job_specification=job_specification,
+        output_file=job_dir / "out",
+        metadata_file=metadata_path,
+        job_dir=job_dir,
+    )
+    metadata = read_json(metadata_path)
+
+    expected_item_collection_path = job_dir / "stac-item-collection-loadcollection1.json"
+    expected_link = {
+        "rel": "derived_from",
+        "href": f"file://{expected_item_collection_path}",
+        "type": "application/geo+json",
+        ITEM_LINK_PROPERTY.EXPOSE_AUXILIARY: True,
+    }
+    assert expected_link in metadata["links"]
+
+    item_collection_data = read_json(expected_item_collection_path)
+    assert item_collection_data == dirty_equals.IsPartialDict(
+        {
+            "type": "FeatureCollection",
+            "features": [
+                dirty_equals.IsPartialDict(id="item-1"),
+                dirty_equals.IsPartialDict(id="item-2"),
+            ],
+        }
+    )
+
+
+def test_item_geometry_matches_asset_geometry(tmp_path):
+    """Item geometry (in 4326) should match that of the underlying assets (in UTM)."""
+    job_dir = tmp_path
+
+    process = {
+        "process_graph": {
+            "loadcollection1": {
+                "process_id": "load_collection",
+                "arguments": {
+                    "bands": ["B02"],
+                    "id": "SENTINEL2_L2A",
+                    "spatial_extent": {
+                        "west": 570153,
+                        "south": 5650300,
+                        "east": 570870,
+                        "north": 5651422,
+                        "crs": "EPSG:32631",
+                    },
+                    "temporal_extent": ["2023-09-01", "2023-09-10"],
+                },
+                "result": True,
+            }
+        }
+    }
+
+    metadata_file = job_dir / JOB_METADATA_FILENAME
+
+    run_job(
+        process,
+        output_file=job_dir / "out",
+        metadata_file=metadata_file,
+        api_version="2.0.0",
+        job_dir=job_dir,
+        dependencies=[],
+    )
+
+    with open(metadata_file) as f:
+        results_metadata = json.load(f)
+
+    assets = results_metadata["assets"].values()
+    assert assets
+
+    for asset in assets:
+        with rasterio.open(asset["href"]) as raster:
+            raster_geometry = reproject_geometry(Polygon.from_bounds(*raster.bounds), src_crs=raster.crs, dst_crs=4326)
+
+        asset_geometry = shape(asset["geometry"])
+        assert equals_approximately(raster_geometry, asset_geometry, rel_area_tolerance=0.01)
+
+        assert asset["bbox"] == pytest.approx(raster_geometry.bounds, rel=0.01)
+
+
+class TestLoadStac:
+
+    # Geometry that covers `item-1` and `item-3` of DummyStacApiServer's default `collection-123`
+    COLLECTION123_GEOMETRY_COVERING_ITEM_1_AND_3 = {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "properties": {},
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [[[2.5, 48.5], [2.5, 49.5], [1.5, 49.5], [1.5, 48.5], [2.5, 48.5]]],
+                },
+            },
+            {
+                "type": "Feature",
+                "properties": {},
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [[[7.0, 50.0], [7.0, 52.0], [6.0, 52.0], [6.0, 50.0], [7.0, 50.0]]],
+                },
+            },
+        ],
+    }
+
+    def test_basic(self, job_dir, dummy_stac_api):
+        process_graph = {
+            "loadstac1": {
+                "process_id": "load_stac",
+                "arguments": {"url": f"{dummy_stac_api}/collections/collection-123"},
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {"data": {"from_node": "loadstac1"}, "format": "GTiff"},
+                "result": True,
+            },
+        }
+        job_specification = {"process_graph": process_graph}
+        metadata_path = job_dir / JOB_METADATA_FILENAME
+        run_job(
+            job_specification=job_specification,
+            output_file=job_dir / "out",
+            metadata_file=metadata_path,
+            job_dir=job_dir,
+        )
+        assert sorted(p.name for p in job_dir.glob("*.tif")) == [
+            "openEO_2024-05-01Z.tif",
+            "openEO_2024-06-02Z.tif",
+            "openEO_2024-07-03Z.tif",
+        ]
+
+    @pytest.mark.parametrize(
+        ["feature_flags", "job_options", "expected_items"],
+        [
+            # Default: enable filter_by_geometry
+            ({}, {}, ["item-1", "item-3"]),
+            # Disable filter_by_geometry through feature flags
+            ({"stac_api_filter_by_geometry": False}, {}, ["item-1", "item-2", "item-3"]),
+            # Disable filter_by_geometry through job option
+            ({}, {"stac_api_filter_by_geometry": False}, ["item-1", "item-2", "item-3"]),
+            # Feature flag overrides job option
+            (
+                {"stac_api_filter_by_geometry": True},
+                {"stac_api_filter_by_geometry": False},
+                ["item-1", "item-3"],
+            ),
+        ],
+    )
+    def test_stac_api_filter_by_geometry(self, job_dir, dummy_stac_api, feature_flags, job_options, expected_items):
+        """
+        Test `filter_by_geometry` feature
+        (introduced under https://github.com/Open-EO/openeo-geopyspark-driver/issues/1225)
+        enabled by default,
+        and with a feature flag and job option (`stac_api_filter_by_geometry`) to disable
+        """
+        process_graph = (
+            openeo.processes.process(
+                # Custom load_stac construction to be able to inject feature flags
+                process_id="load_stac",
+                url=f"{dummy_stac_api}/collections/collection-123",
+                **({"featureflags": feature_flags} if feature_flags else {}),
+            )
+            .aggregate_spatial(geometries=self.COLLECTION123_GEOMETRY_COVERING_ITEM_1_AND_3, reducer="mean")
+            .save_result(format="JSON")
+            .flat_graph()
+        )
+        job_specification = {
+            "process_graph": process_graph,
+            "job_options": job_options,
+        }
+        metadata_path = job_dir / JOB_METADATA_FILENAME
+        run_job(
+            job_specification=job_specification,
+            output_file=job_dir / "out",
+            metadata_file=metadata_path,
+            job_dir=job_dir,
+        )
+        # Check load_stac's ItemCollection
+        item_collection = read_json(job_dir / "stac-item-collection-loadstac1.json")
+        assert sorted(i["id"] for i in item_collection["features"]) == expected_items

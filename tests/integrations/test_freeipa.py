@@ -87,6 +87,28 @@ class TestFreeIpaClient:
         user_data = client.user_find(uid="john")
         assert user_data == {"givenname": "John", "sn": "Doe"}
 
+    def test_user_find_by_email(self, requests_mock):
+        requests_mock.post(
+            "https://ipa.test/ipa/json",
+            json=self._get_ipa_handler(
+                expected_method="user_find",
+                expected_options={"mail": ["john@example.test"], "sizelimit": 10},
+                result={
+                    "count": 2,
+                    "result": [
+                        {"uid": ["john123"], "givenname": ["John"], "mail": ["john@example.test"]},
+                        {"uid": ["john456"], "givenname": ["Johnny"], "mail": ["john@example.test"]},
+                    ],
+                },
+            ),
+        )
+        client = FreeIpaClient(ipa_server="ipa.test", verify_tls=False)
+        result = client.user_find_by_email(email="john@example.test")
+        assert result == {
+            "john123": {"uid": ["john123"], "givenname": ["John"], "mail": ["john@example.test"]},
+            "john456": {"uid": ["john456"], "givenname": ["Johnny"], "mail": ["john@example.test"]},
+        }
+
     def test_user_add(self, requests_mock):
         requests_mock.post(
             "https://ipa.test/ipa/json",

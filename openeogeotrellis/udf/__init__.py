@@ -52,15 +52,19 @@ def run_udf_code(code: str, data: openeo.udf.UdfData, require_executor_context: 
 
     context = contextlib.nullcontext()
 
-    udf_python_dependencies_archive_path = os.environ.get("UDF_PYTHON_DEPENDENCIES_ARCHIVE_PATH")
-    install_mode = get_backend_config().udf_dependencies_install_mode
-    _log.info(f"run_udf with {install_mode=} {udf_python_dependencies_archive_path=}")
-    if install_mode == UDF_DEPENDENCIES_INSTALL_MODE.ZIP:
-        if udf_python_dependencies_archive_path and Path(udf_python_dependencies_archive_path).exists():
-            context = python_udf_dependency_context_from_archive(archive=udf_python_dependencies_archive_path)
-        else:
-            # TODO: make this an exception instead of warning?
-            _log.info(f"Empty/non-existent UDF_PYTHON_DEPENDENCIES_ARCHIVE_PATH {udf_python_dependencies_archive_path}")
+    has_managed_udf_dependencies = bool(extract_udf_dependencies(code))
+    if has_managed_udf_dependencies:
+        udf_python_dependencies_archive_path = os.environ.get("UDF_PYTHON_DEPENDENCIES_ARCHIVE_PATH")
+        install_mode = get_backend_config().udf_dependencies_install_mode
+        _log.info(f"run_udf with {install_mode=} {udf_python_dependencies_archive_path=}")
+        if install_mode == UDF_DEPENDENCIES_INSTALL_MODE.ZIP:
+            if udf_python_dependencies_archive_path and Path(udf_python_dependencies_archive_path).exists():
+                context = python_udf_dependency_context_from_archive(archive=udf_python_dependencies_archive_path)
+            else:
+                # TODO: make this an exception instead of warning?
+                _log.info(
+                    f"Empty/non-existent UDF_PYTHON_DEPENDENCIES_ARCHIVE_PATH {udf_python_dependencies_archive_path}"
+                )
 
     with context:
         return openeo.udf.run_udf_code(code=code, data=data)
@@ -209,18 +213,21 @@ def install_python_udf_dependencies(
         )
         process.stdin.close()
 
-        output_head = []
+        output_excerpt = []
         with process.stdout:
-            for line in iter(process.stdout.readline, ""):
-                _log.debug(f"pip install output: {line.rstrip()}")
-                if len(output_head) < 5:
-                    output_head.append(line)
+            for i, line in enumerate(iter(process.stdout.readline, "")):
+                _log.log(
+                    level=logging.ERROR if "ERROR" in line else logging.DEBUG,
+                    msg=f"pip output:{i} {line.rstrip()}",
+                )
+                if len(output_excerpt) < 5 or "ERROR" in line:
+                    output_excerpt.append(line)
 
         exit_code = process.wait()
         _log.info(f"pip install exited with exit code {exit_code}")
         if exit_code != 0:
             raise UdfDependencyHandlingFailure(
-                message=f"pip install of UDF dependencies failed with {exit_code=} ({output_head=})"
+                message=f"pip install of UDF dependencies failed with {exit_code=} ({output_excerpt=})"
             )
 
 

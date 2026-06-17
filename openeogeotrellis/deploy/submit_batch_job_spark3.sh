@@ -63,6 +63,8 @@ spark_eventlog_dir=${38}
 spark_history_fs_logdirectory=${39}
 spark_yarn_historyserver_address=${40}
 yarn_container_runtime_docker_client_config=${41}
+max_result_size=${42-"5g"}
+executor_stack_size=${43-"4m"}
 
 
 pysparkPython="/opt/venv/bin/python"
@@ -75,6 +77,7 @@ export SPARK_SUBMIT_OPTS="-Dlog4j2.configurationFile=file:${sparkSubmitLog4jConf
 export LD_LIBRARY_PATH="/opt/venv/lib64"
 
 if [ -n "$udf_python_dependencies_folder_path" ]; then
+  # TODO: avoid injecting possibly brittle UDF dep folder when not needed (eu-cdse/openeo-cdse-infra#842)
   export PYTHONPATH="$PYTHONPATH:$udf_python_dependencies_folder_path"
 fi
 
@@ -114,7 +117,7 @@ fi
 JEP_DIR="/opt/venv/lib64/python${FORMATTED_PYTHON_VERSION}/site-packages/jep"
 
 
-sparkExecutorJavaOptions="-Dlog4j2.configurationFile=file:/opt/venv/openeo-geopyspark-driver/batch_job_log4j2.xml\
+sparkExecutorJavaOptions="-Xss${executor_stack_size} -Dlog4j2.configurationFile=file:/opt/venv/openeo-geopyspark-driver/batch_job_log4j2.xml\
  -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.urlconnection.UrlConnectionSdkHttpService\
  -Dscala.concurrent.context.numThreads=8 -Djava.library.path=${JEP_DIR}\
  -Dopeneo.logging.threshold=$logging_threshold"
@@ -181,7 +184,7 @@ spark-submit \
  --conf spark.driver.cores=${drivercores} \
  --conf spark.executor.cores=${executorcores} \
  --conf spark.task.cpus=${taskCpus} \
- --conf spark.driver.maxResultSize=5g \
+ --conf spark.driver.maxResultSize=${max_result_size} \
  --conf spark.driver.memoryOverhead=${drivermemoryoverhead} \
  --conf spark.executor.memoryOverhead=${executormemoryoverhead} \
  ${python_max_conf} \

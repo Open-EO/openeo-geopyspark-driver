@@ -21,10 +21,9 @@ from shapely.geometry import GeometryCollection, Point
 from openeogeotrellis.backend import JOB_METADATA_FILENAME
 from openeogeotrellis.deploy.batch_job import run_job
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
-from openeogeotrellis.job_registry import DoubleJobRegistry, ZkJobRegistry
+from openeogeotrellis.job_registry import DoubleJobRegistry
 from openeogeotrellis.ml.aggregatespatialvectorcube import AggregateSpatialVectorCube
 from openeogeotrellis.ml.geopysparkrandomforestmodel import GeopySparkRandomForestModel
-from openeogeotrellis.testing import KazooClientMock
 from tests.data import TEST_DATA_ROOT
 
 FEATURE_COLLECTION_1 = {
@@ -48,13 +47,6 @@ FEATURE_COLLECTION_1 = {
         },
     ],
 }
-
-
-@pytest.fixture
-def zk_client() -> Iterator[KazooClientMock]:
-    zk_client = KazooClientMock()
-    with mock.patch("openeogeotrellis.job_registry.KazooClient", return_value=zk_client):
-        yield zk_client
 
 
 class DummyAggregateSpatialVectorCube(AggregateSpatialVectorCube):
@@ -201,7 +193,7 @@ def test_fit_class_random_forest_model():
 @mock.patch("openeo_driver.ProcessGraphDeserializer.evaluate")
 @mock.patch("openeogeotrellis.backend.GpsBatchJobs.get_job_output_dir")
 def test_fit_class_random_forest_batch_job_metadata(
-    get_job_output_dir, evaluate, tmp_path, api110, job_registry, zk_client
+    get_job_output_dir, evaluate, tmp_path, api110, job_registry
 ):
     # 1. Run a batch job, which will create a job_metadata.json file.
     random_forest_model: GeopySparkRandomForestModel = train_simple_random_forest_model(3, 42)
@@ -280,8 +272,6 @@ def test_fit_class_random_forest_batch_job_metadata(
     job_id = res.headers["OpenEO-Identifier"]
 
     dbl_job_registry = DoubleJobRegistry(
-        # TODO #236/#498/#632 phase out ZkJobRegistry
-        zk_job_registry_factory=(lambda: ZkJobRegistry(zk_client=zk_client)),
         elastic_job_registry=job_registry,
     )
     with dbl_job_registry:

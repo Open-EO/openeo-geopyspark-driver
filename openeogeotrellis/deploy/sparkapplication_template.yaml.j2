@@ -7,6 +7,7 @@ metadata:
   namespace: {{ job_namespace }}
   labels:
     user: {{ user_id }}
+    correlation_id: {{ job_id_full }}
 {%- endblock %}
 spec:
 {%- block spec_options %}
@@ -51,7 +52,7 @@ spec:
     "spark.network.timeout": "300s"
     "spark.rpc.message.maxSize": "200"
     "spark.rdd.compress": "true"
-    "spark.driver.maxResultSize": "5g"
+    "spark.driver.maxResultSize": {{ max_result_size }}
     "spark.excludeOnFailure.enabled": "false"
     "spark.excludeOnFailure.killExcludedExecutors": "true"
     "spark.speculation": "true"
@@ -136,13 +137,14 @@ spec:
 {%- endif %}
 {%- endblock %}
   driver:
-{%- if batch_scheduler == 'yunikorn' %}
     annotations:
+      cluster-autoscaler.kubernetes.io/safe-to-evict: "false"
+{%- if batch_scheduler == 'yunikorn' %}
       yunikorn.apache.org/schedulingPolicyParameters: "placeholderTimeoutInSeconds={{ yunikorn_scheduling_timeout }} gangSchedulingStyle=Hard"
       yunikorn.apache.org/allow-preemption: "false"
 {%- endif %}
 {%- block driver_options %}
-    cores: {{ driver_cores }}
+    coreRequest: {{ driver_corerequest }}
     javaOptions: "-Dscala.concurrent.context.maxThreads=2 -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/data/projects/OpenEO/{{ current_time }}.hprof -Dlog4j2.configurationFile=file:/opt/batch_job_log4j2.xml -Dpixels.treshold=1000000 -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.apache.ApacheSdkHttpService -Dopeneo.logging.threshold={{ logging_threshold }} -Dhttp.credentials.file=/opt/http_credentials/http_credentials.json -Dsun.net.client.defaultReadTimeout=60000 --add-opens=java.base/sun.net.util=ALL-UNNAMED"
     memory: "{{ driver_memory }}"
     memoryOverhead: "{{ driver_memory_overhead }}"
@@ -183,14 +185,11 @@ spec:
         value: "/opt/layercatalog.json"
       - name: KUBE
         value: "true"
+  {%- block gdal_aws_env %}
       - name: AWS_ACCESS_KEY_ID
         value: {{ aws_access_key_id }}
       - name: AWS_SECRET_ACCESS_KEY
         value: {{ aws_secret_access_key }}
-      - name: SWIFT_ACCESS_KEY_ID
-        value: {{ swift_access_key_id }}
-      - name: SWIFT_SECRET_ACCESS_KEY
-        value: {{ swift_secret_access_key }}
       - name: AWS_S3_ENDPOINT
         value: "{{aws_endpoint}}"
       - name: AWS_DEFAULT_REGION
@@ -201,6 +200,11 @@ spec:
         value: "{{aws_https}}"
       - name: AWS_VIRTUAL_HOSTING
         value: "FALSE"
+  {%- endblock %}
+      - name: SWIFT_ACCESS_KEY_ID
+        value: {{ swift_access_key_id }}
+      - name: SWIFT_SECRET_ACCESS_KEY
+        value: {{ swift_secret_access_key }}
       - name: AWS_DIRECT
         value: "TRUE"
       - name: SWIFT_URL
@@ -228,7 +232,7 @@ spec:
       - name: GDAL_HTTP_MERGE_CONSECUTIVE_RANGES
         value: "YES"
       - name: PYTHONPATH
-        value: "$PYTHONPATH:/opt/openeo/lib/python3.8/site-packages/{% if udf_python_dependencies_folder_path %}:{{ udf_python_dependencies_folder_path }}{% endif %}"
+        value: "/opt/openeo/lib/python3.8/site-packages/"
       - name: UDF_PYTHON_DEPENDENCIES_FOLDER_PATH
         value: "{{ udf_python_dependencies_folder_path }}"
       - name: UDF_PYTHON_DEPENDENCIES_ARCHIVE_PATH
@@ -258,6 +262,7 @@ spec:
       name: {{ job_id_short }}-driver
       openeo-role: "batch-driver"
       job_id: {{ job_id_full }}
+      correlation_id: {{ job_id_full }}
       user_id: {{user_id}}
 {%- endblock %}
     volumeMounts:
@@ -283,14 +288,19 @@ spec:
 {%- endif %}
 {%- endblock %}
   executor:
+    annotations:
+      cluster-autoscaler.kubernetes.io/safe-to-evict: "false"
+    ports:
+      - containerPort: 9464
+        name: prom-executor
+        protocol: TCP
 {%- block executor_options %}
     deleteOnTermination: true
     terminationGracePeriodSeconds: 300
-    cores: {{ executor_cores }}
     coreRequest: {{ executor_corerequest }}
     memory: "{{ executor_memory }}"
     memoryOverhead: "{{ executor_memory_overhead }}"
-    javaOptions: "-Dlog4j2.configurationFile=file:/opt/batch_job_log4j2.xml -Dscala.concurrent.context.numThreads={{ executor_threads_jvm }} -Dscala.concurrent.context.maxThreads={{ executor_threads_jvm }} -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.apache.ApacheSdkHttpService -Dopeneo.logging.threshold={{ logging_threshold }} -Dhttp.credentials.file=/opt/http_credentials/http_credentials.json -Dsun.net.client.defaultReadTimeout=60000"
+    javaOptions: "-Xss{{ executor_stack_size }} -Dlog4j2.configurationFile=file:/opt/batch_job_log4j2.xml -Dscala.concurrent.context.numThreads={{ executor_threads_jvm }} -Dscala.concurrent.context.maxThreads={{ executor_threads_jvm }} -Dsoftware.amazon.awssdk.http.service.impl=software.amazon.awssdk.http.apache.ApacheSdkHttpService -Dopeneo.logging.threshold={{ logging_threshold }} -Dhttp.credentials.file=/opt/http_credentials/http_credentials.json -Dsun.net.client.defaultReadTimeout=60000 -Dotel.java.global-autoconfigure.enabled={{ open_telemetry_enabled }} -Dotel.metrics.exporter={{ open_telemetry_metrics_exporter }} -Dotel.exporter.prometheus.host=0.0.0.0 -Dotel.traces.exporter=none -Dotel.logs.exporter=none -Dotel.metric.export.interval=5000"
 {%- endblock %}
 {%- if mount_tmp %}
     initContainers:
@@ -325,20 +335,7 @@ spec:
         value: "/opt/layercatalog.json"
       - name: KUBE
         value: "true"
-      - name: AWS_ACCESS_KEY_ID
-        value: {{ aws_access_key_id }}
-      - name: AWS_SECRET_ACCESS_KEY
-        value: {{ aws_secret_access_key }}
-      - name: AWS_S3_ENDPOINT
-        value: "{{aws_endpoint}}"
-      - name: AWS_DEFAULT_REGION
-        value: "{{aws_region}}"
-      - name: AWS_REGION
-        value: "{{aws_region}}"
-      - name: AWS_HTTPS
-        value: "{{aws_https}}"
-      - name: AWS_VIRTUAL_HOSTING
-        value: "FALSE"
+{{ self.gdal_aws_env() }}
       - name: AWS_DIRECT
         value: "TRUE"
       - name: SWIFT_URL
@@ -376,7 +373,7 @@ spec:
       - name: GDAL_HTTP_RETRY_DELAY
         value: "10"
       - name: PYTHONPATH
-        value: "$PYTHONPATH:/opt/openeo/lib/python3.8/site-packages/{% if udf_python_dependencies_folder_path %}:{{ udf_python_dependencies_folder_path }}{% endif %}"
+        value: "/opt/openeo/lib/python3.8/site-packages/"
       - name: UDF_PYTHON_DEPENDENCIES_FOLDER_PATH
         value: "{{ udf_python_dependencies_folder_path }}"
       - name: UDF_PYTHON_DEPENDENCIES_ARCHIVE_PATH
@@ -399,6 +396,7 @@ spec:
       version: 3.2.0
       openeo-role: "executor"
       job_id: {{ job_id_full }}
+      correlation_id: {{ job_id_full }}
       user_id: {{user_id}}
 {%- endblock %}
     volumeMounts:

@@ -30,7 +30,8 @@ oidc_providers = [
 def _stac_api_workspace() -> StacApiWorkspace:
     import pystac
     from pathlib import Path
-    from openeogeotrellis.utils import s3_client
+    from urllib.parse import urlparse
+    from openeogeotrellis.utils import S3ClientBuilder
 
     target_bucket = "openeo-fake-bucketname"
 
@@ -46,7 +47,7 @@ def _stac_api_workspace() -> StacApiWorkspace:
         source_path = Path(asset.get_absolute_href())
         target_key = str(merge / relative_asset_path)
 
-        s3_client().upload_file(str(source_path), target_bucket, target_key)
+        S3ClientBuilder.from_bucket(target_bucket).upload_file(str(source_path), target_bucket, target_key)
 
         return f"s3://{target_bucket}/{target_key}"
 
@@ -54,8 +55,13 @@ def _stac_api_workspace() -> StacApiWorkspace:
         if remove_original:
             raise NotImplementedError
 
-        source_path = Path(link.href)  # assumes file on disk
-        s3_client().upload_file(str(source_path), target_bucket, str(merge / source_path.name))
+        uri_parts = urlparse(link.href)
+        assert uri_parts.scheme == "file"
+
+        source_path = Path(uri_parts.path)
+        S3ClientBuilder.from_bucket(target_bucket).upload_file(
+            str(source_path), target_bucket, str(merge / source_path.name)
+        )
 
         return f"s3://{target_bucket}/{merge / source_path.name}"
 
@@ -83,7 +89,6 @@ config = GpsBackendConfig(
     oidc_providers=oidc_providers,
     zookeeper_hosts=["zk.test"],
     zookeeper_root_path="/openeo-test",
-    use_zk_job_registry=True,  # TODO #632 #863 #1165 eliminate dependency on ZkJobRegistry
     etl_api="https://etl-api.test",
     etl_source_id="openeo-gps-tests",
     vault_addr="https://vault.test",

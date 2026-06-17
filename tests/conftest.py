@@ -4,7 +4,9 @@ import json
 import os
 import shutil
 import sys
+import time
 import typing
+import urllib.parse
 from datetime import datetime
 from glob import glob
 from pathlib import Path
@@ -21,9 +23,11 @@ import openeo_driver
 from openeo_driver.config import OpenEoBackendConfig
 from openeo.testing.io import TestDataLoader
 from openeogeotrellis.integrations.identity import IDPTokenIssuer
+from openeogeotrellis.integrations.stac import _stac_response_cache
 
 from openeogeotrellis.config.s3_config import AWSConfig
-from openeo_driver.integrations.s3.client import S3ClientBuilder
+from openeo_driver.integrations.s3.client import S3ClientBuilder as PythonDriverS3ClientBuilder
+from openeogeotrellis.utils import S3ClientBuilder
 
 import openeogeotrellis
 import pytest
@@ -31,13 +35,13 @@ import time_machine
 from _pytest.terminal import TerminalReporter
 from openeo_driver.backend import OpenEoBackendImplementation, UserDefinedProcesses
 from openeo_driver.testing import ApiTester, ephemeral_fileserver, UrllibMocker
-from openeo_driver.utils import smart_bool, get_package_versions
+from openeo_driver.utils import smart_bool, get_package_versions, read_json
 from openeo_driver.views import build_app
 
 from openeogeotrellis.integrations.s3proxy.sts import _STSClient
 from openeogeotrellis.config import get_backend_config, GpsBackendConfig
 from openeogeotrellis.job_registry import InMemoryJobRegistry
-from openeogeotrellis.testing import gps_config_overrides, YarnMocker
+from openeogeotrellis.testing import gps_config_overrides, YarnMocker, DummyStacApiServer
 from openeogeotrellis.vault import Vault
 
 from .data import TEST_DATA_ROOT, get_test_data_file
@@ -55,6 +59,25 @@ _BACKEND_CONFIG_PATH = Path(__file__).parent / "backend_config.py"
 
 
 pytest_plugins = "pytester"
+
+
+NO_SKIP_OPTION: typing.Final[str] = "--no-skip"
+
+def pytest_addoption(parser):
+    parser.addoption(NO_SKIP_OPTION, action="store_true", default=False, help="also run skipped tests")
+
+def pytest_collection_modifyitems(config,
+                                  items: typing.List[typing.Any]):
+    if config.getoption(NO_SKIP_OPTION):
+        for test in items:
+            test.own_markers = [marker for marker in test.own_markers if marker.name not in ('skip', 'skipif')]
+
+@pytest.fixture(autouse=True)
+def clear_stac_cache():
+    """Clear the module-level STAC response cache between tests."""
+    _stac_response_cache.clear()
+    yield
+    _stac_response_cache.clear()
 
 
 @pytest.fixture(scope="session")
@@ -245,11 +268,7 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
         )
     )
 
-    try:
-        scala_version = context._jvm.scala.util.Properties.versionNumberString()
-    except Exception as e:
-        scala_version = str(e)
-    out.write_line("[conftest.py] Scala version: " + scala_version)
+    out.write_line("[conftest.py] Scala version: " + context._jvm.scala.util.Properties.versionNumberString())
 
     if OPENEO_LOCAL_DEBUGGING:
         # TODO: Activate default logging for this message
@@ -268,18 +287,23 @@ def api_version(request):
     return request.param
 
 
-# TODO: Deduplicate code with openeo-python-client
 class _Sleeper:
+    # TODO: Deduplicate with openeo-python-client v0.49.0 (openeo.testing.util.Sleeper)
+
     def __init__(self):
         self.history = []
 
     @contextlib.contextmanager
     def patch(self, time_machine: time_machine.TimeMachineFixture) -> typing.Iterator["_Sleeper"]:
+        orig_sleep = time.sleep
+
         def sleep(seconds):
             # Note: this requires that `time_machine.move_to()` has been called before
             # also see https://github.com/adamchainz/time-machine/issues/247
             time_machine.coordinates.shift(seconds)
             self.history.append(seconds)
+            # Do some minimal sleeping to avoid messing up Python internals that depend on actual sleeping
+            orig_sleep(min(seconds, 0.1))
 
         with mock.patch("time.sleep", new=sleep):
             yield self
@@ -445,6 +469,8 @@ class UrllibAndRequestMocker:
     def __init__(self, urllib_mock, requests_mock):
         self.urllib_mock = urllib_mock
         self.requests_mock = requests_mock
+        self._flexible_responses: dict[str, dict[tuple, bytes]] = {}
+        self._flexible_ignore: dict[str, frozenset] = {}
 
     def get(self, href, data):
         code = 200
@@ -453,6 +479,71 @@ class UrllibAndRequestMocker:
             data = data.encode("utf-8")
         self.requests_mock.get(href, content=data)
 
+    @staticmethod
+    def _normalize_params(url: str, ignore_params: frozenset) -> tuple:
+        """Parse URL query string, remove ignored params, return hashable normalized form."""
+        parsed = urllib.parse.urlparse(url)
+        params = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
+        for p in ignore_params:
+            params.pop(p, None)
+        return tuple(sorted((k, tuple(sorted(vs))) for k, vs in params.items()))
+
+    def get_flexible(self, href: str, data, ignore_params=()):
+        """Register a GET mock that matches URLs ignoring specified query parameters.
+        Example usage:
+            mock.get_flexible(
+                "https://stac.test/search?limit=100&bbox=1,2,3,4&collections=foo",
+                data=my_response,
+                ignore_params=("limit",),
+            )
+
+        All registrations for the same base URL path share a single dispatcher
+        callback, so call get_flexible() for **all** URLs under a given path
+        (don't mix with get() for the same base path).
+        """
+        ignore = frozenset(ignore_params)
+        parsed = urllib.parse.urlparse(href)
+        base_url = urllib.parse.urlunparse((parsed.scheme, parsed.netloc, parsed.path, "", "", ""))
+        norm_key = self._normalize_params(href, ignore)
+
+        if isinstance(data, str):
+            data_bytes = data.encode("utf-8")
+        else:
+            data_bytes = data
+
+        if base_url not in self._flexible_responses:
+            self._flexible_responses[base_url] = {}
+            self._flexible_ignore[base_url] = ignore
+
+        self._flexible_responses[base_url][norm_key] = data_bytes
+        self._install_flexible_handler(base_url)
+
+    def _install_flexible_handler(self, base_url: str):
+        responses = self._flexible_responses[base_url]
+        ignore = self._flexible_ignore[base_url]
+        normalize = self._normalize_params
+
+        def lookup(url: str) -> typing.Optional[bytes]:
+            key = normalize(url, ignore)
+            return responses.get(key)
+
+        def urllib_handler(req):
+            data = lookup(req.full_url)
+            if data is not None:
+                return UrllibMocker.Response(data=data)
+            return UrllibMocker.Response(code=404, msg=f"No flexible match for {req.full_url}")
+
+        self.urllib_mock.register(method="GET", url=base_url, response=urllib_handler)
+
+        def requests_handler(request, context):
+            data = lookup(request.url)
+            if data is not None:
+                return data
+            context.status_code = 404
+            return b"Not Found"
+
+        self.requests_mock.get(base_url, content=requests_handler)
+
 
 @pytest.fixture
 def urllib_and_request_mock(urllib_mock, requests_mock) -> UrllibAndRequestMocker:
@@ -460,6 +551,31 @@ def urllib_and_request_mock(urllib_mock, requests_mock) -> UrllibAndRequestMocke
 
 
 TEST_AWS_REGION_NAME = "eu-central-1"
+
+
+@pytest.fixture(autouse=True)
+def aws_dummy_s3_endpoint(monkeypatch):
+    """
+    Client creation logic for direct clients expect a SWIFT_URL to be defined
+    """
+    monkeypatch.setenv("SWIFT_URL", "http://s3.testdummy.localhost")
+
+
+@pytest.fixture()
+def moto_custom_endpoints(aws_dummy_s3_endpoint, monkeypatch):
+    """
+    In order for moto mocking to work properly the MOTO_S3_CUSTOM_ENDPOINTS environment variable needs to be
+    configured with the endpoints prior to creating the mock. This fixture sets custom endpoints and yields the
+    endpoints so runtime client creations can verify it is safe to create the client.
+    https://docs.getmoto.org/en/4.1.13/docs/services/s3.html
+    """
+    mocked_endpoints = [
+        os.getenv("SWIFT_URL"),
+        "https://s3.waw3-1.cloudferro.com",
+        "https://obs.eu-nl.otc.t-systems.com",
+    ]
+    monkeypatch.setenv("MOTO_S3_CUSTOM_ENDPOINTS", ",".join(mocked_endpoints))
+    yield mocked_endpoints
 
 
 @pytest.fixture(scope="function")
@@ -476,28 +592,50 @@ def aws_credentials(monkeypatch):
 @pytest.fixture(scope="function")
 def mock_s3_resource(aws_credentials, mock_s3_client):
     if moto_server_address is None:
-        with moto.mock_aws():
-            yield boto3.resource("s3", region_name=TEST_AWS_REGION_NAME)
+        yield boto3.resource("s3", region_name=TEST_AWS_REGION_NAME)
     else:
         yield boto3.resource("s3", region_name=TEST_AWS_REGION_NAME, endpoint_url=moto_server_address)
 
+
 @pytest.fixture(scope="function")
-def mocked_s3_client(aws_credentials):
+def mocked_s3_client_builder(aws_credentials, monkeypatch, moto_custom_endpoints):
+    """
+    A fixture that will give you a builder to create s3 clients which can be used where one wants to do a
+    boto3.client("s3", ...) call that should result in a client against moto.
+    """
     if moto_server_address is None:
         with moto.mock_aws():
-            yield boto3.client("s3", region_name=TEST_AWS_REGION_NAME)
+
+            def _mocked_client_builder_inline_mock(*args, **kwargs):
+                assert len(args) == 0 or args[0] != "s3", "s3_client_builder should not get the s3 arg"
+                if "region_name" not in kwargs:
+                    kwargs["region_name"] = TEST_AWS_REGION_NAME
+                if "endpoint_url" in kwargs:
+                    # Moto must be made aware to intercept the custom endpoint used otherwise it fails to mock
+                    # https://docs.getmoto.org/en/4.1.13/docs/services/s3.html
+                    assert kwargs["endpoint_url"] in moto_custom_endpoints, "S3Client with unsafe custom endpoint"
+                return boto3.client("s3", *args, **kwargs)
+
+            yield _mocked_client_builder_inline_mock
     else:
-        yield boto3.client("s3", region_name=TEST_AWS_REGION_NAME, endpoint_url=moto_server_address)
+
+        def _mocked_client_builder_standalone_server_mock(*args, **kwargs):
+            assert len(args) == 0 or args[0] != "s3", "s3_client_builder should not get the s3 arg"
+            if "region_name" not in kwargs:
+                kwargs["region_name"] = TEST_AWS_REGION_NAME
+            # Always override endpoint because we MUST go via the server
+            kwargs["endpoint_url"] = moto_server_address
+            return boto3.client("s3", *args, **kwargs)
+
+        yield _mocked_client_builder_standalone_server_mock
 
 
 @pytest.fixture(scope="function")
-def mock_s3_client(mocked_s3_client, monkeypatch):
-    def _get_client(*args, **kwargs):
-        return mocked_s3_client
-
+def mock_s3_client(mocked_s3_client_builder, monkeypatch):
     # monkeypatch in case motoserver runs standalone
-    monkeypatch.setattr(S3ClientBuilder, "from_region", _get_client)
-    yield mocked_s3_client
+    monkeypatch.setattr(PythonDriverS3ClientBuilder, "_s3_client", mocked_s3_client_builder)
+    yield mocked_s3_client_builder()
+
 
 @pytest.fixture(scope="function")
 def mock_sts_client(monkeypatch):
@@ -537,12 +675,24 @@ def mock_s3_bucket(mock_s3_resource, monkeypatch):
 moto_server_address: Optional[str] = None
 
 
+@pytest.fixture
+def clean_s3_client_cache():
+    """
+    Client caching is good for production environment but for test environments where mock servers are spawned
+    this caching leads to problem if the mock server changes between tests.
+    """
+    S3ClientBuilder._s3_client_cache.flush()
+    yield
+    S3ClientBuilder._s3_client_cache.flush()
+
+
 @pytest.fixture(scope="function")
-def moto_server(monkeypatch) -> typing.Generator[str, None, None]:
+def moto_server(monkeypatch, clean_s3_client_cache) -> typing.Generator[str, None, None]:
     """
     Fixture to run Moto in server mode,
     so that subprocesses also can access mocked services
     (when pointed to the correct endpoint URL).
+    Always make sure this is the leftmost fixture in test function arguments!
     """
     server = moto.server.ThreadedMotoServer(
         # Automatically find an open port
@@ -751,3 +901,54 @@ def metadata_tracker():
     tracker = _get_tracker()
     yield tracker
     tracker.setGlobalTracking(False)
+
+
+@pytest.fixture
+def dummy_stac_api_server() -> DummyStacApiServer:
+    return DummyStacApiServer()
+
+
+@pytest.fixture
+def dummy_stac_api(dummy_stac_api_server) -> typing.Iterator[str]:
+    """
+    Fixture for the root URL of a basic dummy STAC API
+    (running as ephemeral server in side-thread).
+
+    By default: provides a dummy collection "collection-123"
+    with items "item-1", "item-2", "item-3".
+
+    To further customize: also request the `dummy_stac_api_server` fixture
+    and define collections/items there.
+
+    Yields the root URL of the dummy STAC API server.
+
+    Usage example:
+
+        def test_something(dummy_stac_api):
+            url = f"{dummy_stac_api}/collections/collection-123"
+            # Get/query/walk these STAC API URLs
+    """
+    with dummy_stac_api_server.serve() as root_url:
+        yield root_url
+
+
+@pytest.fixture
+def define_extra_collection(tmp_path):
+    """
+    Fixture to inject extra collections in the layer catalog at run-time.
+    Returns function that takes extra layercatalog dict entry to append
+    """
+    extra_layer_catalog_path = tmp_path / "extra_layer_catalog.json"
+    layer_catalog_files = get_backend_config().layer_catalog_files + [extra_layer_catalog_path]
+
+    def define(metadata: dict):
+        if extra_layer_catalog_path.exists():
+            catalog = read_json(extra_layer_catalog_path)
+        else:
+            catalog = []
+        catalog.append(metadata)
+        with extra_layer_catalog_path.open("w", encoding="utf8") as f:
+            json.dump(catalog, fp=f, indent=2)
+
+    with gps_config_overrides(layer_catalog_files=layer_catalog_files):
+        yield define
