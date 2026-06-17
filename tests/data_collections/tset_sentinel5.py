@@ -1,3 +1,6 @@
+import os.path
+import shutil
+
 import pytest
 from pathlib import Path
 from datetime import datetime
@@ -17,10 +20,22 @@ if __name__ == "__main__":
 
 from openeogeotrellis.collections.load_sentinel5p import load_level2_data
 
+test_data_path = Path("/tmp/Sentinel5data/")
+test_data_path.mkdir(exist_ok=True)
 
 # important to get these files locally for testing
-filename = "Sentinel5data/S5P_OFFL_L2__CO_____20240902T094132_20240902T112301_35696_03_020600_20240903T232407.nc"
-filename_anti = "Sentinel5data/S5P_RPRO_L2__CO_____20180430T001950_20180430T020120_02818_03_020400_20220901T170054.nc"
+filename = test_data_path / "S5P_OFFL_L2__CO_____20240902T094132_20240902T112301_35696_03_020600_20240903T232407.nc"
+if not os.path.exists(filename):
+    shutil.copyfile(
+        "/eodata/Sentinel-5P/TROPOMI/L2__CO____/2024/09/02/S5P_OFFL_L2__CO_____20240902T094132_20240902T112301_35696_03_020600_20240903T232407.nc",
+        filename,
+    )
+filename_anti = test_data_path / "S5P_RPRO_L2__CO_____20180430T001950_20180430T020120_02818_03_020400_20220901T170054.nc"
+if not os.path.exists(filename_anti):
+    shutil.copyfile(
+        "/eodata/Sentinel-5P/TROPOMI/L2__CO____/2018/04/30/S5P_RPRO_L2__CO_____20180430T001950_20180430T020120_02818_03_020400_20220901T170054.nc",
+        filename_anti,
+    )
 temporal_extent_anti = [datetime(2018, 4, 30, 0, 50, 0), datetime(2018, 4, 30, 1, 30, 0)]
 spatial_extent_anti = [179.5, 22, -179.5, 23]  # min_lon, min_lat, max_lon, max_lat
 
@@ -29,7 +44,12 @@ temporal_extent_invalid = [datetime(2024, 9, 2, 11, 30, 0), datetime(2024, 9, 2,
 spatial_extent = [30.0, 25.0, 30.05, 25.05]  # min_lon, min_lat, max_lon, max_lat
 spatial_extent_invalid = [22.0, 24.0, 24.0, 26.0]  # min_lon, min_lat, max_lon, max_lat
 
-filename_no2 = "Sentinel5data/S5P_RPRO_L2__NO2____20220614T095228_20220614T113358_24190_03_020400_20230202T231229.nc"
+filename_no2 = test_data_path / "S5P_RPRO_L2__NO2____20220614T095228_20220614T113358_24190_03_020400_20230202T231229.nc"
+if not os.path.exists(filename_no2):
+    shutil.copyfile(
+        "/eodata/Sentinel-5P/TROPOMI/L2__NO2___/2022/06/14/S5P_RPRO_L2__NO2____20220614T095228_20220614T113358_24190_03_020400_20230202T231229.nc",
+        filename_no2,
+    )
 spatial_extent_no2 = [10.0, 50.0, 10.05, 50.05]
 temporal_extent_no2 = [datetime(2022, 6, 14, 10, 30, 0), datetime(2022, 6, 14, 11, 0, 0)]
 
