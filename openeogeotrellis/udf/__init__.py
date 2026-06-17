@@ -213,18 +213,21 @@ def install_python_udf_dependencies(
         )
         process.stdin.close()
 
-        output_head = []
+        output_excerpt = []
         with process.stdout:
-            for line in iter(process.stdout.readline, ""):
-                _log.debug(f"pip install output: {line.rstrip()}")
-                if len(output_head) < 5:
-                    output_head.append(line)
+            for i, line in enumerate(iter(process.stdout.readline, "")):
+                _log.log(
+                    level=logging.ERROR if "ERROR" in line else logging.DEBUG,
+                    msg=f"pip output:{i} {line.rstrip()}",
+                )
+                if len(output_excerpt) < 5 or "ERROR" in line:
+                    output_excerpt.append(line)
 
         exit_code = process.wait()
         _log.info(f"pip install exited with exit code {exit_code}")
         if exit_code != 0:
             raise UdfDependencyHandlingFailure(
-                message=f"pip install of UDF dependencies failed with {exit_code=} ({output_head=})"
+                message=f"pip install of UDF dependencies failed with {exit_code=} ({output_excerpt=})"
             )
 
 

@@ -661,7 +661,7 @@ class TestInstallPythonUdfDependencies:
         assert not install_target.exists()
         install_python_udf_dependencies(["mehh"], target=install_target, index=dummy_pypi)
         assert (install_target / "mehh.py").exists()
-        assert "pip install output: Successfully installed mehh-1.2.3" in caplog.text
+        assert "Successfully installed mehh-1.2.3" in caplog.text
 
     @pytest.mark.parametrize("dependency", ["mehh==1.2.3", "mehh>=1.2.3"])
     def test_install_python_udf_dependencies_with_version(self, tmp_path, dummy_pypi, caplog, dependency):
@@ -670,19 +670,16 @@ class TestInstallPythonUdfDependencies:
         assert not install_target.exists()
         install_python_udf_dependencies([dependency], target=install_target, index=dummy_pypi)
         assert (install_target / "mehh.py").exists()
-        assert "pip install output: Successfully installed mehh-1.2.3" in caplog.text
+        assert "Successfully installed mehh-1.2.3" in caplog.text
 
     def test_install_python_udf_dependencies_fail(self, tmp_path, dummy_pypi, caplog):
-        caplog.set_level("DEBUG")
+        caplog.set_level("ERROR")
         install_target = tmp_path / "target"
         with pytest.raises(
             UdfDependencyHandlingFailure, match="pip install of UDF dependencies failed with exit_code=1"
         ):
             install_python_udf_dependencies(["nope-nope"], target=install_target, index=dummy_pypi)
-        assert (
-            "pip install output: ERROR: Could not find a version that satisfies the requirement nope-nope"
-            in caplog.text
-        )
+        assert "ERROR: Could not find a version that satisfies the requirement nope-nope" in caplog.text
 
     def test_package_python_udf_dependencies_zip_basic(self, tmp_path, dummy_pypi, caplog):
         target = tmp_path / "udf-deps.zip"
