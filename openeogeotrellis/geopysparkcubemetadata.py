@@ -40,8 +40,11 @@ class GeopysparkCubeMetadata(CollectionMetadata):
     # TODO move to python driver?
 
     def __init__(
-            self, metadata: dict, dimensions: List[Dimension] = None,
-            spatial_extent: dict = None, temporal_extent: tuple = None
+        self,
+        metadata: dict,
+        dimensions: Optional[List[Dimension]] = None,
+        spatial_extent: Optional[dict] = None,
+        temporal_extent: Optional[Tuple[str, str]] = None,
     ):
         super().__init__(metadata=metadata, dimensions=dimensions)
         # TODO: why do we need these in addition to those in dimensions?
@@ -79,7 +82,7 @@ class GeopysparkCubeMetadata(CollectionMetadata):
         )
 
     @property
-    def spatial_extent(self) -> dict:
+    def spatial_extent(self) -> Union[dict, None]:
         return self._spatial_extent
 
     def filter_temporal(self, start: Union[str, None], end: Union[str, None]) -> "GeopysparkCubeMetadata":

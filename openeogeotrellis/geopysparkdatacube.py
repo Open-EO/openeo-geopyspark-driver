@@ -43,6 +43,7 @@ from openeo_driver.errors import FeatureUnsupportedException, OpenEOApiException
     ProcessParameterInvalidException
 from openeo_driver.ProcessGraphDeserializer import convert_node, _period_to_intervals
 from openeo_driver.save_result import AggregatePolygonResult
+from openeo_driver.util.geometry import BoundingBox
 from openeo_driver.utils import EvalEnv, smart_bool
 from openeogeotrellis.collections import convert_scala_metadata
 from openeogeotrellis.collections.sentinel3 import _instant_ms_to_minute
@@ -1077,7 +1078,6 @@ class GeopysparkDataCube(DriverDataCube):
                     + f" Left names: {leftBandNames}, right names: {rightBandNames}.",
                 )
 
-        # TODO properly combine bbox in metadata?
         pr = pysc._jvm.org.openeo.geotrellis.OpenEOProcesses()
         if self._is_spatial() and other._is_spatial():
             def merge(rdd,other,level):
@@ -1145,6 +1145,14 @@ class GeopysparkDataCube(DriverDataCube):
             merged_data.metadata = merged_data.metadata.with_temporal_extent(
                 (min([self_lower, other_lower]), max([self_upper, other_upper]))  # compared lexicographically
             )
+
+        if other.metadata.spatial_extent:
+            other_bbox = BoundingBox.from_dict(other.metadata.spatial_extent)
+            if self.metadata.spatial_extent:
+                merged_bbox = BoundingBox.from_dict(self.metadata.spatial_extent).union(other_bbox)
+            else:
+                merged_bbox = other_bbox
+            merged_data.metadata = merged_data.metadata.filter_bbox(**merged_bbox.as_dict())
 
         return merged_data
 
