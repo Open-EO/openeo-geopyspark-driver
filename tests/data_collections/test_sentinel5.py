@@ -24,44 +24,50 @@ from openeogeotrellis.collections.load_sentinel5p import load_level2_data
 
 @skip("requires mounting raster data.")
 class TestSentinel5:
-    def __init__(self):
+    def setup_method(self):
         test_data_path = Path("/tmp/Sentinel5data/")
         test_data_path.mkdir(exist_ok=True)
 
         # important to get these files locally for testing
-        filename = test_data_path / "S5P_OFFL_L2__CO_____20240902T094132_20240902T112301_35696_03_020600_20240903T232407.nc"
-        if not os.path.exists(filename):
+        self.filename = (
+            test_data_path / "S5P_OFFL_L2__CO_____20240902T094132_20240902T112301_35696_03_020600_20240903T232407.nc"
+        )
+        if not os.path.exists(self.filename):
             shutil.copyfile(
                 "/eodata/Sentinel-5P/TROPOMI/L2__CO____/2024/09/02/S5P_OFFL_L2__CO_____20240902T094132_20240902T112301_35696_03_020600_20240903T232407.nc",
-                filename,
+                self.filename,
             )
-        filename_anti = test_data_path / "S5P_RPRO_L2__CO_____20180430T001950_20180430T020120_02818_03_020400_20220901T170054.nc"
-        if not os.path.exists(filename_anti):
+        self.filename_anti = (
+            test_data_path / "S5P_RPRO_L2__CO_____20180430T001950_20180430T020120_02818_03_020400_20220901T170054.nc"
+        )
+        if not os.path.exists(self.filename_anti):
             shutil.copyfile(
                 "/eodata/Sentinel-5P/TROPOMI/L2__CO____/2018/04/30/S5P_RPRO_L2__CO_____20180430T001950_20180430T020120_02818_03_020400_20220901T170054.nc",
-                filename_anti,
+                self.filename_anti,
             )
-        temporal_extent_anti = [datetime(2018, 4, 30, 0, 50, 0), datetime(2018, 4, 30, 1, 30, 0)]
-        spatial_extent_anti = [179.5, 22, -179.5, 23]  # min_lon, min_lat, max_lon, max_lat
+        self.temporal_extent_anti = [datetime(2018, 4, 30, 0, 50, 0), datetime(2018, 4, 30, 1, 30, 0)]
+        self.spatial_extent_anti = [179.5, 22, -179.5, 23]  # min_lon, min_lat, max_lon, max_lat
 
-        temporal_extent_valid = [datetime(2024, 9, 2, 10, 30, 0), datetime(2024, 9, 2, 11, 0, 0)]
-        temporal_extent_invalid = [datetime(2024, 9, 2, 11, 30, 0), datetime(2024, 9, 2, 11, 35, 0)]
-        spatial_extent = [30.0, 25.0, 30.05, 25.05]  # min_lon, min_lat, max_lon, max_lat
-        spatial_extent_invalid = [22.0, 24.0, 24.0, 26.0]  # min_lon, min_lat, max_lon, max_lat
+        self.temporal_extent_valid = [datetime(2024, 9, 2, 10, 30, 0), datetime(2024, 9, 2, 11, 0, 0)]
+        self.temporal_extent_invalid = [datetime(2024, 9, 2, 11, 30, 0), datetime(2024, 9, 2, 11, 35, 0)]
+        self.spatial_extent_normal = [30.0, 25.0, 30.05, 25.05]  # min_lon, min_lat, max_lon, max_lat
+        self.spatial_extent_invalid = [22.0, 24.0, 24.0, 26.0]  # min_lon, min_lat, max_lon, max_lat
 
-        filename_no2 = test_data_path / "S5P_RPRO_L2__NO2____20220614T095228_20220614T113358_24190_03_020400_20230202T231229.nc"
-        if not os.path.exists(filename_no2):
+        self.filename_no2 = (
+            test_data_path / "S5P_RPRO_L2__NO2____20220614T095228_20220614T113358_24190_03_020400_20230202T231229.nc"
+        )
+        if not os.path.exists(self.filename_no2):
             shutil.copyfile(
                 "/eodata/Sentinel-5P/TROPOMI/L2__NO2___/2022/06/14/S5P_RPRO_L2__NO2____20220614T095228_20220614T113358_24190_03_020400_20230202T231229.nc",
-                filename_no2,
+                self.filename_no2,
             )
-        spatial_extent_no2 = [10.0, 50.0, 10.05, 50.05]
-        temporal_extent_no2 = [datetime(2022, 6, 14, 10, 30, 0), datetime(2022, 6, 14, 11, 0, 0)]
+        self.spatial_extent_no2 = [10.0, 50.0, 10.05, 50.05]
+        self.temporal_extent_no2 = [datetime(2022, 6, 14, 10, 30, 0), datetime(2022, 6, 14, 11, 0, 0)]
 
     def test_invalid_time_exception(self):
         params = {
-            "filename": filename,
-            "temporal_extent": temporal_extent_invalid,
+            "filename": self.filename,
+            "temporal_extent": self.temporal_extent_invalid,
         }
         with pytest.raises(Exception) as excinfo:
             _ = load_level2_data(params)
@@ -69,8 +75,8 @@ class TestSentinel5:
 
     def test_invalid_spatial_extent_exception(self):
         params = {
-            "filename": filename,
-            "spatial_extent": spatial_extent_invalid,
+            "filename": self.filename,
+            "spatial_extent": self.spatial_extent_invalid,
             "temporal_extent": None,
         }
         with pytest.raises(Exception) as excinfo:
@@ -81,8 +87,8 @@ class TestSentinel5:
     def test_data_availability_exception(self):
         """Valid temporal and spatial extents in the file but when combined there is no data."""
         params = {
-            "filename": filename,
-            "spatial_extent": spatial_extent,
+            "filename": self.filename,
+            "spatial_extent": self.spatial_extent_normal,
             "temporal_extent": [datetime(2024, 9, 2, 10, 5, 0), datetime(2024, 9, 2, 10, 10, 0)],
         }
         with pytest.raises(Exception) as excinfo:
@@ -93,9 +99,9 @@ class TestSentinel5:
     def test_data_availability_based_on_filter_exception(self):
         """No data based on filter_value."""
         params = {
-            "filename": filename,
+            "filename": self.filename,
             "spatial_extent": [45, 11, 46, 12],
-            "temporal_extent": temporal_extent_valid,
+            "temporal_extent": self.temporal_extent_valid,
             "filter_value": 0.5,
         }
         with pytest.raises(Exception) as excinfo:
@@ -106,9 +112,9 @@ class TestSentinel5:
     def test_data_loading_co(self):
         """Test if it loads all bands, data and shape of bands."""
         params = {
-            "filename": filename,
+            "filename": self.filename,
             "spatial_extent": [35, 24, 35.05, 24.05],
-            "temporal_extent": temporal_extent_valid,
+            "temporal_extent": self.temporal_extent_valid,
             "bands": ["carbonmonoxide_total_column_corrected", "carbonmonoxide_total_column", "qa_value"],
             "filter_value": 0.5,
             "resample_factor": [False, 0.025, "nearest"],
@@ -127,9 +133,9 @@ class TestSentinel5:
 
     def test_data_loading_with_resampling(self):
         params = {
-            "filename": filename,
+            "filename": self.filename,
             "spatial_extent": [35, 24, 35.05, 24.05],
-            "temporal_extent": temporal_extent_valid,
+            "temporal_extent": self.temporal_extent_valid,
             "bands": ["carbonmonoxide_total_column_corrected", "carbonmonoxide_total_column", "qa_value"],
             "filter_value": 0.5,
             "resample_factor": [True, 0.025, "nearest"],
@@ -151,21 +157,21 @@ class TestSentinel5:
     def test_data_loading_with_antimeridian_crossing(self):
         """Test loading data that crosses the antimeridian."""
         params = {
-            "filename": str(filename_anti),
-            "spatial_extent": spatial_extent_anti,
-            "temporal_extent": temporal_extent_anti,
+            "filename": str(self.filename_anti),
+            "spatial_extent": self.spatial_extent_anti,
+            "temporal_extent": self.temporal_extent_anti,
         }
         data = load_level2_data(params)
         params1 = {
-            "filename": str(filename_anti),
+            "filename": str(self.filename_anti),
             "spatial_extent": [179.5, 22, 179.99, 23],
-            "temporal_extent": temporal_extent_anti,
+            "temporal_extent": self.temporal_extent_anti,
         }
         data1 = load_level2_data(params1)
         params2 = {
-            "filename": str(filename_anti),
+            "filename": str(self.filename_anti),
             "spatial_extent": [-179.99, 22, -179.5, 23],
-            "temporal_extent": temporal_extent_anti,
+            "temporal_extent": self.temporal_extent_anti,
         }
         data2 = load_level2_data(params2)
         # assert first 5 lines of data1 lon and data lon match
@@ -191,9 +197,9 @@ class TestSentinel5:
     def test_data_loading_no2(self):
         """Test if it loads all bands, data and shape of bands."""
         params = {
-            "filename": filename_no2,
-            "spatial_extent": spatial_extent_no2,
-            "temporal_extent": temporal_extent_no2,
+            "filename": self.filename_no2,
+            "spatial_extent": self.spatial_extent_no2,
+            "temporal_extent": self.temporal_extent_no2,
             "bands": ["nitrogendioxide_tropospheric_column", "qa_value"],
             "filter_value": 0.75,
             "resample_factor": [False, 0.025, "nearest"],
