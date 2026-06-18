@@ -278,7 +278,7 @@ def test_mask_before_binning(mock_read_band):
 
 
 @skip("requires mounting raster data.")
-def test_slstr_load_collection_opensearch() -> Any:
+def test_sentinel3_slstr_l2_lst() -> Any:
     # Full workflow test starting at load_collection.
     from openeogeotrellis.layercatalog import get_layer_catalog, GeoPySparkLayerCatalog
 
