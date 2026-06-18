@@ -45,7 +45,7 @@ all_gases = {
 ############# DO NOT CHANGE THE VARIABLE NAMES ABOVE #############
 
 
-def get_gas_variables(gas_type):
+def get_gas_variables(gas_type: str):
     """Get gas variable locations, default bands, and filter values.
 
     Returns:
@@ -60,6 +60,8 @@ def get_gas_variables(gas_type):
     variable_loc = gas_vars.get("VARIABLE_LOC_IN_FILE")
     if variable_loc is None:
         raise ValueError("No mapping band variable")
+    if not isinstance(variable_loc, dict):
+        raise ValueError(f"VARIABLE_LOC_IN_FILE should be dictionary, but was '{variable_loc}'")
     variable_locs = {**variable_loc, **COMMON_VARIABLES_IN_FILE}
     return variable_locs, gas_vars.get("DEFAULT_BANDS"), gas_vars.get("FILTER_VALUE")
 

@@ -7,7 +7,7 @@ import sys
 from datetime import datetime
 from functools import partial
 from glob import glob
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union, Any
 
 import geopyspark
 import numpy as np
@@ -50,7 +50,7 @@ DEFAULT_FLAG_BITMASK = 0xff
 logger = logging.getLogger(__name__)
 
 
-def _map_attributes_for_stac(attribute_values: Dict[str, any]) -> Dict[str, any]:
+def _map_attributes_for_stac(attribute_values: Dict[str, Any]) -> Dict[str, Any]:
     """
     Map opensearch attribute keys and values to STAC equivalents for Sentinel-3.
 
@@ -97,7 +97,7 @@ def _map_attributes_for_stac(attribute_values: Dict[str, any]) -> Dict[str, any]
     return mapped
 
 
-def _map_attributes_to_property_filter(attribute_values: Dict[str, any]) -> PropertyFilterPGMap:
+def _map_attributes_to_property_filter(attribute_values: Dict[str, Any]) -> PropertyFilterPGMap:
     """Convert attribute values to openEO style process graph property filters."""
     mapped = {}
     for k, v in attribute_values.items():
@@ -289,12 +289,12 @@ def _filter_urls_by_timeliness(urls: List[str], timeliness_category: str) -> Lis
 
 
 def _build_stac_opensearch_client(
-    metadata_properties: Dict[str, any],
+    metadata_properties: Dict[str, Any],
     spatial_extent: Union[Dict, BoundingBox, None],
     temporal_extent: Tuple[Optional[str], Optional[str]],
     jvm,
     feature_flags: Optional[Dict] = None,
-) -> any:
+) -> Any:
     """Build a FixedFeaturesOpenSearchClient populated with features from STAC API.
 
     Queries multiple STAC collections (e.g., NRT and NTC for SLSTR LST) and merges results.
@@ -393,16 +393,24 @@ def _build_stac_opensearch_client(
     return opensearch_client
 
 
-def _build_legacy_opensearch_client(jvm) -> any:
+def _build_legacy_opensearch_client(jvm) -> Any:
     """Build the legacy OpenSearch client for Copernicus Dataspace."""
     return jvm.org.openeo.opensearch.OpenSearchClient.apply(
         "https://catalogue.dataspace.copernicus.eu/resto", False, "", [], "",
     )
 
 
-def main(product_type, native_resolution, bbox, from_date, to_date, band_names, use_stac_client: bool = False):
-    spark_python = os.path.join(find_spark_home._find_spark_home(), 'python')
-    py4j = glob(os.path.join(spark_python, 'lib', 'py4j-*.zip'))[0]
+def main(
+    product_type: str,
+    native_resolution: float | int,
+    bbox,
+    from_date,
+    to_date,
+    band_names,
+    use_stac_client: bool = False,
+):
+    spark_python = os.path.join(find_spark_home._find_spark_home(), "python")
+    py4j = glob(os.path.join(spark_python, "lib", "py4j-*.zip"))[0]
     sys.path[:0] = [spark_python, py4j]
 
     from geopyspark.geotrellis import Extent, LayoutDefinition, TileLayout
@@ -426,7 +434,7 @@ def main(product_type, native_resolution, bbox, from_date, to_date, band_names, 
         getattr(data_cube_parameters, "layoutScheme_$eq")("FloatingLayoutScheme")
         data_cube_parameters.setGlobalExtent(extent.xmin(), extent.ymin(), extent.xmax(), extent.ymax(), epsg_code)
         native_cell_size = jvm.geotrellis.raster.CellSize(native_resolution, native_resolution)
-        feature_flags = {}
+        feature_flags: Dict[str, Any] = {}
 
         layer = pyramid(metadata_properties, projected_polygons_native_crs, from_date, to_date, band_names,
                         data_cube_parameters, native_cell_size, feature_flags, jvm,
@@ -447,8 +455,19 @@ def main(product_type, native_resolution, bbox, from_date, to_date, band_names, 
         )
 
 
-def pyramid(metadata_properties, projected_polygons_native_crs, from_date, to_date, band_names, data_cube_parameters,
-            native_cell_size, feature_flags, jvm, spatial_extent=None, use_stac_client: bool = False):
+def pyramid(
+    metadata_properties,
+    projected_polygons_native_crs,
+    from_date,
+    to_date,
+    band_names,
+    data_cube_parameters,
+    native_cell_size,
+    feature_flags: Dict[str, Any],
+    jvm,
+    spatial_extent=None,
+    use_stac_client: bool = False,
+) -> Dict[int, geopyspark.TiledRasterLayer]:
 
     reprojection_type = feature_flags.get(KEY_REPROJECTION_TYPE, DEFAULT_REPROJECTION_TYPE)
     binning_args = {
@@ -572,7 +591,15 @@ def _instant_ms_to_minute(instant: int) -> datetime:
 
 
 @ensure_executor_logging
-def read_product(product, product_type, band_names, tile_size, resolution, reprojection_type=DEFAULT_REPROJECTION_TYPE, binning_args=None):
+def read_product(
+    product,
+    product_type,
+    band_names,
+    tile_size,
+    resolution,
+    reprojection_type=DEFAULT_REPROJECTION_TYPE,
+    binning_args=None,
+) -> List[Tuple[geopyspark.SpaceTimeKey, np.ndarray]]:
     from openeogeotrellis.collections.s1backscatter_orfeo import get_total_extent
 
     creo_path, features = product  # better: "tiles"
@@ -602,7 +629,7 @@ def read_product(product, product_type, band_names, tile_size, resolution, repro
     assert len(key_epsgs) == 1, f"Multiple key CRSs {key_epsgs}"
     layout_epsg = key_epsgs.pop()
 
-    tiles = []
+    tiles: List[Tuple[geopyspark.SpaceTimeKey, np.ndarray]] = []
 
     for col_start in range(col_min,col_max+1,MAX_KEYS):
         for row_start in range(row_min, row_max+1, MAX_KEYS):
@@ -816,21 +843,21 @@ def create_final_grid(final_bbox, resolution, rim_pixels=0 ):
     return target_coordinates, target_shape
 
 def do_binning(
-        product_type,
-        final_grid_resolution,
-        creo_path: pathlib.Path,
-        band_names,
-        source_coordinates,
-        target_coordinates,
-        data_mask,
-        angle_source_coordinates,
-        target_coordinates_with_rim,
-        angle_data_mask,
-        digital_numbers=True,
-        super_sampling: int=DEFAULT_SUPER_SAMPLING,
-        flag_band: str=None,
-        flag_bitmask: np.uint16=DEFAULT_FLAG_BITMASK,
-    ):
+    product_type,
+    final_grid_resolution,
+    creo_path: pathlib.Path,
+    band_names,
+    source_coordinates,
+    target_coordinates,
+    data_mask,
+    angle_source_coordinates,
+    target_coordinates_with_rim,
+    angle_data_mask,
+    digital_numbers=True,
+    super_sampling: int = DEFAULT_SUPER_SAMPLING,
+    flag_band: str = None,
+    flag_bitmask: np.uint16 = np.uint16(DEFAULT_FLAG_BITMASK),
+):
     """
     Perform binning of Sentinel-3 data to a regular grid.
 
@@ -1272,16 +1299,16 @@ def apply_LUT_on_band(in_data, LUT, nodata=None):
 if __name__ == '__main__':
     logging.basicConfig(level="INFO")
 
-    lat_lon_bbox = [2.535352308127358, 50.57415247573394, 5.713651867060349, 51.718230797191836]
-    lat_lon_bbox = [9.944991786580573, 45.99238819027832, 12.146700668591137, 47.27025711819684]
+    # lat_lon_bbox = [2.535352308127358, 50.57415247573394, 5.713651867060349, 51.718230797191836]
+    # lat_lon_bbox = [9.944991786580573, 45.99238819027832, 12.146700668591137, 47.27025711819684]
     lat_lon_bbox = [129.4502384682777, -18.161201081701407, 138.1236995771855, -10.287173762653026]
     # lat_lon_bbox = [0.0, 50.0, 5.0, 55.0]
-    from_date = "2024-01-01T00:00:00Z"
-    to_date = "2024-01-01T02:00:00Z"
-    band_names = ["NTC_AOD:Surface_reflectance_440"]
 
-    product_type = "SY_2_AOD___"
-    native_resolution = 0.040178571
-    bbox = BoundingBox.from_wsen_tuple(lat_lon_bbox, crs=4326).reproject(32753)
-
-    main(product_type, native_resolution, bbox, from_date, to_date, band_names)
+    main(
+        product_type="SY_2_AOD___",
+        native_resolution=0.040178571,
+        bbox=BoundingBox.from_wsen_tuple(lat_lon_bbox, crs=4326).reproject(32753),
+        from_date="2024-01-01T00:00:00Z",
+        to_date="2024-01-01T02:00:00Z",
+        band_names=["NTC_AOD:Surface_reflectance_440"],
+    )
