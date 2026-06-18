@@ -733,6 +733,25 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                                         spatial_extent=load_params.spatial_extent,
                                         use_stac_client=layer_source_info.get("use_stac_client", False)
                                         )
+        elif layer_source_type == "file-s5p":
+            native_cell_size = jvm.geotrellis.raster.CellSize(
+                float(metadata.get("cube:dimensions", "x", "step")), float(metadata.get("cube:dimensions", "y", "step"))
+            )
+            # Local import to save some RAM and avoid potential confusing error:
+            from openeogeotrellis.collections.load_sentinel5p import pyramid as s5p_pyramid
+
+            pyramid = s5p_pyramid(
+                metadata_properties(),
+                projected_polygons_native_crs,
+                from_date,
+                to_date,
+                bands,
+                datacubeParams,
+                native_cell_size,
+                feature_flags,
+                jvm,
+                spatial_extent=load_params.spatial_extent,
+            )
         elif layer_source_type == "stac":
             cube = load_stac(
                 url=layer_source_info["url"],

@@ -8,6 +8,9 @@ from datetime import datetime
 from netCDF4 import Dataset, num2date
 import numpy as np
 
+from openeo_driver.backend import LoadParameters
+from openeo_driver.utils import EvalEnv
+
 import rasterio
 
 if __name__ == "__main__":
@@ -19,8 +22,134 @@ if __name__ == "__main__":
     # The SparkContext is only needed to make imports work, but is actually not used for the tests
     openeogeotrellis.deploy.local.setup_environment()
 
-from openeogeotrellis.collections.load_sentinel5p import load_level2_data
+from openeogeotrellis.collections.load_sentinel5p import load_level2_data, read_product
 
+from tests.data import get_test_data_file
+
+# Small synthetic NetCDF created at tests/data/binary/Sentinel-5P/
+# Covers lon 4.0–4.9 °E, lat 50.2–51.1 °N, 2024-09-02 10:00–10:19 UTC
+SYNTHETIC_CO_FILE = get_test_data_file(
+    "binary/Sentinel-5P/S5P_OFFL_L2__CO_____20240902T094132_20240902T112301_00001_03_020600_20240903T232407.nc"
+)
+
+
+# ---------------------------------------------------------------------------
+# Tests using synthetic test data (no eodata mount required)
+# ---------------------------------------------------------------------------
+
+
+def test_read_product_returns_tiles():
+    """read_product produces at least one SpaceTimeKey+Tile pair for a valid extent."""
+    import calendar
+
+    instant_ms = calendar.timegm(datetime(2024, 9, 2, 10, 5).timetuple()) * 1000
+    features = [
+        {
+            "key": {"col": 0, "row": 0, "instant": instant_ms},
+            "key_extent": {"xmin": 4.0, "ymin": 50.5, "xmax": 4.9, "ymax": 51.1},
+            "key_epsg": 4326,
+        }
+    ]
+    result = read_product(
+        (SYNTHETIC_CO_FILE, features),
+        band_names=["carbonmonoxide_total_column_corrected", "carbonmonoxide_total_column"],
+        tile_size=4,
+        resolution=0.1,
+    )
+    assert len(result) > 0, "Expected at least one tile"
+    key, tile = result[0]
+    assert tile.cells.shape[0] == 2, "Expected 2 bands"
+    assert tile.cells.shape[1] == 4, "Expected tile_size rows"
+    assert tile.cells.shape[2] == 4, "Expected tile_size cols"
+
+
+def test_read_product_default_bands():
+    """read_product uses default CO band when band_names is empty."""
+    import calendar
+
+    instant_ms = calendar.timegm(datetime(2024, 9, 2, 10, 5).timetuple()) * 1000
+    features = [
+        {
+            "key": {"col": 0, "row": 0, "instant": instant_ms},
+            "key_extent": {"xmin": 4.0, "ymin": 50.5, "xmax": 4.9, "ymax": 51.1},
+            "key_epsg": 4326,
+        }
+    ]
+    result = read_product(
+        (SYNTHETIC_CO_FILE, features),
+        band_names=[],
+        tile_size=4,
+        resolution=0.1,
+    )
+    assert len(result) > 0
+    _key, tile = result[0]
+    assert tile.cells.shape[0] == 1, "Expected 1 default band"
+
+
+def test_read_product_no_data_outside_extent():
+    """read_product returns empty list when spatial extent has no data."""
+    import calendar
+
+    instant_ms = calendar.timegm(datetime(2024, 9, 2, 10, 5).timetuple()) * 1000
+    features = [
+        {
+            "key": {"col": 0, "row": 0, "instant": instant_ms},
+            "key_extent": {"xmin": 10.0, "ymin": 10.0, "xmax": 11.0, "ymax": 11.0},
+            "key_epsg": 4326,
+        }
+    ]
+    result = read_product(
+        (SYNTHETIC_CO_FILE, features),
+        band_names=["carbonmonoxide_total_column_corrected"],
+        tile_size=4,
+        resolution=0.1,
+    )
+    assert result == [], "Expected empty list for extent with no data"
+
+
+def test_read_product_spacetimekey_instant():
+    """SpaceTimeKey instant is rounded down to the minute."""
+    import calendar
+
+    # Use calendar.timegm to create a UTC-based Unix timestamp (10:05:30 UTC)
+    # 10:05:30 UTC → should round to 10:05:00
+    instant_ms = calendar.timegm(datetime(2024, 9, 2, 10, 5, 30).timetuple()) * 1000
+    features = [
+        {
+            "key": {"col": 0, "row": 0, "instant": instant_ms},
+            "key_extent": {"xmin": 4.0, "ymin": 50.5, "xmax": 4.9, "ymax": 51.1},
+            "key_epsg": 4326,
+        }
+    ]
+    result = read_product(
+        (SYNTHETIC_CO_FILE, features),
+        band_names=["carbonmonoxide_total_column_corrected"],
+        tile_size=4,
+        resolution=0.1,
+    )
+    assert len(result) > 0
+    key, _ = result[0]
+    assert key.instant == datetime(2024, 9, 2, 10, 5, 0), f"Expected rounded instant, got {key.instant}"
+
+
+def test_sentinel5p_l2_co() -> None:
+    # Full workflow test starting at load_collection.
+    from openeogeotrellis.layercatalog import get_layer_catalog, GeoPySparkLayerCatalog
+
+    catalog: GeoPySparkLayerCatalog = get_layer_catalog()
+
+    load_params = LoadParameters(
+        spatial_extent={"west": 4.0, "south": 50.5, "east": 4.9, "north": 51.1},
+        temporal_extent=("2024-09-02T00:00:00", "2024-09-02T23:59:59"),
+        bands=["carbonmonoxide_total_column", "carbonmonoxide_total_column_corrected", "qa_value"],
+    )
+    env = EvalEnv({"openeo_api_version": "1.0.0"})
+    catalog._load_collection_cached("SENTINEL5P_L2_CO", load_params=load_params, env=env)
+
+
+# ---------------------------------------------------------------------------
+# Tests that require a real eodata mount
+# ---------------------------------------------------------------------------
 
 @skip("requires mounting raster data.")
 class TestSentinel5:

@@ -2194,6 +2194,40 @@
     }
   },
   {
+    "id": "SENTINEL5P_L2_CO",
+    "title": "Sentinel-5P TROPOMI CO L2",
+    "description": "Sentinel-5P TROPOMI Level-2 carbon monoxide (CO) total column product.",
+    "license": "proprietary",
+    "extent": {
+      "spatial": {"bbox": [[-180, -90, 180, 90]]},
+      "temporal": {"interval": [["2018-04-30", null]]}
+    },
+    "cube:dimensions": {
+      "x": {"type": "spatial", "axis": "x", "step": 0.05},
+      "y": {"type": "spatial", "axis": "y", "step": 0.05},
+      "t": {"type": "temporal"},
+      "bands": {
+        "type": "bands",
+        "values": ["carbonmonoxide_total_column", "carbonmonoxide_total_column_corrected", "qa_value"]
+      }
+    },
+    "_vito": {
+      "data_source": {
+        "type": "file-s5p",
+        "opensearch_endpoint": "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-5p-l2-co-offl",
+        "opensearch_collection_id": "urn:eop:VITO:TERRASCOPE_S5P_L2_CO",
+        "root_path": "/eodata/Sentinel-5P/TROPOMI/L2__CO____"
+      }
+    },
+    "summaries": {
+      "eo:bands": [
+        {"name": "carbonmonoxide_total_column", "description": "CO total column", "unit": "mol m-2"},
+        {"name": "carbonmonoxide_total_column_corrected", "description": "Bias-corrected CO total column", "unit": "mol m-2"},
+        {"name": "qa_value", "description": "Quality value"}
+      ]
+    }
+  },
+  {
     "id": "SENTINEL3_SLSTR_L2_LST",
     "title": "Daily global Sentinel-3 Land surface temperature at 1km resolution",
     "description": "*Experimental* Daily global Sentinel-3 land surface temperature at 1km resolution. Land surface temperature is defined as the effective radiometric temperature of the Earth's surface \"skin\" in the instrument field of view. Here, \"skin\" is referring to the top surface in bare soil conditions and to the effective emitting temperature of vegetation \"canopies\" as determined from a view of the top of a canopy.\n This product is derived from the SLSTR (Sea and Land Surface Temperature Radiometer) instrument on board the Sentinel-3 satellite.\n\n Multiple observations may be available per day, we recommend temporal aggregation to create daily composites. ",
