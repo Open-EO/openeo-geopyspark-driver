@@ -89,6 +89,7 @@ from openeogeotrellis.configparams import ConfigParams
 from openeogeotrellis.constants import JOB_OPTION_LOG_LEVEL
 from openeogeotrellis.geopysparkcubemetadata import Band
 from openeogeotrellis.geopysparkdatacube import GeopysparkCubeMetadata, GeopysparkDataCube
+from openeogeotrellis.integrations.credit_check import ExecutionDetails
 from openeogeotrellis.integrations.etl_api import ETL_API_STATE, ETL_API_STATUS
 from openeogeotrellis.integrations.identity import IDP_TOKEN_ISSUER
 from openeogeotrellis.integrations.hadoop import setup_kerberos_auth
@@ -1958,6 +1959,17 @@ class GpsBatchJobs(backend.BatchJobs):
 
         job_process_graph = job_info["process"]["process_graph"]
         job_options = job_info.get("job_options") or {}  # can be None
+        isKube = ConfigParams().is_kube_deploy
+
+        if isKube:
+            options = K8SOptions.from_dict(job_options)
+        else:
+            options = JobOptions.from_dict(job_options)
+        options.validate()
+
+        # Job-options are validated at this point
+        execution_details: ExecutionDetails = get_backend_config().credit_check.get_batch_execution_details(job_info)
+
         job_specification_json = json.dumps({"process_graph": job_process_graph, "job_options": job_options})
 
         sentinel_hub_client_alias = deep_get(job_options, 'sentinel-hub', 'client-alias', default="default")
@@ -2028,14 +2040,6 @@ class GpsBatchJobs(backend.BatchJobs):
             raise OpenEOApiException(f"invalid value {value} for job_option {job_option_key}")
 
 
-
-        isKube = ConfigParams().is_kube_deploy
-
-        if isKube:
-            options = K8SOptions.from_dict(job_options)
-        else:
-            options = JobOptions.from_dict(job_options)
-
         executor_memory_overhead = options.executor_memory_overhead
 
         queue = job_options.get("queue", "default")
@@ -2045,9 +2049,6 @@ class GpsBatchJobs(backend.BatchJobs):
             envar: os.environ.get(envar, "")
             for envar in os.environ.get("OPENEO_PROPAGATABLE_WEB_APP_DRIVER_ENVARS", "").split()
         }
-
-        options.validate()
-
 
         if get_backend_config().setup_kerberos_auth:
             setup_kerberos_auth(self._principal, self._key_tab, self._jvm)
@@ -2226,6 +2227,7 @@ class GpsBatchJobs(backend.BatchJobs):
                 layer_catalog_init_image=os.environ.get("LAYER_CATALOG_INIT_IMAGE", "DISABLED"),
                 layer_catalog_init_dir=os.environ.get("LAYER_CATALOG_INIT_DIR", "/opt/layercatalogs"),
                 layer_catalog_init_pull_policy=os.environ.get("LAYER_CATALOG_INIT_IMAGE_PULL_POLICY", "IfNotPresent"),
+                credit_plan=execution_details.plan,
             )
 
             with self._double_job_registry as dbl_registry:
