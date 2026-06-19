@@ -2,7 +2,6 @@ import os.path
 import shutil
 from datetime import datetime
 from pathlib import Path
-from unittest import skip
 
 import numpy as np
 import pytest
@@ -36,135 +35,11 @@ SYNTHETIC_CO_FILE = get_test_data_file(
 # ---------------------------------------------------------------------------
 
 
-def test_read_product_returns_tiles():
-    """read_product produces at least one SpaceTimeKey+Tile pair for a valid extent."""
-    import calendar
-
-    instant_ms = calendar.timegm(datetime(2024, 9, 2, 10, 5).timetuple()) * 1000
-    features = [
-        {
-            "key": {"col": 0, "row": 0, "instant": instant_ms},
-            "key_extent": {"xmin": 4.0, "ymin": 50.5, "xmax": 4.9, "ymax": 51.1},
-            "key_epsg": 4326,
-        }
-    ]
-    result = read_product(
-        (SYNTHETIC_CO_FILE, features),
-        band_names=["carbonmonoxide_total_column_corrected", "carbonmonoxide_total_column"],
-        tile_size=4,
-        resolution=0.1,
-    )
-    assert len(result) > 0, "Expected at least one tile"
-    key, tile = result[0]
-    assert tile.cells.shape[0] == 2, "Expected 2 bands"
-    assert tile.cells.shape[1] == 4, "Expected tile_size rows"
-    assert tile.cells.shape[2] == 4, "Expected tile_size cols"
-
-
-def test_read_product_default_bands():
-    """read_product uses default CO band when band_names is empty."""
-    import calendar
-
-    instant_ms = calendar.timegm(datetime(2024, 9, 2, 10, 5).timetuple()) * 1000
-    features = [
-        {
-            "key": {"col": 0, "row": 0, "instant": instant_ms},
-            "key_extent": {"xmin": 4.0, "ymin": 50.5, "xmax": 4.9, "ymax": 51.1},
-            "key_epsg": 4326,
-        }
-    ]
-    result = read_product(
-        (SYNTHETIC_CO_FILE, features),
-        band_names=[],
-        tile_size=4,
-        resolution=0.1,
-    )
-    assert len(result) > 0
-    _key, tile = result[0]
-    assert tile.cells.shape[0] == 1, "Expected 1 default band"
-
-
-def test_read_product_no_data_outside_extent():
-    """read_product returns empty list when spatial extent has no data."""
-    import calendar
-
-    instant_ms = calendar.timegm(datetime(2024, 9, 2, 10, 5).timetuple()) * 1000
-    features = [
-        {
-            "key": {"col": 0, "row": 0, "instant": instant_ms},
-            "key_extent": {"xmin": 10.0, "ymin": 10.0, "xmax": 11.0, "ymax": 11.0},
-            "key_epsg": 4326,
-        }
-    ]
-    result = read_product(
-        (SYNTHETIC_CO_FILE, features),
-        band_names=["carbonmonoxide_total_column_corrected"],
-        tile_size=4,
-        resolution=0.1,
-    )
-    assert result == [], "Expected empty list for extent with no data"
-
-
-def test_read_product_spacetimekey_instant():
-    """SpaceTimeKey instant is rounded down to the minute."""
-    import calendar
-
-    # Use calendar.timegm to create a UTC-based Unix timestamp (10:05:30 UTC)
-    # 10:05:30 UTC → should round to 10:05:00
-    instant_ms = calendar.timegm(datetime(2024, 9, 2, 10, 5, 30).timetuple()) * 1000
-    features = [
-        {
-            "key": {"col": 0, "row": 0, "instant": instant_ms},
-            "key_extent": {"xmin": 4.0, "ymin": 50.5, "xmax": 4.9, "ymax": 51.1},
-            "key_epsg": 4326,
-        }
-    ]
-    result = read_product(
-        (SYNTHETIC_CO_FILE, features),
-        band_names=["carbonmonoxide_total_column_corrected"],
-        tile_size=4,
-        resolution=0.1,
-    )
-    assert len(result) > 0
-    key, _ = result[0]
-    assert key.instant == datetime(2024, 9, 2, 10, 5, 0), f"Expected rounded instant, got {key.instant}"
-
-
-@skip("requires mounting raster data.")
-def test_sentinel5p_l2_co(api110, tmp_path) -> None:
-    process_graph = {
-        "loadcollection1": {
-            "process_id": "load_collection",
-            "arguments": {
-                "id": "SENTINEL5P_L2_CO",
-                "spatial_extent": {"west": 4, "south": 50, "east": 11, "north": 55},
-                "temporal_extent": ("2024-09-02T00:00:00Z", "2024-09-02T23:59:59Z"),
-                "bands": [
-                    "carbonmonoxide_total_column",
-                    "carbonmonoxide_total_column_corrected",
-                    "qa_value",
-                ],
-            },
-            "result": True,
-        },
-    }
-    response = api110.check_result(process_graph)
-
-    output_file = tmp_path / "test_sentinel5p_l2_co.tif"
-    with output_file.open(mode="wb") as f:
-        f.write(response.data)
-
-    with rasterio.open(output_file) as ds:
-        print(ds.bounds)
-        assert ds.bounds.right == 11.0
-
-
 # ---------------------------------------------------------------------------
 # Tests that require a real eodata mount
 # ---------------------------------------------------------------------------
 
 
-@skip("requires mounting raster data.")
 class TestSentinel5:
     def setup_method(self):
         test_data_path = Path("/tmp/Sentinel5data/")
@@ -206,6 +81,123 @@ class TestSentinel5:
         self.spatial_extent_no2 = [10.0, 50.0, 10.05, 50.05]
         self.temporal_extent_no2 = [datetime(2022, 6, 14, 10, 30, 0), datetime(2022, 6, 14, 11, 0, 0)]
 
+    def test_read_product_returns_tiles(self):
+        """read_product produces at least one SpaceTimeKey+Tile pair for a valid extent."""
+        import calendar
+
+        instant_ms = calendar.timegm(datetime(2024, 9, 2, 10, 5).timetuple()) * 1000
+        features = [
+            {
+                "key": {"col": 0, "row": 0, "instant": instant_ms},
+                "key_extent": {"xmin": 4.0, "ymin": 50.5, "xmax": 4.9, "ymax": 51.1},
+                "key_epsg": 4326,
+            }
+        ]
+        result = read_product(
+            (SYNTHETIC_CO_FILE, features),
+            band_names=["carbonmonoxide_total_column_corrected", "carbonmonoxide_total_column"],
+            tile_size=4,
+            resolution=0.1,
+        )
+        assert len(result) > 0, "Expected at least one tile"
+        key, tile = result[0]
+        assert tile.cells.shape[0] == 2, "Expected 2 bands"
+        assert tile.cells.shape[1] == 4, "Expected tile_size rows"
+        assert tile.cells.shape[2] == 4, "Expected tile_size cols"
+
+    def test_read_product_default_bands(self):
+        """read_product uses default CO band when band_names is empty."""
+        import calendar
+
+        instant_ms = calendar.timegm(datetime(2024, 9, 2, 10, 5).timetuple()) * 1000
+        features = [
+            {
+                "key": {"col": 0, "row": 0, "instant": instant_ms},
+                "key_extent": {"xmin": 4.0, "ymin": 50.5, "xmax": 4.9, "ymax": 51.1},
+                "key_epsg": 4326,
+            }
+        ]
+        result = read_product(
+            (SYNTHETIC_CO_FILE, features),
+            band_names=[],
+            tile_size=4,
+            resolution=0.1,
+        )
+        assert len(result) > 0
+        _key, tile = result[0]
+        assert tile.cells.shape[0] == 1, "Expected 1 default band"
+
+    def test_read_product_no_data_outside_extent(self):
+        """read_product returns empty list when spatial extent has no data."""
+        import calendar
+
+        instant_ms = calendar.timegm(datetime(2024, 9, 2, 10, 5).timetuple()) * 1000
+        features = [
+            {
+                "key": {"col": 0, "row": 0, "instant": instant_ms},
+                "key_extent": {"xmin": 10.0, "ymin": 10.0, "xmax": 11.0, "ymax": 11.0},
+                "key_epsg": 4326,
+            }
+        ]
+        result = read_product(
+            (SYNTHETIC_CO_FILE, features),
+            band_names=["carbonmonoxide_total_column_corrected"],
+            tile_size=4,
+            resolution=0.1,
+        )
+        assert result == [], "Expected empty list for extent with no data"
+
+    def test_read_product_spacetimekey_instant(self):
+        """SpaceTimeKey instant is rounded down to the minute."""
+        import calendar
+
+        # Use calendar.timegm to create a UTC-based Unix timestamp (10:05:30 UTC)
+        # 10:05:30 UTC → should round to 10:05:00
+        instant_ms = calendar.timegm(datetime(2024, 9, 2, 10, 5, 30).timetuple()) * 1000
+        features = [
+            {
+                "key": {"col": 0, "row": 0, "instant": instant_ms},
+                "key_extent": {"xmin": 4.0, "ymin": 50.5, "xmax": 4.9, "ymax": 51.1},
+                "key_epsg": 4326,
+            }
+        ]
+        result = read_product(
+            (SYNTHETIC_CO_FILE, features),
+            band_names=["carbonmonoxide_total_column_corrected"],
+            tile_size=4,
+            resolution=0.1,
+        )
+        assert len(result) > 0
+        key, _ = result[0]
+        assert key.instant == datetime(2024, 9, 2, 10, 5, 0), f"Expected rounded instant, got {key.instant}"
+
+    def test_sentinel5p_l2_co(self, api110, tmp_path) -> None:
+        process_graph = {
+            "loadcollection1": {
+                "process_id": "load_collection",
+                "arguments": {
+                    "id": "SENTINEL5P_L2_CO",
+                    "spatial_extent": {"west": 4, "south": 50, "east": 11, "north": 55},
+                    "temporal_extent": ("2024-09-02T00:00:00Z", "2024-09-02T23:59:59Z"),
+                    "bands": [
+                        "carbonmonoxide_total_column",
+                        "carbonmonoxide_total_column_corrected",
+                        "qa_value",
+                    ],
+                },
+                "result": True,
+            },
+        }
+        response = api110.check_result(process_graph)
+
+        output_file = tmp_path / "test_sentinel5p_l2_co.tif"
+        with output_file.open(mode="wb") as f:
+            f.write(response.data)
+
+        with rasterio.open(output_file) as ds:
+            print(ds.bounds)
+            assert ds.bounds.right == 11.0
+
     def test_invalid_time_exception(self):
         params = {
             "filename": self.filename,
@@ -225,7 +217,6 @@ class TestSentinel5:
             _ = load_level2_data(params)
         assert "Input spatial extent is not in the file" in str(excinfo.value)
 
-
     def test_data_availability_exception(self):
         """Valid temporal and spatial extents in the file but when combined there is no data."""
         params = {
@@ -236,7 +227,6 @@ class TestSentinel5:
         with pytest.raises(Exception) as excinfo:
             _ = load_level2_data(params)
         assert "No data is available for given spatial and temporal extent" in str(excinfo.value)
-
 
     def test_data_availability_based_on_filter_exception(self):
         """No data based on filter_value."""
@@ -249,7 +239,6 @@ class TestSentinel5:
         with pytest.raises(Exception) as excinfo:
             _ = load_level2_data(params)
         assert "No data is available after applying quality filter" in str(excinfo.value)
-
 
     def test_data_loading_co(self):
         """Test if it loads all bands, data and shape of bands."""
@@ -272,7 +261,6 @@ class TestSentinel5:
         assert data["carbonmonoxide_total_column"].shape == (3, 3)
         assert data["qa_value"].shape == (3, 3)
 
-
     def test_data_loading_with_resampling(self):
         params = {
             "filename": self.filename,
@@ -294,7 +282,6 @@ class TestSentinel5:
         assert np.allclose(data["carbonmonoxide_total_column"].ravel(), co, equal_nan=True)
         assert np.allclose(data["latitude"].ravel(), lat, equal_nan=True)
         assert np.allclose(data["longitude"].ravel(), lon, equal_nan=True)
-
 
     def test_data_loading_with_antimeridian_crossing(self):
         """Test loading data that crosses the antimeridian."""
@@ -334,7 +321,6 @@ class TestSentinel5:
             data2["carbonmonoxide_total_column_corrected"][:, -5:],
             equal_nan=True,
         )
-
 
     def test_data_loading_no2(self):
         """Test if it loads all bands, data and shape of bands."""
