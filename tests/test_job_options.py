@@ -3,7 +3,9 @@ import json
 import pytest
 
 from openeo.util import dict_no_none
+from openeo_driver.errors import OpenEOApiException
 from openeogeotrellis.constants import JOB_OPTION_LOGGING_THRESHOLD
+from openeogeotrellis.integrations.credit_check import JOB_OPTION_CREDIT_PLANS
 from openeogeotrellis.job_options import JobOptions, K8SOptions
 from openeogeotrellis.config import get_backend_config
 
@@ -135,3 +137,24 @@ def test_list_options_with_public_only():
     assert isinstance(options, list)
     # Ensure no private options are included
     assert all(option.get("public", True) for option in options)
+
+
+class TestCreditPlansJobOption:
+    def test_credit_plans_parsed(self):
+        job_options = JobOptions.from_dict({JOB_OPTION_CREDIT_PLANS: ["plan-a"]})
+        assert job_options.credit_plans == ["plan-a"]
+
+    def test_credit_plans_absent_is_none(self):
+        job_options = JobOptions.from_dict({})
+        assert job_options.credit_plans is None
+
+    def test_credit_plans_empty_list_raises(self):
+        with pytest.raises(OpenEOApiException) as exc_info:
+            options = JobOptions.from_dict({JOB_OPTION_CREDIT_PLANS: []})
+            options.validate()
+        assert exc_info.value.status_code == 400
+        assert exc_info.value.code == "CreditPlansInvalid"
+
+    def test_credit_plans_multiple_plans_accepted(self):
+        job_options = JobOptions.from_dict({JOB_OPTION_CREDIT_PLANS: ["plan-a", "plan-b"]})
+        assert job_options.credit_plans == ["plan-a", "plan-b"]
