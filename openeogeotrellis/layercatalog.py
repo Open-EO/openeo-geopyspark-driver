@@ -706,6 +706,7 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             pyramid = s1_backscatter_orfeo.creodias(
                 projected_polygons=projected_polygons_native_crs,
                 from_date=from_date, to_date=to_date,
+                collection_id=collection_id,
                 correlation_id=correlation_id,
                 sar_backscatter_arguments=sar_backscatter_arguments,
                 bands=bands,
