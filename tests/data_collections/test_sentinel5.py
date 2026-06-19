@@ -1,16 +1,11 @@
 import os.path
 import shutil
+from datetime import datetime
+from pathlib import Path
 from unittest import skip
 
-import pytest
-from pathlib import Path
-from datetime import datetime
-from netCDF4 import Dataset, num2date
 import numpy as np
-
-from openeo_driver.backend import LoadParameters
-from openeo_driver.utils import EvalEnv
-
+import pytest
 import rasterio
 
 if __name__ == "__main__":
@@ -132,24 +127,39 @@ def test_read_product_spacetimekey_instant():
     assert key.instant == datetime(2024, 9, 2, 10, 5, 0), f"Expected rounded instant, got {key.instant}"
 
 
-def test_sentinel5p_l2_co() -> None:
-    # Full workflow test starting at load_collection.
-    from openeogeotrellis.layercatalog import get_layer_catalog, GeoPySparkLayerCatalog
+@skip("requires mounting raster data.")
+def test_sentinel5p_l2_co(api110, tmp_path) -> None:
+    process_graph = {
+        "loadcollection1": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "SENTINEL5P_L2_CO",
+                "spatial_extent": {"west": 4, "south": 50, "east": 11, "north": 55},
+                "temporal_extent": ("2024-09-02T00:00:00Z", "2024-09-02T23:59:59Z"),
+                "bands": [
+                    "carbonmonoxide_total_column",
+                    "carbonmonoxide_total_column_corrected",
+                    "qa_value",
+                ],
+            },
+            "result": True,
+        },
+    }
+    response = api110.check_result(process_graph)
 
-    catalog: GeoPySparkLayerCatalog = get_layer_catalog()
+    output_file = tmp_path / "test_sentinel5p_l2_co.tif"
+    with output_file.open(mode="wb") as f:
+        f.write(response.data)
 
-    load_params = LoadParameters(
-        spatial_extent={"west": 4.0, "south": 50.5, "east": 4.9, "north": 51.1},
-        temporal_extent=("2024-09-02T00:00:00", "2024-09-02T23:59:59"),
-        bands=["carbonmonoxide_total_column", "carbonmonoxide_total_column_corrected", "qa_value"],
-    )
-    env = EvalEnv({"openeo_api_version": "1.0.0"})
-    catalog._load_collection_cached("SENTINEL5P_L2_CO", load_params=load_params, env=env)
+    with rasterio.open(output_file) as ds:
+        print(ds.bounds)
+        assert ds.bounds.right == 11.0
 
 
 # ---------------------------------------------------------------------------
 # Tests that require a real eodata mount
 # ---------------------------------------------------------------------------
+
 
 @skip("requires mounting raster data.")
 class TestSentinel5:

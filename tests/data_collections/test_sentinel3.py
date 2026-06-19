@@ -307,7 +307,7 @@ def test_sentinel3_slstr_l2_lst(api110, tmp_path) -> None:
 
     with rasterio.open(output_file) as ds:
         print(ds.bounds)
-        assert abs(ds.bounds.right - 4.207142857142804) < 0.001
+        assert ds.bounds.right == 4.207142857142804
 
 
 if __name__ == "__main__":

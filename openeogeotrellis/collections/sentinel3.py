@@ -402,7 +402,7 @@ def _build_legacy_opensearch_client(jvm) -> Any:
 
 def main(
     product_type: str,
-    native_resolution: float | int,
+    native_resolution: Union[float, int],
     bbox,
     from_date,
     to_date,
@@ -458,8 +458,8 @@ def main(
 def pyramid(
     metadata_properties,
     projected_polygons_native_crs,
-    from_date,
-    to_date,
+    from_date: Optional[str],
+    to_date: Optional[str],
     band_names,
     data_cube_parameters,
     native_cell_size,
