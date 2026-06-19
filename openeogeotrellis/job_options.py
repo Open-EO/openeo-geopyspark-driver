@@ -158,6 +158,15 @@ class JobOptions:
         },
     )
 
+    credit_plans: List[str] = field(
+        default=None,
+        metadata={
+            "description": get_backend_config().credit_check.get_job_option_description(),
+            "experimental": True,
+            "public": False,
+        },
+    )
+
     @staticmethod
     def as_logging_threshold_arg(value) -> str:
         value = value.upper()
@@ -210,6 +219,9 @@ class JobOptions:
                 if re.compile(get_backend_config().batch_image_regex).fullmatch(self.image_name) is None:
                     self._log.warning(f"Invalid value {self.image_name} for job_option image-name")
                     #raise OpenEOApiException(f"Invalid value {self.image_name} for job_option image-name", status_code=400)
+
+        if self.credit_plans is not None:
+            get_backend_config().credit_check.check_format_user_provided_plans(self.credit_plans)
 
     def soft_errors_arg(self) -> str:
         value = self.soft_errors
