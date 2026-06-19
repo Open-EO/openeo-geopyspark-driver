@@ -15,6 +15,8 @@ without compromising stable operations.
 ## 0.73.0
 
 - Starting batch jobs is made more lenient to support processes not known by the web application.
+- Add `soft_error` feature on missing products to S1BackscatterOrfeoV2 ([#1719](https://github.com/Open-EO/openeo-geopyspark-driver/pull/1719))
+
 
 ## 0.72.0
 

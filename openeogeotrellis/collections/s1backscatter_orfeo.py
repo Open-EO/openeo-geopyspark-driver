@@ -448,7 +448,7 @@ class S1BackscatterOrfeo:
                 if match:
                     band_tiffs[match.group(1).lower()] = tiff
             if not band_tiffs:
-                logger.error(f"{log_prefix} sar_backscatter: No tiffs found in ${str(creo_path)}")
+                logger.error(f"{log_prefix} sar_backscatter: No tiffs found in {creo_path}")
                 return {}
             logger.info(f"{log_prefix} Detected band tiffs: {band_tiffs}")
         return band_tiffs
@@ -752,10 +752,11 @@ class S1BackscatterOrfeo:
                     logger.info(f"{log_prefix} Feature creo path: {creo_path}, key {key_ext} (EPSG {key_epsg})")
                     logger.info(f"{log_prefix} sar_backscatter_arguments: {sar_backscatter_arguments!r}")
                     if not creo_path.exists():
+                        m = f"sar_backscatter: path to SAR product {creo_path} does not exist on the cluster."
                         if max_soft_errors_ratio == 0.0:
-                            raise OpenEOApiException(f"sar_backscatter: path to SAR product ${str(creo_path)} does not exist on the cluster.")
+                            raise FileNotFoundError(m)
                         else:
-                            logger.warning(f"sar_backscatter: path to SAR product ${str(creo_path)} does not exist on the cluster.")
+                            logger.warning(m)
 
                     msg = f"{log_prefix} Process {creo_path} and load into geopyspark Tile"
                     with TimingLogger(title=msg, logger=logger):
@@ -1180,7 +1181,11 @@ class S1BackscatterOrfeoV2(S1BackscatterOrfeo):
 
             creo_path = pathlib.Path(creo_path)
             if not creo_path.exists():
-                raise OpenEOApiException(f"sar_backscatter: path {creo_path} does not exist on the cluster.")
+                m = f"sar_backscatter: path to SAR product {creo_path} does not exist on the cluster."
+                if max_soft_errors_ratio == 0.0:
+                    raise FileNotFoundError(m)
+                else:
+                    logger.warning(m)
 
             full_product_download = smart_bool(sar_backscatter_arguments.options.get("local_copy", False))
 
