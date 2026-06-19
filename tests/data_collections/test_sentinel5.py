@@ -21,7 +21,7 @@ from openeogeotrellis.collections.load_sentinel5p import load_level2_data, read_
 
 from tests.data import get_test_data_file
 
-if not os.path.exists("/eodata"):
+if not os.path.exists("/eodata") or not os.listdir("/eodata"):
     pytest.skip(reason="requires mounting /eodata.", allow_module_level=True)
 
 # Small synthetic NetCDF created at tests/data/binary/Sentinel-5P/
