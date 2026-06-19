@@ -21,6 +21,9 @@ from openeogeotrellis.collections.load_sentinel5p import load_level2_data, read_
 
 from tests.data import get_test_data_file
 
+if not os.path.exists("/eodata"):
+    pytest.skip(reason="requires mounting /eodata.", allow_module_level=True)
+
 # Small synthetic NetCDF created at tests/data/binary/Sentinel-5P/
 # Covers lon 4.0–4.9 °E, lat 50.2–51.1 °N, 2024-09-02 10:00–10:19 UTC
 SYNTHETIC_CO_FILE = get_test_data_file(
