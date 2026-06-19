@@ -278,21 +278,36 @@ def test_mask_before_binning(mock_read_band):
 
 
 @skip("requires mounting raster data.")
-def test_slstr_load_collection_opensearch():
-    # Full workflow test starting at load_collection.
-    from openeogeotrellis.layercatalog import get_layer_catalog, GeoPySparkLayerCatalog
+def test_sentinel3_slstr_l2_lst(api110, tmp_path) -> None:
+    process_graph = {
+        "loadcollection1": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "SENTINEL3_SLSTR_L2_LST",
+                "spatial_extent": {"west": 3.1, "south": 50.1, "east": 4.2, "north": 51.2},
+                "temporal_extent": ("2026-01-10T00:00:00Z", "2026-01-10T23:59:59Z"),
+                "bands": [
+                    "LST",
+                    "LST_uncertainty",
+                    "sunAzimuthAngles",
+                    "confidence_in",
+                    "exception",
+                    "viewAzimuthAngles",
+                    "viewZenithAngles",
+                ],
+            },
+            "result": True,
+        },
+    }
+    response = api110.check_result(process_graph)
 
-    catalog: GeoPySparkLayerCatalog = get_layer_catalog()
+    output_file = tmp_path / "out.tif"
+    with output_file.open(mode="wb") as f:
+        f.write(response.data)
 
-    load_params = LoadParameters(
-        spatial_extent={"west": 3.1, "south": 50.1, "east": 7.2, "north": 55.2},
-        temporal_extent=("2026-01-10T00:00:00", "2026-01-10T23:59:59"),
-        bands=["LST", "LST_uncertainty", "sunAzimuthAngles", "confidence_in", "exception", "viewAzimuthAngles", "viewZenithAngles"],
-    )
-    env = EvalEnv(
-        {"openeo_api_version": "1.0.0"}
-    )
-    catalog._load_collection_cached("SENTINEL3_SLSTR_L2_LST", load_params=load_params, env=env)
+    with rasterio.open(output_file) as ds:
+        print(ds.bounds)
+        assert ds.bounds.right == 4.207142857142804
 
 
 if __name__ == "__main__":
