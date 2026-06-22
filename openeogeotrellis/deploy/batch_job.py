@@ -789,7 +789,11 @@ def _export_to_workspaces_item(
     # TODO: assemble pystac.STACObject and avoid file altogether?
     collection_href = find_stac_root(stac_hrefs)
     assert collection_href is not None
-    collection = pystac.Collection.from_file(urlparse(collection_href).path)
+    collection_href_dict = json.loads(Path(urlparse(collection_href).path).read_text())
+    if pystac.Collection.matches_object_type(collection_href_dict):
+        collection = pystac.Collection.from_dict(collection_href_dict)
+    else:
+        collection = pystac.Catalog.from_dict(collection_href_dict)
 
     workspace_uris = {}
 
@@ -890,7 +894,11 @@ def _export_to_workspaces(
     # TODO: assemble pystac.STACObject and avoid file altogether?
     collection_href = find_stac_root(stac_hrefs)
     assert collection_href is not None
-    collection = pystac.Collection.from_file(urlparse(collection_href).path)
+    collection_href_dict = json.loads(Path(urlparse(collection_href).path).read_text())
+    if pystac.Collection.matches_object_type(collection_href_dict):
+        collection = pystac.Collection.from_dict(collection_href_dict)
+    else:
+        collection = pystac.Catalog.from_dict(collection_href_dict)
 
     workspace_uris = {}
 
