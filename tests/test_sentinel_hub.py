@@ -24,7 +24,7 @@ class TestSentinelHub:
 
     def test_assure_polarization_from_sentinel_bands_no_polarization_2(self, tmp_path, vault):
         metadata_properties = {}
-        all_metadata = get_layer_catalog(vault, opensearch_enrich=True)
+        all_metadata = get_layer_catalog(vault, opensearch_enrich=False)
         collection_id = "SENTINEL1_CARD4L"
         metadata = GeopysparkCubeMetadata(all_metadata.get_collection_metadata(collection_id))
         metadata = metadata.filter_bands(["VV", "VH"])
