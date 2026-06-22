@@ -22,7 +22,18 @@ class TestSentinelHub:
         sentinel_hub.assure_polarization_from_sentinel_bands(metadata, metadata_properties)
         assert "polarization" not in metadata_properties
 
-    def test_assure_polarization_from_sentinel_bands_no_polarization_2(self, tmp_path, vault):
+    def test_assure_polarization_from_sentinel_bands_no_polarization_2(self, tmp_path, vault, monkeypatch):
+        import openeogeotrellis.catalog.enrich as _enrich
+
+        _original_requests_with_retry = _enrich.requests_with_retry
+
+        def _requests_with_retry_verify_false(*args, **kwargs):
+            session = _original_requests_with_retry(*args, **kwargs)
+            session.verify = False
+            return session
+
+        monkeypatch.setattr(_enrich, "requests_with_retry", _requests_with_retry_verify_false)
+
         metadata_properties = {}
         all_metadata = get_layer_catalog(vault, opensearch_enrich=True)
         collection_id = "SENTINEL1_CARD4L"

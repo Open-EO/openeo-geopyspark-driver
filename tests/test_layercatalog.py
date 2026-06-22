@@ -250,7 +250,18 @@ def test_get_layer_catalog_opensearch_enrich_creodias(requests_mock, vault):
     ]
 
 
-def test_layer_catalog_step_resolution(vault):
+def test_layer_catalog_step_resolution(vault, monkeypatch):
+    import openeogeotrellis.catalog.enrich as _enrich
+
+    _original_requests_with_retry = _enrich.requests_with_retry
+
+    def _requests_with_retry_verify_false(*args, **kwargs):
+        session = _original_requests_with_retry(*args, **kwargs)
+        session.verify = False
+        return session
+
+    monkeypatch.setattr(_enrich, "requests_with_retry", _requests_with_retry_verify_false)
+
     catalog = get_layer_catalog(vault, opensearch_enrich=True)
     all_metadata = catalog.get_all_metadata()
 
