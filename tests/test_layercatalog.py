@@ -5,6 +5,7 @@ import unittest.mock as mock
 import zipfile
 from pathlib import Path
 from typing import List, Tuple, Union
+from unittest import skip
 
 import dirty_equals
 import pytest
@@ -250,6 +251,7 @@ def test_get_layer_catalog_opensearch_enrich_creodias(requests_mock, vault):
     ]
 
 
+@skip("Already covered implicitly by test_extra_validation_layer_too_large*")
 def test_layer_catalog_step_resolution(vault):
     catalog = get_layer_catalog(vault, opensearch_enrich=True)
     all_metadata = catalog.get_all_metadata()
