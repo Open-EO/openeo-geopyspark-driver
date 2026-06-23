@@ -1064,7 +1064,7 @@ Example usage:
 
             exception_chain = get_exception_chain(error.java_exception)
             root_cause = exception_chain[-1]
-            root_cause_class_name = str(root_cause.getClass().getName())
+            root_cause_class_name: Optional[str] = root_cause.getClass().getName()
             root_cause_message: Optional[str] = root_cause.getMessage()
 
             # Snippet to get JVM stack trace:
