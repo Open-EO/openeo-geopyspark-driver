@@ -16,6 +16,7 @@ without compromising stable operations.
 
 - Starting batch jobs is made more lenient to support processes not known by the web application.
 - Add `soft_error` feature on missing products to S1BackscatterOrfeoV2 ([#1719](https://github.com/Open-EO/openeo-geopyspark-driver/pull/1719))
+- Support BigTiff output by means of the `bigtiff` format option ([Open-EO/openeo-geotrellis-extensions#792](https://github.com/Open-EO/openeo-geotrellis-extensions/issues/792))
 
 
 ## 0.72.0
