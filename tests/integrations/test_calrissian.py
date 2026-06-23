@@ -53,7 +53,7 @@ class TestCalrissianJobLauncher:
     JOB_NAME = "j-hello123"
 
     @pytest.fixture
-    def s3_calrissian_bucket(self, mock_s3_client) -> Generator[str, None, None]:
+    def s3_calrissian_bucket(self, mock_s3_client) -> Iterator[str]:
         bucket = self.BUCKET
         mock_s3_client.create_bucket(Bucket=bucket, CreateBucketConfiguration={"LocationConstraint": "eu-central-1"})
         yield bucket
@@ -588,7 +588,7 @@ class TestCalrissianJobLauncher:
         calrissian_launch_config,
         mock_sts,
         job_context,
-    ):
+    ) -> None:
         @dataclass
         class TestCase:
             description: str
