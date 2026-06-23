@@ -789,11 +789,12 @@ def _export_to_workspaces_item(
     # TODO: assemble pystac.STACObject and avoid file altogether?
     collection_href = find_stac_root(stac_hrefs)
     assert collection_href is not None
-    collection_href_dict = json.loads(Path(urlparse(collection_href).path).read_text())
+    collection_href_path = urlparse(collection_href).path
+    collection_href_dict = json.loads(Path(collection_href_path).read_text())
     if pystac.Collection.matches_object_type(collection_href_dict):
-        collection = pystac.Collection.from_dict(collection_href_dict)
+        collection = pystac.Collection.from_file(collection_href_path)
     else:
-        collection = pystac.Catalog.from_dict(collection_href_dict)
+        collection = pystac.Catalog.from_file(collection_href_path)
 
     workspace_uris = {}
 
@@ -894,11 +895,12 @@ def _export_to_workspaces(
     # TODO: assemble pystac.STACObject and avoid file altogether?
     collection_href = find_stac_root(stac_hrefs)
     assert collection_href is not None
-    collection_href_dict = json.loads(Path(urlparse(collection_href).path).read_text())
+    collection_href_path = urlparse(collection_href).path
+    collection_href_dict = json.loads(Path(collection_href_path).read_text())
     if pystac.Collection.matches_object_type(collection_href_dict):
-        collection = pystac.Collection.from_dict(collection_href_dict)
+        collection = pystac.Collection.from_file(collection_href_path)
     else:
-        collection = pystac.Catalog.from_dict(collection_href_dict)
+        collection = pystac.Catalog.from_file(collection_href_path)
 
     workspace_uris = {}
 
