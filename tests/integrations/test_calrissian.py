@@ -4,7 +4,7 @@ import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterator, Optional
+from typing import Dict, Iterator, Optional, Generator
 from unittest import mock
 
 import dirty_equals
@@ -53,7 +53,7 @@ class TestCalrissianJobLauncher:
     JOB_NAME = "j-hello123"
 
     @pytest.fixture
-    def s3_calrissian_bucket(self, mock_s3_client) -> str:
+    def s3_calrissian_bucket(self, mock_s3_client) -> Generator[str]:
         bucket = self.BUCKET
         mock_s3_client.create_bucket(Bucket=bucket, CreateBucketConfiguration={"LocationConstraint": "eu-central-1"})
         yield bucket
