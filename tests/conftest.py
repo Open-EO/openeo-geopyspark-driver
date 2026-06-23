@@ -222,7 +222,7 @@ def _setup_local_spark(out: TerminalReporter, verbosity=0):
     sparkSubmitLog4jConfigurationFile = Path(__file__).parent.parent / "scripts/batch_job_log4j2.xml"
     with open(sparkSubmitLog4jConfigurationFile, "r") as read_file:
         content = read_file.read()
-        sparkSubmitLog4jConfigurationFile = "/tmp/sparkSubmitLog4jConfigurationFile.xml"
+        sparkSubmitLog4jConfigurationFile = Path("/tmp/sparkSubmitLog4jConfigurationFile.xml")
         with open(sparkSubmitLog4jConfigurationFile, "w") as write_file:
             # There could be a more elegant way to fill in this variable during testing:
             write_file.write(

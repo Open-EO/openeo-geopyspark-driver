@@ -3,7 +3,7 @@ import os
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Any
 
 from openeo_driver.util.logging import FlaskRequestCorrelationIdLogging
 from openeo_driver.views import OpenEoApiApp
@@ -12,7 +12,7 @@ from openeo.internal.graph_building import as_flat_graph
 from openeo.util import ensure_dir
 
 
-def run_graph_locally(process_graph: dict, output_dir: Path, job_options: Optional[dict] = None) -> None:
+def run_graph_locally(process_graph: Any, output_dir: Path, job_options: Optional[dict] = None) -> None:
     if job_options is None:
         job_options = {}
     files_orig = set(output_dir.rglob("*"))

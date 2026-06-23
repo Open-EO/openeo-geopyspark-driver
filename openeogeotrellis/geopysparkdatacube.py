@@ -554,7 +554,7 @@ class GeopysparkDataCube(DriverDataCube):
         """
 
         coords = {}
-        dims = ('bands','y', 'x')
+        dims: tuple = ("bands", "y", "x")
 
         # time coordinates if exists
         if len(bands_numpy.shape) == 4:
@@ -1762,7 +1762,7 @@ class GeopysparkDataCube(DriverDataCube):
         dim_t = DriverVectorCube.DIM_TIME
         dim_b = DriverVectorCube.DIM_BANDS
         coords = {dim_g: [], dim_t: {}, dim_b: {}}
-        dims = (dim_g, dim_t, dim_b)
+        dims: tuple = (dim_g, dim_t, dim_b)
 
         def id_to_date_band(id: str):
             split = id.split("_")
