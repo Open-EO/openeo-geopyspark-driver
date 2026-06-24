@@ -114,7 +114,7 @@ def setup_local_spark(log_dir: Path = Path.cwd(), verbosity=0):
     conf.set("spark.driver.extraClassPath", extraClassPath)
     conf.set("spark.executor.extraClassPath", extraClassPath)
 
-    path = "/opt/venv/openeo-geopyspark-driver/batch_job_log4j2.xml"  # TODO: get path from data_files
+    path = Path("/opt/venv/openeo-geopyspark-driver/batch_job_log4j2.xml")  # TODO: get path from data_files
     if os.path.exists(path):
         sparkSubmitLog4jConfigurationFile = path
     else:

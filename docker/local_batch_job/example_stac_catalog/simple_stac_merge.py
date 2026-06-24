@@ -70,9 +70,9 @@ def main(argv: List[str]) -> None:
     else:
         input_arguments = argv[1:]
         os.chdir(output_folder)
-    collection_filename = list(filter(lambda x: x.endswith(".json"), input_arguments))
-    if collection_filename:
-        collection_filename = collection_filename[0]
+    collection_filenames = list(filter(lambda x: x.endswith(".json"), input_arguments))
+    if len(collection_filenames) > 0:
+        collection_filename = collection_filenames[0]
     else:
         collection_filename = "collection.json"
     input_directories = list(filter(lambda x: not x.endswith(".json"), input_arguments))

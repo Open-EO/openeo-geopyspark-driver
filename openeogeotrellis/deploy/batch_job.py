@@ -36,7 +36,7 @@ from openeo_driver.util.logging import (
     get_logging_config,
     setup_logging,
 )
-from openeo_driver.util.stac_utils import get_files_from_stac_catalog
+from openeo_driver.util.stac_utils import get_files_from_stac_catalog, find_stac_root
 from openeo_driver.utils import EvalEnv
 from openeo_driver.views import OPENEO_API_VERSION_DEFAULT
 from openeo_driver.workspacerepository import Workspace, WorkspaceRepository, backend_config_workspace_repository
@@ -787,8 +787,14 @@ def _export_to_workspaces_item(
     ]
 
     # TODO: assemble pystac.STACObject and avoid file altogether?
-    collection_href = [href for href in stac_hrefs if "collection.json" in href][0]
-    collection = pystac.Collection.from_file(urlparse(collection_href).path)
+    collection_href = find_stac_root(stac_hrefs)
+    assert collection_href is not None
+    collection_href_path = urlparse(collection_href).path
+    collection_href_dict = json.loads(Path(collection_href_path).read_text())
+    if pystac.Collection.matches_object_type(collection_href_dict):
+        collection = pystac.Collection.from_file(collection_href_path)
+    else:
+        collection = pystac.Catalog.from_file(collection_href_path)
 
     workspace_uris = {}
 
@@ -887,9 +893,14 @@ def _export_to_workspaces(
         ]
 
     # TODO: assemble pystac.STACObject and avoid file altogether?
-    collection_href = [href for href in stac_hrefs if "collection.json" in href][0]
+    collection_href = find_stac_root(stac_hrefs)
     assert collection_href is not None
-    collection = pystac.Collection.from_file(urlparse(collection_href).path)
+    collection_href_path = urlparse(collection_href).path
+    collection_href_dict = json.loads(Path(collection_href_path).read_text())
+    if pystac.Collection.matches_object_type(collection_href_dict):
+        collection = pystac.Collection.from_file(collection_href_path)
+    else:
+        collection = pystac.Catalog.from_file(collection_href_path)
 
     workspace_uris = {}
 

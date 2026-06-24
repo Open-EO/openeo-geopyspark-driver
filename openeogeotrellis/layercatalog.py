@@ -1079,7 +1079,7 @@ def dump_layer_catalog():
 
 def _merge_layers_with_common_name(metadata: CatalogDict):
     """Merge collections with same common name. Updates metadata dict in place."""
-    common_names = set(m["common_name"] for m in metadata.values() if "common_name" in m)
+    common_names = set(str(m["common_name"]) for m in metadata.values() if "common_name" in m)
     logger.debug(f"Creating merged collections for common names: {common_names}")
     for common_name in common_names:
         merged = {

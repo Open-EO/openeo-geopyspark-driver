@@ -178,7 +178,7 @@ class TestSentinel5:
                 "arguments": {
                     "id": "SENTINEL5P_L2_CO",
                     "spatial_extent": {"west": 4, "south": 50, "east": 11, "north": 55},
-                    "temporal_extent": ("2024-09-02T00:00:00Z", "2024-09-02T23:59:59Z"),
+                    "temporal_extent": ["2024-09-02T00:00:00Z", "2024-09-02T23:59:59Z"],
                     "bands": [
                         "carbonmonoxide_total_column",
                         "carbonmonoxide_total_column_corrected",

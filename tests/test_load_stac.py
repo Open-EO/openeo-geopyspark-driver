@@ -4,7 +4,7 @@ import logging
 import re
 from contextlib import nullcontext
 from typing import Iterator, List, Tuple
-from unittest import mock
+from unittest import mock, skip
 
 import dirty_equals
 import geopandas
@@ -495,6 +495,7 @@ def _mock_stac_api(requests_mock, stac_api_root_url, stac_collection_url, featur
     return search_mock
 
 
+@skip("https://earthengine.openeo.org/ now gives error 503. This test would be better in scala with local data.")
 def test_world_oom(requests_mock, test_data):
     stac_item_url = "https://oeo.test/b4fb00aee0a308"
     requests_mock.get(stac_item_url, json=test_data.load_json("stac/issue1055-world-oom/result_item.json"))
