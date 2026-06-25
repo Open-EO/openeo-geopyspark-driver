@@ -2168,6 +2168,7 @@ class GeopysparkDataCube(DriverDataCube):
                 predictor = format_options.get("predictor", 1)
                 zlevel = format_options.get("ZLEVEL", 6)
                 tile_size = format_options.get("tile_size")
+                bigtiff = format_options.get("bigtiff", False)
 
                 def add_gdalinfo_objects(assets_original):
                     assets_to_add = {}
@@ -2192,6 +2193,7 @@ class GeopysparkDataCube(DriverDataCube):
 
                 if stitch:
                     gtiff_options = get_jvm().org.openeo.geotrellis.geotiff.GTiffOptions()
+                    gtiff_options.setBigTiff(bigtiff)
                     gtiff_options.setCompression(compression, zlevel, predictor)
                     if filename_prefix.isDefined():
                         gtiff_options.setFilenamePrefix(filename_prefix.get())
@@ -2278,6 +2280,7 @@ class GeopysparkDataCube(DriverDataCube):
                 else:
                     _log.info("save_result: saveRDD")
                     gtiff_options = get_jvm().org.openeo.geotrellis.geotiff.GTiffOptions()
+                    gtiff_options.setBigTiff(bigtiff)
                     gtiff_options.setCompression(compression, zlevel, predictor)
                     if filename_prefix.isDefined():
                         gtiff_options.setFilenamePrefix(filename_prefix.get())
