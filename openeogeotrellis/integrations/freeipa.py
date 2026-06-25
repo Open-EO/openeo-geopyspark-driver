@@ -194,8 +194,8 @@ class FreeIpaClient:
             "user_add",
             arguments=[uid],
             options={
-                "givenname": first_name or "",
-                "sn": last_name or "",
+                "givenname": first_name or "n/a",
+                "sn": last_name or "n/a",
                 "mail": email,
                 **(additional_options or {}),
             },
