@@ -574,11 +574,6 @@ Example usage:
                             "description": "Specifies band-level metadata for each band (band-(key-value)).",
                             "default": None,
                         },
-                        "bigtiff": {
-                            "type": "boolean",
-                            "default": False,
-                            "description": "Set to true to write a BigTiff instead of a classic tiff.",
-                        },
                     },
                 },
                 "PNG": {
