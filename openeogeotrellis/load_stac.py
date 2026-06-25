@@ -1932,6 +1932,9 @@ def _is_band_asset(asset: pystac.Asset) -> bool:
             "land-water",
             "water-mask",
         }
+        if asset.owner and isinstance(asset.owner, pystac.Item) and asset.owner.collection_id == "landsat-c2l1":
+            roles_with_bands.add("azimuth")
+            roles_with_bands.add("sun-azimuth")
         return bool(roles_with_bands.intersection(asset.roles))
     else:
         logger.warning(f"_is_band_asset with {asset.href=}: ignoring empty {asset.roles=}")
