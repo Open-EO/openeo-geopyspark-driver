@@ -568,6 +568,11 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                         sentinel_hub_client_id, sentinel_hub_client_secret = (
                             self._vault.get_sentinel_hub_credentials(sentinel_hub_client_alias, vault_token))
 
+                    if not sentinel_hub_client_id or not sentinel_hub_client_secret:
+                        raise ValueError(
+                            f"Sentinel Hub credentials for alias '{sentinel_hub_client_alias}' are not configured."
+                        )
+
                     zookeeper_connection_string = ','.join(ConfigParams().zookeepernodes)
                     zookeeper_access_token_path = f"/openeo/rlguard/access_token_{sentinel_hub_client_alias}"
 
