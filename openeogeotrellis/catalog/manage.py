@@ -16,6 +16,7 @@ the layercatalog.json file. There is still a lot of room for improvement.
 Also see https://github.com/Open-EO/openeo-geopyspark-driver/issues/1175
 """
 
+import collections
 import copy
 import dataclasses
 import difflib
@@ -23,15 +24,21 @@ import functools
 import json
 import logging
 from pathlib import Path
-from typing import List, Optional, Union, Tuple, Iterable, Callable, Any, Set
+from typing import List, Optional, Union, Tuple, Iterable, Callable, Any, Set, Dict, Iterator
 
 import requests
 from openeo.utils.version import ComparableVersion
+from openeo_driver.util.compat import function_has_argument
 
 from openeogeotrellis.catalog import DATA_SOURCE_PROPERTIES
-from openeogeotrellis.catalog.enrich import enrich_catalog_metadata, LinksFilter
+from openeogeotrellis.catalog.enrich import enrich_catalog_metadata, LinksFilter, CollectionId
 
 _log = logging.getLogger(__name__)
+
+
+class MetadataException(Exception):
+    pass
+
 
 CRS_AUTO_42001 = {
     "$schema": "https://proj.org/schemas/v0.2/projjson.schema.json",
@@ -603,3 +610,77 @@ def dict_compare(d1: dict, d2: dict, name1: str = "left", name2: str = "right") 
 
     diff = difflib.unified_diff(s1, s2, fromfile=name1, tofile=name2, lineterm="")
     return list(diff)
+
+
+class CollectionMetadataBuilderRegistry:
+    """
+    Registry for collection metadata builder functions.
+    """
+
+    # TODO: support labels (e.g. to flag collections for "prod", "dev", ...)
+
+    def __init__(self):
+        self._builders: Dict[CollectionId, Tuple[Callable, dict]] = {}
+        self._stats = collections.defaultdict(int)
+
+    def register(
+        self,
+        collection_id: CollectionId,
+        builder: Callable,
+        *,
+        kwargs: Optional[dict] = None,
+    ):
+        """
+        Register a metadata builder for given collection id,
+        with optional kwargs to call it with
+        """
+        if collection_id in self._builders:
+            raise MetadataException(f"Collection {collection_id} is already registered")
+        _log.debug(f"Registering {collection_id=} {builder=} with {kwargs=}")
+        self._builders[collection_id] = (builder, kwargs or {})
+        self._stats["register"] += 1
+
+    def decorator(self, collection_id: CollectionId, **kwargs):
+        """
+        Decorator to compactly register a builder function
+        optionally with kwargs to use at build time
+        """
+
+        def wrapper(func: Callable):
+            self.register(collection_id=collection_id, builder=func, kwargs=kwargs)
+            self._stats["decorated"] += 1
+            return func
+
+        return wrapper
+
+    def call_builders(
+        self,
+        collection_id_filter: Optional[Callable[[CollectionId], bool]] = None,
+    ) -> Iterator[dict]:
+        """
+        Iterate through all or a subset of the builders and call them with their associated args/kwargs
+        to produce metadata
+
+        :param collection_id_filter: optional filter to select a subset based on collection id
+        :return:
+        """
+        total = len(self._builders)
+        for i, (collection_id, (builder, kwargs)) in enumerate(self._builders.items()):
+            if collection_id_filter is None or collection_id_filter(collection_id):
+                _log.info(f"[{i+1}/{total}] Building metadata for {collection_id=}")
+                if function_has_argument(builder, "collection_id"):
+                    # Automatically pass "collection_id" if builder has this argument
+                    if "collection_id" in kwargs and kwargs["collection_id"] != collection_id:
+                        raise MetadataException(f"Conflicting {collection_id=} and {kwargs['collection_id']=}")
+                    kwargs = dict(kwargs, collection_id=collection_id)
+                metadata = builder(**kwargs)
+                if collection_id != metadata.get("id"):
+                    raise MetadataException(f"Generated {metadata.get('id')=} does not match {collection_id=}")
+                yield metadata
+                self._stats["builder called"] += 1
+            else:
+                _log.info(f"[{i+1}/{total}] Skipping {collection_id=}")
+                self._stats["builder skipped"] += 1
+
+    def get_stats(self) -> dict:
+        return self._stats

@@ -1,5 +1,6 @@
 import json
 import sys
+from typing import Optional
 
 import dirty_equals
 import pytest
@@ -21,6 +22,8 @@ from openeogeotrellis.catalog.manage import (
     apply_raster_scale_and_offset_to_band_metadata,
     LayerCatalog,
     sort_dict_like_other,
+    CollectionMetadataBuilderRegistry,
+    MetadataException,
 )
 
 
@@ -677,3 +680,92 @@ def test_sort_dict_like_other(other, expected):
     reordered = sort_dict_like_other(orig, other)
     assert reordered == orig
     assert json.dumps(reordered) == expected
+
+
+class TestCollectionMetadataBuilderRegistry:
+    def test_register_basic(self):
+        registry = CollectionMetadataBuilderRegistry()
+
+        def build123() -> dict:
+            return {"id": "COLLECTION123"}
+
+        def build456() -> dict:
+            return {"id": "COLLECTION456"}
+
+        registry.register("COLLECTION123", build123)
+        registry.register("COLLECTION456", build456)
+
+        assert list(registry.call_builders()) == [
+            {"id": "COLLECTION123"},
+            {"id": "COLLECTION456"},
+        ]
+
+    def test_register_decorator(self):
+        registry = CollectionMetadataBuilderRegistry()
+        collection = registry.decorator
+
+        @collection("COLLECTION123")
+        def build() -> dict:
+            return {"id": "COLLECTION123"}
+
+        @collection("COLLECTION456")
+        def build() -> dict:
+            return {"id": "COLLECTION456"}
+
+        assert list(registry.call_builders()) == [
+            {"id": "COLLECTION123"},
+            {"id": "COLLECTION456"},
+        ]
+
+    def test_register_kwargs(self):
+        registry = CollectionMetadataBuilderRegistry()
+        collection = registry.decorator
+
+        @collection("COLLECTION123", title="One Two Three")
+        def build(title) -> dict:
+            return {"id": "COLLECTION123", "title": title}
+
+        assert list(registry.call_builders()) == [
+            {"id": "COLLECTION123", "title": "One Two Three"},
+        ]
+
+    def test_duplication(self):
+        registry = CollectionMetadataBuilderRegistry()
+
+        registry.register("COLLECTION123", lambda: {"id": "COLLECTION123", "title": "first"})
+        registry.register("COLLECTION456", lambda: {"id": "COLLECTION456"})
+        with pytest.raises(MetadataException, match="already registered"):
+            registry.register("COLLECTION123", lambda: {"id": "COLLECTION123", "title": "second"})
+
+        assert list(registry.call_builders()) == [
+            {"id": "COLLECTION123", "title": "first"},
+            {"id": "COLLECTION456"},
+        ]
+
+    def test_auto_pass_collection_id(self):
+        registry = CollectionMetadataBuilderRegistry()
+        collection = registry.decorator
+
+        @collection("COLLECTION123", title="One Two Three")
+        def build(collection_id: str, title: Optional[str] = None):
+            return {"id": collection_id, "title": title or collection_id}
+
+        registry.register("COLLECTION456", build)
+        registry.register("COLLECTION789", build, kwargs={"title": "fo fi si"})
+
+        assert list(registry.call_builders()) == [
+            {"id": "COLLECTION123", "title": "One Two Three"},
+            {"id": "COLLECTION456", "title": "COLLECTION456"},
+            {"id": "COLLECTION789", "title": "fo fi si"},
+        ]
+
+    def test_auto_pass_collection_id_conflict(self):
+        registry = CollectionMetadataBuilderRegistry()
+
+        def build(collection_id: str):
+            return {"collection_id": collection_id}
+
+        registry.register("COLLECTION123", build, kwargs={"collection_id": "COLLECTION456"})
+
+        with pytest.raises(MetadataException, match="Conflict"):
+            _ = list(registry.call_builders())
