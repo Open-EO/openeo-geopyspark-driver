@@ -1384,8 +1384,9 @@ class ItemCollection:
 
     # TODO: leverage pystac.ItemCollection in some way ?
 
-    def __init__(self, items: List[pystac.Item]):
+    def __init__(self, items: List[pystac.Item], *, custom_data_roles: Optional[Set[str]] = None):
         self.items = items
+        self._custom_data_roles: Optional[Set[str]] = custom_data_roles
 
     @staticmethod
     def from_stac_item(item: pystac.Item, *, spatiotemporal_extent: _SpatioTemporalExtent) -> ItemCollection:
@@ -1480,6 +1481,7 @@ class ItemCollection:
         max_items: Union[int, None] = STAC_API_MAX_ITEMS_DEFAULT,
         filter_by_geometry: bool = False,
         spatial_filtering_geometries: Union[_SpatialFilteringGeometries, None] = None,
+        custom_data_roles: Optional[Set[str]] = None,
     ) -> ItemCollection:
         root_catalog = collection.get_root()
 
@@ -1622,7 +1624,7 @@ class ItemCollection:
                 url=original_url, info=f"failed to construct ItemCollection from STAC API. {query_info=} {e=}"
             ) from e
 
-        return ItemCollection(items)
+        return ItemCollection(items, custom_data_roles=custom_data_roles)
 
     def get_temporal_extent(self) -> Tuple[Union[datetime.datetime, None], Union[datetime.datetime, None]]:
         """Get overall temporal extent of all items in the collection."""
@@ -1648,7 +1650,7 @@ class ItemCollection:
     def iter_items_with_band_assets(self) -> Iterator[Tuple[pystac.Item, Dict[str, pystac.Asset]]]:
         """Iterate over items along with their band assets only."""
         for item in self.items:
-            band_assets = {asset_id: asset for asset_id, asset in sorted(item.assets.items()) if _is_band_asset(asset)}
+            band_assets = {asset_id: asset for asset_id, asset in sorted(item.assets.items()) if _is_band_asset(asset, self._custom_data_roles)}
             if band_assets:
                 yield item, band_assets
 
@@ -1912,7 +1914,7 @@ def _is_supported_raster_mime_type(mime_type: str) -> bool:
     )
 
 
-def _is_band_asset(asset: pystac.Asset) -> bool:
+def _is_band_asset(asset: pystac.Asset, custom_data_roles: Optional[Set[str]] = None) -> bool:
     # TODO: what does this function actually detect?
     #       Name seems to suggest that it's about having necessary band metadata (e.g. a band name)
     #       but implementation also seems to be happy with just being loadable as raster data in some sense.
@@ -1932,9 +1934,8 @@ def _is_band_asset(asset: pystac.Asset) -> bool:
             "land-water",
             "water-mask",
         }
-        if asset.owner and isinstance(asset.owner, pystac.Item) and asset.owner.collection_id == "landsat-c2l1":
-            roles_with_bands.add("azimuth")
-            roles_with_bands.add("sun-azimuth")
+        if custom_data_roles:
+            roles_with_bands = custom_data_roles
         return bool(roles_with_bands.intersection(asset.roles))
     else:
         logger.warning(f"_is_band_asset with {asset.href=}: ignoring empty {asset.roles=}")
