@@ -1608,26 +1608,16 @@ class ItemCollection:
                     query_info += f" {search_request.method} {search_request.url} {search_request.get_parameters()=}"
                 logger.info(f"ItemCollection.from_stac_api: STAC API request: {query_info}")
 
-                def _items_safe(search_request):
-                    """Yield pystac Items, skipping assets without 'href' (broken API responses)."""
-                    for item_dict in search_request.items_as_dicts():
-                        assets = item_dict.get("assets") or {}
-                        bad_assets = [k for k, v in assets.items() if "href" not in v]
-                        if bad_assets:
-                            logger.warning(
-                                f"ItemCollection.from_stac_api: dropping {len(bad_assets)} asset(s) "
-                                f"without 'href' from item {item_dict.get('id')!r}: {bad_assets}"
-                            )
-                            for k in bad_assets:
-                                del item_dict["assets"][k]
-                        yield pystac.Item.from_dict(item_dict, migrate=False, preserve_dict=False)
+                items_from_query: Iterator[pystac.Item] = (
+                    _pystac_item_from_dict_lenient(item) for item in search_request.items_as_dicts()
+                )
 
                 tracking_iter_raw = TrackingIter()
                 tracking_iter_filtered = TrackingIter()
                 items.extend(
                     tracking_iter_filtered(
                         item
-                        for item in tracking_iter_raw(_items_safe(search_request))
+                        for item in tracking_iter_raw(items_from_query)
                         if post_query_property_match(item.properties) and item.id not in seen_item_ids
                         # TODO also do filtering with spatial_filtering_geometries here?
                     )
@@ -1690,6 +1680,23 @@ class ItemCollection:
         """Deserialize an item collection from a JSON file."""
         pystac_item_collection = pystac.item_collection.ItemCollection.from_file(href=str(path), stac_io=stac_io)
         return cls(items=pystac_item_collection.items)
+
+
+def _pystac_item_from_dict_lenient(item: dict) -> pystac.Item:
+    """
+    Lenient variant of pystac.Item.from_dict
+    that skips bad assets (without href) instead of raising exception
+    """
+    assets = item.get("assets") or {}
+    bad_assets = [k for k, v in assets.items() if not v.get("href")]
+    if bad_assets:
+        logger.warning(
+            f"ItemCollection: dropping {len(bad_assets)} asset(s) "
+            f"without 'href' from item {item.get('id')!r}: {bad_assets}"
+        )
+        # Shallow copy with rewritten assets
+        item = dict(item, assets={k: v for k, v in assets.items() if k not in bad_assets})
+    return pystac.Item.from_dict(item, migrate=False, preserve_dict=False)
 
 
 class ItemDeduplicator:

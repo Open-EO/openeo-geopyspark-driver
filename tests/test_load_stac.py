@@ -3,6 +3,7 @@ import json
 import logging
 import re
 from contextlib import nullcontext
+from copy import deepcopy
 from typing import Iterator, List, Tuple
 from unittest import mock, skip
 
@@ -57,6 +58,7 @@ from openeogeotrellis.load_stac import (
     load_stac,
     PixelValueScalingMode,
     _deduplicator_from_feature_flags,
+    _pystac_item_from_dict_lenient,
 )
 from openeogeotrellis.testing import DummyStacApiServer, OpenSearchClientDumper, gps_config_overrides
 from openeogeotrellis.util.geometry import bbox_to_geojson
@@ -4705,3 +4707,28 @@ class TestResolutionTracker:
             },
             (10, 10),
         )
+
+
+@pytest.mark.parametrize(
+    ["assets", "expected"],
+    [
+        (
+            {
+                "asset1": {"href": "https://stac.test/asset1.tiff"},
+                "asset2": {"href": "https://stac.test/asset2.tiff"},
+            },
+            {"asset1", "asset2"},
+        ),
+        (
+            {
+                "asset1": {"look ma": "no href"},
+                "asset2": {"href": "https://stac.test/asset2.tiff"},
+            },
+            {"asset2"},
+        ),
+    ],
+)
+def test_pystac_item_from_dict_lenient(assets, expected):
+    item = _pystac_item_from_dict_lenient(StacDummyBuilder.item(assets=assets))
+    assert isinstance(item, pystac.Item)
+    assert set(item.assets.keys()) == expected
