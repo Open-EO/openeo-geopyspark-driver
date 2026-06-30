@@ -92,27 +92,6 @@ class LayerCatalog:
             )
             f.write("\n")
 
-    def enrich(self) -> None:
-        """
-        Enrich collection metadata in-place from external sources (OpenSearch, STAC, Sentinel Hub).
-
-        Applies the same enrichment as the runtime :func:`~openeogeotrellis.catalog.enrich.enrich_catalog_metadata`,
-        but during the manual layercatalog management step so that the result can be persisted to the JSON file.
-        """
-        # TODO: remove this method? We want to control and finetune enrichment at collection level, not catalog level
-        metadata_dict = {c["id"]: c for c in self._collections}
-        enriched = enrich_catalog_metadata(metadata_dict)
-        # Preserve original ordering, then append any newly added collections
-        seen = set()
-        result = []
-        for c in self._collections:
-            cid = c["id"]
-            result.append(enriched.get(cid, c))
-            seen.add(cid)
-        for cid, c in enriched.items():
-            if cid not in seen:
-                result.append(c)
-        self._collections = result
 
     def index_of(self, id: str) -> Union[int, None]:
         for i, collection in enumerate(self._collections):
