@@ -26,3 +26,4 @@ For information on deploying to Kubernetes, visit our [dedicated repository](htt
 - [udf-eoap-cwl.md](udf-eoap-cwl.md)
 - [vectorcube-run_udf.md](vectorcube-run_udf.md)
 - [workspaces.md](workspaces.md)
+- [load_stac_feature_flags.md](load_stac_feature_flags.md)
