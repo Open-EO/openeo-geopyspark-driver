@@ -858,6 +858,30 @@ def test_is_band_asset(data, expected):
     assert _is_band_asset(asset) == expected
 
 
+def test_item_collection_custom_data_roles():
+    item = pystac.Item(
+        id="item1",
+        geometry=None,
+        bbox=None,
+        datetime=datetime.datetime(2021, 1, 1),
+        properties={},
+    )
+    item.add_asset("azimuth_asset", pystac.Asset(href="https://stac.test/az.tif", roles=["azimuth"]))
+    item.add_asset("data_asset", pystac.Asset(href="https://stac.test/data.tif", roles=["data"]))
+
+    # Without custom_data_roles: only "data" role matches
+    ic_default = ItemCollection(items=[item])
+    band_assets_default = dict(next(ic_default.iter_items_with_band_assets())[1])
+    assert "data_asset" in band_assets_default
+    assert "azimuth_asset" not in band_assets_default
+
+    # With custom_data_roles={"azimuth"}: only "azimuth" role matches (replaces defaults)
+    ic_custom = ItemCollection(items=[item], custom_data_roles={"azimuth"})
+    band_assets_custom = dict(next(ic_custom.iter_items_with_band_assets())[1])
+    assert "azimuth_asset" in band_assets_custom
+    assert "data_asset" not in band_assets_custom
+
+
 @pytest.mark.parametrize(
     ["catalog", "expected"],
     [

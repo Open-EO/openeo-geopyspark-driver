@@ -1034,6 +1034,7 @@ def construct_item_collection(
                         "stac_api_filter_by_geometry", stac_api_filter_by_geometry_default
                     ),
                     spatial_filtering_geometries=spatial_filtering_geometries,
+                    custom_data_roles=feature_flags.get("custom_data_roles", None),
                 )
         else:
             assert isinstance(stac_object, pystac.Catalog)  # static Catalog + Collection
