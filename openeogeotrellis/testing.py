@@ -374,6 +374,7 @@ class DummyStacApiServer:
         self._collections: Dict[str, DummyStacApiServer._CollectionData] = {}
 
         self.request_history: List[dict] = []
+        self.support_property_filtering = True
 
         # TODO: don't do this here, but move to a fixture?
         self.default_setup()
@@ -630,7 +631,7 @@ class DummyStacApiServer:
                 return item
 
             items = [
-                add_links(pystac.Item.from_dict(item), cid=cid)
+                add_links(pystac.Item.from_dict(item, migrate=False), cid=cid)
                 for cid in collection_ids
                 for item in self._collections[cid].items
             ]
@@ -673,7 +674,7 @@ class DummyStacApiServer:
                     and intersects360.intersects(BoundingBox.from_wsen_tuple(item.bbox, crs=4326).as_geometry())
                 ]
 
-            if filter:
+            if filter and self.support_property_filtering:
                 filter = self._build_property_filter(filter=filter, filter_language=filter_language)
                 items = [item for item in items if filter(item)]
 
@@ -704,7 +705,7 @@ class DummyStacApiServer:
                 arg1, arg2 = filter["args"]
                 if not isinstance(arg1, dict):
                     arg1, arg2 = arg2, arg1
-                if isinstance(arg1, dict) and isinstance(arg2, str) and "property" in arg1:
+                if isinstance(arg1, dict) and isinstance(arg2, (str, int, float)) and "property" in arg1:
                     prop = arg1["property"]
                     value = arg2
                     return lambda item: item.properties.get(prop) == value

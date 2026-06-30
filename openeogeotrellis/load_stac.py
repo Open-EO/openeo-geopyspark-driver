@@ -11,6 +11,7 @@ import os
 import random
 import re
 import time
+from copy import deepcopy
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
@@ -71,6 +72,10 @@ STAC_API_BACKOFF_FACTOR = 2
 STAC_API_RETRY_TOTAL = 25
 STAC_API_MINIMUM_BACKOFF_SECONDS = 1
 STAC_API_MAXIMUM_BACKOFF_SECONDS = 240
+
+
+# TODO: change default to False (make post-query property filtering an opt-in feature instead of opt-out)?
+POST_QUERY_PROPERTY_FILTERING_DEFAULT = True
 
 
 class PixelValueScalingMode(enum.Enum):
@@ -1034,6 +1039,9 @@ def construct_item_collection(
                         "stac_api_filter_by_geometry", stac_api_filter_by_geometry_default
                     ),
                     spatial_filtering_geometries=spatial_filtering_geometries,
+                    post_query_property_filtering=feature_flags.get(
+                        "post_query_property_filtering", POST_QUERY_PROPERTY_FILTERING_DEFAULT
+                    ),
                 )
         else:
             assert isinstance(stac_object, pystac.Catalog)  # static Catalog + Collection
@@ -1480,6 +1488,7 @@ class ItemCollection:
         max_items: Union[int, None] = STAC_API_MAX_ITEMS_DEFAULT,
         filter_by_geometry: bool = False,
         spatial_filtering_geometries: Union[_SpatialFilteringGeometries, None] = None,
+        post_query_property_filtering: bool = POST_QUERY_PROPERTY_FILTERING_DEFAULT,
     ) -> ItemCollection:
         root_catalog = collection.get_root()
 
@@ -1558,7 +1567,24 @@ class ItemCollection:
             # STAC API might not support Filter Extension so always do post-process filtering as well
             # TODO: check "filter" conformance class for this instead of blindly trying to do double work
             #       see https://github.com/stac-api-extensions/filter
-            property_matcher = property_filter.build_matcher()
+            if post_query_property_filtering:
+                # Support various forms of finetuning the post-query filter
+                if isinstance(post_query_property_filtering, dict):
+                    # Take property subset with allow and deny list
+                    post_query_property_match = property_filter.subsetted(
+                        allow=post_query_property_filtering.get("allow"),
+                        deny=post_query_property_filtering.get("deny"),
+                    ).build_matcher()
+                elif isinstance(post_query_property_filtering, list):
+                    # Use as provided property allow list
+                    post_query_property_match = property_filter.subsetted(
+                        allow=post_query_property_filtering
+                    ).build_matcher()
+                else:
+                    # Use full property filter
+                    post_query_property_match = property_filter.build_matcher()
+            else:
+                post_query_property_match = lambda properties: True
 
             # Set of item ids for on the fly deduplication (when we have to do two queries around the antimeridian)
             seen_item_ids = set()
@@ -1594,7 +1620,7 @@ class ItemCollection:
                             )
                             for k in bad_assets:
                                 del item_dict["assets"][k]
-                        yield pystac.Item.from_dict(item_dict, preserve_dict=False)
+                        yield pystac.Item.from_dict(item_dict, migrate=False, preserve_dict=False)
 
                 tracking_iter_raw = TrackingIter()
                 tracking_iter_filtered = TrackingIter()
@@ -1602,7 +1628,7 @@ class ItemCollection:
                     tracking_iter_filtered(
                         item
                         for item in tracking_iter_raw(_items_safe(search_request))
-                        if property_matcher(item.properties) and item.id not in seen_item_ids
+                        if post_query_property_match(item.properties) and item.id not in seen_item_ids
                         # TODO also do filtering with spatial_filtering_geometries here?
                     )
                 )
@@ -2661,13 +2687,25 @@ class PropertyFilter:
         else:
             return {"op": "and", "args": filters}
 
+    def subsetted(self, allow: Optional[Iterable[str]] = None, deny: Optional[Iterable[str]] = None):
+        """
+        Create a new PropertyFilter object with a subset from the current property filters,
+        based on provided allow- and deny-lists.
+        """
+        properties = {
+            k: deepcopy(v)
+            for k, v in self._properties.items()
+            if (allow is None or k in allow) and (deny is None or k not in deny)
+        }
+        return PropertyFilter(properties, env=self._env, properties_prefix=self._properties_prefix)
+
 
 class AdaptingPropertyFilter(PropertyFilter):
     """
     PropertyFilter subclass with extra mapping of (legacy) property names and values.
 
     Mapping instructions are given as a dictionary, with (legacy) user-provided property names as key
-    (named "legacy_property" in exmples below), supporting the following transformations:
+    (named "legacy_property" in examples below), supporting the following transformations:
 
     - drop filtering on a property (e.g. because legacy property is no longer available,
       and filtering would cause nothing to match):
@@ -2703,7 +2741,7 @@ class AdaptingPropertyFilter(PropertyFilter):
         for property_name, operator, value in super()._iter_literal_matches():
             adaptation = self._adaptations.get(property_name, "preserve")
             if adaptation == "preserve":
-                # Keep everyting as-is (default)
+                # Keep everything as-is (default)
                 pass
             elif adaptation == "drop":
                 updates.append(f"Drop {property_name!r}")
