@@ -113,6 +113,19 @@ class LayerCatalog:
     def get_unmanaged_collection_ids(self) -> Set[str]:
         return self._original_collection_ids.difference(self._managed_collection_ids)
 
+    def get_stats(self) -> dict:
+        enrich_flag_stats = collections.Counter(
+            c.get("_vito", {}).get("data_source", {}).get(DATA_SOURCE_PROPERTIES.ENRICH) for c in self._collections
+        )
+        enrichment_mode_stats = collections.Counter(
+            c.get("_vito", {}).get("management_info", {}).get("enrichment_mode") for c in self._collections
+        )
+
+        return {
+            "enrich_flag_stats": enrich_flag_stats,
+            "enrichment_mode_stats": enrichment_mode_stats,
+        }
+
 
 def dict_no_none(*args, **kwargs) -> dict:
     """
