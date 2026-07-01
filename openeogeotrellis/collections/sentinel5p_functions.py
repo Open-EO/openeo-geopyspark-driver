@@ -7,6 +7,7 @@ extents, as well as quality filtering.
 Everything should happen in EPSG: 4326 (lat-lon) as Sentinel-5P data is in lat-lon grid.
 """
 
+import sys
 from pathlib import Path
 import numpy as np
 from netCDF4 import Dataset, num2date
@@ -101,7 +102,7 @@ def load_data_from_file(
         Exception: If no data is available after applying quality filter.
 
     """
-    if ConfigParams().is_ci_context:
+    if ConfigParams().is_ci_context and sys.version_info >= (3, 10):
         from typeguard import check_argument_types
 
         check_argument_types()

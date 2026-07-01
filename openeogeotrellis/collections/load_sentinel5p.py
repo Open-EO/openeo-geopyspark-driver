@@ -37,6 +37,7 @@ Algorithm:
 
 import json
 import logging
+import sys
 from datetime import datetime
 from functools import partial
 from pathlib import Path
@@ -87,7 +88,7 @@ def load_level2_data(params: dict):
                    if the spatial extent is invalid.
 
     """
-    if ConfigParams().is_ci_context:
+    if ConfigParams().is_ci_context and sys.version_info >= (3, 10):
         from typeguard import check_argument_types
 
         check_argument_types()
@@ -187,7 +188,7 @@ def read_product(
         ``TiledRasterLayer``.  Returns an empty list when no valid data falls
         within the requested extent.
     """
-    if ConfigParams().is_ci_context:
+    if ConfigParams().is_ci_context and sys.version_info >= (3, 10):
         from typeguard import check_argument_types
 
         check_argument_types()
@@ -315,7 +316,7 @@ def _build_stac_opensearch_client(
     feature_flags: Optional[Dict] = None,
 ) -> JavaObject:
     """Build a FixedFeaturesOpenSearchClient populated with Sentinel-5P features from a STAC collection."""
-    if ConfigParams().is_ci_context:
+    if ConfigParams().is_ci_context and sys.version_info >= (3, 10):
         from typeguard import check_argument_types
 
         check_argument_types()
@@ -388,7 +389,7 @@ def pyramid(
     Sentinel-5P can be loaded via the ``file-s5p`` layer source type in the
     layer catalog.
     """
-    if ConfigParams().is_ci_context:
+    if ConfigParams().is_ci_context and sys.version_info >= (3, 10):
         from typeguard import check_argument_types
 
         check_argument_types()
