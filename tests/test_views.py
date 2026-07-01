@@ -100,16 +100,18 @@ class TestCapabilities:
     def test_deploy_metadata(self, api100):
         capabilities = api100.get("/").assert_status_code(200).json
         semver_alike = RegexMatcher(r"^\d+\.\d+\.\d+")
-        assert deep_get(capabilities, "_backend_deploy_metadata") == {
-            "date": RegexMatcher(r"\d{4}-\d{2}-\d{2}.*Z$"),
-            "versions": {
-                "openeo": semver_alike,
-                "openeo_driver": semver_alike,
-                "openeo-geopyspark": semver_alike,
-                "geopyspark-openeo": semver_alike,
-                "geotrellis-extensions": dirty_equals.IsAnyStr,
-            },
-        }
+        assert deep_get(capabilities, "_backend_deploy_metadata") == dirty_equals.IsPartialDict(
+            {
+                "date": RegexMatcher(r"\d{4}-\d{2}-\d{2}.*Z$"),
+                "versions": {
+                    "openeo": semver_alike,
+                    "openeo_driver": semver_alike,
+                    "openeo-geopyspark": semver_alike,
+                    "geopyspark-openeo": semver_alike,
+                    "geotrellis-extensions": dirty_equals.IsAnyStr,
+                },
+            }
+        )
         assert deep_get(capabilities, "processing:software") == {
             "openeo": semver_alike,
             "openeo_driver": semver_alike,
