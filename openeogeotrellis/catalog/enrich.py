@@ -35,7 +35,6 @@ def enrich_catalog_metadata(
 
     * **OpenSearch** (OSCARS / Creodias / CDSE) – when ``opensearch_collection_id`` is set.
     * **STAC** – when ``type == "stac"`` and a ``url`` is provided.
-    * **Sentinel Hub** – when ``type == "sentinel-hub"``, using the EuroDataCube STAC index.
 
     The enrichment metadata is merged *below* the existing catalog entries (i.e. catalog
     values take precedence) via :func:`dict_merge_recursive`.
