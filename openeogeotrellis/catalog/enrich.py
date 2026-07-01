@@ -65,6 +65,7 @@ def enrich_catalog_metadata(
     enrichment_stats = collections.defaultdict(int)
 
     for cid, collection_metadata in collection_iterator(metadata.items()):
+        enrichment_stats[f"collection"] += 1
         data_source = deep_get(collection_metadata, "_vito", "data_source", default={})
         data_source_type = data_source.get("type")
         enrichment_stats[f"{data_source_type=}"] += 1
@@ -73,7 +74,9 @@ def enrich_catalog_metadata(
         os_endpoint = data_source.get("opensearch_endpoint") or get_backend_config().default_opensearch_endpoint
         os_variant = data_source.get("opensearch_variant")
 
-        if not data_source.get(DATA_SOURCE_PROPERTIES.ENRICH, True):
+        needs_enrichment = data_source.get(DATA_SOURCE_PROPERTIES.ENRICH, True)
+        enrichment_stats[f"data_source.enrich={needs_enrichment}"] += 1
+        if not needs_enrichment:
             enrichment_stats["skip enrich from feature flag"] += 1
             logger.debug(f"Skipping enrichment for {cid=}: enrichment disabled via feature flag")
             continue
