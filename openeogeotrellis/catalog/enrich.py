@@ -92,11 +92,15 @@ def enrich_catalog_metadata(
                 enrichment_stats["opensearch fail"] += 1
                 logger.warning(f"Failed to enrich collection metadata of {cid}: {e}", exc_info=True)
 
-        elif data_source_type == "stac":
-            stac_url = data_source.get("url")
+        elif (
+            # Support multiple source types, as long as there is a STAC URL reference
+            (data_source_type == "stac" and (stac_url := data_source.get("url")))
+            or (data_source_type == "sentinel-hub" and (stac_url := data_source.get("stac_metadata_url")))
+        ):
             logger.debug(f"Enrich {cid=} ({data_source_type=}): {stac_url=}")
             try:
                 enrichment_stats["_enrichment_metadata_from_stac"] += 1
+                enrichment_stats[f"_enrichment_metadata_from_stac for {data_source_type=}"] += 1
                 enrichment_metadata[cid] = _enrichment_metadata_from_stac(
                     stac_url,
                     band_aliases=data_source.get("enrichment_band_aliases"),
@@ -107,6 +111,8 @@ def enrich_catalog_metadata(
                 logger.warning(f"Failed to enrich collection metadata of {cid}: {e}", exc_info=True)
 
         elif data_source_type == "sentinel-hub":
+            # TODO #1727 remove this deprecated code path (in favor of standard "stac" handling above)
+            enrichment_stats[f"deprecated {data_source_type=} handling"] += 1
             try:
                 sh_stac_endpoint = "https://collections.eurodatacube.com/stac/index.json"
                 logger.debug(f"Enrich {cid=} ({data_source_type=}): {sh_stac_endpoint=}")
