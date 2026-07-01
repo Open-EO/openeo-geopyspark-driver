@@ -62,6 +62,7 @@ from openeogeotrellis.deploy.batch_job_metadata import (
     _convert_asset_outputs_to_s3_urls,
     _get_tracker_metadata,
     _transform_stac_metadata,
+    href_from_job_local_path,
 )
 from openeogeotrellis.integrations.gdal import get_abs_path_of_asset
 from openeogeotrellis.integrations.hadoop import setup_kerberos_auth
@@ -74,6 +75,7 @@ from openeogeotrellis.udf import (
     collect_python_udf_dependencies,
     install_python_udf_dependencies,
 )
+from openeogeotrellis.util.datastructures import AnnotatedDict
 from openeogeotrellis.util.runtime import get_job_id
 from openeogeotrellis.utils import (
     BadlyHashable,
@@ -507,14 +509,17 @@ def run_job(
         all_result_items = [item for result_items in results_items for item in result_items.values()]
 
         if is_stac11:
+            # TODO: more structural way to keep track of "derived_from" item_collection paths (instead of globbing a path)?
             for stac_item_collection_path in Path(job_dir).glob(get_stac_item_collection_filename(pg_node_id="*")):
                 extra_links.append(
-                    {
-                        "rel": "derived_from",
-                        "href": f"file://{stac_item_collection_path.absolute()}",
-                        "type": "application/geo+json",
-                        ITEM_LINK_PROPERTY.EXPOSE_AUXILIARY: True,
-                    }
+                    AnnotatedDict(
+                        {
+                            "rel": "derived_from",
+                            "href": href_from_job_local_path(stac_item_collection_path.absolute()),
+                            "type": "application/geo+json",
+                            ITEM_LINK_PROPERTY.EXPOSE_AUXILIARY: True,
+                        }
+                    ).annotate(copy_to_item=True)
                 )
 
         # flattens items for each results into one list
@@ -610,6 +615,7 @@ def run_job(
             result_items=all_result_items,
         )
         tracker_metadata = _get_tracker_metadata("", omit_derived_from_links=omit_derived_from_links)
+        # TODO: avoid writing non-tracker metadata in `tracker_metadata`
         tracker_metadata["links"].extend(extra_links)
         if "sar_backscatter_soft_errors" in tracker_metadata.get("usage", {}):
             soft_errors = tracker_metadata["usage"]["sar_backscatter_soft_errors"]["value"]
@@ -701,12 +707,17 @@ def write_metadata(metadata: dict, metadata_file: Path, is_stac11: bool):
         out_metadata = deepcopy(out_metadata)  # avoid mutating an object that is going to be reused
 
         for auxiliary_link in _copy_auxiliary_links(
+            # TODO #1490 eliminate the lru hack here?
             auxiliary_links=BadlyHashable(out_metadata.get("auxiliary_links", [])),
             job_dir=metadata_file.parent,  # TODO: ugly way to get job_dir
             for_export_workspace=False,
         ):
             for item in out_metadata.get("items", []):
                 item.setdefault("links", []).append(auxiliary_link)
+
+        for link in (k for k in out_metadata.get("links", []) if AnnotatedDict.get_annotation(k, "copy_to_item")):
+            for item in out_metadata.get("items", []):
+                item.setdefault("links", []).append(link)
 
     with open(metadata_file, "w") as f:
         json.dump(out_metadata, f, default=json_default)

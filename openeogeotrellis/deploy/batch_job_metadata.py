@@ -26,6 +26,7 @@ from shapely.geometry import Polygon, mapping
 from shapely.geometry.base import BaseGeometry
 
 from openeogeotrellis._version import __version__
+from openeogeotrellis.config import get_backend_config
 from openeogeotrellis.backend import JOB_METADATA_FILENAME, GeoPySparkBackendImplementation
 from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.integrations.gdal import _extract_gdal_asset_raster_metadata
@@ -471,3 +472,17 @@ def _get_tracker_metadata(tracker_id: str = "", *, omit_derived_from_links: bool
         else:
             usage["input_pixel"] = {"value": sar_backscatter_inputpixels / (1024 * 1024), "unit": "mega-pixel"}
     return dict_no_none(usage=usage or None, links=all_links, auxiliary_links=auxiliary_links or None)
+
+
+def href_from_job_local_path(path: Union[os.PathLike, str]) -> str:
+    """
+    Convert a file path from a local job context
+    (e.g. a path on a job-specific mount)
+    to a href that also makes sense outside the job context,
+    e.g. in the web app context (without the same mounts)
+    """
+    if get_backend_config().job_local_href_format == "s3":
+        return to_s3_url(path)
+    else:
+        # By default, assume job local path is directly usable
+        return f"file://{path}"

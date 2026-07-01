@@ -292,10 +292,18 @@ class GpsBackendConfig(OpenEoBackendConfig):
         "https://epod-master1.vgt.vito.be:8090",
     )
 
+    # Root folder to put per-job work dir under
+    batch_job_work_dir_root: str = os.environ.get(
+        "OPENEO_BATCH_JOB_OUTPUT_ROOT",
+        # TODO: eliminate these hardcoded paths (and _is_kube_deploy conditional)
+        "/batch_jobs" if _is_kube_deploy else "/data/projects/OpenEO/",
+    )
+
     """
     Only used by YARN, allows to specify paths to mount in batch job docker containers.
     """
     batch_docker_mounts: str = (
+        # TODO: move this to terrascope config
         "/var/lib/sss/pubconf/krb5.include.d:/var/lib/sss/pubconf/krb5.include.d:ro,"
         "/var/lib/sss/pipes:/var/lib/sss/pipes:rw,"
         "/usr/hdp/current/:/usr/hdp/current/:ro,"
@@ -347,6 +355,9 @@ class GpsBackendConfig(OpenEoBackendConfig):
     read_results_metadata_file_retry_settings: dict = attrs.Factory(lambda: dict(tries=1))  # fail immediately
 
     load_stac_deduplicate_items_default: Union[bool, dict] = False
+
+    # (Experimental) how job-local asset references should be encoded
+    job_local_href_format: Optional[str] = "s3" if _is_kube_deploy else None
 
 
 def get_zookeeper_auth_data(config: GpsBackendConfig) -> list:
