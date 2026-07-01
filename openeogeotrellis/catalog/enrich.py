@@ -1,11 +1,10 @@
 import collections
 import functools
 import logging
-from typing import Dict, List, Optional, Union, Callable
+from typing import Callable, Dict, List, Optional, Union
 
 import requests
 from openeo.util import deep_get
-from openeo_driver.util.http import requests_with_retry
 
 from openeogeotrellis.catalog import DATA_SOURCE_PROPERTIES
 from openeogeotrellis.config import get_backend_config
@@ -108,57 +107,6 @@ def enrich_catalog_metadata(
                 )
             except Exception as e:
                 enrichment_stats["stac fail"] += 1
-                logger.warning(f"Failed to enrich collection metadata of {cid}: {e}", exc_info=True)
-
-        elif data_source_type == "sentinel-hub":
-            # TODO #1727 remove this deprecated code path (in favor of standard "stac" handling above)
-            enrichment_stats[f"deprecated {data_source_type=} handling"] += 1
-            try:
-                sh_stac_endpoint = "https://collections.eurodatacube.com/stac/index.json"
-                logger.debug(f"Enrich {cid=} ({data_source_type=}): {sh_stac_endpoint=}")
-
-                # TODO: improve performance by only fetching necessary STACs
-                if sh_collection_metadatas is None:
-                    sh_collections_session = requests_with_retry()
-                    enrichment_stats["sh_collections_session.get"] += 1
-                    sh_collections_resp = sh_collections_session.get(sh_stac_endpoint, timeout=60)
-                    sh_collections_resp.raise_for_status()
-                    sh_collection_metadatas = {
-                        c["id"]: sh_collections_session.get(c["link"], timeout=60).json()
-                        for c in sh_collections_resp.json()
-                    }
-
-                enrichment_id = data_source.get("enrichment_id")
-
-                # DEM collections have the same datasource_type "dem" so they need an explicit enrichment_id
-                if enrichment_id:
-                    sh_metadata = sh_collection_metadatas[enrichment_id]
-                else:
-                    sh_cid = data_source.get("dataset_id")
-
-                    # PLANETSCOPE doesn't have one so don't try to enrich it
-                    if sh_cid is None:
-                        continue
-
-                    sh_metadatas = [m for _, m in sh_collection_metadatas.items() if m["datasource_type"] == sh_cid]
-
-                    if len(sh_metadatas) == 0:
-                        logger.warning(f"No STAC data available for collection with id {sh_cid}")
-                        continue
-                    elif len(sh_metadatas) > 1:
-                        logger.warning(f"{len(sh_metadatas)} candidates for STAC data for collection with id {sh_cid}")
-                        continue
-
-                    sh_metadata = sh_metadatas[0]
-
-                enrichment_metadata[cid] = sh_metadata
-                if not data_source.get("endpoint"):
-                    endpoint = enrichment_metadata[cid]["providers"][0]["url"]
-                    endpoint = endpoint if endpoint.startswith("http") else "https://{}".format(endpoint)
-                    data_source["endpoint"] = endpoint
-                data_source["dataset_id"] = data_source.get("dataset_id") or enrichment_metadata[cid]["datasource_type"]
-            except Exception as e:
-                enrichment_stats["sentinel-hub fail"] += 1
                 logger.warning(f"Failed to enrich collection metadata of {cid}: {e}", exc_info=True)
 
         else:
