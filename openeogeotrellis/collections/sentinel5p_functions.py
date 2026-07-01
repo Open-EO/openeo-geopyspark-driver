@@ -334,7 +334,7 @@ def interpolate(source_coordinates, source_data, target_coordinates, method="nea
     Returns:
         interpolated_data (Array of float): 1-d array of shape (m,) representing interpolated data values at target coordinates.
     """
-    from scipy.interpolate import griddata
+    from scipy.interpolate import griddata  # python3 -m pip install scipy-stubs
 
     method = method.lower()
     interpolated_data = griddata(

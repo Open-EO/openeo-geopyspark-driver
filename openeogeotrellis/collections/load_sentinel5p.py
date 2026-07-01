@@ -46,7 +46,7 @@ import geopyspark
 import numpy as np
 import pyspark
 import pyspark.serializers
-import shapely.geometry
+import shapely.geometry  # python3 -m pip install types-shapely
 from py4j.java_gateway import JavaObject
 
 from openeo_driver.errors import OpenEOApiException
@@ -327,10 +327,12 @@ def _build_stac_opensearch_client(
 
     for itm, band_assets in item_collection.iter_items_with_band_assets():
         nominal_date = itm.properties.get("datetime") or itm.properties.get("start_datetime")
+        geometry = itm.geometry
+        assert geometry
         builder = (
             jvm.org.openeo.opensearch.OpenSearchResponses.featureBuilder()
             .withNominalDate(nominal_date)
-            .withGeometryFromWkt(str(shapely.geometry.shape(itm.geometry)))
+            .withGeometryFromWkt(str(shapely.geometry.shape(geometry)))
         )
         if not itm.bbox:
             raise OpenEOApiException(f"S5P STAC item {itm.id} has no bbox")
