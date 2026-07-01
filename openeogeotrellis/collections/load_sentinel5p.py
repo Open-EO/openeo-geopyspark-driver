@@ -40,7 +40,7 @@ import logging
 from datetime import datetime
 from functools import partial
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import geopyspark
 import numpy as np
@@ -62,11 +62,12 @@ from .sentinel5p_functions import (
     load_data_from_file,
     resample_data,
 )
+from openeogeotrellis.configparams import ConfigParams
 
 logger = logging.getLogger(__name__)
 
 
-def load_level2_data(params):
+def load_level2_data(params: dict):
     """Load Sentinel-5P level-2 data from a NetCDF file.
 
     Args:
@@ -86,6 +87,10 @@ def load_level2_data(params):
                    if the spatial extent is invalid.
 
     """
+    if ConfigParams().is_ci_context:
+        from typeguard import check_argument_types
+
+        check_argument_types()
     # filename, spatial_extent, temporal_extent, bands, filter_value
     # check if the file exists
     file_path = Path(params.get("filename", ""))
@@ -157,7 +162,7 @@ def _instant_ms_to_minute(instant: int) -> datetime:
 
 
 def read_product(
-    product,
+    product: Tuple[Union[Path, str], List[dict]],
     band_names: List[str],
     tile_size: int,
     resolution: float,
@@ -182,6 +187,10 @@ def read_product(
         ``TiledRasterLayer``.  Returns an empty list when no valid data falls
         within the requested extent.
     """
+    if ConfigParams().is_ci_context:
+        from typeguard import check_argument_types
+
+        check_argument_types()
 
     creo_path, features = product
     creo_path = Path(creo_path)
@@ -300,12 +309,16 @@ def read_product(
 
 def _build_stac_opensearch_client(
     stac_url: str,
-    spatial_extent,
+    spatial_extent: Union[Dict, BoundingBox, None],
     temporal_extent: Tuple[Optional[str], Optional[str]],
     jvm: Any,
     feature_flags: Optional[Dict] = None,
 ) -> JavaObject:
     """Build a FixedFeaturesOpenSearchClient populated with Sentinel-5P features from a STAC collection."""
+    if ConfigParams().is_ci_context:
+        from typeguard import check_argument_types
+
+        check_argument_types()
 
     feature_flags = feature_flags or {}
 
@@ -357,19 +370,17 @@ def _build_stac_opensearch_client(
 
     return opensearch_client
 
-
 def pyramid(
     metadata_properties,
     projected_polygons_native_crs,
-    from_date,
-    to_date,
+    from_date: Optional[str],
+    to_date: Optional[str],
     band_names: List[str],
     data_cube_parameters,
     native_cell_size,
     feature_flags: Dict,
     jvm,
-    spatial_extent=None,
-    stac_url: Optional[str] = None,
+    spatial_extent: Union[Dict, BoundingBox, None] = None,
 ) -> Dict[int, geopyspark.TiledRasterLayer]:
     """Build a GeoTrellis pyramid from Sentinel-5P level-2 NetCDF files.
 
@@ -377,7 +388,10 @@ def pyramid(
     Sentinel-5P can be loaded via the ``file-s5p`` layer source type in the
     layer catalog.
     """
+    if ConfigParams().is_ci_context:
+        from typeguard import check_argument_types
 
+        check_argument_types()
     latlng_crs = jvm.geotrellis.proj4.CRS.fromEpsgCode(4326)
 
     if projected_polygons_native_crs.crs() != latlng_crs:
@@ -392,7 +406,8 @@ def pyramid(
                 global_extent_latlng.ymax(),
                 "EPSG:4326",
             )
-
+    load_stac_feature_flags = feature_flags.get("load_stac_feature_flags", {})
+    stac_url = load_stac_feature_flags["url"]
     if stac_url is None:
         raise ValueError("stac_url is required for Sentinel-5P pyramid; set opensearch_endpoint in the layer catalog")
 

@@ -11,6 +11,8 @@ from pathlib import Path
 import numpy as np
 from netCDF4 import Dataset, num2date
 
+from openeogeotrellis.configparams import ConfigParams
+
 ############# DO NOT CHANGE THE VARIABLE NAMES BELOW #############
 # The following variables are defined to specify the paths
 # to various data fields within the NetCDF file. These are also
@@ -99,6 +101,10 @@ def load_data_from_file(
         Exception: If no data is available after applying quality filter.
 
     """
+    if ConfigParams().is_ci_context:
+        from typeguard import check_argument_types
+
+        check_argument_types()
     # Open the NetCDF file
     with Dataset(file_path, "r") as f:
         # Check if there is valid data based on spatial temporal extents and filter value

@@ -48,6 +48,7 @@ tests_require = [
 typing_require = [
     'mypy-boto3-sts',
     'mypy-boto3-s3',
+    'typechecked',
 ]
 
 setup(
