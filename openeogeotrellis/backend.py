@@ -2552,7 +2552,7 @@ class GpsBatchJobs(backend.BatchJobs):
         items = deepcopy(results_metadata.get("items", []))
         for item in items:
             for asset in item["assets"].values():
-                if "output_dir" not in asset and not asset["href"].startswith("s3://"):
+                if "output_dir" not in asset:
                     asset["output_dir"] = str(job_dir)
         return {item["id"]: item for item in items}
 
