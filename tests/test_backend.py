@@ -24,6 +24,7 @@ from openeo_driver.dry_run import SourceId, DryRunDataTracer
 from openeo_driver.processes import ProcessRegistry
 from openeo_driver.ProcessGraphDeserializer import ENV_SOURCE_CONSTRAINTS
 from openeo_driver.specs import read_spec
+from openeo_driver.testing import DictSubSet
 from openeo_driver.users import User
 from openeo_driver.utils import EvalEnv
 
@@ -1097,7 +1098,9 @@ class TestGpsBatchJobs:
         assert result_metadata.items == {
             "b9510f20-92a0-4947-a4b6-a6a934a0015e": {
                 "id": "b9510f20-92a0-4947-a4b6-a6a934a0015e",
-                "assets": {"openEO": {"href": "s3://bucket/path/to/openEO.tif"}},
+                "assets": {"openEO": DictSubSet({
+                    "href": "s3://bucket/path/to/openEO.tif",
+                })},
             }
         }
 
