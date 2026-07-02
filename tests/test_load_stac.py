@@ -848,6 +848,7 @@ def test_is_supported_raster_mime_type():
         ({"href": "https://stac.test/asset.tif", "roles": ["data"]}, True),
         ({"href": "https://stac.test/asset.tif", "roles": ["data"], "type": "image/tiff; application=geotiff"}, True),
         ({"href": "https://stac.test/asset.tif", "type": "image/tiff; application=geotiff"}, False),
+        ({"href": "https://stac.test/asset.tif", "type": "image/vnd.stac.geotiff; cloud-optimized=true"}, True),
         ({"href": "https://stac.test/asset.html", "roles": ["data"], "type": "text/html"}, False),
         ({"href": "https://stac.test/asset.png", "roles": ["thumbnail"]}, False),
         ({"href": "https://stac.test/asset.png", "bands": [{"name": "B02"}]}, True),
