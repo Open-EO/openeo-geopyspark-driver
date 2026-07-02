@@ -618,6 +618,45 @@ def rct_savitzky_golay(udf_data:UdfData):
 
         dim_renamed.metadata.assert_valid_dimension('myNewTimeDim')
 
+    def test_rename_labels_time(self):
+        from openeogeotrellis.utils import get_jvm
+
+        jvm = get_jvm()
+        pe = jvm.geotrellis.vector.ProjectedExtent(
+            jvm.geotrellis.vector.Extent(266000.0, 5376000.0, 768000.0, 5888000.0),
+            jvm.geotrellis.proj4.CRS.fromEpsgCode(32631),
+        )
+        from tests.test_views import TestCollections
+
+        m = GeopysparkCubeMetadata(
+            {
+                "cube:dimensions": {
+                    "x": {"type": "spatial", "axis": "x", "reference_system": TestCollections._CRS_AUTO_42001},
+                    "y": {"type": "spatial", "axis": "y", "reference_system": TestCollections._CRS_AUTO_42001},
+                    "t": {"type": "temporal", "extent": ["2019-01-01T11:37:00Z", "2019-01-01T11:37:00Z"]},
+                    "bands": {"type": "bands", "values": ["band1", "band2"]},
+                }
+            }
+        )
+
+        data_cube_parameters = jvm.org.openeo.geotrelliscommon.DataCubeParameters()
+        getattr(data_cube_parameters, "tileSize_$eq")(256)
+        getattr(data_cube_parameters, "layoutScheme_$eq")("FloatingLayoutScheme")
+
+        def build_plain_spatio_temporal_data_cube(resolution):
+            rdd = jvm.org.openeo.geotrellis.TestUtils.buildPlainSpatioTemporalDataCube(pe, resolution, data_cube_parameters)
+            datacube = GeopysparkDataCube(pyramid=Pyramid({0: rdd}), metadata=m)
+            srdd = datacube._create_tilelayer(rdd, gps.LayerType.SPACETIME, 0)
+            datacube = GeopysparkDataCube(pyramid=Pyramid({0: srdd}), metadata=m)
+            return datacube
+
+
+        datacube = build_plain_spatio_temporal_data_cube(50.0)
+        datacube = datacube.rename_labels("bands", ["band1_hires", "band2_hires"])
+        datacube = datacube.rename_labels("t", source=["2019-01-01T00:00:00Z"], target=["2026-01-01T00:00:00Z"])
+
+        assert [datetime.datetime(2026, 1, 1, 0, 0)] == datacube.dimension_labels('t')
+
 
 @pytest.mark.parametrize(
     "udf_code",
