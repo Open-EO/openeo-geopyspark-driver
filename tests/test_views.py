@@ -6,18 +6,17 @@ import os
 import pathlib
 import re
 import subprocess
-import sys
-from typing import Optional
+from typing import Optional, Iterable, Union
 from unittest import mock
+import urllib.parse
 
 import dirty_equals
 import jsonschema
-import kazoo.exceptions
 import pytest
 import requests
 from elasticsearch.exceptions import ConnectionTimeout
 from openeo.util import deep_get
-from openeo_driver.jobregistry import JOB_STATUS
+from openeo_driver.jobregistry import JOB_STATUS, JobRegistryInterface
 from openeo_driver.testing import (
     TEST_USER,
     TEST_USER_AUTH_HEADER,
@@ -26,10 +25,13 @@ from openeo_driver.testing import (
     ApiTester,
     DictSubSet,
     RegexMatcher,
+    ApiResponse,
 )
 
 import openeogeotrellis.job_registry
 import openeogeotrellis.sentinel_hub.batchprocessing
+import openeogeotrellis.deploy.batch_job
+from openeo_driver.urlsigning import UrlSigner
 from openeogeotrellis.integrations.s3proxy.asset_urls import PresignedS3AssetUrls
 from openeogeotrellis.backend import JOB_METADATA_FILENAME, GpsBatchJobs
 from openeogeotrellis.integrations.s3proxy.s3_shared_context import _client_cache
@@ -100,16 +102,18 @@ class TestCapabilities:
     def test_deploy_metadata(self, api100):
         capabilities = api100.get("/").assert_status_code(200).json
         semver_alike = RegexMatcher(r"^\d+\.\d+\.\d+")
-        assert deep_get(capabilities, "_backend_deploy_metadata") == {
-            "date": RegexMatcher(r"\d{4}-\d{2}-\d{2}.*Z$"),
-            "versions": {
-                "openeo": semver_alike,
-                "openeo_driver": semver_alike,
-                "openeo-geopyspark": semver_alike,
-                "geopyspark-openeo": semver_alike,
-                "geotrellis-extensions": dirty_equals.IsAnyStr,
-            },
-        }
+        assert deep_get(capabilities, "_backend_deploy_metadata") == dirty_equals.IsPartialDict(
+            {
+                "date": RegexMatcher(r"\d{4}-\d{2}-\d{2}.*Z$"),
+                "versions": {
+                    "openeo": semver_alike,
+                    "openeo_driver": semver_alike,
+                    "openeo-geopyspark": semver_alike,
+                    "geopyspark-openeo": semver_alike,
+                    "geotrellis-extensions": dirty_equals.IsAnyStr,
+                },
+            }
+        )
         assert deep_get(capabilities, "processing:software") == {
             "openeo": semver_alike,
             "openeo_driver": semver_alike,
@@ -399,9 +403,17 @@ class TestCollections:
                 assert [b[f] for b in resp['summaries']['eo:bands'] if f in b] == [b[f] for b in eo_bands if f in b]
 
 
-def create_files_on_s3(s3_bucket, file_names, file_contents):
-    for fname, contents in zip(file_names, file_contents):
-        s3_bucket.put_object(Key=fname, Body=contents)
+def _upload_job_assets_to_s3(
+    *,
+    mock_s3_client,
+    bucket: str = "OpenEO-data",
+    paths: Iterable[pathlib.Path],
+):
+    """Helper to upload all job assets to mocked s3 instance"""
+    mock_s3_client.create_bucket(Bucket=bucket, CreateBucketConfiguration={"LocationConstraint": "eu-central-1"})
+    for path in paths:
+        key = (str(path)).lstrip("/")
+        mock_s3_client.put_object(Bucket=bucket, Key=key, Body=path.read_bytes())
 
 
 @pytest.fixture(scope="function")
@@ -1801,6 +1813,182 @@ class TestBatchJobs:
                 }
             }
         ]
+
+
+    @pytest.fixture
+    def load_stac_dummy_collection_123(self, dummy_stac_api) -> dict:
+        """Process graph to do simple load_stac of `collection-123` from the dummy STAC API server"""
+        return {
+            "loadstac1": {
+                "process_id": "load_stac",
+                "arguments": {"url": f"{dummy_stac_api}/collections/collection-123"},
+            },
+            "saveresult1": {
+                "process_id": "save_result",
+                "arguments": {
+                    "data": {"from_node": "loadstac1"},
+                    "format": "GTiff",
+                },
+                "result": True,
+            },
+        }
+
+    def _run_job(
+        self,
+        *,
+        process_graph: dict,
+        batch_job_work_dir_root: pathlib.Path,
+        job_registry: JobRegistryInterface,
+        job_id: str = "job-123",
+        stac_version="1.1",
+    ) -> str:
+        """
+        Helper to:
+        - do real processing of a given process graph using openeogeotrellis.deploy.batch_job.run_job
+        - set up related batch job metadata in the given job registry
+        """
+        job_specification = {
+            "process_graph": process_graph,
+            "job_options": {"stac-version": stac_version},
+        }
+        job_dir = batch_job_work_dir_root / job_id
+        metadata_path = job_dir / JOB_METADATA_FILENAME
+        job_registry.create_job(job_id=job_id, process=process_graph, user_id=TEST_USER)
+        openeogeotrellis.deploy.batch_job.run_job(
+            job_specification=job_specification,
+            output_file=job_dir / "out",
+            metadata_file=metadata_path,
+            job_dir=job_dir,
+        )
+        job_registry.set_status(job_id=job_id, status=JOB_STATUS.FINISHED)
+
+        return job_id
+
+    def test_get_job_results_metadata_basic(
+        self,
+        api110,
+        tmp_path,
+        batch_job_output_root,
+        job_registry,
+        load_stac_dummy_collection_123,
+    ):
+        job_id = self._run_job(
+            process_graph=load_stac_dummy_collection_123,
+            batch_job_work_dir_root=batch_job_output_root,
+            job_registry=job_registry,
+        )
+
+        # Get the job results and verify the contents.
+        res = api110.get(f"/jobs/{job_id}/results", headers=TEST_USER_AUTH_HEADER).assert_status_code(200).json
+
+        assert res == dirty_equals.IsPartialDict(
+            {
+                "id": job_id,
+                "type": "Collection",
+                "stac_version": "1.1.0",
+                "openeo:status": "finished",
+            }
+        )
+
+    @pytest.mark.parametrize(
+        [
+            "config_overrides",
+            "expected_derived_from_href_on_disk",
+            "expected_s3_bucket",
+            "expected_derived_from_href",
+            "get_with_auth",
+        ],
+        [
+            (
+                {},
+                dirty_equals.IsStr(regex="file:///.*/job-123/stac-item-collection-loadstac1.json"),
+                None,
+                "http://oeo.net/openeo/1.1.0/jobs/job-123/results/aux/stac-item-collection-loadstac1.json",
+                True,
+            ),
+            (
+                {"url_signer": UrlSigner(secret="Secret!")},
+                dirty_equals.IsStr(regex="file:///.*/job-123/stac-item-collection-loadstac1.json"),
+                None,
+                dirty_equals.IsStr(
+                    regex=r"http://oeo\.net/openeo/1\.1\.0/jobs/job-123/results/aux/\w+=*/[0-9a-f]+/stac-item-collection-loadstac1\.json"
+                ),
+                False,
+            ),
+            (
+                {"url_signer": UrlSigner(secret="Secret!"), "job_local_href_format": "s3"},
+                dirty_equals.IsStr(regex="s3://OpenEO-data/.*/job-123/stac-item-collection-loadstac1.json"),
+                "OpenEO-data",
+                dirty_equals.IsStr(
+                    # TODO: note that the URL building is badly aligned here:
+                    #       `/aux/` would be expected, but it's `/assets/` at the moment
+                    regex=r"http://oeo\.net/openeo/1\.1\.0/jobs/job-123/results/assets/\w+=*/[0-9a-f]+/stac-item-collection-loadstac1\.json"
+                ),
+                False,
+            ),
+        ],
+    )
+    def test_get_job_results_metadata_derived_from_item_collection(
+        self,
+        api110,
+        tmp_path,
+        batch_job_output_root,
+        job_registry,
+        load_stac_dummy_collection_123,
+        expected_derived_from_href_on_disk,
+        expected_derived_from_href,
+        get_with_auth: bool,
+        mock_s3_client,
+        expected_s3_bucket: Union[str, None],
+    ):
+        job_id = self._run_job(
+            process_graph=load_stac_dummy_collection_123,
+            batch_job_work_dir_root=batch_job_output_root,
+            job_registry=job_registry,
+        )
+
+        if expected_s3_bucket:
+            _upload_job_assets_to_s3(
+                mock_s3_client=mock_s3_client,
+                bucket=expected_s3_bucket,
+                paths=(batch_job_output_root / job_id).rglob("*.json"),
+            )
+
+        # Check hrefs on disk
+        with (batch_job_output_root / job_id / JOB_METADATA_FILENAME).open() as f:
+            metadata_on_disk = json.load(f)
+        links = metadata_on_disk.get("links", [])
+        derived_from_links = [k for k in links if k.get("rel") == "derived_from"]
+        assert len(derived_from_links) == 1
+        derived_from_href = derived_from_links[0].get("href")
+        assert derived_from_href == expected_derived_from_href_on_disk
+
+        res = api110.get(f"/jobs/{job_id}/results", headers=TEST_USER_AUTH_HEADER).assert_status_code(200).json
+        assert res == dirty_equals.IsPartialDict(
+            {"id": job_id, "openeo:status": "finished", "stac_version": "1.1.0", "type": "Collection"}
+        )
+        links = res.get("links", [])
+        derived_from_links = [k for k in links if k.get("rel") == "derived_from"]
+        assert len(derived_from_links) == 1
+        derived_from_href = derived_from_links[0].get("href")
+        assert derived_from_href == expected_derived_from_href
+        # TODO: this href parsing/getting should be supported in ApiTester.get directly
+        parsed = urllib.parse.urlparse(derived_from_href)
+        headers = TEST_USER_AUTH_HEADER if get_with_auth else {}
+        derived_from_data = (
+            ApiResponse(api110.client.get(parsed.path, headers=headers)).assert_http_status_code(200).json
+        )
+
+        assert derived_from_data == dirty_equals.IsPartialDict(
+            {
+                "type": "FeatureCollection",
+                "features": [
+                    dirty_equals.IsPartialDict(id="item-1"),
+                    dirty_equals.IsPartialDict(id="item-2"),
+                    dirty_equals.IsPartialDict(id="item-3"),
+                ],
+            }
+        )
 
 
 class TestSentinelHubBatchJobs:

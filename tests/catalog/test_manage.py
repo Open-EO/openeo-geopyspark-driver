@@ -1,5 +1,6 @@
 import json
 import sys
+from typing import Optional, Iterable
 
 import dirty_equals
 import pytest
@@ -21,6 +22,8 @@ from openeogeotrellis.catalog.manage import (
     apply_raster_scale_and_offset_to_band_metadata,
     LayerCatalog,
     sort_dict_like_other,
+    CollectionMetadataBuilderRegistry,
+    MetadataException,
 )
 
 
@@ -677,3 +680,160 @@ def test_sort_dict_like_other(other, expected):
     reordered = sort_dict_like_other(orig, other)
     assert reordered == orig
     assert json.dumps(reordered) == expected
+
+
+class TestCollectionMetadataBuilderRegistry:
+    def test_register_basic(self):
+        registry = CollectionMetadataBuilderRegistry()
+
+        def build123() -> dict:
+            return {"id": "COLLECTION123"}
+
+        def build456() -> dict:
+            return {"id": "COLLECTION456"}
+
+        registry.register("COLLECTION123", build123)
+        registry.register("COLLECTION456", build456)
+
+        assert list(registry.call_builders()) == [
+            {"id": "COLLECTION123"},
+            {"id": "COLLECTION456"},
+        ]
+
+    def test_register_decorator(self):
+        registry = CollectionMetadataBuilderRegistry()
+        collection = registry.decorator
+
+        @collection("COLLECTION123")
+        def build() -> dict:
+            return {"id": "COLLECTION123"}
+
+        @collection("COLLECTION456")
+        def build() -> dict:
+            return {"id": "COLLECTION456"}
+
+        assert list(registry.call_builders()) == [
+            {"id": "COLLECTION123"},
+            {"id": "COLLECTION456"},
+        ]
+
+    def test_register_kwargs(self):
+        registry = CollectionMetadataBuilderRegistry()
+        collection = registry.decorator
+
+        @collection("COLLECTION123", title="One Two Three")
+        def build(title) -> dict:
+            return {"id": "COLLECTION123", "title": title}
+
+        assert list(registry.call_builders()) == [
+            {"id": "COLLECTION123", "title": "One Two Three"},
+        ]
+
+    def test_forbidden_kwargs(self):
+        registry = CollectionMetadataBuilderRegistry()
+
+        def build(**kwargs):
+            return kwargs
+
+        registry.register("COLLECTION123", build, kwargs={"flavor": "vanilla"})
+
+        with pytest.raises(MetadataException, match="Forbidden"):
+            registry.register("COLLECTION123", build, kwargs={"collection_id": "COLLECTION456"})
+
+        with pytest.raises(MetadataException, match="Forbidden"):
+            registry.register("COLLECTION123", build, kwargs={"labels": ["prod"]})
+
+    def test_register_with_labels(self):
+        registry = CollectionMetadataBuilderRegistry()
+        collection = registry.decorator
+
+        @collection("C123", labels=["prod"])
+        def build() -> dict:
+            return {"id": "C123"}
+
+        @collection("C456", label="dev")
+        def build() -> dict:
+            return {"id": "C456"}
+
+        registry.register(
+            "C789",
+            lambda: {"id": "C789"},
+            labels=["staging", "dev"],
+        )
+
+        assert list(registry.call_builders()) == [
+            {"id": "C123"},
+            {"id": "C456"},
+            {"id": "C789"},
+        ]
+        assert list(registry.call_builders(label_filter=lambda labels: "prod" in labels)) == [
+            {"id": "C123"},
+        ]
+        assert list(registry.call_builders(label_filter=lambda labels: "dev" in labels)) == [
+            {"id": "C456"},
+            {"id": "C789"},
+        ]
+        assert list(registry.call_builders(label_filter=lambda labels: "staging" in labels)) == [
+            {"id": "C789"},
+        ]
+        assert list(registry.call_builders(label_filter=lambda labels: "nope" in labels)) == []
+
+    def test_duplicate_handling_and_labels(self):
+        registry = CollectionMetadataBuilderRegistry()
+
+        def build(collection_id: str, labels: Iterable[str]) -> dict:
+            return {"id": collection_id, "labels": sorted(labels)}
+
+        # Registering duplicates is fine
+        registry.register("COLLECTION123", build, labels=["prod"])
+        registry.register("COLLECTION456", build, labels=["prod"])
+        registry.register("COLLECTION123", build, labels=["dev"])
+
+        # But complain at call time
+        with pytest.raises(MetadataException, match="duplicate collections: COLLECTION123"):
+            _ = list(registry.call_builders())
+
+        assert list(registry.call_builders(label_filter=lambda labels: "dev" not in labels)) == [
+            {"id": "COLLECTION123", "labels": ["prod"]},
+            {"id": "COLLECTION456", "labels": ["prod"]},
+        ]
+        assert list(registry.call_builders(label_filter=lambda labels: "dev" in labels)) == [
+            {"id": "COLLECTION123", "labels": ["dev"]},
+        ]
+
+    def test_auto_pass_collection_id(self):
+        registry = CollectionMetadataBuilderRegistry()
+        collection = registry.decorator
+
+        @collection("COLLECTION123", title="One Two Three")
+        def build(collection_id: str, title: Optional[str] = None):
+            return {"id": collection_id, "title": title or collection_id}
+
+        registry.register("COLLECTION456", build)
+        registry.register("COLLECTION789", build, kwargs={"title": "fo fi si"})
+
+        assert list(registry.call_builders()) == [
+            {"id": "COLLECTION123", "title": "One Two Three"},
+            {"id": "COLLECTION456", "title": "COLLECTION456"},
+            {"id": "COLLECTION789", "title": "fo fi si"},
+        ]
+
+    def test_auto_pass_kwargs(self):
+        registry = CollectionMetadataBuilderRegistry()
+        collection = registry.decorator
+
+        @collection("C123", label="prod")
+        def build(**kwargs) -> dict:
+            collection_id = kwargs.pop("collection_id")
+            return {
+                "id": collection_id,
+                "labels": sorted(kwargs.get("labels", [])),
+            }
+
+        registry.register("C456", build)
+        registry.register("C789", build, labels=["dev", "staging"])
+        assert list(registry.call_builders()) == [
+            {"id": "C123", "labels": ["prod"]},
+            {"id": "C456", "labels": []},
+            {"id": "C789", "labels": ["dev", "staging"]},
+        ]

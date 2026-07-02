@@ -16,6 +16,7 @@ the layercatalog.json file. There is still a lot of room for improvement.
 Also see https://github.com/Open-EO/openeo-geopyspark-driver/issues/1175
 """
 
+import collections
 import copy
 import dataclasses
 import difflib
@@ -23,15 +24,24 @@ import functools
 import json
 import logging
 from pathlib import Path
-from typing import List, Optional, Union, Tuple, Iterable, Callable, Any, Set
+from typing import List, Optional, Union, Tuple, Iterable, Callable, Any, Set, Dict, Iterator, FrozenSet
 
 import requests
+
+from openeo.util import dict_no_none
 from openeo.utils.version import ComparableVersion
+from openeo_driver.util.compat import function_has_argument
 
 from openeogeotrellis.catalog import DATA_SOURCE_PROPERTIES
-from openeogeotrellis.catalog.enrich import enrich_catalog_metadata, LinksFilter
+from openeogeotrellis.catalog.enrich import enrich_catalog_metadata, LinksFilter, CollectionId
+from openeogeotrellis.util.compat import function_supports_kwargs
 
 _log = logging.getLogger(__name__)
+
+
+class MetadataException(Exception):
+    pass
+
 
 CRS_AUTO_42001 = {
     "$schema": "https://proj.org/schemas/v0.2/projjson.schema.json",
@@ -85,27 +95,6 @@ class LayerCatalog:
             )
             f.write("\n")
 
-    def enrich(self) -> None:
-        """
-        Enrich collection metadata in-place from external sources (OpenSearch, STAC, Sentinel Hub).
-
-        Applies the same enrichment as the runtime :func:`~openeogeotrellis.catalog.enrich.enrich_catalog_metadata`,
-        but during the manual layercatalog management step so that the result can be persisted to the JSON file.
-        """
-        # TODO: remove this method? We want to control and finetune enrichment at collection level, not catalog level
-        metadata_dict = {c["id"]: c for c in self._collections}
-        enriched = enrich_catalog_metadata(metadata_dict)
-        # Preserve original ordering, then append any newly added collections
-        seen = set()
-        result = []
-        for c in self._collections:
-            cid = c["id"]
-            result.append(enriched.get(cid, c))
-            seen.add(cid)
-        for cid, c in enriched.items():
-            if cid not in seen:
-                result.append(c)
-        self._collections = result
 
     def index_of(self, id: str) -> Union[int, None]:
         for i, collection in enumerate(self._collections):
@@ -127,12 +116,19 @@ class LayerCatalog:
     def get_unmanaged_collection_ids(self) -> Set[str]:
         return self._original_collection_ids.difference(self._managed_collection_ids)
 
+    def get_stats(self) -> dict:
+        enrich_flag_stats = collections.Counter(
+            c.get("_vito", {}).get("data_source", {}).get(DATA_SOURCE_PROPERTIES.ENRICH) for c in self._collections
+        )
+        enrichment_mode_stats = collections.Counter(
+            c.get("_vito", {}).get("management_info", {}).get("enrichment_mode") for c in self._collections
+        )
 
-def dict_no_none(*args, **kwargs) -> dict:
-    """
-    Helper to build a dict containing given key-value pairs where the value is not None.
-    """
-    return {k: v for k, v in dict(*args, **kwargs).items() if v is not None}
+        return {
+            "enrich_flag_stats": enrich_flag_stats,
+            "enrichment_mode_stats": enrichment_mode_stats,
+        }
+
 
 
 def sort_dict_like_other(d: dict, other: Union[dict, list]) -> dict:
@@ -141,6 +137,7 @@ def sort_dict_like_other(d: dict, other: Union[dict, list]) -> dict:
     based on an exiting dictionary or list of keys.
     Useful to minimize diff noise in JSON.
     """
+    # TODO: move to more generic utility package
     # Weight map: start with order of other
     weights = {k: i for i, k in enumerate(other)}
     # Append remaining keys in original order
@@ -598,8 +595,132 @@ def dict_compare(d1: dict, d2: dict, name1: str = "left", name2: str = "right") 
     """
     Compare two dictionaries by serializing as JSON and doing a line-by-line diff
     """
+    # TODO: move to more generic utility package
     s1 = json.dumps(d1, indent=2, sort_keys=True).splitlines()
     s2 = json.dumps(d2, indent=2, sort_keys=True).splitlines()
 
     diff = difflib.unified_diff(s1, s2, fromfile=name1, tofile=name2, lineterm="")
     return list(diff)
+
+
+@dataclasses.dataclass(frozen=True)
+class _BuildItem:
+    collection_id: str
+    build: Callable
+    kwargs: dict
+    labels: FrozenSet[str]
+
+
+class CollectionMetadataBuilderRegistry:
+    """
+    Registry for collection metadata builder functions.
+    """
+
+    # TODO: support labels (e.g. to flag collections for "prod", "dev", ...)
+
+    def __init__(self):
+        self._builders: List[_BuildItem] = []
+        self._stats = collections.defaultdict(int)
+
+    def register(
+        self,
+        collection_id: CollectionId,
+        builder: Callable,
+        *,
+        label: Optional[str] = None,
+        labels: Iterable[str] = (),
+        kwargs: Optional[dict] = None,
+    ):
+        """
+        Register a metadata builder for given collection id,
+        with optional kwargs to call it with
+        """
+        kwargs = kwargs or {}
+        labels = frozenset([label] if label else []) | frozenset(labels)
+        _log.debug(f"Registering {collection_id=} {builder=} with {kwargs=} and {labels=}")
+        if forbidden_kwargs := {"collection_id", "labels"}.intersection(kwargs):
+            raise MetadataException(f"Forbidden {forbidden_kwargs} in {kwargs=}")
+        self._builders.append(_BuildItem(collection_id=collection_id, build=builder, kwargs=kwargs, labels=labels))
+        self._stats["register"] += 1
+
+    def decorator(
+        self,
+        collection_id: CollectionId,
+        *,
+        label: Optional[str] = None,
+        labels: Iterable[str] = (),
+        **kwargs,
+    ):
+        """
+        Decorator to compactly register a builder function
+        optionally with kwargs to use at build time
+        """
+
+        def wrapper(build: Callable):
+            self.register(collection_id=collection_id, builder=build, label=label, labels=labels, kwargs=kwargs)
+            self._stats["decorated"] += 1
+            return build
+
+        return wrapper
+
+    def get_builders(
+        self,
+        *,
+        collection_id_filter: Optional[Callable[[CollectionId], bool]] = None,
+        label_filter: Optional[Callable[[FrozenSet[str]], bool]] = None,
+        check_duplicates: bool = True,
+    ) -> List[_BuildItem]:
+        """
+        Get builders with optional filtering based on collection id or labels
+        """
+        builders: List[_BuildItem] = self._builders
+        if collection_id_filter:
+            builders = [b for b in builders if collection_id_filter(b.collection_id)]
+        if label_filter:
+            builders = [b for b in builders if label_filter(b.labels)]
+        _log.info(f"Selected subset of {len(builders)} from {len(self._builders)} builders")
+
+        if check_duplicates:
+            cid_histogram = collections.Counter(b.collection_id for b in builders)
+            duplicated = sorted(f"{cid} ({count})" for cid, count in cid_histogram.items() if count > 1)
+            if duplicated:
+                raise MetadataException("Selection with duplicate collections: " + ", ".join(duplicated))
+        return builders
+
+    def call_builders(
+        self,
+        *,
+        collection_id_filter: Optional[Callable[[CollectionId], bool]] = None,
+        label_filter: Optional[Callable[[FrozenSet[str]], bool]] = None,
+    ) -> Iterator[dict]:
+        """
+        Iterate through all or a subset of the builders and call them with their associated args/kwargs
+        to produce metadata
+
+        :param collection_id_filter: optional filter to select a subset based on collection id
+        :return:
+        """
+        builders = self.get_builders(collection_id_filter=collection_id_filter, label_filter=label_filter)
+        for i, builder in enumerate(builders):
+            collection_id = builder.collection_id
+            _log.info(f"[{i+1}/{len(builders)}] Building metadata for {collection_id=}")
+
+            # Pass extra args if build accepts them
+            kwargs = builder.kwargs
+            for arg, value in {
+                "collection_id": collection_id,
+                "labels": builder.labels,
+            }.items():
+                if function_has_argument(builder.build, arg) or function_supports_kwargs(builder.build):
+                    assert arg not in builder.kwargs, f"{arg=} should not be in {kwargs=}"
+                    kwargs = dict(kwargs, **{arg: value})
+
+            # Call the builder now
+            metadata = builder.build(**kwargs)
+            if collection_id != metadata.get("id"):
+                raise MetadataException(f"Generated {metadata.get('id')=} does not match {collection_id=}")
+            yield metadata
+            self._stats["build call"] += 1
+
+    def get_stats(self) -> dict:
+        return self._stats

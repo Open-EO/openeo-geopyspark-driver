@@ -7,9 +7,12 @@ extents, as well as quality filtering.
 Everything should happen in EPSG: 4326 (lat-lon) as Sentinel-5P data is in lat-lon grid.
 """
 
+import sys
 from pathlib import Path
 import numpy as np
 from netCDF4 import Dataset, num2date
+
+from openeogeotrellis.configparams import ConfigParams
 
 ############# DO NOT CHANGE THE VARIABLE NAMES BELOW #############
 # The following variables are defined to specify the paths
@@ -99,6 +102,10 @@ def load_data_from_file(
         Exception: If no data is available after applying quality filter.
 
     """
+    if ConfigParams().is_ci_context and sys.version_info >= (3, 10):
+        from typeguard import check_argument_types
+
+        check_argument_types()
     # Open the NetCDF file
     with Dataset(file_path, "r") as f:
         # Check if there is valid data based on spatial temporal extents and filter value
@@ -334,7 +341,7 @@ def interpolate(source_coordinates, source_data, target_coordinates, method="nea
     Returns:
         interpolated_data (Array of float): 1-d array of shape (m,) representing interpolated data values at target coordinates.
     """
-    from scipy.interpolate import griddata
+    from scipy.interpolate import griddata  # python3 -m pip install scipy-stubs
 
     method = method.lower()
     interpolated_data = griddata(

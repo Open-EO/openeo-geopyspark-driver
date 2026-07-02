@@ -3,6 +3,7 @@ import json
 import logging
 import re
 from contextlib import nullcontext
+from copy import deepcopy
 from typing import Iterator, List, Tuple
 from unittest import mock, skip
 
@@ -57,6 +58,7 @@ from openeogeotrellis.load_stac import (
     load_stac,
     PixelValueScalingMode,
     _deduplicator_from_feature_flags,
+    _pystac_item_from_dict_lenient,
 )
 from openeogeotrellis.testing import DummyStacApiServer, OpenSearchClientDumper, gps_config_overrides
 from openeogeotrellis.util.geometry import bbox_to_geojson
@@ -2390,6 +2392,105 @@ class TestPropertyFilter:
             == expected
         )
 
+    @pytest.mark.parametrize(
+        ["allow", "deny", "input_output_cases"],
+        [
+            (
+                None,
+                None,
+                [
+                    ({}, False),
+                    ({"color": "red", "size": 10}, True),
+                    ({"color": "rrred", "size": 10}, False),
+                    ({"color": "red", "size": 1000}, False),
+                ],
+            ),
+            (
+                ["color"],
+                None,
+                [
+                    ({}, False),
+                    ({"color": "red", "size": 10}, True),
+                    ({"color": "rrred", "size": 10}, False),
+                    ({"color": "red", "size": 1000}, True),
+                ],
+            ),
+            (
+                ["color", "flavor"],
+                None,
+                [
+                    ({}, False),
+                    ({"color": "red", "size": 10}, True),
+                    ({"color": "rrred", "size": 10}, False),
+                    ({"color": "red", "size": 1000}, True),
+                ],
+            ),
+            (
+                ["size"],
+                None,
+                [
+                    ({}, False),
+                    ({"color": "red", "size": 10}, True),
+                    ({"color": "rrred", "size": 10}, True),
+                    ({"color": "red", "size": 1000}, False),
+                ],
+            ),
+            (
+                None,
+                ["color"],
+                [
+                    ({}, False),
+                    ({"color": "red", "size": 10}, True),
+                    ({"color": "rrred", "size": 10}, True),
+                    ({"color": "red", "size": 1000}, False),
+                ],
+            ),
+            (
+                None,
+                ["size", "color", "flavor"],
+                [
+                    ({}, True),
+                    ({"color": "green"}, True),
+                    ({"size": 10000}, True),
+                ],
+            ),
+        ],
+    )
+    def test_subsetted(self, allow, deny, input_output_cases):
+        properties = {
+            "color": {
+                "process_graph": {
+                    "eq1": {
+                        "process_id": "eq",
+                        "arguments": {
+                            "x": {"from_parameter": "value"},
+                            "y": "red",
+                        },
+                        "result": True,
+                    }
+                }
+            },
+            "size": {
+                "process_graph": {
+                    "lte1": {
+                        "process_id": "lte",
+                        "arguments": {
+                            "x": {"from_parameter": "value"},
+                            "y": 42,
+                        },
+                        "result": True,
+                    }
+                }
+            },
+        }
+        property_filter_orig = PropertyFilter(properties=properties)
+        property_filter = property_filter_orig.subsetted(allow=allow, deny=deny)
+        matcher = property_filter.build_matcher()
+
+        expected = [o for i, o in input_output_cases]
+        actual = [matcher(i) for i, o in input_output_cases]
+        assert actual == expected
+
 
 class TestAdaptingPropertyFilter:
     @pytest.mark.parametrize(
@@ -3127,6 +3228,89 @@ class TestItemCollection:
 
         # A warning must have been logged mentioning the bad asset key
         assert any("bad-asset" in r.message for r in caplog.records)
+
+    @pytest.mark.parametrize(
+        ["stac_api_supports_property_filtering", "proj_epsg", "post_query_property_filtering", "expected"],
+        [
+            (True, 123, True, {"item-123"}),
+            (True, 456, True, {"item-456"}),
+            (False, 123, True, {"item-123"}),
+            (True, 123, False, {"item-123"}),
+            (False, 123, False, {"item-123", "item-456"}),
+            (False, 123, ["something-else"], {"item-123", "item-456"}),
+            (True, 123, ["something-else"], {"item-123"}),
+            (False, 123, {"deny": "proj:epsg"}, {"item-123", "item-456"}),
+            (True, 123, {"deny": "proj:epsg"}, {"item-123"}),
+        ],
+    )
+    def test_from_stac_api_property_filter_api_vs_post_query_filtering(
+        self,
+        dummy_stac_api,
+        dummy_stac_api_server,
+        stac_api_supports_property_filtering,
+        proj_epsg,
+        post_query_property_filtering,
+        expected,
+    ):
+        """
+        Property filtering with properties that are possibly normalized by pystac (to newer version)
+        """
+        dummy_stac_api_server.support_property_filtering = stac_api_supports_property_filtering
+        collection_id = "oldskool-s2"
+
+        stac_extensions = [
+            # We will use old style (v1.1) proj metadata: `"proj:epsg": 123` instead of proj-v2 style `"proj:code": "EPSG:123"`
+            "https://stac-extensions.github.io/projection/v1.1.0/schema.json",
+        ]
+        dummy_stac_api_server.define_collection(
+            collection_id,
+            extent={
+                "spatial": {"bbox": [[3, 50, 5, 51]]},
+                "temporal": {"interval": [["2024-02-01", "2024-03-01"]]},
+            },
+            stac_extensions=stac_extensions,
+        )
+        dummy_stac_api_server.define_item(
+            collection_id=collection_id,
+            item_id="item-123",
+            datetime=f"2024-02-20T12:00:00Z",
+            bbox=[3, 50, 5, 51],
+            properties={"proj:epsg": 123},
+            stac_extensions=stac_extensions,
+        )
+        dummy_stac_api_server.define_item(
+            collection_id=collection_id,
+            item_id="item-456",
+            datetime=f"2024-02-20T12:00:00Z",
+            bbox=[3, 50, 5, 51],
+            properties={"proj:epsg": 456},
+            stac_extensions=stac_extensions,
+        )
+
+        given_url = f"{dummy_stac_api}/collections/{collection_id}"
+        collection: pystac.Collection = pystac.read_file(given_url)
+        property_filter = PropertyFilter(
+            properties={
+                "proj:epsg": {
+                    "process_graph": {
+                        "eq": {
+                            "process_id": "eq",
+                            "arguments": {"x": {"from_parameter": "value"}, "y": proj_epsg},
+                            "result": True,
+                        }
+                    }
+                }
+            }
+        )
+        spatiotemporal_extent = _SpatioTemporalExtent(bbox=None, from_date="2024-01-01", to_date="2025-01-01")
+        item_collection = ItemCollection.from_stac_api(
+            collection,
+            original_url=given_url,
+            property_filter=property_filter,
+            spatiotemporal_extent=spatiotemporal_extent,
+            post_query_property_filtering=post_query_property_filtering,
+        )
+        assert set(item.id for item in item_collection.items) == expected
 
     def test_get_temporal_extent_empty(self):
         item_collection = ItemCollection(items=[])
@@ -4547,3 +4731,28 @@ class TestResolutionTracker:
             },
             (10, 10),
         )
+
+
+@pytest.mark.parametrize(
+    ["assets", "expected"],
+    [
+        (
+            {
+                "asset1": {"href": "https://stac.test/asset1.tiff"},
+                "asset2": {"href": "https://stac.test/asset2.tiff"},
+            },
+            {"asset1", "asset2"},
+        ),
+        (
+            {
+                "asset1": {"look ma": "no href"},
+                "asset2": {"href": "https://stac.test/asset2.tiff"},
+            },
+            {"asset2"},
+        ),
+    ],
+)
+def test_pystac_item_from_dict_lenient(assets, expected):
+    item = _pystac_item_from_dict_lenient(StacDummyBuilder.item(assets=assets))
+    assert isinstance(item, pystac.Item)
+    assert set(item.assets.keys()) == expected
