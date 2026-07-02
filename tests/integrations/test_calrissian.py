@@ -1,5 +1,6 @@
 import datetime
 import json
+import math
 import os
 import re
 from dataclasses import dataclass
@@ -157,6 +158,45 @@ class TestCalrissianJobLauncher:
                 ],
             }
         )
+
+    def test_create_input_staging_job_manifest_large_cwl(
+        self, generate_unique_id_mock, s3_calrissian_bucket, mock_s3_client, calrissian_launch_config
+    ):
+        """Test that a large (2 MB) CWL file is uploaded to S3 and referenced via a presigned URL."""
+        # Build a ~2 MB CWL string (padded with a comment block)
+        padding = "# " + "x" * 78 + "\n"
+        large_cwl_content = "class: Dummy\n" + padding * math.ceil((2 * 1024 * 1024) / len(padding))
+        assert len(large_cwl_content) >= 2 * 1024 * 1024
+
+        launcher = CalrissianJobLauncher(
+            launch_config=calrissian_launch_config,
+            namespace=self.NAMESPACE,
+            name_base="r-1234",
+            s3_bucket=s3_calrissian_bucket,
+        )
+
+        manifest, cwl_path = launcher.create_input_staging_job_manifest(
+            cwl_source=CwLSource.from_string(large_cwl_content)
+        )
+
+        assert cwl_path == "/calrissian/input-data/r-1234-cal-inp-01234567.cwl"
+
+        # Verify the full CWL content was uploaded to S3
+        s3_object = mock_s3_client.get_object(
+            Bucket=s3_calrissian_bucket, Key="cwl-staging/r-1234-cal-inp-01234567.cwl"
+        )
+        assert s3_object["Body"].read().decode("utf-8") == large_cwl_content
+
+        # Verify the manifest uses a presigned URL (not inline content)
+        manifest_dict = manifest.to_dict()
+        container = manifest_dict["spec"]["template"]["spec"]["containers"][0]
+        assert container["args"] == [
+            "-c",
+            "set -euxo pipefail; wget -qO- \"$CWL_PRESIGNED_URL\" > /calrissian/input-data/r-1234-cal-inp-01234567.cwl",
+        ]
+        assert container["env"] == [
+            dirty_equals.IsPartialDict({"name": "CWL_PRESIGNED_URL", "value": dirty_equals.IsStr()})
+        ]
 
     def test_create_cwl_job_manifest(self, generate_unique_id_mock, calrissian_launch_config):
         launcher = CalrissianJobLauncher(
