@@ -750,6 +750,12 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
             # Local import to save some RAM and avoid potential confusing error:
             from openeogeotrellis.collections.load_sentinel5p import pyramid as s5p_pyramid
 
+            load_stac_feature_flags = layer_source_info.get("load_stac_feature_flags", {})
+            if not "url" in load_stac_feature_flags and layer_source_info.get("opensearch_endpoint"):
+                logger.warning(
+                    "Using legacy opensearch_endpoint for S5P collection. Please use load_stac_feature_flags.url instead."
+                )
+                load_stac_feature_flags["url"] = layer_source_info["opensearch_endpoint"]
             pyramid = s5p_pyramid(
                 metadata_properties(),
                 projected_polygons_native_crs,
@@ -758,10 +764,9 @@ class GeoPySparkLayerCatalog(CollectionCatalog):
                 bands,
                 datacubeParams,
                 native_cell_size,
-                feature_flags,
+                {**feature_flags, "load_stac_feature_flags": load_stac_feature_flags},
                 jvm,
                 spatial_extent=load_params.spatial_extent,
-                stac_url=layer_source_info.get("opensearch_endpoint"),
             )
         elif layer_source_type == "stac":
             cube = load_stac(
