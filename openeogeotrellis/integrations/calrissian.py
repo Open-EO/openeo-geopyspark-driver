@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import base64
 import dataclasses
 import json
 import logging
@@ -452,15 +451,23 @@ class CalrissianJobLauncher:
 
         name = self._build_unique_name(infix="cal-inp")
         _log.info(f"Creating input staging job manifest: {name=}")
-        # Serialize CWL content to string that is safe to pass as command line argument
-        cwl_serialized = base64.b64encode(cwl_content.encode("utf8")).decode("ascii")
         # TODO #1008 cleanup procedure of these CWL files?
         cwl_path = str(Path(self._volume_input.mount_path) / f"{name}.cwl")
-        _log.info(
-            f"create_input_staging_job_manifest creating {cwl_path=} from {cwl_content[:32]=} through {cwl_serialized[:32]=}"
-        )
+        _log.info(f"create_input_staging_job_manifest creating {cwl_path=} from {cwl_content[:32]=}")
 
-        S3ClientBuilder.from_bucket(self._s3_bucket).head_bucket(Bucket=self._s3_bucket)  # check if the bucket exists
+        s3_client = S3ClientBuilder.from_bucket(self._s3_bucket)
+        s3_client.head_bucket(Bucket=self._s3_bucket)  # check if the bucket exists
+
+        # Upload CWL content to S3 and pass a presigned URL to the container.
+        # This avoids ARG_MAX and environment-variable size limits for large CWL files.
+        cwl_s3_key = f"cwl-staging/{name}.cwl"
+        s3_client.put_object(Bucket=self._s3_bucket, Key=cwl_s3_key, Body=cwl_content.encode("utf8"))
+        cwl_presigned_url = s3_client.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": self._s3_bucket, "Key": cwl_s3_key},
+            ExpiresIn=3600,
+        )
+        _log.info(f"create_input_staging_job_manifest: uploaded CWL to {self._s3_bucket!r}/{cwl_s3_key!r}")
 
         container = kubernetes.client.V1Container(
             name=name,
@@ -468,7 +475,8 @@ class CalrissianJobLauncher:
             image_pull_policy="IfNotPresent",  # Avoid 'Always' as artifactory might be down.
             security_context=self._security_context,
             command=["/bin/sh"],
-            args=["-c", f"set -euxo pipefail; echo '{cwl_serialized}' | base64 -d > {cwl_path}"],
+            args=["-c", f"set -euxo pipefail; wget -qO- \"$CWL_PRESIGNED_URL\" > {cwl_path}"],
+            env=[kubernetes.client.V1EnvVar(name="CWL_PRESIGNED_URL", value=cwl_presigned_url)],
             volume_mounts=[
                 kubernetes.client.V1VolumeMount(
                     name=self._volume_input.name, mount_path=self._volume_input.mount_path, read_only=False

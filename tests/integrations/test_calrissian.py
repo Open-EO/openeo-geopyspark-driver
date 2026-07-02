@@ -79,7 +79,7 @@ class TestCalrissianJobLauncher:
         )
 
     def test_create_input_staging_job_manifest(
-        self, generate_unique_id_mock, s3_calrissian_bucket, calrissian_launch_config
+        self, generate_unique_id_mock, s3_calrissian_bucket, mock_s3_client, calrissian_launch_config
     ):
         launcher = CalrissianJobLauncher(
             launch_config=calrissian_launch_config,
@@ -93,6 +93,12 @@ class TestCalrissianJobLauncher:
         )
 
         assert cwl_path == "/calrissian/input-data/r-1234-cal-inp-01234567.cwl"
+
+        # CWL content should have been uploaded to S3
+        s3_object = mock_s3_client.get_object(
+            Bucket=s3_calrissian_bucket, Key="cwl-staging/r-1234-cal-inp-01234567.cwl"
+        )
+        assert s3_object["Body"].read().decode("utf-8") == "class: Dummy"
 
         assert isinstance(manifest, kubernetes.client.V1Job)
         manifest_dict = manifest.to_dict()
@@ -119,7 +125,12 @@ class TestCalrissianJobLauncher:
                             "command": ["/bin/sh"],
                             "args": [
                                 "-c",
-                                "set -euxo pipefail; echo 'Y2xhc3M6IER1bW15' | base64 -d > /calrissian/input-data/r-1234-cal-inp-01234567.cwl",
+                                "set -euxo pipefail; wget -qO- \"$CWL_PRESIGNED_URL\" > /calrissian/input-data/r-1234-cal-inp-01234567.cwl",
+                            ],
+                            "env": [
+                                dirty_equals.IsPartialDict(
+                                    {"name": "CWL_PRESIGNED_URL", "value": dirty_equals.IsStr()}
+                                )
                             ],
                             "volume_mounts": [
                                 dirty_equals.IsPartialDict(
