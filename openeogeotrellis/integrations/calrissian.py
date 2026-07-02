@@ -465,7 +465,7 @@ class CalrissianJobLauncher:
         cwl_presigned_url = s3_client.generate_presigned_url(
             "get_object",
             Params={"Bucket": self._s3_bucket, "Key": cwl_s3_key},
-            ExpiresIn=3600,
+            ExpiresIn=3600,  # 1 hour: plenty of time for the staging pod to be scheduled and download the file
         )
         _log.info(f"create_input_staging_job_manifest: uploaded CWL to {self._s3_bucket!r}/{cwl_s3_key!r}")
 
