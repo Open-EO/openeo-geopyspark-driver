@@ -1954,13 +1954,14 @@ def _is_band_asset(asset: pystac.Asset, custom_data_roles: Optional[Set[str]] = 
     #       but implementation also seems to be happy with just being loadable as raster data in some sense.
 
     # Skip unsupported media types (if known)
-    if asset.media_type and not _is_supported_raster_mime_type(asset.media_type):
-        return False
+    if asset.media_type and _is_supported_raster_mime_type(asset.media_type):
+        return True
 
     # Decide based on role (if known)
     if asset.roles is None:
         pass
     elif len(asset.roles) > 0:
+        # https://github.com/radiantearth/stac-spec/blob/master/best-practices.md#list-of-asset-roles
         roles_with_bands = {
             "data",
             "data-mask",
