@@ -624,6 +624,75 @@ def test_apply_square_pixels(api100):
     assert_equal(data, expected)
 
 
+def test_apply_parameterized_math_udp(api100, requests_mock):
+    """
+    https://github.com/Open-EO/openeo-geopyspark-driver/issues/1739
+    """
+    rpd_url = "http://rpd.test/apply_math.json"
+    rdp_pg = {
+        "id": "apply_math",
+        "process_graph": {
+            "apply1": {
+                "process_id": "apply",
+                "arguments": {
+                    "data": {"from_parameter": "data"},
+                    "process": {
+                        "process_graph": {
+                            "add1": {
+                                "process_id": "add",
+                                "arguments": {
+                                    "x": {"from_parameter": "x"},
+                                    "y": {"from_parameter": "offset"},
+                                },
+                                "result": True,
+                            }
+                        }
+                    },
+                },
+                "result": True,
+            }
+        },
+        "parameters": [
+            {"name": "data", "schema": {"type": "object", "subtype": "datacube"}},
+            {"name": "offset", "schema": {"type": "number"}},
+        ],
+    }
+    requests_mock.get(rpd_url, json=rdp_pg)
+
+    user_pg = {
+        "lc": {
+            "process_id": "load_collection",
+            "arguments": {
+                "id": "TestCollection-LonLat4x4",
+                "temporal_extent": ["2021-01-01", "2021-02-01"],
+                "spatial_extent": {"west": 0.0, "south": 0.0, "east": 1.0, "north": 1.0},
+                "bands": ["Day"],
+            },
+        },
+        "apply": {
+            "process_id": "apply_math",
+            "namespace": rpd_url,
+            "arguments": {
+                "data": {"from_node": "lc"},
+                "offset": 1000,
+            },
+        },
+        "save": {
+            "process_id": "save_result",
+            "arguments": {"data": {"from_node": "apply"}, "format": "json"},
+            "result": True,
+        },
+    }
+    response = api100.check_result(user_pg)
+    result = response.assert_status_code(200).json
+    _log.info(repr(result))
+
+    assert result["dims"] == ["t", "bands", "x", "y"]
+    data = result["data"]
+    expected = [[[[v + 1000] * 4] * 4] for v in [5, 15, 25]]
+    assert data == expected
+
+
 @pytest.mark.parametrize(
     "udf_code",
     [
