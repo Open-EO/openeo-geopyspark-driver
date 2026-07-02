@@ -452,7 +452,7 @@ class CalrissianJobLauncher:
 
         name = self._build_unique_name(infix="cal-inp")
         _log.info(f"Creating input staging job manifest: {name=}")
-        # Serialize CWL content to string that is safe to pass as command line argument
+        # Serialize CWL content to base64 to safely pass it via environment variable
         cwl_serialized = base64.b64encode(cwl_content.encode("utf8")).decode("ascii")
         # TODO #1008 cleanup procedure of these CWL files?
         cwl_path = str(Path(self._volume_input.mount_path) / f"{name}.cwl")
@@ -468,7 +468,8 @@ class CalrissianJobLauncher:
             image_pull_policy="IfNotPresent",  # Avoid 'Always' as artifactory might be down.
             security_context=self._security_context,
             command=["/bin/sh"],
-            args=["-c", f"set -euxo pipefail; echo '{cwl_serialized}' | base64 -d > {cwl_path}"],
+            args=["-c", f"set -euxo pipefail; printf '%s' \"$CWL_CONTENT\" | base64 -d > {cwl_path}"],
+            env=[kubernetes.client.V1EnvVar(name="CWL_CONTENT", value=cwl_serialized)],
             volume_mounts=[
                 kubernetes.client.V1VolumeMount(
                     name=self._volume_input.name, mount_path=self._volume_input.mount_path, read_only=False

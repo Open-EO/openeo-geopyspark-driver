@@ -119,7 +119,12 @@ class TestCalrissianJobLauncher:
                             "command": ["/bin/sh"],
                             "args": [
                                 "-c",
-                                "set -euxo pipefail; echo 'Y2xhc3M6IER1bW15' | base64 -d > /calrissian/input-data/r-1234-cal-inp-01234567.cwl",
+                                "set -euxo pipefail; printf '%s' \"$CWL_CONTENT\" | base64 -d > /calrissian/input-data/r-1234-cal-inp-01234567.cwl",
+                            ],
+                            "env": [
+                                dirty_equals.IsPartialDict(
+                                    {"name": "CWL_CONTENT", "value": "Y2xhc3M6IER1bW15"}
+                                )
                             ],
                             "volume_mounts": [
                                 dirty_equals.IsPartialDict(
