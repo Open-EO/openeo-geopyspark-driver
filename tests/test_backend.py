@@ -24,7 +24,6 @@ from openeo_driver.dry_run import SourceId, DryRunDataTracer
 from openeo_driver.processes import ProcessRegistry
 from openeo_driver.ProcessGraphDeserializer import ENV_SOURCE_CONSTRAINTS
 from openeo_driver.specs import read_spec
-from openeo_driver.testing import DictSubSet
 from openeo_driver.users import User
 from openeo_driver.utils import EvalEnv
 
