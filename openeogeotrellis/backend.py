@@ -2553,7 +2553,13 @@ class GpsBatchJobs(backend.BatchJobs):
         for item in items:
             for asset in item["assets"].values():
                 if "output_dir" not in asset:
-                    asset["output_dir"] = str(job_dir)
+                    if asset["href"].startswith("s3://"):
+                        s3_pattern = re.compile(rf"^(s3://[^/]+{re.escape(str(job_dir))}+/)(.+)$")
+                        matched_pattern = s3_pattern.match(asset["href"])
+                        if matched_pattern:
+                            asset["output_dir"] = matched_pattern.group(1)
+                    else:
+                        asset["output_dir"] = str(job_dir)
         return {item["id"]: item for item in items}
 
 

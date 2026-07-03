@@ -1098,9 +1098,55 @@ class TestGpsBatchJobs:
         assert result_metadata.items == {
             "b9510f20-92a0-4947-a4b6-a6a934a0015e": {
                 "id": "b9510f20-92a0-4947-a4b6-a6a934a0015e",
-                "assets": {"openEO": DictSubSet({
-                    "href": "s3://bucket/path/to/openEO.tif",
-                })},
+                "assets": {"openEO": {"href": "s3://bucket/path/to/openEO.tif"}},
+            }
+        }
+
+
+
+    def test_output_dir_s3_results_metadata_uri(
+        self,
+        kube_no_zk,
+        backend_implementation,
+        job_registry,
+        mock_non_swift_s3_bucket,
+    ):
+        self._create_dummy_batch_job(backend_implementation, self._dummy_user)
+
+        job_id, job = next(iter(job_registry.db.items()))
+
+        job_metadata_json_key = f"batch_jobs/{job_id}/job_metadata.json"
+        mock_non_swift_s3_bucket.put_object(
+            Key=job_metadata_json_key,
+            Body=json.dumps(
+                {
+                    "items": [
+                        {
+                            "id": "b9510f20-92a0-4947-a4b6-a6a934a0015e",
+                            "assets": {"openEO": {"href": f"s3://openeo-data-prod-otc-waw4-1/batch_jobs/{job_id}/openEO.tif"}},
+                        }
+                    ],
+                    "epsg": 32631,
+                    "providers": [{"name": "VITO"}],
+                }
+            ).encode("utf-8"),
+        )
+        job["status"] = JOB_STATUS.FINISHED
+        job["results_metadata_uri"] = f"s3://{mock_non_swift_s3_bucket.name}/{job_metadata_json_key}"
+
+        metadata = backend_implementation.batch_jobs.get_job_info(
+            job_id=job_id, user_id=self._dummy_user.user_id
+        )
+        assert metadata.epsg == 32631
+
+        result_metadata = backend_implementation.batch_jobs.get_result_metadata(
+            job_id=job_id, user_id=self._dummy_user.user_id
+        )
+        assert [provider["name"] for provider in result_metadata.providers] == ["VITO"]
+        assert result_metadata.items == {
+            "b9510f20-92a0-4947-a4b6-a6a934a0015e": {
+                "id": "b9510f20-92a0-4947-a4b6-a6a934a0015e",
+                "assets": {"openEO": {"href": f"s3://openeo-data-prod-otc-waw4-1/batch_jobs/{job_id}/openEO.tif", "output_dir": f"s3://openeo-data-prod-otc-waw4-1/batch_jobs/{job_id}/"}},
             }
         }
 
