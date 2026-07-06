@@ -2197,6 +2197,7 @@
     "id": "SENTINEL5P_L2_CO",
     "title": "Sentinel-5P TROPOMI CO L2",
     "description": "Sentinel-5P TROPOMI Level-2 carbon monoxide (CO) total column product.",
+    "experimental": true,
     "license": "proprietary",
     "extent": {
       "spatial": {"bbox": [[-180, -90, 180, 90]]},
@@ -2234,6 +2235,7 @@
     "id": "SENTINEL5P_L2_NO2",
     "title": "Sentinel-5P TROPOMI NO2 L2",
     "description": "Sentinel-5P TROPOMI Level-2 nitrogen dioxide (NO2) tropospheric column product.",
+    "experimental": true,
     "license": "proprietary",
     "extent": {
       "spatial": {"bbox": [[-180, -90, 180, 90]]},
@@ -2268,6 +2270,7 @@
     "id": "SENTINEL5P_L2_CH4",
     "title": "Sentinel-5P TROPOMI CH4 L2",
     "description": "Sentinel-5P TROPOMI Level-2 methane (CH4) total column mixing ratio product.",
+    "experimental": true,
     "license": "proprietary",
     "extent": {
       "spatial": {"bbox": [[-180, -90, 180, 90]]},
