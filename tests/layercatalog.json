@@ -2215,13 +2215,12 @@
     "_vito": {
       "data_source": {
         "type": "file-s5p",
-        "opensearch_endpoint_OLD_DISABLED": "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-5p-l2-co-offl",
-        "opensearch_collection_id_OLD_DISABLED": "urn:eop:VITO:TERRASCOPE_S5P_L2_CO",
         "load_stac_feature_flags": {
           "url": "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-5p-l2-co-offl"
         },
         "root_path": "/eodata/Sentinel-5P/TROPOMI/L2__CO____"
-      }
+      },
+      "management_info": {"enrichment_mode": "legacy_at_build_time"}
     },
     "summaries": {
       "eo:bands": [
@@ -2257,7 +2256,8 @@
           "url": "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-5p-l2-no2-offl"
         },
         "root_path": "/eodata/Sentinel-5P/TROPOMI/L2__NO2___"
-      }
+      },
+      "management_info": {"enrichment_mode": "legacy_at_build_time"}
     },
     "summaries": {
       "eo:bands": [
@@ -2292,7 +2292,8 @@
           "url": "https://stac.dataspace.copernicus.eu/v1/collections/sentinel-5p-l2-ch4-offl"
         },
         "root_path": "/eodata/Sentinel-5P/TROPOMI/L2__CH4___"
-      }
+      },
+      "management_info": {"enrichment_mode": "legacy_at_build_time"}
     },
     "summaries": {
       "eo:bands": [
