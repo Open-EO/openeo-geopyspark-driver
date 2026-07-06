@@ -83,11 +83,14 @@ def _create_synthetic_co_nc(path: Path) -> None:
         co_corr_var[0] = co_col_corr
 
 
-def _create_synthetic_no2_nc(path: Path) -> None:
-    """Create a minimal synthetic Sentinel-5P NO2 NetCDF file for unit tests.
+def _create_synthetic_s5p_nc(path: Path, bands: dict, qa_value: float) -> None:
+    """Create a minimal synthetic Sentinel-5P NetCDF file for unit tests.
 
     The file covers lon 4.0–4.9 °E, lat 50.2–51.1 °N, 2024-09-02 10:00–10:19 UTC,
-    with 20 scanlines × 10 pixels and QA values ≥ 0.75 throughout.
+    with 20 scanlines × 10 pixels.
+
+    :param bands: mapping of PRODUCT variable name to a 2-D (scanline × ground_pixel) array.
+    :param qa_value: scalar QA fill value applied uniformly to all pixels.
     """
     from netCDF4 import Dataset
 
@@ -105,10 +108,6 @@ def _create_synthetic_no2_nc(path: Path) -> None:
     lons = np.linspace(4.0, 4.9, n_pixels)
     lat2d = np.tile(lats[:, np.newaxis], (1, n_pixels))
     lon2d = np.tile(lons[np.newaxis, :], (n_scanlines, 1))
-
-    np.random.seed(7)
-    no2_col = np.random.uniform(1e-5, 5e-5, (n_scanlines, n_pixels)).astype(np.float32)
-    qa = np.full((n_scanlines, n_pixels), 0.8, dtype=np.float32)
 
     with Dataset(path, "w", format="NETCDF4") as ds:
         ds.createDimension("time", 1)
@@ -132,71 +131,11 @@ def _create_synthetic_no2_nc(path: Path) -> None:
         lon_var[0] = lon2d
 
         qa_var = grp.createVariable("qa_value", "f4", ("time", "scanline", "ground_pixel"))
-        qa_var[0] = qa
+        qa_var[0] = np.full((n_scanlines, n_pixels), qa_value, dtype=np.float32)
 
-        no2_var = grp.createVariable("nitrogendioxide_tropospheric_column", "f4", ("time", "scanline", "ground_pixel"))
-        no2_var[0] = no2_col
-
-
-def _create_synthetic_ch4_nc(path: Path) -> None:
-    """Create a minimal synthetic Sentinel-5P CH4 NetCDF file for unit tests.
-
-    The file covers lon 4.0–4.9 °E, lat 50.2–51.1 °N, 2024-09-02 10:00–10:19 UTC,
-    with 20 scanlines × 10 pixels and QA values ≥ 0.5 throughout.
-    """
-    from netCDF4 import Dataset
-
-    n_scanlines = 20
-    n_pixels = 10
-
-    ref_epoch = calendar.timegm(datetime(2010, 1, 1).timetuple())
-    orbit_start = calendar.timegm(datetime(2024, 9, 2, 9, 41, 32).timetuple())
-
-    scan_start = calendar.timegm(datetime(2024, 9, 2, 10, 0, 0).timetuple())
-    scan_end = calendar.timegm(datetime(2024, 9, 2, 10, 19, 0).timetuple())
-    scan_times_s = np.linspace(scan_start, scan_end, n_scanlines)
-
-    lats = np.linspace(51.1, 50.2, n_scanlines)
-    lons = np.linspace(4.0, 4.9, n_pixels)
-    lat2d = np.tile(lats[:, np.newaxis], (1, n_pixels))
-    lon2d = np.tile(lons[np.newaxis, :], (n_scanlines, 1))
-
-    np.random.seed(13)
-    ch4_ratio = np.random.uniform(1800, 1900, (n_scanlines, n_pixels)).astype(np.float32)
-    ch4_ratio_corr = (ch4_ratio * 1.01).astype(np.float32)
-    qa = np.full((n_scanlines, n_pixels), 0.6, dtype=np.float32)
-
-    with Dataset(path, "w", format="NETCDF4") as ds:
-        ds.createDimension("time", 1)
-        ds.createDimension("scanline", n_scanlines)
-        ds.createDimension("ground_pixel", n_pixels)
-
-        grp = ds.createGroup("PRODUCT")
-
-        t_var = grp.createVariable("time", "f8", ("time",))
-        t_var.units = "seconds since 2010-01-01"
-        t_var[0] = orbit_start - ref_epoch
-
-        dt_var = grp.createVariable("delta_time", "f8", ("time", "scanline"))
-        dt_var.units = "milliseconds since 2010-01-01"
-        dt_var[0, :] = (scan_times_s - ref_epoch) * 1000
-
-        lat_var = grp.createVariable("latitude", "f4", ("time", "scanline", "ground_pixel"))
-        lat_var[0] = lat2d
-
-        lon_var = grp.createVariable("longitude", "f4", ("time", "scanline", "ground_pixel"))
-        lon_var[0] = lon2d
-
-        qa_var = grp.createVariable("qa_value", "f4", ("time", "scanline", "ground_pixel"))
-        qa_var[0] = qa
-
-        ch4_var = grp.createVariable("methane_mixing_ratio", "f4", ("time", "scanline", "ground_pixel"))
-        ch4_var[0] = ch4_ratio
-
-        ch4_corr_var = grp.createVariable(
-            "methane_mixing_ratio_bias_corrected", "f4", ("time", "scanline", "ground_pixel")
-        )
-        ch4_corr_var[0] = ch4_ratio_corr
+        for var_name, data in bands.items():
+            var = grp.createVariable(var_name, "f4", ("time", "scanline", "ground_pixel"))
+            var[0] = data
 
 
 @pytest.fixture(scope="module")
@@ -215,7 +154,9 @@ def synthetic_no2_file(tmp_path_factory):
         tmp_path_factory.mktemp("sentinel5p_no2")
         / "S5P_OFFL_L2__NO2____20240902T094132_20240902T112301_00001_03_020600_20240903T232407.nc"
     )
-    _create_synthetic_no2_nc(path)
+    np.random.seed(7)
+    no2_col = np.random.uniform(1e-5, 5e-5, (20, 10)).astype(np.float32)
+    _create_synthetic_s5p_nc(path, bands={"nitrogendioxide_tropospheric_column": no2_col}, qa_value=0.8)
     return path
 
 
@@ -225,7 +166,16 @@ def synthetic_ch4_file(tmp_path_factory):
         tmp_path_factory.mktemp("sentinel5p_ch4")
         / "S5P_OFFL_L2__CH4____20240902T094132_20240902T112301_00001_03_020600_20240903T232407.nc"
     )
-    _create_synthetic_ch4_nc(path)
+    np.random.seed(13)
+    ch4_ratio = np.random.uniform(1800, 1900, (20, 10)).astype(np.float32)
+    _create_synthetic_s5p_nc(
+        path,
+        bands={
+            "methane_mixing_ratio": ch4_ratio,
+            "methane_mixing_ratio_bias_corrected": (ch4_ratio * 1.01).astype(np.float32),
+        },
+        qa_value=0.6,
+    )
     return path
 
 
@@ -412,7 +362,7 @@ def assert_tif_file_is_healthy(tif_path):
     is_valid_cog, errors, _ = cog_validate(str(tif_path), quiet=True)
     if errors:
         print(f"COG validation errors for {tif_path}: {errors}")
-    assert is_valid_cog, str(errors)  # does not pass test ATM
+    assert is_valid_cog, str(errors)
 
 
 class TestSentinel5:
