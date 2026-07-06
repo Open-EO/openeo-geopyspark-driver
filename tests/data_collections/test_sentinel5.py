@@ -513,8 +513,8 @@ class TestSentinel5:
                 "process_id": "load_collection",
                 "arguments": {
                     "id": "SENTINEL5P_L2_CH4",
-                    "spatial_extent": {"west": 4, "south": 50, "east": 11, "north": 55},
-                    "temporal_extent": ["2024-09-02T00:00:00Z", "2024-09-02T23:59:59Z"],
+                    "spatial_extent": {"west": 4, "south": 32, "east": 11, "north": 37},
+                    "temporal_extent": ["2024-10-07T00:00:00Z", "2024-10-07T23:59:59Z"],
                     "bands": ["methane_mixing_ratio", "methane_mixing_ratio_bias_corrected", "qa_value"],
                 },
                 "result": True,
