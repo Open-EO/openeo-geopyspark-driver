@@ -462,7 +462,7 @@ class TestSentinel5:
                 "arguments": {
                     "id": "SENTINEL5P_L2_CO",
                     "spatial_extent": {"west": 4, "south": 50, "east": 11, "north": 55},
-                    "temporal_extent": ["2024-09-02T00:00:00Z", "2024-09-02T23:59:59Z"],
+                    "temporal_extent": ["2024-09-02T12:00:00Z", "2024-09-02T13:00:00Z"],
                     "bands": [
                         "carbonmonoxide_total_column",
                         "carbonmonoxide_total_column_corrected",
@@ -478,6 +478,8 @@ class TestSentinel5:
         with output_file.open(mode="wb") as f:
             f.write(response.data)
 
+        assert_tif_file_is_healthy(output_file)
+
         with rasterio.open(output_file) as ds:
             print(ds.bounds)
             assert ds.bounds.right == 11.0
@@ -489,7 +491,7 @@ class TestSentinel5:
                 "arguments": {
                     "id": "SENTINEL5P_L2_NO2",
                     "spatial_extent": {"west": 4, "south": 50, "east": 11, "north": 55},
-                    "temporal_extent": ["2024-09-02T00:00:00Z", "2024-09-02T23:59:59Z"],
+                    "temporal_extent": ["2024-09-02T12:00:00Z", "2024-09-02T13:59:59Z"],
                     "bands": ["nitrogendioxide_tropospheric_column", "qa_value"],
                 },
                 "result": True,
@@ -514,7 +516,7 @@ class TestSentinel5:
                 "arguments": {
                     "id": "SENTINEL5P_L2_CH4",
                     "spatial_extent": {"west": 4, "south": 32, "east": 11, "north": 37},
-                    "temporal_extent": ["2024-10-07T00:00:00Z", "2024-10-07T23:59:59Z"],
+                    "temporal_extent": ["2024-10-07T11:00:00Z", "2024-10-07T13:00:00Z"],
                     "bands": ["methane_mixing_ratio", "methane_mixing_ratio_bias_corrected", "qa_value"],
                 },
                 "result": True,
