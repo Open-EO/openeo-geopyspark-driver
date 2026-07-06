@@ -44,6 +44,15 @@ all_gases = {
         "DEFAULT_BANDS": ["nitrogendioxide_tropospheric_column"],
         "FILTER_VALUE": 0.75,  # default filter value for NO2 as per documentation
     },
+    # CH4 gas variables
+    "gas_ch4": {
+        "VARIABLE_LOC_IN_FILE": {
+            "methane_mixing_ratio": "PRODUCT/methane_mixing_ratio",
+            "methane_mixing_ratio_bias_corrected": "PRODUCT/methane_mixing_ratio_bias_corrected",
+        },
+        "DEFAULT_BANDS": ["methane_mixing_ratio_bias_corrected"],
+        "FILTER_VALUE": 0.5,  # default filter value for CH4 as per documentation
+    },
 }
 ############# DO NOT CHANGE THE VARIABLE NAMES ABOVE #############
 
