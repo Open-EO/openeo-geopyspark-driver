@@ -2122,12 +2122,6 @@ class GpsBatchJobs(backend.BatchJobs):
             bucket = get_backend_config().s3_bucket_name
             s3_instance = S3ClientBuilder.from_bucket(bucket)
 
-            # TODO: Should get rid of runtime bucket creation
-            all_buckets = s3_instance.list_buckets()
-
-            if not any('Name' in item and item['Name'] == bucket for item in all_buckets['Buckets']):
-                s3_instance.create_bucket(Bucket=bucket)
-
             output_dir = str(self.get_job_output_dir(job_id))
             job_work_dir = self.get_job_work_dir(job_id=job_id)
 
