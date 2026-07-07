@@ -32,6 +32,7 @@ from openeogeotrellis.config.integrations.calrissian_config import (
     DEFAULT_CALRISSIAN_RUNNER_RESOURCE_REQUIREMENTS,
     CalrissianConfig,
 )
+from openeogeotrellis.geopysparkdatacube import GeopysparkDataCube
 from openeogeotrellis.integrations.kubernetes import ensure_kubernetes_config
 from openeogeotrellis.integrations.s3proxy import sts
 from openeogeotrellis.util.byteunit import byte_string_as
@@ -848,6 +849,15 @@ def cwl_to_stac(
         # TODO: use something else than `dry_run_tracer.load_stac`
         #       to avoid risk on conflict with "regular" load_stac code flows?
         return "dummy"
+
+    for key in cwl_arguments:
+        val = cwl_arguments[key]
+        if isinstance(val, GeopysparkDataCube):
+            # TODO: Assert there is a save_result in the GeopysparkDataCube
+            # TODO: Run the GeopysparkDataCube to a subfolder of the openeo results directory, and make a collection.json from the results
+            # TODO: Set res_url to the collection.json path
+            res_url = "TODO"
+            cwl_arguments[key] = res_url
 
     ensure_kubernetes_config()
 
