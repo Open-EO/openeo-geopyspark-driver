@@ -9,6 +9,8 @@ Everything should happen in EPSG: 4326 (lat-lon) as Sentinel-5P data is in lat-l
 
 import sys
 from pathlib import Path
+from typing import Optional, Sequence, Tuple, Dict, List, Any
+
 import numpy as np
 from netCDF4 import Dataset, num2date
 
@@ -26,7 +28,7 @@ COMMON_VARIABLES_IN_FILE = {
     "qa_value": "PRODUCT/qa_value",
 }
 
-all_gases = {
+all_gases: Dict[str, Dict[str, Any]] = {
     # CO gas variables
     "gas_co": {
         "VARIABLE_LOC_IN_FILE": {
@@ -81,7 +83,7 @@ all_gases = {
 ############# DO NOT CHANGE THE VARIABLE NAMES ABOVE #############
 
 
-def get_gas_variables(gas_type: str):
+def get_gas_variables(gas_type: str) -> Tuple[Dict[str, str], List[str], float]:
     """Get gas variable locations, default bands, and filter values.
 
     Returns:
@@ -93,17 +95,30 @@ def get_gas_variables(gas_type: str):
     gas_vars = all_gases.get(gas_type)
     if gas_vars is None:
         raise ValueError(f"Unknown gas type: {gas_type}")
+
     variable_loc = gas_vars.get("VARIABLE_LOC_IN_FILE")
-    if variable_loc is None:
-        raise ValueError("No mapping band variable")
-    if not isinstance(variable_loc, dict):
+    if variable_loc is None or not isinstance(variable_loc, dict):
         raise ValueError(f"VARIABLE_LOC_IN_FILE should be dictionary, but was '{variable_loc}'")
+
+    default_bands = gas_vars.get("DEFAULT_BANDS")
+    if default_bands is None or not isinstance(default_bands, list):
+        raise ValueError(f"DEFAULT_BANDS should be dictionary, but was '{default_bands}'")
+
+    filter_value = gas_vars.get("FILTER_VALUE")
+    if filter_value is None or not isinstance(filter_value, float):
+        raise ValueError(f"FILTER_VALUE should be dictionary, but was '{filter_value}'")
+
     variable_locs = {**variable_loc, **COMMON_VARIABLES_IN_FILE}
-    return variable_locs, gas_vars.get("DEFAULT_BANDS"), gas_vars.get("FILTER_VALUE")
+    return variable_locs, default_bands, filter_value
 
 
 def load_data_from_file(
-    file_path: Path, spatial_extent, temporal_extent, bands, variable_loc_in_file, filter_value=0.5
+    file_path: Path,
+    spatial_extent: Optional[Sequence],
+    temporal_extent: Optional[Sequence],
+    bands,
+    variable_loc_in_file: Dict[str, str],
+    filter_value=0.5,
 ):
     """Load bands data from the NetCDF file.
 
@@ -116,12 +131,12 @@ def load_data_from_file(
 
     Args:
         file_path (Path): Path to the NetCDF file.
-        spatial_extent (tuple): A tuple containing (min_lon, min_lat, max_lon,
+        spatial_extent (Optional[Sequence]): A tuple containing (min_lon, min_lat, max_lon,
                                 max_lat).
-        temporal_extent (tuple): A tuple containing start and end times
+        temporal_extent (Optional[Sequence]): A tuple containing start and end times
                                 (start_time, end_time) as datetime objects.
         bands (list): List of band names to load.
-        name_list (dict): A dictionary mapping standard band names to NetCDF variable names.
+        variable_loc_in_file (dict): A dictionary mapping standard band names to NetCDF variable names.
         filter_value (float): Minimum acceptable quality value (0.0, 0.4
                                 0.7, 1.0).
 
@@ -145,7 +160,7 @@ def load_data_from_file(
         # If there is no valid data, raise exception with appropriate message
         # if there is valid data, get the pixel indices representing the spatial extents
         # Load time for each row
-        var_path = variable_loc_in_file.get("delta_time")
+        var_path = variable_loc_in_file["delta_time"]
         delta_time_raw = f[var_path][0]
         if delta_time_raw.ndim == 2:
             # Some gas products (e.g. SO2, HCHO, O3) store delta_time per ground pixel
@@ -165,8 +180,8 @@ def load_data_from_file(
             raise Exception(f"Input temporal extent is not in the file {file_path.name}.")
 
         # Define a mask where data is present based on spatial extent and temporal extents
-        lat_path = variable_loc_in_file.get("latitude")
-        lon_path = variable_loc_in_file.get("longitude")
+        lat_path = variable_loc_in_file["latitude"]
+        lon_path = variable_loc_in_file["longitude"]
         file_lat = f[lat_path][0]  # lat and lon are 2-d arrays
         file_lon = f[lon_path][0]
         spatial_mask = get_spatial_extent_mask(file_lat, file_lon, spatial_extent)
@@ -180,7 +195,7 @@ def load_data_from_file(
 
         # mask based on filter value
         # load qa_value and create mask
-        qa_val_path = variable_loc_in_file.get("qa_value")
+        qa_val_path = variable_loc_in_file["qa_value"]
         filter_mask = f[qa_val_path][0] >= filter_value
 
         # combine mask with filter_mask
@@ -192,7 +207,7 @@ def load_data_from_file(
         data = {}
         for band in bands:
             try:
-                var_path = variable_loc_in_file.get(band)
+                var_path = variable_loc_in_file[band]
                 band_data = f[var_path][0]  # 0 is for time dimension
                 # get band data based on combined mask
                 data[band] = fill_and_mask_data(band_data, spatio_temporal_mask)
@@ -235,12 +250,12 @@ def load_data_from_file(
 #         return True
 
 
-def get_temporal_mask_and_time(time_of_rows, temporal_extent):
+def get_temporal_mask_and_time(time_of_rows, temporal_extent: Optional[Sequence]):
     """Get temporal mask based on the temporal extent and get the time of data.
 
     Args:
         time_of_rows (Array of datetime): Array of datetime objects representing the time of each row.
-        temporal_extent (tuple): A tuple containing (start_time, end_time) as datetime objects.
+        temporal_extent (Optional[Sequence]): A tuple containing (start_time, end_time) as datetime objects.
 
     Returns:
         temporal_mask (2-d Array of bool): Boolean mask for the temporal extent with (n_rows, 1) shape.
@@ -248,7 +263,7 @@ def get_temporal_mask_and_time(time_of_rows, temporal_extent):
     """
     # find intersection of temporal extent and time of data
     if temporal_extent is None:
-        mask = np.ones((time_of_rows.size), dtype=bool)  # all rows true
+        mask = np.ones(time_of_rows.size, dtype=bool)  # all rows true
     else:
         mask = (time_of_rows >= temporal_extent[0]) & (time_of_rows <= temporal_extent[1])
     # extend its shape to 2-d for broadcasting
@@ -256,7 +271,9 @@ def get_temporal_mask_and_time(time_of_rows, temporal_extent):
     return temporal_mask
 
 
-def get_spatial_extent_mask(lat, lon, spatial_extent, pixel_pad=1):
+def get_spatial_extent_mask(
+    lat: np.ndarray, lon: np.ndarray, spatial_extent: Optional[Sequence], pixel_pad=1
+) -> np.ndarray:
     """Get mask for the spatial extent in lat-lon arrays.
 
     The lat-lon mask is defined such that the spatial bounds is encapsulated.
@@ -274,6 +291,11 @@ def get_spatial_extent_mask(lat, lon, spatial_extent, pixel_pad=1):
         mask (Array of bool): Boolean mask for the spatial extent.
 
     """
+    if ConfigParams().is_ci_context and sys.version_info >= (3, 10):
+        from typeguard import check_argument_types
+
+        check_argument_types()
+
     if spatial_extent is None:
         spatial_mask = np.ones(lat.shape, dtype=bool)  # all pixels true
         return spatial_mask
@@ -345,7 +367,7 @@ def _get_2d_data_from_mask(data, mask):
     return data_2d
 
 
-def create_resample_grid(bbox, resolution, pad_pixel=0):
+def create_resample_grid(bbox: Sequence, resolution: float, pad_pixel=0):
     """Crate grid for resampling based on bounding box and resolution.
     Args:
         bbox (tuple): A tuple containing (min_lon, min_lat, max_lon, max
@@ -356,6 +378,10 @@ def create_resample_grid(bbox, resolution, pad_pixel=0):
         grid_x (Array of float): 2-d array representing the longitude grid.
         grid_y (Array of float): 2-d array representing the latitude grid.
     """
+    if ConfigParams().is_ci_context and sys.version_info >= (3, 10):
+        from typeguard import check_argument_types
+
+        check_argument_types()
     xmin, ymin, xmax, ymax = bbox
     if xmin > xmax:  # anti-meridian crossing
         xmax += 360  # temporarily shift to continuous range
@@ -368,7 +394,9 @@ def create_resample_grid(bbox, resolution, pad_pixel=0):
     return grid_x, grid_y
 
 
-def interpolate(source_coordinates, source_data, target_coordinates, method="nearest"):
+def interpolate(
+    source_coordinates: np.ndarray, source_data: np.ndarray, target_coordinates: np.ndarray, method: str = "nearest"
+):
     """Interpolate source data to target grid based on source and target coordinates.
 
     Args:
@@ -380,9 +408,15 @@ def interpolate(source_coordinates, source_data, target_coordinates, method="nea
     Returns:
         interpolated_data (Array of float): 1-d array of shape (m,) representing interpolated data values at target coordinates.
     """
-    from scipy.interpolate import griddata  # python3 -m pip install scipy-stubs
+    if ConfigParams().is_ci_context and sys.version_info >= (3, 10):
+        from typeguard import check_argument_types
+
+        check_argument_types()
+
+    from scipy.interpolate import griddata
 
     method = method.lower()
+    assert method in ["nearest", "linear", "cubic"]  # for typing
     interpolated_data = griddata(
         source_coordinates,
         source_data,
@@ -413,7 +447,9 @@ def adapt_coordinates(source_coordinates, target_coordinates):
     return adapted_source_coordinates, adapted_target_coordinates
 
 
-def resample_data(data, bands, spatial_extent, resample_resolution, interpolation_method):
+def resample_data(
+    data: dict, bands: list, spatial_extent: Sequence, resample_resolution: float, interpolation_method: str
+):
     """Resample data based on spatial extent and resample parameters.
 
     Args:
@@ -426,6 +462,10 @@ def resample_data(data, bands, spatial_extent, resample_resolution, interpolatio
     Returns:
         new_data (dict): Dictionary containing resampled data arrays for different bands.
     """
+    if ConfigParams().is_ci_context and sys.version_info >= (3, 10):
+        from typeguard import check_argument_types
+
+        check_argument_types()
     interpolated_data = {}  # dictionary to hold resampled data
     # create new grid for resampled data
     resampled_lon, resampled_lat = create_resample_grid(spatial_extent, resample_resolution)

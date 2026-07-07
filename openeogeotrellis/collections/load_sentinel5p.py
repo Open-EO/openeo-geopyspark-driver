@@ -41,13 +41,13 @@ import sys
 from datetime import datetime
 from functools import partial
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union, Sequence
 
 import geopyspark
 import numpy as np
 import pyspark
 import pyspark.serializers
-import shapely.geometry  # python3 -m pip install types-shapely
+import shapely.geometry
 from py4j.java_gateway import JavaObject
 
 from openeo_driver.errors import OpenEOApiException
@@ -104,9 +104,13 @@ def load_level2_data(params: dict):
 
     # check the spatial extent and temporal extent keys
     spatial_extent = params.get("spatial_extent", None)
+    if spatial_extent is not None:
+        assert isinstance(spatial_extent, Sequence)
+
     temporal_extent = params.get("temporal_extent", None)
     # check if temporal_extent is made of datetime objects
     if temporal_extent is not None:
+        assert isinstance(temporal_extent, Sequence)
         if not all(isinstance(x, datetime) for x in temporal_extent):
             raise Exception("temporal_extent should be made of datetime objects.")
     # check the band names and filter_value
@@ -124,6 +128,7 @@ def load_level2_data(params: dict):
         )
     # resampling parameters
     resample_params = params.get("resample_factor", [False, 0.025, "nearest"])
+    assert isinstance(resample_params, list)
 
     # Check if file is temporally valid and if valid, then load data from the file
     # temporally_valid = is_temporal_extent_valid(file_path.name, temporal_extent)
@@ -147,7 +152,12 @@ def load_level2_data(params: dict):
 
     # resample data
     if resample_params[0]:  # if resampling is required
-        data = resample_data(data, bands, spatial_extent, resample_params[1], resample_params[2])
+        assert spatial_extent is not None
+        resample_resolution = resample_params[1]
+        assert isinstance(resample_resolution, float)
+        interpolation_method = resample_params[2]
+        assert isinstance(interpolation_method, str)
+        data = resample_data(data, bands, spatial_extent, resample_resolution, interpolation_method)
 
     # apply quality filtering
     final_data = apply_quality_filter(data, bands, "qa_value_mask")

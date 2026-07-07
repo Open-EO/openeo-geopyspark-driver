@@ -8,6 +8,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 import rasterio
+import xarray
 
 if __name__ == "__main__":
     import openeogeotrellis.deploy.local
@@ -82,35 +83,47 @@ def _create_synthetic_s5p_nc(path: Path, bands: dict, qa_value: float) -> None:
 # Per-product spec used to synthesize NetCDF fixtures and to drive the parametrized
 # "default bands" test below: name -> (filename product code, band builder, qa_value, expected default band count).
 def _co_bands():
-    co_col = np.random.uniform(0.025, 0.040, (20, 10)).astype(np.float32)
+    nd = np.random.uniform(0.025, 0.040, (20, 10))
+    assert isinstance(nd, np.ndarray)
+    co_col = nd.astype(np.float32)
     return {
         "carbonmonoxide_total_column": co_col,
-        "carbonmonoxide_total_column_corrected": (co_col * 1.05).astype(np.float32),
+        "carbonmonoxide_total_column_corrected": co_col * 1.05,
     }
 
 
 def _no2_bands():
-    return {"nitrogendioxide_tropospheric_column": np.random.uniform(1e-5, 5e-5, (20, 10)).astype(np.float32)}
+    nd = np.random.uniform(1e-5, 5e-5, (20, 10))
+    assert isinstance(nd, np.ndarray)
+    return {"nitrogendioxide_tropospheric_column": nd.astype(np.float32)}
 
 
 def _ch4_bands():
-    ch4_ratio = np.random.uniform(1800, 1900, (20, 10)).astype(np.float32)
+    nd = np.random.uniform(1800, 1900, (20, 10))
+    assert isinstance(nd, np.ndarray)
+    ch4_ratio = nd.astype(np.float32)
     return {
         "methane_mixing_ratio": ch4_ratio,
-        "methane_mixing_ratio_bias_corrected": (ch4_ratio * 1.01).astype(np.float32),
+        "methane_mixing_ratio_bias_corrected": ch4_ratio * 1.01,
     }
 
 
 def _so2_bands():
-    return {"sulfurdioxide_total_vertical_column": np.random.uniform(-1e-4, 5e-4, (20, 10)).astype(np.float32)}
+    nd = np.random.uniform(-1e-4, 5e-4, (20, 10))
+    assert isinstance(nd, np.ndarray)
+    return {"sulfurdioxide_total_vertical_column": nd.astype(np.float32)}
 
 
 def _hcho_bands():
-    return {"formaldehyde_tropospheric_vertical_column": np.random.uniform(1e-5, 1e-4, (20, 10)).astype(np.float32)}
+    nd = np.random.uniform(1e-5, 1e-4, (20, 10))
+    assert isinstance(nd, np.ndarray)
+    return {"formaldehyde_tropospheric_vertical_column": nd.astype(np.float32)}
 
 
 def _o3_bands():
-    return {"ozone_total_vertical_column": np.random.uniform(0.05, 0.09, (20, 10)).astype(np.float32)}
+    nd = np.random.uniform(0.05, 0.09, (20, 10))
+    assert isinstance(nd, np.ndarray)
+    return {"ozone_total_vertical_column": nd.astype(np.float32)}
 
 
 SYNTHETIC_PRODUCT_SPECS = {
@@ -284,6 +297,7 @@ def assert_tif_file_is_healthy(tif_path):
     import rioxarray
 
     tiff_arr = rioxarray.open_rasterio(tif_path)
+    assert isinstance(tiff_arr, xarray.DataArray)
     shape = tiff_arr.shape
     _log.info(f"{shape=}")
     assert shape[1] > 10
