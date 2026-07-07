@@ -50,7 +50,7 @@ typing_require = [
     "mypy-boto3-s3",
     'typechecked; python_version>="3.10"',
     "types-shapely",
-    "scipy-stubs",
+    'scipy-stubs; python_version>="3.10"',
 ]
 
 setup(
