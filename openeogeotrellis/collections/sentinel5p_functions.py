@@ -53,6 +53,30 @@ all_gases = {
         "DEFAULT_BANDS": ["methane_mixing_ratio_bias_corrected"],
         "FILTER_VALUE": 0.5,  # default filter value for CH4 as per documentation
     },
+    # SO2 gas variables
+    "gas_so2": {
+        "VARIABLE_LOC_IN_FILE": {
+            "sulfurdioxide_total_vertical_column": "PRODUCT/sulfurdioxide_total_vertical_column",
+        },
+        "DEFAULT_BANDS": ["sulfurdioxide_total_vertical_column"],
+        "FILTER_VALUE": 0.5,  # default filter value for SO2 as per documentation
+    },
+    # HCHO gas variables
+    "gas_hcho": {
+        "VARIABLE_LOC_IN_FILE": {
+            "formaldehyde_tropospheric_vertical_column": "PRODUCT/formaldehyde_tropospheric_vertical_column",
+        },
+        "DEFAULT_BANDS": ["formaldehyde_tropospheric_vertical_column"],
+        "FILTER_VALUE": 0.5,  # default filter value for HCHO as per documentation
+    },
+    # O3 gas variables
+    "gas_o3": {
+        "VARIABLE_LOC_IN_FILE": {
+            "ozone_total_vertical_column": "PRODUCT/ozone_total_vertical_column",
+        },
+        "DEFAULT_BANDS": ["ozone_total_vertical_column"],
+        "FILTER_VALUE": 0.5,  # default filter value for O3 as per documentation
+    },
 }
 ############# DO NOT CHANGE THE VARIABLE NAMES ABOVE #############
 
@@ -122,9 +146,15 @@ def load_data_from_file(
         # if there is valid data, get the pixel indices representing the spatial extents
         # Load time for each row
         var_path = variable_loc_in_file.get("delta_time")
+        delta_time_raw = f[var_path][0]
+        if delta_time_raw.ndim == 2:
+            # Some gas products (e.g. SO2, HCHO, O3) store delta_time per ground pixel
+            # instead of per scanline, even though the value is constant across the row.
+            # Reduce it back to one value per scanline as expected below.
+            delta_time_raw = delta_time_raw[:, 0]
         time_array = np.array(
             num2date(
-                f[var_path][0],
+                delta_time_raw,
                 f[var_path].units,
                 only_use_cftime_datetimes=False,
             )
