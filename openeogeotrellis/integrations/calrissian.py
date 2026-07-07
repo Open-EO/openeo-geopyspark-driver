@@ -14,11 +14,12 @@ from typing import Dict, List, Optional, Sequence, Tuple, Union
 import kubernetes.client
 import requests
 import yaml
-from openeo.util import ContextTimer, deep_get
+from openeo.util import ContextTimer, deep_get, dict_no_none
 from openeo_driver.ProcessGraphDeserializer import ENV_DRY_RUN_TRACER
 from openeo_driver.backend import ErrorSummary
 from openeo_driver.config import ConfigException
 from openeo_driver.dry_run import DryRunDataTracer
+from openeo_driver.save_result import ImageCollectionResult, to_save_result
 from openeo_driver.utils import EvalEnv, generate_unique_id, smart_bool
 
 from openeogeotrellis.config import get_backend_config, s3_config
@@ -831,6 +832,66 @@ def find_stac_root(paths: set, stac_root_filename: Optional[str] = "catalog.json
     return None
 
 
+def _write_stac_collection_for_write_assets_result(
+    output_dir: Path, items: Dict[str, dict], collection_id: str
+) -> Path:
+    """
+    Build a minimal but valid STAC collection (collection.json + one Item file per output item)
+    from the "items" dict as produced by `SaveResult.write_assets`/`GeopysparkDataCube.write_assets`.
+    """
+    item_files = []
+    bboxes = []
+    for item_id, item in items.items():
+        bbox = item.get("bbox")
+        if bbox:
+            bboxes.append(bbox)
+        stac_item = {
+            "type": "Feature",
+            "stac_version": "1.0.0",
+            "id": item_id,
+            "geometry": item.get("geometry"),
+            "bbox": bbox,
+            "properties": {"datetime": item.get("datetime")},
+            "links": [],
+            "assets": {
+                asset_id: dict_no_none(
+                    href=str(asset["href"]),
+                    roles=asset.get("roles"),
+                    type=asset.get("type"),
+                )
+                for asset_id, asset in item.get("assets", {}).items()
+            },
+        }
+        item_file = output_dir / f"{item_id}.json"
+        item_file.write_text(json.dumps(stac_item))
+        item_files.append(item_file)
+
+    if bboxes:
+        xmins, ymins, xmaxs, ymaxs = zip(*bboxes)
+        collection_bbox = [min(xmins), min(ymins), max(xmaxs), max(ymaxs)]
+    else:
+        collection_bbox = [-180, -90, 180, 90]
+
+    stac_collection = {
+        "type": "Collection",
+        "stac_version": "1.0.0",
+        "id": collection_id,
+        "description": f"STAC metadata for openEO CWL input {collection_id!r}",
+        "license": "unknown",
+        "extent": {
+            "spatial": {"bbox": [collection_bbox]},
+            "temporal": {"interval": [[None, None]]},
+        },
+        "links": [
+            {"href": f"./{item_file.name}", "rel": "item", "type": "application/geo+json"} for item_file in item_files
+        ],
+    }
+
+    collection_file = output_dir / "collection.json"
+    collection_file.write_text(json.dumps(stac_collection))
+    return collection_file
+
+
 def cwl_to_stac(
     cwl_arguments: Union[List[str], dict],
     env: EvalEnv,
@@ -853,10 +914,22 @@ def cwl_to_stac(
     for key in cwl_arguments:
         val = cwl_arguments[key]
         if isinstance(val, GeopysparkDataCube):
-            # TODO: Assert there is a save_result in the GeopysparkDataCube
-            # TODO: Run the GeopysparkDataCube to a subfolder of the openeo results directory, and make a collection.json from the results
-            # TODO: Set res_url to the collection.json path
-            res_url = "TODO"
+            save_result = to_save_result(val)
+            assert isinstance(save_result, ImageCollectionResult), (
+                f"Expected a save_result for CWL argument {key!r}, "
+                f"but got a raw {type(val).__name__} that could not be converted to one."
+            )
+
+            job_id = get_job_id(default="unknown-job")
+            output_dir = Path(get_backend_config().batch_job_work_dir_root) / job_id / "cwl_input" / str(key)
+            output_dir.mkdir(parents=True, exist_ok=True)
+
+            items = save_result.write_assets(output_dir / "out")
+            collection_file = _write_stac_collection_for_write_assets_result(
+                output_dir=output_dir, items=items, collection_id=f"{job_id}_{key}"
+            )
+
+            res_url = str(collection_file)
             cwl_arguments[key] = res_url
 
     ensure_kubernetes_config()
