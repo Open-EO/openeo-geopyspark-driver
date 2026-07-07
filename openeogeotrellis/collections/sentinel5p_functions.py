@@ -413,9 +413,11 @@ def interpolate(
 
         check_argument_types()
 
+    from typing import Literal, cast
     from scipy.interpolate import griddata
 
     method = method.lower()
+    method = cast(Literal["nearest", "linear", "cubic"], method)  # for mypy
     assert method in ["nearest", "linear", "cubic"]  # for typing
     interpolated_data = griddata(
         source_coordinates,

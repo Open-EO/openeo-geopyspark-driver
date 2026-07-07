@@ -38,6 +38,7 @@ Algorithm:
 import json
 import logging
 import sys
+import datetime as dt
 from datetime import datetime
 from functools import partial
 from pathlib import Path
@@ -169,7 +170,7 @@ def _instant_ms_to_minute(instant: int) -> datetime:
 
     Matches the convention used in the Sentinel-3 loader so that time-series joins work correctly.
     """
-    return datetime(*(datetime.utcfromtimestamp(instant // 1000).timetuple()[:5]))
+    return datetime(*(datetime.fromtimestamp(instant // 1000, dt.timezone.utc).timetuple()[:5]))
 
 
 def read_product(
